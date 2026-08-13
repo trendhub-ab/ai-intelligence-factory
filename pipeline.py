@@ -68,7 +68,10 @@ DIVIDER_LINE = "\n\n" + "─" * 24 + "\n"
 NOTION_BLOCK_LIMIT = 1900
 
 # 品質ゲート: 有料エリアがこの文字数未満の場合、「薄い記事」とみなし自動リトライする
-MIN_PAID_AREA_LENGTH = 800
+# 初期値800文字は実運用で全件が無リトライで通過してしまい、ゲートとして機能していなかったため、
+# 実測分布（google-researchの例で有料エリア約1500文字）を踏まえ1200文字に引き上げ。
+# 生成物の分布を見ながら随時調整すること。
+MIN_PAID_AREA_LENGTH = 1200
 # 自動リトライの最大回数（これを超えても閾値未達なら、その案件は生成を諦めて次に進む）
 MAX_QUALITY_RETRIES = 2
 
@@ -356,7 +359,7 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
 # 6. 一次データ収集 & 法務ゲート
 # ==========================================
 def fetch_github_trending():
-    print(">>> [Step 1] GitHub一次データの自動巡回...")
+    logger.info(">>> [Step 1] GitHub一次データの自動巡回...")
     url = "https://api.github.com/graphql"
     headers = {"Authorization": f"Bearer {GH_PAT}", "Content-Type": "application/json"}
     since_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -379,7 +382,7 @@ def fetch_github_trending():
         response = requests.post(url, json={"query": query}, headers=headers, timeout=10)
         if response.status_code == 200:
             nodes = response.json().get("data", {}).get("search", {}).get("nodes", [])
-            print(f"   -> {len(nodes)} 件の候補を取得。")
+            logger.info(f"   -> {len(nodes)} 件の候補を取得。")
             return nodes
     except Exception as e:
         logger.error(f"GitHub APIエラー: {e}")
@@ -583,9 +586,9 @@ def generate_intelligence_report(repo):
 # 8. メイン実行パイプライン
 # ==========================================
 def main():
-    print("==========================================")
-    print(" 完全無人インテリジェンス工場 パイプライン起動")
-    print("==========================================")
+    logger.info("==========================================")
+    logger.info(" 完全無人インテリジェンス工場 パイプライン起動")
+    logger.info("==========================================")
 
     repos = fetch_github_trending()
     generated_count = 0
@@ -594,10 +597,10 @@ def main():
         name = repo.get("nameWithOwner")
         is_safe, license_status = legal_safety_gate(repo)
         if not is_safe:
-            print(f" [SKIP: LICENSE] {name} -> {license_status}")
+            logger.info(f" [SKIP: LICENSE] {name} -> {license_status}")
             continue
 
-        print(f" [ANALYZING & WRITING] {name}")
+        logger.info(f" [ANALYZING & WRITING] {name}")
         try:
             report = generate_intelligence_report(repo)
             if report: generated_count += 1
@@ -607,7 +610,7 @@ def main():
     if generated_count > 0:
         msg = f"✅ 【AI note事業】本日のnote用完全原稿が {generated_count} 件生成され、Notionに配置されました。コピペして公開してください。\nhttps://notion.so/{NOTION_DATABASE_ID}"
         send_discord_alert(msg)
-        print(msg)
+        logger.info(msg)
 
 if __name__ == "__main__":
     main()
