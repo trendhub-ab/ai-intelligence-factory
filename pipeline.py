@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import requests
 import json
@@ -10,7 +11,7 @@ from google.genai.errors import APIError
 # ログ設定
 # ==========================================
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("gemini_resolver")
+logger = logging.getLogger("gemini_pipeline")
 
 # ==========================================
 # 1. 環境変数の取得（Secrets設定値と一致）
@@ -36,13 +37,15 @@ CANDIDATE_MODELS = os.environ.get(
 class NoAvailableModelError(RuntimeError):
     """許可リスト内のモデルが全て利用不可だった場合に送出"""
 
+class DailyQuotaExhaustedError(RuntimeError):
+    """1日あたりのクォータそのものを使い切った場合に送出"""
+
 def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
     last_error: Exception | None = None
 
     for model_name in candidates:
         model_name = model_name.strip()
         try:
-            # 軽量疎通確認（ping）
             client.models.generate_content(
                 model=model_name,
                 contents="ping",
@@ -71,7 +74,7 @@ def send_discord_alert(message: str):
         except Exception as e:
             logger.error(f"Discord通知失敗: {e}")
 
-# パイプライン起動時に一度だけモデルを動的解決
+# パイプライン起動時にモデルを解決
 try:
     SELECTED_MODEL = resolve_model()
 except NoAvailableModelError:
@@ -80,7 +83,60 @@ except NoAvailableModelError:
     raise SystemExit(1)
 
 # ==========================================
-# 2. 一次データ収集（GitHub GraphQL API）
+# 2. 429/503 スマートリトライ・ハンドラー
+# ==========================================
+def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
+    """429エラーレスポンスから指定待機時間(秒)を抽出"""
+    match = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)", str(exc))
+    return int(match.group(1)) if match else default
+
+def _is_daily_quota_exhausted(exc: Exception) -> bool:
+    """RPD（日次上限）枯渇か否かを判定"""
+    text = str(exc)
+    return "free_tier_requests" in text or "PerDay" in text or "Quota exceeded" in text
+
+def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
+    """
+    503: 固定バックオフ(10秒)で再試行
+    429(RPM): Google指定のretryDelay待機で再試行
+    429(RPD): 即時諦めてDailyQuotaExhaustedErrorを発生（Fail-Closed）
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            time.sleep(3) # レート制限対策の基本ウェイト
+            return client.models.generate_content(
+                model=SELECTED_MODEL,
+                contents=prompt,
+            )
+        except APIError as e:
+            # 503 Service Unavailable (一時的過負荷)
+            if e.code == 503:
+                if attempt < max_retries:
+                    wait = 10 * (attempt + 1)
+                    logger.warning(f"503発生。{wait}秒待機してリトライ ({attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                    continue
+                raise
+
+            # 429 Resource Exhausted
+            elif e.code == 429:
+                if _is_daily_quota_exhausted(e):
+                    logger.error("日次クォータ枯渇(RPD)を検知。即座に処理を中断します。")
+                    raise DailyQuotaExhaustedError(str(e)) from e
+                
+                delay = _extract_retry_delay(e)
+                if attempt < max_retries:
+                    logger.warning(f"429(RPM)発生。指定のretryDelay={delay}秒待機してリトライ")
+                    time.sleep(delay)
+                    continue
+                raise
+            else:
+                raise
+        except Exception as e:
+            raise
+
+# ==========================================
+# 3. 一次データ収集（GitHub GraphQL API）
 # ==========================================
 def fetch_github_trending():
     print(">>> [Step 1/4] GitHub一次データの自動巡回（上限10件）...")
@@ -124,7 +180,7 @@ def fetch_github_trending():
         return []
 
 # ==========================================
-# 3. 法務安全ゲート（ライセンス判定 / Fail-Closed）
+# 4. 法務安全ゲート（ライセンス判定 / Fail-Closed）
 # ==========================================
 def legal_safety_gate(repo):
     license_info = repo.get("licenseInfo")
@@ -140,9 +196,9 @@ def legal_safety_gate(repo):
         return False, f"UNSAFE_LICENSE ({spdx_id})"
 
 # ==========================================
-# 4. 意思決定インテリジェンス生成（Gemini API + 503自動再試行）
+# 5. 意思決定インテリジェンス生成
 # ==========================================
-def generate_intelligence_report(repo, max_retries=3):
+def generate_intelligence_report(repo):
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
     url = repo.get("url")
@@ -167,30 +223,19 @@ def generate_intelligence_report(repo, max_retries=3):
 - **Action**: 明日から開発現場やPMがとるべき具体アクション（例: 3ヶ月以内にPoC検証、または静観）。
 """
 
-    for attempt in range(max_retries):
-        try:
-            # レート制限回避（RPM対策）
-            time.sleep(5)
-            response = client.models.generate_content(
-                model=SELECTED_MODEL,
-                contents=prompt,
-            )
-            return response.text
-        except APIError as e:
-            if e.code == 503 and attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 10
-                print(f"   [503 混雑検出] {name} -> {wait_time}秒後に再試行します ({attempt + 1}/{max_retries})...")
-                time.sleep(wait_time)
-                continue
-            else:
-                print(f"Gemini解析エラー ({name}): {e}")
-                return None
-        except Exception as e:
-            print(f"Gemini解析エラー ({name}): {e}")
-            return None
+    try:
+        response = call_gemini_with_smart_retry(prompt)
+        return response.text
+    except DailyQuotaExhaustedError:
+        print(f"   [Quota枯渇] {name} -> 本日のAPI上限に達したため解析を中断します。")
+        send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました。従量課金への移行を確認してください。")
+        raise
+    except Exception as e:
+        print(f"Gemini解析エラー ({name}): {e}")
+        return None
 
 # ==========================================
-# 5. メイン実行パイプライン
+# 6. メイン実行パイプライン
 # ==========================================
 def main():
     print("==========================================")
@@ -209,9 +254,13 @@ def main():
             continue
             
         print(f" [ANALYZING] {name} (License: {license_status})")
-        report = generate_intelligence_report(repo)
-        if report:
-            reports.append(report)
+        try:
+            report = generate_intelligence_report(repo)
+            if report:
+                reports.append(report)
+        except DailyQuotaExhaustedError:
+            # 日次枯渇時はループを打ち切って安全に終了
+            break
             
     print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成しました。")
     
