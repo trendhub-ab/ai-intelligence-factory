@@ -440,6 +440,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = ""):
   単独で挿入し、その後にnote原稿本文を続けること。
 ・note原稿本文中、無料エリアと有料エリアの境目には、必ず「---有料エリア---」という
   行だけを単独で挿入すること（前後に他の文字を付けないこと）。
+・有料エリアは合計1600字以上を必須とする。分量不足は差し戻し対象となる。
 
 【出力フォーマット】
 
@@ -473,7 +474,9 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = ""):
 
 （有料エリア：代替との比較、移行コストとリスク、Decision Scoreの各項目の詳細な根拠、
 Why NOT Important、そして今週中に取るべきActionを、読者が「1980円払って良かった」と
-思える深さと具体性で書く。）
+思える深さと具体性で書く。目安として全体で1600字以上を目標とし、各項目とも
+2〜3文の説明で終わらせず、具体的な固有名詞・数値・手順を交えて掘り下げること。
+分量が不足する内容の薄い書き方は禁止。）
 """
 
 def _parse_gemini_response(full_text: str) -> dict:
