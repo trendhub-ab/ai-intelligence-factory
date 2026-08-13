@@ -134,7 +134,6 @@ def fetch_unpublished_reports():
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28",
     }
-    # 修正: 二重投稿防止のためのフィルター設定
     payload = {
         "filter": {
             "and": [
@@ -147,7 +146,6 @@ def fetch_unpublished_reports():
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
         if res.status_code != 200:
-            # Status列が存在しない場合のフォールバック（初回動作用）
             logger.warning("Status列が存在しないためスコアのみで抽出します。")
             payload = {
                 "filter": {"property": "Decision Score", "number": {"greater_than_or_equal_to": 75}},
@@ -183,7 +181,6 @@ def fetch_unpublished_reports():
         return []
 
 def mark_as_published(page_id):
-    """投稿完了後にNotionのステータスをPublishedへ更新"""
     url = f"https://api.notion.com/v1/pages/{page_id}"
     headers = {
         "Authorization": f"Bearer {NOTION_API_KEY}",
@@ -232,7 +229,7 @@ def format_for_note(report):
     return response.text
 
 # ==========================================
-# 4. Playwrightによるnote自動下書き保存（堅牢化）
+# 4. Playwrightによるnote自動下書き保存（究極の堅牢化）
 # ==========================================
 def post_to_note_via_playwright(article_text):
     lines = article_text.strip().split("\n")
@@ -247,35 +244,38 @@ def post_to_note_via_playwright(article_text):
         page = context.new_page()
 
         logger.info("noteへログイン処理を開始...")
-        page.goto("https://note.com/login", wait_until="networkidle")
+        page.goto("https://note.com/login", wait_until="domcontentloaded") # networkidleより早く次の処理へ
         
-        email_selector = 'input[type="email"], input[name="login"], input[name="email"], input[placeholder*="メール"], input[placeholder*="ID"]'
-        page.wait_for_selector(email_selector, timeout=15000)
-        page.fill(email_selector, NOTE_EMAIL)
+        email_selector = 'input[type="email"], input[name="login"], input[name="email"], input[placeholder*="メール"]'
+        page.wait_for_selector(email_selector, timeout=30000)
+        page.locator(email_selector).first.fill(NOTE_EMAIL)
 
         password_selector = 'input[type="password"], input[name="password"]'
-        page.wait_for_selector(password_selector, timeout=15000)
-        page.fill(password_selector, NOTE_PASSWORD)
+        page.locator(password_selector).first.fill(NOTE_PASSWORD)
 
         submit_button = 'button[type="submit"], button:has-text("ログイン")'
-        page.click(submit_button)
+        page.locator(submit_button).first.click()
         page.wait_for_timeout(5000)
 
         logger.info("エディタ画面へ移動して記事を書き込み...")
-        page.goto("https://note.com/notes/new", wait_until="networkidle")
+        page.goto("https://note.com/notes/new", wait_until="domcontentloaded")
+        page.wait_for_timeout(3000) # エディタの非同期JS読み込みを確実に待つ
         
-        title_selector = 'textarea[placeholder*="タイトル"], textarea[data-testid="title-input"]'
-        page.wait_for_selector(title_selector, timeout=15000)
-        page.fill(title_selector, title)
+        # 修正: タイトル入力（複数パターンの冗長化 ＋ 見つからなければ最初のtextareaを指定）
+        title_selector = 'textarea[placeholder*="タイトル"], [aria-label*="タイトル"], textarea'
+        page.wait_for_selector(title_selector, timeout=30000)
+        page.locator(title_selector).first.fill(title)
 
-        body_selector = 'div[data-placeholder*="本文"], div[role="textbox"]'
-        page.wait_for_selector(body_selector, timeout=15000)
-        page.click(body_selector)
-        page.keyboard.type(body, delay=10) # 修正: レンダリング遅延対策
+        # 修正: 本文入力（複数パターンの冗長化）
+        body_selector = 'div[data-placeholder*="本文"], div[role="textbox"], .ProseMirror, [contenteditable="true"]'
+        page.wait_for_selector(body_selector, timeout=30000)
+        page.locator(body_selector).first.click()
+        page.keyboard.type(body, delay=10)
 
-        save_button = 'button:has-text("下書き保存")'
-        page.wait_for_selector(save_button, timeout=15000)
-        page.click(save_button)
+        # 修正: 保存ボタン（複数パターンの冗長化）
+        save_button = 'button:has-text("下書き保存"), button:has-text("保存")'
+        page.wait_for_selector(save_button, timeout=30000)
+        page.locator(save_button).first.click()
         page.wait_for_timeout(3000)
         
         logger.info(f"[SUCCESS] note下書き作成完了: {title}")
@@ -295,7 +295,7 @@ def main():
             note_article = format_for_note(report)
             if NOTE_EMAIL and NOTE_PASSWORD:
                 post_to_note_via_playwright(note_article)
-                mark_as_published(report["page_id"]) # 投稿成功後にPublishedへ更新
+                mark_as_published(report["page_id"])
             else:
                 logger.info("NOTE_EMAIL / NOTE_PASSWORD 未設定のためログ出力のみ行います:")
                 print("\n" + "="*40 + "\n" + note_article + "\n" + "="*40)
