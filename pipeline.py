@@ -27,11 +27,11 @@ if not GEMINI_API_KEY or not GH_PAT:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 優先順位付きモデル解決ユーティリティ
+# 【代替案1】無料枠の広い軽量モデルを優先配置
 # ==========================================
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
-    "gemini-3.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash,gemini-1.5-flash"
+    "gemini-3.1-flash-lite,gemini-1.5-flash,gemini-3.5-flash"
 ).split(",")
 
 class NoAvailableModelError(RuntimeError):
@@ -96,20 +96,14 @@ def _is_daily_quota_exhausted(exc: Exception) -> bool:
     return "free_tier_requests" in text or "PerDay" in text or "Quota exceeded" in text
 
 def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
-    """
-    503: 固定バックオフ(10秒)で再試行
-    429(RPM): Google指定のretryDelay待機で再試行
-    429(RPD): 即時諦めてDailyQuotaExhaustedErrorを発生（Fail-Closed）
-    """
     for attempt in range(max_retries + 1):
         try:
-            time.sleep(3) # レート制限対策の基本ウェイト
+            time.sleep(3) # 基本ウェイト
             return client.models.generate_content(
                 model=SELECTED_MODEL,
                 contents=prompt,
             )
         except APIError as e:
-            # 503 Service Unavailable (一時的過負荷)
             if e.code == 503:
                 if attempt < max_retries:
                     wait = 10 * (attempt + 1)
@@ -117,8 +111,6 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
                     time.sleep(wait)
                     continue
                 raise
-
-            # 429 Resource Exhausted
             elif e.code == 429:
                 if _is_daily_quota_exhausted(e):
                     logger.error("日次クォータ枯渇(RPD)を検知。即座に処理を中断します。")
@@ -137,9 +129,10 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
 
 # ==========================================
 # 3. 一次データ収集（GitHub GraphQL API）
+# 【代替案3】上限を3件に安全化
 # ==========================================
 def fetch_github_trending():
-    print(">>> [Step 1/4] GitHub一次データの自動巡回（上限10件）...")
+    print(">>> [Step 1/4] GitHub一次データの自動巡回（上限3件）...")
     url = "https://api.github.com/graphql"
     headers = {
         "Authorization": f"Bearer {GH_PAT}",
@@ -148,7 +141,7 @@ def fetch_github_trending():
     
     query = """
     {
-      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>2026-01-01", type: REPOSITORY, first: 10) {
+      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>2026-01-01", type: REPOSITORY, first: 3) {
         nodes {
           ... on Repository {
             nameWithOwner
@@ -228,7 +221,7 @@ def generate_intelligence_report(repo):
         return response.text
     except DailyQuotaExhaustedError:
         print(f"   [Quota枯渇] {name} -> 本日のAPI上限に達したため解析を中断します。")
-        send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました。従量課金への移行を確認してください。")
+        send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました。")
         raise
     except Exception as e:
         print(f"Gemini解析エラー ({name}): {e}")
@@ -259,7 +252,6 @@ def main():
             if report:
                 reports.append(report)
         except DailyQuotaExhaustedError:
-            # 日次枯渇時はループを打ち切って安全に終了
             break
             
     print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成しました。")
