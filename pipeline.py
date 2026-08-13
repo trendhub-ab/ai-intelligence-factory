@@ -17,13 +17,34 @@ if not GEMINI_API_KEY or not GH_PAT:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 【2026年最新モデル指定】
-# 安定稼働と高速処理を両立する最新のFlashモデル
+# 【動的モデル選定ロジック】
+# アカウントで利用可能なモデル一覧をAPIから取得し、
+# 最適なFlashモデルを自動選定（ハードコード廃止による非推奨エラー回避）
 # ==========================================
-try:
-    model = genai.GenerativeModel("models/gemini-2.5-flash")
-except Exception:
-    model = genai.GenerativeModel("gemini-2.5-flash")
+def get_working_model():
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        print(f">>> 利用可能モデル確認: {len(available_models)} 件取得")
+        
+        # 1. 優先してFlash系モデルを探索
+        for m_name in available_models:
+            if "flash" in m_name.lower():
+                print(f"   -> 自動選定モデル: {m_name}")
+                return genai.GenerativeModel(m_name)
+        
+        # 2. Flashが見つからない場合は一覧の先頭モデルを使用
+        if available_models:
+            selected = available_models[0]
+            print(f"   -> フォールバック選定モデル: {selected}")
+            return genai.GenerativeModel(selected)
+            
+    except Exception as e:
+        print(f"モデル一覧取得警告: {e}")
+    
+    # 3. 取得失敗時の最終フォールバック
+    return genai.GenerativeModel("models/gemini-1.5-flash")
+
+model = get_working_model()
 
 # ==========================================
 # 2. 一次データ収集（GitHub GraphQL API）
