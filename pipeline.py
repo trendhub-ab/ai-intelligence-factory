@@ -41,7 +41,11 @@ REQUIRED_PROPERTIES = {
     "Name": "title",
     "URL": "url",
     "Decision Score": "number",
-    "What": "rich_text"
+    "What": "rich_text",
+    "Why Important": "rich_text",
+    "Why NOT Important": "rich_text",
+    "Who": "rich_text",
+    "Action": "rich_text",
 }
 
 class NotionSchemaMismatchError(RuntimeError):
@@ -195,13 +199,17 @@ def save_to_notion(repo_name, repo_url, report_text):
     what_match = re.search(r"- \*\*What \(概要\)\*\*:\s*(.*?)(?=\n-|\n\n|$)", report_text, re.DOTALL)
     what_text = what_match.group(1).strip() if what_match else "概要参照"
 
-    payload = {
+payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": {
             "Name": {"title": [{"text": {"content": repo_name}}]},
             "URL": {"url": repo_url},
             "Decision Score": {"number": score},
-            "What": {"rich_text": [{"text": {"content": what_text[:200]}}]}
+            "What": {"rich_text": [{"text": {"content": what_text[:2000]}}]},
+            "Why Important": {"rich_text": [{"text": {"content": why_important_text[:2000]}}]},
+            "Why NOT Important": {"rich_text": [{"text": {"content": why_not_important_text[:2000]}}]},
+            "Who": {"rich_text": [{"text": {"content": who_text[:2000]}}]},
+            "Action": {"rich_text": [{"text": {"content": action_text[:2000]}}]},
         },
         "children": [
             {
