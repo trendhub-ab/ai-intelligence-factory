@@ -29,5 +29,5 @@ jobs:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           TOP_N_FOR_DEEP_DIVE: "3"
-          STALE_THRESHOLD_DAYS: "0"
+          STALE_THRESHOLD_DAYS: "10"
         run: python pipeline.py
