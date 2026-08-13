@@ -27,7 +27,7 @@ if not GEMINI_API_KEY or not GH_PAT:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 【代替案1】無料枠の広い軽量モデルを優先配置
+# 無料枠の広い軽量モデルを優先配置（無料での完走を担保）
 # ==========================================
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
@@ -74,7 +74,7 @@ def send_discord_alert(message: str):
         except Exception as e:
             logger.error(f"Discord通知失敗: {e}")
 
-# パイプライン起動時にモデルを解決
+# パイプライン起動時にモデルを動的解決
 try:
     SELECTED_MODEL = resolve_model()
 except NoAvailableModelError:
@@ -96,9 +96,14 @@ def _is_daily_quota_exhausted(exc: Exception) -> bool:
     return "free_tier_requests" in text or "PerDay" in text or "Quota exceeded" in text
 
 def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
+    """
+    503: 固定バックオフ(10秒)で再試行
+    429(RPM): Google指定のretryDelay待機で再試行
+    429(RPD): 即時諦めてDailyQuotaExhaustedErrorを発生（Fail-Closed）
+    """
     for attempt in range(max_retries + 1):
         try:
-            time.sleep(3) # 基本ウェイト
+            time.sleep(3) # レート制限回避の基本ウェイト
             return client.models.generate_content(
                 model=SELECTED_MODEL,
                 contents=prompt,
@@ -129,10 +134,10 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
 
 # ==========================================
 # 3. 一次データ収集（GitHub GraphQL API）
-# 【代替案3】上限を3件に安全化
+# 歩留まり確保のため「上限10件」へ設定
 # ==========================================
 def fetch_github_trending():
-    print(">>> [Step 1/4] GitHub一次データの自動巡回（上限3件）...")
+    print(">>> [Step 1/4] GitHub一次データの自動巡回（上限10件）...")
     url = "https://api.github.com/graphql"
     headers = {
         "Authorization": f"Bearer {GH_PAT}",
@@ -141,7 +146,7 @@ def fetch_github_trending():
     
     query = """
     {
-      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>2026-01-01", type: REPOSITORY, first: 3) {
+      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>2026-01-01", type: REPOSITORY, first: 10) {
         nodes {
           ... on Repository {
             nameWithOwner
