@@ -1,4 +1,4 @@
-name: Daily Intelligence Pipeline
+name: Daily Intelligence & Monetization Pipeline
 
 on:
   schedule:
@@ -9,7 +9,7 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # タイムアウトを設定し無駄な分数の消費を防止
+    timeout-minutes: 20
 
     steps:
       - name: リポジトリのチェックアウト
@@ -20,14 +20,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 依存ライブラリのインストール
+      - name: 依存ライブラリ & Playwrightのインストール
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai requests
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
 
-      - name: パイプラインの実行
+      - name: 1. 一次情報収集・Notion自動格納パイプライン実行
         env:
-          TZ: 'Asia/Tokyo' # タイムゾーンをJSTに統一
+          TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -36,3 +37,13 @@ jobs:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         run: python pipeline.py
+
+      - name: 2. note有料記事・自動生成＆下書き保存パイプライン実行
+        env:
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTE_EMAIL: ${{ secrets.NOTE_EMAIL }}
+          NOTE_PASSWORD: ${{ secrets.NOTE_PASSWORD }}
+        run: python notion_to_note.py
