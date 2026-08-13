@@ -320,6 +320,12 @@ def main():
             
     print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成・Notion自動同期しました。")
     
+    # 画面ログへの要約レポート完全出力
+    print("\n================= 最終生成レポート一覧 =================")
+    for r in reports:
+        print(r)
+        print("-" * 50)
+
     if reports:
         send_discord_alert(f"【インテリジェンス工場】本日の解析およびNotion自動蓄積が完了しました（生成件数: {len(reports)}件）。")
 
