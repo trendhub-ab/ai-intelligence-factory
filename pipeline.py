@@ -3,8 +3,8 @@ import time
 import requests
 import json
 import logging
-from google.api_core.exceptions import NotFound
-import google.generativeai as genai
+from google import genai
+from google.genai.errors import APIError
 
 # ==========================================
 # ログ設定
@@ -22,39 +22,42 @@ DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 if not GEMINI_API_KEY or not GH_PAT:
     raise ValueError("エラー: GEMINI_API_KEY または GH_PAT がSecretsに設定されていません。")
 
-genai.configure(api_key=GEMINI_API_KEY)
+# 新SDKクライアントの初期化
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 【改善設計】優先順位付きモデル解決ユーティリティ
+# 【改善設計】優先順位付きモデル解決ユーティリティ (google-genai対応)
 # ==========================================
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
-    "models/gemini-3.5-flash,models/gemini-3.1-flash-lite,models/gemini-2.5-flash,models/gemini-1.5-flash"
+    "gemini-3.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash,gemini-1.5-flash"
 ).split(",")
 
 class NoAvailableModelError(RuntimeError):
     """許可リスト内のモデルが全て利用不可だった場合に送出"""
 
-def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> genai.GenerativeModel:
+def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
     last_error: Exception | None = None
 
     for model_name in candidates:
         model_name = model_name.strip()
         try:
-            model = genai.GenerativeModel(model_name)
-            # 軽量疎通確認（本番プロンプトは投げない）
-            model.generate_content(
-                "ping",
-                generation_config={"max_output_tokens": 1},
+            # 軽量疎通確認（ping）
+            client.models.generate_content(
+                model=model_name,
+                contents="ping",
             )
             logger.info(f"モデル解決成功: {model_name}")
-            return model
+            return model_name
 
-        except NotFound as e:
-            logger.warning(f"モデル利用不可(404)のためフォールバック: {model_name}")
-            last_error = e
-            continue
-
+        except APIError as e:
+            if e.code == 404:
+                logger.warning(f"モデル利用不可(404)のためフォールバック: {model_name}")
+                last_error = e
+                continue
+            else:
+                logger.error(f"APIエラー発生のため中断: {model_name} ({e})")
+                raise
         except Exception as e:
             logger.error(f"想定外のエラーのためフォールバックせず中断: {model_name} ({e})")
             raise
@@ -70,7 +73,7 @@ def send_discord_alert(message: str):
 
 # パイプライン起動時に一度だけモデルを動的解決
 try:
-    model = resolve_model()
+    SELECTED_MODEL = resolve_model()
 except NoAvailableModelError:
     alert_msg = "⚠️ 【緊急】全Geminiモデルが利用不可(404)。モデル設定の確認が必要です。"
     send_discord_alert(alert_msg)
@@ -167,7 +170,10 @@ def generate_intelligence_report(repo):
     try:
         # レート制限回避（RPM対策）
         time.sleep(5)
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=SELECTED_MODEL,
+            contents=prompt,
+        )
         return response.text
     except Exception as e:
         print(f"Gemini解析エラー ({name}): {e}")
