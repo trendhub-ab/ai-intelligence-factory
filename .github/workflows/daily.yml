@@ -2,9 +2,9 @@ name: Daily Intelligence Pipeline
 
 on:
   schedule:
-    # 毎日 午前6:00 (JST) に自動実行
+    # 毎日 午前6:00 (JST) に全自動実行
     - cron: '0 21 * * *'
-  workflow_dispatch: # 手動実行ボタンも有効化
+  workflow_dispatch: # 手動実行ボタンを有効化
 
 jobs:
   run-pipeline:
@@ -26,6 +26,6 @@ jobs:
       - name: パイプラインの実行
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           python pipeline.py
