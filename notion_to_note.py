@@ -110,33 +110,53 @@ def post_to_note_via_playwright(article_text):
     body = "\n".join(lines[1:])
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True) # 本番はHeadless
-        context = browser.new_context()
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         page = context.new_page()
 
         logger.info("noteへログイン処理を開始...")
-        page.goto("https://note.com/login")
-        page.fill('input[name="login"]', NOTE_EMAIL)
-        page.fill('input[name="password"]', NOTE_PASSWORD)
-        page.click('button:has-text("ログイン")')
-        page.wait_for_timeout(3000)
+        page.goto("https://note.com/login", wait_until="networkidle")
+        
+        # 1. ログインID / メールアドレス入力欄の多重指定（要素変化に対応）
+        email_selector = 'input[type="email"], input[name="login"], input[name="email"], input[placeholder*="メール"], input[placeholder*="ID"]'
+        page.wait_for_selector(email_selector, timeout=15000)
+        page.fill(email_selector, NOTE_EMAIL)
+
+        # 2. パスワード入力欄の指定
+        password_selector = 'input[type="password"], input[name="password"]'
+        page.wait_for_selector(password_selector, timeout=15000)
+        page.fill(password_selector, NOTE_PASSWORD)
+
+        # 3. ログインボタン押下
+        submit_button = 'button[type="submit"], button:has-text("ログイン")'
+        page.click(submit_button)
+        
+        # ログイン完了まで待機
+        page.wait_for_timeout(5000)
 
         logger.info("エディタ画面へ移動して記事を書き込み...")
-        page.goto("https://note.com/notes/new")
-        page.wait_for_selector('textarea[placeholder="記事タイトル"]')
-
+        page.goto("https://note.com/notes/new", wait_until="networkidle")
+        
         # タイトル入力
-        page.fill('textarea[placeholder="記事タイトル"]', title)
+        title_selector = 'textarea[placeholder*="タイトル"], textarea[data-testid="title-input"]'
+        page.wait_for_selector(title_selector, timeout=15000)
+        page.fill(title_selector, title)
 
         # 本文入力
-        page.click('div[data-placeholder="記事本文を入力してください"]')
+        body_selector = 'div[data-placeholder*="本文"], div[role="textbox"]'
+        page.wait_for_selector(body_selector, timeout=15000)
+        page.click(body_selector)
         page.keyboard.type(body)
 
-        # 下書き保存
-        page.click('button:has-text("下書き保存")')
+        # 下書き保存ボタン押下
+        save_button = 'button:has-text("下書き保存")'
+        page.wait_for_selector(save_button, timeout=15000)
+        page.click(save_button)
         page.wait_for_timeout(3000)
+        
         logger.info(f"[SUCCESS] note下書き作成完了: {title}")
-
         browser.close()
 
 # 5. メイン実行
