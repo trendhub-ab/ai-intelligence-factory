@@ -18,7 +18,8 @@ logger = logging.getLogger("gemini_pipeline")
 # ==========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GH_PAT = os.environ.get("GH_PAT")
-DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 
@@ -32,8 +33,11 @@ CANDIDATE_MODELS = os.environ.get(
     "gemini-3.1-flash-lite,gemini-3.5-flash"
 ).split(",")
 
-# 環境変数で「深掘りする件数」を調整可能にする
+# 深掘り（Step2フルレポート）に回す件数（Two-Stage化）
 TOP_N_FOR_DEEP_DIVE = int(os.environ.get("TOP_N_FOR_DEEP_DIVE", "3"))
+
+# 滞留検知: 最終記事生成からこの日数を超えたら運用者に通知
+STALE_THRESHOLD_DAYS = int(os.environ.get("STALE_THRESHOLD_DAYS", "10"))
 
 # ==========================================
 # 2. Notion プロパティ定義
@@ -71,6 +75,7 @@ DIVIDER_LINE = "\n\n" + "─" * 24 + "\n"
 NOTION_BLOCK_LIMIT = 1900
 
 # 品質ゲート: 有料エリアがこの文字数未満の場合、「薄い記事」とみなし自動リトライする
+# プロンプト側の目標を1600字に引き上げたため、閾値1200字には十分なバッファがある。
 MIN_PAID_AREA_LENGTH = 1200
 # 自動リトライの最大回数（これを超えても閾値未達なら、その案件は生成を諦めて次に進む）
 MAX_QUALITY_RETRIES = 2
@@ -81,12 +86,24 @@ MAX_QUALITY_RETRIES = 2
 class NoAvailableModelError(RuntimeError): pass
 class DailyQuotaExhaustedError(RuntimeError): pass
 
-def send_discord_alert(message: str):
-    if DISCORD_WEBHOOK_URL:
-        try:
-            requests.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=10)
-        except Exception as e:
-            logger.error(f"Discord通知失敗: {e}")
+def send_telegram_alert(message: str):
+    """運用者(自分)宛のアラート通知。Telegram Bot API経由で送信する。
+    購読者向けの通知ではなく、あくまで運用監視用。"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logger.warning("TELEGRAM_BOT_TOKEN または TELEGRAM_CHAT_ID が未設定のため通知をスキップします。")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message[:4000],  # Telegramのメッセージ長上限(4096)に対する安全マージン
+        "disable_web_page_preview": True,
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        if res.status_code != 200:
+            logger.error(f"Telegram通知失敗: {res.status_code} {res.text}")
+    except Exception as e:
+        logger.error(f"Telegram通知失敗: {e}")
 
 PING_MAX_RETRIES = 3
 PING_RETRY_BACKOFF_SECONDS = 12
@@ -129,7 +146,7 @@ def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
 try:
     SELECTED_MODEL = resolve_model()
 except NoAvailableModelError as e:
-    send_discord_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
+    send_telegram_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
     raise SystemExit(1)
 
 def call_gemini_with_smart_retry(prompt: str, max_retries: int = 5):
@@ -192,12 +209,12 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
     「---有料エリア---」の厳密一致ではなく、記号・スペースの表記ゆれを許容する
     PAID_AREA_PATTERN で検出する。境界が1件も見つからない場合、全文が無料公開扱いに
     なる（＝有料記事としての価値が消滅する）致命的な事故のため、検出せず出力せず
-    Discordへ即時アラートを送る。
+    Telegramへ即時アラートを送る。
     """
     match = PAID_AREA_PATTERN.search(note_draft)
     if not match:
         logger.error(f"[PAID AREA MISSING] {repo_name} -> 有料エリア境界を検出できませんでした。")
-        send_discord_alert(
+        send_telegram_alert(
             f"🚨【要手動確認】{repo_name} の原稿で有料エリア境界を検出できませんでした。"
             f"全文が無料エリア扱いになっている可能性があるため、Notion側の原稿を確認してから公開してください。"
         )
@@ -481,15 +498,20 @@ Why NOT Important、そして今週中に取るべきActionを、読者が「198
 
 def _parse_gemini_response(full_text: str) -> dict:
     """Geminiの応答を管理用データとnote原稿に分割し、各項目を抽出する。"""
+    # データ分割（管理用データとnote原稿を分離）。Markdown非依存の専用トークンで分割するため、
+    # Geminiが見出し記号を出力ゆれさせてもパースが壊れない。
     parts = full_text.split(SECTION_SPLIT_TOKEN)
     management_data = parts[0]
     note_draft = parts[1].strip() if len(parts) > 1 else "原稿生成に失敗しました。"
 
+    # 項目間の区切りは全角中黒「・」の次の項目、または文末までとする
     NEXT_ITEM = r"(?=\n・|\n\n|$)"
 
+    # 合計スコア抽出
     total_match = re.search(r"合計[:：]?\s*(\d+)\s*/\s*100", management_data)
     score = int(total_match.group(1)) if total_match else 0
 
+    # 各サブスコアをまとめて保存（Notionのブレークダウン列用）
     breakdown_match = re.search(
         r"Decision Score[:：]?\s*(.*?)(?=\n・Why NOT Important|\n・Action)",
         management_data, re.DOTALL
@@ -530,6 +552,9 @@ def generate_intelligence_report(repo):
     paid_len = 0
 
     try:
+        # 品質ゲート: 有料エリアがMIN_PAID_AREA_LENGTH未満なら、不足点を明示して
+        # Geminiに自動で書き直させる。人間の手作業を挟まない前提のため、
+        # 「警告」は人間向けの通知ではなく、次の生成へのフィードバックとして使う。
         for attempt in range(MAX_QUALITY_RETRIES + 1):
             prompt = build_decision_prompt(name, url, stars, desc, quality_feedback)
             response = call_gemini_with_smart_retry(prompt)
@@ -550,13 +575,16 @@ def generate_intelligence_report(repo):
             )
 
         if paid_len < MIN_PAID_AREA_LENGTH:
+            # AIによる自動リトライを使い切っても基準を満たせなかった案件。
+            # 人間に「直して」とは言わず、パイプラインの健全性を可視化するための運用ログとして通知する。
             logger.error(f"[QUALITY GATE FAILED] {name}: {MAX_QUALITY_RETRIES}回のリトライでも基準未達のためスキップ")
-            send_discord_alert(
+            send_telegram_alert(
                 f"ℹ️ {name} は{MAX_QUALITY_RETRIES}回のAI自動リトライでも有料エリアの分量基準"
                 f"（{MIN_PAID_AREA_LENGTH}文字）を満たせなかったため、今回は生成をスキップしました。"
             )
             return None
 
+        # note用のクリーンな最終原稿（無料/有料分離 + 出典元メタデータ付き）を生成
         clean_manuscript = build_clean_note_manuscript(parsed["note_draft"], name, url, spdx_id)
 
         save_to_notion(
@@ -568,7 +596,7 @@ def generate_intelligence_report(repo):
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
-        send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました。")
+        send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました。")
         raise
     except Exception as e:
         logger.error(f"Gemini解析エラー ({name}): {e}")
@@ -578,6 +606,8 @@ def generate_intelligence_report(repo):
 # Step 1: 軽量スクリーニング
 # ==========================================
 def build_screening_prompt(name, desc, stars) -> str:
+    # 出力を極小に抑えるため、フォーマットを1行に固定する。
+    # ここでMarkdown記号や長文説明を許すと出力トークンが無駄に膨らむため厳禁。
     return f"""
 以下のOSSプロジェクトについて、CTO/PM向け有料note記事の題材としての価値を
 0〜100点で採点せよ。判断基準: 技術的な新規性・実務への即効性・話題性。
@@ -599,29 +629,95 @@ def _parse_screening_response(text: str) -> dict:
     }
 
 def screen_repo(repo) -> dict:
+    """Step1: 軽量スコアリングのみ行う。失敗しても例外を外に投げず0点扱いにする
+    （1件のスクリーニング失敗でパイプライン全体を止めないため）。
+    503（一時的な過負荷）のみ、深掘り側と同様に軽くリトライする。"""
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
     stars = repo.get("stargazerCount", 0)
     prompt = build_screening_prompt(name, desc, stars)
+
+    SCREENING_MAX_RETRIES = 1
+    for attempt in range(SCREENING_MAX_RETRIES + 1):
+        try:
+            response = client.models.generate_content(
+                model=SELECTED_MODEL,
+                contents=prompt,
+                config={"max_output_tokens": 30},  # 1行しか返させないため極小に固定
+            )
+            parsed = _parse_screening_response(response.text)
+            logger.info(f"[SCREENED] {name}: {parsed['score']}点 ({parsed['reason']})")
+            return {"repo": repo, "score": parsed["score"], "reason": parsed["reason"]}
+        except DailyQuotaExhaustedError:
+            raise  # これだけは呼び出し元に伝播させ、当日の処理を打ち切らせる
+        except APIError as e:
+            if e.code == 503 and attempt < SCREENING_MAX_RETRIES:
+                logger.warning(f"[SCREENING RETRY] {name}: 503のため再試行します。")
+                time.sleep(10)
+                continue
+            # スクリーニング1件のAPIエラーは致命的ではないため0点扱いでスキップし、
+            # ただし可視化のためログとTelegramには残す。
+            logger.error(f"[SCREENING FAILED] {name}: {e}")
+            send_telegram_alert(f"⚠️ スクリーニング失敗: {name} ({e.code if hasattr(e, 'code') else e})")
+            return {"repo": repo, "score": 0, "reason": "スクリーニング失敗"}
+        except Exception as e:
+            logger.error(f"[SCREENING UNEXPECTED ERROR] {name}: {e}")
+            send_telegram_alert(f"⚠️ スクリーニング中の想定外エラー: {name} ({e})")
+            return {"repo": repo, "score": 0, "reason": "想定外エラー"}
+
+
+# ==========================================
+# 滞留検知: N日間新記事が0件なら運用者に通知
+# ==========================================
+def check_stale_content():
+    """
+    Notion DBの最新ページ作成日を確認し、STALE_THRESHOLD_DAYS日以上
+    新規ページが作成されていなければ運用者(Telegram)に通知する。
+
+    注意: これは購読者への告知ではない。運用者が「そろそろ購読者への
+    説明を検討すべきか」を判断するためのトリガーに過ぎない。
+    """
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        logger.warning("Notion未設定のため滞留検知をスキップします。")
+        return
+
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+        "page_size": 1,
+    }
     try:
-        response = client.models.generate_content(
-            model=SELECTED_MODEL,
-            contents=prompt,
-            config={"max_output_tokens": 30},
-        )
-        parsed = _parse_screening_response(response.text)
-        logger.info(f"[SCREENED] {name}: {parsed['score']}点 ({parsed['reason']})")
-        return {"repo": repo, "score": parsed["score"], "reason": parsed["reason"]}
-    except DailyQuotaExhaustedError:
-        raise
-    except APIError as e:
-        logger.error(f"[SCREENING FAILED] {name}: {e}")
-        send_discord_alert(f"⚠️ スクリーニング失敗: {name} ({e.code if hasattr(e, 'code') else e})")
-        return {"repo": repo, "score": 0, "reason": "スクリーニング失敗"}
+        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        if res.status_code != 200:
+            logger.error(f"[STALE CHECK] Notion問い合わせ失敗: {res.text}")
+            return
+
+        results = res.json().get("results", [])
+        if not results:
+            logger.warning("[STALE CHECK] Notion DBにページが1件もありません。")
+            return
+
+        latest_created_str = results[0]["created_time"]  # 例: "2026-08-01T09:00:00.000Z"
+        latest_created = datetime.fromisoformat(latest_created_str.replace("Z", "+00:00"))
+        days_since = (datetime.now(timezone.utc) - latest_created).days
+
+        logger.info(f"[STALE CHECK] 最終記事生成から {days_since} 日経過（閾値 {STALE_THRESHOLD_DAYS} 日）")
+
+        if days_since >= STALE_THRESHOLD_DAYS:
+            send_telegram_alert(
+                f"🟡【運用確認】最終記事生成から {days_since} 日が経過しています"
+                f"（閾値: {STALE_THRESHOLD_DAYS}日）。\n"
+                f"パイプラインの異常有無を確認し、必要であれば有料購読者への"
+                f"説明を検討してください。"
+            )
     except Exception as e:
-        logger.error(f"[SCREENING UNEXPECTED ERROR] {name}: {e}")
-        send_discord_alert(f"⚠️ スクリーニング中の想定外エラー: {name} ({e})")
-        return {"repo": repo, "score": 0, "reason": "想定外エラー"}
+        logger.error(f"[STALE CHECK] 例外発生: {e}")
+
 
 # ==========================================
 # 8. メイン実行パイプライン（Two-Stage版）
@@ -631,8 +727,11 @@ def main():
     logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Two-Stage版）")
     logger.info("==========================================")
 
+    check_stale_content()
+
     repos = fetch_github_trending()
 
+    # ライセンスNGは最初に弾く（Step1のAPI呼び出し自体を無駄にしないため）
     safe_repos = []
     for repo in repos:
         is_safe, license_status = legal_safety_gate(repo)
@@ -641,13 +740,14 @@ def main():
             continue
         safe_repos.append(repo)
 
+    # ---- Step 1: 軽量スクリーニング ----
     logger.info(f">>> [Step 2] 軽量スクリーニング開始（対象 {len(safe_repos)} 件）")
     screened = []
     try:
         for repo in safe_repos:
             screened.append(screen_repo(repo))
     except DailyQuotaExhaustedError:
-        send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました（スクリーニング中）。")
+        send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（スクリーニング中）。")
         logger.error("日次クォータ到達のため、スクリーニング段階で処理を打ち切ります。")
         return
 
@@ -659,6 +759,7 @@ def main():
         + ", ".join(f"{c['repo'].get('nameWithOwner')}({c['score']}点)" for c in top_candidates)
     )
 
+    # ---- Step 2: 上位N件のみフルレポート生成 ----
     generated_count = 0
     for candidate in top_candidates:
         repo = candidate["repo"]
@@ -669,16 +770,16 @@ def main():
             if report:
                 generated_count += 1
         except DailyQuotaExhaustedError:
-            send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました（深掘り生成中）。")
+            send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（深掘り生成中）。")
             break
 
     if generated_count > 0:
         msg = (
             f"✅ 【AI note事業】本日は{len(safe_repos)}件をスクリーニングし、"
             f"上位{generated_count}件の完全原稿を生成しました。Notionを確認してください。\n"
-            f"[https://notion.so/](https://notion.so/){NOTION_DATABASE_ID}"
+            f"https://notion.so/{NOTION_DATABASE_ID}"
         )
-        send_discord_alert(msg)
+        send_telegram_alert(msg)
         logger.info(msg)
     else:
         logger.info("本日は生成条件を満たす記事がありませんでした。")
