@@ -2,77 +2,208 @@
 ================================================================================
 AI note事業：Notion DB蓄積データ -> note自動投稿スクリプト (notion_to_note.py)
 ================================================================================
-目的: Notionに溜まった高スコアのレポートを抽出し、noteの有料記事フォーマットに
-      自動整形してnote（下書き）へ投稿する。
-================================================================================
 """
 
 import os
+import re
 import time
 import requests
 import logging
 from google import genai
+from google.genai.errors import APIError
 from playwright.sync_api import sync_playwright
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("note_publisher")
 
-# 1. 環境変数
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 NOTE_EMAIL = os.environ.get("NOTE_EMAIL")
 NOTE_PASSWORD = os.environ.get("NOTE_PASSWORD")
 
+if not GEMINI_API_KEY:
+    raise ValueError("エラー: GEMINI_API_KEY が設定されていません。")
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# 2. Notionから「Notionに保存済みの未投稿データ」を取得
+CANDIDATE_MODELS = os.environ.get(
+    "GEMINI_MODEL_CANDIDATES",
+    "gemini-3.1-flash-lite,gemini-3.5-flash"
+).split(",")
+
+# ==========================================
+# 1. モデル解決 & スマートリトライ
+# ==========================================
+class NoAvailableModelError(RuntimeError): pass
+class DailyQuotaExhaustedError(RuntimeError): pass
+
+PING_MAX_RETRIES = 3
+PING_RETRY_BACKOFF_SECONDS = 12
+
+def _is_daily_quota_exhausted(exc: Exception) -> bool:
+    text = str(exc)
+    return "free_tier_requests" in text or "PerDay" in text or "Quota exceeded" in text
+
+def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
+    match = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)", str(exc))
+    return int(match.group(1)) if match else default
+
+def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
+    last_error: Exception | None = None
+    for model_name in candidates:
+        model_name = model_name.strip()
+        for attempt in range(PING_MAX_RETRIES + 1):
+            try:
+                client.models.generate_content(
+                    model=model_name,
+                    contents="ping",
+                    config={"max_output_tokens": 8},
+                )
+                logger.info(f"モデル解決成功: {model_name}")
+                return model_name
+            except APIError as e:
+                last_error = e
+                if e.code == 404:
+                    logger.warning(f"モデル利用不可(404)のため次候補へフォールバック: {model_name}")
+                    break
+                if e.code == 429 and _is_daily_quota_exhausted(e):
+                    logger.warning(f"日次クォータ枯渇(429)のため次候補へフォールバック: {model_name}")
+                    break
+                if e.code in (503, 429):
+                    if attempt < PING_MAX_RETRIES:
+                        wait = PING_RETRY_BACKOFF_SECONDS * (attempt + 1)
+                        logger.warning(
+                            f"モデル疎通確認中に一時的なエラー(code={e.code}): {model_name} "
+                            f"{wait}秒待機してリトライ ({attempt + 1}/{PING_MAX_RETRIES})"
+                        )
+                        time.sleep(wait)
+                        continue
+                    logger.error(f"{model_name}: リトライ上限({PING_MAX_RETRIES}回)到達。次候補へフォールバック")
+                    break
+                logger.error(f"モデル疎通確認中に想定外のAPIエラー(code={e.code}): {model_name}")
+                raise NoAvailableModelError(f"想定外のAPIエラー(code={e.code})のため中断しました") from e
+            except Exception as e:
+                last_error = e
+                raise NoAvailableModelError(f"想定外の例外のため中断しました") from e
+
+    raise NoAvailableModelError(f"利用可能なモデルがありませんでした: {candidates}") from last_error
+
+try:
+    SELECTED_MODEL = resolve_model()
+except NoAvailableModelError as e:
+    logger.error(f"⚠️ Geminiモデル初期化失敗: {e}")
+    raise SystemExit(1)
+
+def call_gemini_with_smart_retry(prompt: str, max_retries: int = 5):
+    for attempt in range(max_retries + 1):
+        try:
+            time.sleep(3)
+            return client.models.generate_content(model=SELECTED_MODEL, contents=prompt)
+        except APIError as e:
+            if e.code == 503:
+                if attempt < max_retries:
+                    wait = 15 * (attempt + 1)
+                    logger.warning(f"503(サーバー混雑)発生。{wait}秒待機してリトライ ({attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                    continue
+                raise
+            elif e.code == 429:
+                if _is_daily_quota_exhausted(e):
+                    raise DailyQuotaExhaustedError(str(e)) from e
+                delay = _extract_retry_delay(e)
+                if attempt < max_retries:
+                    logger.warning(f"429(RPM)発生。指定のretryDelay={delay}秒待機してリトライ")
+                    time.sleep(delay)
+                    continue
+                raise
+            else:
+                raise
+
+# ==========================================
+# 2. Notionから「未投稿」レポートを取得 & ステータス更新
+# ==========================================
 def fetch_unpublished_reports():
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        logger.error("NOTION_API_KEY または NOTION_DATABASE_ID が未設定です。")
+        return []
+
     url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
     headers = {
         "Authorization": f"Bearer {NOTION_API_KEY}",
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28",
     }
-    # スコア80点以上の優良記事を優先取得するフィルター（ROI最大化）
+    # 修正: 二重投稿防止のためのフィルター設定
     payload = {
         "filter": {
-            "property": "Decision Score",
-            "number": {"greater_than_or_equal_to": 75}
+            "and": [
+                {"property": "Decision Score", "number": {"greater_than_or_equal_to": 75}},
+                {"property": "Status", "select": {"does_not_equal": "Published"}}
+            ]
         },
         "page_size": 3
     }
-    res = requests.post(url, json=payload, headers=headers)
-    if res.status_code != 200:
-        logger.error(f"Notion取得失敗: {res.text}")
+    try:
+        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        if res.status_code != 200:
+            # Status列が存在しない場合のフォールバック（初回動作用）
+            logger.warning("Status列が存在しないためスコアのみで抽出します。")
+            payload = {
+                "filter": {"property": "Decision Score", "number": {"greater_than_or_equal_to": 75}},
+                "page_size": 3
+            }
+            res = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        results = res.json().get("results", [])
+        reports = []
+        for page in results:
+            props = page["properties"]
+            
+            def get_text(prop_name):
+                val = props.get(prop_name, {}).get("rich_text", [])
+                return val[0]["text"]["content"] if val else ""
+
+            title_val = props.get("Name", {}).get("title", [])
+            title = title_val[0]["text"]["content"] if title_val else "無題"
+
+            reports.append({
+                "page_id": page["id"],
+                "title": title,
+                "url": props.get("URL", {}).get("url", ""),
+                "score": props.get("Decision Score", {}).get("number", 0),
+                "what": get_text("What"),
+                "why_important": get_text("Why Important"),
+                "why_not_important": get_text("Why NOT Important"),
+                "action": get_text("Action")
+            })
+        return reports
+    except Exception as e:
+        logger.error(f"Notion通信エラー: {e}")
         return []
 
-    results = res.json().get("results", [])
-    reports = []
-    for page in results:
-        props = page["properties"]
-        
-        # 安全なテキスト抽出ヘルパー
-        def get_text(prop_name):
-            val = props.get(prop_name, {}).get("rich_text", [])
-            return val[0]["text"]["content"] if val else ""
+def mark_as_published(page_id):
+    """投稿完了後にNotionのステータスをPublishedへ更新"""
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "properties": {
+            "Status": {"select": {"name": "Published"}}
+        }
+    }
+    try:
+        requests.patch(url, json=payload, headers=headers, timeout=10)
+        logger.info(f"[NOTION STATUS UPDATED] Page ID: {page_id} -> Published")
+    except Exception as e:
+        logger.error(f"Notionステータス更新失敗: {e}")
 
-        title_val = props.get("Name", {}).get("title", [])
-        title = title_val[0]["text"]["content"] if title_val else "無題"
-
-        reports.append({
-            "page_id": page["id"],
-            "title": title,
-            "url": props.get("URL", {}).get("url", ""),
-            "score": props.get("Decision Score", {}).get("number", 0),
-            "what": get_text("What"),
-            "why_important": get_text("Why Important"),
-            "why_not_important": get_text("Why NOT Important"),
-            "action": get_text("Action")
-        })
-    return reports
-
-# 3. Geminiによる「note有料記事用フォーマット」への再整形
+# ==========================================
+# 3. note有料記事フォーマット生成
+# ==========================================
 def format_for_note(report):
     prompt = f"""
 あなたは月刊数十万円を売り上げる技術系noteのトップWebライター・編集者です。
@@ -97,13 +228,12 @@ def format_for_note(report):
    - スルーしてよい企業・チームの特徴（Why NOT Important）
    - 明日から現場で取るべきアクション（Action）
 """
-    response = client.models.generate_content(
-        model="gemini-3.1-flash-lite",
-        contents=prompt
-    )
+    response = call_gemini_with_smart_retry(prompt)
     return response.text
 
-# 4. Playwrightによるnote自動下書き保存（自動化エンジン）
+# ==========================================
+# 4. Playwrightによるnote自動下書き保存（堅牢化）
+# ==========================================
 def post_to_note_via_playwright(article_text):
     lines = article_text.strip().split("\n")
     title = lines[0].replace("#", "").strip()
@@ -119,38 +249,30 @@ def post_to_note_via_playwright(article_text):
         logger.info("noteへログイン処理を開始...")
         page.goto("https://note.com/login", wait_until="networkidle")
         
-        # 1. ログインID / メールアドレス入力欄の多重指定（要素変化に対応）
         email_selector = 'input[type="email"], input[name="login"], input[name="email"], input[placeholder*="メール"], input[placeholder*="ID"]'
         page.wait_for_selector(email_selector, timeout=15000)
         page.fill(email_selector, NOTE_EMAIL)
 
-        # 2. パスワード入力欄の指定
         password_selector = 'input[type="password"], input[name="password"]'
         page.wait_for_selector(password_selector, timeout=15000)
         page.fill(password_selector, NOTE_PASSWORD)
 
-        # 3. ログインボタン押下
         submit_button = 'button[type="submit"], button:has-text("ログイン")'
         page.click(submit_button)
-        
-        # ログイン完了まで待機
         page.wait_for_timeout(5000)
 
         logger.info("エディタ画面へ移動して記事を書き込み...")
         page.goto("https://note.com/notes/new", wait_until="networkidle")
         
-        # タイトル入力
         title_selector = 'textarea[placeholder*="タイトル"], textarea[data-testid="title-input"]'
         page.wait_for_selector(title_selector, timeout=15000)
         page.fill(title_selector, title)
 
-        # 本文入力
         body_selector = 'div[data-placeholder*="本文"], div[role="textbox"]'
         page.wait_for_selector(body_selector, timeout=15000)
         page.click(body_selector)
-        page.keyboard.type(body)
+        page.keyboard.type(body, delay=10) # 修正: レンダリング遅延対策
 
-        # 下書き保存ボタン押下
         save_button = 'button:has-text("下書き保存")'
         page.wait_for_selector(save_button, timeout=15000)
         page.click(save_button)
@@ -159,21 +281,30 @@ def post_to_note_via_playwright(article_text):
         logger.info(f"[SUCCESS] note下書き作成完了: {title}")
         browser.close()
 
+# ==========================================
 # 5. メイン実行
+# ==========================================
 def main():
     logger.info("=== note自動投稿パイプライン起動 ===")
     reports = fetch_unpublished_reports()
-    logger.info(f"投稿対象レポート: {len(reports)} 件")
+    logger.info(f"投稿対象未処理レポート: {len(reports)} 件")
 
     for report in reports:
         logger.info(f"整形中: {report['title']}")
-        note_article = format_for_note(report)
-        
-        if NOTE_EMAIL and NOTE_PASSWORD:
-            post_to_note_via_playwright(note_article)
-        else:
-            logger.info("NOTE_EMAIL / NOTE_PASSWORD が未設定のため、生成テキストのログ出力のみ行います:")
-            print("\n" + "="*40 + "\n" + note_article + "\n" + "="*40)
+        try:
+            note_article = format_for_note(report)
+            if NOTE_EMAIL and NOTE_PASSWORD:
+                post_to_note_via_playwright(note_article)
+                mark_as_published(report["page_id"]) # 投稿成功後にPublishedへ更新
+            else:
+                logger.info("NOTE_EMAIL / NOTE_PASSWORD 未設定のためログ出力のみ行います:")
+                print("\n" + "="*40 + "\n" + note_article + "\n" + "="*40)
+        except DailyQuotaExhaustedError:
+            logger.error("日次クォータ枯渇のため処理を中断します。")
+            break
+        except Exception as e:
+            logger.error(f"記事生成・投稿中にエラー発生 ({report['title']}): {e}")
+            continue
 
 if __name__ == "__main__":
     main()
