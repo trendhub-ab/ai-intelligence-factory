@@ -8,7 +8,7 @@ import google.generativeai as genai
 # 1. 環境変数の取得と初期化
 # ==========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GITHUB_PAT = os.environ.get("GITHUB_PAT")
+GITHUB_PAT = os.environ.get("GH_PAT")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 if not GEMINI_API_KEY or not GITHUB_PAT:
