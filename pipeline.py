@@ -27,8 +27,6 @@ if not GEMINI_API_KEY or not GH_PAT:
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# [修正⑥] gemini-1.5-flashは完全廃止済み(常に404)のため候補から削除。
-# 2段階化はしない方針（プロトタイプとしてgemini-3.1-flash-liteを単独使用）は維持。
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
     "gemini-3.1-flash-lite,gemini-3.5-flash"
@@ -126,38 +124,68 @@ def send_discord_alert(message: str):
             logger.error(f"Discord通知失敗: {e}")
 
 
+PING_MAX_RETRIES = 3
+PING_RETRY_BACKOFF_SECONDS = 12  # 指数バックオフの基準秒数[cite: 1]
+
+
 def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
     """
-    [修正①] 404以外(429/503等)を無条件で re-raise していたため、
-    ping時にクォータ枯渇/サーバー過負荷が起きると誰にも捕捉されず
-    Discord通知なしでクラッシュするバグを修正。
-    404以外のAPIErrorもここで捕捉し、NoAvailableModelErrorに正規化して返す。
+    モデル疎通確認関数。
+    503および429(RPM)は同一モデルで最大PING_MAX_RETRIES回バックオフリトライ。[cite: 1]
+    404および日次クォータ枯渇(429)は即座に次候補へフォールバック。[cite: 1]
+    想定外エラー(401/403等)は即座に例外を送出して中断。[cite: 1]
     """
     last_error: Exception | None = None
+
     for model_name in candidates:
         model_name = model_name.strip()
-        try:
-            client.models.generate_content(
-                model=model_name,
-                contents="ping",
-                config={"max_output_tokens": 8},
-            )
-            logger.info(f"モデル解決成功: {model_name}")
-            return model_name
-        except APIError as e:
-            if e.code == 404:
-                logger.warning(f"モデル利用不可(404)のためフォールバック: {model_name}")
+
+        for attempt in range(PING_MAX_RETRIES + 1):
+            try:
+                client.models.generate_content(
+                    model=model_name,
+                    contents="ping",
+                    config={"max_output_tokens": 8},
+                )
+                logger.info(f"モデル解決成功: {model_name}")
+                return model_name
+
+            except APIError as e:
                 last_error = e
-                continue
-            # 429/503等は「モデルがない」のではなく「アカウント全体が詰まっている」
-            # 可能性が高いため、他候補を試さずここで打ち切る。
-            logger.error(f"モデル疎通確認中に想定外のAPIエラー(code={e.code}): {model_name}")
-            last_error = e
-            break
-        except Exception as e:
-            last_error = e
-            break
-    raise NoAvailableModelError(f"許可リスト内の全モデルが利用不可でした: {candidates}") from last_error
+
+                if e.code == 404:
+                    logger.warning(f"モデル利用不可(404)のため次候補へフォールバック: {model_name}")
+                    break
+
+                if e.code == 429 and _is_daily_quota_exhausted(e):
+                    logger.warning(f"日次クォータ枯渇(429)のため次候補へフォールバック: {model_name}")
+                    break
+
+                if e.code in (503, 429):
+                    if attempt < PING_MAX_RETRIES:
+                        wait = PING_RETRY_BACKOFF_SECONDS * (attempt + 1)
+                        logger.warning(
+                            f"モデル疎通確認中に一時的なエラー(code={e.code}): {model_name} "
+                            f"{wait}秒待機してリトライ ({attempt + 1}/{PING_MAX_RETRIES})"
+                        )
+                        time.sleep(wait)
+                        continue
+                    logger.error(f"{model_name}: リトライ上限({PING_MAX_RETRIES}回)到達。次候補へフォールバック")
+                    break
+
+                logger.error(f"モデル疎通確認中に想定外のAPIエラー(code={e.code}): {model_name}")
+                raise NoAvailableModelError(
+                    f"想定外のAPIエラー(code={e.code})のため中断しました: {candidates}"
+                ) from e
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"モデル疎通確認中に想定外の例外: {model_name} ({e})")
+                raise NoAvailableModelError(f"想定外の例外のため中断しました: {candidates}") from e
+
+    raise NoAvailableModelError(
+        f"リトライ・全候補フォールバックを試みましたが利用可能なモデルがありませんでした: {candidates}"
+    ) from last_error
 
 
 try:
@@ -204,7 +232,7 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 5):
 
 
 # ==========================================
-# 4. Notion データベース保存モジュール（全8項目対応版）
+# 4. Notion データベース保存モジュール
 # ==========================================
 def build_notion_payload(repo_name, repo_url, score, what_text, why_important_text,
                           why_not_important_text, action_text, report_text):
@@ -260,14 +288,13 @@ def save_to_notion(repo_name, repo_url, score, what_text, why_important_text,
 
 
 # ==========================================
-# 5. 一次データ収集 & 法務ゲート（GitHubのみ・意図的な設計）
+# 5. 一次データ収集 & 法務ゲート
 # ==========================================
 def fetch_github_trending():
     print(">>> [Step 1/4] GitHub一次データの自動巡回（上限10件）...")
     url = "https://api.github.com/graphql"
     headers = {"Authorization": f"Bearer {GH_PAT}", "Content-Type": "application/json"}
 
-    # [修正④] 絶対日付のハードコードをやめ、常に「直近30日」を動的に計算する。
     since_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
 
     query = f"""
@@ -336,7 +363,6 @@ def generate_intelligence_report(repo):
         response = call_gemini_with_smart_retry(prompt)
         report_text = response.text
 
-        # [修正②] パース失敗を無警告でデフォルト化しない。
         parse_warnings = []
 
         score_match = re.search(r"Decision Score[*\s]*:\s*(\d+)", report_text)
