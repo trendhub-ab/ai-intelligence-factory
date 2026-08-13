@@ -16,8 +16,14 @@ if not GEMINI_API_KEY or not GH_PAT:
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# 無料枠（Free Tier）安全運用のためのモデル（Gemini 1.5 Flash）
-model = genai.GenerativeModel("gemini-1.5-flash")
+# ==========================================
+# 【2026年最新モデル指定】
+# 安定稼働と高速処理を両立する最新のFlashモデル
+# ==========================================
+try:
+    model = genai.GenerativeModel("models/gemini-2.5-flash")
+except Exception:
+    model = genai.GenerativeModel("gemini-2.5-flash")
 
 # ==========================================
 # 2. 一次データ収集（GitHub GraphQL API）
@@ -30,7 +36,6 @@ def fetch_github_trending():
         "Content-Type": "application/json"
     }
     
-    # 注目のAI/MLリポジトリを10件だけ取得（無料枠消費を最小化）
     query = """
     {
       search(query: "topic:ai topic:machine-learning stars:>100 pushed:>2026-01-01", type: REPOSITORY, first: 10) {
@@ -68,10 +73,6 @@ def fetch_github_trending():
 # 3. 法務安全ゲート（ライセンス判定 / Fail-Closed）
 # ==========================================
 def legal_safety_gate(repo):
-    """
-    商用利用可能なライセンス（MIT, Apache-2.0, BSD, CC-BY等）かを機械判定
-    判定不能・リスクありのものは Fail-Closed 設計により即時破棄
-    """
     license_info = repo.get("licenseInfo")
     if not license_info:
         return False, "NO_LICENSE (Fail-Closed)"
@@ -93,7 +94,6 @@ def generate_intelligence_report(repo):
     url = repo.get("url")
     stars = repo.get("stargazerCount", 0)
     
-    # 日本のAIエンジニア・PM向け「意思決定支援」プロンプト
     prompt = f"""
 あなたは日本のAIエンジニアおよびプロダクトマネージャー向けの「意思決定インテリジェンスアナリスト」です。
 以下の海外一次情報を分析し、日本企業がどう判断すべきかに特化した構造化レポートを作成してください。
@@ -114,7 +114,7 @@ def generate_intelligence_report(repo):
 """
 
     try:
-        # 無料枠のレート制限（RPM 10-15）を100%回避するため、リクエスト直前に必ず5秒待機
+        # レート制限回避（RPM対策）のため必ず5秒待機
         time.sleep(5)
         response = model.generate_content(prompt)
         return response.text
@@ -137,7 +137,6 @@ def main():
         name = repo.get("nameWithOwner")
         is_safe, license_status = legal_safety_gate(repo)
         
-        # 法務リスク判定
         if not is_safe:
             print(f" [SKIP] {name} -> {license_status}")
             continue
@@ -149,13 +148,11 @@ def main():
             
     print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成しました。")
     
-    # コンソール出力（ログ確認用）
     print("\n================= 最終生成レポート（一部抜粋） =================")
-    for r in reports[:3]:  # 上位3件を表示
+    for r in reports[:3]:
         print(r)
         print("-" * 50)
 
-    # Discord通知（WEBHOOKがSecretsにセットされている場合）
     if DISCORD_WEBHOOK_URL and reports:
         msg = {"content": f"【インテリジェンス工場】本日の解析が完了しました（生成件数: {len(reports)}件）。"}
         requests.post(DISCORD_WEBHOOK_URL, json=msg)
