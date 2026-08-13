@@ -414,7 +414,6 @@ def legal_safety_gate(repo):
 
 # ==========================================
 # 重複防止: Notion DBに既に存在するリポジトリURLを取得
-# 「6. 一次データ収集 & 法務ゲート」セクションの直後に追加する
 # ==========================================
 def get_existing_repo_urls() -> set:
     """
@@ -476,86 +475,6 @@ def get_existing_repo_urls() -> set:
             "今回は重複チェックをスキップして続行します（要確認）。"
         )
         return set()
-
-# ==========================================
-# main() 内の変更点
-# safe_repos を作った直後、Step1スクリーニングの "前" に重複除外を挟む
-# ==========================================
-def main():
-    logger.info("==========================================")
-    logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Two-Stage版）")
-    logger.info("==========================================")
-
-    check_stale_content()
-
-    repos = fetch_github_trending()
-
-    # ライセンスNGは最初に弾く
-    safe_repos = []
-    for repo in repos:
-        is_safe, license_status = legal_safety_gate(repo)
-        if not is_safe:
-            logger.info(f" [SKIP: LICENSE] {repo.get('nameWithOwner')} -> {license_status}")
-            continue
-        safe_repos.append(repo)
-
-    # ---- 重複防止: 既にNotionに存在するリポジトリを除外 ----
-    existing_urls = get_existing_repo_urls()
-    deduped_repos = []
-    for repo in safe_repos:
-        repo_url = (repo.get("url") or "").rstrip("/")
-        if repo_url in existing_urls:
-            logger.info(f" [SKIP: DUPLICATE] {repo.get('nameWithOwner')} -> 既にNotionに存在するため除外")
-            continue
-        deduped_repos.append(repo)
-
-    if not deduped_repos:
-        logger.info("本日は新規候補が0件でした（全候補が重複または対象外）。")
-        return
-
-    # ---- Step 1: 軽量スクリーニング ----
-    logger.info(f">>> [Step 2] 軽量スクリーニング開始（対象 {len(deduped_repos)} 件）")
-    screened = []
-    try:
-        for repo in deduped_repos:
-            screened.append(screen_repo(repo))
-    except DailyQuotaExhaustedError:
-        send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（スクリーニング中）。")
-        logger.error("日次クォータ到達のため、スクリーニング段階で処理を打ち切ります。")
-        return
-
-    screened.sort(key=lambda x: x["score"], reverse=True)
-    top_candidates = screened[:TOP_N_FOR_DEEP_DIVE]
-
-    logger.info(
-        f">>> [Step 2 結果] 上位{len(top_candidates)}件を深掘り対象に選定: "
-        + ", ".join(f"{c['repo'].get('nameWithOwner')}({c['score']}点)" for c in top_candidates)
-    )
-
-    # ---- Step 2: 上位N件のみフルレポート生成 ----
-    generated_count = 0
-    for candidate in top_candidates:
-        repo = candidate["repo"]
-        name = repo.get("nameWithOwner")
-        logger.info(f" [DEEP DIVE] {name}（スクリーニングスコア {candidate['score']}点）")
-        try:
-            report = generate_intelligence_report(repo)
-            if report:
-                generated_count += 1
-        except DailyQuotaExhaustedError:
-            send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（深掘り生成中）。")
-            break
-
-    if generated_count > 0:
-        msg = (
-            f"✅ 【AI note事業】本日は{len(deduped_repos)}件をスクリーニングし、"
-            f"上位{generated_count}件の完全原稿を生成しました。Notionを確認してください。\n"
-            f"https://notion.so/{NOTION_DATABASE_ID}"
-        )
-        send_telegram_alert(msg)
-        logger.info(msg)
-    else:
-        logger.info("本日は生成条件を満たす記事がありませんでした。")
 
 # ==========================================
 # 7. 「判断装置」プロンプト & 解析
@@ -865,7 +784,8 @@ def check_stale_content():
 
 
 # ==========================================
-# 8. メイン実行パイプライン（Two-Stage版）
+# 8. メイン実行パイプライン（Two-Stage版・重複防止対応）
+# main()はファイル内でこの1箇所のみに定義すること
 # ==========================================
 def main():
     logger.info("==========================================")
@@ -885,11 +805,25 @@ def main():
             continue
         safe_repos.append(repo)
 
+    # ---- 重複防止: 既にNotionに存在するリポジトリを除外 ----
+    existing_urls = get_existing_repo_urls()
+    deduped_repos = []
+    for repo in safe_repos:
+        repo_url = (repo.get("url") or "").rstrip("/")
+        if repo_url in existing_urls:
+            logger.info(f" [SKIP: DUPLICATE] {repo.get('nameWithOwner')} -> 既にNotionに存在するため除外")
+            continue
+        deduped_repos.append(repo)
+
+    if not deduped_repos:
+        logger.info("本日は新規候補が0件でした（全候補が重複または対象外）。")
+        return
+
     # ---- Step 1: 軽量スクリーニング ----
-    logger.info(f">>> [Step 2] 軽量スクリーニング開始（対象 {len(safe_repos)} 件）")
+    logger.info(f">>> [Step 2] 軽量スクリーニング開始（対象 {len(deduped_repos)} 件）")
     screened = []
     try:
-        for repo in safe_repos:
+        for repo in deduped_repos:
             screened.append(screen_repo(repo))
     except DailyQuotaExhaustedError:
         send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（スクリーニング中）。")
@@ -920,7 +854,7 @@ def main():
 
     if generated_count > 0:
         msg = (
-            f"✅ 【AI note事業】本日は{len(safe_repos)}件をスクリーニングし、"
+            f"✅ 【AI note事業】本日は{len(deduped_repos)}件をスクリーニングし、"
             f"上位{generated_count}件の完全原稿を生成しました。Notionを確認してください。\n"
             f"https://notion.so/{NOTION_DATABASE_ID}"
         )
