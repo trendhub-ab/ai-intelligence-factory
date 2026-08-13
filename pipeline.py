@@ -32,6 +32,9 @@ CANDIDATE_MODELS = os.environ.get(
     "gemini-3.1-flash-lite,gemini-3.5-flash"
 ).split(",")
 
+# 環境変数で「深掘りする件数」を調整可能にする
+TOP_N_FOR_DEEP_DIVE = int(os.environ.get("TOP_N_FOR_DEEP_DIVE", "3"))
+
 # ==========================================
 # 2. Notion プロパティ定義
 # ==========================================
@@ -68,9 +71,6 @@ DIVIDER_LINE = "\n\n" + "─" * 24 + "\n"
 NOTION_BLOCK_LIMIT = 1900
 
 # 品質ゲート: 有料エリアがこの文字数未満の場合、「薄い記事」とみなし自動リトライする
-# 初期値800文字は実運用で全件が無リトライで通過してしまい、ゲートとして機能していなかったため、
-# 実測分布（google-researchの例で有料エリア約1500文字）を踏まえ1200文字に引き上げ。
-# 生成物の分布を見ながら随時調整すること。
 MIN_PAID_AREA_LENGTH = 1200
 # 自動リトライの最大回数（これを超えても閾値未達なら、その案件は生成を諦めて次に進む）
 MAX_QUALITY_RETRIES = 2
@@ -478,20 +478,15 @@ Why NOT Important、そして今週中に取るべきActionを、読者が「198
 
 def _parse_gemini_response(full_text: str) -> dict:
     """Geminiの応答を管理用データとnote原稿に分割し、各項目を抽出する。"""
-    # データ分割（管理用データとnote原稿を分離）。Markdown非依存の専用トークンで分割するため、
-    # Geminiが見出し記号を出力ゆれさせてもパースが壊れない。
     parts = full_text.split(SECTION_SPLIT_TOKEN)
     management_data = parts[0]
     note_draft = parts[1].strip() if len(parts) > 1 else "原稿生成に失敗しました。"
 
-    # 項目間の区切りは全角中黒「・」の次の項目、または文末までとする
     NEXT_ITEM = r"(?=\n・|\n\n|$)"
 
-    # 合計スコア抽出
     total_match = re.search(r"合計[:：]?\s*(\d+)\s*/\s*100", management_data)
     score = int(total_match.group(1)) if total_match else 0
 
-    # 各サブスコアをまとめて保存（Notionのブレークダウン列用）
     breakdown_match = re.search(
         r"Decision Score[:：]?\s*(.*?)(?=\n・Why NOT Important|\n・Action)",
         management_data, re.DOTALL
@@ -532,9 +527,6 @@ def generate_intelligence_report(repo):
     paid_len = 0
 
     try:
-        # 品質ゲート: 有料エリアがMIN_PAID_AREA_LENGTH未満なら、不足点を明示して
-        # Geminiに自動で書き直させる。人間の手作業を挟まない前提のため、
-        # 「警告」は人間向けの通知ではなく、次の生成へのフィードバックとして使う。
         for attempt in range(MAX_QUALITY_RETRIES + 1):
             prompt = build_decision_prompt(name, url, stars, desc, quality_feedback)
             response = call_gemini_with_smart_retry(prompt)
@@ -555,8 +547,6 @@ def generate_intelligence_report(repo):
             )
 
         if paid_len < MIN_PAID_AREA_LENGTH:
-            # AIによる自動リトライを使い切っても基準を満たせなかった案件。
-            # 人間に「直して」とは言わず、パイプラインの健全性を可視化するための運用ログとして通知する。
             logger.error(f"[QUALITY GATE FAILED] {name}: {MAX_QUALITY_RETRIES}回のリトライでも基準未達のためスキップ")
             send_discord_alert(
                 f"ℹ️ {name} は{MAX_QUALITY_RETRIES}回のAI自動リトライでも有料エリアの分量基準"
@@ -564,7 +554,6 @@ def generate_intelligence_report(repo):
             )
             return None
 
-        # note用のクリーンな最終原稿（無料/有料分離 + 出典元メタデータ付き）を生成
         clean_manuscript = build_clean_note_manuscript(parsed["note_draft"], name, url, spdx_id)
 
         save_to_notion(
@@ -583,34 +572,114 @@ def generate_intelligence_report(repo):
         return None
 
 # ==========================================
-# 8. メイン実行パイプライン
+# Step 1: 軽量スクリーニング
+# ==========================================
+def build_screening_prompt(name, desc, stars) -> str:
+    return f"""
+以下のOSSプロジェクトについて、CTO/PM向け有料note記事の題材としての価値を
+0〜100点で採点せよ。判断基準: 技術的な新規性・実務への即効性・話題性。
+
+・名前: {name}
+・Stars: {stars}
+・概要: {desc}
+
+出力は必ず次の1行形式のみ。説明文・Markdown・前置きは一切不要。
+SCORE=<0-100の整数> REASON=<20文字以内の一言理由>
+"""
+
+def _parse_screening_response(text: str) -> dict:
+    score_match = re.search(r"SCORE\s*=\s*(\d+)", text)
+    reason_match = re.search(r"REASON\s*=\s*(.+)", text)
+    return {
+        "score": int(score_match.group(1)) if score_match else 0,
+        "reason": reason_match.group(1).strip() if reason_match else "取得失敗",
+    }
+
+def screen_repo(repo) -> dict:
+    name = repo.get("nameWithOwner")
+    desc = repo.get("description", "説明なし")
+    stars = repo.get("stargazerCount", 0)
+    prompt = build_screening_prompt(name, desc, stars)
+    try:
+        response = client.models.generate_content(
+            model=SELECTED_MODEL,
+            contents=prompt,
+            config={"max_output_tokens": 30},
+        )
+        parsed = _parse_screening_response(response.text)
+        logger.info(f"[SCREENED] {name}: {parsed['score']}点 ({parsed['reason']})")
+        return {"repo": repo, "score": parsed["score"], "reason": parsed["reason"]}
+    except DailyQuotaExhaustedError:
+        raise
+    except APIError as e:
+        logger.error(f"[SCREENING FAILED] {name}: {e}")
+        send_discord_alert(f"⚠️ スクリーニング失敗: {name} ({e.code if hasattr(e, 'code') else e})")
+        return {"repo": repo, "score": 0, "reason": "スクリーニング失敗"}
+    except Exception as e:
+        logger.error(f"[SCREENING UNEXPECTED ERROR] {name}: {e}")
+        send_discord_alert(f"⚠️ スクリーニング中の想定外エラー: {name} ({e})")
+        return {"repo": repo, "score": 0, "reason": "想定外エラー"}
+
+# ==========================================
+# 8. メイン実行パイプライン（Two-Stage版）
 # ==========================================
 def main():
     logger.info("==========================================")
-    logger.info(" 完全無人インテリジェンス工場 パイプライン起動")
+    logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Two-Stage版）")
     logger.info("==========================================")
 
     repos = fetch_github_trending()
-    generated_count = 0
 
+    safe_repos = []
     for repo in repos:
-        name = repo.get("nameWithOwner")
         is_safe, license_status = legal_safety_gate(repo)
         if not is_safe:
-            logger.info(f" [SKIP: LICENSE] {name} -> {license_status}")
+            logger.info(f" [SKIP: LICENSE] {repo.get('nameWithOwner')} -> {license_status}")
             continue
+        safe_repos.append(repo)
 
-        logger.info(f" [ANALYZING & WRITING] {name}")
+    logger.info(f">>> [Step 2] 軽量スクリーニング開始（対象 {len(safe_repos)} 件）")
+    screened = []
+    try:
+        for repo in safe_repos:
+            screened.append(screen_repo(repo))
+    except DailyQuotaExhaustedError:
+        send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました（スクリーニング中）。")
+        logger.error("日次クォータ到達のため、スクリーニング段階で処理を打ち切ります。")
+        return
+
+    screened.sort(key=lambda x: x["score"], reverse=True)
+    top_candidates = screened[:TOP_N_FOR_DEEP_DIVE]
+
+    logger.info(
+        f">>> [Step 2 結果] 上位{len(top_candidates)}件を深掘り対象に選定: "
+        + ", ".join(f"{c['repo'].get('nameWithOwner')}({c['score']}点)" for c in top_candidates)
+    )
+
+    generated_count = 0
+    for candidate in top_candidates:
+        repo = candidate["repo"]
+        name = repo.get("nameWithOwner")
+        logger.info(f" [DEEP DIVE] {name}（スクリーニングスコア {candidate['score']}点）")
         try:
             report = generate_intelligence_report(repo)
-            if report: generated_count += 1
+            if report:
+                generated_count += 1
         except DailyQuotaExhaustedError:
+            send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました（深掘り生成中）。")
             break
 
     if generated_count > 0:
-        msg = f"✅ 【AI note事業】本日のnote用完全原稿が {generated_count} 件生成され、Notionに配置されました。コピペして公開してください。\nhttps://notion.so/{NOTION_DATABASE_ID}"
+        msg = (
+            f"✅ 【AI note事業】本日は{len(safe_repos)}件をスクリーニングし、"
+            f"上位{generated_count}件の完全原稿を生成しました。Notionを確認してください。\n"
+            f"[https://notion.so/](https://notion.so/){NOTION_DATABASE_ID}"
+        )
         send_discord_alert(msg)
         logger.info(msg)
+    else:
+        logger.info("本日は生成条件を満たす記事がありませんでした。")
 
 if __name__ == "__main__":
     main()
+```[cite: 1]
