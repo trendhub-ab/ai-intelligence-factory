@@ -19,7 +19,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: 一次情報収集・Notion原稿自動生成パイプライン実行
+      - name: 一次情報収集・Notion原稿自動生成パイプライン実行（GitHub / Hacker News / ArXiv / Product Hunt）
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -28,6 +28,9 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          # Product Huntのみ認証必須（Hacker News / ArXivは認証不要）。
+          # 未設定の場合、pipeline.py側がProduct Hunt収集のみを安全にスキップする。
+          PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
           STALE_THRESHOLD_DAYS: "10"
         run: python pipeline.py
