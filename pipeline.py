@@ -34,38 +34,78 @@ CANDIDATE_MODELS = os.environ.get(
     "gemini-3.1-flash-lite,gemini-1.5-flash,gemini-3.5-flash"
 ).split(",")
 
+# ==========================================
+# 2. Notion スキーマ事前検証ガード (Fail-Closed)
+# ==========================================
+REQUIRED_PROPERTIES = {
+    "Name": "title",
+    "URL": "url",
+    "Decision Score": "number",
+    "What": "rich_text"
+}
+
+class NotionSchemaMismatchError(RuntimeError):
+    """Notionデータベースのプロパティがコードの期待と一致しない場合に送出"""
+
+def validate_notion_schema():
+    """
+    パイプライン起動時に一度だけ呼び出す。
+    Gemini APIのコストが発生する前に、Notion DBの構造を事前検証する。
+    """
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        logger.warning("NOTION_API_KEY または NOTION_DATABASE_ID が未設定のためスキーマ検証をスキップします。")
+        return
+
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            raise NotionSchemaMismatchError(f"Notion DB取得失敗 (Status: {res.status_code}): {res.text}")
+
+        db_data = res.json()
+        actual_properties = db_data.get("properties", {})
+
+        missing = []
+        type_mismatch = []
+
+        for name, expected_type in REQUIRED_PROPERTIES.items():
+            if name not in actual_properties:
+                missing.append(name)
+                continue
+            actual_type = actual_properties[name]["type"]
+            if actual_type != expected_type:
+                type_mismatch.append((name, expected_type, actual_type))
+
+        if missing or type_mismatch:
+            details = []
+            if missing:
+                details.append(f"存在しない列: {missing}")
+            if type_mismatch:
+                details.append("型不一致: " + ", ".join(f"{n}(期待:{e}/実際:{a})" for n, e, a in type_mismatch))
+            raise NotionSchemaMismatchError(" / ".join(details))
+
+        logger.info(">>> [事前検証成功] Notionスキーマ検証OK。全プロパティが完全一致しています。")
+
+    except Exception as e:
+        error_msg = f"⚠️ 【Notionスキーマ不一致】APIコスト消費前に処理を中断しました: {e}"
+        logger.error(error_msg)
+        send_discord_alert(error_msg)
+        raise SystemExit(1)
+
+# ==========================================
+# 3. エラー・モデル管理＆スマートリトライ
+# ==========================================
 class NoAvailableModelError(RuntimeError):
     """許可リスト内のモデルが全て利用不可だった場合に送出"""
 
 class DailyQuotaExhaustedError(RuntimeError):
     """1日あたりのクォータそのものを使い切った場合に送出"""
-
-def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
-    last_error: Exception | None = None
-
-    for model_name in candidates:
-        model_name = model_name.strip()
-        try:
-            client.models.generate_content(
-                model=model_name,
-                contents="ping",
-            )
-            logger.info(f"モデル解決成功: {model_name}")
-            return model_name
-
-        except APIError as e:
-            if e.code == 404:
-                logger.warning(f"モデル利用不可(404)のためフォールバック: {model_name}")
-                last_error = e
-                continue
-            else:
-                logger.error(f"APIエラー発生のため中断: {model_name} ({e})")
-                raise
-        except Exception as e:
-            logger.error(f"想定外のエラーのためフォールバックせず中断: {model_name} ({e})")
-            raise
-
-    raise NoAvailableModelError(f"許可リスト内の全モデルが利用不可でした: {candidates}") from last_error
 
 def send_discord_alert(message: str):
     if DISCORD_WEBHOOK_URL:
@@ -74,17 +114,31 @@ def send_discord_alert(message: str):
         except Exception as e:
             logger.error(f"Discord通知失敗: {e}")
 
-# パイプライン起動時にモデルを動的解決
+def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
+    last_error: Exception | None = None
+    for model_name in candidates:
+        model_name = model_name.strip()
+        try:
+            client.models.generate_content(model=model_name, contents="ping")
+            logger.info(f"モデル解決成功: {model_name}")
+            return model_name
+        except APIError as e:
+            if e.code == 404:
+                logger.warning(f"モデル利用不可(404)のためフォールバック: {model_name}")
+                last_error = e
+                continue
+            else:
+                raise
+        except Exception as e:
+            raise
+    raise NoAvailableModelError(f"許可リスト内の全モデルが利用不可でした: {candidates}") from last_error
+
 try:
     SELECTED_MODEL = resolve_model()
 except NoAvailableModelError:
-    alert_msg = "⚠️ 【緊急】全Geminiモデルが利用不可(404)。モデル設定の確認が必要です。"
-    send_discord_alert(alert_msg)
+    send_discord_alert("⚠️ 【緊急】全Geminiモデルが利用不可(404)。モデル設定の確認が必要です。")
     raise SystemExit(1)
 
-# ==========================================
-# 2. 429/503 スマートリトライ・ハンドラー
-# ==========================================
 def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
     match = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)", str(exc))
     return int(match.group(1)) if match else default
@@ -93,27 +147,22 @@ def _is_daily_quota_exhausted(exc: Exception) -> bool:
     text = str(exc)
     return "free_tier_requests" in text or "PerDay" in text or "Quota exceeded" in text
 
-def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
+def call_gemini_with_smart_retry(prompt: str, max_retries: int = 5):
     for attempt in range(max_retries + 1):
         try:
             time.sleep(3)
-            return client.models.generate_content(
-                model=SELECTED_MODEL,
-                contents=prompt,
-            )
+            return client.models.generate_content(model=SELECTED_MODEL, contents=prompt)
         except APIError as e:
             if e.code == 503:
                 if attempt < max_retries:
-                    wait = 10 * (attempt + 1)
-                    logger.warning(f"503発生。{wait}秒待機してリトライ ({attempt + 1}/{max_retries})")
+                    wait = 15 * (attempt + 1)
+                    logger.warning(f"503(サーバー混雑)発生。{wait}秒待機してリトライ ({attempt + 1}/{max_retries})")
                     time.sleep(wait)
                     continue
                 raise
             elif e.code == 429:
                 if _is_daily_quota_exhausted(e):
-                    logger.error("日次クォータ枯渇(RPD)を検知。即座に処理を中断します。")
                     raise DailyQuotaExhaustedError(str(e)) from e
-                
                 delay = _extract_retry_delay(e)
                 if attempt < max_retries:
                     logger.warning(f"429(RPM)発生。指定のretryDelay={delay}秒待機してリトライ")
@@ -126,7 +175,7 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
             raise
 
 # ==========================================
-# 3. Notion データベース連携モジュール
+# 4. Notion データベース保存モジュール
 # ==========================================
 def save_to_notion(repo_name, repo_url, report_text):
     if not NOTION_API_KEY or not NOTION_DATABASE_ID:
@@ -140,29 +189,19 @@ def save_to_notion(repo_name, repo_url, report_text):
         "Notion-Version": "2022-06-28"
     }
 
-    # スコア抽出ロジック（正規表現）
     score_match = re.search(r"Decision Score[*\s]*:\s*(\d+)", report_text)
     score = int(score_match.group(1)) if score_match else 0
 
-    # What 簡易抽出
     what_match = re.search(r"- \*\*What \(概要\)\*\*:\s*(.*?)(?=\n-|\n\n|$)", report_text, re.DOTALL)
     what_text = what_match.group(1).strip() if what_match else "概要参照"
 
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": {
-            "Name": {
-                "title": [{"text": {"content": repo_name}}]
-            },
-            "URL": {
-                "url": repo_url
-            },
-            "Decision Score": {
-                "number": score
-            },
-            "What": {
-                "rich_text": [{"text": {"content": what_text[:200]}}]
-            }
+            "Name": {"title": [{"text": {"content": repo_name}}]},
+            "URL": {"url": repo_url},
+            "Decision Score": {"number": score},
+            "What": {"rich_text": [{"text": {"content": what_text[:200]}}]}
         },
         "children": [
             {
@@ -188,15 +227,12 @@ def save_to_notion(repo_name, repo_url, report_text):
         return False
 
 # ==========================================
-# 4. 一次データ収集（GitHub GraphQL API）
+# 5. 一次データ収集 & 法務ゲート
 # ==========================================
 def fetch_github_trending():
     print(">>> [Step 1/4] GitHub一次データの自動巡回（上限10件）...")
     url = "https://api.github.com/graphql"
-    headers = {
-        "Authorization": f"Bearer {GH_PAT}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {GH_PAT}", "Content-Type": "application/json"}
     
     query = """
     {
@@ -207,49 +243,31 @@ def fetch_github_trending():
             url
             description
             stargazerCount
-            licenseInfo {
-              spdxId
-              name
-            }
+            licenseInfo { spdxId name }
           }
         }
       }
     }
     """
-    
     try:
         response = requests.post(url, json={"query": query}, headers=headers, timeout=10)
         if response.status_code != 200:
-            print(f"GitHub API エラー: Status {response.status_code}")
             return []
-        
         data = response.json()
         nodes = data.get("data", {}).get("search", {}).get("nodes", [])
         print(f"   -> {len(nodes)} 件の一次データ（候補）を取得しました。")
         return nodes
     except Exception as e:
-        print(f"データ取得例外エラー: {e}")
         return []
 
-# ==========================================
-# 5. 法務安全ゲート（ライセンス判定 / Fail-Closed）
-# ==========================================
 def legal_safety_gate(repo):
     license_info = repo.get("licenseInfo")
     if not license_info:
         return False, "NO_LICENSE (Fail-Closed)"
-    
     spdx_id = license_info.get("spdxId", "").upper()
     safe_licenses = ["MIT", "APACHE-2.0", "BSD-3-CLAUSE", "BSD-2-CLAUSE", "CC-BY-4.0"]
-    
-    if spdx_id in safe_licenses:
-        return True, spdx_id
-    else:
-        return False, f"UNSAFE_LICENSE ({spdx_id})"
+    return (True, spdx_id) if spdx_id in safe_licenses else (False, f"UNSAFE_LICENSE ({spdx_id})")
 
-# ==========================================
-# 6. 意思決定インテリジェンス生成
-# ==========================================
 def generate_intelligence_report(repo):
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
@@ -278,13 +296,9 @@ def generate_intelligence_report(repo):
     try:
         response = call_gemini_with_smart_retry(prompt)
         report_text = response.text
-        
-        # 解析完了と同時にNotionへ自動保存
         save_to_notion(name, url, report_text)
-        
         return report_text
     except DailyQuotaExhaustedError:
-        print(f"   [Quota枯渇] {name} -> 本日のAPI上限に達したため解析を中断します。")
         send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました。")
         raise
     except Exception as e:
@@ -292,13 +306,16 @@ def generate_intelligence_report(repo):
         return None
 
 # ==========================================
-# 7. メイン実行パイプライン
+# 6. メイン実行パイプライン
 # ==========================================
 def main():
     print("==========================================")
     print(" 完全無人インテリジェンス工場 パイプライン起動")
     print("==========================================")
     
+    # 1. 処理開始直前にNotionスキーマを事前検証（不一致ならここで即座に終了しコスト発生を防ぐ）
+    validate_notion_schema()
+
     repos = fetch_github_trending()
     reports = []
     
@@ -320,7 +337,6 @@ def main():
             
     print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成・Notion自動同期しました。")
     
-    # 画面ログへの要約レポート完全出力
     print("\n================= 最終生成レポート一覧 =================")
     for r in reports:
         print(r)
