@@ -2,7 +2,15 @@ import os
 import time
 import requests
 import json
+import logging
+from google.api_core.exceptions import NotFound
 import google.generativeai as genai
+
+# ==========================================
+# ログ設定
+# ==========================================
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("gemini_resolver")
 
 # ==========================================
 # 1. 環境変数の取得（Secrets設定値と一致）
@@ -17,34 +25,56 @@ if not GEMINI_API_KEY or not GH_PAT:
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 【動的モデル選定ロジック】
-# アカウントで利用可能なモデル一覧をAPIから取得し、
-# 最適なFlashモデルを自動選定（ハードコード廃止による非推奨エラー回避）
+# 【改善設計】優先順位付きモデル解決ユーティリティ
 # ==========================================
-def get_working_model():
-    try:
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        print(f">>> 利用可能モデル確認: {len(available_models)} 件取得")
-        
-        # 1. 優先してFlash系モデルを探索
-        for m_name in available_models:
-            if "flash" in m_name.lower():
-                print(f"   -> 自動選定モデル: {m_name}")
-                return genai.GenerativeModel(m_name)
-        
-        # 2. Flashが見つからない場合は一覧の先頭モデルを使用
-        if available_models:
-            selected = available_models[0]
-            print(f"   -> フォールバック選定モデル: {selected}")
-            return genai.GenerativeModel(selected)
-            
-    except Exception as e:
-        print(f"モデル一覧取得警告: {e}")
-    
-    # 3. 取得失敗時の最終フォールバック
-    return genai.GenerativeModel("models/gemini-1.5-flash")
+CANDIDATE_MODELS = os.environ.get(
+    "GEMINI_MODEL_CANDIDATES",
+    "models/gemini-3.5-flash,models/gemini-3.1-flash-lite,models/gemini-2.5-flash,models/gemini-1.5-flash"
+).split(",")
 
-model = get_working_model()
+class NoAvailableModelError(RuntimeError):
+    """許可リスト内のモデルが全て利用不可だった場合に送出"""
+
+def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> genai.GenerativeModel:
+    last_error: Exception | None = None
+
+    for model_name in candidates:
+        model_name = model_name.strip()
+        try:
+            model = genai.GenerativeModel(model_name)
+            # 軽量疎通確認（本番プロンプトは投げない）
+            model.generate_content(
+                "ping",
+                generation_config={"max_output_tokens": 1},
+            )
+            logger.info(f"モデル解決成功: {model_name}")
+            return model
+
+        except NotFound as e:
+            logger.warning(f"モデル利用不可(404)のためフォールバック: {model_name}")
+            last_error = e
+            continue
+
+        except Exception as e:
+            logger.error(f"想定外のエラーのためフォールバックせず中断: {model_name} ({e})")
+            raise
+
+    raise NoAvailableModelError(f"許可リスト内の全モデルが利用不可でした: {candidates}") from last_error
+
+def send_discord_alert(message: str):
+    if DISCORD_WEBHOOK_URL:
+        try:
+            requests.post(DISCORD_WEBHOOK_URL, json={"content": message}, timeout=10)
+        except Exception as e:
+            logger.error(f"Discord通知失敗: {e}")
+
+# パイプライン起動時に一度だけモデルを動的解決
+try:
+    model = resolve_model()
+except NoAvailableModelError:
+    alert_msg = "⚠️ 【緊急】全Geminiモデルが利用不可(404)。モデル設定の確認が必要です。"
+    send_discord_alert(alert_msg)
+    raise SystemExit(1)
 
 # ==========================================
 # 2. 一次データ収集（GitHub GraphQL API）
@@ -135,7 +165,7 @@ def generate_intelligence_report(repo):
 """
 
     try:
-        # レート制限回避（RPM対策）のため必ず5秒待機
+        # レート制限回避（RPM対策）
         time.sleep(5)
         response = model.generate_content(prompt)
         return response.text
@@ -174,9 +204,8 @@ def main():
         print(r)
         print("-" * 50)
 
-    if DISCORD_WEBHOOK_URL and reports:
-        msg = {"content": f"【インテリジェンス工場】本日の解析が完了しました（生成件数: {len(reports)}件）。"}
-        requests.post(DISCORD_WEBHOOK_URL, json=msg)
+    if reports:
+        send_discord_alert(f"【インテリジェンス工場】本日の解析が完了しました（生成件数: {len(reports)}件）。")
 
 if __name__ == "__main__":
     main()
