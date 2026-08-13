@@ -252,7 +252,7 @@ def fetch_product_hunt() -> list:
     return items
 
 # ---------------------------------------------------------
-# 4. スクリーニング処理（一括バッチ評価）
+# 4. スクリーニング処理（一括バッチ評価：SyntaxError完全修復版）
 # ---------------------------------------------------------
 def screen_candidates_batch(candidates: list) -> list:
     logger.info(f">>> [Step 1] 軽量スクリーニング開始（対象 {len(candidates)} 件 - 一括バッチ評価）")
@@ -265,6 +265,9 @@ def screen_candidates_batch(candidates: list) -> list:
             f"[{idx+1}] Title: {item['title']}\nSource: {item['source']}\nDescription: {item['description'][:200]}"
         )
     
+    # f-string の外で文字列を結合し、バックスラッシュ構文エラーを物理的に回避
+    candidates_block = "\n---\n".join(candidate_summary)
+
     prompt = f"""
 あなたはWebメディア「note」の編集長です。
 以下の{len(candidates)}件のテクノロジー候補を、読者の関心と収益性の観点から評価・採点してください。
@@ -275,7 +278,7 @@ def screen_candidates_batch(candidates: list) -> list:
 - 差別化・新規性 (20%): 類似プロダクトとの違いがあるか
 
 【候補リスト】
-{"\n---\n".join(candidate_summary)}
+{candidates_block}
 
 【出力フォーマット】
 必ず以下のJSON配列形式のみで回答してください。
@@ -424,7 +427,7 @@ URL: {item['url']}
 # ---------------------------------------------------------
 def main():
     logger.info("==========================================")
-    logger.info(" 完全無人インテリジェンス工場 パイプライン起動（経営者自動通知仕様）")
+    logger.info(" 完全無人インテリジェンス工場 パイプライン起動（プロ仕様完成版）")
     logger.info("==========================================")
 
     if not check_notion_schema():
