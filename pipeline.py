@@ -26,7 +26,7 @@ if not GEMINI_API_KEY or not GH_PAT:
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 【改善設計】優先順位付きモデル解決ユーティリティ (google-genai対応)
+# 優先順位付きモデル解決ユーティリティ
 # ==========================================
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
@@ -140,9 +140,9 @@ def legal_safety_gate(repo):
         return False, f"UNSAFE_LICENSE ({spdx_id})"
 
 # ==========================================
-# 4. 意思決定インテリジェンス生成（Gemini API）
+# 4. 意思決定インテリジェンス生成（Gemini API + 503自動再試行）
 # ==========================================
-def generate_intelligence_report(repo):
+def generate_intelligence_report(repo, max_retries=3):
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
     url = repo.get("url")
@@ -167,17 +167,27 @@ def generate_intelligence_report(repo):
 - **Action**: 明日から開発現場やPMがとるべき具体アクション（例: 3ヶ月以内にPoC検証、または静観）。
 """
 
-    try:
-        # レート制限回避（RPM対策）
-        time.sleep(5)
-        response = client.models.generate_content(
-            model=SELECTED_MODEL,
-            contents=prompt,
-        )
-        return response.text
-    except Exception as e:
-        print(f"Gemini解析エラー ({name}): {e}")
-        return None
+    for attempt in range(max_retries):
+        try:
+            # レート制限回避（RPM対策）
+            time.sleep(5)
+            response = client.models.generate_content(
+                model=SELECTED_MODEL,
+                contents=prompt,
+            )
+            return response.text
+        except APIError as e:
+            if e.code == 503 and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 10
+                print(f"   [503 混雑検出] {name} -> {wait_time}秒後に再試行します ({attempt + 1}/{max_retries})...")
+                time.sleep(wait_time)
+                continue
+            else:
+                print(f"Gemini解析エラー ({name}): {e}")
+                return None
+        except Exception as e:
+            print(f"Gemini解析エラー ({name}): {e}")
+            return None
 
 # ==========================================
 # 5. メイン実行パイプライン
