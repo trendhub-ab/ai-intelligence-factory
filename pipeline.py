@@ -755,17 +755,68 @@ def legal_safety_gate(repo):
 # ==========================================
 # 重複防止: Notion DBに既に存在するリポジトリURLを取得
 # ==========================================
-def get_existing_repo_urls() -> set:
+# 重複チェック用の軽量リトライ設定。Notion側の一時的なタイムアウト等だけで
+# 毎回パイプラインが止まると運用が疲弊するため、短い間隔で数回だけ再試行して
+# から最終的な失敗（＝重複チェック不能）と判定する。
+DEDUP_CHECK_MAX_RETRIES = 2
+DEDUP_CHECK_RETRY_BACKOFF_SECONDS = 10
+
+
+def _query_notion_db_with_retry(url: str, headers: dict, payload: dict):
+    """
+    Notion DBクエリ（1ページ分）を実行し、一時的な失敗（HTTPエラー・例外）には
+    短い間隔で数回だけ再試行する。全て失敗した場合はNoneを返す。
+    """
+    last_error_text = ""
+    for attempt in range(DEDUP_CHECK_MAX_RETRIES + 1):
+        try:
+            res = requests.post(url, json=payload, headers=headers, timeout=10)
+            if res.status_code == 200:
+                return res
+            last_error_text = f"HTTP {res.status_code}: {res.text}"
+            logger.warning(
+                f"[DEDUP CHECK] Notion問い合わせ失敗"
+                f"（試行{attempt + 1}/{DEDUP_CHECK_MAX_RETRIES + 1}）: {last_error_text}"
+            )
+        except Exception as e:
+            last_error_text = str(e)
+            logger.warning(
+                f"[DEDUP CHECK] Notion問い合わせ例外"
+                f"（試行{attempt + 1}/{DEDUP_CHECK_MAX_RETRIES + 1}）: {e}"
+            )
+
+        if attempt < DEDUP_CHECK_MAX_RETRIES:
+            time.sleep(DEDUP_CHECK_RETRY_BACKOFF_SECONDS * (attempt + 1))
+
+    logger.error(f"[DEDUP CHECK] リトライ上限到達。最終エラー: {last_error_text}")
+    return None
+
+
+def get_existing_repo_urls():
     """
     Notion DB内の全ページからURLプロパティを収集し、集合として返す。
     Step1のスクリーニング対象からこれらを除外することで、
     同一リポジトリの重複生成・重複投稿を防ぐ。
 
     ページネーション対応: DB件数が100件を超えても全件走査する。
-    失敗時は空集合を返す（＝重複チェックをスキップする）が、
-    誤って重複を許してしまうより安全側に倒すため、失敗はTelegramに通知する。
+
+    【Fail-Closed方針】
+    重複チェックは「過去配信済みの記事を誤って重複公開しない」ための
+    安全装置である。失敗時に処理を続行（Fail-Safe）すると、既配信の案件が
+    スクリーニング〜深掘り生成〜Notion保存まで素通りし、最悪の場合そのまま
+    有料記事として重複公開されてしまう。これは購読者の信頼を損なう重大な
+    経営リスクのため、短い再試行を挟んだ上でなお失敗する場合は、重複チェック
+    不能としてNoneを返し、呼び出し元（main）でその日のパイプラインを
+    安全停止させる。
+
+    戻り値:
+      - set: 既存URLの集合（0件でも正常時はset()）
+      - None: リトライしても取得できず、重複チェック不能と判定された場合
+              （呼び出し元はこれをFail-Closedのトリガーとして扱うこと）
     """
     if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        # Notion未設定の場合はそもそも保存自体が行われないため、
+        # 重複チェック自体が意味を持たない（Fail-Closedの対象外）。
         return set()
 
     url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
@@ -778,43 +829,40 @@ def get_existing_repo_urls() -> set:
     existing_urls = set()
     next_cursor = None
 
-    try:
-        while True:
-            payload = {"page_size": 100}
-            if next_cursor:
-                payload["start_cursor"] = next_cursor
+    while True:
+        payload = {"page_size": 100}
+        if next_cursor:
+            payload["start_cursor"] = next_cursor
 
-            res = requests.post(url, json=payload, headers=headers, timeout=10)
-            if res.status_code != 200:
-                logger.error(f"[DEDUP CHECK] Notion問い合わせ失敗: {res.text}")
-                send_telegram_alert(
-                    "⚠️ 重複チェックのためのNotion問い合わせに失敗しました。"
-                    "今回は重複チェックをスキップして続行します（要確認）。"
-                )
-                return set()
+        res = _query_notion_db_with_retry(url, headers, payload)
+        if res is None:
+            logger.error(
+                "[DEDUP CHECK FAILED] リトライ後もNotion問い合わせに失敗したため、"
+                "重複チェック不能と判定します（Fail-Closed）。"
+            )
+            send_telegram_alert(
+                "🚨【緊急停止】重複チェック（Notion問い合わせ）が"
+                f"{DEDUP_CHECK_MAX_RETRIES + 1}回の試行後も失敗したため、"
+                "本日のパイプラインを安全停止しました。"
+                "過去配信済み記事の重複公開を防ぐためのFail-Closed動作です。"
+                "Notion側の状態を確認の上、再実行してください。"
+            )
+            return None
 
-            data = res.json()
-            for page in data.get("results", []):
-                url_prop = page.get("properties", {}).get(PROP_URL, {})
-                page_url = url_prop.get("url")
-                if page_url:
-                    existing_urls.add(page_url.rstrip("/"))
+        data = res.json()
+        for page in data.get("results", []):
+            url_prop = page.get("properties", {}).get(PROP_URL, {})
+            page_url = url_prop.get("url")
+            if page_url:
+                existing_urls.add(page_url.rstrip("/"))
 
-            if data.get("has_more"):
-                next_cursor = data.get("next_cursor")
-            else:
-                break
+        if data.get("has_more"):
+            next_cursor = data.get("next_cursor")
+        else:
+            break
 
-        logger.info(f"[DEDUP CHECK] Notion既存記事 {len(existing_urls)} 件を取得しました。")
-        return existing_urls
-
-    except Exception as e:
-        logger.error(f"[DEDUP CHECK] 例外発生: {e}")
-        send_telegram_alert(
-            "⚠️ 重複チェック中に想定外のエラーが発生しました。"
-            "今回は重複チェックをスキップして続行します（要確認）。"
-        )
-        return set()
+    logger.info(f"[DEDUP CHECK] Notion既存記事 {len(existing_urls)} 件を取得しました。")
+    return existing_urls
 
 # ==========================================
 # 7. 「判断装置」プロンプト & 解析
@@ -1211,7 +1259,16 @@ def main():
         safe_repos.append(repo)
 
     # ---- 重複防止: 既にNotionに存在する案件を除外（ソース横断で判定） ----
+    # Fail-Closed方針: 重複チェックが不能（None）の場合、安全性を保証できないため
+    # ここでパイプラインを打ち切る。Telegram通知は get_existing_repo_urls() 内で
+    # 既に送信済みのため、ここでは処理の打ち切りのみを行う。
     existing_urls = get_existing_repo_urls()
+    if existing_urls is None:
+        logger.error(
+            "[PIPELINE ABORTED] 重複チェック不能のため、本日のパイプラインを安全停止します（Fail-Closed）。"
+        )
+        return
+
     deduped_repos = []
     for repo in safe_repos:
         repo_url = (repo.get("url") or "").rstrip("/")
