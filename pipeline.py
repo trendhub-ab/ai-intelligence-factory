@@ -19,6 +19,8 @@ logger = logging.getLogger("gemini_pipeline")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GH_PAT = os.environ.get("GH_PAT")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
+NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 
 if not GEMINI_API_KEY or not GH_PAT:
     raise ValueError("エラー: GEMINI_API_KEY または GH_PAT がSecretsに設定されていません。")
@@ -26,9 +28,7 @@ if not GEMINI_API_KEY or not GH_PAT:
 # 新SDKクライアントの初期化
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==========================================
-# 無料枠の広い軽量モデルを優先配置（無料での完走を担保）
-# ==========================================
+# 無料枠の広い軽量モデルを優先配置
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
     "gemini-3.1-flash-lite,gemini-1.5-flash,gemini-3.5-flash"
@@ -86,24 +86,17 @@ except NoAvailableModelError:
 # 2. 429/503 スマートリトライ・ハンドラー
 # ==========================================
 def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
-    """429エラーレスポンスから指定待機時間(秒)を抽出"""
     match = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)", str(exc))
     return int(match.group(1)) if match else default
 
 def _is_daily_quota_exhausted(exc: Exception) -> bool:
-    """RPD（日次上限）枯渇か否かを判定"""
     text = str(exc)
     return "free_tier_requests" in text or "PerDay" in text or "Quota exceeded" in text
 
 def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
-    """
-    503: 固定バックオフ(10秒)で再試行
-    429(RPM): Google指定のretryDelay待機で再試行
-    429(RPD): 即時諦めてDailyQuotaExhaustedErrorを発生（Fail-Closed）
-    """
     for attempt in range(max_retries + 1):
         try:
-            time.sleep(3) # レート制限回避の基本ウェイト
+            time.sleep(3)
             return client.models.generate_content(
                 model=SELECTED_MODEL,
                 contents=prompt,
@@ -133,8 +126,69 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 3):
             raise
 
 # ==========================================
-# 3. 一次データ収集（GitHub GraphQL API）
-# 歩留まり確保のため「上限10件」へ設定
+# 3. Notion データベース連携モジュール
+# ==========================================
+def save_to_notion(repo_name, repo_url, report_text):
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        print(f" [NOTION SKIP] {repo_name} -> NOTION_API_KEY または NOTION_DATABASE_ID が未設定です。")
+        return False
+
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+
+    # スコア抽出ロジック（正規表現）
+    score_match = re.search(r"Decision Score[*\s]*:\s*(\d+)", report_text)
+    score = int(score_match.group(1)) if score_match else 0
+
+    # What 簡易抽出
+    what_match = re.search(r"- \*\*What \(概要\)\*\*:\s*(.*?)(?=\n-|\n\n|$)", report_text, re.DOTALL)
+    what_text = what_match.group(1).strip() if what_match else "概要参照"
+
+    payload = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": {
+            "Name": {
+                "title": [{"text": {"content": repo_name}}]
+            },
+            "URL": {
+                "url": repo_url
+            },
+            "Decision Score": {
+                "number": score
+            },
+            "What": {
+                "rich_text": [{"text": {"content": what_text[:200]}}]
+            }
+        },
+        "children": [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": report_text[:2000]}}]
+                }
+            }
+        ]
+    }
+
+    try:
+        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        if res.status_code == 200:
+            print(f" [NOTION SAVED] {repo_name} -> Notion DBへの格納完了")
+            return True
+        else:
+            print(f" [NOTION ERROR] {repo_name} -> Status: {res.status_code}, {res.text}")
+            return False
+    except Exception as e:
+        print(f" [NOTION EXCEPTION] {repo_name} -> {e}")
+        return False
+
+# ==========================================
+# 4. 一次データ収集（GitHub GraphQL API）
 # ==========================================
 def fetch_github_trending():
     print(">>> [Step 1/4] GitHub一次データの自動巡回（上限10件）...")
@@ -178,7 +232,7 @@ def fetch_github_trending():
         return []
 
 # ==========================================
-# 4. 法務安全ゲート（ライセンス判定 / Fail-Closed）
+# 5. 法務安全ゲート（ライセンス判定 / Fail-Closed）
 # ==========================================
 def legal_safety_gate(repo):
     license_info = repo.get("licenseInfo")
@@ -194,7 +248,7 @@ def legal_safety_gate(repo):
         return False, f"UNSAFE_LICENSE ({spdx_id})"
 
 # ==========================================
-# 5. 意思決定インテリジェンス生成
+# 6. 意思決定インテリジェンス生成
 # ==========================================
 def generate_intelligence_report(repo):
     name = repo.get("nameWithOwner")
@@ -223,7 +277,12 @@ def generate_intelligence_report(repo):
 
     try:
         response = call_gemini_with_smart_retry(prompt)
-        return response.text
+        report_text = response.text
+        
+        # 解析完了と同時にNotionへ自動保存
+        save_to_notion(name, url, report_text)
+        
+        return report_text
     except DailyQuotaExhaustedError:
         print(f"   [Quota枯渇] {name} -> 本日のAPI上限に達したため解析を中断します。")
         send_discord_alert("⚠️ Gemini APIの日次クォータに到達しました。")
@@ -233,7 +292,7 @@ def generate_intelligence_report(repo):
         return None
 
 # ==========================================
-# 6. メイン実行パイプライン
+# 7. メイン実行パイプライン
 # ==========================================
 def main():
     print("==========================================")
@@ -259,15 +318,10 @@ def main():
         except DailyQuotaExhaustedError:
             break
             
-    print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成しました。")
+    print(f"\n>>> 解析完了: 計 {len(reports)} 件の「意思決定インテリジェンス」を生成・Notion自動同期しました。")
     
-    print("\n================= 最終生成レポート（一部抜粋） =================")
-    for r in reports[:3]:
-        print(r)
-        print("-" * 50)
-
     if reports:
-        send_discord_alert(f"【インテリジェンス工場】本日の解析が完了しました（生成件数: {len(reports)}件）。")
+        send_discord_alert(f"【インテリジェンス工場】本日の解析およびNotion自動蓄積が完了しました（生成件数: {len(reports)}件）。")
 
 if __name__ == "__main__":
     main()
