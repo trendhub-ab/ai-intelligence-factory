@@ -1,24 +1,30 @@
 name: Daily Intelligence & Content Pipeline
+
 on:
   schedule:
     # 毎日 午前9時（JST）に自動起動（UTC 0:00）
     - cron: '0 0 * * *'
   workflow_dispatch: # 手動実行ボタンの有効化
+
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # 無駄な分数を消費しないよう最適化
+    timeout-minutes: 15 # 無駄なビルド分数を消費させないコスト防護枠
+
     steps:
       - name: リポジトリのチェックアウト
         uses: actions/checkout@v4
+
       - name: Python環境のセットアップ
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: 最小限の依存ライブラリのインストール
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
       - name: 一次情報収集・Notion原稿自動生成パイプライン実行
         env:
           TZ: 'Asia/Tokyo'
@@ -28,6 +34,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
           STALE_THRESHOLD_DAYS: "10"
         run: python pipeline.py
