@@ -1381,7 +1381,7 @@ def prepare_source_context(repo: dict) -> dict:
         "sufficient": sufficient,
     }
 
-def fetch_github_trending():
+def fetch_github_trending(limit: int = 30):
     """GitHub GraphQL API から急上昇AI/MLリポジトリを取得する。"""
     logger.info(">>> [Step 1] GitHub一次データの自動巡回...")
     url = "https://api.github.com/graphql"
@@ -1389,7 +1389,7 @@ def fetch_github_trending():
     since_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     query = f"""
     {{
-      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>{since_date}", type: REPOSITORY, first: 10) {{
+      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>{since_date}", type: REPOSITORY, first: {limit}) {{
         nodes {{
           ... on Repository {{
             nameWithOwner
@@ -2725,7 +2725,7 @@ def main():
     # Hacker News / arXiv / Product Hunt の取得を停止する。
     # Screening / Notion / Deep Dive / Quality Gate / Budget は通常どおり動作。
     # ==========================================
-    github_items = fetch_github_trending()
+    github_items = fetch_github_trending(limit=30)
     repos = github_items
     logger.info(
         f"[GITHUB-ONLY MODE] GitHub:{len(github_items)} 合計:{len(repos)}"
