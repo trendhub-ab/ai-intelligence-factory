@@ -652,6 +652,43 @@ def fetch_hackernews_top(limit: int = 10):
         items = []
     return items
 
+# ArXiv取得用の軽量リトライ設定。export.arxiv.orgは他ソース（GitHub/HN: timeout=10）
+# より低速・不安定な傾向があり、timeout延長（15s→25s）だけでは「25秒でも
+# 間に合わないほど遅い/詰まっている」瞬間的な障害を救えない。
+# Notion問い合わせ（_query_notion_db_with_retry）と同様のパターンで、
+# 短い間隔を空けて数回だけ再試行してから最終的な失敗と判定する。
+# ArXivはFail-Safe対象（0件でも他ソースでパイプラインは継続する）ため、
+# Notion側のFail-Closedほど粘る必要はなく、回数・間隔とも控えめにする。
+ARXIV_FETCH_MAX_RETRIES = 2
+ARXIV_FETCH_RETRY_BACKOFF_SECONDS = 5
+
+
+def _fetch_arxiv_with_retry(url: str, params: dict):
+    """
+    ArXiv APIへのGETリクエストを実行し、一時的な失敗（タイムアウト・接続エラー・
+    HTTPエラー）には短い間隔で数回だけ再試行する。全て失敗した場合はNoneを返す。
+    XMLパース自体はここでは行わない（呼び出し元でraw responseを見る前提）。
+    """
+    last_error_text = ""
+    for attempt in range(ARXIV_FETCH_MAX_RETRIES + 1):
+        try:
+            response = requests.get(url, params=params, timeout=25)
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            last_error_text = str(e)
+            logger.warning(
+                f"[ARXIV FETCH RETRY] 取得失敗"
+                f"（試行{attempt + 1}/{ARXIV_FETCH_MAX_RETRIES + 1}）: {e}"
+            )
+
+        if attempt < ARXIV_FETCH_MAX_RETRIES:
+            time.sleep(ARXIV_FETCH_RETRY_BACKOFF_SECONDS * (attempt + 1))
+
+    logger.error(f"[ARXIV FETCH FAILED] リトライ上限到達。最終エラー: {last_error_text}")
+    return None
+
+
 def fetch_arxiv_ai_ml(limit: int = 10):
     """
     ArXiv API（認証不要・XML/Atom形式）からAI/ML分野
@@ -659,6 +696,8 @@ def fetch_arxiv_ai_ml(limit: int = 10):
     レスポンスはJSONではなくAtom XMLのため、他ソースと異なり
     xml.etree.ElementTreeでパースしてからnormalize_item()に通す。
     エントリ単位のパース失敗は個別に握りつぶす。
+    HTTPリクエスト自体の一時的な失敗（タイムアウト等）は
+    _fetch_arxiv_with_retry内で数回リトライしてから諦める。
 
     【既知の落とし穴・search_queryへの生の"+"埋め込み禁止】
     以前の実装では search_query の値に "cat:cs.AI+OR+cat:cs.LG" のように
@@ -686,8 +725,13 @@ def fetch_arxiv_ai_ml(limit: int = 10):
     }
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
+        response = _fetch_arxiv_with_retry(url, params)
+        if response is None:
+            # リトライ上限到達。ArXivはFail-Safe対象なので、ここで例外を上げず
+            # 空リストのまま呼び出し元（main）へ返し、他ソースでの続行を優先する。
+            logger.error("[FAULT ISOLATED] ArXiv APIエラー: リトライ後も取得に失敗しました。")
+            return items
+
         root = ET.fromstring(response.content)
 
         for entry in root.findall("atom:entry", ns):
