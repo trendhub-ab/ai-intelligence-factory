@@ -1,10 +1,12 @@
 import os
 import re
 import time
+import textwrap
 import requests
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from PIL import Image, ImageDraw, ImageFont
 from google import genai
 from google.genai.errors import APIError
 
@@ -79,6 +81,11 @@ SCREENING_PACING_SECONDS = int(os.environ.get("SCREENING_PACING_SECONDS", "4"))
 # スクリーニング対象数の上限（安全弁）。これを超えた分は「収集はしたが
 # 審査対象からは除外」としてログに残す（黙って切り捨てない）。
 MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "40"))
+
+# 記事タイトルから自動生成するアイキャッチ画像（PNG）の保存先ディレクトリ。
+# note.comへのアップロードはAPI非対応のため自動化せず、ここに生成されたファイルを
+# 運用者が手動でnoteの記事に添付する運用を想定する（詳細はgenerate_eyecatch_image参照）。
+EYECATCH_OUTPUT_DIR = os.environ.get("EYECATCH_OUTPUT_DIR", "eyecatch_images")
 
 # ==========================================
 # 2. Notion プロパティ定義
@@ -379,6 +386,66 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     )
     manuscript += source_block
     return manuscript.strip()
+
+# ==========================================
+# 4.5. アイキャッチ画像生成モジュール（完全0円・外部API不使用）
+# ==========================================
+def _sanitize_filename(name: str) -> str:
+    """
+    リポジトリ名・記事名（例: "org/repo" のようにスラッシュを含みうる）を
+    ファイルシステム上で安全なファイル名に変換する。
+    英数字・アンダースコア・ハイフン以外は "_" に置換し、長すぎる場合は
+    ファイル名長の上限に配慮して切り詰める。
+    """
+    safe = re.sub(r"[^\w\-]+", "_", name or "untitled", flags=re.UNICODE)
+    return safe.strip("_")[:100] or "untitled"
+
+
+def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png") -> str:
+    """
+    1280px x 670px のアイキャッチ画像を完全0円で自動生成するモジュール
+    """
+    WIDTH, HEIGHT = 1280, 670
+
+    # 背景グラデーションの生成（ダークサイバー風）
+    img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
+    draw_bg = ImageDraw.Draw(img)
+    for y in range(HEIGHT):
+        r = int(10 + (y / HEIGHT) * 15)
+        g = int(15 + (y / HEIGHT) * 25)
+        b = int(28 + (y / HEIGHT) * 45)
+        draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+
+    draw = ImageDraw.Draw(img)
+
+    # 日本語フォントの設定（Ubuntu標準Noto Sans）
+    font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+    if not os.path.exists(font_path):
+        font_path = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
+
+    try:
+        font = ImageFont.truetype(font_path, 46)
+        tag_font = ImageFont.truetype(font_path, 22)
+    except Exception:
+        font = ImageFont.load_default()
+        tag_font = font
+
+    # タグ描画
+    draw.rectangle([80, 70, 460, 110], fill=(0, 200, 255))
+    draw.text((95, 78), "【日刊】AI Tech Intelligence", fill=(10, 15, 28), font=tag_font)
+
+    # タイトルの折り返し処理（全角18文字程度）
+    wrapped_lines = textwrap.wrap(title_text, width=18)
+
+    y_text = 200
+    for line in wrapped_lines:
+        # ドロップシャドウ＋テキスト描画
+        draw.text((102, y_text + 2), line, fill=(0, 0, 0), font=font)
+        draw.text((100, y_text), line, fill=(255, 255, 255), font=font)
+        y_text += 65
+
+    img.save(output_path, "PNG")
+    return output_path
 
 # ==========================================
 # 5. Notion 保存モジュール（note原稿流し込み対応）
@@ -1260,6 +1327,22 @@ def generate_intelligence_report(repo):
             parsed["alternative_comparison_text"], parsed["migration_cost_text"],
             source, stars, parsed["title_text"]
         )
+
+        # アイキャッチ画像生成（完全0円・外部API不使用）。
+        # note.comへの画像アップロードはAPI非対応のため自動投稿はせず、
+        # ローカルにPNGを生成して運用者が手動添付する運用とする。
+        # 生成失敗（フォント未検出等の環境差）は記事生成そのものを
+        # 失敗扱いにしないよう、ここで個別に握りつぶす（Fail-Safe）。
+        try:
+            os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
+            eyecatch_path = os.path.join(
+                EYECATCH_OUTPUT_DIR, f"{_sanitize_filename(name)}.png"
+            )
+            generate_eyecatch_image(parsed["title_text"], eyecatch_path)
+            logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
+        except Exception as e:
+            logger.warning(f"[EYECATCH SKIP] {name}: アイキャッチ画像生成に失敗しました: {e}")
+
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
