@@ -2720,14 +2720,15 @@ def main():
     check_stale_content()
 
     # ==========================================
-    # TEST MODE: arXiv ONLY
-    # GitHub / Hacker News / Product Hunt は取得せず、
-    # arXiv 論文だけで Screening / Deep Dive / Quality Gate を検証する。
+    # TEST MODE: GitHub ONLY
+    # GitHub由来の記事品質を集中検証するため、
+    # Hacker News / arXiv / Product Hunt の取得を停止する。
+    # Screening / Notion / Deep Dive / Quality Gate / Budget は通常どおり動作。
     # ==========================================
-    arxiv_items = fetch_arxiv_ai_ml(limit=20)
-    repos = arxiv_items
+    github_items = fetch_github_trending()
+    repos = github_items
     logger.info(
-        f"[ARXIV-ONLY MODE] ArXiv:{len(arxiv_items)} 合計:{len(repos)}"
+        f"[GITHUB-ONLY MODE] GitHub:{len(github_items)} 合計:{len(repos)}"
     )
 
     safe_repos = []
