@@ -607,8 +607,8 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
     draw.text((95, 78), "【日刊】AI Tech Intelligence", fill=(10, 15, 28), font=tag_font)
 
     # タイトルの折り返し処理（実際のフォント幅を基準に、単語の区切りで自然に改行）
-    # 左右マージン100pxずつ確保した残り幅を折り返しの上限とする
-    max_title_width = WIDTH - 200
+    # 左右マージンを確保した残り幅を折り返しの上限とする（全角18文字程度を目安に調整済み）
+    max_title_width = WIDTH - 440
     wrapped_lines = _wrap_eyecatch_title(draw, title_text, font, max_title_width)
 
     y_text = 200
