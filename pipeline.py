@@ -5,6 +5,8 @@ import base64
 import requests
 import logging
 import xml.etree.ElementTree as ET
+from html import unescape
+from html.parser import HTMLParser
 from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageDraw
 from google import genai
@@ -112,6 +114,14 @@ ENABLE_URL_CONTEXT = os.environ.get("ENABLE_URL_CONTEXT", "true").lower() in {"1
 ENABLE_GOOGLE_SEARCH_GROUNDING = os.environ.get("ENABLE_GOOGLE_SEARCH_GROUNDING", "false").lower() in {"1", "true", "yes", "on"}
 SOURCE_CONTEXT_MAX_CHARS = int(os.environ.get("SOURCE_CONTEXT_MAX_CHARS", "12000"))
 SOURCE_CONTEXT_MIN_CHARS = int(os.environ.get("SOURCE_CONTEXT_MIN_CHARS", "300"))
+# HN / Product Huntの外部ページは、Gemini URL Contextより先にPythonで本文取得を試す。
+# 外部HTTP取得はGemini quotaを消費しないため、URL Contextのtool token膨張を抑える。
+WEB_CONTEXT_TIMEOUT_SECONDS = int(os.environ.get("WEB_CONTEXT_TIMEOUT_SECONDS", "12"))
+WEB_CONTEXT_MAX_BYTES = int(os.environ.get("WEB_CONTEXT_MAX_BYTES", "750000"))
+WEB_CONTEXT_USER_AGENT = os.environ.get(
+    "WEB_CONTEXT_USER_AGENT",
+    "Mozilla/5.0 (compatible; AI-Intelligence-Factory/1.0; +https://github.com/)"
+)
 
 # 記事タイトルから自動生成するアイキャッチ画像（PNG）の保存先ディレクトリ。
 # note.comへのアップロードはAPI非対応のため自動化せず、ローカルに生成されたファイルを
@@ -1198,8 +1208,111 @@ def fetch_github_readme_context(repo_name: str) -> str:
     return ""
 
 
+class _ReadableHTMLTextParser(HTMLParser):
+    """外部記事から本文候補を安全に抽出する標準ライブラリのみの軽量Parser。"""
+    _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "footer", "header", "form", "aside"}
+    _BREAK_TAGS = {"title", "h1", "h2", "h3", "h4", "p", "li", "blockquote", "pre", "article", "main", "br"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._skip_depth = 0
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth == 0 and tag in self._BREAK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self._SKIP_TAGS:
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+            return
+        if self._skip_depth == 0 and tag in self._BREAK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data):
+        if self._skip_depth == 0 and data:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        raw = unescape(" ".join(self._parts))
+        lines = []
+        previous = None
+        for line in raw.splitlines():
+            line = re.sub(r"\s+", " ", line).strip()
+            if not line or line == previous:
+                continue
+            # ナビゲーション断片の大量混入を少し抑える。極端に短い断片は連続本文価値が低い。
+            if len(line) < 2:
+                continue
+            lines.append(line)
+            previous = line
+        return "\n".join(lines)
+
+
+def fetch_webpage_context(url: str) -> str:
+    """HN/PH外部URLをGeminiを使わず取得し、本文テキストだけを返す。失敗時は空文字。"""
+    if not (url or "").startswith(("http://", "https://")):
+        return ""
+    headers = {
+        "User-Agent": WEB_CONTEXT_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
+    }
+    try:
+        with requests.get(
+            url,
+            headers=headers,
+            timeout=WEB_CONTEXT_TIMEOUT_SECONDS,
+            allow_redirects=True,
+            stream=True,
+        ) as res:
+            if res.status_code != 200:
+                logger.info(f"[WEB CONTEXT FALLBACK] HTTP {res.status_code}: {url}")
+                return ""
+            content_type = (res.headers.get("Content-Type") or "").lower()
+            # Content-Type未設定のサイトは本文を読んでHTMLか判定する。明示的な非Textだけfallback。
+            if content_type and not any(t in content_type for t in ("text/html", "application/xhtml+xml", "text/plain")):
+                logger.info(f"[WEB CONTEXT FALLBACK] 非HTML/Text ({content_type[:80]}): {url}")
+                return ""
+            chunks = []
+            total = 0
+            for chunk in res.iter_content(chunk_size=32768):
+                if not chunk:
+                    continue
+                remaining = WEB_CONTEXT_MAX_BYTES - total
+                if remaining <= 0:
+                    break
+                chunk = chunk[:remaining]
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= WEB_CONTEXT_MAX_BYTES:
+                    break
+            raw = b"".join(chunks)
+            encoding = res.encoding or "utf-8"
+            text = raw.decode(encoding, errors="replace")
+            if "html" in content_type or "xhtml" in content_type or "<html" in text[:1000].lower():
+                parser = _ReadableHTMLTextParser()
+                parser.feed(text)
+                text = parser.text()
+            else:
+                text = unescape(text)
+            text = _truncate_source_context(text)
+            if len(text.strip()) >= SOURCE_CONTEXT_MIN_CHARS:
+                logger.info(f"[WEB CONTEXT] Python取得成功: {len(text)} chars <- {url}")
+                return text
+            logger.info(f"[WEB CONTEXT FALLBACK] 本文不足 {len(text.strip())} chars: {url}")
+    except Exception as e:
+        logger.info(f"[WEB CONTEXT FALLBACK] Python取得失敗: {url} ({e})")
+    return ""
+
+
 def prepare_source_context(repo: dict) -> dict:
-    """Geminiを使わず一次情報を補強し、Deep Dive可能性を事前判定する。"""
+    """Geminiを使わず一次情報を補強し、URL Contextより先にsource-native本文を確保する。"""
     source = repo.get("source", "GitHub")
     name = repo.get("nameWithOwner", "")
     desc = repo.get("description", "")
@@ -1208,17 +1321,18 @@ def prepare_source_context(repo: dict) -> dict:
     details = repo.get("sourceDetails") or {}
 
     pieces = [f"Source: {source}", f"Name: {name}", f"Description: {desc}"]
+    substantive_parts: list[str] = []
     method = GROUNDING_METADATA_ONLY
 
     if source == "GitHub":
         readme = fetch_github_readme_context(name)
         if readme:
             pieces.append("README:\n" + readme)
-            method = GROUNDING_SOURCE_NATIVE
+            substantive_parts.append(readme)
     elif source == "ArXiv":
         if stored:
             pieces.append("Abstract:\n" + stored)
-            method = GROUNDING_SOURCE_NATIVE
+            substantive_parts.append(stored)
         authors = details.get("authors") or []
         categories = details.get("categories") or []
         if authors:
@@ -1227,27 +1341,38 @@ def prepare_source_context(repo: dict) -> dict:
             pieces.append("Categories: " + ", ".join(categories[:20]))
     elif source == "ProductHunt":
         if stored:
-            pieces.append("Product Hunt details:\n" + stored)
-            method = GROUNDING_SOURCE_NATIVE
+            pieces.append("Product Hunt metadata:\n" + stored)
+            substantive_parts.append(stored)
+        # Product Huntのtagline/descriptionだけでなく、製品サイト本文を無料HTTP取得して補強。
+        webpage = fetch_webpage_context(primary_url)
+        if webpage:
+            pieces.append("Product website content:\n" + webpage)
+            substantive_parts.append(webpage)
     elif source == "HackerNews":
         hn_text = stored.strip()
         if hn_text:
             pieces.append("Hacker News post text:\n" + hn_text)
-            method = GROUNDING_SOURCE_NATIVE
+            substantive_parts.append(hn_text)
         hn_url = details.get("hn_url")
         if hn_url:
             pieces.append(f"HN discussion URL: {hn_url}")
+        external_url = details.get("external_url") or ""
+        # HNの外部記事本文をまずPython側で取得。成功すればURL Contextを使わない。
+        if external_url:
+            webpage = fetch_webpage_context(external_url)
+            if webpage:
+                pieces.append("External article content:\n" + webpage)
+                substantive_parts.append(webpage)
     elif stored:
         pieces.append(stored)
+        substantive_parts.append(stored)
+
+    substantive = _truncate_source_context("\n\n".join(x for x in substantive_parts if x))
+    sufficient = len(substantive.strip()) >= SOURCE_CONTEXT_MIN_CHARS
+    if sufficient:
         method = GROUNDING_SOURCE_NATIVE
 
     context = _truncate_source_context("\n\n".join(pieces))
-    # title/descriptionだけを水増しして「十分」と判定しない。source-native本体が一定量必要。
-    substantive = _truncate_source_context(stored)
-    if source == "GitHub":
-        substantive = readme if 'readme' in locals() else ""
-    sufficient = len(substantive.strip()) >= SOURCE_CONTEXT_MIN_CHARS
-
     return {
         "context": context,
         "context_length": len(context),
@@ -1255,7 +1380,6 @@ def prepare_source_context(repo: dict) -> dict:
         "primary_url": primary_url,
         "sufficient": sufficient,
     }
-
 
 def fetch_github_trending():
     """GitHub GraphQL API から急上昇AI/MLリポジトリを取得する。"""
@@ -2040,8 +2164,26 @@ def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
     return (title or "（タイトル生成失敗）"), remaining
 
 
+def _extract_markdown_section(markdown_text: str, heading_text: str) -> str:
+    """note本文の指定見出し直下を、次のMarkdown見出しまで抽出する。"""
+    pattern = re.compile(
+        rf"^#{{2,6}}\s*{re.escape(heading_text)}\s*$\n?(.*?)(?=^#{{2,6}}\s+|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    m = pattern.search(markdown_text or "")
+    return m.group(1).strip() if m else ""
+
+
+def _normalize_decision(value: str) -> str:
+    m = re.search(r"\b(NOW|TRY|WATCH|WAIT|AVOID)\b", (value or "").upper())
+    return m.group(1) if m else ""
+
+
 def _parse_gemini_response(full_text: str) -> dict:
-    """管理用データとnote本文を分離し、Decision Intelligence項目を抽出する。"""
+    """
+    管理用データとnote本文を分離する。
+    Geminiの管理用ラベル出力が揺れても、500円記事本文の固定見出しをCanonical fallbackとして使う。
+    """
     parts = full_text.split(SECTION_SPLIT_TOKEN, 1)
     management_data = parts[0]
     if len(parts) > 1:
@@ -2062,32 +2204,59 @@ def _parse_gemini_response(full_text: str) -> dict:
         m = re.search(rf"・{re.escape(label)}[^:：\n]*[:：]\s*(.*?){NEXT_ITEM}", management_data, re.DOTALL)
         return m.group(1).strip() if m else fallback
 
+    # 本文見出しはPromptで厳密固定しているため、管理用ラベルより安定したFallbackになる。
+    body_sections = {
+        "source_summary_text": _extract_markdown_section(note_draft, "What｜これは何か"),
+        "what_text": _extract_markdown_section(note_draft, "What｜これは何か"),
+        "why_important_text": _extract_markdown_section(note_draft, "なぜ今、この情報を見るべきなのか"),
+        "paradigm_shift_text": _extract_markdown_section(note_draft, "本当に変わるのは何か"),
+        "alternative_comparison_text": _extract_markdown_section(note_draft, "既存の選択肢と比べるとどうか"),
+        "migration_cost_text": _extract_markdown_section(note_draft, "導入コストとリスク"),
+        "decision_reason_text": _extract_markdown_section(note_draft, "なぜそう判断したのか"),
+        "why_not_important_text": _extract_markdown_section(note_draft, "誰は使わなくていいか"),
+        "who_should_use_text": _extract_markdown_section(note_draft, "誰が使うべきか"),
+        "who_should_not_use_text": _extract_markdown_section(note_draft, "誰は使わなくていいか"),
+        "action_text": _extract_markdown_section(note_draft, "私ならこう試す"),
+        "future_scenario_text": _extract_markdown_section(note_draft, "3〜12ヶ月で起こり得ること"),
+    }
+
     article_raw = extract_field("Article Value", "0")
     article_match = re.search(r"(\d{1,3})", article_raw)
     article_value = min(100, max(0, int(article_match.group(1)))) if article_match else 0
-    decision_text = extract_field("Decision", "").strip().upper()
+
+    decision_text = _normalize_decision(extract_field("Decision", ""))
+    decision_section = _extract_markdown_section(note_draft, "私の判定")
+    if not decision_text:
+        decision_text = _normalize_decision(decision_section)
+    if score == 0:
+        article_score_match = re.search(r"(?:Decision\s*Score[^0-9]*)?(\d{1,3})\s*/\s*100", decision_section, re.IGNORECASE)
+        if article_score_match:
+            score = min(100, max(0, int(article_score_match.group(1))))
+
+    def field_or_body(label: str, body_key: str) -> str:
+        value = extract_field(label, "")
+        return value if _is_meaningful_field(value) else body_sections.get(body_key, "")
 
     return {
         "note_draft": note_draft,
         "title_text": title_text,
         "score": score,
         "score_breakdown_text": score_breakdown_text,
-        "source_summary_text": extract_field("Source Summary"),
-        "what_text": extract_field("What"),
-        "why_important_text": extract_field("Why Important"),
-        "paradigm_shift_text": extract_field("技術的パラダイムシフト"),
-        "alternative_comparison_text": extract_field("代替との比較"),
-        "migration_cost_text": extract_field("移行コストとリスク"),
+        "source_summary_text": field_or_body("Source Summary", "source_summary_text"),
+        "what_text": field_or_body("What", "what_text"),
+        "why_important_text": field_or_body("Why Important", "why_important_text"),
+        "paradigm_shift_text": field_or_body("技術的パラダイムシフト", "paradigm_shift_text"),
+        "alternative_comparison_text": field_or_body("代替との比較", "alternative_comparison_text"),
+        "migration_cost_text": field_or_body("移行コストとリスク", "migration_cost_text"),
         "decision_text": decision_text,
-        "decision_reason_text": extract_field("Decision Reason"),
-        "why_not_important_text": extract_field("Why NOT Important"),
-        "who_should_use_text": extract_field("Who Should Use"),
-        "who_should_not_use_text": extract_field("Who Should NOT Use"),
-        "action_text": extract_field("Action"),
-        "future_scenario_text": extract_field("Future Scenario"),
+        "decision_reason_text": field_or_body("Decision Reason", "decision_reason_text"),
+        "why_not_important_text": field_or_body("Why NOT Important", "why_not_important_text"),
+        "who_should_use_text": field_or_body("Who Should Use", "who_should_use_text"),
+        "who_should_not_use_text": field_or_body("Who Should NOT Use", "who_should_not_use_text"),
+        "action_text": field_or_body("Action", "action_text"),
+        "future_scenario_text": field_or_body("Future Scenario", "future_scenario_text"),
         "article_value": article_value,
     }
-
 
 def _is_meaningful_field(value: str) -> bool:
     value = (value or "").strip()
@@ -2215,9 +2384,10 @@ def _should_use_url_context(repo: dict, source_info: dict) -> bool:
     primary = source_info.get("primary_url", "")
     if not primary.startswith(("http://", "https://")):
         return False
-    # HN/PHは外部ページ本文が商品価値に直結。GitHub README/arXiv abstractが十分なら
-    # URL Contextを重ねず入力tokenを節約する。SearchをONにした場合はURLも併用。
-    return ENABLE_GOOGLE_SEARCH_GROUNDING or not source_info.get("sufficient") or repo.get("source") in {"HackerNews", "ProductHunt"}
+    # Python/GitHub/arXiv等で一次本文を十分確保できた場合はURL Contextを重ねない。
+    # HN/PHもPython側本文取得が不足した場合だけURL Contextへfallbackする。
+    # Google Searchを明示ONにした場合のみURL Contextも併用する。
+    return ENABLE_GOOGLE_SEARCH_GROUNDING or not source_info.get("sufficient")
 
 
 def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
@@ -2300,7 +2470,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     if not source_info.get("sufficient") and not (ENABLE_URL_CONTEXT and primary_url.startswith(("http://", "https://"))):
         logger.warning(f"[GROUNDING FAILED] {name}: 一次情報不足のためGeminiを呼ばずスキップ")
         page_id = notion_page_id
-        if not page_id and screening_score is not None:
+        if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
         if page_id:
             update_notion_quality_failed(page_id, name, GROUNDING_FAILED, [primary_url] if primary_url else [])
@@ -2325,17 +2495,26 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 "grounding_status": grounding.get("grounding_status", GROUNDING_FAILED),
                 "evidence_urls_text": "\n".join(grounding.get("evidence_urls", [])),
             })
-            quality_ok, failures = validate_paid_article(parsed, name)
-            # Grounding自体がFailedなら有料記事として不合格。
+            # Grounding失敗は文章構造の問題ではないため、Quality Retryを消費しない。
+            # source-nativeもURL Contextも一次情報を確保できなかった候補は即Backfillへ回す。
             if parsed["grounding_status"] == GROUNDING_FAILED:
-                failures.append("Grounding failed")
-                quality_ok = False
+                failures = ["Grounding failed"]
+                logger.error(f"[GROUNDING FAILED] {name}: 一次情報の取得を確認できないため記事化せずBackfill")
+                page_id = notion_page_id
+                if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+                    page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
+                if page_id:
+                    update_notion_quality_failed(page_id, name, GROUNDING_FAILED, grounding.get("evidence_urls", []))
+                send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
+                return None
+
+            quality_ok, failures = validate_paid_article(parsed, name)
             if quality_ok:
                 break
             if attempt >= MAX_QUALITY_RETRIES:
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
                 page_id = notion_page_id
-                if not page_id and screening_score is not None:
+                if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
                     page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
                 if page_id:
                     update_notion_quality_failed(page_id, name, parsed.get("grounding_status", GROUNDING_FAILED), grounding.get("evidence_urls", []))
@@ -2393,7 +2572,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     except Exception as e:
         logger.error(f"[DEEP DIVE FAILED] {name}: {e}")
         page_id = notion_page_id
-        if not page_id and screening_score is not None:
+        if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
         if page_id:
             update_notion_quality_failed(page_id, name, last_grounding.get("grounding_status", GROUNDING_FAILED), last_grounding.get("evidence_urls", []))
@@ -2618,7 +2797,13 @@ def main():
     # TOP_Nは『候補数』ではなく『最大成功記事数』。失敗時は4位・5位へBackfillする。
     generated_count = 0
     attempted = 0
-    candidates = [x for x in screened if x.get("score", 0) > 0]
+    # Backfillは「記事候補の質」を下げない。Stock基準未満をAPIで無理に記事化しない。
+    candidates = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
+    if len(candidates) < TOP_N_FOR_DEEP_DIVE:
+        logger.info(
+            f"[DEEP DIVE POOL] Stock基準{NOTION_SAVE_THRESHOLD_SCORE}点以上は{len(candidates)}件。"
+            "低スコア候補で本数を水増しせず、この範囲だけで記事生成します。"
+        )
     for candidate in candidates:
         if generated_count >= TOP_N_FOR_DEEP_DIVE:
             break
