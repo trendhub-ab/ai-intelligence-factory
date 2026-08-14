@@ -2720,15 +2720,15 @@ def main():
     check_stale_content()
 
     # ==========================================
-    # TEST MODE: GitHub ONLY
-    # GitHub由来の記事品質を集中検証するため、
-    # Hacker News / arXiv / Product Hunt の取得を停止する。
+    # TEST MODE: PRODUCT HUNT ONLY (30 items)
+    # Product Hunt由来の記事品質を集中検証するため、
+    # GitHub / Hacker News / arXiv の取得を停止する。
     # Screening / Notion / Deep Dive / Quality Gate / Budget は通常どおり動作。
     # ==========================================
-    github_items = fetch_github_trending(limit=30)
-    repos = github_items
+    producthunt_items = fetch_producthunt_trending(limit=30)
+    repos = producthunt_items
     logger.info(
-        f"[GITHUB-ONLY MODE] GitHub:{len(github_items)} 合計:{len(repos)}"
+        f"[PRODUCTHUNT-ONLY MODE] Product Hunt:{len(producthunt_items)} 合計:{len(repos)}"
     )
 
     safe_repos = []
