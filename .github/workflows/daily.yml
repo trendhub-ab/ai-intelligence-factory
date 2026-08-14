@@ -39,7 +39,7 @@ jobs:
 
       - name: 一次情報収集・Notion原稿自動生成パイプライン実行
         run: |
-          python main.py
+          python pipeline.py
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
