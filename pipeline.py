@@ -107,6 +107,16 @@ GEMINI_RESERVED_DEEP_DIVE_REQUESTS = int(os.environ.get("GEMINI_RESERVED_DEEP_DI
 GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS", "6000"))
 MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS", "5"))
 
+# ---- 既存記事A/B比較用・再生成テストモード ----
+# 通常運用では必ずFalse。TrueのときはNotion DB内の既存Deep Diveを読み出し、
+# Screening / dedupe / Stock保存を通さず、現在のDeep Dive prompt + Quality Gateだけで
+# 再生成する。Notionページの更新・新規作成、GitHubへのアイキャッチuploadは一切行わない。
+# 生成稿はローカルのREGEN_TEST_OUTPUT_DIRへ保存するため、旧稿と安全に比較できる。
+REGEN_TEST_MODE = os.environ.get("REGEN_TEST_MODE", "true").lower() in {"1", "true", "yes", "on"}
+REGEN_TEST_LIMIT = int(os.environ.get("REGEN_TEST_LIMIT", "3"))
+REGEN_TEST_SOURCE = os.environ.get("REGEN_TEST_SOURCE", "").strip()
+REGEN_TEST_OUTPUT_DIR = os.environ.get("REGEN_TEST_OUTPUT_DIR", "regen_test_outputs")
+
 # Deep Dive一次情報補強。URL ContextはScreeningには使わず、source-native情報が
 # 不足する候補（特にHN/PH）を中心に使用する。Google Searchは別枠利用条件が
 # 変わり得るため、運用者がAI Studioで確認して明示的に有効化するまでOFF。
@@ -1431,7 +1441,7 @@ def fetch_github_trending():
         logger.error(f"[FAULT ISOLATED] GitHub APIエラー: {e}")
     return items
 
-def fetch_hackernews_top(limit: int = 30):
+def fetch_hackernews_top(limit: int = 10):
     """HN APIから上位storyを取得し、外部URL・HN本文をDeep Dive用に保持する。"""
     logger.info(">>> [Step 1] Hacker News一次データの自動巡回...")
     items = []
@@ -1739,6 +1749,101 @@ def get_existing_repo_urls():
     logger.info(f"[DEDUP CHECK] Notion既存記事 {len(existing_urls)} 件を取得しました。")
     return existing_urls
 
+
+def _notion_plain_text(prop: dict) -> str:
+    """Notion title/rich_textプロパティから表示文字列を安全に取り出す。"""
+    items = prop.get("title") or prop.get("rich_text") or []
+    return "".join(x.get("plain_text") or x.get("text", {}).get("content", "") for x in items).strip()
+
+
+def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] | None:
+    """
+    Notionに既に保存されているDeep Diveを、A/B比較用の読み取り専用候補として取得する。
+
+    - NotionはREAD ONLY。ページを更新しない。
+    - 新しい順（Analyzed At降順）で取得。
+    - source_filter指定時はSource selectで絞り込む。
+    - 取得した最小限のメタデータからNormalizedItem互換dictを復元する。
+      一次情報本文はprepare_source_context()がURLから改めて取得する。
+    """
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        logger.error("[REGEN TEST] Notion設定がないため既存Deep Diveを読み出せません。")
+        return None
+
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    filters = [{"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_DEEP_DIVE}}]
+    if source_filter:
+        filters.append({"property": PROP_SOURCE, "select": {"equals": source_filter}})
+    payload = {
+        "page_size": min(max(limit, 1), 100),
+        "filter": {"and": filters},
+        "sorts": [{"property": PROP_ANALYZED_AT, "direction": "descending"}],
+    }
+    res = _query_notion_db_with_retry(url, headers, payload)
+    if res is None:
+        logger.error("[REGEN TEST] Notion既存Deep Dive取得に失敗しました。")
+        return None
+
+    items = []
+    for page in res.json().get("results", []):
+        props = page.get("properties", {})
+        page_url = (props.get(PROP_URL, {}).get("url") or "").strip()
+        name = _notion_plain_text(props.get(PROP_NAME, {}))
+        source = (props.get(PROP_SOURCE, {}).get("select") or {}).get("name") or "HackerNews"
+        engagement = props.get(PROP_ENGAGEMENT, {}).get("number") or 0
+        screening_score = props.get(PROP_SCREENING_SCORE, {}).get("number")
+        screening_reason = _notion_plain_text(props.get(PROP_SCREENING_REASON, {}))
+        published = (props.get(PROP_PUBLISHED_AT, {}).get("date") or {}).get("start")
+        license_text = _notion_plain_text(props.get(PROP_LICENSE, {}))
+        if not page_url or not name:
+            logger.warning(f"[REGEN TEST SKIP] page={page.get('id')}: Name/URL不足")
+            continue
+        items.append({
+            "notion_page_id": page.get("id"),
+            "screening_score": int(screening_score) if screening_score is not None else NOTION_SAVE_THRESHOLD_SCORE,
+            "screening_reason": screening_reason or "既存Deep Dive再生成テスト",
+            "repo": {
+                "nameWithOwner": name,
+                "description": _notion_plain_text(props.get(PROP_SOURCE_SUMMARY, {})) or "既存Deep Dive再生成テスト",
+                "url": page_url,
+                "stargazerCount": int(engagement or 0),
+                "source": source,
+                "publishedAt": published,
+                "sourceContext": "",
+                "primaryUrl": page_url,
+                "sourceDetails": ({
+                    "external_url": page_url,
+                    "regen_note": "Notion既存Deep Diveから再構成",
+                } if source == "HackerNews" else {
+                    "regen_note": "Notion既存Deep Diveから再構成",
+                }),
+                "licenseInfo": ({"spdxId": license_text} if source == "GitHub" and license_text else None),
+            },
+        })
+    logger.info(
+        f"[REGEN TEST] 既存Deep Dive {len(items)}件を読み込み"
+        + (f"（Source={source_filter}）" if source_filter else "")
+    )
+    return items
+
+
+def save_regen_test_manuscript(repo: dict, manuscript: str) -> str:
+    """再生成稿をNotionへ書かず、ローカルMarkdownとして保存する。"""
+    os.makedirs(REGEN_TEST_OUTPUT_DIR, exist_ok=True)
+    source = repo.get("source", "Unknown")
+    name = repo.get("nameWithOwner", "untitled")
+    filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__regen.md"
+    path = os.path.join(REGEN_TEST_OUTPUT_DIR, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(manuscript)
+    logger.info(f"[REGEN TEST SAVED] {name} -> {path}")
+    return path
+
 # ==========================================
 # 6b. 月末ダイジェスト: 当月の全データセットを集計・パッケージング
 # ==========================================
@@ -2008,37 +2113,122 @@ def generate_monthly_digest(target_date=None):
 # ==========================================
 # 7. 「判断装置」プロンプト & 解析
 # ==========================================
+def _source_fact_discipline(source: str) -> str:
+    """Sourceごとの典型的な誤推論を、Deep Diveの同一call内で抑制する。"""
+    common = """
+【全ソース共通 Fact Discipline】
+・Sourceが確認している「事実」、そこから導く「推論」、筆者としての「判断」を混同しない。
+・一次情報が示すCapability（できること）を、そのままSuperiority（競合より優れる）やBusiness Outcome
+  （売上増・コスト削減・生産性向上・品質向上）へ変換しない。
+・根拠のない具体性を足さない。％、倍、円、ドル、ms、秒、日数、週間、月数、人数、GPU台数、
+  導入期間、ROI、削減額などは、一次情報に明示された条件付き数値か、明確に「筆者が置くPoC目安」
+  とラベルしたもの以外は書かない。
+・「唯一」「一択」「必須」「デファクト」「最有力」「圧倒的」「劇的」「革命的」「完全」「保証」
+  などの強い語は、一次情報や複数の比較根拠で直接支えられない限り使わない。
+・競合製品の最新機能、価格、安定性、優劣は、Source ContextまたはGroundingで当該競合の現行一次情報を
+  確認できた場合だけ具体的に述べる。確認できない場合は「比較が必要」と書く。
+・OSS/self-host/local-first/OpenTelemetry/MCP/API互換などの属性だけから、低コスト、安全、移行容易、
+  低ロックイン、高性能、将来の標準化を断定しない。
+・ニュースや製品紹介の見出しを、さらに強い日本語へ増幅しない。
+・3〜12ヶ月の未来は予言しない。必ず「条件 → 起こり得る結果 → 見るべき指標」の形にする。
+・現在仕様が変わりやすい料金、API、モデル、CLI、対応OS、制限、cache、preview/beta/stable状態は、
+  取得できた現在の一次情報だけを根拠にする。古い記事と現在docsが衝突する場合は現在docsを優先する。
+"""
+    rules = {
+        "GitHub": """
+【GitHub専用 Fact Discipline】
+・READMEにある機能の存在は「何ができるか」の証拠であり、「最適」「標準」「競合優位」の証拠ではない。
+・Star数、Download数、Contributor数は普及度の参考であり、品質・信頼性・商用品質の証明ではない。
+・OSSであることを、ロックインなし・低TCO・高セキュリティと同義にしない。
+・コマンド、設定値、環境変数、API endpointはREADME/公式docsに実在する表記だけを使う。推測でCLIを作らない。
+・実装例やdemoがあることを、大規模production運用やSLAの証明として扱わない。
+""",
+        "ArXiv": """
+【arXiv専用 Fact Discipline】
+・研究結果とproduction/commercial/clinical readinessを明確に分離する。
+・論文中のbenchmark数値を出すなら、dataset/task、metric、comparator、実験条件を可能な範囲で併記する。
+  文脈が取れない裸の数値は記事に使わない。
+・transferable≠universal、equivariant/physics-informed≠reliable、efficient≠low-cost、
+  interpretable≠regulatory explainability、robust≠production fault tolerance、高精度≠商用優位。
+・研究者が実験できたことと、読者が公開物だけで再現できることを同一視しない。
+・費用、必要人員、役職、GPU台数、導入期間、ROI、商用化時期を論文から推測して具体化しない。
+・医療・臨床テーマでは、後ろ向き/研究データの結果を診療意思決定や実臨床導入へ直結させない。
+  外部検証、前向き検証、calibration、安全性、規制等が未確認なら明示する。
+""",
+        "ProductHunt": """
+【Product Hunt専用 Fact Discipline】
+・Product Hunt本文、製品サイト、launch copyのbest/fast/easy/secure/enterprise-ready/production-ready等は、
+  原則「ベンダー自身の主張」として扱い、第三者評価へ変換しない。
+・self-host可能→TCO削減、local-first→安全、MCP対応→将来標準、free trial→導入コスト低、
+  多数integration→生産性向上、とは自動変換しない。
+・価格、無料枠、対応OS、export、privacy、data residency等は変わりやすい。現在の一次情報で確認できない場合は断定しない。
+・競合比較はlaunch copyの言い分をそのまま採用しない。
+""",
+        "HackerNews": """
+【Hacker News専用 Fact Discipline】
+・HNタイトルやリンク先見出しの強い表現を、そのまま業界全体の転換点・企業の緊急課題へ拡張しない。
+・News significanceとBusiness urgencyを分ける。企業方針変更を勧めるのは具体的影響範囲が確認できる場合だけ。
+・元記事が特定企業/製品の公式ブログなら、競合情報をモデル記憶から補わない。
+・preview / beta / nightly / experimental / PR / development build と stable/general availabilityを必ず分離する。
+・ニュース公開時点の仕様を「現在仕様」と固定しない。現在docsと衝突するなら差分を明示する。
+""",
+    }
+    return common + rules.get(source, "")
+
+
+def _human_editorial_style_rules() -> str:
+    """note本文をテンプレ臭くせず、人間の編集者が書いた読み物に寄せる。"""
+    return """
+【Human Editorial Style｜最重要】
+この記事は「AIが項目を埋めたレポート」ではなく、経験ある人間のテック編集者が読者に話しかけるnoteとして書く。
+正確性を落とさず、以下を守る。
+
+・見出し構造は固定するが、各節の本文を同じ型で始めない。「結論として」「つまり」「〜を意味します」を連発しない。
+・短い文と少し長い文を混ぜ、段落ごとに一つの考えを進める。箇条書きの羅列だけで記事を作らない。
+・事実を説明した直後に、その事実が読者の現場で「何を変えるのか／変えないのか」を自然な文章でつなぐ。
+・筆者の判断には理由と留保を入れる。「良いから使う」ではなく「ここまでは確認できる。ただしここは未確認。だからTRY」
+  のように、迷いどころを隠さない。
+・読者に無用な恐怖や焦りを与える煽り文句を避ける。「今すぐ」「最後の砦」「革命」「圧倒的な差」等を安易に使わない。
+・抽象語だけで終わらせず、一次情報にある具体的な機能・制約・運用場面を文章の中に織り込む。
+・太字は1段落に何個も置かない。本当に読者が覚えるべき語だけに使う。
+・「誰が使うべきか」「誰は使わなくていいか」も人物像を機械的な箇条書きにせず、2〜3タイプを短い説明付きで示す。
+・「私ならこう試す」は日数や効果を捏造せず、実際に検証可能な観測項目を置く。
+・未来シナリオはドラマを作らない。何が起きたら判断を更新するか、観測ポイントを書く。
+・最終判断は有料部分の再要約ではなく、ここまでの不確実性を踏まえた「次の一手」を一段落で締める。
+・敬体（です・ます）を基本にするが、全ての文を同じ語尾にしない。自然な接続と余韻を使う。
+・読者を過度に持ち上げたり、命令口調で煽ったりしない。
+"""
+
+
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
                           source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY):
-    """500円noteを『要約』ではなくGrounded Decision Intelligenceとして生成する。"""
+    """500円noteを、Fact Discipline付きのGrounded Decision Intelligenceとして生成する。"""
     metric_label = ENGAGEMENT_LABELS.get(source, "Engagement")
     metric_note = ""
     if source == "ArXiv":
         metric_note = "※arXivにはStars/Votes相当の人気指標がないため、人気度を0とみなして価値判断しないこと。\n"
     feedback = f"\n【前回出力の品質不足】\n{quality_feedback}\n不足点を必ず修正すること。\n" if quality_feedback else ""
     context = _truncate_source_context(source_context)
+    fact_rules = _source_fact_discipline(source)
+    style_rules = _human_editorial_style_rules()
 
     return f"""
-あなたはAI・ソフトウェア領域のシニアCTOアドバイザー兼テック編集者です。
-以下の一次情報について、500円の有料noteとして『読者がどう判断し、次に何をすべきか』を
-明確にするDecision Intelligence記事を作成してください。
+あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
+以下の一次情報について、500円の有料noteとして『読者がどう判断し、次に何をすべきか』を明確にする
+Decision Intelligence記事を作成してください。
 
 【読者】CTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。
 【最重要原則】単純要約ではなく、採用/PoC/監視/見送りを判断できる状態を作ること。
+ただし、記事を魅力的にするために事実を強くしたり、数字・競合優位・未来を作ったりしてはならない。
 
 【一次情報優先順位】
 1. 下記Source Native Context
 2. URL Context等で取得されたPrimary URLの内容
 3. Google Search Grounding（有効な場合）
-4. モデル内部知識（補助のみ）
+4. モデル内部知識（補助のみ。現在仕様・競合比較・数値の根拠にはしない）
 
-【事実性ルール】
-・一次情報にない性能値、ベンチマーク、導入企業、利用者数、売上、価格、コスト削減額、
-  市場シェア、検証結果、移行期間、資金調達額等を事実として作らない。
-・確認できないことは『一次情報からは確認できない』と明示する。
-・推論は『〜と考えられる』『〜の可能性がある』等、推論と分かる表現にする。
-・実際に利用していないのに『使ってみた』『検証した』と書かない。
-・一次情報を長文引用せず、要約・分析・パラフレーズする。
+{fact_rules}
+{style_rules}
 
 【対象】
 ・出所: {source}
@@ -2053,13 +2243,14 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 {feedback}
 
 【管理用データ】
+管理用データはNotion保存・Quality Gate用。記事本文とは文体を分け、簡潔かつ事実ベースにする。
 各項目は必ず全角中黒『・』で開始し、順序を変更しない。
 ・Source Summary: 一次情報で何が発表・開発・提案されたかを日本語1〜3文で要約。
 ・What(概要): 日本語2文以内。何が起きているか。
-・Why Important(導入インパクト): 実務・プロダクトへの具体的影響。
-・技術的パラダイムシフト: 既存→新方式→何が変わるか。
-・代替との比較: 比較可能な具体的代替を挙げ、最後に『結局どれを選ぶべきか』まで述べる。
-・移行コストとリスク: 技術、学習、移行、運用、ロックイン、破壊的変更のうち該当項目。
+・Why Important(導入インパクト): 実務・プロダクトへの具体的影響。未検証の業務効果は推論と明示。
+・技術的パラダイムシフト: 既存→新方式→何が変わるか。変化が小さいなら無理に「パラダイムシフト」と呼ばない。
+・代替との比較: Grounding内で比較可能な具体的代替だけを扱う。根拠不足なら比較軸と追加確認事項を書く。
+・移行コストとリスク: 技術、学習、移行、運用、ロックイン、破壊的変更のうち、確認できる項目と推論を分離。
 ・Decision: NOW / TRY / WATCH / WAIT / AVOID のいずれか1つ。
 ・Decision Reason: 最大3理由。Fact → Meaning → Decision implication が分かるようにする。
 ・Decision Score:
@@ -2072,63 +2263,73 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・Why NOT Important(スルーしてよい理由): 誰には今不要かと根拠。
 ・Who Should Use: 今検討すべき具体的なユーザー/企業/チーム。
 ・Who Should NOT Use: 今は検討不要な具体的なユーザー/企業/チーム。
-・Action: 今週中に取れる具体的な次の一手。
+・Action: 今週中に取れる具体的な次の一手。根拠のない日数・金額目標は置かない。
 ・Future Scenario: 3〜12ヶ月について最低2つ。Condition → Possible Result → Indicator to Watch。
 ・Article Value: 0〜100。このテーマを500円単品noteとして提供する価値。
 
 管理用データ直後に必ず次の専用行を1行だけ出す。
 {SECTION_SPLIT_TOKEN}
 
-その次の1行を記事タイトルとし、#は付けない。誇張・煽りすぎを避けつつ、判断したくなるタイトルにする。
+その次の1行を記事タイトルとし、#は付けない。
+タイトルは「何が変わったか＋読者が何を判断すべきか」が伝わる自然な日本語にする。
+「最後の砦」「革命」「一択」「必須」「劇的」「圧倒的」など、本文で立証できない煽り語をタイトルに使わない。
 
 【note本文：必須構造】
 ## この記事の結論
+最初から断言で押し切らず、「どこまで確認でき、どこからが未確定か」を含めて2〜4段落で結論を書く。
+
 ## なぜ今、この情報を見るべきなのか
+ニュース性ではなく、読者の実務にどう関係するかを書く。関係が薄い読者には薄いと正直に書く。
+
 ## What｜これは何か
+一次情報で確認できる機能・発表・研究内容を、専門用語を噛み砕いて説明する。
+
 ## 何が従来と違うのか
+比較根拠がある範囲だけを書く。誇張した二項対立を作らない。
+
 ## ここまでの要点
+3〜5点程度。単なる本文の言い換えではなく、無料部分だけ読んでも判断軸が残るようにする。
 
 ---有料エリア---
 
 ### 私の判定
-Decision / Decision Score / 一言結論。
+Decision / Decision Score / 一言結論。Decisionと最終判断を必ず一致させる。
 
 ### なぜそう判断したのか
-最大3理由。Fact → Meaning → Decision。
+最大3理由。番号を振ってもよいが、各理由はFact → Meaning → Decisionが自然につながる短い段落にする。
 
 ### 本当に変わるのは何か
-Technical Paradigm Shift。
+Technical Paradigm Shift。実際には小幅改善なら「パラダイムシフト」と煽らず、その範囲を書く。
 
 ### 既存の選択肢と比べるとどうか
-具体的Alternativeと『結局どれを選ぶべきか』。
+Groundingで確認できる範囲のAlternativeだけを扱う。競合の最新事情が未確認なら、優劣を断定せず比較軸を示す。
 
 ### 誰が使うべきか
-Who Should Use。
+Who Should Use。具体的な状況・困りごとまで書く。
 
 ### 誰は使わなくていいか
-Who Should NOT Use。
+Who Should NOT Use。無理に全員へ勧めない。
 
 ### 導入コストとリスク
-技術/学習/移行/運用/ロックイン等を事実と推論を分けて記述。
+技術/学習/移行/運用/ロックイン等。事実と推論を分け、未知の部分を隠さない。
 
 ### 私ならこう試す
-STEP 1 / STEP 2 / STEP 3 の小規模PoC。
+STEP 1 / STEP 2 / STEP 3。日数・効果値を作らず、「何を観測すれば次の判断に進めるか」を置く。
 
 ### 3〜12ヶ月で起こり得ること
-未来を断定せず、条件付きシナリオを最低2つ。
+条件付きシナリオを最低2つ。各シナリオにIndicator to Watchを含める。市場シェアや性能向上を勝手に数値化しない。
 
 ### 最終判断
-『私なら○○する』という明確な判断。
+『私なら○○する』という次の一手で締める。ただしDecisionと矛盾させない。読者を煽る命令文で終わらせない。
 
 【Markdown】
 ・見出しは上記##/###を厳守。
-・重要語は**太字**。括弧は太字の外側。
-・箇条書きは '- '。
+・重要語は**太字**にできるが、多用しない。
+・箇条書きは必要なときだけ '- '。文章で読ませる節を最低半分以上にする。
 ・コードブロック不要。
 ・境界以外の単独行 '---' は使わない。
 ・有料エリアは1800〜2500字程度を目標とし、最低でも1200字を下回らないこと。
 """
-
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
     """
@@ -2263,8 +2464,93 @@ def _is_meaningful_field(value: str) -> bool:
     return bool(value) and value not in {"特記事項なし", "概要参照", "アクション参照", "内訳取得失敗"}
 
 
-def validate_paid_article(parsed: dict, repo_name: str) -> tuple[bool, list[str]]:
-    """文章の好みではなく、500円記事としての機械的最低条件だけを検証する。"""
+_HYPE_PATTERNS = [
+    (r"(?:唯一|一択|必須インフラ|最後の砦|最後の防衛線)", "unsupported exclusivity/hype"),
+    (r"(?:圧倒的|劇的|革命的|ゲームチェンジャー|パラダイムシフトと言える)", "unsupported hype"),
+    (r"(?:デファクト(?:スタンダード)?|業界標準)", "unsupported market-standard claim"),
+    (r"(?:完全に|完全な).{0,12}(?:解決|回避|保証|防止)", "unsupported guarantee"),
+    (r"(?:品質|安全性|セキュリティ|再現性).{0,10}(?:を|が)(?:担保|保証)され", "unsupported guarantee"),
+]
+
+# 数字を使うこと自体は禁止しない。一次情報に存在しない「効果・費用・期間・性能」の具体値だけを拾う。
+_SENSITIVE_NUMERIC_PATTERNS = [
+    r"\d+(?:\.\d+)?\s*%",
+    r"\d+(?:\.\d+)?\s*(?:倍|x|×)",
+    r"(?:約|およそ|最大|最低|平均)?\s*\d[\d,]*(?:\.\d+)?\s*(?:円|万円|億円|ドル|USD|JPY)",
+    r"\d+(?:\.\d+)?\s*(?:ms|ミリ秒|秒|分|時間)",
+    r"\d+(?:\.\d+)?\s*(?:日|週間|週|ヶ月|か月|月)\b",
+    r"\d+(?:\.\d+)?\s*(?:GB|MB|TB|GPU|台|人)\b",
+]
+
+# 数字を使わずに「数倍」「数万円」等を作るケースも止める。
+_VAGUE_QUANTIFIED_PATTERNS = [
+    r"数倍",
+    r"数十倍",
+    r"数百倍",
+    r"数千倍",
+    r"数万円(?:単位)?",
+    r"数十万円(?:単位)?",
+    r"数百万円(?:単位)?",
+]
+
+
+def _normalized_evidence_text(text: str) -> str:
+    return re.sub(r"[\s,，]", "", (text or "").lower())
+
+
+def _find_unsupported_numeric_claims(draft: str, source_context: str) -> list[str]:
+    """記事中のセンシティブな具体値が一次情報にも存在するかを簡易照合する。"""
+    evidence = _normalized_evidence_text(source_context)
+    failures: list[str] = []
+    # Decision Score、見出しの3〜12ヶ月、STEP番号は業務効果の数値ではないので対象外。
+    scrubbed = re.sub(r"Decision\s*Score[^\n]*", "", draft or "", flags=re.IGNORECASE)
+    scrubbed = re.sub(r"\bScore[^\n]*", "", scrubbed, flags=re.IGNORECASE)
+    scrubbed = scrubbed.replace("3〜12ヶ月", "").replace("3-12ヶ月", "")
+    for pattern in _SENSITIVE_NUMERIC_PATTERNS:
+        for m in re.finditer(pattern, scrubbed, re.IGNORECASE):
+            token = m.group(0).strip()
+            # source context中に同じ数値表現があれば、一次情報由来として許可。
+            if _normalized_evidence_text(token) not in evidence:
+                failures.append(f"unsupported numeric claim: {token}")
+    for pattern in _VAGUE_QUANTIFIED_PATTERNS:
+        for m in re.finditer(pattern, scrubbed):
+            token = m.group(0)
+            if _normalized_evidence_text(token) not in evidence:
+                failures.append(f"unsupported vague quantified claim: {token}")
+    # 同一表現を何度も返さない。
+    return list(dict.fromkeys(failures))[:8]
+
+
+def _find_hype_claims(draft: str) -> list[str]:
+    failures: list[str] = []
+    for pattern, label in _HYPE_PATTERNS:
+        m = re.search(pattern, draft or "", re.IGNORECASE)
+        if m:
+            failures.append(f"{label}: {m.group(0)}")
+    return failures
+
+
+def _article_list_ratio(text: str) -> float:
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if not lines:
+        return 0.0
+    list_lines = sum(1 for ln in lines if re.match(r"^(?:[-*]|\d+[.)]|STEP\s*\d+)", ln, re.IGNORECASE))
+    return list_lines / len(lines)
+
+
+def _explicit_decision_conflict(parsed: dict) -> str:
+    """最終判断にNOW/TRY等が明記された場合だけ、安全に矛盾を検出する。"""
+    draft = parsed.get("note_draft", "")
+    final_text = _extract_markdown_section(draft, "最終判断")
+    final_decision = _normalize_decision(final_text)
+    decision = parsed.get("decision_text", "")
+    if final_decision and decision and final_decision != decision:
+        return f"Decision conflict: management={decision}, final={final_decision}"
+    return ""
+
+
+def validate_paid_article(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
+    """500円記事としての構造・Fact Discipline・最低限の読み物品質を検証する。"""
     failures: list[str] = []
     draft = parsed.get("note_draft", "")
     marker = PAID_AREA_PATTERN.search(draft)
@@ -2298,6 +2584,7 @@ def validate_paid_article(parsed: dict, repo_name: str) -> tuple[bool, list[str]
     for label, key in required_fields.items():
         if not _is_meaningful_field(str(parsed.get(key, ""))):
             failures.append(f"{label} missing")
+
     required_headings = {
         "この記事の結論": r"^##\s*この記事の結論\s*$",
         "なぜ今、この情報を見るべきなのか": r"^##\s*なぜ今、この情報を見るべきなのか\s*$",
@@ -2318,7 +2605,20 @@ def validate_paid_article(parsed: dict, repo_name: str) -> tuple[bool, list[str]
     for label, heading in required_headings.items():
         if not re.search(heading, draft, re.MULTILINE):
             failures.append(f"required heading missing: {label}")
-    return (not failures, failures)
+
+    # Fact Discipline: 一次情報にない具体効果値と、根拠なしの極端な断定をQuality Retryへ戻す。
+    failures.extend(_find_unsupported_numeric_claims(draft, source_context))
+    failures.extend(_find_hype_claims(draft))
+
+    conflict = _explicit_decision_conflict(parsed)
+    if conflict:
+        failures.append(conflict)
+
+    # 人が読むnoteとして、ほぼ全行が箇条書きの「AIレポート」化を防ぐ。
+    if paid_part and _article_list_ratio(paid_part) > 0.62:
+        failures.append("article too list-like; rewrite as natural prose")
+
+    return (not failures, list(dict.fromkeys(failures)))
 
 
 def _extract_usage_metadata(response) -> None:
@@ -2454,8 +2754,14 @@ def _paid_area_length(note_draft: str, repo_name: str) -> int:
 
 def generate_intelligence_report(repo, notion_page_id: str | None = None,
                                  screening_score: int | None = None,
-                                 screening_reason: str = ""):
-    """Grounded Deep Diveを生成し、構造Quality Gateで最大1回だけ救済する。"""
+                                 screening_reason: str = "",
+                                 persist_results: bool = True):
+    """Grounded Deep Diveを生成し、構造Quality Gateで最大1回だけ救済する。
+
+    persist_results=False は既存記事A/B比較専用。Gemini生成・Quality Gateは通常どおり
+    実行するが、Notionの新規作成/更新・Quality Failed更新・GitHub eyecatch uploadを
+    行わず、生成稿だけをローカルへ返す。
+    """
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
     url = repo.get("url")
@@ -2470,9 +2776,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     if not source_info.get("sufficient") and not (ENABLE_URL_CONTEXT and primary_url.startswith(("http://", "https://"))):
         logger.warning(f"[GROUNDING FAILED] {name}: 一次情報不足のためGeminiを呼ばずスキップ")
         page_id = notion_page_id
-        if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+        if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
-        if page_id:
+        if persist_results and page_id:
             update_notion_quality_failed(page_id, name, GROUNDING_FAILED, [primary_url] if primary_url else [])
         return None
 
@@ -2501,24 +2807,26 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 failures = ["Grounding failed"]
                 logger.error(f"[GROUNDING FAILED] {name}: 一次情報の取得を確認できないため記事化せずBackfill")
                 page_id = notion_page_id
-                if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+                if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
                     page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
-                if page_id:
+                if persist_results and page_id:
                     update_notion_quality_failed(page_id, name, GROUNDING_FAILED, grounding.get("evidence_urls", []))
-                send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
+                if persist_results:
+                    send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
                 return None
 
-            quality_ok, failures = validate_paid_article(parsed, name)
+            quality_ok, failures = validate_paid_article(parsed, name, source_context=source_info.get("context", ""), source=source)
             if quality_ok:
                 break
             if attempt >= MAX_QUALITY_RETRIES:
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
                 page_id = notion_page_id
-                if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+                if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
                     page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
-                if page_id:
+                if persist_results and page_id:
                     update_notion_quality_failed(page_id, name, parsed.get("grounding_status", GROUNDING_FAILED), grounding.get("evidence_urls", []))
-                send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
+                if persist_results:
+                    send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
                 return None
             quality_feedback = "前回出力の不足項目: " + "; ".join(failures)
             logger.warning(f"[QUALITY RETRY] {name}: {quality_feedback}")
@@ -2538,30 +2846,36 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
             generate_eyecatch_image(parsed["title_text"], eyecatch_path, source)
             logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
-            eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
+            if persist_results:
+                eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
+            else:
+                logger.info(f"[REGEN TEST] GitHub eyecatch uploadをスキップ: {name}")
         except Exception as e:
             logger.warning(f"[EYECATCH SKIP] {name}: {e}")
 
         analyzed_at = _analyzed_at_now_iso()
-        if notion_page_id:
-            upgrade_notion_page_with_report(
-                notion_page_id,
-                name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
-                parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
-                spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
-                parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-                source, stars, parsed["title_text"], eyecatch_url, published_at, analyzed_at,
-                report_meta=parsed,
-            )
+        if persist_results:
+            if notion_page_id:
+                upgrade_notion_page_with_report(
+                    notion_page_id,
+                    name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
+                    parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
+                    spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
+                    parsed["alternative_comparison_text"], parsed["migration_cost_text"],
+                    source, stars, parsed["title_text"], eyecatch_url, published_at, analyzed_at,
+                    report_meta=parsed,
+                )
+            else:
+                save_to_notion(
+                    name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
+                    parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
+                    spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
+                    parsed["alternative_comparison_text"], parsed["migration_cost_text"],
+                    source, stars, parsed["title_text"], eyecatch_url, published_at, analyzed_at,
+                    report_meta=parsed, screening_score=screening_score, screening_reason=screening_reason,
+                )
         else:
-            save_to_notion(
-                name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
-                parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
-                spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
-                parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-                source, stars, parsed["title_text"], eyecatch_url, published_at, analyzed_at,
-                report_meta=parsed, screening_score=screening_score, screening_reason=screening_reason,
-            )
+            save_regen_test_manuscript(repo, clean_manuscript)
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
@@ -2572,9 +2886,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     except Exception as e:
         logger.error(f"[DEEP DIVE FAILED] {name}: {e}")
         page_id = notion_page_id
-        if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+        if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
-        if page_id:
+        if persist_results and page_id:
             update_notion_quality_failed(page_id, name, last_grounding.get("grounding_status", GROUNDING_FAILED), last_grounding.get("evidence_urls", []))
         return None
 
@@ -2712,20 +3026,83 @@ def check_stale_content():
 # ==========================================
 # 8. メイン実行パイプライン（Two-Stage版・重複防止対応）
 # main()はファイル内でこの1箇所のみに定義すること
+def run_regen_test_mode():
+    """
+    既存Deep DiveのA/B比較専用ランナー。
+    Notionは読み取りのみ。Screening・Stock・dedupe・monthly digest・stale alertを通さない。
+    GeminiのDeep Dive/Quality Retry予算だけを通常どおり消費する。
+    """
+    logger.warning("==========================================")
+    logger.warning(" REGEN TEST MODE: 既存Deep Dive再生成（READ ONLY）")
+    logger.warning(" Notion/GitHubへの書き込みは行いません")
+    logger.warning("==========================================")
+
+    items = get_regen_test_items(REGEN_TEST_LIMIT, REGEN_TEST_SOURCE)
+    if items is None:
+        logger.error("[REGEN TEST ABORTED] 既存記事の読み出しに失敗しました。")
+        logger.info(GEMINI_BUDGET.summary())
+        return
+    if not items:
+        logger.info("[REGEN TEST] 条件に一致する既存Deep Diveがありません。")
+        logger.info(GEMINI_BUDGET.summary())
+        return
+
+    generated = 0
+    for idx, item in enumerate(items, start=1):
+        if not GEMINI_BUDGET.can_request():
+            logger.warning("[REGEN TEST STOP] Gemini local budget残量なし")
+            break
+        repo = item["repo"]
+        name = repo.get("nameWithOwner")
+        logger.info(f"[REGEN TEST {idx}/{len(items)}] {repo.get('source')} / {name}")
+        is_safe, license_status = legal_safety_gate(repo)
+        if not is_safe:
+            logger.warning(f"[REGEN TEST SKIP: LICENSE] {name} -> {license_status}")
+            continue
+        try:
+            manuscript = generate_intelligence_report(
+                repo,
+                notion_page_id=item.get("notion_page_id"),
+                screening_score=item.get("screening_score"),
+                screening_reason=item.get("screening_reason", ""),
+                persist_results=False,
+            )
+        except DailyQuotaExhaustedError:
+            logger.error("[REGEN TEST STOP] Gemini日次クォータ到達")
+            break
+        if not manuscript:
+            continue
+        generated += 1
+        # GitHub Actionsでも成果物を即確認できるよう、全文をログにも出す。
+        logger.info("\n" + "=" * 70)
+        logger.info(f"[REGEN TEST ARTICLE START] {name}")
+        logger.info("=" * 70 + "\n" + manuscript + "\n" + "=" * 70)
+        logger.info(f"[REGEN TEST ARTICLE END] {name}")
+        logger.info("=" * 70)
+
+    logger.info(f"[REGEN TEST COMPLETE] 成功 {generated}/{len(items)}件")
+    logger.info(f"[REGEN TEST OUTPUT] {REGEN_TEST_OUTPUT_DIR}/")
+    logger.info(GEMINI_BUDGET.summary())
+
+
 # ==========================================
 def main():
     logger.info("==========================================")
     logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Grounded Decision Intelligence版）")
     logger.info("==========================================")
+    if REGEN_TEST_MODE:
+        run_regen_test_mode()
+        return
     check_stale_content()
 
-    # ==========================================
-    # TEST MODE: HACKER NEWS ONLY (30 items)
-    # ==========================================
-    hackernews_items = fetch_hackernews_top(limit=30)
-    repos = hackernews_items
+    github_items = fetch_github_trending()
+    hackernews_items = fetch_hackernews_top()
+    arxiv_items = fetch_arxiv_ai_ml()
+    producthunt_items = fetch_producthunt_trending()
+    repos = github_items + hackernews_items + arxiv_items + producthunt_items
     logger.info(
-        f"[HACKERNEWS-ONLY MODE] Hacker News:{len(hackernews_items)} 合計:{len(repos)}"
+        f"[MULTI-SOURCE] GitHub:{len(github_items)} HN:{len(hackernews_items)} "
+        f"ArXiv:{len(arxiv_items)} PH:{len(producthunt_items)} 合計:{len(repos)}"
     )
 
     safe_repos = []
