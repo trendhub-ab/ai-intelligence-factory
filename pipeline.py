@@ -2719,14 +2719,15 @@ def main():
     logger.info("==========================================")
     check_stale_content()
 
-    github_items = fetch_github_trending()
-    hackernews_items = fetch_hackernews_top()
-    arxiv_items = fetch_arxiv_ai_ml()
-    producthunt_items = fetch_producthunt_trending()
-    repos = github_items + hackernews_items + arxiv_items + producthunt_items
+    # ==========================================
+    # TEST MODE: arXiv ONLY
+    # GitHub / Hacker News / Product Hunt は取得せず、
+    # arXiv 論文だけで Screening / Deep Dive / Quality Gate を検証する。
+    # ==========================================
+    arxiv_items = fetch_arxiv_ai_ml(limit=20)
+    repos = arxiv_items
     logger.info(
-        f"[MULTI-SOURCE] GitHub:{len(github_items)} HN:{len(hackernews_items)} "
-        f"ArXiv:{len(arxiv_items)} PH:{len(producthunt_items)} 合計:{len(repos)}"
+        f"[ARXIV-ONLY MODE] ArXiv:{len(arxiv_items)} 合計:{len(repos)}"
     )
 
     safe_repos = []
