@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import base64
 import textwrap
 import requests
 import logging
@@ -83,9 +84,22 @@ SCREENING_PACING_SECONDS = int(os.environ.get("SCREENING_PACING_SECONDS", "4"))
 MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "40"))
 
 # 記事タイトルから自動生成するアイキャッチ画像（PNG）の保存先ディレクトリ。
-# note.comへのアップロードはAPI非対応のため自動化せず、ここに生成されたファイルを
+# note.comへのアップロードはAPI非対応のため自動化せず、ローカルに生成されたファイルを
 # 運用者が手動でnoteの記事に添付する運用を想定する（詳細はgenerate_eyecatch_image参照）。
+# 一方でNotion DBの「Eyecatch」プロパティ（ファイル＆メディア）にはURLが必要なため、
+# 生成した画像はGitHubリポジトリへコミットし、raw.githubusercontent.comの
+# 公開URLを取得した上でNotionへ紐付ける（詳細はupload_eyecatch_to_github参照）。
 EYECATCH_OUTPUT_DIR = os.environ.get("EYECATCH_OUTPUT_DIR", "eyecatch_images")
+
+# アイキャッチ画像をコミットするGitHubリポジトリ（"owner/repo"形式）。
+# GitHub Actions上では GITHUB_REPOSITORY が自動的に注入されるため、通常は
+# ワークフロー側での追加設定は不要。
+EYECATCH_GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY")
+# コミット先ブランチ。Actions実行時は GITHUB_REF_NAME（例: "main"）が
+# 自動的に設定される。ローカル実行等で未設定の場合は "main" にフォールバックする。
+EYECATCH_GITHUB_BRANCH = os.environ.get("GITHUB_REF_NAME") or "main"
+# リポジトリ内でアイキャッチ画像を保存するディレクトリ（コミット先パスのプレフィックス）。
+EYECATCH_GITHUB_DIR = os.environ.get("EYECATCH_GITHUB_DIR", "eyecatch_images")
 
 # ==========================================
 # 2. Notion プロパティ定義
@@ -112,6 +126,10 @@ PROP_TITLE = "Note Title"
 # 可能にするための構造化プロパティ。従来はsourceがnote本文末尾の
 # テキストにしか埋め込まれておらず、フィルタ・ソートができなかった。
 PROP_SOURCE = "Source"
+# アイキャッチ画像（ファイル＆メディアプロパティ）。generate_eyecatch_imageで
+# 生成したPNGをupload_eyecatch_to_githubでGitHubへコミットし、得られた
+# raw.githubusercontent.comの公開URLをexternal fileとして紐付ける。
+PROP_EYECATCH = "Eyecatch"
 # 人気指標（GitHub Stars / HN Score / PH Votes）を横断的に数値として保持。
 # ArXivは指標が存在しないため0を格納する（screen_repo/decision prompt側の
 # ENGAGEMENT_LABELSと対応）。
@@ -447,6 +465,73 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png") 
     img.save(output_path, "PNG")
     return output_path
 
+
+def upload_eyecatch_to_github(local_image_path: str, dest_filename: str) -> str | None:
+    """
+    生成したアイキャッチ画像をGitHub Contents API経由でリポジトリへコミットし、
+    Notionの「Eyecatch」プロパティ（ファイル＆メディア）に設定可能な
+    公開URL（raw.githubusercontent.com）を返す。
+
+    【方針】
+    GitHub Actions上で完結させるため、追加のホスティング先を用意せず、
+    パイプライン自身が動いているリポジトリに画像をコミットする。
+    GITHUB_REPOSITORY / GITHUB_REF_NAME はActions実行時に自動注入されるため、
+    運用者側の追加設定なしに動作する。
+
+    【Fail-Safe】
+    Notion保存自体を止めないよう、失敗時は例外を投げずNoneを返す。
+    呼び出し側はNoneの場合「Eyecatch」プロパティを空のまま保存する。
+    """
+    if not EYECATCH_GITHUB_REPO:
+        logger.warning(
+            "[EYECATCH UPLOAD SKIP] GITHUB_REPOSITORY が未設定のためアップロードをスキップします。"
+        )
+        return None
+
+    dest_path = f"{EYECATCH_GITHUB_DIR}/{dest_filename}"
+    api_url = f"https://api.github.com/repos/{EYECATCH_GITHUB_REPO}/contents/{dest_path}"
+    headers = {
+        "Authorization": f"Bearer {GH_PAT}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    try:
+        with open(local_image_path, "rb") as f:
+            content_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        # 同名ファイルが既に存在する場合、GitHub Contents APIの更新には
+        # 既存ファイルのshaが必須（sha無しでPUTすると409 Conflictになる）。
+        # 同日再実行や同名案件の再生成に備え、まず既存shaの有無を確認する。
+        existing_sha = None
+        get_res = requests.get(
+            api_url, headers=headers, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=15
+        )
+        if get_res.status_code == 200:
+            existing_sha = get_res.json().get("sha")
+
+        payload = {
+            "message": f"chore: add eyecatch image {dest_filename}",
+            "content": content_b64,
+            "branch": EYECATCH_GITHUB_BRANCH,
+        }
+        if existing_sha:
+            payload["sha"] = existing_sha
+
+        put_res = requests.put(api_url, headers=headers, json=payload, timeout=30)
+        if put_res.status_code not in (200, 201):
+            logger.error(f"[EYECATCH UPLOAD FAILED] {dest_filename}: {put_res.text}")
+            return None
+
+        raw_url = (
+            f"https://raw.githubusercontent.com/{EYECATCH_GITHUB_REPO}/"
+            f"{EYECATCH_GITHUB_BRANCH}/{dest_path}"
+        )
+        logger.info(f"[EYECATCH UPLOAD] {dest_filename} -> {raw_url}")
+        return raw_url
+    except Exception as e:
+        logger.error(f"[EYECATCH UPLOAD EXCEPTION] {dest_filename}: {e}")
+        return None
+
 # ==========================================
 # 5. Notion 保存モジュール（note原稿流し込み対応）
 # ==========================================
@@ -507,7 +592,8 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
                           why_important_text, why_not_important_text, action_text,
                           spdx_id, clean_manuscript, paradigm_shift_text="",
                           alternative_comparison_text="", migration_cost_text="",
-                          source: str = "GitHub", engagement: int = 0, title_text: str = ""):
+                          source: str = "GitHub", engagement: int = 0, title_text: str = "",
+                          eyecatch_url: str = ""):
 
     # noteにそのままコピペできるよう、Markdown原稿を1つのcodeブロック
     # （language: markdown）として保存する。paragraphブロックに分割していた
@@ -548,6 +634,14 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
             PROP_ALTERNATIVE_COMPARISON: {"rich_text": [{"text": {"content": alternative_comparison_text[:2000]}}]},
             PROP_MIGRATION_COST: {"rich_text": [{"text": {"content": migration_cost_text[:2000]}}]},
             PROP_TITLE: {"rich_text": [{"text": {"content": (title_text or "（タイトル抽出失敗）")[:2000]}}]},
+            # eyecatch_urlが取得できなかった場合（アップロード失敗等）は空のfiles配列を
+            # 送り、プロパティ自体は正常に更新しつつ画像なしの状態にする（Fail-Safe）。
+            PROP_EYECATCH: {
+                "files": (
+                    [{"type": "external", "name": f"{repo_name}.png", "external": {"url": eyecatch_url}}]
+                    if eyecatch_url else []
+                )
+            },
         },
         "children": children_blocks,
     }
@@ -556,7 +650,8 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
                     why_important_text, why_not_important_text, action_text,
                     spdx_id, clean_manuscript, paradigm_shift_text="",
                     alternative_comparison_text="", migration_cost_text="",
-                    source: str = "GitHub", engagement: int = 0, title_text: str = "") -> bool:
+                    source: str = "GitHub", engagement: int = 0, title_text: str = "",
+                    eyecatch_url: str = "") -> bool:
     if not NOTION_API_KEY or not NOTION_DATABASE_ID:
         return False
     url = "https://api.notion.com/v1/pages"
@@ -570,7 +665,7 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
         why_important_text, why_not_important_text, action_text,
         spdx_id, clean_manuscript, paradigm_shift_text,
         alternative_comparison_text, migration_cost_text,
-        source, engagement, title_text
+        source, engagement, title_text, eyecatch_url
     )
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
@@ -1320,28 +1415,33 @@ def generate_intelligence_report(repo):
         # note用のクリーンな最終原稿（無料/有料分離 + 出典元メタデータ付き）を生成
         clean_manuscript = build_clean_note_manuscript(parsed["note_draft"], name, url, spdx_id, source)
 
+        # アイキャッチ画像生成（完全0円・外部API不使用）→ GitHubへコミットして
+        # 公開URLを取得。note.comへの画像アップロードはAPI非対応のため自動投稿はせず、
+        # ローカルにもPNGを残して運用者が手動添付できるようにする。
+        # 生成・アップロードの失敗（フォント未検出、GitHub API障害等）は記事生成そのものを
+        # 失敗扱いにしないよう、ここで個別に握りつぶす（Fail-Safe）。Notionへは
+        # save_to_notionをこの後に呼ぶことで、取得できたURLをEyecatchプロパティに
+        # 一度のページ作成でまとめて紐付ける（画像なしページ→後から更新、という
+        # 2段階処理を避ける）。
+        eyecatch_url = ""
+        try:
+            os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
+            eyecatch_filename = f"{_sanitize_filename(name)}.png"
+            eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
+            generate_eyecatch_image(parsed["title_text"], eyecatch_path)
+            logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
+
+            eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
+        except Exception as e:
+            logger.warning(f"[EYECATCH SKIP] {name}: アイキャッチ画像生成に失敗しました: {e}")
+
         save_to_notion(
             name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
             parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
             spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
             parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-            source, stars, parsed["title_text"]
+            source, stars, parsed["title_text"], eyecatch_url
         )
-
-        # アイキャッチ画像生成（完全0円・外部API不使用）。
-        # note.comへの画像アップロードはAPI非対応のため自動投稿はせず、
-        # ローカルにPNGを生成して運用者が手動添付する運用とする。
-        # 生成失敗（フォント未検出等の環境差）は記事生成そのものを
-        # 失敗扱いにしないよう、ここで個別に握りつぶす（Fail-Safe）。
-        try:
-            os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
-            eyecatch_path = os.path.join(
-                EYECATCH_OUTPUT_DIR, f"{_sanitize_filename(name)}.png"
-            )
-            generate_eyecatch_image(parsed["title_text"], eyecatch_path)
-            logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
-        except Exception as e:
-            logger.warning(f"[EYECATCH SKIP] {name}: アイキャッチ画像生成に失敗しました: {e}")
 
         return clean_manuscript
 
