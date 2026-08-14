@@ -167,6 +167,19 @@ PROP_EYECATCH = "Eyecatch"
 # ArXivは指標が存在しないため0を格納する（screen_repo/decision prompt側の
 # ENGAGEMENT_LABELSと対応）。
 PROP_ENGAGEMENT = "Engagement Score"
+# 一次ソース側のオリジナル公開日時（GitHubのpushedAt、Hacker Newsの投稿日時、
+# ArXivの論文公開日、Product Huntの投稿日）。「今まさに鮮度の高い情報か」を
+# ユーザーが一目で判別できるようにするための日付プロパティ。normalize_item()で
+# 各ソースの生データから抽出し、"publishedAt"キーとしてNormalizedItemに保持する。
+# ソース側で取得できなかった場合はNoneのままとし、Notion側には未設定として送る
+# （不正確な日付を捏造して埋めるよりは空欄の方が安全なため）。
+PROP_PUBLISHED_AT = "Published At"
+# 自社のAIインテリジェンス工場（Gemini）がスクリーニング・分析を実行した日付
+# （＝Notion DBへの登録・更新日）。「いつのトレンドとして自社システムが捕捉したか」
+# の記録であり、月次ダイジェスト集計やNotion側デフォルトソート軸（降順：最新順）
+# として使う。Notionの組み込みcreated_time/last_edited_timeとは別に、
+# アプリケーション側で明示的に管理する構造化プロパティとして持たせる。
+PROP_ANALYZED_AT = "Analyzed At"
 
 # 管理用データとnote原稿を分離するための構造トークン（Markdown記号ではない専用文字列にして
 # normalize_markdown_for_note による処理や、Geminiによる表記揺れの影響を受けないようにする）
@@ -641,15 +654,31 @@ def safe_chunk_text(text: str, limit: int = NOTION_BLOCK_LIMIT) -> list[str]:
 
     return chunks
 
+def _notion_date_property(iso_datetime: str | None) -> dict:
+    """Published At / Analyzed At用のNotion date型プロパティ値を組み立てる。
+    値が取得できなかった場合（未実装ソース、パース失敗等）はNoneを渡すことで、
+    不正確な日付を捏造せず「未設定」のまま安全にNotionへ送る。"""
+    if not iso_datetime:
+        return {"date": None}
+    return {"date": {"start": iso_datetime}}
+
+
 def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, what_text,
                              why_important_text, why_not_important_text, action_text,
                              spdx_id, paradigm_shift_text="",
                              alternative_comparison_text="", migration_cost_text="",
                              source: str = "GitHub", engagement: int = 0, title_text: str = "",
-                             eyecatch_url: str = "") -> dict:
+                             eyecatch_url: str = "", published_at: str | None = None,
+                             analyzed_at: str | None = None) -> dict:
     """Deep Diveフル記事のNotionプロパティ辞書を組み立てる。
     新規ページ作成（save_to_notion）と既存ページのアップグレード更新
-    （upgrade_notion_page_with_report）の両方から共通で使う。"""
+    （upgrade_notion_page_with_report）の両方から共通で使う。
+
+    - published_at: 一次ソースのオリジナル公開日時（未取得ならNone可）。
+    - analyzed_at: 今回のDeep Dive分析を実行した日時。呼び出し元
+      （generate_intelligence_report）で都度_analyzed_at_now_iso()を使って
+      「いま」を渡す想定（ストック段階のAnalyzed Atをこの値で上書きする）。
+    """
     return {
         PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
         PROP_URL: {"url": repo_url},
@@ -680,6 +709,8 @@ def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, wh
                 if eyecatch_url else []
             )
         },
+        PROP_PUBLISHED_AT: _notion_date_property(published_at),
+        PROP_ANALYZED_AT: _notion_date_property(analyzed_at),
     }
 
 
@@ -708,7 +739,8 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
                           spdx_id, clean_manuscript, paradigm_shift_text="",
                           alternative_comparison_text="", migration_cost_text="",
                           source: str = "GitHub", engagement: int = 0, title_text: str = "",
-                          eyecatch_url: str = "") -> dict:
+                          eyecatch_url: str = "", published_at: str | None = None,
+                          analyzed_at: str | None = None) -> dict:
     return {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": build_notion_properties(
@@ -716,6 +748,7 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
             why_important_text, why_not_important_text, action_text,
             spdx_id, paradigm_shift_text, alternative_comparison_text,
             migration_cost_text, source, engagement, title_text, eyecatch_url,
+            published_at, analyzed_at,
         ),
         "children": build_notion_manuscript_children(clean_manuscript),
     }
@@ -725,7 +758,8 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
                     spdx_id, clean_manuscript, paradigm_shift_text="",
                     alternative_comparison_text="", migration_cost_text="",
                     source: str = "GitHub", engagement: int = 0, title_text: str = "",
-                    eyecatch_url: str = "") -> bool:
+                    eyecatch_url: str = "", published_at: str | None = None,
+                    analyzed_at: str | None = None) -> bool:
     """Deep Diveフル記事の新規Notionページを作成する。
     スクリーニング段階でメタデータ保存済み（notion_page_idあり）の案件は
     こちらではなく upgrade_notion_page_with_report を使うため、
@@ -744,7 +778,8 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
         why_important_text, why_not_important_text, action_text,
         spdx_id, clean_manuscript, paradigm_shift_text,
         alternative_comparison_text, migration_cost_text,
-        source, engagement, title_text, eyecatch_url
+        source, engagement, title_text, eyecatch_url,
+        published_at, analyzed_at,
     )
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
@@ -762,7 +797,9 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
 # 5b. スクリーニング段階のメタデータ保存（全件ストック）＆ 深掘り時のページ更新
 # ==========================================
 def build_metadata_notion_properties(repo_name, repo_url, score, reason,
-                                      source: str = "GitHub", engagement: int = 0) -> dict:
+                                      source: str = "GitHub", engagement: int = 0,
+                                      published_at: str | None = None,
+                                      analyzed_at: str | None = None) -> dict:
     """スクリーニングのみ完了した段階での、軽量メタデータのみのプロパティ辞書。
     Deep Dive特有のフィールド（What/Why/Action/原稿本文/アイキャッチ等）は
     まだ存在しないため含めない。"""
@@ -775,6 +812,8 @@ def build_metadata_notion_properties(repo_name, repo_url, score, reason,
         # ストックのみ保存の時点ではDecision Score = Step1軽量スクリーニングスコア。
         PROP_STATUS: {"select": {"name": STATUS_STOCKED}},
         PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": reason[:2000]}}]},
+        PROP_PUBLISHED_AT: _notion_date_property(published_at),
+        PROP_ANALYZED_AT: _notion_date_property(analyzed_at),
     }
 
 
@@ -792,6 +831,9 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     repo_url = repo.get("url")
     source = repo.get("source", "GitHub")
     engagement = repo.get("stargazerCount", 0)
+    published_at = repo.get("publishedAt")
+    # Analyzed At = このスクリーニング（Step1軽量分析）を実行した「いま」。
+    analyzed_at = _analyzed_at_now_iso()
 
     url = "https://api.notion.com/v1/pages"
     headers = {
@@ -801,7 +843,10 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     }
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
-        "properties": build_metadata_notion_properties(name, repo_url, score, reason, source, engagement),
+        "properties": build_metadata_notion_properties(
+            name, repo_url, score, reason, source, engagement,
+            published_at, analyzed_at,
+        ),
     }
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
@@ -821,11 +866,15 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
                                      action_text, spdx_id, clean_manuscript, paradigm_shift_text="",
                                      alternative_comparison_text="", migration_cost_text="",
                                      source: str = "GitHub", engagement: int = 0, title_text: str = "",
-                                     eyecatch_url: str = "") -> bool:
+                                     eyecatch_url: str = "", published_at: str | None = None,
+                                     analyzed_at: str | None = None) -> bool:
     """スクリーニング段階でメタデータのみ保存済みの既存Notionページを、
     Deep Diveのフル記事内容でアップグレード更新する（新規ページは作らない）。
     プロパティ更新（PATCH /pages/{id}）と、本文Markdownブロックの追加
-    （PATCH /blocks/{id}/children）の2回のAPI呼び出しに分かれる点に注意。"""
+    （PATCH /blocks/{id}/children）の2回のAPI呼び出しに分かれる点に注意。
+    analyzed_atは呼び出し元でDeep Dive実行時点の「いま」を渡すことで、
+    ストック保存時に付与されたAnalyzed Atをこの値で上書きする
+    （＝直近の分析実行日として更新する、意図した挙動）。"""
     if not NOTION_API_KEY:
         return False
 
@@ -840,6 +889,7 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
         why_important_text, why_not_important_text, action_text,
         spdx_id, paradigm_shift_text, alternative_comparison_text,
         migration_cost_text, source, engagement, title_text, eyecatch_url,
+        published_at, analyzed_at,
     )
 
     try:
@@ -899,8 +949,21 @@ ENGAGEMENT_LABELS = {
     "ProductHunt": "Votes",
 }
 
+# Notion Date プロパティ・Analyzed At 用のタイムゾーン。
+# パイプライン全体（月次ダイジェストの月末判定等）と統一してJST（UTC+9）を使う。
+JST = timezone(timedelta(hours=9))
+
+
+def _analyzed_at_now_iso() -> str:
+    """『いま』をAnalyzed At用のISO8601文字列（JST）として返す。
+    スクリーニング保存時・Deep Diveアップグレード時など、Geminiによる
+    分析処理を実際に実行したタイミングで都度呼び出すことを想定している。"""
+    return datetime.now(JST).isoformat()
+
+
 def normalize_item(source: str, name: str, url: str, description: str,
-                    engagement: int, license_info: dict | None = None) -> dict:
+                    engagement: int, license_info: dict | None = None,
+                    published_at: str | None = None) -> dict:
     """
     データ正規化層（Normalized Gateway）の中核関数。
     全ソースのレスポンスをこの1関数だけを通して共通フォーマットに変換する。
@@ -914,6 +977,10 @@ def normalize_item(source: str, name: str, url: str, description: str,
     - license_info: GitHub以外は None（＝ライセンスの概念が存在しないソース）。
       legal_safety_gate() 側で source を見て、GitHub以外は自動的に
       ライセンスゲートの対象外として通過させる。
+    - published_at: 一次ソース側のオリジナル公開日時（ISO8601文字列）。
+      各fetch_*関数が生データから抽出して渡す。取得できない/失敗した場合は
+      Noneのままにし、build_notion_properties側で「日付プロパティ自体を
+      送らない」形で安全に扱う。
     """
     return {
         "source": source,
@@ -922,6 +989,7 @@ def normalize_item(source: str, name: str, url: str, description: str,
         "description": (description or "説明なし").strip() or "説明なし",
         "stargazerCount": engagement or 0,
         "licenseInfo": license_info,
+        "publishedAt": published_at,
     }
 
 def fetch_github_trending():
@@ -939,6 +1007,7 @@ def fetch_github_trending():
             url
             description
             stargazerCount
+            pushedAt
             licenseInfo {{ spdxId }}
           }}
         }}
@@ -952,6 +1021,9 @@ def fetch_github_trending():
             nodes = response.json().get("data", {}).get("search", {}).get("nodes", [])
             for node in nodes:
                 license_info = node.get("licenseInfo")
+                # pushedAtはGraphQL標準のISO8601文字列（例: "2026-08-10T03:21:00Z"）で
+                # 返ってくるためそのままpublished_atとして使う。「直近のpush=一次情報として
+                # 最新の動きがあった日」を鮮度の基準とする（検索クエリのpushed:>フィルタとも一致）。
                 items.append(normalize_item(
                     source="GitHub",
                     name=node.get("nameWithOwner"),
@@ -959,6 +1031,7 @@ def fetch_github_trending():
                     description=node.get("description"),
                     engagement=node.get("stargazerCount", 0),
                     license_info=license_info,
+                    published_at=node.get("pushedAt"),
                 ))
             logger.info(f"   -> GitHub {len(items)} 件の候補を取得。")
         else:
@@ -994,12 +1067,24 @@ def fetch_hackernews_top(limit: int = 10):
                 data = item_res.json() or {}
                 if data.get("type") != "story":
                     continue
+                # HN APIの"time"はUnixタイムスタンプ（UTC秒）。ISO8601文字列に変換して
+                # published_atとして渡す。取得できなかった場合はNoneのままにする。
+                raw_time = data.get("time")
+                published_at = None
+                if raw_time:
+                    try:
+                        published_at = datetime.fromtimestamp(
+                            raw_time, tz=timezone.utc
+                        ).isoformat()
+                    except (OSError, OverflowError, ValueError):
+                        published_at = None
                 items.append(normalize_item(
                     source="HackerNews",
                     name=data.get("title"),
                     url=data.get("url") or f"https://news.ycombinator.com/item?id={story_id}",
                     description=data.get("title"),
                     engagement=data.get("score", 0),
+                    published_at=published_at,
                 ))
             except Exception as e:
                 logger.warning(f"[HN ITEM SKIP] id={story_id}: {e}")
@@ -1098,6 +1183,9 @@ def fetch_arxiv_ai_ml(limit: int = 10):
             try:
                 title = (entry.findtext("atom:title", default="", namespaces=ns) or "")
                 summary = (entry.findtext("atom:summary", default="", namespaces=ns) or "")
+                # atom:publishedは論文の初回公開日時（ISO8601、例: "2026-08-10T09:00:00Z"）。
+                # そのままpublished_atとして使う（sortBy=submittedDateとも整合する）。
+                published_at = (entry.findtext("atom:published", default="", namespaces=ns) or "").strip() or None
 
                 link = ""
                 for link_el in entry.findall("atom:link", ns):
@@ -1113,6 +1201,7 @@ def fetch_arxiv_ai_ml(limit: int = 10):
                     url=link.strip(),
                     description=re.sub(r"\s+", " ", summary).strip()[:500],
                     engagement=0,  # ArXivにはStars/Votes相当の人気指標が存在しないため0固定
+                    published_at=published_at,
                 ))
             except Exception as e:
                 logger.warning(f"[ARXIV ENTRY SKIP] {e}")
@@ -1157,6 +1246,7 @@ def fetch_producthunt_trending(limit: int = 10):
             url
             website
             votesCount
+            createdAt
           }
         }
       }
@@ -1185,12 +1275,14 @@ def fetch_producthunt_trending(limit: int = 10):
         for edge in edges:
             try:
                 node = edge.get("node", {})
+                # createdAtはProduct Hunt GraphQLの標準ISO8601文字列で返る。
                 items.append(normalize_item(
                     source="ProductHunt",
                     name=node.get("name"),
                     url=node.get("website") or node.get("url"),
                     description=node.get("tagline") or node.get("description"),
                     engagement=node.get("votesCount", 0),
+                    published_at=node.get("createdAt"),
                 ))
             except Exception as e:
                 logger.warning(f"[PH ITEM SKIP] {e}")
@@ -1837,6 +1929,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None):
     url = repo.get("url")
     stars = repo.get("stargazerCount", 0)
     source = repo.get("source", "GitHub")
+    published_at = repo.get("publishedAt")
     is_safe, spdx_id = legal_safety_gate(repo)
 
     quality_feedback = ""
@@ -1899,6 +1992,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None):
         except Exception as e:
             logger.warning(f"[EYECATCH SKIP] {name}: アイキャッチ画像生成に失敗しました: {e}")
 
+        # Analyzed At = このDeep Dive分析を実行した「いま」。ストック段階で
+        # 既に付与されていた値があっても、直近の（より深い）分析実行日として
+        # ここで上書きする。
+        analyzed_at = _analyzed_at_now_iso()
+
         if notion_page_id:
             upgrade_notion_page_with_report(
                 notion_page_id,
@@ -1906,7 +2004,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None):
                 parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
                 spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
                 parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-                source, stars, parsed["title_text"], eyecatch_url
+                source, stars, parsed["title_text"], eyecatch_url,
+                published_at, analyzed_at,
             )
         else:
             save_to_notion(
@@ -1914,7 +2013,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None):
                 parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
                 spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
                 parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-                source, stars, parsed["title_text"], eyecatch_url
+                source, stars, parsed["title_text"], eyecatch_url,
+                published_at, analyzed_at,
             )
 
         return clean_manuscript
