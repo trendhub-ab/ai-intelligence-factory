@@ -263,7 +263,7 @@ SECTION_SPLIT_TOKEN = "===NOTE_DRAFT_START==="
 # 「有料エリア」という文字列を必須にしているため、note.com対応Markdownとして
 # 別途使われる素の水平線「---」（区切り線）と誤って衝突することはない。
 PAID_AREA_PATTERN = re.compile(
-    r"^[\s\-−ー―─━▼◆■●\*]{0,10}\s*有料エリア\s*[\s\-−ー―─━▼◆■●\*]{0,10}$",
+    r"^[\s\-−ー―─━▼◆■●\*]{0,12}\s*(?:ここから先は\s*)?有料エリア(?:です)?\s*[\s\-−ー―─━▼◆■●\*]{0,12}$",
     re.MULTILINE
 )
 
@@ -1832,16 +1832,26 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] 
     return items
 
 
-def save_regen_test_manuscript(repo: dict, manuscript: str) -> str:
-    """再生成稿をNotionへ書かず、ローカルMarkdownとして保存する。"""
+def save_regen_test_manuscript(repo: dict, manuscript: str, quality_status: str = "accepted",
+                                 quality_failures: list[str] | None = None) -> str:
+    """再生成稿をNotionへ書かず、ローカルMarkdownとして保存する。
+
+    再生成テストではQuality Gate不合格稿も捨てない。accepted/rejectedをファイル名と
+    先頭コメントで明示し、A/B比較とGate調整に使えるようにする。
+    """
     os.makedirs(REGEN_TEST_OUTPUT_DIR, exist_ok=True)
     source = repo.get("source", "Unknown")
     name = repo.get("nameWithOwner", "untitled")
-    filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__regen.md"
+    status = "accepted" if quality_status == "accepted" else "rejected"
+    filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__regen__{status}.md"
     path = os.path.join(REGEN_TEST_OUTPUT_DIR, filename)
+    header = ""
+    if status == "rejected":
+        reasons = " / ".join(quality_failures or [])
+        header = f"<!-- REGEN TEST: QUALITY GATE REJECTED\n{reasons}\n-->\n\n"
     with open(path, "w", encoding="utf-8") as f:
-        f.write(manuscript)
-    logger.info(f"[REGEN TEST SAVED] {name} -> {path}")
+        f.write(header + manuscript)
+    logger.info(f"[REGEN TEST SAVED:{status.upper()}] {name} -> {path}")
     return path
 
 # ==========================================
@@ -2207,7 +2217,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
     metric_note = ""
     if source == "ArXiv":
         metric_note = "※arXivにはStars/Votes相当の人気指標がないため、人気度を0とみなして価値判断しないこと。\n"
-    feedback = f"\n【前回出力の品質不足】\n{quality_feedback}\n不足点を必ず修正すること。\n" if quality_feedback else ""
+    feedback = f"\n【前回出力の品質不足】\n{quality_feedback}\n不足点を必ず修正すること。指摘された禁止語は言い換え、根拠のない数値は削除すること。\n" if quality_feedback else ""
     context = _truncate_source_context(source_context)
     fact_rules = _source_fact_discipline(source)
     style_rules = _human_editorial_style_rules()
@@ -2615,7 +2625,7 @@ def validate_paid_article(parsed: dict, repo_name: str, source_context: str = ""
         failures.append(conflict)
 
     # 人が読むnoteとして、ほぼ全行が箇条書きの「AIレポート」化を防ぐ。
-    if paid_part and _article_list_ratio(paid_part) > 0.62:
+    if paid_part and _article_list_ratio(paid_part) > 0.75:
         failures.append("article too list-like; rewrite as natural prose")
 
     return (not failures, list(dict.fromkeys(failures)))
@@ -2784,6 +2794,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
     quality_feedback = ""
     last_grounding = {"grounding_status": source_info.get("method", GROUNDING_METADATA_ONLY), "evidence_urls": [primary_url] if primary_url else []}
+    quality_gate_passed = False
+    final_quality_failures: list[str] = []
 
     try:
         parsed = None
@@ -2816,17 +2828,23 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 return None
 
             quality_ok, failures = validate_paid_article(parsed, name, source_context=source_info.get("context", ""), source=source)
+            final_quality_failures = failures
             if quality_ok:
+                quality_gate_passed = True
                 break
             if attempt >= MAX_QUALITY_RETRIES:
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
+                if not persist_results:
+                    # 再生成テストはGate調整そのものが目的。落ちた稿も捨てず、
+                    # REJECTEDとして保存・全文ログ表示できるところまで処理を継続する。
+                    logger.warning(f"[REGEN TEST KEEP REJECTED] {name}: Quality Gate不合格稿を比較用に保持します。")
+                    break
                 page_id = notion_page_id
-                if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+                if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
                     page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
-                if persist_results and page_id:
+                if page_id:
                     update_notion_quality_failed(page_id, name, parsed.get("grounding_status", GROUNDING_FAILED), grounding.get("evidence_urls", []))
-                if persist_results:
-                    send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
+                send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
                 return None
             quality_feedback = "前回出力の不足項目: " + "; ".join(failures)
             logger.warning(f"[QUALITY RETRY] {name}: {quality_feedback}")
@@ -2840,18 +2858,18 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         )
 
         eyecatch_url = ""
-        try:
-            os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
-            eyecatch_filename = f"{_sanitize_filename(name)}.png"
-            eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
-            generate_eyecatch_image(parsed["title_text"], eyecatch_path, source)
-            logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
-            if persist_results:
+        if persist_results:
+            try:
+                os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
+                eyecatch_filename = f"{_sanitize_filename(name)}.png"
+                eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
+                generate_eyecatch_image(parsed["title_text"], eyecatch_path, source)
+                logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
                 eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
-            else:
-                logger.info(f"[REGEN TEST] GitHub eyecatch uploadをスキップ: {name}")
-        except Exception as e:
-            logger.warning(f"[EYECATCH SKIP] {name}: {e}")
+            except Exception as e:
+                logger.warning(f"[EYECATCH SKIP] {name}: {e}")
+        else:
+            logger.info(f"[REGEN TEST] eyecatch生成・GitHub uploadをスキップ: {name}")
 
         analyzed_at = _analyzed_at_now_iso()
         if persist_results:
@@ -2875,7 +2893,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     report_meta=parsed, screening_score=screening_score, screening_reason=screening_reason,
                 )
         else:
-            save_regen_test_manuscript(repo, clean_manuscript)
+            save_regen_test_manuscript(
+                repo, clean_manuscript,
+                quality_status="accepted" if quality_gate_passed else "rejected",
+                quality_failures=final_quality_failures,
+            )
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
