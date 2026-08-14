@@ -25,18 +25,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 日本語フォントのインストール（Pillowアイキャッチ描画用・フォールバック）
-        run: |
-          sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-
-      - name: Google Fonts「BIZ UDPGothic」のダウンロード（アイキャッチ本文用）
-        run: |
-          mkdir -p fonts
-          curl -fL -o fonts/BIZUDPGothic-Regular.ttf \
-            https://github.com/googlefonts/morisawa-biz-ud-gothic/raw/refs/heads/main/fonts/ttf/BIZUDPGothic-Regular.ttf
-          curl -fL -o fonts/BIZUDPGothic-Bold.ttf \
-            https://github.com/googlefonts/morisawa-biz-ud-gothic/raw/refs/heads/main/fonts/ttf/BIZUDPGothic-Bold.ttf
-
       - name: 一次情報収集・Notion原稿自動生成パイプライン実行
         run: |
           python pipeline.py
