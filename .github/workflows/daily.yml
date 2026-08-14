@@ -38,4 +38,11 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
+          NOTION_SAVE_THRESHOLD_SCORE: "60"
           STALE_THRESHOLD_DAYS: "10"
+          # 月末ダイジェスト関連（任意設定・未設定時は既定値を使用）。
+          # 専用cronは設けず、この日次ジョブが月末日に実行された回のみ
+          # 内部判定で自動的にダイジェスト生成が走る（pipeline.py参照）。
+          # MONTHLY_DIGEST_OUTPUT_DIR: "monthly_digests"
+          # MONTHLY_DIGEST_GITHUB_DIR: "monthly_digests"
+          # MONTHLY_DIGEST_MAX_ITEMS: "500"
