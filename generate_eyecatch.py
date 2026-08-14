@@ -45,8 +45,8 @@ def create_eyecatch_image(title_text: str, output_path: str = "eyecatch.png") ->
     draw.rectangle([80, 80, 480, 120], fill=(0, 200, 255))
     draw.text((100, 88), tag_text, fill=(10, 15, 28), font=tag_font)
 
-    # 5. タイトル文字の自動改行処理（全角20文字程度で折り返し）
-    wrapped_lines = textwrap.wrap(title_text, width=18)
+    # 5. タイトル文字の自動改行処理（全角14文字程度で折り返し）
+    wrapped_lines = textwrap.wrap(title_text, width=14)
     
     # 6. 中央寄せで描画（ネオンホワイト文字＋ドロップシャドウ）
     y_text = 220
