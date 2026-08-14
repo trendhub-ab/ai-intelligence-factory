@@ -96,6 +96,11 @@ PROP_LICENSE = "License"
 PROP_PARADIGM_SHIFT = "Paradigm Shift"
 PROP_ALTERNATIVE_COMPARISON = "Alternative Comparison"
 PROP_MIGRATION_COST = "Migration Cost"
+# note記事タイトル（コピーライター調のキャッチータイトル）を独立プロパティとして
+# 構造化保存するためのキー。以前はnote_draft本文の先頭行に埋め込まれたまま
+# 扱われており、Notion側でタイトルだけを抽出・一覧表示・ソートすることが
+# できなかった。_extract_note_title()で本文から分離した上でここに保存する。
+PROP_TITLE = "Note Title"
 # マルチソース化に伴い追加: Notion側でソース別の絞り込み・ビュー分割を
 # 可能にするための構造化プロパティ。従来はsourceがnote本文末尾の
 # テキストにしか埋め込まれておらず、フィルタ・ソートができなかった。
@@ -435,7 +440,7 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
                           why_important_text, why_not_important_text, action_text,
                           spdx_id, clean_manuscript, paradigm_shift_text="",
                           alternative_comparison_text="", migration_cost_text="",
-                          source: str = "GitHub", engagement: int = 0):
+                          source: str = "GitHub", engagement: int = 0, title_text: str = ""):
 
     # noteにそのままコピペできるよう、Markdown原稿を1つのcodeブロック
     # （language: markdown）として保存する。paragraphブロックに分割していた
@@ -475,6 +480,7 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
             PROP_PARADIGM_SHIFT: {"rich_text": [{"text": {"content": paradigm_shift_text[:2000]}}]},
             PROP_ALTERNATIVE_COMPARISON: {"rich_text": [{"text": {"content": alternative_comparison_text[:2000]}}]},
             PROP_MIGRATION_COST: {"rich_text": [{"text": {"content": migration_cost_text[:2000]}}]},
+            PROP_TITLE: {"rich_text": [{"text": {"content": (title_text or "（タイトル抽出失敗）")[:2000]}}]},
         },
         "children": children_blocks,
     }
@@ -483,7 +489,7 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
                     why_important_text, why_not_important_text, action_text,
                     spdx_id, clean_manuscript, paradigm_shift_text="",
                     alternative_comparison_text="", migration_cost_text="",
-                    source: str = "GitHub", engagement: int = 0) -> bool:
+                    source: str = "GitHub", engagement: int = 0, title_text: str = "") -> bool:
     if not NOTION_API_KEY or not NOTION_DATABASE_ID:
         return False
     url = "https://api.notion.com/v1/pages"
@@ -497,7 +503,7 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
         why_important_text, why_not_important_text, action_text,
         spdx_id, clean_manuscript, paradigm_shift_text,
         alternative_comparison_text, migration_cost_text,
-        source, engagement
+        source, engagement, title_text
     )
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
@@ -993,6 +999,35 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
         if source == "ArXiv" else ""
     )
 
+    tone_instruction = """
+【文体のルール（重要）】
+・海外ソースの翻訳・要約であることを感じさせない、こなれた自然な日本語で書くこと。
+　直訳調（「〜ということができるだろう」「〜であると言える」等の硬い言い回し）は避ける。
+・一人称視点の語り口を使ってよい（例：「正直、最初に見たとき驚いた」
+　「個人的に気になったのはここ」）。ただし、実際に検証・導入していない操作や
+　体験を「自分でやってみた」「実際に使ってみたところ」のように断定的に書くことは禁止。
+　あくまで原文・一次情報から読み取れる事実の範囲で、驚き・関心・違和感といった
+　感想レベルの一人称表現にとどめること（体験の捏造は不可）。
+・読者に語りかける口語表現を適度に使う（「〜と思いませんか」「ここ、地味に大事です」等）。
+　ただし乱用せず、分析としての説得力・具体性を落とさない範囲にとどめること。
+・段落の冒頭を「これは」「つまり」等の紋切り型ではなく、自然な会話の出だしのように
+　変化させること。
+"""
+
+    title_instruction = """
+【タイトルのルール（重要）】
+・タイトルは、プロのコピーライターが書いたようなキャッチーさ・インパクトを持たせること。
+　テック系ブログの見出しをそのまま翻訳したような、説明的で平板なタイトルは禁止。
+・以下のいずれかの型を、内容に合わせて使い分けること（機械的な使い回しは避ける）。
+  - ギャップ・意外性型：常識と結論のズレを見せる（例：「◯◯を捨てた企業が増えている理由」）
+  - 具体数字型：スコアや規模感を数字で見せる（例：「たった1行で、◯◯が変わった」）
+  - 当事者への問いかけ型：読者自身に判断を迫る（例：「その乗り換え、今週決めていいですか」）
+  - 断定・警句型：短く言い切る（例：「◯◯はもう、選択肢ではない」）
+・誇張・釣りタイトル（内容が伴わない煽り）は禁止。本文の分析内容と矛盾しない
+　範囲でのインパクトに留めること。
+・句読点や記号を使いすぎず、1行で読める長さ（目安20〜32文字程度）に収めること。
+"""
+
     return f"""
 {feedback_block}あなたは月額1,980円の有料購読者（CTO・テックリード・PM）が「読んで即・業務判断ができた」
 と満足する、技術系note「判断装置（Decision Intelligence）」の専属アナリスト兼トップライターです。
@@ -1009,7 +1044,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
   （比較対象を挙げずに「優れている」と断定するのは禁止）。
 - 移行コストとリスク: 既存の手段から乗り換える／追随する場合に発生する作業・学習コスト・
   破壊的変更のリスクを具体的に見積もること。
-
+{tone_instruction}{title_instruction}
 【対象案件】
 ・出所: {source}
 ・名前: {name}
@@ -1069,8 +1104,9 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 
 {SECTION_SPLIT_TOKEN}
 
-（読者の興味を引くキャッチーな記事タイトル。1行。note.comのタイトル欄に別途
-貼り付けることを想定し、見出し記号「#」は付けないこと。）
+（読者の興味を引くキャッチーな記事タイトル。1行。上記【タイトルのルール】に
+従い、プロのコピーライター水準のインパクトを持たせること。note.comのタイトル欄に
+別途貼り付けることを想定し、見出し記号「#」は付けないこと。）
 
 （無料エリア：What、Why Important、技術的パラダイムシフトの要点を、記事として
 自然に読める文章で構成する。読者に価値の全貌を感じさせつつ、続きへの期待を持たせる
@@ -1086,13 +1122,51 @@ Why NOT Important、そして今週中に取るべきActionを、読者が「198
 分量が不足する内容の薄い書き方は禁止。）
 """
 
+def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
+    """
+    note原稿の先頭行を記事タイトルとして抽出し、残りの本文と分離する。
+
+    プロンプト側の出力フォーマットでは、SECTION_SPLIT_TOKEN直後に
+    「タイトル行 → 空行 → 無料エリア本文 → ---有料エリア--- → 有料エリア本文」
+    という構成を指示している。以前はこのタイトル行を本文から分離しておらず、
+    build_clean_note_manuscript側でもそのまま「無料エリアの一部」として
+    扱われてしまい、Notionの独立プロパティとして構造化できなかった
+    （またタイトルが実質的に記事本文の1行目として二重表示される形になっていた）。
+
+    ここでタイトル行を切り出し、残りの本文（無料エリア〜有料エリア）だけを
+    後続処理（split_free_paid等）に渡すことで、
+    - Notion側にタイトルだけを独立プロパティとして保存できる
+    - note本文側にタイトルが重複して出力されない
+    の両方を実現する。
+    """
+    lines = note_draft_raw.split("\n")
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+
+    if idx >= len(lines):
+        # タイトル行を含め本文が実質空だったケース。管理用データのパースは
+        # 継続できるよう、ここでは例外を投げずフォールバック値を返す。
+        return "（タイトル生成失敗）", note_draft_raw
+
+    # 万一Geminiが見出し記号やクォート・カギ括弧でタイトルを囲んでしまった
+    # 場合の軽い保険（プロンプト側では明示的に禁止しているが、出力ゆれに備える）。
+    title = lines[idx].strip().lstrip("#").strip().strip('"「」『』').strip()
+    remaining = "\n".join(lines[idx + 1:]).strip()
+    return (title or "（タイトル生成失敗）"), remaining
+
+
 def _parse_gemini_response(full_text: str) -> dict:
     """Geminiの応答を管理用データとnote原稿に分割し、各項目を抽出する。"""
     # データ分割（管理用データとnote原稿を分離）。Markdown非依存の専用トークンで分割するため、
     # Geminiが見出し記号を出力ゆれさせてもパースが壊れない。
     parts = full_text.split(SECTION_SPLIT_TOKEN)
     management_data = parts[0]
-    note_draft = parts[1].strip() if len(parts) > 1 else "原稿生成に失敗しました。"
+
+    if len(parts) > 1:
+        title_text, note_draft = _extract_note_title(parts[1].strip())
+    else:
+        title_text, note_draft = "（タイトル抽出失敗）", "原稿生成に失敗しました。"
 
     # 項目間の区切りは全角中黒「・」の次の項目、または文末までとする
     NEXT_ITEM = r"(?=\n・|\n\n|$)"
@@ -1114,6 +1188,7 @@ def _parse_gemini_response(full_text: str) -> dict:
 
     return {
         "note_draft": note_draft,
+        "title_text": title_text,
         "score": score,
         "score_breakdown_text": score_breakdown_text,
         "what_text": extract_field("What", "概要参照"),
@@ -1183,7 +1258,7 @@ def generate_intelligence_report(repo):
             parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
             spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
             parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-            source, stars
+            source, stars, parsed["title_text"]
         )
         return clean_manuscript
 
