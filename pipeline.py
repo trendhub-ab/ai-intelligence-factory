@@ -7,7 +7,7 @@ import requests
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from google import genai
 from google.genai.errors import APIError
 
@@ -100,6 +100,32 @@ EYECATCH_GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY")
 EYECATCH_GITHUB_BRANCH = os.environ.get("GITHUB_REF_NAME") or "main"
 # リポジトリ内でアイキャッチ画像を保存するディレクトリ（コミット先パスのプレフィックス）。
 EYECATCH_GITHUB_DIR = os.environ.get("EYECATCH_GITHUB_DIR", "eyecatch_images")
+
+# アイキャッチのタイトル文字に使うフォント（BIZ UDPGothic）。
+# daily.ymlのワークフロー内でgooglefonts/morisawa-biz-ud-gothicリポジトリから
+# ダウンロードし、このパスに配置する運用を想定（詳細はSKILLではなくdaily.yml参照）。
+# ファイルが存在しない場合はNoto Sans CJK（apt導入済）にフォールバックする。
+EYECATCH_FONT_DIR = os.environ.get("EYECATCH_FONT_DIR", "fonts")
+EYECATCH_FONT_REGULAR = os.environ.get(
+    "EYECATCH_FONT_REGULAR", os.path.join(EYECATCH_FONT_DIR, "BIZUDPGothic-Regular.ttf")
+)
+EYECATCH_FONT_BOLD = os.environ.get(
+    "EYECATCH_FONT_BOLD", os.path.join(EYECATCH_FONT_DIR, "BIZUDPGothic-Bold.ttf")
+)
+
+# アイキャッチの背景画像（ソース別）を置くディレクトリ。運用者がリポジトリに
+# コミットした画像ファイルをここから読み込んで合成する。ファイルが見つからない
+# ソースは default.png にフォールバックし、それも無ければ従来のグラデーション
+# 生成にフォールバックする（Fail-Safe、詳細はgenerate_eyecatch_image参照）。
+EYECATCH_BACKGROUND_DIR = os.environ.get("EYECATCH_BACKGROUND_DIR", "assets/eyecatch_backgrounds")
+# ソース名 -> 背景画像ファイル名（EYECATCH_BACKGROUND_DIR配下）のマッピング。
+SOURCE_BACKGROUND_IMAGE = {
+    "GitHub": "github.png",
+    "HackerNews": "hackernews.png",
+    "ArXiv": "arxiv.png",
+    "ProductHunt": "producthunt.png",
+}
+EYECATCH_BACKGROUND_DEFAULT = "default.png"
 
 # ==========================================
 # 2. Notion プロパティ定義
@@ -419,31 +445,92 @@ def _sanitize_filename(name: str) -> str:
     return safe.strip("_")[:100] or "untitled"
 
 
-def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png") -> str:
+def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Image:
     """
-    1280px x 670px のアイキャッチ画像を完全0円で自動生成するモジュール
+    ソース別の背景画像を読み込み、指定サイズにcover方式（アスペクト比維持で
+    はみ出た部分をトリミング）でリサイズして返す。
+
+    画像が見つからない場合（未配置・ファイル名不一致等）はdefault.pngに
+    フォールバックし、それも無ければNoneを返す（呼び出し側で従来の
+    グラデーション生成にフォールバックする）。
+    """
+    filename = SOURCE_BACKGROUND_IMAGE.get(source, EYECATCH_BACKGROUND_DEFAULT)
+    candidate_paths = [
+        os.path.join(EYECATCH_BACKGROUND_DIR, filename),
+        os.path.join(EYECATCH_BACKGROUND_DIR, EYECATCH_BACKGROUND_DEFAULT),
+    ]
+    for path in candidate_paths:
+        if os.path.exists(path):
+            try:
+                bg = Image.open(path).convert("RGB")
+                src_w, src_h = bg.size
+                target_ratio = width / height
+                src_ratio = src_w / src_h
+                if src_ratio > target_ratio:
+                    # 元画像の方が横長 -> 高さを合わせてから左右をトリミング
+                    new_h = height
+                    new_w = int(src_ratio * new_h)
+                else:
+                    # 元画像の方が縦長 -> 幅を合わせてから上下をトリミング
+                    new_w = width
+                    new_h = int(new_w / src_ratio)
+                bg = bg.resize((new_w, new_h))
+                left = (new_w - width) // 2
+                top = (new_h - height) // 2
+                bg = bg.crop((left, top, left + width, top + height))
+                return bg
+            except Exception as e:
+                logger.warning(f"[EYECATCH BG] {path} の読み込みに失敗しました: {e}")
+                continue
+    return None
+
+
+def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
+                             source: str = "GitHub") -> str:
+    """
+    1280px x 670px のアイキャッチ画像を完全0円で自動生成するモジュール。
+
+    背景はソース別画像（EYECATCH_BACKGROUND_DIR配下、SOURCE_BACKGROUND_IMAGEで
+    マッピング）を使用し、見つからない場合は従来のダークグラデーションに
+    フォールバックする。文字はGoogle Fonts「BIZ UDPGothic」を使用し、
+    フォントファイルが無い場合はNoto Sans CJKにフォールバックする。
     """
     WIDTH, HEIGHT = 1280, 670
 
-    # 背景グラデーションの生成（ダークサイバー風）
-    img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
-    draw_bg = ImageDraw.Draw(img)
-    for y in range(HEIGHT):
-        r = int(10 + (y / HEIGHT) * 15)
-        g = int(15 + (y / HEIGHT) * 25)
-        b = int(28 + (y / HEIGHT) * 45)
-        draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+    img = _load_eyecatch_background(source, WIDTH, HEIGHT)
+    if img is not None:
+        # 背景画像の上に白文字を置くため、視認性確保の暗いオーバーレイを重ねる。
+        overlay = Image.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
+        img = Image.blend(img, overlay, alpha=0.35)
+        img = ImageEnhance.Contrast(img).enhance(1.05)
+    else:
+        # 背景画像が用意されていない場合のフォールバック（ダークサイバー風グラデーション）。
+        img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
+        draw_bg = ImageDraw.Draw(img)
+        for y in range(HEIGHT):
+            r = int(10 + (y / HEIGHT) * 15)
+            g = int(15 + (y / HEIGHT) * 25)
+            b = int(28 + (y / HEIGHT) * 45)
+            draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
     draw = ImageDraw.Draw(img)
 
-    # 日本語フォントの設定（Ubuntu標準Noto Sans）
-    font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
-    if not os.path.exists(font_path):
-        font_path = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
+    # タイトル用フォント（Bold）とタグ用フォント（Regular）。
+    # BIZ UDPGothicが未配置の環境（フォントダウンロード未実施・パス不一致等）では
+    # Noto Sans CJK Boldにフォールバックする。
+    bold_font_path = EYECATCH_FONT_BOLD if os.path.exists(EYECATCH_FONT_BOLD) else None
+    regular_font_path = EYECATCH_FONT_REGULAR if os.path.exists(EYECATCH_FONT_REGULAR) else None
+    if not bold_font_path:
+        fallback = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+        if not os.path.exists(fallback):
+            fallback = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
+        bold_font_path = fallback
+    if not regular_font_path:
+        regular_font_path = bold_font_path
 
     try:
-        font = ImageFont.truetype(font_path, 46)
-        tag_font = ImageFont.truetype(font_path, 22)
+        font = ImageFont.truetype(bold_font_path, 46)
+        tag_font = ImageFont.truetype(regular_font_path, 22)
     except Exception:
         font = ImageFont.load_default()
         tag_font = font
@@ -1428,7 +1515,7 @@ def generate_intelligence_report(repo):
             os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
             eyecatch_filename = f"{_sanitize_filename(name)}.png"
             eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
-            generate_eyecatch_image(parsed["title_text"], eyecatch_path)
+            generate_eyecatch_image(parsed["title_text"], eyecatch_path, source)
             logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
 
             eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
