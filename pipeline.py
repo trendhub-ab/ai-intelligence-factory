@@ -1381,7 +1381,7 @@ def prepare_source_context(repo: dict) -> dict:
         "sufficient": sufficient,
     }
 
-def fetch_github_trending(limit: int = 30):
+def fetch_github_trending():
     """GitHub GraphQL API から急上昇AI/MLリポジトリを取得する。"""
     logger.info(">>> [Step 1] GitHub一次データの自動巡回...")
     url = "https://api.github.com/graphql"
@@ -1389,7 +1389,7 @@ def fetch_github_trending(limit: int = 30):
     since_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     query = f"""
     {{
-      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>{since_date}", type: REPOSITORY, first: {limit}) {{
+      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>{since_date}", type: REPOSITORY, first: 10) {{
         nodes {{
           ... on Repository {{
             nameWithOwner
@@ -1431,7 +1431,7 @@ def fetch_github_trending(limit: int = 30):
         logger.error(f"[FAULT ISOLATED] GitHub APIエラー: {e}")
     return items
 
-def fetch_hackernews_top(limit: int = 10):
+def fetch_hackernews_top(limit: int = 30):
     """HN APIから上位storyを取得し、外部URL・HN本文をDeep Dive用に保持する。"""
     logger.info(">>> [Step 1] Hacker News一次データの自動巡回...")
     items = []
@@ -2720,15 +2720,12 @@ def main():
     check_stale_content()
 
     # ==========================================
-    # TEST MODE: PRODUCT HUNT ONLY (30 items)
-    # Product Hunt由来の記事品質を集中検証するため、
-    # GitHub / Hacker News / arXiv の取得を停止する。
-    # Screening / Notion / Deep Dive / Quality Gate / Budget は通常どおり動作。
+    # TEST MODE: HACKER NEWS ONLY (30 items)
     # ==========================================
-    producthunt_items = fetch_producthunt_trending(limit=30)
-    repos = producthunt_items
+    hackernews_items = fetch_hackernews_top(limit=30)
+    repos = hackernews_items
     logger.info(
-        f"[PRODUCTHUNT-ONLY MODE] Product Hunt:{len(producthunt_items)} 合計:{len(repos)}"
+        f"[HACKERNEWS-ONLY MODE] Hacker News:{len(hackernews_items)} 合計:{len(repos)}"
     )
 
     safe_repos = []
