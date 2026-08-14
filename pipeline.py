@@ -2,7 +2,6 @@ import os
 import re
 import time
 import base64
-import textwrap
 import requests
 import logging
 import xml.etree.ElementTree as ET
@@ -485,6 +484,74 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
     return None
 
 
+_EYECATCH_WORD_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-_.:/+#']*")
+
+
+def _tokenize_eyecatch_title(text: str):
+    """
+    タイトル文字列を「英数字の連続（単語）」と「それ以外の1文字（日本語・記号等）」に
+    分割する。半角スペースは区切り情報としてのみ使い、トークンとしては残さない。
+    例: "GLM-5.3: Frontier Coding" -> [("GLM-5.3:", True), ("Frontier", True), ("Coding", True)]
+        "新機能を発表" -> [("新", False), ("機", False), ("能", False), ("を", False), ("発", False), ("表", False)]
+    """
+    tokens = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch.isspace():
+            i += 1
+            continue
+        m = _EYECATCH_WORD_TOKEN_RE.match(text, i)
+        if m:
+            tokens.append((m.group(0), True))
+            i = m.end()
+        else:
+            tokens.append((ch, False))
+            i += 1
+    return tokens
+
+
+def _wrap_eyecatch_title(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
+                          max_width: int):
+    """
+    アイキャッチのタイトルを、フォントの実際の描画幅を基準に折り返す。
+    英単語（半角英数字の連続）は途中で分割せず単語の区切りで改行し、
+    日本語や記号は文字単位で自然に折り返せるようにする。
+    textwrap.wrap（全角文字数の概算）と違い、実際のピクセル幅で判定するため、
+    英語混じりのタイトルでも単語の途中でぶつ切りにならない。
+    """
+    tokens = _tokenize_eyecatch_title(text)
+    if not tokens:
+        return []
+
+    def render(tokens_list):
+        s = ""
+        for idx, (tok_text, is_word) in enumerate(tokens_list):
+            if idx > 0 and is_word and tokens_list[idx - 1][1]:
+                # 英単語同士の間だけ半角スペースを復元する（日本語文字の間は詰める）
+                s += " "
+            s += tok_text
+        return s
+
+    lines = []
+    current = []
+    for token in tokens:
+        trial = current + [token]
+        trial_str = render(trial)
+        width = draw.textlength(trial_str, font=font)
+        if width <= max_width or not current:
+            # current が空の場合は1トークン単独でも幅超過を許容して強制的に置く
+            # （非常に長い単語1つだけで折り返し不能になる無限ループを防ぐため）
+            current = trial
+        else:
+            lines.append(render(current))
+            current = [token]
+    if current:
+        lines.append(render(current))
+    return lines
+
+
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub") -> str:
     """
@@ -539,8 +606,10 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
     draw.rectangle([80, 70, 460, 110], fill=(0, 200, 255))
     draw.text((95, 78), "【日刊】AI Tech Intelligence", fill=(10, 15, 28), font=tag_font)
 
-    # タイトルの折り返し処理（全角18文字程度）
-    wrapped_lines = textwrap.wrap(title_text, width=18)
+    # タイトルの折り返し処理（実際のフォント幅を基準に、単語の区切りで自然に改行）
+    # 左右マージン100pxずつ確保した残り幅を折り返しの上限とする
+    max_title_width = WIDTH - 200
+    wrapped_lines = _wrap_eyecatch_title(draw, title_text, font, max_title_width)
 
     y_text = 200
     for line in wrapped_lines:
