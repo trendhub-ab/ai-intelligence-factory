@@ -678,7 +678,7 @@ def _fetch_arxiv_with_retry(url: str, params: dict):
     last_error_text = ""
     for attempt in range(ARXIV_FETCH_MAX_RETRIES + 1):
         try:
-            response = requests.get(url, params=params, timeout=25)
+            response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             return response
         except Exception as e:
