@@ -6,7 +6,7 @@ import requests
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from PIL import Image, ImageDraw
 from google import genai
 from google.genai.errors import APIError
 
@@ -99,18 +99,6 @@ EYECATCH_GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY")
 EYECATCH_GITHUB_BRANCH = os.environ.get("GITHUB_REF_NAME") or "main"
 # リポジトリ内でアイキャッチ画像を保存するディレクトリ（コミット先パスのプレフィックス）。
 EYECATCH_GITHUB_DIR = os.environ.get("EYECATCH_GITHUB_DIR", "eyecatch_images")
-
-# アイキャッチのタイトル文字に使うフォント（BIZ UDPGothic）。
-# daily.ymlのワークフロー内でgooglefonts/morisawa-biz-ud-gothicリポジトリから
-# ダウンロードし、このパスに配置する運用を想定（詳細はSKILLではなくdaily.yml参照）。
-# ファイルが存在しない場合はNoto Sans CJK（apt導入済）にフォールバックする。
-EYECATCH_FONT_DIR = os.environ.get("EYECATCH_FONT_DIR", "fonts")
-EYECATCH_FONT_REGULAR = os.environ.get(
-    "EYECATCH_FONT_REGULAR", os.path.join(EYECATCH_FONT_DIR, "BIZUDPGothic-Regular.ttf")
-)
-EYECATCH_FONT_BOLD = os.environ.get(
-    "EYECATCH_FONT_BOLD", os.path.join(EYECATCH_FONT_DIR, "BIZUDPGothic-Bold.ttf")
-)
 
 # アイキャッチの背景画像（ソース別）を置くディレクトリ。運用者がリポジトリに
 # コミットした画像ファイルをここから読み込んで合成する。ファイルが見つからない
@@ -484,93 +472,20 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
     return None
 
 
-_EYECATCH_WORD_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-_.:/+#']*")
-
-
-def _tokenize_eyecatch_title(text: str):
-    """
-    タイトル文字列を「英数字の連続（単語）」と「それ以外の1文字（日本語・記号等）」に
-    分割する。半角スペースは区切り情報としてのみ使い、トークンとしては残さない。
-    例: "GLM-5.3: Frontier Coding" -> [("GLM-5.3:", True), ("Frontier", True), ("Coding", True)]
-        "新機能を発表" -> [("新", False), ("機", False), ("能", False), ("を", False), ("発", False), ("表", False)]
-    """
-    tokens = []
-    i = 0
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if ch.isspace():
-            i += 1
-            continue
-        m = _EYECATCH_WORD_TOKEN_RE.match(text, i)
-        if m:
-            tokens.append((m.group(0), True))
-            i = m.end()
-        else:
-            tokens.append((ch, False))
-            i += 1
-    return tokens
-
-
-def _wrap_eyecatch_title(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
-                          max_width: int):
-    """
-    アイキャッチのタイトルを、フォントの実際の描画幅を基準に折り返す。
-    英単語（半角英数字の連続）は途中で分割せず単語の区切りで改行し、
-    日本語や記号は文字単位で自然に折り返せるようにする。
-    textwrap.wrap（全角文字数の概算）と違い、実際のピクセル幅で判定するため、
-    英語混じりのタイトルでも単語の途中でぶつ切りにならない。
-    """
-    tokens = _tokenize_eyecatch_title(text)
-    if not tokens:
-        return []
-
-    def render(tokens_list):
-        s = ""
-        for idx, (tok_text, is_word) in enumerate(tokens_list):
-            if idx > 0 and is_word and tokens_list[idx - 1][1]:
-                # 英単語同士の間だけ半角スペースを復元する（日本語文字の間は詰める）
-                s += " "
-            s += tok_text
-        return s
-
-    lines = []
-    current = []
-    for token in tokens:
-        trial = current + [token]
-        trial_str = render(trial)
-        width = draw.textlength(trial_str, font=font)
-        if width <= max_width or not current:
-            # current が空の場合は1トークン単独でも幅超過を許容して強制的に置く
-            # （非常に長い単語1つだけで折り返し不能になる無限ループを防ぐため）
-            current = trial
-        else:
-            lines.append(render(current))
-            current = [token]
-    if current:
-        lines.append(render(current))
-    return lines
-
-
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub") -> str:
     """
     1280px x 670px のアイキャッチ画像を完全0円で自動生成するモジュール。
 
-    背景はソース別画像（EYECATCH_BACKGROUND_DIR配下、SOURCE_BACKGROUND_IMAGEで
-    マッピング）を使用し、見つからない場合は従来のダークグラデーションに
-    フォールバックする。文字はGoogle Fonts「BIZ UDPGothic」を使用し、
-    フォントファイルが無い場合はNoto Sans CJKにフォールバックする。
+    【設計変更】テキスト合成（タグ・タイトル文字の描画）は廃止し、背景画像
+    （ソース別、EYECATCH_BACKGROUND_DIR配下、SOURCE_BACKGROUND_IMAGEでマッピング）
+    または従来のダークグラデーションのみを出力する。
+    title_text引数は呼び出し互換性のために残しているが、画像生成には使用しない。
     """
     WIDTH, HEIGHT = 1280, 670
 
     img = _load_eyecatch_background(source, WIDTH, HEIGHT)
-    if img is not None:
-        # 背景画像の上に白文字を置くため、視認性確保の暗いオーバーレイを重ねる。
-        overlay = Image.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
-        img = Image.blend(img, overlay, alpha=0.35)
-        img = ImageEnhance.Contrast(img).enhance(1.05)
-    else:
+    if img is None:
         # 背景画像が用意されていない場合のフォールバック（ダークサイバー風グラデーション）。
         img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
         draw_bg = ImageDraw.Draw(img)
@@ -579,44 +494,6 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
             g = int(15 + (y / HEIGHT) * 25)
             b = int(28 + (y / HEIGHT) * 45)
             draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
-
-    draw = ImageDraw.Draw(img)
-
-    # タイトル用フォント（Bold）とタグ用フォント（Regular）。
-    # BIZ UDPGothicが未配置の環境（フォントダウンロード未実施・パス不一致等）では
-    # Noto Sans CJK Boldにフォールバックする。
-    bold_font_path = EYECATCH_FONT_BOLD if os.path.exists(EYECATCH_FONT_BOLD) else None
-    regular_font_path = EYECATCH_FONT_REGULAR if os.path.exists(EYECATCH_FONT_REGULAR) else None
-    if not bold_font_path:
-        fallback = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
-        if not os.path.exists(fallback):
-            fallback = "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"
-        bold_font_path = fallback
-    if not regular_font_path:
-        regular_font_path = bold_font_path
-
-    try:
-        font = ImageFont.truetype(bold_font_path, 46)
-        tag_font = ImageFont.truetype(regular_font_path, 22)
-    except Exception:
-        font = ImageFont.load_default()
-        tag_font = font
-
-    # タグ描画
-    draw.rectangle([80, 70, 460, 110], fill=(0, 200, 255))
-    draw.text((95, 78), "【日刊】AI Tech Intelligence", fill=(10, 15, 28), font=tag_font)
-
-    # タイトルの折り返し処理（実際のフォント幅を基準に、単語の区切りで自然に改行）
-    # 左右マージンを確保した残り幅を折り返しの上限とする（全角18文字程度を目安に調整済み）
-    max_title_width = WIDTH - 440
-    wrapped_lines = _wrap_eyecatch_title(draw, title_text, font, max_title_width)
-
-    y_text = 200
-    for line in wrapped_lines:
-        # ドロップシャドウ＋テキスト描画
-        draw.text((102, y_text + 2), line, fill=(0, 0, 0), font=font)
-        draw.text((100, y_text), line, fill=(255, 255, 255), font=font)
-        y_text += 65
 
     img.save(output_path, "PNG")
     return output_path
