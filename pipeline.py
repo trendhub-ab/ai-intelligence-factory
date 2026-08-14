@@ -66,6 +66,16 @@ CANDIDATE_MODELS = os.environ.get(
 # 深掘り（Step2フルレポート）に回す件数（Two-Stage化）
 TOP_N_FOR_DEEP_DIVE = int(os.environ.get("TOP_N_FOR_DEEP_DIVE", "3"))
 
+# ==========================================
+# 構造改修: Notion保存とDeep Dive記事生成の分離
+# ==========================================
+# このスコア以上のスクリーニング済み案件は、Deep Dive記事化の対象外でも
+# 「メタデータのみ」でNotion DBへ全件保存する（Notion DB自体を検索可能な
+# ストック資産＝有料マガジンのコア資産として蓄積する設計）。
+# TOP_N_FOR_DEEP_DIVEはこのストックの中から「詳細記事にするか」を決める
+# 別軸のしきい値であり、両者は独立して調整できる。
+NOTION_SAVE_THRESHOLD_SCORE = int(os.environ.get("NOTION_SAVE_THRESHOLD_SCORE", "60"))
+
 # 滞留検知: 最終記事生成からこの日数を超えたら運用者に通知
 STALE_THRESHOLD_DAYS = int(os.environ.get("STALE_THRESHOLD_DAYS", "10"))
 
@@ -120,6 +130,16 @@ EYECATCH_BACKGROUND_DEFAULT = "default.png"
 PROP_NAME = "Name"
 PROP_URL = "URL"
 PROP_SCORE = "Decision Score"
+# Decision Scoreは「Deep Dive済みならStep2詳細スコア／ストックのみなら
+# Step1軽量スクリーニングスコア」という、採点基準の異なる2種類の値が
+# 同じ列に混在する（詳細はNOTION_SAVE_THRESHOLD_SCOREのコメントを参照）。
+# Notion DB上でどちらの基準のスコアかを一目で判別できるよう、select型の
+# Statusプロパティを追加する。Notion側では管理画面上でプロパティを
+# 追加するだけでよく、コード側もこの定数と各プロパティ辞書への1行追加のみで
+# 対応できる（新規プロパティ・値ともに事前にNotion側で用意しておくこと）。
+PROP_STATUS = "Status"
+STATUS_STOCKED = "Stocked"       # Decision Score = Step1軽量スクリーニングスコア
+STATUS_DEEP_DIVE = "Deep Dive"   # Decision Score = Step2詳細スコア
 PROP_SCORE_BREAKDOWN = "Score Breakdown"
 PROP_WHAT = "What"
 PROP_WHY_IMPORTANT = "Why Important"
@@ -621,23 +641,57 @@ def safe_chunk_text(text: str, limit: int = NOTION_BLOCK_LIMIT) -> list[str]:
 
     return chunks
 
-def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_text,
-                          why_important_text, why_not_important_text, action_text,
-                          spdx_id, clean_manuscript, paradigm_shift_text="",
-                          alternative_comparison_text="", migration_cost_text="",
-                          source: str = "GitHub", engagement: int = 0, title_text: str = "",
-                          eyecatch_url: str = ""):
+def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, what_text,
+                             why_important_text, why_not_important_text, action_text,
+                             spdx_id, paradigm_shift_text="",
+                             alternative_comparison_text="", migration_cost_text="",
+                             source: str = "GitHub", engagement: int = 0, title_text: str = "",
+                             eyecatch_url: str = "") -> dict:
+    """Deep Diveフル記事のNotionプロパティ辞書を組み立てる。
+    新規ページ作成（save_to_notion）と既存ページのアップグレード更新
+    （upgrade_notion_page_with_report）の両方から共通で使う。"""
+    return {
+        PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
+        PROP_URL: {"url": repo_url},
+        PROP_SOURCE: {"select": {"name": source}},
+        PROP_ENGAGEMENT: {"number": engagement},
+        PROP_SCORE: {"number": score},
+        # Deep Dive記事生成（新規作成／ストック済みページのアップグレード更新の
+        # 両方）では、Decision Score = Step2詳細スコアに切り替わる。
+        # upgrade_notion_page_with_report経由の場合、ストック保存時に付与された
+        # STATUS_STOCKEDをこの値で上書きすることになり、意図した挙動である。
+        PROP_STATUS: {"select": {"name": STATUS_DEEP_DIVE}},
+        PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": score_breakdown_text[:2000]}}]},
+        PROP_WHAT: {"rich_text": [{"text": {"content": what_text[:2000]}}]},
+        PROP_WHY_IMPORTANT: {"rich_text": [{"text": {"content": why_important_text[:2000]}}]},
+        PROP_WHY_NOT_IMPORTANT: {"rich_text": [{"text": {"content": why_not_important_text[:2000]}}]},
+        PROP_WHO: {"rich_text": [{"text": {"content": "PM / テックリード / 開発チーム"}}]},
+        PROP_ACTION: {"rich_text": [{"text": {"content": action_text[:2000]}}]},
+        PROP_LICENSE: {"rich_text": [{"text": {"content": spdx_id}}]},
+        PROP_PARADIGM_SHIFT: {"rich_text": [{"text": {"content": paradigm_shift_text[:2000]}}]},
+        PROP_ALTERNATIVE_COMPARISON: {"rich_text": [{"text": {"content": alternative_comparison_text[:2000]}}]},
+        PROP_MIGRATION_COST: {"rich_text": [{"text": {"content": migration_cost_text[:2000]}}]},
+        PROP_TITLE: {"rich_text": [{"text": {"content": (title_text or "（タイトル抽出失敗）")[:2000]}}]},
+        # eyecatch_urlが取得できなかった場合（アップロード失敗等）は空のfiles配列を
+        # 送り、プロパティ自体は正常に更新しつつ画像なしの状態にする（Fail-Safe）。
+        PROP_EYECATCH: {
+            "files": (
+                [{"type": "external", "name": f"{repo_name}.png", "external": {"url": eyecatch_url}}]
+                if eyecatch_url else []
+            )
+        },
+    }
 
-    # noteにそのままコピペできるよう、Markdown原稿を1つのcodeブロック
-    # （language: markdown）として保存する。paragraphブロックに分割していた
-    # 旧実装と異なり、Notion UI上でブロック単位の「コピー」ボタン1回で
-    # 原稿全体をMarkdownの生テキストとして丸ごとコピーできる。
-    # rich_text 1要素あたり2000字の上限があるため、これまで通り
-    # safe_chunk_textで安全な区切り位置ごとに分割するが、複数の
-    # rich_text要素を同一のcodeブロックへ連結することで、見た目上は
-    # 1本の連続したMarkdown原稿として表示・コピーされる。
+
+def build_notion_manuscript_children(clean_manuscript: str) -> list:
+    """noteにそのままコピペできるよう、Markdown原稿を1つのcodeブロック
+    （language: markdown）として保存するchildrenブロックを組み立てる。
+    rich_text 1要素あたり2000字の上限があるため、safe_chunk_textで
+    安全な区切り位置ごとに分割するが、複数のrich_text要素を同一の
+    codeブロックへ連結することで、見た目上は1本の連続したMarkdown原稿
+    として表示・コピーされる。"""
     chunks = safe_chunk_text(clean_manuscript)
-    children_blocks = [
+    return [
         {
             "object": "block",
             "type": "code",
@@ -648,35 +702,22 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
         }
     ]
 
+
+def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_text,
+                          why_important_text, why_not_important_text, action_text,
+                          spdx_id, clean_manuscript, paradigm_shift_text="",
+                          alternative_comparison_text="", migration_cost_text="",
+                          source: str = "GitHub", engagement: int = 0, title_text: str = "",
+                          eyecatch_url: str = "") -> dict:
     return {
         "parent": {"database_id": NOTION_DATABASE_ID},
-        "properties": {
-            PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
-            PROP_URL: {"url": repo_url},
-            PROP_SOURCE: {"select": {"name": source}},
-            PROP_ENGAGEMENT: {"number": engagement},
-            PROP_SCORE: {"number": score},
-            PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": score_breakdown_text[:2000]}}]},
-            PROP_WHAT: {"rich_text": [{"text": {"content": what_text[:2000]}}]},
-            PROP_WHY_IMPORTANT: {"rich_text": [{"text": {"content": why_important_text[:2000]}}]},
-            PROP_WHY_NOT_IMPORTANT: {"rich_text": [{"text": {"content": why_not_important_text[:2000]}}]},
-            PROP_WHO: {"rich_text": [{"text": {"content": "PM / テックリード / 開発チーム"}}]},
-            PROP_ACTION: {"rich_text": [{"text": {"content": action_text[:2000]}}]},
-            PROP_LICENSE: {"rich_text": [{"text": {"content": spdx_id}}]},
-            PROP_PARADIGM_SHIFT: {"rich_text": [{"text": {"content": paradigm_shift_text[:2000]}}]},
-            PROP_ALTERNATIVE_COMPARISON: {"rich_text": [{"text": {"content": alternative_comparison_text[:2000]}}]},
-            PROP_MIGRATION_COST: {"rich_text": [{"text": {"content": migration_cost_text[:2000]}}]},
-            PROP_TITLE: {"rich_text": [{"text": {"content": (title_text or "（タイトル抽出失敗）")[:2000]}}]},
-            # eyecatch_urlが取得できなかった場合（アップロード失敗等）は空のfiles配列を
-            # 送り、プロパティ自体は正常に更新しつつ画像なしの状態にする（Fail-Safe）。
-            PROP_EYECATCH: {
-                "files": (
-                    [{"type": "external", "name": f"{repo_name}.png", "external": {"url": eyecatch_url}}]
-                    if eyecatch_url else []
-                )
-            },
-        },
-        "children": children_blocks,
+        "properties": build_notion_properties(
+            repo_name, repo_url, score, score_breakdown_text, what_text,
+            why_important_text, why_not_important_text, action_text,
+            spdx_id, paradigm_shift_text, alternative_comparison_text,
+            migration_cost_text, source, engagement, title_text, eyecatch_url,
+        ),
+        "children": build_notion_manuscript_children(clean_manuscript),
     }
 
 def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
@@ -685,6 +726,11 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
                     alternative_comparison_text="", migration_cost_text="",
                     source: str = "GitHub", engagement: int = 0, title_text: str = "",
                     eyecatch_url: str = "") -> bool:
+    """Deep Diveフル記事の新規Notionページを作成する。
+    スクリーニング段階でメタデータ保存済み（notion_page_idあり）の案件は
+    こちらではなく upgrade_notion_page_with_report を使うため、
+    この関数は「メタデータ保存をスキップした（スコア閾値未満などの）
+    案件がそれでも深掘り対象になった」場合のフォールバック経路として残す。"""
     if not NOTION_API_KEY or not NOTION_DATABASE_ID:
         return False
     url = "https://api.notion.com/v1/pages"
@@ -703,12 +749,125 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
         if res.status_code == 200:
-            logger.info(f"[NOTION SAVED] {repo_name} -> クレンジング済みnote原稿の保存完了")
+            logger.info(f"[NOTION SAVED] {repo_name} -> クレンジング済みnote原稿の保存完了（新規ページ）")
             return True
         logger.error(f"[NOTION ERROR] {repo_name} -> {res.text}")
         return False
     except Exception as e:
         logger.error(f"[NOTION EXCEPTION] {e}")
+        return False
+
+
+# ==========================================
+# 5b. スクリーニング段階のメタデータ保存（全件ストック）＆ 深掘り時のページ更新
+# ==========================================
+def build_metadata_notion_properties(repo_name, repo_url, score, reason,
+                                      source: str = "GitHub", engagement: int = 0) -> dict:
+    """スクリーニングのみ完了した段階での、軽量メタデータのみのプロパティ辞書。
+    Deep Dive特有のフィールド（What/Why/Action/原稿本文/アイキャッチ等）は
+    まだ存在しないため含めない。"""
+    return {
+        PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
+        PROP_URL: {"url": repo_url},
+        PROP_SOURCE: {"select": {"name": source}},
+        PROP_ENGAGEMENT: {"number": engagement},
+        PROP_SCORE: {"number": score},
+        # ストックのみ保存の時点ではDecision Score = Step1軽量スクリーニングスコア。
+        PROP_STATUS: {"select": {"name": STATUS_STOCKED}},
+        PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": reason[:2000]}}]},
+    }
+
+
+def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | None:
+    """スクリーニングスコアがNOTION_SAVE_THRESHOLD_SCORE以上の案件を、
+    詳細記事化するか否かに関わらずメタデータのみで全件Notion DBへ保存する。
+    Notion DB自体を「検索可能なストック資産」として蓄積するための入口。
+
+    戻り値: 作成に成功した場合はNotionページID（後で深掘り時にアップグレード
+    更新するために使う）。失敗時・Notion未設定時はNone。"""
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        return None
+
+    name = repo.get("nameWithOwner")
+    repo_url = repo.get("url")
+    source = repo.get("source", "GitHub")
+    engagement = repo.get("stargazerCount", 0)
+
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": build_metadata_notion_properties(name, repo_url, score, reason, source, engagement),
+    }
+    try:
+        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        if res.status_code == 200:
+            page_id = res.json().get("id")
+            logger.info(f"[NOTION STOCK SAVED] {name}: {score}点 -> メタデータのみでストックDBへ保存（page_id={page_id}）")
+            return page_id
+        logger.error(f"[NOTION STOCK ERROR] {name} -> {res.text}")
+        return None
+    except Exception as e:
+        logger.error(f"[NOTION STOCK EXCEPTION] {name}: {e}")
+        return None
+
+
+def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, score_breakdown_text,
+                                     what_text, why_important_text, why_not_important_text,
+                                     action_text, spdx_id, clean_manuscript, paradigm_shift_text="",
+                                     alternative_comparison_text="", migration_cost_text="",
+                                     source: str = "GitHub", engagement: int = 0, title_text: str = "",
+                                     eyecatch_url: str = "") -> bool:
+    """スクリーニング段階でメタデータのみ保存済みの既存Notionページを、
+    Deep Diveのフル記事内容でアップグレード更新する（新規ページは作らない）。
+    プロパティ更新（PATCH /pages/{id}）と、本文Markdownブロックの追加
+    （PATCH /blocks/{id}/children）の2回のAPI呼び出しに分かれる点に注意。"""
+    if not NOTION_API_KEY:
+        return False
+
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+
+    properties = build_notion_properties(
+        repo_name, repo_url, score, score_breakdown_text, what_text,
+        why_important_text, why_not_important_text, action_text,
+        spdx_id, paradigm_shift_text, alternative_comparison_text,
+        migration_cost_text, source, engagement, title_text, eyecatch_url,
+    )
+
+    try:
+        res = requests.patch(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            json={"properties": properties},
+            headers=headers,
+            timeout=10,
+        )
+        if res.status_code != 200:
+            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res.text}")
+            return False
+
+        children = build_notion_manuscript_children(clean_manuscript)
+        res2 = requests.patch(
+            f"https://api.notion.com/v1/blocks/{page_id}/children",
+            json={"children": children},
+            headers=headers,
+            timeout=10,
+        )
+        if res2.status_code != 200:
+            logger.error(f"[NOTION UPGRADE CHILDREN ERROR] {repo_name} -> {res2.text}")
+            return False
+
+        logger.info(f"[NOTION UPGRADED] {repo_name} -> ストック済みページをDeep Dive記事へアップグレード完了")
+        return True
+    except Exception as e:
+        logger.error(f"[NOTION UPGRADE EXCEPTION] {repo_name}: {e}")
         return False
 
 # ==========================================
@@ -1176,6 +1335,272 @@ def get_existing_repo_urls():
     return existing_urls
 
 # ==========================================
+# 6b. 月末ダイジェスト: 当月の全データセットを集計・パッケージング
+# ==========================================
+# ダイジェストMarkdownのローカル保存先。GitHub Actions実行後はコミットまで
+# 行うため、成果物として永続化される（詳細はupload_digest_to_github参照）。
+MONTHLY_DIGEST_OUTPUT_DIR = os.environ.get("MONTHLY_DIGEST_OUTPUT_DIR", "monthly_digests")
+MONTHLY_DIGEST_GITHUB_DIR = os.environ.get("MONTHLY_DIGEST_GITHUB_DIR", "monthly_digests")
+# 月間の蓄積件数がこれを超える運用は現状想定していないが、超えた場合でも
+# パイプライン自体は止めずに先頭N件のみを集計対象とする（安全弁）。
+MONTHLY_DIGEST_MAX_ITEMS = int(os.environ.get("MONTHLY_DIGEST_MAX_ITEMS", "500"))
+
+
+def _is_last_day_of_month(target_date) -> bool:
+    """target_date（date型、JST想定）が月末日かどうかを判定する。"""
+    return (target_date + timedelta(days=1)).month != target_date.month
+
+
+def _month_range_utc(target_date):
+    """
+    target_date（JSTの日付）が属する月の [月初0:00, 翌月月初0:00) を
+    Notion APIのcreated_timeフィルタに渡せるUTC ISO8601文字列として返す。
+    """
+    jst = timezone(timedelta(hours=9))
+    first_day_jst = datetime(target_date.year, target_date.month, 1, tzinfo=jst)
+    if target_date.month == 12:
+        next_month_first_jst = datetime(target_date.year + 1, 1, 1, tzinfo=jst)
+    else:
+        next_month_first_jst = datetime(target_date.year, target_date.month + 1, 1, tzinfo=jst)
+    start_utc = first_day_jst.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    end_utc = next_month_first_jst.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return start_utc, end_utc
+
+
+def fetch_monthly_dataset(start_utc: str, end_utc: str) -> list[dict] | None:
+    """
+    [start_utc, end_utc) の期間にNotion DBへ新規作成された全ページを取得する。
+    ページネーション対応。
+
+    重複チェック（get_existing_repo_urls）と異なり、ここでの取得失敗は
+    「過去記事の誤重複公開」のような事故には繋がらないため、Fail-Closedで
+    パイプライン全体を止めることはしない。失敗時はNoneを返し、呼び出し元は
+    今回のダイジェスト生成のみをスキップして日次パイプライン本体は継続する。
+    """
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        return None
+
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+
+    items: list[dict] = []
+    next_cursor = None
+    while True:
+        payload = {
+            "filter": {
+                "and": [
+                    {"timestamp": "created_time", "created_time": {"on_or_after": start_utc}},
+                    {"timestamp": "created_time", "created_time": {"before": end_utc}},
+                ]
+            },
+            "page_size": 100,
+        }
+        if next_cursor:
+            payload["start_cursor"] = next_cursor
+
+        res = _query_notion_db_with_retry(url, headers, payload)
+        if res is None:
+            logger.error("[MONTHLY DIGEST] Notion問い合わせに失敗したため、当月データセットを取得できませんでした。")
+            return None
+
+        data = res.json()
+        for page in data.get("results", []):
+            props = page.get("properties", {})
+            name = "".join(t.get("plain_text", "") for t in props.get(PROP_NAME, {}).get("title", []))
+            page_url = props.get(PROP_URL, {}).get("url") or ""
+            source = (props.get(PROP_SOURCE, {}).get("select") or {}).get("name", "Unknown")
+            status = (props.get(PROP_STATUS, {}).get("select") or {}).get("name", "Unknown")
+            score = props.get(PROP_SCORE, {}).get("number")
+            items.append({
+                "name": name or "(無題)",
+                "url": page_url,
+                "source": source,
+                "status": status,
+                "score": score,
+            })
+
+        if data.get("has_more") and len(items) < MONTHLY_DIGEST_MAX_ITEMS:
+            next_cursor = data.get("next_cursor")
+        else:
+            if data.get("has_more"):
+                logger.warning(
+                    f"[MONTHLY DIGEST] 当月データが上限({MONTHLY_DIGEST_MAX_ITEMS}件)に達したため、"
+                    "それ以降は集計対象から除外します（安全弁）。"
+                )
+            break
+
+    return items
+
+
+def build_monthly_digest_markdown(target_date, items: list[dict]) -> str:
+    """
+    当月データセットから、運用者・購読者向けの月次ダイジェストMarkdownを
+    組み立てる。Deep Dive済み案件（Step2詳細スコア）とストックのみ案件
+    （Step1軽量スコア）は採点基準が異なるため、Statusプロパティで区別し、
+    セクション・ランキングを分離して混同を防ぐ。
+    """
+    month_label = f"{target_date.year}年{target_date.month}月"
+
+    by_status: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    for it in items:
+        by_status[it["status"]] = by_status.get(it["status"], 0) + 1
+        by_source[it["source"]] = by_source.get(it["source"], 0) + 1
+
+    deep_dive_items = sorted(
+        (it for it in items if it["status"] == STATUS_DEEP_DIVE),
+        key=lambda x: (x["score"] or 0), reverse=True,
+    )
+    stocked_items_top10 = sorted(
+        (it for it in items if it["status"] == STATUS_STOCKED),
+        key=lambda x: (x["score"] or 0), reverse=True,
+    )[:10]
+
+    lines = [
+        f"# {month_label} 全データセットダイジェスト",
+        "",
+        f"- 総収集件数: {len(items)}件",
+        "- 内訳（ステータス別）: " + (", ".join(f"{k} {v}件" for k, v in by_status.items()) or "-"),
+        "- 内訳（ソース別）: " + (", ".join(f"{k} {v}件" for k, v in by_source.items()) or "-"),
+        "",
+        f"## Deep Dive記事一覧（{len(deep_dive_items)}件・Step2詳細スコア順）",
+        "",
+    ]
+    lines += (
+        [f"- [{it['name']}]({it['url']}) - {it['score']}点 / {it['source']}" for it in deep_dive_items]
+        or ["（今月はDeep Dive記事の生成はありませんでした）"]
+    )
+    lines += [
+        "",
+        "## ストックのみ案件 Top10（Step1軽量スクリーニングスコア順）",
+        "",
+    ]
+    lines += (
+        [f"- [{it['name']}]({it['url']}) - {it['score']}点 / {it['source']}" for it in stocked_items_top10]
+        or ["（該当なし）"]
+    )
+    lines += [
+        "",
+        "---",
+        "",
+        "※本ダイジェストはNotion DBへの当月新規保存分を自動集計したものです。",
+        "※「Decision Score」はDeep Dive済み案件ではStep2詳細スコア、ストックのみの"
+        "案件ではStep1軽量スクリーニングスコアであり、採点基準が異なります"
+        "（Statusプロパティで判別可能。詳細はPROP_STATUSのコメントを参照）。",
+    ]
+    return "\n".join(lines)
+
+
+def upload_digest_to_github(local_path: str, dest_filename: str) -> str | None:
+    """
+    月次ダイジェストMarkdownをGitHub Contents API経由でリポジトリへコミットし、
+    公開URL（raw.githubusercontent.com）を返す。アイキャッチ画像アップロード
+    （upload_eyecatch_to_github）と同一のコミットパターンを踏襲する。
+    Fail-Safe: 失敗時はNoneを返し、呼び出し元はTelegram通知のみで処理を継続する
+    （ローカルファイルはリポジトリのワークスペース上に残っているため、
+    Actions実行ログ・アーティファクトからも復旧可能）。
+    """
+    if not EYECATCH_GITHUB_REPO:
+        logger.warning("[DIGEST UPLOAD SKIP] GITHUB_REPOSITORY が未設定のためアップロードをスキップします。")
+        return None
+
+    dest_path = f"{MONTHLY_DIGEST_GITHUB_DIR}/{dest_filename}"
+    api_url = f"https://api.github.com/repos/{EYECATCH_GITHUB_REPO}/contents/{dest_path}"
+    headers = {
+        "Authorization": f"Bearer {GH_PAT}",
+        "Accept": "application/vnd.github+json",
+    }
+    try:
+        with open(local_path, "rb") as f:
+            content_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        existing_sha = None
+        get_res = requests.get(api_url, headers=headers, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=15)
+        if get_res.status_code == 200:
+            existing_sha = get_res.json().get("sha")
+
+        payload = {
+            "message": f"chore: add monthly digest {dest_filename}",
+            "content": content_b64,
+            "branch": EYECATCH_GITHUB_BRANCH,
+        }
+        if existing_sha:
+            payload["sha"] = existing_sha
+
+        put_res = requests.put(api_url, headers=headers, json=payload, timeout=30)
+        if put_res.status_code not in (200, 201):
+            logger.error(f"[DIGEST UPLOAD FAILED] {dest_filename}: {put_res.text}")
+            return None
+
+        raw_url = f"https://raw.githubusercontent.com/{EYECATCH_GITHUB_REPO}/{EYECATCH_GITHUB_BRANCH}/{dest_path}"
+        logger.info(f"[DIGEST UPLOAD] {dest_filename} -> {raw_url}")
+        return raw_url
+    except Exception as e:
+        logger.error(f"[DIGEST UPLOAD EXCEPTION] {dest_filename}: {e}")
+        return None
+
+
+def generate_monthly_digest(target_date=None):
+    """
+    月末に、当月Notion DBへ保存された全データセット（Deep Dive＋ストックのみ
+    双方）を集計し、Markdownダイジェストとしてパッケージング（ローカル保存＋
+    GitHubコミット）した上で運用者へTelegram通知する。
+
+    専用cronは設けず、毎日実行されるmain()の末尾から呼び出す設計とし、
+    内部で「今日がJSTで月末日か」を判定して該当日のみ実際に集計を行う
+    （月末日以外は即座に何もせず戻る）。
+    """
+    if target_date is None:
+        target_date = datetime.now(timezone(timedelta(hours=9))).date()
+
+    if not _is_last_day_of_month(target_date):
+        return
+
+    logger.info(f">>> [MONTHLY DIGEST] {target_date} は月末日のため、当月データセットのダイジェスト生成を開始します。")
+
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+        logger.warning("[MONTHLY DIGEST] Notion未設定のためダイジェスト生成をスキップします。")
+        return
+
+    start_utc, end_utc = _month_range_utc(target_date)
+    items = fetch_monthly_dataset(start_utc, end_utc)
+    if items is None:
+        send_telegram_alert(
+            "⚠️【月次ダイジェスト】Notion問い合わせに失敗したため、今月のダイジェスト生成をスキップしました。"
+        )
+        return
+
+    if not items:
+        logger.info("[MONTHLY DIGEST] 当月の新規データが0件のため、ダイジェスト生成をスキップします。")
+        return
+
+    digest_md = build_monthly_digest_markdown(target_date, items)
+
+    os.makedirs(MONTHLY_DIGEST_OUTPUT_DIR, exist_ok=True)
+    filename = f"{target_date.year}-{target_date.month:02d}_digest.md"
+    local_path = os.path.join(MONTHLY_DIGEST_OUTPUT_DIR, filename)
+    with open(local_path, "w", encoding="utf-8") as f:
+        f.write(digest_md)
+    logger.info(f"[MONTHLY DIGEST] ローカルにダイジェストを保存しました: {local_path}")
+
+    digest_url = upload_digest_to_github(local_path, filename)
+
+    deep_dive_count = sum(1 for it in items if it["status"] == STATUS_DEEP_DIVE)
+    stocked_count = sum(1 for it in items if it["status"] == STATUS_STOCKED)
+    msg = (
+        f"📦【月次ダイジェスト】{target_date.year}年{target_date.month}月分を集計しました。\n"
+        f"総件数: {len(items)}件（Deep Dive {deep_dive_count}件 / ストックのみ {stocked_count}件）\n"
+    )
+    msg += digest_url if digest_url else "（GitHubへのアップロードに失敗。リポジトリ内のローカル成果物を確認してください）"
+    send_telegram_alert(msg)
+    logger.info(msg)
+
+
+# ==========================================
 # 7. 「判断装置」プロンプト & 解析
 # ==========================================
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub"):
@@ -1400,7 +1825,13 @@ def _paid_area_length(note_draft: str, repo_name: str) -> int:
     _, paid_part = split_free_paid(note_draft, repo_name)
     return len(normalize_markdown_for_note(paid_part))
 
-def generate_intelligence_report(repo):
+def generate_intelligence_report(repo, notion_page_id: str | None = None):
+    """Deep Diveのフル記事を生成する。
+    notion_page_id が指定されている場合（=スクリーニング段階で既に
+    メタデータのみのストックページが作成済み）は、そのページをフル記事の
+    内容でアップグレード更新する。指定が無い場合（NOTION_SAVE_THRESHOLD_SCORE
+    未満だった案件が、それでもTOP_N_FOR_DEEP_DIVEに入った等のケース）は、
+    従来通り新規ページを作成する。"""
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
     url = repo.get("url")
@@ -1468,13 +1899,23 @@ def generate_intelligence_report(repo):
         except Exception as e:
             logger.warning(f"[EYECATCH SKIP] {name}: アイキャッチ画像生成に失敗しました: {e}")
 
-        save_to_notion(
-            name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
-            parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
-            spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
-            parsed["alternative_comparison_text"], parsed["migration_cost_text"],
-            source, stars, parsed["title_text"], eyecatch_url
-        )
+        if notion_page_id:
+            upgrade_notion_page_with_report(
+                notion_page_id,
+                name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
+                parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
+                spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
+                parsed["alternative_comparison_text"], parsed["migration_cost_text"],
+                source, stars, parsed["title_text"], eyecatch_url
+            )
+        else:
+            save_to_notion(
+                name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
+                parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
+                spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
+                parsed["alternative_comparison_text"], parsed["migration_cost_text"],
+                source, stars, parsed["title_text"], eyecatch_url
+            )
 
         return clean_manuscript
 
@@ -1724,6 +2165,29 @@ def main():
         key=lambda x: (x["score"], x["repo"].get("stargazerCount", 0)),
         reverse=True,
     )
+
+    # ---- 構造改修: Notion保存とDeep Dive記事生成の分離 ----
+    # NOTION_SAVE_THRESHOLD_SCORE以上のスクリーニング済み案件は、Deep Dive
+    # 記事化するか否かに関わらず「メタデータのみ」で全件Notion DBへ保存する。
+    # これによりNotion DB自体が検索可能なストック資産として蓄積される
+    # （TOP_N_FOR_DEEP_DIVEに入らなかった案件も、名称・概要・スコア等は失われない）。
+    stocked_count = 0
+    for item in screened:
+        if item["score"] >= NOTION_SAVE_THRESHOLD_SCORE:
+            item["notion_page_id"] = save_screening_metadata_to_notion(
+                item["repo"], item["score"], item["reason"]
+            )
+            if item["notion_page_id"]:
+                stocked_count += 1
+        else:
+            item["notion_page_id"] = None
+
+    logger.info(
+        f">>> [Step 2 結果] スクリーニング{len(screened)}件中、"
+        f"{stocked_count}件をメタデータのみでストックDBへ保存"
+        f"（しきい値 {NOTION_SAVE_THRESHOLD_SCORE}点以上）"
+    )
+
     top_candidates = screened[:TOP_N_FOR_DEEP_DIVE]
 
     logger.info(
@@ -1736,29 +2200,38 @@ def main():
     )
 
     # ---- Step 2: 上位N件のみフルレポート生成 ----
+    # ストック保存段階でNotionページが既に作成済み（notion_page_idあり）の場合は
+    # そのページをアップグレード更新し、無い場合（しきい値未満だった案件が
+    # それでも上位N件に入った場合等）のみ新規ページを作成する。
     generated_count = 0
     for candidate in top_candidates:
         repo = candidate["repo"]
         name = repo.get("nameWithOwner")
         logger.info(f" [DEEP DIVE] {name}（スクリーニングスコア {candidate['score']}点）")
         try:
-            report = generate_intelligence_report(repo)
+            report = generate_intelligence_report(repo, notion_page_id=candidate.get("notion_page_id"))
             if report:
                 generated_count += 1
         except DailyQuotaExhaustedError:
             send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（深掘り生成中）。")
             break
 
-    if generated_count > 0:
+    if generated_count > 0 or stocked_count > 0:
         msg = (
             f"✅ 【AI note事業】本日は{len(deduped_repos)}件をスクリーニングし、"
-            f"上位{generated_count}件の完全原稿を生成しました。Notionを確認してください。\n"
+            f"{stocked_count}件をストックDBへ保存、うち上位{generated_count}件の完全原稿を生成しました。"
+            f"Notionを確認してください。\n"
             f"https://notion.so/{NOTION_DATABASE_ID}"
         )
         send_telegram_alert(msg)
         logger.info(msg)
     else:
         logger.info("本日は生成条件を満たす記事がありませんでした。")
+
+    # ---- 月末ダイジェスト ----
+    # 専用cronは設けず、日次実行に相乗りする形で毎回呼び出す。
+    # 関数内部で「今日が月末日か」を判定するため、月末日以外は即座に無処理で戻る。
+    generate_monthly_digest()
 
 if __name__ == "__main__":
     main()
