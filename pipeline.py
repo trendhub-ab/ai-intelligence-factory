@@ -34,6 +34,28 @@ if not GEMINI_API_KEY or not GH_PAT:
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None):
+    """
+    google-genai SDK推奨のChat.send_message経由でGeminiを呼び出す薄いラッパー。
+
+    【背景】
+    Models.generate_content を直接呼び出すと、SDK側から
+    "Direct use of automatic function calling (AFC) in Models.generate_content
+    is not recommended. Instead, we recommend to use AFC in Chat.send_message."
+    という非推奨警告が毎回出力される。これは単なるログ汚れではなく、
+    SDKの将来のバージョンアップでModels.generate_content周りの挙動・互換性が
+    変わった場合に、無人運用中のパイプラインが予告なく停止するリスクを孕む。
+
+    【方針】
+    本パイプラインの各呼び出しは、それぞれ独立した1問1答（前ターンの文脈を
+    引き継がない）であるため、呼び出しのたびに使い捨てのChatセッションを
+    生成し、1回だけsend_messageする形に統一する。これにより会話継続の状態を
+    一切持たせず、既存の「呼び出し単位で完結する」という挙動を変えないまま、
+    SDK推奨のエントリーポイントへ置き換える。
+    """
+    chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
+    return chat.send_message(prompt)
+
 CANDIDATE_MODELS = os.environ.get(
     "GEMINI_MODEL_CANDIDATES",
     "gemini-3.1-flash-lite,gemini-3.5-flash"
@@ -153,9 +175,7 @@ def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
         model_name = model_name.strip()
         for attempt in range(PING_MAX_RETRIES + 1):
             try:
-                client.models.generate_content(
-                    model=model_name, contents="ping", config={"max_output_tokens": 8}
-                )
+                _generate_via_chat(model_name, "ping", config={"max_output_tokens": 8})
                 logger.info(f"モデル解決成功: {model_name}")
                 return model_name
             except APIError as e:
@@ -184,7 +204,7 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 5):
     for attempt in range(max_retries + 1):
         try:
             time.sleep(3)
-            return client.models.generate_content(model=SELECTED_MODEL, contents=prompt)
+            return _generate_via_chat(SELECTED_MODEL, prompt)
         except APIError as e:
             if e.code == 503:
                 if attempt < max_retries:
@@ -212,6 +232,34 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 5):
 # 正規のMarkdownとしてそのまま保持する方針に変更している。
 # ここでは「Geminiが稀に混入させる崩れ（全体を```で包む等）」だけを
 # 安全に取り除く、軽量な正規化のみを行う。
+
+# 【note.comの太字（**）認識に関する既知の癖】
+# note.comのMarkdownペースト機能は、**の直後・直前が「」『』（）等の括弧記号や
+# 引用符である場合に、太字として正しく認識できないことがある
+# （例: **「重要な用語」** は太字化されず記号がそのまま残ることがある一方、
+# 括弧を外側に出した 「**重要な用語**」 は正しく太字化される）。
+# プロンプト側でもこのパターンを避けるよう明示的に指示しているが、
+# 生成AIの出力ゆれに対する保険として、太字が括弧付きの語を丸ごと囲んで
+# いるだけの単純なケースに限り、括弧を太字の外側へ機械的に移動させる。
+_BOLD_BOUNDARY_BRACKET_FIXES = [
+    (re.compile(r"\*\*「([^「」]+)」\*\*"), r"「**\1**」"),
+    (re.compile(r"\*\*『([^『』]+)』\*\*"), r"『**\1**』"),
+    (re.compile(r"\*\*（([^（）]+)）\*\*"), r"（**\1**）"),
+    (re.compile(r'\*\*"([^"]+)"\*\*'), r'"**\1**"'),
+    (re.compile(r"\*\*'([^']+)'\*\*"), r"'**\1**'"),
+]
+
+def _fix_bold_boundary_brackets(text: str) -> str:
+    """
+    太字（**）が括弧・引用符付きの語を丸ごと囲んでいる場合、
+    note.com側で太字として認識されるよう、括弧を太字の外側へ移動する。
+    括弧が太字全体の先頭と末尾を完全に囲んでいる単純なケースのみを対象とし、
+    太字の一部だけに括弧が掛かっている複雑なケースは誤変換を避けるため対象外とする。
+    """
+    for pattern, repl in _BOLD_BOUNDARY_BRACKET_FIXES:
+        text = pattern.sub(repl, text)
+    return text
+
 def normalize_markdown_for_note(text: str) -> str:
     """
     note.comのMarkdownペースト機能にそのまま乗せられる形へ軽く正規化する。
@@ -230,6 +278,9 @@ def normalize_markdown_for_note(text: str) -> str:
     # 万一Geminiが箇条書きに全角中黒「・」を使ってしまった場合の保険として、
     # note.comが公式対応する「- ＋半角スペース」記法に変換する。
     stripped = re.sub(r"^\s*・\s*", "- ", stripped, flags=re.MULTILINE)
+
+    # 太字の内側先頭・末尾が括弧記号のケースを補正（note.com側の太字認識対策）。
+    stripped = _fix_bold_boundary_brackets(stripped)
 
     # 連続する空行を1つに圧縮（Markdownの段落区切りとしては空行1つで十分なため）
     stripped = re.sub(r"\n{3,}", "\n\n", stripped)
@@ -608,12 +659,27 @@ def fetch_arxiv_ai_ml(limit: int = 10):
     レスポンスはJSONではなくAtom XMLのため、他ソースと異なり
     xml.etree.ElementTreeでパースしてからnormalize_item()に通す。
     エントリ単位のパース失敗は個別に握りつぶす。
+
+    【既知の落とし穴・search_queryへの生の"+"埋め込み禁止】
+    以前の実装では search_query の値に "cat:cs.AI+OR+cat:cs.LG" のように
+    論理演算子の区切りとして生の"+"を直接埋め込んでいた。requestsのparams
+    辞書経由でリクエストを送ると、値の中に含まれる生の"+"は本来のスペース
+    ("+"はURLエンコード上スペースを表す特殊文字)と区別するため"%2B"へ
+    二重エスケープされてしまう。結果としてarXiv側には
+    "search_query=cat%3Acs.AI%2BOR%2Bcat%3Acs.LG" が送信され、
+    AND/OR演算子として認識されない不正なクエリとなり、
+    エラーにはならないままヒット0件（空のAtomフィード）が返っていた
+    （この現象はarxiv.py等の外部ライブラリでも既知の不具合として報告されている）。
+    対策として、区切りには生の"+"ではなく通常の半角スペースを使う。
+    これによりrequestsが自動でスペースを"+"へエンコードし、
+    arXiv APIが期待する "cat:cs.AI+OR+cat:cs.LG" という正しい形が
+    実際のHTTPリクエストとして送信される。
     """
     logger.info(">>> [Step 1] ArXiv一次データの自動巡回...")
     items = []
     url = "http://export.arxiv.org/api/query"
     params = {
-        "search_query": "cat:cs.AI+OR+cat:cs.LG",
+        "search_query": "cat:cs.AI OR cat:cs.LG",
         "sortBy": "submittedDate",
         "sortOrder": "descending",
         "max_results": limit,
@@ -923,6 +989,11 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
   自動的に反映される）。
 ・小見出しには "### " を使うこと（有料エリア内の主要項目の区切りに活用する）。
 ・重要な固有名詞・数値・結論は "**太字**" で強調すること。
+・太字にする際、括弧記号「」『』（）や引用符は太字の内側に含めないこと
+  （note.comのMarkdownペースト機能は、**の直後・直前が括弧記号の場合に
+  太字として認識できないことがあるため）。括弧付きの用語を強調する場合は、
+  括弧を太字の外側に出すこと。
+  誤: **「重要な用語」**　→　正: 「**重要な用語**」
 ・箇条書きは半角ハイフン「- 」（ハイフン＋半角スペース）を使うこと（note.comの
   Markdownペースト機能が公式対応している記法のため、全角中黒は使わないこと）。
 ・note原稿本文中、無料エリアと有料エリアの境目には、必ず「---有料エリア---」という
@@ -1130,9 +1201,9 @@ def screen_repo(repo) -> dict:
         try:
             # RPM上限保護: 候補が多いソース構成でも一定間隔を空けてから呼び出す。
             time.sleep(SCREENING_PACING_SECONDS)
-            response = client.models.generate_content(
-                model=SELECTED_MODEL,
-                contents=prompt,
+            response = _generate_via_chat(
+                SELECTED_MODEL,
+                prompt,
                 config={"max_output_tokens": 30},  # 1行しか返させないため極小に固定
             )
             parsed = _parse_screening_response(response.text)
@@ -1305,12 +1376,28 @@ def main():
         logger.error("日次クォータ到達のため、スクリーニング段階で処理を打ち切ります。")
         return
 
-    screened.sort(key=lambda x: x["score"], reverse=True)
+    # 並び替え: スクリーニングスコア（主キー）降順。
+    # 【タイブレークルール】スコアが同点の場合は、engagement（Stars / HN Score /
+    # Votes等、ソースごとの人気指標をstargazerCountに正規化済み）の降順を
+    # 副キーとして使う。これにより「内容の質は同等と評価されたが、より注目度の
+    # 高い（＝読者の関心を引きやすい）案件」を優先的に深掘り対象へ回す。
+    # ArXivはengagementが常に0固定（人気指標が存在しないソースのため）なので、
+    # 他ソースと同点だった場合は自動的に劣後する。これは意図した挙動であり、
+    # 論文ソースを機械的に排除するものではなく、「同点なら注目度で決める」
+    # という一貫したルールの自然な帰結である。
+    screened.sort(
+        key=lambda x: (x["score"], x["repo"].get("stargazerCount", 0)),
+        reverse=True,
+    )
     top_candidates = screened[:TOP_N_FOR_DEEP_DIVE]
 
     logger.info(
         f">>> [Step 2 結果] 上位{len(top_candidates)}件を深掘り対象に選定: "
-        + ", ".join(f"{c['repo'].get('nameWithOwner')}({c['score']}点)" for c in top_candidates)
+        + ", ".join(
+            f"{c['repo'].get('nameWithOwner')}({c['score']}点, "
+            f"engagement={c['repo'].get('stargazerCount', 0)})"
+            for c in top_candidates
+        )
     )
 
     # ---- Step 2: 上位N件のみフルレポート生成 ----
