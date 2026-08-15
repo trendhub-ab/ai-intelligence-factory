@@ -166,6 +166,12 @@ GEMINI_MODEL_DAILY_BUDGETS = {
     "gemini-3.5-flash": int(os.environ.get("GEMINI_35_FLASH_DAILY_BUDGET", "18")),
 }
 MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS", "5"))
+PENDING_RETRY_PER_RUN = int(os.environ.get("PENDING_RETRY_PER_RUN", "3"))
+# Revision 3.2導入前にAPI障害をQuality Failedとして記録したページを、最初の1回だけ救済する。
+PENDING_RETRY_MIGRATION_STATE_PATH = os.environ.get(
+    "PENDING_RETRY_MIGRATION_STATE_PATH", ".runtime/pending_retry_migration.json"
+)
+PENDING_RETRY_LEGACY_MIGRATION_LIMIT = int(os.environ.get("PENDING_RETRY_LEGACY_MIGRATION_LIMIT", "3"))
 
 # ---- 既存記事A/B比較用・再生成テストモード ----
 # 通常運用では必ずFalse。TrueのときはNotion DB内の既存Deep Diveを読み出し、
@@ -303,6 +309,7 @@ PROP_EVIDENCE_URLS = "Evidence URLs"
 CONTENT_STATUS_STOCKED = "Stocked"
 CONTENT_STATUS_DEEP_DIVE = "Deep Dive"
 CONTENT_STATUS_QUALITY_FAILED = "Quality Failed"
+CONTENT_STATUS_PENDING_RETRY = "Pending Retry"
 ARTICLE_STATUS_NOT_PLANNED = "Not Planned"
 ARTICLE_STATUS_READY = "Ready"
 VISIBILITY_SUBSCRIBER_ONLY = "Subscriber Only"
@@ -1724,6 +1731,39 @@ def update_notion_quality_failed(page_id: str, repo_name: str,
     return False
 
 
+def update_notion_pending_retry(page_id: str, repo_name: str,
+                                grounding_status: str = GROUNDING_METADATA_ONLY,
+                                evidence_urls: list[str] | None = None) -> bool:
+    """一時的なGemini/API障害を品質不合格と混同せず、次回再試行待ちにする。"""
+    if not page_id or not NOTION_API_KEY:
+        return False
+    evidence_text = "\n".join((evidence_urls or [])[:3])[:2000]
+    props = {
+        PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_PENDING_RETRY}},
+        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NOT_PLANNED}},
+        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_SUBSCRIBER_ONLY}},
+        PROP_GROUNDING_STATUS: {"select": {"name": grounding_status}},
+        PROP_EVIDENCE_URLS: {"rich_text": [{"text": {"content": evidence_text}}]},
+    }
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_API_VERSION,
+    }
+    try:
+        res = requests.patch(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            json={"properties": props}, headers=headers, timeout=10,
+        )
+        if res.status_code == 200:
+            logger.info(f"[NOTION PENDING RETRY] {repo_name} -> 次回Deep Diveへ回送")
+            return True
+        logger.error(f"[NOTION PENDING RETRY ERROR] {repo_name} -> {res.text}")
+    except Exception as e:
+        logger.error(f"[NOTION PENDING RETRY EXCEPTION] {repo_name}: {e}")
+    return False
+
+
 # ==========================================
 # 6. 一次データ収集（マルチソース） & 法務ゲート
 # ==========================================
@@ -2463,6 +2503,152 @@ def _notion_plain_text(prop: dict) -> str:
     """Notion title/rich_textプロパティから表示文字列を安全に取り出す。"""
     items = prop.get("title") or prop.get("rich_text") or []
     return "".join(x.get("plain_text") or x.get("text", {}).get("content", "") for x in items).strip()
+
+
+def _notion_page_to_retry_candidate(page: dict) -> dict | None:
+    """Notionの再試行待ちページをDeep Dive入力へ安全に復元する。"""
+    props = page.get("properties", {})
+    page_url = (props.get(PROP_URL, {}).get("url") or "").strip()
+    name = _notion_plain_text(props.get(PROP_NAME, {}))
+    if not page_url or not name:
+        logger.warning(f"[PENDING RETRY SKIP] page={page.get('id')}: Name/URL不足")
+        return None
+    source = (props.get(PROP_SOURCE, {}).get("select") or {}).get("name") or "HackerNews"
+    screening_score = props.get(PROP_SCREENING_SCORE, {}).get("number")
+    if screening_score is None:
+        screening_score = props.get(PROP_SCORE, {}).get("number")
+    return {
+        "notion_page_id": page.get("id"),
+        "screening_score": int(screening_score or NOTION_SAVE_THRESHOLD_SCORE),
+        "screening_reason": _notion_plain_text(props.get(PROP_SCREENING_REASON, {})) or "Notion再試行待ち",
+        "repo": {
+            "nameWithOwner": name,
+            "description": _notion_plain_text(props.get(PROP_SOURCE_SUMMARY, {})) or "Notion再試行待ち",
+            "url": page_url,
+            "stargazerCount": int(props.get(PROP_ENGAGEMENT, {}).get("number") or 0),
+            "source": source,
+            "publishedAt": (props.get(PROP_PUBLISHED_AT, {}).get("date") or {}).get("start"),
+            "sourceContext": "",
+            "primaryUrl": page_url,
+            "sourceDetails": {"retry_note": "Notion Pending Retryから再構成"},
+            "licenseInfo": ({"spdxId": _notion_plain_text(props.get(PROP_LICENSE, {}))}
+                            if source == "GitHub" and _notion_plain_text(props.get(PROP_LICENSE, {})) else None),
+        },
+    }
+
+
+def get_pending_retry_items(limit: int = PENDING_RETRY_PER_RUN) -> list[dict] | None:
+    """Pending Retryを次回Dailyの最優先Deep Dive候補として取得する。"""
+    if not NOTION_API_KEY or not NOTION_DATA_SOURCE_ID:
+        return []
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_API_VERSION,
+    }
+    payload = {
+        "page_size": min(max(limit, 1), 100),
+        "filter": {"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_PENDING_RETRY}},
+        "sorts": [{"property": PROP_ANALYZED_AT, "direction": "ascending"}],
+    }
+    res = _query_notion_db_with_retry(
+        f"https://api.notion.com/v1/data_sources/{NOTION_DATA_SOURCE_ID}/query", headers, payload
+    )
+    if res is None:
+        logger.error("[PENDING RETRY] Notion再試行待ち取得に失敗。新規処理だけで続行します。")
+        return None
+    items = [item for page in res.json().get("results", [])
+             if (item := _notion_page_to_retry_candidate(page))]
+    logger.info(f"[PENDING RETRY] {len(items)}件を次回Deep Diveの優先候補として取得")
+    return items
+
+
+def _pending_retry_migration_state() -> tuple[bool, str | None]:
+    """旧Quality Failed救済を一度だけ行うためのGitHub上の完了フラグを読む。"""
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not repo or not GH_PAT:
+        return True, None
+    headers = {
+        "Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        res = requests.get(
+            f"https://api.github.com/repos/{repo}/contents/{PENDING_RETRY_MIGRATION_STATE_PATH.lstrip('/')}",
+            headers=headers, params={"ref": os.environ.get("GEMINI_COUNTER_BRANCH", "main")}, timeout=12,
+        )
+        if res.status_code == 404:
+            return False, None
+        if res.status_code != 200:
+            logger.error(f"[PENDING RETRY MIGRATION] state read failed: HTTP {res.status_code}")
+            return True, None
+        data = json.loads(base64.b64decode(res.json().get("content", "")).decode("utf-8"))
+        return bool(data.get("completed")), res.json().get("sha")
+    except Exception as e:
+        logger.error(f"[PENDING RETRY MIGRATION] state read failed: {e}")
+        return True, None
+
+
+def _mark_pending_retry_migration_completed(sha: str | None) -> bool:
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not repo or not GH_PAT:
+        return False
+    headers = {
+        "Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    body = json.dumps({"completed": True, "completed_at": datetime.now(timezone.utc).isoformat()}, ensure_ascii=False)
+    payload = {
+        "message": "chore: complete pending retry legacy migration",
+        "content": base64.b64encode((body + "\n").encode("utf-8")).decode("ascii"),
+        "branch": os.environ.get("GEMINI_COUNTER_BRANCH", "main"),
+    }
+    if sha:
+        payload["sha"] = sha
+    try:
+        res = requests.put(
+            f"https://api.github.com/repos/{repo}/contents/{PENDING_RETRY_MIGRATION_STATE_PATH.lstrip('/')}",
+            headers=headers, json=payload, timeout=15,
+        )
+        if res.status_code in (200, 201):
+            return True
+        logger.error(f"[PENDING RETRY MIGRATION] state write failed: HTTP {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"[PENDING RETRY MIGRATION] state write failed: {e}")
+    return False
+
+
+def migrate_legacy_quality_failed_to_pending_retry() -> int:
+    """Revision導入前の誤分類済みページを一回限りでPending Retryへ救済する。"""
+    done, state_sha = _pending_retry_migration_state()
+    if done or PENDING_RETRY_LEGACY_MIGRATION_LIMIT <= 0 or not NOTION_API_KEY or not NOTION_DATA_SOURCE_ID:
+        return 0
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}", "Content-Type": "application/json",
+        "Notion-Version": NOTION_API_VERSION,
+    }
+    payload = {
+        "page_size": min(PENDING_RETRY_LEGACY_MIGRATION_LIMIT, 100),
+        "filter": {"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_QUALITY_FAILED}},
+        "sorts": [{"property": PROP_ANALYZED_AT, "direction": "descending"}],
+    }
+    res = _query_notion_db_with_retry(
+        f"https://api.notion.com/v1/data_sources/{NOTION_DATA_SOURCE_ID}/query", headers, payload
+    )
+    if res is None:
+        return 0
+    migrated = 0
+    pages = res.json().get("results", [])
+    for page in pages:
+        candidate = _notion_page_to_retry_candidate(page)
+        if candidate and update_notion_pending_retry(
+            candidate["notion_page_id"], candidate["repo"]["nameWithOwner"],
+            GROUNDING_METADATA_ONLY, [candidate["repo"]["url"]],
+        ):
+            migrated += 1
+    if len(pages) == migrated and _mark_pending_retry_migration_completed(state_sha):
+        logger.warning(f"[PENDING RETRY MIGRATION] 旧Quality Failed {migrated}件を一度だけ救済")
+    return migrated
 
 
 def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] | None:
@@ -3900,6 +4086,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 if attempt < MAX_QUALITY_RETRIES:
                     continue
                 logger.error(f"[FACT GATE FAILED] {name}: model output truncated")
+                if persist_results and notion_page_id:
+                    update_notion_quality_failed(
+                        notion_page_id, name, last_grounding.get("grounding_status", GROUNDING_FAILED),
+                        last_grounding.get("evidence_urls", []),
+                    )
                 return None
             try:
                 parsed = _parse_gemini_response(response.text or "")
@@ -4024,22 +4215,57 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
-        raise
-    except GeminiCallTimeoutError as e:
-        logger.error(f"[DEEP DIVE TIMEOUT SKIP] {name}: {e}")
         if persist_results and notion_page_id:
-            update_notion_quality_failed(notion_page_id, name, GROUNDING_FAILED, [primary_url] if primary_url else [])
+            update_notion_pending_retry(
+                notion_page_id, name, last_grounding.get("grounding_status", GROUNDING_METADATA_ONLY),
+                last_grounding.get("evidence_urls", [primary_url] if primary_url else []),
+            )
+        raise
+    except NoAvailableModelError as e:
+        logger.warning(f"[DEEP DIVE PENDING RETRY] {name}: model unavailable: {e}")
+        if persist_results and notion_page_id:
+            update_notion_pending_retry(
+                notion_page_id, name, last_grounding.get("grounding_status", GROUNDING_METADATA_ONLY),
+                last_grounding.get("evidence_urls", [primary_url] if primary_url else []),
+            )
+        return None
+    except GeminiCallTimeoutError as e:
+        logger.warning(f"[DEEP DIVE PENDING RETRY] {name}: timeout: {e}")
+        if persist_results and notion_page_id:
+            update_notion_pending_retry(
+                notion_page_id, name, last_grounding.get("grounding_status", GROUNDING_METADATA_ONLY),
+                last_grounding.get("evidence_urls", [primary_url] if primary_url else []),
+            )
         return None
     except GeminiBudgetExceededError as e:
         logger.warning(f"[GEMINI BUDGET STOP] {name}: {e}")
+        if persist_results and notion_page_id:
+            update_notion_pending_retry(
+                notion_page_id, name, last_grounding.get("grounding_status", GROUNDING_METADATA_ONLY),
+                last_grounding.get("evidence_urls", [primary_url] if primary_url else []),
+            )
         return None
+    except APIError as e:
+        code = getattr(e, "code", None)
+        if code in (429, 503):
+            logger.warning(f"[DEEP DIVE PENDING RETRY] {name}: HTTP {code}")
+            if persist_results and notion_page_id:
+                update_notion_pending_retry(
+                    notion_page_id, name, last_grounding.get("grounding_status", GROUNDING_METADATA_ONLY),
+                    last_grounding.get("evidence_urls", [primary_url] if primary_url else []),
+                )
+            return None
+        raise
     except Exception as e:
-        logger.error(f"[DEEP DIVE FAILED] {name}: {e}")
+        logger.error(f"[DEEP DIVE PENDING RETRY] {name}: unexpected error: {e}")
         page_id = notion_page_id
         if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
         if persist_results and page_id:
-            update_notion_quality_failed(page_id, name, last_grounding.get("grounding_status", GROUNDING_FAILED), last_grounding.get("evidence_urls", []))
+            update_notion_pending_retry(
+                page_id, name, last_grounding.get("grounding_status", GROUNDING_METADATA_ONLY),
+                last_grounding.get("evidence_urls", [primary_url] if primary_url else []),
+            )
         return None
 
 
@@ -4276,6 +4502,41 @@ def main():
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
 
+    # API障害で止まった既存候補を、新規収集より先に救済する。
+    migrate_legacy_quality_failed_to_pending_retry()
+    pending_items = get_pending_retry_items()
+    generated_count = 0
+    attempted = 0
+    daily_quota_stop = False
+    for pending in pending_items or []:
+        if generated_count >= TOP_N_FOR_DEEP_DIVE or attempted >= MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS:
+            break
+        if not GEMINI_BUDGET.can_request():
+            logger.warning("[PENDING RETRY STOP] Gemini local budget残量なし")
+            break
+        attempted += 1
+        repo = pending["repo"]
+        name = repo.get("nameWithOwner")
+        logger.info(f" [PENDING RETRY {attempted}] {name}（Screening {pending['screening_score']}点）")
+        try:
+            report = generate_intelligence_report(
+                repo, notion_page_id=pending.get("notion_page_id"),
+                screening_score=pending.get("screening_score"),
+                screening_reason=pending.get("screening_reason", ""),
+            )
+            if report:
+                generated_count += 1
+        except DailyQuotaExhaustedError:
+            send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（Pending Retry中）。")
+            daily_quota_stop = True
+            break
+
+    if daily_quota_stop:
+        logger.info("[PIPELINE STOP] Pending Retryの再試行中に日次クォータへ到達。新規処理は行いません。")
+        logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+        return
+
     deduped_repos = []
     for repo in safe_repos:
         repo_url = (repo.get("url") or "").rstrip("/")
@@ -4298,7 +4559,6 @@ def main():
 
     logger.info(f">>> 軽量スクリーニング開始（最大 {len(deduped_repos)} 件）")
     screened = []
-    daily_quota_stop = False
     try:
         for repo in deduped_repos:
             if not GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS):
@@ -4333,8 +4593,6 @@ def main():
         return
 
     # TOP_Nは『候補数』ではなく『最大成功記事数』。失敗時は4位・5位へBackfillする。
-    generated_count = 0
-    attempted = 0
     # Backfillは「記事候補の質」を下げない。Stock基準未満をAPIで無理に記事化しない。
     candidates = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
     if len(candidates) < TOP_N_FOR_DEEP_DIVE:
@@ -4342,7 +4600,7 @@ def main():
             f"[DEEP DIVE POOL] Stock基準{NOTION_SAVE_THRESHOLD_SCORE}点以上は{len(candidates)}件。"
             "低スコア候補で本数を水増しせず、この範囲だけで記事生成します。"
         )
-    for candidate in candidates:
+    for candidate_index, candidate in enumerate(candidates):
         if generated_count >= TOP_N_FOR_DEEP_DIVE:
             break
         if attempted >= MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS:
@@ -4366,6 +4624,12 @@ def main():
         except DailyQuotaExhaustedError:
             send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（Deep Dive中）。")
             daily_quota_stop = True
+            # 未試行のStockも重複除外で取り残されないよう、明示的に翌日キューへ回す。
+            for remaining in candidates[candidate_index + 1:]:
+                update_notion_pending_retry(
+                    remaining.get("notion_page_id"), remaining["repo"].get("nameWithOwner"),
+                    GROUNDING_METADATA_ONLY, [remaining["repo"].get("url", "")],
+                )
             break
 
     if generated_count == 0:
