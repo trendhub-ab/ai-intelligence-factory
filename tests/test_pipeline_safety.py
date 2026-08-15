@@ -292,7 +292,7 @@ class PipelineSafetyTests(unittest.TestCase):
                 "why_now": "一次情報が公開されました。",
                 "what": "これは検証用の説明です。",
                 "free_summary": ["事実を確認", "限界も確認"],
-                "judgement": "今は動かず追試を待ちます（WATCH）。",
+                "judgement": "今は動かず追試を待ちます（WATCH）（レベル3）。",
                 "paid_sections": [
                     {"heading": "根拠", "body": "根拠の範囲を説明します。"},
                     {"heading": "限界", "body": "現時点の限界を説明します。"},
@@ -306,6 +306,7 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertEqual("WATCH", parsed["decision_text"])
         self.assertEqual(50, parsed["score"])
         self.assertNotIn("WATCH", parsed["note_draft"])
+        self.assertNotIn("レベル3", parsed["note_draft"])
         self.assertIn("## この記事の結論", parsed["note_draft"])
         self.assertIn("### 結局、どうするべきか", parsed["note_draft"])
         self.assertIn("---有料エリア---", parsed["note_draft"])
@@ -316,6 +317,11 @@ class PipelineSafetyTests(unittest.TestCase):
         )
         for code in pipeline.ALLOWED_DECISIONS:
             self.assertNotRegex(prompt, rf"\b{code}\b")
+
+    def test_fact_gate_rejects_unparenthesized_numeric_decision_label(self):
+        failures = pipeline._find_decision_code_leak("これは動向を注視すべきレベル3の情報です。")
+        self.assertTrue(failures)
+        self.assertIn("numeric decision label", failures[0])
 
     def test_structured_parser_fails_closed_without_decision_level(self):
         payload = {"management": {"scores": {
