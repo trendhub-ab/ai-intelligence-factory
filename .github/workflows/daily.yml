@@ -11,8 +11,13 @@ concurrency:
   group: ai-intelligence-gemini-budget
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   run-pipeline:
+    # workflow_dispatchで別ブランチを選んだ場合は、本番データへ書き込まない。
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25 # Screening + Deep Dive retryを含む無人運転の上限。API側は別途120秒watchdogあり
 
@@ -41,6 +46,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: "2026-03-11"
           PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
           NOTION_SAVE_THRESHOLD_SCORE: "60"
@@ -50,6 +57,8 @@ jobs:
           # GoogleのRPDリセット境界に合わせ、America/Los_Angelesの日付でカウントする。
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
           GEMINI_PERSISTENT_COUNTER_PATH: ".runtime/gemini_daily_usage.json"
+          GEMINI_COUNTER_BRANCH: "main"
+          EYECATCH_GITHUB_BRANCH: "main"
           # モデル別Safety Cap。AI Studio表示のRPDに対して余裕を残す。
           GEMINI_35_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
