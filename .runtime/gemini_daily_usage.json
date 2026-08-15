@@ -3,13 +3,13 @@
     "gemini-3.5-flash": {
       "budget": 18,
       "by_kind": {
-        "deep_dive": 7,
+        "deep_dive": 8,
         "deep_dive_retry": 1,
         "quality_retry": 6
       },
       "exhausted": false,
-      "last_used_at": "2026-08-15T06:10:31.161541+00:00",
-      "used": 14
+      "last_used_at": "2026-08-15T06:11:01.158530+00:00",
+      "used": 15
     },
     "gemini-3.5-flash-lite": {
       "budget": 450,
@@ -45,5 +45,5 @@
     }
   },
   "quota_date": "2026-08-14",
-  "updated_at": "2026-08-15T06:10:31.161549+00:00"
+  "updated_at": "2026-08-15T06:11:01.158538+00:00"
 }
