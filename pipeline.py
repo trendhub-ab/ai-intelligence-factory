@@ -1,6 +1,8 @@
 import os
 import re
 import time
+import signal
+from contextlib import contextmanager
 import base64
 import requests
 import logging
@@ -413,6 +415,38 @@ def send_telegram_alert(message: str):
 
 PING_MAX_RETRIES = int(os.environ.get("PING_MAX_RETRIES", "1"))
 PING_RETRY_BACKOFF_SECONDS = int(os.environ.get("PING_RETRY_BACKOFF_SECONDS", "12"))
+
+# Deep Dive Gemini 1回の最大待機時間。GitHub Actions上でSDK/networkが無応答に
+# なった場合にジョブ全体が黙って止まるのを防ぐ。Linux runnerのmain threadで
+# SIGALRMを使うため、待機中の同期SDK callもFail-Closedで中断できる。
+GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS", "120"))
+
+
+class GeminiCallTimeoutError(TimeoutError):
+    pass
+
+
+@contextmanager
+def _gemini_call_timeout(seconds: int):
+    """main thread/Linux向けの同期Gemini call watchdog。"""
+    seconds = max(1, int(seconds or 0))
+    if not hasattr(signal, "SIGALRM"):
+        # GitHub-hosted runnerはLinuxなので通常ここには来ない。
+        yield
+        return
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+
+    def _handle_timeout(signum, frame):
+        raise GeminiCallTimeoutError(f"Gemini call exceeded {seconds}s")
+
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 def classify_gemini_quota_error(exc: Exception) -> str:
@@ -2334,7 +2368,7 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 ・「第一に／第二に／第三に」を機械的に並べない。必要なら一度だけ使う。
 ・各節を結論→理由→箇条書きの同型にしない。短い段落と長めの段落を混ぜる。
 ・一次情報を説明したあと、筆者自身の判断や迷いを自然に差し込む。
-・「ここまでは確認できる。一方で、ここはまだ分からない。だから私はTRYと見る」のように、留保を隠さない。
+・「ここまでは確認できる。一方で、ここはまだ分からない。だから今は導入を急がず、動向を見たい」のように、留保を自然な日本語で書く。
 ・煽り語、営業コピー、読者を急かす命令口調を避ける。
 ・無料部分は理解、有料部分は判断に重点を置くが、有料部分を管理項目の羅列にしない。
 ・有料部分の中見出しはテーマに合わせて3〜6個を自分で設計する。固定テンプレの見出しを全部並べない。
@@ -2421,22 +2455,29 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ---有料エリア---
 
 有料部分では以下2見出しだけ必須。
-### 私の判定
-### 最終判断
+### 私ならこう考える
+### 結局、どうするべきか
 
 この2見出しの間に、テーマに最も合う中見出しを3〜6個、自分で自然な日本語で設計する。
 「なぜそう判断したのか」「本当に変わるのは何か」「誰が使うべきか」等を毎回固定で全部出さない。
 必要な論点だけを選び、文章の流れを優先する。
 
 【ARTICLEの追加ルール】
-・「私の判定」ではDecision（NOW / TRY / WATCH / WAIT / AVOID）のみを自然な文章で明示する。Decision ScoreやBusiness Impact等の内部採点はARTICLEへ一切出さない。採点はMANAGEMENT DATAだけに置く。
+・NOW / TRY / WATCH / WAIT / AVOID は内部管理コードであり、ARTICLEには絶対に表示しない。括弧書き、英字併記、見出し内も禁止。
+・「私ならこう考える」では、管理用Decisionを読者向けの自然な判断文に翻訳する。目安は次の通り。
+  NOW → 「今すぐ動く価値がある」「今から着手してよい」
+  TRY → 「まずは小さく試す価値がある」「限定した環境で試したい」
+  WATCH → 「今は動かず、今後の動きを注視したい」「導入を急ぐ段階ではない」
+  WAIT → 「現時点では導入を急がない」「条件が整うまで待つのがよい」
+  AVOID → 「今は見送るのが妥当」「現時点では採用しない方がよい」
+・上の日本語は定型句として毎回そのまま使わず、記事の文脈に合わせて自然に言い換える。Decision ScoreやBusiness Impact等の内部採点もARTICLEへ一切出さない。採点はMANAGEMENT DATAだけに置く。
 ・競合名を出す場合、Source Native Contextにその競合の比較根拠が存在する時だけ。なければ製品名を列挙しない。
 ・Preview/Beta/Stableは必ず分離する。
 ・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。
 ・根拠のない%・倍数・金額・期間・性能値を作らない。
 ・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。
 ・有料部分は最低1200字。記事全体を箇条書き帳票にしない。
-・最終判断はDecisionと一致させる。
+・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
 """
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
@@ -2534,7 +2575,7 @@ def _parse_gemini_response(full_text: str) -> dict:
     article_value = min(100, max(0, int(article_match.group(1)))) if article_match else 0
 
     decision_text = _normalize_decision(extract_field("Decision", ""))
-    decision_section = _extract_markdown_section(note_draft, "私の判定")
+    decision_section = _extract_markdown_section(note_draft, "私ならこう考える") or _extract_markdown_section(note_draft, "私の判定")
     if not decision_text:
         decision_text = _normalize_decision(decision_section)
     if score == 0:
@@ -2684,13 +2725,24 @@ def _article_list_ratio(text: str) -> float:
 def _explicit_decision_conflict(parsed: dict) -> str:
     """最終判断にNOW/TRY等が明記された場合だけ、安全に矛盾を検出する。"""
     draft = parsed.get("note_draft", "")
-    final_text = _extract_markdown_section(draft, "最終判断")
+    final_text = _extract_markdown_section(draft, "結局、どうするべきか") or _extract_markdown_section(draft, "最終判断")
     final_decision = _normalize_decision(final_text)
     decision = parsed.get("decision_text", "")
     if final_decision and decision and final_decision != decision:
         return f"Decision conflict: management={decision}, final={final_decision}"
     return ""
 
+
+
+def _find_decision_code_leak(draft: str) -> list[str]:
+    """読者向けARTICLEに内部Decisionコードが漏れていないか検出する。"""
+    text = draft or ""
+    # 英単語として独立して現れる管理コードだけを対象にする。URL等の一部は除外。
+    leaked = []
+    for code in ("NOW", "TRY", "WATCH", "WAIT", "AVOID"):
+        if re.search(rf"(?<![A-Za-z0-9_/-]){code}(?![A-Za-z0-9_/-])", text, re.IGNORECASE):
+            leaked.append(code)
+    return ["internal decision code leaked into ARTICLE: " + ", ".join(dict.fromkeys(leaked))] if leaked else []
 
 
 def _find_management_score_leak(draft: str) -> list[str]:
@@ -2706,41 +2758,65 @@ def _find_management_score_leak(draft: str) -> list[str]:
 
 
 def _find_source_boundary_violations(draft: str, source_context: str) -> list[str]:
-    """Source Contextにない製品名・企業名・モデル名を、事実として補完するのを防ぐ補助Gate。
+    """Source Context外の「固有製品/企業/モデルに関する事実補完」だけを止める補助Gate。
 
-    英数の固有名詞を含む文のうち、製品比較・現在仕様・企業運用・採用状況などを
-    断定している文を対象にする。近傍で「一般論」「推論」「可能性」「元記事時点」
-    と明示されている場合は許可する。
+    一般技術用語・略語・固定見出し・Decision語は対象外。さらに、単に未知の英字語が
+    出たという理由だけではFailにせず、現在仕様/導入/比較/価格/公開/サポート等を
+    断定する文でのみ判定する。これにより Cursor/Copilot の無根拠補完は止めつつ、
+    PoC / What / API / SaaS 等の誤検知を避ける。
     """
     evidence = _normalized_evidence_text(source_context)
     if not draft or not evidence:
         return []
-    failures = []
+
+    failures: list[str] = []
     sentences = re.split(r"(?<=[。！？])\s*", draft)
     factual_cue = re.compile(
         r"(?:比較|一方で|に比べ|よりも|公式|サポート|対応|提供|採用|導入|標準|管理|利用|使える|使えない|"
-        r"必須|要求|実装|公開|料金|価格|シェア|市場|クラウド|オンプレ|セルフホスト)"
+        r"必須|要求|実装|公開|料金|価格|シェア|市場|クラウド|オンプレ|セルフホスト|発売|リリース|"
+        r"統合|搭載|廃止|終了|互換|移行|採用され|導入され|提供され|サポートされ)"
     )
     inference = re.compile(
-        r"(?:一般論として|私の推論|ここからは.{0,16}推論|推論に基づ|可能性がある|考えられる|"
-        r"仮説|元記事(?:の記述|公開時点|によれば)|一次情報では確認できない)"
+        r"(?:一般論として|私の推論|ここからは.{0,20}推論|推論に基づ|可能性がある|可能性があります|"
+        r"考えられる|考えられます|仮説|例として|たとえば|例えば|想定|元記事(?:の記述|公開時点|によれば)|"
+        r"一次情報では確認できない|一次情報からは確認できない|未確認|不明|推測)"
     )
+
+    # 固有製品名ではない一般用語・略語・記事テンプレート語。
     ignore = {
-        "ARTICLE","WATCH","TRY","NOW","WAIT","AVOID","GitHub","HackerNews","ProductHunt","ArXiv",
-        "API","AI","LLM","MCP","GPU","OSS","URL","HTTP","HTTPS","PDF","HTML","JSON","XML",
-        "Linux","Wayland","Python","Markdown","VAE","RAG","PR","CPU"
+        "ARTICLE","MANAGEMENT","DATA","WATCH","TRY","NOW","WAIT","AVOID","What","Decision","Score",
+        "GitHub","HackerNews","ProductHunt","ArXiv","Source","Summary","Action","Future","Scenario",
+        "API","AI","LLM","MCP","GPU","CPU","OSS","URL","HTTP","HTTPS","PDF","HTML","JSON","XML",
+        "Linux","Wayland","Python","Markdown","VAE","RAG","RLHF","SFT","PR","PoC","POC","CTO","PM",
+        "SaaS","RPA","UI","UX","DOM","Webhook","Webhooks","Cookie","Cookies","ID","ACL","2FA","MFA",
+        "CLI","SDK","REST","GraphQL","SQL","NoSQL","CI","CD","DevOps","MLOps","AIOps","VPS","VM",
+        "AWS","GCP","Azure","KPI","ROI","TCO","SLA","SSO","RBAC","OAuth","JWT","TLS","SSH","TCP",
+        "UDP","DNS","CDN","NAT","VPN","VPC","RAM","SSD","HDD","GB","MB","TB","ms","RPM","TPM",
+        "RPD","VCS","IDE","OS","Web","Bot","Bots","Agent","Agents","Auditability","Inference"
     }
+
+    def _is_name_candidate(name: str) -> bool:
+        if name in ignore:
+            return False
+        parts = name.split()
+        # ALL-CAPS略語は原則一般技術語扱い。固有名として厳格に見るのは通常語形の製品名。
+        if len(parts) == 1 and name.isupper():
+            return False
+        # 3文字以下の単語はノイズが多い。
+        if len(name) <= 3:
+            return False
+        return True
+
     for sent in sentences:
         if not factual_cue.search(sent) or inference.search(sent):
             continue
-        # Latin-scriptのブランド/製品/モデル候補。小文字始まりのClaude等も拾う。
-        names = re.findall(r"\b[A-Z][A-Za-z0-9.+_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?\b", sent)
+        # CamelCase/TitleCase製品名候補。2語製品名も拾う。
+        names = re.findall(r"(?<![A-Za-z0-9_])[A-Z][A-Za-z0-9.+_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?(?![A-Za-z0-9_])", sent)
         unsupported = []
         for name in dict.fromkeys(names):
-            if name in ignore:
+            if not _is_name_candidate(name):
                 continue
-            normalized = _normalized_evidence_text(name)
-            if normalized not in evidence:
+            if _normalized_evidence_text(name) not in evidence:
                 unsupported.append(name)
         if unsupported:
             failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
@@ -2783,8 +2859,8 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         "なぜ今、この情報を見るべきなのか": r"^##\s*なぜ今、この情報を見るべきなのか\s*$",
         "What｜これは何か": r"^##\s*What｜これは何か\s*$",
         "ここまでの要点": r"^##\s*ここまでの要点\s*$",
-        "私の判定": r"^###\s*私の判定\s*$",
-        "最終判断": r"^###\s*最終判断\s*$",
+        "私ならこう考える": r"^###\s*私ならこう考える\s*$",
+        "結局、どうするべきか": r"^###\s*結局、どうするべきか\s*$",
     }
     for label, heading in required_headings.items():
         if not re.search(heading, draft, re.MULTILINE):
@@ -2794,6 +2870,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_hype_claims(draft))
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
+    failures.extend(_find_decision_code_leak(draft))
     failures.extend(_find_source_boundary_violations(draft, source_context))
 
     conflict = _explicit_decision_conflict(parsed)
@@ -2924,11 +3001,12 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
             config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
             if current_tools:
                 config["tools"] = current_tools
-            response = client.models.generate_content(
-                model=SELECTED_DEEP_DIVE_MODEL,
-                contents=prompt,
-                config=config,
-            )
+            logger.info(f"[GEMINI DEEP DIVE CALL] kind={kind} timeout={GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS}s")
+            with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
+                # SDK推奨のChat.send_messageを使用。1回ごとに使い捨てChatなので
+                # 会話状態は保持せず、従来の単発generateContentと意味は同じ。
+                chat = client.chats.create(model=SELECTED_DEEP_DIVE_MODEL, config=config)
+                response = chat.send_message(prompt)
             _extract_usage_metadata(response)
             meta = extract_grounding_metadata(
                 response,
@@ -2939,6 +3017,14 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
             )
             return response, meta
         except GeminiBudgetExceededError:
+            raise
+        except GeminiCallTimeoutError as e:
+            logger.error(f"[GEMINI TIMEOUT] kind={kind} attempt={attempt + 1}/2: {e}")
+            if attempt == 0 and GEMINI_BUDGET.can_deep_dive_retry():
+                logger.warning("[GEMINI TIMEOUT RETRY] 1回だけtransport retryを実行します")
+                time.sleep(5)
+                continue
+            logger.error("[GEMINI TIMEOUT FINAL] 当該候補をFail-Closedにして次候補へ進みます")
             raise
         except APIError as e:
             code = getattr(e, "code", None)
@@ -3124,6 +3210,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
     except DailyQuotaExhaustedError:
         raise
+    except GeminiCallTimeoutError as e:
+        logger.error(f"[DEEP DIVE TIMEOUT SKIP] {name}: {e}")
+        if persist_results and notion_page_id:
+            update_notion_quality_failed(notion_page_id, name, GROUNDING_FAILED, [primary_url] if primary_url else [])
+        return None
     except GeminiBudgetExceededError as e:
         logger.warning(f"[GEMINI BUDGET STOP] {name}: {e}")
         return None
