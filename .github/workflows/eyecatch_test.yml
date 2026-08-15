@@ -1,0 +1,70 @@
+name: Test Pillow Eyecatch Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 背景画像の参照ソース
+        required: true
+        type: choice
+        default: GitHub
+        options:
+          - GitHub
+          - HackerNews
+          - ArXiv
+          - ProductHunt
+      score:
+        description: Decision Score（60〜100）
+        required: true
+        type: string
+        default: "82"
+      technical_impact:
+        description: Technical Impact（0〜25）
+        required: true
+        type: string
+        default: "21"
+      urgency:
+        description: Urgency（0〜20）
+        required: true
+        type: string
+        default: "16"
+
+permissions:
+  contents: read
+
+jobs:
+  render-eyecatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v6
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Pillowと日本語フォントを導入
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: アイキャッチだけを生成
+        run: |
+          python test_eyecatch.py \
+            --source "${{ inputs.source }}" \
+            --score "${{ inputs.score }}" \
+            --technical-impact "${{ inputs.technical_impact }}" \
+            --urgency "${{ inputs.urgency }}"
+
+      - name: 生成画像を保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pillow-eyecatch-${{ inputs.source }}-${{ inputs.score }}
+          path: eyecatch_test_outputs/
+          if-no-files-found: warn
