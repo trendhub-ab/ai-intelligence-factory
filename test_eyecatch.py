@@ -6,7 +6,14 @@ Gemini、Notion、Telegram、GitHub Contents APIは呼び出さない。
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+
+# pipeline.pyは通常運用時にGemini/GitHubの設定漏れを早期検出する。
+# このスクリプトはPillow描画だけを行い、外部APIを一切呼ばないため、import前に
+# テスト専用のダミー値を設定して通常の本番用ガードを通す。
+os.environ.setdefault("GEMINI_API_KEY", "eyecatch-test-no-api-call")
+os.environ.setdefault("GH_PAT", "eyecatch-test-no-api-call")
 
 import pipeline
 
