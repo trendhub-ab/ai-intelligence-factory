@@ -325,14 +325,13 @@ SECTION_SPLIT_TOKEN = "===NOTE_DRAFT_START==="
 
 DECISION_LEVEL_TO_CODE = {1: "NOW", 2: "TRY", 3: "WATCH", 4: "WAIT", 5: "AVOID"}
 
+# generateContentのresponse_schema互換性のためadditionalPropertiesは使用しない。
 DEEP_DIVE_RESPONSE_SCHEMA = {
     "type": "object",
-    "additionalProperties": False,
     "required": ["management", "article"],
     "properties": {
         "management": {
             "type": "object",
-            "additionalProperties": False,
             "required": [
                 "source_summary", "what", "why_important", "paradigm_shift",
                 "alternative_comparison", "migration_cost", "decision_level",
@@ -350,7 +349,6 @@ DEEP_DIVE_RESPONSE_SCHEMA = {
                 "decision_reason": {"type": "string"},
                 "scores": {
                     "type": "object",
-                    "additionalProperties": False,
                     "required": ["business", "technical", "urgency", "market", "reliability"],
                     "properties": {
                         "business": {"type": "integer", "minimum": 0, "maximum": 25},
@@ -370,7 +368,6 @@ DEEP_DIVE_RESPONSE_SCHEMA = {
         },
         "article": {
             "type": "object",
-            "additionalProperties": False,
             "required": [
                 "title", "conclusion", "why_now", "what", "free_summary",
                 "judgement", "paid_sections", "final_recommendation",
@@ -388,7 +385,6 @@ DEEP_DIVE_RESPONSE_SCHEMA = {
                     "maxItems": 5,
                     "items": {
                         "type": "object",
-                        "additionalProperties": False,
                         "required": ["heading", "body"],
                         "properties": {
                             "heading": {"type": "string"},
