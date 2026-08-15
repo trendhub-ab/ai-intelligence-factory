@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -288,11 +289,14 @@ class PipelineSafetyTests(unittest.TestCase):
             },
             "article": {
                 "title": "検証用タイトル",
+                "lead": "読者を引き込む導入です。",
+                "reader_question": "自社でも同じ課題に直面していませんか？",
                 "conclusion": "現時点では研究段階です。",
                 "why_now": "一次情報が公開されました。",
                 "what": "これは検証用の説明です。",
                 "free_summary": ["事実を確認", "限界も確認"],
                 "judgement": "今は動かず追試を待ちます（WATCH）（レベル3）。",
+                "editor_observation": "ここは期待できる一方、実運用の証拠はまだ限られています。",
                 "paid_sections": [
                     {"heading": "根拠", "body": "根拠の範囲を説明します。"},
                     {"heading": "限界", "body": "現時点の限界を説明します。"},
@@ -308,8 +312,57 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertNotIn("WATCH", parsed["note_draft"])
         self.assertNotIn("レベル3", parsed["note_draft"])
         self.assertIn("## この記事の結論", parsed["note_draft"])
+        self.assertTrue(parsed["note_draft"].startswith("読者を引き込む導入です。"))
+        self.assertIn("自社でも同じ課題に直面していませんか？", parsed["note_draft"])
+        self.assertIn("実運用の証拠はまだ限られています。", parsed["note_draft"])
         self.assertIn("### 結局、どうするべきか", parsed["note_draft"])
-        self.assertIn("---有料エリア---", parsed["note_draft"])
+        self.assertNotIn("---有料エリア---", parsed["note_draft"])
+
+    def test_free_mode_removes_legacy_paywall_marker_from_manuscript(self):
+        draft = "## この記事の結論\n結論\n\n---有料エリア---\n\n### 私ならこう考える\n判断"
+        manuscript = pipeline.build_clean_note_manuscript(
+            draft, "Example", "https://example.com", "", "HackerNews"
+        )
+        self.assertNotIn("有料エリア", manuscript)
+        self.assertIn("### 私ならこう考える", manuscript)
+
+    def test_deep_dive_notion_properties_mark_article_as_free(self):
+        properties = pipeline.build_notion_properties(
+            "Example", "https://example.com", 82, "score", "what", "why", "why-not",
+            "action", "N/A", report_meta={"decision_text": "WATCH"},
+        )
+        self.assertEqual(
+            pipeline.VISIBILITY_FREE_ARTICLE,
+            properties[pipeline.PROP_SUBSCRIPTION_VISIBILITY]["select"]["name"],
+        )
+
+    def test_pillow_eyecatch_uses_score_color_and_skips_low_scores(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old_background_dir = pipeline.EYECATCH_BACKGROUND_DIR
+            try:
+                pipeline.EYECATCH_BACKGROUND_DIR = directory
+                pipeline.Image.new("RGB", (1280, 670), color=(20, 30, 50)).save(
+                    Path(directory) / "default.png"
+                )
+                output = Path(directory) / "score.png"
+                result = pipeline.generate_eyecatch_image(
+                    "title", str(output), "Unknown", decision_score=82,
+                    technical_impact=21, urgency=16,
+                )
+                self.assertEqual(str(output), result)
+                self.assertTrue(output.exists())
+                image = pipeline.Image.open(output)
+                self.assertEqual((1280, 670), image.size)
+                self.assertEqual((239, 68, 68), image.getpixel((130, 380)))
+
+                skipped = Path(directory) / "skipped.png"
+                self.assertIsNone(pipeline.generate_eyecatch_image(
+                    "title", str(skipped), "Unknown", decision_score=59,
+                    technical_impact=10, urgency=10,
+                ))
+                self.assertFalse(skipped.exists())
+            finally:
+                pipeline.EYECATCH_BACKGROUND_DIR = old_background_dir
 
     def test_structured_prompt_does_not_expose_internal_decision_codes(self):
         prompt = pipeline.build_structured_decision_prompt(
@@ -394,6 +447,7 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertIn("**原資料URL**: [Example article](https://author.example/article)", manuscript)
         self.assertIn("発見元のHacker News投稿", manuscript)
         self.assertNotIn("**ソース**: HackerNews", manuscript)
+        self.assertTrue(manuscript.endswith("導入・利用にあたっては、一次情報と自社の条件を確認してください。"))
 
     def test_hackernews_without_external_url_uses_hn_as_primary_source(self):
         draft = "結論\n---有料エリア---\n本文"
@@ -425,6 +479,13 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertIn("根拠のない数字・最上級表現は避ける", prompt)
         self.assertIn("ときどき", prompt)
         self.assertIn("実際に試した・導入した・取材した等の経験は", prompt)
+        self.assertIn("【事実・推論・助言の書き分け】", prompt)
+        self.assertIn("筆者の推論は歓迎する", prompt)
+
+    def test_note_title_is_always_closed_with_period_or_question_mark(self):
+        self.assertTrue(pipeline._normalize_note_title("Netflixの推薦は変わる？").endswith("？"))
+        self.assertTrue(pipeline._normalize_note_title("LLM推薦の現在地").endswith("。"))
+        self.assertNotIn("!", pipeline._normalize_note_title("LLM推薦の現在地!"))
 
 
 if __name__ == "__main__":
