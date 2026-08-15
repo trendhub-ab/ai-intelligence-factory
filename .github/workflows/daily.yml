@@ -9,14 +9,14 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # 無駄な分数を消費しないよう最適化
+    timeout-minutes: 25 # Screening + Deep Dive retryを含む無人運転の上限。API側は別途120秒watchdogあり
 
     steps:
       - name: リポジトリのチェックアウト
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Python環境のセットアップ
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -40,6 +40,7 @@ jobs:
           TOP_N_FOR_DEEP_DIVE: "3"
           NOTION_SAVE_THRESHOLD_SCORE: "60"
           STALE_THRESHOLD_DAYS: "10"
+          GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: "120"
           # 月末ダイジェスト関連（任意設定・未設定時は既定値を使用）。
           # 専用cronは設けず、この日次ジョブが月末日に実行された回のみ
           # 内部判定で自動的にダイジェスト生成が走る（pipeline.py参照）。
