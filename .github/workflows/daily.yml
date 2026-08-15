@@ -32,6 +32,8 @@ jobs:
 
       - name: 最小限の依存ライブラリのインストール
         run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -48,6 +50,10 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_API_VERSION: "2026-03-11"
+          # 自動生成記事は無料公開。NotionのSubscription Visibilityには
+          # 「Free Article」選択肢を事前に追加すること（本文は自動投稿しない）。
+          ARTICLE_PUBLICATION_MODE: "free"
+          EYECATCH_MIN_DECISION_SCORE: "60"
           PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
           NOTION_SAVE_THRESHOLD_SCORE: "60"
