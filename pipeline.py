@@ -1187,6 +1187,13 @@ SOURCE_RIGHTS_NOTE = {
     ),
 }
 
+# 原資料に基づく事実と、編集者としての推論・助言を混同させないための読者向け注記。
+# Python側で末尾に付与するため、モデル出力の揺れに関係なく全記事に必ず載る。
+ARTICLE_OPINION_DISCLAIMER = (
+    "※本記事に含まれる見解・提案は筆者個人の意見であり、特定の効果・成果を保証するものではありません。"
+    "導入・利用にあたっては、一次情報と自社の条件を確認してください。"
+)
+
 def _build_source_attribution(source: str, repo_name: str, repo_url: str,
                               source_details: dict | None = None) -> tuple[str, str, str, str]:
     """発見経路と原資料を分離した、読者向けの出典帰属を返す。"""
@@ -1269,7 +1276,7 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     if unique_evidence:
         source_block += "\n### 参考情報\n" + "\n".join(f"- {u}" for u in unique_evidence) + "\n"
 
-    manuscript += source_block
+    manuscript += source_block + "\n" + ARTICLE_OPINION_DISCLAIMER
     return manuscript.strip()
 
 
@@ -3081,6 +3088,17 @@ def _source_fact_discipline(source: str) -> str:
 ・3〜12ヶ月の未来は予言しない。必ず「条件 → 起こり得る結果 → 見るべき指標」の形にする。
 ・現在仕様が変わりやすい料金、API、モデル、CLI、対応OS、制限、cache、preview/beta/stable状態は、
   取得できた現在の一次情報だけを根拠にする。古い記事と現在docsが衝突する場合は現在docsを優先する。
+
+【事実・推論・助言の書き分け】
+・一次情報で確認できる事実は、主語と条件を省かずに書く。一次情報にない運用保証、SLA、保守状況、
+  セキュリティ対応、商用可否、コスト、導入効果を事実として補完しない。
+・筆者の推論は歓迎する。ただし「ここからは私の見立てだが」「この条件なら」「〜と考えるのが自然だ」
+  のように、読者が推論だと分かる自然な表現で示す。
+・読者への助言も歓迎する。ただし「私なら〜する」「〜を検討したい」「〜を確認してから判断したい」と、
+  条件付きの編集判断として書く。「絶対に」「一切」「必須」「保証される」などの無条件な断定は、
+  一次情報が直接裏付ける場合以外は使わない。
+・ライセンス、コマンド、取得方法は一次情報の記載どおりに扱う。複数の方法を組み合わせて新しい手順を
+  提案する場合は、公式の記載ではなく筆者の提案であることを明確にする。
 """
     rules = {
         "GitHub": """
