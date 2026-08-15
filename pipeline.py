@@ -1426,6 +1426,25 @@ def _draw_centered_eyecatch_text(draw: ImageDraw.ImageDraw, box: tuple[int, int,
     draw.text((round(center_x - (right - left) / 2), y), text, font=font, fill=fill)
 
 
+def _draw_centered_eyecatch_badge(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
+                                   japanese_label: str, english_label: str, value: str,
+                                   label_font, english_font, value_font) -> None:
+    """3行のラベルと数値を、バッジの上下中央へまとめて配置する。"""
+    rows = [
+        (japanese_label, label_font),
+        (english_label, english_font),
+        (value, value_font),
+    ]
+    spacing = 5
+    heights = [draw.textbbox((0, 0), text, font=font)[3] - draw.textbbox((0, 0), text, font=font)[1]
+               for text, font in rows]
+    total_height = sum(heights) + spacing * (len(rows) - 1)
+    y = round(box[1] + ((box[3] - box[1]) - total_height) / 2)
+    for (text, font), text_height in zip(rows, heights):
+        _draw_centered_eyecatch_text(draw, box, text, y, font)
+        y += text_height + spacing
+
+
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub", decision_score: int | None = None,
                              technical_impact: int | None = None,
@@ -1482,14 +1501,15 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
     draw.rounded_rectangle((bar[0], bar[1], fill_right, bar[3]), radius=10, fill=accent)
 
     badges = [
-        ((112, 405, 398, 540), "技術的破壊力", "(Technical Impact)", f"{technical}/25"),
-        ((429, 405, 715, 540), "緊急度", "(Urgency)", f"{urgency_score}/20"),
+        ((102, 394, 408, 550), "技術的破壊力", "(Technical Impact)", f"{technical}/25"),
+        ((419, 394, 725, 550), "緊急度", "(Urgency)", f"{urgency_score}/20"),
     ]
     for box, japanese_label, english_label, value in badges:
         draw.rounded_rectangle(box, radius=16, fill=(5, 15, 30, 145), outline=(203, 213, 225, 185), width=2)
-        _draw_centered_eyecatch_text(draw, box, japanese_label, box[1] + 16, badge_label_font)
-        _draw_centered_eyecatch_text(draw, box, english_label, box[1] + 53, badge_en_font)
-        _draw_centered_eyecatch_text(draw, box, value, box[1] + 79, badge_value_font)
+        _draw_centered_eyecatch_badge(
+            draw, box, japanese_label, english_label, value,
+            badge_label_font, badge_en_font, badge_value_font,
+        )
 
     result = Image.alpha_composite(canvas, overlay).convert("RGB")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
