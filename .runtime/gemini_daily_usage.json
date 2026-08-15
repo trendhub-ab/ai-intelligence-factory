@@ -20,8 +20,17 @@
       "exhausted_reason": "RPD/DAILY_TOKEN from Gemini API",
       "last_used_at": "2026-08-15T02:10:17.670861+00:00",
       "used": 2
+    },
+    "gemini-3.7-flash": {
+      "budget": 18,
+      "by_kind": {
+        "deep_dive": 1
+      },
+      "exhausted": false,
+      "last_used_at": "2026-08-15T02:10:24.029101+00:00",
+      "used": 1
     }
   },
   "quota_date": "2026-08-14",
-  "updated_at": "2026-08-15T02:10:19.903523+00:00"
+  "updated_at": "2026-08-15T02:10:24.029115+00:00"
 }
