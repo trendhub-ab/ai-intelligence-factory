@@ -178,6 +178,66 @@ class PipelineSafetyTests(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_model_unavailable_is_marked_pending_retry_not_quality_failed(self):
+        repo = {
+            "nameWithOwner": "example", "description": "desc", "url": "https://example.com",
+            "stargazerCount": 1, "source": "HackerNews", "publishedAt": None,
+        }
+        source_info = {
+            "sufficient": True, "primary_url": "https://example.com", "context": "source",
+            "method": pipeline.GROUNDING_SOURCE_NATIVE,
+        }
+        with patch.multiple(
+            pipeline,
+            prepare_source_context=lambda repo: source_info,
+            call_gemini_grounded_deep_dive=lambda *a, **k: (_ for _ in ()).throw(
+                pipeline.NoAvailableModelError("503 unavailable")
+            ),
+            update_notion_pending_retry=lambda *a, **k: True,
+            update_notion_quality_failed=lambda *a, **k: self.fail("API outage must not be Quality Failed"),
+        ):
+            result = pipeline.generate_intelligence_report(
+                repo, notion_page_id="page-id", screening_score=80, screening_reason="reason",
+            )
+        self.assertIsNone(result)
+
+    def test_pending_retry_items_are_reconstructed_from_notion(self):
+        page = {
+            "id": "page-id",
+            "properties": {
+                "Name": {"title": [{"plain_text": "item"}]},
+                "URL": {"url": "https://example.com"},
+                "Source": {"select": {"name": "HackerNews"}},
+                "Screening Score": {"number": 70},
+                "Screening Reason": {"rich_text": [{"plain_text": "reason"}]},
+                "Engagement Score": {"number": 12},
+                "Published At": {"date": {"start": "2026-08-15"}},
+            },
+        }
+        with patch.object(pipeline, "NOTION_API_KEY", "notion"), \
+             patch.object(pipeline, "NOTION_DATA_SOURCE_ID", "source"), \
+             patch.object(pipeline, "_query_notion_db_with_retry", return_value=FakeResponse(payload={"results": [page]})):
+            items = pipeline.get_pending_retry_items()
+        self.assertEqual(1, len(items))
+        self.assertEqual("page-id", items[0]["notion_page_id"])
+        self.assertEqual("item", items[0]["repo"]["nameWithOwner"])
+
+    def test_pending_retry_status_is_used_for_transient_failures(self):
+        captured = {}
+
+        def fake_patch(url, **kwargs):
+            captured.update(kwargs["json"]["properties"])
+            return FakeResponse(200)
+
+        with patch.object(pipeline, "NOTION_API_KEY", "notion"), \
+             patch.object(pipeline.requests, "patch", side_effect=fake_patch):
+            ok = pipeline.update_notion_pending_retry("page-id", "item")
+        self.assertTrue(ok)
+        self.assertEqual(
+            pipeline.CONTENT_STATUS_PENDING_RETRY,
+            captured[pipeline.PROP_CONTENT_STATUS]["select"]["name"],
+        )
+
     def test_fact_gate_rejects_fabricated_cli(self):
         failures = pipeline._find_unsupported_syntax_claims(
             "```bash\npip install fabricated-package\n```", "official text without commands"
