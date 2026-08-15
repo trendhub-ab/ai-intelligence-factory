@@ -14,13 +14,13 @@
       "by_kind": {
         "deep_dive": 9,
         "deep_dive_retry": 2,
-        "quality_retry": 4
+        "quality_retry": 5
       },
       "exhausted": false,
-      "last_used_at": "2026-08-15T14:02:51.903233+00:00",
-      "used": 15
+      "last_used_at": "2026-08-15T14:03:16.707334+00:00",
+      "used": 16
     }
   },
   "quota_date": "2026-08-15",
-  "updated_at": "2026-08-15T14:02:51.903249+00:00"
+  "updated_at": "2026-08-15T14:03:16.707350+00:00"
 }
