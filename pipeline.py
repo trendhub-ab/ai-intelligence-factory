@@ -7,6 +7,7 @@ import logging
 import xml.etree.ElementTree as ET
 from html import unescape
 from html.parser import HTMLParser
+from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageDraw
 from google import genai
@@ -1393,6 +1394,14 @@ def prepare_source_context(repo: dict) -> dict:
             pieces.append("Authors: " + ", ".join(authors[:20]))
         if categories:
             pieces.append("Categories: " + ", ".join(categories[:20]))
+        comment = details.get("comment") or ""
+        if comment:
+            pieces.append("ArXiv comment:\n" + comment)
+            substantive_parts.append(comment)
+        official_links = details.get("official_external_links") or []
+        for official_url, official_ctx in _fetch_arxiv_official_link_context(official_links):
+            pieces.append(f"Official linked resource ({official_url}):\n" + official_ctx)
+            substantive_parts.append(official_ctx)
     elif source == "ProductHunt":
         if stored:
             pieces.append("Product Hunt metadata:\n" + stored)
@@ -1565,6 +1574,91 @@ def _fetch_arxiv_with_retry(url: str, params: dict):
     logger.error(f"[ARXIV FETCH FAILED] リトライ上限到達。最終エラー: {last_error_text}")
     return None
 
+
+
+def _normalize_title_for_match(title: str) -> str:
+    title = re.sub(r"\s+", " ", (title or "").strip().lower())
+    title = re.sub(r"[^a-z0-9]+", " ", title)
+    return re.sub(r"\s+", " ", title).strip()
+
+
+def _extract_arxiv_id(url: str) -> str:
+    m = re.search(r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?", url or "", re.I)
+    return m.group(1) if m else ""
+
+
+def _verify_arxiv_source_integrity(repo: dict) -> tuple[bool, str, dict]:
+    """Deep Dive前にarXiv IDを再照会し、候補titleとURL先titleの対応を検証する。
+
+    Geminiを使わないFail-ClosedなSource Integrity Gate。タイトル類似度が低い場合は
+    記事生成を止める。合わせてcomment/公式外部リンク候補をsourceDetailsへ補強する。
+    """
+    if repo.get("source") != "ArXiv":
+        return True, "not-arxiv", repo
+    arxiv_id = _extract_arxiv_id(repo.get("primaryUrl") or repo.get("url") or "")
+    if not arxiv_id:
+        return False, "arXiv IDをURLから抽出できない", repo
+    try:
+        res = _fetch_arxiv_with_retry(
+            "https://export.arxiv.org/api/query",
+            {"id_list": arxiv_id, "start": 0, "max_results": 1},
+        )
+        if res is None:
+            return False, "arXiv再照会に失敗", repo
+        ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+        root = ET.fromstring(res.content)
+        entry = root.find("atom:entry", ns)
+        if entry is None:
+            return False, f"arXiv ID {arxiv_id} が再照会で見つからない", repo
+        fetched_title = re.sub(r"\s+", " ", entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
+        candidate_title = repo.get("nameWithOwner", "")
+        a = _normalize_title_for_match(candidate_title)
+        b = _normalize_title_for_match(fetched_title)
+        ratio = SequenceMatcher(None, a, b).ratio() if a and b else 0.0
+        # version suffixや軽微な表記差は許容するが、別論文レベルの不一致は止める。
+        if ratio < 0.78:
+            return False, f"arXiv title mismatch: candidate='{candidate_title}' fetched='{fetched_title}' similarity={ratio:.2f}", repo
+
+        details = dict(repo.get("sourceDetails") or {})
+        comment = re.sub(r"\s+", " ", entry.findtext("arxiv:comment", default="", namespaces=ns) or "").strip()
+        if comment:
+            details["comment"] = comment
+        external_links = []
+        # comment/summary内の明示URLとAtom linkを候補化。arxiv.org自身は除く。
+        raw_for_urls = " ".join([comment, repo.get("sourceContext", "")])
+        for u in re.findall(r"https?://[^\s<>\]\)]+", raw_for_urls):
+            u = u.rstrip(".,;:")
+            if "arxiv.org" not in u.lower():
+                external_links.append(u)
+        for link_el in entry.findall("atom:link", ns):
+            href = (link_el.get("href") or "").strip()
+            if href and "arxiv.org" not in href.lower():
+                external_links.append(href)
+        # GitHub/Hugging Face/project page等、論文自身から辿れるリンクだけ保持。
+        details["official_external_links"] = list(dict.fromkeys(external_links))[:6]
+        details["verified_arxiv_title"] = fetched_title
+        details["verified_arxiv_id"] = arxiv_id
+        updated = dict(repo)
+        updated["sourceDetails"] = details
+        return True, f"verified:{arxiv_id}", updated
+    except Exception as e:
+        return False, f"arXiv source integrity check error: {e}", repo
+
+
+def _fetch_arxiv_official_link_context(urls: list[str]) -> list[tuple[str, str]]:
+    """arXiv自身が示した外部リンクだけを補助一次情報として取得する。"""
+    results = []
+    for url in (urls or [])[:4]:
+        low = url.lower()
+        if not low.startswith(("http://", "https://")):
+            continue
+        # 一般的な短縮・広告URLは避け、研究コード/モデル/プロジェクトでよく使われるhostを優先。
+        if not any(host in low for host in ("github.com", "huggingface.co", "gitlab.com", "project", "research", "lab")):
+            continue
+        ctx = fetch_webpage_context(url)
+        if ctx:
+            results.append((url, ctx))
+    return results
 
 def fetch_arxiv_ai_ml(limit: int = 10):
     """arXiv APIからAI/ML最新論文を取得。Screening表示は短縮、Deep Diveにはabstract全文を保持。"""
@@ -2493,7 +2587,7 @@ _SENSITIVE_NUMERIC_PATTERNS = [
     r"(?:約|およそ|最大|最低|平均)?\s*\d[\d,]*(?:\.\d+)?\s*(?:円|万円|億円|ドル|USD|JPY)",
     r"\d+(?:\.\d+)?\s*(?:ms|ミリ秒|秒|分|時間)",
     r"\d+(?:\.\d+)?\s*(?:日|週間|週|ヶ月|か月|月)\b",
-    r"\d+(?:\.\d+)?\s*(?:GB|MB|TB|GPU|台|人)\b",
+    r"\d+(?:\.\d+)?\s*(?:GB|MB|TB|GPU|台|人|件|行|リクエスト|requests?|tokens?|トークン)\b",
 ]
 
 # 数字を使わずに「数倍」「数万円」等を作るケースも止める。
@@ -2612,33 +2706,45 @@ def _find_management_score_leak(draft: str) -> list[str]:
 
 
 def _find_source_boundary_violations(draft: str, source_context: str) -> list[str]:
-    """ソース外の具体的固有名を断定的な比較・運用事実として足す典型パターンを保守的に検出。
+    """Source Contextにない製品名・企業名・モデル名を、事実として補完するのを防ぐ補助Gate。
 
-    完全なfact-checkerではなく、Source Contextにない固有名を伴う比較・企業運用断定を
-    公開前に止めるための補助Gate。推論ラベルが近傍にあれば許可する。
+    英数の固有名詞を含む文のうち、製品比較・現在仕様・企業運用・採用状況などを
+    断定している文を対象にする。近傍で「一般論」「推論」「可能性」「元記事時点」
+    と明示されている場合は許可する。
     """
     evidence = _normalized_evidence_text(source_context)
     if not draft or not evidence:
         return []
     failures = []
-    # 比較や企業運用を断定する文だけを見る。一般的な背景説明まで過剰に止めない。
     sentences = re.split(r"(?<=[。！？])\s*", draft)
-    cue = re.compile(r"(?:比較|一方で|に比べ|よりも|管理|標準化|公式サポート|対応して|要求する|利用できる)")
-    inference = re.compile(r"(?:一般論として|私の推論|推論に基づ|可能性がある|考えられる|元記事(?:の記述|公開時点)|記事内で触れられている)")
-    ignore = {"ARTICLE","WATCH","TRY","NOW","WAIT","AVOID","Wayland","Linux","GitHub","HackerNews","ProductHunt","ArXiv","API","AI","LLM","MCP","GPU","OSS"}
+    factual_cue = re.compile(
+        r"(?:比較|一方で|に比べ|よりも|公式|サポート|対応|提供|採用|導入|標準|管理|利用|使える|使えない|"
+        r"必須|要求|実装|公開|料金|価格|シェア|市場|クラウド|オンプレ|セルフホスト)"
+    )
+    inference = re.compile(
+        r"(?:一般論として|私の推論|ここからは.{0,16}推論|推論に基づ|可能性がある|考えられる|"
+        r"仮説|元記事(?:の記述|公開時点|によれば)|一次情報では確認できない)"
+    )
+    ignore = {
+        "ARTICLE","WATCH","TRY","NOW","WAIT","AVOID","GitHub","HackerNews","ProductHunt","ArXiv",
+        "API","AI","LLM","MCP","GPU","OSS","URL","HTTP","HTTPS","PDF","HTML","JSON","XML",
+        "Linux","Wayland","Python","Markdown","VAE","RAG","PR","CPU"
+    }
     for sent in sentences:
-        if not cue.search(sent) or inference.search(sent):
+        if not factual_cue.search(sent) or inference.search(sent):
             continue
+        # Latin-scriptのブランド/製品/モデル候補。小文字始まりのClaude等も拾う。
         names = re.findall(r"\b[A-Z][A-Za-z0-9.+_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?\b", sent)
-        unsupported=[]
+        unsupported = []
         for name in dict.fromkeys(names):
             if name in ignore:
                 continue
-            if _normalized_evidence_text(name) not in evidence:
+            normalized = _normalized_evidence_text(name)
+            if normalized not in evidence:
                 unsupported.append(name)
         if unsupported:
-            failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:3]))
-    return list(dict.fromkeys(failures))
+            failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
+    return list(dict.fromkeys(failures))[:6]
 
 def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
     """公開可否を決めるFact Gate。事実・構造上の致命傷だけをFailにする。"""
@@ -2873,6 +2979,16 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     source = repo.get("source", "GitHub")
     published_at = repo.get("publishedAt")
     _, spdx_id = legal_safety_gate(repo)
+
+    if source == "ArXiv":
+        integrity_ok, integrity_reason, verified_repo = _verify_arxiv_source_integrity(repo)
+        if not integrity_ok:
+            logger.error(f"[SOURCE INTEGRITY FAILED] {name}: {integrity_reason}")
+            if persist_results:
+                send_telegram_alert(f"ℹ️ Source Integrity Failed: {name}\n{integrity_reason[:1200]}")
+            return None
+        repo = verified_repo
+        logger.info(f"[SOURCE INTEGRITY OK] {name}: {integrity_reason}")
 
     source_info = prepare_source_context(repo)
     primary_url = source_info.get("primary_url") or url
