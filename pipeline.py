@@ -1352,8 +1352,14 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
     return None
 
 
+_EYECATCH_FONT_CACHE: dict[tuple[str, int], object] = {}
+
+
 def _eyecatch_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """日本語を描けるNoto CJKを優先し、ローカル実行でも落ちないよう保険をかける。"""
+    cache_key = ("noto-bold" if bold else "noto-regular", size)
+    if cache_key in _EYECATCH_FONT_CACHE:
+        return _EYECATCH_FONT_CACHE[cache_key]
     env_name = "EYECATCH_FONT_BOLD_PATH" if bold else "EYECATCH_FONT_REGULAR_PATH"
     filename = "NotoSansCJK-Bold.ttc" if bold else "NotoSansCJK-Regular.ttc"
     candidates = [
@@ -1366,11 +1372,41 @@ def _eyecatch_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | Ima
         if not path:
             continue
         try:
-            return ImageFont.truetype(path, size=size)
+            font = ImageFont.truetype(path, size=size)
+            _EYECATCH_FONT_CACHE[cache_key] = font
+            return font
         except OSError:
             continue
     logger.warning("[EYECATCH FONT] Noto CJKが見つかりません。日本語表示のためfonts-noto-cjkを導入してください。")
-    return ImageFont.load_default()
+    font = ImageFont.load_default()
+    _EYECATCH_FONT_CACHE[cache_key] = font
+    return font
+
+
+def _eyecatch_number_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """数値はGoogle FontsのLato Boldを優先し、メーターの読み取りやすさを上げる。"""
+    cache_key = ("lato-bold", size)
+    if cache_key in _EYECATCH_FONT_CACHE:
+        return _EYECATCH_FONT_CACHE[cache_key]
+    candidates = [
+        os.environ.get("EYECATCH_NUMBER_FONT_PATH", "").strip(),
+        "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",
+        "/usr/share/fonts/truetype/lato/Lato-Heavy.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            font = ImageFont.truetype(path, size=size)
+            _EYECATCH_FONT_CACHE[cache_key] = font
+            return font
+        except OSError:
+            continue
+    logger.warning("[EYECATCH FONT] Lato Boldが見つかりません。fonts-latoを導入してください。")
+    font = ImageFont.load_default()
+    _EYECATCH_FONT_CACHE[cache_key] = font
+    return font
 
 
 def _eyecatch_accent_color(score: int) -> tuple[int, int, int]:
@@ -1419,38 +1455,41 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
         background = ImageOps.fit(background, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
 
     mean_luminance = sum(ImageStat.Stat(background.resize((1, 1))).mean) / 3
-    card_alpha = 225 if mean_luminance >= 150 else 205
+    card_alpha = 218 if mean_luminance >= 150 else 195
     accent = _eyecatch_accent_color(score)
     canvas = background.convert("RGBA")
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # 1280px基準。カードは左側を大きく使い、右側の背景コンテンツを残す。
-    card = (62, 92, 892, 632)
-    draw.rounded_rectangle(card, radius=28, fill=(5, 15, 30, card_alpha), outline=(203, 213, 225, 220), width=2)
+    # 1280px基準。カードは背景の左半分に収め、背景の主役を隠しすぎない。
+    card = (72, 112, 755, 575)
+    draw.rounded_rectangle(card, radius=25, fill=(5, 15, 30, card_alpha), outline=(203, 213, 225, 215), width=2)
 
-    title_font = _eyecatch_font(46, bold=True)
-    score_font = _eyecatch_font(84, bold=True)
-    badge_label_font = _eyecatch_font(34, bold=True)
-    badge_en_font = _eyecatch_font(25, bold=True)
-    badge_value_font = _eyecatch_font(54, bold=True)
-    draw.text((122, 138), "意思決定スコア（Decision Score）", font=title_font, fill="white")
-    draw.text((350, 220), f"{score}/100", font=score_font, fill="white")
+    title_font = _eyecatch_font(35, bold=True)
+    score_font = _eyecatch_number_font(80)
+    badge_label_font = _eyecatch_font(28, bold=True)
+    badge_en_font = _eyecatch_font(20, bold=True)
+    badge_value_font = _eyecatch_number_font(48)
+    draw.text((112, 148), "意思決定スコア（Decision Score）", font=title_font, fill="white")
+    score_text = f"{score}/100"
+    score_box = draw.textbbox((0, 0), score_text, font=score_font)
+    score_x = round((card[0] + card[2] - (score_box[2] - score_box[0])) / 2)
+    draw.text((score_x, 213), score_text, font=score_font, fill="white")
 
-    bar = (122, 352, 832, 410)
-    draw.rounded_rectangle(bar, radius=14, fill=(51, 65, 85, 255))
+    bar = (112, 325, 715, 365)
+    draw.rounded_rectangle(bar, radius=10, fill=(51, 65, 85, 245))
     fill_right = bar[0] + round((bar[2] - bar[0]) * score / 100)
-    draw.rounded_rectangle((bar[0], bar[1], fill_right, bar[3]), radius=14, fill=accent)
+    draw.rounded_rectangle((bar[0], bar[1], fill_right, bar[3]), radius=10, fill=accent)
 
     badges = [
-        ((122, 444, 462, 602), "技術的破壊力", "(Technical Impact)", f"{technical}/25"),
-        ((482, 444, 822, 602), "緊急度", "(Urgency)", f"{urgency_score}/20"),
+        ((112, 405, 398, 540), "技術的破壊力", "(Technical Impact)", f"{technical}/25"),
+        ((429, 405, 715, 540), "緊急度", "(Urgency)", f"{urgency_score}/20"),
     ]
     for box, japanese_label, english_label, value in badges:
-        draw.rounded_rectangle(box, radius=18, fill=(5, 15, 30, 160), outline=(203, 213, 225, 190), width=2)
-        _draw_centered_eyecatch_text(draw, box, japanese_label, box[1] + 24, badge_label_font)
-        _draw_centered_eyecatch_text(draw, box, english_label, box[1] + 70, badge_en_font)
-        _draw_centered_eyecatch_text(draw, box, value, box[1] + 104, badge_value_font)
+        draw.rounded_rectangle(box, radius=16, fill=(5, 15, 30, 145), outline=(203, 213, 225, 185), width=2)
+        _draw_centered_eyecatch_text(draw, box, japanese_label, box[1] + 16, badge_label_font)
+        _draw_centered_eyecatch_text(draw, box, english_label, box[1] + 53, badge_en_font)
+        _draw_centered_eyecatch_text(draw, box, value, box[1] + 79, badge_value_font)
 
     result = Image.alpha_composite(canvas, overlay).convert("RGB")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
