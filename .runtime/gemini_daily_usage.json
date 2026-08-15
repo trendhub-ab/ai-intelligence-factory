@@ -15,11 +15,11 @@
       "budget": 450,
       "by_kind": {
         "ping": 2,
-        "screening": 94
+        "screening": 95
       },
       "exhausted": false,
-      "last_used_at": "2026-08-15T06:23:59.247319+00:00",
-      "used": 96
+      "last_used_at": "2026-08-15T06:24:04.460558+00:00",
+      "used": 97
     },
     "gemini-3.6-flash": {
       "budget": 18,
@@ -45,5 +45,5 @@
     }
   },
   "quota_date": "2026-08-14",
-  "updated_at": "2026-08-15T06:23:59.247334+00:00"
+  "updated_at": "2026-08-15T06:24:04.460572+00:00"
 }
