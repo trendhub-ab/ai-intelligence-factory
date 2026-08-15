@@ -297,6 +297,19 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertEqual(pipeline.GEMINI_DEEP_DIVE_THINKING_LEVEL, captured["thinking_config"]["thinking_level"])
         self.assertEqual(pipeline.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS, captured["max_output_tokens"])
 
+    def test_structured_schema_excludes_generate_content_incompatible_keywords(self):
+        def walk(value):
+            if isinstance(value, dict):
+                self.assertNotIn("additionalProperties", value)
+                self.assertNotIn("additional_properties", value)
+                for child in value.values():
+                    walk(child)
+            elif isinstance(value, list):
+                for child in value:
+                    walk(child)
+
+        walk(pipeline.DEEP_DIVE_RESPONSE_SCHEMA)
+
 
 if __name__ == "__main__":
     unittest.main()
