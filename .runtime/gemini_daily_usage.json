@@ -4,13 +4,13 @@
       "budget": 450,
       "by_kind": {
         "ping": 2,
-        "screening": 8
+        "screening": 9
       },
       "exhausted": false,
-      "last_used_at": "2026-08-15T02:07:54.072134+00:00",
-      "used": 10
+      "last_used_at": "2026-08-15T02:07:59.381283+00:00",
+      "used": 11
     }
   },
   "quota_date": "2026-08-14",
-  "updated_at": "2026-08-15T02:07:54.072150+00:00"
+  "updated_at": "2026-08-15T02:07:59.381301+00:00"
 }
