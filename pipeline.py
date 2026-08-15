@@ -1435,17 +1435,21 @@ def _draw_centered_eyecatch_badge(draw: ImageDraw.ImageDraw, box: tuple[int, int
         (english_label, english_font),
         (value, value_font),
     ]
-    spacing = 5
+    # 日本語→英語は近く、英語→数値は少し広くして情報の階層を見やすくする。
+    # 合計高さから中央位置を計算するため、上下の見た目の余白は変わらない。
+    spacings = (5, 11)
     # Pillowの描画座標は字形の上端ではなく、フォント固有の余白を含む基準点。
     # textbboxのtop/bottomを使って実際に見える字形を中央揃えにする。
     bounds = [draw.textbbox((0, 0), text, font=font) for text, font in rows]
     heights = [bottom - top for _left, top, _right, bottom in bounds]
-    total_height = sum(heights) + spacing * (len(rows) - 1)
+    total_height = sum(heights) + sum(spacings)
     visible_y = box[1] + ((box[3] - box[1]) - total_height) / 2
-    for (text, font), (_left, top, _right, _bottom), text_height in zip(rows, bounds, heights):
+    for index, ((text, font), (_left, top, _right, _bottom), text_height) in enumerate(zip(rows, bounds, heights)):
         # draw.textのyへは、可視上端との差分topを差し引いて渡す。
         _draw_centered_eyecatch_text(draw, box, text, round(visible_y - top), font)
-        visible_y += text_height + spacing
+        visible_y += text_height
+        if index < len(spacings):
+            visible_y += spacings[index]
 
 
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
