@@ -1,49 +1,15 @@
 {
   "models": {
-    "gemini-3.5-flash": {
-      "budget": 18,
-      "by_kind": {
-        "deep_dive": 9,
-        "deep_dive_retry": 2,
-        "quality_retry": 7
-      },
-      "exhausted": false,
-      "last_used_at": "2026-08-15T06:12:24.000257+00:00",
-      "used": 18
-    },
     "gemini-3.5-flash-lite": {
       "budget": 450,
       "by_kind": {
-        "ping": 2,
-        "screening": 96
+        "screening": 1
       },
       "exhausted": false,
-      "last_used_at": "2026-08-15T06:24:09.903354+00:00",
-      "used": 98
-    },
-    "gemini-3.6-flash": {
-      "budget": 18,
-      "by_kind": {
-        "deep_dive": 2
-      },
-      "exhausted": true,
-      "exhausted_at": "2026-08-15T02:10:19.903507+00:00",
-      "exhausted_reason": "RPD/DAILY_TOKEN from Gemini API",
-      "last_used_at": "2026-08-15T02:10:17.670861+00:00",
-      "used": 2
-    },
-    "gemini-3.7-flash": {
-      "budget": 18,
-      "by_kind": {
-        "deep_dive": 11,
-        "deep_dive_retry": 4,
-        "quality_retry": 3
-      },
-      "exhausted": false,
-      "last_used_at": "2026-08-15T04:56:44.792413+00:00",
-      "used": 18
+      "last_used_at": "2026-08-15T12:10:06.160148+00:00",
+      "used": 1
     }
   },
-  "quota_date": "2026-08-14",
-  "updated_at": "2026-08-15T06:24:09.903369+00:00"
+  "quota_date": "2026-08-15",
+  "updated_at": "2026-08-15T12:10:06.160157+00:00"
 }
