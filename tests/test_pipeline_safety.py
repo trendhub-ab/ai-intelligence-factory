@@ -183,6 +183,26 @@ class PipelineSafetyTests(unittest.TestCase):
         )
         self.assertTrue(failures)
 
+    def test_hype_gate_rejects_transformative_and_superlative_claims(self):
+        samples = (
+            "統計学習理論の教科書を書き換えるレベルの成果です。",
+            "これは歴史的な成果です。",
+            "理論的ブレイクスルーです。",
+            "研究の価値は極めて高いです。",
+        )
+        for sample in samples:
+            with self.subTest(sample=sample):
+                self.assertTrue(pipeline._find_hype_claims(sample))
+
+    def test_hype_gate_allows_explicit_negation(self):
+        samples = (
+            "これは教科書を書き換えるものではない。",
+            "現段階でブレイクスルーとは言えない。",
+        )
+        for sample in samples:
+            with self.subTest(sample=sample):
+                self.assertEqual([], pipeline._find_hype_claims(sample))
+
 
 if __name__ == "__main__":
     unittest.main()
