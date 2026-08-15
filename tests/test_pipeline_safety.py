@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import sys
 import types
@@ -202,6 +203,99 @@ class PipelineSafetyTests(unittest.TestCase):
         for sample in samples:
             with self.subTest(sample=sample):
                 self.assertEqual([], pipeline._find_hype_claims(sample))
+
+    def test_hype_gate_does_not_treat_compute_load_as_value_hype(self):
+        self.assertEqual([], pipeline._find_hype_claims("この処理は極めて計算負荷の高い方法です。"))
+
+    def test_structured_parser_builds_fixed_markdown_and_maps_decision(self):
+        payload = {
+            "management": {
+                "source_summary": "一次情報の要約",
+                "what": "何が起きたか",
+                "why_important": "意味",
+                "paradigm_shift": "変化は限定的",
+                "alternative_comparison": "比較根拠不足",
+                "migration_cost": "未確認",
+                "decision_level": 3,
+                "decision_reason": "追試待ち",
+                "scores": {"business": 10, "technical": 20, "urgency": 5, "market": 5, "reliability": 10},
+                "why_not_important": "直接適用しない読者",
+                "who_should_use": "研究担当",
+                "who_should_not_use": "一般運用担当",
+                "action": "継続観測",
+                "future_scenarios": ["追試が出たら再評価"],
+                "article_value": 70,
+            },
+            "article": {
+                "title": "検証用タイトル",
+                "conclusion": "現時点では研究段階です。",
+                "why_now": "一次情報が公開されました。",
+                "what": "これは検証用の説明です。",
+                "free_summary": ["事実を確認", "限界も確認"],
+                "judgement": "今は動かず追試を待ちます（WATCH）。",
+                "paid_sections": [
+                    {"heading": "根拠", "body": "根拠の範囲を説明します。"},
+                    {"heading": "限界", "body": "現時点の限界を説明します。"},
+                    {"heading": "観測点", "body": "今後の観測点を説明します。"},
+                ],
+                "final_recommendation": "四半期ごとに確認します。",
+            },
+        }
+        parsed = pipeline._parse_gemini_response(json.dumps(payload, ensure_ascii=False))
+
+        self.assertEqual("WATCH", parsed["decision_text"])
+        self.assertEqual(50, parsed["score"])
+        self.assertNotIn("WATCH", parsed["note_draft"])
+        self.assertIn("## この記事の結論", parsed["note_draft"])
+        self.assertIn("### 結局、どうするべきか", parsed["note_draft"])
+        self.assertIn("---有料エリア---", parsed["note_draft"])
+
+    def test_structured_prompt_does_not_expose_internal_decision_codes(self):
+        prompt = pipeline.build_structured_decision_prompt(
+            "name", "https://example.com", 0, "desc", source_context="source"
+        )
+        for code in pipeline.ALLOWED_DECISIONS:
+            self.assertNotRegex(prompt, rf"\b{code}\b")
+
+    def test_structured_parser_fails_closed_without_decision_level(self):
+        payload = {"management": {"scores": {
+            "business": 1, "technical": 1, "urgency": 1, "market": 1, "reliability": 1,
+        }}, "article": {}}
+        with self.assertRaisesRegex(ValueError, "decision_level"):
+            pipeline._parse_structured_gemini_response(json.dumps(payload))
+
+    def test_finish_reason_detects_max_tokens(self):
+        reason = types.SimpleNamespace(name="MAX_TOKENS")
+        response = types.SimpleNamespace(candidates=[types.SimpleNamespace(finish_reason=reason)])
+        self.assertEqual("MAX_TOKENS", pipeline._response_finish_reason(response))
+
+    def test_deep_dive_call_uses_structured_output_config(self):
+        captured = {}
+        response = types.SimpleNamespace(text="{}", candidates=[])
+
+        def fake_pool(prompt, config=None, kind="deep_dive"):
+            captured.update(config or {})
+            return response, "model"
+
+        source_info = {
+            "sufficient": True,
+            "primary_url": "https://example.com",
+            "context": "source",
+            "method": pipeline.GROUNDING_SOURCE_NATIVE,
+        }
+        repo = {"url": "https://example.com"}
+        with patch.object(pipeline, "_call_deep_dive_pool", side_effect=fake_pool), \
+             patch.object(pipeline, "_extract_usage_metadata"), \
+             patch.object(pipeline, "extract_grounding_metadata", return_value={
+                 "grounding_status": pipeline.GROUNDING_SOURCE_NATIVE,
+                 "evidence_urls": ["https://example.com"],
+             }):
+            pipeline.call_gemini_grounded_deep_dive("prompt", repo, source_info)
+
+        self.assertEqual("application/json", captured["response_mime_type"])
+        self.assertIs(pipeline.DEEP_DIVE_RESPONSE_SCHEMA, captured["response_schema"])
+        self.assertEqual(pipeline.GEMINI_DEEP_DIVE_THINKING_LEVEL, captured["thinking_config"]["thinking_level"])
+        self.assertEqual(pipeline.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS, captured["max_output_tokens"])
 
 
 if __name__ == "__main__":
