@@ -150,6 +150,8 @@ REGEN_TEST_OUTPUT_DIR = os.environ.get("REGEN_TEST_OUTPUT_DIR", "regen_test_outp
 NEW_SOURCE_TEST_MODE = os.environ.get("NEW_SOURCE_TEST_MODE", "true").lower() in {"1", "true", "yes", "on"}
 NEW_SOURCE_TEST_LIMIT = int(os.environ.get("NEW_SOURCE_TEST_LIMIT", "3"))
 NEW_SOURCE_TEST_SCREEN_PER_SOURCE = int(os.environ.get("NEW_SOURCE_TEST_SCREEN_PER_SOURCE", "4"))
+NEW_SOURCE_TEST_MAX_SCREENING = int(os.environ.get("NEW_SOURCE_TEST_MAX_SCREENING", "20"))
+NEW_SOURCE_TEST_FALLBACK_MIN_SCORE = int(os.environ.get("NEW_SOURCE_TEST_FALLBACK_MIN_SCORE", "40"))
 NEW_SOURCE_TEST_OUTPUT_DIR = os.environ.get("NEW_SOURCE_TEST_OUTPUT_DIR", "new_source_test_outputs")
 
 # Deep Dive一次情報補強。URL ContextはScreeningには使わず、source-native情報が
@@ -3773,26 +3775,62 @@ def run_new_source_test_mode():
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
 
+    # Phase 1: 各ソースから少数ずつ確認。60点以上が3本揃わなければ、
+    # 検証専用として追加Screeningを行う。Productionの60点基準は変更しない。
+    source_order = ("HackerNews", "ProductHunt", "GitHub", "ArXiv")
     screening_targets = []
-    for source_name in ("HackerNews", "ProductHunt", "GitHub", "ArXiv"):
-        screening_targets.extend(unseen_by_source.get(source_name, [])[:NEW_SOURCE_TEST_SCREEN_PER_SOURCE])
+    queued_urls = set()
+    for source_name in source_order:
+        for repo in unseen_by_source.get(source_name, [])[:NEW_SOURCE_TEST_SCREEN_PER_SOURCE]:
+            url = (repo.get("url") or "").rstrip("/")
+            if url and url not in queued_urls:
+                screening_targets.append(repo)
+                queued_urls.add(url)
 
-    logger.info(f">>> [NEW SOURCE TEST] Screening開始 {len(screening_targets)}件")
+    # 追加候補は全ソースをラウンドロビンで積み、HNだけに偏らせない。
+    cursors = {name: NEW_SOURCE_TEST_SCREEN_PER_SOURCE for name in source_order}
+    while len(screening_targets) < NEW_SOURCE_TEST_MAX_SCREENING:
+        added = False
+        for source_name in source_order:
+            items = unseen_by_source.get(source_name, [])
+            idx = cursors[source_name]
+            if idx >= len(items):
+                continue
+            repo = items[idx]
+            cursors[source_name] += 1
+            url = (repo.get("url") or "").rstrip("/")
+            if url and url not in queued_urls:
+                screening_targets.append(repo)
+                queued_urls.add(url)
+                added = True
+                if len(screening_targets) >= NEW_SOURCE_TEST_MAX_SCREENING:
+                    break
+        if not added:
+            break
+
+    initial_count = min(len(screening_targets), sum(min(NEW_SOURCE_TEST_SCREEN_PER_SOURCE, len(unseen_by_source.get(name, []))) for name in source_order))
+    logger.info(f">>> [NEW SOURCE TEST] Screening開始 初期{initial_count}件 / 最大{len(screening_targets)}件")
     screened = []
+    eligible = []
     try:
-        for repo in screening_targets:
+        for idx, repo in enumerate(screening_targets, start=1):
             if not GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS):
                 logger.warning("[NEW SOURCE TEST SCREENING STOP] Deep Dive予約枠保護")
                 break
             screened.append(screen_repo(repo))
+            eligible = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
+            # 初期バッチを終え、60点以上が必要数揃った時点で追加Screeningを止める。
+            if idx >= initial_count and len(eligible) >= NEW_SOURCE_TEST_LIMIT:
+                logger.info(f"[NEW SOURCE TEST] 60点以上が{len(eligible)}件揃ったため追加Screening終了")
+                break
     except DailyQuotaExhaustedError:
         logger.error("[NEW SOURCE TEST STOP] Screening中にGemini日次クォータ到達")
 
     screened.sort(key=lambda x: (x.get("score", 0), x["repo"].get("stargazerCount", 0)), reverse=True)
     eligible = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
-    logger.info(f"[NEW SOURCE TEST] Screening {len(screened)}件 / 60点以上 {len(eligible)}件")
+    logger.info(f"[NEW SOURCE TEST] Screening {len(screened)}件 / {NOTION_SAVE_THRESHOLD_SCORE}点以上 {len(eligible)}件")
 
-    # まずソース分散を優先して各ソース1本、その後は純粋なスコア順で補充。
+    # まずProductionと同じ60点以上から選ぶ。
     selected = []
     used_sources = set()
     for item in eligible:
@@ -3811,8 +3849,43 @@ def run_new_source_test_mode():
             if len(selected) >= NEW_SOURCE_TEST_LIMIT:
                 break
 
+    # Validation-only fallback: 60点以上で3本揃わない場合のみ、40点以上から補充。
+    # これは記事品質・モデルフォールバック検証のための措置で、Stock/Production基準には使わない。
+    if len(selected) < NEW_SOURCE_TEST_LIMIT:
+        fallback_pool = [
+            x for x in screened
+            if NEW_SOURCE_TEST_FALLBACK_MIN_SCORE <= x.get("score", 0) < NOTION_SAVE_THRESHOLD_SCORE
+            and id(x) not in {id(y) for y in selected}
+        ]
+        if fallback_pool:
+            logger.warning(
+                f"[NEW SOURCE TEST VALIDATION FALLBACK] {NOTION_SAVE_THRESHOLD_SCORE}点以上が不足。"
+                f"検証専用として{NEW_SOURCE_TEST_FALLBACK_MIN_SCORE}点以上から最大{NEW_SOURCE_TEST_LIMIT - len(selected)}件補充します。"
+            )
+            # 可能なら未使用ソースを先に補充。
+            for item in fallback_pool:
+                src_name = item["repo"].get("source")
+                if src_name not in used_sources:
+                    selected.append(item)
+                    used_sources.add(src_name)
+                    logger.warning(f"[VALIDATION-ONLY CANDIDATE] {src_name} / {item['repo'].get('nameWithOwner')} / {item.get('score')}点")
+                    if len(selected) >= NEW_SOURCE_TEST_LIMIT:
+                        break
+            if len(selected) < NEW_SOURCE_TEST_LIMIT:
+                selected_ids = {id(x) for x in selected}
+                for item in fallback_pool:
+                    if id(item) in selected_ids:
+                        continue
+                    selected.append(item)
+                    logger.warning(f"[VALIDATION-ONLY CANDIDATE] {item['repo'].get('source')} / {item['repo'].get('nameWithOwner')} / {item.get('score')}点")
+                    if len(selected) >= NEW_SOURCE_TEST_LIMIT:
+                        break
+
     if not selected:
-        logger.warning(f"[NEW SOURCE TEST] {NOTION_SAVE_THRESHOLD_SCORE}点以上の新規候補がありません。低スコアを水増ししません。")
+        logger.warning(
+            f"[NEW SOURCE TEST] 検証候補がありません。"
+            f"Production基準={NOTION_SAVE_THRESHOLD_SCORE}点、検証下限={NEW_SOURCE_TEST_FALLBACK_MIN_SCORE}点。"
+        )
         logger.info(GEMINI_BUDGET.summary())
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
