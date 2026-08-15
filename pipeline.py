@@ -118,10 +118,19 @@ MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_A
 # Screening / dedupe / Stock保存を通さず、現在のDeep Dive prompt + Quality Gateだけで
 # 再生成する。Notionページの更新・新規作成、GitHubへのアイキャッチuploadは一切行わない。
 # 生成稿はローカルのREGEN_TEST_OUTPUT_DIRへ保存するため、旧稿と安全に比較できる。
-REGEN_TEST_MODE = os.environ.get("REGEN_TEST_MODE", "true").lower() in {"1", "true", "yes", "on"}
+REGEN_TEST_MODE = os.environ.get("REGEN_TEST_MODE", "false").lower() in {"1", "true", "yes", "on"}
 REGEN_TEST_LIMIT = int(os.environ.get("REGEN_TEST_LIMIT", "3"))
 REGEN_TEST_SOURCE = os.environ.get("REGEN_TEST_SOURCE", "").strip()
 REGEN_TEST_OUTPUT_DIR = os.environ.get("REGEN_TEST_OUTPUT_DIR", "regen_test_outputs")
+
+# ---- 新規ソース品質検証モード ----
+# Notion既存URLを除外した「まだDBにない新規ソース」だけを使い、
+# Screening -> Deep Dive -> Fact Gate -> Editorial Gate を本番同等に通す。
+# Notion/GitHubには一切書き込まず、生成稿とログだけを残す。
+NEW_SOURCE_TEST_MODE = os.environ.get("NEW_SOURCE_TEST_MODE", "true").lower() in {"1", "true", "yes", "on"}
+NEW_SOURCE_TEST_LIMIT = int(os.environ.get("NEW_SOURCE_TEST_LIMIT", "3"))
+NEW_SOURCE_TEST_SCREEN_PER_SOURCE = int(os.environ.get("NEW_SOURCE_TEST_SCREEN_PER_SOURCE", "4"))
+NEW_SOURCE_TEST_OUTPUT_DIR = os.environ.get("NEW_SOURCE_TEST_OUTPUT_DIR", "new_source_test_outputs")
 
 # Deep Dive一次情報補強。URL ContextはScreeningには使わず、source-native情報が
 # 不足する候補（特にHN/PH）を中心に使用する。Google Searchは別枠利用条件が
@@ -2259,6 +2268,13 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 【読者】CTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。
 【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。
 【事実優先順位】Source Native Context > Primary URL取得内容 > Google Search Grounding（有効時） > モデル内部知識。
+
+【SOURCE BOUNDARY — 最重要】
+・ARTICLEで「事実」として断定してよい技術仕様・対応状況・価格・数値・競合情報・固有名詞は、原則としてSource Native ContextまたはGroundingで確認できる内容だけ。
+・モデル内部知識から背景説明を補う場合は、製品固有の事実として書かず、「一般論として」「ここからは私の推論だが」など、読者が推論だと分かる形にする。
+・Source Contextにない企業向け管理製品、競合機能、API仕様、OS/ブラウザ管理方式などを、もっともらしい補足として追加しない。
+・ニュース公開時点の仕様と現在のStable仕様は同一視しない。現在仕様をGroundingで確認できなければ「元記事公開時点では」と限定する。
+・不明点は補完せず「一次情報からは確認できない」と書く。
 モデル内部知識だけで現在仕様、競合比較、数値、価格、対応状況を断定しない。
 
 {fact_rules}
@@ -2319,7 +2335,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 必要な論点だけを選び、文章の流れを優先する。
 
 【ARTICLEの追加ルール】
-・「私の判定」ではDecisionとScoreを明示し、その後は短い段落で判断理由を書く。
+・「私の判定」ではDecision（NOW / TRY / WATCH / WAIT / AVOID）のみを自然な文章で明示する。Decision ScoreやBusiness Impact等の内部採点はARTICLEへ一切出さない。採点はMANAGEMENT DATAだけに置く。
 ・競合名を出す場合、Source Native Contextにその競合の比較根拠が存在する時だけ。なければ製品名を列挙しない。
 ・Preview/Beta/Stableは必ず分離する。
 ・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。
@@ -2582,6 +2598,48 @@ def _explicit_decision_conflict(parsed: dict) -> str:
     return ""
 
 
+
+def _find_management_score_leak(draft: str) -> list[str]:
+    """Notion用の内部採点がnote本文へ漏れていないか検出する。"""
+    text = draft or ""
+    leaks = []
+    if re.search(r"(?:Business Impact|Technical Impact|Market Impact|Reliability)\s*[:：]", text, re.IGNORECASE):
+        leaks.append("management score breakdown leaked into ARTICLE")
+    # Decision Score / 総合スコアの明示もARTICLEでは禁止。一般本文中の数値は別Gateで扱う。
+    if re.search(r"(?:Decision Score|総合スコア|判定スコア|Score)\s*[:：]\s*\d+\s*(?:/\s*100)?", text, re.IGNORECASE):
+        leaks.append("management decision score leaked into ARTICLE")
+    return leaks
+
+
+def _find_source_boundary_violations(draft: str, source_context: str) -> list[str]:
+    """ソース外の具体的固有名を断定的な比較・運用事実として足す典型パターンを保守的に検出。
+
+    完全なfact-checkerではなく、Source Contextにない固有名を伴う比較・企業運用断定を
+    公開前に止めるための補助Gate。推論ラベルが近傍にあれば許可する。
+    """
+    evidence = _normalized_evidence_text(source_context)
+    if not draft or not evidence:
+        return []
+    failures = []
+    # 比較や企業運用を断定する文だけを見る。一般的な背景説明まで過剰に止めない。
+    sentences = re.split(r"(?<=[。！？])\s*", draft)
+    cue = re.compile(r"(?:比較|一方で|に比べ|よりも|管理|標準化|公式サポート|対応して|要求する|利用できる)")
+    inference = re.compile(r"(?:一般論として|私の推論|推論に基づ|可能性がある|考えられる|元記事(?:の記述|公開時点)|記事内で触れられている)")
+    ignore = {"ARTICLE","WATCH","TRY","NOW","WAIT","AVOID","Wayland","Linux","GitHub","HackerNews","ProductHunt","ArXiv","API","AI","LLM","MCP","GPU","OSS"}
+    for sent in sentences:
+        if not cue.search(sent) or inference.search(sent):
+            continue
+        names = re.findall(r"\b[A-Z][A-Za-z0-9.+_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?\b", sent)
+        unsupported=[]
+        for name in dict.fromkeys(names):
+            if name in ignore:
+                continue
+            if _normalized_evidence_text(name) not in evidence:
+                unsupported.append(name)
+        if unsupported:
+            failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:3]))
+    return list(dict.fromkeys(failures))
+
 def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
     """公開可否を決めるFact Gate。事実・構造上の致命傷だけをFailにする。"""
     failures: list[str] = []
@@ -2629,6 +2687,8 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_unsupported_numeric_claims(draft, source_context))
     failures.extend(_find_hype_claims(draft))
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
+    failures.extend(_find_management_score_leak(draft))
+    failures.extend(_find_source_boundary_violations(draft, source_context))
 
     conflict = _explicit_decision_conflict(parsed)
     if conflict:
@@ -2749,6 +2809,10 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
     for attempt in range(2):
         kind = request_kind if attempt == 0 else "deep_dive_retry"
         try:
+            # Grounded Deep Diveも上位モデル専用Safety Capを必ず消費する。
+            # 以前はこの経路だけconsume漏れがあり、実際の3.6 Flash呼び出し数と
+            # Deep Dive Model Requests Usedの表示が一致していなかった。
+            DEEP_DIVE_MODEL_BUDGET.consume(kind)
             time.sleep(3)
             _consume_gemini_request(kind)
             config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
@@ -2908,7 +2972,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             except Exception as e:
                 logger.warning(f"[EYECATCH SKIP] {name}: {e}")
         else:
-            logger.info(f"[REGEN TEST] eyecatch生成・GitHub uploadをスキップ: {name}")
+            logger.info(f"[READ ONLY TEST] eyecatch生成・GitHub uploadをスキップ: {name}")
 
         analyzed_at = _analyzed_at_now_iso()
         if persist_results:
@@ -2932,11 +2996,14 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     report_meta=parsed, screening_score=screening_score, screening_reason=screening_reason,
                 )
         else:
+            regen_status = "accepted" if quality_gate_passed else "rejected"
             save_regen_test_manuscript(
                 repo, clean_manuscript,
-                quality_status="accepted" if quality_gate_passed else "rejected",
+                quality_status=regen_status,
                 quality_failures=final_quality_failures,
             )
+            # 再生成ランナーだけがACCEPTED/REJECTEDを正しく集計できるようstatusも返す。
+            return clean_manuscript, regen_status
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
@@ -3110,6 +3177,8 @@ def run_regen_test_mode():
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
 
+    accepted = 0
+    rejected = 0
     generated = 0
     for idx, item in enumerate(items, start=1):
         if not GEMINI_BUDGET.can_request():
@@ -3123,7 +3192,7 @@ def run_regen_test_mode():
             logger.warning(f"[REGEN TEST SKIP: LICENSE] {name} -> {license_status}")
             continue
         try:
-            manuscript = generate_intelligence_report(
+            regen_result = generate_intelligence_report(
                 repo,
                 notion_page_id=item.get("notion_page_id"),
                 screening_score=item.get("screening_score"),
@@ -3133,9 +3202,17 @@ def run_regen_test_mode():
         except DailyQuotaExhaustedError:
             logger.error("[REGEN TEST STOP] Gemini日次クォータ到達")
             break
-        if not manuscript:
+        if not regen_result:
             continue
+        if isinstance(regen_result, tuple):
+            manuscript, regen_status = regen_result
+        else:
+            manuscript, regen_status = regen_result, "accepted"
         generated += 1
+        if regen_status == "accepted":
+            accepted += 1
+        else:
+            rejected += 1
         # GitHub Actionsでも成果物を即確認できるよう、全文をログにも出す。
         logger.info("\n" + "=" * 70)
         logger.info(f"[REGEN TEST ARTICLE START] {name}")
@@ -3143,8 +3220,143 @@ def run_regen_test_mode():
         logger.info(f"[REGEN TEST ARTICLE END] {name}")
         logger.info("=" * 70)
 
-    logger.info(f"[REGEN TEST COMPLETE] 成功 {generated}/{len(items)}件")
+    logger.info(
+        f"[REGEN TEST COMPLETE] ACCEPTED {accepted} / REJECTED {rejected} / "
+        f"GENERATED {generated} / TOTAL {len(items)}"
+    )
     logger.info(f"[REGEN TEST OUTPUT] {REGEN_TEST_OUTPUT_DIR}/")
+    logger.info(GEMINI_BUDGET.summary())
+    logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+
+
+def run_new_source_test_mode():
+    """未登録URLだけを使うREAD ONLY品質検証ランナー。"""
+    global REGEN_TEST_OUTPUT_DIR
+    REGEN_TEST_OUTPUT_DIR = NEW_SOURCE_TEST_OUTPUT_DIR
+
+    logger.warning("==========================================")
+    logger.warning(" NEW SOURCE TEST MODE: 未登録URLのみ（READ ONLY）")
+    logger.warning(" Notion/GitHubへの書き込みは行いません")
+    logger.warning("==========================================")
+
+    existing_urls = get_existing_repo_urls()
+    if existing_urls is None:
+        logger.error("[NEW SOURCE TEST ABORTED] Notion既存URL取得に失敗")
+        logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+        return
+
+    # 収集は広め、Gemini Screeningは各ソース最大4件に絞る。
+    source_batches = {
+        "GitHub": fetch_github_trending(),
+        "HackerNews": fetch_hackernews_top(limit=60),
+        "ArXiv": fetch_arxiv_ai_ml(limit=30),
+        "ProductHunt": fetch_producthunt_trending(limit=50),
+    }
+
+    unseen_by_source = {}
+    total_unseen = 0
+    for source_name, items in source_batches.items():
+        unseen = []
+        for repo in items:
+            is_safe, license_status = legal_safety_gate(repo)
+            if not is_safe:
+                logger.info(f" [NEW TEST SKIP: LICENSE] {repo.get('nameWithOwner')} -> {license_status}")
+                continue
+            repo_url = (repo.get("url") or "").rstrip("/")
+            if not repo_url or repo_url in existing_urls:
+                continue
+            unseen.append(repo)
+        unseen_by_source[source_name] = unseen
+        total_unseen += len(unseen)
+        logger.info(f"[NEW SOURCE TEST POOL] {source_name}: 未登録 {len(unseen)}件")
+
+    if total_unseen == 0:
+        logger.warning("[NEW SOURCE TEST] 未登録URLが0件です。収集範囲内はすべてNotion登録済みでした。")
+        logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+        return
+
+    screening_targets = []
+    for source_name in ("HackerNews", "ProductHunt", "GitHub", "ArXiv"):
+        screening_targets.extend(unseen_by_source.get(source_name, [])[:NEW_SOURCE_TEST_SCREEN_PER_SOURCE])
+
+    logger.info(f">>> [NEW SOURCE TEST] Screening開始 {len(screening_targets)}件")
+    screened = []
+    try:
+        for repo in screening_targets:
+            if not GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS):
+                logger.warning("[NEW SOURCE TEST SCREENING STOP] Deep Dive予約枠保護")
+                break
+            screened.append(screen_repo(repo))
+    except DailyQuotaExhaustedError:
+        logger.error("[NEW SOURCE TEST STOP] Screening中にGemini日次クォータ到達")
+
+    screened.sort(key=lambda x: (x.get("score", 0), x["repo"].get("stargazerCount", 0)), reverse=True)
+    eligible = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
+    logger.info(f"[NEW SOURCE TEST] Screening {len(screened)}件 / 60点以上 {len(eligible)}件")
+
+    # まずソース分散を優先して各ソース1本、その後は純粋なスコア順で補充。
+    selected = []
+    used_sources = set()
+    for item in eligible:
+        src_name = item["repo"].get("source")
+        if src_name not in used_sources:
+            selected.append(item)
+            used_sources.add(src_name)
+            if len(selected) >= NEW_SOURCE_TEST_LIMIT:
+                break
+    if len(selected) < NEW_SOURCE_TEST_LIMIT:
+        selected_ids = {id(x) for x in selected}
+        for item in eligible:
+            if id(item) in selected_ids:
+                continue
+            selected.append(item)
+            if len(selected) >= NEW_SOURCE_TEST_LIMIT:
+                break
+
+    if not selected:
+        logger.warning(f"[NEW SOURCE TEST] {NOTION_SAVE_THRESHOLD_SCORE}点以上の新規候補がありません。低スコアを水増ししません。")
+        logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+        return
+
+    accepted = rejected = generated = 0
+    for idx, candidate in enumerate(selected, start=1):
+        if not GEMINI_BUDGET.can_request():
+            logger.warning("[NEW SOURCE TEST STOP] Gemini local budget残量なし")
+            break
+        repo = candidate["repo"]
+        name = repo.get("nameWithOwner")
+        logger.info(f"[NEW SOURCE TEST {idx}/{len(selected)}] {repo.get('source')} / {name} / Screening {candidate.get('score')}点")
+        try:
+            result = generate_intelligence_report(
+                repo,
+                notion_page_id=None,
+                screening_score=candidate.get("score"),
+                screening_reason=candidate.get("reason", ""),
+                persist_results=False,
+            )
+        except DailyQuotaExhaustedError:
+            logger.error("[NEW SOURCE TEST STOP] Deep Dive中にGemini日次クォータ到達")
+            break
+        if not result:
+            continue
+        manuscript, status = result if isinstance(result, tuple) else (result, "accepted")
+        generated += 1
+        if status == "accepted": accepted += 1
+        else: rejected += 1
+        logger.info("\n" + "=" * 70)
+        logger.info(f"[NEW SOURCE TEST ARTICLE START] {name}")
+        logger.info("=" * 70 + "\n" + manuscript + "\n" + "=" * 70)
+        logger.info(f"[NEW SOURCE TEST ARTICLE END] {name}")
+        logger.info("=" * 70)
+
+    logger.info(
+        f"[NEW SOURCE TEST COMPLETE] ACCEPTED {accepted} / REJECTED {rejected} / "
+        f"GENERATED {generated} / SELECTED {len(selected)}"
+    )
+    logger.info(f"[NEW SOURCE TEST OUTPUT] {NEW_SOURCE_TEST_OUTPUT_DIR}/")
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
 
@@ -3156,6 +3368,9 @@ def main():
     logger.info("==========================================")
     if REGEN_TEST_MODE:
         run_regen_test_mode()
+        return
+    if NEW_SOURCE_TEST_MODE:
+        run_new_source_test_mode()
         return
     check_stale_content()
 
