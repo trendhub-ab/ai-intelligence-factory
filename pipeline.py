@@ -16,7 +16,7 @@ from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urljoin, urlsplit
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from google import genai
 from google.genai.errors import APIError
 
@@ -314,6 +314,8 @@ ARTICLE_STATUS_NOT_PLANNED = "Not Planned"
 ARTICLE_STATUS_READY = "Ready"
 VISIBILITY_SUBSCRIBER_ONLY = "Subscriber Only"
 VISIBILITY_PAID_ARTICLE = "Paid Article"
+# 自動生成稿は当面すべて無料公開する。Notionの選択肢にも同名を事前に追加すること。
+VISIBILITY_FREE_ARTICLE = "Free Article"
 GROUNDING_METADATA_ONLY = "Metadata Only"
 GROUNDING_SOURCE_NATIVE = "Source Native"
 GROUNDING_URL_CONTEXT = "URL Context"
@@ -408,7 +410,8 @@ DEEP_DIVE_RESPONSE_SCHEMA = {
     },
 }
 
-# 記事内の無料/有料エリアの境界検出。「---有料エリア---」を基本形としつつ、
+# 記事内の無料/有料エリアの境界検出。ARTICLE_PUBLICATION_MODE=paid のときだけ
+# 実際のペイウォールとして使う。既定の free では旧稿との互換用に境界を除去する。
 # 記号の種類・全角半角・スペースの有無が多少ブレても検出できるよう正規表現で許容する。
 # 「有料エリア」という文字列を必須にしているため、note.com対応Markdownとして
 # 別途使われる素の水平線「---」（区切り線）と誤って衝突することはない。
@@ -431,6 +434,16 @@ NOTION_BLOCK_LIMIT = 1900
 MIN_PAID_AREA_LENGTH = 1200
 # 自動リトライの最大回数（これを超えても閾値未達なら、その案件は生成を諦めて次に進む）
 MAX_QUALITY_RETRIES = 1
+
+# 自動生成の記事は無料公開用に生成する。過去の有料原稿を再生成・比較する場合だけ
+# ARTICLE_PUBLICATION_MODE=paid を明示する。未指定時に有料化へ戻らないようfreeを既定にする。
+ARTICLE_PUBLICATION_MODE = os.environ.get("ARTICLE_PUBLICATION_MODE", "free").strip().lower()
+if ARTICLE_PUBLICATION_MODE not in {"free", "paid"}:
+    logger.warning("[ARTICLE MODE] 不正なARTICLE_PUBLICATION_MODE=%r。freeとして扱います。", ARTICLE_PUBLICATION_MODE)
+    ARTICLE_PUBLICATION_MODE = "free"
+
+# PillowアイキャッチはDecision Score 60点以上の公開候補だけに付ける。
+EYECATCH_MIN_DECISION_SCORE = int(os.environ.get("EYECATCH_MIN_DECISION_SCORE", "60"))
 
 # ==========================================
 # 3. エラー・モデル管理＆スマートリトライ
@@ -1154,6 +1167,11 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
     なる（＝有料記事としての価値が消滅する）致命的な事故のため、検出せず出力せず
     Telegramへ即時アラートを送る。
     """
+    # 無料公開モードでは、旧Schemaが返す境界文字列だけを除去して全文を公開する。
+    # これにより旧稿・再生成稿の両方を安全に扱え、ペイウォール誤挿入も防ぐ。
+    if ARTICLE_PUBLICATION_MODE == "free":
+        return PAID_AREA_PATTERN.sub("", note_draft, count=1).strip(), ""
+
     match = PAID_AREA_PATTERN.search(note_draft)
     if not match:
         logger.error(f"[PAID AREA MISSING] {repo_name} -> 有料エリア境界を検出できませんでした。")
@@ -1334,30 +1352,109 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
     return None
 
 
+def _eyecatch_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """日本語を描けるNoto CJKを優先し、ローカル実行でも落ちないよう保険をかける。"""
+    env_name = "EYECATCH_FONT_BOLD_PATH" if bold else "EYECATCH_FONT_REGULAR_PATH"
+    filename = "NotoSansCJK-Bold.ttc" if bold else "NotoSansCJK-Regular.ttc"
+    candidates = [
+        os.environ.get(env_name, "").strip(),
+        f"/usr/share/fonts/opentype/noto/{filename}",
+        f"/usr/share/fonts/truetype/noto/{filename}",
+        f"/usr/share/fonts/truetype/noto-cjk/{filename}",
+    ]
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            return ImageFont.truetype(path, size=size)
+        except OSError:
+            continue
+    logger.warning("[EYECATCH FONT] Noto CJKが見つかりません。日本語表示のためfonts-noto-cjkを導入してください。")
+    return ImageFont.load_default()
+
+
+def _eyecatch_accent_color(score: int) -> tuple[int, int, int]:
+    """Decision Scoreの意味を一貫して伝える固定アクセント色。"""
+    if score >= 80:
+        return (239, 68, 68)   # #EF4444: 警告赤
+    if score >= 70:
+        return (59, 130, 246)  # #3B82F6: 知性青
+    return (20, 184, 166)      # #14B8A6: 青緑
+
+
+def _draw_centered_eyecatch_text(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
+                                  text: str, y: int, font, fill="white") -> None:
+    """バッジ内に文字列を水平中央揃えで描く。"""
+    left, _top, right, _bottom = draw.textbbox((0, 0), text, font=font)
+    center_x = (box[0] + box[2]) / 2
+    draw.text((round(center_x - (right - left) / 2), y), text, font=font, fill=fill)
+
+
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
-                             source: str = "GitHub") -> str:
+                             source: str = "GitHub", decision_score: int | None = None,
+                             technical_impact: int | None = None,
+                             urgency: int | None = None) -> str | None:
+    """背景画像と評価値から、Pillowだけでスコアカード型アイキャッチを描画する。
+
+    title_textは既存呼び出し互換のため残すが、読者向けUIには内部採点以外の
+    記事固有テキストを載せない。60点未満は記事化対象外のため画像を作らない。
     """
-    1280px x 670px のアイキャッチ画像を完全0円で自動生成するモジュール。
+    del title_text  # 互換引数。画像内に記事タイトルを重ねない。
+    width, height = 1280, 670
+    score = _bounded_int(decision_score, 0, 100)
+    technical = _bounded_int(technical_impact, 0, 25)
+    urgency_score = _bounded_int(urgency, 0, 20)
+    if score < EYECATCH_MIN_DECISION_SCORE:
+        logger.info("[EYECATCH SKIP] Decision Score %s < %s", score, EYECATCH_MIN_DECISION_SCORE)
+        return None
 
-    【設計変更】テキスト合成（タグ・タイトル文字の描画）は廃止し、背景画像
-    （ソース別、EYECATCH_BACKGROUND_DIR配下、SOURCE_BACKGROUND_IMAGEでマッピング）
-    または従来のダークグラデーションのみを出力する。
-    title_text引数は呼び出し互換性のために残しているが、画像生成には使用しない。
-    """
-    WIDTH, HEIGHT = 1280, 670
+    background = _load_eyecatch_background(source, width, height)
+    if background is None:
+        background = Image.new("RGB", (width, height), color=(10, 15, 28))
+        draw_bg = ImageDraw.Draw(background)
+        for y in range(height):
+            draw_bg.line([(0, y), (width, y)], fill=(10 + y * 15 // height, 15 + y * 25 // height, 28 + y * 45 // height))
+    else:
+        # _load_eyecatch_backgroundもcover処理をするが、仕様上のfitを明示しておく。
+        background = ImageOps.fit(background, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
 
-    img = _load_eyecatch_background(source, WIDTH, HEIGHT)
-    if img is None:
-        # 背景画像が用意されていない場合のフォールバック（ダークサイバー風グラデーション）。
-        img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
-        draw_bg = ImageDraw.Draw(img)
-        for y in range(HEIGHT):
-            r = int(10 + (y / HEIGHT) * 15)
-            g = int(15 + (y / HEIGHT) * 25)
-            b = int(28 + (y / HEIGHT) * 45)
-            draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+    mean_luminance = sum(ImageStat.Stat(background.resize((1, 1))).mean) / 3
+    card_alpha = 225 if mean_luminance >= 150 else 205
+    accent = _eyecatch_accent_color(score)
+    canvas = background.convert("RGBA")
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
 
-    img.save(output_path, "PNG")
+    # 1280px基準。カードは左側を大きく使い、右側の背景コンテンツを残す。
+    card = (62, 92, 892, 632)
+    draw.rounded_rectangle(card, radius=28, fill=(5, 15, 30, card_alpha), outline=(203, 213, 225, 220), width=2)
+
+    title_font = _eyecatch_font(46, bold=True)
+    score_font = _eyecatch_font(84, bold=True)
+    badge_label_font = _eyecatch_font(34, bold=True)
+    badge_en_font = _eyecatch_font(25, bold=True)
+    badge_value_font = _eyecatch_font(54, bold=True)
+    draw.text((122, 138), "意思決定スコア（Decision Score）", font=title_font, fill="white")
+    draw.text((350, 220), f"{score}/100", font=score_font, fill="white")
+
+    bar = (122, 352, 832, 410)
+    draw.rounded_rectangle(bar, radius=14, fill=(51, 65, 85, 255))
+    fill_right = bar[0] + round((bar[2] - bar[0]) * score / 100)
+    draw.rounded_rectangle((bar[0], bar[1], fill_right, bar[3]), radius=14, fill=accent)
+
+    badges = [
+        ((122, 444, 462, 602), "技術的破壊力", "(Technical Impact)", f"{technical}/25"),
+        ((482, 444, 822, 602), "緊急度", "(Urgency)", f"{urgency_score}/20"),
+    ]
+    for box, japanese_label, english_label, value in badges:
+        draw.rounded_rectangle(box, radius=18, fill=(5, 15, 30, 160), outline=(203, 213, 225, 190), width=2)
+        _draw_centered_eyecatch_text(draw, box, japanese_label, box[1] + 24, badge_label_font)
+        _draw_centered_eyecatch_text(draw, box, english_label, box[1] + 70, badge_en_font)
+        _draw_centered_eyecatch_text(draw, box, value, box[1] + 104, badge_value_font)
+
+    result = Image.alpha_composite(canvas, overlay).convert("RGB")
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    result.save(output_path, format="PNG", optimize=True)
     return output_path
 
 
@@ -1511,7 +1608,9 @@ def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, wh
         PROP_STATUS: {"select": {"name": STATUS_DEEP_DIVE}},
         PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_DEEP_DIVE}},
         PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_READY}},
-        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_PAID_ARTICLE}},
+        # note本文は無料公開。Subscription Visibilityは記事本文の課金状態ではなく、
+        # Notion側での分類用メタデータとしてFree Articleを記録する。
+        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_FREE_ARTICLE}},
         PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": score_breakdown_text[:2000]}}]},
         PROP_WHAT: {"rich_text": [{"text": {"content": what_text[:2000]}}]},
         PROP_WHY_IMPORTANT: {"rich_text": [{"text": {"content": why_important_text[:2000]}}]},
@@ -1699,6 +1798,35 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     except Exception as e:
         logger.error(f"[NOTION STOCK EXCEPTION] {name}: {e}")
         return None
+
+
+def update_notion_low_score_skip(page_id: str | None, repo_name: str) -> bool:
+    """Step2のDecision Scoreが60点未満なら、Stockとして残し記事化キューから外す。"""
+    if not page_id or not NOTION_API_KEY:
+        return False
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_API_VERSION,
+    }
+    properties = {
+        PROP_STATUS: {"select": {"name": STATUS_STOCKED}},
+        PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_STOCKED}},
+        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NOT_PLANNED}},
+        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_SUBSCRIBER_ONLY}},
+    }
+    try:
+        response = requests.patch(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            json={"properties": properties}, headers=headers, timeout=10,
+        )
+        if response.status_code == 200:
+            logger.info("[NOTION LOW SCORE SKIP] %s をStockへ戻しました。", repo_name)
+            return True
+        logger.error("[NOTION LOW SCORE SKIP ERROR] %s -> %s", repo_name, response.text)
+    except Exception as exc:
+        logger.error("[NOTION LOW SCORE SKIP EXCEPTION] %s: %s", repo_name, exc)
+    return False
 
 
 def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, score_breakdown_text,
@@ -3187,8 +3315,8 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 ・一次情報を説明したあと、筆者自身の判断や迷いを自然に差し込む。
 ・「ここまでは確認できる。一方で、ここはまだ分からない。だから今は導入を急がず、動向を見たい」のように、留保を自然な日本語で書く。
 ・煽り語、営業コピー、読者を急かす命令口調を避ける。
-・無料部分は理解、有料部分は判断に重点を置くが、有料部分を管理項目の羅列にしない。
-・有料部分の中見出しはテーマに合わせて3〜6個を自分で設計する。固定テンプレの見出しを全部並べない。
+・記事全体を無料公開する。前半で情報を理解でき、後半で判断材料まで読める構成にする。
+・後半の中見出しはテーマに合わせて3〜6個を自分で設計する。固定テンプレの見出しを全部並べない。
 ・箇条書きは要点整理や検証項目にだけ使う。本文の半分以上は段落で読ませる。
 ・具体例は一次情報または明示した推論の範囲だけで使う。架空の導入効果や期間を作らない。
 ・最終段落は「私なら次に何をするか」を自然な一段落で締める。
@@ -3275,9 +3403,7 @@ Source Native Context、名前、概要、取得ページ本文はすべて信�
 ## ここまでの要点
 
 その後、必ず次の有料マーカーを1行で出す。
----有料エリア---
-
-有料部分では以下2見出しだけ必須。
+後半では以下2見出しだけ必須。
 ### 私ならこう考える
 ### 結局、どうするべきか
 
@@ -3301,7 +3427,7 @@ Source Native Context、名前、概要、取得ページ本文はすべて信�
 ・根拠のない%・倍数・金額・期間・性能値を作らない。
 ・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。
 ・「教科書を書き換える」「常識を覆す」「歴史的成果」「世紀の発見」「ブレイクスルー」「極めて高い」等の強い価値判はARTICLEに書かない。事実と限界を中立的に記述する。
-・有料部分は最低1200字。記事全体を箇条書き帳票にしない。
+・後半は最低1200字を目安に、記事全体を箇条書き帳票にしない。
 ・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
 """
 
@@ -3353,8 +3479,8 @@ article.judgementとarticle.final_recommendationは、このレベルを読者�
 
 【記事長】
 ・記事全体の目安は2,800〜4,500文字。長さを水増ししない。
-・article.paid_sectionsは3〜5個。各bodyは250〜550文字。
-・有料部分全体は1,400〜2,400文字。
+・article.paid_sectionsは無料記事の後半に置く3〜5個の中見出し。各bodyは250〜550文字。
+・後半全体は1,400〜2,400文字を目安にする。
 ・最終結論まで必ず書き切り、文章を途中で終了しない。
 
 【ARTICLE専用フィールド】
@@ -3536,13 +3662,16 @@ def _parse_structured_gemini_response(full_text: str) -> dict:
         clean(article.get("what")),
         "## ここまでの要点",
         summary_md,
-        "---有料エリア---",
         "### 私ならこう考える",
         judgement,
         *paid_markdown,
         "### 結局、どうするべきか",
         clean(article.get("final_recommendation")),
     ]
+    # 既定の無料公開ではペイウォール文字列を生成しない。旧有料運用への互換は
+    # 明示的にARTICLE_PUBLICATION_MODE=paidを設定した場合だけ維持する。
+    if ARTICLE_PUBLICATION_MODE == "paid":
+        note_parts.insert(note_parts.index("### 私ならこう考える"), "---有料エリア---")
     note_draft = "\n\n".join(part for part in note_parts if part).strip()
 
     future = management.get("future_scenarios") or []
@@ -3554,6 +3683,8 @@ def _parse_structured_gemini_response(full_text: str) -> dict:
         "note_draft": note_draft,
         "title_text": _normalize_note_title(clean(article.get("title"))),
         "score": score,
+        "technical_impact": technical,
+        "urgency": urgency,
         "score_breakdown_text": score_breakdown,
         "source_summary_text": str(management.get("source_summary") or "").strip(),
         "what_text": str(management.get("what") or "").strip(),
@@ -3932,7 +4063,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures: list[str] = []
     draft = parsed.get("note_draft", "")
     marker = PAID_AREA_PATTERN.search(draft)
-    if not marker:
+    if ARTICLE_PUBLICATION_MODE == "paid" and not marker:
         failures.append("paid marker missing")
 
     required_fields = {
@@ -3991,19 +4122,20 @@ def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[st
     warnings: list[str] = []
     draft = parsed.get("note_draft", "")
     marker = PAID_AREA_PATTERN.search(draft)
-    paid_part = draft[marker.end():].strip() if marker else ""
-    paid_len = len(normalize_markdown_for_note(paid_part)) if paid_part else 0
-    if paid_part and paid_len < MIN_PAID_AREA_LENGTH:
-        warnings.append(f"paid area {paid_len} chars < {MIN_PAID_AREA_LENGTH}")
-    if paid_part and _article_list_ratio(paid_part) > 0.55:
+    editorial_part = draft if ARTICLE_PUBLICATION_MODE == "free" else (draft[marker.end():].strip() if marker else "")
+    editorial_len = len(normalize_markdown_for_note(editorial_part)) if editorial_part else 0
+    if editorial_part and editorial_len < MIN_PAID_AREA_LENGTH:
+        label = "article" if ARTICLE_PUBLICATION_MODE == "free" else "paid area"
+        warnings.append(f"{label} {editorial_len} chars < {MIN_PAID_AREA_LENGTH}")
+    if editorial_part and _article_list_ratio(editorial_part) > 0.55:
         warnings.append("article too list-like; rewrite as natural prose")
     if len(re.findall(r"(?:第一に|第二に|第三に)", draft)) >= 3:
         warnings.append("mechanical ordinal structure")
     if len(re.findall(r"(?:意味します|と言えます|となります)[。\n]", draft)) >= 5:
         warnings.append("repetitive AI-like sentence endings")
-    paid_headings = re.findall(r"^###\s+(.+)$", paid_part, re.MULTILINE)
-    if len(paid_headings) > 8:
-        warnings.append(f"too many paid headings: {len(paid_headings)}")
+    article_headings = re.findall(r"^###\s+(.+)$", editorial_part, re.MULTILINE)
+    if len(article_headings) > 8:
+        warnings.append(f"too many article headings: {len(article_headings)}")
     return (not warnings, list(dict.fromkeys(warnings)))
 
 
@@ -4248,6 +4380,20 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
                 return None
 
+            # Deep Diveの再評価が60点未満なら、本文・アイキャッチを保存せずStockへ戻す。
+            # Quality Failedではないため、次回のAPI障害救済キューにも入れない。
+            if parsed["score"] < EYECATCH_MIN_DECISION_SCORE:
+                logger.info(
+                    "[LOW SCORE SKIP] %s: Decision Score %s < %s。記事化せずStockとして保持します。",
+                    name, parsed["score"], EYECATCH_MIN_DECISION_SCORE,
+                )
+                page_id = notion_page_id
+                if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+                    page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
+                if persist_results:
+                    update_notion_low_score_skip(page_id, name)
+                return None
+
             fact_ok, fact_failures = validate_fact_gate(parsed, name, source_context=source_info.get("context", ""), source=source)
             editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
             failures = fact_failures + editorial_warnings
@@ -4300,9 +4446,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
                 eyecatch_filename = f"{_sanitize_filename(name)}.png"
                 eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
-                generate_eyecatch_image(parsed["title_text"], eyecatch_path, source)
-                logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
-                eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
+                created_image = generate_eyecatch_image(
+                    parsed["title_text"], eyecatch_path, source,
+                    decision_score=parsed["score"],
+                    technical_impact=parsed.get("technical_impact"),
+                    urgency=parsed.get("urgency"),
+                )
+                if created_image:
+                    logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
+                    eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
             except Exception as e:
                 logger.warning(f"[EYECATCH SKIP] {name}: {e}")
         else:
