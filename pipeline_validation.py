@@ -1170,9 +1170,8 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
 # かつ内容としても正確な表記を維持する。
 SOURCE_RIGHTS_NOTE = {
     "HackerNews": (
-        "- **出典について**: 本記事はHacker Newsで話題となった公開情報"
-        "（記事タイトル・スコア等）を基に独自に分析・要約したものです。"
-        "リンク先記事本文の著作権は原著作者に帰属します。\n"
+        "- **出典について**: 本記事はHacker Newsで発見したリンク先の原資料を基に"
+        "独自に分析・要約したものです。リンク先記事本文の著作権は原著作者に帰属します。\n"
     ),
     "ArXiv": (
         "- **出典について**: 本記事はarXivで公開されている論文の要旨・情報を基に"
@@ -1184,10 +1183,31 @@ SOURCE_RIGHTS_NOTE = {
     ),
 }
 
+def _build_source_attribution(source: str, repo_name: str, repo_url: str,
+                              source_details: dict | None = None) -> tuple[str, str, str, str]:
+    """発見経路と原資料を分離した、読者向けの出典帰属を返す。"""
+    details = source_details or {}
+    if source == "HackerNews":
+        hn_url = str(details.get("hn_url") or "").strip()
+        external_url = str(details.get("external_url") or "").strip()
+        if external_url:
+            return ("Hacker News", "リンク先の原著記事・技術報告", external_url, hn_url)
+        return ("Hacker News", "Hacker News掲載の投稿", repo_url or hn_url, "")
+    if source == "ArXiv":
+        return ("arXiv", "arXiv掲載論文", repo_url, "")
+    if source == "ProductHunt":
+        producthunt_url = str(details.get("producthunt_url") or "").strip()
+        return ("Product Hunt", "Product Hunt掲載プロダクト情報", repo_url, producthunt_url)
+    if source == "GitHub":
+        return ("GitHub", "GitHubリポジトリ掲載情報", repo_url, "")
+    return (source, "リンク先原資料", repo_url, "")
+
+
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
                                  spdx_id: str, source: str = "GitHub",
-                                 evidence_urls: list[str] | None = None) -> str:
-    """note投稿用Markdownを組み立て、一次出典と最大3件のEvidence URLを末尾へ付与する。"""
+                                 evidence_urls: list[str] | None = None,
+                                 source_details: dict | None = None) -> str:
+    """note投稿用Markdownを組み立て、発見経路と原資料を分離して末尾へ付与する。"""
     free_part, paid_part = split_free_paid(note_draft, repo_name)
     free_clean = normalize_markdown_for_note(free_part)
     paid_clean = normalize_markdown_for_note(paid_part)
@@ -1205,14 +1225,19 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     else:
         rights_line = SOURCE_RIGHTS_NOTE.get(source, "")
 
+    discovery_label, primary_label, primary_url, related_url = _build_source_attribution(
+        source, repo_name, repo_url, source_details
+    )
     source_block = (
         f"{DIVIDER_LINE}"
         f"### 出典元\n"
-        f"- **ソース**: {source}\n"
-        f"- **名称**: {repo_name}\n"
-        f"- **公式リンク**: [{repo_name}]({repo_url})\n"
+        f"- **発見経路**: {discovery_label}\n"
+        f"- **原資料**: {primary_label}\n"
+        f"- **原資料URL**: [{repo_name}]({primary_url})\n"
         f"{rights_line}"
     )
+    if related_url and related_url != primary_url:
+        source_block += f"- **関連情報**: [発見元のHacker News投稿]({related_url})\n"
 
     unique_evidence = []
     for item in evidence_urls or []:
@@ -4120,6 +4145,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         evidence_urls = last_grounding.get("evidence_urls", [])
         clean_manuscript = build_clean_note_manuscript(
             parsed["note_draft"], name, url, spdx_id, source, evidence_urls=evidence_urls,
+            source_details=repo.get("sourceDetails") or {},
         )
 
         eyecatch_url = ""
