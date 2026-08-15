@@ -62,9 +62,14 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
     return chat.send_message(prompt)
 
-CANDIDATE_MODELS = os.environ.get(
-    "GEMINI_MODEL_CANDIDATES",
-    "gemini-3.1-flash-lite,gemini-3.5-flash"
+SCREENING_MODEL_CANDIDATES = os.environ.get(
+    "GEMINI_SCREENING_MODEL_CANDIDATES",
+    "gemini-3.1-flash-lite"
+).split(",")
+
+DEEP_DIVE_MODEL_CANDIDATES = os.environ.get(
+    "GEMINI_DEEP_DIVE_MODEL_CANDIDATES",
+    "gemini-3.6-flash"
 ).split(",")
 
 # 深掘り（Step2フルレポート）に回す件数（Two-Stage化）
@@ -105,6 +110,7 @@ GEMINI_SCREENING_RETRY_BUDGET = int(os.environ.get("GEMINI_SCREENING_RETRY_BUDGE
 GEMINI_DEEP_DIVE_RETRY_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_RETRY_BUDGET", "1"))
 GEMINI_RESERVED_DEEP_DIVE_REQUESTS = int(os.environ.get("GEMINI_RESERVED_DEEP_DIVE_REQUESTS", "3"))
 GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS", "6000"))
+GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET", "10"))
 MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS", "5"))
 
 # ---- 既存記事A/B比較用・再生成テストモード ----
@@ -353,6 +359,29 @@ def _consume_gemini_request(kind: str, reserve: int = 0) -> None:
     GEMINI_BUDGET.consume(kind, reserve=reserve)
 
 
+class DeepDiveModelBudget:
+    """Deep Dive用上位モデルだけの1実行Safety Cap。Google側quotaとは別のローカル上限。"""
+    def __init__(self, budget: int):
+        self.budget = max(0, budget)
+        self.used = 0
+
+    def can_request(self) -> bool:
+        return self.used + 1 <= self.budget
+
+    def consume(self, kind: str) -> None:
+        if not self.can_request():
+            raise GeminiBudgetExceededError(
+                f"Deep Dive model local budget exhausted: used={self.used}, budget={self.budget}, kind={kind}"
+            )
+        self.used += 1
+
+    def summary(self) -> str:
+        return f"Deep Dive Model Requests Used: {self.used}/{self.budget}"
+
+
+DEEP_DIVE_MODEL_BUDGET = DeepDiveModelBudget(GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET)
+
+
 def send_telegram_alert(message: str):
     """運用者(自分)宛のアラート通知。購読者向けではない。"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -421,7 +450,7 @@ def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
     return default
 
 
-def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
+def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_dive: bool = False) -> str:
     """候補順=優先順位として軽量pingし、頻繁なGeminiモデル更新へ追随する。"""
     last_error: Exception | None = None
     for model_name in candidates:
@@ -430,13 +459,15 @@ def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
             continue
         for attempt in range(PING_MAX_RETRIES + 1):
             try:
+                if count_as_deep_dive:
+                    DEEP_DIVE_MODEL_BUDGET.consume("ping" if attempt == 0 else "ping_retry")
                 _generate_via_chat(
                     model_name,
                     "ping",
                     config={"max_output_tokens": 8},
                     request_kind="ping" if attempt == 0 else "ping_retry",
                 )
-                logger.info(f"モデル解決成功: {model_name}")
+                logger.info(f"{label} モデル解決成功: {model_name}")
                 return model_name
             except GeminiBudgetExceededError as e:
                 raise NoAvailableModelError(str(e)) from e
@@ -458,11 +489,14 @@ def resolve_model(candidates: list[str] = CANDIDATE_MODELS) -> str:
 
 
 try:
-    SELECTED_MODEL = resolve_model()
+    SELECTED_SCREENING_MODEL = resolve_model(SCREENING_MODEL_CANDIDATES, label="Screening")
+    SELECTED_DEEP_DIVE_MODEL = resolve_model(
+        DEEP_DIVE_MODEL_CANDIDATES, label="Deep Dive", count_as_deep_dive=True
+    )
 except DailyQuotaExhaustedError as e:
     send_telegram_alert(f"⚠️ 【緊急】Gemini日次クォータ到達のため初期化停止: {e}")
     raise SystemExit(1)
-except NoAvailableModelError as e:
+except (NoAvailableModelError, GeminiBudgetExceededError) as e:
     send_telegram_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
     raise SystemExit(1)
 
@@ -472,8 +506,9 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind
     for attempt in range(max_retries + 1):
         kind = request_kind if attempt == 0 else "deep_dive_retry"
         try:
+            DEEP_DIVE_MODEL_BUDGET.consume(kind)
             time.sleep(3)
-            return _generate_via_chat(SELECTED_MODEL, prompt, request_kind=kind)
+            return _generate_via_chat(SELECTED_DEEP_DIVE_MODEL, prompt, request_kind=kind)
         except APIError as e:
             code = getattr(e, "code", None)
             if code == 429 and _is_daily_quota_exhausted(e):
@@ -2187,55 +2222,44 @@ def _source_fact_discipline(source: str) -> str:
 
 
 def _human_editorial_style_rules() -> str:
-    """note本文をテンプレ臭くせず、人間の編集者が書いた読み物に寄せる。"""
+    """note本文を管理帳票から切り離し、人間の編集者が書いた読み物に寄せる。"""
     return """
 【Human Editorial Style｜最重要】
-この記事は「AIが項目を埋めたレポート」ではなく、経験ある人間のテック編集者が読者に話しかけるnoteとして書く。
-正確性を落とさず、以下を守る。
+ARTICLEはNotion管理帳票ではない。読者が自然に読み進められるテック記事として書く。
 
-・見出し構造は固定するが、各節の本文を同じ型で始めない。「結論として」「つまり」「〜を意味します」を連発しない。
-・短い文と少し長い文を混ぜ、段落ごとに一つの考えを進める。箇条書きの羅列だけで記事を作らない。
-・事実を説明した直後に、その事実が読者の現場で「何を変えるのか／変えないのか」を自然な文章でつなぐ。
-・筆者の判断には理由と留保を入れる。「良いから使う」ではなく「ここまでは確認できる。ただしここは未確認。だからTRY」
-  のように、迷いどころを隠さない。
-・読者に無用な恐怖や焦りを与える煽り文句を避ける。「今すぐ」「最後の砦」「革命」「圧倒的な差」等を安易に使わない。
-・抽象語だけで終わらせず、一次情報にある具体的な機能・制約・運用場面を文章の中に織り込む。
-・太字は1段落に何個も置かない。本当に読者が覚えるべき語だけに使う。
-・「誰が使うべきか」「誰は使わなくていいか」も人物像を機械的な箇条書きにせず、2〜3タイプを短い説明付きで示す。
-・「私ならこう試す」は日数や効果を捏造せず、実際に検証可能な観測項目を置く。
-・未来シナリオはドラマを作らない。何が起きたら判断を更新するか、観測ポイントを書く。
-・最終判断は有料部分の再要約ではなく、ここまでの不確実性を踏まえた「次の一手」を一段落で締める。
-・敬体（です・ます）を基本にするが、全ての文を同じ語尾にしない。自然な接続と余韻を使う。
-・読者を過度に持ち上げたり、命令口調で煽ったりしない。
+・同じ長さの段落、同じ語尾、同じ3点セットを繰り返さない。
+・「第一に／第二に／第三に」を機械的に並べない。必要なら一度だけ使う。
+・各節を結論→理由→箇条書きの同型にしない。短い段落と長めの段落を混ぜる。
+・一次情報を説明したあと、筆者自身の判断や迷いを自然に差し込む。
+・「ここまでは確認できる。一方で、ここはまだ分からない。だから私はTRYと見る」のように、留保を隠さない。
+・煽り語、営業コピー、読者を急かす命令口調を避ける。
+・無料部分は理解、有料部分は判断に重点を置くが、有料部分を管理項目の羅列にしない。
+・有料部分の中見出しはテーマに合わせて3〜6個を自分で設計する。固定テンプレの見出しを全部並べない。
+・箇条書きは要点整理や検証項目にだけ使う。本文の半分以上は段落で読ませる。
+・具体例は一次情報または明示した推論の範囲だけで使う。架空の導入効果や期間を作らない。
+・最終段落は「私なら次に何をするか」を自然な一段落で締める。
 """
-
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
                           source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY):
-    """500円noteを、Fact Discipline付きのGrounded Decision Intelligenceとして生成する。"""
+    """上位モデルでARTICLEとMANAGEMENT DATAを同時生成する。記事と管理帳票は明確に分離する。"""
     metric_label = ENGAGEMENT_LABELS.get(source, "Engagement")
     metric_note = ""
     if source == "ArXiv":
         metric_note = "※arXivにはStars/Votes相当の人気指標がないため、人気度を0とみなして価値判断しないこと。\n"
-    feedback = f"\n【前回出力の品質不足】\n{quality_feedback}\n不足点を必ず修正すること。指摘された禁止語は言い換え、根拠のない数値は削除すること。\n" if quality_feedback else ""
+    feedback = f"\n【前回出力への編集フィードバック】\n{quality_feedback}\n事実違反は必ず直す。文体指摘は自然な文章へ書き直す。\n" if quality_feedback else ""
     context = _truncate_source_context(source_context)
     fact_rules = _source_fact_discipline(source)
     style_rules = _human_editorial_style_rules()
 
     return f"""
 あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
-以下の一次情報について、500円の有料noteとして『読者がどう判断し、次に何をすべきか』を明確にする
-Decision Intelligence記事を作成してください。
+以下の一次情報から、500円の有料noteとして読者の判断を助ける記事と、Notion保存用の管理データを同時に作成してください。
 
 【読者】CTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。
-【最重要原則】単純要約ではなく、採用/PoC/監視/見送りを判断できる状態を作ること。
-ただし、記事を魅力的にするために事実を強くしたり、数字・競合優位・未来を作ったりしてはならない。
-
-【一次情報優先順位】
-1. 下記Source Native Context
-2. URL Context等で取得されたPrimary URLの内容
-3. Google Search Grounding（有効な場合）
-4. モデル内部知識（補助のみ。現在仕様・競合比較・数値の根拠にはしない）
+【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。
+【事実優先順位】Source Native Context > Primary URL取得内容 > Google Search Grounding（有効時） > モデル内部知識。
+モデル内部知識だけで現在仕様、競合比較、数値、価格、対応状況を断定しない。
 
 {fact_rules}
 {style_rules}
@@ -2249,96 +2273,60 @@ Decision Intelligence記事を作成してください。
 ・事前Grounding: {grounding_status_hint}
 
 【Source Native Context】
-{context or '（source-native本文は取得できていない。URL Contextが有効ならPrimary URLを優先して確認すること。）'}
+{context or '（source-native本文不足。Primary URLで確認できた範囲以外を現在事実として補完しないこと。）'}
 {feedback}
 
-【管理用データ】
-管理用データはNotion保存・Quality Gate用。記事本文とは文体を分け、簡潔かつ事実ベースにする。
-各項目は必ず全角中黒『・』で開始し、順序を変更しない。
-・Source Summary: 一次情報で何が発表・開発・提案されたかを日本語1〜3文で要約。
-・What(概要): 日本語2文以内。何が起きているか。
-・Why Important(導入インパクト): 実務・プロダクトへの具体的影響。未検証の業務効果は推論と明示。
-・技術的パラダイムシフト: 既存→新方式→何が変わるか。変化が小さいなら無理に「パラダイムシフト」と呼ばない。
-・代替との比較: Grounding内で比較可能な具体的代替だけを扱う。根拠不足なら比較軸と追加確認事項を書く。
-・移行コストとリスク: 技術、学習、移行、運用、ロックイン、破壊的変更のうち、確認できる項目と推論を分離。
-・Decision: NOW / TRY / WATCH / WAIT / AVOID のいずれか1つ。
-・Decision Reason: 最大3理由。Fact → Meaning → Decision implication が分かるようにする。
-・Decision Score:
-  ・Business Impact(25点満点): X点 - 根拠
-  ・Technical Impact(25点満点): X点 - 根拠
-  ・Urgency(20点満点): X点 - 根拠
-  ・Market Impact(15点満点): X点 - 根拠
-  ・Reliability(15点満点): X点 - Groundingの強さ・一次情報の鮮度/信頼性を含む根拠
-  ・合計: X / 100点
-・Why NOT Important(スルーしてよい理由): 誰には今不要かと根拠。
-・Who Should Use: 今検討すべき具体的なユーザー/企業/チーム。
-・Who Should NOT Use: 今は検討不要な具体的なユーザー/企業/チーム。
-・Action: 今週中に取れる具体的な次の一手。根拠のない日数・金額目標は置かない。
-・Future Scenario: 3〜12ヶ月について最低2つ。Condition → Possible Result → Indicator to Watch。
-・Article Value: 0〜100。このテーマを500円単品noteとして提供する価値。
+最初に必ず次の見出しをそのまま出す。
+=== MANAGEMENT DATA ===
+その下に以下を順序通り、各行「・ラベル: 値」で出す。
+・Source Summary: 一次情報で確認できる事実を1〜3文。
+・What: 何が起きたかを2文以内。
+・Why Important: 実務への意味。未検証効果は推論と明示。
+・技術的パラダイムシフト: 変化が小さいなら小さいと書く。
+・代替との比較: Grounding内で比較できる範囲だけ。根拠不足なら「比較根拠不足」と書く。
+・移行コストとリスク: 確認できる事実と推論を分ける。
+・Decision: NOW / TRY / WATCH / WAIT / AVOID の1つ。
+・Decision Reason: 最大3理由を簡潔に。
+・Decision Score: Business Impact X/25; Technical Impact X/25; Urgency X/20; Market Impact X/15; Reliability X/15; 合計 X/100
+・Why NOT Important: 今は不要な読者と理由。
+・Who Should Use: 検討価値のある読者。
+・Who Should NOT Use: 今は不要な読者。
+・Action: 次に検証する具体的行動。根拠のない日数・金額を作らない。
+・Future Scenario: 3〜12ヶ月の条件付きシナリオを2つ以上。Condition → Possible Result → Indicator。
+・Article Value: 0〜100
 
-管理用データ直後に必ず次の専用行を1行だけ出す。
+次に必ず専用行を出す。
 {SECTION_SPLIT_TOKEN}
 
-その次の1行を記事タイトルとし、#は付けない。
-タイトルは「何が変わったか＋読者が何を判断すべきか」が伝わる自然な日本語にする。
-「最後の砦」「革命」「一択」「必須」「劇的」「圧倒的」など、本文で立証できない煽り語をタイトルに使わない。
+その次の1行を記事タイトルにする。#は付けない。
 
-【note本文：必須構造】
+【ARTICLE】
+無料部分では以下4見出しだけを固定する。
 ## この記事の結論
-最初から断言で押し切らず、「どこまで確認でき、どこからが未確定か」を含めて2〜4段落で結論を書く。
-
 ## なぜ今、この情報を見るべきなのか
-ニュース性ではなく、読者の実務にどう関係するかを書く。関係が薄い読者には薄いと正直に書く。
-
 ## What｜これは何か
-一次情報で確認できる機能・発表・研究内容を、専門用語を噛み砕いて説明する。
-
-## 何が従来と違うのか
-比較根拠がある範囲だけを書く。誇張した二項対立を作らない。
-
 ## ここまでの要点
-3〜5点程度。単なる本文の言い換えではなく、無料部分だけ読んでも判断軸が残るようにする。
 
+その後、必ず次の有料マーカーを1行で出す。
 ---有料エリア---
 
+有料部分では以下2見出しだけ必須。
 ### 私の判定
-Decision / Decision Score / 一言結論。Decisionと最終判断を必ず一致させる。
-
-### なぜそう判断したのか
-最大3理由。番号を振ってもよいが、各理由はFact → Meaning → Decisionが自然につながる短い段落にする。
-
-### 本当に変わるのは何か
-Technical Paradigm Shift。実際には小幅改善なら「パラダイムシフト」と煽らず、その範囲を書く。
-
-### 既存の選択肢と比べるとどうか
-Groundingで確認できる範囲のAlternativeだけを扱う。競合の最新事情が未確認なら、優劣を断定せず比較軸を示す。
-
-### 誰が使うべきか
-Who Should Use。具体的な状況・困りごとまで書く。
-
-### 誰は使わなくていいか
-Who Should NOT Use。無理に全員へ勧めない。
-
-### 導入コストとリスク
-技術/学習/移行/運用/ロックイン等。事実と推論を分け、未知の部分を隠さない。
-
-### 私ならこう試す
-STEP 1 / STEP 2 / STEP 3。日数・効果値を作らず、「何を観測すれば次の判断に進めるか」を置く。
-
-### 3〜12ヶ月で起こり得ること
-条件付きシナリオを最低2つ。各シナリオにIndicator to Watchを含める。市場シェアや性能向上を勝手に数値化しない。
-
 ### 最終判断
-『私なら○○する』という次の一手で締める。ただしDecisionと矛盾させない。読者を煽る命令文で終わらせない。
 
-【Markdown】
-・見出しは上記##/###を厳守。
-・重要語は**太字**にできるが、多用しない。
-・箇条書きは必要なときだけ '- '。文章で読ませる節を最低半分以上にする。
-・コードブロック不要。
-・境界以外の単独行 '---' は使わない。
-・有料エリアは1800〜2500字程度を目標とし、最低でも1200字を下回らないこと。
+この2見出しの間に、テーマに最も合う中見出しを3〜6個、自分で自然な日本語で設計する。
+「なぜそう判断したのか」「本当に変わるのは何か」「誰が使うべきか」等を毎回固定で全部出さない。
+必要な論点だけを選び、文章の流れを優先する。
+
+【ARTICLEの追加ルール】
+・「私の判定」ではDecisionとScoreを明示し、その後は短い段落で判断理由を書く。
+・競合名を出す場合、Source Native Contextにその競合の比較根拠が存在する時だけ。なければ製品名を列挙しない。
+・Preview/Beta/Stableは必ず分離する。
+・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。
+・根拠のない%・倍数・金額・期間・性能値を作らない。
+・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。
+・有料部分は最低1200字。記事全体を箇条書き帳票にしない。
+・最終判断はDecisionと一致させる。
 """
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
@@ -2531,13 +2519,48 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str) -> list[st
     return list(dict.fromkeys(failures))[:8]
 
 
+def _claim_is_negated(text: str, start: int, end: int) -> bool:
+    window = (text or "")[max(0, start - 28): min(len(text or ""), end + 40)]
+    return bool(re.search(
+        r"(?:ではない|とは言えない|とは限らない|断定できない|確認できない|保証しない|保証するものではない|"
+        r"根拠(?:が|は)ない|未確認|未検証|避ける|使わない|禁止|推奨しない)",
+        window, re.IGNORECASE
+    ))
+
+
 def _find_hype_claims(draft: str) -> list[str]:
     failures: list[str] = []
+    text = draft or ""
     for pattern, label in _HYPE_PATTERNS:
-        m = re.search(pattern, draft or "", re.IGNORECASE)
-        if m:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            if _claim_is_negated(text, m.start(), m.end()):
+                continue
             failures.append(f"{label}: {m.group(0)}")
+            break
     return failures
+
+
+def _find_unsupported_competitor_claims(parsed: dict, source_context: str) -> list[str]:
+    """Groundingなしの具体的競合優劣を止める。一般的な比較軸の提示は許可する。"""
+    text = str(parsed.get("alternative_comparison_text", "") or "")
+    if not text:
+        return []
+    evidence = _normalized_evidence_text(source_context)
+    # 優劣・一択・明示比較を表す語がなければ問題にしない。
+    if not re.search(r"(?:より(?:優|劣|強|弱)|優位|劣る|一択|軍配|最適|圧倒|ほど.{0,10}(?:ない|少ない)|比較して.{0,12}(?:優|劣))", text):
+        return []
+    # 比較文に現れる英数製品名候補を拾う。Source Contextにない固有名があればFail。
+    names = re.findall(r"\b[A-Z][A-Za-z0-9.+_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?\b", text)
+    ignore = {"Decision", "Source", "API", "URL", "AI", "LLM", "MCP", "GPU", "OSS"}
+    unsupported = []
+    for name in dict.fromkeys(names):
+        if name in ignore:
+            continue
+        if _normalized_evidence_text(name) not in evidence:
+            unsupported.append(name)
+    if unsupported:
+        return ["unsupported competitor comparison: " + ", ".join(unsupported[:4])]
+    return []
 
 
 def _article_list_ratio(text: str) -> float:
@@ -2559,20 +2582,13 @@ def _explicit_decision_conflict(parsed: dict) -> str:
     return ""
 
 
-def validate_paid_article(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
-    """500円記事としての構造・Fact Discipline・最低限の読み物品質を検証する。"""
+def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
+    """公開可否を決めるFact Gate。事実・構造上の致命傷だけをFailにする。"""
     failures: list[str] = []
     draft = parsed.get("note_draft", "")
     marker = PAID_AREA_PATTERN.search(draft)
-    paid_part = ""
-    paid_len = 0
     if not marker:
         failures.append("paid marker missing")
-    else:
-        paid_part = draft[marker.end():].strip()
-        paid_len = len(normalize_markdown_for_note(paid_part))
-        if paid_len < MIN_PAID_AREA_LENGTH:
-            failures.append(f"paid area {paid_len} chars < {MIN_PAID_AREA_LENGTH}")
 
     required_fields = {
         "Decision Reason": "decision_reason_text",
@@ -2591,45 +2607,59 @@ def validate_paid_article(parsed: dict, repo_name: str, source_context: str = ""
         failures.append("Decision missing/invalid")
     if not parsed.get("score"):
         failures.append("Decision Score missing")
+    if not (parsed.get("title_text") or "").strip() or parsed.get("title_text") == "（タイトル抽出失敗）":
+        failures.append("title missing")
     for label, key in required_fields.items():
         if not _is_meaningful_field(str(parsed.get(key, ""))):
             failures.append(f"{label} missing")
 
+    # ARTICLEは管理帳票から解放する。無料4見出し＋判定＋最終判断だけ固定。
     required_headings = {
         "この記事の結論": r"^##\s*この記事の結論\s*$",
         "なぜ今、この情報を見るべきなのか": r"^##\s*なぜ今、この情報を見るべきなのか\s*$",
         "What｜これは何か": r"^##\s*What｜これは何か\s*$",
-        "何が従来と違うのか": r"^##\s*何が従来と違うのか\s*$",
         "ここまでの要点": r"^##\s*ここまでの要点\s*$",
         "私の判定": r"^###\s*私の判定\s*$",
-        "なぜそう判断したのか": r"^###\s*なぜそう判断したのか\s*$",
-        "本当に変わるのは何か": r"^###\s*本当に変わるのは何か\s*$",
-        "既存の選択肢と比べるとどうか": r"^###\s*既存の選択肢と比べるとどうか\s*$",
-        "誰が使うべきか": r"^###\s*誰が使うべきか\s*$",
-        "誰は使わなくていいか": r"^###\s*誰は使わなくていいか\s*$",
-        "導入コストとリスク": r"^###\s*導入コストとリスク\s*$",
-        "私ならこう試す": r"^###\s*私ならこう試す\s*$",
-        "3〜12ヶ月で起こり得ること": r"^###\s*3〜12ヶ月で起こり得ること\s*$",
         "最終判断": r"^###\s*最終判断\s*$",
     }
     for label, heading in required_headings.items():
         if not re.search(heading, draft, re.MULTILINE):
             failures.append(f"required heading missing: {label}")
 
-    # Fact Discipline: 一次情報にない具体効果値と、根拠なしの極端な断定をQuality Retryへ戻す。
     failures.extend(_find_unsupported_numeric_claims(draft, source_context))
     failures.extend(_find_hype_claims(draft))
+    failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
 
     conflict = _explicit_decision_conflict(parsed)
     if conflict:
         failures.append(conflict)
-
-    # 人が読むnoteとして、ほぼ全行が箇条書きの「AIレポート」化を防ぐ。
-    if paid_part and _article_list_ratio(paid_part) > 0.75:
-        failures.append("article too list-like; rewrite as natural prose")
-
     return (not failures, list(dict.fromkeys(failures)))
 
+
+def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[str]]:
+    """読みやすさを診断するEditorial Gate。最終的な公開禁止理由にはしない。"""
+    warnings: list[str] = []
+    draft = parsed.get("note_draft", "")
+    marker = PAID_AREA_PATTERN.search(draft)
+    paid_part = draft[marker.end():].strip() if marker else ""
+    paid_len = len(normalize_markdown_for_note(paid_part)) if paid_part else 0
+    if paid_part and paid_len < MIN_PAID_AREA_LENGTH:
+        warnings.append(f"paid area {paid_len} chars < {MIN_PAID_AREA_LENGTH}")
+    if paid_part and _article_list_ratio(paid_part) > 0.55:
+        warnings.append("article too list-like; rewrite as natural prose")
+    if len(re.findall(r"(?:第一に|第二に|第三に)", draft)) >= 3:
+        warnings.append("mechanical ordinal structure")
+    if len(re.findall(r"(?:意味します|と言えます|となります)[。\n]", draft)) >= 5:
+        warnings.append("repetitive AI-like sentence endings")
+    paid_headings = re.findall(r"^###\s+(.+)$", paid_part, re.MULTILINE)
+    if len(paid_headings) > 8:
+        warnings.append(f"too many paid headings: {len(paid_headings)}")
+    return (not warnings, list(dict.fromkeys(warnings)))
+
+
+def validate_paid_article(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
+    """後方互換。公開可否はFact Gateのみで決める。"""
+    return validate_fact_gate(parsed, repo_name, source_context=source_context, source=source)
 
 def _extract_usage_metadata(response) -> None:
     usage = getattr(response, "usage_metadata", None)
@@ -2725,7 +2755,7 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
             if current_tools:
                 config["tools"] = current_tools
             response = client.models.generate_content(
-                model=SELECTED_MODEL,
+                model=SELECTED_DEEP_DIVE_MODEL,
                 contents=prompt,
                 config=config,
             )
@@ -2827,13 +2857,21 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
                 return None
 
-            quality_ok, failures = validate_paid_article(parsed, name, source_context=source_info.get("context", ""), source=source)
+            fact_ok, fact_failures = validate_fact_gate(parsed, name, source_context=source_info.get("context", ""), source=source)
+            editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
+            failures = fact_failures + editorial_warnings
             final_quality_failures = failures
-            if quality_ok:
+            if fact_ok and editorial_ok:
                 quality_gate_passed = True
                 break
+            # Editorialだけの問題は1回だけ書き直しを促す。2回目はFactが通っていれば公開可。
+            if fact_ok and not editorial_ok and attempt >= MAX_QUALITY_RETRIES:
+                logger.warning(f"[EDITORIAL GATE WARN] {name}: {', '.join(editorial_warnings)}")
+                quality_gate_passed = True
+                final_quality_failures = editorial_warnings
+                break
             if attempt >= MAX_QUALITY_RETRIES:
-                logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
+                logger.error(f"[FACT GATE FAILED] {name}: {', '.join(fact_failures)}")
                 if not persist_results:
                     # 再生成テストはGate調整そのものが目的。落ちた稿も捨てず、
                     # REJECTEDとして保存・全文ログ表示できるところまで処理を継続する。
@@ -2847,7 +2885,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
                 return None
             quality_feedback = "前回出力の不足項目: " + "; ".join(failures)
-            logger.warning(f"[QUALITY RETRY] {name}: {quality_feedback}")
+            gate_name = "FACT+EDITORIAL" if fact_failures and editorial_warnings else ("FACT" if fact_failures else "EDITORIAL")
+            logger.warning(f"[QUALITY RETRY:{gate_name}] {name}: {quality_feedback}")
 
         if not parsed:
             return None
@@ -2964,7 +3003,7 @@ def screen_repo(repo) -> dict:
         try:
             time.sleep(SCREENING_PACING_SECONDS)
             response = _generate_via_chat(
-                SELECTED_MODEL, prompt,
+                SELECTED_SCREENING_MODEL, prompt,
                 config={"max_output_tokens": 30},
                 request_kind=kind,
                 reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS,
@@ -3063,10 +3102,12 @@ def run_regen_test_mode():
     if items is None:
         logger.error("[REGEN TEST ABORTED] 既存記事の読み出しに失敗しました。")
         logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
     if not items:
         logger.info("[REGEN TEST] 条件に一致する既存Deep Diveがありません。")
         logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
 
     generated = 0
@@ -3105,12 +3146,13 @@ def run_regen_test_mode():
     logger.info(f"[REGEN TEST COMPLETE] 成功 {generated}/{len(items)}件")
     logger.info(f"[REGEN TEST OUTPUT] {REGEN_TEST_OUTPUT_DIR}/")
     logger.info(GEMINI_BUDGET.summary())
+    logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
 
 
 # ==========================================
 def main():
     logger.info("==========================================")
-    logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Grounded Decision Intelligence版）")
+    logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Dual-Model Editorial Intelligence版）")
     logger.info("==========================================")
     if REGEN_TEST_MODE:
         run_regen_test_mode()
@@ -3139,6 +3181,7 @@ def main():
     if existing_urls is None:
         logger.error("[PIPELINE ABORTED] 重複チェック不能のためFail-Closed停止")
         logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
 
     deduped_repos = []
@@ -3151,6 +3194,7 @@ def main():
     if not deduped_repos:
         logger.info("本日は新規候補が0件でした。")
         logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         return
 
     if len(deduped_repos) > MAX_SCREENING_CANDIDATES:
@@ -3189,6 +3233,7 @@ def main():
 
     if daily_quota_stop:
         logger.info(GEMINI_BUDGET.summary())
+        logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         generate_monthly_digest()
         return
 
@@ -3245,6 +3290,7 @@ def main():
 
     generate_monthly_digest()
     logger.info(GEMINI_BUDGET.summary())
+    logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
 
 
 if __name__ == "__main__":
