@@ -376,6 +376,56 @@ class PipelineSafetyTests(unittest.TestCase):
 
         walk(pipeline.DEEP_DIVE_RESPONSE_SCHEMA)
 
+    def test_hackernews_attribution_separates_discovery_and_primary_source(self):
+        draft = "## この記事の結論\n結論\n---有料エリア---\n本文"
+        manuscript = pipeline.build_clean_note_manuscript(
+            draft,
+            "Example article",
+            "https://author.example/article",
+            "",
+            "HackerNews",
+            source_details={
+                "hn_url": "https://news.ycombinator.com/item?id=123",
+                "external_url": "https://author.example/article",
+            },
+        )
+        self.assertIn("**発見経路**: Hacker News", manuscript)
+        self.assertIn("**原資料**: リンク先の原著記事・技術報告", manuscript)
+        self.assertIn("**原資料URL**: [Example article](https://author.example/article)", manuscript)
+        self.assertIn("発見元のHacker News投稿", manuscript)
+        self.assertNotIn("**ソース**: HackerNews", manuscript)
+
+    def test_hackernews_without_external_url_uses_hn_as_primary_source(self):
+        draft = "結論\n---有料エリア---\n本文"
+        manuscript = pipeline.build_clean_note_manuscript(
+            draft,
+            "HN post",
+            "https://news.ycombinator.com/item?id=456",
+            "",
+            "HackerNews",
+            source_details={"hn_url": "https://news.ycombinator.com/item?id=456"},
+        )
+        self.assertIn("**原資料**: Hacker News掲載の投稿", manuscript)
+        self.assertIn("https://news.ycombinator.com/item?id=456", manuscript)
+
+    def test_article_source_intro_makes_reference_clear_at_start(self):
+        intro = pipeline._article_source_intro(
+            "HackerNews",
+            "Auto-research with codex",
+            {"external_url": "https://author.example/article"},
+        )
+        self.assertTrue(intro.startswith("この記事は、Hacker Newsで発見した"))
+        self.assertIn("Auto-research with codex", intro)
+
+    def test_editorial_prompt_requires_copywriter_title(self):
+        prompt = pipeline.build_structured_decision_prompt(
+            "Example project", "https://example.com", 10, "説明", source_context="一次情報"
+        )
+        self.assertIn("人間のコピーライター", prompt)
+        self.assertIn("根拠のない数字・最上級表現は避ける", prompt)
+        self.assertIn("ときどき", prompt)
+        self.assertIn("実際に試した・導入した・取材した等の経験は", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
