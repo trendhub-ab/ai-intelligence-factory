@@ -1171,9 +1171,8 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
 # かつ内容としても正確な表記を維持する。
 SOURCE_RIGHTS_NOTE = {
     "HackerNews": (
-        "- **出典について**: 本記事はHacker Newsで話題となった公開情報"
-        "（記事タイトル・スコア等）を基に独自に分析・要約したものです。"
-        "リンク先記事本文の著作権は原著作者に帰属します。\n"
+        "- **出典について**: 本記事はHacker Newsで発見したリンク先の原資料を基に"
+        "独自に分析・要約したものです。リンク先記事本文の著作権は原著作者に帰属します。\n"
     ),
     "ArXiv": (
         "- **出典について**: 本記事はarXivで公開されている論文の要旨・情報を基に"
@@ -1185,10 +1184,46 @@ SOURCE_RIGHTS_NOTE = {
     ),
 }
 
+def _build_source_attribution(source: str, repo_name: str, repo_url: str,
+                              source_details: dict | None = None) -> tuple[str, str, str, str]:
+    """発見経路と原資料を分離した、読者向けの出典帰属を返す。"""
+    details = source_details or {}
+    if source == "HackerNews":
+        hn_url = str(details.get("hn_url") or "").strip()
+        external_url = str(details.get("external_url") or "").strip()
+        if external_url:
+            return ("Hacker News", "リンク先の原著記事・技術報告", external_url, hn_url)
+        return ("Hacker News", "Hacker News掲載の投稿", repo_url or hn_url, "")
+    if source == "ArXiv":
+        return ("arXiv", "arXiv掲載論文", repo_url, "")
+    if source == "ProductHunt":
+        producthunt_url = str(details.get("producthunt_url") or "").strip()
+        return ("Product Hunt", "Product Hunt掲載プロダクト情報", repo_url, producthunt_url)
+    if source == "GitHub":
+        return ("GitHub", "GitHubリポジトリ掲載情報", repo_url, "")
+    return (source, "リンク先原資料", repo_url, "")
+
+
+def _article_source_intro(source: str, repo_name: str, source_details: dict | None = None) -> str:
+    """note本文冒頭で、結論の対象となるソースを読者に明示する。"""
+    safe_name = re.sub(r"\s+", " ", str(repo_name or "無題")).strip()[:200]
+    details = source_details or {}
+    if source == "HackerNews" and details.get("external_url"):
+        return f"この記事は、Hacker Newsで発見した「{safe_name}」のリンク先原資料を参照し、実務への意味を整理したものです。"
+    labels = {
+        "GitHub": "GitHubで公開された",
+        "ArXiv": "arXivで公開された",
+        "ProductHunt": "Product Huntで紹介された",
+    }
+    source_label = labels.get(source, f"{source}で確認した")
+    return f"この記事は、{source_label}「{safe_name}」を参照し、実務への意味を整理したものです。"
+
+
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
                                  spdx_id: str, source: str = "GitHub",
-                                 evidence_urls: list[str] | None = None) -> str:
-    """note投稿用Markdownを組み立て、一次出典と最大3件のEvidence URLを末尾へ付与する。"""
+                                 evidence_urls: list[str] | None = None,
+                                 source_details: dict | None = None) -> str:
+    """note投稿用Markdownを組み立て、発見経路と原資料を分離して末尾へ付与する。"""
     free_part, paid_part = split_free_paid(note_draft, repo_name)
     free_clean = normalize_markdown_for_note(free_part)
     paid_clean = normalize_markdown_for_note(paid_part)
@@ -1206,14 +1241,19 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     else:
         rights_line = SOURCE_RIGHTS_NOTE.get(source, "")
 
+    discovery_label, primary_label, primary_url, related_url = _build_source_attribution(
+        source, repo_name, repo_url, source_details
+    )
     source_block = (
         f"{DIVIDER_LINE}"
         f"### 出典元\n"
-        f"- **ソース**: {source}\n"
-        f"- **名称**: {repo_name}\n"
-        f"- **公式リンク**: [{repo_name}]({repo_url})\n"
+        f"- **発見経路**: {discovery_label}\n"
+        f"- **原資料**: {primary_label}\n"
+        f"- **原資料URL**: [{repo_name}]({primary_url})\n"
         f"{rights_line}"
     )
+    if related_url and related_url != primary_url:
+        source_block += f"- **関連情報**: [発見元のHacker News投稿]({related_url})\n"
 
     unique_evidence = []
     for item in evidence_urls or []:
@@ -3087,6 +3127,28 @@ def _human_editorial_style_rules() -> str:
 【Human Editorial Style｜最重要】
 ARTICLEはNotion管理帳票ではない。読者が自然に読み進められるテック記事として書く。
 
+・Note Titleは人間のコピーライターが付けたように、対象テーマの具体性と読者にとっての意味が伝わる
+  1行のタイトルにする。単なる原題の直訳、製品名＋説明、"○○とは"だけの題名にしない。
+・タイトルは目安20〜45文字。事実として確認できる変化・論点・緊張関係を使い、クリックベイトや
+  根拠のない数字・最上級表現は避ける。原資料に明示された数値は条件付きで使用してよい。
+・タイトルにMarkdown記号、引用符、内部Decisionコード、判断レベルを入れない。
+
+【Human Voice｜人間の編集者らしさ】
+・冒頭は定義の羅列から始めず、読者が「自分に関係があるか」を判断できる具体的な問い、場面、
+  または小さな違和感から入る。ただし、冒頭のソース案内文の直後に自然につなげる。
+・読者（CTO、テックリード、PM）に、ときどき「もしあなたのチームで〜なら」「ここで気になるのは〜です」
+  のように語りかける。記事全体で1〜3回を目安とし、毎段落では使わない。
+・筆者の判断は「私ならこう見る」「ここは慎重に見たい」のように、一人称を適度に使って示す。
+  ただし、実際に試した・導入した・取材した等の経験は一次情報にない限り絶対に創作しない。
+・短い文と長い文、説明と問いかけ、事実と判断を混ぜ、同じ文末（〜です／〜ます）や同じ接続詞を
+  連続させない。段落の長さも均一にしない。
+・「本記事では〜を解説します」「重要なのは〜です」「〜と言えるでしょう」の定型句を連続使用しない。
+・読者にとっての具体的な場面（導入前の検証、既存運用との比較、見送る判断など）を、Source Contextで
+  確認できる範囲または明示した推論として描く。架空の企業名・導入成果・会話は作らない。
+・親しみやすさは、正確さを崩さない範囲の自然な日本語で表現する。過度な煽り、SNS風の短文連打、
+  絵文字、読者への命令口調、わざとらしい感情表現は避ける。
+・各節は「結論→理由→留保」の同じ型を機械的に繰り返さず、記事全体に起伏を作る。
+
 ・研究や製品の価値は中立的に記述する。「教科書を書き換える」「歴史的成果」「世紀の発見」「常識を覆す」「ブレイクスルー」などの価値判断を一次情報の事実として書かない。
 ・「極めて高い」「驚異的」などの強い評価語で重要性を水増ししない。断定できない場合は、今後の追試・引用・実装事例で判断すると書く。
 
@@ -4161,9 +4223,16 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         if not parsed:
             return None
 
+        # 本文の最初に、結論がどのソースを対象にしているかを明示する。
+        # 生成品質ゲート後に挿入することで、ソース名自体がFact Gateの対象にならず、
+        # 読者向けの文脈だけを安全に補える。
+        source_intro = _article_source_intro(source, name, repo.get("sourceDetails") or {})
+        parsed["note_draft"] = source_intro + "\n\n" + parsed["note_draft"].lstrip()
+
         evidence_urls = last_grounding.get("evidence_urls", [])
         clean_manuscript = build_clean_note_manuscript(
             parsed["note_draft"], name, url, spdx_id, source, evidence_urls=evidence_urls,
+            source_details=repo.get("sourceDetails") or {},
         )
 
         eyecatch_url = ""
