@@ -376,15 +376,18 @@ DEEP_DIVE_RESPONSE_SCHEMA = {
         "article": {
             "type": "object",
             "required": [
-                "title", "conclusion", "why_now", "what", "free_summary",
-                "judgement", "paid_sections", "final_recommendation",
+                "title", "lead", "reader_question", "conclusion", "why_now", "what", "free_summary",
+                "editor_observation", "judgement", "paid_sections", "final_recommendation",
             ],
             "properties": {
                 "title": {"type": "string"},
+                "lead": {"type": "string"},
+                "reader_question": {"type": "string"},
                 "conclusion": {"type": "string"},
                 "why_now": {"type": "string"},
                 "what": {"type": "string"},
                 "free_summary": {"type": "array", "items": {"type": "string"}},
+                "editor_observation": {"type": "string"},
                 "judgement": {"type": "string"},
                 "paid_sections": {
                     "type": "array",
@@ -3129,9 +3132,12 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 
 ・Note Titleは人間のコピーライターが付けたように、対象テーマの具体性と読者にとっての意味が伝わる
   1行のタイトルにする。単なる原題の直訳、製品名＋説明、"○○とは"だけの題名にしない。
+  「何が変わるのか」「なぜ判断が分かれるのか」「読者の仕事にどんな問いを突きつけるのか」の
+  いずれかが伝わる、具体的で少し意外性のあるコピーにする。専門語を3つ以上連結しない。
 ・タイトルは目安20〜45文字。事実として確認できる変化・論点・緊張関係を使い、クリックベイトや
   根拠のない数字・最上級表現は避ける。原資料に明示された数値は条件付きで使用してよい。
 ・タイトルにMarkdown記号、引用符、内部Decisionコード、判断レベルを入れない。
+・タイトルは必ず「。」または「？」のどちらかで終了する。「！」や英語ピリオドで終えない。
 
 【Human Voice｜人間の編集者らしさ】
 ・冒頭は定義の羅列から始めず、読者が「自分に関係があるか」を判断できる具体的な問い、場面、
@@ -3148,6 +3154,11 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 ・親しみやすさは、正確さを崩さない範囲の自然な日本語で表現する。過度な煽り、SNS風の短文連打、
   絵文字、読者への命令口調、わざとらしい感情表現は避ける。
 ・各節は「結論→理由→留保」の同じ型を機械的に繰り返さず、記事全体に起伏を作る。
+
+【専用フィールド】
+・leadは、ソース案内文の直後に置く2〜3文の導入。読者が続きを読みたくなる具体的な場面や違和感から始める。
+・reader_questionは、読者が自分の業務に引きつけて考えられる自然な問いを1文で書き、必ず「？」で終える。
+・editor_observationは、一次情報から読み取った筆者の観察・留保を2〜4文で書く。単なる事実の再掲や管理用判定は避ける。
 
 ・研究や製品の価値は中立的に記述する。「教科書を書き換える」「歴史的成果」「世紀の発見」「常識を覆す」「ブレイクスルー」などの価値判断を一次情報の事実として書かない。
 ・「極めて高い」「驚異的」などの強い評価語で重要性を水増ししない。断定できない場合は、今後の追試・引用・実装事例で判断すると書く。
@@ -3328,6 +3339,13 @@ article.judgementとarticle.final_recommendationは、このレベルを読者�
 ・有料部分全体は1,400〜2,400文字。
 ・最終結論まで必ず書き切り、文章を途中で終了しない。
 
+【ARTICLE専用フィールド】
+・article.leadはソース案内文の直後に置く2〜3文の導入。定義の羅列ではなく、読者が続きを読みたくなる
+  場面・問い・小さな違和感から始める。事実を超える煽りは禁止。
+・article.reader_questionは読者に語りかける1文の問いで、必ず「？」で終える。
+・article.editor_observationは筆者の観察と留保。一次情報から分かること／まだ分からないことを分け、
+  「私ならこう見る」に接続できる自然な文章にする。実体験の創作は禁止。
+
 【対象】
 ・出所: {source}
 ・名前: {name}
@@ -3371,7 +3389,7 @@ def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
 
     # 万一Geminiが見出し記号やクォート・カギ括弧でタイトルを囲んでしまった
     # 場合の軽い保険（プロンプト側では明示的に禁止しているが、出力ゆれに備える）。
-    title = lines[idx].strip().lstrip("#").strip().strip('"「」『』').strip()
+    title = _normalize_note_title(lines[idx].strip().lstrip("#").strip())
     remaining = "\n".join(lines[idx + 1:]).strip()
     return (title or "（タイトル生成失敗）"), remaining
 
@@ -3401,6 +3419,17 @@ def _sanitize_article_internal_tokens(value: str) -> str:
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\s*/\s*(?=[、。）)\n]|$)", "", text)
     return text.strip()
+
+
+def _normalize_note_title(value: str) -> str:
+    """Note Titleを読者向けの1行タイトルへ正規化し、末尾記号を統一する。"""
+    text = _sanitize_article_internal_tokens(value)
+    is_question = text.endswith(("？", "?"))
+    text = re.sub(r"[。？！!?．\.]+$", "", text).strip().strip('"「」『』').strip()
+    if not text:
+        text = "一次情報から考える、技術導入の現在地"
+    # 疑問形の意図は残し、それ以外は断定を示す句点で閉じる。
+    return text + ("？" if is_question or text.endswith(("か", "のか", "でしょうか")) else "。")
 
 
 def _bounded_int(value, minimum: int, maximum: int) -> int:
@@ -3469,7 +3498,18 @@ def _parse_structured_gemini_response(full_text: str) -> dict:
             heading = re.sub(r"^#+\s*", "", heading).strip()
             paid_markdown.append(f"### {heading}\n{body}")
 
-    note_draft = "\n\n".join([
+    lead = clean(article.get("lead"))
+    reader_question = clean(article.get("reader_question"))
+    editor_observation = clean(article.get("editor_observation"))
+    if reader_question and not reader_question.endswith("？"):
+        reader_question = re.sub(r"[。.!！?？]+$", "", reader_question).strip() + "？"
+    judgement = clean(article.get("judgement"))
+    if editor_observation:
+        judgement = "\n\n".join(part for part in (judgement, editor_observation) if part)
+
+    note_parts = [
+        lead,
+        reader_question,
         "## この記事の結論",
         clean(article.get("conclusion")),
         "## なぜ今、この情報を見るべきなのか",
@@ -3480,11 +3520,12 @@ def _parse_structured_gemini_response(full_text: str) -> dict:
         summary_md,
         "---有料エリア---",
         "### 私ならこう考える",
-        clean(article.get("judgement")),
+        judgement,
         *paid_markdown,
         "### 結局、どうするべきか",
         clean(article.get("final_recommendation")),
-    ]).strip()
+    ]
+    note_draft = "\n\n".join(part for part in note_parts if part).strip()
 
     future = management.get("future_scenarios") or []
     if not isinstance(future, list):
@@ -3493,7 +3534,7 @@ def _parse_structured_gemini_response(full_text: str) -> dict:
 
     return {
         "note_draft": note_draft,
-        "title_text": clean(article.get("title")) or "（タイトル生成失敗）",
+        "title_text": _normalize_note_title(clean(article.get("title"))),
         "score": score,
         "score_breakdown_text": score_breakdown,
         "source_summary_text": str(management.get("source_summary") or "").strip(),
