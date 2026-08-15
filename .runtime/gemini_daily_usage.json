@@ -8,8 +8,17 @@
       "exhausted": false,
       "last_used_at": "2026-08-15T12:11:06.753162+00:00",
       "used": 12
+    },
+    "gemini-3.6-flash": {
+      "budget": 18,
+      "by_kind": {
+        "deep_dive": 1
+      },
+      "exhausted": false,
+      "last_used_at": "2026-08-15T12:11:11.562980+00:00",
+      "used": 1
     }
   },
   "quota_date": "2026-08-15",
-  "updated_at": "2026-08-15T12:11:06.753176+00:00"
+  "updated_at": "2026-08-15T12:11:11.562995+00:00"
 }
