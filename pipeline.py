@@ -11,6 +11,7 @@ from html import unescape
 from html.parser import HTMLParser
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw
 from google import genai
 from google.genai.errors import APIError
@@ -61,18 +62,20 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     一切持たせず、既存の「呼び出し単位で完結する」という挙動を変えないまま、
     SDK推奨のエントリーポイントへ置き換える。
     """
-    _consume_gemini_request(request_kind, reserve=reserve)
+    _consume_gemini_request(model_name, request_kind, reserve=reserve)
     chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
     return chat.send_message(prompt)
 
 SCREENING_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_SCREENING_MODEL_CANDIDATES",
-    "gemini-3.1-flash-lite"
+    "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
 ).split(",")
 
+# Deep Diveは単一モデル固定ではなく、Free Tierのモデル別RPDを活用するプール方式。
+# 3.6を主系、3.7を第1fallback、3.5を第2fallbackとする。
 DEEP_DIVE_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_DEEP_DIVE_MODEL_CANDIDATES",
-    "gemini-3.6-flash"
+    "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
 ).split(",")
 
 # 深掘り（Step2フルレポート）に回す件数（Two-Stage化）
@@ -113,7 +116,21 @@ GEMINI_SCREENING_RETRY_BUDGET = int(os.environ.get("GEMINI_SCREENING_RETRY_BUDGE
 GEMINI_DEEP_DIVE_RETRY_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_RETRY_BUDGET", "1"))
 GEMINI_RESERVED_DEEP_DIVE_REQUESTS = int(os.environ.get("GEMINI_RESERVED_DEEP_DIVE_REQUESTS", "3"))
 GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS", "6000"))
-GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET", "10"))
+GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET", os.environ.get("GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET", "10")))
+# 複数GitHub Actions Runをまたいで共有するモデル別Safety Cap。
+# AI Studioで確認できるFree Tierのモデル別RPDに対し、少し余裕を残した独自上限を使う。
+# 公式quota値そのものをハードコードした保証ではなく、運用側Safety Capとして扱う。
+GEMINI_PERSISTENT_DAILY_COUNTER = os.environ.get("GEMINI_PERSISTENT_DAILY_COUNTER", "true").lower() in {"1", "true", "yes", "on"}
+GEMINI_PERSISTENT_COUNTER_PATH = os.environ.get("GEMINI_PERSISTENT_COUNTER_PATH", ".runtime/gemini_daily_usage.json")
+GEMINI_QUOTA_TIMEZONE = os.environ.get("GEMINI_QUOTA_TIMEZONE", "America/Los_Angeles")
+GEMINI_DEFAULT_MODEL_DAILY_BUDGET = int(os.environ.get("GEMINI_DEFAULT_MODEL_DAILY_BUDGET", "18"))
+GEMINI_MODEL_DAILY_BUDGETS = {
+    "gemini-3.5-flash-lite": int(os.environ.get("GEMINI_35_FLASH_LITE_DAILY_BUDGET", "450")),
+    "gemini-3.1-flash-lite": int(os.environ.get("GEMINI_31_FLASH_LITE_DAILY_BUDGET", "450")),
+    "gemini-3.6-flash": int(os.environ.get("GEMINI_36_FLASH_DAILY_BUDGET", "18")),
+    "gemini-3.7-flash": int(os.environ.get("GEMINI_37_FLASH_DAILY_BUDGET", "18")),
+    "gemini-3.5-flash": int(os.environ.get("GEMINI_35_FLASH_DAILY_BUDGET", "18")),
+}
 MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS", "5"))
 
 # ---- 既存記事A/B比較用・再生成テストモード ----
@@ -308,6 +325,232 @@ class DailyQuotaExhaustedError(RuntimeError): pass
 class GeminiBudgetExceededError(RuntimeError): pass
 
 
+class ModelDailyBudgetExceededError(GeminiBudgetExceededError):
+    def __init__(self, model_name: str, message: str):
+        super().__init__(message)
+        self.model_name = model_name
+
+
+class PersistentGeminiDailyCounter:
+    """GitHub Contents APIでモデル別Gemini使用量を複数Run間共有するFail-Closedカウンタ。
+
+    API送信前にモデル別で1回分を予約するため、runner停止時も過少計上しない。
+    GoogleのRPDリセット境界に合わせ、America/Los_Angeles日付を既定にする。
+    429/RPDを受けたモデルはそのquota day中 exhausted=true として記録し、以後は
+    別モデルへ即fallbackする。
+    """
+    def __init__(self, enabled: bool, model_budgets: dict[str, int], default_budget: int,
+                 path: str, quota_timezone: str):
+        self.enabled = enabled
+        self.model_budgets = {k: max(0, int(v)) for k, v in model_budgets.items()}
+        self.default_budget = max(0, int(default_budget))
+        self.path = path.lstrip("/")
+        self.quota_timezone = quota_timezone
+        self.repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        self.branch = os.environ.get("GITHUB_REF_NAME", "").strip()
+        self.session_used: dict[str, int] = {}
+
+    def budget_for(self, model_name: str) -> int:
+        return self.model_budgets.get(model_name, self.default_budget)
+
+    def _quota_date(self) -> str:
+        try:
+            return datetime.now(ZoneInfo(self.quota_timezone)).date().isoformat()
+        except Exception as e:
+            raise GeminiBudgetExceededError(f"Persistent counter timezone error: {e}")
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {GH_PAT}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+    def _api_url(self) -> str:
+        return f"https://api.github.com/repos/{self.repo}/contents/{self.path}"
+
+    def _read_remote(self) -> tuple[dict, str | None]:
+        if not self.repo or not GH_PAT:
+            raise GeminiBudgetExceededError("Persistent Gemini counter requires GITHUB_REPOSITORY and GH_PAT")
+        params = {"ref": self.branch} if self.branch else None
+        try:
+            res = requests.get(self._api_url(), headers=self._headers(), params=params, timeout=12)
+        except Exception as e:
+            raise GeminiBudgetExceededError(f"Persistent Gemini counter read failed: {e}")
+        if res.status_code == 404:
+            return {}, None
+        if res.status_code != 200:
+            raise GeminiBudgetExceededError(
+                f"Persistent Gemini counter read failed: HTTP {res.status_code} {res.text[:300]}"
+            )
+        body = res.json()
+        try:
+            raw = base64.b64decode(body.get("content", "")).decode("utf-8")
+            import json
+            data = json.loads(raw) if raw.strip() else {}
+        except Exception as e:
+            raise GeminiBudgetExceededError(f"Persistent Gemini counter parse failed: {e}")
+        return data, body.get("sha")
+
+    def _write_remote(self, data: dict, sha: str | None, message: str) -> None:
+        import json
+        content = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        payload = {
+            "message": message,
+            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        }
+        if sha:
+            payload["sha"] = sha
+        if self.branch:
+            payload["branch"] = self.branch
+        try:
+            res = requests.put(self._api_url(), headers=self._headers(), json=payload, timeout=15)
+        except Exception as e:
+            raise GeminiBudgetExceededError(f"Persistent Gemini counter write failed: {e}")
+        if res.status_code not in (200, 201):
+            raise GeminiBudgetExceededError(
+                f"Persistent Gemini counter write failed: HTTP {res.status_code} {res.text[:300]}"
+            )
+
+    def _normalized_day(self, data: dict, quota_date: str) -> dict:
+        # 旧single-counter形式からの移行も安全に処理する。旧used値はモデル帰属不明なので
+        # modelsへ推測配賦せず、以後の実API 429で該当モデルをEXHAUSTED化する。
+        if data.get("quota_date") != quota_date:
+            return {"quota_date": quota_date, "models": {}}
+        if not isinstance(data.get("models"), dict):
+            data["models"] = {}
+        data.pop("used", None)
+        data.pop("budget", None)
+        data.pop("by_kind", None)
+        return data
+
+    def _model_state(self, data: dict, model_name: str) -> dict:
+        models = data.setdefault("models", {})
+        state = models.get(model_name)
+        if not isinstance(state, dict):
+            state = {}
+            models[model_name] = state
+        state.setdefault("used", 0)
+        state.setdefault("by_kind", {})
+        state.setdefault("exhausted", False)
+        state["budget"] = self.budget_for(model_name)
+        return state
+
+    def reserve(self, model_name: str, kind: str, reserve: int = 0) -> None:
+        if not self.enabled:
+            return
+        budget = self.budget_for(model_name)
+        if budget <= 0:
+            raise ModelDailyBudgetExceededError(model_name, f"Model daily budget is 0: {model_name}")
+
+        quota_date = self._quota_date()
+        for attempt in range(3):
+            data, sha = self._read_remote()
+            data = self._normalized_day(data, quota_date)
+            state = self._model_state(data, model_name)
+            used = int(state.get("used", 0) or 0)
+            if bool(state.get("exhausted")):
+                raise ModelDailyBudgetExceededError(
+                    model_name, f"Model marked EXHAUSTED for quota day: {model_name} {quota_date}"
+                )
+            effective_limit = max(0, budget - max(0, reserve))
+            if used + 1 > effective_limit:
+                raise ModelDailyBudgetExceededError(
+                    model_name,
+                    f"Model persistent daily budget exhausted: model={model_name}, date={quota_date}, "
+                    f"used={used}, budget={budget}, reserve={reserve}, kind={kind}"
+                )
+
+            by_kind = state.get("by_kind") if isinstance(state.get("by_kind"), dict) else {}
+            state["used"] = used + 1
+            state["by_kind"] = by_kind
+            by_kind[kind] = int(by_kind.get(kind, 0) or 0) + 1
+            state["last_used_at"] = datetime.now(timezone.utc).isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            try:
+                self._write_remote(
+                    data, sha,
+                    f"chore: reserve Gemini {model_name} {state['used']}/{budget} {quota_date}"
+                )
+                self.session_used[model_name] = self.session_used.get(model_name, 0) + 1
+                logger.info(
+                    f"[GEMINI MODEL BUDGET] reserved model={model_name} {state['used']}/{budget} "
+                    f"quota_date={quota_date} kind={kind}"
+                )
+                return
+            except GeminiBudgetExceededError as e:
+                msg = str(e)
+                if attempt < 2 and ("HTTP 409" in msg or "HTTP 422" in msg):
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                raise
+        raise GeminiBudgetExceededError("Persistent Gemini model counter reservation failed after retries")
+
+    def mark_exhausted(self, model_name: str, reason: str = "RPD") -> None:
+        if not self.enabled:
+            return
+        quota_date = self._quota_date()
+        for attempt in range(3):
+            data, sha = self._read_remote()
+            data = self._normalized_day(data, quota_date)
+            state = self._model_state(data, model_name)
+            state["exhausted"] = True
+            state["exhausted_reason"] = reason[:200]
+            state["exhausted_at"] = datetime.now(timezone.utc).isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            try:
+                self._write_remote(data, sha, f"chore: mark Gemini {model_name} exhausted {quota_date}")
+                logger.warning(f"[GEMINI MODEL EXHAUSTED] model={model_name} quota_date={quota_date} reason={reason}")
+                return
+            except GeminiBudgetExceededError as e:
+                msg = str(e)
+                if attempt < 2 and ("HTTP 409" in msg or "HTTP 422" in msg):
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                # EXHAUSTED記録失敗時も、そのRun内ではSESSION_EXHAUSTED_MODELSで回避する。
+                logger.error(f"[GEMINI MODEL EXHAUSTED SAVE FAILED] {model_name}: {e}")
+                return
+
+    def can_use(self, model_name: str) -> bool:
+        if not self.enabled:
+            return True
+        try:
+            data, _ = self._read_remote()
+            quota_date = self._quota_date()
+            data = self._normalized_day(data, quota_date)
+            state = self._model_state(data, model_name)
+            return (not bool(state.get("exhausted"))) and int(state.get("used", 0) or 0) < self.budget_for(model_name)
+        except Exception as e:
+            # Free Tier保護を優先し、永続状態を読めない場合はFail-Closed。
+            logger.error(f"[GEMINI MODEL BUDGET READ FAILED] {model_name}: {e}")
+            return False
+
+    def summary(self) -> str:
+        if not self.enabled:
+            return "Persistent Gemini Model Counters: disabled"
+        try:
+            data, _ = self._read_remote()
+            quota_date = self._quota_date()
+            data = self._normalized_day(data, quota_date)
+            names = []
+            for name in dict.fromkeys([m.strip() for m in SCREENING_MODEL_CANDIDATES + DEEP_DIVE_MODEL_CANDIDATES if m.strip()]):
+                state = self._model_state(data, name)
+                suffix = " EXHAUSTED" if state.get("exhausted") else ""
+                names.append(f"{name}={int(state.get('used',0) or 0)}/{self.budget_for(name)}{suffix}")
+            return f"Persistent Gemini Model Counters ({quota_date}): " + ", ".join(names)
+        except Exception as e:
+            return f"Persistent Gemini Model Counters: unavailable ({e})"
+
+
+PERSISTENT_GEMINI_COUNTER = PersistentGeminiDailyCounter(
+    GEMINI_PERSISTENT_DAILY_COUNTER,
+    GEMINI_MODEL_DAILY_BUDGETS,
+    GEMINI_DEFAULT_MODEL_DAILY_BUDGET,
+    GEMINI_PERSISTENT_COUNTER_PATH,
+    GEMINI_QUOTA_TIMEZONE,
+)
+
+
 class GeminiBudget:
     """1 pipeline実行内のGemini送信回数をFail-Closedで管理する軽量Budget。"""
     def __init__(self, daily_budget: int, screening_retry_budget: int, deep_dive_retry_budget: int):
@@ -367,12 +610,14 @@ GEMINI_BUDGET = GeminiBudget(
 )
 
 
-def _consume_gemini_request(kind: str, reserve: int = 0) -> None:
+def _consume_gemini_request(model_name: str, kind: str, reserve: int = 0) -> None:
+    # モデル別永続カウンタを先に予約。Free Tier保護では過少計上より安全側を優先する。
+    PERSISTENT_GEMINI_COUNTER.reserve(model_name, kind, reserve=0)
     GEMINI_BUDGET.consume(kind, reserve=reserve)
 
 
 class DeepDiveModelBudget:
-    """Deep Dive用上位モデルだけの1実行Safety Cap。Google側quotaとは別のローカル上限。"""
+    """Deep Dive用上位モデルだけの1実行Safety Cap。永続Daily Counterとは別のローカル上限。"""
     def __init__(self, budget: int):
         self.budget = max(0, budget)
         self.used = 0
@@ -388,7 +633,7 @@ class DeepDiveModelBudget:
         self.used += 1
 
     def summary(self) -> str:
-        return f"Deep Dive Model Requests Used: {self.used}/{self.budget}"
+        return f"Deep Dive Model Requests Used (per-run): {self.used}/{self.budget}"
 
 
 DEEP_DIVE_MODEL_BUDGET = DeepDiveModelBudget(GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET)
@@ -494,17 +739,27 @@ def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
     return default
 
 
-def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_dive: bool = False) -> str:
-    """候補順=優先順位として軽量pingし、頻繁なGeminiモデル更新へ追随する。"""
+SESSION_EXHAUSTED_MODELS: set[str] = set()
+SESSION_UNAVAILABLE_MODELS: set[str] = set()
+
+
+def _mark_model_exhausted(model_name: str, reason: str) -> None:
+    SESSION_EXHAUSTED_MODELS.add(model_name)
+    PERSISTENT_GEMINI_COUNTER.mark_exhausted(model_name, reason)
+
+
+def resolve_model(candidates: list[str], label: str = "Gemini") -> str:
+    """Screening等の単一選択用途。RPD枯渇モデルは記録して次候補へfallbackする。"""
     last_error: Exception | None = None
     for model_name in candidates:
         model_name = model_name.strip()
-        if not model_name:
+        if not model_name or model_name in SESSION_EXHAUSTED_MODELS or model_name in SESSION_UNAVAILABLE_MODELS:
+            continue
+        if not PERSISTENT_GEMINI_COUNTER.can_use(model_name):
+            logger.warning(f"[{label.upper()} MODEL SKIP] persistent cap/exhausted: {model_name}")
             continue
         for attempt in range(PING_MAX_RETRIES + 1):
             try:
-                if count_as_deep_dive:
-                    DEEP_DIVE_MODEL_BUDGET.consume("ping" if attempt == 0 else "ping_retry")
                 _generate_via_chat(
                     model_name,
                     "ping",
@@ -513,15 +768,21 @@ def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_di
                 )
                 logger.info(f"{label} モデル解決成功: {model_name}")
                 return model_name
+            except ModelDailyBudgetExceededError as e:
+                last_error = e
+                break
             except GeminiBudgetExceededError as e:
                 raise NoAvailableModelError(str(e)) from e
             except APIError as e:
                 last_error = e
                 code = getattr(e, "code", None)
                 if code == 404:
+                    SESSION_UNAVAILABLE_MODELS.add(model_name)
+                    logger.warning(f"[{label.upper()} MODEL UNAVAILABLE] 404: {model_name}")
                     break
                 if code == 429 and _is_daily_quota_exhausted(e):
-                    raise DailyQuotaExhaustedError(str(e)) from e
+                    _mark_model_exhausted(model_name, f"RPD during {label} ping")
+                    break
                 if code in (503, 429) and attempt < PING_MAX_RETRIES and GEMINI_BUDGET.can_request():
                     time.sleep(PING_RETRY_BACKOFF_SECONDS * (attempt + 1))
                     continue
@@ -529,34 +790,72 @@ def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_di
             except Exception as e:
                 last_error = e
                 raise NoAvailableModelError("想定外の例外") from e
-    raise NoAvailableModelError("利用可能なモデルがありません") from last_error
+    raise NoAvailableModelError(f"利用可能な{label}モデルがありません") from last_error
 
 
 try:
     SELECTED_SCREENING_MODEL = resolve_model(SCREENING_MODEL_CANDIDATES, label="Screening")
-    SELECTED_DEEP_DIVE_MODEL = resolve_model(
-        DEEP_DIVE_MODEL_CANDIDATES, label="Deep Dive", count_as_deep_dive=True
-    )
-except DailyQuotaExhaustedError as e:
-    send_telegram_alert(f"⚠️ 【緊急】Gemini日次クォータ到達のため初期化停止: {e}")
-    raise SystemExit(1)
+    DEEP_DIVE_MODEL_POOL = [m.strip() for m in DEEP_DIVE_MODEL_CANDIDATES if m.strip()]
+    if not DEEP_DIVE_MODEL_POOL:
+        raise NoAvailableModelError("Deep Dive model pool is empty")
+    logger.info("Deep Dive モデルプール: " + " -> ".join(DEEP_DIVE_MODEL_POOL))
 except (NoAvailableModelError, GeminiBudgetExceededError) as e:
     send_telegram_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
     raise SystemExit(1)
 
 
-def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind: str = "deep_dive"):
-    """非Groundedな既存互換call。無制限retryを禁止しLocal Budgetを必ず通す。"""
-    for attempt in range(max_retries + 1):
-        kind = request_kind if attempt == 0 else "deep_dive_retry"
+def _call_deep_dive_pool(prompt: str, config: dict | None, kind: str):
+    """Deep Dive候補を優先順に試す。RPD/404だけは同一記事内で次モデルへ自動fallback。"""
+    last_error: Exception | None = None
+    for model_name in DEEP_DIVE_MODEL_POOL:
+        if model_name in SESSION_EXHAUSTED_MODELS or model_name in SESSION_UNAVAILABLE_MODELS:
+            continue
+        if not PERSISTENT_GEMINI_COUNTER.can_use(model_name):
+            logger.warning(f"[DEEP DIVE MODEL SKIP] cap/exhausted: {model_name}")
+            continue
         try:
             DEEP_DIVE_MODEL_BUDGET.consume(kind)
             time.sleep(3)
-            return _generate_via_chat(SELECTED_DEEP_DIVE_MODEL, prompt, request_kind=kind)
+            logger.info(
+                f"[GEMINI DEEP DIVE CALL] model={model_name} kind={kind} "
+                f"timeout={GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS}s"
+            )
+            with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
+                response = _generate_via_chat(model_name, prompt, config=config, request_kind=kind)
+            logger.info(f"[DEEP DIVE MODEL SELECTED] {model_name}")
+            return response, model_name
+        except ModelDailyBudgetExceededError as e:
+            last_error = e
+            logger.warning(f"[DEEP DIVE MODEL CAP] {model_name}: {e}")
+            continue
+        except APIError as e:
+            last_error = e
+            code = getattr(e, "code", None)
+            if code == 404:
+                SESSION_UNAVAILABLE_MODELS.add(model_name)
+                logger.warning(f"[DEEP DIVE MODEL UNAVAILABLE] 404 -> fallback: {model_name}")
+                continue
+            if code == 429 and _is_daily_quota_exhausted(e):
+                _mark_model_exhausted(model_name, "RPD/DAILY_TOKEN from Gemini API")
+                logger.warning(f"[DEEP DIVE MODEL FALLBACK] daily quota exhausted: {model_name}")
+                continue
+            raise
+    raise DailyQuotaExhaustedError(
+        "Deep Dive model pool exhausted/unavailable for this quota day: " + ", ".join(DEEP_DIVE_MODEL_POOL)
+    ) from last_error
+
+
+def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind: str = "deep_dive"):
+    """非Grounded互換call。RPD時はモデルプール内fallback、503等は最大1回transport retry。"""
+    for attempt in range(max_retries + 1):
+        kind = request_kind if attempt == 0 else "deep_dive_retry"
+        try:
+            response, _ = _call_deep_dive_pool(prompt, config=None, kind=kind)
+            return response
+        except DailyQuotaExhaustedError:
+            raise
         except APIError as e:
             code = getattr(e, "code", None)
-            if code == 429 and _is_daily_quota_exhausted(e):
-                raise DailyQuotaExhaustedError(str(e)) from e
             if code in (429, 503) and attempt < max_retries and GEMINI_BUDGET.can_deep_dive_retry():
                 time.sleep(_extract_retry_delay(e, default=15))
                 continue
@@ -2788,7 +3087,7 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
         "GitHub","HackerNews","ProductHunt","ArXiv","Source","Summary","Action","Future","Scenario",
         "API","AI","LLM","MCP","GPU","CPU","OSS","URL","HTTP","HTTPS","PDF","HTML","JSON","XML",
         "Linux","Wayland","Python","Markdown","VAE","RAG","RLHF","SFT","PR","PoC","POC","CTO","PM",
-        "SaaS","RPA","UI","UX","DOM","Webhook","Webhooks","Cookie","Cookies","ID","ACL","2FA","MFA",
+        "SaaS","Web API","RPA","UI","UX","DOM","Webhook","Webhooks","Cookie","Cookies","ID","ACL","2FA","MFA",
         "CLI","SDK","REST","GraphQL","SQL","NoSQL","CI","CD","DevOps","MLOps","AIOps","VPS","VM",
         "AWS","GCP","Azure","KPI","ROI","TCO","SLA","SSO","RBAC","OAuth","JWT","TLS","SSH","TCP",
         "UDP","DNS","CDN","NAT","VPN","VPC","RAM","SSD","HDD","GB","MB","TB","ms","RPM","TPM",
@@ -2975,7 +3274,7 @@ def _should_use_url_context(repo: dict, source_info: dict) -> bool:
 
 def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
                                     request_kind: str = "deep_dive"):
-    """Deep Dive専用generateContent。URL Context/Searchを同一call内で使いBudgetを守る。"""
+    """Deep Dive専用call。モデル別RPD枯渇時は3.6→3.7→3.5へ同一記事内fallbackする。"""
     use_url = _should_use_url_context(repo, source_info)
     use_search = ENABLE_GOOGLE_SEARCH_GROUNDING
     tools = []
@@ -2984,29 +3283,17 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
     if use_search:
         tools.append({"google_search": {}})
 
-    # source-nativeもURL Contextも無い候補は、タイトルだけで有料記事を生成しない。
     if not source_info.get("sufficient") and not use_url:
         raise ValueError("一次情報不足: source-native不十分かつURL Context利用不可")
 
     current_tools = tools
     for attempt in range(2):
         kind = request_kind if attempt == 0 else "deep_dive_retry"
+        config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
+        if current_tools:
+            config["tools"] = current_tools
         try:
-            # Grounded Deep Diveも上位モデル専用Safety Capを必ず消費する。
-            # 以前はこの経路だけconsume漏れがあり、実際の3.6 Flash呼び出し数と
-            # Deep Dive Model Requests Usedの表示が一致していなかった。
-            DEEP_DIVE_MODEL_BUDGET.consume(kind)
-            time.sleep(3)
-            _consume_gemini_request(kind)
-            config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
-            if current_tools:
-                config["tools"] = current_tools
-            logger.info(f"[GEMINI DEEP DIVE CALL] kind={kind} timeout={GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS}s")
-            with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
-                # SDK推奨のChat.send_messageを使用。1回ごとに使い捨てChatなので
-                # 会話状態は保持せず、従来の単発generateContentと意味は同じ。
-                chat = client.chats.create(model=SELECTED_DEEP_DIVE_MODEL, config=config)
-                response = chat.send_message(prompt)
+            response, selected_model = _call_deep_dive_pool(prompt, config=config, kind=kind)
             _extract_usage_metadata(response)
             meta = extract_grounding_metadata(
                 response,
@@ -3015,7 +3302,10 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
                 any("url_context" in t for t in current_tools),
                 any("google_search" in t for t in current_tools),
             )
+            meta["gemini_model"] = selected_model
             return response, meta
+        except DailyQuotaExhaustedError:
+            raise
         except GeminiBudgetExceededError:
             raise
         except GeminiCallTimeoutError as e:
@@ -3029,10 +3319,7 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
         except APIError as e:
             code = getattr(e, "code", None)
             quota_type = classify_gemini_quota_error(e) if code == 429 else ""
-            if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
-                raise DailyQuotaExhaustedError(str(e)) from e
             if attempt == 0 and GEMINI_BUDGET.can_deep_dive_retry():
-                # TPM時は巨大URL Contextを外し、十分なsource-nativeだけで救済。
                 if code == 429 and quota_type == "TPM" and source_info.get("sufficient"):
                     current_tools = [t for t in current_tools if "url_context" not in t and "google_search" not in t]
                     logger.warning("[DEEP DIVE TPM] Grounding toolsを外してsource-nativeのみで1回救済")
@@ -3291,6 +3578,7 @@ def screen_repo(repo) -> dict:
         except APIError as e:
             code = getattr(e, "code", None)
             if code == 429 and _is_daily_quota_exhausted(e):
+                _mark_model_exhausted(SELECTED_SCREENING_MODEL, "RPD during screening")
                 raise DailyQuotaExhaustedError(str(e)) from e
             if (code in (429, 503) and attempt == 0 and GEMINI_BUDGET.can_screening_retry()
                     and GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS)):
@@ -3369,7 +3657,7 @@ def run_regen_test_mode():
     """
     logger.warning("==========================================")
     logger.warning(" REGEN TEST MODE: 既存Deep Dive再生成（READ ONLY）")
-    logger.warning(" Notion/GitHubへの書き込みは行いません")
+    logger.warning(" Notion/記事・画像のGitHub書き込みは行いません（Gemini使用量カウンタのみGitHubへ保存）")
     logger.warning("==========================================")
 
     items = get_regen_test_items(REGEN_TEST_LIMIT, REGEN_TEST_SOURCE)
@@ -3434,6 +3722,7 @@ def run_regen_test_mode():
     logger.info(f"[REGEN TEST OUTPUT] {REGEN_TEST_OUTPUT_DIR}/")
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+    logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
 def run_new_source_test_mode():
@@ -3443,7 +3732,7 @@ def run_new_source_test_mode():
 
     logger.warning("==========================================")
     logger.warning(" NEW SOURCE TEST MODE: 未登録URLのみ（READ ONLY）")
-    logger.warning(" Notion/GitHubへの書き込みは行いません")
+    logger.warning(" Notion/記事・画像のGitHub書き込みは行いません（Gemini使用量カウンタのみGitHubへ保存）")
     logger.warning("==========================================")
 
     existing_urls = get_existing_repo_urls()
@@ -3566,6 +3855,7 @@ def run_new_source_test_mode():
     logger.info(f"[NEW SOURCE TEST OUTPUT] {NEW_SOURCE_TEST_OUTPUT_DIR}/")
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+    logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
 # ==========================================
@@ -3703,7 +3993,7 @@ def main():
         msg = (
             f"✅ 【AI note事業】Screening {len(screened)}件、Stock {stocked_count}件、"
             f"Deep Dive Ready {generated_count}件（試行{attempted}件）。\n"
-            f"{GEMINI_BUDGET.summary()}\nhttps://notion.so/{NOTION_DATABASE_ID}"
+            f"{GEMINI_BUDGET.summary()}\n{PERSISTENT_GEMINI_COUNTER.summary()}\nhttps://notion.so/{NOTION_DATABASE_ID}"
         )
         send_telegram_alert(msg)
         logger.info(msg)
@@ -3713,6 +4003,7 @@ def main():
     generate_monthly_digest()
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+    logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
 if __name__ == "__main__":
