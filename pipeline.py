@@ -232,6 +232,7 @@ SOURCE_CONTEXT_MIN_CHARS = int(os.environ.get("SOURCE_CONTEXT_MIN_CHARS", "300")
 WEB_CONTEXT_TIMEOUT_SECONDS = int(os.environ.get("WEB_CONTEXT_TIMEOUT_SECONDS", "12"))
 WEB_CONTEXT_MAX_BYTES = int(os.environ.get("WEB_CONTEXT_MAX_BYTES", "750000"))
 FULL_PAPER_MAX_BYTES = int(os.environ.get("FULL_PAPER_MAX_BYTES", "20000000"))
+DEEP_PAPER_CONTEXT_MAX_CHARS = int(os.environ.get("DEEP_PAPER_CONTEXT_MAX_CHARS", "30000"))
 WEB_CONTEXT_USER_AGENT = os.environ.get(
     "WEB_CONTEXT_USER_AGENT",
     "Mozilla/5.0 (compatible; AI-Intelligence-Factory/1.0; +https://github.com/)"
@@ -2314,8 +2315,9 @@ def fetch_pdf_context(url: str) -> str:
         if res.status_code != 200 or len(res.content) > FULL_PAPER_MAX_BYTES:
             return ""
         from pypdf import PdfReader
-        text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(res.content)).pages)
-        return _truncate_source_context(text)
+        reader = PdfReader(BytesIO(res.content))
+        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+        return text[:DEEP_PAPER_CONTEXT_MAX_CHARS * 4]
     except Exception as e:
         logger.info("[DEEP EXTRACTION] PDF extraction failed: %s (%s)", url, e)
         return ""
@@ -2323,6 +2325,33 @@ def fetch_pdf_context(url: str) -> str:
 
 def _is_research_source(name: str, url: str, context: str) -> bool:
     return bool(re.search(r"arxiv|research|paper|conference|siggraph|proceedings|doi", " ".join((name or "", url or "", context or "")), re.I))
+
+
+def _research_coverage_and_digest(paper_text: str) -> tuple[dict, str]:
+    """PDF全体を走査し、後半の表・実験節を先頭abstractに埋もれさせずWriterへ渡す。"""
+    patterns = {
+        "method": r"method(?:ology)?|two.stage|stage\s*[12]|optimization|implementation",
+        "dataset": r"dataset|synthetic|held.out|templates?|intents?",
+        "hardware": r"NVIDIA|RTX|GPU|hardware",
+        "runtime": r"runtime|latency|\b\d+(?:\.\d+)?\s*(?:s|sec|seconds?|ms|秒)\b",
+        "metrics": r"accuracy|precision|recall|F1|PSNR|SSIM|quality",
+        "baseline": r"baseline|comparison|compared|ablation",
+        "limitations": r"limitations?|discussion|future work|caveats?|failure cases",
+        "code_availability": r"code (?:is )?(?:available|released)|github|repository",
+        "production_evidence": r"production|deployed|real.world|commercial",
+    }
+    coverage = {key: ("FOUND" if re.search(pattern, paper_text, re.I) else "SEARCHED_NOT_FOUND") for key, pattern in patterns.items()}
+    anchors = re.compile("|".join(f"(?:{p})" for p in patterns.values()), re.I)
+    snippets, seen = [], set()
+    for m in anchors.finditer(paper_text):
+        start, end = max(0, m.start() - 450), min(len(paper_text), m.end() + 900)
+        chunk = re.sub(r"\s+", " ", paper_text[start:end]).strip()
+        if chunk and chunk not in seen:
+            snippets.append(chunk); seen.add(chunk)
+        if sum(map(len, snippets)) >= DEEP_PAPER_CONTEXT_MAX_CHARS:
+            break
+    digest = "\n\n".join(snippets)[:DEEP_PAPER_CONTEXT_MAX_CHARS]
+    return coverage, digest
 
 
 def _deep_extract_primary_source(primary_url: str, name: str) -> tuple[str, dict]:
@@ -2337,15 +2366,18 @@ def _deep_extract_primary_source(primary_url: str, name: str) -> tuple[str, dict
             if paper_text:
                 paper_url = candidate
                 break
+    coverage, evidence_digest = _research_coverage_and_digest(paper_text) if paper_text else ({}, "")
     meta = {"source_type": "FULL_RESEARCH_PAPER" if paper_text else ("RESEARCH_LANDING_PAGE" if is_research else "BLOG_POST"),
             "full_paper_url": paper_url, "full_paper_checked": bool(paper_text),
+            "full_paper_available": bool(candidates), "full_paper_scanned": bool(paper_text),
+            "deep_evidence_extracted": bool(evidence_digest), "coverage_map": coverage,
             "absence_evidence_search_completed": bool(paper_text) if is_research else True}
     if is_research and not paper_text:
         logger.warning("[DEEP EXTRACTION INCOMPLETE] research source has no extracted full paper: %s", primary_url)
     text = "Landing page:\n" + landing
     if paper_text:
-        text += "\n\nFULL PAPER (authoritative detail):\n" + paper_text
-    return _truncate_source_context(text), meta
+        text = "FULL PAPER EVIDENCE (priority over landing abstract):\n" + evidence_digest + "\n\n" + text
+    return text[:SOURCE_CONTEXT_MAX_CHARS], meta
 
 
 def prepare_source_context(repo: dict) -> dict:
@@ -2390,9 +2422,12 @@ def prepare_source_context(repo: dict) -> dict:
         paper_url = re.sub(r"/abs/([^/?#]+)", r"/pdf/\1.pdf", primary_url)
         paper = fetch_pdf_context(paper_url)
         if paper:
-            pieces.append("FULL PAPER:\n" + paper)
-            substantive_parts.append(paper)
+            coverage, digest = _research_coverage_and_digest(paper)
+            pieces.insert(0, "FULL PAPER EVIDENCE (priority):\n" + digest)
+            substantive_parts.insert(0, digest)
             deep_meta = {"source_type": "PREPRINT", "full_paper_url": paper_url, "full_paper_checked": True,
+                         "full_paper_available": True, "full_paper_scanned": True,
+                         "deep_evidence_extracted": bool(digest), "coverage_map": coverage,
                          "absence_evidence_search_completed": True}
     elif source == "ProductHunt":
         if stored:
@@ -3700,6 +3735,11 @@ library、macro abstraction、user-defined pattern、proposalも分類どおり�
 探索完了がContextで明示され、かつ該当Evidenceが存在しない場合だけ許可する。Contextに数値・hardware・runtime・
 method detailがあれば、それを「確認できない」と書いてはならない。研究の処理時間は論文評価/benchmark runtimeであり、
 production-ready、実務で高速、real-timeへ変換してはならない。
+Evidenceのscope・condition・evidence classはClaim Identityの一部であり、読みやすさのために削除してはならない。
+TOY_EXAMPLEは「原著の単純な例では」等の限定を必ず残す。simple/obvious casesのwarningは、その限定を残す。
+held-outは非公開ではなく、検索/学習等から除外した評価セットとして扱う。complianceは、selected/topology-visible等の
+限定があればタイトル、lead、結論を含むARTICLE全体で同じ限定を保持する。安全・safeは対象（NX、実行可能スタック等）を
+明示できる場合だけ使用し、ABI registerをsecurity outcomeへ言い換えない。
 
 【判断レベル】
 management.decision_levelは必ず整数1〜5で返す。
@@ -4198,6 +4238,29 @@ def _find_false_negative_evidence_claims(draft: str, source_context: str) -> lis
     return ["FALSE_NEGATIVE_EVIDENCE_CLAIM: " + ", ".join(found)] if found else []
 
 
+def _find_final_wording_constraint_errors(draft: str, source_context: str) -> list[str]:
+    """主要な限定Evidenceが最終自然文で脱落・一般化されることをFail-Closedにする。"""
+    failures, text, evidence = [], draft or "", source_context or ""
+    if re.search(r"simple cases|obvious to the compiler|単純なケース|明確に判定", evidence, re.I):
+        warning_claim = re.search(r"(?:警告|warning).{0,40}(?:出|表示|発生|得られ)", text, re.I)
+        qualifier = re.search(r"(?:単純|明確に判定|自明|obvious).{0,30}(?:ケース|場合)", text, re.I)
+        if warning_claim and not qualifier:
+            failures.append("REQUIRED_QUALIFIER_DROPPED: compiler warning scope")
+    if re.search(r"\blea\b|single instruction|単一.*命令", evidence, re.I):
+        generalized = re.search(r"(?:インライン|マクロ).{0,50}(?:単一.*(?:命令|lea)|最適化される)", text, re.I)
+        qualifier = re.search(r"(?:原著|著者|単純|サンプル|例).{0,35}(?:例|ケース)", text, re.I)
+        if generalized and not qualifier:
+            failures.append("EVIDENCE_CLASS_GENERALIZED: toy example optimization")
+    if re.search(r"topology.visible|selected safeguards|22 safeguards", evidence, re.I):
+        if re.search(r"(?:CIS|コンプライアンス).{0,25}(?:適合済み|準拠|compliant)", text, re.I) and not re.search(r"(?:トポロジ|判定可能|selected|限定).{0,70}(?:CIS|safeguard|セーフガード)|(?:CIS|safeguard|セーフガード).{0,70}(?:トポロジ|判定可能|selected|限定)", text, re.I):
+            failures.append("REQUIRED_SCOPE_DROPPED: compliance scope")
+    if re.search(r"held.out", evidence, re.I) and re.search(r"held.out.{0,12}非公開|非公開.{0,12}held.out", text, re.I):
+        failures.append("FINAL_WORDING_TOO_STRONG: held-out translated as private")
+    if re.search(r"(?:安全なレジスタ|safe register|安全な.*ABI)", text, re.I):
+        failures.append("FINAL_WORDING_TOO_STRONG: ABI mechanism presented as security outcome")
+    return failures
+
+
 def _find_unsupported_competitor_claims(parsed: dict, source_context: str) -> list[str]:
     """Groundingなしの具体的競合優劣を止める。一般的な比較軸の提示は許可する。"""
     text = str(parsed.get("alternative_comparison_text", "") or "")
@@ -4418,6 +4481,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_claim_strength_and_scope_violations(draft, source_context))
     failures.extend(_find_missing_limitation(draft, source_context))
     failures.extend(_find_false_negative_evidence_claims(draft, source_context))
+    failures.extend(_find_final_wording_constraint_errors(draft, source_context))
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
     failures.extend(_find_decision_code_leak(draft))
@@ -4625,6 +4689,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
     source_info = prepare_source_context(repo)
     primary_url = source_info.get("primary_url") or url
+    if source_info.get("full_paper_available") and (not source_info.get("full_paper_scanned") or not source_info.get("deep_evidence_extracted")):
+        logger.error("[SOURCE_DEPTH_INSUFFICIENT] %s: available full paper was not scanned into deep evidence", name)
+        return None
     if source_info.get("source_type") == "RESEARCH_LANDING_PAGE" and not source_info.get("full_paper_checked"):
         # Abstract/Landingだけで研究の性能・制限を断定することを防ぐ。URL Contextへの丸投げも許可しない。
         logger.error("[PRIMARY SOURCE DEEP EXTRACTION FAILED] %s: full paper required but not extracted", name)
@@ -5430,13 +5497,15 @@ def run_regression_test_mode():
     for index, target in enumerate(selected, 1):
         logger.warning("[REGRESSION][%d/%d] %s | Duplicate bypass: YES | Production DB write: DISABLED", index, len(selected), target["id"])
         repo = _regression_repo(target)
+        source_debug = prepare_source_context(repo)
+        logger.warning("[REGRESSION][DEEP] full_available=%s scanned=%s extracted=%s coverage=%s", source_debug.get("full_paper_available"), source_debug.get("full_paper_scanned"), source_debug.get("deep_evidence_extracted"), source_debug.get("coverage_map"))
         # persist_results=False はNotion、GitHub画像、通知、公開を呼ばない唯一の本番共通経路。
         outcome = generate_intelligence_report(repo, screening_score=100, screening_reason="Regression test", persist_results=False)
         out_dir = os.path.join(REGRESSION_TEST_OUTPUT_DIR, target["id"])
         os.makedirs(out_dir, exist_ok=True)
         manuscript, status = outcome if isinstance(outcome, tuple) else (outcome or "", "accepted" if outcome else "failed")
         with open(os.path.join(out_dir, "article.md"), "w", encoding="utf-8") as f: f.write(manuscript)
-        metadata = {"target_id": target["id"], "original_source_date": target["publishedAt"], "regression_run_date": datetime.now(timezone.utc).isoformat(), "latest_followup_date": "2026-08-06T00:00:00Z" if target["id"] == "gcc_nested_functions" else None, "production_writes": 0, "status": status}
+        metadata = {"target_id": target["id"], "original_source_date": target["publishedAt"], "regression_run_date": datetime.now(timezone.utc).isoformat(), "latest_followup_date": "2026-08-06T00:00:00Z" if target["id"] == "gcc_nested_functions" else None, "production_writes": 0, "status": status, "deep_extraction": {k: source_debug.get(k) for k in ("full_paper_available", "full_paper_scanned", "deep_evidence_extracted", "coverage_map")}}
         report = {"unsupported_major_claims": 0 if status == "accepted" else 1, "numerical_mismatches": 0, "scope_expansions": 0, "example_generalizations": 0, "stale_status_claims": 0, "compliance_overclaims": 0, "safety_overclaims": 0, "actor_attribution_errors": 0, "status": status}
         for filename, data in (("run_metadata.json", metadata), ("validation_report.json", report), ("evidence.json", {"primary_url": target["url"], "followups": target.get("followups", [])}), ("claim_ledger.json", {"status": "generated by shared Evidence Validation layer; article wording is in article.md"})):
             with open(os.path.join(out_dir, filename), "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
