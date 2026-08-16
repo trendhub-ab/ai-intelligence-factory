@@ -137,6 +137,11 @@ ARXIV_FETCH_LIMIT = int(os.environ.get("ARXIV_FETCH_LIMIT", "50"))
 PRODUCTHUNT_FETCH_LIMIT = int(os.environ.get("PRODUCTHUNT_FETCH_LIMIT", "50"))
 MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "200"))
 SCREENING_BATCH_SIZE = int(os.environ.get("SCREENING_BATCH_SIZE", "25"))
+SCREENING_RECOVERY_BATCH_SIZE = int(os.environ.get("SCREENING_RECOVERY_BATCH_SIZE", "10"))
+# 25件分のJSON配列はreasonの長さ次第で1,200 tokensを超える。途中終了すると
+# 全配列がJSONとして読めず、正常な候補まで欠落扱いになるため十分な上限を確保する。
+SCREENING_BATCH_MAX_OUTPUT_TOKENS = int(os.environ.get("SCREENING_BATCH_MAX_OUTPUT_TOKENS", "2500"))
+GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS = int(os.environ.get("GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS", "4000"))
 # 旧SCREENING_PACING_SECONDSを後方互換のfallbackとして残す。sleepは候補単位ではない。
 # LiteのRPM 15を前提に、Screening 8回＋Calibration 2回が1分間に集中しない
 # 10秒間隔を既定にする。4秒では、実行直前に残っている他用途のRPMと合算して
@@ -751,7 +756,9 @@ class GeminiBudget:
                 f"Gemini local budget exhausted: used={self.request_count}, "
                 f"budget={self.daily_budget}, reserve={reserve}"
             )
-        if kind == "screening_retry":
+        # Batch応答の欠落を救うRecoveryも、無制限に無料枠を消費しないよう
+        # 既存のScreening Retry Budgetへ合算する。
+        if kind in {"screening_retry", "screening_recovery"}:
             if not self.can_screening_retry():
                 raise GeminiBudgetExceededError("Screening retry budget exhausted")
             self.screening_retry_count += 1
@@ -4756,7 +4763,8 @@ Deep Diveや外部調査は行わず、与えられたmetadataだけで簡潔に
 Engagementの絶対値を異なるSource間で直接比較してはならない。ArXivのengagement=0は不利に扱わない。
 
 必ず全候補について、入力順ではなくidで対応づけたJSON配列を返すこと。
-各要素は id、score（0〜100の整数）、reason（簡潔な日本語）だけを持つ。
+各要素は id、score（0〜100の整数）、reason（**20文字以内**の簡潔な日本語）だけを持つ。
+コードフェンス、説明文、配列外のオブジェクトは出力しない。
 
 候補:
 """ + json.dumps(candidates, ensure_ascii=False, separators=(",", ":"))
@@ -4768,22 +4776,34 @@ def build_global_calibration_prompt(candidates: list[dict]) -> str:
 同じ評価軸（技術的新規性、実務インパクト、意思決定への影響、緊急性、市場波及、信頼性）で
 Final Scoreを0〜100点に校正せよ。新しい事実を追加せず、入力metadataとraw_scoreだけを使うこと。
 Engagementの絶対値を異Source間で比較してはならず、ArXivの0を不利に扱わない。
-必ず全候補についてid、score、reasonのJSON配列を返すこと。
+必ず全候補についてid、score、reason（**20文字以内**）のJSON配列を返すこと。
+コードフェンス、説明文、配列外のオブジェクトは出力しない。
 
 候補:
 """ + json.dumps(candidates, ensure_ascii=False, separators=(",", ":"))
 
 
-def _parse_batch_screening_response(text: str, expected_ids: set[str]) -> tuple[dict[str, dict], list[str]]:
+def _parse_batch_screening_response(text: str, expected_ids: set[str],
+                                    include_diagnostic: bool = False):
     """欠落・重複・未知ID・型不正を検出し、正しい結果だけを採用する。"""
+    diagnostic = ""
     try:
         payload = json.loads(text or "")
-    except (TypeError, json.JSONDecodeError):
-        return {}, sorted(expected_ids)
+    except TypeError:
+        diagnostic = "response_text_type_invalid"
+        result = ({}, sorted(expected_ids))
+        return (*result, diagnostic) if include_diagnostic else result
+    except json.JSONDecodeError as e:
+        # 全文をログへ出さず、途中終了か形式崩れかを判断できる最小情報だけ残す。
+        diagnostic = f"json_decode_error:{e.msg}:pos={e.pos}:chars={len(text or '')}"
+        result = ({}, sorted(expected_ids))
+        return (*result, diagnostic) if include_diagnostic else result
     if isinstance(payload, dict):
         payload = payload.get("items") or payload.get("results")
     if not isinstance(payload, list):
-        return {}, sorted(expected_ids)
+        diagnostic = f"response_root_not_array:chars={len(text or '')}"
+        result = ({}, sorted(expected_ids))
+        return (*result, diagnostic) if include_diagnostic else result
 
     parsed: dict[str, dict] = {}
     invalid_ids: set[str] = set()
@@ -4803,14 +4823,21 @@ def _parse_batch_screening_response(text: str, expected_ids: set[str]) -> tuple[
     missing = sorted((expected_ids - set(parsed)) | invalid_ids)
     for candidate_id in invalid_ids:
         parsed.pop(candidate_id, None)
-    return parsed, missing
+    if missing:
+        diagnostic = f"validated={len(parsed)}/{len(expected_ids)} invalid_or_missing={len(missing)}"
+    result = (parsed, missing)
+    return (*result, diagnostic) if include_diagnostic else result
 
 
 def call_screening_provider(prompt: str, request_kind: str) -> tuple[object, str]:
     """将来のAI Router追加を見据えたGemini Screening呼出しの境界。"""
+    max_output_tokens = (
+        GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS
+        if request_kind == "global_calibration" else SCREENING_BATCH_MAX_OUTPUT_TOKENS
+    )
     return _call_screening_pool(
         prompt,
-        config={"max_output_tokens": 1200, "response_mime_type": "application/json",
+        config={"max_output_tokens": max_output_tokens, "response_mime_type": "application/json",
                 "response_schema": SCREENING_BATCH_RESPONSE_SCHEMA},
         kind=request_kind,
         reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS,
@@ -4830,7 +4857,9 @@ def screen_batch(batch: list[dict], batch_number: int, total_batches: int,
         time.sleep(SCREENING_BATCH_PACING_SECONDS)
     try:
         response, model = call_screening_provider(prompt, "screening_recovery" if recovery else "screening_batch")
-        parsed, missing_ids = _parse_batch_screening_response(response.text, expected_ids)
+        parsed, missing_ids, diagnostic = _parse_batch_screening_response(
+            response.text, expected_ids, include_diagnostic=True
+        )
         completed = [
             {"repo": item["repo"], "screening_id": item["screening_id"],
              "raw_score": parsed[item["screening_id"]]["score"],
@@ -4840,6 +4869,15 @@ def screen_batch(batch: list[dict], batch_number: int, total_batches: int,
             for item in batch if item["screening_id"] in parsed
         ]
         missing = [item for item in batch if item["screening_id"] in set(missing_ids)]
+        finish_reason = _response_finish_reason(response)
+        if missing:
+            category = "response_truncated" if "MAX_TOKENS" in finish_reason else "response_invalid"
+            for item in missing:
+                item["_screening_error_category"] = category
+            logger.warning(
+                f"[SCREENING RESPONSE INCOMPLETE] batch={batch_number}/{total_batches} "
+                f"finish_reason={finish_reason or 'unknown'} {diagnostic or 'no_detail'}"
+            )
         logger.info(
             f"[SCREENING BATCH] batch={batch_number}/{total_batches} items={len(batch)} model={model} "
             f"success={len(completed)} missing={len(missing)} recovery={recovery}"
@@ -4870,18 +4908,28 @@ def screen_candidates_in_batches(candidates: list[dict]) -> tuple[list[dict], in
         ok, missing, calls = screen_batch(batch, index, len(batches))
         completed.extend(ok)
         api_calls += calls
-        if missing and GEMINI_BUDGET.can_screening_retry() and GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS):
-            recovered, still_missing, recovery_calls = screen_batch(missing, index, len(batches), recovery=True)
+        # 全欠落の25件を同じ25件で再送すると、出力上限・形式崩れを再現し得る。
+        # Recoveryは小分けにし、既存Retry Budget内で正常候補だけ救う。
+        recovery_size = max(1, SCREENING_RECOVERY_BATCH_SIZE)
+        recovery_batches = [missing[i:i + recovery_size] for i in range(0, len(missing), recovery_size)]
+        for recovery_batch in recovery_batches:
+            if not recovery_batch:
+                continue
+            if not (GEMINI_BUDGET.can_screening_retry() and GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS)):
+                failed.extend(recovery_batch)
+                continue
+            recovered, still_missing, recovery_calls = screen_batch(
+                recovery_batch, index, len(batches), recovery=True
+            )
             completed.extend(recovered)
             failed.extend(still_missing)
             api_calls += recovery_calls
-        else:
-            failed.extend(missing)
     for item in failed:
         completed.append({
             "repo": item["repo"], "screening_id": item["screening_id"], "raw_score": None,
             "final_score": None, "reason": "Screening APIで判定できなかった", "calibrated": False,
-            "screening_status": "failed", "error_category": "quota_or_transport",
+            "screening_status": "failed",
+            "error_category": item.get("_screening_error_category", "quota_or_transport"),
         })
     return completed, api_calls
 
