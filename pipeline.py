@@ -7,6 +7,7 @@ import ipaddress
 import socket
 from contextlib import contextmanager
 import base64
+import hashlib
 import requests
 import logging
 import xml.etree.ElementTree as ET
@@ -152,12 +153,21 @@ GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_DEEP_DIVE_MAX_OU
 GEMINI_DEEP_DIVE_THINKING_LEVEL = os.environ.get("GEMINI_DEEP_DIVE_THINKING_LEVEL", "low").strip().lower()
 GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET", os.environ.get("GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET", "10")))
 # 複数GitHub Actions Runをまたいで共有するモデル別Safety Cap。
-# AI Studioで確認できるFree Tierのモデル別RPDに対し、少し余裕を残した独自上限を使う。
-# 公式quota値そのものをハードコードした保証ではなく、運用側Safety Capとして扱う。
+# 2026-08-16にAI Studioで確認したRPD（Lite=500、Flash=20）を上限値として持ち、
+# Pipeline側は少し手前（Lite=450、Flash=18）で止める。画面の実枠が変わった場合は
+# workflow環境変数と下の上限値を同時に見直すこと。Safety Capが実RPDを超えても、
+# コード側で実RPDを超えないようにする。
 GEMINI_PERSISTENT_DAILY_COUNTER = os.environ.get("GEMINI_PERSISTENT_DAILY_COUNTER", "true").lower() in {"1", "true", "yes", "on"}
 GEMINI_PERSISTENT_COUNTER_PATH = os.environ.get("GEMINI_PERSISTENT_COUNTER_PATH", ".runtime/gemini_daily_usage.json")
 GEMINI_QUOTA_TIMEZONE = os.environ.get("GEMINI_QUOTA_TIMEZONE", "America/Los_Angeles")
 GEMINI_DEFAULT_MODEL_DAILY_BUDGET = int(os.environ.get("GEMINI_DEFAULT_MODEL_DAILY_BUDGET", "18"))
+GEMINI_MODEL_RPD_LIMITS = {
+    "gemini-3.5-flash-lite": 500,
+    "gemini-3.1-flash-lite": 500,
+    "gemini-3.6-flash": 20,
+    "gemini-3.7-flash": 20,
+    "gemini-3.5-flash": 20,
+}
 GEMINI_MODEL_DAILY_BUDGETS = {
     "gemini-3.5-flash-lite": int(os.environ.get("GEMINI_35_FLASH_LITE_DAILY_BUDGET", "450")),
     "gemini-3.1-flash-lite": int(os.environ.get("GEMINI_31_FLASH_LITE_DAILY_BUDGET", "450")),
@@ -460,7 +470,7 @@ class ModelDailyBudgetExceededError(GeminiBudgetExceededError):
 
 
 class PersistentGeminiDailyCounter:
-    """GitHub Contents APIでモデル別Gemini使用量を複数Run間共有するFail-Closedカウンタ。
+    """GitHub Contents APIでAPIキー別・モデル別Gemini使用量を複数Run間共有するFail-Closedカウンタ。
 
     API送信前にモデル別で1回分を予約するため、runner停止時も過少計上しない。
     GoogleのRPDリセット境界に合わせ、America/Los_Angeles日付を既定にする。
@@ -468,7 +478,7 @@ class PersistentGeminiDailyCounter:
     別モデルへ即fallbackする。
     """
     def __init__(self, enabled: bool, model_budgets: dict[str, int], default_budget: int,
-                 path: str, quota_timezone: str):
+                 path: str, quota_timezone: str, api_key: str | None = None):
         self.enabled = enabled
         self.model_budgets = {k: max(0, int(v)) for k, v in model_budgets.items()}
         self.default_budget = max(0, int(default_budget))
@@ -479,9 +489,17 @@ class PersistentGeminiDailyCounter:
         # カウンタは常に明示した単一ブランチ（既定main）へ保存する。
         self.branch = os.environ.get("GEMINI_COUNTER_BRANCH", "main").strip() or "main"
         self.session_used: dict[str, int] = {}
+        # APIキーそのものはGitHub上のカウンタ、ログ、例外メッセージに保存しない。
+        # キーを切り替えた際、旧キーの残量/枯渇状態を引き継がないための不可逆識別子。
+        key_material = api_key if api_key is not None else GEMINI_API_KEY
+        self.key_scope = hashlib.sha256((key_material or "missing-key").encode("utf-8")).hexdigest()[:16]
 
     def budget_for(self, model_name: str) -> int:
-        return self.model_budgets.get(model_name, self.default_budget)
+        configured = self.model_budgets.get(model_name, self.default_budget)
+        # workflowの誤設定でSafety CapをAI Studio実RPD以上にしない最終防波堤。
+        # 未登録モデルは推測値を置かず、従来どおりdefault_budgetで保守的に扱う。
+        actual_limit = GEMINI_MODEL_RPD_LIMITS.get(model_name)
+        return min(configured, actual_limit) if actual_limit is not None else configured
 
     def _quota_date(self) -> str:
         try:
@@ -543,19 +561,30 @@ class PersistentGeminiDailyCounter:
             )
 
     def _normalized_day(self, data: dict, quota_date: str) -> dict:
-        # 旧single-counter形式からの移行も安全に処理する。旧used値はモデル帰属不明なので
-        # modelsへ推測配賦せず、以後の実API 429で該当モデルをEXHAUSTED化する。
+        # 旧single-counter形式はキー帰属が不明なため、新しいキーへ使用量を引き継がない。
+        # 旧データは削除し、以後はAPIキーのハッシュごとに独立した状態を持つ。
         if data.get("quota_date") != quota_date:
-            return {"quota_date": quota_date, "models": {}}
-        if not isinstance(data.get("models"), dict):
-            data["models"] = {}
+            return {"quota_date": quota_date, "key_scopes": {}}
+        if not isinstance(data.get("key_scopes"), dict):
+            data["key_scopes"] = {}
+        data.pop("models", None)
         data.pop("used", None)
         data.pop("budget", None)
         data.pop("by_kind", None)
         return data
 
+    def _key_state(self, data: dict) -> dict:
+        scopes = data.setdefault("key_scopes", {})
+        state = scopes.get(self.key_scope)
+        if not isinstance(state, dict):
+            state = {"models": {}}
+            scopes[self.key_scope] = state
+        if not isinstance(state.get("models"), dict):
+            state["models"] = {}
+        return state
+
     def _model_state(self, data: dict, model_name: str) -> dict:
-        models = data.setdefault("models", {})
+        models = self._key_state(data)["models"]
         state = models.get(model_name)
         if not isinstance(state, dict):
             state = {}
@@ -2270,7 +2299,9 @@ def prepare_source_context(repo: dict) -> dict:
         hn_text = stored.strip()
         if hn_text:
             pieces.append("Hacker News post text:\n" + hn_text)
-            substantive_parts.append(hn_text)
+            # HN本文・コメントは発見経路/論点の手掛かりであり、外部原資料の代替にはしない。
+            # ここを一次根拠として sufficient にすると、取得不能な原記事の代わりに
+            # コメント由来の逸話や推測で記事を生成してしまう。
         hn_url = details.get("hn_url")
         if hn_url:
             pieces.append(f"HN discussion URL: {hn_url}")
@@ -3293,6 +3324,9 @@ def _source_fact_discipline(source: str) -> str:
   一次情報が直接裏付ける場合以外は使わない。
 ・ライセンス、コマンド、取得方法は一次情報の記載どおりに扱う。複数の方法を組み合わせて新しい手順を
   提案する場合は、公式の記載ではなく筆者の提案であることを明確にする。
+・医療・創薬テーマでは、業務効率化の逸話、研究段階の結果、レビュー記事の論評を、臨床的有効性、
+  新薬創出、開発成功率の証明へ拡張しない。「確立した事実」「現場で確認済み」といった表現は、
+  直接の一次根拠がある場合だけ使う。
 """
     rules = {
         "GitHub": """
@@ -3331,6 +3365,10 @@ def _source_fact_discipline(source: str) -> str:
 ・元記事が特定企業/製品の公式ブログなら、競合情報をモデル記憶から補わない。
 ・preview / beta / nightly / experimental / PR / development build と stable/general availabilityを必ず分離する。
 ・ニュース公開時点の仕様を「現在仕様」と固定しない。現在docsと衝突するなら差分を明示する。
+・HNの投稿者・コメントは検証済みの一次情報ではない。自己申告や経験談に触れるなら「HN上の投稿者の
+  経験談」と明示し、「現場の研究者」「企業の実務者の証言」「確認された事実」へ言い換えない。
+・外部原資料の本文を取得できない場合、HNの議論だけを根拠に技術性能、業界の実態、医療・創薬の効果を
+  事実として書かない。原資料を確認できない旨を明示するか、記事化を見送る。
 """,
     }
     return common + rules.get(source, "")
@@ -3383,6 +3421,7 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 ・煽り語、営業コピー、読者を急かす命令口調を避ける。
 ・記事全体を無料公開する。前半で情報を理解でき、後半で判断材料まで読める構成にする。
 ・後半の中見出しはテーマに合わせて3〜6個を自分で設計する。固定テンプレの見出しを全部並べない。
+・本文に [1]、[1.1]、(ref-1) のような未定義の脚注・内部参照記号を出さない。出典は末尾の所定欄だけで示す。
 ・箇条書きは要点整理や検証項目にだけ使う。本文の半分以上は段落で読ませる。
 ・具体例は一次情報または明示した推論の範囲だけで使う。架空の導入効果や期間を作らない。
 ・最終段落は「私なら次に何をするか」を自然な一段落で締める。
@@ -3706,7 +3745,9 @@ def _parse_structured_gemini_response(full_text: str) -> dict:
         body = clean(section.get("body"))
         if heading and body:
             heading = re.sub(r"^#+\s*", "", heading).strip()
-            paid_markdown.append(f"### {heading}\n{body}")
+            # 見出しに混入した改行を1行へ正規化し、本文との余白を必ず統一する。
+            heading = re.sub(r"\s+", " ", heading)
+            paid_markdown.append(f"### {heading}\n\n{body.lstrip()}")
 
     lead = clean(article.get("lead"))
     reader_question = clean(article.get("reader_question"))
@@ -4059,6 +4100,40 @@ def _find_management_score_leak(draft: str) -> list[str]:
     return leaks
 
 
+def _find_undefined_reference_markers(draft: str) -> list[str]:
+    """本文の未定義な脚注/内部参照記号を公開前に止める。"""
+    markers = re.findall(r"(?<![!\w])\[(\d+(?:\.\d+){0,3})\](?!\()", draft or "")
+    if not markers:
+        return []
+    return ["undefined reference marker leaked into ARTICLE: " + ", ".join(dict.fromkeys(markers))]
+
+
+def _find_heading_spacing_issues(draft: str) -> list[str]:
+    """Markdown見出し直後の空行を揃え、本文が見出しへ連結する事故を防ぐ。"""
+    issues = []
+    for match in re.finditer(r"(?m)^#{2,6}\s+[^\n]+\n(?!\n|$)", draft or ""):
+        line = match.group(0).splitlines()[0]
+        issues.append(f"heading must be followed by a blank line: {line[:80]}")
+    return issues[:6]
+
+
+def _find_unverified_hn_testimonial_claims(draft: str, source: str) -> list[str]:
+    """HNコメントを検証済みの現場証言へすり替える表現を止める。"""
+    if source != "HackerNews":
+        return []
+    patterns = (
+        r"(?:現場の|企業の現場で働く).{0,18}(?:研究者|科学者|生物学者).{0,18}(?:証言|声|実体験)",
+        r"(?:研究者たち|現場).{0,18}(?:実体験|証言).{0,18}(?:共通|確認)",
+        r"(?:時間短縮効果|効率化効果).{0,30}(?:確固たる事実|確認されています)",
+    )
+    failures = []
+    for pattern in patterns:
+        match = re.search(pattern, draft or "")
+        if match:
+            failures.append("unverified HN commentary presented as evidence: " + match.group(0)[:100])
+    return list(dict.fromkeys(failures))
+
+
 def _find_source_boundary_violations(draft: str, source_context: str) -> list[str]:
     """Source Context外の「固有製品/企業/モデルに関する事実補完」だけを止める補助Gate。
 
@@ -4175,6 +4250,9 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
     failures.extend(_find_decision_code_leak(draft))
+    failures.extend(_find_undefined_reference_markers(draft))
+    failures.extend(_find_heading_spacing_issues(draft))
+    failures.extend(_find_unverified_hn_testimonial_claims(draft, source))
     failures.extend(_find_source_boundary_violations(draft, source_context))
 
     conflict = _explicit_decision_conflict(parsed)
