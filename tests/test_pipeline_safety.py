@@ -555,6 +555,67 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertEqual({"B0001", "B0003"}, set(parsed))
         self.assertEqual(["B0002"], missing)
 
+    def test_batch_parser_returns_truncation_diagnostic_for_invalid_json(self):
+        parsed, missing, diagnostic = pipeline._parse_batch_screening_response(
+            '[{"id":"B0001","score":72,"reason":"途中',
+            {"B0001"},
+            include_diagnostic=True,
+        )
+        self.assertEqual({}, parsed)
+        self.assertEqual(["B0001"], missing)
+        self.assertTrue(diagnostic.startswith("json_decode_error:"))
+
+    def test_screening_and_calibration_use_separate_output_token_caps(self):
+        seen = []
+
+        def fake_pool(prompt, config, kind, reserve):
+            seen.append((kind, config, reserve))
+            return types.SimpleNamespace(text="[]"), "test-model"
+
+        with patch.object(pipeline, "_call_screening_pool", side_effect=fake_pool):
+            pipeline.call_screening_provider("screen", "screening_batch")
+            pipeline.call_screening_provider("calibrate", "global_calibration")
+
+        self.assertEqual(pipeline.SCREENING_BATCH_MAX_OUTPUT_TOKENS, seen[0][1]["max_output_tokens"])
+        self.assertEqual(pipeline.GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS, seen[1][1]["max_output_tokens"])
+        self.assertEqual("application/json", seen[0][1]["response_mime_type"])
+
+    def test_screening_recovery_consumes_screening_retry_budget(self):
+        budget = pipeline.GeminiBudget(daily_budget=10, screening_retry_budget=1, deep_dive_retry_budget=1)
+        budget.consume("screening_recovery")
+        self.assertEqual(1, budget.screening_retry_count)
+        self.assertFalse(budget.can_screening_retry())
+
+    def test_recovery_splits_missing_batch_into_small_chunks(self):
+        candidates = [
+            {"screening_id": f"B{i:04d}", "repo": {"nameWithOwner": f"n{i}", "stargazerCount": 0}}
+            for i in range(1, 26)
+        ]
+        seen_sizes = []
+
+        def fake_screen(batch, *_args, recovery=False, **_kwargs):
+            seen_sizes.append(len(batch))
+            if not recovery:
+                return [], batch, 1
+            completed = [
+                {"repo": item["repo"], "screening_id": item["screening_id"], "raw_score": 50,
+                 "final_score": 50, "reason": "test", "calibrated": False,
+                 "screening_status": "completed"}
+                for item in batch
+            ]
+            return completed, [], 1
+
+        with patch.object(pipeline, "SCREENING_BATCH_SIZE", 25), \
+             patch.object(pipeline, "SCREENING_RECOVERY_BATCH_SIZE", 10), \
+             patch.object(pipeline, "screen_batch", side_effect=fake_screen), \
+             patch.object(pipeline.GEMINI_BUDGET, "can_request", return_value=True), \
+             patch.object(pipeline.GEMINI_BUDGET, "can_screening_retry", return_value=True):
+            result, calls = pipeline.screen_candidates_in_batches(candidates)
+
+        self.assertEqual([25, 10, 10, 5], seen_sizes)
+        self.assertEqual(4, calls)
+        self.assertEqual(25, len(result))
+
     def test_200_candidates_are_partitioned_into_eight_screening_batches(self):
         candidates = [
             {"screening_id": f"B{i:04d}", "repo": {"nameWithOwner": f"n{i}", "stargazerCount": 0}}
