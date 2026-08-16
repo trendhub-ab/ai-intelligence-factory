@@ -54,6 +54,8 @@ jobs:
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
           GEMINI_PERSISTENT_COUNTER_PATH: ".runtime/gemini_daily_usage.json"
           GEMINI_COUNTER_BRANCH: "main"
+          # 2026-08-16確認: Flash Lite=500 RPD / Flash=20 RPD。
+          # 下記は実RPDではなく、余裕を残すPipeline側のSafety Cap（450/18）。
           GEMINI_35_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_36_FLASH_DAILY_BUDGET: "18"
@@ -63,4 +65,3 @@ jobs:
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "10"
-
