@@ -65,11 +65,15 @@ jobs:
           PRODUCTHUNT_FETCH_LIMIT: "50"
           MAX_SCREENING_CANDIDATES: "200"
           SCREENING_BATCH_SIZE: "25"
+          # primary batchのJSON途中終了時だけ、10件ずつのRecoveryへ縮小する。
+          SCREENING_RECOVERY_BATCH_SIZE: "10"
+          SCREENING_BATCH_MAX_OUTPUT_TOKENS: "2500"
           # 3.5 Flash Liteの15 RPMを保護。200件=8 Batch＋Calibrationが集中しない間隔。
           SCREENING_BATCH_PACING_SECONDS: "10"
           ENABLE_GLOBAL_CALIBRATION: "true"
           GLOBAL_CALIBRATION_MIN_RAW_SCORE: "55"
           GLOBAL_CALIBRATION_BATCH_SIZE: "50"
+          GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS: "4000"
           ENABLE_OBSERVED_HISTORY: "true"
           OBSERVED_HISTORY_DIR: "observed_history"
           OBSERVED_HISTORY_GITHUB_DIR: "observed_history"
