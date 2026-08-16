@@ -353,7 +353,7 @@ class PipelineSafetyTests(unittest.TestCase):
                 self.assertTrue(output.exists())
                 image = pipeline.Image.open(output)
                 self.assertEqual((1280, 670), image.size)
-                self.assertEqual((239, 68, 68), image.getpixel((130, 380)))
+                self.assertEqual((239, 68, 68), image.getpixel((130, 345)))
 
                 skipped = Path(directory) / "skipped.png"
                 self.assertIsNone(pipeline.generate_eyecatch_image(
@@ -486,6 +486,55 @@ class PipelineSafetyTests(unittest.TestCase):
         self.assertTrue(pipeline._normalize_note_title("Netflixの推薦は変わる？").endswith("？"))
         self.assertTrue(pipeline._normalize_note_title("LLM推薦の現在地").endswith("。"))
         self.assertNotIn("!", pipeline._normalize_note_title("LLM推薦の現在地!"))
+
+    def test_api_key_scopes_keep_persistent_model_counters_independent(self):
+        first = pipeline.PersistentGeminiDailyCounter(
+            True, {"model": 18}, 18, ".runtime/test.json", "UTC", api_key="first-key"
+        )
+        second = pipeline.PersistentGeminiDailyCounter(
+            True, {"model": 18}, 18, ".runtime/test.json", "UTC", api_key="second-key"
+        )
+        data = {"quota_date": "2026-08-16", "key_scopes": {}}
+        first_state = first._model_state(data, "model")
+        first_state["used"] = 18
+        self.assertEqual(18, first._model_state(data, "model")["used"])
+        self.assertEqual(0, second._model_state(data, "model")["used"])
+        self.assertNotEqual(first.key_scope, second.key_scope)
+        self.assertNotIn("first-key", json.dumps(data))
+
+    def test_model_budget_never_exceeds_verified_rpd_limit(self):
+        counter = pipeline.PersistentGeminiDailyCounter(
+            True, {"gemini-3.7-flash": 99}, 99, ".runtime/test.json", "UTC", api_key="key"
+        )
+        self.assertEqual(20, counter.budget_for("gemini-3.7-flash"))
+        self.assertEqual(99, counter.budget_for("unregistered-model"))
+
+    def test_legacy_counter_does_not_carry_usage_to_current_key(self):
+        counter = pipeline.PersistentGeminiDailyCounter(
+            True, {"model": 18}, 18, ".runtime/test.json", "UTC", api_key="new-key"
+        )
+        legacy = {"quota_date": "2026-08-16", "models": {"model": {"used": 18, "exhausted": True}}}
+        normalized = counter._normalized_day(legacy, "2026-08-16")
+        self.assertNotIn("models", normalized)
+        self.assertEqual(0, counter._model_state(normalized, "model")["used"])
+
+    def test_hn_context_without_external_article_is_not_sufficient(self):
+        repo = {
+            "source": "HackerNews", "nameWithOwner": "HN item", "description": "desc",
+            "sourceContext": "HNのコメント本文 " * 100,
+            "sourceDetails": {"external_url": "https://example.com/article"},
+        }
+        with patch.object(pipeline, "fetch_webpage_context", return_value=""):
+            context = pipeline.prepare_source_context(repo)
+        self.assertIn("Hacker News post text", context["context"])
+        self.assertFalse(context["sufficient"])
+
+    def test_fact_helpers_reject_internal_reference_and_unverified_hn_testimony(self):
+        self.assertTrue(pipeline._find_undefined_reference_markers("効率化が進んでいる [1.1]。"))
+        self.assertTrue(pipeline._find_heading_spacing_issues("### 見出し\n本文"))
+        self.assertTrue(pipeline._find_unverified_hn_testimonial_claims(
+            "企業の現場で働く構造生物学者の証言では効率化した。", "HackerNews"
+        ))
 
 
 if __name__ == "__main__":
