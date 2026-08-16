@@ -138,8 +138,11 @@ PRODUCTHUNT_FETCH_LIMIT = int(os.environ.get("PRODUCTHUNT_FETCH_LIMIT", "50"))
 MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "200"))
 SCREENING_BATCH_SIZE = int(os.environ.get("SCREENING_BATCH_SIZE", "25"))
 # 旧SCREENING_PACING_SECONDSを後方互換のfallbackとして残す。sleepは候補単位ではない。
+# LiteのRPM 15を前提に、Screening 8回＋Calibration 2回が1分間に集中しない
+# 10秒間隔を既定にする。4秒では、実行直前に残っている他用途のRPMと合算して
+# 429になり得る。必要なら環境変数でさらに保守的にできる。
 SCREENING_BATCH_PACING_SECONDS = int(
-    os.environ.get("SCREENING_BATCH_PACING_SECONDS", os.environ.get("SCREENING_PACING_SECONDS", "4"))
+    os.environ.get("SCREENING_BATCH_PACING_SECONDS", os.environ.get("SCREENING_PACING_SECONDS", "10"))
 )
 ENABLE_GLOBAL_CALIBRATION = os.environ.get("ENABLE_GLOBAL_CALIBRATION", "true").lower() in {"1", "true", "yes", "on"}
 GLOBAL_CALIBRATION_MIN_RAW_SCORE = int(os.environ.get("GLOBAL_CALIBRATION_MIN_RAW_SCORE", "55"))
@@ -831,6 +834,9 @@ PING_RETRY_BACKOFF_SECONDS = int(os.environ.get("PING_RETRY_BACKOFF_SECONDS", "1
 # なった場合にジョブ全体が黙って止まるのを防ぐ。Linux runnerのmain threadで
 # SIGALRMを使うため、待機中の同期SDK callもFail-Closedで中断できる。
 GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS", "120"))
+# Flash系の低いRPMを守るため、Deep Diveの呼出しはScreeningより長く間隔を取る。
+# 3件を生成する通常Runでも、直近の手動利用やfallback時に429へ寄りにくくする。
+GEMINI_DEEP_DIVE_CALL_PACING_SECONDS = int(os.environ.get("GEMINI_DEEP_DIVE_CALL_PACING_SECONDS", "20"))
 
 
 class GeminiCallTimeoutError(TimeoutError):
@@ -1047,7 +1053,8 @@ def _call_deep_dive_pool(prompt: str, config: dict | None, kind: str):
                 )
                 break
             try:
-                time.sleep(3)
+                if GEMINI_DEEP_DIVE_CALL_PACING_SECONDS > 0:
+                    time.sleep(GEMINI_DEEP_DIVE_CALL_PACING_SECONDS)
                 logger.info(
                     f"[GEMINI DEEP DIVE CALL] model={model_name} kind={actual_kind} "
                     f"timeout={GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS}s"
