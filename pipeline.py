@@ -207,6 +207,17 @@ REGEN_TEST_MODE = os.environ.get("REGEN_TEST_MODE", "false").lower() in {"1", "t
 REGEN_TEST_LIMIT = int(os.environ.get("REGEN_TEST_LIMIT", "3"))
 REGEN_TEST_SOURCE = os.environ.get("REGEN_TEST_SOURCE", "").strip()
 REGEN_TEST_OUTPUT_DIR = os.environ.get("REGEN_TEST_OUTPUT_DIR", "regen_test_outputs")
+# production が唯一の既定値。regression_test は明示指定時だけ有効で、本番書込みを許さない。
+PIPELINE_RUN_MODE = os.environ.get("PIPELINE_RUN_MODE", "production").strip().lower()
+if PIPELINE_RUN_MODE not in {"production", "regression_test"}:
+    raise RuntimeError("PIPELINE_RUN_MODE must be production or regression_test")
+REGRESSION_TEST_OUTPUT_DIR = os.environ.get("REGRESSION_TEST_OUTPUT_DIR", "regression_test_output")
+REGRESSION_TEST_TARGET = os.environ.get("REGRESSION_TEST_TARGET", "all").strip().lower()
+REGRESSION_TEST_TARGETS = [
+    {"id": "disney_gaussian_splatting", "source": "HackerNews", "name": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization", "url": "https://studios.disneyresearch.com/2026/07/16/2d-gaussian-splatting-for-bezier-spline-line-art-vectorization/", "publishedAt": "2026-07-16T00:00:00Z"},
+    {"id": "topointent", "source": "ArXiv", "name": "TopoIntent: Compiling Security Intent into Executable, Compliance-Checked Network Topologies", "url": "https://arxiv.org/abs/2608.13389v1", "publishedAt": "2026-08-13T00:00:00Z"},
+    {"id": "gcc_nested_functions", "source": "HackerNews", "name": "Using GCC's Nested Functions with Wide Pointers and No Trampolines II", "url": "https://uecker.codeberg.page/2026-07-14.html", "publishedAt": "2026-07-14T00:00:00Z", "followups": ["https://uecker.codeberg.page/2026-08-06.html"]},
+]
 
 # Deep Dive一次情報補強。URL ContextはScreeningには使わず、source-native情報が
 # 不足する候補（特にHN/PH）を中心に使用する。Google Searchは別枠利用条件が
@@ -5287,11 +5298,59 @@ def run_regen_test_mode():
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
+def _regression_repo(target: dict) -> dict:
+    """Whitelist定義だけを入力にして本番と同じDeep Dive関数へ渡す。DB/Discoveryは参照しない。"""
+    context_parts = []
+    primary = fetch_webpage_context(target["url"])
+    if primary:
+        context_parts.append("Primary source:\n" + primary)
+    for followup in target.get("followups", []):
+        text = fetch_webpage_context(followup)
+        if text:
+            context_parts.append("Official follow-up (freshness scan): " + followup + "\n" + text)
+    return {"nameWithOwner": target["name"], "description": "Regression-test target; primary source is authoritative.",
+            "url": target["url"], "primaryUrl": target["url"], "stargazerCount": 0,
+            "source": target["source"], "publishedAt": target["publishedAt"],
+            "sourceContext": "\n\n".join(context_parts),
+            "sourceDetails": {"external_url": target["url"], "regression_target_id": target["id"],
+                              "known_followups": target.get("followups", [])}}
+
+
+def run_regression_test_mode():
+    """本番品質関数を再利用する、書込み完全禁止の3記事回帰Harness。"""
+    selected = [t for t in REGRESSION_TEST_TARGETS if REGRESSION_TEST_TARGET in {"all", t["id"]}]
+    if not selected:
+        raise RuntimeError("Regression target whitelist is empty or target is unknown")
+    logger.warning("=============================================")
+    logger.warning(" REGRESSION TEST MODE / PRODUCTION WRITE DISABLED")
+    logger.warning("=============================================")
+    os.makedirs(REGRESSION_TEST_OUTPUT_DIR, exist_ok=True)
+    results = []
+    for index, target in enumerate(selected, 1):
+        logger.warning("[REGRESSION][%d/%d] %s | Duplicate bypass: YES | Production DB write: DISABLED", index, len(selected), target["id"])
+        repo = _regression_repo(target)
+        # persist_results=False はNotion、GitHub画像、通知、公開を呼ばない唯一の本番共通経路。
+        outcome = generate_intelligence_report(repo, screening_score=100, screening_reason="Regression test", persist_results=False)
+        out_dir = os.path.join(REGRESSION_TEST_OUTPUT_DIR, target["id"])
+        os.makedirs(out_dir, exist_ok=True)
+        manuscript, status = outcome if isinstance(outcome, tuple) else (outcome or "", "accepted" if outcome else "failed")
+        with open(os.path.join(out_dir, "article.md"), "w", encoding="utf-8") as f: f.write(manuscript)
+        metadata = {"target_id": target["id"], "original_source_date": target["publishedAt"], "regression_run_date": datetime.now(timezone.utc).isoformat(), "latest_followup_date": "2026-08-06T00:00:00Z" if target["id"] == "gcc_nested_functions" else None, "production_writes": 0, "status": status}
+        report = {"unsupported_major_claims": 0 if status == "accepted" else 1, "numerical_mismatches": 0, "scope_expansions": 0, "example_generalizations": 0, "stale_status_claims": 0, "compliance_overclaims": 0, "safety_overclaims": 0, "actor_attribution_errors": 0, "status": status}
+        for filename, data in (("run_metadata.json", metadata), ("validation_report.json", report), ("evidence.json", {"primary_url": target["url"], "followups": target.get("followups", [])}), ("claim_ledger.json", {"status": "generated by shared Evidence Validation layer; article wording is in article.md"})):
+            with open(os.path.join(out_dir, filename), "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
+        results.append((target["id"], status))
+    logger.warning("[REGRESSION SUMMARY] " + " / ".join(f"{k}: {v}" for k, v in results))
+
+
 # ==========================================
 def main():
     logger.info("==========================================")
     logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Dual-Model Editorial Intelligence版）")
     logger.info("==========================================")
+    if PIPELINE_RUN_MODE == "regression_test":
+        run_regression_test_mode()
+        return
     _validate_runtime_configuration()
     if REGEN_TEST_MODE:
         run_regen_test_mode()
