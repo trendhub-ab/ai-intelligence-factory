@@ -8,6 +8,7 @@ import socket
 from contextlib import contextmanager
 import base64
 import hashlib
+from io import BytesIO
 import requests
 import logging
 import xml.etree.ElementTree as ET
@@ -230,6 +231,7 @@ SOURCE_CONTEXT_MIN_CHARS = int(os.environ.get("SOURCE_CONTEXT_MIN_CHARS", "300")
 # 外部HTTP取得はGemini quotaを消費しないため、URL Contextのtool token膨張を抑える。
 WEB_CONTEXT_TIMEOUT_SECONDS = int(os.environ.get("WEB_CONTEXT_TIMEOUT_SECONDS", "12"))
 WEB_CONTEXT_MAX_BYTES = int(os.environ.get("WEB_CONTEXT_MAX_BYTES", "750000"))
+FULL_PAPER_MAX_BYTES = int(os.environ.get("FULL_PAPER_MAX_BYTES", "20000000"))
 WEB_CONTEXT_USER_AGENT = os.environ.get(
     "WEB_CONTEXT_USER_AGENT",
     "Mozilla/5.0 (compatible; AI-Intelligence-Factory/1.0; +https://github.com/)"
@@ -2282,6 +2284,70 @@ def fetch_webpage_context(url: str) -> str:
     return ""
 
 
+def _fetch_primary_html_and_links(url: str) -> tuple[str, list[str]]:
+    """研究landing pageから、本文とPDF/Proceedings/Appendix候補リンクを安全に取り出す。"""
+    try:
+        _validate_public_http_url(url)
+        res = requests.get(url, headers={"User-Agent": WEB_CONTEXT_USER_AGENT}, timeout=WEB_CONTEXT_TIMEOUT_SECONDS)
+        if res.status_code != 200 or "html" not in (res.headers.get("Content-Type") or "").lower():
+            return "", []
+        html = res.content.decode(res.encoding or "utf-8", errors="replace")
+        parser = _ReadableHTMLTextParser(); parser.feed(html)
+        links = []
+        for href in re.findall(r'''href=["']([^"'#]+)["']''', html, re.I):
+            absolute = urljoin(url, unescape(href))
+            lowered = absolute.lower()
+            if any(token in lowered for token in (".pdf", "arxiv.org/pdf", "doi.org", "proceedings", "supplement", "appendix", "paper")):
+                if absolute not in links:
+                    links.append(absolute)
+        return _truncate_source_context(parser.text()), links[:12]
+    except Exception as e:
+        logger.info("[DEEP EXTRACTION] landing retrieval failed: %s", e)
+        return "", []
+
+
+def fetch_pdf_context(url: str) -> str:
+    """PDF本文を抽出する。論文本文の取得に失敗した場合、abstractだけで研究記事を通さない。"""
+    try:
+        _validate_public_http_url(url)
+        res = requests.get(url, headers={"User-Agent": WEB_CONTEXT_USER_AGENT, "Accept": "application/pdf"}, timeout=WEB_CONTEXT_TIMEOUT_SECONDS)
+        if res.status_code != 200 or len(res.content) > FULL_PAPER_MAX_BYTES:
+            return ""
+        from pypdf import PdfReader
+        text = "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(res.content)).pages)
+        return _truncate_source_context(text)
+    except Exception as e:
+        logger.info("[DEEP EXTRACTION] PDF extraction failed: %s (%s)", url, e)
+        return ""
+
+
+def _is_research_source(name: str, url: str, context: str) -> bool:
+    return bool(re.search(r"arxiv|research|paper|conference|siggraph|proceedings|doi", " ".join((name or "", url or "", context or "")), re.I))
+
+
+def _deep_extract_primary_source(primary_url: str, name: str) -> tuple[str, dict]:
+    """Landing→full paper→PDF本文までを到達させ、深さ不足を明示するEvidence Acquisition Gate。"""
+    landing, links = _fetch_primary_html_and_links(primary_url)
+    is_research = _is_research_source(name, primary_url, landing)
+    paper_text, paper_url = "", ""
+    candidates = ([primary_url] if ".pdf" in primary_url.lower() or "/pdf/" in primary_url.lower() else []) + links
+    for candidate in candidates:
+        if ".pdf" in candidate.lower() or "/pdf/" in candidate.lower():
+            paper_text = fetch_pdf_context(candidate)
+            if paper_text:
+                paper_url = candidate
+                break
+    meta = {"source_type": "FULL_RESEARCH_PAPER" if paper_text else ("RESEARCH_LANDING_PAGE" if is_research else "BLOG_POST"),
+            "full_paper_url": paper_url, "full_paper_checked": bool(paper_text),
+            "absence_evidence_search_completed": bool(paper_text) if is_research else True}
+    if is_research and not paper_text:
+        logger.warning("[DEEP EXTRACTION INCOMPLETE] research source has no extracted full paper: %s", primary_url)
+    text = "Landing page:\n" + landing
+    if paper_text:
+        text += "\n\nFULL PAPER (authoritative detail):\n" + paper_text
+    return _truncate_source_context(text), meta
+
+
 def prepare_source_context(repo: dict) -> dict:
     """Geminiを使わず一次情報を補強し、URL Contextより先にsource-native本文を確保する。"""
     source = repo.get("source", "GitHub")
@@ -2294,6 +2360,8 @@ def prepare_source_context(repo: dict) -> dict:
     pieces = [f"Source: {source}", f"Name: {name}", f"Description: {desc}"]
     substantive_parts: list[str] = []
     method = GROUNDING_METADATA_ONLY
+    deep_meta = {"source_type": "UNKNOWN", "full_paper_url": "", "full_paper_checked": False,
+                 "absence_evidence_search_completed": False}
 
     if source == "GitHub":
         readme = fetch_github_readme_context(name)
@@ -2318,6 +2386,14 @@ def prepare_source_context(repo: dict) -> dict:
         for official_url, official_ctx in _fetch_arxiv_official_link_context(official_links):
             pieces.append(f"Official linked resource ({official_url}):\n" + official_ctx)
             substantive_parts.append(official_ctx)
+        # arXivのabstractだけでは研究記事を生成しない。PDF本文を優先してEvidence Storeへ投入する。
+        paper_url = re.sub(r"/abs/([^/?#]+)", r"/pdf/\1.pdf", primary_url)
+        paper = fetch_pdf_context(paper_url)
+        if paper:
+            pieces.append("FULL PAPER:\n" + paper)
+            substantive_parts.append(paper)
+            deep_meta = {"source_type": "PREPRINT", "full_paper_url": paper_url, "full_paper_checked": True,
+                         "absence_evidence_search_completed": True}
     elif source == "ProductHunt":
         if stored:
             pieces.append("Product Hunt metadata:\n" + stored)
@@ -2340,9 +2416,9 @@ def prepare_source_context(repo: dict) -> dict:
         external_url = details.get("external_url") or ""
         # HNの外部記事本文をまずPython側で取得。成功すればURL Contextを使わない。
         if external_url:
-            webpage = fetch_webpage_context(external_url)
+            webpage, deep_meta = _deep_extract_primary_source(external_url, name)
             if webpage:
-                pieces.append("External article content:\n" + webpage)
+                pieces.append("External primary source content:\n" + webpage)
                 substantive_parts.append(webpage)
     elif stored:
         pieces.append(stored)
@@ -2360,6 +2436,7 @@ def prepare_source_context(repo: dict) -> dict:
         "method": method,
         "primary_url": primary_url,
         "sufficient": sufficient,
+        **deep_meta,
     }
 
 def fetch_github_trending(limit: int = GITHUB_FETCH_LIMIT):
@@ -3619,6 +3696,10 @@ Limitations、Discussion、Future Work、Threats to Validity、Dataset、Evaluat
 「現在、最新、未対応、今後、予定、待つ必要がある」等の時間依存表現は、GroundingまたはContextに最新根拠がある場合だけ使う。
 著者提案、merged implementation、正式プロジェクト方針、released featureを混同しない。language feature、builtin、
 library、macro abstraction、user-defined pattern、proposalも分類どおりに説明する。
+「確認できない・記載されていない・不明・未公開・未評価」といった不存在の断定は、Full Paper/Appendix等の
+探索完了がContextで明示され、かつ該当Evidenceが存在しない場合だけ許可する。Contextに数値・hardware・runtime・
+method detailがあれば、それを「確認できない」と書いてはならない。研究の処理時間は論文評価/benchmark runtimeであり、
+production-ready、実務で高速、real-timeへ変換してはならない。
 
 【判断レベル】
 management.decision_levelは必ず整数1〜5で返す。
@@ -4102,6 +4183,21 @@ def _find_missing_limitation(draft: str, source_context: str) -> list[str]:
     return ["limitation extraction missing"] if source_has_limit and not article_has_limit else []
 
 
+def _find_false_negative_evidence_claims(draft: str, source_context: str) -> list[str]:
+    """抽出済み一次資料にある情報を『確認できない』と誤記する重大な逆方向エラーを止める。"""
+    absence = r"(?:確認できない|記載(?:が)?ない|不明|未公開|未評価|仕様(?:が)?不明|性能データ(?:が)?ない)"
+    if not re.search(absence, draft or ""):
+        return []
+    evidence = source_context or ""
+    categories = {
+        "runtime/hardware": r"RTX|NVIDIA|\b(?:\d+(?:\.\d+)?\s*(?:s|sec|seconds?|秒))\b|runtime|latency",
+        "implementation detail": r"stage\s*[12]|two-stage|implementation|optimization|最適化",
+        "dataset/evaluation": r"dataset|held-out|benchmark|evaluation|templates?|intents?",
+    }
+    found = [label for label, pattern in categories.items() if re.search(pattern, evidence, re.I)]
+    return ["FALSE_NEGATIVE_EVIDENCE_CLAIM: " + ", ".join(found)] if found else []
+
+
 def _find_unsupported_competitor_claims(parsed: dict, source_context: str) -> list[str]:
     """Groundingなしの具体的競合優劣を止める。一般的な比較軸の提示は許可する。"""
     text = str(parsed.get("alternative_comparison_text", "") or "")
@@ -4321,6 +4417,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_hype_claims(draft))
     failures.extend(_find_claim_strength_and_scope_violations(draft, source_context))
     failures.extend(_find_missing_limitation(draft, source_context))
+    failures.extend(_find_false_negative_evidence_claims(draft, source_context))
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
     failures.extend(_find_decision_code_leak(draft))
@@ -4528,6 +4625,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
     source_info = prepare_source_context(repo)
     primary_url = source_info.get("primary_url") or url
+    if source_info.get("source_type") == "RESEARCH_LANDING_PAGE" and not source_info.get("full_paper_checked"):
+        # Abstract/Landingだけで研究の性能・制限を断定することを防ぐ。URL Contextへの丸投げも許可しない。
+        logger.error("[PRIMARY SOURCE DEEP EXTRACTION FAILED] %s: full paper required but not extracted", name)
+        return None
     # APIを呼ぶ前に一次情報不足を判定できるならBackfillへ回す。
     if not source_info.get("sufficient") and not (ENABLE_URL_CONTEXT and primary_url.startswith(("http://", "https://"))):
         logger.warning(f"[GROUNDING FAILED] {name}: 一次情報不足のためGeminiを呼ばずスキップ")
