@@ -12,7 +12,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  # アイキャッチ、月次ダイジェスト、Observed履歴をContents APIで保存する。
+  contents: write
 
 jobs:
   run-pipeline:
@@ -57,6 +58,20 @@ jobs:
           PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
           NOTION_SAVE_THRESHOLD_SCORE: "60"
+          # Batch Screening / Observed Intelligence。1候補1callではなく、25候補を1callで採点する。
+          GITHUB_FETCH_LIMIT: "50"
+          HN_FETCH_LIMIT: "50"
+          ARXIV_FETCH_LIMIT: "50"
+          PRODUCTHUNT_FETCH_LIMIT: "50"
+          MAX_SCREENING_CANDIDATES: "200"
+          SCREENING_BATCH_SIZE: "25"
+          SCREENING_BATCH_PACING_SECONDS: "4"
+          ENABLE_GLOBAL_CALIBRATION: "true"
+          GLOBAL_CALIBRATION_MIN_RAW_SCORE: "55"
+          GLOBAL_CALIBRATION_BATCH_SIZE: "50"
+          ENABLE_OBSERVED_HISTORY: "true"
+          OBSERVED_HISTORY_DIR: "observed_history"
+          OBSERVED_HISTORY_GITHUB_DIR: "observed_history"
           STALE_THRESHOLD_DAYS: "10"
           GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: "120"
           # Google Free Tier保護用の「複数Run共有・モデル別」Safety Cap。
