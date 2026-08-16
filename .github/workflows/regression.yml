@@ -1,0 +1,51 @@
+name: Synthetic Regression Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "実行するSuite"
+        required: true
+        default: "smoke"
+        type: choice
+        options:
+          - smoke
+          - core
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regression:
+    name: Synthetic Regression (${{ inputs.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run harness self-test
+        run: python regression_suite.py --self-test
+
+      - name: Run synthetic regression suite
+        run: python regression_suite.py --bootstrap --${{ inputs.suite }}
+
+      - name: Upload regression reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-${{ inputs.suite }}-${{ github.run_number }}
+          path: regression_suite_runs/
+          if-no-files-found: warn
+          retention-days: 30
