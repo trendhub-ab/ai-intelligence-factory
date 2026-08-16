@@ -16,16 +16,16 @@
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 5,
+            "deep_dive": 6,
             "quality_retry": 2
           },
           "exhausted": false,
-          "last_used_at": "2026-08-16T08:25:26.841028+00:00",
-          "used": 7
+          "last_used_at": "2026-08-16T11:14:30.831544+00:00",
+          "used": 8
         }
       }
     }
   },
   "quota_date": "2026-08-16",
-  "updated_at": "2026-08-16T08:25:26.841041+00:00"
+  "updated_at": "2026-08-16T11:14:30.831557+00:00"
 }
