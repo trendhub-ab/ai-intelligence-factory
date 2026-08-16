@@ -6,15 +6,15 @@
           "budget": 450,
           "by_kind": {
             "screening_batch": 3,
-            "screening_recovery": 2
+            "screening_recovery": 3
           },
           "exhausted": false,
-          "last_used_at": "2026-08-16T08:18:58.057667+00:00",
-          "used": 5
+          "last_used_at": "2026-08-16T08:19:13.131592+00:00",
+          "used": 6
         }
       }
     }
   },
   "quota_date": "2026-08-16",
-  "updated_at": "2026-08-16T08:18:58.057680+00:00"
+  "updated_at": "2026-08-16T08:19:13.131609+00:00"
 }
