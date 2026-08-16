@@ -536,6 +536,65 @@ class PipelineSafetyTests(unittest.TestCase):
             "企業の現場で働く構造生物学者の証言では効率化した。", "HackerNews"
         ))
 
+    def test_round_robin_prevents_source_order_starvation(self):
+        sources = {
+            "GitHub": [{"nameWithOwner": "g1"}, {"nameWithOwner": "g2"}],
+            "HackerNews": [{"nameWithOwner": "h1"}, {"nameWithOwner": "h2"}],
+            "ArXiv": [{"nameWithOwner": "a1"}],
+            "ProductHunt": [{"nameWithOwner": "p1"}],
+        }
+        result = pipeline.round_robin_candidates(sources, 6)
+        self.assertEqual(["g1", "h1", "a1", "p1", "g2", "h2"], [x["nameWithOwner"] for x in result])
+
+    def test_batch_parser_preserves_valid_items_and_recovers_only_missing(self):
+        payload = json.dumps([
+            {"id": "B0001", "score": 72, "reason": "有望"},
+            {"id": "B0003", "score": 61, "reason": "検討価値"},
+        ])
+        parsed, missing = pipeline._parse_batch_screening_response(payload, {"B0001", "B0002", "B0003"})
+        self.assertEqual({"B0001", "B0003"}, set(parsed))
+        self.assertEqual(["B0002"], missing)
+
+    def test_200_candidates_are_partitioned_into_eight_screening_batches(self):
+        candidates = [
+            {"screening_id": f"B{i:04d}", "repo": {"nameWithOwner": f"n{i}", "stargazerCount": 0}}
+            for i in range(1, 201)
+        ]
+        seen_sizes = []
+
+        def fake_screen(batch, *_args, **_kwargs):
+            seen_sizes.append(len(batch))
+            completed = [
+                {"repo": item["repo"], "screening_id": item["screening_id"], "raw_score": 50,
+                 "final_score": 50, "reason": "test", "calibrated": False,
+                 "screening_status": "completed"}
+                for item in batch
+            ]
+            return completed, [], 1
+
+        with patch.object(pipeline, "SCREENING_BATCH_SIZE", 25), \
+             patch.object(pipeline, "screen_batch", side_effect=fake_screen), \
+             patch.object(pipeline.GEMINI_BUDGET, "can_request", return_value=True):
+            result, calls = pipeline.screen_candidates_in_batches(candidates)
+        self.assertEqual([25] * 8, seen_sizes)
+        self.assertEqual(8, calls)
+        self.assertEqual(200, len(result))
+
+    def test_observed_history_records_failed_candidate_without_notion(self):
+        item = {
+            "screening_id": "B0001",
+            "repo": {"source": "GitHub", "nameWithOwner": "n", "url": "https://example.com", "publishedAt": None, "stargazerCount": 1},
+            "raw_score": None, "final_score": None, "reason": "Screening APIで判定できなかった",
+            "calibrated": False, "screening_status": "failed", "error_category": "quota_or_transport",
+        }
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(pipeline, "OBSERVED_HISTORY_DIR", tmp), \
+             patch.object(pipeline, "upload_observed_history_to_github", return_value=None):
+            path = pipeline.save_observed_history([item], 1, 1)
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        self.assertEqual("failed", payload["items"][0]["screening_status"])
+        self.assertFalse(payload["items"][0]["stocked"])
+
 
 if __name__ == "__main__":
     unittest.main()
