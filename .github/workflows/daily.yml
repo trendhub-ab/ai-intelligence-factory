@@ -65,7 +65,8 @@ jobs:
           PRODUCTHUNT_FETCH_LIMIT: "50"
           MAX_SCREENING_CANDIDATES: "200"
           SCREENING_BATCH_SIZE: "25"
-          SCREENING_BATCH_PACING_SECONDS: "4"
+          # 3.5 Flash Liteの15 RPMを保護。200件=8 Batch＋Calibrationが集中しない間隔。
+          SCREENING_BATCH_PACING_SECONDS: "10"
           ENABLE_GLOBAL_CALIBRATION: "true"
           GLOBAL_CALIBRATION_MIN_RAW_SCORE: "55"
           GLOBAL_CALIBRATION_BATCH_SIZE: "50"
@@ -74,6 +75,8 @@ jobs:
           OBSERVED_HISTORY_GITHUB_DIR: "observed_history"
           STALE_THRESHOLD_DAYS: "10"
           GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: "120"
+          # Flash系はRPMが低いため、Deep Dive（最大3件）を20秒間隔で実行する。
+          GEMINI_DEEP_DIVE_CALL_PACING_SECONDS: "20"
           # Google Free Tier保護用の「複数Run共有・モデル別」Safety Cap。
           # GoogleのRPDリセット境界に合わせ、America/Los_Angelesの日付でカウントする。
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
