@@ -35,12 +35,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 3記事の回帰テストを実行
+      - name: 通常Pipelineを実行
         run: |
           python pipeline.py
         env:
-          PIPELINE_RUN_MODE: "regression_test"
-          REGRESSION_TEST_TARGET: "all"
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -75,7 +73,8 @@ jobs:
           GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: "120"
           GEMINI_DEEP_DIVE_CALL_PACING_SECONDS: "20"
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
-          GEMINI_PERSISTENT_COUNTER_PATH: ".runtime/gemini_daily_usage.json"
+          GEMINI_FLASH_LITE_COUNTER_PATH: ".runtime/gemini_flash_lite_daily_usage.json"
+          GEMINI_FLASH_COUNTER_PATH: ".runtime/gemini_flash_daily_usage.json"
           GEMINI_COUNTER_BRANCH: "main"
           EYECATCH_GITHUB_BRANCH: "main"
           GEMINI_35_FLASH_LITE_DAILY_BUDGET: "450"
@@ -87,12 +86,3 @@ jobs:
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "10"
-
-      - name: 回帰テスト結果を保存
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: regression-test-output
-          path: regression_test_output/
-          if-no-files-found: warn
-          retention-days: 14
