@@ -1,2 +1,11 @@
-# Generated regression-test outputs
+__pycache__/
+*.py[cod]
+
+# Local/test artifacts. Production uploads use the GitHub Contents API and are
+# therefore unaffected by these local git-ignore rules.
+regen_test_outputs/
 regression_suite_runs/
+regression_suite/fixtures/
+observed_history/
+eyecatch_images/
+monthly_digests/
