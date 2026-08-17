@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "螳溯｡後☆繧鬼uite"
+        description: "実行するSuite"
         required: true
         default: "smoke"
         type: choice
@@ -51,7 +51,7 @@ jobs:
 
       - name: Upload regression reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: regression-${{ inputs.suite }}-${{ github.run_number }}
           path: regression_suite_runs/
