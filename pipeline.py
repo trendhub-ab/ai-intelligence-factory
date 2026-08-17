@@ -704,17 +704,22 @@ def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_di
     raise NoAvailableModelError("利用可能なモデルがありません") from last_error
 
 
-try:
-    SELECTED_SCREENING_MODEL = resolve_model(SCREENING_MODEL_CANDIDATES, label="Screening")
-    SELECTED_DEEP_DIVE_MODEL = resolve_model(
-        DEEP_DIVE_MODEL_CANDIDATES, label="Deep Dive", count_as_deep_dive=True
-    )
-except DailyQuotaExhaustedError as e:
-    send_telegram_alert(f"⚠️ 【緊急】Gemini日次クォータ到達のため初期化停止: {e}")
-    raise SystemExit(1)
-except (NoAvailableModelError, GeminiBudgetExceededError) as e:
-    send_telegram_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
-    raise SystemExit(1)
+if PUBLIC_DB_SYNC_MODE:
+    # Member DB sync intentionally performs no Gemini initialization or API call.
+    SELECTED_SCREENING_MODEL = None
+    SELECTED_DEEP_DIVE_MODEL = None
+else:
+    try:
+        SELECTED_SCREENING_MODEL = resolve_model(SCREENING_MODEL_CANDIDATES, label="Screening")
+        SELECTED_DEEP_DIVE_MODEL = resolve_model(
+            DEEP_DIVE_MODEL_CANDIDATES, label="Deep Dive", count_as_deep_dive=True
+        )
+    except DailyQuotaExhaustedError as e:
+        send_telegram_alert(f"⚠️ 【緊急】Gemini日次クォータ到達のため初期化停止: {e}")
+        raise SystemExit(1)
+    except (NoAvailableModelError, GeminiBudgetExceededError) as e:
+        send_telegram_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
+        raise SystemExit(1)
 
 
 def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind: str = "deep_dive"):
@@ -3629,7 +3634,14 @@ def sync_public_approved_to_member_db() -> None:
         res.raise_for_status(); body = res.json(); approved.extend(body.get("results", []))
         if not body.get("has_more"): break
         payload["start_cursor"] = body.get("next_cursor")
-    public_names = {PROP_NAME, PROP_URL, PROP_SOURCE, PROP_SCORE, PROP_DECISION, PROP_DECISION_REASON, PROP_WHAT, PROP_WHY_IMPORTANT, PROP_WHY_NOT_IMPORTANT, PROP_ACTION, PROP_PARADIGM_SHIFT, PROP_ALTERNATIVE_COMPARISON, PROP_MIGRATION_COST, PROP_WHO_SHOULD_USE, PROP_WHO_SHOULD_NOT_USE, PROP_FUTURE_SCENARIO, PROP_EVIDENCE_URLS, PROP_GROUNDING_STATUS, PROP_PUBLISHED_AT}
+    # Read the destination schema.  This deliberately lets the member DB grow
+    # gradually: only properties that actually exist there are sent to Notion.
+    schema_res = requests.get(f"https://api.notion.com/v1/databases/{NOTION_PUBLIC_DATABASE_ID}", headers=headers, timeout=20)
+    schema_res.raise_for_status()
+    destination_properties = set(schema_res.json().get("properties", {}).keys())
+    public_names = {PROP_NAME, PROP_URL, PROP_SOURCE, PROP_SCORE, PROP_DECISION, PROP_DECISION_REASON, PROP_WHAT, PROP_WHY_IMPORTANT, PROP_WHY_NOT_IMPORTANT, PROP_ACTION, PROP_PARADIGM_SHIFT, PROP_ALTERNATIVE_COMPARISON, PROP_MIGRATION_COST, PROP_WHO_SHOULD_USE, PROP_WHO_SHOULD_NOT_USE, PROP_FUTURE_SCENARIO, PROP_EVIDENCE_URLS, PROP_GROUNDING_STATUS, PROP_PUBLISHED_AT} & destination_properties
+    if PROP_URL not in destination_properties:
+        raise ValueError("会員公開DBにはURL（URL型）列が必要です。")
     for page in approved:
         props = page.get("properties", {}); record_url = props.get(PROP_URL, {}).get("url")
         if not record_url:
