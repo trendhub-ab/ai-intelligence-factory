@@ -1,12 +1,12 @@
 {
   "budget": 18,
   "by_kind": {
-    "deep_dive": 1,
+    "deep_dive": 2,
     "ping": 2,
     "quality_retry": 1,
     "screening": 13
   },
   "quota_date": "2026-08-17",
-  "updated_at": "2026-08-17T09:51:14.246253+00:00",
-  "used": 17
+  "updated_at": "2026-08-17T09:51:46.134592+00:00",
+  "used": 18
 }
