@@ -2,6 +2,14 @@
   "key_scopes": {
     "bb4642cecaf854c8": {
       "models": {
+        "gemini-3.5-flash": {
+          "budget": 18,
+          "by_kind": {
+            "deep_dive": 1
+          },
+          "exhausted": false,
+          "used": 1
+        },
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
@@ -25,5 +33,5 @@
     }
   },
   "quota_date": "2026-08-17",
-  "updated_at": "2026-08-17T12:33:10.187582+00:00"
+  "updated_at": "2026-08-17T12:33:31.159308+00:00"
 }
