@@ -88,24 +88,9 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     一切持たせず、既存の「呼び出し単位で完結する」という挙動を変えないまま、
     SDK推奨のエントリーポイントへ置き換える。
     """
-    candidates = (SCREENING_MODEL_CANDIDATES if model_name in SCREENING_MODEL_CANDIDATES
-                  else DEEP_DIVE_MODEL_CANDIDATES)
-    ordered = [model_name] + [m.strip() for m in candidates if m.strip() and m.strip() != model_name]
-    last_error = None
-    for active_model in ordered:
-        try:
-            _consume_gemini_request(active_model, request_kind, reserve=reserve)
-            chat = client.chats.create(model=active_model, config=config) if config else client.chats.create(model=active_model)
-            response = chat.send_message(prompt)
-            if active_model != model_name:
-                logger.warning("[GEMINI MODEL FALLBACK] %s -> %s (%s)", model_name, active_model, request_kind)
-            return response
-        except APIError as e:
-            last_error = e
-            if request_kind.startswith("ping") or getattr(e, "code", None) not in (429, 503):
-                raise
-            logger.warning("[GEMINI MODEL UNAVAILABLE] %s code=%s; trying next candidate", active_model, getattr(e, "code", None))
-    raise last_error or NoAvailableModelError("利用可能なGeminiモデルがありません")
+    _consume_gemini_request(request_kind, reserve=reserve)
+    chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
+    return chat.send_message(prompt)
 
 SCREENING_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_SCREENING_MODEL_CANDIDATES",
@@ -159,12 +144,8 @@ GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_PER
 # 複数GitHub Actions Runをまたいで共有する永続Safety Cap。Googleの公式quota値ではなく、
 # このプロジェクト独自の保守的な上限。RPDのリセット境界に合わせてAmerica/Los_Angeles日付で管理する。
 GEMINI_PERSISTENT_DAILY_COUNTER = os.environ.get("GEMINI_PERSISTENT_DAILY_COUNTER", "true").lower() in {"1", "true", "yes", "on"}
-# Gemini RPD is model-specific.  Never combine Flash Lite screening traffic and
-# Flash Deep Dive traffic into one counter: doing so wastes independent quota.
-GEMINI_FLASH_LITE_PERSISTENT_DAILY_BUDGET = int(os.environ.get("GEMINI_FLASH_LITE_PERSISTENT_DAILY_BUDGET", "450"))
-GEMINI_FLASH_PERSISTENT_DAILY_BUDGET = int(os.environ.get("GEMINI_FLASH_PERSISTENT_DAILY_BUDGET", "18"))
-GEMINI_FLASH_LITE_COUNTER_PATH = os.environ.get("GEMINI_FLASH_LITE_COUNTER_PATH", ".runtime/gemini_flash_lite_daily_usage.json")
-GEMINI_FLASH_COUNTER_PATH = os.environ.get("GEMINI_FLASH_COUNTER_PATH", ".runtime/gemini_flash_daily_usage.json")
+GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET", "18"))
+GEMINI_PERSISTENT_COUNTER_PATH = os.environ.get("GEMINI_PERSISTENT_COUNTER_PATH", ".runtime/gemini_daily_usage.json")
 GEMINI_QUOTA_TIMEZONE = os.environ.get("GEMINI_QUOTA_TIMEZONE", "America/Los_Angeles")
 MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS", "5"))
 
@@ -306,7 +287,6 @@ REVIEW_STATUS_PUBLIC_APPROVED = "Public Approved"
 CONTENT_STATUS_STOCKED = "Stocked"
 CONTENT_STATUS_DEEP_DIVE = "Deep Dive"
 CONTENT_STATUS_QUALITY_FAILED = "Quality Failed"
-CONTENT_STATUS_PENDING_RETRY = "Pending Retry"
 ARTICLE_STATUS_NOT_PLANNED = "Not Planned"
 ARTICLE_STATUS_READY = "Ready"
 VISIBILITY_SUBSCRIBER_ONLY = "Subscriber Only"
@@ -489,34 +469,12 @@ class PersistentGeminiDailyCounter:
             return f"Persistent Gemini Daily Counter: unavailable ({e})"
 
 
-PERSISTENT_FLASH_LITE_COUNTER = PersistentGeminiDailyCounter(
+PERSISTENT_GEMINI_COUNTER = PersistentGeminiDailyCounter(
     GEMINI_PERSISTENT_DAILY_COUNTER,
-    GEMINI_FLASH_LITE_PERSISTENT_DAILY_BUDGET,
-    GEMINI_FLASH_LITE_COUNTER_PATH,
+    GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET,
+    GEMINI_PERSISTENT_COUNTER_PATH,
     GEMINI_QUOTA_TIMEZONE,
 )
-PERSISTENT_FLASH_COUNTER = PersistentGeminiDailyCounter(
-    GEMINI_PERSISTENT_DAILY_COUNTER,
-    GEMINI_FLASH_PERSISTENT_DAILY_BUDGET,
-    GEMINI_FLASH_COUNTER_PATH,
-    GEMINI_QUOTA_TIMEZONE,
-)
-
-_MODEL_COUNTERS: dict[str, PersistentGeminiDailyCounter] = {}
-def _model_counter(model_name: str) -> PersistentGeminiDailyCounter:
-    """One durable quota ledger per concrete Gemini model, including fallbacks."""
-    key = model_name.strip().lower()
-    if key not in _MODEL_COUNTERS:
-        safe = re.sub(r"[^a-z0-9]+", "_", key).strip("_")
-        budget = GEMINI_FLASH_LITE_PERSISTENT_DAILY_BUDGET if "flash-lite" in key else GEMINI_FLASH_PERSISTENT_DAILY_BUDGET
-        _MODEL_COUNTERS[key] = PersistentGeminiDailyCounter(
-            GEMINI_PERSISTENT_DAILY_COUNTER, budget,
-            f".runtime/gemini_{safe}_daily_usage.json", GEMINI_QUOTA_TIMEZONE,
-        )
-    return _MODEL_COUNTERS[key]
-
-def persistent_gemini_summary() -> str:
-    return f"Flash Lite: {PERSISTENT_FLASH_LITE_COUNTER.summary()} | Flash: {PERSISTENT_FLASH_COUNTER.summary()}"
 
 
 class GeminiBudget:
@@ -578,12 +536,10 @@ GEMINI_BUDGET = GeminiBudget(
 )
 
 
-def _consume_gemini_request(model_name: str, kind: str, reserve: int = 0) -> None:
+def _consume_gemini_request(kind: str, reserve: int = 0) -> None:
     # 永続カウンタを先に予約する。ローカルBudget失敗時に1回過剰計上される可能性はあるが、
     # Free Tier保護では過少計上より安全なためFail-Closed側へ倒す。
-    # Screening uses Gemini Flash Lite. Every other request (model resolution,
-    # Deep Dive and quality retry) is budgeted against Gemini Flash.
-    _model_counter(model_name).reserve(kind, reserve=reserve)
+    PERSISTENT_GEMINI_COUNTER.reserve(kind, reserve=reserve)
     GEMINI_BUDGET.consume(kind, reserve=reserve)
 
 
@@ -1432,26 +1388,6 @@ def update_notion_quality_failed(page_id: str, repo_name: str,
         logger.error(f"[NOTION QUALITY FAILED EXCEPTION] {repo_name}: {e}")
     return False
 
-def update_notion_pending_retry(page_id: str, repo_name: str) -> bool:
-    """Transient API/model/quota failures remain a retryable Stock, never a quality failure."""
-    if not page_id or not NOTION_API_KEY:
-        return False
-    headers = {"Authorization": f"Bearer {NOTION_API_KEY}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-    props = {
-        PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_PENDING_RETRY}},
-        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NOT_PLANNED}},
-        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_SUBSCRIBER_ONLY}},
-    }
-    try:
-        res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=headers, timeout=10)
-        if res.status_code == 200:
-            logger.info(f"[NOTION PENDING RETRY] {repo_name}")
-            return True
-        logger.error(f"[NOTION PENDING RETRY ERROR] {repo_name} -> {res.text}")
-    except Exception as e:
-        logger.error(f"[NOTION PENDING RETRY EXCEPTION] {repo_name}: {e}")
-    return False
-
 
 # ==========================================
 # 6. 一次データ収集（マルチソース） & 法務ゲート
@@ -2169,7 +2105,7 @@ def _notion_plain_text(prop: dict) -> str:
     return "".join(x.get("plain_text") or x.get("text", {}).get("content", "") for x in items).strip()
 
 
-def get_regen_test_items(limit: int = 3, source_filter: str = "", content_status: str = CONTENT_STATUS_DEEP_DIVE) -> list[dict] | None:
+def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] | None:
     """
     Notionに既に保存されているDeep Diveを、A/B比較用の読み取り専用候補として取得する。
 
@@ -2189,7 +2125,7 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "", content_status
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28",
     }
-    filters = [{"property": PROP_CONTENT_STATUS, "select": {"equals": content_status}}]
+    filters = [{"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_DEEP_DIVE}}]
     if source_filter:
         filters.append({"property": PROP_SOURCE, "select": {"equals": source_filter}})
     payload = {
@@ -2239,7 +2175,7 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "", content_status
             },
         })
     logger.info(
-        f"[NOTION RETRY LOAD] status={content_status} {len(items)}件を読み込み"
+        f"[REGEN TEST] 既存Deep Dive {len(items)}件を読み込み"
         + (f"（Source={source_filter}）" if source_filter else "")
     )
     return items
@@ -3450,8 +3386,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         return clean_manuscript
 
     except DailyQuotaExhaustedError:
-        if persist_results and notion_page_id:
-            update_notion_pending_retry(notion_page_id, name)
         raise
     except GeminiCallTimeoutError as e:
         logger.error(f"[DEEP DIVE TIMEOUT SKIP] {name}: {e}")
@@ -3460,8 +3394,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         return None
     except GeminiBudgetExceededError as e:
         logger.warning(f"[GEMINI BUDGET STOP] {name}: {e}")
-        if persist_results and notion_page_id:
-            update_notion_pending_retry(notion_page_id, name)
         return None
     except Exception as e:
         logger.error(f"[DEEP DIVE FAILED] {name}: {e}")
@@ -3679,7 +3611,7 @@ def run_regen_test_mode():
     logger.info(f"[REGEN TEST OUTPUT] {REGEN_TEST_OUTPUT_DIR}/")
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
-    logger.info(persistent_gemini_summary())
+    logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
 # ==========================================
@@ -3836,21 +3768,6 @@ def main():
     attempted = 0
     # Backfillは「記事候補の質」を下げない。Stock基準未満をAPIで無理に記事化しない。
     candidates = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
-    # Transient failures are retried before newly discovered items.  They retain
-    # their original Notion page id, so success upgrades that page rather than
-    # creating a duplicate record.
-    pending_retry_items = get_regen_test_items(
-        limit=MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS,
-        content_status=CONTENT_STATUS_PENDING_RETRY,
-    )
-    if pending_retry_items is None:
-        logger.warning("[PENDING RETRY] Notion取得失敗。新規候補のみ処理します。")
-        pending_retry_items = []
-    pending_urls = {x["repo"].get("url", "").rstrip("/") for x in pending_retry_items}
-    new_candidates = [x for x in candidates if x["repo"].get("url", "").rstrip("/") not in pending_urls]
-    candidates = pending_retry_items + new_candidates
-    if pending_retry_items:
-        logger.info(f"[PENDING RETRY PRIORITY] {len(pending_retry_items)}件を最優先でDeep Diveします。")
     if len(candidates) < TOP_N_FOR_DEEP_DIVE:
         logger.info(
             f"[DEEP DIVE POOL] Stock基準{NOTION_SAVE_THRESHOLD_SCORE}点以上は{len(candidates)}件。"
@@ -3890,7 +3807,7 @@ def main():
         msg = (
             f"✅ 【AI note事業】Screening {len(screened)}件、Stock {stocked_count}件、"
             f"Deep Dive Ready {generated_count}件（試行{attempted}件）。\n"
-            f"{GEMINI_BUDGET.summary()}\n{persistent_gemini_summary()}\nhttps://notion.so/{NOTION_DATABASE_ID}"
+            f"{GEMINI_BUDGET.summary()}\n{PERSISTENT_GEMINI_COUNTER.summary()}\nhttps://notion.so/{NOTION_DATABASE_ID}"
         )
         send_telegram_alert(msg)
         logger.info(msg)
@@ -3900,7 +3817,7 @@ def main():
     generate_monthly_digest()
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
-    logger.info(persistent_gemini_summary())
+    logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
 if __name__ == "__main__":
