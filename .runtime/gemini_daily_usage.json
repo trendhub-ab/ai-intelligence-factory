@@ -1,12 +1,18 @@
 {
-  "budget": 18,
-  "by_kind": {
-    "deep_dive": 2,
-    "ping": 2,
-    "quality_retry": 1,
-    "screening": 13
+  "key_scopes": {
+    "bb4642cecaf854c8": {
+      "models": {
+        "gemini-3.6-flash": {
+          "budget": 18,
+          "by_kind": {
+            "deep_dive": 1
+          },
+          "exhausted": false,
+          "used": 1
+        }
+      }
+    }
   },
   "quota_date": "2026-08-17",
-  "updated_at": "2026-08-17T09:51:46.134592+00:00",
-  "used": 18
+  "updated_at": "2026-08-17T12:25:09.425942+00:00"
 }
