@@ -23,6 +23,9 @@ jobs:
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_PUBLIC_DATABASE_ID: ${{ secrets.NOTION_PUBLIC_DATABASE_ID }}
+          NOTION_PUBLIC_DATA_SOURCE_ID: ${{ secrets.NOTION_PUBLIC_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: "2026-03-11"
           PUBLIC_DB_SYNC_MODE: "true"
         run: python pipeline.py
