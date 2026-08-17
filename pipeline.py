@@ -26,6 +26,7 @@ import logging
 import xml.etree.ElementTree as ET
 from html import unescape
 from html.parser import HTMLParser
+from urllib.parse import urljoin, urlparse, urldefrag
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -174,6 +175,9 @@ WEB_CONTEXT_USER_AGENT = os.environ.get(
     "WEB_CONTEXT_USER_AGENT",
     "Mozilla/5.0 (compatible; AI-Intelligence-Factory/1.0; +https://github.com/)"
 )
+DEEP_SOURCE_MAX_DOCUMENTS = int(os.environ.get("DEEP_SOURCE_MAX_DOCUMENTS", "4"))
+DEEP_SOURCE_MAX_PDF_BYTES = int(os.environ.get("DEEP_SOURCE_MAX_PDF_BYTES", "12000000"))
+FRESHNESS_MAX_LINKS = int(os.environ.get("FRESHNESS_MAX_LINKS", "8"))
 
 # 記事タイトルから自動生成するアイキャッチ画像（PNG）の保存先ディレクトリ。
 # note.comへのアップロードはAPI非対応のため自動化せず、ローカルに生成されたファイルを
@@ -1521,59 +1525,132 @@ class _ReadableHTMLTextParser(HTMLParser):
         return "\n".join(lines)
 
 
-def fetch_webpage_context(url: str) -> str:
-    """HN/PH外部URLをGeminiを使わず取得し、本文テキストだけを返す。失敗時は空文字。"""
+class _ResearchLinkParser(HTMLParser):
+    """本文とは別に、研究ページの一次資料リンクだけを安全に収集する。"""
+    _KEYWORDS = re.compile(r"\b(pdf|paper|publication|full\s*paper|download|proceedings|arxiv|doi|supplement|appendix|technical\s*report)\b", re.I)
+
+    def __init__(self, base_url: str):
+        super().__init__(convert_charrefs=True)
+        self.base_url = base_url
+        self.links: list[tuple[str, str]] = []
+        self._current_href = ""
+        self._current_text: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            href = dict(attrs).get("href", "")
+            self._current_href = urljoin(self.base_url, href) if href else ""
+            self._current_text = []
+
+    def handle_data(self, data):
+        if self._current_href:
+            self._current_text.append(data)
+
+    def handle_endtag(self, tag):
+        if tag.lower() != "a" or not self._current_href:
+            return
+        href = urldefrag(self._current_href)[0]
+        label = " ".join(self._current_text).strip()
+        if href.startswith(("http://", "https://")) and (self._KEYWORDS.search(label) or self._KEYWORDS.search(href)):
+            self.links.append((href, label))
+        self._current_href, self._current_text = "", []
+
+
+def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int) -> tuple[bytes, str, str]:
+    """外部一次資料をGeminiなしで取得する共通処理。失敗は空で返し、crawlは行わない。"""
     if not (url or "").startswith(("http://", "https://")):
-        return ""
-    headers = {
-        "User-Agent": WEB_CONTEXT_USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
-    }
+        return b"", "", ""
     try:
-        with requests.get(
-            url,
-            headers=headers,
-            timeout=WEB_CONTEXT_TIMEOUT_SECONDS,
-            allow_redirects=True,
-            stream=True,
-        ) as res:
-            if res.status_code != 200:
-                logger.info(f"[WEB CONTEXT FALLBACK] HTTP {res.status_code}: {url}")
-                return ""
+        with requests.get(url, headers={"User-Agent": WEB_CONTEXT_USER_AGENT, "Accept": "*/*"},
+                          timeout=WEB_CONTEXT_TIMEOUT_SECONDS, allow_redirects=True, stream=True) as res:
             content_type = (res.headers.get("Content-Type") or "").lower()
-            # Content-Type未設定のサイトは本文を読んでHTMLか判定する。明示的な非Textだけfallback。
-            if content_type and not any(t in content_type for t in ("text/html", "application/xhtml+xml", "text/plain")):
-                logger.info(f"[WEB CONTEXT FALLBACK] 非HTML/Text ({content_type[:80]}): {url}")
-                return ""
-            chunks = []
-            total = 0
+            if res.status_code != 200 or (content_type and not any(t in content_type for t in accepted_types)):
+                return b"", content_type, res.url
+            chunks, total = [], 0
             for chunk in res.iter_content(chunk_size=32768):
                 if not chunk:
                     continue
-                remaining = WEB_CONTEXT_MAX_BYTES - total
-                if remaining <= 0:
-                    break
-                chunk = chunk[:remaining]
+                chunk = chunk[:max(0, byte_limit - total)]
                 chunks.append(chunk)
                 total += len(chunk)
-                if total >= WEB_CONTEXT_MAX_BYTES:
+                if total >= byte_limit:
                     break
-            raw = b"".join(chunks)
-            encoding = res.encoding or "utf-8"
-            text = raw.decode(encoding, errors="replace")
-            if "html" in content_type or "xhtml" in content_type or "<html" in text[:1000].lower():
-                parser = _ReadableHTMLTextParser()
-                parser.feed(text)
-                text = parser.text()
-            else:
-                text = unescape(text)
-            text = _truncate_source_context(text)
-            if len(text.strip()) >= SOURCE_CONTEXT_MIN_CHARS:
-                logger.info(f"[WEB CONTEXT] Python取得成功: {len(text)} chars <- {url}")
-                return text
-            logger.info(f"[WEB CONTEXT FALLBACK] 本文不足 {len(text.strip())} chars: {url}")
+            return b"".join(chunks), content_type, res.url
     except Exception as e:
-        logger.info(f"[WEB CONTEXT FALLBACK] Python取得失敗: {url} ({e})")
+        logger.info(f"[SOURCE FETCH] failed {url}: {e}")
+    return b"", "", ""
+
+
+def _fetch_html_document(url: str) -> tuple[str, list[tuple[str, str]], str]:
+    raw, content_type, final_url = _http_get_limited(url, ("text/html", "application/xhtml+xml", "text/plain"), WEB_CONTEXT_MAX_BYTES)
+    if not raw:
+        return "", [], ""
+    html = raw.decode("utf-8", errors="replace")
+    text = html
+    if "html" in content_type or "<html" in html[:1000].lower():
+        body = _ReadableHTMLTextParser()
+        body.feed(html)
+        text = body.text()
+        links = _ResearchLinkParser(final_url or url)
+        links.feed(html)
+        return _truncate_source_context(text), list(dict.fromkeys(links.links)), final_url or url
+    return _truncate_source_context(unescape(text)), [], final_url or url
+
+
+def fetch_pdf_context(url: str) -> str:
+    """PDFから本文を抽出する。PyPDFが無い実行環境ではFail Closed用に空を返す。"""
+    raw, content_type, _ = _http_get_limited(url, ("application/pdf", "application/octet-stream"), DEEP_SOURCE_MAX_PDF_BYTES)
+    if not raw or ("pdf" not in content_type and not raw.startswith(b"%PDF")):
+        return ""
+    try:
+        from io import BytesIO
+        from pypdf import PdfReader
+        reader = PdfReader(BytesIO(raw))
+        pages = [(p.extract_text() or "") for p in reader.pages[:80]]
+        text = "\n".join(pages)
+        logger.info(f"[DEEP PDF] extracted {len(text)} chars <- {url}")
+        return text
+    except Exception as e:
+        logger.info(f"[DEEP PDF] extraction failed {url}: {e}")
+        return ""
+
+
+def _compress_evidence(text: str) -> str:
+    """論文末尾の表やLimitationsを落とさないよう、重要セクションを先頭優先でなく抽出する。"""
+    lines = [x.strip() for x in (text or "").splitlines() if x.strip()]
+    keywords = re.compile(r"abstract|method|experiment|table|hardware|gpu|runtime|second|sec\\b|dataset|benchmark|limitation|appendix|code|availability|status|supplement", re.I)
+    selected = [line for line in lines if keywords.search(line)]
+    # 抽出された行だけで意味が切れないよう、冒頭の要約も少量残す。
+    merged = "\n".join((lines[:80] + selected)[:500])
+    return _truncate_source_context(merged)
+
+
+def _build_evidence_metadata(context: str, deep_scanned: bool) -> dict:
+    text = context or ""
+    def state(pattern: str) -> str:
+        return "FOUND" if re.search(pattern, text, re.I) else ("SEARCHED_NOT_FOUND" if deep_scanned else "NOT_SEARCHED")
+    qualifiers = []
+    for m in re.finditer(r"(?:in|at least in) (simple|obvious)[^.\n]{0,100}(?:case|cases)|(?:単純な|明確に判定できる)[^。\n]{0,80}(?:例|ケース)", text, re.I):
+        qualifiers.append(m.group(0).strip())
+    return {
+        "coverage": {
+            "method": state(r"method|approach|stage\\s*[12]|方法"), "dataset": state(r"dataset|data set|データセット"),
+            "hardware": state(r"hardware|gpu|rtx|nvidia|cpu|ハードウェア"), "runtime": state(r"runtime|latency|\\bsec(?:ond)?s?\\b|処理時間"),
+            "benchmark": state(r"benchmark|evaluation|experiment|評価"), "limitations": state(r"limitation|limitat|constraint|制約|限界"),
+            "code_availability": state(r"source code|code availability|github|code release|公開コード"),
+        },
+        "required_qualifiers": list(dict.fromkeys(qualifiers))[:8],
+        "evidence_strength": "OFFICIAL_GUARANTEE" if re.search(r"guarantee[sd]?|保証", text, re.I) else "UNKNOWN",
+    }
+
+
+def fetch_webpage_context(url: str) -> str:
+    """HN/PH外部URLをGeminiを使わず取得し、本文テキストだけを返す。失敗時は空文字。"""
+    text, _, _ = _fetch_html_document(url)
+    if len(text.strip()) >= SOURCE_CONTEXT_MIN_CHARS:
+        logger.info(f"[WEB CONTEXT] Python取得成功: {len(text)} chars <- {url}")
+        return text
+    logger.info(f"[WEB CONTEXT FALLBACK] 本文不足: {url}")
     return ""
 
 
@@ -1586,7 +1663,7 @@ def prepare_source_context(repo: dict) -> dict:
     stored = repo.get("sourceContext") or ""
     details = repo.get("sourceDetails") or {}
 
-    pieces = [f"Source: {source}", f"Name: {name}", f"Description: {desc}"]
+    pieces = [f"[DISCOVERY_SOURCE]\nSource: {source}\nName: {name}\nDescription: {desc}"]
     substantive_parts: list[str] = []
     method = GROUNDING_METADATA_ONLY
 
@@ -1633,6 +1710,7 @@ def prepare_source_context(repo: dict) -> dict:
         external_url = details.get("external_url") or ""
         # HNの外部記事本文をまずPython側で取得。成功すればURL Contextを使わない。
         if external_url:
+            primary_url = external_url
             webpage = fetch_webpage_context(external_url)
             if webpage:
                 pieces.append("External article content:\n" + webpage)
@@ -1641,19 +1719,85 @@ def prepare_source_context(repo: dict) -> dict:
         pieces.append(stored)
         substantive_parts.append(stored)
 
-    substantive = _truncate_source_context("\n\n".join(x for x in substantive_parts if x))
-    sufficient = len(substantive.strip()) >= SOURCE_CONTEXT_MIN_CHARS
-    if sufficient:
-        method = GROUNDING_SOURCE_NATIVE
+    # Landing/author pageから研究用の深い一次資料を取得する。文字数ではなく、検出された
+    # Paper/PDF/Appendixが実際に走査済みかで記事化可否を決める。
+    landing_text, research_links, final_primary_url = _fetch_html_document(primary_url)
+    if final_primary_url:
+        primary_url = final_primary_url
+    if landing_text and landing_text not in substantive_parts:
+        pieces.append("[REFERENCE_SOURCE]\n" + landing_text)
+        substantive_parts.append(landing_text)
+    deep_source_required = bool(research_links)
+    deep_source_scanned = False
+    deep_parts: list[str] = []
+    deep_urls: list[str] = []
+    for link, label in research_links[:DEEP_SOURCE_MAX_DOCUMENTS]:
+        is_pdf = link.lower().split("?", 1)[0].endswith(".pdf") or "pdf" in label.lower()
+        raw_text = fetch_pdf_context(link) if is_pdf else fetch_webpage_context(link)
+        if raw_text:
+            role = "[SUPPLEMENTAL_SOURCE]" if re.search(r"supplement|appendix", label, re.I) else "[PRIMARY_SOURCE]"
+            deep_parts.append(f"{role}\nURL: {link}\n{_compress_evidence(raw_text)}")
+            deep_urls.append(link)
+    if deep_source_required:
+        deep_source_scanned = bool(deep_parts)
+        if deep_parts:
+            pieces.extend(deep_parts)
+            substantive_parts.extend(deep_parts)
 
-    context = _truncate_source_context("\n\n".join(pieces))
+    substantive = "\n\n".join(x for x in substantive_parts if x)
+    text_sufficient = len(substantive.strip()) >= SOURCE_CONTEXT_MIN_CHARS
+    evidence_sufficient = text_sufficient and (not deep_source_required or deep_source_scanned)
+    if text_sufficient:
+        method = GROUNDING_SOURCE_NATIVE
+    # Deep evidence is already compressed section-wise, so retain it ahead of generic landing text.
+    context = _truncate_source_context("\n\n".join(pieces[:1] + deep_parts + pieces[1:]))
+    evidence_metadata = _build_evidence_metadata(context, deep_source_scanned)
     return {
         "context": context,
         "context_length": len(context),
         "method": method,
         "primary_url": primary_url,
-        "sufficient": sufficient,
+        "sufficient": text_sufficient,  # backward-compatible: URL Context fallback only
+        "text_sufficient": text_sufficient,
+        "primary_source_resolved": bool(primary_url),
+        "deep_source_required": deep_source_required,
+        "deep_source_scanned": deep_source_scanned,
+        "evidence_sufficient": evidence_sufficient,
+        "deep_source_urls": deep_urls,
+        "evidence_metadata": evidence_metadata,
     }
+
+
+_FUTURE_SOURCE_PATTERN = re.compile(r"\b(will|future|planned|coming|next|expected|preview|beta|nightly)\b|予定|今後|開発中|対応予定", re.I)
+_STALE_ARTICLE_PATTERN = re.compile(r"(?:今後|これから).{0,30}(?:予定|議論|対応)|(?:公開|対応|議論)予定", re.I)
+
+
+def resolve_followup_freshness(source_info: dict) -> dict:
+    """将来表現がある時だけ、同一公式ドメイン内の後続ページを必ず確認する独立Stage。"""
+    context = source_info.get("context", "")
+    primary_url = source_info.get("primary_url", "")
+    if not _FUTURE_SOURCE_PATTERN.search(context) or not primary_url:
+        return {"triggered": False, "followup_found": False, "context": ""}
+    raw, content_type, final_url = _http_get_limited(primary_url, ("text/html", "application/xhtml+xml"), WEB_CONTEXT_MAX_BYTES)
+    if not raw or "html" not in content_type:
+        return {"triggered": True, "followup_found": False, "context": ""}
+    html = raw.decode("utf-8", errors="replace")
+    base = final_url or primary_url
+    host = urlparse(base).netloc.lower()
+    candidates = []
+    for href, label in re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.I | re.S):
+        target = urldefrag(urljoin(base, unescape(href)))[0]
+        clean_label = re.sub(r"<[^>]+>", " ", unescape(label))
+        if urlparse(target).netloc.lower() == host and target != base and ("follow" in clean_label.lower() or "update" in clean_label.lower() or "clang" in clean_label.lower() or _FUTURE_SOURCE_PATTERN.search(clean_label) or "blog" in target.lower()):
+            candidates.append(target)
+    followups = []
+    for target in list(dict.fromkeys(candidates))[:FRESHNESS_MAX_LINKS]:
+        text = fetch_webpage_context(target)
+        if text and not _FUTURE_SOURCE_PATTERN.search(text):
+            followups.append(f"[FOLLOWUP_SOURCE]\nURL: {target}\n{text[:3000]}")
+    resolved = "\n\n".join(followups)
+    logger.info(f"[FRESHNESS] triggered=True followups={len(followups)} primary={primary_url}")
+    return {"triggered": True, "followup_found": bool(followups), "context": resolved}
 
 def fetch_github_trending():
     """GitHub GraphQL API から急上昇AI/MLリポジトリを取得する。"""
@@ -2555,7 +2699,8 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
-                          source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY):
+                          source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY,
+                          evidence_metadata: dict | None = None, freshness: dict | None = None):
     """上位モデルでARTICLEとMANAGEMENT DATAを同時生成する。記事と管理帳票は明確に分離する。"""
     metric_label = ENGAGEMENT_LABELS.get(source, "Engagement")
     metric_note = ""
@@ -2565,6 +2710,8 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
     context = _truncate_source_context(source_context)
     fact_rules = _source_fact_discipline(source)
     style_rules = _human_editorial_style_rules()
+    evidence_json = json.dumps(evidence_metadata or {}, ensure_ascii=False, indent=2)
+    freshness_context = (freshness or {}).get("context", "")
 
     return f"""
 あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
@@ -2580,6 +2727,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・Source Contextにない企業向け管理製品、競合機能、API仕様、OS/ブラウザ管理方式などを、もっともらしい補足として追加しない。
 ・ニュース公開時点の仕様と現在のStable仕様は同一視しない。現在仕様をGroundingで確認できなければ「元記事公開時点では」と限定する。
 ・不明点は補完せず「一次情報からは確認できない」と書く。
+・「確認できない」「記載がない」「未公開」「不明」等の不在Claimは、Evidence Coverageが SEARCHED_NOT_FOUND または NOT_DISCLOSED の項目だけに限る。NOT_SEARCHEDまたはSource Depth不足では不在を断定しない。
 モデル内部知識だけで現在仕様、競合比較、数値、価格、対応状況を断定しない。
 
 {fact_rules}
@@ -2592,9 +2740,20 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・{metric_label}: {stars}
 {metric_note}・概要: {desc}
 ・事前Grounding: {grounding_status_hint}
+・Article generation date: {datetime.now(JST).date().isoformat()}
 
 【Source Native Context】
 {context or '（source-native本文不足。Primary URLで確認できた範囲以外を現在事実として補完しないこと。）'}
+
+【Structured Evidence / Required Qualifiers — 最優先】
+{evidence_json}
+・required_qualifiers は自然な日本語に言い換えてよいが、ARTICLEから絶対に削除しない。
+・TOY_EXAMPLE相当の証拠は「原著の単純な例では」「著者が示したサンプルでは」等、例の範囲を必ず明示する。
+・「保証」「完全」「必ず」「安全」等の強い表現は、Structured EvidenceまたはSource Contextが同等以上の保証を明示する場合だけ使用できる。
+
+【Freshness Resolution】
+{freshness_context or '公式フォローアップは未検出。元資料の将来表現を現在完了の事実に書き換えない。'}
+・Follow-up Sourceがある場合、それより古い「今後予定」「これから議論」等の状態をARTICLEに残さない。
 {feedback}
 
 最初に必ず次の見出しをそのまま出す。
@@ -2824,9 +2983,9 @@ def _normalized_evidence_text(text: str) -> str:
     return re.sub(r"[\s,，]", "", (text or "").lower())
 
 
-def _find_unsupported_numeric_claims(draft: str, source_context: str) -> list[str]:
+def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_metadata: dict | None = None) -> list[str]:
     """記事中のセンシティブな具体値が一次情報にも存在するかを簡易照合する。"""
-    evidence = _normalized_evidence_text(source_context)
+    evidence = _normalized_evidence_text(source_context + "\n" + json.dumps(evidence_metadata or {}, ensure_ascii=False))
     failures: list[str] = []
     # Decision Score、見出しの3〜12ヶ月、STEP番号は業務効果の数値ではないので対象外。
     scrubbed = re.sub(r"Decision\s*Score[^\n]*", "", draft or "", flags=re.IGNORECASE)
@@ -2836,7 +2995,10 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str) -> list[st
         for m in re.finditer(pattern, scrubbed, re.IGNORECASE):
             token = m.group(0).strip()
             # source context中に同じ数値表現があれば、一次情報由来として許可。
-            if _normalized_evidence_text(token) not in evidence:
+            # sec/seconds/秒と約の表記揺れは同一の数値+単位として許容する。
+            normalized_token = re.sub(r"(?:seconds?|sec|秒)", "s", _normalized_evidence_text(token), flags=re.I).replace("約", "")
+            normalized_evidence = re.sub(r"(?:seconds?|sec|秒)", "s", evidence, flags=re.I).replace("約", "")
+            if normalized_token not in normalized_evidence:
                 failures.append(f"unsupported numeric claim: {token}")
     for pattern in _VAGUE_QUANTIFIED_PATTERNS:
         for m in re.finditer(pattern, scrubbed):
@@ -2856,15 +3018,57 @@ def _claim_is_negated(text: str, start: int, end: int) -> bool:
     ))
 
 
-def _find_hype_claims(draft: str) -> list[str]:
+def _find_hype_claims(draft: str, source_context: str = "", evidence_metadata: dict | None = None) -> list[str]:
     failures: list[str] = []
     text = draft or ""
+    evidence = source_context or ""
+    strength = (evidence_metadata or {}).get("evidence_strength", "UNKNOWN")
     for pattern, label in _HYPE_PATTERNS:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             if _claim_is_negated(text, m.start(), m.end()):
                 continue
+            strong_word = re.search(r"保証|完全|必ず|安全|ゼロコスト|準拠|最速|state-of-the-art", m.group(0), re.I)
+            # 強い語自体ではなく、公式の同等保証があるかで判断する。
+            if strong_word and (strength in {"SPEC_GUARANTEE", "OFFICIAL_GUARANTEE"} or re.search(r"guarantee[sd]?|保証", evidence, re.I)):
+                continue
             failures.append(f"{label}: {m.group(0)}")
             break
+    # 「保証」単独もHigh Risk Claimとして検査する。ただし公式の保証があれば許可する。
+    for m in re.finditer(r"保証(?:される|した|する|された)", text):
+        if _claim_is_negated(text, m.start(), m.end()):
+            continue
+        supported = strength in {"SPEC_GUARANTEE", "OFFICIAL_GUARANTEE"} or bool(re.search(r"guarantee[sd]?|保証", evidence, re.I))
+        if not supported:
+            failures.append(f"unsupported guarantee: {m.group(0)}")
+    return failures
+
+
+def _find_false_negative_evidence_claims(draft: str, evidence_metadata: dict) -> list[str]:
+    """深い一次資料にあるのに「不明」と書く誤りを止める。"""
+    text = draft or ""
+    if not re.search(r"確認できない|記載されていない|不明|未公開|未評価|データがない", text):
+        return []
+    coverage = (evidence_metadata or {}).get("coverage", {})
+    mapping = {"GPU|ハードウェア|環境": "hardware", "処理時間|runtime|速度|秒": "runtime", "コード|ソースコード": "code_availability", "評価|ベンチマーク": "benchmark"}
+    failures = []
+    for sentence in re.split(r"(?<=[。！？])", text):
+        if not re.search(r"確認できない|記載されていない|不明|未公開|未評価|データがない", sentence):
+            continue
+        for cue, key in mapping.items():
+            if re.search(cue, sentence, re.I) and coverage.get(key) == "FOUND":
+                failures.append("FALSE_NEGATIVE_EVIDENCE_CLAIM: " + key)
+    return list(dict.fromkeys(failures))
+
+
+def _find_final_wording_violations(draft: str, evidence_metadata: dict, freshness: dict | None = None) -> list[str]:
+    failures = []
+    qualifiers = (evidence_metadata or {}).get("required_qualifiers", [])
+    if qualifiers and re.search(r"警告", draft or "") and not re.search(r"単純な|明確に判定|この例|サンプル", draft or ""):
+        failures.append("REQUIRED_QUALIFIER_DROPPED")
+    if re.search(r"(?:最適化される|高速になる|ゼロコスト)", draft or "") and re.search(r"toy example|simple example|単純な例", json.dumps(evidence_metadata or {}, ensure_ascii=False), re.I) and not re.search(r"この例|サンプル|単純な例", draft or ""):
+        failures.append("EVIDENCE_CLASS_GENERALIZED")
+    if (freshness or {}).get("followup_found") and _STALE_ARTICLE_PATTERN.search(draft or ""):
+        failures.append("STALE_STATUS_CLAIM")
     return failures
 
 
@@ -2999,7 +3203,9 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
             failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
     return list(dict.fromkeys(failures))[:6]
 
-def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
+def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "",
+                       evidence_metadata: dict | None = None, source_info: dict | None = None,
+                       freshness: dict | None = None, output_truncated: bool = False) -> tuple[bool, list[str]]:
     """公開可否を決めるFact Gate。事実・構造上の致命傷だけをFailにする。"""
     failures: list[str] = []
     draft = parsed.get("note_draft", "")
@@ -3043,8 +3249,18 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         if not re.search(heading, draft, re.MULTILINE):
             failures.append(f"required heading missing: {label}")
 
-    failures.extend(_find_unsupported_numeric_claims(draft, source_context))
-    failures.extend(_find_hype_claims(draft))
+    structural_missing = int(not marker) + sum(1 for heading in required_headings.values() if not re.search(heading, draft, re.MULTILINE))
+    if structural_missing >= 2:
+        failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
+    if output_truncated:
+        failures.append("OUTPUT_TRUNCATED")
+    if source_info and source_info.get("deep_source_required") and not source_info.get("deep_source_scanned"):
+        failures.append("SOURCE_DEPTH_INSUFFICIENT")
+
+    failures.extend(_find_unsupported_numeric_claims(draft, source_context, evidence_metadata))
+    failures.extend(_find_hype_claims(draft, source_context, evidence_metadata))
+    failures.extend(_find_false_negative_evidence_claims(draft, evidence_metadata or {}))
+    failures.extend(_find_final_wording_violations(draft, evidence_metadata or {}, freshness))
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
     failures.extend(_find_decision_code_leak(draft))
@@ -3093,6 +3309,17 @@ def _extract_usage_metadata(response) -> None:
             values.append(f"{f}={v}")
     if values:
         logger.info("[GEMINI USAGE] " + " ".join(values))
+
+
+def _response_was_truncated(response) -> bool:
+    """SDKが返すfinish_reasonを記録し、MAX_TOKENS等の途中終了を品質問題として扱う。"""
+    try:
+        candidate = response.candidates[0]
+        reason = str(getattr(candidate, "finish_reason", "")).upper()
+        logger.info(f"[GEMINI FINISH] reason={reason or 'UNKNOWN'}")
+        return any(token in reason for token in ("MAX_TOKENS", "LENGTH", "TOKEN_LIMIT"))
+    except Exception:
+        return False
 
 
 def extract_grounding_metadata(response, primary_url: str, source_native_sufficient: bool,
@@ -3255,6 +3482,16 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
     source_info = prepare_source_context(repo)
     primary_url = source_info.get("primary_url") or url
+    # 研究ページに到達可能な論文/補足資料があるのに取得できなければ、landing page
+    # の文章量だけで記事化しない。Gemini呼び出し前にFail Closedする。
+    if source_info.get("deep_source_required") and not source_info.get("deep_source_scanned"):
+        logger.warning(f"[SOURCE DEPTH INSUFFICIENT] {name}: deep primary source could not be scanned")
+        if persist_results and notion_page_id:
+            update_notion_quality_failed(notion_page_id, name, GROUNDING_FAILED, source_info.get("deep_source_urls", []))
+        return None
+    freshness = resolve_followup_freshness(source_info)
+    if freshness.get("context"):
+        source_info["context"] = _truncate_source_context(source_info.get("context", "") + "\n\n" + freshness["context"])
     # APIを呼ぶ前に一次情報不足を判定できるならBackfillへ回す。
     if not source_info.get("sufficient") and not (ENABLE_URL_CONTEXT and primary_url.startswith(("http://", "https://"))):
         logger.warning(f"[GROUNDING FAILED] {name}: 一次情報不足のためGeminiを呼ばずスキップ")
@@ -3278,8 +3515,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 name, primary_url, stars, desc, quality_feedback, source,
                 source_context=source_info.get("context", ""),
                 grounding_status_hint=source_info.get("method", GROUNDING_METADATA_ONLY),
+                evidence_metadata=source_info.get("evidence_metadata", {}), freshness=freshness,
             )
             response, grounding = call_gemini_grounded_deep_dive(prompt, repo, source_info, request_kind=request_kind)
+            output_truncated = _response_was_truncated(response)
             last_grounding = grounding
             parsed = _parse_gemini_response(response.text or "")
             parsed.update({
@@ -3300,7 +3539,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
                 return None
 
-            fact_ok, fact_failures = validate_fact_gate(parsed, name, source_context=source_info.get("context", ""), source=source)
+            fact_ok, fact_failures = validate_fact_gate(
+                parsed, name, source_context=source_info.get("context", ""), source=source,
+                evidence_metadata=source_info.get("evidence_metadata", {}), source_info=source_info,
+                freshness=freshness, output_truncated=output_truncated,
+            )
             editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
             failures = fact_failures + editorial_warnings
             final_quality_failures = failures
@@ -3327,7 +3570,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     update_notion_quality_failed(page_id, name, parsed.get("grounding_status", GROUNDING_FAILED), grounding.get("evidence_urls", []))
                 send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
                 return None
-            quality_feedback = "前回出力の不足項目: " + "; ".join(failures)
+            if "ARTICLE_STRUCTURE_INCOMPLETE" in failures or "OUTPUT_TRUNCATED" in failures:
+                quality_feedback = "ARTICLE_STRUCTURE_INCOMPLETE: 記事が途中で終了している。前稿の文章を継ぎ足さず、指定フォーマットを最初から最後まで完全に再生成すること。"
+            else:
+                quality_feedback = "前回出力の不足項目: " + "; ".join(failures)
             gate_name = "FACT+EDITORIAL" if fact_failures and editorial_warnings else ("FACT" if fact_failures else "EDITORIAL")
             logger.warning(f"[QUALITY RETRY:{gate_name}] {name}: {quality_feedback}")
 
