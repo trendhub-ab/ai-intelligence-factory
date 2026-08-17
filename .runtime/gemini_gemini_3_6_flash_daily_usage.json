@@ -4,9 +4,9 @@
     "deep_dive": 2,
     "deep_dive_retry": 1,
     "ping": 2,
-    "quality_retry": 1
+    "quality_retry": 2
   },
   "quota_date": "2026-08-17",
-  "updated_at": "2026-08-17T10:57:28.906414+00:00",
-  "used": 6
+  "updated_at": "2026-08-17T10:58:53.240341+00:00",
+  "used": 7
 }
