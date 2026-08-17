@@ -1,0 +1,24 @@
+name: Synthetic Regression Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'smoke / core / full'
+        required: true
+        default: smoke
+
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Synthetic suiteを実行
+        run: python pipeline.py
+        env:
+          SYNTHETIC_REGRESSION_MODE: "true"
+          SYNTHETIC_REGRESSION_TIER: ${{ inputs.tier }}
