@@ -178,6 +178,23 @@ class TestPipelineSafety(unittest.TestCase):
             props = pipeline.build_notion_properties("Example", "https://example.com", 82, "score", "what", "why", "why-not", "action", "N/A")
         self.assertEqual(pipeline.VISIBILITY_FREE_ARTICLE, props[pipeline.PROP_SUBSCRIPTION_VISIBILITY]["select"]["name"])
 
+    def test_free_manuscript_removes_paywall_label_and_draft_delimiter(self):
+        draft = "## この記事の結論\n無料部分\n---有料エリア---\n有料部分\n===NOTE_DRAFT_END==="
+        with patch.object(pipeline, "ARTICLE_PUBLICATION_MODE", "free"):
+            manuscript = pipeline.build_clean_note_manuscript(draft, "Example", "https://example.com", "N/A", "HackerNews")
+        self.assertIn("有料部分", manuscript)
+        self.assertNotIn("ここから先は有料エリア", manuscript)
+        self.assertNotIn("NOTE_DRAFT_END", manuscript)
+
+    def test_source_boundary_accepts_pdf_ligature_and_spacing_variant(self):
+        draft = "Diff VGとの比較実験では実行時間を評価した。"
+        evidence = "The implementation compares DiﬀVG with our renderer."
+        self.assertEqual([], pipeline._find_source_boundary_violations(draft, evidence))
+
+    def test_fact_gate_rejects_internal_draft_delimiter(self):
+        findings = pipeline._find_final_wording_violations("本文\n===NOTE_DRAFT_END===", {}, None)
+        self.assertIn("INTERNAL_DRAFT_DELIMITER_LEAKED", findings)
+
     @unittest.skipUnless(PIL_AVAILABLE, "Pillow is installed in CI through requirements.txt")
     def test_eyecatch_uses_score_color_and_skips_low_scores(self):
         with tempfile.TemporaryDirectory() as directory:
