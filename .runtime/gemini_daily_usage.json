@@ -3,9 +3,10 @@
   "by_kind": {
     "deep_dive": 1,
     "ping": 2,
+    "quality_retry": 1,
     "screening": 13
   },
   "quota_date": "2026-08-17",
-  "updated_at": "2026-08-17T09:50:14.827801+00:00",
-  "used": 16
+  "updated_at": "2026-08-17T09:51:14.246253+00:00",
+  "used": 17
 }
