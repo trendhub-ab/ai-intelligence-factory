@@ -42,6 +42,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: regression-test-output
-          path: regression_test_output/
+          path: regen_test_outputs/
           if-no-files-found: error
           retention-days: 14
