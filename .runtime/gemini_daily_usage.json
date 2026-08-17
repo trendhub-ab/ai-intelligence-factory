@@ -1,41 +1,9 @@
 {
-  "key_scopes": {
-    "bb4642cecaf854c8": {
-      "models": {
-        "gemini-3.5-flash-lite": {
-          "budget": 450,
-          "by_kind": {
-            "global_calibration": 1,
-            "screening_batch": 4,
-            "screening_recovery": 3
-          },
-          "exhausted": false,
-          "last_used_at": "2026-08-16T08:19:43.331361+00:00",
-          "used": 8
-        },
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 11,
-            "quality_retry": 7
-          },
-          "exhausted": false,
-          "last_used_at": "2026-08-16T11:37:30.149903+00:00",
-          "used": 18
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive_retry": 1,
-            "quality_retry": 1
-          },
-          "exhausted": false,
-          "last_used_at": "2026-08-16T11:39:21.155467+00:00",
-          "used": 2
-        }
-      }
-    }
+  "budget": 18,
+  "by_kind": {
+    "ping": 1
   },
-  "quota_date": "2026-08-16",
-  "updated_at": "2026-08-16T11:39:21.155484+00:00"
+  "quota_date": "2026-08-17",
+  "updated_at": "2026-08-17T09:48:05.273241+00:00",
+  "used": 1
 }
