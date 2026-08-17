@@ -1,0 +1,28 @@
+name: Sync Member Public DB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Sync Public Approved records
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_PUBLIC_DATABASE_ID: ${{ secrets.NOTION_PUBLIC_DATABASE_ID }}
+          PUBLIC_DB_SYNC_MODE: "true"
+        run: python pipeline.py
