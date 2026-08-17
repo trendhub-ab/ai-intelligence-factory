@@ -2,9 +2,9 @@ import os
 import sys
 import json
 
-# Keep the synthetic suite executable even on a minimal CI runner that has no
-# Gemini/Pillow/requests dependencies. This branch is before production imports
-# and contains no network, credential, DB, or publish side effect.
+# Keep the synthetic suite isolated from all network, credential, DB, and
+# publish side effects. It uses the installed production validation module so
+# its assertions remain coupled to pipeline.py.
 if os.environ.get("SYNTHETIC_REGRESSION_MODE", "false").lower() in {"1", "true", "yes", "on"} and __name__ == "__main__":
     from regression_suite import bootstrap, run, ROOT as _REGRESSION_ROOT
     _tier = os.environ.get("SYNTHETIC_REGRESSION_TIER", "smoke").lower()
@@ -21,6 +21,9 @@ import time
 import signal
 from contextlib import contextmanager
 import base64
+import hashlib
+import ipaddress
+import socket
 import requests
 import logging
 import xml.etree.ElementTree as ET
@@ -30,7 +33,7 @@ from urllib.parse import urljoin, urlparse, urldefrag
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from google import genai
 from google.genai.errors import APIError
 
@@ -49,7 +52,11 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
+NOTION_DATA_SOURCE_ID = os.environ.get("NOTION_DATA_SOURCE_ID")
 NOTION_PUBLIC_DATABASE_ID = os.environ.get("NOTION_PUBLIC_DATABASE_ID")
+NOTION_PUBLIC_DATA_SOURCE_ID = os.environ.get("NOTION_PUBLIC_DATA_SOURCE_ID")
+NOTION_API_VERSION = os.environ.get("NOTION_API_VERSION", "2026-03-11")
+ARTICLE_PUBLICATION_MODE = os.environ.get("ARTICLE_PUBLICATION_MODE", "free").strip().lower()
 # This mode uses only the Notion API.  It never calls Gemini or source APIs.
 PUBLIC_DB_SYNC_MODE = os.environ.get("PUBLIC_DB_SYNC_MODE", "false").lower() in {"1", "true", "yes", "on"}
 
@@ -64,9 +71,11 @@ PRODUCTHUNT_DEVELOPER_TOKEN = os.environ.get("PRODUCTHUNT_DEVELOPER_TOKEN")
 SYNTHETIC_REGRESSION_MODE = os.environ.get("SYNTHETIC_REGRESSION_MODE", "false").lower() in {"1", "true", "yes", "on"}
 SYNTHETIC_REGRESSION_TIER = os.environ.get("SYNTHETIC_REGRESSION_TIER", "smoke").lower()
 
-if not SYNTHETIC_REGRESSION_MODE and not PUBLIC_DB_SYNC_MODE and (not GEMINI_API_KEY or not GH_PAT):
-    raise ValueError("エラー: GEMINI_API_KEY または GH_PAT が設定されていません。")
-
+# Importing this module must be side-effect free.  In particular, unit tests and
+# the offline regression harness must not consume Gemini quota or require a
+# GitHub repository simply by importing ``pipeline.py``.  Credential validation
+# and model selection happen in initialize_runtime() immediately before a real
+# production run.
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
@@ -89,7 +98,9 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     一切持たせず、既存の「呼び出し単位で完結する」という挙動を変えないまま、
     SDK推奨のエントリーポイントへ置き換える。
     """
-    _consume_gemini_request(request_kind, reserve=reserve)
+    if client is None:
+        raise NoAvailableModelError("GEMINI_API_KEY が設定されていません")
+    _consume_gemini_request(request_kind, reserve=reserve, model_name=model_name)
     chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
     return chat.send_message(prompt)
 
@@ -97,11 +108,13 @@ SCREENING_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_SCREENING_MODEL_CANDIDATES",
     "gemini-3.1-flash-lite"
 ).split(",")
+SCREENING_MODEL_POOL = [m.strip() for m in SCREENING_MODEL_CANDIDATES if m.strip()]
 
 DEEP_DIVE_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_DEEP_DIVE_MODEL_CANDIDATES",
     "gemini-3.6-flash"
 ).split(",")
+DEEP_DIVE_MODEL_POOL = [m.strip() for m in DEEP_DIVE_MODEL_CANDIDATES if m.strip()]
 
 # 深掘り（Step2フルレポート）に回す件数（Two-Stage化）
 TOP_N_FOR_DEEP_DIVE = int(os.environ.get("TOP_N_FOR_DEEP_DIVE", "3"))
@@ -126,11 +139,25 @@ STALE_THRESHOLD_DAYS = int(os.environ.get("STALE_THRESHOLD_DAYS", "10"))
 # 間隔を空けずに連続実行するとRPM上限を容易に超過してしまう。
 # そのため、1件ごとに最低限のペーシングを強制する。
 SCREENING_PACING_SECONDS = int(os.environ.get("SCREENING_PACING_SECONDS", "4"))
+SCREENING_BATCH_SIZE = int(os.environ.get("SCREENING_BATCH_SIZE", "25"))
+SCREENING_RECOVERY_BATCH_SIZE = int(os.environ.get("SCREENING_RECOVERY_BATCH_SIZE", "10"))
+SCREENING_BATCH_MAX_OUTPUT_TOKENS = int(os.environ.get("SCREENING_BATCH_MAX_OUTPUT_TOKENS", "2500"))
+SCREENING_BATCH_PACING_SECONDS = int(os.environ.get("SCREENING_BATCH_PACING_SECONDS", "10"))
+ENABLE_GLOBAL_CALIBRATION = os.environ.get("ENABLE_GLOBAL_CALIBRATION", "true").lower() in {"1", "true", "yes", "on"}
+GLOBAL_CALIBRATION_MIN_RAW_SCORE = int(os.environ.get("GLOBAL_CALIBRATION_MIN_RAW_SCORE", "55"))
+GLOBAL_CALIBRATION_BATCH_SIZE = int(os.environ.get("GLOBAL_CALIBRATION_BATCH_SIZE", "50"))
+GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS = int(os.environ.get("GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS", "4000"))
+ENABLE_OBSERVED_HISTORY = os.environ.get("ENABLE_OBSERVED_HISTORY", "true").lower() in {"1", "true", "yes", "on"}
+OBSERVED_HISTORY_DIR = os.environ.get("OBSERVED_HISTORY_DIR", "observed_history")
 
 # 収集ソースが将来さらに増えてもRPD・RPMへの影響を一定範囲に抑え込むための
 # スクリーニング対象数の上限（安全弁）。これを超えた分は「収集はしたが
 # 審査対象からは除外」としてログに残す（黙って切り捨てない）。
 MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "40"))
+GITHUB_FETCH_LIMIT = int(os.environ.get("GITHUB_FETCH_LIMIT", "10"))
+HN_FETCH_LIMIT = int(os.environ.get("HN_FETCH_LIMIT", "10"))
+ARXIV_FETCH_LIMIT = int(os.environ.get("ARXIV_FETCH_LIMIT", "10"))
+PRODUCTHUNT_FETCH_LIMIT = int(os.environ.get("PRODUCTHUNT_FETCH_LIMIT", "10"))
 
 # ---- Gemini無料枠のローカル安全予算 ----
 # Google側のFree Tier上限そのものではなく、このpipeline 1実行内で絶対に超えない
@@ -147,6 +174,14 @@ GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_PER
 GEMINI_PERSISTENT_DAILY_COUNTER = os.environ.get("GEMINI_PERSISTENT_DAILY_COUNTER", "true").lower() in {"1", "true", "yes", "on"}
 GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET", "18"))
 GEMINI_PERSISTENT_COUNTER_PATH = os.environ.get("GEMINI_PERSISTENT_COUNTER_PATH", ".runtime/gemini_daily_usage.json")
+GEMINI_COUNTER_BRANCH = os.environ.get("GEMINI_COUNTER_BRANCH", "").strip()
+MODEL_DAILY_BUDGETS = {
+    "gemini-3.5-flash-lite": int(os.environ.get("GEMINI_35_FLASH_LITE_DAILY_BUDGET", "450")),
+    "gemini-3.1-flash-lite": int(os.environ.get("GEMINI_31_FLASH_LITE_DAILY_BUDGET", "450")),
+    "gemini-3.6-flash": int(os.environ.get("GEMINI_36_FLASH_DAILY_BUDGET", "18")),
+    "gemini-3.7-flash": int(os.environ.get("GEMINI_37_FLASH_DAILY_BUDGET", "18")),
+    "gemini-3.5-flash": int(os.environ.get("GEMINI_35_FLASH_DAILY_BUDGET", "18")),
+}
 GEMINI_QUOTA_TIMEZONE = os.environ.get("GEMINI_QUOTA_TIMEZONE", "America/Los_Angeles")
 MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS = int(os.environ.get("MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS", "5"))
 
@@ -186,6 +221,7 @@ FRESHNESS_MAX_LINKS = int(os.environ.get("FRESHNESS_MAX_LINKS", "8"))
 # 生成した画像はGitHubリポジトリへコミットし、raw.githubusercontent.comの
 # 公開URLを取得した上でNotionへ紐付ける（詳細はupload_eyecatch_to_github参照）。
 EYECATCH_OUTPUT_DIR = os.environ.get("EYECATCH_OUTPUT_DIR", "eyecatch_images")
+EYECATCH_MIN_DECISION_SCORE = int(os.environ.get("EYECATCH_MIN_DECISION_SCORE", "60"))
 
 # アイキャッチ画像をコミットするGitHubリポジトリ（"owner/repo"形式）。
 # GitHub Actions上では GITHUB_REPOSITORY が自動的に注入されるため、通常は
@@ -291,16 +327,48 @@ REVIEW_STATUS_PUBLIC_APPROVED = "Public Approved"
 CONTENT_STATUS_STOCKED = "Stocked"
 CONTENT_STATUS_DEEP_DIVE = "Deep Dive"
 CONTENT_STATUS_QUALITY_FAILED = "Quality Failed"
+CONTENT_STATUS_PENDING_RETRY = "Pending Retry"
 ARTICLE_STATUS_NOT_PLANNED = "Not Planned"
 ARTICLE_STATUS_READY = "Ready"
 VISIBILITY_SUBSCRIBER_ONLY = "Subscriber Only"
 VISIBILITY_PAID_ARTICLE = "Paid Article"
+VISIBILITY_FREE_ARTICLE = "Free Article"
 GROUNDING_METADATA_ONLY = "Metadata Only"
 GROUNDING_SOURCE_NATIVE = "Source Native"
 GROUNDING_URL_CONTEXT = "URL Context"
 GROUNDING_URL_SEARCH = "URL + Search"
 GROUNDING_FAILED = "Failed"
 ALLOWED_DECISIONS = {"NOW", "TRY", "WATCH", "WAIT", "AVOID"}
+
+
+def _notion_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": NOTION_API_VERSION,
+    }
+
+
+def _notion_query_url(data_source_id: str | None = None, database_id: str | None = None) -> str:
+    source_id = data_source_id if data_source_id is not None else NOTION_DATA_SOURCE_ID
+    db_id = database_id if database_id is not None else NOTION_DATABASE_ID
+    if source_id:
+        return f"https://api.notion.com/v1/data_sources/{source_id}/query"
+    return f"https://api.notion.com/v1/databases/{db_id}/query"
+
+
+def _notion_schema_url(data_source_id: str | None = None, database_id: str | None = None) -> str:
+    source_id = data_source_id if data_source_id is not None else NOTION_DATA_SOURCE_ID
+    db_id = database_id if database_id is not None else NOTION_DATABASE_ID
+    if source_id:
+        return f"https://api.notion.com/v1/data_sources/{source_id}"
+    return f"https://api.notion.com/v1/databases/{db_id}"
+
+
+def _notion_parent(data_source_id: str | None = None, database_id: str | None = None) -> dict:
+    source_id = data_source_id if data_source_id is not None else NOTION_DATA_SOURCE_ID
+    db_id = database_id if database_id is not None else NOTION_DATABASE_ID
+    return {"data_source_id": source_id} if source_id else {"database_id": db_id}
 
 # 管理用データとnote原稿を分離するための構造トークン（Markdown記号ではない専用文字列にして
 # normalize_markdown_for_note による処理や、Geminiによる表記揺れの影響を受けないようにする）
@@ -339,20 +407,42 @@ class GeminiBudgetExceededError(RuntimeError): pass
 
 
 class PersistentGeminiDailyCounter:
-    """GitHub Contents APIを使い、Gemini送信回数を複数Run間で共有するFail-Closedカウンタ。
+    """モデル・APIキー単位で予約するGitHub永続Geminiカウンタ。
 
-    Gemini APIを呼ぶ「前」に1回分を予約してリポジトリへ保存する。したがってAPI呼び出し中に
-    runnerが停止しても過少カウントしない（安全側に1回多く数える可能性は許容）。
-    日付境界はGoogle側RPDリセットに合わせAmerica/Los_Angelesを既定とする。
+    旧版は全モデルを同じ18回に束ねていたため、Flash LiteのScreeningまで
+    Deep Dive用の上限で停止していた。新形式はAPIキーの生値を保存せず、
+    SHA-256短縮値をスコープとしてモデル別使用量だけを保存する。
     """
-    def __init__(self, enabled: bool, budget: int, path: str, quota_timezone: str):
+    def __init__(self, enabled: bool, model_budgets: int | dict[str, int], default_budget: int | str,
+                 path: str | None = None, quota_timezone: str | None = None, api_key: str | None = None):
+        # 旧4引数形式(enabled, budget, path, timezone)も壊さない。
+        if isinstance(default_budget, str):
+            quota_timezone, path, default_budget = path, default_budget, model_budgets
         self.enabled = enabled
-        self.budget = max(0, budget)
-        self.path = path.lstrip("/")
-        self.quota_timezone = quota_timezone
+        self.model_budgets = ({k: max(0, int(v)) for k, v in model_budgets.items()}
+                              if isinstance(model_budgets, dict) else {})
+        self.default_budget = max(0, int(default_budget))
+        self.path = str(path or GEMINI_PERSISTENT_COUNTER_PATH).lstrip("/")
+        self.quota_timezone = str(quota_timezone or GEMINI_QUOTA_TIMEZONE)
         self.repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-        self.branch = os.environ.get("GITHUB_REF_NAME", "").strip()
+        self.branch = GEMINI_COUNTER_BRANCH or os.environ.get("GITHUB_REF_NAME", "").strip()
+        self.key_scope = hashlib.sha256((api_key if api_key is not None else GEMINI_API_KEY or "").encode("utf-8")).hexdigest()[:16]
         self.session_used = 0
+
+    def budget_for(self, model_name: str) -> int:
+        return max(0, int(self.model_budgets.get(model_name, self.default_budget)))
+
+    def _normalized_day(self, data: dict, quota_date: str) -> dict:
+        # 旧形式(models/used/by_kind)は別APIキーの使用実績として引き継がない。
+        if data.get("quota_date") != quota_date or not isinstance(data.get("key_scopes"), dict):
+            return {"quota_date": quota_date, "key_scopes": {}}
+        return data
+
+    def _model_state(self, data: dict, model_name: str) -> dict:
+        scopes = data.setdefault("key_scopes", {})
+        scope = scopes.setdefault(self.key_scope, {"models": {}})
+        models = scope.setdefault("models", {})
+        return models.setdefault(model_name, {"used": 0, "by_kind": {}, "exhausted": False})
 
     def _quota_date(self) -> str:
         try:
@@ -397,7 +487,7 @@ class PersistentGeminiDailyCounter:
         import json
         content = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         payload = {
-            "message": f"chore: reserve Gemini request {data.get('quota_date','')} {data.get('used',0)}/{data.get('budget',self.budget)}",
+            "message": f"chore: reserve Gemini request {data.get('quota_date','')} ({self.key_scope})",
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
         }
         if sha:
@@ -413,42 +503,40 @@ class PersistentGeminiDailyCounter:
                 f"Persistent Gemini counter write failed: HTTP {res.status_code} {res.text[:300]}"
             )
 
-    def reserve(self, kind: str, reserve: int = 0) -> None:
+    def reserve(self, kind: str, reserve: int = 0, model_name: str = "default") -> None:
         if not self.enabled:
             return
-        if self.budget <= 0:
+        budget = self.budget_for(model_name)
+        if budget <= 0:
             raise GeminiBudgetExceededError("Persistent Gemini daily budget is 0")
 
         quota_date = self._quota_date()
         # SHA競合に備え、毎回最新値を取り直して最大3回だけ試す。
         for attempt in range(3):
             data, sha = self._read_remote()
-            if data.get("quota_date") != quota_date:
-                data = {"quota_date": quota_date, "used": 0, "budget": self.budget, "by_kind": {}}
-                sha_for_write = sha
-            else:
-                sha_for_write = sha
-
-            used = int(data.get("used", 0) or 0)
-            effective_limit = max(0, self.budget - max(0, reserve))
+            data = self._normalized_day(data, quota_date)
+            sha_for_write = sha
+            state = self._model_state(data, model_name)
+            used = int(state.get("used", 0) or 0)
+            effective_limit = max(0, budget - max(0, reserve))
             if used + 1 > effective_limit:
                 raise GeminiBudgetExceededError(
                     f"Persistent Gemini daily budget exhausted: date={quota_date}, used={used}, "
-                    f"budget={self.budget}, reserve={reserve}, kind={kind}"
+                    f"budget={budget}, reserve={reserve}, model={model_name}, kind={kind}"
                 )
 
-            by_kind = data.get("by_kind") if isinstance(data.get("by_kind"), dict) else {}
-            data["used"] = used + 1
-            data["budget"] = self.budget
-            data["by_kind"] = by_kind
+            by_kind = state.get("by_kind") if isinstance(state.get("by_kind"), dict) else {}
+            state["used"] = used + 1
+            state["budget"] = budget
+            state["by_kind"] = by_kind
             by_kind[kind] = int(by_kind.get(kind, 0) or 0) + 1
             data["updated_at"] = datetime.now(timezone.utc).isoformat()
             try:
                 self._write_remote(data, sha_for_write)
                 self.session_used += 1
                 logger.info(
-                    f"[GEMINI PERSISTENT BUDGET] reserved {data['used']}/{self.budget} "
-                    f"quota_date={quota_date} kind={kind}"
+                    f"[GEMINI PERSISTENT BUDGET] reserved {state['used']}/{budget} "
+                    f"quota_date={quota_date} model={model_name} kind={kind}"
                 )
                 return
             except GeminiBudgetExceededError as e:
@@ -466,15 +554,17 @@ class PersistentGeminiDailyCounter:
             return "Persistent Gemini Daily Counter: disabled"
         try:
             data, _ = self._read_remote()
-            if data.get("quota_date") != self._quota_date():
-                return f"Persistent Gemini Daily Counter: 0/{self.budget} (new quota day)"
-            return f"Persistent Gemini Daily Counter: {int(data.get('used', 0) or 0)}/{self.budget} ({data.get('quota_date')})"
+            data = self._normalized_day(data, self._quota_date())
+            models = data.get("key_scopes", {}).get(self.key_scope, {}).get("models", {})
+            detail = ", ".join(f"{name}:{int(state.get('used', 0))}/{self.budget_for(name)}" for name, state in sorted(models.items())) or "0"
+            return f"Persistent Gemini Daily Counter: {detail} ({data.get('quota_date')})"
         except Exception as e:
             return f"Persistent Gemini Daily Counter: unavailable ({e})"
 
 
 PERSISTENT_GEMINI_COUNTER = PersistentGeminiDailyCounter(
     GEMINI_PERSISTENT_DAILY_COUNTER,
+    MODEL_DAILY_BUDGETS,
     GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET,
     GEMINI_PERSISTENT_COUNTER_PATH,
     GEMINI_QUOTA_TIMEZONE,
@@ -512,7 +602,7 @@ class GeminiBudget:
                 f"Gemini local budget exhausted: used={self.request_count}, "
                 f"budget={self.daily_budget}, reserve={reserve}"
             )
-        if kind == "screening_retry":
+        if kind in {"screening_retry", "screening_recovery"}:
             if not self.can_screening_retry():
                 raise GeminiBudgetExceededError("Screening retry budget exhausted")
             self.screening_retry_count += 1
@@ -540,10 +630,10 @@ GEMINI_BUDGET = GeminiBudget(
 )
 
 
-def _consume_gemini_request(kind: str, reserve: int = 0) -> None:
+def _consume_gemini_request(kind: str, reserve: int = 0, model_name: str = "default") -> None:
     # 永続カウンタを先に予約する。ローカルBudget失敗時に1回過剰計上される可能性はあるが、
     # Free Tier保護では過少計上より安全なためFail-Closed側へ倒す。
-    PERSISTENT_GEMINI_COUNTER.reserve(kind, reserve=reserve)
+    PERSISTENT_GEMINI_COUNTER.reserve(kind, reserve=reserve, model_name=model_name)
     GEMINI_BUDGET.consume(kind, reserve=reserve)
 
 
@@ -596,6 +686,7 @@ PING_RETRY_BACKOFF_SECONDS = int(os.environ.get("PING_RETRY_BACKOFF_SECONDS", "1
 # なった場合にジョブ全体が黙って止まるのを防ぐ。Linux runnerのmain threadで
 # SIGALRMを使うため、待機中の同期SDK callもFail-Closedで中断できる。
 GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS", "120"))
+GEMINI_DEEP_DIVE_CALL_PACING_SECONDS = int(os.environ.get("GEMINI_DEEP_DIVE_CALL_PACING_SECONDS", "20"))
 
 
 class GeminiCallTimeoutError(TimeoutError):
@@ -708,22 +799,97 @@ def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_di
     raise NoAvailableModelError("利用可能なモデルがありません") from last_error
 
 
-if PUBLIC_DB_SYNC_MODE:
-    # Member DB sync intentionally performs no Gemini initialization or API call.
-    SELECTED_SCREENING_MODEL = None
-    SELECTED_DEEP_DIVE_MODEL = None
-else:
-    try:
-        SELECTED_SCREENING_MODEL = resolve_model(SCREENING_MODEL_CANDIDATES, label="Screening")
-        SELECTED_DEEP_DIVE_MODEL = resolve_model(
-            DEEP_DIVE_MODEL_CANDIDATES, label="Deep Dive", count_as_deep_dive=True
-        )
-    except DailyQuotaExhaustedError as e:
-        send_telegram_alert(f"⚠️ 【緊急】Gemini日次クォータ到達のため初期化停止: {e}")
-        raise SystemExit(1)
-    except (NoAvailableModelError, GeminiBudgetExceededError) as e:
-        send_telegram_alert(f"⚠️ 【緊急】Gemini初期化失敗: {e}")
-        raise SystemExit(1)
+SELECTED_SCREENING_MODEL: str | None = None
+SELECTED_DEEP_DIVE_MODEL: str | None = None
+SESSION_EXHAUSTED_MODELS: set[str] = set()
+SESSION_UNAVAILABLE_MODELS: set[str] = set()
+
+
+def initialize_runtime() -> None:
+    """Validate production-only requirements without spending quota on ping calls."""
+    global SELECTED_SCREENING_MODEL, SELECTED_DEEP_DIVE_MODEL
+    if PUBLIC_DB_SYNC_MODE or SYNTHETIC_REGRESSION_MODE:
+        return
+    if not GEMINI_API_KEY or not GH_PAT:
+        raise ValueError("エラー: GEMINI_API_KEY または GH_PAT が設定されていません。")
+    if not SCREENING_MODEL_POOL or not DEEP_DIVE_MODEL_POOL:
+        raise ValueError("Gemini model candidate pool が空です。")
+    # Availability is established by the first real request.  This avoids two
+    # quota-consuming pings on every run and makes import/test completely safe.
+    SELECTED_SCREENING_MODEL = SCREENING_MODEL_POOL[0]
+    SELECTED_DEEP_DIVE_MODEL = DEEP_DIVE_MODEL_POOL[0]
+
+
+def _mark_model_exhausted(model_name: str, reason: str = "") -> None:
+    SESSION_EXHAUSTED_MODELS.add(model_name)
+    logger.warning("[MODEL EXHAUSTED] %s %s", model_name, reason)
+
+
+def _mark_model_unavailable(model_name: str, reason: str = "") -> None:
+    SESSION_UNAVAILABLE_MODELS.add(model_name)
+    logger.warning("[MODEL UNAVAILABLE] %s %s", model_name, reason)
+
+
+def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
+                     pool: list[str], deep_dive: bool = False):
+    """503 is run-local unavailable; RPD is model-local exhausted; both fall back.
+
+    The loop is deliberately bounded by the configured pool.  It never retries
+    indefinitely and never changes a transient 503 into a permanent quota mark.
+    """
+    last_error: Exception | None = None
+    for model_name in pool:
+        if model_name in SESSION_EXHAUSTED_MODELS or model_name in SESSION_UNAVAILABLE_MODELS:
+            continue
+        for attempt in range(2):
+            try:
+                if deep_dive:
+                    DEEP_DIVE_MODEL_BUDGET.consume(kind if attempt == 0 else "deep_dive_retry")
+                if deep_dive:
+                    time.sleep(max(0, GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
+                    with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
+                        response = _generate_via_chat(
+                            model_name, prompt, config=config,
+                            request_kind=kind if attempt == 0 else "deep_dive_retry", reserve=reserve,
+                        )
+                else:
+                    response = _generate_via_chat(
+                        model_name, prompt, config=config,
+                        request_kind=kind if attempt == 0 else "screening_retry", reserve=reserve,
+                    )
+                return response, model_name
+            except APIError as exc:
+                last_error = exc
+                code = getattr(exc, "code", None)
+                quota_type = classify_gemini_quota_error(exc) if code == 429 else ""
+                if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
+                    _mark_model_exhausted(model_name, quota_type)
+                    break
+                if code == 503 and attempt == 0:
+                    time.sleep(_extract_retry_delay(exc, 10))
+                    continue
+                if code == 503:
+                    _mark_model_unavailable(model_name, "503")
+                    break
+                if code == 404:
+                    _mark_model_unavailable(model_name, "404")
+                    break
+                if code == 429 and quota_type in {"RPM", "TPM"} and attempt == 0:
+                    time.sleep(_extract_retry_delay(exc, 15))
+                    continue
+                break
+            except (GeminiBudgetExceededError, GeminiCallTimeoutError) as exc:
+                last_error = exc
+                break
+    raise NoAvailableModelError("利用可能なGeminiモデルがありません") from last_error
+
+
+def _call_screening_pool(prompt: str, config: dict | None = None, kind: str = "screening", reserve: int = 0):
+    return _call_model_pool(prompt, config, kind, reserve, SCREENING_MODEL_POOL, deep_dive=False)
+
+
+def _call_deep_dive_pool(prompt: str, config: dict | None = None, kind: str = "deep_dive"):
+    return _call_model_pool(prompt, config, kind, 0, DEEP_DIVE_MODEL_POOL, deep_dive=True)
 
 
 def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind: str = "deep_dive"):
@@ -948,15 +1114,12 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
 
 
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
-                             source: str = "GitHub") -> str:
-    """
-    1280px x 670px のアイキャッチ画像を完全0円で自動生成するモジュール。
-
-    【設計変更】テキスト合成（タグ・タイトル文字の描画）は廃止し、背景画像
-    （ソース別、EYECATCH_BACKGROUND_DIR配下、SOURCE_BACKGROUND_IMAGEでマッピング）
-    または従来のダークグラデーションのみを出力する。
-    title_text引数は呼び出し互換性のために残しているが、画像生成には使用しない。
-    """
+                             source: str = "GitHub", decision_score: int | None = None,
+                             technical_impact: int | None = None, urgency: int | None = None) -> str | None:
+    """Preserve the source background and overlay the approved decision card."""
+    if decision_score is not None and decision_score < EYECATCH_MIN_DECISION_SCORE:
+        logger.info("[EYECATCH SKIP] score=%s < %s", decision_score, EYECATCH_MIN_DECISION_SCORE)
+        return None
     WIDTH, HEIGHT = 1280, 670
 
     img = _load_eyecatch_background(source, WIDTH, HEIGHT)
@@ -970,6 +1133,27 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
             b = int(28 + (y / HEIGHT) * 45)
             draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
+    # 80+ is red, 70s blue, and 60s teal.  Keep the background image visible.
+    score = int(decision_score or 0)
+    accent = (239, 68, 68) if score >= 80 else (59, 130, 246) if score >= 70 else (20, 184, 166)
+    overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.rounded_rectangle((100, 285, 1180, 570), radius=24, fill=(5, 12, 28, 218), outline=accent + (255,), width=4)
+    draw.rounded_rectangle((120, 325, 370, 382), radius=12, fill=accent + (255,))
+    font_paths = ["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/truetype/lato/Lato-Bold.ttf"]
+    def font(size: int):
+        for path in font_paths:
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+    draw.text((137, 338), f"DECISION SCORE {score}/100", font=font(24), fill=(255, 255, 255, 255))
+    title = (title_text or "AI Intelligence").replace("\n", " ")[:48]
+    draw.text((125, 405), title, font=font(34), fill=(255, 255, 255, 255))
+    draw.text((125, 485), f"Technical Impact  {technical_impact if technical_impact is not None else '—'}", font=font(21), fill=(220, 230, 245, 255))
+    draw.text((610, 485), f"Urgency  {urgency if urgency is not None else '—'}", font=font(21), fill=(220, 230, 245, 255))
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     img.save(output_path, "PNG")
     return output_path
 
@@ -1124,7 +1308,7 @@ def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, wh
         PROP_STATUS: {"select": {"name": STATUS_DEEP_DIVE}},
         PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_DEEP_DIVE}},
         PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_READY}},
-        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_PAID_ARTICLE}},
+        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_FREE_ARTICLE if ARTICLE_PUBLICATION_MODE == "free" else VISIBILITY_PAID_ARTICLE}},
         PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": score_breakdown_text[:2000]}}]},
         PROP_WHAT: {"rich_text": [{"text": {"content": what_text[:2000]}}]},
         PROP_WHY_IMPORTANT: {"rich_text": [{"text": {"content": why_important_text[:2000]}}]},
@@ -1190,7 +1374,7 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
                           analyzed_at: str | None = None, report_meta: dict | None = None,
                           screening_score: int | None = None, screening_reason: str = "") -> dict:
     return {
-        "parent": {"database_id": NOTION_DATABASE_ID},
+        "parent": _notion_parent(),
         "properties": build_notion_properties(
             repo_name, repo_url, score, score_breakdown_text, what_text,
             why_important_text, why_not_important_text, action_text,
@@ -1211,14 +1395,10 @@ def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
                     analyzed_at: str | None = None, report_meta: dict | None = None,
                     screening_score: int | None = None, screening_reason: str = "") -> bool:
     """Deep Diveフル記事の新規Notionページ作成。"""
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         return False
     url = "https://api.notion.com/v1/pages"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    headers = _notion_headers()
     payload = build_notion_payload(
         repo_name, repo_url, score, score_breakdown_text, what_text,
         why_important_text, why_not_important_text, action_text,
@@ -1277,7 +1457,7 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
 
     戻り値: 作成に成功した場合はNotionページID（後で深掘り時にアップグレード
     更新するために使う）。失敗時・Notion未設定時はNone。"""
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         return None
 
     name = repo.get("nameWithOwner")
@@ -1289,13 +1469,9 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     analyzed_at = _analyzed_at_now_iso()
 
     url = "https://api.notion.com/v1/pages"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    headers = _notion_headers()
     payload = {
-        "parent": {"database_id": NOTION_DATABASE_ID},
+        "parent": _notion_parent(),
         "properties": build_metadata_notion_properties(
             name, repo_url, score, reason, source, engagement,
             published_at, analyzed_at, repo.get("description", ""),
@@ -1325,11 +1501,7 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
     """Stock済みNotionページをDeep Diveへアップグレード。Step1履歴は保持する。"""
     if not NOTION_API_KEY:
         return False
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    headers = _notion_headers()
     properties = build_notion_properties(
         repo_name, repo_url, score, score_breakdown_text, what_text,
         why_important_text, why_not_important_text, action_text,
@@ -1374,11 +1546,7 @@ def update_notion_quality_failed(page_id: str, repo_name: str,
         PROP_GROUNDING_STATUS: {"select": {"name": grounding_status}},
         PROP_EVIDENCE_URLS: {"rich_text": [{"text": {"content": evidence_text}}]},
     }
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    headers = _notion_headers()
     try:
         res = requests.patch(
             f"https://api.notion.com/v1/pages/{page_id}",
@@ -1390,6 +1558,27 @@ def update_notion_quality_failed(page_id: str, repo_name: str,
         logger.error(f"[NOTION QUALITY FAILED ERROR] {repo_name} -> {res.text}")
     except Exception as e:
         logger.error(f"[NOTION QUALITY FAILED EXCEPTION] {repo_name}: {e}")
+    return False
+
+
+def update_notion_pending_retry(page_id: str, repo_name: str, reason: str = "") -> bool:
+    """Transient provider failures must never be recorded as Quality Failed."""
+    if not page_id or not NOTION_API_KEY:
+        return False
+    props = {
+        PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_PENDING_RETRY}},
+        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NOT_PLANNED}},
+    }
+    if reason:
+        props[PROP_SCREENING_REASON] = {"rich_text": [{"text": {"content": reason[:2000]}}]}
+    try:
+        res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=_notion_headers(), timeout=10)
+        if res.status_code == 200:
+            logger.info("[NOTION PENDING RETRY] %s", repo_name)
+            return True
+        logger.error("[NOTION PENDING RETRY ERROR] %s -> %s", repo_name, res.text)
+    except Exception as exc:
+        logger.error("[NOTION PENDING RETRY EXCEPTION] %s: %s", repo_name, exc)
     return False
 
 
@@ -1561,6 +1750,11 @@ def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int
     if not (url or "").startswith(("http://", "https://")):
         return b"", "", ""
     try:
+        _validate_public_http_url(url)
+    except ValueError as exc:
+        logger.warning("[SOURCE FETCH BLOCKED] %s", exc)
+        return b"", "", ""
+    try:
         with requests.get(url, headers={"User-Agent": WEB_CONTEXT_USER_AGENT, "Accept": "*/*"},
                           timeout=WEB_CONTEXT_TIMEOUT_SECONDS, allow_redirects=True, stream=True) as res:
             content_type = (res.headers.get("Content-Type") or "").lower()
@@ -1579,6 +1773,28 @@ def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int
     except Exception as e:
         logger.info(f"[SOURCE FETCH] failed {url}: {e}")
     return b"", "", ""
+
+
+def _validate_public_http_url(url: str) -> None:
+    """Reject non-HTTP and private/link-local destinations before source fetches."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("URL must be a plain public http(s) URL")
+    host = parsed.hostname.rstrip(".")
+    if host.lower() in {"localhost", "localhost.localdomain"}:
+        raise ValueError("private destination blocked")
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError(f"host resolution failed: {host}") from exc
+    for info in infos:
+        address = info[4][0].split("%", 1)[0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError as exc:
+            raise ValueError("invalid resolved address") from exc
+        if not ip.is_global:
+            raise ValueError("private destination blocked")
 
 
 def _fetch_html_document(url: str) -> tuple[str, list[tuple[str, str]], str]:
@@ -1799,7 +2015,7 @@ def resolve_followup_freshness(source_info: dict) -> dict:
     logger.info(f"[FRESHNESS] triggered=True followups={len(followups)} primary={primary_url}")
     return {"triggered": True, "followup_found": bool(followups), "context": resolved}
 
-def fetch_github_trending():
+def fetch_github_trending(limit: int = GITHUB_FETCH_LIMIT):
     """GitHub GraphQL API から急上昇AI/MLリポジトリを取得する。"""
     logger.info(">>> [Step 1] GitHub一次データの自動巡回...")
     url = "https://api.github.com/graphql"
@@ -1807,7 +2023,7 @@ def fetch_github_trending():
     since_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     query = f"""
     {{
-      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>{since_date}", type: REPOSITORY, first: 10) {{
+      search(query: "topic:ai topic:machine-learning stars:>100 pushed:>{since_date}", type: REPOSITORY, first: {max(1, min(limit, 100))}) {{
         nodes {{
           ... on Repository {{
             nameWithOwner
@@ -1849,7 +2065,7 @@ def fetch_github_trending():
         logger.error(f"[FAULT ISOLATED] GitHub APIエラー: {e}")
     return items
 
-def fetch_hackernews_top(limit: int = 10):
+def fetch_hackernews_top(limit: int = HN_FETCH_LIMIT):
     """HN APIから上位storyを取得し、外部URL・HN本文をDeep Dive用に保持する。"""
     logger.info(">>> [Step 1] Hacker News一次データの自動巡回...")
     items = []
@@ -2015,7 +2231,7 @@ def _fetch_arxiv_official_link_context(urls: list[str]) -> list[tuple[str, str]]
             results.append((url, ctx))
     return results
 
-def fetch_arxiv_ai_ml(limit: int = 10):
+def fetch_arxiv_ai_ml(limit: int = ARXIV_FETCH_LIMIT):
     """arXiv APIからAI/ML最新論文を取得。Screening表示は短縮、Deep Diveにはabstract全文を保持。"""
     logger.info(">>> [Step 1] ArXiv一次データの自動巡回...")
     items = []
@@ -2065,7 +2281,7 @@ def fetch_arxiv_ai_ml(limit: int = 10):
     return items
 
 
-def fetch_producthunt_trending(limit: int = 10):
+def fetch_producthunt_trending(limit: int = PRODUCTHUNT_FETCH_LIMIT):
     """Product Hunt GraphQLから注目プロダクトを取得し、tagline+descriptionを保持する。"""
     logger.info(">>> [Step 1] Product Hunt一次データの自動巡回...")
     if not PRODUCTHUNT_DEVELOPER_TOKEN:
@@ -2192,17 +2408,13 @@ def get_existing_repo_urls():
       - None: リトライしても取得できず、重複チェック不能と判定された場合
               （呼び出し元はこれをFail-Closedのトリガーとして扱うこと）
     """
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         # Notion未設定の場合はそもそも保存自体が行われないため、
         # 重複チェック自体が意味を持たない（Fail-Closedの対象外）。
         return set()
 
-    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    url = _notion_query_url()
+    headers = _notion_headers()
 
     existing_urls = set()
     next_cursor = None
@@ -2249,6 +2461,31 @@ def _notion_plain_text(prop: dict) -> str:
     return "".join(x.get("plain_text") or x.get("text", {}).get("content", "") for x in items).strip()
 
 
+def get_pending_retry_items(limit: int = 20) -> list[dict] | None:
+    """Reconstruct transiently failed Deep Dive candidates before new collection."""
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
+        return []
+    payload = {"filter": {"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_PENDING_RETRY}}, "page_size": min(100, limit)}
+    res = _query_notion_db_with_retry(_notion_query_url(), _notion_headers(), payload)
+    if res is None:
+        return None
+    items = []
+    for page in res.json().get("results", []):
+        props = page.get("properties", {})
+        url = props.get(PROP_URL, {}).get("url")
+        if not url:
+            continue
+        items.append({"notion_page_id": page.get("id"), "repo": normalize_item(
+            props.get(PROP_SOURCE, {}).get("select", {}).get("name") or "GitHub",
+            _notion_plain_text(props.get(PROP_NAME, {})), url,
+            _notion_plain_text(props.get(PROP_SOURCE_SUMMARY, {})),
+            props.get(PROP_ENGAGEMENT, {}).get("number") or 0,
+            published_at=(props.get(PROP_PUBLISHED_AT, {}).get("date") or {}).get("start"),
+        ), "screening_score": props.get(PROP_SCREENING_SCORE, {}).get("number") or 0,
+           "screening_reason": _notion_plain_text(props.get(PROP_SCREENING_REASON, {}))})
+    return items
+
+
 def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] | None:
     """
     Notionに既に保存されているDeep Diveを、A/B比較用の読み取り専用候補として取得する。
@@ -2259,16 +2496,12 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] 
     - 取得した最小限のメタデータからNormalizedItem互換dictを復元する。
       一次情報本文はprepare_source_context()がURLから改めて取得する。
     """
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         logger.error("[REGEN TEST] Notion設定がないため既存Deep Diveを読み出せません。")
         return None
 
-    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    url = _notion_query_url()
+    headers = _notion_headers()
     filters = [{"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_DEEP_DIVE}}]
     if source_filter:
         filters.append({"property": PROP_SOURCE, "select": {"equals": source_filter}})
@@ -2390,15 +2623,11 @@ def fetch_monthly_dataset(start_utc: str, end_utc: str) -> list[dict] | None:
     パイプライン全体を止めることはしない。失敗時はNoneを返し、呼び出し元は
     今回のダイジェスト生成のみをスキップして日次パイプライン本体は継続する。
     """
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         return None
 
-    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    url = _notion_query_url()
+    headers = _notion_headers()
 
     items: list[dict] = []
     next_cursor = None
@@ -2575,7 +2804,7 @@ def generate_monthly_digest(target_date=None):
 
     logger.info(f">>> [MONTHLY DIGEST] {target_date} は月末日のため、当月データセットのダイジェスト生成を開始します。")
 
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         logger.warning("[MONTHLY DIGEST] Notion未設定のためダイジェスト生成をスキップします。")
         return
 
@@ -3297,6 +3526,32 @@ def validate_paid_article(parsed: dict, repo_name: str, source_context: str = ""
     """後方互換。公開可否はFact Gateのみで決める。"""
     return validate_fact_gate(parsed, repo_name, source_context=source_context, source=source)
 
+
+def validate_synthetic_invariants(ground_truth: dict, article: str, evidence: str) -> list[dict]:
+    """Offline adapter used by the synthetic suite to exercise production code.
+
+    It deliberately remains credential-free, but it lives in pipeline.py so a
+    change to production validation cannot leave the regression suite detached.
+    """
+    findings: list[dict] = []
+    lowered = (article or "").lower()
+    critical = {"INV-002", "INV-004", "INV-007", "INV-014", "INV-015", "INV-017", "INV-019", "INV-020"}
+    def add(code: str, stage: str, message: str, severity: str = "major"):
+        findings.append({"code": code, "severity": "critical" if code in critical else severity, "stage": stage, "message": message})
+    for forbidden in ground_truth.get("forbidden_claims", []):
+        if forbidden.lower() in lowered:
+            add((ground_truth.get("expected_flags") or ["FORBIDDEN_CLAIM"])[0], "FINAL_WORDING", f"forbidden claim: {forbidden}")
+    for qualifier in ground_truth.get("required_qualifiers", []):
+        aliases = {"単純な例": ["単純な例", "原著の例", "simple case"], "原著の例": ["単純な例", "原著の例", "simple case"], "可能性": ["可能性", "may", "could"], "著者は": ["著者", "author"]}
+        if not any(token.lower() in lowered for token in aliases.get(qualifier, [qualifier])):
+            add("INV-006", "FINAL_WORDING", f"required qualifier dropped: {qualifier}")
+    for label, value in ground_truth.get("numerical_truth", {}).items():
+        if ("runtime" in label or "sample" in label) and str(value) not in (article or ""):
+            add("INV-020", "NUMERICAL_VALIDATION", f"number missing: {value}", "moderate")
+    if "hardwareは確認できない" in lowered and re.search(r"hardware:|RTX|H100", evidence or "", re.I):
+        add("INV-004", "DEEP_EXTRACTION", "false absence claim")
+    return findings
+
 def _extract_usage_metadata(response) -> None:
     usage = getattr(response, "usage_metadata", None)
     if not usage:
@@ -3392,60 +3647,22 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
     if not source_info.get("sufficient") and not use_url:
         raise ValueError("一次情報不足: source-native不十分かつURL Context利用不可")
 
-    current_tools = tools
-    for attempt in range(2):
-        kind = request_kind if attempt == 0 else "deep_dive_retry"
-        try:
-            # Grounded Deep Diveも上位モデル専用Safety Capを必ず消費する。
-            # 以前はこの経路だけconsume漏れがあり、実際の3.6 Flash呼び出し数と
-            # Deep Dive Model Requests Usedの表示が一致していなかった。
-            DEEP_DIVE_MODEL_BUDGET.consume(kind)
-            time.sleep(3)
-            _consume_gemini_request(kind)
-            config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
-            if current_tools:
-                config["tools"] = current_tools
-            logger.info(f"[GEMINI DEEP DIVE CALL] kind={kind} timeout={GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS}s")
-            with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
-                # SDK推奨のChat.send_messageを使用。1回ごとに使い捨てChatなので
-                # 会話状態は保持せず、従来の単発generateContentと意味は同じ。
-                chat = client.chats.create(model=SELECTED_DEEP_DIVE_MODEL, config=config)
-                response = chat.send_message(prompt)
-            _extract_usage_metadata(response)
-            meta = extract_grounding_metadata(
-                response,
-                source_info.get("primary_url", ""),
-                bool(source_info.get("sufficient")),
-                any("url_context" in t for t in current_tools),
-                any("google_search" in t for t in current_tools),
-            )
-            return response, meta
-        except GeminiBudgetExceededError:
-            raise
-        except GeminiCallTimeoutError as e:
-            logger.error(f"[GEMINI TIMEOUT] kind={kind} attempt={attempt + 1}/2: {e}")
-            if attempt == 0 and GEMINI_BUDGET.can_deep_dive_retry():
-                logger.warning("[GEMINI TIMEOUT RETRY] 1回だけtransport retryを実行します")
-                time.sleep(5)
-                continue
-            logger.error("[GEMINI TIMEOUT FINAL] 当該候補をFail-Closedにして次候補へ進みます")
-            raise
-        except APIError as e:
-            code = getattr(e, "code", None)
-            quota_type = classify_gemini_quota_error(e) if code == 429 else ""
-            if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
-                raise DailyQuotaExhaustedError(str(e)) from e
-            if attempt == 0 and GEMINI_BUDGET.can_deep_dive_retry():
-                # TPM時は巨大URL Contextを外し、十分なsource-nativeだけで救済。
-                if code == 429 and quota_type == "TPM" and source_info.get("sufficient"):
-                    current_tools = [t for t in current_tools if "url_context" not in t and "google_search" not in t]
-                    logger.warning("[DEEP DIVE TPM] Grounding toolsを外してsource-nativeのみで1回救済")
-                    time.sleep(_extract_retry_delay(e, 15))
-                    continue
-                if code in (429, 503):
-                    time.sleep(_extract_retry_delay(e, 15))
-                    continue
-            raise
+    config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
+    if tools:
+        config["tools"] = tools
+    logger.info("[GEMINI DEEP DIVE CALL] kind=%s timeout=%ss", request_kind, GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS)
+    response, selected_model = _call_deep_dive_pool(prompt, config, request_kind)
+    global SELECTED_DEEP_DIVE_MODEL
+    SELECTED_DEEP_DIVE_MODEL = selected_model
+    _extract_usage_metadata(response)
+    meta = extract_grounding_metadata(
+        response,
+        source_info.get("primary_url", ""),
+        bool(source_info.get("sufficient")),
+        any("url_context" in t for t in tools),
+        any("google_search" in t for t in tools),
+    )
+    return response, meta
 
 def _paid_area_length(note_draft: str, repo_name: str) -> int:
     """クレンジング後の有料エリアの文字数を返す（品質ゲートの判定基準）。"""
@@ -3591,9 +3808,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
                 eyecatch_filename = f"{_sanitize_filename(name)}.png"
                 eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
-                generate_eyecatch_image(parsed["title_text"], eyecatch_path, source)
-                logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
-                eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
+                generated_path = generate_eyecatch_image(parsed["title_text"], eyecatch_path, source, decision_score=parsed.get("score"))
+                if generated_path:
+                    logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
+                    eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
             except Exception as e:
                 logger.warning(f"[EYECATCH SKIP] {name}: {e}")
         else:
@@ -3633,13 +3851,18 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
     except DailyQuotaExhaustedError:
         raise
-    except GeminiCallTimeoutError as e:
-        logger.error(f"[DEEP DIVE TIMEOUT SKIP] {name}: {e}")
-        if persist_results and notion_page_id:
-            update_notion_quality_failed(notion_page_id, name, GROUNDING_FAILED, [primary_url] if primary_url else [])
+    except (GeminiCallTimeoutError, NoAvailableModelError, APIError) as e:
+        logger.error(f"[DEEP DIVE TRANSIENT FAILURE] {name}: {e}")
+        page_id = notion_page_id
+        if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+            page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
+        if persist_results and page_id:
+            update_notion_pending_retry(page_id, name, str(e))
         return None
     except GeminiBudgetExceededError as e:
         logger.warning(f"[GEMINI BUDGET STOP] {name}: {e}")
+        if persist_results and notion_page_id:
+            update_notion_pending_retry(notion_page_id, name, str(e))
         return None
     except Exception as e:
         logger.error(f"[DEEP DIVE FAILED] {name}: {e}")
@@ -3647,7 +3870,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         if persist_results and not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
         if persist_results and page_id:
-            update_notion_quality_failed(page_id, name, last_grounding.get("grounding_status", GROUNDING_FAILED), last_grounding.get("evidence_urls", []))
+            update_notion_pending_retry(page_id, name, str(e))
         return None
 
 
@@ -3727,6 +3950,142 @@ def screen_repo(repo) -> dict:
     return {"repo": repo, "score": 0, "reason": "Retry予算上限"}
 
 
+def round_robin_candidates(source_groups: dict[str, list[dict]], limit: int) -> list[dict]:
+    """Avoid source-order starvation when a cross-source cap is applied."""
+    result: list[dict] = []
+    queues = {source: list(items) for source, items in source_groups.items()}
+    while len(result) < limit and any(queues.values()):
+        for source in source_groups:
+            if len(result) >= limit:
+                break
+            if queues[source]:
+                result.append(queues[source].pop(0))
+    return result
+
+
+def _parse_batch_screening_response(text: str, expected_ids: set[str], include_diagnostic: bool = False):
+    diagnostic = ""
+    try:
+        payload = json.loads(text or "[]")
+    except json.JSONDecodeError as exc:
+        parsed, diagnostic = {}, f"json_decode_error:{exc.msg}"
+    else:
+        parsed = {}
+        if not isinstance(payload, list):
+            diagnostic = "response_not_list"
+        else:
+            for row in payload:
+                if not isinstance(row, dict):
+                    continue
+                candidate_id = str(row.get("id", ""))
+                if candidate_id not in expected_ids:
+                    continue
+                try:
+                    score = max(0, min(100, int(row.get("score", 0))))
+                except (TypeError, ValueError):
+                    continue
+                reason = str(row.get("reason", "取得失敗")).strip()[:120] or "取得失敗"
+                parsed[candidate_id] = {"score": score, "reason": reason}
+    missing = sorted(expected_ids - set(parsed))
+    return (parsed, missing, diagnostic) if include_diagnostic else (parsed, missing)
+
+
+def call_screening_provider(prompt: str, kind: str = "screening_batch"):
+    max_tokens = GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS if kind == "global_calibration" else SCREENING_BATCH_MAX_OUTPUT_TOKENS
+    response, model_name = _call_screening_pool(
+        prompt, {"response_mime_type": "application/json", "max_output_tokens": max_tokens}, kind,
+        GEMINI_RESERVED_DEEP_DIVE_REQUESTS,
+    )
+    global SELECTED_SCREENING_MODEL
+    SELECTED_SCREENING_MODEL = model_name
+    return response
+
+
+def _batch_screening_prompt(batch: list[dict]) -> str:
+    rows = []
+    for item in batch:
+        repo = item["repo"]
+        rows.append({"id": item["screening_id"], "source": repo.get("source", "GitHub"),
+                     "name": repo.get("nameWithOwner", ""), "description": repo.get("description", ""),
+                     "engagement": repo.get("stargazerCount", 0)})
+    return (
+        "以下の候補を、CTO/PM向け記事題材として0〜100点で公平に採点せよ。"
+        "出力は必ずJSON配列だけ。各要素は id, score, reason（40字以内）とする。\n"
+        + json.dumps(rows, ensure_ascii=False)
+    )
+
+
+def screen_batch(batch: list[dict], *_args, recovery: bool = False, **_kwargs):
+    if not batch:
+        return [], [], 0
+    if not GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS):
+        return [], list(batch), 0
+    try:
+        response = call_screening_provider(_batch_screening_prompt(batch), "screening_recovery" if recovery else "screening_batch")
+        parsed, missing, diagnostic = _parse_batch_screening_response(
+            getattr(response, "text", ""), {item["screening_id"] for item in batch}, include_diagnostic=True,
+        )
+        if diagnostic:
+            logger.warning("[BATCH SCREENING] %s", diagnostic)
+        completed = []
+        for item in batch:
+            row = parsed.get(item["screening_id"])
+            if row:
+                completed.append({"repo": item["repo"], "screening_id": item["screening_id"],
+                                  "raw_score": row["score"], "final_score": row["score"],
+                                  "score": row["score"], "reason": row["reason"],
+                                  "calibrated": False, "screening_status": "completed"})
+        unresolved = [item for item in batch if item["screening_id"] in set(missing)]
+        return completed, unresolved, 1
+    except (NoAvailableModelError, GeminiBudgetExceededError) as exc:
+        logger.warning("[BATCH SCREENING UNAVAILABLE] %s", exc)
+        return [], list(batch), 1
+    except APIError as exc:
+        if getattr(exc, "code", None) == 429 and _is_daily_quota_exhausted(exc):
+            raise DailyQuotaExhaustedError(str(exc)) from exc
+        logger.warning("[BATCH SCREENING FAILED] %s", exc)
+        return [], list(batch), 1
+
+
+def screen_candidates_in_batches(candidates: list[dict]) -> tuple[list[dict], int]:
+    completed: list[dict] = []
+    calls = 0
+    missing: list[dict] = []
+    for start in range(0, len(candidates), SCREENING_BATCH_SIZE):
+        rows, unresolved, used = screen_batch(candidates[start:start + SCREENING_BATCH_SIZE])
+        completed.extend(rows); missing.extend(unresolved); calls += used
+    # Only missing IDs are retried, in smaller batches.  Valid results are never
+    # discarded merely because a single model response was truncated.
+    if missing and GEMINI_BUDGET.can_screening_retry():
+        for start in range(0, len(missing), SCREENING_RECOVERY_BATCH_SIZE):
+            rows, unresolved, used = screen_batch(missing[start:start + SCREENING_RECOVERY_BATCH_SIZE], recovery=True)
+            completed.extend(rows); calls += used
+            for item in unresolved:
+                completed.append({"repo": item["repo"], "screening_id": item["screening_id"],
+                                  "raw_score": None, "final_score": None, "score": 0,
+                                  "reason": "Screening APIで判定できなかった", "calibrated": False,
+                                  "screening_status": "failed", "error_category": "quota_or_transport"})
+    else:
+        for item in missing:
+            completed.append({"repo": item["repo"], "screening_id": item["screening_id"],
+                              "raw_score": None, "final_score": None, "score": 0,
+                              "reason": "Screening APIで判定できなかった", "calibrated": False,
+                              "screening_status": "failed", "error_category": "quota_or_transport"})
+    return completed, calls
+
+
+def save_observed_history(items: list[dict], batch_calls: int, recovery_calls: int) -> str | None:
+    if not ENABLE_OBSERVED_HISTORY:
+        return None
+    os.makedirs(OBSERVED_HISTORY_DIR, exist_ok=True)
+    path = os.path.join(OBSERVED_HISTORY_DIR, f"screening_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json")
+    payload = {"generated_at": datetime.now(timezone.utc).isoformat(), "batch_calls": batch_calls,
+               "recovery_calls": recovery_calls, "items": items}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    return path
+
+
 
 # ==========================================
 # 滞留検知: N日間新記事が0件なら運用者に通知
@@ -3739,16 +4098,12 @@ def check_stale_content():
     注意: これは購読者への告知ではない。運用者が「そろそろ購読者への
     説明を検討すべきか」を判断するためのトリガーに過ぎない。
     """
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID:
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         logger.warning("Notion未設定のため滞留検知をスキップします。")
         return
 
-    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
+    url = _notion_query_url()
+    headers = _notion_headers()
     payload = {
         "sorts": [{"timestamp": "created_time", "direction": "descending"}],
         "page_size": 1,
@@ -3869,10 +4224,10 @@ def sync_public_approved_to_member_db() -> None:
     ``Internal Source URL`` when that property exists; matching is performed
     against the member DB's ``URL`` property, so the operation is idempotent.
     """
-    if not NOTION_API_KEY or not NOTION_DATABASE_ID or not NOTION_PUBLIC_DATABASE_ID:
-        raise ValueError("PUBLIC_DB_SYNC_MODEには NOTION_API_KEY / NOTION_DATABASE_ID / NOTION_PUBLIC_DATABASE_ID が必要です。")
-    headers = {"Authorization": f"Bearer {NOTION_API_KEY}", "Notion-Version": "2022-06-28", "Content-Type": "application/json"}
-    source_url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID) or not (NOTION_PUBLIC_DATA_SOURCE_ID or NOTION_PUBLIC_DATABASE_ID):
+        raise ValueError("PUBLIC_DB_SYNC_MODEには NOTION_API_KEY / NOTION_DATA_SOURCE_ID（またはDATABASE_ID） / NOTION_PUBLIC_DATA_SOURCE_ID（またはDATABASE_ID）が必要です。")
+    headers = _notion_headers()
+    source_url = _notion_query_url()
     payload = {"filter": {"property": PROP_REVIEW_STATUS, "status": {"equals": REVIEW_STATUS_PUBLIC_APPROVED}}, "page_size": 100}
     approved = []
     while True:
@@ -3882,7 +4237,7 @@ def sync_public_approved_to_member_db() -> None:
         payload["start_cursor"] = body.get("next_cursor")
     # Read the destination schema.  This deliberately lets the member DB grow
     # gradually: only properties that actually exist there are sent to Notion.
-    schema_res = requests.get(f"https://api.notion.com/v1/databases/{NOTION_PUBLIC_DATABASE_ID}", headers=headers, timeout=20)
+    schema_res = requests.get(_notion_schema_url(NOTION_PUBLIC_DATA_SOURCE_ID, NOTION_PUBLIC_DATABASE_ID), headers=headers, timeout=20)
     schema_res.raise_for_status()
     destination_properties = set(schema_res.json().get("properties", {}).keys())
     public_names = {PROP_NAME, PROP_URL, PROP_SOURCE, PROP_SCORE, PROP_DECISION, PROP_DECISION_REASON, PROP_WHAT, PROP_WHY_IMPORTANT, PROP_WHY_NOT_IMPORTANT, PROP_ACTION, PROP_PARADIGM_SHIFT, PROP_ALTERNATIVE_COMPARISON, PROP_MIGRATION_COST, PROP_WHO_SHOULD_USE, PROP_WHO_SHOULD_NOT_USE, PROP_FUTURE_SCENARIO, PROP_EVIDENCE_URLS, PROP_GROUNDING_STATUS, PROP_PUBLISHED_AT} & destination_properties
@@ -3893,14 +4248,14 @@ def sync_public_approved_to_member_db() -> None:
         if not record_url:
             logger.warning("[PUBLIC SYNC SKIP] URLなし: %s", page.get("id")); continue
         query = {"filter": {"property": PROP_URL, "url": {"equals": record_url}}, "page_size": 1}
-        found = requests.post(f"https://api.notion.com/v1/databases/{NOTION_PUBLIC_DATABASE_ID}/query", json=query, headers=headers, timeout=20)
+        found = requests.post(_notion_query_url(NOTION_PUBLIC_DATA_SOURCE_ID, NOTION_PUBLIC_DATABASE_ID), json=query, headers=headers, timeout=20)
         found.raise_for_status(); existing = found.json().get("results", [])
         copied = {k: v for k, v in props.items() if k in public_names}
         if existing:
             response = requests.patch(f"https://api.notion.com/v1/pages/{existing[0]['id']}", json={"properties": copied}, headers=headers, timeout=20)
             action = "UPDATED"
         else:
-            response = requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": NOTION_PUBLIC_DATABASE_ID}, "properties": copied}, headers=headers, timeout=20)
+            response = requests.post("https://api.notion.com/v1/pages", json={"parent": _notion_parent(NOTION_PUBLIC_DATA_SOURCE_ID, NOTION_PUBLIC_DATABASE_ID), "properties": copied}, headers=headers, timeout=20)
             action = "CREATED"
         response.raise_for_status(); logger.info("[PUBLIC SYNC %s] %s", action, record_url)
 
@@ -3926,16 +4281,34 @@ def main():
         }, ensure_ascii=False))
         # No DB, image, upload, or messaging call is reachable in this mode.
         return
+    initialize_runtime()
     if REGEN_TEST_MODE:
         run_regen_test_mode()
         return
+    retry_generated = 0
+    pending_items = get_pending_retry_items(limit=TOP_N_FOR_DEEP_DIVE)
+    if pending_items is None:
+        logger.error("[PENDING RETRY] Notion読み出し失敗のため、重複防止を優先して本日停止")
+        return
+    for item in pending_items:
+        logger.info("[PENDING RETRY] %s", item["repo"].get("nameWithOwner"))
+        try:
+            if generate_intelligence_report(item["repo"], item.get("notion_page_id"), item.get("screening_score"), item.get("screening_reason", "")):
+                retry_generated += 1
+        except DailyQuotaExhaustedError:
+            logger.warning("[PENDING RETRY STOP] Gemini日次クォータ到達")
+            return
     check_stale_content()
 
     github_items = fetch_github_trending()
     hackernews_items = fetch_hackernews_top()
     arxiv_items = fetch_arxiv_ai_ml()
     producthunt_items = fetch_producthunt_trending()
-    repos = github_items + hackernews_items + arxiv_items + producthunt_items
+    source_groups = {
+        "GitHub": github_items, "HackerNews": hackernews_items,
+        "ArXiv": arxiv_items, "ProductHunt": producthunt_items,
+    }
+    repos = round_robin_candidates(source_groups, MAX_SCREENING_CANDIDATES)
     logger.info(
         f"[MULTI-SOURCE] GitHub:{len(github_items)} HN:{len(hackernews_items)} "
         f"ArXiv:{len(arxiv_items)} PH:{len(producthunt_items)} 合計:{len(repos)}"
@@ -3971,20 +4344,25 @@ def main():
 
     if len(deduped_repos) > MAX_SCREENING_CANDIDATES:
         logger.warning(
-            f"[SCREENING CAP] {len(deduped_repos)}件→先頭{MAX_SCREENING_CANDIDATES}件。"
+            f"[SCREENING CAP] {len(deduped_repos)}件→公平抽出{MAX_SCREENING_CANDIDATES}件。"
             "無料枠保護のため残りは今回未審査。"
         )
-        deduped_repos = deduped_repos[:MAX_SCREENING_CANDIDATES]
+        deduped_repos = round_robin_candidates(
+            {source: [r for r in deduped_repos if r.get("source") == source] for source in source_groups},
+            MAX_SCREENING_CANDIDATES,
+        )
 
     logger.info(f">>> 軽量スクリーニング開始（最大 {len(deduped_repos)} 件）")
+    screening_candidates = [
+        {"screening_id": f"B{idx:04d}", "repo": repo}
+        for idx, repo in enumerate(deduped_repos, start=1)
+    ]
     screened = []
     daily_quota_stop = False
     try:
-        for repo in deduped_repos:
-            if not GEMINI_BUDGET.can_request(reserve=GEMINI_RESERVED_DEEP_DIVE_REQUESTS):
-                logger.warning("[SCREENING STOP] Deep Dive予約枠を守るためScreening終了")
-                break
-            screened.append(screen_repo(repo))
+        screened, screening_calls = screen_candidates_in_batches(screening_candidates)
+        if ENABLE_OBSERVED_HISTORY:
+            save_observed_history(screened, screening_calls, max(0, screening_calls - ((len(screening_candidates) + SCREENING_BATCH_SIZE - 1) // SCREENING_BATCH_SIZE)))
     except DailyQuotaExhaustedError:
         send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（Screening中）。部分結果はNotionへ保存します。")
         logger.error("日次クォータ到達。Gemini処理は止めるが、完了済みScreeningはStock保存する。")
@@ -4010,7 +4388,7 @@ def main():
         return
 
     # TOP_Nは『候補数』ではなく『最大成功記事数』。失敗時は4位・5位へBackfillする。
-    generated_count = 0
+    generated_count = retry_generated
     attempted = 0
     # Backfillは「記事候補の質」を下げない。Stock基準未満をAPIで無理に記事化しない。
     candidates = [x for x in screened if x.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE]
