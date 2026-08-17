@@ -48,6 +48,9 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
+NOTION_PUBLIC_DATABASE_ID = os.environ.get("NOTION_PUBLIC_DATABASE_ID")
+# This mode uses only the Notion API.  It never calls Gemini or source APIs.
+PUBLIC_DB_SYNC_MODE = os.environ.get("PUBLIC_DB_SYNC_MODE", "false").lower() in {"1", "true", "yes", "on"}
 
 # Product Huntのみ認証必須（Developer Token）。Hacker News / ArXivは認証不要。
 # 未設定でもパイプライン全体は止めず、Product Hunt収集のみをスキップする
@@ -60,7 +63,7 @@ PRODUCTHUNT_DEVELOPER_TOKEN = os.environ.get("PRODUCTHUNT_DEVELOPER_TOKEN")
 SYNTHETIC_REGRESSION_MODE = os.environ.get("SYNTHETIC_REGRESSION_MODE", "false").lower() in {"1", "true", "yes", "on"}
 SYNTHETIC_REGRESSION_TIER = os.environ.get("SYNTHETIC_REGRESSION_TIER", "smoke").lower()
 
-if not SYNTHETIC_REGRESSION_MODE and (not GEMINI_API_KEY or not GH_PAT):
+if not SYNTHETIC_REGRESSION_MODE and not PUBLIC_DB_SYNC_MODE and (not GEMINI_API_KEY or not GH_PAT):
     raise ValueError("エラー: GEMINI_API_KEY または GH_PAT が設定されていません。")
 
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
@@ -278,6 +281,8 @@ PROP_FUTURE_SCENARIO = "Future Scenario"
 PROP_ARTICLE_VALUE = "Article Value"
 PROP_GROUNDING_STATUS = "Grounding Status"
 PROP_EVIDENCE_URLS = "Evidence URLs"
+PROP_REVIEW_STATUS = "Review Status"
+REVIEW_STATUS_PUBLIC_APPROVED = "Public Approved"
 
 CONTENT_STATUS_STOCKED = "Stocked"
 CONTENT_STATUS_DEEP_DIVE = "Deep Dive"
@@ -3605,7 +3610,47 @@ def run_regen_test_mode():
 
 
 # ==========================================
+def sync_public_approved_to_member_db() -> None:
+    """Copy/update only human-approved internal records into the member DB.
+
+    The member DB must contain the same named public properties (except that
+    internal-only fields may be omitted).  The source page URL is stored in
+    ``Internal Source URL`` when that property exists; matching is performed
+    against the member DB's ``URL`` property, so the operation is idempotent.
+    """
+    if not NOTION_API_KEY or not NOTION_DATABASE_ID or not NOTION_PUBLIC_DATABASE_ID:
+        raise ValueError("PUBLIC_DB_SYNC_MODEには NOTION_API_KEY / NOTION_DATABASE_ID / NOTION_PUBLIC_DATABASE_ID が必要です。")
+    headers = {"Authorization": f"Bearer {NOTION_API_KEY}", "Notion-Version": "2022-06-28", "Content-Type": "application/json"}
+    source_url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    payload = {"filter": {"property": PROP_REVIEW_STATUS, "status": {"equals": REVIEW_STATUS_PUBLIC_APPROVED}}, "page_size": 100}
+    approved = []
+    while True:
+        res = requests.post(source_url, json=payload, headers=headers, timeout=20)
+        res.raise_for_status(); body = res.json(); approved.extend(body.get("results", []))
+        if not body.get("has_more"): break
+        payload["start_cursor"] = body.get("next_cursor")
+    public_names = {PROP_NAME, PROP_URL, PROP_SOURCE, PROP_SCORE, PROP_DECISION, PROP_DECISION_REASON, PROP_WHAT, PROP_WHY_IMPORTANT, PROP_WHY_NOT_IMPORTANT, PROP_ACTION, PROP_PARADIGM_SHIFT, PROP_ALTERNATIVE_COMPARISON, PROP_MIGRATION_COST, PROP_WHO_SHOULD_USE, PROP_WHO_SHOULD_NOT_USE, PROP_FUTURE_SCENARIO, PROP_EVIDENCE_URLS, PROP_GROUNDING_STATUS, PROP_PUBLISHED_AT}
+    for page in approved:
+        props = page.get("properties", {}); record_url = props.get(PROP_URL, {}).get("url")
+        if not record_url:
+            logger.warning("[PUBLIC SYNC SKIP] URLなし: %s", page.get("id")); continue
+        query = {"filter": {"property": PROP_URL, "url": {"equals": record_url}}, "page_size": 1}
+        found = requests.post(f"https://api.notion.com/v1/databases/{NOTION_PUBLIC_DATABASE_ID}/query", json=query, headers=headers, timeout=20)
+        found.raise_for_status(); existing = found.json().get("results", [])
+        copied = {k: v for k, v in props.items() if k in public_names}
+        if existing:
+            response = requests.patch(f"https://api.notion.com/v1/pages/{existing[0]['id']}", json={"properties": copied}, headers=headers, timeout=20)
+            action = "UPDATED"
+        else:
+            response = requests.post("https://api.notion.com/v1/pages", json={"parent": {"database_id": NOTION_PUBLIC_DATABASE_ID}, "properties": copied}, headers=headers, timeout=20)
+            action = "CREATED"
+        response.raise_for_status(); logger.info("[PUBLIC SYNC %s] %s", action, record_url)
+
 def main():
+    if PUBLIC_DB_SYNC_MODE:
+        sync_public_approved_to_member_db()
+        logger.info("[PUBLIC SYNC COMPLETE] Gemini APIは使用していません。")
+        return
     logger.info("==========================================")
     logger.info(" 完全無人インテリジェンス工場 パイプライン起動（Dual-Model Editorial Intelligence版）")
     logger.info("==========================================")
