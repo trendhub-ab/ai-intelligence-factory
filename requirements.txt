@@ -1,4 +1,4 @@
 google-genai>=1.56.0,<2.0.0
 Pillow>=11.3.0,<13.0.0
 requests>=2.32.4,<3.0.0
-pypdf
+pypdf>=5.0.0,<7.0.0
