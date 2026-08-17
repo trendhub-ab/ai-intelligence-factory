@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import unicodedata
 
 # Keep the synthetic suite isolated from all network, credential, DB, and
 # publish side effects. It uses the installed production validation module so
@@ -955,6 +956,8 @@ def normalize_markdown_for_note(text: str) -> str:
         return ""
 
     stripped = text.strip()
+    # 生成プロトコル用の制御文字がnote本文に残る事故を防ぐ。
+    stripped = re.sub(r"(?mi)^\s*={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}\s*$", "", stripped)
     # Geminiが応答全体を1個の```（コードフェンス）で誤って包んでしまう
     # ケースのみ、外側のフェンスだけを安全に剥がす（中身のMarkdownは保持）。
     fence_match = re.match(r"^```[a-zA-Z0-9]*\n(.*)\n```$", stripped, re.DOTALL)
@@ -980,6 +983,8 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
     なる（＝有料記事としての価値が消滅する）致命的な事故のため、検出せず出力せず
     Telegramへ即時アラートを送る。
     """
+    if ARTICLE_PUBLICATION_MODE == "free":
+        return PAID_AREA_PATTERN.sub("", note_draft).strip(), ""
     match = PAID_AREA_PATTERN.search(note_draft)
     if not match:
         logger.error(f"[PAID AREA MISSING] {repo_name} -> 有料エリア境界を検出できませんでした。")
@@ -1000,8 +1005,8 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
 # かつ内容としても正確な表記を維持する。
 SOURCE_RIGHTS_NOTE = {
     "HackerNews": (
-        "- **出典について**: 本記事はHacker Newsで話題となった公開情報"
-        "（記事タイトル・スコア等）を基に独自に分析・要約したものです。"
+        "- **発見経路**: Hacker News（記事タイトル・スコア等）。\n"
+        "- **出典について**: 本文の技術的な事実・数値は、下記の公式リンクおよび参考情報で確認できる範囲を独自に分析・要約したものです。"
         "リンク先記事本文の著作権は原著作者に帰属します。\n"
     ),
     "ArXiv": (
@@ -1014,17 +1019,34 @@ SOURCE_RIGHTS_NOTE = {
     ),
 }
 
+def _normalize_note_title(title: str) -> str:
+    """noteのタイトル欄・本文先頭で共用する、短い完結タイトルに整える。"""
+    title = re.sub(r"\s+", " ", (title or "").strip().lstrip("#").strip())
+    title = title.strip('「」『』"')
+    if title and not re.search(r"[。？]$", title):
+        title += "。"
+    return title
+
+
+ARTICLE_DISCLAIMER = (
+    "※本記事に含まれる見解・提案は筆者個人の意見であり、特定の効果・成果を保証するものではありません。"
+    "導入・利用にあたっては、一次情報と自社の条件を確認してください。\n"
+)
+
+
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
                                  spdx_id: str, source: str = "GitHub",
-                                 evidence_urls: list[str] | None = None) -> str:
+                                 evidence_urls: list[str] | None = None,
+                                 title_text: str = "", discovery_url: str = "") -> str:
     """note投稿用Markdownを組み立て、一次出典と最大3件のEvidence URLを末尾へ付与する。"""
     free_part, paid_part = split_free_paid(note_draft, repo_name)
     free_clean = normalize_markdown_for_note(free_part)
     paid_clean = normalize_markdown_for_note(paid_part)
 
-    manuscript = free_clean
+    display_title = _normalize_note_title(title_text)
+    manuscript = (f"# {display_title}\n\n" if display_title else "") + free_clean
     if paid_clean:
-        manuscript += NOTE_PAYWALL_LABEL + paid_clean
+        manuscript += "\n\n" + paid_clean
 
     if source == "GitHub":
         rights_line = (
@@ -1038,9 +1060,9 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     source_block = (
         f"{DIVIDER_LINE}"
         f"### 出典元\n"
-        f"- **ソース**: {source}\n"
-        f"- **名称**: {repo_name}\n"
-        f"- **公式リンク**: [{repo_name}]({repo_url})\n"
+        f"- **発見経路**: {source}\n"
+        f"- **原資料**: リンク先の原著記事・技術報告\n"
+        f"- **原資料URL**: [{repo_name}]({repo_url})\n"
         f"{rights_line}"
     )
 
@@ -1054,8 +1076,10 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
             break
     if unique_evidence:
         source_block += "\n### 参考情報\n" + "\n".join(f"- {u}" for u in unique_evidence) + "\n"
+    if discovery_url and discovery_url != repo_url:
+        source_block += f"- **関連情報**: 発見元の[{source}投稿]({discovery_url})\n"
 
-    manuscript += source_block
+    manuscript += source_block + "\n" + ARTICLE_DISCLAIMER
     return manuscript.strip()
 
 
@@ -2944,7 +2968,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 
     return f"""
 あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
-以下の一次情報から、500円の有料noteとして読者の判断を助ける記事と、Notion保存用の管理データを同時に作成してください。
+以下の一次情報から、無料公開のnote記事として読者の判断を助ける記事と、Notion保存用の管理データを同時に作成してください。
 
 【読者】CTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。
 【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。
@@ -2979,6 +3003,8 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・required_qualifiers は自然な日本語に言い換えてよいが、ARTICLEから絶対に削除しない。
 ・TOY_EXAMPLE相当の証拠は「原著の単純な例では」「著者が示したサンプルでは」等、例の範囲を必ず明示する。
 ・「保証」「完全」「必ず」「安全」等の強い表現は、Structured EvidenceまたはSource Contextが同等以上の保証を明示する場合だけ使用できる。
+・一次情報に限界・未解決課題・"promising"・条件付きの性能値がある場合、ARTICLEにも必ず残す。性能値はデータセット、解像度、反復回数、ハードウェア等の条件を削らない。
+・Hacker News等は発見経路である。実験値・仕様の根拠となったPrimary URL/PDFは「参考情報」に出るため、HNだけを根拠として数値を説明しない。フォローアップに言及する場合はEvidenceにあるURLだけを使う。
 
 【Freshness Resolution】
 {freshness_context or '公式フォローアップは未検出。元資料の将来表現を現在完了の事実に書き換えない。'}
@@ -3007,23 +3033,28 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 次に必ず専用行を出す。
 {SECTION_SPLIT_TOKEN}
 
-その次の1行を記事タイトルにする。#は付けない。
+その次の1行を記事タイトルにする。#は付けない。プロのコピーライターとして、技術の要点と読者の関心を結び、短く惹きつけるタイトルにすること。必ず「。」「？」のいずれかで終える。
 
 【ARTICLE】
-無料部分では以下4見出しだけを固定する。
+記事はすべて無料公開する。有料エリア、有料マーカー、無料部分／有料部分という区分を一切出力しない。
+タイトルの直後には、読者が「何についての記事か」「自分に関係があるか」をすぐ理解できる導入を置く。
+導入の見出しは次で固定する。
+## はじめに
+
+「はじめに」は必ず3段落で構成する。
+1段落目は「この記事は、{source}で発見した『{name}』のリンク先原資料を参照し、実務への意味を整理したものです。」を基礎に、発見経路と原資料を明示する。
+2段落目は、原資料の発表主体がSource Native Contextで確認できる場合だけ示し、「〜に関する一次情報に基づいています」と明記する。確認できない場合は主体を推測せず「リンク先原資料の一次情報に基づいています」と書く。
+3段落目は、原資料で確認できる技術的背景・従来課題・今回の手法を、固有の数値や条件を落とさずに簡潔に説明する。推論や実務的な評価はこの段落に混ぜない。
+
+その後、以下の見出しをこの順番で出す。
 ## この記事の結論
 ## なぜ今、この情報を見るべきなのか
 ## What｜これは何か
 ## ここまでの要点
-
-その後、必ず次の有料マーカーを1行で出す。
----有料エリア---
-
-有料部分では以下2見出しだけ必須。
 ### 私ならこう考える
 ### 結局、どうするべきか
 
-この2見出しの間に、テーマに最も合う中見出しを3〜6個、自分で自然な日本語で設計する。
+「ここまでの要点」と「私ならこう考える」の間に、テーマに最も合う中見出しを3〜6個、自分で自然な日本語で設計する。
 「なぜそう判断したのか」「本当に変わるのは何か」「誰が使うべきか」等を毎回固定で全部出さない。
 必要な論点だけを選び、文章の流れを優先する。
 
@@ -3041,7 +3072,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。
 ・根拠のない%・倍数・金額・期間・性能値を作らない。
 ・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。
-・有料部分は最低1200字。記事全体を箇条書き帳票にしない。
+・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。
 ・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
 """
 
@@ -3076,7 +3107,7 @@ def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
     # 場合の軽い保険（プロンプト側では明示的に禁止しているが、出力ゆれに備える）。
     title = lines[idx].strip().lstrip("#").strip().strip('"「」『』').strip()
     remaining = "\n".join(lines[idx + 1:]).strip()
-    return (title or "（タイトル生成失敗）"), remaining
+    return (_normalize_note_title(title) or "（タイトル生成失敗）"), remaining
 
 
 def _extract_markdown_section(markdown_text: str, heading_text: str) -> str:
@@ -3209,7 +3240,12 @@ _VAGUE_QUANTIFIED_PATTERNS = [
 
 
 def _normalized_evidence_text(text: str) -> str:
-    return re.sub(r"[\s,，]", "", (text or "").lower())
+    return re.sub(r"[\s,，]", "", unicodedata.normalize("NFKC", text or "").lower())
+
+
+def _normalized_named_fact(text: str) -> str:
+    """固有名詞の空白・ハイフン・PDF抽出時の合字揺れを吸収する。"""
+    return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKC", text or "").lower())
 
 
 def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_metadata: dict | None = None) -> list[str]:
@@ -3298,6 +3334,8 @@ def _find_final_wording_violations(draft: str, evidence_metadata: dict, freshnes
         failures.append("EVIDENCE_CLASS_GENERALIZED")
     if (freshness or {}).get("followup_found") and _STALE_ARTICLE_PATTERN.search(draft or ""):
         failures.append("STALE_STATUS_CLAIM")
+    if re.search(r"(?mi)^\s*={3,}\s*NOTE_DRAFT_(?:START|END)", draft or ""):
+        failures.append("INTERNAL_DRAFT_DELIMITER_LEAKED")
     return failures
 
 
@@ -3426,7 +3464,11 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
         for name in dict.fromkeys(names):
             if not _is_name_candidate(name):
                 continue
-            if _normalized_evidence_text(name) not in evidence:
+            # PDF抽出で ``DiffVG`` が ``Diff VG`` / ``DiﬀVG`` になるケースを
+            # 文字列一致だけで一次資料外と誤判定しない。
+            compact_name = _normalized_named_fact(name)
+            compact_evidence = _normalized_named_fact(source_context)
+            if _normalized_evidence_text(name) not in evidence and compact_name not in compact_evidence:
                 unsupported.append(name)
         if unsupported:
             failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
@@ -3439,8 +3481,6 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures: list[str] = []
     draft = parsed.get("note_draft", "")
     marker = PAID_AREA_PATTERN.search(draft)
-    if not marker:
-        failures.append("paid marker missing")
 
     required_fields = {
         "Decision Reason": "decision_reason_text",
@@ -3461,12 +3501,15 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         failures.append("Decision Score missing")
     if not (parsed.get("title_text") or "").strip() or parsed.get("title_text") == "（タイトル抽出失敗）":
         failures.append("title missing")
+    elif not re.search(r"[。？]$", parsed.get("title_text", "")):
+        failures.append("title must end with 。 or ？")
     for label, key in required_fields.items():
         if not _is_meaningful_field(str(parsed.get(key, ""))):
             failures.append(f"{label} missing")
 
     # ARTICLEは管理帳票から解放する。無料4見出し＋判定＋最終判断だけ固定。
     required_headings = {
+        "はじめに": r"^##\s*はじめに\s*$",
         "この記事の結論": r"^##\s*この記事の結論\s*$",
         "なぜ今、この情報を見るべきなのか": r"^##\s*なぜ今、この情報を見るべきなのか\s*$",
         "What｜これは何か": r"^##\s*What｜これは何か\s*$",
@@ -3478,7 +3521,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         if not re.search(heading, draft, re.MULTILINE):
             failures.append(f"required heading missing: {label}")
 
-    structural_missing = int(not marker) + sum(1 for heading in required_headings.values() if not re.search(heading, draft, re.MULTILINE))
+    structural_missing = sum(1 for heading in required_headings.values() if not re.search(heading, draft, re.MULTILINE))
     if structural_missing >= 2:
         failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
     if output_truncated:
@@ -3495,6 +3538,12 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_decision_code_leak(draft))
     failures.extend(_find_source_boundary_violations(draft, source_context))
 
+    # 深い一次資料に明示された限界を記事から丸ごと落とすことを禁止する。
+    limitation_present = re.search(r"limitation|limitations|issue|challenge|artifact|occlusion|noisy background|rough sketch|制約|限界|課題", source_context or "", re.I)
+    limitation_retained = re.search(r"制約|限界|課題|注意|未検証|アーティファクト|オクルージョン|ノイズ|粗いスケッチ|promising|可能性", draft, re.I)
+    if limitation_present and not limitation_retained:
+        failures.append("LIMITATION_DROPPED")
+
     conflict = _explicit_decision_conflict(parsed)
     if conflict:
         failures.append(conflict)
@@ -3505,20 +3554,15 @@ def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[st
     """読みやすさを診断するEditorial Gate。最終的な公開禁止理由にはしない。"""
     warnings: list[str] = []
     draft = parsed.get("note_draft", "")
-    marker = PAID_AREA_PATTERN.search(draft)
-    paid_part = draft[marker.end():].strip() if marker else ""
-    paid_len = len(normalize_markdown_for_note(paid_part)) if paid_part else 0
-    if paid_part and paid_len < MIN_PAID_AREA_LENGTH:
-        warnings.append(f"paid area {paid_len} chars < {MIN_PAID_AREA_LENGTH}")
-    if paid_part and _article_list_ratio(paid_part) > 0.55:
+    if _article_list_ratio(draft) > 0.55:
         warnings.append("article too list-like; rewrite as natural prose")
     if len(re.findall(r"(?:第一に|第二に|第三に)", draft)) >= 3:
         warnings.append("mechanical ordinal structure")
     if len(re.findall(r"(?:意味します|と言えます|となります)[。\n]", draft)) >= 5:
         warnings.append("repetitive AI-like sentence endings")
-    paid_headings = re.findall(r"^###\s+(.+)$", paid_part, re.MULTILINE)
-    if len(paid_headings) > 8:
-        warnings.append(f"too many paid headings: {len(paid_headings)}")
+    headings = re.findall(r"^#{2,3}\s+(.+)$", draft, re.MULTILINE)
+    if len(headings) > 12:
+        warnings.append(f"too many article headings: {len(headings)}")
     return (not warnings, list(dict.fromkeys(warnings)))
 
 
@@ -3800,6 +3844,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         evidence_urls = last_grounding.get("evidence_urls", [])
         clean_manuscript = build_clean_note_manuscript(
             parsed["note_draft"], name, url, spdx_id, source, evidence_urls=evidence_urls,
+            title_text=parsed.get("title_text", ""),
+            discovery_url=(repo.get("sourceDetails", {}) or {}).get("hn_url", ""),
         )
 
         eyecatch_url = ""
