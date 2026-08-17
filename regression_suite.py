@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """AI Intelligence Factory: synthetic/adversarial evidence regression suite.
 
-This runner is intentionally offline by default.  It never imports credentials,
-writes to Notion, publishes, or calls a model.  It validates the same evidence
-constraints the production writer must preserve, using multi-document local
-fixtures and deterministic Ground Truth.  A future model-backed adapter can
-write an ``article.md`` into a case directory; this runner will audit it.
+This runner is intentionally offline by default. It never writes to Notion,
+publishes, or calls a model. It uses the production module's credential-free
+validation adapter against multi-document local fixtures and deterministic
+Ground Truth, so its assertions cannot silently drift away from pipeline.py.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 SUITE_VERSION = "1.0.0"
-PIPELINE_VERSION = os.environ.get("PIPELINE_VERSION", "pipeline_production_persistent_final.py")
+PIPELINE_VERSION = os.environ.get("PIPELINE_VERSION", "pipeline.py")
 TODAY = date.fromisoformat(os.environ.get("REGRESSION_CURRENT_DATE", "2026-08-16"))
 CRITICAL = {"INV-002", "INV-004", "INV-007", "INV-014", "INV-015", "INV-017", "INV-019", "INV-020"}
 SEVERITY = {"critical": 20, "major": 10, "moderate": 4, "minor": 1}
@@ -139,24 +138,10 @@ def default_article(gt: dict) -> str:
     return "\n".join(pieces)
 
 def audit_article(gt: dict, article: str, evidence: str) -> list[Finding]:
-    findings: list[Finding] = []
-    lowered = article.lower()
-    def add(code: str, stage: str, message: str, severity: str = "major"):
-        findings.append(Finding(code, "critical" if code in CRITICAL else severity, stage, message))
-    for forbidden in gt.get("forbidden_claims", []):
-        if forbidden.lower() in lowered: add(gt.get("expected_flags", ["FORBIDDEN_CLAIM"])[0], "FINAL_WORDING", f"forbidden claim: {forbidden}")
-    for qualifier in gt.get("required_qualifiers", []):
-        # Accept source-aware Japanese aliases for the few explicit semantic concepts.
-        aliases = {"単純な例":["単純な例","原著の例","simple case"], "原著の例":["単純な例","原著の例","simple case"], "可能性":["可能性","may","could"], "著者は":["著者","author"]}
-        acceptable = aliases.get(qualifier, [qualifier])
-        if not any(x.lower() in lowered for x in acceptable): add("INV-006", "FINAL_WORDING", f"required qualifier dropped: {qualifier}")
-    truth = gt.get("numerical_truth", {})
-    for _, value in truth.items():
-        rendered = str(value)
-        if rendered not in article and ("runtime" in str(_) or "sample" in str(_)):
-            add("INV-020", "NUMERICAL_VALIDATION", f"number missing: {rendered}", "moderate")
-    if "hardwareは確認できない" in lowered and re.search(r"hardware:|RTX|H100", evidence, re.I): add("INV-004", "DEEP_EXTRACTION", "false absence claim", "critical")
-    return findings
+    # The suite is offline, but its assertions must be executed by the
+    # production module rather than a detached copy of the validator.
+    from pipeline import validate_synthetic_invariants
+    return [Finding(**row) for row in validate_synthetic_invariants(gt, article, evidence)]
 
 def run(fixtures: Path, tier: str, external_articles: Path | None = None) -> dict:
     selection = {"smoke":30,"core":150,"full":500}[tier]
