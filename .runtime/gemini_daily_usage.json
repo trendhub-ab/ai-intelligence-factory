@@ -1,9 +1,10 @@
 {
   "budget": 18,
   "by_kind": {
-    "ping": 2
+    "ping": 2,
+    "screening": 1
   },
   "quota_date": "2026-08-17",
-  "updated_at": "2026-08-17T09:48:07.052348+00:00",
-  "used": 2
+  "updated_at": "2026-08-17T09:48:29.591687+00:00",
+  "used": 3
 }
