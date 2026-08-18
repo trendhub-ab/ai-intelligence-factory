@@ -9,3 +9,7 @@ regression_suite/fixtures/
 observed_history/
 eyecatch_images/
 monthly_digests/
+review_candidates/
+quality_failures/
+gate_history/
+regression_cases_pending/
