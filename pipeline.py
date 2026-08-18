@@ -30,7 +30,7 @@ import logging
 import xml.etree.ElementTree as ET
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse, urldefrag
+from urllib.parse import urljoin, urlparse, urldefrag, parse_qsl, urlencode, urlunparse
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -150,15 +150,19 @@ GLOBAL_CALIBRATION_BATCH_SIZE = int(os.environ.get("GLOBAL_CALIBRATION_BATCH_SIZ
 GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS = int(os.environ.get("GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS", "4000"))
 ENABLE_OBSERVED_HISTORY = os.environ.get("ENABLE_OBSERVED_HISTORY", "true").lower() in {"1", "true", "yes", "on"}
 OBSERVED_HISTORY_DIR = os.environ.get("OBSERVED_HISTORY_DIR", "observed_history")
+OBSERVED_HISTORY_GITHUB_DIR = os.environ.get("OBSERVED_HISTORY_GITHUB_DIR", OBSERVED_HISTORY_DIR).strip("/")
 
 # 収集ソースが将来さらに増えてもRPD・RPMへの影響を一定範囲に抑え込むための
 # スクリーニング対象数の上限（安全弁）。これを超えた分は「収集はしたが
 # 審査対象からは除外」としてログに残す（黙って切り捨てない）。
-MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "40"))
-GITHUB_FETCH_LIMIT = int(os.environ.get("GITHUB_FETCH_LIMIT", "10"))
-HN_FETCH_LIMIT = int(os.environ.get("HN_FETCH_LIMIT", "10"))
-ARXIV_FETCH_LIMIT = int(os.environ.get("ARXIV_FETCH_LIMIT", "10"))
-PRODUCTHUNT_FETCH_LIMIT = int(os.environ.get("PRODUCTHUNT_FETCH_LIMIT", "10"))
+# daily.yml と同じ既定値にして、ローカル／手動実行でも本番と同一の
+# 収集・一括スクリーニング規模になるようにする。Geminiへの審査呼び出しは
+# SCREENING_BATCH_SIZE（既定25）単位なので、200件でも通常は8リクエスト。
+MAX_SCREENING_CANDIDATES = int(os.environ.get("MAX_SCREENING_CANDIDATES", "200"))
+GITHUB_FETCH_LIMIT = int(os.environ.get("GITHUB_FETCH_LIMIT", "50"))
+HN_FETCH_LIMIT = int(os.environ.get("HN_FETCH_LIMIT", "50"))
+ARXIV_FETCH_LIMIT = int(os.environ.get("ARXIV_FETCH_LIMIT", "50"))
+PRODUCTHUNT_FETCH_LIMIT = int(os.environ.get("PRODUCTHUNT_FETCH_LIMIT", "50"))
 
 # ---- Gemini無料枠のローカル安全予算 ----
 # Google側のFree Tier上限そのものではなく、このpipeline 1実行内で絶対に超えない
@@ -331,6 +335,7 @@ CONTENT_STATUS_QUALITY_FAILED = "Quality Failed"
 CONTENT_STATUS_PENDING_RETRY = "Pending Retry"
 ARTICLE_STATUS_NOT_PLANNED = "Not Planned"
 ARTICLE_STATUS_READY = "Ready"
+ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW = "Needs Editorial Review"
 VISIBILITY_SUBSCRIBER_ONLY = "Subscriber Only"
 VISIBILITY_PAID_ARTICLE = "Paid Article"
 VISIBILITY_FREE_ARTICLE = "Free Article"
@@ -1033,6 +1038,28 @@ ARTICLE_DISCLAIMER = (
     "導入・利用にあたっては、一次情報と自社の条件を確認してください。\n"
 )
 
+# 内部のDecision構造は固定したまま、noteで読者に見える見出しだけを記事ごとに変える。
+# 名前から安定して選ぶため、Quality Retryで同じ記事の構成が無意味に揺れない。
+ARTICLE_DISPLAY_VARIANTS = (
+    {"intro": "はじめに", "conclusion": "まず、結論から", "why": "なぜ今、目を向けるのか。",
+     "what": "何が起きている？", "key": "要点を整理すると。", "decision": "私なら今はこうする。", "final": "結局、どう見るか。",
+     "opening": "reader_question", "intro_paragraphs": 3, "tone": "cautious_interest"},
+    {"intro": "気になった背景", "conclusion": "先に判断を書くと。", "why": "地味だけれど、ここが大きい。",
+     "what": "中身をざっくり見る。", "key": "見落としたくないポイント。", "decision": "実務で使うなら、私はこうする。", "final": "いま取るべき距離感。",
+     "opening": "observation", "intro_paragraphs": 2, "tone": "practical_interest"},
+    {"intro": "数字の前に見ておきたいこと", "conclusion": "この話をどう受け止めるか。", "why": "実務への影響はどこに出る？",
+     "what": "仕組みは意外とシンプルです。", "key": "ここで判断が分かれる。", "decision": "私なら、まず小さく確かめる。", "final": "急がず、でも見逃さない。",
+     "opening": "fact", "intro_paragraphs": 4, "tone": "skeptical_but_interesting"},
+    {"intro": "現場で起きがちな課題から", "conclusion": "いま導入を急ぐべきか。", "why": "従来の前提と、どこが違うのか。",
+     "what": "まずは何をしている技術なのか。", "key": "導入前に見ておきたいところ。", "decision": "私ならこの範囲で試す。", "final": "最後に、判断をまとめる。",
+     "opening": "practical_problem", "intro_paragraphs": 3, "tone": "watch_and_wait"},
+)
+
+
+def _article_display_variant(name: str) -> dict:
+    digest = hashlib.sha256((name or "article").encode("utf-8")).digest()[0]
+    return ARTICLE_DISPLAY_VARIANTS[digest % len(ARTICLE_DISPLAY_VARIANTS)]
+
 
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
                                  spdx_id: str, source: str = "GitHub",
@@ -1603,6 +1630,25 @@ def update_notion_pending_retry(page_id: str, repo_name: str, reason: str = "") 
         logger.error("[NOTION PENDING RETRY ERROR] %s -> %s", repo_name, res.text)
     except Exception as exc:
         logger.error("[NOTION PENDING RETRY EXCEPTION] %s: %s", repo_name, exc)
+    return False
+
+
+def update_notion_needs_editorial_review(page_id: str, repo_name: str, reasons: list[str]) -> bool:
+    """事実誤認とは分離し、公開だけを止めてStock資産を編集レビューへ回す。"""
+    if not page_id or not NOTION_API_KEY:
+        return False
+    props = {
+        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW}},
+        PROP_SCREENING_REASON: {"rich_text": [{"text": {"content": "Publication review: " + ", ".join(reasons)[:1900]}}]},
+    }
+    try:
+        res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=_notion_headers(), timeout=10)
+        if res.status_code == 200:
+            logger.info("[NOTION EDITORIAL REVIEW] %s", repo_name)
+            return True
+        logger.error("[NOTION EDITORIAL REVIEW ERROR] %s -> %s", repo_name, res.text)
+    except Exception as exc:
+        logger.error("[NOTION EDITORIAL REVIEW EXCEPTION] %s: %s", repo_name, exc)
     return False
 
 
@@ -2944,11 +2990,15 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 ・一次情報を説明したあと、筆者自身の判断や迷いを自然に差し込む。
 ・「ここまでは確認できる。一方で、ここはまだ分からない。だから今は導入を急がず、動向を見たい」のように、留保を自然な日本語で書く。
 ・煽り語、営業コピー、読者を急かす命令口調を避ける。
-・無料部分は理解、有料部分は判断に重点を置くが、有料部分を管理項目の羅列にしない。
-・有料部分の中見出しはテーマに合わせて3〜6個を自分で設計する。固定テンプレの見出しを全部並べない。
+・架空の感情や体験を書かない。「私は驚いた」「使ってみた」「以前から気になっていた」は、根拠がない限り使わない。
+・導入・見出し・結論を定型句で埋めず、テーマに合う自然な言葉を選ぶ。
 ・箇条書きは要点整理や検証項目にだけ使う。本文の半分以上は段落で読ませる。
 ・具体例は一次情報または明示した推論の範囲だけで使う。架空の導入効果や期間を作らない。
-・最終段落は「私なら次に何をするか」を自然な一段落で締める。
+・「理由は3つあります」を根拠なしに使わない。項目数は事実上必要な数だけにする。
+・最終段落は筆者なら次に何をするかを、事実→実務上の意味→リスク→判断の順で自然に締める。
+・安全性のために記事全体を曖昧にしない。根拠のない主張だけを、その一文・その表現の範囲で修正する。
+・根拠に基づく観察、比較、筆者の実務判断は残す。具体的な検証・見送り・比較を、単なる「今後注視する」に置き換えない。
+・架空の感情や個人的体験は加えず、自然な好奇心と編集者としての視点で読ませる。
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
@@ -2959,10 +3009,11 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
     metric_note = ""
     if source == "ArXiv":
         metric_note = "※arXivにはStars/Votes相当の人気指標がないため、人気度を0とみなして価値判断しないこと。\n"
-    feedback = f"\n【前回出力への編集フィードバック】\n{quality_feedback}\n事実違反は必ず直す。文体指摘は自然な文章へ書き直す。\n" if quality_feedback else ""
+    feedback = f"\n【前回出力への編集フィードバック】\n{quality_feedback}\n事実違反は該当箇所だけを直す。全文を保守的に均さず、根拠付きの判断・具体的な行動・タイトルの引力は残す。具体的Actionを『注視する』だけに置き換えない。\n" if quality_feedback else ""
     context = _truncate_source_context(source_context)
     fact_rules = _source_fact_discipline(source)
     style_rules = _human_editorial_style_rules()
+    display = _article_display_variant(name)
     evidence_json = json.dumps(evidence_metadata or {}, ensure_ascii=False, indent=2)
     freshness_context = (freshness or {}).get("context", "")
 
@@ -3038,23 +3089,23 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 【ARTICLE】
 記事はすべて無料公開する。有料エリア、有料マーカー、無料部分／有料部分という区分を一切出力しない。
 タイトルの直後には、読者が「何についての記事か」「自分に関係があるか」をすぐ理解できる導入を置く。
-導入の見出しは次で固定する。
-## はじめに
+導入見出しは次を使う。
+## {display['intro']}
 
-「はじめに」は必ず3段落で構成する。
-1段落目は「この記事は、{source}で発見した『{name}』のリンク先原資料を参照し、実務への意味を整理したものです。」を基礎に、発見経路と原資料を明示する。
+導入は2〜4段落で自然に構成する（今回は目安として{display['intro_paragraphs']}段落）。導入型は「{display['opening']}」、記事全体の温度感は「{display['tone']}」を参考にする。ただし型や段落数を機械的に再現せず、毎回「結論から言うと」「今回紹介するのは」「この記事では」で始めない。
+1段落目は、読者の疑問・実務課題・数字や事実への留保・発見のいずれかから自然に入り、{source}で発見した『{name}』のリンク先原資料を参照して実務への意味を整理する記事であることを示す。
 2段落目は、原資料の発表主体がSource Native Contextで確認できる場合だけ示し、「〜に関する一次情報に基づいています」と明記する。確認できない場合は主体を推測せず「リンク先原資料の一次情報に基づいています」と書く。
 3段落目は、原資料で確認できる技術的背景・従来課題・今回の手法を、固有の数値や条件を落とさずに簡潔に説明する。推論や実務的な評価はこの段落に混ぜない。
 
 その後、以下の見出しをこの順番で出す。
-## この記事の結論
-## なぜ今、この情報を見るべきなのか
-## What｜これは何か
-## ここまでの要点
-### 私ならこう考える
-### 結局、どうするべきか
+## {display['conclusion']}
+## {display['why']}
+## {display['what']}
+## {display['key']}
+### {display['decision']}
+### {display['final']}
 
-「ここまでの要点」と「私ならこう考える」の間に、テーマに最も合う中見出しを3〜6個、自分で自然な日本語で設計する。
+「{display['key']}」と「{display['decision']}」の間に、テーマに最も合う中見出しを必要な数だけ自分で自然な日本語で設計する。
 「なぜそう判断したのか」「本当に変わるのは何か」「誰が使うべきか」等を毎回固定で全部出さない。
 必要な論点だけを選び、文章の流れを優先する。
 
@@ -3074,6 +3125,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。
 ・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。
 ・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
+・根拠に照らして限定検証、比較テスト、導入見送り、次版待ちなどの判断が妥当なら、理由と対象範囲を添えて明確に書く。安全性のためにすべてを「可能性がある」「注視したい」へ弱めない。
 """
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
@@ -3120,6 +3172,24 @@ def _extract_markdown_section(markdown_text: str, heading_text: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _extract_any_markdown_section(markdown_text: str, headings: list[str]) -> str:
+    for heading in headings:
+        section = _extract_markdown_section(markdown_text, heading)
+        if section:
+            return section
+    return ""
+
+
+def _display_heading_aliases(kind: str) -> list[str]:
+    legacy = {
+        "intro": ["はじめに"], "conclusion": ["この記事の結論"],
+        "why": ["なぜ今、この情報を見るべきなのか"], "what": ["What｜これは何か"],
+        "key": ["ここまでの要点"], "decision": ["私ならこう考える", "私の判定"],
+        "final": ["結局、どうするべきか"],
+    }
+    return legacy.get(kind, []) + [variant[kind] for variant in ARTICLE_DISPLAY_VARIANTS]
+
+
 def _normalize_decision(value: str) -> str:
     m = re.search(r"\b(NOW|TRY|WATCH|WAIT|AVOID)\b", (value or "").upper())
     return m.group(1) if m else ""
@@ -3150,20 +3220,20 @@ def _parse_gemini_response(full_text: str) -> dict:
         m = re.search(rf"・{re.escape(label)}[^:：\n]*[:：]\s*(.*?){NEXT_ITEM}", management_data, re.DOTALL)
         return m.group(1).strip() if m else fallback
 
-    # 本文見出しはPromptで厳密固定しているため、管理用ラベルより安定したFallbackになる。
+    # 管理用ラベルを正とし、本文側は可変見出しにも対応したFallbackにする。
     body_sections = {
-        "source_summary_text": _extract_markdown_section(note_draft, "What｜これは何か"),
-        "what_text": _extract_markdown_section(note_draft, "What｜これは何か"),
-        "why_important_text": _extract_markdown_section(note_draft, "なぜ今、この情報を見るべきなのか"),
-        "paradigm_shift_text": _extract_markdown_section(note_draft, "本当に変わるのは何か"),
-        "alternative_comparison_text": _extract_markdown_section(note_draft, "既存の選択肢と比べるとどうか"),
-        "migration_cost_text": _extract_markdown_section(note_draft, "導入コストとリスク"),
-        "decision_reason_text": _extract_markdown_section(note_draft, "なぜそう判断したのか"),
-        "why_not_important_text": _extract_markdown_section(note_draft, "誰は使わなくていいか"),
-        "who_should_use_text": _extract_markdown_section(note_draft, "誰が使うべきか"),
-        "who_should_not_use_text": _extract_markdown_section(note_draft, "誰は使わなくていいか"),
-        "action_text": _extract_markdown_section(note_draft, "私ならこう試す"),
-        "future_scenario_text": _extract_markdown_section(note_draft, "3〜12ヶ月で起こり得ること"),
+        "source_summary_text": _extract_any_markdown_section(note_draft, _display_heading_aliases("what")),
+        "what_text": _extract_any_markdown_section(note_draft, _display_heading_aliases("what")),
+        "why_important_text": _extract_any_markdown_section(note_draft, _display_heading_aliases("why")),
+        "paradigm_shift_text": _extract_any_markdown_section(note_draft, ["本当に変わるのは何か"]),
+        "alternative_comparison_text": _extract_any_markdown_section(note_draft, ["既存の選択肢と比べるとどうか"]),
+        "migration_cost_text": _extract_any_markdown_section(note_draft, ["導入コストとリスク", "導入前に見ておきたいところ。"]),
+        "decision_reason_text": _extract_any_markdown_section(note_draft, ["なぜそう判断したのか"]),
+        "why_not_important_text": _extract_any_markdown_section(note_draft, ["誰は使わなくていいか"]),
+        "who_should_use_text": _extract_any_markdown_section(note_draft, ["誰が使うべきか"]),
+        "who_should_not_use_text": _extract_any_markdown_section(note_draft, ["誰は使わなくていいか"]),
+        "action_text": _extract_any_markdown_section(note_draft, _display_heading_aliases("decision")),
+        "future_scenario_text": _extract_any_markdown_section(note_draft, ["3〜12ヶ月で起こり得ること"]),
     }
 
     article_raw = extract_field("Article Value", "0")
@@ -3171,7 +3241,7 @@ def _parse_gemini_response(full_text: str) -> dict:
     article_value = min(100, max(0, int(article_match.group(1)))) if article_match else 0
 
     decision_text = _normalize_decision(extract_field("Decision", ""))
-    decision_section = _extract_markdown_section(note_draft, "私ならこう考える") or _extract_markdown_section(note_draft, "私の判定")
+    decision_section = _extract_any_markdown_section(note_draft, _display_heading_aliases("decision"))
     if not decision_text:
         decision_text = _normalize_decision(decision_section)
     if score == 0:
@@ -3507,21 +3577,22 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         if not _is_meaningful_field(str(parsed.get(key, ""))):
             failures.append(f"{label} missing")
 
-    # ARTICLEは管理帳票から解放する。無料4見出し＋判定＋最終判断だけ固定。
+    # 内部構造は固定だが、noteに表示する見出しは記事ごとに可変とする。
     required_headings = {
-        "はじめに": r"^##\s*はじめに\s*$",
-        "この記事の結論": r"^##\s*この記事の結論\s*$",
-        "なぜ今、この情報を見るべきなのか": r"^##\s*なぜ今、この情報を見るべきなのか\s*$",
-        "What｜これは何か": r"^##\s*What｜これは何か\s*$",
-        "ここまでの要点": r"^##\s*ここまでの要点\s*$",
-        "私ならこう考える": r"^###\s*私ならこう考える\s*$",
-        "結局、どうするべきか": r"^###\s*結局、どうするべきか\s*$",
+        "導入": _display_heading_aliases("intro"), "結論": _display_heading_aliases("conclusion"),
+        "重要性": _display_heading_aliases("why"), "概要": _display_heading_aliases("what"),
+        "要点": _display_heading_aliases("key"), "筆者判断": _display_heading_aliases("decision"),
+        "最終判断": _display_heading_aliases("final"),
     }
     for label, heading in required_headings.items():
-        if not re.search(heading, draft, re.MULTILINE):
+        pattern = r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in heading) + r")\s*$"
+        if not re.search(pattern, draft, re.MULTILINE):
             failures.append(f"required heading missing: {label}")
 
-    structural_missing = sum(1 for heading in required_headings.values() if not re.search(heading, draft, re.MULTILINE))
+    structural_missing = sum(
+        1 for headings in required_headings.values()
+        if not re.search(r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in headings) + r")\s*$", draft, re.MULTILINE)
+    )
     if structural_missing >= 2:
         failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
     if output_truncated:
@@ -3551,7 +3622,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
 
 
 def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[str]]:
-    """読みやすさを診断するEditorial Gate。最終的な公開禁止理由にはしない。"""
+    """Editorial Gate: 読みやすさ・機械的構成・AI的な文体傾向を診断する。"""
     warnings: list[str] = []
     draft = parsed.get("note_draft", "")
     if _article_list_ratio(draft) > 0.55:
@@ -3563,7 +3634,140 @@ def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[st
     headings = re.findall(r"^#{2,3}\s+(.+)$", draft, re.MULTILINE)
     if len(headings) > 12:
         warnings.append(f"too many article headings: {len(headings)}")
+    warnings.extend(_find_humanization_violations(draft))
     return (not warnings, list(dict.fromkeys(warnings)))
+
+
+def validate_publication_readiness_gate(parsed: dict, source_context: str = "", source_info: dict | None = None) -> tuple[str, list[str]]:
+    """Publication Readiness Gate: 公開完成度を横断確認し、根拠・判断の弱さはREVIEWへ分離する。"""
+    article = parsed.get("note_draft", "")
+    title = parsed.get("title_text", "")
+    action = parsed.get("action_text", "") + "\n" + _extract_any_markdown_section(article, _display_heading_aliases("decision"))
+    score = int(parsed.get("score") or 0)
+    context = source_context or ""
+    issues: list[str] = []
+    strong = r"(?:革命的|圧倒的|ゲームチェンジャー|世界初|世界最速|必ず|完全に|従来技術を終わらせ|開発を変える)"
+    weak_evidence = re.search(r"(?:abstract|要旨|experimental|prototype|proof of concept|demo|予備的|本番未検証|研究環境)", context, re.I)
+    if re.search(strong, title) and weak_evidence:
+        issues.append("headline_overclaim")
+    intro = article[:1200]
+    if re.search(strong, intro) and weak_evidence:
+        issues.append("intro_overclaim")
+    if weak_evidence and re.search(r"(?:本番(?:環境)?(?:へ|に)?(?:導入|投入)|全面(?:導入|移行)|既存(?:環境|システム)を置き換)", action):
+        issues.append("research_to_production_leap")
+    if score and score <= 69 and re.search(r"(?:今すぐ|直ちに|全面(?:導入|移行)|必ず導入)", article):
+        issues.append("score_narrative_mismatch")
+    if score >= 90 and re.search(r"(?:見る必要はない|検討不要|関心を持つ必要はない)", article):
+        issues.append("score_narrative_mismatch")
+    if re.search(r"(?:world'?s fastest|世界最速|revolutionary|革命的)", context, re.I) and re.search(r"(?:世界最速|革命的)", article) and not re.search(r"(?:開発元|原資料|説明)は", article):
+        issues.append("marketing_claim_adoption")
+    if re.search(r"(?:memory|メモリ).{0,30}(?:\+?80%|増)", context, re.I) and not re.search(r"(?:memory|メモリ|消費量|80%)", article, re.I):
+        issues.append("negative_evidence_omission")
+    if source_info and not source_info.get("sufficient"):
+        issues.append("primary_evidence_insufficient")
+    return ("REVIEW" if issues else "PASS", list(dict.fromkeys(issues)))
+
+
+def _classify_article_claims(parsed: dict) -> dict[str, int]:
+    """公開安全性と筆者判断を混同しないための、軽量な文種カウント。
+
+    これは事実性を証明する分類器ではない。Publication修正で FACT 以外の
+    観察・推論・判断まで消していないかを、LLM追加呼び出しなしで監視する。
+    """
+    article = (parsed.get("note_draft", "") or "")
+    action = (parsed.get("action_text", "") or "")
+    return {
+        "fact": len(re.findall(r"(?:原資料|論文|著者|公式|公開|実験|データ|仕様|確認でき)", article)),
+        "interpretation": len(re.findall(r"(?:と考えられる|と見える|私の推論|意味する|示唆)", article)),
+        "observation": len(re.findall(r"(?:一方で|ただ|現時点では|注意|限界|課題|不明)", article)),
+        "decision": len(re.findall(r"(?:私なら|試(?:す|したい)|検証(?:する|したい)|比較(?:する|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急が)", article + "\n" + action)),
+    }
+
+
+def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
+    """Human Appeal Gate: Humanizationとは別に、読ませる力と判断の具体性を診断する。
+
+    WEAK は即時の事実エラーではない。具体的判断の消失など重要な場合だけ、
+    最終リトライ後に Needs Editorial Review へ送る。
+    """
+    article = parsed.get("note_draft", "") or ""
+    title = parsed.get("title_text", "") or ""
+    action = parsed.get("action_text", "") or ""
+    decision_section = _extract_any_markdown_section(article, _display_heading_aliases("decision"))
+    decision_text = f"{action}\n{decision_section}"
+    issues: list[str] = []
+
+    # 「○○について。」のような説明だけの題は、過剰な安全化でタイトルの役割を
+    # 失った可能性が高い。ただし短い固有名詞タイトルを一律に落とさない。
+    if re.fullmatch(r".{1,45}(?:について|の紹介|を解説)[。？]", title.strip()):
+        issues.append("headline_flattened")
+
+    hedge_pattern = r"(?:可能性(?:がある|があります)|考えられ(?:る|ます)|注視(?:したい|する|すべき)|様子を見(?:る|たい)|かもしれない)"
+    hedge_count = len(re.findall(hedge_pattern, article))
+    concrete_action = re.search(r"(?:限定|小さく|検証環境|PoC|比較(?:テスト|検証)|試(?:す|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急がない)", decision_text, re.I)
+    generic_monitor = re.search(r"(?:注視|様子を見)", decision_text)
+    if generic_monitor and not concrete_action:
+        issues.append("action_collapsed_to_generic_monitoring")
+    if hedge_count >= 5 and not concrete_action:
+        issues.append("over_hedging_without_decision")
+
+    claims = _classify_article_claims(parsed)
+    if not concrete_action and claims["decision"] == 0:
+        issues.append("decision_voice_missing")
+    if claims["observation"] == 0 and claims["interpretation"] == 0:
+        issues.append("no_editorial_observation")
+    if len(re.findall(r"(?:ただ、ここは注意が必要です。|一方で、注意が必要です。)", article)) >= 2:
+        issues.append("repeated_caveat_phrase")
+
+    # 読み手への入口が説明文だけにならないかを軽く確認する。疑問符は必須にしない。
+    intro = _extract_any_markdown_section(article, _display_heading_aliases("intro"))
+    if intro and not re.search(r"(?:なぜ|どこ|何が|課題|現場|原資料|一見|数字|変わ)", intro[:500]):
+        issues.append("opening_hook_weak")
+
+    issues = list(dict.fromkeys(issues))
+    return ("WEAK" if issues else "ACCEPTABLE", issues)
+
+
+# Backward compatibility aliases. 正式な実装・Pipeline本体は *_gate 名を使用する。
+validate_publication_readiness = validate_publication_readiness_gate
+validate_human_appeal = validate_human_appeal_gate
+
+
+def human_appeal_materially_degraded(before: dict, after: dict) -> bool:
+    """再編集で具体的な筆者判断が一般論へ潰れた場合だけ劣化とみなす。"""
+    before_claims = _classify_article_claims(before)
+    after_claims = _classify_article_claims(after)
+    before_action = (before.get("action_text", "") or "") + "\n" + _extract_any_markdown_section(before.get("note_draft", ""), _display_heading_aliases("decision"))
+    after_action = (after.get("action_text", "") or "") + "\n" + _extract_any_markdown_section(after.get("note_draft", ""), _display_heading_aliases("decision"))
+    concrete = r"(?:限定|小さく|検証環境|PoC|比較(?:テスト|検証)|試(?:す|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急がない)"
+    return bool(
+        re.search(concrete, before_action, re.I)
+        and not re.search(concrete, after_action, re.I)
+        and re.search(r"(?:注視|様子を見)", after_action)
+        or (before_claims["decision"] > 0 and after_claims["decision"] == 0)
+    )
+
+
+def _find_humanization_violations(draft: str) -> list[str]:
+    """事実検証とは分離した、表現だけを再編集するための軽量Gate。"""
+    warnings: list[str] = []
+    text = draft or ""
+    fixed_openings = ("結論から言うと", "今回紹介する", "この記事では", "〜について解説します")
+    if sum(text.count(phrase) for phrase in fixed_openings) >= 2:
+        warnings.append("repetitive fixed introduction")
+    if re.search(r"(?:私は驚きました|正直ワクワクしました|使ってみ(?:て)?|以前から気になっていました)", text):
+        warnings.append("unsupported personal experience")
+    if not re.search(r"(?:ただ|一見すると|現時点では|注意(?:が必要|したい)|評価が分かれ|信用しすぎ)", text):
+        warnings.append("missing observation or reservation")
+    if len(re.findall(r"理由は(?:3|三)つ", text)) >= 1:
+        warnings.append("mechanical three-reasons phrasing")
+    if len(re.findall(r"[？?]", text)) > 5:
+        warnings.append("too many reader questions")
+    sentences = [s.strip() for s in re.split(r"(?<=[。！？])", text) if s.strip()]
+    endings = ["ます" if re.search(r"ます[。！？]?$", s) else "です" if re.search(r"です[。！？]?$", s) else "other" for s in sentences]
+    if len(endings) >= 8 and max(endings.count(kind) for kind in set(endings)) / len(endings) > 0.88:
+        warnings.append("monotonous sentence endings")
+    return warnings
 
 
 def validate_paid_article(parsed: dict, repo_name: str, source_context: str = "", source: str = "") -> tuple[bool, list[str]]:
@@ -3767,6 +3971,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     last_grounding = {"grounding_status": source_info.get("method", GROUNDING_METADATA_ONLY), "evidence_urls": [primary_url] if primary_url else []}
     quality_gate_passed = False
     final_quality_failures: list[str] = []
+    appeal_before_reedit: dict | None = None
 
     try:
         parsed = None
@@ -3806,13 +4011,49 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 freshness=freshness, output_truncated=output_truncated,
             )
             editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
-            failures = fact_failures + editorial_warnings
+            publication_state, publication_issues = validate_publication_readiness_gate(
+                parsed, source_info.get("context", ""), source_info,
+            )
+            human_appeal, human_appeal_issues = validate_human_appeal_gate(parsed)
+            logger.info("[PUBLICATION READINESS GATE] %s: %s", name, publication_state)
+            logger.info("[HUMAN APPEAL GATE] %s: %s", name, human_appeal)
+            if appeal_before_reedit is None:
+                appeal_before_reedit = parsed.copy()
+            elif human_appeal_materially_degraded(appeal_before_reedit, parsed):
+                human_appeal_issues.append("human_appeal_materially_degraded_after_reedit")
+                human_appeal = "WEAK"
+            # Human AppealはHumanizationとは別の品質軸。安全なだけで無難な記事を
+            # 自動Readyにしないが、軽微な文体警告をFact failureへ昇格させない。
+            appeal_review_required = any(issue in {
+                "action_collapsed_to_generic_monitoring", "decision_voice_missing",
+                "headline_flattened", "human_appeal_materially_degraded_after_reedit",
+            } for issue in human_appeal_issues)
+            failures = fact_failures + editorial_warnings + publication_issues + human_appeal_issues
             final_quality_failures = failures
-            if fact_ok and editorial_ok:
+            if fact_ok and editorial_ok and publication_state == "PASS" and human_appeal == "ACCEPTABLE":
                 quality_gate_passed = True
                 break
+            if (publication_state == "REVIEW" or appeal_review_required) and attempt >= MAX_QUALITY_RETRIES:
+                review_issues = publication_issues + human_appeal_issues
+                logger.warning("[PUBLICATION READINESS GATE] Needs Editorial Review: %s: %s", name, ", ".join(review_issues))
+                if not persist_results:
+                    break
+                page_id = notion_page_id
+                if not page_id and screening_score is not None and screening_score >= NOTION_SAVE_THRESHOLD_SCORE:
+                    page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
+                if page_id:
+                    update_notion_needs_editorial_review(page_id, name, review_issues)
+                send_telegram_alert(f"ℹ️ Needs Editorial Review: {name}\n" + " / ".join(review_issues)[:1200])
+                return None
+            # Human Appealの軽微な警告（入口の弱さ等）は記録して公開を妨げない。
+            # 具体的Decisionの消失だけは上のReviewルートで人手確認に回す。
+            if fact_ok and editorial_ok and publication_state == "PASS" and attempt >= MAX_QUALITY_RETRIES:
+                logger.warning(f"[HUMAN APPEAL GATE] warning: {name}: {', '.join(human_appeal_issues)}")
+                quality_gate_passed = True
+                final_quality_failures = human_appeal_issues
+                break
             # Editorialだけの問題は1回だけ書き直しを促す。2回目はFactが通っていれば公開可。
-            if fact_ok and not editorial_ok and attempt >= MAX_QUALITY_RETRIES:
+            if fact_ok and publication_state == "PASS" and not editorial_ok and attempt >= MAX_QUALITY_RETRIES:
                 logger.warning(f"[EDITORIAL GATE WARN] {name}: {', '.join(editorial_warnings)}")
                 quality_gate_passed = True
                 final_quality_failures = editorial_warnings
@@ -3835,7 +4076,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 quality_feedback = "ARTICLE_STRUCTURE_INCOMPLETE: 記事が途中で終了している。前稿の文章を継ぎ足さず、指定フォーマットを最初から最後まで完全に再生成すること。"
             else:
                 quality_feedback = "前回出力の不足項目: " + "; ".join(failures)
-            gate_name = "FACT+EDITORIAL" if fact_failures and editorial_warnings else ("FACT" if fact_failures else "EDITORIAL")
+            gate_name = "FACT+EDITORIAL" if fact_failures and editorial_warnings else ("FACT" if fact_failures else "EDITORIAL/HUMAN_APPEAL")
             logger.warning(f"[QUALITY RETRY:{gate_name}] {name}: {quality_feedback}")
 
         if not parsed:
@@ -4020,18 +4261,30 @@ def _parse_batch_screening_response(text: str, expected_ids: set[str], include_d
         if not isinstance(payload, list):
             diagnostic = "response_not_list"
         else:
+            invalid = []
             for row in payload:
                 if not isinstance(row, dict):
+                    invalid.append("row_not_object")
                     continue
                 candidate_id = str(row.get("id", ""))
                 if candidate_id not in expected_ids:
+                    invalid.append(f"unknown_id:{candidate_id}")
+                    continue
+                if candidate_id in parsed:
+                    invalid.append(f"duplicate_id:{candidate_id}")
                     continue
                 try:
-                    score = max(0, min(100, int(row.get("score", 0))))
+                    score = int(row.get("score"))
                 except (TypeError, ValueError):
+                    invalid.append(f"invalid_score:{candidate_id}")
+                    continue
+                if not 0 <= score <= 100:
+                    invalid.append(f"score_out_of_range:{candidate_id}")
                     continue
                 reason = str(row.get("reason", "取得失敗")).strip()[:120] or "取得失敗"
                 parsed[candidate_id] = {"score": score, "reason": reason}
+            if invalid:
+                diagnostic = ";".join(invalid)
     missing = sorted(expected_ids - set(parsed))
     return (parsed, missing, diagnostic) if include_diagnostic else (parsed, missing)
 
@@ -4053,10 +4306,33 @@ def _batch_screening_prompt(batch: list[dict]) -> str:
         repo = item["repo"]
         rows.append({"id": item["screening_id"], "source": repo.get("source", "GitHub"),
                      "name": repo.get("nameWithOwner", ""), "description": repo.get("description", ""),
-                     "engagement": repo.get("stargazerCount", 0)})
+                     "engagement": repo.get("stargazerCount", 0), "published_at": repo.get("publishedAt"),
+                     "url": repo.get("url", "")})
     return (
         "以下の候補を、CTO/PM向け記事題材として0〜100点で公平に採点せよ。"
+        "技術的新規性、実務インパクト、導入・意思決定への影響、緊急性、"
+        "市場波及性、情報源の信頼性を簡潔に総合評価すること。"
+        "Sourceが異なる候補間でEngagementの絶対値を直接比較してはならない。"
+        "この段階ではURL本文・README・論文全文を推測して使わない。"
         "出力は必ずJSON配列だけ。各要素は id, score, reason（40字以内）とする。\n"
+        + json.dumps(rows, ensure_ascii=False)
+    )
+
+
+def _calibration_prompt(batch: list[dict]) -> str:
+    rows = []
+    for item in batch:
+        repo = item["repo"]
+        rows.append({"id": item["screening_id"], "source": repo.get("source", ""),
+                     "name": repo.get("nameWithOwner", ""), "description": repo.get("description", ""),
+                     "raw_score": item.get("raw_score"), "engagement": repo.get("stargazerCount", 0),
+                     "published_at": repo.get("publishedAt"), "url": repo.get("url", "")})
+    return (
+        "以下は一次Batch審査で55点以上だった候補である。候補群を横断比較し、"
+        "Notion Stock候補としての一貫した最終スコアを返せ。"
+        "技術的新規性、実務インパクト、意思決定への影響、緊急性、情報源の信頼性を評価し、"
+        "異Source間でEngagementの絶対値を直接比較してはならない。"
+        "出力はJSON配列のみ。各要素は id, score, reason（40字以内）。\n"
         + json.dumps(rows, ensure_ascii=False)
     )
 
@@ -4098,12 +4374,16 @@ def screen_candidates_in_batches(candidates: list[dict]) -> tuple[list[dict], in
     calls = 0
     missing: list[dict] = []
     for start in range(0, len(candidates), SCREENING_BATCH_SIZE):
+        if start and SCREENING_BATCH_PACING_SECONDS > 0:
+            time.sleep(SCREENING_BATCH_PACING_SECONDS)
         rows, unresolved, used = screen_batch(candidates[start:start + SCREENING_BATCH_SIZE])
         completed.extend(rows); missing.extend(unresolved); calls += used
     # Only missing IDs are retried, in smaller batches.  Valid results are never
     # discarded merely because a single model response was truncated.
     if missing and GEMINI_BUDGET.can_screening_retry():
         for start in range(0, len(missing), SCREENING_RECOVERY_BATCH_SIZE):
+            if start and SCREENING_BATCH_PACING_SECONDS > 0:
+                time.sleep(SCREENING_BATCH_PACING_SECONDS)
             rows, unresolved, used = screen_batch(missing[start:start + SCREENING_RECOVERY_BATCH_SIZE], recovery=True)
             completed.extend(rows); calls += used
             for item in unresolved:
@@ -4120,15 +4400,92 @@ def screen_candidates_in_batches(candidates: list[dict]) -> tuple[list[dict], in
     return completed, calls
 
 
-def save_observed_history(items: list[dict], batch_calls: int, recovery_calls: int) -> str | None:
+def calibrate_candidates(items: list[dict]) -> tuple[list[dict], int]:
+    """Raw 55点以上だけを再採点し、Batch間の評価基準差をFinal Scoreへ反映する。"""
+    if not ENABLE_GLOBAL_CALIBRATION:
+        return items, 0
+    survivors = [item for item in items if item.get("screening_status") == "completed"
+                 and (item.get("raw_score") or 0) >= GLOBAL_CALIBRATION_MIN_RAW_SCORE]
+    calls = 0
+    for start in range(0, len(survivors), GLOBAL_CALIBRATION_BATCH_SIZE):
+        if start and SCREENING_BATCH_PACING_SECONDS > 0:
+            time.sleep(SCREENING_BATCH_PACING_SECONDS)
+        batch = survivors[start:start + GLOBAL_CALIBRATION_BATCH_SIZE]
+        try:
+            response = call_screening_provider(_calibration_prompt(batch), "global_calibration")
+            parsed, missing, diagnostic = _parse_batch_screening_response(
+                getattr(response, "text", ""), {item["screening_id"] for item in batch}, include_diagnostic=True,
+            )
+            calls += 1
+            if diagnostic or missing:
+                logger.warning("[CALIBRATION PARTIAL] diagnostic=%s missing=%s", diagnostic, len(missing))
+            for item in batch:
+                row = parsed.get(item["screening_id"])
+                if row:
+                    item["final_score"] = row["score"]
+                    item["score"] = row["score"]
+                    item["reason"] = row["reason"]
+                    item["calibrated"] = True
+        except DailyQuotaExhaustedError:
+            raise
+        except Exception as exc:
+            # Calibrationは補正層。失敗しても有効なRaw Scoreを失わず処理を継続する。
+            calls += 1
+            logger.warning("[CALIBRATION FAILED] Raw Scoreを維持: %s", exc)
+    logger.info("[CALIBRATION] raw_survivors=%s calibrated=%s calls=%s", len(survivors),
+                sum(1 for item in survivors if item.get("calibrated")), calls)
+    return items, calls
+
+
+def upload_observed_history_to_github(local_path: str, dest_filename: str) -> str | None:
+    """Observed履歴は補助資産としてGitHubへ保存し、失敗しても本処理を止めない。"""
+    if not EYECATCH_GITHUB_REPO:
+        logger.warning("[OBSERVED UPLOAD SKIP] GITHUB_REPOSITORY が未設定です。")
+        return None
+    dest_path = f"{OBSERVED_HISTORY_GITHUB_DIR}/{dest_filename}"
+    api_url = f"https://api.github.com/repos/{EYECATCH_GITHUB_REPO}/contents/{dest_path}"
+    try:
+        with open(local_path, "rb") as f:
+            content_b64 = base64.b64encode(f.read()).decode("utf-8")
+        headers = {"Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json"}
+        current = requests.get(api_url, headers=headers, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=15)
+        payload = {"message": f"chore: save observed history {dest_filename}", "content": content_b64,
+                   "branch": EYECATCH_GITHUB_BRANCH}
+        if current.status_code == 200:
+            payload["sha"] = current.json().get("sha")
+        put_res = requests.put(api_url, headers=headers, json=payload, timeout=30)
+        if put_res.status_code not in (200, 201):
+            logger.error("[OBSERVED UPLOAD FAILED] %s: %s", dest_filename, put_res.text[:300])
+            send_telegram_alert(f"⚠️ Observed履歴のGitHub保存に失敗しました: {dest_filename}")
+            return None
+        return f"https://raw.githubusercontent.com/{EYECATCH_GITHUB_REPO}/{EYECATCH_GITHUB_BRANCH}/{dest_path}"
+    except Exception as exc:
+        logger.error("[OBSERVED UPLOAD EXCEPTION] %s", exc)
+        send_telegram_alert(f"⚠️ Observed履歴のGitHub保存で例外が発生しました: {dest_filename}")
+        return None
+
+
+def save_observed_history(items: list[dict], batch_calls: int, recovery_calls: int,
+                          calibration_calls: int = 0, total_collected: int | None = None) -> str | None:
     if not ENABLE_OBSERVED_HISTORY:
         return None
     os.makedirs(OBSERVED_HISTORY_DIR, exist_ok=True)
     path = os.path.join(OBSERVED_HISTORY_DIR, f"screening_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json")
-    payload = {"generated_at": datetime.now(timezone.utc).isoformat(), "batch_calls": batch_calls,
-               "recovery_calls": recovery_calls, "items": items}
+    observed_items = [{"id": item.get("screening_id"), "source": item["repo"].get("source"),
+                       "name": item["repo"].get("nameWithOwner"), "url": item["repo"].get("url"),
+                       "published_at": item["repo"].get("publishedAt"), "engagement": item["repo"].get("stargazerCount", 0),
+                       "raw_screening_score": item.get("raw_score"), "final_screening_score": item.get("final_score"),
+                       "screening_reason": item.get("reason"), "calibrated": item.get("calibrated", False),
+                       "screening_status": item.get("screening_status"), "error_category": item.get("error_category"),
+                       "stocked": (item.get("score") or 0) >= NOTION_SAVE_THRESHOLD_SCORE} for item in items]
+    payload = {"run_id": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+               "analyzed_at": datetime.now(timezone.utc).isoformat(), "total_collected": total_collected,
+               "total_screened": len(items), "stock_threshold": NOTION_SAVE_THRESHOLD_SCORE,
+               "batch_calls": batch_calls, "recovery_calls": recovery_calls, "calibration_calls": calibration_calls,
+               "items": observed_items}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+    upload_observed_history_to_github(path, os.path.basename(path))
     return path
 
 
@@ -4376,11 +4733,19 @@ def main():
         return
 
     deduped_repos = []
+    local_keys = set()
     for repo in safe_repos:
-        repo_url = (repo.get("url") or "").rstrip("/")
-        if repo_url in existing_urls:
+        parsed_url = urlparse(repo.get("url") or "")
+        filtered_query = [(k, v) for k, v in parse_qsl(parsed_url.query, keep_blank_values=True)
+                          if not k.lower().startswith(("utm_", "ref", "source", "fbclid", "gclid"))]
+        repo_url = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path.rstrip("/"), "",
+                               urlencode(filtered_query, doseq=True), ""))
+        title_key = _normalize_title_for_match(repo.get("nameWithOwner", ""))
+        identity_key = repo_url or f"{repo.get('source', '')}:{title_key}"
+        if repo_url in existing_urls or identity_key in local_keys:
             logger.info(f" [SKIP: DUPLICATE] {repo.get('nameWithOwner')}")
             continue
+        local_keys.add(identity_key)
         deduped_repos.append(repo)
     if not deduped_repos:
         logger.info("本日は新規候補が0件でした。")
@@ -4404,11 +4769,19 @@ def main():
         for idx, repo in enumerate(deduped_repos, start=1)
     ]
     screened = []
+    screening_calls = 0
+    calibration_calls = 0
     daily_quota_stop = False
     try:
         screened, screening_calls = screen_candidates_in_batches(screening_candidates)
+        screened, calibration_calls = calibrate_candidates(screened)
         if ENABLE_OBSERVED_HISTORY:
-            save_observed_history(screened, screening_calls, max(0, screening_calls - ((len(screening_candidates) + SCREENING_BATCH_SIZE - 1) // SCREENING_BATCH_SIZE)))
+            observed_path = save_observed_history(
+                screened, screening_calls,
+                max(0, screening_calls - ((len(screening_candidates) + SCREENING_BATCH_SIZE - 1) // SCREENING_BATCH_SIZE)),
+                calibration_calls=calibration_calls, total_collected=len(repos),
+            )
+            logger.info("[OBSERVED] saved=%s path=%s", len(screened), observed_path)
     except DailyQuotaExhaustedError:
         send_telegram_alert("⚠️ Gemini APIの日次クォータに到達しました（Screening中）。部分結果はNotionへ保存します。")
         logger.error("日次クォータ到達。Gemini処理は止めるが、完了済みScreeningはStock保存する。")
@@ -4425,6 +4798,7 @@ def main():
         else:
             item["notion_page_id"] = None
 
+    logger.info(f"[STOCK] final_score>={NOTION_SAVE_THRESHOLD_SCORE} = {stocked_count}")
     logger.info(f">>> Screening {len(screened)}件 / Stock {stocked_count}件")
 
     if daily_quota_stop:
@@ -4475,7 +4849,8 @@ def main():
 
     if generated_count > 0 or stocked_count > 0:
         msg = (
-            f"✅ 【AI note事業】Screening {len(screened)}件、Stock {stocked_count}件、"
+            f"✅ 【AI note事業】Collected {len(repos)} / Screened {len(screened)}件、"
+            f"Screening API Calls {screening_calls}、Calibration {calibration_calls}回、Stock {stocked_count}件、"
             f"Deep Dive Ready {generated_count}件（試行{attempted}件）。\n"
             f"{GEMINI_BUDGET.summary()}\n{PERSISTENT_GEMINI_COUNTER.summary()}\nhttps://notion.so/{NOTION_DATABASE_ID}"
         )
