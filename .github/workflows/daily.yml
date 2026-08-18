@@ -83,3 +83,17 @@ jobs:
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+
+      # 未公開記事・Gate履歴はRepositoryへcommitせず、アクセス制限されたArtifactとしてのみ保持する。
+      - name: Gate履歴・内部レビュー候補を保存
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: private-gate-review-${{ github.run_number }}
+          path: |
+            review_candidates/
+            quality_failures/
+            gate_history/
+            regression_cases_pending/
+          if-no-files-found: warn
+          retention-days: 14
