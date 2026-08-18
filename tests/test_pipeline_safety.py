@@ -362,6 +362,76 @@ class TestPipelineSafety(unittest.TestCase):
         findings = pipeline.validate_synthetic_invariants(truth, "hardwareは確認できない", "Hardware: RTX 4090")
         self.assertEqual("INV-004", findings[0]["code"])
 
+    def test_gate_funnel_counts_and_ready_zero_summary(self):
+        funnel = pipeline.DeepDiveGateFunnel()
+        review = pipeline.build_candidate_gate_record(
+            1, "example", "https://example.com", 82, "completed",
+            pipeline.GATE_STATUS_PASS, pipeline.GATE_STATUS_PASS,
+            pipeline.GATE_STATUS_REVIEW, pipeline.GATE_STATUS_NOT_RUN,
+            [{"reason_code": pipeline.REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH, "message": "action too strong"}],
+            pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW, True,
+        )
+        funnel.record(review)
+        self.assertEqual(1, funnel.counters["deep_dive_candidates_attempted"])
+        self.assertEqual(1, funnel.counters["publication_readiness_review"])
+        self.assertEqual(0, funnel.counters["ready_count"])
+        self.assertIn("READY ARTICLES: 0", funnel.render_ready_zero_summary())
+        self.assertIn("Publication Readiness Review", funnel.render_text())
+
+    def test_reason_codes_preserve_publication_and_human_appeal_causes(self):
+        publication = pipeline.map_gate_reasons("publication", ["headline_overclaim", "research_to_production_leap"])
+        appeal = pipeline.map_gate_reasons("human_appeal", ["action_collapsed_to_generic_monitoring"])
+        self.assertEqual(pipeline.REASON_CODE_PUB_HEADLINE_OVERCLAIM, publication[0]["reason_code"])
+        self.assertEqual(pipeline.REASON_CODE_PUB_UNSUPPORTED_CONCLUSION, publication[1]["reason_code"])
+        self.assertEqual(pipeline.REASON_CODE_APPEAL_ACTION_COLLAPSE, appeal[0]["reason_code"])
+
+    def test_review_and_quality_failure_are_saved_only_to_private_directories(self):
+        repo = {"nameWithOwner": "owner/repo", "url": "https://example.com/repo"}
+        parsed = {"note_draft": "## はじめに\n本文", "title_text": "題名。", "score": 80,
+                  "action_text": "小さく検証する。", "why_not_important_text": "条件未確認"}
+        gate = pipeline.build_candidate_gate_record(
+            1, repo["nameWithOwner"], repo["url"], 80, "completed",
+            pipeline.GATE_STATUS_FAIL, pipeline.GATE_STATUS_NOT_RUN,
+            pipeline.GATE_STATUS_NOT_RUN, pipeline.GATE_STATUS_NOT_RUN,
+            [{"reason_code": pipeline.REASON_CODE_FACT_UNSUPPORTED_CLAIM, "message": "unsupported"}],
+            pipeline.CONTENT_STATUS_QUALITY_FAILED,
+        )
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(pipeline, "REVIEW_CANDIDATES_DIR", os.path.join(directory, "review")), \
+             patch.object(pipeline, "QUALITY_FAILURES_DIR", os.path.join(directory, "failed")), \
+             patch.object(pipeline, "update_notion_quality_failed") as notion_update:
+            review_path = pipeline.save_needs_editorial_review_article(repo, parsed, gate, {"primary_url": repo["url"]}, "review")
+            failure_path = pipeline.save_quality_failed_article(repo, parsed, gate, {"primary_url": repo["url"]}, "failed")
+            self.assertTrue(Path(review_path).exists())
+            self.assertTrue(Path(review_path).with_suffix(".md").exists())
+            self.assertTrue(Path(failure_path).exists())
+            self.assertIn("本文", json.loads(Path(failure_path).read_text(encoding="utf-8"))["article"])
+            notion_update.assert_not_called()
+
+    def test_external_review_markdown_has_rubric_without_telegram_body(self):
+        record = {
+            "pipeline_status": pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+            "failed_gate": "Publication Readiness",
+            "decision_score": 82,
+            "article": "記事本文",
+            "gate_history": {"reason_codes": [{"reason_code": "PUB_ACTION_EVIDENCE_MISMATCH", "message": "action"}]},
+        }
+        markdown = pipeline.build_external_review_markdown(record)
+        self.assertIn("# Review Candidate", markdown)
+        self.assertIn("External Review Rubric", markdown)
+        self.assertIn("記事本文", markdown)
+        self.assertNotIn("Telegram", markdown)
+
+    def test_false_positive_negative_regression_cases_are_registered_without_gate_change(self):
+        fp = pipeline.build_regression_case("fp_001", "publication_readiness", "REVIEW", "A", "PUB_ACTION_EVIDENCE_MISMATCH", "article")
+        fn = pipeline.build_regression_case("fn_001", "fact", "Ready", "D", "FACT_UNSUPPORTED_CLAIM", "article")
+        self.assertEqual("PASS", fp["expected_result"])
+        self.assertEqual("critical", fn["severity"])
+        with tempfile.TemporaryDirectory() as directory, patch.object(pipeline, "REGRESSION_CASES_DIR", directory):
+            path = pipeline.register_regression_case(fn)
+            self.assertTrue(Path(path).exists())
+            self.assertEqual("real_false_negative", json.loads(Path(path).read_text(encoding="utf-8"))["source_type"])
+
 
 if __name__ == "__main__":
     unittest.main()
