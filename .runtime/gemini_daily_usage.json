@@ -2,27 +2,17 @@
   "key_scopes": {
     "bb4642cecaf854c8": {
       "models": {
-        "gemini-3.5-flash-lite": {
-          "budget": 450,
-          "by_kind": {
-            "global_calibration": 2,
-            "screening_batch": 5
-          },
-          "exhausted": false,
-          "used": 7
-        },
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 5,
-            "quality_retry": 5
+            "deep_dive": 1
           },
           "exhausted": false,
-          "used": 10
+          "used": 1
         }
       }
     }
   },
-  "quota_date": "2026-08-18",
-  "updated_at": "2026-08-18T10:24:43.980943+00:00"
+  "quota_date": "2026-08-19",
+  "updated_at": "2026-08-19T09:44:14.263173+00:00"
 }
