@@ -559,8 +559,41 @@ class TestPipelineSafety(unittest.TestCase):
             requested_action_risk_tier="HIGH",
         )
         result = pipeline.assess_evidence_sufficiency(info)
-        self.assertEqual(pipeline.EVIDENCE_INSUFFICIENT, result["state"])
-        self.assertIn("high_risk_action_unsupported", result["blocking_missing"])
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+        self.assertEqual("HIGH", result["action_risk_downgraded_from"])
+        self.assertEqual("LOW", result["action_risk_tier"])
+
+    def test_medium_and_high_action_downgrade_to_low_after_supplement_is_exhausted(self):
+        context = "Author: Lab A. Method: routing algorithm. Benchmark: 30 ms on the stated dataset."
+        for tier in ("MEDIUM", "HIGH"):
+            info = self._evidence_info(
+                context, requested_action_risk_tier=tier,
+                evidence_supplement_attempted=True,
+            )
+            result = pipeline.assess_evidence_sufficiency(info)
+            self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+            self.assertEqual("LOW", result["action_risk_tier"])
+            self.assertEqual(tier, result["action_risk_downgraded_from"])
+            self.assertTrue(result["action_supported_at_current_tier"])
+
+    def test_medium_action_requests_supplement_before_downgrade_when_candidate_exists(self):
+        info = self._evidence_info(
+            "Author: Lab A. Method: routing algorithm. Benchmark: 30 ms on the stated dataset.",
+            requested_action_risk_tier="MEDIUM",
+            supplement_candidates=[{"url": "https://example.com/docs", "role": "PRIMARY_SOURCE"}],
+        )
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_SUPPLEMENT_REQUIRED, result["state"])
+
+    def test_real_article_regression_cases_are_registered_and_not_allowed_to_over_reject(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(pipeline, "REGRESSION_CASES_DIR", directory):
+            paths = pipeline.register_real_article_regression_cases()
+        self.assertEqual(3, len(paths))
+        titles = {row["title"] for row in pipeline.REAL_ARTICLE_REGRESSION_CASES}
+        self.assertEqual({"Model Hypnosis", "Topological Attribution Distance (TAD)", "When Agents Coordinate"}, titles)
+        for case in pipeline.REAL_ARTICLE_REGRESSION_CASES:
+            self.assertTrue(pipeline.real_article_regression_allows(case["case_id"], pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW))
+            self.assertFalse(pipeline.real_article_regression_allows(case["case_id"], pipeline.CONTENT_STATUS_QUALITY_FAILED))
 
     def test_evidence_reason_codes_are_specific(self):
         rows = pipeline.evidence_reason_rows({"blocking_missing": ["primary_source_resolved", "high_risk_action_unsupported"]})
@@ -597,6 +630,50 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertEqual(0, funnel.counters["new_deep_dive_candidates_attempted"])
         self.assertEqual(1, funnel.counters["retry_attempted"])
         self.assertEqual(1, funnel.counters["generation_api_completed"])
+
+    def test_numeric_and_actor_gaps_do_not_block_when_article_does_not_assert_them(self):
+        info = self._evidence_info("Method: routing algorithm. Limitation: benchmark scope only.")
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+        self.assertFalse(result["actor_attribution_allowed"])
+        self.assertTrue(result["numeric_claims_allowed"])
+
+    def test_action_risk_tier_classifies_actual_article_action(self):
+        self.assertEqual("LOW", pipeline.classify_action_risk_tier("まずは限定PoCと比較テストを行う。"))
+        self.assertEqual("MEDIUM", pipeline.classify_action_risk_tier("限定ユーザーへ導入する。"))
+        self.assertEqual("HIGH", pipeline.classify_action_risk_tier("全社へ全面導入し、本番移行する。"))
+
+    def test_source_context_adds_official_metadata_url_as_supplement_candidate(self):
+        repo = {
+            "source": "ProductHunt", "nameWithOwner": "product", "url": "https://www.producthunt.com/posts/product",
+            "primaryUrl": "https://www.producthunt.com/posts/product",
+            "sourceDetails": {"official_url": "https://vendor.example/docs"},
+        }
+        with patch.object(pipeline, "fetch_webpage_context", return_value=""), \
+             patch.object(pipeline, "_fetch_html_document", return_value=("", [], repo["primaryUrl"])):
+            info = pipeline.prepare_source_context(repo)
+        self.assertEqual("https://vendor.example/docs", info["supplement_candidates"][0]["url"])
+
+    def test_arxiv_transient_integrity_failure_is_pending_retry_not_quality_failed(self):
+        repo = {"source": "ArXiv", "nameWithOwner": "paper", "url": "https://arxiv.org/abs/2601.12345"}
+        funnel = pipeline.reset_deep_dive_gate_funnel()
+        with patch.object(pipeline, "_verify_arxiv_source_integrity", return_value=(False, "TRANSIENT: arXiv再照会に失敗", repo)), \
+             patch.object(pipeline, "save_quality_failed_article") as quality_failed:
+            result = pipeline.generate_intelligence_report(repo, persist_results=True, candidate_rank=1)
+        self.assertIsNone(result)
+        quality_failed.assert_not_called()
+        self.assertEqual(pipeline.CONTENT_STATUS_PENDING_RETRY, funnel.records[0]["final_status"])
+
+    def test_arxiv_title_mismatch_remains_fail_closed(self):
+        repo = {"source": "ArXiv", "nameWithOwner": "paper", "url": "https://arxiv.org/abs/2601.12345"}
+        funnel = pipeline.reset_deep_dive_gate_funnel()
+        with patch.object(pipeline, "_verify_arxiv_source_integrity", return_value=(False, "arXiv title mismatch", repo)), \
+             patch.object(pipeline, "save_quality_failed_article") as quality_failed, \
+             patch.object(pipeline, "send_telegram_alert"):
+            result = pipeline.generate_intelligence_report(repo, persist_results=True, candidate_rank=1)
+        self.assertIsNone(result)
+        quality_failed.assert_called_once()
+        self.assertEqual(pipeline.CONTENT_STATUS_QUALITY_FAILED, funnel.records[0]["final_status"])
 
 
 if __name__ == "__main__":
