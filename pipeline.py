@@ -1837,7 +1837,7 @@ class _ReadableHTMLTextParser(HTMLParser):
 
 class _ResearchLinkParser(HTMLParser):
     """本文とは別に、研究ページの一次資料リンクだけを安全に収集する。"""
-    _KEYWORDS = re.compile(r"\b(pdf|paper|publication|full\s*paper|download|proceedings|arxiv|doi|supplement|appendix|technical\s*report)\b", re.I)
+    _KEYWORDS = re.compile(r"\b(pdf|paper|publication|full\s*paper|download|proceedings|arxiv|doi|supplement|appendix|technical\s*report|docs?|documentation|github|gitlab|repository|source\s*code)\b", re.I)
 
     def __init__(self, base_url: str):
         super().__init__(convert_charrefs=True)
@@ -1934,6 +1934,22 @@ def _fetch_html_document(url: str) -> tuple[str, list[tuple[str, str]], str]:
     return _truncate_source_context(unescape(text)), [], final_url or url
 
 
+def _resolve_producthunt_official_url(url: str) -> str:
+    """Product Huntの/r/リダイレクトを一度だけ追い、公式一次情報URLを返す。"""
+    parsed = urlparse(url or "")
+    if "producthunt.com" not in parsed.netloc.lower() or not parsed.path.startswith("/r/"):
+        return ""
+    _, _, final_url = _http_get_limited(
+        url, ("text/html", "application/xhtml+xml", "text/plain"), WEB_CONTEXT_MAX_BYTES,
+    )
+    final = final_url or ""
+    final_host = urlparse(final).netloc.lower()
+    if final.startswith(("http://", "https://")) and "producthunt.com" not in final_host:
+        logger.info("[PH OFFICIAL URL] %s -> %s", url, final)
+        return final
+    return ""
+
+
 def fetch_pdf_context(url: str) -> str:
     """PDFから本文を抽出する。PyPDFが無い実行環境ではFail Closed用に空を返す。"""
     raw, content_type, _ = _http_get_limited(url, ("application/pdf", "application/octet-stream"), DEEP_SOURCE_MAX_PDF_BYTES)
@@ -1998,7 +2014,16 @@ def prepare_source_context(repo: dict) -> dict:
     desc = repo.get("description", "")
     primary_url = repo.get("primaryUrl") or repo.get("url") or ""
     stored = repo.get("sourceContext") or ""
-    details = repo.get("sourceDetails") or {}
+    details = dict(repo.get("sourceDetails") or {})
+
+    # Pending Retry等でProduct Huntの/r/URLだけが復元された場合にも、公式製品サイトを
+    # 一度だけ解決してEvidence Supplementの起点にする。
+    if source == "ProductHunt":
+        redirect_url = details.get("producthunt_url") or primary_url
+        resolved_official_url = _resolve_producthunt_official_url(redirect_url)
+        if resolved_official_url:
+            details["official_url"] = resolved_official_url
+            primary_url = resolved_official_url
 
     pieces = [f"[DISCOVERY_SOURCE]\nSource: {source}\nName: {name}\nDescription: {desc}"]
     substantive_parts: list[str] = []
@@ -2637,12 +2662,17 @@ def fetch_producthunt_trending(limit: int = PRODUCTHUNT_FETCH_LIMIT):
                 tagline = (node.get("tagline") or "").strip()
                 description = (node.get("description") or "").strip()
                 source_context = "\n".join(x for x in [f"Tagline: {tagline}" if tagline else "", f"Description: {description}" if description else ""] if x)
-                primary = node.get("website") or node.get("url") or ""
+                producthunt_url = node.get("url") or ""
+                primary = node.get("website") or _resolve_producthunt_official_url(producthunt_url) or producthunt_url
                 items.append(normalize_item(
                     source="ProductHunt", name=node.get("name"), url=primary,
                     description=tagline or description, engagement=node.get("votesCount", 0),
                     published_at=node.get("createdAt"), source_context=source_context,
-                    primary_url=primary, source_details={"producthunt_url": node.get("url") or ""},
+                    primary_url=primary, source_details={
+                        "producthunt_url": producthunt_url,
+                        "official_url": primary if primary and "producthunt.com" not in urlparse(primary).netloc.lower() else "",
+                        "website": node.get("website") or "",
+                    },
                 ))
             except Exception as e:
                 logger.warning(f"[PH ITEM SKIP] {e}")
@@ -4222,7 +4252,25 @@ class DeepDiveGateFunnel:
 
     def render_ready_zero_summary(self) -> str:
         c = self.counters
+        reason_counts: dict[str, int] = {}
+        for record in self.records:
+            for row in record.get("reason_codes", []):
+                code = row.get("reason_code", "")
+                if code:
+                    reason_counts[code] = reason_counts.get(code, 0) + 1
+        # Evidence不足は個別Reason Codeを優先表示する。PRIMARY_EVIDENCE_INSUFFICIENT
+        # だけに丸めず、technical claims不足等の実際の停止理由を運用者へ出す。
+        evidence_reason_codes = {
+            REASON_CODE_PRIMARY_SOURCE_UNRESOLVED,
+            REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT,
+            REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT,
+            REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED,
+            REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
+            REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT,
+        }
         causes = [
+            (code, count) for code, count in reason_counts.items() if code in evidence_reason_codes
+        ] + [
             ("Publication Readiness Review", c["publication_readiness_review"]),
             ("Publication Readiness Failed", c["publication_readiness_failed"]),
             ("Fact Gate Failed", c["fact_gate_failed"]),
@@ -4231,7 +4279,7 @@ class DeepDiveGateFunnel:
             ("Human Appeal Review", c["human_appeal_review"]),
             ("Pending Retry", c["pending_retry"]),
         ]
-        ranked = [(label, count) for label, count in causes if count]
+        ranked = sorted(((label, count) for label, count in causes if count), key=lambda item: (-item[1], item[0]))
         lines = ["READY ARTICLES: 0", "", "Top Failure Causes:"]
         lines += [f"{idx}. {label}: {count}" for idx, (label, count) in enumerate(ranked[:3], start=1)] or ["None recorded"]
         lines += ["", f"Review Candidates Saved: {sum(1 for row in self.records if row.get('final_status') == ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW)}"]
