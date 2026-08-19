@@ -517,6 +517,87 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertEqual(1, funnel.counters["evidence_supplement_success"])
         self.assertEqual(1, funnel.counters["evidence_sufficient"])
 
+    def _evidence_info(self, context, **extra):
+        info = {
+            "primary_source_resolved": True, "context": context, "source_details": {},
+            "supplement_candidates": [], "checked_urls": {"https://example.com"},
+            "evidence_documents": [{"url": "https://example.com", "retrieved": True}],
+        }
+        info.update(extra)
+        info["evidence_metadata"] = pipeline._build_evidence_metadata(context, False)
+        return info
+
+    def test_missing_limitations_can_be_safe_with_low_risk_action_scope(self):
+        info = self._evidence_info("Author: Lab A. Method: routing algorithm. Benchmark: 30 ms on the stated dataset.")
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+        self.assertTrue(result["limitations_disclosed"])
+        self.assertEqual("LOW", result["action_risk_tier"])
+        self.assertTrue(result["action_supported_at_current_tier"])
+
+    def test_research_freshness_can_be_limited_to_paper_time(self):
+        info = self._evidence_info(
+            "Authors: Lab A. This paper presents a method and benchmark result. Future work is planned.",
+            source="ArXiv", freshness_status_available=False,
+        )
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+        self.assertTrue(result["freshness_scope_limited"])
+
+    def test_current_price_requires_resolved_freshness(self):
+        info = self._evidence_info(
+            "Author: Vendor. Method: hosted API. Current pricing is described as 20 USD. Limitation: usage varies.",
+            freshness_status_available=False,
+        )
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_INSUFFICIENT, result["state"])
+        self.assertIn("freshness_status_available_if_time_sensitive", result["blocking_missing"])
+
+    def test_high_risk_action_is_not_supported_by_weak_evidence(self):
+        info = self._evidence_info(
+            "Author: Lab A. Method: routing algorithm. Benchmark: 30 ms on the stated dataset.",
+            requested_action_risk_tier="HIGH",
+        )
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_INSUFFICIENT, result["state"])
+        self.assertIn("high_risk_action_unsupported", result["blocking_missing"])
+
+    def test_evidence_reason_codes_are_specific(self):
+        rows = pipeline.evidence_reason_rows({"blocking_missing": ["primary_source_resolved", "high_risk_action_unsupported"]})
+        self.assertEqual(pipeline.REASON_CODE_PRIMARY_SOURCE_UNRESOLVED, rows[0]["reason_code"])
+        self.assertEqual(pipeline.REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED, rows[1]["reason_code"])
+
+    def test_gate_history_keeps_executed_gate_states_and_grounding_stages(self):
+        record = pipeline.build_candidate_gate_record(
+            1, "example", "https://example.com", 80, "completed",
+            pipeline.GATE_STATUS_PASS, pipeline.GATE_STATUS_WARNING,
+            pipeline.GATE_STATUS_REVIEW, pipeline.GATE_STATUS_WARNING,
+            final_status=pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+            retry_diagnostics={"retry_attempted": True, "trigger_reason_codes": [{"reason_code": "PUB_SCORE_NARRATIVE_MISMATCH"}]},
+            candidate_origin="pending_retry",
+        )
+        self.assertEqual(pipeline.GATE_STATUS_REVIEW, record["publication_readiness_gate"])
+        self.assertEqual(pipeline.GATE_STATUS_WARNING, record["human_appeal_gate"])
+        self.assertTrue(record["retry_attempted"])
+        self.assertEqual("pending_retry", record["candidate_origin"])
+
+    def test_funnel_separates_retry_new_and_generation_stages(self):
+        funnel = pipeline.DeepDiveGateFunnel()
+        record = pipeline.build_candidate_gate_record(
+            1, "example", "https://example.com", 80, "completed",
+            final_status=pipeline.ARTICLE_STATUS_READY, candidate_origin="pending_retry",
+            retry_diagnostics={"retry_attempted": True, "retry_succeeded": True,
+                               "trigger_reason_codes": [{"reason_code": "FACT_UNSUPPORTED_CLAIM"}]},
+        )
+        funnel.record(record)
+        funnel.incr("generation_api_completed")
+        funnel.incr("article_parsed")
+        funnel.incr("quality_evaluation_completed")
+        self.assertEqual(1, funnel.counters["pending_retry_candidates_attempted"])
+        self.assertEqual(0, funnel.counters["new_deep_dive_candidates_attempted"])
+        self.assertEqual(1, funnel.counters["retry_attempted"])
+        self.assertEqual(1, funnel.counters["generation_api_completed"])
+
 
 if __name__ == "__main__":
     unittest.main()
