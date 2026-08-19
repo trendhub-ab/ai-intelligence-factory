@@ -15,14 +15,14 @@
           "budget": 18,
           "by_kind": {
             "deep_dive": 4,
-            "quality_retry": 1
+            "quality_retry": 2
           },
           "exhausted": false,
-          "used": 5
+          "used": 6
         }
       }
     }
   },
   "quota_date": "2026-08-19",
-  "updated_at": "2026-08-19T23:36:10.457473+00:00"
+  "updated_at": "2026-08-19T23:37:05.825148+00:00"
 }
