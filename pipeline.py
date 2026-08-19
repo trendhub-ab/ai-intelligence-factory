@@ -372,6 +372,12 @@ GATE_STATUS_REVIEW = "REVIEW"
 REASON_CODE_MAX_TOKENS = "MAX_TOKENS"
 REASON_CODE_STRUCTURE_MISSING = "STRUCTURE_MISSING"
 REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT = "PRIMARY_EVIDENCE_INSUFFICIENT"
+REASON_CODE_PRIMARY_SOURCE_UNRESOLVED = "PRIMARY_SOURCE_UNRESOLVED"
+REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT = "TECHNICAL_CLAIMS_INSUFFICIENT"
+REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT = "NUMERIC_CONDITIONS_INSUFFICIENT"
+REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED = "FRESHNESS_REQUIRED_BUT_UNRESOLVED"
+REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED = "HIGH_RISK_ACTION_UNSUPPORTED"
+REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED = "EVIDENCE_GAP_DISCLOSURE_REQUIRED"
 REASON_CODE_FACT_UNSUPPORTED_CLAIM = "FACT_UNSUPPORTED_CLAIM"
 REASON_CODE_FACT_NUMERICAL_MISMATCH = "FACT_NUMERICAL_MISMATCH"
 REASON_CODE_FACT_ACTOR_MISMATCH = "FACT_ACTOR_MISMATCH"
@@ -2068,6 +2074,26 @@ def prepare_source_context(repo: dict) -> dict:
         source_type = "arxiv_pdf" if link.lower().split("?", 1)[0].endswith(".pdf") or "pdf" in label.lower() else "official_docs"
         role = "SUPPLEMENTAL_SOURCE" if re.search(r"supplement|appendix", label, re.I) else "PRIMARY_SOURCE"
         supplement_candidates.append({"url": link, "role": role, "source_type": source_type, "label": label})
+    # Landing pageに研究リンクが無い場合でも、収集済みメタデータが示す公式URLだけを
+    # 補強候補にする。検索・巡回はせず、同一URLも再取得しない。
+    metadata_urls: list[tuple[str, str]] = []
+    for key in ("official_url", "officialUrl", "website", "website_url", "homepage", "project_url", "docs_url", "documentation_url", "external_url"):
+        value = details.get(key)
+        if isinstance(value, str):
+            metadata_urls.append((value, key))
+    for key in ("official_external_links", "links", "related_links"):
+        for value in details.get(key, []) if isinstance(details.get(key), list) else []:
+            metadata_urls.append((value, key))
+    # arXiv abstractページしか持たない場合は、同一論文PDFを上限付き補強候補にする。
+    arxiv_id = _extract_arxiv_id(primary_url)
+    if source == "ArXiv" and arxiv_id:
+        metadata_urls.append((f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv_pdf"))
+    for link, label in metadata_urls:
+        if not isinstance(link, str) or not link.startswith(("http://", "https://")) or link in seen_candidates:
+            continue
+        seen_candidates.add(link)
+        source_type = "arxiv_pdf" if link.lower().split("?", 1)[0].endswith(".pdf") else "official_docs"
+        supplement_candidates.append({"url": link, "role": "PRIMARY_SOURCE", "source_type": source_type, "label": label})
 
     substantive = "\n\n".join(x for x in substantive_parts if x)
     # 互換フィールド。Deep Dive可否は後段の意味ベース判定で決め、文字数だけでは決めない。
@@ -2079,6 +2105,7 @@ def prepare_source_context(repo: dict) -> dict:
     source_info = {
         "context": context,
         "context_length": len(context),
+        "source": source,
         "method": method,
         "primary_url": primary_url,
         "source_details": details,
@@ -2107,13 +2134,32 @@ EVIDENCE_SUPPLEMENT_REQUIRED = "SUPPLEMENT_REQUIRED"
 EVIDENCE_INSUFFICIENT = "INSUFFICIENT"
 
 
+def classify_action_risk_tier(action_text: str) -> str:
+    """記事に実際に書かれたActionをLOW/MEDIUM/HIGHへ意味ベースで分類する。"""
+    text = action_text or ""
+    if re.search(r"全面(?:導入|移行|改修)|全社(?:導入|展開)|本番(?:移行|全面導入)|大規模(?:投資|導入)|セキュリティ境界.{0,12}(?:変更|改修)", text, re.I):
+        return "HIGH"
+    if re.search(r"既存設計.{0,12}(?:変更|改修)|限定(?:ユーザー|利用者).{0,12}導入|運用プロセス.{0,12}変更|小規模(?:本番|導入)", text, re.I):
+        return "MEDIUM"
+    return "LOW"
+
+
 def assess_evidence_sufficiency(source_info: dict) -> dict:
-    """文字数ではなく、結論とActionを支える意味的なEvidenceの有無を判定する。"""
+    """Evidence-to-Decision Sufficiencyを判定する。
+
+    網羅性そのものではなく、取得済みの一次情報の範囲で結論とActionを安全な
+    強度に制約した記事を作れるかを判定する。制約・鮮度が未確認でも、低リスク
+    Actionと明示的な留保で安全に扱える研究紹介まで機械的に落とさない。
+    """
     context = source_info.get("context", "") or ""
     coverage = (source_info.get("evidence_metadata") or {}).get("coverage", {})
     found = lambda key: coverage.get(key) == "FOUND"
     numbers_present = bool(re.search(r"(?:\d+(?:\.\d+)?\s*(?:%|x|倍|ms|sec(?:ond)?s?|GB|MB|FPS))", context, re.I))
     time_sensitive = bool(_FUTURE_SOURCE_PATTERN.search(context))
+    current_state_claim = bool(re.search(r"(?:価格|料金|現在|現行|提供中|availability|pricing|current|today|GA|generally available|法令|制度)", context, re.I))
+    research_scope = source_info.get("source") == "ArXiv" or bool(re.search(r"(?:paper|arxiv|benchmark|論文|研究|実験|提出時点)", context, re.I))
+    requested_tier = str(source_info.get("requested_action_risk_tier", "LOW")).upper()
+    action_risk_tier = requested_tier if requested_tier in {"LOW", "MEDIUM", "HIGH"} else "LOW"
     checks = {
         "primary_source_resolved": bool(source_info.get("primary_source_resolved")),
         "technical_claims_available": found("method") or bool(re.search(r"method|approach|architecture|algorithm|implementation|モデル|手法|方式|実装", context, re.I)),
@@ -2122,36 +2168,82 @@ def assess_evidence_sufficiency(source_info: dict) -> dict:
         "actor_attribution_available": bool(re.search(r"author|authors|developer|researcher|著者|開発者|研究者", context, re.I)) or bool((source_info.get("source_details") or {}).get("authors")),
         "action_support_available": False,
         "comparison_support_available_if_comparison_is_needed": True,
-        "freshness_status_available_if_time_sensitive": (not time_sensitive) or bool(source_info.get("freshness_status_available")),
+        "freshness_status_available_if_time_sensitive": (not (time_sensitive or current_state_claim)) or bool(source_info.get("freshness_status_available")),
     }
-    checks["action_support_available"] = checks["technical_claims_available"] and checks["limitations_or_constraints_available"]
+    # 一次情報にAction文言そのものがなくても、技術根拠から限定PoC・比較・見送り等の
+    # LOW RISK Actionは導ける。HIGH RISKは制約・鮮度・数値条件まで要求する。
+    low_risk_supported = checks["primary_source_resolved"] and checks["technical_claims_available"]
+    medium_risk_supported = low_risk_supported and checks["limitations_or_constraints_available"]
+    high_risk_supported = medium_risk_supported and checks["conditions_for_numbers_available"] and checks["freshness_status_available_if_time_sensitive"]
+    action_supported_requested_tier = {
+        "LOW": low_risk_supported,
+        "MEDIUM": medium_risk_supported,
+        "HIGH": high_risk_supported,
+    }[action_risk_tier]
+    checks["action_support_available"] = action_supported_requested_tier
     comparison_needed = bool(re.search(r"(?:compare|comparison|versus|vs\.?|比較|従来方式|代替)", context, re.I))
     if comparison_needed:
         checks["comparison_support_available_if_comparison_is_needed"] = bool(re.search(r"(?:compare|comparison|versus|vs\.?|比較)", context, re.I))
 
-    core_missing = [key for key in ("primary_source_resolved", "technical_claims_available", "limitations_or_constraints_available", "conditions_for_numbers_available", "action_support_available") if not checks[key]]
-    optional_missing = [key for key in ("actor_attribution_available", "comparison_support_available_if_comparison_is_needed", "freshness_status_available_if_time_sensitive") if not checks[key]]
-    # 帰属情報は記事内で明示する際に必要な確認項目だが、一次資料に十分な技術・制約・
-    # Action根拠がある場合まで機械的に止めない。比較・鮮度は必要なケースだけ必須化する。
-    blocking_missing = list(core_missing)
-    if comparison_needed and not checks["comparison_support_available_if_comparison_is_needed"]:
-        blocking_missing.append("comparison_support_available_if_comparison_is_needed")
-    if time_sensitive and not checks["freshness_status_available_if_time_sensitive"]:
+    hard_missing = [key for key in ("primary_source_resolved", "technical_claims_available") if not checks[key]]
+    # 数値・主体は、記事で明示的に使う場合だけHard Requirementにする。未確認なら
+    # プロンプト側で使わないよう制約し、モデル記憶で補完することを禁止する。
+    if source_info.get("numeric_claims_required") and not checks["conditions_for_numbers_available"]:
+        hard_missing.append("conditions_for_numbers_available")
+    if source_info.get("actor_attribution_required") and not checks["actor_attribution_available"]:
+        hard_missing.append("actor_attribution_available")
+    conditional_missing = [key for key in (
+        "limitations_or_constraints_available", "action_support_available",
+        "comparison_support_available_if_comparison_is_needed",
+        "freshness_status_available_if_time_sensitive",
+    ) if not checks[key]]
+    blocking_missing = list(hard_missing)
+    if current_state_claim and not checks["freshness_status_available_if_time_sensitive"]:
         blocking_missing.append("freshness_status_available_if_time_sensitive")
     candidates_available = any(row.get("url") not in source_info.get("checked_urls", set()) for row in source_info.get("supplement_candidates", []))
-    if not checks["primary_source_resolved"]:
-        state = EVIDENCE_INSUFFICIENT
-    elif blocking_missing:
+    supplement_already_attempted = bool(source_info.get("evidence_supplement_attempted"))
+    action_risk_downgraded_from = ""
+    # MEDIUM/HIGHの根拠が不足しても、まず上限付き補強を試す。補強後も足りない
+    # 場合は、一次情報から導ける具体的なLOW RISK Actionへ縮退できるかを判定する。
+    if blocking_missing:
         state = EVIDENCE_SUPPLEMENT_REQUIRED if candidates_available else EVIDENCE_INSUFFICIENT
+    elif action_risk_tier in {"MEDIUM", "HIGH"} and not action_supported_requested_tier:
+        if candidates_available and not supplement_already_attempted:
+            state = EVIDENCE_SUPPLEMENT_REQUIRED
+        elif low_risk_supported:
+            action_risk_downgraded_from = action_risk_tier
+            action_risk_tier = "LOW"
+            checks["action_support_available"] = True
+            state = EVIDENCE_SUFFICIENT
+        else:
+            blocking_missing.append("high_risk_action_unsupported" if requested_tier == "HIGH" else "medium_risk_action_unsupported")
+            state = EVIDENCE_INSUFFICIENT
+    elif conditional_missing and candidates_available and not supplement_already_attempted:
+        state = EVIDENCE_SUPPLEMENT_REQUIRED
     else:
         state = EVIDENCE_SUFFICIENT
+    limitations_disclosed = not checks["limitations_or_constraints_available"]
+    freshness_scope_limited = research_scope and time_sensitive and not checks["freshness_status_available_if_time_sensitive"]
+    evidence_gap_disclosed = bool(conditional_missing)
+    decision_scope_safe = state == EVIDENCE_SUFFICIENT or (state == EVIDENCE_SUPPLEMENT_REQUIRED and not blocking_missing)
     return {
         "state": state,
         "checks": checks,
-        "core_missing": core_missing,
-        "optional_missing": optional_missing,
+        "core_missing": hard_missing,
+        "optional_missing": conditional_missing,
         "blocking_missing": blocking_missing,
         "documents_checked": len(source_info.get("evidence_documents", [])),
+        "decision_scope_safe": decision_scope_safe,
+        "action_risk_tier": action_risk_tier,
+        "action_supported_at_current_tier": checks["action_support_available"],
+        "action_risk_downgraded_from": action_risk_downgraded_from,
+        "limitations_disclosed": limitations_disclosed,
+        "freshness_scope_limited": freshness_scope_limited,
+        "evidence_gap_disclosed": evidence_gap_disclosed,
+        "research_scope": research_scope,
+        "current_state_claim": current_state_claim,
+        "numeric_claims_allowed": checks["conditions_for_numbers_available"],
+        "actor_attribution_allowed": checks["actor_attribution_available"],
     }
 
 
@@ -2192,6 +2284,27 @@ def supplement_source_evidence(source_info: dict) -> dict:
         source_info["method"] = GROUNDING_SOURCE_NATIVE
     source_info["evidence_metadata"] = _build_evidence_metadata(source_info.get("context", ""), bool(source_info.get("deep_source_scanned")))
     return source_info
+
+
+def evidence_reason_rows(evidence_result: dict) -> list[dict]:
+    """Evidence不足の原因を、単一の汎用コードへ潰さず保存する。"""
+    mapping = {
+        "primary_source_resolved": REASON_CODE_PRIMARY_SOURCE_UNRESOLVED,
+        "technical_claims_available": REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT,
+        "conditions_for_numbers_available": REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT,
+        "freshness_status_available_if_time_sensitive": REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED,
+        "high_risk_action_unsupported": REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
+        "medium_risk_action_unsupported": REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
+    }
+    rows = [{"reason_code": mapping.get(key, REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT), "message": key}
+            for key in evidence_result.get("blocking_missing", [])]
+    if evidence_result.get("evidence_gap_disclosed"):
+        rows.append({"reason_code": REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED,
+                     "message": "Conditional evidence gap must be disclosed and action limited."})
+    if not rows:
+        rows.append({"reason_code": REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT,
+                     "message": "Evidence-to-Decision Sufficiency cannot safely support the core decision."})
+    return rows
 
 
 _FUTURE_SOURCE_PATTERN = re.compile(r"\b(will|future|planned|coming|next|expected|preview|beta|nightly)\b|予定|今後|開発中|対応予定", re.I)
@@ -2385,7 +2498,9 @@ def _verify_arxiv_source_integrity(repo: dict) -> tuple[bool, str, dict]:
             {"id_list": arxiv_id, "start": 0, "max_results": 1},
         )
         if res is None:
-            return False, "arXiv再照会に失敗", repo
+            # 429/503/timeout等での再照会不能は、論文の不実在を意味しない。
+            # Source Integrityの恒久的不一致とは分け、呼び出し元でPending Retryへ送る。
+            return False, "TRANSIENT: arXiv再照会に失敗", repo
         ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
         root = ET.fromstring(res.content)
         entry = root.find("atom:entry", ns)
@@ -3144,7 +3259,7 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
                           source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY,
                           evidence_metadata: dict | None = None, freshness: dict | None = None,
-                          previous_article: str = ""):
+                          previous_article: str = "", evidence_result: dict | None = None):
     """上位モデルでARTICLEとMANAGEMENT DATAを同時生成する。記事と管理帳票は明確に分離する。"""
     metric_label = ENGAGEMENT_LABELS.get(source, "Engagement")
     metric_note = ""
@@ -3165,6 +3280,19 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
     display = _article_display_variant(name)
     evidence_json = json.dumps(evidence_metadata or {}, ensure_ascii=False, indent=2)
     freshness_context = (freshness or {}).get("context", "")
+    evidence_result = evidence_result or {}
+    evidence_guardrails = []
+    if evidence_result.get("limitations_disclosed"):
+        evidence_guardrails.append("一次資料で実運用上の制約は確認できないことをWhy NOTまたはCaveatに明記し、本番導入を強く推奨しない。")
+    if evidence_result.get("freshness_scope_limited"):
+        evidence_guardrails.append("現在仕様とは断定せず、『原資料公開時点では』『この研究で確認された範囲では』と時点を限定する。")
+    if not evidence_result.get("numeric_claims_allowed", True):
+        evidence_guardrails.append("条件を確認できない数値・性能値はARTICLEで使わない。")
+    if not evidence_result.get("actor_attribution_allowed", True):
+        evidence_guardrails.append("主体の帰属を確認できない固有名詞の断定はしない。")
+    if evidence_result.get("action_risk_tier", "LOW") == "LOW" and evidence_result.get("evidence_gap_disclosed"):
+        evidence_guardrails.append("Actionは『注視』だけで終わらせず、限定PoC、評価項目への追加、ログ可視化、比較テスト、見送りのいずれかを具体的に提案する。全面導入・本番移行は提案しない。")
+    evidence_guardrail_text = "\n".join("・" + item for item in evidence_guardrails) or "・取得済み一次情報の範囲を超える断定をしない。"
 
     return f"""
 あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
@@ -3187,6 +3315,9 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・不明点は補完せず「一次情報からは確認できない」と書く。
 ・「確認できない」「記載がない」「未公開」「不明」等の不在Claimは、Evidence Coverageが SEARCHED_NOT_FOUND または NOT_DISCLOSED の項目だけに限る。NOT_SEARCHEDまたはSource Depth不足では不在を断定しない。
 モデル内部知識だけで現在仕様、競合比較、数値、価格、対応状況を断定しない。
+
+【Evidence-to-Decisionの安全制約】
+{evidence_guardrail_text}
 
 {fact_rules}
 {style_rules}
@@ -3753,7 +3884,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
     if output_truncated:
         failures.append("OUTPUT_TRUNCATED")
-    if source_info and source_info.get("deep_source_required") and not source_info.get("deep_source_scanned"):
+    if source_info and source_info.get("deep_source_required") and not source_info.get("deep_source_scanned") and not source_info.get("decision_scope_safe"):
         failures.append("SOURCE_DEPTH_INSUFFICIENT")
 
     failures.extend(_find_unsupported_numeric_claims(draft, source_context, evidence_metadata))
@@ -3899,6 +4030,8 @@ def _reason_code(message: str, gate: str) -> str:
     最も保守的なコードを付与し、元メッセージは履歴にそのまま保存する。
     """
     text = (message or "").lower()
+    if "high_risk_action_unsupported" in text:
+        return REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED
     if "output_truncated" in text or "max_tokens" in text or "token_limit" in text:
         return REASON_CODE_MAX_TOKENS
     if "article_structure_incomplete" in text or "required heading missing" in text or "structure" in text:
@@ -3981,9 +4114,11 @@ class DeepDiveGateFunnel:
     """一回の本番実行におけるDeep Diveの脱落経路を集計する。"""
     COUNTERS = (
         "deep_dive_candidates_attempted", "generation_completed", "generation_failed",
+        "pending_retry_candidates_attempted", "new_deep_dive_candidates_attempted", "total_deep_dive_candidates_processed",
+        "generation_api_completed", "article_parsed", "quality_evaluation_completed",
         "evidence_sufficient", "evidence_supplement_required", "evidence_supplement_success",
         "evidence_insufficient", "deep_dive_generation_called", "deep_dive_calls_avoided",
-        "retry_attempted", "retry_success",
+        "retry_attempted", "retry_success", "retry_failed",
         "max_tokens_failed", "structure_failed", "primary_evidence_failed",
         "fact_gate_failed", "editorial_gate_failed", "publication_readiness_review",
         "publication_readiness_failed", "human_appeal_warning", "human_appeal_review",
@@ -4002,6 +4137,8 @@ class DeepDiveGateFunnel:
     def record(self, record: dict) -> None:
         self.records.append(record)
         self.incr("deep_dive_candidates_attempted")
+        self.incr("total_deep_dive_candidates_processed")
+        self.incr("pending_retry_candidates_attempted" if record.get("candidate_origin") == "pending_retry" else "new_deep_dive_candidates_attempted")
         evidence_state = record.get("evidence_sufficiency")
         initial_evidence_state = record.get("evidence_initial_sufficiency", evidence_state)
         if evidence_state == EVIDENCE_SUFFICIENT:
@@ -4017,6 +4154,8 @@ class DeepDiveGateFunnel:
             self.incr("retry_attempted")
         if record.get("retry_succeeded"):
             self.incr("retry_success")
+        elif record.get("retry_attempted"):
+            self.incr("retry_failed")
         generation = record.get("generation_status")
         if generation == "completed":
             self.incr("generation_completed")
@@ -4051,8 +4190,14 @@ class DeepDiveGateFunnel:
         return "\n".join([
             "Deep Dive Funnel", "",
             f"Candidates Attempted: {c['deep_dive_candidates_attempted']}",
+            f"Pending Retry Candidates Attempted: {c['pending_retry_candidates_attempted']}",
+            f"New Deep Dive Candidates Attempted: {c['new_deep_dive_candidates_attempted']}",
+            f"Total Deep Dive Candidates Processed: {c['total_deep_dive_candidates_processed']}",
             f"Generation Completed: {c['generation_completed']}",
             f"Generation Failed: {c['generation_failed']}", "",
+            f"Generation API Completed: {c['generation_api_completed']}",
+            f"Article Parsed: {c['article_parsed']}",
+            f"Quality Evaluation Completed: {c['quality_evaluation_completed']}",
             f"Evidence Sufficient: {c['evidence_sufficient']}",
             f"Evidence Supplement Required: {c['evidence_supplement_required']}",
             f"Evidence Supplement Success: {c['evidence_supplement_success']}",
@@ -4061,6 +4206,7 @@ class DeepDiveGateFunnel:
             f"Deep Dive Calls Avoided by Evidence Gate: {c['deep_dive_calls_avoided']}",
             f"Dynamic Retry Attempted: {c['retry_attempted']}",
             f"Dynamic Retry Success: {c['retry_success']}", "",
+            f"Dynamic Retry Failed: {c['retry_failed']}", "",
             f"MAX_TOKENS: {c['max_tokens_failed']}",
             f"Structure Failed: {c['structure_failed']}",
             f"Primary Evidence Failed: {c['primary_evidence_failed']}",
@@ -4135,7 +4281,8 @@ def build_candidate_gate_record(candidate_rank: int, repo_name: str, source_url:
                                 final_status: str = "", article_saved: bool = False,
                                 evidence_result: dict | None = None,
                                 deep_dive_generation_called: bool = False,
-                                retry_diagnostics: dict | None = None) -> dict:
+                                retry_diagnostics: dict | None = None,
+                                candidate_origin: str = "new") -> dict:
     reasons = reason_codes or []
     first = reasons[0] if reasons else {}
     return {
@@ -4159,8 +4306,18 @@ def build_candidate_gate_record(candidate_rank: int, repo_name: str, source_url:
         "evidence_supplement_success": bool((evidence_result or {}).get("supplement_success")),
         "evidence_documents_checked": (evidence_result or {}).get("documents_checked", 0),
         "evidence_checks": (evidence_result or {}).get("checks", {}),
+        "decision_scope_safe": (evidence_result or {}).get("decision_scope_safe"),
+        "action_risk_tier": (evidence_result or {}).get("action_risk_tier", ""),
+        "action_supported_at_current_tier": (evidence_result or {}).get("action_supported_at_current_tier"),
+        "limitations_disclosed": (evidence_result or {}).get("limitations_disclosed"),
+        "freshness_scope_limited": (evidence_result or {}).get("freshness_scope_limited"),
+        "evidence_gap_disclosed": (evidence_result or {}).get("evidence_gap_disclosed"),
         "deep_dive_generation_called": deep_dive_generation_called,
         "retry_diagnostics": retry_diagnostics or {},
+        "retry_attempted": bool((retry_diagnostics or {}).get("retry_attempted")),
+        "retry_succeeded": bool((retry_diagnostics or {}).get("retry_succeeded")),
+        "dynamic_retry_reason_codes": (retry_diagnostics or {}).get("trigger_reason_codes", []),
+        "candidate_origin": candidate_origin,
         "recorded_at": _analyzed_at_now_iso(),
     }
 
@@ -4300,6 +4457,61 @@ def register_regression_case(case: dict) -> str:
         json.dump(case, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
     return path
+
+
+# 実運用で過剰Failとなったケース。記事本文はprivate artifactの原稿を正とし、ここでは
+# タイトル照合でGateを特別扱いしない。将来の判定結果がQuality Failedへ戻らないことを
+# 回帰条件として固定する。
+REAL_ARTICLE_REGRESSION_CASES = (
+    {
+        "case_id": "real_model_hypnosis_20260819",
+        "title": "Model Hypnosis",
+        "prior_pipeline_result": CONTENT_STATUS_QUALITY_FAILED,
+        "external_review": "C",
+        "expected_minimum_status": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+        "reason": "一次資料と技術主張は存在し、Evidence Gapの開示とLOW RISK Actionへの縮退で過剰Failを避ける。",
+    },
+    {
+        "case_id": "real_tad_20260819",
+        "title": "Topological Attribution Distance (TAD)",
+        "prior_pipeline_result": CONTENT_STATUS_QUALITY_FAILED,
+        "external_review": "B",
+        "expected_minimum_status": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+        "reason": "軽微修正またはEditorial Reviewで扱い、Quality Failedへ直行させない。",
+    },
+    {
+        "case_id": "real_when_agents_coordinate_20260819",
+        "title": "When Agents Coordinate",
+        "prior_pipeline_result": CONTENT_STATUS_QUALITY_FAILED,
+        "external_review": "B",
+        "expected_minimum_status": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+        "reason": "軽微修正またはEditorial Reviewで扱い、Quality Failedへ直行させない。",
+    },
+)
+
+
+def register_real_article_regression_cases() -> list[str]:
+    """既知の過剰Fail事例をprivate regression候補として必ず登録する。"""
+    paths = []
+    for item in REAL_ARTICLE_REGRESSION_CASES:
+        payload = {
+            "case_id": item["case_id"], "source_type": "real_over_reject",
+            "pipeline_gate": "evidence_to_decision", "pipeline_result": item["prior_pipeline_result"],
+            "external_review": item["external_review"], "reason_code": REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT,
+            "expected_result": item["expected_minimum_status"], "ground_truth": {"title": item["title"], "reason": item["reason"]},
+            # 本文は別途private artifactにあり、ここで架空の本文を作らない。
+            "article": "",
+        }
+        paths.append(register_regression_case(payload))
+    return paths
+
+
+def real_article_regression_allows(case_id: str, final_status: str) -> bool:
+    """既知事例が根拠不足だけでQuality Failedへ戻らないことを検証する。"""
+    case = next((row for row in REAL_ARTICLE_REGRESSION_CASES if row["case_id"] == case_id), None)
+    if case is None:
+        raise ValueError(f"Unknown real article regression case: {case_id}")
+    return final_status in {ARTICLE_STATUS_READY, ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW}
 
 
 def save_gate_history(funnel: DeepDiveGateFunnel | None) -> str | None:
@@ -4510,7 +4722,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                                  screening_score: int | None = None,
                                  screening_reason: str = "",
                                  persist_results: bool = True,
-                                 candidate_rank: int = 0):
+                                 candidate_rank: int = 0,
+                                 candidate_origin: str = "new"):
     """Grounded Deep Diveを生成し、構造Quality Gateで最大1回だけ救済する。
 
     persist_results=False は既存記事A/B比較専用。Gemini生成・Quality Gateは通常どおり
@@ -4525,12 +4738,17 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     published_at = repo.get("publishedAt")
     _, spdx_id = legal_safety_gate(repo)
     funnel = _active_gate_funnel(persist_results)
+    gate_statuses = {
+        "fact": GATE_STATUS_NOT_RUN, "editorial": GATE_STATUS_NOT_RUN,
+        "publication": GATE_STATUS_NOT_RUN, "human_appeal": GATE_STATUS_NOT_RUN,
+    }
+    source_info: dict = {}
 
     def record_gate_outcome(generation_status: str, final_status: str,
-                            fact_gate: str = GATE_STATUS_NOT_RUN,
-                            editorial_gate: str = GATE_STATUS_NOT_RUN,
-                            publication_gate: str = GATE_STATUS_NOT_RUN,
-                            human_appeal_gate: str = GATE_STATUS_NOT_RUN,
+                            fact_gate: str | None = None,
+                            editorial_gate: str | None = None,
+                            publication_gate: str | None = None,
+                            human_appeal_gate: str | None = None,
                             reason_codes: list[dict] | None = None,
                             article_saved: bool = False,
                             decision_score: int | None = None,
@@ -4539,10 +4757,17 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                             retry_diagnostics: dict | None = None) -> dict:
         record = build_candidate_gate_record(
             candidate_rank, name, url, decision_score if decision_score is not None else screening_score,
-            generation_status, fact_gate, editorial_gate, publication_gate, human_appeal_gate,
+            generation_status, fact_gate or gate_statuses["fact"], editorial_gate or gate_statuses["editorial"],
+            publication_gate or gate_statuses["publication"], human_appeal_gate or gate_statuses["human_appeal"],
             reason_codes, final_status, article_saved, evidence_result,
-            deep_dive_generation_called, retry_diagnostics,
+            deep_dive_generation_called, retry_diagnostics, candidate_origin,
         )
+        record.update({
+            "pre_generation_grounding_state": source_info.get("pre_generation_grounding_state", "NOT_RUN"),
+            "generation_grounding_state": source_info.get("generation_grounding_state", "NOT_RUN"),
+            "retry_grounding_state": source_info.get("retry_grounding_state", "NOT_RUN"),
+            "final_grounding_state": source_info.get("final_grounding_state", "NOT_RUN"),
+        })
         if funnel:
             funnel.record(record)
         return record
@@ -4550,6 +4775,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     if source == "ArXiv":
         integrity_ok, integrity_reason, verified_repo = _verify_arxiv_source_integrity(repo)
         if not integrity_ok:
+            if integrity_reason.startswith("TRANSIENT:"):
+                logger.warning("[ARXIV INTEGRITY PENDING RETRY] %s: %s", name, integrity_reason)
+                record = record_gate_outcome(
+                    "pending_retry", CONTENT_STATUS_PENDING_RETRY,
+                    reason_codes=[{"reason_code": REASON_CODE_PENDING_RETRY, "message": integrity_reason}],
+                )
+                if persist_results and notion_page_id:
+                    update_notion_pending_retry(notion_page_id, name, integrity_reason)
+                return None
             logger.error(f"[SOURCE INTEGRITY FAILED] {name}: {integrity_reason}")
             reasons = map_gate_reasons("fact", ["SOURCE_DEPTH_INSUFFICIENT: " + integrity_reason])
             record = record_gate_outcome("failed", CONTENT_STATUS_QUALITY_FAILED, reason_codes=reasons)
@@ -4561,6 +4795,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         logger.info(f"[SOURCE INTEGRITY OK] {name}: {integrity_reason}")
 
     source_info = prepare_source_context(repo)
+    source_info["pre_generation_grounding_state"] = "VERIFIED" if source_info.get("primary_source_resolved") else "UNVERIFIED"
+    source_info["generation_grounding_state"] = "NOT_RUN"
+    source_info["retry_grounding_state"] = "NOT_RUN"
+    source_info["final_grounding_state"] = source_info["pre_generation_grounding_state"]
     primary_url = source_info.get("primary_url") or url
     freshness = resolve_followup_freshness(source_info)
     if freshness.get("context"):
@@ -4583,13 +4821,14 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     evidence_result["initial_state"] = initial_evidence_state
     source_info["evidence_sufficiency"] = evidence_result["state"]
     source_info["evidence_sufficient"] = evidence_result["state"] == EVIDENCE_SUFFICIENT
+    source_info["decision_scope_safe"] = evidence_result.get("decision_scope_safe", False)
+    source_info["evidence_result"] = evidence_result
     # 既存URL Context fallbackの互換フィールドも、意味ベースの判定へ揃える。
     source_info["sufficient"] = source_info["evidence_sufficient"]
     if evidence_result["state"] == EVIDENCE_INSUFFICIENT:
         missing = evidence_result.get("blocking_missing", evidence_result["core_missing"])
         logger.warning("[EVIDENCE INSUFFICIENT] %s: Deep Dive APIを使わずBackfillへ進む (%s)", name, ", ".join(missing))
-        reasons = [{"reason_code": REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT,
-                    "message": "Evidence Sufficiency=INSUFFICIENT: " + ", ".join(missing)}]
+        reasons = evidence_reason_rows(evidence_result)
         record_gate_outcome("skipped", "Evidence Insufficient", reason_codes=reasons,
                             evidence_result=evidence_result)
         return None
@@ -4612,21 +4851,38 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 grounding_status_hint=source_info.get("method", GROUNDING_METADATA_ONLY),
                 evidence_metadata=source_info.get("evidence_metadata", {}), freshness=freshness,
                 previous_article=retry_diagnostics.get("original_article", "") if attempt else "",
+                evidence_result=evidence_result,
             )
             if funnel:
                 funnel.incr("deep_dive_generation_called")
             deep_dive_generation_called = True
             response, grounding = call_gemini_grounded_deep_dive(prompt, repo, source_info, request_kind=request_kind)
+            if funnel:
+                funnel.incr("generation_api_completed")
+            stage_grounding = grounding.get("grounding_status", GROUNDING_FAILED)
+            if attempt == 0:
+                source_info["generation_grounding_state"] = stage_grounding
+            else:
+                source_info["retry_grounding_state"] = stage_grounding
+            # Retryのmetadata欠落は、事前に確認済みの一次情報を取り消す根拠ではない。
+            source_info["final_grounding_state"] = (
+                stage_grounding if stage_grounding != GROUNDING_FAILED
+                else source_info.get("pre_generation_grounding_state", "UNVERIFIED")
+            )
             output_truncated = _response_was_truncated(response)
             last_grounding = grounding
             parsed = _parse_gemini_response(response.text or "")
+            if funnel:
+                funnel.incr("article_parsed")
             parsed.update({
                 "grounding_status": grounding.get("grounding_status", GROUNDING_FAILED),
                 "evidence_urls_text": "\n".join(grounding.get("evidence_urls", [])),
             })
+            if parsed["grounding_status"] == GROUNDING_FAILED and source_info.get("pre_generation_grounding_state") == "VERIFIED":
+                parsed["grounding_status"] = source_info.get("method", GROUNDING_SOURCE_NATIVE)
             # Grounding失敗は文章構造の問題ではないため、Quality Retryを消費しない。
             # source-nativeもURL Contextも一次情報を確保できなかった候補は即Backfillへ回す。
-            if parsed["grounding_status"] == GROUNDING_FAILED:
+            if parsed["grounding_status"] == GROUNDING_FAILED and source_info.get("pre_generation_grounding_state") != "VERIFIED":
                 failures = ["Grounding failed"]
                 logger.error(f"[GROUNDING FAILED] {name}: 一次情報の取得を確認できないため記事化せずBackfill")
                 reasons = map_gate_reasons("fact", failures)
@@ -4644,16 +4900,51 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     send_telegram_alert(f"ℹ️ Grounding Failed: {name}\n一次情報を確認できないため記事化せず次候補へ進みます。")
                 return None
 
+            # 生成稿のActionが、事前に許可したLOW RISKの範囲を超えていないかを確認する。
+            # HIGH RISKへ強まった場合は同じ一次情報で再判定し、弱いEvidenceのまま通さない。
+            actual_action_tier = classify_action_risk_tier(parsed.get("action_text", ""))
+            if actual_action_tier != evidence_result.get("action_risk_tier", "LOW"):
+                source_info["requested_action_risk_tier"] = actual_action_tier
+                article_evidence_result = assess_evidence_sufficiency(source_info)
+                if article_evidence_result["state"] == EVIDENCE_SUPPLEMENT_REQUIRED:
+                    before_docs = len(source_info.get("evidence_documents", []))
+                    supplement_source_evidence(source_info)
+                    article_evidence_result = assess_evidence_sufficiency(source_info)
+                    article_evidence_result["supplement_attempted"] = True
+                    article_evidence_result["supplement_success"] = (
+                        len(source_info.get("evidence_documents", [])) > before_docs
+                        and article_evidence_result["state"] == EVIDENCE_SUFFICIENT
+                    )
+                article_evidence_result.update({
+                    "initial_state": evidence_result.get("initial_state", evidence_result.get("state")),
+                    "supplement_attempted": article_evidence_result.get("supplement_attempted", evidence_result.get("supplement_attempted", False)),
+                    "supplement_success": article_evidence_result.get("supplement_success", evidence_result.get("supplement_success", False)),
+                })
+                evidence_result = article_evidence_result
+                source_info["evidence_result"] = evidence_result
+                source_info["decision_scope_safe"] = evidence_result.get("decision_scope_safe", False)
+
             fact_ok, fact_failures = validate_fact_gate(
                 parsed, name, source_context=source_info.get("context", ""), source=source,
                 evidence_metadata=source_info.get("evidence_metadata", {}), source_info=source_info,
                 freshness=freshness, output_truncated=output_truncated,
             )
+            if evidence_result.get("action_risk_downgraded_from"):
+                fact_failures.append(f"{evidence_result['action_risk_downgraded_from']}_RISK_ACTION_UNSUPPORTED: downgrade to LOW required")
+                fact_ok = False
             editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
             publication_state, publication_issues = validate_publication_readiness_gate(
                 parsed, source_info.get("context", ""), source_info,
             )
             human_appeal, human_appeal_issues = validate_human_appeal_gate(parsed)
+            gate_statuses.update({
+                "fact": GATE_STATUS_PASS if fact_ok else GATE_STATUS_FAIL,
+                "editorial": GATE_STATUS_PASS if editorial_ok else GATE_STATUS_WARNING,
+                "publication": GATE_STATUS_PASS if publication_state == "PASS" else (GATE_STATUS_REVIEW if publication_state == "REVIEW" else GATE_STATUS_FAIL),
+                "human_appeal": GATE_STATUS_PASS if human_appeal == "ACCEPTABLE" else GATE_STATUS_WARNING,
+            })
+            if funnel:
+                funnel.incr("quality_evaluation_completed")
             logger.info("[PUBLICATION READINESS GATE] %s: %s", name, publication_state)
             logger.info("[HUMAN APPEAL GATE] %s: %s", name, human_appeal)
             if appeal_before_reedit is None:
@@ -4667,6 +4958,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 "action_collapsed_to_generic_monitoring", "decision_voice_missing",
                 "headline_flattened", "human_appeal_materially_degraded_after_reedit",
             } for issue in human_appeal_issues)
+            if appeal_review_required:
+                gate_statuses["human_appeal"] = GATE_STATUS_REVIEW
             failures = fact_failures + editorial_warnings + publication_issues + human_appeal_issues
             final_quality_failures = failures
             if fact_ok and editorial_ok and publication_state == "PASS" and human_appeal == "ACCEPTABLE":
@@ -5389,7 +5682,7 @@ def main():
         logger.info("[PENDING RETRY] %s", item["repo"].get("nameWithOwner"))
         try:
             if generate_intelligence_report(item["repo"], item.get("notion_page_id"), item.get("screening_score"), item.get("screening_reason", ""),
-                                            candidate_rank=next_candidate_rank):
+                                            candidate_rank=next_candidate_rank, candidate_origin="pending_retry"):
                 retry_generated += 1
         except DailyQuotaExhaustedError:
             logger.warning("[PENDING RETRY STOP] Gemini日次クォータ到達")
