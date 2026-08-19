@@ -654,6 +654,36 @@ class TestPipelineSafety(unittest.TestCase):
             info = pipeline.prepare_source_context(repo)
         self.assertEqual("https://vendor.example/docs", info["supplement_candidates"][0]["url"])
 
+    def test_producthunt_redirect_resolves_official_site_and_docs_candidates(self):
+        redirect = "https://www.producthunt.com/r/product"
+        official = "https://vendor.example"
+        repo = {
+            "source": "ProductHunt", "nameWithOwner": "product", "url": redirect,
+            "primaryUrl": redirect, "sourceDetails": {"producthunt_url": redirect},
+        }
+        with patch.object(pipeline, "_resolve_producthunt_official_url", return_value=official), \
+             patch.object(pipeline, "fetch_webpage_context", return_value=""), \
+             patch.object(pipeline, "_fetch_html_document", return_value=("", [("https://vendor.example/docs", "Documentation"), ("https://github.com/vendor/product", "GitHub")], official)):
+            info = pipeline.prepare_source_context(repo)
+        self.assertEqual(official, info["primary_url"])
+        self.assertEqual({"https://vendor.example/docs", "https://github.com/vendor/product"}, {row["url"] for row in info["supplement_candidates"]})
+
+    def test_producthunt_redirect_resolver_accepts_external_final_url(self):
+        redirect = "https://www.producthunt.com/r/product"
+        with patch.object(pipeline, "_http_get_limited", return_value=(b"", "text/html", "https://vendor.example")):
+            self.assertEqual("https://vendor.example", pipeline._resolve_producthunt_official_url(redirect))
+
+    def test_ready_zero_summary_counts_detailed_evidence_reason_code(self):
+        funnel = pipeline.DeepDiveGateFunnel()
+        for rank in range(1, 8):
+            funnel.record(pipeline.build_candidate_gate_record(
+                rank, f"example-{rank}", f"https://example.com/{rank}", 80, "skipped",
+                reason_codes=[{"reason_code": pipeline.REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT, "message": "technical_claims_available"}],
+                final_status="Evidence Insufficient",
+                evidence_result={"state": pipeline.EVIDENCE_INSUFFICIENT},
+            ))
+        self.assertIn("TECHNICAL_CLAIMS_INSUFFICIENT: 7", funnel.render_ready_zero_summary())
+
     def test_arxiv_transient_integrity_failure_is_pending_retry_not_quality_failed(self):
         repo = {"source": "ArXiv", "nameWithOwner": "paper", "url": "https://arxiv.org/abs/2601.12345"}
         funnel = pipeline.reset_deep_dive_gate_funnel()
