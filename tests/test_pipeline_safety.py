@@ -432,6 +432,91 @@ class TestPipelineSafety(unittest.TestCase):
             self.assertTrue(Path(path).exists())
             self.assertEqual("real_false_negative", json.loads(Path(path).read_text(encoding="utf-8"))["source_type"])
 
+    def test_evidence_sufficiency_accepts_short_semantic_primary_evidence(self):
+        source_info = {
+            "primary_source_resolved": True,
+            "context": "Author: Lab A\nMethod: an attention routing algorithm.\n"
+                       "Limitation: not validated outside the benchmark.\n"
+                       "Benchmark: 30 ms on the stated dataset.",
+            "source_details": {}, "supplement_candidates": [], "checked_urls": set(),
+            "evidence_documents": [{"url": "https://example.com", "retrieved": True}],
+        }
+        source_info["evidence_metadata"] = pipeline._build_evidence_metadata(source_info["context"], False)
+        result = pipeline.assess_evidence_sufficiency(source_info)
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+
+    def test_evidence_sufficiency_rejects_long_marketing_copy_without_support(self):
+        source_info = {
+            "primary_source_resolved": True,
+            "context": ("The world's best AI platform delivers amazing results for every team. " * 80),
+            "source_details": {}, "supplement_candidates": [], "checked_urls": set(),
+            "evidence_documents": [{"url": "https://example.com", "retrieved": True}],
+        }
+        source_info["evidence_metadata"] = pipeline._build_evidence_metadata(source_info["context"], False)
+        result = pipeline.assess_evidence_sufficiency(source_info)
+        self.assertEqual(pipeline.EVIDENCE_INSUFFICIENT, result["state"])
+
+    def test_evidence_supplement_can_make_missing_limitation_sufficient(self):
+        source_info = {
+            "primary_source_resolved": True,
+            "context": "Author: Lab A\nMethod: an attention routing algorithm.\nBenchmark: 30 ms on the stated dataset.",
+            "source_details": {},
+            "supplement_candidates": [{"url": "https://example.com/appendix", "role": "SUPPLEMENTAL_SOURCE", "source_type": "official_docs"}],
+            "checked_urls": {"https://example.com"},
+            "evidence_documents": [{"url": "https://example.com", "retrieved": True}],
+            "deep_source_urls": [], "evidence_supplement_attempts": 0,
+        }
+        source_info["evidence_metadata"] = pipeline._build_evidence_metadata(source_info["context"], False)
+        self.assertEqual(pipeline.EVIDENCE_SUPPLEMENT_REQUIRED, pipeline.assess_evidence_sufficiency(source_info)["state"])
+        with patch.object(pipeline, "fetch_webpage_context", return_value="Limitation: not validated outside this benchmark."):
+            pipeline.supplement_source_evidence(source_info)
+        result = pipeline.assess_evidence_sufficiency(source_info)
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+        self.assertEqual(["https://example.com/appendix"], source_info["deep_source_urls"])
+
+    def test_evidence_insufficient_skips_gemini_and_records_avoided_call(self):
+        repo = {"nameWithOwner": "owner/marketing", "url": "https://example.com/marketing", "source": "GitHub"}
+        source_info = {
+            "primary_url": repo["url"], "primary_source_resolved": True,
+            "context": "The world's best AI platform for every team.", "source_details": {},
+            "supplement_candidates": [], "checked_urls": {repo["url"]},
+            "evidence_documents": [{"url": repo["url"], "retrieved": True}],
+            "method": pipeline.GROUNDING_SOURCE_NATIVE, "deep_source_scanned": False,
+        }
+        source_info["evidence_metadata"] = pipeline._build_evidence_metadata(source_info["context"], False)
+        funnel = pipeline.reset_deep_dive_gate_funnel()
+        with patch.object(pipeline, "prepare_source_context", return_value=source_info), \
+             patch.object(pipeline, "resolve_followup_freshness", return_value={"triggered": False, "followup_found": False, "context": ""}), \
+             patch.object(pipeline, "call_gemini_grounded_deep_dive") as gemini:
+            self.assertIsNone(pipeline.generate_intelligence_report(repo, persist_results=True, candidate_rank=1))
+        gemini.assert_not_called()
+        self.assertEqual(1, funnel.counters["deep_dive_calls_avoided"])
+        self.assertEqual(pipeline.EVIDENCE_INSUFFICIENT, funnel.records[0]["evidence_sufficiency"])
+
+    def test_dynamic_retry_uses_reason_code_targeting_without_length_feedback(self):
+        feedback, sections = pipeline.build_dynamic_retry_instruction([
+            {"reason_code": pipeline.REASON_CODE_FACT_NUMERICAL_MISMATCH, "message": "number"},
+            {"reason_code": pipeline.REASON_CODE_APPEAL_ACTION_COLLAPSE, "message": "action"},
+        ])
+        self.assertIn(pipeline.REASON_CODE_FACT_NUMERICAL_MISMATCH, feedback)
+        self.assertIn(pipeline.REASON_CODE_APPEAL_ACTION_COLLAPSE, feedback)
+        self.assertEqual(["numbers", "action"], sections)
+        self.assertNotIn("文字数", feedback)
+
+    def test_funnel_keeps_supplement_required_before_success(self):
+        funnel = pipeline.DeepDiveGateFunnel()
+        record = pipeline.build_candidate_gate_record(
+            1, "example", "https://example.com", 80, "completed",
+            final_status=pipeline.ARTICLE_STATUS_READY,
+            evidence_result={"state": pipeline.EVIDENCE_SUFFICIENT,
+                             "initial_state": pipeline.EVIDENCE_SUPPLEMENT_REQUIRED,
+                             "supplement_attempted": True, "supplement_success": True},
+        )
+        funnel.record(record)
+        self.assertEqual(1, funnel.counters["evidence_supplement_required"])
+        self.assertEqual(1, funnel.counters["evidence_supplement_success"])
+        self.assertEqual(1, funnel.counters["evidence_sufficient"])
+
 
 if __name__ == "__main__":
     unittest.main()
