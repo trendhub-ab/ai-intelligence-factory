@@ -6,10 +6,10 @@
           "budget": 450,
           "by_kind": {
             "global_calibration": 3,
-            "screening_batch": 8
+            "screening_batch": 9
           },
           "exhausted": false,
-          "used": 11
+          "used": 12
         },
         "gemini-3.6-flash": {
           "budget": 18,
@@ -24,5 +24,5 @@
     }
   },
   "quota_date": "2026-08-19",
-  "updated_at": "2026-08-19T10:28:48.907163+00:00"
+  "updated_at": "2026-08-19T11:01:14.418428+00:00"
 }
