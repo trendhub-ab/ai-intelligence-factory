@@ -588,9 +588,9 @@ class TestPipelineSafety(unittest.TestCase):
     def test_real_article_regression_cases_are_registered_and_not_allowed_to_over_reject(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(pipeline, "REGRESSION_CASES_DIR", directory):
             paths = pipeline.register_real_article_regression_cases()
-        self.assertEqual(3, len(paths))
+        self.assertEqual(4, len(paths))
         titles = {row["title"] for row in pipeline.REAL_ARTICLE_REGRESSION_CASES}
-        self.assertEqual({"Model Hypnosis", "Topological Attribution Distance (TAD)", "When Agents Coordinate"}, titles)
+        self.assertEqual({"Model Hypnosis", "Topological Attribution Distance (TAD)", "When Agents Coordinate", "Taffy"}, titles)
         for case in pipeline.REAL_ARTICLE_REGRESSION_CASES:
             self.assertTrue(pipeline.real_article_regression_allows(case["case_id"], pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW))
             self.assertFalse(pipeline.real_article_regression_allows(case["case_id"], pipeline.CONTENT_STATUS_QUALITY_FAILED))
@@ -683,6 +683,55 @@ class TestPipelineSafety(unittest.TestCase):
                 evidence_result={"state": pipeline.EVIDENCE_INSUFFICIENT},
             ))
         self.assertIn("TECHNICAL_CLAIMS_INSUFFICIENT: 7", funnel.render_ready_zero_summary())
+
+    def test_evidence_metadata_recalls_release_note_technical_entities_and_limitations(self):
+        metadata = pipeline._build_evidence_metadata(
+            "Go 1.27 adds package rand and NewTestServer. The API is experimental and not supported in WIP mode. Runtime: 12 ms.", True,
+        )
+        self.assertEqual("FOUND", metadata["coverage"]["method"])
+        self.assertEqual("FOUND", metadata["coverage"]["limitations"])
+        self.assertIn("NewTestServer", metadata["named_technical_entities"])
+        self.assertIn("12 ms", metadata["numeric_claims"])
+
+    def test_openrouter_technical_names_are_not_actor_attribution_mismatches(self):
+        reason = pipeline._reason_code("source-boundary unsupported named fact: Model Context Protocol, NewTestServer", "fact")
+        self.assertEqual(pipeline.REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT, reason)
+        self.assertNotEqual(pipeline.REASON_CODE_FACT_ACTOR_MISMATCH, reason)
+
+    def test_semantic_background_heading_satisfies_why_structure_role(self):
+        parsed = {
+            "note_draft": "## 気になった背景\n背景\n## 結論\n結論\n## 概要\n概要\n## 要点\n要点\n## 私ならこうする\n判断\n## 最終判断\n最終判断",
+            "decision_text": "TRY", "score": 63, "title_text": "検証する価値はある。",
+            "decision_reason_text": "理由", "paradigm_shift_text": "変化", "alternative_comparison_text": "比較", "migration_cost_text": "コスト",
+            "why_not_important_text": "限定的", "who_should_use_text": "検証チーム", "who_should_not_use_text": "本番チーム",
+            "action_text": "限定PoCを実施する。", "future_scenario_text": "将来", "source_summary_text": "原資料",
+        }
+        _, failures = pipeline.validate_fact_gate(parsed, "example", source_context="Method: documented.")
+        self.assertNotIn("required heading missing: 重要性", failures)
+
+    def test_taffy_low_risk_poc_does_not_create_score_narrative_mismatch(self):
+        parsed = {"title_text": "Taffyの限定検証。", "note_draft": "## 本文\n限定PoCで比較する。", "action_text": "検証環境で限定PoCと比較テストを行う。", "score": 63}
+        _, issues = pipeline.validate_publication_readiness_gate(parsed, "Official documentation.", {"sufficient": True})
+        self.assertNotIn("score_narrative_mismatch", issues)
+
+    def test_go_127_concrete_ci_action_keeps_decision_voice(self):
+        parsed = {"title_text": "Go 1.27はCIで確認する。", "note_draft": "## 気になった背景\n変更点を確認する。\n## 実務で使うなら\nCIで回帰テストとprofilingを実行する。", "action_text": "CIで回帰テストとprofilingを実施する。"}
+        _, issues = pipeline.validate_human_appeal_gate(parsed)
+        self.assertNotIn("decision_voice_missing", issues)
+
+    def test_pacing_condition_generalization_remains_fact_failure(self):
+        failures = pipeline._find_final_wording_violations("この最適化で高速になる。", {"required_qualifiers": ["toy example"]})
+        self.assertIn("EVIDENCE_CLASS_GENERALIZED", failures)
+
+    def test_retry_diagnostics_separate_trigger_from_final_reason_codes(self):
+        trigger = [{"reason_code": pipeline.REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT, "message": "old issue"}]
+        final = [{"reason_code": pipeline.REASON_CODE_PUB_HEADLINE_OVERCLAIM, "message": "remaining issue"}]
+        diagnostics = pipeline.finalize_retry_diagnostics(
+            {"retry_attempted": True, "trigger_reason_codes": trigger}, final, "NEEDS_EDITORIAL_REVIEW", "final draft",
+        )
+        self.assertEqual(trigger, diagnostics["trigger_reason_codes"])
+        self.assertEqual(final, diagnostics["final_reason_codes"])
+        self.assertFalse(diagnostics["retry_succeeded"])
 
     def test_arxiv_transient_integrity_failure_is_pending_retry_not_quality_failed(self):
         repo = {"source": "ArXiv", "nameWithOwner": "paper", "url": "https://arxiv.org/abs/2601.12345"}
