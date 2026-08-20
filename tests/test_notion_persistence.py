@@ -45,7 +45,16 @@ sys.modules["google.genai.errors"] = genai_errors_mod
 # テストしたいので、あえて NOTION_API_KEY 等は未設定のままにする） ---
 os.environ.setdefault("SYNTHETIC_REGRESSION_MODE", "false")
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# pipeline.py の場所を解決する。
+# このテストファイルと同じディレクトリに置かれるケース（従来）と、
+# リポジトリの tests/ 配下に置かれ pipeline.py がリポジトリルートにあるケースの
+# 両方に対応するため、テストファイル自身のディレクトリと、その1つ上の
+# ディレクトリ（tests/ の親 = リポジトリルート想定）の両方をsys.pathへ追加する。
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PARENT_DIR = os.path.dirname(_THIS_DIR)
+for _candidate_dir in (_THIS_DIR, _PARENT_DIR):
+    if _candidate_dir not in sys.path:
+        sys.path.insert(0, _candidate_dir)
 import pipeline  # noqa: E402
 
 
