@@ -4,42 +4,60 @@ Notion DB Persistence / State Integrity 修正のためのUnit / Regression Test
 このテストはNotionへは一切書き込まない。requests.post/patchを
 unittest.mock.patchで差し替え、実際のHTTP通信を発生させない。
 
-実行環境に google-genai パッケージが存在しないため、pipeline.py が
-importできるよう最小限のスタブモジュールを sys.modules へ注入してから
-import する。
+google-genai が利用可能な環境では実ライブラリを使用する。未導入の限定環境だけ、
+pipeline.py のimportに必要な最小限のスタブへフォールバックする。
 """
+import importlib
 import os
 import sys
 import types
 import unittest
 from unittest.mock import patch, MagicMock
 
-# --- google.genai / google.genai.errors のスタブ（この環境にはpipで入っていないため） ---
-if "google" not in sys.modules:
-    google_pkg = types.ModuleType("google")
-    google_pkg.__path__ = []  # namespace package として扱う
-    sys.modules["google"] = google_pkg
-
-genai_mod = types.ModuleType("google.genai")
-
-
 class _FakeClient:
     def __init__(self, *args, **kwargs):
         self.models = MagicMock()
-
-
-genai_mod.Client = _FakeClient
-sys.modules["google.genai"] = genai_mod
-
-genai_errors_mod = types.ModuleType("google.genai.errors")
 
 
 class _FakeAPIError(Exception):
     pass
 
 
-genai_errors_mod.APIError = _FakeAPIError
-sys.modules["google.genai.errors"] = genai_errors_mod
+def _ensure_google_genai_available(import_module=importlib.import_module, modules=None):
+    """実SDKを優先し、ImportErrorのときだけ最小Stubを登録する。"""
+    modules = sys.modules if modules is None else modules
+    try:
+        import_module("google.genai")
+        import_module("google.genai.errors")
+        return False
+    except ImportError:
+        # 既存のgoogle namespace packageは上書きしない。
+        google_pkg = modules.get("google")
+        if google_pkg is None:
+            google_pkg = types.ModuleType("google")
+            google_pkg.__path__ = []
+            modules["google"] = google_pkg
+
+        genai_mod = modules.get("google.genai")
+        if genai_mod is None:
+            genai_mod = types.ModuleType("google.genai")
+            modules["google.genai"] = genai_mod
+        if not hasattr(genai_mod, "Client"):
+            genai_mod.Client = _FakeClient
+
+        errors_mod = modules.get("google.genai.errors")
+        if errors_mod is None:
+            errors_mod = types.ModuleType("google.genai.errors")
+            modules["google.genai.errors"] = errors_mod
+        if not hasattr(errors_mod, "APIError"):
+            errors_mod.APIError = _FakeAPIError
+        setattr(genai_mod, "errors", errors_mod)
+        setattr(google_pkg, "genai", genai_mod)
+        return True
+
+
+# google-genaiが導入済みならsys.modulesを書き換えない。
+_GOOGLE_GENAI_STUB_ACTIVE = _ensure_google_genai_available()
 
 # --- pipeline.py が import 時点で依存する環境変数（Notion未設定のFail-Safe動作を
 # テストしたいので、あえて NOTION_API_KEY 等は未設定のままにする） ---
@@ -64,6 +82,48 @@ def _mock_response(status_code=200, json_data=None, text=""):
     resp.json.return_value = json_data or {}
     resp.text = text
     return resp
+
+
+class TestGoogleGenaiStubSafety(unittest.TestCase):
+    """実SDK優先と、未導入時だけの最小Stubを回帰テストする。"""
+
+    def test_available_sdk_is_not_replaced(self):
+        real_genai = types.ModuleType("google.genai")
+        real_genai.Client = object
+        real_errors = types.ModuleType("google.genai.errors")
+        real_errors.APIError = RuntimeError
+        available = {"google.genai": real_genai, "google.genai.errors": real_errors}
+
+        self.assertFalse(_ensure_google_genai_available(available.__getitem__, {}))
+        self.assertIsNot(real_genai.Client, _FakeClient)
+
+    def test_missing_sdk_installs_minimal_client_and_api_error_stub(self):
+        modules = {}
+
+        def missing(_name):
+            raise ImportError("google-genai missing")
+
+        self.assertTrue(_ensure_google_genai_available(missing, modules))
+        self.assertIs(modules["google.genai"].Client, _FakeClient)
+        self.assertIs(modules["google.genai.errors"].APIError, _FakeAPIError)
+
+    def test_existing_google_module_is_preserved_when_stub_is_needed(self):
+        existing_google = types.ModuleType("google")
+        modules = {"google": existing_google}
+
+        def missing(_name):
+            raise ImportError("google.genai missing")
+
+        _ensure_google_genai_available(missing, modules)
+        self.assertIs(existing_google, modules["google"])
+        self.assertIs(existing_google.genai, modules["google.genai"])
+
+    def test_non_import_error_is_not_hidden_by_stub(self):
+        def broken(_name):
+            raise RuntimeError("real SDK initialization failed")
+
+        with self.assertRaisesRegex(RuntimeError, "initialization failed"):
+            _ensure_google_genai_available(broken, {})
 
 
 class TestNotionHeaders(unittest.TestCase):
