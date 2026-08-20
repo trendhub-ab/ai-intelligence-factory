@@ -1,6 +1,6 @@
 # AI Intelligence Factory 現行仕様
 
-最終更新: 2026-08-20  
+最終更新: 2026-08-21  
 基準ファイル: `ai-intelligence-factory/pipeline.py` / `.github/workflows/daily.yml`
 
 > 本仕様書は、直近のDeep Dive記事生成改善（出力途中切れ対策、限定的な増枠、Backfill強化）を反映した現行基準である。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。現在は両方ともDeep Dive 12回設定で統一されている。
@@ -24,11 +24,11 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 3. OSSライセンス安全性を確認する
 4. Notion既存URL・ローカル重複を除外する
 5. Source-balanced Round Robinで候補を構成する
-6. 最大200件を25件ずつBatch Screeningする
-7. Raw Score 55点以上をGlobal Calibrationする
+6. 最大200件を25件ずつBatch Screeningし、Decision Scoreと独立したCommercial Value / Shelf-Lifeも同時推定する
+7. Raw Decision Score 55点以上をGlobal Calibrationし、Decision / Commercial / Shelf-Lifeを横断補正する
 8. 全Screening結果をObserved JSONへ保存し、GitHubへも保存する
-9. Final Score 60点以上をNotion Stockとして保存する
-10. Stock上位から最大3件をDeep Diveし、失敗時は次点をBackfillする
+9. Final Decision Score 60点以上をNotion Stockとして保存する（Commercial ValueだけではStockへ昇格させない）
+10. 永続化済みStockをProfit Priority順に並べ、最大3件をDeep Diveし、失敗時は次点をBackfillする
 11. 月末のみ月次ダイジェストを生成する
 12. Telegramへ結果・異常を通知する
 
@@ -42,7 +42,9 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 | Product Hunt | 50件 | 製品、Tagline、Description、Votes |
 
 - 合計Screening上限は200件。
-- Source障害はFault Isolationで局所化し、他Sourceの処理は継続する。
+- GitHub、Hacker News、arXiv、Product Huntの4 Sourceはすべて同格の必須Sourceとする。Source ROI、最低取得枠、最大取得枠、学習式、explorationではProduct Huntだけを優遇・抑制しない。
+- Product Huntだけ`PRODUCTHUNT_DEVELOPER_TOKEN`が必要なため、欠落はproduction PreflightでGemini消費前に停止する。これはAPI認証上のtransport要件であり、事業ロジック上の特別扱いではない。各Source側の一時障害はFault Isolationで局所化し、他Sourceの処理は継続する。
+- Product Huntは日次新着性を優先し、`PRODUCTHUNT_LOOKBACK_HOURS=72`を既定として`postedAfter`を明示し、`NEWEST`順で取得する。
 - Round Robinにより、先に連結されたSourceだけで上限を使い切らない。
 - ローカル重複はURL末尾スラッシュや主要tracking parameterの差を正規化して除外する。
 
@@ -54,27 +56,64 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - 200候補の場合、通常は8回のGemini Flash-Lite呼出し。
 - Batch間は`SCREENING_BATCH_PACING_SECONDS=10`秒待機する。
 - 入力はID、Source、名称、説明、Engagement、Published At、URLのみ。本文・README・論文PDFの取得は行わない。
-- 評価観点は技術的新規性、実務インパクト、意思決定への影響、緊急性、市場波及性、情報源の信頼性。
+- `score`（Decision Score）は従来どおり、技術的新規性、実務インパクト、意思決定への影響、緊急性、市場波及性、情報源の信頼性を評価する品質・意思決定価値スコア。
+- `commercial_score`（Commercial Value Score）はDecision Scoreから完全分離し、読者需要の見込み、意思決定の緊急性、会員DB転換可能性、継続的な実務需要、商業隣接性を0〜100でmetadataのみから保守的に推定する。入力にないアクセス数・検索量・売上は捏造しない。
+- `shelf_life_score`は情報価値の持続性を0〜100で推定し、`FLASH=0-34`（主に1〜7日）、`TREND=35-69`（主に1〜4週）、`EVERGREEN=70-100`（数か月以上）へ決定論的に分類する。
+- `topic`はSource種別ではなく内容の主テーマを`MODEL / AGENT / DEVTOOLS / INFRA / DATA / SECURITY / MULTIMODAL / PRODUCT / OTHER`の9分類で推定する。補助メタデータであり、欠落・不正時は`OTHER`へFail-SafeしてDecision Scoreを失わない。
 - Source間でEngagementの絶対値を直接比較しない。
-- 出力はJSON配列（`id`、`score`、`reason`）。ID欠落、重複、未知ID、score範囲外、JSON不正を検出する。
+- 出力はJSON配列（`id`、`score`、`commercial_score`、`shelf_life_score`、`topic`、`reason`）。ID欠落、重複、未知ID、score範囲外、JSON不正を検出する。Profit/Portfolio補助値が欠落・不正でも有効なDecision Score行は捨てず、Commercial/Shelfは中立値50、Topicは`OTHER`へFail-Safeする。
 - 欠落候補だけを最大10件のRecovery Batchで再試行する。正常結果は再送しない。
 
 ### Global Calibration
 
 - `ENABLE_GLOBAL_CALIBRATION=true`
 - Raw Score 55点以上のみを対象に、最大50件ずつ横断比較する。
-- Calibration後の`final_score`をNotion保存・順位付け・Deep Dive候補選定に使用する。
-- Calibration失敗時は、有効なRaw Scoreを保持して処理を継続する。
+- Calibration後の`final_score`はNotion Stock閾値のDecision Scoreとして使用する。同時にCommercial Value / Shelf-Life / Topicも横断補正するが、品質スコアと混合しない。
+- Calibration失敗時は、有効なRaw Decision Scoreと初回Profit/Portfolio metadataを保持して処理を継続する。
+
+### 収益最適化（Profit Priority）
+
+- `ENABLE_PROFIT_PRIORITY=true`を既定とする。品質Gate、Notion Stock閾値、Fact/Evidence判定は一切変更しない。
+- Deep Dive候補の順序だけを `Priority = 0.65 × Final Decision Score + 0.35 × Commercial Value Score` で再順位付けする。重みは`DEEP_DIVE_DECISION_WEIGHT` / `DEEP_DIVE_COMMERCIAL_WEIGHT`で変更でき、負値は0として扱う。
+- Commercial Value Scoreが100でもFinal Decision Scoreが60未満ならStockにもDeep Diveにも入れない。Notion Stock永続化に失敗した候補も従来どおり除外する。
+- Shelf-Lifeは短命ニュースへの偏りを防ぐためのPortfolio制御にのみ使う。TOP3にEVERGREENが0件の場合、候補のProfit Priorityが現在の3位以内のcutoffから`EVERGREEN_PRIORITY_TOLERANCE=8`点以内なら、EVERGREENを最大1枠（`EVERGREEN_PORTFOLIO_MIN=1`）まで3位へ繰り上げる。大幅に弱いEVERGREENを品質・利益より優先しない。
+- Content Portfolio Balanceを既定ON（`ENABLE_PORTFOLIO_BALANCE=true`）とする。TOP3が単一Topicへ偏り、別Topic候補が現在cutoffから`PORTFOLIO_TOPIC_PRIORITY_TOLERANCE=6`点以内なら、`PORTFOLIO_MIN_DISTINCT_TOPICS=2`を目安に最大1件以上を保守的に繰り上げる。大幅に弱い別Topicは繰り上げず、`OTHER`を含む場合は分類不足とみなし順位を動かさない。
+- Topic多様化はEvergreenの唯一枠を破壊しない。Profit Priority / Evergreen / TopicはいずれもDeep Dive候補順にだけ作用し、Stock閾値・Evidence・Quality Gateを変更しない。
+- この版ではNotion DBの新規Property追加を要求しない。Commercial / Shelf-Life / Topic / Profit PriorityはObserved履歴と実行時候補データへ保存し、既存Notion Schemaを壊さない。将来Revenue Feedback Loopを実装する際にNotion/分析DBへ昇格する余地を残す。
+
+### Source ROI Learning
+
+- `ENABLE_SOURCE_ROI_LEARNING=true`を既定とし、4 Sourceの過去Runにおける`screened`、実Notion `stock_saved`、`deep_dive_attempted`、`generation_requests`、`ready`等のaggregateだけを最大30 Run保持する。記事本文・個人情報はROI状態へ保存しない。
+- ROIは既定で `Stock Yield 35% + Ready Yield 45% + Generation Efficiency 20%`。少数データ暴走を抑えるBayesian smoothingと、直近Runを重くする`SOURCE_ROI_RECENCY_DECAY=0.93`を適用する。
+- `SOURCE_ROI_MIN_SCREENED=50`かつ`SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS=2`を満たす成熟Sourceが2つ以上になるまで、冷開始として従来の50件/Sourceを維持する。状態欠落・破損時も同じ冷開始へFail-Safeする。
+- 学習有効化後も4 Sourceすべてに`SOURCE_ROI_MIN_FETCH_PER_SOURCE=25`を保証する。残り枠だけをROIと小さなexploration bonusで動的配分する。ROIが低いSourceも停止・除外しない。
+- **4 Sourceは完全に同格**とし、最大取得枠は共通の`SOURCE_ROI_MAX_FETCH_PER_SOURCE=75`を使用する。Product Huntだけ50に固定する等のSource固有capは持たない。4 Sourceが同じROIなら200件上限時は50/50/50/50へ対称配分される。
+- APIごとの認証、pagination、レスポンス形式、Evidence抽出差はSource adapter層の技術要件として扱うが、Source ROIスコアやDeep Dive優先度へSource名による固定boost/penaltyを入れない。
+- ROI状態は`source_roi_history/source_roi_state.json`へ保存し、Observed履歴には当該RunのROI profileとfetch allocationも監査用に保持する。
+
+## 4.5 Free Article → Subscription Attribution
+
+- Business modelは`無料note = Acquisition`、`会員向け意思決定DB + 月次サマリー = Paid Subscription Product`で固定する。有料note記事の販売ロジックは追加しない。
+- `ENABLE_SUBSCRIPTION_ATTRIBUTION=true`を既定とし、Ready記事ごとにPrimary URL由来の安定`article_id`を生成する。Source名ではなくcanonical Primary URLをidentityとするため、utm差・HN/Product Hunt等のDiscovery Source差でAttributionが分裂しない。
+- `SUBSCRIPTION_LANDING_URL`が有効なHTTP(S) URLの場合だけ、無料記事末尾に会員向け意思決定DB＋月次サマリーへのCTAを追加する。URLには`utm_source=note`、`utm_medium=free_article`、`utm_campaign`、`utm_content=article_id`、`aif_article_id=article_id`を決定論的に付与する。既存の非Attribution query parameterは維持する。
+- Landing URL未設定・不正時は壊れたCTAを公開せず、記事生成自体は継続する。production preflightでは警告だけを出し、品質Pipelineを止めない。
+- Attribution manifestは**Quality Gate PASS AND Notion Persistence SUCCESSでReady確定した後だけ**`subscription_attribution/articles/<article_id>.json`へ保存する。Telemetry保存失敗はReadyを取り消さない。
+- Manifestは記事単位aggregate metadataだけを保持し、subscriberの氏名、メール、member/customer/payment ID等のPIIを保存しない。
+- 外部実績は`subscription_metrics_template.csv`と`subscription_attribution.py`で集計する。`attribution_method`を`note_dashboard_only / tracked_cta / end_to_end / manual_verified`の4段階で必須化し、計測根拠を超えるsubscriber/revenue値を入力した場合はFail-Closedで拒否する。未知`article_id`やPII様columnも拒否する。
+- 集計KPIは`CTA click rate`、`Subscriber conversion/click`、`Subscriber conversion/note view`、`Subscription revenue/1,000 note views`等。**現版では実績をCommercial Value / Source ROIへ自動Feed Backしない**。少数・不完全帰属による自己強化バイアスを避け、Revenue Feedback Loopは十分な実測蓄積後に別実装する。
+- GitHub Actionsでは`SUBSCRIPTION_LANDING_URL`をRepository Variableから受け取る。`subscription_attribution/**`のみのruntime commitではSynthetic Regression CIを再起動しない。
 
 ## 5. Gemini API保護
 
 - Screening Model Pool: Flash-Lite系モデル（既定: `gemini-3.5-flash-lite`、`gemini-3.1-flash-lite`）
 - Deep Dive Model Pool: Flash系モデル（既定: `gemini-3.6-flash`、`gemini-3.7-flash`、`gemini-3.5-flash`）
 - 429、404、503等ではモデルPool内でFallbackする。
-- Persistent Daily CounterでAPIキー・モデル単位の利用量を永続管理する。
+- Persistent Daily Counterは**Google Project・モデル単位**で利用量を永続管理する。Gemini APIのquotaはAPIキー交換でリセットされないため、`GEMINI_QUOTA_PROJECT_ID`をSHA-256短縮scopeへ変換して共有し、生のProject ID/API Keyは状態ファイルへ保存しない。旧API-key scopeの同日counterが残る場合はProject scopeへ保守的に合算移行する。ローカルBudget/Retry Budgetを先に検査し、実送信不能な要求でPersistent Counterを過剰予約しない。
 - 実行内Gemini安全上限は50リクエスト。Deep Dive用に3リクエストを予約する。
 - Screening Retry Budgetは4、Deep Dive Retry Budgetは1。無限Retryはしない。
 - クォータ・通信障害はQuality FailedではなくPending Retry／未判定として扱う。
+- `GEMINI_PERSISTENT_DAILY_COUNTER=true`のproduction/Real Regressionでは`GEMINI_QUOTA_PROJECT_ID`を必須Preflightする。未設定ならGeminiを1回も呼ぶ前にFail-Closed停止する。
+- 1 Run内のGemini送信試行は`GeminiUsageAudit`でmodel / request kind /短いcandidate context / success-error / SDKが返すtoken usageに分解して記録する。Prompt本文・未公開記事本文は監査ログへ保存しない。`gate_history/gemini_usage_*.json`はPrivate Artifactへ保存し、Daily完了通知にもmodel別・用途別attempt数を出す。
 
 ### Deep Dive記事生成の現行設定
 
@@ -88,7 +127,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 
 ### GitHub Actionsとの設定整合
 
-`pipeline.py`の既定値と`.github/workflows/daily.yml`の`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET`は、現在ともに12回で統一されている。GitHub Actionsの日次実行ではWorkflowの環境変数指定が適用される。
+`pipeline.py`の既定値と`.github/workflows/daily.yml`の`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET`は、現在ともに12回で統一されている。GitHub Actionsの日次実行ではWorkflowの環境変数指定が適用される。Daily/Real Article Regressionは同一`ai-intelligence-gemini-budget` concurrency groupを共有し、Gemini枠を同時消費しない。Daily/Real Regressionのjob timeoutは45分とし、Deep Dive 12回×120秒 timeout＋pacingに加えてScreening/Calibration・Evidence取得・Notion永続化の余裕を持たせる。
 
 ## 6. Notion保存仕様
 
@@ -103,15 +142,19 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 ### Deep Dive
 
 - 最大成功件数は3件。低スコア候補で本数を水増ししない。
+- Deep Dive候補はFinal Decision Score 60点以上に加えて、当該RunでNotion Stock永続化に成功し`notion_page_id`を持つ候補だけとする。Stock保存失敗候補へ追加のGemini Deep Dive枠を消費せず、次回収集でStockから再試行する。Eligible Stock間の順序だけProfit Priorityで最適化する。
 - Stockの既存Notionページを更新する。重複ページを作らない。
-- 成功時は`Status=Deep Dive`、`Content Status=Deep Dive`、`Article Status=Ready`となる。
+- 成功時は`Status=Deep Dive`、`Content Status=Deep Dive`、`Article Status=Ready`となる。内部Notion DBの`Subscription Visibility`はnote無料公開モードと分離し、Readyでも`Subscriber Only`を維持する。
+- `Needs Editorial Review`は、生成済みDeep Dive本文を既存Stockページの内部Notion childrenへ保存する。状態は`Status=Deep Dive`、`Content Status=Deep Dive`、`Article Status=Needs Editorial Review`、`Subscription Visibility=Subscriber Only`とし、`Review Status=Public Approved`には変更しないため公開DB・会員公開DB・noteへは送らない。人間レビュー後にReadyへ昇格できる内部資産として保持する。再Review時は新稿を先にappendし、状態commit成功後に旧Review manuscriptをbest-effortでarchiveして古いReview本文の残存を防ぐ。
+- Needs Editorial Review原稿とReady原稿はmanuscript captionで識別する。Review原稿をReady原稿と誤認して再生成本文をスキップしない。Ready commit成功後は旧Review manuscript blockをbest-effortでarchiveし、ページ内の旧稿混在を抑制する。
 - Readyは「4つのQuality Gateを通過」かつ「Notion永続化に成功」の両方を満たす場合だけに確定する。Notion保存失敗は記事品質失敗ではなく`NOTION_PERSISTENCE_FAILED`として記録し、Ready件数へ加算しない。
 - Notion Upgradeは本文childrenを先に保存し、成功後にDeep Dive／Readyプロパティをcommitする。children失敗時はReady状態へ更新しない。properties commit失敗時は、今回追加したchildrenをbest-effortでrollbackし、Pending Retryへ遷移する。Pending Retryの状態保存にも失敗した場合はTelegramで運用者へ通知する。
 - 既にMarkdown manuscript childがあるRetryでは本文を再appendしない。これによりrollback失敗後の二重本文を防ぐ。
 - URL重複判定は新規候補・Notion既存URLに共通のcanonicalizationを適用する。末尾`/`、fragment、`utm_*`、`fbclid`、`gclid`、`ref`、`source`を除去するが、意味のあるquery parameterは維持する。
+- Cross-source identityには候補が明示的に保持する公式／一次URLに加え、HN item URL・Product Hunt discovery URLをmigration aliasとして利用する。これは旧Stock行との再重複防止専用で、タイトル類似だけによる推測dedupeは行わない。
 - arXivの429・503・timeoutはPending Retryのままにする。ID不正、title mismatch、実在確認失敗等の恒久的Source Integrity Failureは、既存Notionページがある場合に`Content Status=Quality Failed`、`Article Status=Not Planned`、`Grounding Status=Failed`へ反映する。未公開記事本文は保存しない。
-- Stale判定はStock作成日時ではなく、最新のReady／Deep Dive記事の`Analyzed At`を基準にする。
-- `Public Approved`のものだけを会員公開DBへ同期できる。
+- Stale判定はStock作成日時ではなく、最新の`Article Status=Ready`記事の`Analyzed At`を基準にする。Needs Editorial ReviewはStaleを隠さない。
+- 会員公開DBへの同期条件は`Review Status=Public Approved` **AND** `Article Status=Ready`。内部DBをSource of Truthとしてreconciliationし、過去に同期済みでも承認取消・Review・Quality Failed等で条件を外れた内部レコードは会員DB側をarchiveする。内部DBに対応URLがない手動レコードは勝手に削除しない。
 
 ## 7. 記事・品質仕様
 
@@ -130,6 +173,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - MEDIUM／HIGH RISK Actionが現Tierで支えられない場合は、追加Evidenceがあれば先に`SUPPLEMENT_REQUIRED`とする。補強後も支えられない場合は、一次情報から導ける具体的なLOW RISK Actionへ縮退する。現在価格・現行提供状況などの鮮度必須条件、一次ソース未解決、技術主張不足は縮退で回避しない。
 - Evidence Sufficiencyは`SUFFICIENT`、`SUPPLEMENT_REQUIRED`、`INSUFFICIENT`の3状態とする。文字数の閾値だけで合否を決めない。
 - `SUPPLEMENT_REQUIRED`の場合だけ、一次資料・公式Docs/README・論文PDF・補足資料の順で追加取得する。`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS`、`MAX_EVIDENCE_DOCUMENTS`、`MAX_EVIDENCE_TOTAL_CHARS`の上限を守り、同一URLを再取得しない。
+- 最終成果物のEvidence URLはGemini grounding metadataだけに依存せず、Primary URL、実際に取得したEvidence Supplement資料、Grounding URLを監査順に統合する。Stock dedupeでは同一資産として扱うarXiv `abs`/`pdf`も、監査証跡では「実際にPDFを読んだ」ことを残すため別URLとして保持する。ReadyだけでなくNeeds Editorial ReviewのNotion `Evidence URLs`とレビュー原稿末尾にも同じ規則を適用する。
 - 補強後も`INSUFFICIENT`なら`PRIMARY_EVIDENCE_INSUFFICIENT`をGate履歴へ記録し、公開・Quality Failed保存・Gemini呼出しを行わずBackfillする。
 - Evidence Scope、数値、条件、制約、鮮度、Actor Attributionを品質ゲートで検証する。
 - 内部のDecision構造は固定し、noteで見せる導入・見出しだけを記事ごとに可変化する。
@@ -137,7 +181,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - 記事には観察または留保を最低1箇所置く。架空の感情・使用体験は生成しない。
 - 「理由は3つ」「結論から言うと」等の定型句、箇条書き、疑問形、同一文末の過剰な反復をHumanization Gateで検出する。
 - Humanization Gateの問題は、一次情報取得やFact Checkを再実行せず、既存の品質再編集（最大1回）で表現だけを修正する。
-- Publication Readiness Gateでは、タイトル・導入・結論・Action・Decision Score・一次情報量を横断確認する。事実誤認はQuality Failed、根拠不足や判断の飛躍は`Needs Editorial Review`として分離する。
+- Publication Readiness Gateでは、タイトル・導入・結論・Action・Decision Score・一次情報量を横断確認する。事実誤認はQuality Failed、根拠不足や判断の飛躍は`Needs Editorial Review`として分離する。`Fact Gate=FAIL`の稿はPublicationがREVIEWでもNeeds Editorial Reviewへ降格させず、必ずQuality Failed側へ送る。
 - Human Appeal Gateを独立して設ける。過剰な曖昧化、具体Actionの「注視」への置換、説明的すぎるタイトル、編集後の筆者判断の消失を検出する。
 - 再編集は根拠のない主張の該当箇所だけを直す。根拠付きの観察・判断・限定検証・見送り判断は残し、安全性のために記事全体を無難な一般論へ均さない。
 - Human Appealの軽微な警告は記録して公開を妨げないが、判断の具体性・タイトルの役割が失われた場合は`Needs Editorial Review`へ送る。
@@ -168,17 +212,22 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - run_id、analyzed_at、total_collected、total_screened、stock_threshold
 - batch_calls、recovery_calls、calibration_calls
 - 各候補のID、Source、名称、URL、公開日時、Engagement
-- raw_screening_score、final_screening_score、reason、calibrated
+- raw_screening_score、final_screening_score、raw_commercial_value_score、commercial_value_score
+- raw_shelf_life_score、shelf_life_score、shelf_life、deep_dive_priority_score、reason、calibrated
 - screening_status、error_category、stocked
+- Source ROI profile、当該RunのSource別fetch allocation
 
 GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegramで通知する。
 
 ## 9. 運用・出力
 
-- GitHub Actionsの日次Workflowから`python pipeline.py`を実行する。
-- 月末にはNotion保存資産を基に会員向け月次ダイジェストを生成する。
+- GitHub Actionsの日次Workflowから`python pipeline.py`を実行する。mainへのpushではUnit Test＋Synthetic Regression smokeを自動実行し、翌日のDailyまで不具合検知を遅らせない。
+- production起動時はNotion内部DBの必須Property名・型をPreflightし、Schema不整合ならGeminiを1回も消費する前にFail-Closed停止する。
+- Pending Retryは`last_edited_time ASC`で最も長く待っている候補から処理し、同じ上位3件が後続を永久に塞ぐ飢餓を防ぐ。
+- 月末にはNotion保存資産を基に会員向け月次ダイジェストを生成する。会員限定性を守るためraw GitHub URLへcommitせず、`monthly_digests/`をGitHub ActionsのPrivate Artifactとして90日保持する。
 - アイキャッチはDecision Score 60点以上で生成し、GitHubへ保存する。
-- TelegramにはCollected、Screened、Screening API Calls、Calibration、Stock、Deep Dive Ready、Gemini予算を通知する。
+- TelegramにはCollected、Screened、Screening API Calls、Calibration、Stock、Deep Dive Ready、Gemini予算に加え、model別・用途別のGemini API attempt内訳を通知する。
+- Free Article → Subscription Attributionの設定・CSV集計手順は`SUBSCRIPTION_ATTRIBUTION_SETUP.md`を運用基準とする。note標準Dashboardの数値だけからsubscriber conversionを推測しない。
 
 ### Gate可視化と内部レビュー
 
@@ -187,10 +236,11 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - Grounding状態は`pre_generation`、初回生成、Retry、最終を段階別に保存する。RetryでGrounding metadataが欠けても、事前確認済みの一次ソース状態を失わない。
 - Readyが0件の場合のTop Failure Causesには、`TECHNICAL_CLAIMS_INSUFFICIENT`等のEvidence Insufficient詳細Reason Codeを候補履歴から件数集計して表示する。`PRIMARY_EVIDENCE_INSUFFICIENT`だけに丸めない。
 - Evidence Supplement候補は、既に抽出済みの研究リンクに限定しない。収集済みの公式サイト・Docs・プロジェクトURL・arXiv PDFを対象にし、同一URL再取得禁止と既存の2回／3資料／12,000文字上限を守る。Google Searchの既定OFFは維持する。
+- arXivでは同一論文PDFをEvidence Supplement候補の最優先とする。`/prevnext`、`/IgnoreMe`、トップページ、`/search`、`/list`、`/help`、`/login`、`/format`等のナビゲーション・補助URLはEvidence SupplementおよびFreshness follow-up候補から除外し、補強回数を消費させない。
 - Product Huntの`/r/...` URLは、取得時およびPending Retry時に一度だけ公式製品URLへ解決する。解決先の公式サイト、Docs、GitHub等の一次情報リンクをEvidence Supplement候補に追加し、技術主張不足でも候補がある場合は補強を先に試す。
 - arXivの再照会で429・503・timeout等の一時障害が起きた場合は`Pending Retry`として扱い、Quality Failed原稿を保存しない。arXiv ID不正・title mismatch・実在確認失敗は従来どおりFail-Closedである。
 - 実運用で過剰Failとなった`Model Hypnosis`、`Topological Attribution Distance (TAD)`、`When Agents Coordinate`は、固有タイトルによる特別扱いはせず、Quality Failedへ直行させず少なくとも`Needs Editorial Review`へ到達可能であることを固定Regression Caseとして検証する。
-- `Needs Editorial Review`と`Quality Failed`の原稿・根拠メタデータは、公開DB・会員公開DB・noteへ送らず、`review_candidates/`または`quality_failures/`へ内部保存する。
+- `Needs Editorial Review`原稿は既存Notion内部DBの同一Stockページへ全文保存すると同時に`review_candidates/`へ内部Artifact保存するが、`Public Approved`にしないため公開DB・会員公開DB・noteへは送らない。`Quality Failed`原稿は従来どおり`quality_failures/`へのprivate artifact保存のみとし、Notion本文には保存しない。
 - Evidence metadataは一次資料本文に明示された技術仕様、数値、API／package／function名を抽出する。`WIP`、`work in progress`、`not supported`、`unsupported`、`not implemented`、`does not support`、`experimental`も制約候補として扱うが、本文にない根拠は補完しない。
 - `FACT_ACTOR_MISMATCH`は人・組織・発表主体・製品主体の帰属誤りだけに用いる。技術規格名・API名・関数名の一次資料外記述は`FACT_UNSUPPORTED_NAMED_FACT`として区別する。
 - 記事構造は固定の見出し文字列ではなく役割で確認する。`気になった背景`、`ここが大きい`等が重要性の役割を満たす場合は許容する。Human AppealのDecision Voiceは、観察文だけでなく根拠付きの限定Action、比較、見送り、CI・回帰テスト・profilingも認識する。
@@ -198,7 +248,7 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - Quality Retryでは初稿の`trigger_reason_codes`を履歴として保持しつつ、最終稿を再評価した残存問題だけを`final_reason_codes`と最終Gate Statusに反映する。
 - `Taffy`（Decision Score 63／LOW RISK PoC）はFalse Positive Regression Caseとして登録する。`Go 1.27`のCI・回帰テスト・profiling Action、`OpenRouter`のMCP等技術名、およびPacingの数値・条件一般化もSafety Regressionで検証する。
 - GitHub Actionsでは内部保存物と`gate_history/`、`regression_cases_pending/`を非公開Artifactとして14日間保持する。公開Repositoryへcommitしない。
-- Telegramには件数と主要Gateのみを通知し、記事本文・未公開情報は送らない。
+- Telegramには件数と主要Gateのみを通知し、記事本文・未公開情報は送らない。Real Article Regressionも未公開原稿全文をWorkflow Logへ出さず、private artifactへだけ保存する。
 - 外部レビュー用Markdownは、Pipeline状態、失敗Gate、Reason Code、Decision Score、固定Rubric、記事本文をまとめて出力する。
 
 ### False Positive／False Negativeの回帰化
@@ -212,16 +262,43 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 | テスト | 現行結果 |
 |---|---|
 | Python構文チェック | 成功 |
-| Notion Persistenceテスト | 43件成功 |
-| unittest discovery | 112件成功 |
-| Safety Unit Test | 69件成功 |
-| Synthetic Regression Suite | Full 500/500成功、critical failure 0（2026-08-20実行） |
+| Notion Persistenceテスト | 48件成功 |
+| Adversarial / Failure Injection | 105件成功 |
+| unittest discovery | 239件成功 |
+| Safety Unit Test | 75件成功 |
+| Synthetic Regression Suite | Full 500/500成功、critical failure 0（2026-08-21実行） |
 
-追加済みの主な検証は、200候補が8 Batchになること、Batch間ペーシング、JSON欠落・不正値検出、Calibration適用、Observed履歴の保存、表示見出しと導入段落数の可変性、架空体験の抑止、観察・留保、研究段階から本番導入への飛躍、弱い根拠に対する煽り見出し、過剰Hedging、具体Actionの消失、タイトルの無難化、再編集によるDecision Voice劣化、正式Gate関数名・alias・実行順、短いが意味的に十分な一次資料、長い販促文の不足判定、補強成功、Evidence不足時にGeminiを呼ばないこと、Reason Code別の動的Retry、制約未確認時のLOW RISK Action、研究記事の時点限定、現在価格の鮮度必須、生成ActionのRisk Tier判定、HIGH RISK Actionの拒否、公式補強候補、arXiv一時障害のPending Retry化、Gate履歴とFunnelの段階別集計である。
+追加済みの主な検証は、arXivナビゲーションURL除外、同一論文PDFのEvidence最優先、Freshness誤巡回防止、Evidence資料上限3、200候補が8 Batchになること、Batch間ペーシング、JSON欠落・不正値検出、Calibration適用、Observed履歴の保存、表示見出しと導入段落数の可変性、架空体験の抑止、観察・留保、研究段階から本番導入への飛躍、弱い根拠に対する煽り見出し、過剰Hedging、具体Actionの消失、タイトルの無難化、再編集によるDecision Voice劣化、正式Gate関数名・alias・実行順、短いが意味的に十分な一次資料、長い販促文の不足判定、補強成功、Evidence不足時にGeminiを呼ばないこと、Reason Code別の動的Retry、制約未確認時のLOW RISK Action、研究記事の時点限定、現在価格の鮮度必須、生成ActionのRisk Tier判定、HIGH RISK Actionの拒否、公式補強候補、arXiv一時障害のPending Retry化、Gate履歴とFunnelの段階別集計である。
+
+## 10.1 Failure Injection / Adversarial Regression
+
+実記事の蓄積を待たず、想定事故を人工的に再現して危険なFalse Negative／False Positiveを先に潰す。専用テストは`tests/test_adversarial_regression.py`に保持し、通常の`unittest discover`から毎回実行する。
+
+主な固定検証:
+
+- 数値自体が一致していても、hardware・dataset・metric等の明示条件が矛盾する場合はFact根拠として通さない。
+- `3.4x`／`3.4倍`、`1/40`／`40分の1`、sec／秒、ms／ミリ秒等の同義表現は誤Failしない。
+- Evidence metadataの英単語判定はword boundaryを用い、`rapid`内の`API`、`latest`内の`test`等の部分一致をEvidence FOUNDと誤認しない。
+- URLが存在するだけではPrimary Source Resolvedとせず、source-native本文／公式本文の実取得を必要とする。外部記事付きHNではHNコメントだけを一次情報扱いしない。
+- HTTP取得はredirectごとにpublic URL検証を行い、公開URLからlocalhost/private IPへ転送されるSSRFを遮断する。
+- URL canonicalizationはscheme/host case、既定port、query順、arXiv abs/pdf/version差を正規化する。Cross-source重複は、候補自身が既に保持する公式／一次URLの共有だけで保守的に判定し、タイトル類似だけで別案件を落とさない。
+- Public DB同期は`Review Status=Public Approved`だけでなく`Article Status=Ready`も必須とし、Needs Editorial Reviewの誤公開を二重防止する。
+- Monthly DigestおよびStale判定ではNeeds Editorial Reviewを完成Deep Diveとして扱わず、Readyだけを完成記事として扱う。
+- Deep Dive local budget、transport retry budget、reserve判定が設定上限を超えないことをFailure Injectionで固定する。
+- Quality Retry前後のHuman Appeal／Decision Voiceを比較し、具体Actionが単なる「注視」へ崩壊する等の実質劣化を検出する。`trigger_reason_codes`と`final_reason_codes`は分離して保持する。
+- Gate組合せをAdversarial化し、`Fact FAIL × Publication REVIEW`がNeeds Editorial Reviewへ誤遷移しないことを固定する。
+- Pending Retry公平性、Notion Schema Preflight、Persistent Counter予約順、**Project単位quota scope・旧key scope migration・API usage audit**、Public DB承認取消archive、Product Hunt recent-window、Freshness関連性、Workflow timeout/concurrency、月次Digest private artifactを固定Regression化する。
+- Needs Editorial Reviewでも補強PDF/Docsを最終Evidence URLへ残すこと、Notion Stock保存失敗候補を同RunのDeep Dive対象から除外すること、旧HN/Product Hunt discovery URLを明示aliasとして重複判定できることを固定Regression化する。
+- `test_adversarial_regression.py`は直接実行と`unittest discover`で同じテスト集合を実行する。
+- Profit PriorityをFailure Injection化し、Commercial ValueがStock閾値を迂回しないこと、Notion未永続化候補を押し上げないこと、Commercial再順位付け、EVERGREENの許容差付きPortfolio枠、Profit Priority無効化時の旧Decision順復帰、Profit補助項目欠落時のDecision行維持、Calibration/Observed履歴の独立保存を固定する。
+- Content Portfolio BalanceをFailure Injection化し、同Topic偏重時だけ僅差の別Topicを繰り上げること、大幅に弱い別Topicを強制しないこと、`OTHER`/欠落Topicでは順位を動かさないこと、唯一のEVERGREEN枠を保護すること、無効化時に従来Priority順へ戻ること、Observed履歴へTopicを保持することを固定する。
+- Source ROI LearningをFailure Injection化し、冷開始50件/Source、全4 Source最低25枠、状態破損Fail-Safe、実Notion Stockだけの歩留まり計上、学習後の高ROI配分を固定する。さらに4 Sourceの最大枠が共通値であること、同一ROIなら4 Sourceが対称配分されProduct Huntだけが優遇・抑制されないことを固定する。
+
+2026-08-21時点の結果: Adversarial 105/105、Notion Persistence 48/48、Safety 75/75、Subscription Attribution 11/11、全Unit 239/239、Synthetic Regression Full 500/500、critical failure 0。
 
 ## 11. 主な環境変数
 
-`GITHUB_FETCH_LIMIT=50`、`HN_FETCH_LIMIT=50`、`ARXIV_FETCH_LIMIT=50`、`PRODUCTHUNT_FETCH_LIMIT=50`、`MAX_SCREENING_CANDIDATES=200`、`SCREENING_BATCH_SIZE=25`、`SCREENING_BATCH_PACING_SECONDS=10`、`ENABLE_GLOBAL_CALIBRATION=true`、`GLOBAL_CALIBRATION_MIN_RAW_SCORE=55`、`GLOBAL_CALIBRATION_BATCH_SIZE=50`、`ENABLE_OBSERVED_HISTORY=true`、`OBSERVED_HISTORY_DIR=observed_history`、`OBSERVED_HISTORY_GITHUB_DIR=observed_history`、`NOTION_SAVE_THRESHOLD_SCORE=60`、`TOP_N_FOR_DEEP_DIVE=3`、`GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=9000`、`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET=12`、`MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7`、`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS=2`、`MAX_EVIDENCE_DOCUMENTS=3`、`MAX_EVIDENCE_TOTAL_CHARS=12000`。
+`GEMINI_QUOTA_PROJECT_ID=<Google Project ID>`、`GEMINI_PERSISTENT_DAILY_COUNTER=true`、`GITHUB_FETCH_LIMIT=50`、`HN_FETCH_LIMIT=50`、`ARXIV_FETCH_LIMIT=50`、`PRODUCTHUNT_FETCH_LIMIT=50`、`PRODUCTHUNT_LOOKBACK_HOURS=72`、`MAX_SCREENING_CANDIDATES=200`、`ENABLE_SOURCE_ROI_LEARNING=true`、`SOURCE_ROI_HISTORY_RUNS=30`、`SOURCE_ROI_RECENCY_DECAY=0.93`、`SOURCE_ROI_MIN_SCREENED=50`、`SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS=2`、`SOURCE_ROI_MIN_MATURE_SOURCES=2`、`SOURCE_ROI_MIN_FETCH_PER_SOURCE=25`、`SOURCE_ROI_MAX_FETCH_PER_SOURCE=75`、`SOURCE_ROI_EXPLORATION_WEIGHT=0.15`、`ENABLE_PROFIT_PRIORITY=true`、`DEEP_DIVE_DECISION_WEIGHT=0.65`、`DEEP_DIVE_COMMERCIAL_WEIGHT=0.35`、`EVERGREEN_PORTFOLIO_MIN=1`、`EVERGREEN_PRIORITY_TOLERANCE=8`、`ENABLE_PORTFOLIO_BALANCE=true`、`PORTFOLIO_MIN_DISTINCT_TOPICS=2`、`PORTFOLIO_TOPIC_PRIORITY_TOLERANCE=6`、`SCREENING_BATCH_SIZE=25`、`SCREENING_BATCH_PACING_SECONDS=10`、`ENABLE_GLOBAL_CALIBRATION=true`、`GLOBAL_CALIBRATION_MIN_RAW_SCORE=55`、`GLOBAL_CALIBRATION_BATCH_SIZE=50`、`ENABLE_OBSERVED_HISTORY=true`、`OBSERVED_HISTORY_DIR=observed_history`、`OBSERVED_HISTORY_GITHUB_DIR=observed_history`、`NOTION_SAVE_THRESHOLD_SCORE=60`、`TOP_N_FOR_DEEP_DIVE=3`、`GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=9000`、`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET=12`、`MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7`、`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS=2`、`MAX_EVIDENCE_DOCUMENTS=3`、`MAX_EVIDENCE_TOTAL_CHARS=12000`。
 
 ## 12. 依存関係
 

@@ -17,7 +17,7 @@ jobs:
   run-pipeline:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
       - name: リポジトリのチェックアウト
@@ -41,6 +41,7 @@ jobs:
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -49,6 +50,11 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_API_VERSION: "2026-03-11"
           ARTICLE_PUBLICATION_MODE: "free"
+          ENABLE_SUBSCRIPTION_ATTRIBUTION: "true"
+          SUBSCRIPTION_LANDING_URL: ${{ vars.SUBSCRIPTION_LANDING_URL }}
+          SUBSCRIPTION_CAMPAIGN_ID: "ai_intelligence_factory_subscription"
+          SUBSCRIPTION_ATTRIBUTION_DIR: "subscription_attribution/articles"
+          SUBSCRIPTION_ATTRIBUTION_GITHUB_DIR: "subscription_attribution/articles"
           EYECATCH_MIN_DECISION_SCORE: "60"
           PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
@@ -57,7 +63,30 @@ jobs:
           HN_FETCH_LIMIT: "50"
           ARXIV_FETCH_LIMIT: "50"
           PRODUCTHUNT_FETCH_LIMIT: "50"
+          PRODUCTHUNT_LOOKBACK_HOURS: "72"
           MAX_SCREENING_CANDIDATES: "200"
+          ENABLE_PROFIT_PRIORITY: "true"
+          DEEP_DIVE_DECISION_WEIGHT: "0.65"
+          DEEP_DIVE_COMMERCIAL_WEIGHT: "0.35"
+          EVERGREEN_PORTFOLIO_MIN: "1"
+          EVERGREEN_PRIORITY_TOLERANCE: "8"
+          ENABLE_PORTFOLIO_BALANCE: "true"
+          PORTFOLIO_MIN_DISTINCT_TOPICS: "2"
+          PORTFOLIO_TOPIC_PRIORITY_TOLERANCE: "6"
+          ENABLE_SOURCE_ROI_LEARNING: "true"
+          SOURCE_ROI_HISTORY_RUNS: "30"
+          SOURCE_ROI_RECENCY_DECAY: "0.93"
+          SOURCE_ROI_MIN_SCREENED: "50"
+          SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS: "2"
+          SOURCE_ROI_MIN_MATURE_SOURCES: "2"
+          SOURCE_ROI_MIN_FETCH_PER_SOURCE: "25"
+          SOURCE_ROI_EXPLORATION_WEIGHT: "0.15"
+          SOURCE_ROI_STOCK_WEIGHT: "0.35"
+          SOURCE_ROI_READY_WEIGHT: "0.45"
+          SOURCE_ROI_EFFICIENCY_WEIGHT: "0.20"
+          SOURCE_ROI_MAX_FETCH_PER_SOURCE: "75"
+          SOURCE_ROI_STATE_PATH: "source_roi_history/source_roi_state.json"
+          SOURCE_ROI_GITHUB_DIR: "source_roi_history"
           SCREENING_BATCH_SIZE: "25"
           SCREENING_RECOVERY_BATCH_SIZE: "10"
           SCREENING_BATCH_MAX_OUTPUT_TOKENS: "2500"
@@ -69,6 +98,7 @@ jobs:
           ENABLE_OBSERVED_HISTORY: "true"
           OBSERVED_HISTORY_DIR: "observed_history"
           STALE_THRESHOLD_DAYS: "10"
+          GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: "60"
           GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: "120"
           GEMINI_DEEP_DIVE_CALL_PACING_SECONDS: "20"
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
@@ -83,8 +113,18 @@ jobs:
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+          MAX_EVIDENCE_DOCUMENTS: "3"
 
       # 未公開記事・Gate履歴はRepositoryへcommitせず、アクセス制限されたArtifactとしてのみ保持する。
+      - name: 月次ダイジェストをPrivate Artifactとして保存
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: monthly-digest-${{ github.run_number }}
+          path: monthly_digests/
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Gate履歴・内部レビュー候補を保存
         if: always()
         uses: actions/upload-artifact@v7

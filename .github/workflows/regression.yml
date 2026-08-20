@@ -1,6 +1,15 @@
 name: Synthetic Regression Suite
 
 on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'observed_history/**'
+      - 'source_roi_history/**'
+      - 'subscription_attribution/**'
+      - 'eyecatch_images/**'
+      - '.runtime/**'
   workflow_dispatch:
     inputs:
       suite:
@@ -22,7 +31,7 @@ concurrency:
 
 jobs:
   regression:
-    name: Synthetic Regression (${{ inputs.suite }})
+    name: Synthetic Regression (${{ github.event.inputs.suite || 'smoke' }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -47,13 +56,13 @@ jobs:
         run: python regression_suite.py --self-test
 
       - name: Run synthetic regression suite
-        run: python regression_suite.py --bootstrap --${{ inputs.suite }}
+        run: python regression_suite.py --bootstrap --${{ github.event.inputs.suite || 'smoke' }}
 
       - name: Upload regression reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: regression-${{ inputs.suite }}-${{ github.run_number }}
+          name: regression-${{ github.event.inputs.suite || 'smoke' }}-${{ github.run_number }}
           path: regression_suite_runs/
           if-no-files-found: warn
           retention-days: 30

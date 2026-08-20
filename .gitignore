@@ -1,8 +1,8 @@
 __pycache__/
 *.py[cod]
 
-# Local/test artifacts. Production uploads use the GitHub Contents API and are
-# therefore unaffected by these local git-ignore rules.
+# Local/test/private artifacts. Public commit対象とprivate artifact対象を分離し、
+# 一時成果物は誤ってRepositoryへcommitしない。
 regen_test_outputs/
 regression_suite_runs/
 regression_suite/fixtures/
@@ -13,3 +13,8 @@ review_candidates/
 quality_failures/
 gate_history/
 regression_cases_pending/
+
+# Aggregate runtime learning state; persisted by GitHub Contents API, not manual commits.
+source_roi_history/
+subscription_attribution/
+.runtime/

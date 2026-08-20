@@ -13,6 +13,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ.setdefault("GH_PAT", "test-token")
+os.environ.setdefault("GEMINI_QUOTA_PROJECT_ID", "test-project")
 os.environ.setdefault("GEMINI_DEEP_DIVE_CALL_PACING_SECONDS", "0")
 
 try:
@@ -203,17 +204,57 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertEqual("fallback", selected)
         self.assertIn("primary", pipeline.SESSION_EXHAUSTED_MODELS)
 
-    def test_persistent_counter_separates_api_key_scopes(self):
-        first = pipeline.PersistentGeminiDailyCounter(True, {"m": 18}, 18, ".runtime/test.json", "UTC", api_key="first")
-        second = pipeline.PersistentGeminiDailyCounter(True, {"m": 18}, 18, ".runtime/test.json", "UTC", api_key="second")
-        data = {"quota_date": "2026-08-17", "key_scopes": {}}
+    def test_persistent_counter_shares_scope_across_api_keys_in_same_project(self):
+        first = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a", api_key="first"
+        )
+        second = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a", api_key="second"
+        )
+        data = {"quota_date": "2026-08-17", "project_scopes": {}}
+        first._model_state(data, "m")["used"] = 18
+        self.assertEqual(first.project_scope, second.project_scope)
+        self.assertEqual(18, second._model_state(data, "m")["used"])
+        serialized = json.dumps(data)
+        self.assertNotIn("project-a", serialized)
+        self.assertNotIn("first", serialized)
+        self.assertNotIn("second", serialized)
+
+    def test_persistent_counter_separates_different_projects(self):
+        first = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a"
+        )
+        second = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-b"
+        )
+        data = {"quota_date": "2026-08-17", "project_scopes": {}}
         first._model_state(data, "m")["used"] = 18
         self.assertEqual(18, first._model_state(data, "m")["used"])
         self.assertEqual(0, second._model_state(data, "m")["used"])
-        self.assertNotIn("first", json.dumps(data))
+
+    def test_legacy_api_key_scopes_are_conservatively_migrated_to_project_scope(self):
+        counter = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a"
+        )
+        data = {
+            "quota_date": "2026-08-17",
+            "key_scopes": {
+                "old-a": {"models": {"m": {"used": 5, "by_kind": {"deep_dive": 5}, "exhausted": False}}},
+                "old-b": {"models": {"m": {"used": 3, "by_kind": {"quality_retry": 3}, "exhausted": False}}},
+            },
+        }
+        migrated = counter._normalized_day(data, "2026-08-17")
+        state = counter._model_state(migrated, "m")
+        self.assertEqual(8, state["used"])
+        self.assertEqual(5, state["by_kind"]["deep_dive"])
+        self.assertEqual(3, state["by_kind"]["quality_retry"])
+        self.assertNotIn("key_scopes", migrated)
+        self.assertTrue(migrated["legacy_key_scopes_migrated"])
 
     def test_model_budget_uses_configured_per_model_cap(self):
-        counter = pipeline.PersistentGeminiDailyCounter(True, {"lite": 450, "deep": 18}, 18, ".runtime/test.json", "UTC", api_key="k")
+        counter = pipeline.PersistentGeminiDailyCounter(
+            True, {"lite": 450, "deep": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a"
+        )
         self.assertEqual(450, counter.budget_for("lite"))
         self.assertEqual(18, counter.budget_for("unknown"))
 
@@ -232,10 +273,13 @@ class TestPipelineSafety(unittest.TestCase):
             self.assertEqual({"data_source_id": "source-id"}, pipeline._notion_parent())
             self.assertIn("/data_sources/source-id/query", pipeline._notion_query_url())
 
-    def test_free_mode_is_reflected_in_deep_dive_properties(self):
+    def test_free_note_mode_does_not_make_internal_notion_asset_free(self):
         with patch.object(pipeline, "ARTICLE_PUBLICATION_MODE", "free"):
             props = pipeline.build_notion_properties("Example", "https://example.com", 82, "score", "what", "why", "why-not", "action", "N/A")
-        self.assertEqual(pipeline.VISIBILITY_FREE_ARTICLE, props[pipeline.PROP_SUBSCRIPTION_VISIBILITY]["select"]["name"])
+        self.assertEqual(
+            pipeline.VISIBILITY_SUBSCRIBER_ONLY,
+            props[pipeline.PROP_SUBSCRIPTION_VISIBILITY]["select"]["name"],
+        )
 
     def test_free_manuscript_removes_paywall_label_and_draft_delimiter(self):
         draft = "## この記事の結論\n無料部分\n---有料エリア---\n有料部分\n===NOTE_DRAFT_END==="
@@ -753,6 +797,68 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertIsNone(result)
         quality_failed.assert_called_once()
         self.assertEqual(pipeline.CONTENT_STATUS_QUALITY_FAILED, funnel.records[0]["final_status"])
+
+
+class TestArxivEvidenceLinkFiltering(unittest.TestCase):
+    def test_research_link_parser_excludes_arxiv_navigation_urls(self):
+        html = """
+        <a href="/prevnext?id=2608.19140&function=next">next</a>
+        <a href="/IgnoreMe">ignore</a>
+        <a href="/">arXiv home</a>
+        <a href="/pdf/2608.19140.pdf">PDF</a>
+        <a href="https://github.com/example/project">GitHub</a>
+        """
+        parser = pipeline._ResearchLinkParser("https://arxiv.org/abs/2608.19140")
+        parser.feed(html)
+        urls = [url for url, _ in parser.links]
+        self.assertIn("https://arxiv.org/pdf/2608.19140.pdf", urls)
+        self.assertIn("https://github.com/example/project", urls)
+        self.assertFalse(any("/prevnext" in url for url in urls))
+        self.assertFalse(any("/IgnoreMe" in url for url in urls))
+        self.assertNotIn("https://arxiv.org/", urls)
+
+    def test_prepare_source_context_prioritizes_same_paper_pdf(self):
+        repo = {
+            "source": "ArXiv",
+            "nameWithOwner": "paper",
+            "url": "https://arxiv.org/abs/2608.19140v1",
+            "primaryUrl": "https://arxiv.org/abs/2608.19140v1",
+            "sourceContext": "Abstract with method and benchmark details.",
+            "sourceDetails": {},
+        }
+        extracted = [
+            ("https://arxiv.org/prevnext?id=2608.19140&function=next", "next"),
+            ("https://arxiv.org/IgnoreMe", "ignore"),
+            ("https://github.com/example/project", "GitHub"),
+        ]
+        with patch.object(pipeline, "_fetch_html_document", return_value=("landing text", extracted, repo["primaryUrl"])), \
+             patch.object(pipeline, "_fetch_arxiv_official_link_context", return_value=[]):
+            info = pipeline.prepare_source_context(repo)
+        urls = [row["url"] for row in info["supplement_candidates"]]
+        self.assertEqual("https://arxiv.org/pdf/2608.19140.pdf", urls[0])
+        self.assertIn("https://github.com/example/project", urls)
+        self.assertFalse(any("/prevnext" in url or "/IgnoreMe" in url for url in urls))
+
+    def test_freshness_skips_arxiv_prevnext_navigation(self):
+        html = b"""
+        <html><body>future planned work
+        <a href='/prevnext?id=2608.19140&function=next'>next</a>
+        <a href='/help'>update help</a>
+        </body></html>
+        """
+        source_info = {
+            "context": "Future work is planned.",
+            "primary_url": "https://arxiv.org/abs/2608.19140v1",
+        }
+        with patch.object(pipeline, "_http_get_limited", return_value=(html, "text/html", source_info["primary_url"])), \
+             patch.object(pipeline, "fetch_webpage_context") as fetch:
+            result = pipeline.resolve_followup_freshness(source_info)
+        self.assertTrue(result["triggered"])
+        self.assertFalse(result["followup_found"])
+        fetch.assert_not_called()
+
+    def test_evidence_document_default_matches_spec(self):
+        self.assertEqual(3, pipeline.MAX_EVIDENCE_DOCUMENTS)
 
 
 if __name__ == "__main__":

@@ -573,7 +573,7 @@ class TestStaleContentTargetsReadyOnly(unittest.TestCase):
         self.patched_key.stop()
         self.patched_ds.stop()
 
-    def test_query_filters_on_ready_or_deep_dive_and_sorts_by_analyzed_at(self):
+    def test_query_filters_on_ready_only_and_sorts_by_analyzed_at(self):
         captured = {}
 
         def fake_post(url, json=None, headers=None, timeout=None):
@@ -585,15 +585,11 @@ class TestStaleContentTargetsReadyOnly(unittest.TestCase):
             pipeline.check_stale_content()
 
         payload = captured["payload"]
-        or_filters = payload["filter"]["or"]
-        self.assertTrue(
-            any(f.get("property") == pipeline.PROP_ARTICLE_STATUS for f in or_filters)
-        )
-        self.assertTrue(
-            any(f.get("property") == pipeline.PROP_CONTENT_STATUS for f in or_filters)
-        )
+        self.assertEqual(payload["filter"]["property"], pipeline.PROP_ARTICLE_STATUS)
+        self.assertEqual(payload["filter"]["select"]["equals"], pipeline.ARTICLE_STATUS_READY)
+        self.assertNotIn("or", payload["filter"])
         self.assertEqual(payload["sorts"][0]["property"], pipeline.PROP_ANALYZED_AT)
-        # Ready/Deep Diveが1件も無い場合はstale warning相当のアラートが飛ぶこと。
+        # Needs Editorial Reviewではstaleを隠せない。Readyが無ければアラート。
         mock_alert.assert_called_once()
 
     def test_stale_alert_fires_when_last_ready_older_than_threshold(self):
@@ -849,6 +845,119 @@ class TestArxivIntegrityNotionReflection(unittest.TestCase):
         mock_qf.assert_called_once()
         args, kwargs = mock_qf.call_args
         self.assertEqual(args[0], "page-arxiv")
+
+
+class TestNeedsEditorialReviewPersistence(unittest.TestCase):
+    """Needs Editorial Review本文を内部Notion DBへ保持し、公開状態と混同しない。"""
+
+    def setUp(self):
+        self.patched_key = patch.object(pipeline, "NOTION_API_KEY", "test-key")
+        self.patched_key.start()
+        self.addCleanup(self.patched_key.stop)
+
+    def _base_props(self):
+        return {
+            pipeline.PROP_STATUS: {"select": {"name": pipeline.STATUS_DEEP_DIVE}},
+            pipeline.PROP_CONTENT_STATUS: {"select": {"name": pipeline.CONTENT_STATUS_DEEP_DIVE}},
+            pipeline.PROP_ARTICLE_STATUS: {"select": {"name": pipeline.ARTICLE_STATUS_READY}},
+            pipeline.PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": pipeline.VISIBILITY_FREE_ARTICLE}},
+        }
+
+    def test_review_manuscript_is_stored_internal_and_not_public_approved(self):
+        page_payloads = []
+
+        def fake_patch(url, json=None, headers=None, timeout=None):
+            if "/blocks/" in url:
+                child = json["children"][0]
+                self.assertEqual(child["code"]["caption"][0]["text"]["content"], pipeline.MANUSCRIPT_CAPTION_REVIEW)
+                return _mock_response(200, {"results": [{"id": "review-block"}]})
+            page_payloads.append(json)
+            return _mock_response(200)
+
+        with patch.object(pipeline.requests, "get", return_value=_mock_response(200, {"results": []})), \
+             patch.object(pipeline.requests, "patch", side_effect=fake_patch):
+            result = pipeline.persist_notion_needs_editorial_review(
+                "page-1", "octo/example", "review manuscript", self._base_props(), ["reason"]
+            )
+        self.assertTrue(result)
+        props = page_payloads[0]["properties"]
+        self.assertEqual(props[pipeline.PROP_STATUS]["select"]["name"], pipeline.STATUS_DEEP_DIVE)
+        self.assertEqual(props[pipeline.PROP_CONTENT_STATUS]["select"]["name"], pipeline.CONTENT_STATUS_DEEP_DIVE)
+        self.assertEqual(props[pipeline.PROP_ARTICLE_STATUS]["select"]["name"], pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW)
+        self.assertEqual(props[pipeline.PROP_SUBSCRIPTION_VISIBILITY]["select"]["name"], pipeline.VISIBILITY_SUBSCRIBER_ONLY)
+        self.assertNotIn(pipeline.PROP_REVIEW_STATUS, props)
+
+    def test_review_properties_failure_rolls_back_and_enters_pending_retry_recovery(self):
+        def fake_patch(url, json=None, headers=None, timeout=None):
+            if "/blocks/" in url:
+                return _mock_response(200, {"results": [{"id": "review-block"}]})
+            return _mock_response(400, {}, text="properties failed")
+
+        with patch.object(pipeline.requests, "get", return_value=_mock_response(200, {"results": []})), \
+             patch.object(pipeline.requests, "patch", side_effect=fake_patch), \
+             patch.object(pipeline, "_rollback_notion_manuscript_children") as mock_rollback, \
+             patch.object(pipeline, "_mark_pending_retry_or_escalate") as mock_pending:
+            result = pipeline.persist_notion_needs_editorial_review(
+                "page-1", "octo/example", "review manuscript", self._base_props(), ["reason"]
+            )
+        self.assertFalse(result)
+        mock_rollback.assert_called_once()
+        mock_pending.assert_called_once()
+
+    def test_review_manuscript_is_not_mistaken_for_ready_manuscript(self):
+        block = {
+            "id": "review-block", "type": "code",
+            "code": {
+                "language": "markdown",
+                "caption": [{"plain_text": pipeline.MANUSCRIPT_CAPTION_REVIEW}],
+            },
+        }
+        with patch.object(pipeline.requests, "get", return_value=_mock_response(200, {"results": [block]})):
+            self.assertFalse(pipeline._notion_page_has_manuscript_child("page-1", {}))
+
+    def test_ready_upgrade_archives_prior_review_manuscript_after_commit(self):
+        review_block = {
+            "id": "review-block", "type": "code",
+            "code": {"language": "markdown", "caption": [{"plain_text": pipeline.MANUSCRIPT_CAPTION_REVIEW}]},
+        }
+
+        def fake_patch(url, json=None, headers=None, timeout=None):
+            if "/blocks/" in url:
+                return _mock_response(200, {"results": [{"id": "ready-block"}]})
+            return _mock_response(200)
+
+        with patch.object(pipeline.requests, "get", return_value=_mock_response(200, {"results": [review_block]})), \
+             patch.object(pipeline.requests, "patch", side_effect=fake_patch), \
+             patch.object(pipeline.requests, "delete", return_value=_mock_response(200)) as mock_delete:
+            result = pipeline.upgrade_notion_page_with_report(
+                "page-1", "octo/example", "https://github.com/octo/example",
+                80, "breakdown", "what", "why", "why-not", "action",
+                "MIT", "ready manuscript",
+            )
+        self.assertTrue(result)
+        self.assertTrue(any("review-block" in call.args[0] for call in mock_delete.call_args_list))
+
+    def test_new_review_replaces_old_review_only_after_successful_commit(self):
+        old_block = {
+            "id": "old-review", "type": "code",
+            "code": {"language": "markdown", "caption": [{"plain_text": pipeline.MANUSCRIPT_CAPTION_REVIEW}]},
+        }
+        patch_calls = []
+        def fake_patch(url, json=None, headers=None, timeout=None):
+            patch_calls.append((url, json))
+            if "/blocks/" in url:
+                return _mock_response(200, {"results": [{"id": "new-review"}]})
+            return _mock_response(200)
+        with patch.object(pipeline.requests, "get", return_value=_mock_response(200, {"results": [old_block]})), \
+             patch.object(pipeline.requests, "patch", side_effect=fake_patch), \
+             patch.object(pipeline.requests, "delete", return_value=_mock_response(200)) as mock_delete:
+            result = pipeline.persist_notion_needs_editorial_review(
+                "page-1", "octo/example", "new review manuscript", self._base_props(), ["reason"]
+            )
+        self.assertTrue(result)
+        self.assertTrue(any("/blocks/page-1/children" in u for u, _ in patch_calls))
+        self.assertTrue(any("old-review" in call.args[0] for call in mock_delete.call_args_list))
+
 
 
 if __name__ == "__main__":
