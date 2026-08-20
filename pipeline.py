@@ -381,6 +381,7 @@ REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED = "EVIDENCE_GAP_DISCLOSURE_REQUIRED
 REASON_CODE_FACT_UNSUPPORTED_CLAIM = "FACT_UNSUPPORTED_CLAIM"
 REASON_CODE_FACT_NUMERICAL_MISMATCH = "FACT_NUMERICAL_MISMATCH"
 REASON_CODE_FACT_ACTOR_MISMATCH = "FACT_ACTOR_MISMATCH"
+REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT = "FACT_UNSUPPORTED_NAMED_FACT"
 REASON_CODE_FACT_CONDITIONALITY_LOSS = "FACT_CONDITIONALITY_LOSS"
 REASON_CODE_EDITORIAL_STRUCTURE_ERROR = "EDITORIAL_STRUCTURE_ERROR"
 REASON_CODE_PUB_HEADLINE_OVERCLAIM = "PUB_HEADLINE_OVERCLAIM"
@@ -399,7 +400,7 @@ REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 
 
 def _notion_headers() -> dict:
-    return {
+    metadata = {
         "Authorization": f"Bearer {NOTION_API_KEY}",
         "Content-Type": "application/json",
         "Notion-Version": NOTION_API_VERSION,
@@ -1985,7 +1986,7 @@ def _build_evidence_metadata(context: str, deep_scanned: bool) -> dict:
     qualifiers = []
     for m in re.finditer(r"(?:in|at least in) (simple|obvious)[^.\n]{0,100}(?:case|cases)|(?:単純な|明確に判定できる)[^。\n]{0,80}(?:例|ケース)", text, re.I):
         qualifiers.append(m.group(0).strip())
-    return {
+    metadata = {
         "coverage": {
             "method": state(r"method|approach|stage\\s*[12]|方法"), "dataset": state(r"dataset|data set|データセット"),
             "hardware": state(r"hardware|gpu|rtx|nvidia|cpu|ハードウェア"), "runtime": state(r"runtime|latency|\\bsec(?:ond)?s?\\b|処理時間"),
@@ -1995,6 +1996,19 @@ def _build_evidence_metadata(context: str, deep_scanned: bool) -> dict:
         "required_qualifiers": list(dict.fromkeys(qualifiers))[:8],
         "evidence_strength": "OFFICIAL_GUARANTEE" if re.search(r"guarantee[sd]?|保証", text, re.I) else "UNKNOWN",
     }
+    # 公式リリースノートは研究用のMethod見出しを持たない。本文に実在する
+    # API / package / function / implementation 記述も技術根拠として拾う。
+    metadata["coverage"]["method"] = state(r"method|approach|implementation|architecture|algorithm|API|package|function|interface|方法|実装|関数|パッケージ")
+    metadata["coverage"]["benchmark"] = state(r"benchmark|evaluation|experiment|test|release note|評価|テスト|ベンチマーク")
+    metadata["coverage"]["limitations"] = state(r"limitation|limitat|constraint|制約|限界|\bWIP\b|work in progress|not supported|unsupported|not implemented|does not support|experimental")
+    # 抽出元は常に本文。存在しない固有名を補完する用途には使わない。
+    metadata["named_technical_entities"] = list(dict.fromkeys(re.findall(
+        r"(?<![A-Za-z0-9_])(?:[A-Z][A-Za-z0-9_]{2,}|[a-z][A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*)\b", text
+    )))[:80]
+    metadata["numeric_claims"] = list(dict.fromkeys(re.findall(
+        r"\b\d+(?:\.\d+)?\s*(?:%|ms|s|sec(?:onds?)?|KB|MB|GB|TB|x)\b", text, re.I
+    )))[:80]
+    return metadata
 
 
 def fetch_webpage_context(url: str) -> str:
@@ -3901,15 +3915,26 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         "要点": _display_heading_aliases("key"), "筆者判断": _display_heading_aliases("decision"),
         "最終判断": _display_heading_aliases("final"),
     }
-    for label, heading in required_headings.items():
-        pattern = r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in heading) + r")\s*$"
-        if not re.search(pattern, draft, re.MULTILINE):
+    # 表示ラベルは記事ごとに変えられる。固定文字列ではなく見出しの意味役割で確認する。
+    semantic_heading_roles = {
+        "導入": ("はじめに", "導入", "背景", "気になった背景", "なぜ今"),
+        "結論": ("結論", "まず、結論", "要するに"),
+        "重要性": ("重要性", "なぜ重要", "ここが大きい", "気になった背景", "意味"),
+        "概要": ("概要", "何が変わ", "仕組み", "変更点"),
+        "要点": ("要点", "ポイント", "押さえる"),
+        "筆者判断": ("筆者", "私なら", "実務で", "どうする", "次にやる"),
+        "最終判断": ("最終判断", "結局", "まとめ", "判断"),
+    }
+    def has_heading_role(label: str, headings: tuple[str, ...]) -> bool:
+        aliases = required_headings[label]
+        exact = r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in aliases) + r")\s*$"
+        semantic = r"^#{2,3}\s*.*(?:" + "|".join(re.escape(item) for item in headings) + r").*$"
+        return bool(re.search(exact, draft, re.MULTILINE) or re.search(semantic, draft, re.MULTILINE | re.I))
+    for label, headings in semantic_heading_roles.items():
+        if not has_heading_role(label, headings):
             failures.append(f"required heading missing: {label}")
 
-    structural_missing = sum(
-        1 for headings in required_headings.values()
-        if not re.search(r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in headings) + r")\s*$", draft, re.MULTILINE)
-    )
+    structural_missing = sum(1 for label, headings in semantic_heading_roles.items() if not has_heading_role(label, headings))
     if structural_missing >= 2:
         failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
     if output_truncated:
@@ -3972,9 +3997,12 @@ def validate_publication_readiness_gate(parsed: dict, source_context: str = "", 
         issues.append("intro_overclaim")
     if weak_evidence and re.search(r"(?:本番(?:環境)?(?:へ|に)?(?:導入|投入)|全面(?:導入|移行)|既存(?:環境|システム)を置き換)", action):
         issues.append("research_to_production_leap")
-    if score and score <= 69 and re.search(r"(?:今すぐ|直ちに|全面(?:導入|移行)|必ず導入)", article):
+    action_tier = classify_action_risk_tier(action)
+    limited_low_risk_action = action_tier == "LOW" and bool(re.search(r"(?:限定|小さく|PoC|比較(?:テスト|検証)|検証環境|回帰テスト|CI|profil(?:ing|e)|プロファイリング)", action, re.I))
+    # 低スコアであっても、Evidenceに沿うLOW RISKの限定検証は矛盾ではない。
+    if score and score <= 69 and re.search(r"(?:今すぐ|直ちに|全面(?:導入|移行)|必ず導入)", article) and not limited_low_risk_action:
         issues.append("score_narrative_mismatch")
-    if score >= 90 and re.search(r"(?:見る必要はない|検討不要|関心を持つ必要はない)", article):
+    if score >= 90 and re.search(r"(?:見る必要はない|検討不要|関心を持つ必要はない)", article) and not limited_low_risk_action:
         issues.append("score_narrative_mismatch")
     if re.search(r"(?:world'?s fastest|世界最速|revolutionary|革命的)", context, re.I) and re.search(r"(?:世界最速|革命的)", article) and not re.search(r"(?:開発元|原資料|説明)は", article):
         issues.append("marketing_claim_adoption")
@@ -3997,7 +4025,7 @@ def _classify_article_claims(parsed: dict) -> dict[str, int]:
         "fact": len(re.findall(r"(?:原資料|論文|著者|公式|公開|実験|データ|仕様|確認でき)", article)),
         "interpretation": len(re.findall(r"(?:と考えられる|と見える|私の推論|意味する|示唆)", article)),
         "observation": len(re.findall(r"(?:一方で|ただ|現時点では|注意|限界|課題|不明)", article)),
-        "decision": len(re.findall(r"(?:私なら|試(?:す|したい)|検証(?:する|したい)|比較(?:する|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急が)", article + "\n" + action)),
+        "decision": len(re.findall(r"(?:私なら|試(?:す|したい)|検証(?:する|したい)|比較(?:する|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急が|CI|回帰テスト|profil(?:ing|e)|プロファイリング|計測|ベンチマーク)", article + "\n" + action, re.I)),
     }
 
 
@@ -4021,7 +4049,7 @@ def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
 
     hedge_pattern = r"(?:可能性(?:がある|があります)|考えられ(?:る|ます)|注視(?:したい|する|すべき)|様子を見(?:る|たい)|かもしれない)"
     hedge_count = len(re.findall(hedge_pattern, article))
-    concrete_action = re.search(r"(?:限定|小さく|検証環境|PoC|比較(?:テスト|検証)|試(?:す|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急がない)", decision_text, re.I)
+    concrete_action = re.search(r"(?:限定|小さく|検証環境|PoC|比較(?:テスト|検証)|試(?:す|したい)|見送(?:る|り)|待(?:つ|ち)|導入を急がない|CI|回帰テスト|profil(?:ing|e)|プロファイリング|計測|ベンチマーク)", decision_text, re.I)
     generic_monitor = re.search(r"(?:注視|様子を見)", decision_text)
     if generic_monitor and not concrete_action:
         issues.append("action_collapsed_to_generic_monitoring")
@@ -4031,7 +4059,8 @@ def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
     claims = _classify_article_claims(parsed)
     if not concrete_action and claims["decision"] == 0:
         issues.append("decision_voice_missing")
-    if claims["observation"] == 0 and claims["interpretation"] == 0:
+    # 観察文がなくても、根拠付きAction・限定判断・見送り・比較判断はDecision Voice。
+    if claims["observation"] == 0 and claims["interpretation"] == 0 and not (concrete_action or claims["decision"]):
         issues.append("no_editorial_observation")
     if len(re.findall(r"(?:ただ、ここは注意が必要です。|一方で、注意が必要です。)", article)) >= 2:
         issues.append("repeated_caveat_phrase")
@@ -4071,8 +4100,10 @@ def _reason_code(message: str, gate: str) -> str:
     if gate == "fact":
         if any(token in text for token in ("numeric", "number", "数値", "unit", "%")):
             return REASON_CODE_FACT_NUMERICAL_MISMATCH
-        if any(token in text for token in ("actor", "author", "named fact", "competitor", "attribution")):
+        if any(token in text for token in ("actor", "author", "attribution", "publisher", "発表主体", "帰属")):
             return REASON_CODE_FACT_ACTOR_MISMATCH
+        if "named fact" in text or "unsupported named" in text or "固有名" in text:
+            return REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT
         if any(token in text for token in ("limitation", "qualifier", "scope", "fresh", "final wording", "conditional")):
             return REASON_CODE_FACT_CONDITIONALITY_LOSS
         return REASON_CODE_FACT_UNSUPPORTED_CLAIM
@@ -4106,12 +4137,26 @@ def map_gate_reasons(gate: str, messages: list[str] | None) -> list[dict]:
             for message in (messages or [])]
 
 
+def finalize_retry_diagnostics(retry_diagnostics: dict | None, final_reason_codes: list[dict],
+                              final_gate_result: str, final_article: str = "") -> dict:
+    """初稿の起因と最終稿に残った理由を混同せずGate履歴へ残す。"""
+    details = dict(retry_diagnostics or {})
+    if not details:
+        return details
+    details["final_reason_codes"] = list(final_reason_codes)
+    details["final_gate_result"] = final_gate_result
+    details["retry_article"] = final_article
+    details["retry_succeeded"] = final_gate_result == "READY"
+    return details
+
+
 def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[str]]:
     """Reason Codeごとに局所修正を要求する。文字数ノルマやGate緩和は行わない。"""
     rules = {
         REASON_CODE_FACT_NUMERICAL_MISMATCH: ("数値と単位だけを一次情報の条件付き表現へ修正し、根拠がなければ削除してください。", "numbers"),
         REASON_CODE_FACT_CONDITIONALITY_LOSS: ("元資料の対象範囲・実験条件・制約を該当箇所へ復元してください。", "conditions"),
         REASON_CODE_FACT_ACTOR_MISMATCH: ("発表主体・著者・製品名の帰属だけを一次情報に合わせて修正してください。", "attribution"),
+        REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT: ("一次情報にない技術名・API・パッケージ名だけを削除または原資料の表記へ修正してください。", "named_facts"),
         REASON_CODE_FACT_UNSUPPORTED_CLAIM: ("一次情報にない主張だけを削除または根拠範囲へ弱めてください。", "claims"),
         REASON_CODE_PUB_HEADLINE_OVERCLAIM: ("タイトルだけを本文Evidenceの強度に合わせて修正してください。", "title"),
         REASON_CODE_PUB_INTRO_OVERCLAIM: ("導入部だけを一次情報の強度に合わせて修正してください。", "introduction"),
@@ -4534,6 +4579,14 @@ REAL_ARTICLE_REGRESSION_CASES = (
         "external_review": "B",
         "expected_minimum_status": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
         "reason": "軽微修正またはEditorial Reviewで扱い、Quality Failedへ直行させない。",
+    },
+    {
+        "case_id": "real_taffy_low_risk_poc_20260820",
+        "title": "Taffy",
+        "prior_pipeline_result": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+        "external_review": "B",
+        "expected_minimum_status": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+        "reason": "Decision Score 63でも、LOW RISKの限定PoC・比較検証はScore Narrative mismatchにしない。",
     },
 )
 
@@ -5024,7 +5077,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     GATE_STATUS_REVIEW if publication_state == "REVIEW" else GATE_STATUS_PASS,
                     GATE_STATUS_REVIEW if appeal_review_required else (GATE_STATUS_WARNING if human_appeal_issues else GATE_STATUS_PASS),
                     reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
-                    deep_dive_generation_called=deep_dive_generation_called, retry_diagnostics=retry_diagnostics,
+                    deep_dive_generation_called=deep_dive_generation_called,
+                    retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "NEEDS_EDITORIAL_REVIEW", parsed.get("note_draft", "")),
                 )
                 if not persist_results:
                     break
@@ -5070,7 +5124,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     GATE_STATUS_REVIEW if publication_state == "REVIEW" else GATE_STATUS_PASS,
                     GATE_STATUS_WARNING if human_appeal_issues else GATE_STATUS_PASS,
                     reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
-                    deep_dive_generation_called=deep_dive_generation_called, retry_diagnostics=retry_diagnostics,
+                    deep_dive_generation_called=deep_dive_generation_called,
+                    retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "QUALITY_FAILED", parsed.get("note_draft", "")),
                 )
                 saved_path = save_quality_failed_article(repo, parsed, record, source_info, " / ".join(failures))
                 record["article_saved"] = bool(saved_path)
@@ -5140,12 +5195,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 GATE_STATUS_PASS, GATE_STATUS_PASS if not final_quality_failures else GATE_STATUS_WARNING,
                 GATE_STATUS_PASS, GATE_STATUS_WARNING if final_quality_failures else GATE_STATUS_PASS,
                 reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
-                deep_dive_generation_called=deep_dive_generation_called, retry_diagnostics={
-                    **retry_diagnostics,
-                    "retry_article": parsed.get("note_draft", "") if retry_diagnostics else "",
-                    "final_gate_result": "READY",
-                    "retry_succeeded": bool(retry_diagnostics),
-                },
+                deep_dive_generation_called=deep_dive_generation_called,
+                retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "READY", parsed.get("note_draft", "")),
             )
         else:
             regen_status = "accepted" if quality_gate_passed else "rejected"
