@@ -343,6 +343,11 @@ CONTENT_STATUS_STOCKED = "Stocked"
 CONTENT_STATUS_DEEP_DIVE = "Deep Dive"
 CONTENT_STATUS_QUALITY_FAILED = "Quality Failed"
 CONTENT_STATUS_PENDING_RETRY = "Pending Retry"
+# Quality Gate PASS後、Notion保存/アップグレードに失敗した内部状態を示すための値。
+# Notion側のContent Status選択肢を書き換えるものではなく、Gate History/Funnel等の
+# 内部記録（final_status）でのみ使用する。Readyの定義（Quality Gate PASS AND
+# Notion Persistence SUCCESS）を満たさない経路をQuality Failedと混同しないための識別子。
+CONTENT_STATUS_PERSISTENCE_FAILED = "Persistence Failed"
 ARTICLE_STATUS_NOT_PLANNED = "Not Planned"
 ARTICLE_STATUS_READY = "Ready"
 ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW = "Needs Editorial Review"
@@ -397,10 +402,13 @@ REASON_CODE_APPEAL_TITLE_FLATTENING = "APPEAL_TITLE_FLATTENING"
 REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
 REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
 REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+# Quality Gateは通過したが、Notion永続化層（ページ作成/アップグレード）が失敗した場合の理由コード。
+# 記事品質の問題ではなく永続保存層の障害であるため、Quality Failedとは明確に区別する。
+REASON_CODE_NOTION_PERSISTENCE_FAILED = "NOTION_PERSISTENCE_FAILED"
 
 
 def _notion_headers() -> dict:
-    metadata = {
+    return {
         "Authorization": f"Bearer {NOTION_API_KEY}",
         "Content-Type": "application/json",
         "Notion-Version": NOTION_API_VERSION,
@@ -1530,9 +1538,14 @@ def build_metadata_notion_properties(repo_name, repo_url, score, reason,
                                       source: str = "GitHub", engagement: int = 0,
                                       published_at: str | None = None,
                                       analyzed_at: str | None = None,
-                                      source_summary: str = "") -> dict:
-    """Screening通過時の購読者向けStock metadata。Step1評価を永久保存する。"""
-    return {
+                                      source_summary: str = "",
+                                      spdx_id: str = "") -> dict:
+    """Screening通過時の購読者向けStock metadata。Step1評価を永久保存する。
+
+    GitHub案件はspdx_idをPROP_LICENSEへ保存しておくことで、Pending Retry後の
+    normalize_item()復元時にlicenseInfoが失われ、既に安全確認済みのGitHub案件が
+    NO_LICENSE扱いへ変化することを防ぐ（Legal Safety Gate自体は変更しない）。"""
+    props = {
         PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
         PROP_URL: {"url": repo_url},
         PROP_SOURCE: {"select": {"name": source}},
@@ -1550,6 +1563,9 @@ def build_metadata_notion_properties(repo_name, repo_url, score, reason,
         PROP_PUBLISHED_AT: _notion_date_property(published_at),
         PROP_ANALYZED_AT: _notion_date_property(analyzed_at),
     }
+    if spdx_id:
+        props[PROP_LICENSE] = {"rich_text": [{"text": {"content": spdx_id[:2000]}}]}
+    return props
 
 
 
@@ -1570,6 +1586,8 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     published_at = repo.get("publishedAt")
     # Analyzed At = このスクリーニング（Step1軽量分析）を実行した「いま」。
     analyzed_at = _analyzed_at_now_iso()
+    # GitHub案件のみLegal Safety Gateで確認済みのSPDX IDを保持する。
+    spdx_id = (repo.get("licenseInfo") or {}).get("spdxId", "") if source == "GitHub" else ""
 
     url = "https://api.notion.com/v1/pages"
     headers = _notion_headers()
@@ -1578,6 +1596,7 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
         "properties": build_metadata_notion_properties(
             name, repo_url, score, reason, source, engagement,
             published_at, analyzed_at, repo.get("description", ""),
+            spdx_id,
         ),
     }
     try:
@@ -1593,6 +1612,66 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
         return None
 
 
+def _notion_page_has_manuscript_child(page_id: str, headers: dict) -> bool:
+    """Pending Retry再実行時の本文二重append防止用の冪等性チェック。
+
+    ページ直下に、build_notion_manuscript_childrenが作るものと同じ形式
+    （type=code, language=markdown）のブロックが既に存在するかを確認する。
+    確認自体が失敗した場合は「存在しない」として通常のappendへフォールバックする
+    （false negativeなら稀な二重appendで済むが、false positiveだとmanuscriptが
+    永久にappendされなくなるため、失敗時は安全側＝Falseに倒す）。"""
+    try:
+        res = requests.get(
+            f"https://api.notion.com/v1/blocks/{page_id}/children",
+            headers=headers, timeout=10,
+        )
+        if res.status_code != 200:
+            return False
+        for block in res.json().get("results", []):
+            if block.get("type") == "code" and (block.get("code") or {}).get("language") == "markdown":
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _rollback_notion_manuscript_children(block_ids: list[str], repo_name: str, headers: dict) -> None:
+    """children PATCH成功後にproperties PATCHが失敗した場合のbest-effort後始末。
+
+    今回のPhase 1で新規追加したblockだけをarchive（削除）し、次回試行が
+    冪等性チェック（_notion_page_has_manuscript_child）と矛盾しないようにする。
+    archiveに失敗しても例外は上げない。ここが失敗しても、
+    _notion_page_has_manuscript_childによる次回appendスキップが最後の砦として
+    二重化を防ぐ。"""
+    for block_id in block_ids:
+        try:
+            res = requests.delete(
+                f"https://api.notion.com/v1/blocks/{block_id}",
+                headers=headers, timeout=10,
+            )
+            if res.status_code != 200:
+                logger.error(f"[NOTION UPGRADE ROLLBACK ERROR] {repo_name} block={block_id} -> {res.text}")
+        except Exception as e:
+            logger.error(f"[NOTION UPGRADE ROLLBACK EXCEPTION] {repo_name} block={block_id}: {e}")
+
+
+def _mark_pending_retry_or_escalate(page_id: str, repo_name: str, reason: str) -> None:
+    """properties commit失敗後にPending Retryへ更新するが、その更新自体が
+    失敗した場合はNotion側の状態が中途半端（children rollbackは試行済みだが
+    Content/Article Statusは更新前のまま）になり得るため、Telegramで
+    運用者へ即エスカレーションする。ここではQuality Failed/Readyへの変更は
+    一切行わない（upgrade_notion_page_with_report自体は引き続きFalseを返す）。"""
+    pending_retry_saved = update_notion_pending_retry(page_id, repo_name, reason)
+    if not pending_retry_saved:
+        logger.error(
+            f"[NOTION PERSISTENCE RECOVERY FAILED] {repo_name} -> "
+            f"Notion persistence失敗後、Pending Retry状態への保存にも失敗（page_id={page_id}）"
+        )
+        send_telegram_alert(
+            f"🔴 Notion persistence失敗後、Pending Retry状態への保存にも失敗したため要手動確認: {repo_name}"
+        )
+
+
 def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, score_breakdown_text,
                                      what_text, why_important_text, why_not_important_text,
                                      action_text, spdx_id, clean_manuscript, paradigm_shift_text="",
@@ -1601,10 +1680,50 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
                                      eyecatch_url: str = "", published_at: str | None = None,
                                      analyzed_at: str | None = None, report_meta: dict | None = None,
                                      screening_score: int | None = None, screening_reason: str = "") -> bool:
-    """Stock済みNotionページをDeep Diveへアップグレード。Step1履歴は保持する。"""
+    """Stock済みNotionページをDeep Diveへアップグレード。Step1履歴は保持する。
+
+    Phase 1で記事本文(children)を先に保存し、Phase 2でchildren保存成功後にのみ
+    properties（Content/Article Status = Deep Dive/Readyを含む）をcommitする。
+    これにより「properties成功・children失敗」による
+    『Article Status = Ready なのに本文がNotionに存在しない』不整合を防ぐ。
+    children保存に失敗した場合はpropertiesへ一切触れず、ページは更新前の
+    安全な状態（既存のContent/Article Status）のまま残る。
+
+    Phase 1成功後にPhase 2（properties）が失敗した場合（= 本文だけ追加されて
+    しまいステータスがReady/Deep Diveに更新されない不整合状態）は、
+    (1) 今回追加したchildren blockをbest-effortでrollback（archive）し、
+    (2) ページをPending Retryへ更新し、次回get_pending_retry_items()から
+        自動的に復元・再試行されるようにする。
+    rollbackが失敗した場合に備え、Phase 1の冒頭で「既にmanuscript child
+    （markdown codeブロック）が存在するか」を確認し、存在すればre-appendを
+    スキップする冪等性チェックを入れており、Retry時の本文二重化を防ぐ。"""
     if not NOTION_API_KEY:
         return False
     headers = _notion_headers()
+
+    # Phase 1: 記事children（本文）を先に保存する。
+    # 冪等性チェック: 前回試行でrollbackに失敗し、既にmanuscript childが
+    # 残っている場合はre-appendしない（本文の二重化防止）。
+    appended_block_ids: list[str] = []
+    if _notion_page_has_manuscript_child(page_id, headers):
+        logger.info(f"[NOTION UPGRADE CHILDREN SKIPPED] {repo_name} -> 既にmanuscript childが存在するためre-appendをスキップ")
+    else:
+        children = build_notion_manuscript_children(clean_manuscript)
+        try:
+            res_children = requests.patch(
+                f"https://api.notion.com/v1/blocks/{page_id}/children",
+                json={"children": children}, headers=headers, timeout=10,
+            )
+            if res_children.status_code != 200:
+                logger.error(f"[NOTION UPGRADE CHILDREN ERROR] {repo_name} -> {res_children.text}")
+                return False
+            appended_block_ids = [b["id"] for b in res_children.json().get("results", []) if b.get("id")]
+        except Exception as e:
+            logger.error(f"[NOTION UPGRADE CHILDREN EXCEPTION] {repo_name}: {e}")
+            return False
+
+    # Phase 2: children保存成功（またはスキップ）後にのみ、
+    # properties（Deep Dive / Readyへのcommit）を行う。
     properties = build_notion_properties(
         repo_name, repo_url, score, score_breakdown_text, what_text,
         why_important_text, why_not_important_text, action_text,
@@ -1613,25 +1732,23 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
         published_at, analyzed_at, report_meta, screening_score, screening_reason,
     )
     try:
-        res = requests.patch(
+        res_props = requests.patch(
             f"https://api.notion.com/v1/pages/{page_id}",
             json={"properties": properties}, headers=headers, timeout=10,
         )
-        if res.status_code != 200:
-            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res.text}")
+        if res_props.status_code != 200:
+            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res_props.text}")
+            if appended_block_ids:
+                _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)
+            _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")
             return False
-        children = build_notion_manuscript_children(clean_manuscript)
-        res2 = requests.patch(
-            f"https://api.notion.com/v1/blocks/{page_id}/children",
-            json={"children": children}, headers=headers, timeout=10,
-        )
-        if res2.status_code != 200:
-            logger.error(f"[NOTION UPGRADE CHILDREN ERROR] {repo_name} -> {res2.text}")
-            return False
-        logger.info(f"[NOTION UPGRADED] {repo_name} -> Deep Diveへアップグレード完了")
+        logger.info(f"[NOTION READY COMMITTED] {repo_name} -> Deep Diveへアップグレード完了")
         return True
     except Exception as e:
-        logger.error(f"[NOTION UPGRADE EXCEPTION] {repo_name}: {e}")
+        logger.error(f"[NOTION UPGRADE PROPERTIES EXCEPTION] {repo_name}: {e}")
+        if appended_block_ids:
+            _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)
+        _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit exception after children saved")
         return False
 
 
@@ -1665,7 +1782,11 @@ def update_notion_quality_failed(page_id: str, repo_name: str,
 
 
 def update_notion_pending_retry(page_id: str, repo_name: str, reason: str = "") -> bool:
-    """Transient provider failures must never be recorded as Quality Failed."""
+    """Transient provider failures must never be recorded as Quality Failed.
+
+    Screening ReasonはStep1 Screening評価の永久保存値であり、Pending Retryの
+    理由で上書きしてはならない。Retry理由はログにのみ残し、Notionプロパティは
+    Content/Article Statusのみ更新する。"""
     if not page_id or not NOTION_API_KEY:
         return False
     props = {
@@ -1673,7 +1794,7 @@ def update_notion_pending_retry(page_id: str, repo_name: str, reason: str = "") 
         PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NOT_PLANNED}},
     }
     if reason:
-        props[PROP_SCREENING_REASON] = {"rich_text": [{"text": {"content": reason[:2000]}}]}
+        logger.info("[NOTION PENDING RETRY REASON] %s: %s", repo_name, reason[:500])
     try:
         res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=_notion_headers(), timeout=10)
         if res.status_code == 200:
@@ -1686,13 +1807,17 @@ def update_notion_pending_retry(page_id: str, repo_name: str, reason: str = "") 
 
 
 def update_notion_needs_editorial_review(page_id: str, repo_name: str, reasons: list[str]) -> bool:
-    """事実誤認とは分離し、公開だけを止めてStock資産を編集レビューへ回す。"""
+    """事実誤認とは分離し、公開だけを止めてStock資産を編集レビューへ回す。
+
+    Screening ReasonはStep1 Screening評価の永久保存値であり、Publication Review
+    理由で上書きしてはならない。Review理由はログにのみ残す。"""
     if not page_id or not NOTION_API_KEY:
         return False
     props = {
         PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW}},
-        PROP_SCREENING_REASON: {"rich_text": [{"text": {"content": "Publication review: " + ", ".join(reasons)[:1900]}}]},
     }
+    if reasons:
+        logger.info("[NOTION EDITORIAL REVIEW REASON] %s: %s", repo_name, ", ".join(reasons)[:500])
     try:
         res = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": props}, headers=_notion_headers(), timeout=10)
         if res.status_code == 200:
@@ -2696,6 +2821,33 @@ def fetch_producthunt_trending(limit: int = PRODUCTHUNT_FETCH_LIMIT):
     return items
 
 
+# URL Dedupで無視するトラッキング用クエリパラメータ。意味のあるquery
+# parameter（id, page等）は絶対に含めないこと。
+_DEDUP_IGNORED_QUERY_PREFIXES = ("utm_",)
+_DEDUP_IGNORED_QUERY_KEYS = {"fbclid", "gclid", "ref", "source"}
+
+
+def canonicalize_url(url: str) -> str:
+    """URL Dedup専用の正規化。新規candidate側・Notion既存URL側の両方で
+    必ずこの関数を通すことで、表記差（trailing slash / fragment / トラッキング
+    パラメータ）による誤重複判定・誤非重複判定を防ぐ。
+
+    正規化対象: 末尾スラッシュ、fragment、utm_*・fbclid・gclid・ref・source。
+    URL pathやid等の意味のあるquery parameterは一切変更しない。"""
+    if not url:
+        return ""
+    parsed = urlparse(url.strip())
+    filtered_query = [
+        (k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if not k.lower().startswith(_DEDUP_IGNORED_QUERY_PREFIXES)
+        and k.lower() not in _DEDUP_IGNORED_QUERY_KEYS
+    ]
+    return urlunparse((
+        parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "",
+        urlencode(filtered_query, doseq=True), "",
+    ))
+
+
 def legal_safety_gate(repo):
     """
     OSSライセンスの法務ゲート。
@@ -2813,7 +2965,7 @@ def get_existing_repo_urls():
             url_prop = page.get("properties", {}).get(PROP_URL, {})
             page_url = url_prop.get("url")
             if page_url:
-                existing_urls.add(page_url.rstrip("/"))
+                existing_urls.add(canonicalize_url(page_url))
 
         if data.get("has_more"):
             next_cursor = data.get("next_cursor")
@@ -2844,11 +2996,18 @@ def get_pending_retry_items(limit: int = 20) -> list[dict] | None:
         url = props.get(PROP_URL, {}).get("url")
         if not url:
             continue
+        item_source = props.get(PROP_SOURCE, {}).get("select", {}).get("name") or "GitHub"
+        # GitHub案件はStock保存時にPROP_LICENSEへ保持したSPDX IDを復元する。
+        # ここが欠けるとLegal Safety Gateが再実行時にNO_LICENSE扱いにしてしまい、
+        # 既に安全確認済みの案件を誤って弾く（推測で埋めるのではなく、保存値をそのまま戻す）。
+        stored_license = _notion_plain_text(props.get(PROP_LICENSE, {}))
+        license_info = {"spdxId": stored_license} if item_source == "GitHub" and stored_license else None
         items.append({"notion_page_id": page.get("id"), "repo": normalize_item(
-            props.get(PROP_SOURCE, {}).get("select", {}).get("name") or "GitHub",
+            item_source,
             _notion_plain_text(props.get(PROP_NAME, {})), url,
             _notion_plain_text(props.get(PROP_SOURCE_SUMMARY, {})),
             props.get(PROP_ENGAGEMENT, {}).get("number") or 0,
+            license_info=license_info,
             published_at=(props.get(PROP_PUBLISHED_AT, {}).get("date") or {}).get("start"),
         ), "screening_score": props.get(PROP_SCREENING_SCORE, {}).get("number") or 0,
            "screening_reason": _notion_plain_text(props.get(PROP_SCREENING_REASON, {}))})
@@ -2986,6 +3145,16 @@ def fetch_monthly_dataset(start_utc: str, end_utc: str) -> list[dict] | None:
     """
     [start_utc, end_utc) の期間にNotion DBへ新規作成された全ページを取得する。
     ページネーション対応。
+
+    【現在の集計仕様（意図的に維持している挙動）】
+    フィルタはNotionの組み込み created_time（ページが新規作成された日時）を
+    基準にしている。つまりこのダイジェストは「当月新規にStockされたページの集計」
+    であり、「当月にDeep Diveへアップグレードされた実績」の集計ではない。
+    そのため、前月にStockされ当月Deep Diveへアップグレードされたページは
+    当月の集計に含まれない（前月の集計にStock状態として含まれている）。
+    TODO: 「当月Deep Dive成果」を集計したい場合は、created_timeではなく
+    Analyzed At（Deep Dive実行時刻）を基準にする必要がある。今回のNotion DB
+    Persistence修正のスコープ外のため、挙動は変更せずここに明記するに留める。
 
     重複チェック（get_existing_repo_urls）と異なり、ここでの取得失敗は
     「過去記事の誤重複公開」のような事故には繋がらないため、Fail-Closedで
@@ -4197,7 +4366,7 @@ class DeepDiveGateFunnel:
         "max_tokens_failed", "structure_failed", "primary_evidence_failed",
         "fact_gate_failed", "editorial_gate_failed", "publication_readiness_review",
         "publication_readiness_failed", "human_appeal_warning", "human_appeal_review",
-        "pending_retry", "ready_count",
+        "pending_retry", "ready_count", "notion_persistence_failed",
     )
 
     def __init__(self):
@@ -4259,6 +4428,8 @@ class DeepDiveGateFunnel:
             self.incr("pending_retry")
         if record.get("final_status") == ARTICLE_STATUS_READY:
             self.incr("ready_count")
+        if record.get("final_status") == CONTENT_STATUS_PERSISTENCE_FAILED:
+            self.incr("notion_persistence_failed")
 
     def render_text(self) -> str:
         c = self.counters
@@ -4292,6 +4463,7 @@ class DeepDiveGateFunnel:
             f"Human Appeal Warning: {c['human_appeal_warning']}",
             f"Human Appeal Review: {c['human_appeal_review']}",
             f"Pending Retry: {c['pending_retry']}", "",
+            f"Notion Persistence Failed: {c['notion_persistence_failed']}", "",
             f"Ready: {c['ready_count']}",
         ])
 
@@ -4323,6 +4495,7 @@ class DeepDiveGateFunnel:
             ("Primary Evidence Failed", c["primary_evidence_failed"]),
             ("Human Appeal Review", c["human_appeal_review"]),
             ("Pending Retry", c["pending_retry"]),
+            ("Notion Persistence Failed", c["notion_persistence_failed"]),
         ]
         ranked = sorted(((label, count) for label, count in causes if count), key=lambda item: (-item[1], item[0]))
         lines = ["READY ARTICLES: 0", "", "Top Failure Causes:"]
@@ -4890,6 +5063,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             record = record_gate_outcome("failed", CONTENT_STATUS_QUALITY_FAILED, reason_codes=reasons)
             if persist_results:
                 save_quality_failed_article(repo, None, record, None, integrity_reason)
+                # 恒久的なSource Integrity Failure（ID不正・title mismatch・実在確認失敗等）を
+                # Pipeline内部だけのFailureにせず、Notion Stockが正常状態のまま残らないようにする。
+                # 記事本文は公開保存せず、理由の詳細はGate History（private artifact）側に残す。
+                if notion_page_id:
+                    update_notion_quality_failed(notion_page_id, name, grounding_status=GROUNDING_FAILED)
                 send_telegram_alert(f"ℹ️ Source Integrity Failed: {name}\n{integrity_reason[:1200]}")
             return None
         repo = verified_repo
@@ -5170,8 +5348,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
         analyzed_at = _analyzed_at_now_iso()
         if persist_results:
+            # Readyの定義: Quality Gate PASS AND Notion Persistence SUCCESS。
+            # 戻り値を必ず確認し、Notionへ保存されていない記事をReadyとして扱わない。
             if notion_page_id:
-                upgrade_notion_page_with_report(
+                notion_persisted = upgrade_notion_page_with_report(
                     notion_page_id,
                     name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
                     parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
@@ -5181,7 +5361,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     report_meta=parsed,
                 )
             else:
-                save_to_notion(
+                notion_persisted = save_to_notion(
                     name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
                     parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
                     spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
@@ -5190,14 +5370,40 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     report_meta=parsed, screening_score=screening_score, screening_reason=screening_reason,
                 )
             reason_rows = map_gate_reasons("editorial", final_quality_failures) if final_quality_failures else []
-            record_gate_outcome(
-                "completed", ARTICLE_STATUS_READY,
-                GATE_STATUS_PASS, GATE_STATUS_PASS if not final_quality_failures else GATE_STATUS_WARNING,
-                GATE_STATUS_PASS, GATE_STATUS_WARNING if final_quality_failures else GATE_STATUS_PASS,
-                reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
-                deep_dive_generation_called=deep_dive_generation_called,
-                retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "READY", parsed.get("note_draft", "")),
-            )
+            if not notion_persisted:
+                # 記事品質は問題ない（Quality Gate PASS）が、永続保存層が失敗している。
+                # Readyにせず、Ready件数にも加算しない。Quality Failedとは区別して記録する。
+                logger.error(f"[NOTION PERSISTENCE FAILED] {name} -> Quality Gate PASSだがNotion保存/アップグレードに失敗")
+                persistence_reason_rows = reason_rows + [{
+                    "reason_code": REASON_CODE_NOTION_PERSISTENCE_FAILED,
+                    "message": "Quality Gate PASS after Notion save/upgrade failure",
+                }]
+                record_gate_outcome(
+                    "completed", CONTENT_STATUS_PERSISTENCE_FAILED,
+                    GATE_STATUS_PASS, GATE_STATUS_PASS if not final_quality_failures else GATE_STATUS_WARNING,
+                    GATE_STATUS_PASS, GATE_STATUS_WARNING if final_quality_failures else GATE_STATUS_PASS,
+                    persistence_reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
+                    deep_dive_generation_called=deep_dive_generation_called,
+                    retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, persistence_reason_rows, "NOTION_PERSISTENCE_FAILED", parsed.get("note_draft", "")),
+                    article_saved=False,
+                )
+                send_telegram_alert(f"⚠️ Notion Persistence Failed: {name}\n記事はQuality Gateを通過しましたが、Notionへの保存/アップグレードに失敗したためReadyにしていません。")
+                # Readyの定義（Quality Gate PASS AND Notion Persistence SUCCESS）を
+                # 満たしていないため、ここでNoneを返してgenerated_count/retry_generated
+                # への誤加算（呼び出し元の `if report:` / `if generate_intelligence_report(...):`）
+                # を防ぐ。以降のclean_manuscript返却経路（regen比較用のFalse分岐やこの
+                # 関数末尾のreturn）へは到達させない。
+                return None
+            else:
+                record_gate_outcome(
+                    "completed", ARTICLE_STATUS_READY,
+                    GATE_STATUS_PASS, GATE_STATUS_PASS if not final_quality_failures else GATE_STATUS_WARNING,
+                    GATE_STATUS_PASS, GATE_STATUS_WARNING if final_quality_failures else GATE_STATUS_PASS,
+                    reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
+                    deep_dive_generation_called=deep_dive_generation_called,
+                    retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "READY", parsed.get("note_draft", "")),
+                    article_saved=True,
+                )
         else:
             regen_status = "accepted" if quality_gate_passed else "rejected"
             save_regen_test_manuscript(
@@ -5575,8 +5781,12 @@ def save_observed_history(items: list[dict], batch_calls: int, recovery_calls: i
 # ==========================================
 def check_stale_content():
     """
-    Notion DBの最新ページ作成日を確認し、STALE_THRESHOLD_DAYS日以上
-    新規ページが作成されていなければ運用者(Telegram)に通知する。
+    STALE_THRESHOLD_DAYSの意味は「最後の正常なDeep Dive / Ready記事から
+    何日経過したか」である。Stockは毎日作成され得るため、対象を
+    Article Status = Ready または Content Status = Deep Dive へ絞り込み、
+    Analyzed At（実際に分析・生成を行った日時）の降順で最新1件を見る。
+    こうしないと、Deep Dive Ready = 0 が長期間続いてもStockが毎日追加される
+    だけでstale warningが発生しないという不整合が起きる。
 
     注意: これは購読者への告知ではない。運用者が「そろそろ購読者への
     説明を検討すべきか」を判断するためのトリガーに過ぎない。
@@ -5588,7 +5798,11 @@ def check_stale_content():
     url = _notion_query_url()
     headers = _notion_headers()
     payload = {
-        "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+        "filter": {"or": [
+            {"property": PROP_ARTICLE_STATUS, "select": {"equals": ARTICLE_STATUS_READY}},
+            {"property": PROP_CONTENT_STATUS, "select": {"equals": CONTENT_STATUS_DEEP_DIVE}},
+        ]},
+        "sorts": [{"property": PROP_ANALYZED_AT, "direction": "descending"}],
         "page_size": 1,
     }
     try:
@@ -5599,18 +5813,27 @@ def check_stale_content():
 
         results = res.json().get("results", [])
         if not results:
-            logger.warning("[STALE CHECK] Notion DBにページが1件もありません。")
+            # Ready / Deep Dive記事が1件も存在しない = 最悪のstale状態。
+            logger.warning("[STALE CHECK] Ready / Deep Dive記事が1件も見つかりません。")
+            send_telegram_alert(
+                "🟡【運用確認】Ready / Deep Dive状態の記事が1件も見つかりません。"
+                "パイプラインの異常有無を確認してください。"
+            )
             return
 
-        latest_created_str = results[0]["created_time"]  # 例: "2026-08-01T09:00:00.000Z"
-        latest_created = datetime.fromisoformat(latest_created_str.replace("Z", "+00:00"))
-        days_since = (datetime.now(timezone.utc) - latest_created).days
+        props = results[0].get("properties", {})
+        analyzed_at_str = (props.get(PROP_ANALYZED_AT, {}).get("date") or {}).get("start")
+        if not analyzed_at_str:
+            logger.warning("[STALE CHECK] 最新Ready/Deep Dive記事にAnalyzed Atが設定されていません。")
+            return
+        latest_analyzed = datetime.fromisoformat(analyzed_at_str.replace("Z", "+00:00"))
+        days_since = (datetime.now(timezone.utc) - latest_analyzed.astimezone(timezone.utc)).days
 
-        logger.info(f"[STALE CHECK] 最終記事生成から {days_since} 日経過（閾値 {STALE_THRESHOLD_DAYS} 日）")
+        logger.info(f"[STALE CHECK] 最終Ready/Deep Dive記事から {days_since} 日経過（閾値 {STALE_THRESHOLD_DAYS} 日）")
 
         if days_since >= STALE_THRESHOLD_DAYS:
             send_telegram_alert(
-                f"🟡【運用確認】最終記事生成から {days_since} 日が経過しています"
+                f"🟡【運用確認】最終Ready/Deep Dive記事から {days_since} 日が経過しています"
                 f"（閾値: {STALE_THRESHOLD_DAYS}日）。\n"
                 f"パイプラインの異常有無を確認し、必要であれば有料購読者への"
                 f"説明を検討してください。"
@@ -5822,11 +6045,7 @@ def main():
     deduped_repos = []
     local_keys = set()
     for repo in safe_repos:
-        parsed_url = urlparse(repo.get("url") or "")
-        filtered_query = [(k, v) for k, v in parse_qsl(parsed_url.query, keep_blank_values=True)
-                          if not k.lower().startswith(("utm_", "ref", "source", "fbclid", "gclid"))]
-        repo_url = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path.rstrip("/"), "",
-                               urlencode(filtered_query, doseq=True), ""))
+        repo_url = canonicalize_url(repo.get("url") or "")
         title_key = _normalize_title_for_match(repo.get("nameWithOwner", ""))
         identity_key = repo_url or f"{repo.get('source', '')}:{title_key}"
         if repo_url in existing_urls or identity_key in local_keys:
