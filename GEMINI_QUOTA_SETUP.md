@@ -46,3 +46,8 @@ Persistent CounterはGoogle側Quota APIではありません。したがって�
 Daily終了時にmodel / request kind / success-error / token usageを集計します。詳細はPrivate Artifactの `gate_history/gemini_usage_*.json` に保存されます。
 
 Prompt本文、未公開記事本文、API key、生Project IDは保存しません。
+
+
+## Pending Retry専用枠
+
+`daily.yml`では`GEMINI_PENDING_RETRY_REQUEST_BUDGET=2`を設定しています。これは前日までのPending Retryが当日のFresh Deep Dive枠を消費し尽くすのを防ぐ上限です。API送信に進まなかった試行はこの枠を消費しません。通常は変更不要です。

@@ -749,7 +749,7 @@ class TestGeminiUsageAudit(unittest.TestCase):
         fake_client.chats.create.return_value = fake_chat
         with patch.object(pipeline, "client", fake_client), \
              patch.object(pipeline, "GEMINI_USAGE_AUDIT", audit), \
-             patch.object(pipeline, "_consume_gemini_request", side_effect=lambda kind, reserve=0, model_name="default", request_context="": audit.record_attempt(model_name, kind, request_context)):
+             patch.object(pipeline, "_consume_gemini_request", side_effect=lambda kind, reserve=0, model_name="default", request_context="", **kwargs: audit.record_attempt(model_name, kind, request_context)):
             with self.assertRaises(RuntimeError):
                 pipeline._generate_via_chat(
                     "m", "secret prompt body", request_kind="deep_dive", request_context="GitHub:owner/repo"
@@ -1388,6 +1388,253 @@ class TestSourceROILearning(unittest.TestCase):
         self.assertTrue(payload["source_roi"]["enabled"])
         self.assertEqual(65, payload["source_roi"]["fetch_limits"]["GitHub"])
         self.assertEqual(72.5, payload["source_roi"]["profile"]["GitHub"]["roi_score"])
+
+
+class TestGeminiEfficiencyGuardrails(unittest.TestCase):
+    def test_persistent_rejection_does_not_consume_deep_dive_or_run_budget(self):
+        run_budget = pipeline.GeminiBudget(50, 4, 1)
+        deep_budget = pipeline.DeepDiveModelBudget(12)
+        pending_budget = pipeline.PendingRetryRequestBudget(2)
+        persistent = MagicMock()
+        persistent.reserve.side_effect = pipeline.GeminiBudgetExceededError(
+            "Persistent Gemini model budget exhausted: gemini-3.6-flash 18/18"
+        )
+        audit = pipeline.GeminiUsageAudit()
+        with patch.object(pipeline, "GEMINI_BUDGET", run_budget), \
+             patch.object(pipeline, "DEEP_DIVE_MODEL_BUDGET", deep_budget), \
+             patch.object(pipeline, "PENDING_RETRY_REQUEST_BUDGET", pending_budget), \
+             patch.object(pipeline, "PERSISTENT_GEMINI_COUNTER", persistent), \
+             patch.object(pipeline, "GEMINI_USAGE_AUDIT", audit):
+            with self.assertRaises(pipeline.GeminiBudgetExceededError):
+                pipeline._consume_gemini_request(
+                    "deep_dive", model_name="gemini-3.6-flash",
+                    count_as_deep_dive=True, request_origin="new"
+                )
+        self.assertEqual(0, deep_budget.used)
+        self.assertEqual(0, run_budget.request_count)
+        self.assertEqual(0, pending_budget.used)
+        self.assertEqual([], audit.records)
+
+    def test_pending_retry_budget_caps_actual_deep_dive_sends_before_persistent_reserve(self):
+        run_budget = pipeline.GeminiBudget(50, 4, 4)
+        deep_budget = pipeline.DeepDiveModelBudget(12)
+        pending_budget = pipeline.PendingRetryRequestBudget(2)
+        persistent = MagicMock()
+        audit = pipeline.GeminiUsageAudit()
+        with patch.object(pipeline, "GEMINI_BUDGET", run_budget), \
+             patch.object(pipeline, "DEEP_DIVE_MODEL_BUDGET", deep_budget), \
+             patch.object(pipeline, "PENDING_RETRY_REQUEST_BUDGET", pending_budget), \
+             patch.object(pipeline, "PERSISTENT_GEMINI_COUNTER", persistent), \
+             patch.object(pipeline, "GEMINI_USAGE_AUDIT", audit):
+            pipeline._consume_gemini_request(
+                "deep_dive", model_name="m", count_as_deep_dive=True,
+                request_origin="pending_retry"
+            )
+            pipeline._consume_gemini_request(
+                "quality_retry", model_name="m", count_as_deep_dive=True,
+                request_origin="pending_retry"
+            )
+            with self.assertRaises(pipeline.PendingRetryBudgetExceededError):
+                pipeline._consume_gemini_request(
+                    "deep_dive", model_name="m", count_as_deep_dive=True,
+                    request_origin="pending_retry"
+                )
+        self.assertEqual(2, pending_budget.used)
+        self.assertEqual(2, deep_budget.used)
+        self.assertEqual(2, run_budget.request_count)
+        self.assertEqual(2, persistent.reserve.call_count)
+        self.assertEqual(2, len(audit.records))
+
+    def test_persistent_exhausted_model_is_session_skipped_and_pool_falls_back(self):
+        response = MagicMock()
+        calls = []
+        def fake_generate(model_name, *args, **kwargs):
+            calls.append(model_name)
+            if model_name == "m1":
+                raise pipeline.GeminiBudgetExceededError(
+                    "Persistent Gemini model budget exhausted: m1 18/18"
+                )
+            return response
+        with patch.object(pipeline, "SESSION_EXHAUSTED_MODELS", set()), \
+             patch.object(pipeline, "SESSION_UNAVAILABLE_MODELS", set()), \
+             patch.object(pipeline, "GEMINI_DEEP_DIVE_CALL_PACING_SECONDS", 0), \
+             patch.object(pipeline, "_generate_via_chat", side_effect=fake_generate):
+            got, model = pipeline._call_model_pool(
+                "p", None, "deep_dive", 0, ["m1", "m2"], deep_dive=True
+            )
+            self.assertIs(got, response)
+            self.assertEqual("m2", model)
+            self.assertIn("m1", pipeline.SESSION_EXHAUSTED_MODELS)
+        self.assertEqual(["m1", "m2"], calls)
+
+    def test_nonrepairable_evidence_reason_skips_dynamic_retry(self):
+        ok, reason = pipeline.should_attempt_dynamic_retry(
+            [{"reason_code": pipeline.REASON_CODE_PUB_SOURCE_SUFFICIENCY, "message": "primary_evidence_insufficient"}],
+            {"state": pipeline.EVIDENCE_SUFFICIENT},
+            candidate_origin="new",
+        )
+        self.assertFalse(ok)
+        self.assertEqual("non_repairable_evidence_or_source_gap", reason)
+
+    def test_repairable_fact_mismatch_can_retry(self):
+        ok, reason = pipeline.should_attempt_dynamic_retry(
+            [{"reason_code": pipeline.REASON_CODE_FACT_NUMERICAL_MISMATCH, "message": "numeric mismatch"}],
+            {"state": pipeline.EVIDENCE_SUFFICIENT},
+            candidate_origin="new",
+        )
+        self.assertTrue(ok)
+        self.assertEqual("repairable", reason)
+
+    def test_pending_retry_without_remaining_dedicated_budget_skips_quality_retry(self):
+        pending_budget = pipeline.PendingRetryRequestBudget(1)
+        pending_budget.consume("deep_dive")
+        with patch.object(pipeline, "PENDING_RETRY_REQUEST_BUDGET", pending_budget):
+            ok, reason = pipeline.should_attempt_dynamic_retry(
+                [{"reason_code": pipeline.REASON_CODE_FACT_UNSUPPORTED_CLAIM, "message": "unsupported"}],
+                {"state": pipeline.EVIDENCE_SUFFICIENT},
+                candidate_origin="pending_retry",
+            )
+        self.assertFalse(ok)
+        self.assertEqual("pending_retry_budget_exhausted", reason)
+
+    def test_funnel_retains_max_tokens_event_even_if_final_reason_is_different(self):
+        funnel = pipeline.DeepDiveGateFunnel()
+        funnel.record({
+            "candidate_origin": "new",
+            "evidence_sufficiency": pipeline.EVIDENCE_SUFFICIENT,
+            "evidence_initial_sufficiency": pipeline.EVIDENCE_SUFFICIENT,
+            "generation_status": "completed",
+            "reason_codes": [{"reason_code": pipeline.REASON_CODE_FACT_UNSUPPORTED_CLAIM, "message": "x"}],
+            "any_generation_truncated": True,
+            "fact_gate": pipeline.GATE_STATUS_FAIL,
+            "editorial_gate": pipeline.GATE_STATUS_PASS,
+            "publication_readiness_gate": pipeline.GATE_STATUS_REVIEW,
+            "human_appeal_gate": pipeline.GATE_STATUS_PASS,
+            "final_status": pipeline.CONTENT_STATUS_QUALITY_FAILED,
+        })
+        self.assertEqual(1, funnel.counters["max_tokens_failed"])
+
+
+class TestRealArticleGateCalibration20260821(unittest.TestCase):
+    """2026-08-21の実記事4本で見つかったGate false-positive / missを固定する。"""
+
+    def test_post_training_ten_hours_matches_hyphenated_english_evidence(self):
+        article = "各エージェントには10時間の計算予算を与えた。"
+        evidence = "Each trajectory received a 10-hour compute budget on one NVIDIA H100 80GB GPU."
+        self.assertEqual([], pipeline._find_unsupported_numeric_claims(article, evidence))
+
+    def test_vla_range_and_multiplier_normalize_across_dash_styles(self):
+        article = "LatentMASはトークン消費を約50〜80%削減し、推論を3〜7倍高速化した。"
+        evidence = "LatentMAS uses approximately 50–80 percent fewer tokens and is 3–7x faster."
+        self.assertEqual([], pipeline._find_unsupported_numeric_claims(article, evidence))
+
+    def test_low_risk_cargo_lock_audit_is_not_named_fact_failure(self):
+        article = (
+            "今すぐ動く価値がある実務的な対応として、自社プロジェクトの Cargo.lock に"
+            "arrayref 0.3.10 の履歴が残っていないか監査する必要があります。"
+        )
+        evidence = "The malicious release was arrayref 0.3.10 and proc-macro1 was used in the attack."
+        self.assertEqual([], pipeline._find_source_boundary_violations(article, evidence))
+
+    def test_unsupported_product_capability_is_still_rejected(self):
+        article = "AcmeCloudはEnterprise Syncを標準でサポートしています。"
+        evidence = "AcmeCloud documentation describes basic storage only."
+        failures = pipeline._find_source_boundary_violations(article, evidence)
+        self.assertTrue(any("Enterprise Sync" in row for row in failures), failures)
+
+    def test_low_risk_action_does_not_whitelist_unknown_product_capability(self):
+        article = "AcmeCloud Enterprise Syncを比較検証する必要があります。"
+        evidence = "AcmeCloud documentation describes basic storage only."
+        failures = pipeline._find_source_boundary_violations(article, evidence)
+        self.assertTrue(failures, failures)
+        self.assertTrue(any("AcmeCloud" in row or "Sync" in row for row in failures), failures)
+
+    def test_generic_llm_api_phrase_is_not_treated_as_product_name(self):
+        article = "監査ではLLM APIの利用を限定して検証します。"
+        evidence = "The paper studies latent communication between large language model agents."
+        self.assertEqual([], pipeline._find_source_boundary_violations(article, evidence))
+
+    def test_fabricated_personal_experience_is_detected(self):
+        article = (
+            "現場でAI導入を進める立場として、この研究結果は非常に納得感があります。"
+            "日常のコーディング支援でも同じ傾向を感じます。"
+        )
+        hits = pipeline._find_fabricated_personal_experience(article)
+        self.assertTrue(hits)
+        state, issues = pipeline.validate_human_appeal_gate({
+            "note_draft": article,
+            "title_text": "AI自動化の限界をどう見るか？",
+            "action_text": "限定PoCで検証する。",
+        })
+        self.assertEqual("WEAK", state)
+        self.assertIn("fabricated_personal_experience", issues)
+
+    def test_editorial_opinion_without_claimed_experience_is_allowed(self):
+        article = "私自身の見解としては、今は限定PoCで比較検証するのが妥当だと考えます。"
+        self.assertEqual([], pipeline._find_fabricated_personal_experience(article))
+
+    def test_omitted_subject_daily_experience_is_detected(self):
+        article = "日常のコーディング支援でも同じ傾向を感じます。"
+        self.assertTrue(pipeline._find_fabricated_personal_experience(article))
+
+    def test_reader_rhetorical_experience_question_is_not_fabricated_persona(self):
+        article = "設定を変えた途端に別のタスクが失敗した経験はないでしょうか。"
+        self.assertEqual([], pipeline._find_fabricated_personal_experience(article))
+
+    def test_arxiv_future_work_does_not_require_release_freshness(self):
+        info = {
+            "source": "ArXiv",
+            "context": "This paper presents a method. Future work is planned.",
+            "verification_context": "Authors: Lab. Method: routing algorithm. Benchmark: 30 ms. Future work is planned.",
+            "primary_source_resolved": True,
+            "source_details": {"authors": ["Lab"]},
+            "supplement_candidates": [],
+            "checked_urls": set(),
+            "evidence_documents": [{"url": "https://arxiv.org/abs/1", "retrieved": True}],
+            "freshness_status_available": False,
+        }
+        info["evidence_metadata"] = pipeline._build_evidence_metadata(info["verification_context"], True)
+        result = pipeline.assess_evidence_sufficiency(info)
+        self.assertEqual(pipeline.EVIDENCE_SUFFICIENT, result["state"])
+        self.assertTrue(result["freshness_scope_limited"])
+
+    def test_explicit_future_release_still_triggers_freshness(self):
+        info = {
+            "context": "A future version is planned for public release.",
+            "primary_url": "https://vendor.example/product",
+            "source_name": "Vendor Product",
+        }
+        with patch.object(pipeline, "_http_get_limited", return_value=(b"<html></html>", "text/html", info["primary_url"])):
+            result = pipeline.resolve_followup_freshness(info)
+        self.assertTrue(result["triggered"])
+
+    def test_late_pdf_is_not_dropped_when_existing_verification_context_is_full(self):
+        old = "landing " * 40000
+        new = ("paper body " * 12000) + "\nLIMITATIONS marker-tail-xyz"
+        merged = pipeline._merge_verification_context(old, new)
+        self.assertLessEqual(len(merged), pipeline.VERIFICATION_CONTEXT_MAX_CHARS)
+        self.assertIn("paper body", merged)
+        self.assertIn("marker-tail-xyz", merged)
+
+    def test_supplement_pdf_keeps_fact_evidence_beyond_prompt_context(self):
+        info = {
+            "context": "Abstract only.",
+            "verification_context": "Abstract only.",
+            "checked_urls": set(),
+            "evidence_documents": [{"url": "https://arxiv.org/abs/1", "retrieved": True}],
+            "supplement_candidates": [{
+                "url": "https://arxiv.org/pdf/1.pdf", "role": "PRIMARY_SOURCE",
+                "source_type": "arxiv_pdf", "label": "paper",
+            }],
+            "deep_source_urls": [],
+        }
+        raw = ("background text\n" * 1200) + "Each trajectory used a 10-hour compute budget on H100 80GB.\n"
+        with patch.object(pipeline, "fetch_pdf_context", return_value=raw):
+            pipeline.supplement_source_evidence(info)
+        self.assertLessEqual(len(info["context"]), pipeline.SOURCE_CONTEXT_MAX_CHARS)
+        self.assertIn("10-hour", info["verification_context"])
+        self.assertGreater(info["verification_context_length"], len(info["context"]))
+        self.assertEqual([], pipeline._find_unsupported_numeric_claims("計算予算は10時間。", info["verification_context"]))
 
 
 if __name__ == '__main__':

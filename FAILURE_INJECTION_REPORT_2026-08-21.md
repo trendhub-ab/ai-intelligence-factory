@@ -85,13 +85,37 @@
 36. Gemini API消費の原因追跡不能
    - `GeminiUsageAudit`を追加し、model / request kind /短いcandidate context / success-error / SDKが返すtoken usageで送信試行を記録。Prompt本文は保存せず、`gate_history/gemini_usage_*.json`をPrivate Artifact化。Daily通知にもmodel別・用途別のattempt内訳を出し、Screening/Calibration/Deep Dive/Quality Retry/transport retryの消費原因を追跡可能にした。
 
+37. Persistent上限拒否でDeep Dive local budgetを空費
+   - 旧実装は`DEEP_DIVE_MODEL_BUDGET.consume()`がPersistent Counter reserveより先で、18/18到達modelへの「実API未送信」試行でも12回/Run枠を消費した。Local budgetは事前確認だけ行い、Persistent reserve成功後にのみconsumeする順序へ変更。Persistent Safety Cap到達modelは同Runの`SESSION_EXHAUSTED_MODELS`へ登録し、後続候補で再試行しない。
+38. Pending RetryによるFresh候補Quota侵食
+   - 旧Pending RetryはTOP3候補を新規収集前に処理し、各候補のQuality Retryまで許可したため、前日失敗記事だけでFlash系RPDを大量消費し得た。`GEMINI_PENDING_RETRY_REQUEST_BUDGET=2`を追加し、Pending Retry由来の実Gemini送信を最大2回/Runへ制限。専用枠超過時は翌Runへ残し、Fresh候補用Deep Dive枠を優先する。
+39. 非Repairable Quality Retryのtoken浪費
+   - `primary_evidence_insufficient`等、再作文では一次Evidenceが増えないReason Codeでも1回Retryしていた。Primary Source未解決、Technical Claims不足、Numeric Conditions不足、Freshness未解決、高リスクAction根拠不足、`PUB_SOURCE_SUFFICIENCY`等をnon-repairableとしてRetry対象外にし、Fact/表現/構造など再生成で修復可能な問題だけをRetryする。
+40. 初稿MAX_TOKENSのFunnel消失
+   - 初稿が`FINISHREASON.MAX_TOKENS`でもRetry後の最終Reason CodeだけでFunnelを集計すると0件に見える不整合を修正。各生成試行の`generation_attempt_history`と`any_generation_truncated`をGate Recordへ保持し、最終稿が別理由でもRun中に一度でもtruncatedなら`MAX_TOKENS`へ計上する。
+
+41. Prompt用12k contextによるFact Evidence欠落
+   - 実記事で、論文PDFに存在する数値がPrompt用の短縮contextから落ち、Fact Gateがunsupportedと誤判定した。Gemini Promptは12kのまま維持し、Fact/Evidence Gate専用に最大180kの`verification_context`を分離。PDF/公式HTMLの実取得本文を照合対象へ含め、追加APIコストを発生させない。
+42. 数値Range・単位翻訳のFalse Positive
+   - `10-hour`↔`10時間`、`50–80 percent`↔`50〜80%`、`3–7x`↔`3〜7倍`を正規化し、Range内部の末尾値を二重claimとして再判定しない。明示条件の矛盾検出は維持する。
+43. LOW RISK ActionとSource Factの混線
+   - Rust記事の`Cargo.lockを監査する`のような低リスク運用Actionを、一次資料に語が無いだけで`FACT_UNSUPPORTED_NAMED_FACT`へ落としていた。ローカル設定/lock/log等の監査成果物だけを限定許可し、未確認の外部製品機能は従来どおりFailする。
+44. 一般略語複合語の固有名誤認
+   - `LLM API`等の一般技術略語の組合せを外部製品名扱いしてSource Boundary Failする誤検出を修正。ALL-CAPS一般略語のHard Negative保護は維持。
+45. 架空の実体験persona見逃し
+   - `現場でAI導入を進める立場として`、`日常のコーディング支援でも同じ傾向を感じます`等、実在しない職務/日常体験をHuman Appeal Review理由として検出。編集判断（`私なら`等）や読者への経験質問は許可する。
+46. Research future workのFreshness誤発火
+   - 論文中の`future work`や一般的な将来研究を製品release予定と混同しない。公開/提供/発売/support/availability等の状態変更予定だけFreshness follow-up対象とする。
+47. 長大LandingがSupplement PDFをverificationから押し出す事故
+   - Verification contextを単純な先頭truncateで連結せず、既存Evidenceと後取得PDF/Docsへ配分し、双方の冒頭/末尾を保持する。後取得Evidenceが丸ごと監査対象外になる経路をRegression化した。
+
 ## テスト結果
 
-- Adversarial / Failure Injection: 106/106 PASS
+- Adversarial / Failure Injection: 127/127 PASS
 - Notion Persistence: 48/48 PASS
 - Safety Unit: 76/76 PASS
 - Subscription Attribution: 11/11 PASS
-- unittest discovery: 241/241 PASS
+- unittest discovery: 262/262 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
 

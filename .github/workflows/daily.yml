@@ -114,7 +114,9 @@ jobs:
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+          GEMINI_PENDING_RETRY_REQUEST_BUDGET: "2"
           MAX_EVIDENCE_DOCUMENTS: "3"
+          VERIFICATION_CONTEXT_MAX_CHARS: "180000"
 
       # 未公開記事・Gate履歴はRepositoryへcommitせず、アクセス制限されたArtifactとしてのみ保持する。
       - name: 月次ダイジェストをPrivate Artifactとして保存

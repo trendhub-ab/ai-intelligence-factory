@@ -860,7 +860,7 @@ class TestArxivEvidenceLinkFiltering(unittest.TestCase):
         self.assertIn("https://github.com/example/project", urls)
         self.assertFalse(any("/prevnext" in url or "/IgnoreMe" in url for url in urls))
 
-    def test_freshness_skips_arxiv_prevnext_navigation(self):
+    def test_arxiv_future_work_does_not_trigger_freshness_navigation(self):
         html = b"""
         <html><body>future planned work
         <a href='/prevnext?id=2608.19140&function=next'>next</a>
@@ -874,7 +874,7 @@ class TestArxivEvidenceLinkFiltering(unittest.TestCase):
         with patch.object(pipeline, "_http_get_limited", return_value=(html, "text/html", source_info["primary_url"])), \
              patch.object(pipeline, "fetch_webpage_context") as fetch:
             result = pipeline.resolve_followup_freshness(source_info)
-        self.assertTrue(result["triggered"])
+        self.assertFalse(result["triggered"])
         self.assertFalse(result["followup_found"])
         fetch.assert_not_called()
 

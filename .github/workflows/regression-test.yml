@@ -46,6 +46,7 @@ jobs:
           GEMINI_36_FLASH_DAILY_BUDGET: "18"
           GEMINI_37_FLASH_DAILY_BUDGET: "18"
           GEMINI_35_FLASH_DAILY_BUDGET: "18"
+          VERIFICATION_CONTEXT_MAX_CHARS: "180000"
       - name: 回帰テスト出力を保存
         if: always()
         uses: actions/upload-artifact@v7

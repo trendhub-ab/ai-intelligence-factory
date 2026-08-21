@@ -19,7 +19,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 
 ## 2. 日次処理フロー
 
-1. Pending Retryを優先処理する
+1. Pending Retryは最長待機順で処理するが、専用Gemini実送信上限2回/Runを超えずFresh候補のDeep Dive枠を優先する
 2. GitHub、Hacker News、arXiv、Product Huntを収集する
 3. OSSライセンス安全性を確認する
 4. Notion既存URL・ローカル重複を除外する
@@ -122,7 +122,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - Deep Dive候補の試行上限は既定7件。成功記事数の目標は最大3件であり、4位以降をBackfillに使用する。
 - Quality Gate不合格、出力途中切れ、一次情報不足、Pending Retryなどが発生しても、候補試行上限とAPI予算の範囲内で次点候補へ進む。
 - Evidence Sufficiencyが`INSUFFICIENT`の候補はGemini Deep Diveを呼ばず、API枠を消費せずに次点候補へ進む。
-- Quality Retryは最大1回。Reason Codeごとの対象箇所だけを直し、前稿を基準に根拠のある構成・主張を維持する。文字数を理由とした一律の短縮指示は行わない（`MAX_TOKENS`時の構造完全化指示を除く）。
+- Quality Retryは最大1回。ただし`PUB_SOURCE_SUFFICIENCY`、Primary Source未解決、Technical Claims不足、Freshness未解決、高リスクAction根拠不足など、再作文ではEvidenceが増えないReason CodeではRetryを実行しない。Repair可能なFact/構造/タイトル/Action表現だけを局所修正する。`MAX_TOKENS`時は必須構造を保った短縮完全版を再生成する。
 - 12回への増枠は記事成功数を保証するものではない。根拠外表現、一次情報不足、Publication Readiness、Human Appealの不合格は引き続き公開しない。
 
 ### GitHub Actionsとの設定整合
@@ -176,6 +176,12 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - 最終成果物のEvidence URLはGemini grounding metadataだけに依存せず、Primary URL、実際に取得したEvidence Supplement資料、Grounding URLを監査順に統合する。Stock dedupeでは同一資産として扱うarXiv `abs`/`pdf`も、監査証跡では「実際にPDFを読んだ」ことを残すため別URLとして保持する。ReadyだけでなくNeeds Editorial ReviewのNotion `Evidence URLs`とレビュー原稿末尾にも同じ規則を適用する。
 - 補強後も`INSUFFICIENT`なら`PRIMARY_EVIDENCE_INSUFFICIENT`をGate履歴へ記録し、公開・Quality Failed保存・Gemini呼出しを行わずBackfillする。
 - Evidence Scope、数値、条件、制約、鮮度、Actor Attributionを品質ゲートで検証する。
+- Geminiへ送る記事生成Prompt contextは従来どおり最大12,000文字とし、Fact/Evidence Gateだけは実取得したPrimary HTML/PDF/公式Docsを最大`VERIFICATION_CONTEXT_MAX_CHARS=180000`で保持する`verification_context`を参照する。長文は冒頭に加えて末尾のLimitations/Appendixも残し、後取得のSupplement PDF/DocsがLanding本文に押し出されないよう専用枠を確保する。追加Gemini requestは発生しない。
+- 数値Fact照合では、日本語/英語・range表記・単位差を正規化する。例: `10-hour`と`10時間`、`50–80 percent`と`50〜80%`、`3–7x`と`3〜7倍`。同じ数値でもhardware/dataset/metric等の明示条件が矛盾する場合は従来どおりFailする。
+- Source BoundaryではFact主張とLOW RISK Actionを分離する。`Cargo.lock`、設定ファイル、log等のローカル監査成果物は、監査/確認/検証Action内で一次資料への逐語一致を要求しない。一方、外部製品の未確認機能・API・価格・対応状況をAction文で補完することは許可しない。
+- `LLM API`等、一般略語だけからなる複合語は固有製品名として扱わない。
+- Human Appeal Gateは、架空の感情・使用体験に加えて、`現場で〜を進める立場として`、`日常の〜でも同じ傾向を感じます`等の実在しない職務経験/日常体験をReview対象にする。`私なら`、`私の見解では`等の編集判断、読者への経験質問は架空体験と区別する。
+- Freshness follow-upは、release/launch/support/availability/公開/提供/発売等の状態変更予定に限定する。研究論文の`future work`だけでは製品鮮度確認を発火しない。
 - 内部のDecision構造は固定し、noteで見せる導入・見出しだけを記事ごとに可変化する。
 - 読者の疑問、発見、数字への留保、実務課題の4種類から導入を選ぶ。発見経路・原資料・技術背景を残しつつ、導入は2〜4段落で自然に構成する。
 - 記事には観察または留保を最低1箇所置く。架空の感情・使用体験は生成しない。
@@ -201,7 +207,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - Geminiの429・503・利用可能モデル枯渇などのPending Retry
 - Notion永続化失敗（品質Gate通過後にReadyをcommitできない場合）
 
-これらは品質を満たさない記事の公開を防ぐFail-Closedの結果であり、API枠を増やすだけでは解消しない。再実行時は、Pending Retryを優先しつつ、Deep Dive request budget・候補試行上限・モデル別Safety Capを超えない。
+これらは品質を満たさない記事の公開を防ぐFail-Closedの結果であり、API枠を増やすだけでは解消しない。再実行時は、Pending Retryを最長待機順で救済するが、専用実送信上限2回/Runを超えず、Fresh候補用のDeep Dive request budgetを温存する。候補試行上限・モデル別Safety Capも超えない。
 
 ## 8. Observed履歴
 
@@ -223,7 +229,7 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 
 - GitHub Actionsの日次Workflowから`python pipeline.py`を実行する。mainへのpushではUnit Test＋Synthetic Regression smokeを自動実行し、翌日のDailyまで不具合検知を遅らせない。
 - production起動時はNotion内部DBの必須Property名・型をPreflightし、Schema不整合ならGeminiを1回も消費する前にFail-Closed停止する。
-- Pending Retryは`last_edited_time ASC`で最も長く待っている候補から処理し、同じ上位3件が後続を永久に塞ぐ飢餓を防ぐ。
+- Pending Retryは`last_edited_time ASC`で最も長く待っている候補から処理する。ただし`GEMINI_PENDING_RETRY_REQUEST_BUDGET=2`を既定値とし、旧失敗記事が当日のFresh候補用Deep Dive枠を食い潰さない。専用枠を使い切った候補は次Runへ残す。
 - 月末にはNotion保存資産を基に会員向け月次ダイジェストを生成する。会員限定性を守るためraw GitHub URLへcommitせず、`monthly_digests/`をGitHub ActionsのPrivate Artifactとして90日保持する。
 - アイキャッチはDecision Score 60点以上で生成し、GitHubへ保存する。
 - TelegramにはCollected、Screened、Screening API Calls、Calibration、Stock、Deep Dive Ready、Gemini予算に加え、model別・用途別のGemini API attempt内訳を通知する。
@@ -231,7 +237,7 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 
 ### Gate可視化と内部レビュー
 
-- 日次実行ごとに、Pending Retry候補数、新規Deep Dive候補数、総処理候補数、Generation API完了、記事解析完了、Quality評価完了、Readyを分離して集計する。Evidence Sufficiency（補強要・補強成功・不足）、Gemini呼出し回避数、動的Retryの試行・成功・失敗、`MAX_TOKENS`、構造不足、一次情報不足、4 Gateの脱落数、`Pending Retry`もGate Funnelに含める。Readyが0件でも必ずFailure Summaryを出力する。
+- 日次実行ごとに、Pending Retry候補数、新規Deep Dive候補数、総処理候補数、Generation API完了、記事解析完了、Quality評価完了、Readyを分離して集計する。Evidence Sufficiency（補強要・補強成功・不足）、Gemini呼出し回避数、動的Retryの試行・成功・失敗・非Repairable/Budget理由によるSkip、`MAX_TOKENS`、構造不足、一次情報不足、4 Gateの脱落数、`Pending Retry`もGate Funnelに含める。`MAX_TOKENS`は最終稿だけでなく初稿/Retryを含む試行履歴のどこかで発生すれば保持する。Readyが0件でも必ずFailure Summaryを出力する。
 - 候補ごとに、順位、URL、Decision Score、各Gateの実行結果、Reason Code、最終状態、保存可否、Evidence Sufficiencyの初回・最終結果、Decision Scope、安全なAction Risk Tier、Evidence Gap開示要否、確認資料数・チェック項目、Gemini呼出し有無、Retry診断情報をGate履歴へ記録する。実行済みGateは後段で`NOT_RUN`へ上書きしない。
 - Grounding状態は`pre_generation`、初回生成、Retry、最終を段階別に保存する。RetryでGrounding metadataが欠けても、事前確認済みの一次ソース状態を失わない。
 - Readyが0件の場合のTop Failure Causesには、`TECHNICAL_CLAIMS_INSUFFICIENT`等のEvidence Insufficient詳細Reason Codeを候補履歴から件数集計して表示する。`PRIMARY_EVIDENCE_INSUFFICIENT`だけに丸めない。
@@ -263,9 +269,9 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 |---|---|
 | Python構文チェック | 成功 |
 | Notion Persistenceテスト | 48件成功 |
-| Adversarial / Failure Injection | 105件成功 |
-| unittest discovery | 239件成功 |
-| Safety Unit Test | 75件成功 |
+| Adversarial / Failure Injection | 127件成功 |
+| unittest discovery | 262件成功 |
+| Safety Unit Test | 76件成功 |
 | Synthetic Regression Suite | Full 500/500成功、critical failure 0（2026-08-21実行） |
 
 追加済みの主な検証は、arXivナビゲーションURL除外、同一論文PDFのEvidence最優先、Freshness誤巡回防止、Evidence資料上限3、200候補が8 Batchになること、Batch間ペーシング、JSON欠落・不正値検出、Calibration適用、Observed履歴の保存、表示見出しと導入段落数の可変性、架空体験の抑止、観察・留保、研究段階から本番導入への飛躍、弱い根拠に対する煽り見出し、過剰Hedging、具体Actionの消失、タイトルの無難化、再編集によるDecision Voice劣化、正式Gate関数名・alias・実行順、短いが意味的に十分な一次資料、長い販促文の不足判定、補強成功、Evidence不足時にGeminiを呼ばないこと、Reason Code別の動的Retry、制約未確認時のLOW RISK Action、研究記事の時点限定、現在価格の鮮度必須、生成ActionのRisk Tier判定、HIGH RISK Actionの拒否、公式補強候補、arXiv一時障害のPending Retry化、Gate履歴とFunnelの段階別集計である。
@@ -288,17 +294,19 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - Quality Retry前後のHuman Appeal／Decision Voiceを比較し、具体Actionが単なる「注視」へ崩壊する等の実質劣化を検出する。`trigger_reason_codes`と`final_reason_codes`は分離して保持する。
 - Gate組合せをAdversarial化し、`Fact FAIL × Publication REVIEW`がNeeds Editorial Reviewへ誤遷移しないことを固定する。
 - Pending Retry公平性、Notion Schema Preflight、Persistent Counter予約順、**repository-local quota scope・旧key/project scope migration・API usage audit**、Public DB承認取消archive、Product Hunt recent-window、Freshness関連性、Workflow timeout/concurrency、月次Digest private artifactを固定Regression化する。
+- Gemini実送信効率Regressionとして、Persistent Safety Cap拒否時にDeep Dive local budgetを消費しないこと、同一Runで到達済みmodelをsession exhausted化して次候補で再試行しないこと、Pending Retry実送信を2回/Runに制限すること、非Repairable Evidence理由でQuality Retryを抑制すること、初稿`MAX_TOKENS`を最終Funnelまで保持することを固定する。
 - Needs Editorial Reviewでも補強PDF/Docsを最終Evidence URLへ残すこと、Notion Stock保存失敗候補を同RunのDeep Dive対象から除外すること、旧HN/Product Hunt discovery URLを明示aliasとして重複判定できることを固定Regression化する。
 - `test_adversarial_regression.py`は直接実行と`unittest discover`で同じテスト集合を実行する。
 - Profit PriorityをFailure Injection化し、Commercial ValueがStock閾値を迂回しないこと、Notion未永続化候補を押し上げないこと、Commercial再順位付け、EVERGREENの許容差付きPortfolio枠、Profit Priority無効化時の旧Decision順復帰、Profit補助項目欠落時のDecision行維持、Calibration/Observed履歴の独立保存を固定する。
 - Content Portfolio BalanceをFailure Injection化し、同Topic偏重時だけ僅差の別Topicを繰り上げること、大幅に弱い別Topicを強制しないこと、`OTHER`/欠落Topicでは順位を動かさないこと、唯一のEVERGREEN枠を保護すること、無効化時に従来Priority順へ戻ること、Observed履歴へTopicを保持することを固定する。
 - Source ROI LearningをFailure Injection化し、冷開始50件/Source、全4 Source最低25枠、状態破損Fail-Safe、実Notion Stockだけの歩留まり計上、学習後の高ROI配分を固定する。さらに4 Sourceの最大枠が共通値であること、同一ROIなら4 Sourceが対称配分されProduct Huntだけが優遇・抑制されないことを固定する。
+- 2026-08-21 Real Article Gate Calibrationとして、AI Post-Trainingの`10時間`、VLAの`50〜80%`/`3〜7倍`、Rustの`Cargo.lock`監査、Harnessのresearch `future work`を一般化したRegressionへ固定する。加えて架空の職務/日常体験をFalse Negativeとして止め、長大Landingでも後取得PDFがverificationから落ちないことを検証する。固有タイトル・URLによる特例は作らない。
 
-2026-08-21時点の結果: Adversarial 106/106、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、全Unit 241/241、Synthetic Regression Full 500/500、critical failure 0。
+2026-08-21時点の結果: Adversarial 127/127、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、全Unit 262/262、Synthetic Regression Full 500/500、critical failure 0。
 
 ## 11. 主な環境変数
 
-`GEMINI_QUOTA_PROJECT_ID=<Google Project ID, optional>`、`GEMINI_PERSISTENT_DAILY_COUNTER=true`、`GITHUB_FETCH_LIMIT=50`、`HN_FETCH_LIMIT=50`、`ARXIV_FETCH_LIMIT=50`、`PRODUCTHUNT_FETCH_LIMIT=50`、`PRODUCTHUNT_LOOKBACK_HOURS=72`、`MAX_SCREENING_CANDIDATES=200`、`ENABLE_SOURCE_ROI_LEARNING=true`、`SOURCE_ROI_HISTORY_RUNS=30`、`SOURCE_ROI_RECENCY_DECAY=0.93`、`SOURCE_ROI_MIN_SCREENED=50`、`SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS=2`、`SOURCE_ROI_MIN_MATURE_SOURCES=2`、`SOURCE_ROI_MIN_FETCH_PER_SOURCE=25`、`SOURCE_ROI_MAX_FETCH_PER_SOURCE=75`、`SOURCE_ROI_EXPLORATION_WEIGHT=0.15`、`ENABLE_PROFIT_PRIORITY=true`、`DEEP_DIVE_DECISION_WEIGHT=0.65`、`DEEP_DIVE_COMMERCIAL_WEIGHT=0.35`、`EVERGREEN_PORTFOLIO_MIN=1`、`EVERGREEN_PRIORITY_TOLERANCE=8`、`ENABLE_PORTFOLIO_BALANCE=true`、`PORTFOLIO_MIN_DISTINCT_TOPICS=2`、`PORTFOLIO_TOPIC_PRIORITY_TOLERANCE=6`、`SCREENING_BATCH_SIZE=25`、`SCREENING_BATCH_PACING_SECONDS=10`、`ENABLE_GLOBAL_CALIBRATION=true`、`GLOBAL_CALIBRATION_MIN_RAW_SCORE=55`、`GLOBAL_CALIBRATION_BATCH_SIZE=50`、`ENABLE_OBSERVED_HISTORY=true`、`OBSERVED_HISTORY_DIR=observed_history`、`OBSERVED_HISTORY_GITHUB_DIR=observed_history`、`NOTION_SAVE_THRESHOLD_SCORE=60`、`TOP_N_FOR_DEEP_DIVE=3`、`GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=9000`、`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET=12`、`MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7`、`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS=2`、`MAX_EVIDENCE_DOCUMENTS=3`、`MAX_EVIDENCE_TOTAL_CHARS=12000`。
+`GEMINI_QUOTA_PROJECT_ID=<Google Project ID, optional>`、`GEMINI_PERSISTENT_DAILY_COUNTER=true`、`GITHUB_FETCH_LIMIT=50`、`HN_FETCH_LIMIT=50`、`ARXIV_FETCH_LIMIT=50`、`PRODUCTHUNT_FETCH_LIMIT=50`、`PRODUCTHUNT_LOOKBACK_HOURS=72`、`MAX_SCREENING_CANDIDATES=200`、`ENABLE_SOURCE_ROI_LEARNING=true`、`SOURCE_ROI_HISTORY_RUNS=30`、`SOURCE_ROI_RECENCY_DECAY=0.93`、`SOURCE_ROI_MIN_SCREENED=50`、`SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS=2`、`SOURCE_ROI_MIN_MATURE_SOURCES=2`、`SOURCE_ROI_MIN_FETCH_PER_SOURCE=25`、`SOURCE_ROI_MAX_FETCH_PER_SOURCE=75`、`SOURCE_ROI_EXPLORATION_WEIGHT=0.15`、`ENABLE_PROFIT_PRIORITY=true`、`DEEP_DIVE_DECISION_WEIGHT=0.65`、`DEEP_DIVE_COMMERCIAL_WEIGHT=0.35`、`EVERGREEN_PORTFOLIO_MIN=1`、`EVERGREEN_PRIORITY_TOLERANCE=8`、`ENABLE_PORTFOLIO_BALANCE=true`、`PORTFOLIO_MIN_DISTINCT_TOPICS=2`、`PORTFOLIO_TOPIC_PRIORITY_TOLERANCE=6`、`SCREENING_BATCH_SIZE=25`、`SCREENING_BATCH_PACING_SECONDS=10`、`ENABLE_GLOBAL_CALIBRATION=true`、`GLOBAL_CALIBRATION_MIN_RAW_SCORE=55`、`GLOBAL_CALIBRATION_BATCH_SIZE=50`、`ENABLE_OBSERVED_HISTORY=true`、`OBSERVED_HISTORY_DIR=observed_history`、`OBSERVED_HISTORY_GITHUB_DIR=observed_history`、`NOTION_SAVE_THRESHOLD_SCORE=60`、`TOP_N_FOR_DEEP_DIVE=3`、`GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=9000`、`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET=12`、`MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7`、`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS=2`、`MAX_EVIDENCE_DOCUMENTS=3`、`MAX_EVIDENCE_TOTAL_CHARS=12000`、`VERIFICATION_CONTEXT_MAX_CHARS=180000`。
 
 ## 12. 依存関係
 

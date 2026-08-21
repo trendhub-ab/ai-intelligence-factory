@@ -96,7 +96,8 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
                        request_kind: str = "other", reserve: int = 0,
-                       request_context: str = ""):
+                       request_context: str = "", count_as_deep_dive: bool = False,
+                       request_origin: str = "new"):
     """
     google-genai SDK推奨のChat.send_message経由でGeminiを呼び出す薄いラッパー。
 
@@ -118,7 +119,8 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     if client is None:
         raise NoAvailableModelError("GEMINI_API_KEY が設定されていません")
     audit_id = _consume_gemini_request(
-        request_kind, reserve=reserve, model_name=model_name, request_context=request_context
+        request_kind, reserve=reserve, model_name=model_name, request_context=request_context,
+        count_as_deep_dive=count_as_deep_dive, request_origin=request_origin,
     )
     try:
         chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
@@ -247,6 +249,7 @@ GEMINI_RESERVED_DEEP_DIVE_REQUESTS = int(os.environ.get("GEMINI_RESERVED_DEEP_DI
 # 記事生成だけを小幅に拡張する。環境変数で従来値へ戻すことも可能。
 GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS", "9000"))
 GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET", os.environ.get("GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET", "12")))
+GEMINI_PENDING_RETRY_REQUEST_BUDGET = max(0, int(os.environ.get("GEMINI_PENDING_RETRY_REQUEST_BUDGET", "2")))
 # 複数GitHub Actions Runをまたいで共有する永続Safety Cap。Googleの公式quota値ではなく、
 # このプロジェクト独自の保守的な上限。RPDのリセット境界に合わせてAmerica/Los_Angeles日付で管理する。
 GEMINI_PERSISTENT_DAILY_COUNTER = os.environ.get("GEMINI_PERSISTENT_DAILY_COUNTER", "true").lower() in {"1", "true", "yes", "on"}
@@ -317,6 +320,9 @@ DEEP_SOURCE_MAX_PDF_BYTES = int(os.environ.get("DEEP_SOURCE_MAX_PDF_BYTES", "120
 MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS = int(os.environ.get("MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS", "2"))
 MAX_EVIDENCE_DOCUMENTS = int(os.environ.get("MAX_EVIDENCE_DOCUMENTS", "3"))
 MAX_EVIDENCE_TOTAL_CHARS = int(os.environ.get("MAX_EVIDENCE_TOTAL_CHARS", str(SOURCE_CONTEXT_MAX_CHARS)))
+# Gemini prompt用contextとは別に、Fact/Evidence Gateだけが参照する広い一次資料本文を保持する。
+# PDF/HTMLを12k文字へ切った後にFact照合すると、実在する数値・条件をunsupportedと誤判定するため。
+VERIFICATION_CONTEXT_MAX_CHARS = int(os.environ.get("VERIFICATION_CONTEXT_MAX_CHARS", "180000"))
 FRESHNESS_MAX_LINKS = int(os.environ.get("FRESHNESS_MAX_LINKS", "8"))
 
 # 記事タイトルから自動生成するアイキャッチ画像（PNG）の保存先ディレクトリ。
@@ -492,6 +498,7 @@ REASON_CODE_APPEAL_OVER_HEDGING = "APPEAL_OVER_HEDGING"
 REASON_CODE_APPEAL_ACTION_COLLAPSE = "APPEAL_ACTION_COLLAPSE"
 REASON_CODE_APPEAL_TITLE_FLATTENING = "APPEAL_TITLE_FLATTENING"
 REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
+REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
 REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
 REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 # Quality Gateは通過したが、Notion永続化層（ページ作成/アップグレード）が失敗した場合の理由コード。
@@ -562,6 +569,7 @@ MAX_QUALITY_RETRIES = 1
 class NoAvailableModelError(RuntimeError): pass
 class DailyQuotaExhaustedError(RuntimeError): pass
 class GeminiBudgetExceededError(RuntimeError): pass
+class PendingRetryBudgetExceededError(GeminiBudgetExceededError): pass
 
 
 class PersistentGeminiDailyCounter:
@@ -1032,10 +1040,14 @@ GEMINI_BUDGET = GeminiBudget(
 
 
 def _consume_gemini_request(kind: str, reserve: int = 0, model_name: str = "default",
-                            request_context: str = "") -> int:
-    # ローカルBudgetは単一process内で競合しないため、永続カウンタ予約より先に
-    # 「そもそも送信可能か」を検査する。実API送信不能な要求でPersistent Counterを
-    # 過剰消費しない一方、実送信前には必ず永続reserveを通すFail-Closed順序を維持する。
+                            request_context: str = "", count_as_deep_dive: bool = False,
+                            request_origin: str = "new") -> int:
+    # 送信前Budgetの順序は重要。
+    # 1) process内Budgetを「確認のみ」
+    # 2) Pending Retry専用枠 / Deep Dive枠を「確認のみ」
+    # 3) Persistent Counterをreserve（ここでmodel RPD Safety Capを確定）
+    # 4) 実送信が可能になった要求だけlocal Deep Dive/Pending/Run Budgetをconsume
+    # これにより、Persistent上限で拒否されたmodel試行がDeep Dive 12枠を空費しない。
     if not GEMINI_BUDGET.can_request(reserve=reserve):
         raise GeminiBudgetExceededError(
             f"Gemini local budget exhausted: used={GEMINI_BUDGET.request_count}, "
@@ -1045,8 +1057,29 @@ def _consume_gemini_request(kind: str, reserve: int = 0, model_name: str = "defa
         raise GeminiBudgetExceededError("Screening retry budget exhausted")
     if kind == "deep_dive_retry" and not GEMINI_BUDGET.can_deep_dive_retry():
         raise GeminiBudgetExceededError("Deep Dive transport retry budget exhausted")
+    if count_as_deep_dive and not DEEP_DIVE_MODEL_BUDGET.can_request():
+        raise GeminiBudgetExceededError(
+            f"Deep Dive model local budget exhausted: used={DEEP_DIVE_MODEL_BUDGET.used}, "
+            f"budget={DEEP_DIVE_MODEL_BUDGET.budget}, kind={kind}"
+        )
+    if count_as_deep_dive and request_origin == "pending_retry" and not PENDING_RETRY_REQUEST_BUDGET.can_request():
+        raise PendingRetryBudgetExceededError(
+            f"Pending Retry Gemini request budget exhausted: "
+            f"used={PENDING_RETRY_REQUEST_BUDGET.used}, budget={PENDING_RETRY_REQUEST_BUDGET.budget}"
+        )
+
+    # Persistent reserveが失敗した場合、以下のlocal countersは一切consumeしない。
     PERSISTENT_GEMINI_COUNTER.reserve(kind, reserve=reserve, model_name=model_name)
+    if count_as_deep_dive:
+        DEEP_DIVE_MODEL_BUDGET.consume(kind)
+        if request_origin == "pending_retry":
+            PENDING_RETRY_REQUEST_BUDGET.consume(kind)
     GEMINI_BUDGET.consume(kind, reserve=reserve)
+    # Funnelの「Deep Dive Generation Called」は、candidate intentではなく
+    # Persistent/Local Budgetを全て通過して実際にprovider送信へ進む試行だけを数える。
+    funnel = globals().get("DEEP_DIVE_GATE_FUNNEL")
+    if count_as_deep_dive and funnel is not None:
+        funnel.incr("deep_dive_generation_called")
     return GEMINI_USAGE_AUDIT.record_attempt(model_name, kind, request_context)
 
 
@@ -1071,6 +1104,36 @@ class DeepDiveModelBudget:
 
 
 DEEP_DIVE_MODEL_BUDGET = DeepDiveModelBudget(GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET)
+
+
+class PendingRetryRequestBudget:
+    """旧Pending Retryが当日のFresh Deep Dive枠を食い潰さないための専用実送信上限。"""
+    def __init__(self, budget: int):
+        self.budget = max(0, int(budget))
+        self.used = 0
+        self.by_kind: dict[str, int] = {}
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.budget - self.used)
+
+    def can_request(self) -> bool:
+        return self.used + 1 <= self.budget
+
+    def consume(self, kind: str) -> None:
+        if not self.can_request():
+            raise PendingRetryBudgetExceededError(
+                f"Pending Retry Gemini request budget exhausted: used={self.used}, budget={self.budget}"
+            )
+        self.used += 1
+        self.by_kind[kind] = self.by_kind.get(kind, 0) + 1
+
+    def summary(self) -> str:
+        details = ", ".join(f"{k}={v}" for k, v in sorted(self.by_kind.items())) or "none"
+        return f"Pending Retry Gemini Requests Used: {self.used}/{self.budget} ({details})"
+
+
+PENDING_RETRY_REQUEST_BUDGET = PendingRetryRequestBudget(GEMINI_PENDING_RETRY_REQUEST_BUDGET)
 
 
 def send_telegram_alert(message: str):
@@ -1184,14 +1247,13 @@ def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_di
             continue
         for attempt in range(PING_MAX_RETRIES + 1):
             try:
-                if count_as_deep_dive:
-                    DEEP_DIVE_MODEL_BUDGET.consume("ping" if attempt == 0 else "ping_retry")
                 _generate_via_chat(
                     model_name,
                     "ping",
                     config={"max_output_tokens": 8},
                     request_kind="ping" if attempt == 0 else "ping_retry",
                     request_context=f"model_resolve:{label}:{model_name}",
+                    count_as_deep_dive=count_as_deep_dive,
                 )
                 logger.info(f"{label} モデル解決成功: {model_name}")
                 return model_name
@@ -1312,7 +1374,8 @@ def _mark_model_unavailable(model_name: str, reason: str = "") -> None:
 
 
 def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
-                     pool: list[str], deep_dive: bool = False, request_context: str = ""):
+                     pool: list[str], deep_dive: bool = False, request_context: str = "",
+                     request_origin: str = "new"):
     """503 is run-local unavailable; RPD is model-local exhausted; both fall back.
 
     The loop is deliberately bounded by the configured pool.  It never retries
@@ -1325,14 +1388,13 @@ def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
         for attempt in range(2):
             try:
                 if deep_dive:
-                    DEEP_DIVE_MODEL_BUDGET.consume(kind if attempt == 0 else "deep_dive_retry")
-                if deep_dive:
                     time.sleep(max(0, GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
                     with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
                         response = _generate_via_chat(
                             model_name, prompt, config=config,
                             request_kind=kind if attempt == 0 else "deep_dive_retry", reserve=reserve,
-                            request_context=request_context,
+                            request_context=request_context, count_as_deep_dive=True,
+                            request_origin=request_origin,
                         )
                 else:
                     with _gemini_call_timeout(GEMINI_SCREENING_CALL_TIMEOUT_SECONDS):
@@ -1362,7 +1424,14 @@ def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
                     time.sleep(_extract_retry_delay(exc, 15))
                     continue
                 break
-            except (GeminiBudgetExceededError, GeminiCallTimeoutError) as exc:
+            except PendingRetryBudgetExceededError:
+                raise
+            except GeminiBudgetExceededError as exc:
+                last_error = exc
+                if "Persistent Gemini model budget exhausted" in str(exc):
+                    _mark_model_exhausted(model_name, "persistent safety cap")
+                break
+            except GeminiCallTimeoutError as exc:
                 last_error = exc
                 break
     raise NoAvailableModelError("利用可能なGeminiモデルがありません") from last_error
@@ -1376,9 +1445,10 @@ def _call_screening_pool(prompt: str, config: dict | None = None, kind: str = "s
 
 
 def _call_deep_dive_pool(prompt: str, config: dict | None = None, kind: str = "deep_dive",
-                         request_context: str = ""):
+                         request_context: str = "", request_origin: str = "new"):
     return _call_model_pool(
-        prompt, config, kind, 0, DEEP_DIVE_MODEL_POOL, deep_dive=True, request_context=request_context
+        prompt, config, kind, 0, DEEP_DIVE_MODEL_POOL, deep_dive=True,
+        request_context=request_context, request_origin=request_origin
     )
 
 
@@ -1388,10 +1458,10 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind
     for attempt in range(max_retries + 1):
         kind = request_kind if attempt == 0 else "deep_dive_retry"
         try:
-            DEEP_DIVE_MODEL_BUDGET.consume(kind)
             time.sleep(3)
             return _generate_via_chat(
-                SELECTED_DEEP_DIVE_MODEL, prompt, request_kind=kind, request_context=request_context
+                SELECTED_DEEP_DIVE_MODEL, prompt, request_kind=kind, request_context=request_context,
+                count_as_deep_dive=True
             )
         except APIError as e:
             code = getattr(e, "code", None)
@@ -2616,9 +2686,63 @@ def normalize_item(source: str, name: str, url: str, description: str,
     }
 
 
-def _truncate_source_context(text: str) -> str:
+def _truncate_text_context(text: str, max_chars: int) -> str:
     text = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
-    return text[:SOURCE_CONTEXT_MAX_CHARS]
+    return text[:max(0, int(max_chars or 0))]
+
+
+def _truncate_source_context(text: str) -> str:
+    return _truncate_text_context(text, SOURCE_CONTEXT_MAX_CHARS)
+
+
+def _verification_excerpt(text: str, max_chars: int) -> str:
+    """長い一次資料の冒頭だけでなく末尾のLimitations/Appendixも残す。"""
+    normalized = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
+    limit = max(0, int(max_chars or 0))
+    if len(normalized) <= limit:
+        return normalized
+    if limit <= 64:
+        return normalized[:limit]
+    marker = "\n\n[...verification context omitted...]\n\n"
+    payload = max(0, limit - len(marker))
+    # Method/Abstractを厚めに残しつつ、末尾のLimitations/Appendixも必ず監査対象へ入れる。
+    head = int(payload * 0.68)
+    tail = payload - head
+    return normalized[:head] + marker + normalized[-tail:]
+
+
+def _truncate_verification_context(text: str) -> str:
+    """Fact/Evidence照合専用。Geminiへ送るprompt contextとは分離して広く保持する。"""
+    return _verification_excerpt(text, VERIFICATION_CONTEXT_MAX_CHARS)
+
+
+def _merge_verification_context(existing: str, new_evidence: str) -> str:
+    """既存Evidenceが長くても、後から取得したPDF/Docsをverificationから落とさない。
+
+    単純な `existing + new` の先頭truncateでは、Landing pageが上限を埋めた時に
+    後取得の論文PDFが丸ごと消える。新Evidenceへ最低限の監査枠を確保し、双方の
+    冒頭/末尾を残してFact Gateへ渡す。
+    """
+    old = re.sub(r"\n{3,}", "\n\n", (existing or "").strip())
+    new = re.sub(r"\n{3,}", "\n\n", (new_evidence or "").strip())
+    if not old:
+        return _truncate_verification_context(new)
+    if not new:
+        return _truncate_verification_context(old)
+    separator = "\n\n"
+    limit = VERIFICATION_CONTEXT_MAX_CHARS
+    if len(old) + len(separator) + len(new) <= limit:
+        return old + separator + new
+    payload = max(0, limit - len(separator))
+    # 後取得のPDF/Docsは一次根拠として重要なため60%まで優先。ただし短い場合は
+    # 余った枠を既存Landing/Abstractへ戻す。
+    new_budget = min(len(new), int(payload * 0.60))
+    old_budget = payload - new_budget
+    if len(old) < old_budget:
+        extra = old_budget - len(old)
+        old_budget = len(old)
+        new_budget = min(len(new), new_budget + extra)
+    return _verification_excerpt(old, old_budget) + separator + _verification_excerpt(new, new_budget)
 
 
 def fetch_github_readme_context(repo_name: str) -> str:
@@ -2833,7 +2957,7 @@ def _validate_public_http_url(url: str) -> None:
             raise ValueError("private destination blocked")
 
 
-def _fetch_html_document(url: str) -> tuple[str, list[tuple[str, str]], str]:
+def _fetch_html_document(url: str, max_chars: int = SOURCE_CONTEXT_MAX_CHARS) -> tuple[str, list[tuple[str, str]], str]:
     raw, content_type, final_url = _http_get_limited(url, ("text/html", "application/xhtml+xml", "text/plain"), WEB_CONTEXT_MAX_BYTES)
     if not raw:
         return "", [], ""
@@ -2845,8 +2969,8 @@ def _fetch_html_document(url: str) -> tuple[str, list[tuple[str, str]], str]:
         text = body.text()
         links = _ResearchLinkParser(final_url or url)
         links.feed(html)
-        return _truncate_source_context(text), list(dict.fromkeys(links.links)), final_url or url
-    return _truncate_source_context(unescape(text)), [], final_url or url
+        return _truncate_text_context(text, max_chars), list(dict.fromkeys(links.links)), final_url or url
+    return _truncate_text_context(unescape(text), max_chars), [], final_url or url
 
 
 def _resolve_producthunt_official_url(url: str) -> str:
@@ -2922,8 +3046,10 @@ def _build_evidence_metadata(context: str, deep_scanned: bool) -> dict:
         r"(?<![A-Za-z0-9_])(?:[A-Z][A-Za-z0-9_]{2,}|[a-z][A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*)\b", text
     )))[:80]
     metadata["numeric_claims"] = list(dict.fromkeys(re.findall(
-        r"\b\d+(?:\.\d+)?\s*(?:%|ms|s|sec(?:onds?)?|KB|MB|GB|TB|x)\b", text, re.I
-    )))[:80]
+        r"\b\d+(?:\.\d+)?(?:\s*(?:[-–—〜～]|to)\s*\d+(?:\.\d+)?)?\s*"
+        r"(?:%|percent|ms|s|sec(?:onds?)?|minutes?|hours?|days?|weeks?|months?|KB|MB|GB|TB|x|倍|時間|分|日|週|ヶ月|か月)\b",
+        text, re.I
+    )))[:120]
     return metadata
 
 
@@ -3028,11 +3154,14 @@ def prepare_source_context(repo: dict) -> dict:
 
     # Landing/author pageから、補強に使える一次資料候補を抽出する。この時点では取得しない。
     # Evidence SufficiencyがSUPPLEMENT_REQUIREDの候補だけが、後段で上限付き取得を行う。
-    landing_text, research_links, final_primary_url = _fetch_html_document(primary_url)
+    landing_text, research_links, final_primary_url = _fetch_html_document(
+        primary_url, max_chars=VERIFICATION_CONTEXT_MAX_CHARS
+    )
     if final_primary_url:
         primary_url = final_primary_url
     if landing_text and landing_text not in substantive_parts:
-        pieces.append("[REFERENCE_SOURCE]\n" + landing_text)
+        # Promptには従来上限だけを渡し、Fact/Evidence Gateには広い本文を別保持する。
+        pieces.append("[REFERENCE_SOURCE]\n" + _truncate_source_context(landing_text))
         substantive_parts.append(landing_text)
         primary_material_retrieved = True
     supplement_candidates = []
@@ -3079,10 +3208,13 @@ def prepare_source_context(repo: dict) -> dict:
     if text_sufficient:
         method = GROUNDING_SOURCE_NATIVE
     context = _truncate_source_context("\n\n".join(pieces))
-    evidence_metadata = _build_evidence_metadata(context, False)
+    verification_context = _truncate_verification_context(substantive or context)
+    evidence_metadata = _build_evidence_metadata(verification_context, False)
     source_info = {
         "context": context,
         "context_length": len(context),
+        "verification_context": verification_context,
+        "verification_context_length": len(verification_context),
         "source": source,
         "source_name": name,
         "method": method,
@@ -3130,7 +3262,7 @@ def assess_evidence_sufficiency(source_info: dict) -> dict:
     強度に制約した記事を作れるかを判定する。制約・鮮度が未確認でも、低リスク
     Actionと明示的な留保で安全に扱える研究紹介まで機械的に落とさない。
     """
-    context = source_info.get("context", "") or ""
+    context = source_info.get("verification_context") or source_info.get("context", "") or ""
     coverage = (source_info.get("evidence_metadata") or {}).get("coverage", {})
     found = lambda key: coverage.get(key) == "FOUND"
     numbers_present = bool(re.search(r"(?:\d+(?:\.\d+)?\s*(?:%|x|倍|ms|sec(?:ond)?s?|GB|MB|FPS))", context, re.I))
@@ -3211,7 +3343,10 @@ def assess_evidence_sufficiency(source_info: dict) -> dict:
     else:
         state = EVIDENCE_SUFFICIENT
     limitations_disclosed = not checks["limitations_or_constraints_available"]
-    freshness_scope_limited = research_scope and time_sensitive and not checks["freshness_status_available_if_time_sensitive"]
+    research_future_only = research_scope and bool(re.search(r"\bfuture\s+work\b|今後の研究|将来(?:の)?研究", context, re.I))
+    # Researchのfuture workは製品availabilityの鮮度要件ではないが、記事では論文時点の
+    # 将来課題として扱うことを監査メタデータに残す。
+    freshness_scope_limited = research_future_only or (research_scope and time_sensitive and not checks["freshness_status_available_if_time_sensitive"])
     evidence_gap_disclosed = bool(conditional_missing)
     decision_scope_safe = state == EVIDENCE_SUFFICIENT or (state == EVIDENCE_SUPPLEMENT_REQUIRED and not blocking_missing)
     return {
@@ -3261,6 +3396,11 @@ def supplement_source_evidence(source_info: dict) -> dict:
             continue
         label = "[SUPPLEMENTAL_SOURCE]" if candidate.get("role") == "SUPPLEMENTAL_SOURCE" else "[PRIMARY_SOURCE]"
         fetched_parts.append(f"{label}\nURL: {evidence_url}\n{_compress_evidence(raw_text)}")
+        verification_piece = f"{label}\nURL: {evidence_url}\n{raw_text}"
+        source_info["verification_context"] = _merge_verification_context(
+            source_info.get("verification_context") or source_info.get("context", ""), verification_piece
+        )
+        source_info["verification_context_length"] = len(source_info["verification_context"])
         source_info.setdefault("deep_source_urls", []).append(evidence_url)
 
     source_info["evidence_supplement_attempts"] = source_info.get("evidence_supplement_attempts", 0) + attempts
@@ -3271,7 +3411,8 @@ def supplement_source_evidence(source_info: dict) -> dict:
         source_info["deep_source_scanned"] = True
         source_info["sufficient"] = True
         source_info["method"] = GROUNDING_SOURCE_NATIVE
-    source_info["evidence_metadata"] = _build_evidence_metadata(source_info.get("context", ""), bool(source_info.get("deep_source_scanned")))
+    verification_context = source_info.get("verification_context") or source_info.get("context", "")
+    source_info["evidence_metadata"] = _build_evidence_metadata(verification_context, bool(source_info.get("deep_source_scanned")))
     return source_info
 
 
@@ -3296,13 +3437,26 @@ def evidence_reason_rows(evidence_result: dict) -> list[dict]:
     return rows
 
 
-_FUTURE_SOURCE_PATTERN = re.compile(r"\b(will|future|planned|coming|next|expected|preview|beta|nightly)\b|予定|今後|開発中|対応予定", re.I)
+# `future work` / `next token`等の研究文脈を「製品の将来予定」と誤認しない。
+# 鮮度追跡は公開・提供・対応・発売など、状態が後から変わる明示的な予定表現だけに限定する。
+_FUTURE_STATUS_PATTERN = re.compile(
+    r"(?:\bwill\s+(?:release|launch|ship|support|publish|open[- ]?source|be\s+available)\b|"
+    r"\bplanned\s+(?:release|launch|support|availability)\b|"
+    r"\bfuture\s+(?:version|release|feature|support)\b[^.\n]{0,24}\bplanned\b|\bcoming\s+soon\b|"
+    r"\bexpected\s+(?:release|launch|availability)\b|\bnot\s+yet\s+available\b|"
+    r"\b(?:preview|beta|nightly)\s+(?:release|build|channel)\b|"
+    r"(?:公開|提供|対応|発売|リリース|実装|オープンソース化)予定|近日(?:公開|提供|発売)|"
+    r"今後[^。\n]{0,30}(?:公開|提供|対応|発売|実装)|開発中)",
+    re.I,
+)
+# 後方互換名。Freshnessの意味は上記のstatus-specific patternへ校正済み。
+_FUTURE_SOURCE_PATTERN = _FUTURE_STATUS_PATTERN
 _STALE_ARTICLE_PATTERN = re.compile(r"(?:今後|これから).{0,30}(?:予定|議論|対応)|(?:公開|対応|議論)予定", re.I)
 
 
 def resolve_followup_freshness(source_info: dict) -> dict:
-    """将来表現がある時だけ、同一公式ドメイン内の後続ページを必ず確認する独立Stage。"""
-    context = source_info.get("context", "")
+    """状態変更を示す明示的な将来表現だけ、同一公式ドメイン内の後続ページを確認する。"""
+    context = source_info.get("verification_context") or source_info.get("context", "")
     primary_url = source_info.get("primary_url", "")
     if not _FUTURE_SOURCE_PATTERN.search(context) or not primary_url:
         return {"triggered": False, "followup_found": False, "context": ""}
@@ -4338,6 +4492,8 @@ ARTICLEはNotion管理帳票ではない。読者が自然に読み進められ�
 ・「ここまでは確認できる。一方で、ここはまだ分からない。だから今は導入を急がず、動向を見たい」のように、留保を自然な日本語で書く。
 ・煽り語、営業コピー、読者を急かす命令口調を避ける。
 ・架空の感情や体験を書かない。「私は驚いた」「使ってみた」「以前から気になっていた」は、根拠がない限り使わない。
+・「現場で○○を進める立場として」「日常の業務でも同じだ」のように、実在しない職務経験・日常体験を暗示する書き方も禁止する。
+  筆者の意見は「私なら」「私の見解では」のような判断として書き、体験した事実へ偽装しない。
 ・導入・見出し・結論を定型句で埋めず、テーマに合う自然な言葉を選ぶ。
 ・箇条書きは要点整理や検証項目にだけ使う。本文の半分以上は段落で読ませる。
 ・具体例は一次情報または明示した推論の範囲だけで使う。架空の導入効果や期間を作らない。
@@ -4666,6 +4822,8 @@ _HYPE_PATTERNS = [
 
 # 数字を使うこと自体は禁止しない。一次情報に存在しない「効果・費用・期間・性能」の具体値だけを拾う。
 _SENSITIVE_NUMERIC_PATTERNS = [
+    r"\d+(?:\.\d+)?\s*(?:〜|～|-|–|—|to)\s*\d+(?:\.\d+)?\s*%",
+    r"\d+(?:\.\d+)?\s*(?:〜|～|-|–|—|to)\s*\d+(?:\.\d+)?\s*(?:倍|x|×)",
     r"\d+\s*分の\s*\d+",
     r"\d+(?:\.\d+)?\s*%",
     r"\d+(?:\.\d+)?\s*(?:倍|x|×)",
@@ -4718,6 +4876,13 @@ def _normalize_numeric_evidence_text(text: str) -> str:
     normalized = normalized.replace("ドル", "usd")
     normalized = re.sub(r"\busd\b", "usd", normalized)
     normalized = normalized.replace("×", "x").replace("倍", "x")
+    normalized = normalized.replace("パーセント", "%")
+    normalized = re.sub(r"\bpercent(?:age)?\b", "%", normalized)
+    normalized = normalized.replace("〜", "-").replace("～", "-").replace("–", "-").replace("—", "-").replace("−", "-")
+    normalized = re.sub(r"\bto\b", "-", normalized)
+    # 10-hour / 10 hours、50%-80% / 50-80%等を同じ表記へ寄せる。
+    normalized = re.sub(r"(?<=\d)-(?=(?:hours|minutes|days|weeks|months|ms|s|tokens|requests)\b)", "", normalized)
+    normalized = re.sub(r"%(?=-\d)", "", normalized)
     normalized = normalized.replace("約", "")
     return re.sub(r"[\s,，]", "", normalized)
 
@@ -4766,8 +4931,13 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
     # 公開日などのカレンダー日付を「導入期間○日」と誤判定しない。
     scrubbed = re.sub(r"(?:20\d{2}年)?\d{1,2}月\d{1,2}日", "", scrubbed)
 
+    occupied_spans: list[tuple[int, int]] = []
     for pattern in _SENSITIVE_NUMERIC_PATTERNS:
         for m in re.finditer(pattern, scrubbed, re.IGNORECASE):
+            # rangeを先に照合し、その内部の末尾80%等を別claimとして二重判定しない。
+            if any(m.start() >= start and m.end() <= end for start, end in occupied_spans):
+                continue
+            occupied_spans.append((m.start(), m.end()))
             token = m.group(0).strip()
             normalized_token = _normalize_numeric_evidence_text(token)
             if normalized_token not in evidence:
@@ -4969,6 +5139,9 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
         if name in ignore:
             return False
         parts = name.split()
+        # `LLM API`のように一般略語だけを連結した語は固有製品名ではない。
+        if parts and all(part in ignore or part.upper() in ignore for part in parts):
+            return False
         # ALL-CAPS略語は原則一般技術語扱い。固有名として厳格に見るのは通常語形の製品名。
         if len(parts) == 1 and name.isupper():
             return False
@@ -4977,9 +5150,33 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
             return False
         return True
 
+    low_risk_action_cue = re.compile(
+        r"(?:監査|確認|検索|スキャン|チェック|検証|比較|試す|試したい|見直|隔離|制限|拒否|"
+        r"ホワイトリスト|回帰テスト|PoC|CI|私なら|推奨|すべき|必要があります|命じます)", re.I
+    )
+
+    def _looks_like_operational_artifact(name: str) -> bool:
+        """LOW RISK Actionで使うローカル成果物/設定ファイル名だけを限定的に許容する。
+
+        `Cargo.lock` のような監査手段はSource本文への逐語一致を要求しない一方、
+        `Enterprise Sync` のような未確認の外部製品機能は、Action文であっても許容しない。
+        """
+        token = (name or "").strip()
+        lowered = token.lower()
+        if not token:
+            return False
+        if "/" in token or "\\" in token:
+            return True
+        if re.search(r"\.(?:lock|toml|ya?ml|json|jsonl|log|env|ini|cfg|conf|txt|csv|tsv|md|xml)$", lowered):
+            return True
+        return False
+
     for sent in sentences:
         if not factual_cue.search(sent) or inference.search(sent):
             continue
+        is_low_risk_action = bool(
+            low_risk_action_cue.search(sent) and classify_action_risk_tier(sent) == "LOW"
+        )
         # CamelCase/TitleCase製品名候補。2語製品名も拾う。
         names = re.findall(r"(?<![A-Za-z0-9_])[A-Z][A-Za-z0-9.+_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?(?![A-Za-z0-9_])", sent)
         unsupported = []
@@ -4991,6 +5188,8 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
             compact_name = _normalized_named_fact(name)
             compact_evidence = _normalized_named_fact(source_context)
             if _normalized_evidence_text(name) not in evidence and compact_name not in compact_evidence:
+                if is_low_risk_action and _looks_like_operational_artifact(name):
+                    continue
                 unsupported.append(name)
         if unsupported:
             failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
@@ -5150,6 +5349,24 @@ def _classify_article_claims(parsed: dict) -> dict[str, int]:
     }
 
 
+def _find_fabricated_personal_experience(text: str) -> list[str]:
+    """編集者としての判断は許可し、根拠のない実体験personaだけを検出する。"""
+    body = text or ""
+    patterns = [
+        r"現場で[^。！？\n]{0,40}(?:進める|担当する|運用する|働く)立場として",
+        r"(?:私|筆者)(?:自身)?(?:は|が)?[^。！？\n]{0,50}(?:使ってみた|使っている|利用している|試した|導入した|運用した|経験した|遭遇した|体験した)",
+        r"(?:私|筆者)(?:自身)?[^。！？\n]{0,35}(?:驚いた|ワクワクした|痛感した|実感した)",
+        r"(?:^|[。！？\n])\s*日常(?:の|的な)[^。！？\n]{0,55}(?:感じます|実感します|経験しています|遭遇しています)",
+    ]
+    hits = []
+    for pattern in patterns:
+        for match in re.finditer(pattern, body, re.I):
+            snippet = re.sub(r"\s+", " ", match.group(0)).strip()
+            if snippet:
+                hits.append(snippet[:120])
+    return list(dict.fromkeys(hits))[:4]
+
+
 def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
     """Human Appeal Gate: Humanizationとは別に、読ませる力と判断の具体性を診断する。
 
@@ -5162,6 +5379,9 @@ def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
     decision_section = _extract_any_markdown_section(article, _display_heading_aliases("decision"))
     decision_text = f"{action}\n{decision_section}"
     issues: list[str] = []
+
+    if _find_fabricated_personal_experience(article):
+        issues.append("fabricated_personal_experience")
 
     # 「○○について。」のような説明だけの題は、過剰な安全化でタイトルの役割を
     # 失った可能性が高い。ただし短い固有名詞タイトルを一律に落とさない。
@@ -5247,6 +5467,7 @@ def _reason_code(message: str, gate: str) -> str:
             "action_collapsed_to_generic_monitoring": REASON_CODE_APPEAL_ACTION_COLLAPSE,
             "headline_flattened": REASON_CODE_APPEAL_TITLE_FLATTENING,
             "decision_voice_missing": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
+            "fabricated_personal_experience": REASON_CODE_APPEAL_FABRICATED_EXPERIENCE,
             "human_appeal_materially_degraded_after_reedit": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
         }
         return mapping.get(message, REASON_CODE_APPEAL_DECISION_VOICE_LOSS)
@@ -5271,6 +5492,35 @@ def finalize_retry_diagnostics(retry_diagnostics: dict | None, final_reason_code
     return details
 
 
+NON_REPAIRABLE_RETRY_REASON_CODES = {
+    REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT,
+    REASON_CODE_PRIMARY_SOURCE_UNRESOLVED,
+    REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT,
+    REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT,
+    REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED,
+    REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
+    REASON_CODE_PUB_SOURCE_SUFFICIENCY,
+}
+
+
+def should_attempt_dynamic_retry(reason_rows: list[dict], evidence_result: dict | None,
+                                 candidate_origin: str = "new") -> tuple[bool, str]:
+    """書き直しで直せる失敗だけにGemini Quality Retryを使う。
+
+    Evidenceそのものが足りない状態は再作文では増えないため、RetryせずReview/Failedへ。
+    Pending Retryは専用実送信枠を使い切ったら翌Runへ残し、Fresh候補の枠を守る。
+    """
+    if candidate_origin == "pending_retry" and not PENDING_RETRY_REQUEST_BUDGET.can_request():
+        return False, "pending_retry_budget_exhausted"
+    evidence_result = evidence_result or {}
+    if evidence_result.get("state") not in {None, "", EVIDENCE_SUFFICIENT}:
+        return False, "evidence_not_sufficient"
+    codes = {row.get("reason_code") for row in (reason_rows or []) if row.get("reason_code")}
+    if codes & NON_REPAIRABLE_RETRY_REASON_CODES:
+        return False, "non_repairable_evidence_or_source_gap"
+    return True, "repairable"
+
+
 def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[str]]:
     """Reason Codeごとに局所修正を要求する。文字数ノルマやGate緩和は行わない。"""
     rules = {
@@ -5289,6 +5539,7 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         REASON_CODE_APPEAL_ACTION_COLLAPSE: ("『注視』へ潰れたActionを、根拠付きの限定検証・比較・見送り判断へ戻してください。", "action"),
         REASON_CODE_APPEAL_TITLE_FLATTENING: ("Evidenceを超えない範囲でタイトルの引力だけを回復してください。", "title"),
         REASON_CODE_APPEAL_DECISION_VOICE_LOSS: ("架空体験や感情を足さず、原稿内の根拠に基づく筆者判断だけを復元してください。", "voice"),
+        REASON_CODE_APPEAL_FABRICATED_EXPERIENCE: ("実際に経験していない現場体験・使用体験・感情を削除し、一次情報に基づく編集者の観察・判断へ書き換えてください。", "voice"),
         REASON_CODE_EDITORIAL_STRUCTURE_ERROR: ("読みやすさを損なう構造だけを自然な文章へ直してください。", "structure"),
     }
     instructions, sections = [], []
@@ -5315,6 +5566,7 @@ class DeepDiveGateFunnel:
         "evidence_sufficient", "evidence_supplement_required", "evidence_supplement_success",
         "evidence_insufficient", "deep_dive_generation_called", "deep_dive_calls_avoided",
         "retry_attempted", "retry_success", "retry_failed",
+        "retry_skipped_nonrepairable", "retry_skipped_budget",
         "max_tokens_failed", "structure_failed", "primary_evidence_failed",
         "fact_gate_failed", "editorial_gate_failed", "publication_readiness_review",
         "publication_readiness_failed", "human_appeal_warning", "human_appeal_review",
@@ -5358,7 +5610,7 @@ class DeepDiveGateFunnel:
         elif generation in {"failed", "pending_retry"}:
             self.incr("generation_failed")
         codes = {row.get("reason_code") for row in record.get("reason_codes", [])}
-        if REASON_CODE_MAX_TOKENS in codes:
+        if REASON_CODE_MAX_TOKENS in codes or record.get("any_generation_truncated"):
             self.incr("max_tokens_failed")
         if REASON_CODE_STRUCTURE_MISSING in codes:
             self.incr("structure_failed")
@@ -5404,7 +5656,9 @@ class DeepDiveGateFunnel:
             f"Deep Dive Calls Avoided by Evidence Gate: {c['deep_dive_calls_avoided']}",
             f"Dynamic Retry Attempted: {c['retry_attempted']}",
             f"Dynamic Retry Success: {c['retry_success']}", "",
-            f"Dynamic Retry Failed: {c['retry_failed']}", "",
+            f"Dynamic Retry Failed: {c['retry_failed']}",
+            f"Dynamic Retry Skipped (Non-repairable): {c['retry_skipped_nonrepairable']}",
+            f"Dynamic Retry Skipped (Budget): {c['retry_skipped_budget']}", "",
             f"MAX_TOKENS: {c['max_tokens_failed']}",
             f"Structure Failed: {c['structure_failed']}",
             f"Primary Evidence Failed: {c['primary_evidence_failed']}",
@@ -5588,6 +5842,7 @@ def build_internal_article_record(repo: dict, parsed: dict | None, gate_record: 
             "primary_url": (source_info or {}).get("primary_url", repo.get("url")),
             "evidence_urls": (source_info or {}).get("evidence_urls", []),
             "metadata": (source_info or {}).get("evidence_metadata", {}),
+            "verification_context_length": (source_info or {}).get("verification_context_length", 0),
         },
         "candidate_rank": gate_record.get("candidate_rank"),
         "source_url": repo.get("url"),
@@ -5911,7 +6166,8 @@ def _should_use_url_context(repo: dict, source_info: dict) -> bool:
 
 
 def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
-                                    request_kind: str = "deep_dive", request_context: str = ""):
+                                    request_kind: str = "deep_dive", request_context: str = "",
+                                    request_origin: str = "new"):
     """Deep Dive専用generateContent。URL Context/Searchを同一call内で使いBudgetを守る。"""
     use_url = _should_use_url_context(repo, source_info)
     use_search = ENABLE_GOOGLE_SEARCH_GROUNDING
@@ -5930,7 +6186,7 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
         config["tools"] = tools
     logger.info("[GEMINI DEEP DIVE CALL] kind=%s timeout=%ss", request_kind, GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS)
     response, selected_model = _call_deep_dive_pool(
-        prompt, config, request_kind, request_context=request_context
+        prompt, config, request_kind, request_context=request_context, request_origin=request_origin
     )
     global SELECTED_DEEP_DIVE_MODEL
     SELECTED_DEEP_DIVE_MODEL = selected_model
@@ -5976,6 +6232,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     }
     source_info: dict = {}
     candidate_generation_request_count = 0
+    generation_attempt_history: list[dict] = []
 
     def record_gate_outcome(generation_status: str, final_status: str,
                             fact_gate: str | None = None,
@@ -5998,6 +6255,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             source=source, generation_request_count=candidate_generation_request_count,
         )
         record.update({
+            "generation_attempt_history": list(generation_attempt_history),
+            "any_generation_truncated": any(bool(row.get("truncated")) for row in generation_attempt_history),
             "pre_generation_grounding_state": source_info.get("pre_generation_grounding_state", "NOT_RUN"),
             "generation_grounding_state": source_info.get("generation_grounding_state", "NOT_RUN"),
             "retry_grounding_state": source_info.get("retry_grounding_state", "NOT_RUN"),
@@ -6043,8 +6302,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     freshness = resolve_followup_freshness(source_info)
     if freshness.get("context"):
         source_info["context"] = _truncate_source_context(source_info.get("context", "") + "\n\n" + freshness["context"])
+        source_info["verification_context"] = _merge_verification_context(
+            source_info.get("verification_context") or source_info.get("context", ""), freshness["context"]
+        )
+        source_info["verification_context_length"] = len(source_info["verification_context"])
     source_info["freshness_status_available"] = not freshness.get("triggered") or freshness.get("followup_found", False)
-    source_info["evidence_metadata"] = _build_evidence_metadata(source_info.get("context", ""), bool(source_info.get("deep_source_scanned")))
+    source_info["evidence_metadata"] = _build_evidence_metadata(
+        source_info.get("verification_context") or source_info.get("context", ""),
+        bool(source_info.get("deep_source_scanned")),
+    )
     evidence_result = assess_evidence_sufficiency(source_info)
     initial_evidence_state = evidence_result["state"]
     evidence_result["supplement_attempted"] = False
@@ -6093,13 +6359,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 previous_article=retry_diagnostics.get("original_article", "") if attempt else "",
                 evidence_result=evidence_result,
             )
-            if funnel:
-                funnel.incr("deep_dive_generation_called")
             deep_dive_generation_called = True
             candidate_generation_request_count += 1
             response, grounding = call_gemini_grounded_deep_dive(
                 prompt, repo, source_info, request_kind=request_kind,
-                request_context=f"{source}:{name}",
+                request_context=f"{source}:{name}", request_origin=candidate_origin,
             )
             if funnel:
                 funnel.incr("generation_api_completed")
@@ -6114,6 +6378,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 else source_info.get("pre_generation_grounding_state", "UNVERIFIED")
             )
             output_truncated = _response_was_truncated(response)
+            generation_attempt_history.append({
+                "attempt": attempt + 1, "kind": request_kind, "truncated": bool(output_truncated)
+            })
             last_grounding = grounding
             parsed = _parse_gemini_response(response.text or "")
             if funnel:
@@ -6168,8 +6435,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 source_info["evidence_result"] = evidence_result
                 source_info["decision_scope_safe"] = evidence_result.get("decision_scope_safe", False)
 
+            verification_context = source_info.get("verification_context") or source_info.get("context", "")
             fact_ok, fact_failures = validate_fact_gate(
-                parsed, name, source_context=source_info.get("context", ""), source=source,
+                parsed, name, source_context=verification_context, source=source,
                 evidence_metadata=source_info.get("evidence_metadata", {}), source_info=source_info,
                 freshness=freshness, output_truncated=output_truncated,
             )
@@ -6178,7 +6446,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 fact_ok = False
             editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
             publication_state, publication_issues = validate_publication_readiness_gate(
-                parsed, source_info.get("context", ""), source_info,
+                parsed, verification_context, source_info,
             )
             human_appeal, human_appeal_issues = validate_human_appeal_gate(parsed)
             gate_statuses.update({
@@ -6200,7 +6468,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             # 自動Readyにしないが、軽微な文体警告をFact failureへ昇格させない。
             appeal_review_required = any(issue in {
                 "action_collapsed_to_generic_monitoring", "decision_voice_missing",
-                "headline_flattened", "human_appeal_materially_degraded_after_reedit",
+                "headline_flattened", "fabricated_personal_experience",
+                "human_appeal_materially_degraded_after_reedit",
             } for issue in human_appeal_issues)
             if appeal_review_required:
                 gate_statuses["human_appeal"] = GATE_STATUS_REVIEW
@@ -6209,9 +6478,28 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             if fact_ok and editorial_ok and publication_state == "PASS" and human_appeal == "ACCEPTABLE":
                 quality_gate_passed = True
                 break
+
+            reason_rows = (map_gate_reasons("fact", fact_failures) + map_gate_reasons("editorial", editorial_warnings)
+                           + map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues))
+            retry_allowed, retry_skip_reason = should_attempt_dynamic_retry(
+                reason_rows, evidence_result, candidate_origin=candidate_origin
+            )
+            final_attempt = attempt >= MAX_QUALITY_RETRIES or not retry_allowed
+            if not retry_allowed and attempt < MAX_QUALITY_RETRIES:
+                retry_diagnostics = {
+                    "original_article": parsed.get("note_draft", ""),
+                    "trigger_reason_codes": reason_rows,
+                    "changed_sections": [],
+                    "retry_attempted": False,
+                    "retry_skipped_reason": retry_skip_reason,
+                }
+                if funnel:
+                    funnel.incr("retry_skipped_budget" if retry_skip_reason == "pending_retry_budget_exhausted" else "retry_skipped_nonrepairable")
+                logger.warning("[QUALITY RETRY SKIPPED] %s: %s", name, retry_skip_reason)
+
             # Fact Gate FAILは事実誤認/根拠外主張なのでReviewへ降格してはいけない。
             # Needs Editorial ReviewはFact PASS済みの稿だけを対象にする。
-            if fact_ok and (publication_state == "REVIEW" or appeal_review_required) and attempt >= MAX_QUALITY_RETRIES:
+            if fact_ok and (publication_state == "REVIEW" or appeal_review_required) and final_attempt:
                 review_issues = publication_issues + human_appeal_issues
                 logger.warning("[PUBLICATION READINESS GATE] Needs Editorial Review: %s: %s", name, ", ".join(review_issues))
                 reason_rows = map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues)
@@ -6288,18 +6576,18 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 return None
             # Human Appealの軽微な警告（入口の弱さ等）は記録して公開を妨げない。
             # 具体的Decisionの消失だけは上のReviewルートで人手確認に回す。
-            if fact_ok and editorial_ok and publication_state == "PASS" and attempt >= MAX_QUALITY_RETRIES:
+            if fact_ok and editorial_ok and publication_state == "PASS" and final_attempt:
                 logger.warning(f"[HUMAN APPEAL GATE] warning: {name}: {', '.join(human_appeal_issues)}")
                 quality_gate_passed = True
                 final_quality_failures = human_appeal_issues
                 break
             # Editorialだけの問題は1回だけ書き直しを促す。2回目はFactが通っていれば公開可。
-            if fact_ok and publication_state == "PASS" and not editorial_ok and attempt >= MAX_QUALITY_RETRIES:
+            if fact_ok and publication_state == "PASS" and not editorial_ok and final_attempt:
                 logger.warning(f"[EDITORIAL GATE WARN] {name}: {', '.join(editorial_warnings)}")
                 quality_gate_passed = True
                 final_quality_failures = editorial_warnings
                 break
-            if attempt >= MAX_QUALITY_RETRIES:
+            if final_attempt:
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
                 if not persist_results:
                     # 再生成テストはGate調整そのものが目的。落ちた稿も捨てず、
@@ -6327,8 +6615,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 record["article_saved"] = bool(saved_path)
                 send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
                 return None
-            reason_rows = (map_gate_reasons("fact", fact_failures) + map_gate_reasons("editorial", editorial_warnings)
-                           + map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues))
             quality_feedback, changed_sections = build_dynamic_retry_instruction(reason_rows)
             retry_diagnostics = {
                 "original_article": parsed.get("note_draft", ""),
@@ -7302,6 +7588,7 @@ def run_regen_test_mode():
         logger.error("[REGEN TEST ABORTED] 既存記事の読み出しに失敗しました。")
         logger.info(GEMINI_BUDGET.summary())
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+        logger.info(PENDING_RETRY_REQUEST_BUDGET.summary())
         return
     if not items:
         logger.info("[REGEN TEST] 条件に一致する既存Deep Diveがありません。")
@@ -7358,6 +7645,7 @@ def run_regen_test_mode():
     logger.info(f"[REGEN TEST OUTPUT] {REGEN_TEST_OUTPUT_DIR}/")
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+    logger.info(PENDING_RETRY_REQUEST_BUDGET.summary())
     logger.info(GEMINI_USAGE_AUDIT.summary(include_contexts=True))
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
@@ -7706,6 +7994,9 @@ def main():
         return
     next_candidate_rank = 0
     for item in pending_items:
+        if not PENDING_RETRY_REQUEST_BUDGET.can_request():
+            logger.info("[PENDING RETRY STOP] dedicated request budget exhausted; Fresh候補のDeep Dive枠を優先")
+            break
         next_candidate_rank += 1
         logger.info("[PENDING RETRY] %s", item["repo"].get("nameWithOwner"))
         try:
@@ -7902,6 +8193,7 @@ def main():
     finalize_deep_dive_observability(funnel)
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+    logger.info(PENDING_RETRY_REQUEST_BUDGET.summary())
     logger.info(GEMINI_USAGE_AUDIT.summary(include_contexts=True))
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
