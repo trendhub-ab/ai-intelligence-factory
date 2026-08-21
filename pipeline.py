@@ -39,6 +39,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from google import genai
 from google.genai.errors import APIError
+import decision_intelligence as decision_intelligence
 
 # ==========================================
 # ログ設定
@@ -1356,6 +1357,9 @@ def initialize_runtime() -> None:
     if not SCREENING_MODEL_POOL or not DEEP_DIVE_MODEL_POOL:
         raise ValueError("Gemini model candidate pool が空です。")
     preflight_notion_schema()
+    # 商品DB side-pathを有効化した場合だけ、Gemini消費前に新2DBのSchemaも検証する。
+    # Runtime書込み失敗は記事Pipelineへ波及させないが、設定ミスで無駄な生成をしない。
+    decision_intelligence.preflight_decision_intelligence_schema()
     _register_gemini_usage_atexit()
     # Availability is established by the first real request.  This avoids two
     # quota-consuming pings on every run and makes import/test completely safe.
@@ -4608,6 +4612,14 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・Decision: NOW / TRY / WATCH / WAIT / AVOID の1つ。
 ・Decision Reason: 最大3理由を簡潔に。
 ・Decision Score: Business Impact X/25; Technical Impact X/25; Urgency X/20; Market Impact X/15; Reliability X/15; 合計 X/100
+・Adoption Score: Evidence Quality X/25; Production Maturity X/25; Use-case Utility / Fit X/20; Reliability / Security Risk X/15; Integration / Migration Feasibility X/10; Ecosystem / Support Durability X/5; 合計 X/100
+・Adoption Status: WATCH / TEST / ADOPT / AVOID の1つ。人気や新しさではなく、Evidence・成熟度・対象ユースケース・リスクに基づく。
+・Evidence Confidence: LOW / MEDIUM / HIGH の1つ。取得済み一次情報だけで判定する。
+・Production Readiness: LOW / MEDIUM / HIGH の1つ。paper/prototype/previewをHIGHにしない。
+・Main Risk: 導入前に知るべき最大リスクを1〜2文。Evidenceにない一般論を作らない。
+・Best For: 価値を出しやすい対象ユースケースを簡潔に。
+・Avoid For: 現時点で使うべきでない対象ユースケースを簡潔に。
+・Short Rationale: Adoption判断の根拠を1〜3文。Buzzや人気ではなくEvidenceと技術特性で説明する。
 ・Why NOT Important: 今は不要な読者と理由。
 ・Who Should Use: 検討価値のある読者。
 ・Who Should NOT Use: 今は不要な読者。
@@ -4652,6 +4664,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
   WAIT → 「現時点では導入を急がない」「条件が整うまで待つのがよい」
   AVOID → 「今は見送るのが妥当」「現時点では採用しない方がよい」
 ・上の日本語は定型句として毎回そのまま使わず、記事の文脈に合わせて自然に言い換える。Decision ScoreやBusiness Impact等の内部採点もARTICLEへ一切出さない。採点はMANAGEMENT DATAだけに置く。
+・Adoption Score / Adoption Status / Evidence Confidence / Production Readiness も商品DB管理値であり、ARTICLEへラベルや点数をそのまま表示しない。
 ・競合名を出す場合、Source Native Contextにその競合の比較根拠が存在する時だけ。なければ製品名を列挙しない。
 ・Preview/Beta/Stableは必ず分離する。
 ・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。
@@ -4749,6 +4762,17 @@ def _parse_gemini_response(full_text: str) -> dict:
     )
     score_breakdown_text = breakdown_match.group(1).strip() if breakdown_match else ""
 
+    adoption_breakdown_match = re.search(
+        r"・Adoption Score[:：]\s*(.*?)(?=\n・Adoption Status|\n・Evidence Confidence|$)",
+        management_data, re.DOTALL,
+    )
+    adoption_score_breakdown_text = adoption_breakdown_match.group(1).strip() if adoption_breakdown_match else ""
+    adoption_total_match = re.search(
+        r"・Adoption Score[:：][^\n]*?合計[:：]?\s*(\d+)\s*/\s*100",
+        management_data, re.IGNORECASE,
+    )
+    adoption_score = int(adoption_total_match.group(1)) if adoption_total_match else 0
+
     def extract_field(label: str, fallback: str = "") -> str:
         m = re.search(rf"・{re.escape(label)}[^:：\n]*[:：]\s*(.*?){NEXT_ITEM}", management_data, re.DOTALL)
         return m.group(1).strip() if m else fallback
@@ -4791,6 +4815,15 @@ def _parse_gemini_response(full_text: str) -> dict:
         "title_text": title_text,
         "score": score,
         "score_breakdown_text": score_breakdown_text,
+        "adoption_score": adoption_score,
+        "adoption_score_breakdown_text": adoption_score_breakdown_text,
+        "adoption_status": extract_field("Adoption Status", "").strip().upper(),
+        "evidence_confidence": extract_field("Evidence Confidence", "").strip().upper(),
+        "production_readiness": extract_field("Production Readiness", "").strip().upper(),
+        "main_risk_text": extract_field("Main Risk", ""),
+        "best_for_text": extract_field("Best For", ""),
+        "avoid_for_text": extract_field("Avoid For", ""),
+        "short_rationale_text": extract_field("Short Rationale", ""),
         "source_summary_text": field_or_body("Source Summary", "source_summary_text"),
         "what_text": field_or_body("What", "what_text"),
         "why_important_text": field_or_body("Why Important", "why_important_text"),
@@ -5094,6 +5127,8 @@ def _find_management_score_leak(draft: str) -> list[str]:
     # Decision Score / 総合スコアの明示もARTICLEでは禁止。一般本文中の数値は別Gateで扱う。
     if re.search(r"(?:Decision Score|総合スコア|判定スコア|Score)\s*[:：]\s*\d+\s*(?:/\s*100)?", text, re.IGNORECASE):
         leaks.append("management decision score leaked into ARTICLE")
+    if re.search(r"(?:Adoption Score|Adoption Status|Evidence Confidence|Production Readiness)\s*[:：]", text, re.IGNORECASE):
+        leaks.append("decision intelligence management field leaked into ARTICLE")
     return leaks
 
 
@@ -5194,6 +5229,176 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
         if unsupported:
             failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
     return list(dict.fromkeys(failures))[:6]
+
+
+
+_ADOPTION_SCORE_COMPONENTS = (
+    ("Evidence Quality", 25),
+    ("Production Maturity", 25),
+    ("Use-case Utility / Fit", 20),
+    ("Reliability / Security Risk", 15),
+    ("Integration / Migration Feasibility", 10),
+    ("Ecosystem / Support Durability", 5),
+)
+
+
+def _parse_adoption_score_components(breakdown_text: str) -> tuple[dict[str, int], list[str]]:
+    values: dict[str, int] = {}
+    failures: list[str] = []
+    text = breakdown_text or ""
+    for label, maximum in _ADOPTION_SCORE_COMPONENTS:
+        m = re.search(rf"{re.escape(label)}\s*(\d+)\s*/\s*{maximum}", text, re.IGNORECASE)
+        if not m:
+            failures.append(f"Adoption component missing: {label}")
+            continue
+        value = int(m.group(1))
+        if not 0 <= value <= maximum:
+            failures.append(f"Adoption component out of range: {label}={value}/{maximum}")
+        values[label] = value
+    return values, failures
+
+
+def validate_decision_intelligence_assessment(parsed: dict, evidence_result: dict,
+                                               verification_context: str,
+                                               evidence_metadata: dict | None = None) -> tuple[bool, list[str]]:
+    """Validate product-only Adoption assessment independently from article Quality Gates.
+
+    The validator is deliberately strict on evidence and structure, but it does not use
+    article Human Appeal / Publication Readiness as a prerequisite.  This allows a valid
+    technology assessment to be stored even when the free-note manuscript still needs editing.
+    """
+    if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
+        return False, ["Decision Intelligence DB disabled"]
+
+    failures: list[str] = []
+    score = int(parsed.get("adoption_score") or 0)
+    status = str(parsed.get("adoption_status") or "").upper()
+    confidence = str(parsed.get("evidence_confidence") or "").upper()
+    readiness = str(parsed.get("production_readiness") or "").upper()
+    main_risk = str(parsed.get("main_risk_text") or "").strip()
+    best_for = str(parsed.get("best_for_text") or "").strip()
+    avoid_for = str(parsed.get("avoid_for_text") or "").strip()
+    rationale = str(parsed.get("short_rationale_text") or "").strip()
+
+    if not 1 <= score <= 100:
+        failures.append("Adoption Score missing/invalid")
+    components, component_failures = _parse_adoption_score_components(
+        str(parsed.get("adoption_score_breakdown_text") or "")
+    )
+    failures.extend(component_failures)
+    if len(components) == len(_ADOPTION_SCORE_COMPONENTS):
+        component_total = sum(components.values())
+        if component_total != score:
+            failures.append(f"Adoption Score total mismatch: components={component_total} total={score}")
+
+    if status not in decision_intelligence.ADOPTION_STATUSES:
+        failures.append("Adoption Status missing/invalid")
+    if confidence not in decision_intelligence.CONFIDENCE_LEVELS:
+        failures.append("Evidence Confidence missing/invalid")
+    if readiness not in decision_intelligence.READINESS_LEVELS:
+        failures.append("Production Readiness missing/invalid")
+    for label, value in (
+        ("Main Risk", main_risk), ("Best For", best_for),
+        ("Avoid For", avoid_for), ("Short Rationale", rationale),
+    ):
+        if not _is_meaningful_field(value):
+            failures.append(f"{label} missing")
+
+    # Adoption assessment may not outrun the verified evidence scope.
+    if evidence_result.get("state") == EVIDENCE_INSUFFICIENT or not evidence_result.get("decision_scope_safe", False):
+        failures.append("Adoption assessment evidence scope unsafe")
+    if confidence == "HIGH" and evidence_result.get("state") != EVIDENCE_SUFFICIENT:
+        failures.append("Evidence Confidence HIGH requires SUFFICIENT evidence")
+    if status == "ADOPT" and (confidence != "HIGH" or readiness != "HIGH"):
+        failures.append("ADOPT requires Evidence Confidence HIGH and Production Readiness HIGH")
+    if status == "AVOID" and not main_risk:
+        failures.append("AVOID requires Main Risk")
+
+    # Check only the subscriber-facing assessment prose; never copy the article Decision Score
+    # or article narrative into Adoption Score semantics.
+    assessment_text = "\n".join([main_risk, best_for, avoid_for, rationale])
+    failures.extend(_find_unsupported_numeric_claims(
+        assessment_text, verification_context, evidence_metadata or {}
+    ))
+    failures.extend(_find_source_boundary_violations(assessment_text, verification_context))
+    failures.extend(_find_hype_claims(assessment_text, verification_context, evidence_metadata or {}))
+    return not failures, list(dict.fromkeys(failures))[:16]
+
+
+def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_info: dict,
+                                             evidence_result: dict, reviewed_at: str,
+                                             screening_score: int | None = None,
+                                             screening_reason: str = "",
+                                             attribution_context: dict | None = None,
+                                             pipeline_status: str = STATUS_DEEP_DIVE,
+                                             content_status: str = CONTENT_STATUS_DEEP_DIVE,
+                                             article_status: str = ARTICLE_STATUS_NOT_PLANNED) -> dict:
+    """Best-effort product DB side-path. Never changes article persistence outcome."""
+    if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
+        return {"enabled": False, "saved": False, "reason": "disabled"}
+
+    verification_context = source_info.get("verification_context") or source_info.get("context", "")
+    assessment_ok, failures = validate_decision_intelligence_assessment(
+        parsed, evidence_result, verification_context, source_info.get("evidence_metadata", {})
+    )
+    if not assessment_ok:
+        logger.warning(
+            "[DECISION INTELLIGENCE SKIP] %s: assessment invalid: %s",
+            repo.get("nameWithOwner"), " / ".join(failures)[:1500],
+        )
+        return {"enabled": True, "saved": False, "reason": "assessment_invalid", "failures": failures}
+
+    resolution = decision_intelligence.resolve_canonical_entity_id(repo, source_info)
+    if resolution.status == "AMBIGUOUS":
+        logger.warning(
+            "[DECISION INTELLIGENCE AMBIGUOUS] %s -> %s (%s)",
+            repo.get("nameWithOwner"), resolution.entity_id, resolution.reason,
+        )
+        return {"enabled": True, "saved": False, "reason": "entity_ambiguous", "entity_id": resolution.entity_id}
+
+    evidence_urls = _collect_final_evidence_urls(source_info, None)
+    candidate = attribution_context or {}
+    assessment = {
+        "technology_name": repo.get("nameWithOwner") or "Technology",
+        "primary_url": resolution.primary_url or source_info.get("primary_url") or repo.get("url"),
+        "sources": [repo.get("source", "GitHub")],
+        "category": candidate.get("portfolio_topic") or "OTHER",
+        "adoption_score": int(parsed.get("adoption_score") or 0),
+        "adoption_status": str(parsed.get("adoption_status") or "").upper(),
+        "evidence_confidence": str(parsed.get("evidence_confidence") or "").upper(),
+        "production_readiness": str(parsed.get("production_readiness") or "").upper(),
+        "main_risk": parsed.get("main_risk_text", ""),
+        "best_for": parsed.get("best_for_text", ""),
+        "avoid_for": parsed.get("avoid_for_text", ""),
+        "short_rationale": parsed.get("short_rationale_text", ""),
+        "reviewed_at": reviewed_at,
+        "evidence_urls": evidence_urls,
+        "source_summary": parsed.get("source_summary_text", ""),
+        "published_at": repo.get("publishedAt"),
+        "screening_score": screening_score,
+        "screening_reason": screening_reason,
+        "pipeline_status": pipeline_status,
+        "content_status": content_status,
+        "article_status": article_status,
+        "tracking_status": "ACTIVE",
+        "tracking_eligibility": True,
+        "tracking_reason": "Deep Dive / Decision Assessment completed",
+        "assessment_state": "ASSESSED",
+    }
+    try:
+        result = decision_intelligence.upsert_technology_intelligence(assessment, resolution)
+        if result.get("saved"):
+            logger.info(
+                "[DECISION INTELLIGENCE SAVED] %s -> entity=%s created=%s changed=%s history=%s",
+                repo.get("nameWithOwner"), result.get("entity_id"), result.get("created"),
+                result.get("changed"), bool(result.get("history_id")),
+            )
+        return result
+    except Exception as exc:
+        # Product persistence is deliberately isolated from the free-note article state machine.
+        logger.error("[DECISION INTELLIGENCE PERSISTENCE FAILED] %s: %s", repo.get("nameWithOwner"), exc)
+        return {"enabled": True, "saved": False, "reason": "persistence_failed", "error": str(exc)}
+
 
 def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "",
                        evidence_metadata: dict | None = None, source_info: dict | None = None,
@@ -6346,6 +6551,19 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     appeal_before_reedit: dict | None = None
     retry_diagnostics: dict = {}
     deep_dive_generation_called = False
+    decision_intelligence_attempted = False
+
+    def persist_product_sidecar_once(final_parsed: dict, content_status: str, article_status: str) -> dict:
+        nonlocal decision_intelligence_attempted
+        if decision_intelligence_attempted or not persist_results:
+            return {"saved": False, "reason": "already_attempted_or_nonpersistent"}
+        decision_intelligence_attempted = True
+        return persist_decision_intelligence_assessment(
+            repo, final_parsed, source_info, evidence_result, _analyzed_at_now_iso(),
+            screening_score=screening_score, screening_reason=screening_reason,
+            attribution_context=attribution_context, pipeline_status=STATUS_DEEP_DIVE,
+            content_status=content_status, article_status=article_status,
+        )
 
     try:
         parsed = None
@@ -6545,6 +6763,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         page_id, name, review_manuscript, review_properties, review_issues
                     )
                 if review_notion_saved:
+                    persist_product_sidecar_once(
+                        parsed, CONTENT_STATUS_DEEP_DIVE, ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW
+                    )
                     record = record_gate_outcome(
                         "completed", ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
                         GATE_STATUS_PASS, GATE_STATUS_PASS if editorial_ok else GATE_STATUS_WARNING,
@@ -6555,6 +6776,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     )
                     alert_prefix = "ℹ️ Needs Editorial Review"
                 else:
+                    persist_product_sidecar_once(
+                        parsed, CONTENT_STATUS_PENDING_RETRY, ARTICLE_STATUS_NOT_PLANNED
+                    )
                     persistence_rows = reason_rows + [{
                         "reason_code": REASON_CODE_NOTION_PERSISTENCE_FAILED,
                         "message": "Needs Editorial Review manuscript could not be persisted to Notion; queued for retry",
@@ -6599,6 +6823,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
                 if page_id:
                     update_notion_quality_failed(page_id, name, parsed.get("grounding_status", GROUNDING_FAILED), grounding.get("evidence_urls", []))
+                persist_product_sidecar_once(
+                    parsed, CONTENT_STATUS_QUALITY_FAILED, ARTICLE_STATUS_NOT_PLANNED
+                )
                 reason_rows = (map_gate_reasons("fact", fact_failures) + map_gate_reasons("editorial", editorial_warnings)
                                + map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues))
                 record = record_gate_outcome(
@@ -6677,6 +6904,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 )
             reason_rows = map_gate_reasons("editorial", final_quality_failures) if final_quality_failures else []
             if not notion_persisted:
+                persist_product_sidecar_once(
+                    parsed, CONTENT_STATUS_PERSISTENCE_FAILED, ARTICLE_STATUS_NOT_PLANNED
+                )
                 # 記事品質は問題ない（Quality Gate PASS）が、永続保存層が失敗している。
                 # Readyにせず、Ready件数にも加算しない。Quality Failedとは区別して記録する。
                 logger.error(f"[NOTION PERSISTENCE FAILED] {name} -> Quality Gate PASSだがNotion保存/アップグレードに失敗")
@@ -6701,6 +6931,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 # 関数末尾のreturn）へは到達させない。
                 return None
             else:
+                persist_product_sidecar_once(
+                    parsed, CONTENT_STATUS_DEEP_DIVE, ARTICLE_STATUS_READY
+                )
                 record_gate_outcome(
                     "completed", ARTICLE_STATUS_READY,
                     GATE_STATUS_PASS, GATE_STATUS_PASS if not final_quality_failures else GATE_STATUS_WARNING,

@@ -109,13 +109,27 @@
 47. 長大LandingがSupplement PDFをverificationから押し出す事故
    - Verification contextを単純な先頭truncateで連結せず、既存Evidenceと後取得PDF/Docsへ配分し、双方の冒頭/末尾を保持する。後取得Evidenceが丸ごと監査対象外になる経路をRegression化した。
 
+48. Decision Score semanticsの破壊
+   - 既存Decision ScoreはScreening/記事価値とDeep Dive Impact評価が混在するため、Adoption Scoreへrename/再定義しない。独立Adoption Scoreを同一Deep Dive call内で生成し、既存値を維持する。
+49. Technology単位Upsertの誤統合
+   - Canonical Entity IDを追加し、GitHub owner/repo・arXiv ID等の明示identityだけを統合する。同名/類似titleだけのmergeは禁止し、曖昧entityはAMBIGUOUSでFail-Closedする。
+50. History成功後current patch失敗による二重History
+   - `History Event ID`でHistory appendを冪等化し、次Runで同一transitionを再利用する。既存currentをdelete/rollbackしない。
+51. 将来の同一transitionをRetryと誤認
+   - CHANGE Event IDへ直前`Last Change At`をtransition anchorとして含める。60→70→60→70の2回目60→70は新しいHistoryとして保存する。
+52. 新規current作成後のINITIAL partial failure
+   - 新規currentは`HISTORY_PENDING`で作り、INITIAL History後に`ASSESSED`へ確定。次Runで評価が変化していてもpending currentの旧値でINITIALを復旧し、新値はCHANGEとして別追記する。
+53. Legacy Migrationで過去Decision ScoreをAdoption Scoreへ捏造
+   - MigrationはInternal DBをread-onlyで読み、Legacy seedへDecision Score/Decisionを移植しない。`LEGACY_PENDING`として再評価待ちにする。Dry-runが既定で、applyは明示操作のみ。
+
 ## テスト結果
 
 - Adversarial / Failure Injection: 127/127 PASS
 - Notion Persistence: 48/48 PASS
 - Safety Unit: 76/76 PASS
 - Subscription Attribution: 11/11 PASS
-- unittest discovery: 262/262 PASS
+- unittest discovery: 291/291 PASS
+- Decision Intelligence: 29/29 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
 

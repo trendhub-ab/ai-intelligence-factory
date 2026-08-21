@@ -1,6 +1,6 @@
 # AI Intelligence Factory Release Validation
 
-Release: Real Article Quality Gate Calibration / Gemini効率最適化版 2026-08-21
+Release: Decision Intelligence Phase 1 Shadow Write / Article Quality Gate Calibration 2026-08-21
 
 ## Final validation
 
@@ -9,10 +9,11 @@ Release: Real Article Quality Gate Calibration / Gemini効率最適化版 2026-0
 - Notion Persistence: 48/48 PASS
 - Adversarial / Failure Injection: 127/127 PASS
 - Subscription Attribution: 11/11 PASS
-- unittest discovery: 262/262 PASS
+- Decision Intelligence: 29/29 PASS
+- unittest discovery: 291/291 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
-- Workflow YAML parse: 4/4 PASS
+- Workflow YAML parse: 5/5 PASS
 - SHA256SUMS verification: PASS
 
 ## Profit optimization additions
@@ -87,3 +88,17 @@ Profit/Portfolio optimization may change which eligible Stock candidate is attem
 
 - `GEMINI_QUOTA_PROJECT_ID` is optional audit metadata. Workflow accepts Repository Variable or Secret and otherwise uses `github.repository` as the safety-counter scope. See `GEMINI_QUOTA_SETUP.md`.
 - `SUBSCRIPTION_LANDING_URL` may remain unset; subscription CTA/attribution stays disabled without affecting Daily article generation.
+
+
+## Decision Intelligence Phase 1 validation
+
+- Existing Internal Pipeline DB remains the article-state source of truth; no existing property is renamed or redefined.
+- `Decision Score` is preserved. `Adoption Score` / `Adoption Status` are independent product-only management fields generated inside the existing Deep Dive Gemini request; no additional Gemini request is introduced.
+- Product persistence is feature-flagged (`ENABLE_DECISION_INTELLIGENCE_DB=false` by default) and schema-preflighted before Gemini use when enabled.
+- Technology Intelligence DB uses conservative Canonical Entity ID upsert; fuzzy-title merge is prohibited.
+- Re-evaluation accumulates Source / Entity Alias / Evidence rather than overwriting prior signals.
+- Decision History uses `History Event ID` for idempotent retry after partial Notion failures. CHANGE identity includes previous `Last Change At`, so a later repeated transition is not mistaken for a retry.
+- New current records use `HISTORY_PENDING` until INITIAL History is durable. If evaluation changes during recovery, INITIAL is reconstructed from the pending current record and the new assessment is appended as a separate CHANGE.
+- Legacy migration is dry-run by default, reads Internal DB only, never copies legacy Decision Score into Adoption Score, and seeds `LEGACY_PENDING`.
+- Decision Intelligence persistence failure is isolated from article Ready/Review/Quality Failed state; existing article quality behavior remains unchanged.
+- Migration workflow is manual-only and uploads its plan as a private Actions artifact.

@@ -50,6 +50,12 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_API_VERSION: "2026-03-11"
+          # Decision Intelligence product side-path. OFF by default until TEST DBs are provisioned.
+          ENABLE_DECISION_INTELLIGENCE_DB: ${{ vars.ENABLE_DECISION_INTELLIGENCE_DB || 'false' }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           ARTICLE_PUBLICATION_MODE: "free"
           ENABLE_SUBSCRIPTION_ATTRIBUTION: "true"
           SUBSCRIPTION_LANDING_URL: ${{ vars.SUBSCRIPTION_LANDING_URL }}

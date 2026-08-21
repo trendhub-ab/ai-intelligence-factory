@@ -1,0 +1,65 @@
+name: Decision Intelligence Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Migration mode. Always run dry-run first and inspect the plan artifact.'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Preflight / migrate legacy Internal DB
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_DECISION_INTELLIGENCE_DB: 'true'
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+        run: |
+          mkdir -p migration_outputs
+          if [ "${{ inputs.mode }}" = "apply" ]; then
+            python migrate_decision_intelligence.py --apply --output migration_outputs/decision_intelligence_migration_plan.json
+          else
+            python migrate_decision_intelligence.py --output migration_outputs/decision_intelligence_migration_plan.json
+          fi
+
+      - name: Upload migration plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: decision-intelligence-migration-${{ github.run_number }}-${{ inputs.mode }}
+          path: migration_outputs/
+          if-no-files-found: error
+          retention-days: 30

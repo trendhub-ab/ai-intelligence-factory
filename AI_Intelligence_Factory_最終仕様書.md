@@ -270,7 +270,7 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 | Python構文チェック | 成功 |
 | Notion Persistenceテスト | 48件成功 |
 | Adversarial / Failure Injection | 127件成功 |
-| unittest discovery | 262件成功 |
+| unittest discovery | 291件成功 |
 | Safety Unit Test | 76件成功 |
 | Synthetic Regression Suite | Full 500/500成功、critical failure 0（2026-08-21実行） |
 
@@ -302,7 +302,7 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - Source ROI LearningをFailure Injection化し、冷開始50件/Source、全4 Source最低25枠、状態破損Fail-Safe、実Notion Stockだけの歩留まり計上、学習後の高ROI配分を固定する。さらに4 Sourceの最大枠が共通値であること、同一ROIなら4 Sourceが対称配分されProduct Huntだけが優遇・抑制されないことを固定する。
 - 2026-08-21 Real Article Gate Calibrationとして、AI Post-Trainingの`10時間`、VLAの`50〜80%`/`3〜7倍`、Rustの`Cargo.lock`監査、Harnessのresearch `future work`を一般化したRegressionへ固定する。加えて架空の職務/日常体験をFalse Negativeとして止め、長大Landingでも後取得PDFがverificationから落ちないことを検証する。固有タイトル・URLによる特例は作らない。
 
-2026-08-21時点の結果: Adversarial 127/127、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、全Unit 262/262、Synthetic Regression Full 500/500、critical failure 0。
+2026-08-21時点の結果: Adversarial 127/127、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、Decision Intelligence 29/29、全Unit 291/291、Synthetic Regression Full 500/500、critical failure 0。
 
 ## 11. 主な環境変数
 
@@ -318,3 +318,54 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - `pypdf`
 
 GitHub ActionsはWorkflow内で`pip install -r requirements.txt`を実行してからPipelineを起動する。したがって、今回の仕様更新に伴う`requirements.txt`の再生成・変更は不要である。
+
+
+## 12. Decision Intelligence DB — Phase 1 Shadow Write
+
+最上位事業要件は「無料note＝集客」「有料Technology Intelligence DB＋Decision History＋月次サマリー＝収益商品」。Phase 1では既存Internal Pipeline DBを変更せず、商品DBをside-pathとして追加する。既存`Decision Score`、`Status / Content Status / Article Status`、Stock閾値、Evidence、4 Quality Gates、Pending Retry、Ready定義は変更しない。
+
+### 12.1 DB構成
+
+- 既存Internal Pipeline DB: 記事生成・Retry・Ready等の運用状態。既存意味を維持する。
+- Technology Intelligence DB: `1 Technology / Project = 1 current record`。Canonical Entity IDをUpsert keyとする。
+- Decision History DB: INITIALまたは意味のあるCHANGEだけをappendする。毎日無変化Snapshotは作らない。
+
+### 12.2 Decision ScoreとAdoption Score
+
+既存Decision Scoreは記事化価値・ニュース価値・Business/Technical Impact等を含み、Stock時とDeep Dive時でも採点構成が異なるため、Adoption判断へ意味変更して流用しない。商品DBでは独立した`Adoption Score`を同じDeep Dive Gemini callのMANAGEMENT DATA内で生成する。追加Gemini requestは0。
+
+Adoption Score内訳:
+- Evidence Quality 25
+- Production Maturity 25
+- Use-case Utility / Fit 20
+- Reliability / Security Risk 15
+- Integration / Migration Feasibility 10
+- Ecosystem / Support Durability 5
+
+`Adoption Status`はWATCH / TEST / ADOPT / AVOID。ADOPTはEvidence Confidence=HIGHかつProduction Readiness=HIGHを必須とし、人気や新しさだけで決めない。
+
+### 12.3 Entity Resolution
+
+- GitHub: owner/repo
+- arXiv: versionを除いたpaper ID
+- Product / Framework等: 明示的なPrimary/official URLを保守的にcanonical化
+- HN discovery URLだけでTechnology本体を確定できない場合はAMBIGUOUS
+- タイトル類似だけのfuzzy mergeは禁止
+- Source / Entity Alias / Evidence URLは再評価時に累積し、最新Signalだけで過去Evidenceを上書きしない
+
+### 12.4 History transaction safety
+
+- 新規currentは`HISTORY_PENDING`で作成し、INITIAL History確認後に`ASSESSED`へ確定する。
+- Existing変更はHistory-firstでappendし、その後currentをpatchする。
+- `History Event ID`で再送を冪等化し、History成功/current patch失敗後の次Runで二重追記しない。
+- CHANGE Event IDには直前`Last Change At`をtransition anchorとして含め、将来同じスコア遷移が再発した場合は別Historyとして保持する。
+- `HISTORY_PENDING`中に新評価が変わった場合は、pending currentの旧評価でINITIALを復旧した後、新評価をCHANGEとして追加する。
+- Event ID collision、Canonical Entity ID collisionはFail-Closedする。
+
+### 12.5 Isolation / Rollback
+
+`ENABLE_DECISION_INTELLIGENCE_DB=false`が既定。OFF時は新DBへNetwork accessしない。ON時のみSchema preflightをGemini呼出し前に実行する。商品DB persistence failureは無料note記事のQuality/Ready stateを巻き戻さない。RollbackはFeature Flagをfalseへ戻すだけで、既存Internal DBへの逆Migrationは不要。
+
+Legacy Migrationは必ずdry-run→plan artifact確認→applyの順で実施し、既存Internal DBはread-only。既存Decision Score/DecisionをAdoption Score/Statusへ変換せず、`LEGACY_PENDING`としてseedする。
+
+Phase 1のNotion property詳細、TEST DB作成、Secrets、Migration手順、Subscriber Viewは`DECISION_INTELLIGENCE_SETUP.md`を正式運用手順とする。Phase 2のTracking Eligibility、Change-driven/Periodic Review、History由来What Changed? Monthly DigestはShadow Write検証後に実装する。

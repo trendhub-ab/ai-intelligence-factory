@@ -13,6 +13,7 @@ review_candidates/
 quality_failures/
 gate_history/
 regression_cases_pending/
+migration_outputs/
 
 # Aggregate runtime learning state; persisted by GitHub Contents API, not manual commits.
 source_roi_history/
