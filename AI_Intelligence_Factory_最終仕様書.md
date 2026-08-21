@@ -302,7 +302,9 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - Source ROI LearningをFailure Injection化し、冷開始50件/Source、全4 Source最低25枠、状態破損Fail-Safe、実Notion Stockだけの歩留まり計上、学習後の高ROI配分を固定する。さらに4 Sourceの最大枠が共通値であること、同一ROIなら4 Sourceが対称配分されProduct Huntだけが優遇・抑制されないことを固定する。
 - 2026-08-21 Real Article Gate Calibrationとして、AI Post-Trainingの`10時間`、VLAの`50〜80%`/`3〜7倍`、Rustの`Cargo.lock`監査、Harnessのresearch `future work`を一般化したRegressionへ固定する。加えて架空の職務/日常体験をFalse Negativeとして止め、長大Landingでも後取得PDFがverificationから落ちないことを検証する。固有タイトル・URLによる特例は作らない。
 
-2026-08-21時点の結果: Adversarial 127/127、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、Decision Intelligence 29/29、全Unit 291/291、Synthetic Regression Full 500/500、critical failure 0。
+2026-08-21時点の結果: Adversarial 127/127、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、Decision Intelligence 33/33、全Unit 295/295、Synthetic Regression Full 500/500、critical failure 0。
+
+Notion Token境界: 既存Internal DBは`NOTION_API_KEY`、Technology Intelligence / Decision History DBは`NOTION_DECISION_INTELLIGENCE_API_KEY`を使用する。Migrationは旧DB readと新DB writeを別Tokenに分離し、専用Token欠落時に既存Tokenへ暗黙fallbackしない。
 
 ## 11. 主な環境変数
 

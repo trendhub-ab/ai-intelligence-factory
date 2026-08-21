@@ -22,7 +22,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
+NOTION_DECISION_INTELLIGENCE_API_KEY = os.environ.get("NOTION_DECISION_INTELLIGENCE_API_KEY", "").strip()
 NOTION_API_VERSION = os.environ.get("NOTION_API_VERSION", "2026-03-11")
 ENABLE_DECISION_INTELLIGENCE_DB = os.environ.get(
     "ENABLE_DECISION_INTELLIGENCE_DB", "false"
@@ -158,7 +158,7 @@ HISTORY_REQUIRED_PROPERTY_TYPES = {
 
 def _headers() -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Authorization": f"Bearer {NOTION_DECISION_INTELLIGENCE_API_KEY}",
         "Content-Type": "application/json",
         "Notion-Version": NOTION_API_VERSION,
     }
@@ -200,8 +200,8 @@ def preflight_decision_intelligence_schema() -> None:
     """Validate both product DB schemas before any Gemini request when enabled."""
     if not ENABLE_DECISION_INTELLIGENCE_DB:
         return
-    if not NOTION_API_KEY:
-        raise ValueError("Decision Intelligence DB有効時は NOTION_API_KEY が必要です。")
+    if not NOTION_DECISION_INTELLIGENCE_API_KEY:
+        raise ValueError("Decision Intelligence DB有効時は NOTION_DECISION_INTELLIGENCE_API_KEY が必要です。")
     if not (NOTION_TECH_DATA_SOURCE_ID or NOTION_TECH_DATABASE_ID):
         raise ValueError("Decision Intelligence DB有効時は NOTION_TECH_DATA_SOURCE_ID または NOTION_TECH_DATABASE_ID が必要です。")
     if not (NOTION_HISTORY_DATA_SOURCE_ID or NOTION_HISTORY_DATABASE_ID):

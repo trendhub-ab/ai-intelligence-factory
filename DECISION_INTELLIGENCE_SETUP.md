@@ -109,9 +109,14 @@ Decision History DBの`Technology` Relationは、必ず**Technology Intelligence
 
 ---
 
-## 3. Integrationを両TEST DBへ接続する
+## 3. Decision Intelligence専用Integrationを両TEST DBへ接続する
 
-既存 `NOTION_API_KEY` のIntegrationをTechnology / History TEST DBの双方へ接続する。
+既存Internal DB用の `NOTION_API_KEY` は変更・共有しない。Technology / History TEST DBには、Decision Intelligence専用Integrationを接続し、そのTokenを `NOTION_DECISION_INTELLIGENCE_API_KEY` として使う。
+
+- `NOTION_API_KEY`: 既存Internal Pipeline DBのread/write専用（現行記事Pipelineを維持）
+- `NOTION_DECISION_INTELLIGENCE_API_KEY`: Technology Intelligence / Decision History DB専用
+
+Migrationは旧Internal DBを `NOTION_API_KEY` でread-only取得し、新しい商品DBのpreflight/query/create/updateは `NOTION_DECISION_INTELLIGENCE_API_KEY` で実行する。
 
 取得できる場合はDatabase IDとData Source IDを控える。現在のPipelineはData Source IDを優先し、未設定時のみDatabase IDを使う。
 
@@ -121,6 +126,7 @@ Decision History DBの`Technology` Relationは、必ず**Technology Intelligence
 
 ### Repository Secrets
 
+- `NOTION_DECISION_INTELLIGENCE_API_KEY`
 - `NOTION_TECH_DATABASE_ID`
 - `NOTION_TECH_DATA_SOURCE_ID`
 - `NOTION_HISTORY_DATABASE_ID`
@@ -157,6 +163,12 @@ mode = dry-run
 ```
 
 Artifact `decision-intelligence-migration-...-dry-run` のJSONを確認する。
+
+MigrationのToken分離:
+
+- 旧Internal DB read: `NOTION_API_KEY`
+- Technology / History TEST DB read/write: `NOTION_DECISION_INTELLIGENCE_API_KEY`
+- 2つのTokenを相互に上書きしない
 
 Migrationの原則:
 

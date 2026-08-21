@@ -11,10 +11,17 @@
 - `decision_intelligence.py`: schema preflight / Adoption assessment / Entity Resolution / Technology upsert / Decision History append / partial-failure recovery
 - `migrate_decision_intelligence.py`: Internal DB read-only legacy migration。dry-run既定、apply明示時のみTechnology seed作成
 - `pipeline.py`: existing Deep Dive MANAGEMENT DATAへAdoption Score/Status等を追加し、同一Gemini call内で評価。記事本文への管理値漏洩を禁止
-- `.github/workflows/daily.yml`: Feature Flagと2DB credentialsを追加
-- `.github/workflows/decision-intelligence-migration.yml`: manual dry-run/apply migration
-- `tests/test_decision_intelligence.py`: 29件の専用Regression
+- `.github/workflows/daily.yml`: Feature Flag、2DB credentials、Decision Intelligence専用Tokenを追加
+- `.github/workflows/decision-intelligence-migration.yml`: manual dry-run/apply migration。旧DB read Tokenと商品DB write Tokenを分離
+- `tests/test_decision_intelligence.py`: 33件の専用Regression（Token分離4件を含む）
 - `DECISION_INTELLIGENCE_SETUP.md`: TEST DB Schema / Secrets / Migration / Shadow Write / Rollback手順
+
+## Notion Token分離
+
+- `NOTION_API_KEY`: 既存Internal DB専用。既存記事Persistence / Pending Retry / Ready / Public syncの意味を変更しない。
+- `NOTION_DECISION_INTELLIGENCE_API_KEY`: Technology Intelligence DB / Decision History DB専用。
+- Migrationは旧DBを既存Tokenでread-only取得し、新DBだけ専用Tokenでpreflight/query/create/updateする。
+- 専用Token欠落時はDecision Intelligence preflightがFail-Closedし、既存Internal Tokenへ暗黙fallbackしない。
 
 ## 保護したBusiness/Quality invariant
 
@@ -44,8 +51,8 @@
 - Notion Persistence: 48/48
 - Adversarial: 127/127
 - Subscription Attribution: 11/11
-- Decision Intelligence: 29/29
-- 全Unit: 291/291
+- Decision Intelligence: 33/33
+- 全Unit: 295/295
 - Synthetic Regression Full: 500/500
 - Critical failures: 0
 - Workflow YAML: 5/5

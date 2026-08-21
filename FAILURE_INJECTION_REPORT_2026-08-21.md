@@ -128,8 +128,8 @@
 - Notion Persistence: 48/48 PASS
 - Safety Unit: 76/76 PASS
 - Subscription Attribution: 11/11 PASS
-- unittest discovery: 291/291 PASS
-- Decision Intelligence: 29/29 PASS
+- unittest discovery: 295/295 PASS
+- Decision Intelligence: 33/33 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
 

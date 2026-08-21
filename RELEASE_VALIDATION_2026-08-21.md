@@ -4,13 +4,16 @@ Release: Decision Intelligence Phase 1 Shadow Write / Article Quality Gate Calib
 
 ## Final validation
 
+Notion Token isolation: `NOTION_API_KEY` remains exclusive to the existing Internal DB path; `NOTION_DECISION_INTELLIGENCE_API_KEY` is required for Technology / History product DB operations. Migration reads legacy rows with the former and writes product DB rows with the latter. No implicit fallback is allowed.
+
+
 - Python syntax: PASS
 - Safety Unit: 76/76 PASS
 - Notion Persistence: 48/48 PASS
 - Adversarial / Failure Injection: 127/127 PASS
 - Subscription Attribution: 11/11 PASS
-- Decision Intelligence: 29/29 PASS
-- unittest discovery: 291/291 PASS
+- Decision Intelligence: 33/33 PASS
+- unittest discovery: 295/295 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
 - Workflow YAML parse: 5/5 PASS
@@ -102,3 +105,16 @@ Profit/Portfolio optimization may change which eligible Stock candidate is attem
 - Legacy migration is dry-run by default, reads Internal DB only, never copies legacy Decision Score into Adoption Score, and seeds `LEGACY_PENDING`.
 - Decision Intelligence persistence failure is isolated from article Ready/Review/Quality Failed state; existing article quality behavior remains unchanged.
 - Migration workflow is manual-only and uploads its plan as a private Actions artifact.
+
+## 2026-08-21 Notion Token Isolation Addendum
+
+- Existing Internal DB token: `NOTION_API_KEY`
+- Decision Intelligence product DB token: `NOTION_DECISION_INTELLIGENCE_API_KEY`
+- No implicit fallback from product DB token to Internal DB token.
+- Legacy migration reads the Internal DB with `NOTION_API_KEY` and performs Technology / History DB preflight/query/write operations with `NOTION_DECISION_INTELLIGENCE_API_KEY`.
+- Dedicated token regression: 33/33 PASS.
+- Full unittest discovery after token isolation: 295/295 PASS.
+- Synthetic Regression Full after token isolation: 500/500 PASS, critical 0, production writes disabled.
+- Workflow YAML: 5/5 PASS.
+- `decision_intelligence.py` / `migrate_decision_intelligence.py` requests timeout missing: 0.
+- `pipeline.py` top-level duplicate definitions: 0.

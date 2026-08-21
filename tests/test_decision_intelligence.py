@@ -103,16 +103,28 @@ class TestSchemaPreflight(unittest.TestCase):
             di.preflight_decision_intelligence_schema()
             get.assert_not_called()
 
+    def test_enabled_requires_dedicated_token(self):
+        with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
+             patch.object(di, "NOTION_DECISION_INTELLIGENCE_API_KEY", ""), \
+             patch.object(di, "NOTION_TECH_DATA_SOURCE_ID", "tech"), \
+             patch.object(di, "NOTION_HISTORY_DATA_SOURCE_ID", "hist"):
+            with self.assertRaisesRegex(ValueError, "NOTION_DECISION_INTELLIGENCE_API_KEY"):
+                di.preflight_decision_intelligence_schema()
+
+    def test_headers_use_dedicated_token_not_internal_token(self):
+        with patch.object(di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "decision-token"):
+            self.assertEqual("Bearer decision-token", di._headers()["Authorization"])
+
     def test_enabled_requires_both_databases(self):
         with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
-             patch.object(di, "NOTION_API_KEY", "x"), \
+             patch.object(di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "x"), \
              patch.object(di, "NOTION_TECH_DATABASE_ID", ""), patch.object(di, "NOTION_TECH_DATA_SOURCE_ID", ""):
             with self.assertRaises(ValueError):
                 di.preflight_decision_intelligence_schema()
 
     def test_complete_schema_passes(self):
         with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
-             patch.object(di, "NOTION_API_KEY", "x"), \
+             patch.object(di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "x"), \
              patch.object(di, "NOTION_TECH_DATA_SOURCE_ID", "tech"), \
              patch.object(di, "NOTION_HISTORY_DATA_SOURCE_ID", "hist"), \
              patch.object(di.requests, "get", side_effect=[
@@ -124,7 +136,7 @@ class TestSchemaPreflight(unittest.TestCase):
         bad = tech_schema()
         bad[di.TECH_PROP_ADOPTION_SCORE] = {"type": "rich_text"}
         with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
-             patch.object(di, "NOTION_API_KEY", "x"), \
+             patch.object(di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "x"), \
              patch.object(di, "NOTION_TECH_DATA_SOURCE_ID", "tech"), \
              patch.object(di, "NOTION_HISTORY_DATA_SOURCE_ID", "hist"), \
              patch.object(di.requests, "get", side_effect=[
@@ -462,6 +474,16 @@ class TestTechnologyUpsert(unittest.TestCase):
         self.assertNotIn(di.TECH_PROP_ADOPTION_SCORE, props)
         self.assertNotIn(di.TECH_PROP_ADOPTION_STATUS, props)
         self.assertEqual("LEGACY_PENDING", props[di.TECH_PROP_ASSESSMENT_STATE]["select"]["name"])
+
+
+class TestMigrationTokenIsolation(unittest.TestCase):
+    def test_internal_reader_headers_use_legacy_notion_api_key(self):
+        with patch.object(migration, "NOTION_API_KEY", "internal-token"):
+            self.assertEqual("Bearer internal-token", migration._headers()["Authorization"])
+
+    def test_target_writer_headers_use_decision_intelligence_key(self):
+        with patch.object(di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "decision-token"):
+            self.assertEqual("Bearer decision-token", di._headers()["Authorization"])
 
 
 class TestLegacyMigrationSafety(unittest.TestCase):

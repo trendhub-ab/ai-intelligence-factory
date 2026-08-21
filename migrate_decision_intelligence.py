@@ -17,7 +17,7 @@ import requests
 
 import decision_intelligence as di
 
-NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
+NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "").strip()  # existing Internal DB read token
 NOTION_API_VERSION = os.environ.get("NOTION_API_VERSION", "2026-03-11")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "").strip()
 NOTION_DATA_SOURCE_ID = os.environ.get("NOTION_DATA_SOURCE_ID", "").strip()
@@ -52,7 +52,7 @@ def _date(prop: dict) -> str | None:
 
 def _fetch_all_internal_pages() -> list[dict]:
     if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
-        raise ValueError("NOTION_API_KEY + NOTION_DATA_SOURCE_ID/DATABASE_ID are required")
+        raise ValueError("Internal DB read requires NOTION_API_KEY + NOTION_DATA_SOURCE_ID/DATABASE_ID")
     rows: list[dict] = []
     cursor = None
     while True:
