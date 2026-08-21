@@ -2,50 +2,20 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 3,
-            "quality_retry": 2
-          },
-          "exhausted": false,
-          "used": 5
-        },
-        "gemini-3.5-flash-lite": {
-          "budget": 450,
-          "by_kind": {
-            "global_calibration": 2,
-            "screening_batch": 8
-          },
-          "exhausted": false,
-          "used": 10
-        },
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 8,
-            "deep_dive_retry": 2,
-            "quality_retry": 8
+            "deep_dive": 1
           },
           "exhausted": false,
-          "used": 18
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 2,
-            "deep_dive_retry": 2
-          },
-          "exhausted": false,
-          "used": 4
+          "used": 1
         }
       }
     }
   },
-  "legacy_key_scopes_migrated": true,
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-08-20",
+  "quota_date": "2026-08-21",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-21T01:01:48.497515+00:00"
+  "updated_at": "2026-08-21T11:58:04.482040+00:00"
 }
