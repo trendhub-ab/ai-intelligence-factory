@@ -253,12 +253,24 @@ GEMINI_PERSISTENT_DAILY_COUNTER = os.environ.get("GEMINI_PERSISTENT_DAILY_COUNTE
 GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET", "18"))
 GEMINI_PERSISTENT_COUNTER_PATH = os.environ.get("GEMINI_PERSISTENT_COUNTER_PATH", ".runtime/gemini_daily_usage.json")
 GEMINI_COUNTER_BRANCH = os.environ.get("GEMINI_COUNTER_BRANCH", "").strip()
-# Gemini APIのRPD/RPM等はAPIキーではなくGoogle Cloud / AI Studio Project単位で共有される。
-# APIキーをローテーションしても同じquotaを引き継ぐため、永続CounterのidentityはProject IDで固定する。
-# 生のProject IDは状態ファイルへ保存せずSHA-256短縮scopeだけを保存する。
+# Gemini provider側のRPD/RPM等はGoogle Cloud / AI Studio Project単位だが、
+# このPersistent Counter自体は「このGitHub repositoryが送った試行」しか観測できない。
+# したがってCounter identityは、API keyやProject IDではなくrepository単位の安定scopeに固定する。
+# Project IDは任意の監査メタデータとして受け取り、未設定でもDailyを停止しない。
 GEMINI_QUOTA_PROJECT_ID = (
     os.environ.get("GEMINI_QUOTA_PROJECT_ID")
     or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    or ""
+).strip()
+GEMINI_QUOTA_FALLBACK_ID = (
+    os.environ.get("GEMINI_QUOTA_FALLBACK_ID")
+    or os.environ.get("GITHUB_REPOSITORY")
+    or ""
+).strip()
+GEMINI_COUNTER_SCOPE_ID = (
+    os.environ.get("GEMINI_COUNTER_SCOPE_ID")
+    or GEMINI_QUOTA_FALLBACK_ID
+    or GEMINI_QUOTA_PROJECT_ID
     or ""
 ).strip()
 MODEL_DAILY_BUDGETS = {
@@ -553,21 +565,21 @@ class GeminiBudgetExceededError(RuntimeError): pass
 
 
 class PersistentGeminiDailyCounter:
-    """Google Project単位で予約するGitHub永続Geminiカウンタ。
+    """Repository-local safety counter for Gemini requests.
 
-    Gemini APIのrate limitはAPIキー単位ではなくProject単位で共有されるため、
-    API key hashをidentityにするとキー交換・複数キー利用時にRPDを過少計上する。
-    このCounterはGEMINI_QUOTA_PROJECT_IDのSHA-256短縮値だけを保存し、同じProjectを
-    使うRun/キー間でモデル別使用量を共有する。Project IDの生値は保存・ログ出力しない。
+    Google provider quota is Project-wide, but this state file lives inside one GitHub repository
+    and cannot observe manual AI Studio calls or another repository.  Therefore the durable identity
+    is a stable repository/counter scope, not an API-key hash and not a claimed provider-wide total.
 
-    旧key_scopes形式が同じquota dayに残っている場合は、使用量を保守的に合算して
-    現Project scopeへ一度だけ移行する。異なるProjectが混在していた場合は過大計上側に
-    倒れるため、無料枠保護という目的ではFail-Safeになる。
+    Legacy same-day ``key_scopes`` and ``project_scopes`` are conservatively merged into the new
+    counter scope once.  This intentionally prefers over-counting to under-counting during migration.
+    Raw repository / Project IDs are never stored; only a SHA-256 shortened scope is persisted.
     """
     def __init__(self, enabled: bool, model_budgets: int | dict[str, int], default_budget: int | str,
                  path: str | None = None, quota_timezone: str | None = None,
-                 quota_project_id: str | None = None, api_key: str | None = None):
-        # 旧4引数形式(enabled, budget, path, timezone)は壊さない。
+                 quota_project_id: str | None = None, api_key: str | None = None,
+                 quota_scope_id: str | None = None):
+        # Legacy 4-argument form (enabled, budget, path, timezone) remains supported.
         if isinstance(default_budget, str):
             quota_timezone, path, default_budget = path, default_budget, model_budgets
         self.enabled = enabled
@@ -578,10 +590,15 @@ class PersistentGeminiDailyCounter:
         self.quota_timezone = str(quota_timezone or GEMINI_QUOTA_TIMEZONE)
         self.repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
         self.branch = GEMINI_COUNTER_BRANCH or os.environ.get("GITHUB_REF_NAME", "").strip()
-        # api_keyは旧テスト/外部補助コード互換のため引数だけ残すが、quota identityには使わない。
+        # api_key and quota_project_id remain accepted for backward compatibility / audit metadata,
+        # but neither is the durable local-counter identity.
         del api_key
         project_id = (quota_project_id if quota_project_id is not None else GEMINI_QUOTA_PROJECT_ID or "").strip()
-        self.project_scope = hashlib.sha256(project_id.encode("utf-8")).hexdigest()[:16] if project_id else ""
+        self.provider_project_scope = hashlib.sha256(project_id.encode("utf-8")).hexdigest()[:16] if project_id else ""
+        scope_id = (quota_scope_id if quota_scope_id is not None else GEMINI_COUNTER_SCOPE_ID or self.repo or project_id).strip()
+        self.counter_scope = hashlib.sha256(scope_id.encode("utf-8")).hexdigest()[:16] if scope_id else ""
+        # Compatibility alias used by older tests / helper code.
+        self.project_scope = self.counter_scope
         self.session_used = 0
 
     def budget_for(self, model_name: str) -> int:
@@ -599,49 +616,59 @@ class PersistentGeminiDailyCounter:
         if source.get("budget") is not None:
             target["budget"] = source.get("budget")
 
+    def _merge_legacy_scopes(self, target: dict, scopes: dict) -> None:
+        for legacy_scope in (scopes or {}).values():
+            if not isinstance(legacy_scope, dict):
+                continue
+            for model_name, state in (legacy_scope.get("models") or {}).items():
+                if not isinstance(state, dict):
+                    continue
+                model_target = target["models"].setdefault(
+                    model_name, {"used": 0, "by_kind": {}, "exhausted": False}
+                )
+                self._merge_model_state(model_target, state)
+
     def _normalized_day(self, data: dict, quota_date: str) -> dict:
         if data.get("quota_date") != quota_date:
-            return {"schema_version": 2, "quota_date": quota_date, "project_scopes": {}}
+            return {"schema_version": 3, "quota_date": quota_date, "counter_scopes": {}}
 
         normalized = dict(data)
-        normalized["schema_version"] = 2
-        projects = normalized.get("project_scopes")
-        if not isinstance(projects, dict):
-            projects = {}
-        normalized["project_scopes"] = projects
+        normalized["schema_version"] = 3
+        scopes = normalized.get("counter_scopes")
+        if not isinstance(scopes, dict):
+            scopes = {}
+        normalized["counter_scopes"] = scopes
 
-        # 旧API-key単位counterからの同日migration。Project scopeがまだ存在しない場合だけ
-        # 全key scopeを保守的に合算し、書き戻し後はlegacy fieldを除去して二重計上を防ぐ。
-        legacy = normalized.get("key_scopes")
-        if self.project_scope and isinstance(legacy, dict) and legacy:
-            # project_scopesが既に存在していても、旧Runnerが同日にkey_scopesを書いた可能性を
-            # 考慮して保守的に加算する。二重計上の可能性よりquota過少計上の方が危険なため、
-            # migrationは無料枠保護側へ倒す。書き戻し後はkey_scopes自体を除去する。
-            migrated = projects.setdefault(self.project_scope, {"models": {}})
-            for legacy_scope in legacy.values():
-                if not isinstance(legacy_scope, dict):
-                    continue
-                for model_name, state in (legacy_scope.get("models") or {}).items():
-                    if not isinstance(state, dict):
-                        continue
-                    target = migrated["models"].setdefault(
-                        model_name, {"used": 0, "by_kind": {}, "exhausted": False}
-                    )
-                    self._merge_model_state(target, state)
-            normalized["legacy_key_scopes_migrated"] = True
+        # Same-day migration from API-key and Project-keyed state.  Because the state file is
+        # repository-local, merging all legacy scopes is the safest migration and cannot hide usage.
+        if self.counter_scope:
+            target = scopes.setdefault(self.counter_scope, {"models": {}})
+            legacy_key_scopes = normalized.get("key_scopes")
+            legacy_project_scopes = normalized.get("project_scopes")
+            if isinstance(legacy_key_scopes, dict) and legacy_key_scopes:
+                self._merge_legacy_scopes(target, legacy_key_scopes)
+                normalized["legacy_key_scopes_migrated"] = True
+            if isinstance(legacy_project_scopes, dict) and legacy_project_scopes:
+                self._merge_legacy_scopes(target, legacy_project_scopes)
+                normalized["legacy_project_scopes_migrated"] = True
         normalized.pop("key_scopes", None)
+        normalized.pop("project_scopes", None)
         return normalized
 
-    def _project_state(self, data: dict) -> dict:
-        if not self.project_scope:
+    def _scope_state(self, data: dict) -> dict:
+        if not self.counter_scope:
             raise GeminiBudgetExceededError(
-                "Persistent Gemini counter requires GEMINI_QUOTA_PROJECT_ID (Google quota project identity)"
+                "Persistent Gemini counter requires a stable repository/counter scope"
             )
-        scopes = data.setdefault("project_scopes", {})
-        return scopes.setdefault(self.project_scope, {"models": {}})
+        scopes = data.setdefault("counter_scopes", {})
+        return scopes.setdefault(self.counter_scope, {"models": {}})
+
+    def _project_state(self, data: dict) -> dict:
+        # Backward-compatible helper name.
+        return self._scope_state(data)
 
     def _model_state(self, data: dict, model_name: str) -> dict:
-        scope = self._project_state(data)
+        scope = self._scope_state(data)
         models = scope.setdefault("models", {})
         return models.setdefault(model_name, {"used": 0, "by_kind": {}, "exhausted": False})
 
@@ -688,7 +715,7 @@ class PersistentGeminiDailyCounter:
         import json
         content = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         payload = {
-            "message": f"chore: reserve Gemini request {data.get('quota_date','')} ({self.project_scope})",
+            "message": f"chore: reserve Gemini request {data.get('quota_date','')} ({self.counter_scope})",
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
         }
         if sha:
@@ -707,26 +734,20 @@ class PersistentGeminiDailyCounter:
     def reserve(self, kind: str, reserve: int = 0, model_name: str = "default") -> None:
         if not self.enabled:
             return
-        if not self.project_scope:
-            raise GeminiBudgetExceededError(
-                "GEMINI_QUOTA_PROJECT_ID is required while GEMINI_PERSISTENT_DAILY_COUNTER=true"
-            )
-        budget = self.budget_for(model_name)
-        if budget <= 0:
-            raise GeminiBudgetExceededError("Persistent Gemini daily budget is 0")
-
+        if not self.counter_scope:
+            raise GeminiBudgetExceededError("Persistent Gemini counter has no stable scope")
         quota_date = self._quota_date()
-        # SHA競合に備え、毎回最新値を取り直して最大3回だけ試す。
+        budget = self.budget_for(model_name)
         for attempt in range(3):
             data, sha = self._read_remote()
             data = self._normalized_day(data, quota_date)
             state = self._model_state(data, model_name)
             used = int(state.get("used", 0) or 0)
-            effective_limit = max(0, budget - max(0, reserve))
-            if used + 1 > effective_limit:
+            exhausted = bool(state.get("exhausted", False))
+            if exhausted or used + 1 + max(0, reserve) > budget:
                 raise GeminiBudgetExceededError(
-                    f"Persistent Gemini daily budget exhausted: date={quota_date}, used={used}, "
-                    f"budget={budget}, reserve={reserve}, model={model_name}, kind={kind}"
+                    f"Persistent Gemini model budget exhausted: {model_name} {used}/{budget} "
+                    f"quota_date={quota_date}"
                 )
 
             by_kind = state.get("by_kind") if isinstance(state.get("by_kind"), dict) else {}
@@ -735,16 +756,18 @@ class PersistentGeminiDailyCounter:
             state["by_kind"] = by_kind
             by_kind[kind] = int(by_kind.get(kind, 0) or 0) + 1
             data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            data["scope_kind"] = "repository_local"
+            if self.provider_project_scope:
+                data["provider_project_fingerprint"] = self.provider_project_scope
             try:
                 self._write_remote(data, sha)
                 self.session_used += 1
                 logger.info(
                     f"[GEMINI PERSISTENT BUDGET] reserved {state['used']}/{budget} "
-                    f"quota_date={quota_date} project_scope={self.project_scope[:8]} model={model_name} kind={kind}"
+                    f"quota_date={quota_date} counter_scope={self.counter_scope[:8]} model={model_name} kind={kind}"
                 )
                 return
             except GeminiBudgetExceededError as e:
-                # 409/422の競合だけ再試行。それ以外はFail-Closed。
                 msg = str(e)
                 if attempt < 2 and ("HTTP 409" in msg or "HTTP 422" in msg):
                     time.sleep(0.5 * (attempt + 1))
@@ -756,18 +779,18 @@ class PersistentGeminiDailyCounter:
     def summary(self) -> str:
         if not self.enabled:
             return "Persistent Gemini Daily Counter: disabled"
-        if not self.project_scope:
-            return "Persistent Gemini Daily Counter: unavailable (GEMINI_QUOTA_PROJECT_ID missing)"
+        if not self.counter_scope:
+            return "Persistent Gemini Daily Counter: unavailable (stable scope missing)"
         try:
             data, _ = self._read_remote()
             data = self._normalized_day(data, self._quota_date())
-            models = data.get("project_scopes", {}).get(self.project_scope, {}).get("models", {})
+            models = data.get("counter_scopes", {}).get(self.counter_scope, {}).get("models", {})
             detail = ", ".join(
                 f"{name}:{int(state.get('used', 0))}/{self.budget_for(name)}"
                 for name, state in sorted(models.items())
             ) or "0"
             return (
-                f"Persistent Gemini Daily Counter(project={self.project_scope[:8]}): "
+                f"Persistent Gemini Daily Counter(scope={self.counter_scope[:8]}): "
                 f"{detail} ({data.get('quota_date')})"
             )
         except Exception as e:
@@ -781,6 +804,7 @@ PERSISTENT_GEMINI_COUNTER = PersistentGeminiDailyCounter(
     GEMINI_PERSISTENT_COUNTER_PATH,
     GEMINI_QUOTA_TIMEZONE,
     GEMINI_QUOTA_PROJECT_ID,
+    quota_scope_id=GEMINI_COUNTER_SCOPE_ID,
 )
 
 
@@ -1254,11 +1278,19 @@ def initialize_runtime() -> None:
         raise ValueError("エラー: Product Huntは必須ソースのため PRODUCTHUNT_DEVELOPER_TOKEN が必要です。")
     if ENABLE_SUBSCRIPTION_ATTRIBUTION and not SUBSCRIPTION_LANDING_URL:
         logger.warning("[ATTRIBUTION PREFLIGHT] SUBSCRIPTION_LANDING_URL未設定。記事生成は継続しますがサブスクCTA/転換計測は無効です。")
-    if GEMINI_PERSISTENT_DAILY_COUNTER and not GEMINI_QUOTA_PROJECT_ID:
+    if GEMINI_PERSISTENT_DAILY_COUNTER and not GEMINI_COUNTER_SCOPE_ID:
         raise ValueError(
-            "エラー: Gemini quotaはProject単位です。Repository Variable GEMINI_QUOTA_PROJECT_ID "
-            "（AI Studio / Google CloudでAPIキーが属するProject ID）を設定してください。"
+            "エラー: Gemini永続Safety Counterの安定scopeを決定できません。"
+            "GitHub ActionsではGITHUB_REPOSITORYが自動設定されます。"
         )
+    if GEMINI_PERSISTENT_DAILY_COUNTER:
+        if GEMINI_QUOTA_PROJECT_ID:
+            logger.info("[GEMINI QUOTA PREFLIGHT] repository-local counter active; provider Project fingerprint available")
+        else:
+            logger.warning(
+                "[GEMINI QUOTA PREFLIGHT] GEMINI_QUOTA_PROJECT_IDはWorkflowから取得できませんでした。"
+                "Repository-local counterへ自動フォールバックします。AI StudioのProject-wide使用量が最終的な正です。"
+            )
     if not SCREENING_MODEL_POOL or not DEEP_DIVE_MODEL_POOL:
         raise ValueError("Gemini model candidate pool が空です。")
     preflight_notion_schema()

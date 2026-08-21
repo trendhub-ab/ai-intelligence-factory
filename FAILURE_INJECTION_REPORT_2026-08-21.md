@@ -81,17 +81,17 @@
    - metrics importで`attribution_method`を必須化し、note dashboardだけの数値から加入・売上を帰属する入力を拒否。未知article_id、PII様column、負値/不正数値もFail-Closed。実測は現版のランキングへ自動反映しない。
 
 35. APIキー単位counterによるRPD過少計上
-   - Gemini quotaはProject単位で共有されるため、旧`key_scopes`方式を廃止。`GEMINI_QUOTA_PROJECT_ID`のhashを永続scopeとし、APIキー交換・複数キーでも同一Projectの使用量を共有する。旧counterは同一quota dayなら保守的に合算migrationし、生のProject ID/API Keyは保存しない。
+   - Gemini provider quotaはProject単位だが、repository内のPersistent Counterは他のAI Studio/別repository利用を観測できない。Project ID必須停止を撤廃し、repository-local stable scopeへ変更。旧`key_scopes`/`project_scopes`は同一quota dayなら保守的に合算migrationし、生のRepository名/Project ID/API Keyは保存しない。Project-wideの最終的な正はAI Studio Rate Limits画面とする。
 36. Gemini API消費の原因追跡不能
    - `GeminiUsageAudit`を追加し、model / request kind /短いcandidate context / success-error / SDKが返すtoken usageで送信試行を記録。Prompt本文は保存せず、`gate_history/gemini_usage_*.json`をPrivate Artifact化。Daily通知にもmodel別・用途別のattempt内訳を出し、Screening/Calibration/Deep Dive/Quality Retry/transport retryの消費原因を追跡可能にした。
 
 ## テスト結果
 
-- Adversarial / Failure Injection: 105/105 PASS
+- Adversarial / Failure Injection: 106/106 PASS
 - Notion Persistence: 48/48 PASS
-- Safety Unit: 75/75 PASS
+- Safety Unit: 76/76 PASS
 - Subscription Attribution: 11/11 PASS
-- unittest discovery: 239/239 PASS
+- unittest discovery: 241/241 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
 

@@ -204,43 +204,62 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertEqual("fallback", selected)
         self.assertIn("primary", pipeline.SESSION_EXHAUSTED_MODELS)
 
-    def test_persistent_counter_shares_scope_across_api_keys_in_same_project(self):
+    def test_persistent_counter_shares_scope_across_api_keys_in_same_repository_scope(self):
         first = pipeline.PersistentGeminiDailyCounter(
-            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a", api_key="first"
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC",
+            quota_project_id="project-a", api_key="first", quota_scope_id="owner/repo"
         )
         second = pipeline.PersistentGeminiDailyCounter(
-            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a", api_key="second"
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC",
+            quota_project_id="project-a", api_key="second", quota_scope_id="owner/repo"
         )
-        data = {"quota_date": "2026-08-17", "project_scopes": {}}
+        data = {"quota_date": "2026-08-17", "counter_scopes": {}}
         first._model_state(data, "m")["used"] = 18
-        self.assertEqual(first.project_scope, second.project_scope)
+        self.assertEqual(first.counter_scope, second.counter_scope)
         self.assertEqual(18, second._model_state(data, "m")["used"])
         serialized = json.dumps(data)
         self.assertNotIn("project-a", serialized)
+        self.assertNotIn("owner/repo", serialized)
         self.assertNotIn("first", serialized)
         self.assertNotIn("second", serialized)
 
-    def test_persistent_counter_separates_different_projects(self):
+    def test_provider_project_change_does_not_reset_repository_local_counter(self):
         first = pipeline.PersistentGeminiDailyCounter(
-            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a"
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC",
+            quota_project_id="project-a", quota_scope_id="owner/repo"
         )
         second = pipeline.PersistentGeminiDailyCounter(
-            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-b"
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC",
+            quota_project_id="project-b", quota_scope_id="owner/repo"
         )
-        data = {"quota_date": "2026-08-17", "project_scopes": {}}
+        data = {"quota_date": "2026-08-17", "counter_scopes": {}}
+        first._model_state(data, "m")["used"] = 18
+        self.assertEqual(first.counter_scope, second.counter_scope)
+        self.assertEqual(18, second._model_state(data, "m")["used"])
+
+    def test_different_repository_scopes_are_separated(self):
+        first = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_scope_id="owner/repo-a"
+        )
+        second = pipeline.PersistentGeminiDailyCounter(
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_scope_id="owner/repo-b"
+        )
+        data = {"quota_date": "2026-08-17", "counter_scopes": {}}
         first._model_state(data, "m")["used"] = 18
         self.assertEqual(18, first._model_state(data, "m")["used"])
         self.assertEqual(0, second._model_state(data, "m")["used"])
 
-    def test_legacy_api_key_scopes_are_conservatively_migrated_to_project_scope(self):
+    def test_legacy_api_key_and_project_scopes_are_conservatively_migrated(self):
         counter = pipeline.PersistentGeminiDailyCounter(
-            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_project_id="project-a"
+            True, {"m": 18}, 18, ".runtime/test.json", "UTC", quota_scope_id="owner/repo"
         )
         data = {
             "quota_date": "2026-08-17",
             "key_scopes": {
                 "old-a": {"models": {"m": {"used": 5, "by_kind": {"deep_dive": 5}, "exhausted": False}}},
-                "old-b": {"models": {"m": {"used": 3, "by_kind": {"quality_retry": 3}, "exhausted": False}}},
+            },
+            "project_scopes": {
+                "old-project": {"models": {"m": {"used": 3, "by_kind": {"quality_retry": 3}, "exhausted": False}}},
             },
         }
         migrated = counter._normalized_day(data, "2026-08-17")
@@ -249,7 +268,9 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertEqual(5, state["by_kind"]["deep_dive"])
         self.assertEqual(3, state["by_kind"]["quality_retry"])
         self.assertNotIn("key_scopes", migrated)
+        self.assertNotIn("project_scopes", migrated)
         self.assertTrue(migrated["legacy_key_scopes_migrated"])
+        self.assertTrue(migrated["legacy_project_scopes_migrated"])
 
     def test_model_budget_uses_configured_per_model_cap(self):
         counter = pipeline.PersistentGeminiDailyCounter(

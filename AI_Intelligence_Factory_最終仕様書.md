@@ -108,11 +108,11 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - Screening Model Pool: Flash-Lite系モデル（既定: `gemini-3.5-flash-lite`、`gemini-3.1-flash-lite`）
 - Deep Dive Model Pool: Flash系モデル（既定: `gemini-3.6-flash`、`gemini-3.7-flash`、`gemini-3.5-flash`）
 - 429、404、503等ではモデルPool内でFallbackする。
-- Persistent Daily Counterは**Google Project・モデル単位**で利用量を永続管理する。Gemini APIのquotaはAPIキー交換でリセットされないため、`GEMINI_QUOTA_PROJECT_ID`をSHA-256短縮scopeへ変換して共有し、生のProject ID/API Keyは状態ファイルへ保存しない。旧API-key scopeの同日counterが残る場合はProject scopeへ保守的に合算移行する。ローカルBudget/Retry Budgetを先に検査し、実送信不能な要求でPersistent Counterを過剰予約しない。
+- Persistent Daily Counterは**repository-local・モデル単位**で利用量を永続管理する。API key交換でCounterがリセットされないようrepository由来の安定scopeをSHA-256短縮して使い、生のRepository名/Project ID/API Keyは状態ファイルへ保存しない。旧API-key / Project scopeの同日counterは新scopeへ保守的に合算移行する。Google Project全体の最終使用量はAI Studio Rate Limits画面を正とする。ローカルBudget/Retry Budgetを先に検査し、実送信不能な要求でPersistent Counterを過剰予約しない。
 - 実行内Gemini安全上限は50リクエスト。Deep Dive用に3リクエストを予約する。
 - Screening Retry Budgetは4、Deep Dive Retry Budgetは1。無限Retryはしない。
 - クォータ・通信障害はQuality FailedではなくPending Retry／未判定として扱う。
-- `GEMINI_PERSISTENT_DAILY_COUNTER=true`のproduction/Real Regressionでは`GEMINI_QUOTA_PROJECT_ID`を必須Preflightする。未設定ならGeminiを1回も呼ぶ前にFail-Closed停止する。
+- `GEMINI_QUOTA_PROJECT_ID`は任意の監査メタデータとする。Workflowから取得できない場合は`github.repository`由来のrepository-local counter scopeへ自動フォールバックし、Dailyは継続する。安定scope自体を決定できない場合だけFail-Closedする。
 - 1 Run内のGemini送信試行は`GeminiUsageAudit`でmodel / request kind /短いcandidate context / success-error / SDKが返すtoken usageに分解して記録する。Prompt本文・未公開記事本文は監査ログへ保存しない。`gate_history/gemini_usage_*.json`はPrivate Artifactへ保存し、Daily完了通知にもmodel別・用途別attempt数を出す。
 
 ### Deep Dive記事生成の現行設定
@@ -287,18 +287,18 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - Deep Dive local budget、transport retry budget、reserve判定が設定上限を超えないことをFailure Injectionで固定する。
 - Quality Retry前後のHuman Appeal／Decision Voiceを比較し、具体Actionが単なる「注視」へ崩壊する等の実質劣化を検出する。`trigger_reason_codes`と`final_reason_codes`は分離して保持する。
 - Gate組合せをAdversarial化し、`Fact FAIL × Publication REVIEW`がNeeds Editorial Reviewへ誤遷移しないことを固定する。
-- Pending Retry公平性、Notion Schema Preflight、Persistent Counter予約順、**Project単位quota scope・旧key scope migration・API usage audit**、Public DB承認取消archive、Product Hunt recent-window、Freshness関連性、Workflow timeout/concurrency、月次Digest private artifactを固定Regression化する。
+- Pending Retry公平性、Notion Schema Preflight、Persistent Counter予約順、**repository-local quota scope・旧key/project scope migration・API usage audit**、Public DB承認取消archive、Product Hunt recent-window、Freshness関連性、Workflow timeout/concurrency、月次Digest private artifactを固定Regression化する。
 - Needs Editorial Reviewでも補強PDF/Docsを最終Evidence URLへ残すこと、Notion Stock保存失敗候補を同RunのDeep Dive対象から除外すること、旧HN/Product Hunt discovery URLを明示aliasとして重複判定できることを固定Regression化する。
 - `test_adversarial_regression.py`は直接実行と`unittest discover`で同じテスト集合を実行する。
 - Profit PriorityをFailure Injection化し、Commercial ValueがStock閾値を迂回しないこと、Notion未永続化候補を押し上げないこと、Commercial再順位付け、EVERGREENの許容差付きPortfolio枠、Profit Priority無効化時の旧Decision順復帰、Profit補助項目欠落時のDecision行維持、Calibration/Observed履歴の独立保存を固定する。
 - Content Portfolio BalanceをFailure Injection化し、同Topic偏重時だけ僅差の別Topicを繰り上げること、大幅に弱い別Topicを強制しないこと、`OTHER`/欠落Topicでは順位を動かさないこと、唯一のEVERGREEN枠を保護すること、無効化時に従来Priority順へ戻ること、Observed履歴へTopicを保持することを固定する。
 - Source ROI LearningをFailure Injection化し、冷開始50件/Source、全4 Source最低25枠、状態破損Fail-Safe、実Notion Stockだけの歩留まり計上、学習後の高ROI配分を固定する。さらに4 Sourceの最大枠が共通値であること、同一ROIなら4 Sourceが対称配分されProduct Huntだけが優遇・抑制されないことを固定する。
 
-2026-08-21時点の結果: Adversarial 105/105、Notion Persistence 48/48、Safety 75/75、Subscription Attribution 11/11、全Unit 239/239、Synthetic Regression Full 500/500、critical failure 0。
+2026-08-21時点の結果: Adversarial 106/106、Notion Persistence 48/48、Safety 76/76、Subscription Attribution 11/11、全Unit 241/241、Synthetic Regression Full 500/500、critical failure 0。
 
 ## 11. 主な環境変数
 
-`GEMINI_QUOTA_PROJECT_ID=<Google Project ID>`、`GEMINI_PERSISTENT_DAILY_COUNTER=true`、`GITHUB_FETCH_LIMIT=50`、`HN_FETCH_LIMIT=50`、`ARXIV_FETCH_LIMIT=50`、`PRODUCTHUNT_FETCH_LIMIT=50`、`PRODUCTHUNT_LOOKBACK_HOURS=72`、`MAX_SCREENING_CANDIDATES=200`、`ENABLE_SOURCE_ROI_LEARNING=true`、`SOURCE_ROI_HISTORY_RUNS=30`、`SOURCE_ROI_RECENCY_DECAY=0.93`、`SOURCE_ROI_MIN_SCREENED=50`、`SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS=2`、`SOURCE_ROI_MIN_MATURE_SOURCES=2`、`SOURCE_ROI_MIN_FETCH_PER_SOURCE=25`、`SOURCE_ROI_MAX_FETCH_PER_SOURCE=75`、`SOURCE_ROI_EXPLORATION_WEIGHT=0.15`、`ENABLE_PROFIT_PRIORITY=true`、`DEEP_DIVE_DECISION_WEIGHT=0.65`、`DEEP_DIVE_COMMERCIAL_WEIGHT=0.35`、`EVERGREEN_PORTFOLIO_MIN=1`、`EVERGREEN_PRIORITY_TOLERANCE=8`、`ENABLE_PORTFOLIO_BALANCE=true`、`PORTFOLIO_MIN_DISTINCT_TOPICS=2`、`PORTFOLIO_TOPIC_PRIORITY_TOLERANCE=6`、`SCREENING_BATCH_SIZE=25`、`SCREENING_BATCH_PACING_SECONDS=10`、`ENABLE_GLOBAL_CALIBRATION=true`、`GLOBAL_CALIBRATION_MIN_RAW_SCORE=55`、`GLOBAL_CALIBRATION_BATCH_SIZE=50`、`ENABLE_OBSERVED_HISTORY=true`、`OBSERVED_HISTORY_DIR=observed_history`、`OBSERVED_HISTORY_GITHUB_DIR=observed_history`、`NOTION_SAVE_THRESHOLD_SCORE=60`、`TOP_N_FOR_DEEP_DIVE=3`、`GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=9000`、`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET=12`、`MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7`、`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS=2`、`MAX_EVIDENCE_DOCUMENTS=3`、`MAX_EVIDENCE_TOTAL_CHARS=12000`。
+`GEMINI_QUOTA_PROJECT_ID=<Google Project ID, optional>`、`GEMINI_PERSISTENT_DAILY_COUNTER=true`、`GITHUB_FETCH_LIMIT=50`、`HN_FETCH_LIMIT=50`、`ARXIV_FETCH_LIMIT=50`、`PRODUCTHUNT_FETCH_LIMIT=50`、`PRODUCTHUNT_LOOKBACK_HOURS=72`、`MAX_SCREENING_CANDIDATES=200`、`ENABLE_SOURCE_ROI_LEARNING=true`、`SOURCE_ROI_HISTORY_RUNS=30`、`SOURCE_ROI_RECENCY_DECAY=0.93`、`SOURCE_ROI_MIN_SCREENED=50`、`SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS=2`、`SOURCE_ROI_MIN_MATURE_SOURCES=2`、`SOURCE_ROI_MIN_FETCH_PER_SOURCE=25`、`SOURCE_ROI_MAX_FETCH_PER_SOURCE=75`、`SOURCE_ROI_EXPLORATION_WEIGHT=0.15`、`ENABLE_PROFIT_PRIORITY=true`、`DEEP_DIVE_DECISION_WEIGHT=0.65`、`DEEP_DIVE_COMMERCIAL_WEIGHT=0.35`、`EVERGREEN_PORTFOLIO_MIN=1`、`EVERGREEN_PRIORITY_TOLERANCE=8`、`ENABLE_PORTFOLIO_BALANCE=true`、`PORTFOLIO_MIN_DISTINCT_TOPICS=2`、`PORTFOLIO_TOPIC_PRIORITY_TOLERANCE=6`、`SCREENING_BATCH_SIZE=25`、`SCREENING_BATCH_PACING_SECONDS=10`、`ENABLE_GLOBAL_CALIBRATION=true`、`GLOBAL_CALIBRATION_MIN_RAW_SCORE=55`、`GLOBAL_CALIBRATION_BATCH_SIZE=50`、`ENABLE_OBSERVED_HISTORY=true`、`OBSERVED_HISTORY_DIR=observed_history`、`OBSERVED_HISTORY_GITHUB_DIR=observed_history`、`NOTION_SAVE_THRESHOLD_SCORE=60`、`TOP_N_FOR_DEEP_DIVE=3`、`GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=9000`、`GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET=12`、`MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7`、`MAX_EVIDENCE_SUPPLEMENT_ATTEMPTS=2`、`MAX_EVIDENCE_DOCUMENTS=3`、`MAX_EVIDENCE_TOTAL_CHARS=12000`。
 
 ## 12. 依存関係
 

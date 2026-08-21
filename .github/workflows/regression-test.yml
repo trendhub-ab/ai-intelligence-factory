@@ -30,7 +30,8 @@ jobs:
           REGEN_TEST_MODE: "true"
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
           GEMINI_COUNTER_BRANCH: "main"
           GH_PAT: ${{ secrets.GH_PAT }}

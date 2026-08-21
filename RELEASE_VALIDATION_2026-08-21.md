@@ -1,15 +1,15 @@
 # AI Intelligence Factory Release Validation
 
-Release: Gemini Quota Project Scope / Usage Audit修正版 2026-08-21
+Release: Gemini Quota Repository Scope / Usage Audit修正版 2026-08-21
 
 ## Final validation
 
 - Python syntax: PASS
-- Safety Unit: 75/75 PASS
+- Safety Unit: 76/76 PASS
 - Notion Persistence: 48/48 PASS
-- Adversarial / Failure Injection: 105/105 PASS
+- Adversarial / Failure Injection: 106/106 PASS
 - Subscription Attribution: 11/11 PASS
-- unittest discovery: 239/239 PASS
+- unittest discovery: 241/241 PASS
 - Synthetic Regression Full: 500/500 PASS
 - Critical failures: 0
 - Workflow YAML parse: 4/4 PASS
@@ -54,14 +54,15 @@ Profit/Portfolio optimization may change which eligible Stock candidate is attem
 
 ## Gemini quota protection correction
 
-- Persistent Gemini usage is now scoped by `GEMINI_QUOTA_PROJECT_ID`, not API key hash. API-key rotation within the same Google Project therefore cannot reset the internal RPD counter.
-- Legacy same-day `key_scopes` state is conservatively merged into the new project scope before further reservations. Raw Project ID and API keys are never persisted in the counter file.
-- Production and Real Article Regression fail closed before Gemini use when persistent quota protection is enabled but `GEMINI_QUOTA_PROJECT_ID` is missing.
+- Persistent Gemini usage is now scoped by a stable repository-local counter identity, not API-key hash. API-key rotation therefore cannot reset this repository's internal safety counter.
+- Legacy same-day `key_scopes` / `project_scopes` are conservatively merged into the new repository-local counter scope. Raw repository name, Project ID and API keys are never persisted in the counter file.
+- Production and Real Article Regression no longer fail only because `GEMINI_QUOTA_PROJECT_ID` is missing. They fall back to the stable GitHub repository scope; only the absence of any stable counter scope fails closed.
 - `GeminiUsageAudit` records each attempted request by model, purpose, short candidate/batch context, success/error outcome, and returned token usage without storing prompts or unpublished article bodies.
 - Usage audit JSON is written under `gate_history/` for private artifact retention; Daily Telegram output includes compact model/purpose attempt counts.
 - Existing per-model safety caps remain conservative (`18` for 20-RPD Flash models; `450` for 500-RPD Flash-Lite models in the current workflow configuration).
+- The repository-local counter is deliberately not described as authoritative Project-wide usage. Manual AI Studio / other-repository usage must be checked in the AI Studio Rate Limits dashboard.
 
 ## Required deployment setting
 
-- Set GitHub Repository Variable `GEMINI_QUOTA_PROJECT_ID` to the Google AI Studio / Google Cloud Project ID that owns the Gemini API key. See `GEMINI_QUOTA_SETUP.md`.
+- `GEMINI_QUOTA_PROJECT_ID` is optional audit metadata. Workflow accepts Repository Variable or Secret and otherwise uses `github.repository` as the safety-counter scope. See `GEMINI_QUOTA_SETUP.md`.
 - `SUBSCRIPTION_LANDING_URL` may remain unset; subscription CTA/attribution stays disabled without affecting Daily article generation.

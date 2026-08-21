@@ -667,7 +667,7 @@ class TestProductHuntMandatoryPreflight(unittest.TestCase):
         preflight.assert_not_called()
 
 
-    def test_normal_runtime_requires_quota_project_id_before_notion_preflight(self):
+    def test_normal_runtime_falls_back_when_quota_project_id_is_not_injected(self):
         with patch.object(pipeline, "PUBLIC_DB_SYNC_MODE", False), \
              patch.object(pipeline, "SYNTHETIC_REGRESSION_MODE", False), \
              patch.object(pipeline, "REGEN_TEST_MODE", False), \
@@ -676,12 +676,30 @@ class TestProductHuntMandatoryPreflight(unittest.TestCase):
              patch.object(pipeline, "PRODUCTHUNT_DEVELOPER_TOKEN", "ph"), \
              patch.object(pipeline, "GEMINI_PERSISTENT_DAILY_COUNTER", True), \
              patch.object(pipeline, "GEMINI_QUOTA_PROJECT_ID", ""), \
+             patch.object(pipeline, "GEMINI_COUNTER_SCOPE_ID", "owner/repo"), \
+             patch.object(pipeline, "SCREENING_MODEL_POOL", ["s"]), \
+             patch.object(pipeline, "DEEP_DIVE_MODEL_POOL", ["d"]), \
+             patch.object(pipeline, "_register_gemini_usage_atexit"), \
+             patch.object(pipeline, "preflight_notion_schema") as preflight:
+            pipeline.initialize_runtime()
+        preflight.assert_called_once()
+
+    def test_normal_runtime_fails_only_when_no_stable_counter_scope_exists(self):
+        with patch.object(pipeline, "PUBLIC_DB_SYNC_MODE", False), \
+             patch.object(pipeline, "SYNTHETIC_REGRESSION_MODE", False), \
+             patch.object(pipeline, "REGEN_TEST_MODE", False), \
+             patch.object(pipeline, "GEMINI_API_KEY", "g"), \
+             patch.object(pipeline, "GH_PAT", "gh"), \
+             patch.object(pipeline, "PRODUCTHUNT_DEVELOPER_TOKEN", "ph"), \
+             patch.object(pipeline, "GEMINI_PERSISTENT_DAILY_COUNTER", True), \
+             patch.object(pipeline, "GEMINI_QUOTA_PROJECT_ID", ""), \
+             patch.object(pipeline, "GEMINI_COUNTER_SCOPE_ID", ""), \
              patch.object(pipeline, "SCREENING_MODEL_POOL", ["s"]), \
              patch.object(pipeline, "DEEP_DIVE_MODEL_POOL", ["d"]), \
              patch.object(pipeline, "preflight_notion_schema") as preflight:
             with self.assertRaises(ValueError) as ctx:
                 pipeline.initialize_runtime()
-        self.assertIn("GEMINI_QUOTA_PROJECT_ID", str(ctx.exception))
+        self.assertIn("安定scope", str(ctx.exception))
         preflight.assert_not_called()
 
 
@@ -813,8 +831,10 @@ class TestWorkflowOperationalGuards(unittest.TestCase):
         regen = (root / "regression-test.yml").read_text()
         self.assertIn("group: ai-intelligence-gemini-budget", daily)
         self.assertIn("group: ai-intelligence-gemini-budget", regen)
-        self.assertIn("GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID }}", daily)
-        self.assertIn("GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID }}", regen)
+        self.assertIn("GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}", daily)
+        self.assertIn("GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}", regen)
+        self.assertIn("GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}", daily)
+        self.assertIn("GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}", regen)
         self.assertIn("gate_history/", regen)
 
     def test_monthly_digest_is_private_artifact_not_public_raw_url(self):
