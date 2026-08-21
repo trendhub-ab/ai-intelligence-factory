@@ -1,6 +1,6 @@
 {
-  "key_scopes": {
-    "bb4642cecaf854c8": {
+  "counter_scopes": {
+    "3fc8d8746c93f55a": {
       "models": {
         "gemini-3.5-flash-lite": {
           "budget": 450,
@@ -14,16 +14,20 @@
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 5,
+            "deep_dive": 6,
             "deep_dive_retry": 2,
             "quality_retry": 5
           },
           "exhausted": false,
-          "used": 12
+          "used": 13
         }
       }
     }
   },
+  "legacy_key_scopes_migrated": true,
+  "provider_project_fingerprint": "8feffa4385ed3d61",
   "quota_date": "2026-08-20",
-  "updated_at": "2026-08-20T09:12:33.095594+00:00"
+  "schema_version": 3,
+  "scope_kind": "repository_local",
+  "updated_at": "2026-08-21T00:30:40.626255+00:00"
 }
