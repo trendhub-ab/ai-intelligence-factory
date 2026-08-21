@@ -14,8 +14,10 @@ import os
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
+from difflib import SequenceMatcher
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
@@ -33,6 +35,13 @@ NOTION_TECH_DATA_SOURCE_ID = os.environ.get("NOTION_TECH_DATA_SOURCE_ID", "").st
 NOTION_HISTORY_DATABASE_ID = os.environ.get("NOTION_HISTORY_DATABASE_ID", "").strip()
 NOTION_HISTORY_DATA_SOURCE_ID = os.environ.get("NOTION_HISTORY_DATA_SOURCE_ID", "").strip()
 
+NOTION_SUBSCRIBER_TECH_DATABASE_ID = os.environ.get("NOTION_SUBSCRIBER_TECH_DATABASE_ID", "").strip()
+NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID = os.environ.get("NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID", "").strip()
+NOTION_MONTHLY_DATABASE_ID = os.environ.get("NOTION_MONTHLY_DATABASE_ID", "").strip()
+NOTION_MONTHLY_DATA_SOURCE_ID = os.environ.get("NOTION_MONTHLY_DATA_SOURCE_ID", "").strip()
+ENABLE_SUBSCRIBER_TECH_SYNC = os.environ.get("ENABLE_SUBSCRIBER_TECH_SYNC", "false").lower() in {"1", "true", "yes", "on"}
+ENABLE_DECISION_MONTHLY_DIGEST = os.environ.get("ENABLE_DECISION_MONTHLY_DIGEST", "false").lower() in {"1", "true", "yes", "on"}
+
 ADOPTION_STATUSES = {"WATCH", "TEST", "ADOPT", "AVOID"}
 CONFIDENCE_LEVELS = {"LOW", "MEDIUM", "HIGH"}
 READINESS_LEVELS = {"LOW", "MEDIUM", "HIGH"}
@@ -40,6 +49,11 @@ ENTITY_RESOLUTION_STATUSES = {"RESOLVED", "AMBIGUOUS", "LEGACY_PENDING"}
 TRACKING_STATUSES = {"ACTIVE", "PAUSED", "ARCHIVED"}
 ASSESSMENT_STATES = {"SCREENED", "ASSESSED", "LEGACY_PENDING", "HISTORY_PENDING"}
 SNAPSHOT_TYPES = {"INITIAL", "CHANGE", "PERIODIC", "MIGRATION"}
+
+MEANINGFUL_SCORE_DELTA = max(1, int(os.environ.get("DI_MEANINGFUL_SCORE_DELTA", "5")))
+STATUS_HYSTERESIS_SCORE_DELTA = max(0, int(os.environ.get("DI_STATUS_HYSTERESIS_SCORE_DELTA", "3")))
+RISK_TEXT_SIMILARITY_THRESHOLD = min(0.99, max(0.50, float(os.environ.get("DI_RISK_TEXT_SIMILARITY_THRESHOLD", "0.82"))))
+PRODUCT_TIMEZONE = os.environ.get("DI_PRODUCT_TIMEZONE", "Asia/Tokyo")
 
 TECH_PROP_NAME = "Technology / Project Name"
 TECH_PROP_PRIMARY_URL = "Primary URL"
@@ -95,6 +109,31 @@ HISTORY_PROP_STATUS_CHANGED = "Status Changed"
 HISTORY_PROP_SNAPSHOT_TYPE = "Snapshot Type"
 HISTORY_PROP_ENTITY_ID = "Canonical Entity ID"
 HISTORY_PROP_EVENT_ID = "History Event ID"
+
+SUB_PROP_NAME = "Technology / Project Name"
+SUB_PROP_PRIMARY_URL = "Primary URL"
+SUB_PROP_SOURCE = "Source"
+SUB_PROP_CATEGORY = "Category"
+SUB_PROP_ADOPTION_SCORE = "Adoption Score"
+SUB_PROP_ADOPTION_STATUS = "Adoption Status"
+SUB_PROP_EVIDENCE_CONFIDENCE = "Evidence Confidence"
+SUB_PROP_PRODUCTION_READINESS = "Production Readiness"
+SUB_PROP_MAIN_RISK = "Main Risk"
+SUB_PROP_BEST_FOR = "Best For"
+SUB_PROP_AVOID_FOR = "Avoid For"
+SUB_PROP_SHORT_RATIONALE = "Short Rationale"
+SUB_PROP_FIRST_SEEN = "First Seen"
+SUB_PROP_LAST_REVIEWED = "Last Reviewed"
+SUB_PROP_SCORE_CHANGE = "Score Change"
+SUB_PROP_RELATED_ARTICLE = "Related Article"
+SUB_PROP_EVIDENCE_URLS = "Primary Evidence URLs"
+SUB_PROP_ENTITY_ID = "Canonical Entity ID"
+
+MONTHLY_PROP_TITLE = "Monthly Digest"
+MONTHLY_PROP_PERIOD_ID = "Period ID"
+MONTHLY_PROP_GENERATED_AT = "Generated At"
+MONTHLY_PROP_CHANGE_COUNT = "Change Count"
+MONTHLY_PROP_SUMMARY = "Summary"
 
 TECH_REQUIRED_PROPERTY_TYPES = {
     TECH_PROP_NAME: "title",
@@ -153,6 +192,21 @@ HISTORY_REQUIRED_PROPERTY_TYPES = {
     HISTORY_PROP_SNAPSHOT_TYPE: "select",
     HISTORY_PROP_ENTITY_ID: "rich_text",
     HISTORY_PROP_EVENT_ID: "rich_text",
+}
+
+SUBSCRIBER_REQUIRED_PROPERTY_TYPES = {
+    SUB_PROP_NAME: "title", SUB_PROP_PRIMARY_URL: "url", SUB_PROP_SOURCE: "multi_select",
+    SUB_PROP_CATEGORY: "select", SUB_PROP_ADOPTION_SCORE: "number", SUB_PROP_ADOPTION_STATUS: "select",
+    SUB_PROP_EVIDENCE_CONFIDENCE: "select", SUB_PROP_PRODUCTION_READINESS: "select",
+    SUB_PROP_MAIN_RISK: "rich_text", SUB_PROP_BEST_FOR: "rich_text", SUB_PROP_AVOID_FOR: "rich_text",
+    SUB_PROP_SHORT_RATIONALE: "rich_text", SUB_PROP_FIRST_SEEN: "date", SUB_PROP_LAST_REVIEWED: "date",
+    SUB_PROP_SCORE_CHANGE: "number", SUB_PROP_RELATED_ARTICLE: "url", SUB_PROP_EVIDENCE_URLS: "rich_text",
+    SUB_PROP_ENTITY_ID: "rich_text",
+}
+
+MONTHLY_REQUIRED_PROPERTY_TYPES = {
+    MONTHLY_PROP_TITLE: "title", MONTHLY_PROP_PERIOD_ID: "rich_text", MONTHLY_PROP_GENERATED_AT: "date",
+    MONTHLY_PROP_CHANGE_COUNT: "number", MONTHLY_PROP_SUMMARY: "rich_text",
 }
 
 
@@ -223,6 +277,18 @@ def preflight_decision_intelligence_schema() -> None:
 
     _validate_schema(tech.json().get("properties", {}), TECH_REQUIRED_PROPERTY_TYPES, "Technology Intelligence DB")
     _validate_schema(history.json().get("properties", {}), HISTORY_REQUIRED_PROPERTY_TYPES, "Decision History DB")
+    if ENABLE_SUBSCRIBER_TECH_SYNC:
+        if not (NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID or NOTION_SUBSCRIBER_TECH_DATABASE_ID):
+            raise ValueError("Subscriber Technology sync enabled but destination DB is not configured")
+        sub = requests.get(_schema_url(NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID, NOTION_SUBSCRIBER_TECH_DATABASE_ID), headers=_headers(), timeout=15)
+        sub.raise_for_status()
+        _validate_schema(sub.json().get("properties", {}), SUBSCRIBER_REQUIRED_PROPERTY_TYPES, "Subscriber Technology DB")
+    if ENABLE_DECISION_MONTHLY_DIGEST:
+        if not (NOTION_MONTHLY_DATA_SOURCE_ID or NOTION_MONTHLY_DATABASE_ID):
+            raise ValueError("Decision Monthly Digest enabled but destination DB is not configured")
+        monthly = requests.get(_schema_url(NOTION_MONTHLY_DATA_SOURCE_ID, NOTION_MONTHLY_DATABASE_ID), headers=_headers(), timeout=15)
+        monthly.raise_for_status()
+        _validate_schema(monthly.json().get("properties", {}), MONTHLY_REQUIRED_PROPERTY_TYPES, "Decision Monthly DB")
     logger.info(
         "[DECISION INTELLIGENCE PREFLIGHT OK] technology_properties=%d history_properties=%d",
         len(TECH_REQUIRED_PROPERTY_TYPES), len(HISTORY_REQUIRED_PROPERTY_TYPES),
@@ -418,9 +484,9 @@ def _current_state(page: dict | None) -> dict:
         "production_readiness": _select_value(props.get(TECH_PROP_PRODUCTION_READINESS, {})),
         "evidence_confidence": _select_value(props.get(TECH_PROP_EVIDENCE_CONFIDENCE, {})),
         "main_risk": _rich_text_value(props.get(TECH_PROP_MAIN_RISK, {})),
-        "sources": _multi_select_values(props.get(TECH_PROP_SOURCE, {})),
+        "sources": sorted(set(_multi_select_values(props.get(TECH_PROP_SOURCE, {})))),
         "entity_aliases": [x.strip() for x in _rich_text_value(props.get(TECH_PROP_ENTITY_ALIASES, {})).splitlines() if x.strip()],
-        "evidence_urls": [x.strip() for x in _rich_text_value(props.get(TECH_PROP_EVIDENCE_URLS, {})).splitlines() if x.strip()],
+        "evidence_urls": sorted(set(x.strip() for x in _rich_text_value(props.get(TECH_PROP_EVIDENCE_URLS, {})).splitlines() if x.strip())),
         "first_seen": _date_value(props.get(TECH_PROP_FIRST_SEEN, {})),
         "last_reviewed": _date_value(props.get(TECH_PROP_LAST_REVIEWED, {})),
         "last_change_at": _date_value(props.get(TECH_PROP_LAST_CHANGE_AT, {})),
@@ -491,26 +557,66 @@ def _build_technology_properties(assessment: dict, resolution: EntityResolution,
     return props
 
 
+def _risk_category(text: str) -> str:
+    value = _normalize_compare_text(text)
+    categories = (
+        ("SECURITY", r"security|vulnerab|attack|漏洩|脆弱|攻撃|認証|権限|セキュリティ"),
+        ("COMPATIBILITY", r"compatib|migration|breaking|互換|移行|依存|integration|統合"),
+        ("COST", r"cost|price|billing|費用|価格|課金|コスト"),
+        ("PERFORMANCE", r"latency|performance|throughput|速度|性能|遅延|メモリ|cpu|gpu"),
+        ("MATURITY", r"maturity|preview|beta|experimental|未成熟|実験的|ベータ|安定性|production"),
+        ("VENDOR", r"vendor|lock[- ]?in|provider|ベンダ|ロックイン|供給"),
+        ("LEGAL", r"license|legal|compliance|privacy|ライセンス|法務|規制|個人情報"),
+        ("OPERATIONS", r"operat|maintain|monitor|運用|保守|監視|障害"),
+        ("DATA", r"data|dataset|quality|データ|品質|汚染"),
+    )
+    for category, pattern in categories:
+        if re.search(pattern, value, re.I): return category
+    return "OTHER"
+
+
+def _risk_meaningfully_changed(old_risk: str, new_risk: str) -> bool:
+    old_norm = _normalize_compare_text(old_risk); new_norm = _normalize_compare_text(new_risk)
+    if not old_norm or not new_norm or old_norm == new_norm: return False
+    old_cat, new_cat = _risk_category(old_norm), _risk_category(new_norm)
+    if old_cat != "OTHER" and new_cat != "OTHER": return old_cat != new_cat
+    return SequenceMatcher(None, old_norm, new_norm).ratio() < max(0.55, RISK_TEXT_SIMILARITY_THRESHOLD - 0.20)
+
+
+def _apply_status_hysteresis(current: dict, assessment: dict) -> dict:
+    adjusted = dict(assessment)
+    old_score = current.get("adoption_score")
+    old_status = current.get("adoption_status") or ""
+    new_status = adjusted.get("adoption_status") or ""
+    if (old_score is not None and {old_status, new_status} == {"WATCH", "TEST"}
+            and abs(int(adjusted["adoption_score"]) - int(old_score)) < STATUS_HYSTERESIS_SCORE_DELTA):
+        adjusted["adoption_status"] = old_status
+        adjusted["status_hysteresis_applied"] = True
+    return adjusted
+
+
 def _diff_assessment(current: dict, assessment: dict) -> dict:
     old_score = current.get("adoption_score")
     new_score = int(assessment["adoption_score"])
     old_status = current.get("adoption_status") or ""
+    new_status = assessment.get("adoption_status") or ""
     old_readiness = current.get("production_readiness") or ""
     old_conf = current.get("evidence_confidence") or ""
     old_risk = current.get("main_risk") or ""
     old_evidence = {canonicalize_identity_url(x) or x for x in current.get("evidence_urls", []) if x}
     new_evidence = {canonicalize_identity_url(x) or x for x in assessment.get("evidence_urls", []) if x}
     evidence_added = sorted(x for x in new_evidence - old_evidence if x)
+    score_delta = (new_score - old_score) if old_score is not None else None
     changes: list[str] = []
-    if old_score is not None and new_score != old_score:
+    if score_delta is not None and abs(score_delta) >= MEANINGFUL_SCORE_DELTA:
         changes.append(f"Adoption Score {old_score}→{new_score}")
-    if old_status and assessment.get("adoption_status") != old_status:
-        changes.append(f"Adoption Status {old_status}→{assessment.get('adoption_status')}")
+    if old_status and new_status != old_status:
+        changes.append(f"Adoption Status {old_status}→{new_status}")
     if old_readiness and assessment.get("production_readiness") != old_readiness:
         changes.append(f"Production Readiness {old_readiness}→{assessment.get('production_readiness')}")
     if old_conf and assessment.get("evidence_confidence") != old_conf:
         changes.append(f"Evidence Confidence {old_conf}→{assessment.get('evidence_confidence')}")
-    if old_risk and _normalize_compare_text(assessment.get("main_risk", "")) != _normalize_compare_text(old_risk):
+    if old_risk and _risk_meaningfully_changed(old_risk, assessment.get("main_risk", "")):
         changes.append("Main Risk changed")
     if evidence_added:
         changes.append(f"Evidence +{len(evidence_added)}")
@@ -519,35 +625,32 @@ def _diff_assessment(current: dict, assessment: dict) -> dict:
         "change_reason": "; ".join(changes) or "No meaningful decision change",
         "evidence_added": evidence_added,
         "previous_score": old_score,
-        "score_delta": (new_score - old_score) if old_score is not None else None,
+        "score_delta": score_delta,
         "previous_status": old_status,
-        "status_changed": bool(old_status and assessment.get("adoption_status") != old_status),
-        # Retry idempotency anchor. If history append succeeds but current-state patch fails,
-        # Last Change At remains unchanged, so the retry gets the same event id. If the same
-        # transition happens again months later (e.g. 60→70→60→70), Last Change At has moved
-        # and a distinct history event is created instead of incorrectly reusing the old row.
+        "status_changed": bool(old_status and new_status != old_status),
         "previous_change_at": current.get("last_change_at") or "",
     }
 
 
 def _history_event_id(assessment: dict, diff: dict, snapshot_type: str) -> str:
-    """Stable event identity. Excludes reviewed_at so a retry of the same transition is idempotent."""
-    payload = {
-        "entity_id": assessment.get("canonical_entity_id") or "",
-        "snapshot_type": snapshot_type,
-        "previous_score": diff.get("previous_score"),
-        "adoption_score": assessment.get("adoption_score"),
-        "previous_status": diff.get("previous_status") or "",
-        # INITIAL intentionally has no transition anchor. CHANGE includes the previous
-        # current-state Last Change At so retries remain idempotent while later repeated
-        # transitions remain distinct historical events.
-        "transition_anchor": (diff.get("previous_change_at") or "") if snapshot_type == "CHANGE" else "",
-        "adoption_status": assessment.get("adoption_status") or "",
-        "production_readiness": assessment.get("production_readiness") or "",
-        "evidence_confidence": assessment.get("evidence_confidence") or "",
-        "main_risk": _normalize_compare_text(str(assessment.get("main_risk") or "")),
-        "evidence_added": sorted(canonicalize_identity_url(x) or x for x in (diff.get("evidence_added") or []) if x),
-    }
+    """Stable event identity. INITIAL is unique per Technology; CHANGE is transition-idempotent."""
+    entity_id = assessment.get("canonical_entity_id") or ""
+    if snapshot_type == "INITIAL":
+        # A Technology can have exactly one initial assessment. This remains stable even when
+        # History succeeds but the current-state PATCH fails and the next Gemini assessment differs.
+        payload = {"entity_id": entity_id, "snapshot_type": "INITIAL"}
+    else:
+        payload = {
+            "entity_id": entity_id, "snapshot_type": snapshot_type,
+            "previous_score": diff.get("previous_score"), "adoption_score": assessment.get("adoption_score"),
+            "previous_status": diff.get("previous_status") or "",
+            "transition_anchor": (diff.get("previous_change_at") or "") if snapshot_type == "CHANGE" else "",
+            "adoption_status": assessment.get("adoption_status") or "",
+            "production_readiness": assessment.get("production_readiness") or "",
+            "evidence_confidence": assessment.get("evidence_confidence") or "",
+            "main_risk": _normalize_compare_text(str(assessment.get("main_risk") or "")),
+            "evidence_added": sorted(canonicalize_identity_url(x) or x for x in (diff.get("evidence_added") or []) if x),
+        }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "dih-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:28]
 
@@ -618,6 +721,8 @@ def upsert_technology_intelligence(assessment: dict, resolution: EntityResolutio
 
     existing_page = get_technology_record_by_entity_id(resolution.entity_id)
     current = _current_state(existing_page)
+    if existing_page and current.get("adoption_score") is not None:
+        assessment = _apply_status_hysteresis(current, assessment)
     diff = _diff_assessment(current, assessment) if existing_page else {
         "meaningful_change": True,
         "change_reason": "Initial assessment",
@@ -637,8 +742,28 @@ def upsert_technology_intelligence(assessment: dict, resolution: EntityResolutio
         # the pending current record, not a newly generated assessment. Otherwise a changed
         # assessment on the next run could silently rewrite the meaning of the INITIAL snapshot.
         recovering_initial = current.get("assessment_state") == "HISTORY_PENDING"
+        legacy_initial = (
+            current.get("assessment_state") in {"LEGACY_PENDING", "SCREENED"}
+            and current.get("adoption_score") is None
+        )
         history_ids: list[str] = []
-        if recovering_initial:
+        if legacy_initial:
+            initial_diff = {
+                "meaningful_change": True,
+                "change_reason": "Initial assessment",
+                "evidence_added": list(assessment.get("evidence_urls") or []),
+                "previous_score": None,
+                "score_delta": None,
+                "previous_status": "",
+                "status_changed": False,
+                "previous_change_at": "",
+            }
+            initial_history_id = _append_history(existing_page["id"], assessment, initial_diff, "INITIAL")
+            if initial_history_id:
+                history_ids.append(initial_history_id)
+            assessment.update(initial_diff)
+            assessment["assessment_state"] = "ASSESSED"
+        elif recovering_initial:
             pending_initial_assessment = dict(assessment)
             pending_initial_assessment.update({
                 "technology_name": current.get("technology_name") or assessment.get("technology_name"),
@@ -688,7 +813,7 @@ def upsert_technology_intelligence(assessment: dict, resolution: EntityResolutio
             assessment["assessment_state"] = "ASSESSED"
 
         props = _build_technology_properties(assessment, resolution, current)
-        if recovering_initial and not diff["meaningful_change"]:
+        if (recovering_initial or legacy_initial) and not diff["meaningful_change"]:
             # The first assessment has no previous score. Only clear these fields when the
             # current assessment is the same as the pending initial one. If it changed, the
             # pending score is the legitimate previous value for the CHANGE event.
@@ -706,7 +831,7 @@ def upsert_technology_intelligence(assessment: dict, resolution: EntityResolutio
         return {
             "enabled": True, "saved": True, "created": False, "page_id": existing_page["id"],
             "history_id": history_ids[-1] if history_ids else "", "history_ids": history_ids,
-            "changed": bool(diff["meaningful_change"] or recovering_initial),
+            "changed": bool(diff["meaningful_change"] or recovering_initial or legacy_initial),
             "entity_id": resolution.entity_id, "history_recovered": recovering_initial,
         }
 
@@ -739,6 +864,364 @@ def upsert_technology_intelligence(assessment: dict, resolution: EntityResolutio
         "history_id": history_id, "changed": True, "entity_id": resolution.entity_id,
     }
 
+
+
+def query_technology_records(filter_payload: dict | None = None, sorts: list[dict] | None = None,
+                             max_records: int = 5000) -> list[dict]:
+    """Read Technology DB with pagination. Fail closed instead of silently truncating product state."""
+    if not ENABLE_DECISION_INTELLIGENCE_DB:
+        return []
+    payload: dict[str, Any] = {"page_size": 100}
+    if filter_payload:
+        payload["filter"] = filter_payload
+    if sorts:
+        payload["sorts"] = sorts
+    rows: list[dict] = []
+    while True:
+        res = requests.post(_query_url(NOTION_TECH_DATA_SOURCE_ID, NOTION_TECH_DATABASE_ID),
+                            json=payload, headers=_headers(), timeout=20)
+        if res.status_code != 200:
+            raise RuntimeError(f"Technology query failed: HTTP {res.status_code} {res.text[:500]}")
+        body = res.json()
+        rows.extend(body.get("results", []))
+        if len(rows) > max_records:
+            raise RuntimeError(f"Technology query exceeded safety limit {max_records}; refusing partial product state")
+        if not body.get("has_more"):
+            return rows
+        cursor = body.get("next_cursor")
+        if not cursor:
+            raise RuntimeError("Technology query pagination inconsistent: has_more without next_cursor")
+        payload["start_cursor"] = cursor
+
+
+def query_history_records(filter_payload: dict | None = None, sorts: list[dict] | None = None,
+                          max_records: int = 10000) -> list[dict]:
+    """Read Decision History completely; never mark a monthly product complete on truncated data."""
+    if not ENABLE_DECISION_INTELLIGENCE_DB:
+        return []
+    payload: dict[str, Any] = {"page_size": 100}
+    if filter_payload:
+        payload["filter"] = filter_payload
+    if sorts:
+        payload["sorts"] = sorts
+    rows: list[dict] = []
+    while True:
+        res = requests.post(_query_url(NOTION_HISTORY_DATA_SOURCE_ID, NOTION_HISTORY_DATABASE_ID),
+                            json=payload, headers=_headers(), timeout=20)
+        if res.status_code != 200:
+            raise RuntimeError(f"Decision History query failed: HTTP {res.status_code} {res.text[:500]}")
+        body = res.json()
+        rows.extend(body.get("results", []))
+        if len(rows) > max_records:
+            raise RuntimeError(f"Decision History query exceeded safety limit {max_records}; refusing truncated monthly digest")
+        if not body.get("has_more"):
+            return rows
+        cursor = body.get("next_cursor")
+        if not cursor:
+            raise RuntimeError("Decision History pagination inconsistent: has_more without next_cursor")
+        payload["start_cursor"] = cursor
+
+
+def technology_page_to_state(page: dict) -> dict:
+    """Public helper for Phase-2 review/sync code; preserves a single parser for product state."""
+    state = _current_state(page)
+    props = page.get("properties", {})
+    state.update({
+        "primary_url": (props.get(TECH_PROP_PRIMARY_URL) or {}).get("url") or "",
+        "category": _select_value(props.get(TECH_PROP_CATEGORY, {})),
+        "tracking_status": _select_value(props.get(TECH_PROP_TRACKING_STATUS, {})),
+        "tracking_eligibility": bool((props.get(TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox")),
+        "tracking_reason": _rich_text_value(props.get(TECH_PROP_TRACKING_REASON, {})),
+        "next_review": _date_value(props.get(TECH_PROP_NEXT_REVIEW, {})),
+        "short_rationale": _rich_text_value(props.get(TECH_PROP_SHORT_RATIONALE, {})),
+        "best_for": _rich_text_value(props.get(TECH_PROP_BEST_FOR, {})),
+        "avoid_for": _rich_text_value(props.get(TECH_PROP_AVOID_FOR, {})),
+        "related_article": (props.get(TECH_PROP_RELATED_ARTICLE) or {}).get("url") or "",
+        "canonical_entity_id": _rich_text_value(props.get(TECH_PROP_ENTITY_ID, {})),
+        "entity_status": _select_value(props.get(TECH_PROP_ENTITY_STATUS, {})),
+        "screening_score": _number_value(props.get(TECH_PROP_SCREENING_SCORE, {})),
+        "screening_reason": _rich_text_value(props.get(TECH_PROP_SCREENING_REASON, {})),
+        "source_summary": _rich_text_value(props.get(TECH_PROP_SOURCE_SUMMARY, {})),
+        "score_change": _number_value(props.get(TECH_PROP_SCORE_CHANGE, {})),
+    })
+    return state
+
+
+def history_page_to_state(page: dict) -> dict:
+    props = page.get("properties", {})
+    return {
+        "page_id": page.get("id"),
+        "reviewed_at": _date_value(props.get(HISTORY_PROP_REVIEWED_AT, {})),
+        "technology_name": _rich_text_value(props.get(HISTORY_PROP_TITLE, {})).split(" — ")[0],
+        "adoption_score": _number_value(props.get(HISTORY_PROP_ADOPTION_SCORE, {})),
+        "adoption_status": _select_value(props.get(HISTORY_PROP_ADOPTION_STATUS, {})),
+        "production_readiness": _select_value(props.get(HISTORY_PROP_PRODUCTION_READINESS, {})),
+        "evidence_confidence": _select_value(props.get(HISTORY_PROP_EVIDENCE_CONFIDENCE, {})),
+        "main_risk": _rich_text_value(props.get(HISTORY_PROP_MAIN_RISK, {})),
+        "change_reason": _rich_text_value(props.get(HISTORY_PROP_CHANGE_REASON, {})),
+        "previous_score": _number_value(props.get(HISTORY_PROP_PREVIOUS_SCORE, {})),
+        "score_delta": _number_value(props.get(HISTORY_PROP_SCORE_DELTA, {})),
+        "previous_status": _select_value(props.get(HISTORY_PROP_PREVIOUS_STATUS, {})),
+        "status_changed": bool((props.get(HISTORY_PROP_STATUS_CHANGED) or {}).get("checkbox")),
+        "snapshot_type": _select_value(props.get(HISTORY_PROP_SNAPSHOT_TYPE, {})),
+        "canonical_entity_id": _rich_text_value(props.get(HISTORY_PROP_ENTITY_ID, {})),
+        "event_id": _rich_text_value(props.get(HISTORY_PROP_EVENT_ID, {})),
+    }
+
+
+def upsert_tracking_seed(record: dict, resolution: EntityResolution) -> dict:
+    """Create/update a SCREENED Technology candidate without inventing Adoption data/history."""
+    if not ENABLE_DECISION_INTELLIGENCE_DB:
+        return {"enabled": False, "saved": False, "reason": "disabled"}
+    if resolution.status == "AMBIGUOUS":
+        return {"enabled": True, "saved": False, "reason": "entity_ambiguous", "entity_id": resolution.entity_id}
+    existing = get_technology_record_by_entity_id(resolution.entity_id)
+    sources = list(dict.fromkeys(str(x) for x in (record.get("sources") or ([record.get("source")] if record.get("source") else [])) if x))
+    aliases = list(dict.fromkeys(resolution.aliases))
+    evidence_urls = list(dict.fromkeys(str(x) for x in (record.get("evidence_urls") or []) if x))
+    if existing:
+        current = _current_state(existing)
+        # Never downgrade an assessed record back to SCREENED. Only enrich discovery/tracking metadata.
+        props = existing.get("properties", {})
+        merged_sources = list(dict.fromkeys(current.get("sources", []) + sources))
+        merged_aliases = list(dict.fromkeys(current.get("entity_aliases", []) + aliases))
+        merged_evidence = list(dict.fromkeys(current.get("evidence_urls", []) + evidence_urls))
+        patch = {
+            TECH_PROP_SOURCE: {"multi_select": [{"name": x} for x in merged_sources]},
+            TECH_PROP_ENTITY_ALIASES: _rt("\n".join(merged_aliases)),
+            TECH_PROP_EVIDENCE_URLS: _rt("\n".join(merged_evidence)),
+            TECH_PROP_TRACKING_ELIGIBILITY: {"checkbox": bool(record.get("tracking_eligibility", True)) or bool((props.get(TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox"))},
+            TECH_PROP_TRACKING_REASON: _rt(record.get("tracking_reason") or _rich_text_value(props.get(TECH_PROP_TRACKING_REASON, {})) or "Screening tracking signal"),
+            TECH_PROP_SCREENING_SCORE: _number(record.get("screening_score")),
+            TECH_PROP_SCREENING_REASON: _rt(record.get("screening_reason")),
+            TECH_PROP_SOURCE_SUMMARY: _rt(record.get("source_summary")),
+            TECH_PROP_ANALYZED_AT: _date(record.get("analyzed_at")),
+        }
+        if current.get("assessment_state") in {"LEGACY_PENDING", "SCREENED", ""}:
+            patch[TECH_PROP_ASSESSMENT_STATE] = _select(current.get("assessment_state") or "SCREENED")
+            patch[TECH_PROP_TRACKING_STATUS] = _select("ACTIVE" if record.get("tracking_eligibility", True) else "PAUSED")
+        res = requests.patch(f"https://api.notion.com/v1/pages/{existing['id']}", json={"properties": patch}, headers=_headers(), timeout=10)
+        if res.status_code != 200:
+            raise RuntimeError(f"Technology tracking seed patch failed: HTTP {res.status_code} {res.text[:500]}")
+        return {"enabled": True, "saved": True, "created": False, "page_id": existing["id"], "entity_id": resolution.entity_id}
+
+    props = {
+        TECH_PROP_NAME: _title(record.get("name")),
+        TECH_PROP_PRIMARY_URL: {"url": resolution.primary_url or record.get("url") or None},
+        TECH_PROP_SOURCE: {"multi_select": [{"name": x} for x in sources]},
+        TECH_PROP_CATEGORY: _select(record.get("category") or "OTHER"),
+        TECH_PROP_FIRST_SEEN: _date(record.get("first_seen") or record.get("analyzed_at")),
+        TECH_PROP_LAST_REVIEWED: _date(None),
+        TECH_PROP_RELATED_ARTICLE: {"url": record.get("related_article") or None},
+        TECH_PROP_EVIDENCE_URLS: _rt("\n".join(evidence_urls)),
+        TECH_PROP_ENTITY_ID: _rt(resolution.entity_id),
+        TECH_PROP_ENTITY_STATUS: _select(resolution.status),
+        TECH_PROP_ENTITY_ALIASES: _rt("\n".join(aliases)),
+        TECH_PROP_TRACKING_STATUS: _select("ACTIVE" if record.get("tracking_eligibility", True) else "PAUSED"),
+        TECH_PROP_TRACKING_ELIGIBILITY: {"checkbox": bool(record.get("tracking_eligibility", True))},
+        TECH_PROP_TRACKING_REASON: _rt(record.get("tracking_reason") or "Screening tracking signal"),
+        TECH_PROP_ASSESSMENT_STATE: _select("SCREENED"),
+        TECH_PROP_NEXT_REVIEW: _date(record.get("next_review")),
+        TECH_PROP_PIPELINE_STATUS: _select(record.get("pipeline_status") or "Stocked"),
+        TECH_PROP_CONTENT_STATUS: _select(record.get("content_status") or "Stocked"),
+        TECH_PROP_ARTICLE_STATUS: _select(record.get("article_status") or "Not Planned"),
+        TECH_PROP_SCREENING_SCORE: _number(record.get("screening_score")),
+        TECH_PROP_SCREENING_REASON: _rt(record.get("screening_reason")),
+        TECH_PROP_SOURCE_SUMMARY: _rt(record.get("source_summary")),
+        TECH_PROP_PUBLISHED_AT: _date(record.get("published_at")),
+        TECH_PROP_ANALYZED_AT: _date(record.get("analyzed_at")),
+    }
+    res = requests.post("https://api.notion.com/v1/pages", json={"parent": _parent(NOTION_TECH_DATA_SOURCE_ID, NOTION_TECH_DATABASE_ID), "properties": props}, headers=_headers(), timeout=10)
+    if res.status_code != 200:
+        raise RuntimeError(f"Technology tracking seed create failed: HTTP {res.status_code} {res.text[:500]}")
+    return {"enabled": True, "saved": True, "created": True, "page_id": res.json().get("id") or "", "entity_id": resolution.entity_id}
+
+
+def _query_external_db(data_source_id: str, database_id: str, payload: dict | None = None, max_records: int = 5000) -> list[dict]:
+    body_payload = dict(payload or {})
+    body_payload.setdefault("page_size", 100)
+    rows: list[dict] = []
+    while True:
+        res = requests.post(_query_url(data_source_id, database_id), json=body_payload, headers=_headers(), timeout=20)
+        if res.status_code != 200:
+            raise RuntimeError(f"Notion product query failed: HTTP {res.status_code} {res.text[:500]}")
+        body = res.json(); rows.extend(body.get("results", []))
+        if len(rows) > max_records:
+            raise RuntimeError(f"Notion product query exceeded safety limit {max_records}")
+        if not body.get("has_more"):
+            return rows
+        cursor = body.get("next_cursor")
+        if not cursor:
+            raise RuntimeError("Notion product pagination inconsistent")
+        body_payload["start_cursor"] = cursor
+
+
+def _subscriber_values_from_internal(page: dict) -> dict:
+    props = page.get("properties", {})
+    return {
+        "name": _rich_text_value(props.get(TECH_PROP_NAME, {})),
+        "primary_url": (props.get(TECH_PROP_PRIMARY_URL) or {}).get("url") or "",
+        "sources": sorted(set(_multi_select_values(props.get(TECH_PROP_SOURCE, {})))),
+        "category": _select_value(props.get(TECH_PROP_CATEGORY, {})),
+        "adoption_score": _number_value(props.get(TECH_PROP_ADOPTION_SCORE, {})),
+        "adoption_status": _select_value(props.get(TECH_PROP_ADOPTION_STATUS, {})),
+        "evidence_confidence": _select_value(props.get(TECH_PROP_EVIDENCE_CONFIDENCE, {})),
+        "production_readiness": _select_value(props.get(TECH_PROP_PRODUCTION_READINESS, {})),
+        "main_risk": _rich_text_value(props.get(TECH_PROP_MAIN_RISK, {})),
+        "best_for": _rich_text_value(props.get(TECH_PROP_BEST_FOR, {})),
+        "avoid_for": _rich_text_value(props.get(TECH_PROP_AVOID_FOR, {})),
+        "short_rationale": _rich_text_value(props.get(TECH_PROP_SHORT_RATIONALE, {})),
+        "first_seen": _date_value(props.get(TECH_PROP_FIRST_SEEN, {})),
+        "last_reviewed": _date_value(props.get(TECH_PROP_LAST_REVIEWED, {})),
+        "score_change": _number_value(props.get(TECH_PROP_SCORE_CHANGE, {})),
+        "related_article": (props.get(TECH_PROP_RELATED_ARTICLE) or {}).get("url") or "",
+        "evidence_urls": sorted(set(x.strip() for x in _rich_text_value(props.get(TECH_PROP_EVIDENCE_URLS, {})).splitlines() if x.strip())),
+        "entity_id": _rich_text_value(props.get(TECH_PROP_ENTITY_ID, {})),
+        "assessment_state": _select_value(props.get(TECH_PROP_ASSESSMENT_STATE, {})),
+        "tracking_eligibility": bool((props.get(TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox")),
+        "tracking_status": _select_value(props.get(TECH_PROP_TRACKING_STATUS, {})),
+    }
+
+
+def _subscriber_values_from_destination(page: dict) -> dict:
+    p = page.get("properties", {})
+    return {
+        "name": _rich_text_value(p.get(SUB_PROP_NAME, {})), "primary_url": (p.get(SUB_PROP_PRIMARY_URL) or {}).get("url") or "",
+        "sources": sorted(set(_multi_select_values(p.get(SUB_PROP_SOURCE, {})))), "category": _select_value(p.get(SUB_PROP_CATEGORY, {})),
+        "adoption_score": _number_value(p.get(SUB_PROP_ADOPTION_SCORE, {})), "adoption_status": _select_value(p.get(SUB_PROP_ADOPTION_STATUS, {})),
+        "evidence_confidence": _select_value(p.get(SUB_PROP_EVIDENCE_CONFIDENCE, {})), "production_readiness": _select_value(p.get(SUB_PROP_PRODUCTION_READINESS, {})),
+        "main_risk": _rich_text_value(p.get(SUB_PROP_MAIN_RISK, {})), "best_for": _rich_text_value(p.get(SUB_PROP_BEST_FOR, {})),
+        "avoid_for": _rich_text_value(p.get(SUB_PROP_AVOID_FOR, {})), "short_rationale": _rich_text_value(p.get(SUB_PROP_SHORT_RATIONALE, {})),
+        "first_seen": _date_value(p.get(SUB_PROP_FIRST_SEEN, {})), "last_reviewed": _date_value(p.get(SUB_PROP_LAST_REVIEWED, {})),
+        "score_change": _number_value(p.get(SUB_PROP_SCORE_CHANGE, {})), "related_article": (p.get(SUB_PROP_RELATED_ARTICLE) or {}).get("url") or "",
+        "evidence_urls": sorted(set(x.strip() for x in _rich_text_value(p.get(SUB_PROP_EVIDENCE_URLS, {})).splitlines() if x.strip())),
+        "entity_id": _rich_text_value(p.get(SUB_PROP_ENTITY_ID, {})),
+    }
+
+
+def _subscriber_props(v: dict) -> dict:
+    return {
+        SUB_PROP_NAME: _title(v.get("name")), SUB_PROP_PRIMARY_URL: {"url": v.get("primary_url") or None},
+        SUB_PROP_SOURCE: {"multi_select": [{"name": x} for x in v.get("sources", [])]}, SUB_PROP_CATEGORY: _select(v.get("category") or "OTHER"),
+        SUB_PROP_ADOPTION_SCORE: _number(v.get("adoption_score")), SUB_PROP_ADOPTION_STATUS: _select(v.get("adoption_status")),
+        SUB_PROP_EVIDENCE_CONFIDENCE: _select(v.get("evidence_confidence")), SUB_PROP_PRODUCTION_READINESS: _select(v.get("production_readiness")),
+        SUB_PROP_MAIN_RISK: _rt(v.get("main_risk")), SUB_PROP_BEST_FOR: _rt(v.get("best_for")), SUB_PROP_AVOID_FOR: _rt(v.get("avoid_for")),
+        SUB_PROP_SHORT_RATIONALE: _rt(v.get("short_rationale")), SUB_PROP_FIRST_SEEN: _date(v.get("first_seen")),
+        SUB_PROP_LAST_REVIEWED: _date(v.get("last_reviewed")), SUB_PROP_SCORE_CHANGE: _number(v.get("score_change")),
+        SUB_PROP_RELATED_ARTICLE: {"url": v.get("related_article") or None}, SUB_PROP_EVIDENCE_URLS: _rt("\n".join(v.get("evidence_urls", []))),
+        SUB_PROP_ENTITY_ID: _rt(v.get("entity_id")),
+    }
+
+
+def sync_subscriber_technology_db() -> dict:
+    """Copy only sanitized, assessed product data. Internal columns never cross the boundary."""
+    if not ENABLE_SUBSCRIBER_TECH_SYNC:
+        return {"enabled": False, "created": 0, "updated": 0, "archived": 0, "unchanged": 0}
+    internal_pages = query_technology_records(max_records=5000)
+    internal_by_id: dict[str, dict] = {}
+    eligible: dict[str, dict] = {}
+    for page in internal_pages:
+        values = _subscriber_values_from_internal(page)
+        entity_id = values.get("entity_id") or ""
+        if not entity_id:
+            continue
+        if entity_id in internal_by_id:
+            raise RuntimeError(f"Internal Technology Canonical Entity ID collision during subscriber sync: {entity_id}")
+        internal_by_id[entity_id] = values
+        if values.get("assessment_state") == "ASSESSED" and values.get("tracking_eligibility") and values.get("tracking_status") != "ARCHIVED":
+            eligible[entity_id] = values
+    destination = _query_external_db(NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID, NOTION_SUBSCRIBER_TECH_DATABASE_ID, max_records=5000)
+    dest_by_id: dict[str, list[dict]] = {}
+    for page in destination:
+        eid = _rich_text_value((page.get("properties") or {}).get(SUB_PROP_ENTITY_ID, {}))
+        if eid:
+            dest_by_id.setdefault(eid, []).append(page)
+    result = {"enabled": True, "created": 0, "updated": 0, "archived": 0, "unchanged": 0}
+    for eid, values in eligible.items():
+        pages = dest_by_id.get(eid, [])
+        if pages:
+            first = pages[0]
+            if _subscriber_values_from_destination(first) != {k: values[k] for k in _subscriber_values_from_destination(first)}:
+                res = requests.patch(f"https://api.notion.com/v1/pages/{first['id']}", json={"properties": _subscriber_props(values)}, headers=_headers(), timeout=20)
+                if res.status_code != 200: raise RuntimeError(f"Subscriber Technology patch failed: {res.status_code} {res.text[:500]}")
+                result["updated"] += 1
+            else:
+                result["unchanged"] += 1
+            for dup in pages[1:]:
+                res = requests.patch(f"https://api.notion.com/v1/pages/{dup['id']}", json={"archived": True}, headers=_headers(), timeout=20)
+                if res.status_code != 200: raise RuntimeError("Subscriber duplicate archive failed")
+                result["archived"] += 1
+        else:
+            res = requests.post("https://api.notion.com/v1/pages", json={"parent": _parent(NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID, NOTION_SUBSCRIBER_TECH_DATABASE_ID), "properties": _subscriber_props(values)}, headers=_headers(), timeout=20)
+            if res.status_code != 200: raise RuntimeError(f"Subscriber Technology create failed: {res.status_code} {res.text[:500]}")
+            result["created"] += 1
+    # Archive only rows whose entity exists internally but is no longer subscriber-eligible. Unknown/manual rows are left untouched.
+    for eid, pages in dest_by_id.items():
+        if eid in internal_by_id and eid not in eligible:
+            for page in pages:
+                if page.get("archived"):
+                    continue
+                res = requests.patch(f"https://api.notion.com/v1/pages/{page['id']}", json={"archived": True}, headers=_headers(), timeout=20)
+                if res.status_code != 200: raise RuntimeError("Subscriber revoke archive failed")
+                result["archived"] += 1
+    return result
+
+
+def _month_bounds(period_id: str) -> tuple[str, str]:
+    year, month = [int(x) for x in period_id.split("-", 1)]
+    tz = ZoneInfo(PRODUCT_TIMEZONE)
+    start_local = datetime(year, month, 1, tzinfo=tz)
+    if month == 12: end_local = datetime(year + 1, 1, 1, tzinfo=tz)
+    else: end_local = datetime(year, month + 1, 1, tzinfo=tz)
+    return start_local.astimezone(timezone.utc).isoformat(), end_local.astimezone(timezone.utc).isoformat()
+
+
+def _monthly_exists(period_id: str) -> bool:
+    rows = _query_external_db(NOTION_MONTHLY_DATA_SOURCE_ID, NOTION_MONTHLY_DATABASE_ID, {
+        "filter": {"property": MONTHLY_PROP_PERIOD_ID, "rich_text": {"equals": period_id}}, "page_size": 2,
+    }, max_records=2)
+    if len(rows) > 1: raise RuntimeError(f"Monthly Period ID collision: {period_id}")
+    return bool(rows)
+
+
+def create_history_monthly_digest(period_id: str, generated_at: str | None = None) -> dict:
+    if not ENABLE_DECISION_MONTHLY_DIGEST:
+        return {"enabled": False, "created": False, "period_id": period_id}
+    if _monthly_exists(period_id):
+        return {"enabled": True, "created": False, "period_id": period_id, "reason": "exists"}
+    start, end = _month_bounds(period_id)
+    rows = query_history_records({"and": [
+        {"property": HISTORY_PROP_REVIEWED_AT, "date": {"on_or_after": start}},
+        {"property": HISTORY_PROP_REVIEWED_AT, "date": {"before": end}},
+    ]}, sorts=[{"property": HISTORY_PROP_REVIEWED_AT, "direction": "ascending"}], max_records=10000)
+    events = [history_page_to_state(x) for x in rows]
+    status_changes = [e for e in events if e.get("status_changed")]
+    rises = sorted([e for e in events if (e.get("score_delta") or 0) >= MEANINGFUL_SCORE_DELTA], key=lambda e: e.get("score_delta") or 0, reverse=True)
+    drops = sorted([e for e in events if (e.get("score_delta") or 0) <= -MEANINGFUL_SCORE_DELTA], key=lambda e: e.get("score_delta") or 0)
+    new_assessments = [e for e in events if e.get("snapshot_type") == "INITIAL"]
+    lines = [f"# What Changed? — {period_id}", "", f"意思決定イベント: {len(events)}件", f"新規評価: {len(new_assessments)}件", f"Status変更: {len(status_changes)}件", ""]
+    def add_section(title: str, items: list[dict], limit: int = 20):
+        lines.extend([f"## {title}", ""])
+        if not items: lines.append("- 該当なし")
+        for e in items[:limit]:
+            delta = e.get("score_delta")
+            delta_text = f" ({delta:+.0f})" if isinstance(delta, (int, float)) else ""
+            lines.append(f"- {e.get('technology_name') or e.get('canonical_entity_id')}: {e.get('previous_status') or 'NEW'} → {e.get('adoption_status')}{delta_text} / {e.get('change_reason')}")
+        lines.append("")
+    add_section("Statusが変わったもの", status_changes)
+    add_section("評価が上がったもの", rises)
+    add_section("評価が下がったもの", drops)
+    add_section("新規で評価したもの", new_assessments)
+    summary = f"{len(events)} decision events / {len(status_changes)} status changes / {len(new_assessments)} new assessments"
+    now = generated_at or datetime.utcnow().isoformat() + "Z"
+    props = {MONTHLY_PROP_TITLE: _title(f"What Changed? {period_id}"), MONTHLY_PROP_PERIOD_ID: _rt(period_id), MONTHLY_PROP_GENERATED_AT: _date(now), MONTHLY_PROP_CHANGE_COUNT: _number(len(events)), MONTHLY_PROP_SUMMARY: _rt(summary)}
+    children = []
+    full = "\n".join(lines)
+    for i in range(0, len(full), 1800):
+        children.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": full[i:i+1800]}}]}})
+    res = requests.post("https://api.notion.com/v1/pages", json={"parent": _parent(NOTION_MONTHLY_DATA_SOURCE_ID, NOTION_MONTHLY_DATABASE_ID), "properties": props, "children": children}, headers=_headers(), timeout=30)
+    if res.status_code != 200: raise RuntimeError(f"Decision monthly create failed: {res.status_code} {res.text[:500]}")
+    return {"enabled": True, "created": True, "period_id": period_id, "events": len(events), "page_id": res.json().get("id") or ""}
 
 def build_legacy_seed_properties(record: dict, resolution: EntityResolution, migrated_at: str) -> dict:
     """Build a legacy seed without inventing Adoption Score/Status/history."""

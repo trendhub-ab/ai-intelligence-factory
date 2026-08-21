@@ -194,10 +194,11 @@ class TestEntityResolution(unittest.TestCase):
 
 
 class TestPromptAndParser(unittest.TestCase):
-    def test_prompt_contains_adoption_fields_without_extra_call(self):
+    def test_article_prompt_explicitly_separates_product_assessment(self):
         prompt = pipeline.build_decision_prompt("x", "https://example.com", 0, "desc")
+        self.assertIn("別工程で作るため、ここでは絶対に生成しない", prompt)
         for label in ("Adoption Score", "Adoption Status", "Evidence Confidence", "Production Readiness", "Main Risk", "Best For", "Avoid For"):
-            self.assertIn(label, prompt)
+            self.assertNotIn(f"・{label}:", prompt)
 
     def test_parser_keeps_decision_and_adoption_scores_separate(self):
         parsed = pipeline._parse_gemini_response(valid_management_text())
@@ -230,6 +231,39 @@ class TestAssessmentValidation(unittest.TestCase):
                 {},
             )
         self.assertTrue(ok, failures)
+
+    def test_quality_retry_can_reuse_prior_valid_assessment_without_extra_generation(self):
+        source_info = {
+            "verification_context": "一次情報では方式と制約条件が説明され、限定環境での検証が必要と記載されている。",
+            "context": "一次情報では方式と制約条件が説明され、限定環境での検証が必要と記載されている。",
+            "evidence_metadata": {},
+        }
+        invalid_retry = dict(self.parsed)
+        invalid_retry["production_readiness"] = ""
+        invalid_retry["main_risk_text"] = ""
+        with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True):
+            selected, evidence, source = pipeline._select_decision_intelligence_assessment_for_persistence(
+                invalid_retry, self.evidence, source_info, self.parsed, self.evidence
+            )
+        self.assertEqual("retained", source)
+        self.assertEqual("MEDIUM", selected["production_readiness"])
+        self.assertTrue(selected["main_risk_text"])
+        self.assertIs(evidence, self.evidence)
+
+    def test_valid_quality_retry_replaces_prior_assessment_snapshot(self):
+        source_info = {
+            "verification_context": "一次情報では方式と制約条件が説明され、限定環境での検証が必要と記載されている。",
+            "context": "一次情報では方式と制約条件が説明され、限定環境での検証が必要と記載されている。",
+            "evidence_metadata": {},
+        }
+        valid_retry = dict(self.parsed)
+        valid_retry["short_rationale_text"] = "一次情報で方式と制約を確認し、限定環境で追加検証する。"
+        with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True):
+            selected, _, source = pipeline._select_decision_intelligence_assessment_for_persistence(
+                valid_retry, self.evidence, source_info, self.parsed, self.evidence
+            )
+        self.assertEqual("current", source)
+        self.assertEqual(valid_retry["short_rationale_text"], selected["short_rationale_text"])
 
     def test_adopt_requires_high_evidence_and_high_readiness(self):
         parsed = dict(self.parsed)

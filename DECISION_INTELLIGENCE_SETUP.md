@@ -1,6 +1,9 @@
-# AI Intelligence Factory — Decision Intelligence Phase 1 Setup
+# AI Intelligence Factory — Decision Intelligence Phase 1 / Migration Setup
 
 更新日: 2026-08-21
+
+> **Phase 2運用注意（2026-08-22）**: Subscriberへの提供は同一Technology DBの「非表示列View」では行わない。別のSanitized Subscriber Technology DBへ同期する正式仕様へ更新済み。Phase 2の新規DB、Feature Flag、Deferred、Product Review、Monthlyの設定は`REVENUE_PRODUCT_PHASE2_SETUP.md`を参照する。Legacy Migration手順とTechnology/History基礎schemaは本書を継続利用する。
+
 
 ## 目的
 
@@ -202,9 +205,9 @@ Migration後に`ENABLE_DECISION_INTELLIGENCE_DB=true`でDailyを1回だけ実行
 
 ---
 
-## 7. Subscriber View（手動作成）
+## 7. Subscriber View（旧Phase 1案・非推奨）
 
-Phase 1ではNotion View自体をAPIで自動生成しない。TEST確認後に手動で作る。
+**この節の同一DB View共有はPhase 2では採用しない。** Internal列をSubscriberへ露出しないため、`REVENUE_PRODUCT_PHASE2_SETUP.md`記載の別Sanitized DB同期を使用する。以下はPhase 1時点の参考View案としてのみ残す。
 
 推奨View:
 

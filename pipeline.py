@@ -37,8 +37,34 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from google import genai
-from google.genai.errors import APIError
+# Synthetic regression is intentionally provider-free. On an offline CI/dev machine the
+# regression re-imports pipeline.py as a module, so allow a minimal SDK stub only in that mode.
+# Production still fails loudly if google-genai is missing.
+if os.environ.get("SYNTHETIC_REGRESSION_MODE", "false").lower() in {"1", "true", "yes", "on"}:
+    try:
+        from google import genai
+        from google.genai.errors import APIError
+    except ImportError:
+        import types as _types
+        _google = sys.modules.get("google") or _types.ModuleType("google")
+        _google.__path__ = getattr(_google, "__path__", [])
+        _genai = _types.ModuleType("google.genai")
+        _errors = _types.ModuleType("google.genai.errors")
+        class _SyntheticClient:
+            def __init__(self, *args, **kwargs):
+                self.chats = _types.SimpleNamespace(create=lambda **_kwargs: None)
+        class APIError(Exception):
+            pass
+        _genai.Client = _SyntheticClient
+        _errors.APIError = APIError
+        _google.genai = _genai
+        sys.modules["google"] = _google
+        sys.modules["google.genai"] = _genai
+        sys.modules["google.genai.errors"] = _errors
+        genai = _genai
+else:
+    from google import genai
+    from google.genai.errors import APIError
 import decision_intelligence as decision_intelligence
 
 # ==========================================
@@ -202,6 +228,13 @@ EVERGREEN_PRIORITY_TOLERANCE = float(os.environ.get("EVERGREEN_PRIORITY_TOLERANC
 ENABLE_PORTFOLIO_BALANCE = os.environ.get("ENABLE_PORTFOLIO_BALANCE", "true").lower() in {"1", "true", "yes", "on"}
 PORTFOLIO_MIN_DISTINCT_TOPICS = int(os.environ.get("PORTFOLIO_MIN_DISTINCT_TOPICS", "2"))
 PORTFOLIO_TOPIC_PRIORITY_TOLERANCE = float(os.environ.get("PORTFOLIO_TOPIC_PRIORITY_TOLERANCE", "6"))
+# Free Article Delivery Reliability: TOP_Nのうち最低1枠を「一次情報が明確で
+# 公開まで到達しやすい候補」に寄せる。品質閾値は下げず、Stock済み候補の順序だけを調整する。
+ENABLE_PUBLICATION_RELIABILITY_SLOT = os.environ.get("ENABLE_PUBLICATION_RELIABILITY_SLOT", "true").lower() in {"1", "true", "yes", "on"}
+PUBLICATION_RELIABILITY_SLOTS = max(0, int(os.environ.get("PUBLICATION_RELIABILITY_SLOTS", "1")))
+PUBLICATION_RELIABILITY_MIN_DECISION_SCORE = max(0, min(100, int(os.environ.get("PUBLICATION_RELIABILITY_MIN_DECISION_SCORE", "65"))))
+PUBLICATION_RELIABILITY_MIN_ADVANTAGE = float(os.environ.get("PUBLICATION_RELIABILITY_MIN_ADVANTAGE", "8"))
+ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = os.environ.get("ENABLE_DETERMINISTIC_PUBLICATION_RESCUE", "true").lower() in {"1", "true", "yes", "on"}
 PORTFOLIO_TOPICS = (
     "MODEL", "AGENT", "DEVTOOLS", "INFRA", "DATA",
     "SECURITY", "MULTIMODAL", "PRODUCT", "OTHER",
@@ -237,6 +270,21 @@ SOURCE_ROI_MAX_FETCH_BY_SOURCE = {
     src: SOURCE_ROI_MAX_FETCH_PER_SOURCE for src in SOURCE_ROI_SOURCES
 }
 
+# ---- Revenue Product Phase 2 ----
+ENABLE_REVENUE_PRODUCT_PHASE2 = os.environ.get("ENABLE_REVENUE_PRODUCT_PHASE2", "true").lower() in {"1", "true", "yes", "on"}
+TRACKING_ELIGIBILITY_MIN_SCORE = max(0, min(100, int(os.environ.get("TRACKING_ELIGIBILITY_MIN_SCORE", "55"))))
+TRACKING_REVIEW_DAYS = max(1, int(os.environ.get("TRACKING_REVIEW_DAYS", "14")))
+PRODUCT_REVIEW_MAX_PER_RUN = max(0, int(os.environ.get("PRODUCT_REVIEW_MAX_PER_RUN", "2")))
+LEGACY_BOOTSTRAP_MAX_PER_RUN = max(0, int(os.environ.get("LEGACY_BOOTSTRAP_MAX_PER_RUN", "1")))
+GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET = max(0, int(os.environ.get("GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET", "3")))
+DEFERRED_DEEP_DIVE_MAX_PER_RUN = max(0, int(os.environ.get("DEFERRED_DEEP_DIVE_MAX_PER_RUN", "1")))
+DEFERRED_DEEP_DIVE_MAX_QUEUE = max(1, int(os.environ.get("DEFERRED_DEEP_DIVE_MAX_QUEUE", "20")))
+DEFERRED_DEEP_DIVE_STATE_PATH = os.environ.get("DEFERRED_DEEP_DIVE_STATE_PATH", "deferred_deep_dive/deferred_queue.json")
+DEFERRED_DEEP_DIVE_GITHUB_DIR = os.environ.get("DEFERRED_DEEP_DIVE_GITHUB_DIR", "deferred_deep_dive").strip("/")
+DEFERRED_FLASH_TTL_DAYS = max(1, int(os.environ.get("DEFERRED_FLASH_TTL_DAYS", "2")))
+DEFERRED_TREND_TTL_DAYS = max(1, int(os.environ.get("DEFERRED_TREND_TTL_DAYS", "14")))
+DEFERRED_EVERGREEN_TTL_DAYS = max(1, int(os.environ.get("DEFERRED_EVERGREEN_TTL_DAYS", "60")))
+
 # ---- Gemini無料枠のローカル安全予算 ----
 # Google側のFree Tier上限そのものではなく、このpipeline 1実行内で絶対に超えない
 # 独自Safety Cap。実際のRPM/RPD/TPMはAI Studioのcurrent limitsを運用者が確認し、
@@ -245,9 +293,9 @@ GEMINI_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DAILY_REQUEST_BUDGET", 
 GEMINI_SCREENING_RETRY_BUDGET = int(os.environ.get("GEMINI_SCREENING_RETRY_BUDGET", "4"))
 GEMINI_DEEP_DIVE_RETRY_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_RETRY_BUDGET", "1"))
 GEMINI_RESERVED_DEEP_DIVE_REQUESTS = int(os.environ.get("GEMINI_RESERVED_DEEP_DIVE_REQUESTS", "3"))
-# Deep Diveは管理データと記事本文を同時に返すため、6,000 tokensでは
-# MAX_TOKENSによる途中終了が発生しやすかった。既存の無料枠保護は維持しつつ、
-# 記事生成だけを小幅に拡張する。環境変数で従来値へ戻すことも可能。
+# Deep Diveは無料記事＋最小限の記事管理データだけを返す。Product Reviewは別callへ分離済み。
+# 旧版との互換と長文Evidence記事の余白のため9,000 tokens上限は維持するが、
+# Prompt負荷を減らして途中切れ・管理項目由来のHallucinationを抑える。
 GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS = int(os.environ.get("GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS", "9000"))
 GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET = int(os.environ.get("GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET", os.environ.get("GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET", "12")))
 GEMINI_PENDING_RETRY_REQUEST_BUDGET = max(0, int(os.environ.get("GEMINI_PENDING_RETRY_REQUEST_BUDGET", "2")))
@@ -502,6 +550,7 @@ REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
 REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
 REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
 REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED = "DEEP_DIVE_RUN_BUDGET_EXHAUSTED"
 # Quality Gateは通過したが、Notion永続化層（ページ作成/アップグレード）が失敗した場合の理由コード。
 # 記事品質の問題ではなく永続保存層の障害であるため、Quality Failedとは明確に区別する。
 REASON_CODE_NOTION_PERSISTENCE_FAILED = "NOTION_PERSISTENCE_FAILED"
@@ -570,7 +619,9 @@ MAX_QUALITY_RETRIES = 1
 class NoAvailableModelError(RuntimeError): pass
 class DailyQuotaExhaustedError(RuntimeError): pass
 class GeminiBudgetExceededError(RuntimeError): pass
+class DeepDiveRunBudgetExceededError(GeminiBudgetExceededError): pass
 class PendingRetryBudgetExceededError(GeminiBudgetExceededError): pass
+class ProductReviewBudgetExceededError(GeminiBudgetExceededError): pass
 
 
 class PersistentGeminiDailyCounter:
@@ -1059,14 +1110,19 @@ def _consume_gemini_request(kind: str, reserve: int = 0, model_name: str = "defa
     if kind == "deep_dive_retry" and not GEMINI_BUDGET.can_deep_dive_retry():
         raise GeminiBudgetExceededError("Deep Dive transport retry budget exhausted")
     if count_as_deep_dive and not DEEP_DIVE_MODEL_BUDGET.can_request():
-        raise GeminiBudgetExceededError(
-            f"Deep Dive model local budget exhausted: used={DEEP_DIVE_MODEL_BUDGET.used}, "
+        raise DeepDiveRunBudgetExceededError(
+            f"Deep Dive run budget exhausted: used={DEEP_DIVE_MODEL_BUDGET.used}, "
             f"budget={DEEP_DIVE_MODEL_BUDGET.budget}, kind={kind}"
         )
     if count_as_deep_dive and request_origin == "pending_retry" and not PENDING_RETRY_REQUEST_BUDGET.can_request():
         raise PendingRetryBudgetExceededError(
             f"Pending Retry Gemini request budget exhausted: "
             f"used={PENDING_RETRY_REQUEST_BUDGET.used}, budget={PENDING_RETRY_REQUEST_BUDGET.budget}"
+        )
+    if request_origin == "product_review" and not PRODUCT_REVIEW_REQUEST_BUDGET.can_request():
+        raise ProductReviewBudgetExceededError(
+            f"Product Review request budget exhausted: used={PRODUCT_REVIEW_REQUEST_BUDGET.used}, "
+            f"budget={PRODUCT_REVIEW_REQUEST_BUDGET.budget}"
         )
 
     # Persistent reserveが失敗した場合、以下のlocal countersは一切consumeしない。
@@ -1075,6 +1131,8 @@ def _consume_gemini_request(kind: str, reserve: int = 0, model_name: str = "defa
         DEEP_DIVE_MODEL_BUDGET.consume(kind)
         if request_origin == "pending_retry":
             PENDING_RETRY_REQUEST_BUDGET.consume(kind)
+    if request_origin == "product_review":
+        PRODUCT_REVIEW_REQUEST_BUDGET.consume(kind)
     GEMINI_BUDGET.consume(kind, reserve=reserve)
     # Funnelの「Deep Dive Generation Called」は、candidate intentではなく
     # Persistent/Local Budgetを全て通過して実際にprovider送信へ進む試行だけを数える。
@@ -1095,8 +1153,8 @@ class DeepDiveModelBudget:
 
     def consume(self, kind: str) -> None:
         if not self.can_request():
-            raise GeminiBudgetExceededError(
-                f"Deep Dive model local budget exhausted: used={self.used}, budget={self.budget}, kind={kind}"
+            raise DeepDiveRunBudgetExceededError(
+                f"Deep Dive run budget exhausted: used={self.used}, budget={self.budget}, kind={kind}"
             )
         self.used += 1
 
@@ -1135,6 +1193,24 @@ class PendingRetryRequestBudget:
 
 
 PENDING_RETRY_REQUEST_BUDGET = PendingRetryRequestBudget(GEMINI_PENDING_RETRY_REQUEST_BUDGET)
+
+
+class ProductReviewRequestBudget:
+    """Dedicated product-side budget so free-note generation cannot starve subscriber DB reviews."""
+    def __init__(self, budget: int):
+        self.budget = max(0, int(budget)); self.used = 0; self.by_kind: dict[str, int] = {}
+    def can_request(self) -> bool:
+        return self.used + 1 <= self.budget
+    def consume(self, kind: str) -> None:
+        if not self.can_request():
+            raise ProductReviewBudgetExceededError(f"Product Review request budget exhausted: {self.used}/{self.budget}")
+        self.used += 1; self.by_kind[kind] = self.by_kind.get(kind, 0) + 1
+    def summary(self) -> str:
+        details = ", ".join(f"{k}={v}" for k, v in sorted(self.by_kind.items())) or "none"
+        return f"Product Review Gemini Requests Used: {self.used}/{self.budget} ({details})"
+
+
+PRODUCT_REVIEW_REQUEST_BUDGET = ProductReviewRequestBudget(GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET)
 
 
 def send_telegram_alert(message: str):
@@ -1392,6 +1468,19 @@ def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
         for attempt in range(2):
             try:
                 if deep_dive:
+                    # Deep Dive run/Pending Retry budgets are checked BEFORE pacing.
+                    # Once 12/12 is reached, do not sleep, iterate fallback models, or
+                    # misclassify a local safety stop as provider MODEL_UNAVAILABLE.
+                    if not DEEP_DIVE_MODEL_BUDGET.can_request():
+                        raise DeepDiveRunBudgetExceededError(
+                            f"Deep Dive run budget exhausted: used={DEEP_DIVE_MODEL_BUDGET.used}, "
+                            f"budget={DEEP_DIVE_MODEL_BUDGET.budget}, kind={kind}"
+                        )
+                    if request_origin == "pending_retry" and not PENDING_RETRY_REQUEST_BUDGET.can_request():
+                        raise PendingRetryBudgetExceededError(
+                            f"Pending Retry Gemini request budget exhausted: "
+                            f"used={PENDING_RETRY_REQUEST_BUDGET.used}, budget={PENDING_RETRY_REQUEST_BUDGET.budget}"
+                        )
                     time.sleep(max(0, GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
                     with _gemini_call_timeout(GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS):
                         response = _generate_via_chat(
@@ -1428,7 +1517,9 @@ def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
                     time.sleep(_extract_retry_delay(exc, 15))
                     continue
                 break
-            except PendingRetryBudgetExceededError:
+            except (PendingRetryBudgetExceededError, DeepDiveRunBudgetExceededError):
+                # Local safety stops are terminal for this request.  Never convert them
+                # to NoAvailableModelError and never walk the rest of the model pool.
                 raise
             except GeminiBudgetExceededError as exc:
                 last_error = exc
@@ -1439,6 +1530,14 @@ def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
                 last_error = exc
                 break
     raise NoAvailableModelError("利用可能なGeminiモデルがありません") from last_error
+
+
+def _model_pool_has_session_candidate(pool: list[str]) -> bool:
+    """Return False when every configured model is already exhausted/unavailable this run."""
+    return any(
+        model_name and model_name not in SESSION_EXHAUSTED_MODELS and model_name not in SESSION_UNAVAILABLE_MODELS
+        for model_name in (str(model).strip() for model in pool)
+    )
 
 
 def _call_screening_pool(prompt: str, config: dict | None = None, kind: str = "screening", reserve: int = 0,
@@ -4512,7 +4611,11 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
                           source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY,
                           evidence_metadata: dict | None = None, freshness: dict | None = None,
                           previous_article: str = "", evidence_result: dict | None = None):
-    """上位モデルでARTICLEとMANAGEMENT DATAを同時生成する。記事と管理帳票は明確に分離する。"""
+    """無料ARTICLEと記事公開に必要な最小MANAGEMENT DATAだけを生成する。
+
+    Adoption/Production Readiness等の会員向け評価はProduct Review経路へ完全分離し、
+    無料記事の生成負荷・Hallucination面積を増やさない。parserは旧出力互換を維持する。
+    """
     metric_label = ENGAGEMENT_LABELS.get(source, "Engagement")
     metric_note = ""
     if source == "ArXiv":
@@ -4548,15 +4651,16 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 
     return f"""
 あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
-以下の一次情報から、無料公開のnote記事として読者の判断を助ける記事と、Notion保存用の管理データを同時に作成してください。
+以下の一次情報から、無料公開のnote記事として読者の判断を助ける記事と、記事公開に必要な最小管理データを作成してください。
+会員向けTechnology評価（Adoption Score / Adoption Status / Evidence Confidence / Production Readiness / Main Risk / Best For / Avoid For）は別工程で作るため、ここでは絶対に生成しないでください。
 
 【読者】CTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。
 【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。
 【出力を途中で切らないための優先順位】
-1. MANAGEMENT DATAの全ラベル、SECTION_SPLIT_TOKEN、記事の必須見出しを必ず出す。
-2. そのうえで、記事は簡潔な段落中心で書き、管理データを重複説明しない。
+1. SECTION_SPLIT_TOKEN、記事タイトル、記事本文の最後の「最終判断」までを最優先で完走する。
+2. MANAGEMENT DATAは下記の8項目だけを簡潔に出す。記事本文を削って管理項目を増やさない。
 3. 無根拠な背景説明・一般論・競合列挙を追加しない。
-4. 最後の「最終判断」まで出力してから終了する。途中で省略記号を使わない。
+4. 不確かな比較・将来予測・導入コストを埋めるために推測しない。途中で省略記号を使わない。
 【事実優先順位】Source Native Context > Primary URL取得内容 > Google Search Grounding（有効時） > モデル内部知識。
 
 【SOURCE BOUNDARY — 最重要】
@@ -4602,30 +4706,17 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 
 最初に必ず次の見出しをそのまま出す。
 === MANAGEMENT DATA ===
-その下に以下を順序通り、各行「・ラベル: 値」で出す。
-・Source Summary: 一次情報で確認できる事実を1〜3文。
+その下に以下の8項目だけを順序通り、各行「・ラベル: 値」で簡潔に出す。
+・Source Summary: 一次情報で確認できる事実を1〜2文。
 ・What: 何が起きたかを2文以内。
 ・Why Important: 実務への意味。未検証効果は推論と明示。
-・技術的パラダイムシフト: 変化が小さいなら小さいと書く。
-・代替との比較: Grounding内で比較できる範囲だけ。根拠不足なら「比較根拠不足」と書く。
-・移行コストとリスク: 確認できる事実と推論を分ける。
 ・Decision: NOW / TRY / WATCH / WAIT / AVOID の1つ。
 ・Decision Reason: 最大3理由を簡潔に。
 ・Decision Score: Business Impact X/25; Technical Impact X/25; Urgency X/20; Market Impact X/15; Reliability X/15; 合計 X/100
-・Adoption Score: Evidence Quality X/25; Production Maturity X/25; Use-case Utility / Fit X/20; Reliability / Security Risk X/15; Integration / Migration Feasibility X/10; Ecosystem / Support Durability X/5; 合計 X/100
-・Adoption Status: WATCH / TEST / ADOPT / AVOID の1つ。人気や新しさではなく、Evidence・成熟度・対象ユースケース・リスクに基づく。
-・Evidence Confidence: LOW / MEDIUM / HIGH の1つ。取得済み一次情報だけで判定する。
-・Production Readiness: LOW / MEDIUM / HIGH の1つ。paper/prototype/previewをHIGHにしない。
-・Main Risk: 導入前に知るべき最大リスクを1〜2文。Evidenceにない一般論を作らない。
-・Best For: 価値を出しやすい対象ユースケースを簡潔に。
-・Avoid For: 現時点で使うべきでない対象ユースケースを簡潔に。
-・Short Rationale: Adoption判断の根拠を1〜3文。Buzzや人気ではなくEvidenceと技術特性で説明する。
-・Why NOT Important: 今は不要な読者と理由。
-・Who Should Use: 検討価値のある読者。
-・Who Should NOT Use: 今は不要な読者。
 ・Action: 次に検証する具体的行動。根拠のない日数・金額を作らない。
-・Future Scenario: 3〜12ヶ月の条件付きシナリオを2つ以上。Condition → Possible Result → Indicator。
 ・Article Value: 0〜100
+
+会員向け評価、競合比較、移行コスト、将来シナリオ、Who Should Use等をMANAGEMENT DATAへ追加しない。必要な実務上の対象読者・制約はARTICLE本文へ自然に書く。
 
 次に必ず専用行を出す。
 {SECTION_SPLIT_TOKEN}
@@ -4963,6 +5054,9 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
     scrubbed = scrubbed.replace("3〜12ヶ月", "").replace("3-12ヶ月", "")
     # 公開日などのカレンダー日付を「導入期間○日」と誤判定しない。
     scrubbed = re.sub(r"(?:20\d{2}年)?\d{1,2}月\d{1,2}日", "", scrubbed)
+    # 「2026年8月」のような公開年月は導入期間ではなくカレンダー情報。
+    # 月数の性能Claimと誤判定しない（年月の事実性はSource Boundary側で扱う）。
+    scrubbed = re.sub(r"20\d{2}年\d{1,2}月", "", scrubbed)
 
     occupied_spans: list[tuple[int, int]] = []
     for pattern in _SENSITIVE_NUMERIC_PATTERNS:
@@ -5000,11 +5094,24 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
 
 
 def _claim_is_negated(text: str, start: int, end: int) -> bool:
-    window = (text or "")[max(0, start - 28): min(len(text or ""), end + 40)]
+    """Judge negation in the same sentence, not an arbitrary short character window.
+
+    Japanese business prose often places the negating predicate far after an urgency/hype token
+    (e.g. 「今すぐ…リアーキテクチャすることは推奨しません」). A fixed 40-char window
+    creates false positives and destroys otherwise publishable articles. Sentence scope is still
+    conservative: negation in another sentence cannot legalize the claim.
+    """
+    body = text or ""
+    left_candidates = [body.rfind(mark, 0, start) for mark in ("。", "！", "？", "\n")]
+    left = max(left_candidates) + 1
+    rights = [pos for mark in ("。", "！", "？", "\n") if (pos := body.find(mark, end)) >= 0]
+    right = min(rights) + 1 if rights else min(len(body), end + 220)
+    sentence = body[left:right]
     return bool(re.search(
-        r"(?:ではない|とは言えない|とは限らない|断定できない|確認できない|保証しない|保証するものではない|"
-        r"根拠(?:が|は)ない|未確認|未検証|避ける|使わない|禁止|推奨しない)",
-        window, re.IGNORECASE
+        r"(?:ではない|ではありません|わけではない|わけではありません|とは言えない|とは言えません|"
+        r"とは限らない|とは限りません|断定できない|確認できない|保証しない|保証するものではない|"
+        r"根拠(?:が|は)ない|未確認|未検証|避ける|使わない|禁止|推奨しない|推奨しません|推奨できない)",
+        sentence, re.IGNORECASE
     ))
 
 
@@ -5325,6 +5432,39 @@ def validate_decision_intelligence_assessment(parsed: dict, evidence_result: dic
     return not failures, list(dict.fromkeys(failures))[:16]
 
 
+def _select_decision_intelligence_assessment_for_persistence(
+        final_parsed: dict, current_evidence_result: dict, source_info: dict,
+        retained_parsed: dict | None = None, retained_evidence_result: dict | None = None
+) -> tuple[dict, dict, str]:
+    """Choose the newest valid Adoption assessment without coupling it to article rewrites.
+
+    Quality Retry is allowed to rewrite the free-note manuscript.  If that rewrite drops or
+    corrupts otherwise-valid Decision Intelligence fields, preserve the most recent assessment
+    that independently passed the strict DI validator.  No additional Gemini request is made.
+    The retained snapshot is revalidated against the same verified source context before use.
+    """
+    if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
+        return final_parsed, current_evidence_result, "disabled"
+
+    verification_context = source_info.get("verification_context") or source_info.get("context", "")
+    metadata = source_info.get("evidence_metadata", {})
+    current_ok, _ = validate_decision_intelligence_assessment(
+        final_parsed, current_evidence_result, verification_context, metadata
+    )
+    if current_ok:
+        return final_parsed, current_evidence_result, "current"
+
+    if retained_parsed is not None:
+        retained_evidence = retained_evidence_result or current_evidence_result
+        retained_ok, _ = validate_decision_intelligence_assessment(
+            retained_parsed, retained_evidence, verification_context, metadata
+        )
+        if retained_ok:
+            return retained_parsed, retained_evidence, "retained"
+
+    return final_parsed, current_evidence_result, "invalid"
+
+
 def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_info: dict,
                                              evidence_result: dict, reviewed_at: str,
                                              screening_score: int | None = None,
@@ -5384,6 +5524,7 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
         "tracking_eligibility": True,
         "tracking_reason": "Deep Dive / Decision Assessment completed",
         "assessment_state": "ASSESSED",
+        "next_review": (datetime.now(timezone.utc) + timedelta(days=TRACKING_REVIEW_DAYS)).isoformat(),
     }
     try:
         result = decision_intelligence.upsert_technology_intelligence(assessment, resolution)
@@ -5408,16 +5549,12 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     draft = parsed.get("note_draft", "")
     marker = PAID_AREA_PATTERN.search(draft)
 
+    # Hard Fact Gateは「公開安全性」に必要な管理項目だけを見る。
+    # 競合比較・移行コスト・Future Scenario等はEvidenceが弱い案件ほど埋める行為自体が
+    # Hallucinationを誘発するため、Product/DB completenessを記事公開条件にしない。
     required_fields = {
         "Decision Reason": "decision_reason_text",
-        "Paradigm Shift": "paradigm_shift_text",
-        "Alternative Comparison": "alternative_comparison_text",
-        "Migration Cost": "migration_cost_text",
-        "Why NOT Important": "why_not_important_text",
-        "Who Should Use": "who_should_use_text",
-        "Who Should NOT Use": "who_should_not_use_text",
         "Action": "action_text",
-        "Future Scenario": "future_scenario_text",
         "Source Summary": "source_summary_text",
     }
     decision = parsed.get("decision_text", "")
@@ -5455,11 +5592,14 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         exact = r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in aliases) + r")\s*$"
         semantic = r"^#{2,3}\s*.*(?:" + "|".join(re.escape(item) for item in headings) + r").*$"
         return bool(re.search(exact, draft, re.MULTILINE) or re.search(semantic, draft, re.MULTILINE | re.I))
-    for label, headings in semantic_heading_roles.items():
-        if not has_heading_role(label, headings):
+    # 読ませる中見出しの完全一致をFact failureにしない。
+    # Hard structureは「導入→結論→最終判断」があれば成立し、その他はEditorial品質として扱う。
+    hard_heading_roles = ("導入", "結論", "最終判断")
+    for label in hard_heading_roles:
+        if not has_heading_role(label, semantic_heading_roles[label]):
             failures.append(f"required heading missing: {label}")
 
-    structural_missing = sum(1 for label, headings in semantic_heading_roles.items() if not has_heading_role(label, headings))
+    structural_missing = sum(1 for label in hard_heading_roles if not has_heading_role(label, semantic_heading_roles[label]))
     if structural_missing >= 2:
         failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
     if output_truncated:
@@ -5525,8 +5665,14 @@ def validate_publication_readiness_gate(parsed: dict, source_context: str = "", 
     action_tier = classify_action_risk_tier(action)
     limited_low_risk_action = action_tier == "LOW" and bool(re.search(r"(?:限定|小さく|PoC|比較(?:テスト|検証)|検証環境|回帰テスト|CI|profil(?:ing|e)|プロファイリング)", action, re.I))
     # 低スコアであっても、Evidenceに沿うLOW RISKの限定検証は矛盾ではない。
-    if score and score <= 69 and re.search(r"(?:今すぐ|直ちに|全面(?:導入|移行)|必ず導入)", article) and not limited_low_risk_action:
-        issues.append("score_narrative_mismatch")
+    if score and score <= 69 and not limited_low_risk_action:
+        urgency_pattern = r"(?:今すぐ|直ちに|全面(?:導入|移行)|必ず導入)"
+        unsupported_urgency = any(
+            not _claim_is_negated(article, m.start(), m.end())
+            for m in re.finditer(urgency_pattern, article)
+        )
+        if unsupported_urgency:
+            issues.append("score_narrative_mismatch")
     if score >= 90 and re.search(r"(?:見る必要はない|検討不要|関心を持つ必要はない)", article) and not limited_low_risk_action:
         issues.append("score_narrative_mismatch")
     if re.search(r"(?:world'?s fastest|世界最速|revolutionary|革命的)", context, re.I) and re.search(r"(?:世界最速|革命的)", article) and not re.search(r"(?:開発元|原資料|説明)は", article):
@@ -5762,6 +5908,137 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
     return "\n".join(dict.fromkeys(instructions)), list(dict.fromkeys(sections))
 
 
+
+def _remove_sentences_with_token(text: str, token: str) -> tuple[str, int]:
+    """Remove only prose sentences containing an unsupported token.
+
+    Headings are never removed. This is deliberately subtractive: it never invents replacement
+    facts, numbers, products, dates, performance, or comparisons.
+    """
+    if not text or not token:
+        return text or "", 0
+    removed = 0
+    out_lines: list[str] = []
+    for line in (text or "").splitlines():
+        if line.lstrip().startswith("#") or token not in line:
+            out_lines.append(line)
+            continue
+        parts = re.split(r"(?<=[。！？!?])", line)
+        kept = []
+        for part in parts:
+            if token in part:
+                removed += 1
+            else:
+                kept.append(part)
+        cleaned = "".join(kept).strip()
+        if cleaned:
+            out_lines.append(cleaned)
+        elif line.strip() == "":
+            out_lines.append("")
+    return "\n".join(out_lines), removed
+
+
+def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict]) -> tuple[dict, list[str]]:
+    """0-API, subtractive rescue for a narrow set of already-diagnosed article defects.
+
+    It may delete unsupported hype, an unsupported numeric/named-fact sentence, or fabricated
+    experience. It may not add facts or evidence. If a risky token is in the title or deleting it
+    would erase the concrete Action, the rescue declines and the normal fail-closed path remains.
+    """
+    rescued = dict(parsed or {})
+    article = str(rescued.get("note_draft") or "")
+    title = str(rescued.get("title_text") or "")
+    action = str(rescued.get("action_text") or "")
+    changes: list[str] = []
+
+    hype_replacements = {
+        "唯一": "", "一択": "", "必須": "", "デファクトスタンダード": "選択肢",
+        "圧倒的": "", "劇的": "", "革命的": "", "完全に解決": "改善",
+    }
+    for row in reason_rows or []:
+        code = row.get("reason_code") or ""
+        message = str(row.get("message") or "")
+        if code == REASON_CODE_FACT_UNSUPPORTED_CLAIM:
+            matched = False
+            for bad, replacement in hype_replacements.items():
+                if bad in message and (bad in article or bad in title):
+                    if bad == "唯一":
+                        # Remove the grammatical unit as well; deleting only 「唯一」 leaves
+                        # malformed prose such as 「、の『インフラ』」. This remains subtractive.
+                        article = article.replace("唯一の", "").replace("唯一", replacement)
+                        title = title.replace("唯一の", "").replace("唯一", replacement)
+                    else:
+                        article = article.replace(bad, replacement)
+                        title = title.replace(bad, replacement)
+                    changes.append(f"remove_unsupported_hype:{bad}")
+                    matched = True
+            if not matched:
+                # Generic unsupported claims are too broad for deterministic rewriting.
+                continue
+        elif code in {REASON_CODE_FACT_NUMERICAL_MISMATCH, REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT}:
+            token = message.rsplit(":", 1)[-1].strip()
+            if not token or token in title:
+                continue
+            new_article, removed = _remove_sentences_with_token(article, token)
+            if removed:
+                article = new_article
+                changes.append(f"remove_unsupported_sentence:{token}")
+                if token in action:
+                    derived_action = _extract_any_markdown_section(article, _display_heading_aliases("decision"))
+                    if _is_meaningful_field(derived_action) and token not in derived_action:
+                        action = derived_action
+                    else:
+                        # Do not publish without a concrete Action merely to rescue a draft.
+                        return dict(parsed or {}), []
+        elif code == REASON_CODE_APPEAL_FABRICATED_EXPERIENCE:
+            for snippet in _find_fabricated_personal_experience(article):
+                article, removed = _remove_sentences_with_token(article, snippet)
+                if removed:
+                    changes.append("remove_fabricated_experience")
+
+    if not changes:
+        return dict(parsed or {}), []
+    article = re.sub(r"[ \t]{2,}", " ", article)
+    article = re.sub(r"\n{3,}", "\n\n", article).strip()
+    title = re.sub(r"\s{2,}", " ", title).strip()
+    title = re.sub(r"^[、,:：\-\s]+", "", title)
+    if title and not re.search(r"[。？]$", title):
+        title += "。"
+    if not _is_meaningful_field(action):
+        return dict(parsed or {}), []
+    rescued["note_draft"] = article
+    rescued["title_text"] = title
+    rescued["action_text"] = action
+    return rescued, list(dict.fromkeys(changes))
+
+
+def _publication_rescue_can_be_ready(parsed: dict, source_context: str, source: str,
+                                     evidence_metadata: dict, source_info: dict, freshness: dict,
+                                     output_truncated: bool = False) -> tuple[bool, dict]:
+    fact_ok, fact_failures = validate_fact_gate(
+        parsed, "publication-rescue", source_context=source_context, source=source,
+        evidence_metadata=evidence_metadata, source_info=source_info,
+        freshness=freshness, output_truncated=output_truncated,
+    )
+    editorial_ok, editorial_warnings = validate_editorial_gate(parsed, "publication-rescue")
+    publication_state, publication_issues = validate_publication_readiness_gate(parsed, source_context, source_info)
+    human_state, human_issues = validate_human_appeal_gate(parsed)
+    hard_human = any(issue in {
+        "action_collapsed_to_generic_monitoring", "decision_voice_missing",
+        "headline_flattened", "fabricated_personal_experience",
+        "human_appeal_materially_degraded_after_reedit",
+    } for issue in human_issues)
+    # Editorial/soft Human Appeal warnings are allowed after the paid Gemini retry has already
+    # failed, matching the existing final-attempt policy. Fact, publication, and hard-human remain hard.
+    ready = fact_ok and publication_state == "PASS" and not hard_human
+    return ready, {
+        "fact_ok": fact_ok, "fact_failures": fact_failures,
+        "editorial_ok": editorial_ok, "editorial_warnings": editorial_warnings,
+        "publication_state": publication_state, "publication_issues": publication_issues,
+        "human_state": human_state, "human_issues": human_issues,
+    }
+
+
 class DeepDiveGateFunnel:
     """一回の本番実行におけるDeep Diveの脱落経路を集計する。"""
     COUNTERS = (
@@ -5771,6 +6048,7 @@ class DeepDiveGateFunnel:
         "evidence_sufficient", "evidence_supplement_required", "evidence_supplement_success",
         "evidence_insufficient", "deep_dive_generation_called", "deep_dive_calls_avoided",
         "retry_attempted", "retry_success", "retry_failed",
+        "deterministic_rescue_attempted", "deterministic_rescue_success",
         "retry_skipped_nonrepairable", "retry_skipped_budget",
         "max_tokens_failed", "structure_failed", "primary_evidence_failed",
         "fact_gate_failed", "editorial_gate_failed", "publication_readiness_review",
@@ -5862,6 +6140,8 @@ class DeepDiveGateFunnel:
             f"Dynamic Retry Attempted: {c['retry_attempted']}",
             f"Dynamic Retry Success: {c['retry_success']}", "",
             f"Dynamic Retry Failed: {c['retry_failed']}",
+            f"Deterministic Rescue Attempted: {c['deterministic_rescue_attempted']}",
+            f"Deterministic Rescue Success: {c['deterministic_rescue_success']}",
             f"Dynamic Retry Skipped (Non-repairable): {c['retry_skipped_nonrepairable']}",
             f"Dynamic Retry Skipped (Budget): {c['retry_skipped_budget']}", "",
             f"MAX_TOKENS: {c['max_tokens_failed']}",
@@ -6552,14 +6832,32 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     retry_diagnostics: dict = {}
     deep_dive_generation_called = False
     decision_intelligence_attempted = False
+    retained_decision_assessment: dict | None = None
+    retained_decision_evidence: dict | None = None
 
     def persist_product_sidecar_once(final_parsed: dict, content_status: str, article_status: str) -> dict:
         nonlocal decision_intelligence_attempted
         if decision_intelligence_attempted or not persist_results:
             return {"saved": False, "reason": "already_attempted_or_nonpersistent"}
+        # Free Article Delivery and paid Product Review are intentionally decoupled in Phase 2.
+        # New article prompts do not ask for Adoption fields; tracking/product-review will assess them
+        # independently. Keep legacy/retry compatibility if an older response still contains them.
+        if not final_parsed.get("adoption_score") or not final_parsed.get("adoption_status"):
+            return {"saved": False, "reason": "article_assessment_not_requested"}
         decision_intelligence_attempted = True
+        assessment_parsed, assessment_evidence, assessment_source = (
+            _select_decision_intelligence_assessment_for_persistence(
+                final_parsed, evidence_result, source_info,
+                retained_decision_assessment, retained_decision_evidence,
+            )
+        )
+        if assessment_source == "retained":
+            logger.info(
+                "[DECISION INTELLIGENCE RETAINED] %s: Quality RetryのDI項目が無効なため直前の有効Assessmentを使用",
+                name,
+            )
         return persist_decision_intelligence_assessment(
-            repo, final_parsed, source_info, evidence_result, _analyzed_at_now_iso(),
+            repo, assessment_parsed, source_info, assessment_evidence, _analyzed_at_now_iso(),
             screening_score=screening_score, screening_reason=screening_reason,
             attribution_context=attribution_context, pipeline_status=STATUS_DEEP_DIVE,
             content_status=content_status, article_status=article_status,
@@ -6653,6 +6951,28 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 source_info["evidence_result"] = evidence_result
                 source_info["decision_scope_safe"] = evidence_result.get("decision_scope_safe", False)
 
+            # Article Quality Retry and subscriber-facing Adoption Assessment are independent.
+            # Capture the newest independently valid DI snapshot before the article gates can
+            # trigger a rewrite.  A later retry may improve it; an invalid retry may not erase it.
+            if (decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB
+                    and parsed.get("adoption_score") and parsed.get("adoption_status")):
+                verification_context = source_info.get("verification_context") or source_info.get("context", "")
+                assessment_ok, assessment_failures = validate_decision_intelligence_assessment(
+                    parsed, evidence_result, verification_context, source_info.get("evidence_metadata", {})
+                )
+                if assessment_ok:
+                    retained_decision_assessment = dict(parsed)
+                    retained_decision_evidence = dict(evidence_result)
+                    logger.info(
+                        "[DECISION INTELLIGENCE SNAPSHOT] %s: valid assessment retained from %s",
+                        name, request_kind,
+                    )
+                elif retained_decision_assessment is not None:
+                    logger.info(
+                        "[DECISION INTELLIGENCE SNAPSHOT] %s: %s assessment invalid; prior valid assessment retained (%s)",
+                        name, request_kind, " / ".join(assessment_failures)[:500],
+                    )
+
             verification_context = source_info.get("verification_context") or source_info.get("context", "")
             fact_ok, fact_failures = validate_fact_gate(
                 parsed, name, source_context=verification_context, source=source,
@@ -6699,6 +7019,47 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
             reason_rows = (map_gate_reasons("fact", fact_failures) + map_gate_reasons("editorial", editorial_warnings)
                            + map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues))
+
+            # Try the zero-API subtractive rescue before spending a Gemini quality-retry request.
+            # This is especially valuable for isolated hype/named-fact/numeric defects: if Fact and
+            # Publication become safe after deleting the exact offending material, an extra model
+            # call would add cost and a new hallucination opportunity without adding evidence.
+            if ENABLE_DETERMINISTIC_PUBLICATION_RESCUE and attempt < MAX_QUALITY_RETRIES:
+                pre_rescue_article = parsed.get("note_draft", "")
+                rescued_parsed, rescue_changes = _apply_deterministic_publication_rescue(parsed, reason_rows)
+                if rescue_changes:
+                    rescue_ready, rescue_diag = _publication_rescue_can_be_ready(
+                        rescued_parsed, verification_context, source, source_info.get("evidence_metadata", {}),
+                        source_info, freshness, output_truncated=output_truncated,
+                    )
+                    if funnel:
+                        funnel.incr("deterministic_rescue_attempted")
+                    logger.info(
+                        "[PUBLICATION RESCUE PRE-RETRY] %s changes=%s ready=%s remaining_fact=%s publication=%s",
+                        name, rescue_changes, rescue_ready, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
+                    )
+                    if rescue_ready:
+                        if funnel:
+                            funnel.incr("deterministic_rescue_success")
+                        parsed = rescued_parsed
+                        quality_gate_passed = True
+                        fact_ok = bool(rescue_diag.get("fact_ok"))
+                        editorial_ok = bool(rescue_diag.get("editorial_ok"))
+                        publication_state = str(rescue_diag.get("publication_state"))
+                        human_appeal = str(rescue_diag.get("human_state"))
+                        fact_failures = list(rescue_diag.get("fact_failures") or [])
+                        editorial_warnings = list(rescue_diag.get("editorial_warnings") or [])
+                        publication_issues = list(rescue_diag.get("publication_issues") or [])
+                        human_appeal_issues = list(rescue_diag.get("human_issues") or [])
+                        final_quality_failures = editorial_warnings + human_appeal_issues
+                        retry_diagnostics = {
+                            "original_article": pre_rescue_article,
+                            "trigger_reason_codes": reason_rows,
+                            "changed_sections": ["deterministic_subtractive_rescue"],
+                            "retry_attempted": False,
+                            "deterministic_rescue": rescue_changes,
+                        }
+                        break
             retry_allowed, retry_skip_reason = should_attempt_dynamic_retry(
                 reason_rows, evidence_result, candidate_origin=candidate_origin
             )
@@ -6812,6 +7173,38 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 final_quality_failures = editorial_warnings
                 break
             if final_attempt:
+                # Last-chance 0-API rescue: delete only the exact unsupported material already
+                # diagnosed by the gates. Never invent replacement facts or weaken evidence checks.
+                if ENABLE_DETERMINISTIC_PUBLICATION_RESCUE:
+                    rescued_parsed, rescue_changes = _apply_deterministic_publication_rescue(parsed, reason_rows)
+                    if rescue_changes:
+                        if funnel:
+                            funnel.incr("deterministic_rescue_attempted")
+                        rescue_ready, rescue_diag = _publication_rescue_can_be_ready(
+                            rescued_parsed, verification_context, source, source_info.get("evidence_metadata", {}),
+                            source_info, freshness, output_truncated=output_truncated,
+                        )
+                        logger.info(
+                            "[PUBLICATION RESCUE] %s changes=%s ready=%s remaining_fact=%s publication=%s",
+                            name, rescue_changes, rescue_ready, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
+                        )
+                        if rescue_ready:
+                            if funnel:
+                                funnel.incr("deterministic_rescue_success")
+                            parsed = rescued_parsed
+                            quality_gate_passed = True
+                            fact_ok = bool(rescue_diag.get("fact_ok"))
+                            editorial_ok = bool(rescue_diag.get("editorial_ok"))
+                            publication_state = str(rescue_diag.get("publication_state"))
+                            human_appeal = str(rescue_diag.get("human_state"))
+                            fact_failures = list(rescue_diag.get("fact_failures") or [])
+                            editorial_warnings = list(rescue_diag.get("editorial_warnings") or [])
+                            publication_issues = list(rescue_diag.get("publication_issues") or [])
+                            human_appeal_issues = list(rescue_diag.get("human_issues") or [])
+                            final_quality_failures = editorial_warnings + human_appeal_issues
+                            retry_diagnostics = dict(retry_diagnostics or {})
+                            retry_diagnostics["deterministic_rescue"] = rescue_changes
+                            break
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
                 if not persist_results:
                     # 再生成テストはGate調整そのものが目的。落ちた稿も捨てず、
@@ -6965,7 +7358,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         raise
     except (GeminiCallTimeoutError, NoAvailableModelError, APIError) as e:
         logger.error(f"[DEEP DIVE TRANSIENT FAILURE] {name}: {e}")
-        reason_code = REASON_CODE_MODEL_UNAVAILABLE if isinstance(e, NoAvailableModelError) else REASON_CODE_PENDING_RETRY
+        provider_failure = isinstance(e, (GeminiCallTimeoutError, NoAvailableModelError)) or (isinstance(e, APIError) and getattr(e, "code", None) in {429, 503})
+        reason_code = REASON_CODE_MODEL_UNAVAILABLE if provider_failure else REASON_CODE_PENDING_RETRY
         record_gate_outcome("pending_retry", CONTENT_STATUS_PENDING_RETRY,
                             reason_codes=[{"reason_code": reason_code, "message": str(e)}])
         page_id = notion_page_id
@@ -6973,6 +7367,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
         if persist_results and page_id:
             update_notion_pending_retry(page_id, name, str(e))
+        return None
+    except DeepDiveRunBudgetExceededError as e:
+        logger.warning(f"[DEEP DIVE RUN BUDGET STOP] {name}: {e}")
+        record_gate_outcome(
+            "pending_retry", CONTENT_STATUS_PENDING_RETRY,
+            reason_codes=[{"reason_code": REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, "message": str(e)}],
+        )
+        if persist_results and notion_page_id:
+            update_notion_pending_retry(notion_page_id, name, str(e))
         return None
     except GeminiBudgetExceededError as e:
         logger.warning(f"[GEMINI BUDGET STOP] {name}: {e}")
@@ -7098,7 +7501,7 @@ def _source_base_fetch_limits() -> dict[str, int]:
 
 
 def _empty_source_roi_state() -> dict:
-    return {"version": 1, "runs": []}
+    return {"version": 2, "runs": []}
 
 
 def load_source_roi_state(path: str | None = None) -> dict:
@@ -7113,6 +7516,10 @@ def load_source_roi_state(path: str | None = None) -> dict:
             raise ValueError("invalid source ROI state schema")
         state.setdefault("version", 1)
         state.setdefault("runs", [])
+        # v1 mixed provider outages into source quality denominators. Do not perpetuate that bias.
+        if int(state.get("version", 1) or 1) < 2:
+            logger.warning("[SOURCE ROI] legacy v1 state ignored to prevent provider-outage learning contamination")
+            return _empty_source_roi_state()
         return state
     except FileNotFoundError:
         return _empty_source_roi_state()
@@ -7253,8 +7660,15 @@ def build_source_roi_run_metrics(screened: list[dict] | None, funnel: "DeepDiveG
         src = record.get("source")
         if src not in metrics:
             continue
-        metrics[src]["deep_dive_attempted"] += 1
-        metrics[src]["generation_requests"] += max(0, int(record.get("generation_request_count", 0) or 0))
+        reason_codes = {row.get("reason_code") for row in record.get("reason_codes", []) if isinstance(row, dict)}
+        provider_or_budget_failure = bool(reason_codes & {
+            REASON_CODE_MODEL_UNAVAILABLE, REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED
+        }) or record.get("error_category") in {"provider_unavailable", "quota", "timeout", "budget"}
+        # Source ROI learns editorial/source yield, not Gemini availability. Provider/quota/budget failures
+        # are excluded from attempt/request denominators so a 503 cannot reduce future source collection.
+        if not provider_or_budget_failure:
+            metrics[src]["deep_dive_attempted"] += 1
+            metrics[src]["generation_requests"] += max(0, int(record.get("generation_request_count", 0) or 0))
         status = record.get("final_status")
         if status == ARTICLE_STATUS_READY:
             metrics[src]["ready"] += 1
@@ -7303,7 +7717,7 @@ def update_source_roi_state(state: dict | None, screened: list[dict] | None,
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "sources": run_metrics,
     })
-    updated["version"] = 1
+    updated["version"] = 2
     updated["runs"] = runs[-max(1, SOURCE_ROI_HISTORY_RUNS):]
     updated["profile"] = compute_source_roi_profile(updated)
     if persist:
@@ -7469,6 +7883,15 @@ def _parse_batch_screening_response(text: str, expected_ids: set[str], include_d
                 reason = str(row.get("reason", "取得失敗")).strip()[:120] or "取得失敗"
                 commercial_score = _bounded_optional_score(row.get("commercial_score"), candidate_id, "commercial_score", invalid)
                 shelf_life_score = _bounded_optional_score(row.get("shelf_life_score"), candidate_id, "shelf_life_score", invalid)
+                tracking_raw = row.get("tracking_eligible")
+                if isinstance(tracking_raw, bool):
+                    tracking_eligible = tracking_raw
+                elif isinstance(tracking_raw, str) and tracking_raw.strip().lower() in {"true", "false"}:
+                    tracking_eligible = tracking_raw.strip().lower() == "true"
+                else:
+                    tracking_eligible = score >= TRACKING_ELIGIBILITY_MIN_SCORE
+                    invalid.append(f"missing_tracking_eligible:{candidate_id}")
+                tracking_reason = str(row.get("tracking_reason", "")).strip()[:160]
                 raw_topic = row.get("topic")
                 normalized_topic = normalize_portfolio_topic(raw_topic)
                 topic_valid = raw_topic is not None
@@ -7481,6 +7904,7 @@ def _parse_batch_screening_response(text: str, expected_ids: set[str], include_d
                 parsed[candidate_id] = {
                     "score": score, "reason": reason,
                     "commercial_score": commercial_score, "shelf_life_score": shelf_life_score,
+                    "tracking_eligible": tracking_eligible, "tracking_reason": tracking_reason,
                     "portfolio_topic": normalized_topic, "topic_valid": topic_valid,
                 }
             if invalid:
@@ -7518,9 +7942,12 @@ def _batch_screening_prompt(batch: list[dict]) -> str:
         "shelf_life_scoreは0〜100で情報価値の持続性を推定する。"
         "0-34=FLASH(主に1-7日)、35-69=TREND(主に1-4週)、70-100=EVERGREEN(数か月以上)を目安とする。"
         "topicはSource種別ではなく内容の主テーマを MODEL, AGENT, DEVTOOLS, INFRA, DATA, SECURITY, MULTIMODAL, PRODUCT, OTHER のいずれか1つで返す。"
+        "tracking_eligibleは記事化価値とは独立し、今後の導入判断・回避判断・成熟度変化を追う価値があるTechnologyならtrueとする。"
+        "単に面白い記事という理由ではtrueにせず、逆に記事scoreが低くてもAVOID判断や将来の成熟監視に価値があればtrueにできる。"
+        "tracking_reasonはその理由を40字以内で返す。"
         "Sourceが異なる候補間でEngagementの絶対値を直接比較してはならない。"
         "この段階ではURL本文・README・論文全文を推測して使わない。"
-        "出力は必ずJSON配列だけ。各要素は id, score, commercial_score, shelf_life_score, topic, reason（40字以内）とする。\n"
+        "出力は必ずJSON配列だけ。各要素は id, score, commercial_score, shelf_life_score, topic, tracking_eligible(boolean), tracking_reason（40字以内）, reason（40字以内）とする。\n"
         + json.dumps(rows, ensure_ascii=False)
     )
 
@@ -7534,6 +7961,8 @@ def _calibration_prompt(batch: list[dict]) -> str:
                      "raw_score": item.get("raw_score"), "raw_commercial_score": item.get("raw_commercial_score", item.get("commercial_score")),
                      "raw_shelf_life_score": item.get("raw_shelf_life_score", item.get("shelf_life_score")),
                      "raw_topic": item.get("raw_portfolio_topic", item.get("portfolio_topic", "OTHER")),
+                     "tracking_eligible": item.get("tracking_eligible", False),
+                     "tracking_reason": item.get("tracking_reason", ""),
                      "engagement": repo.get("stargazerCount", 0),
                      "published_at": repo.get("publishedAt"), "url": repo.get("url", "")})
     return (
@@ -7544,8 +7973,9 @@ def _calibration_prompt(batch: list[dict]) -> str:
         "継続的な実務需要、商業隣接性をmetadataだけから保守的に再評価する。"
         "shelf_life_scoreは情報価値の持続性を0〜100で再評価する。入力にないアクセス数や売上を捏造しない。"
         "topicは主テーマを MODEL, AGENT, DEVTOOLS, INFRA, DATA, SECURITY, MULTIMODAL, PRODUCT, OTHER のいずれか1つで再判定する。"
+        "tracking_eligibleは記事価値と独立したTechnology追跡価値で再判定し、tracking_reasonを40字以内で返す。"
         "異Source間でEngagementの絶対値を直接比較してはならない。"
-        "出力はJSON配列のみ。各要素は id, score, commercial_score, shelf_life_score, topic, reason（40字以内）。\n"
+        "出力はJSON配列のみ。各要素は id, score, commercial_score, shelf_life_score, topic, tracking_eligible, tracking_reason, reason（40字以内）。\n"
         + json.dumps(rows, ensure_ascii=False)
     )
 
@@ -7576,6 +8006,8 @@ def screen_batch(batch: list[dict], *_args, recovery: bool = False, **_kwargs):
                                   "raw_portfolio_topic": row.get("portfolio_topic", "OTHER"),
                                   "portfolio_topic": row.get("portfolio_topic", "OTHER"),
                                   "score": row["score"], "reason": row["reason"],
+                                  "tracking_eligible": bool(row.get("tracking_eligible")),
+                                  "tracking_reason": row.get("tracking_reason") or row["reason"],
                                   "calibrated": False, "screening_status": "completed"}
                 _attach_profit_metadata(completed_item, raw_commercial, raw_shelf)
                 completed.append(_attach_portfolio_topic(completed_item, row.get("portfolio_topic"), row.get("portfolio_topic")))
@@ -7659,6 +8091,8 @@ def calibrate_candidates(items: list[dict]) -> tuple[list[dict], int]:
                         item["shelf_life_score"] = row["shelf_life_score"]
                     if row.get("topic_valid"):
                         item["portfolio_topic"] = row["portfolio_topic"]
+                    item["tracking_eligible"] = bool(row.get("tracking_eligible", item.get("tracking_eligible", False)))
+                    item["tracking_reason"] = row.get("tracking_reason") or item.get("tracking_reason") or item.get("reason", "")
                     _attach_profit_metadata(item, item.get("commercial_score"), item.get("shelf_life_score"))
                     _attach_portfolio_topic(item, item.get("portfolio_topic"), item.get("raw_portfolio_topic"))
                     item["calibrated"] = True
@@ -7879,6 +8313,7 @@ def run_regen_test_mode():
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
     logger.info(PENDING_RETRY_REQUEST_BUDGET.summary())
+    logger.info(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
     logger.info(GEMINI_USAGE_AUDIT.summary(include_contexts=True))
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
@@ -8133,6 +8568,74 @@ def _apply_content_portfolio_balance(ordered: list[dict], visible_slots: int) ->
     return result
 
 
+
+def publication_probability_score(item: dict) -> int:
+    """Rule-based probability proxy for reaching Ready, using metadata only and 0 Gemini calls.
+
+    This is not a quality score. It rewards direct primary-source surfaces and complete metadata so
+    TOP_N contains at least one candidate that is realistically finishable today.
+    """
+    repo = (item or {}).get("repo", {}) or {}
+    source = str(repo.get("source") or "GitHub")
+    url = str(repo.get("primaryUrl") or repo.get("url") or "")
+    host = (urlparse(url).hostname or "").lower()
+    desc = str(repo.get("description") or "").strip()
+    score = {"ArXiv": 78, "GitHub": 74, "HackerNews": 52, "ProductHunt": 50}.get(source, 48)
+    if source == "ArXiv" and "arxiv.org" in host:
+        score += 12
+    elif source == "GitHub" and host in {"github.com", "www.github.com"}:
+        score += 10
+    elif source == "HackerNews" and host and "ycombinator.com" not in host:
+        score += 18
+    elif source == "ProductHunt" and host and "producthunt.com" not in host:
+        score += 18
+    if len(desc) >= 160:
+        score += 8
+    elif len(desc) >= 60:
+        score += 5
+    elif desc:
+        score += 2
+    if repo.get("publishedAt"):
+        score += 3
+    if source == "GitHub":
+        spdx = str(((repo.get("licenseInfo") or {}).get("spdxId") or "")).upper()
+        if spdx and spdx not in {"NOASSERTION", "UNLICENSED", "UNLICENSE"}:
+            score += 3
+    return max(0, min(100, int(round(score))))
+
+
+def _apply_publication_reliability_slot(ordered: list[dict], visible_slots: int) -> list[dict]:
+    if not ENABLE_PUBLICATION_RELIABILITY_SLOT or PUBLICATION_RELIABILITY_SLOTS <= 0 or visible_slots <= 0:
+        return ordered
+    for item in ordered:
+        item["publication_probability_score"] = publication_probability_score(item)
+    qualified = [
+        (idx, item) for idx, item in enumerate(ordered)
+        if float(item.get("score") or 0) >= PUBLICATION_RELIABILITY_MIN_DECISION_SCORE
+    ]
+    if not qualified:
+        return ordered
+    # One slot is intentionally enough: the remaining visible slots stay optimized for business value.
+    best_idx, best = max(
+        qualified,
+        key=lambda pair: (pair[1].get("publication_probability_score", 0),
+                          pair[1].get("deep_dive_priority_score", 0), pair[1].get("score", 0)),
+    )
+    if best_idx < visible_slots:
+        return ordered
+    current = ordered[:visible_slots]
+    current_best_publishability = max((x.get("publication_probability_score", 0) for x in current), default=0)
+    if best.get("publication_probability_score", 0) < current_best_publishability + PUBLICATION_RELIABILITY_MIN_ADVANTAGE:
+        return ordered
+    selected = ordered.pop(best_idx)
+    ordered.insert(visible_slots - 1, selected)
+    logger.info(
+        "[PUBLICATION RELIABILITY SLOT] promoted=%s publishability=%s decision=%s",
+        selected.get("repo", {}).get("nameWithOwner"), selected.get("publication_probability_score"), selected.get("score"),
+    )
+    return ordered
+
+
 def _select_stocked_deep_dive_candidates(screened: list[dict]) -> list[dict]:
     """Select only persisted Stock, then order it for profit without weakening quality.
 
@@ -8185,7 +8688,479 @@ def _select_stocked_deep_dive_candidates(screened: list[dict]) -> list[dict]:
                 if evergreen_count >= evergreen_needed:
                     break
     ordered = _apply_content_portfolio_balance(ordered, visible_slots)
+    ordered = _apply_publication_reliability_slot(ordered, visible_slots)
     return ordered
+
+
+
+def _deferred_ttl_days(shelf_life: str) -> int:
+    return {"FLASH": DEFERRED_FLASH_TTL_DAYS, "TREND": DEFERRED_TREND_TTL_DAYS, "EVERGREEN": DEFERRED_EVERGREEN_TTL_DAYS}.get(str(shelf_life or "TREND").upper(), DEFERRED_TREND_TTL_DAYS)
+
+
+def _deferred_key(candidate: dict) -> str:
+    repo = candidate.get("repo", {})
+    urls = candidate_identity_urls(repo)
+    if urls:
+        return sorted(urls)[0]
+    return f"{repo.get('source','')}:{_normalize_title_for_match(repo.get('nameWithOwner',''))}"
+
+
+def _deferred_serializable(candidate: dict) -> dict:
+    repo = candidate.get("repo", {})
+    now = datetime.now(timezone.utc)
+    ttl = _deferred_ttl_days(candidate.get("shelf_life"))
+    safe_repo = {k: v for k, v in repo.items() if isinstance(v, (str, int, float, bool, type(None), list, dict))}
+    return {
+        "key": _deferred_key(candidate), "deferred_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=ttl)).isoformat(), "repo": safe_repo,
+        "notion_page_id": candidate.get("notion_page_id"), "score": candidate.get("score"),
+        "reason": candidate.get("reason", ""), "commercial_score": candidate.get("commercial_score"),
+        "shelf_life_score": candidate.get("shelf_life_score"), "shelf_life": candidate.get("shelf_life"),
+        "portfolio_topic": candidate.get("portfolio_topic", "OTHER"),
+        "deep_dive_priority_score": candidate.get("deep_dive_priority_score"),
+    }
+
+
+def load_deferred_deep_dive_queue() -> list[dict]:
+    payload = None
+    if EYECATCH_GITHUB_REPO and GH_PAT:
+        dest_path = f"{DEFERRED_DEEP_DIVE_GITHUB_DIR}/deferred_queue.json"
+        api_url = f"https://api.github.com/repos/{EYECATCH_GITHUB_REPO}/contents/{dest_path}"
+        try:
+            res = requests.get(api_url, headers={"Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json"}, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=15)
+            if res.status_code == 200:
+                raw = base64.b64decode(res.json().get("content", "")).decode("utf-8")
+                payload = json.loads(raw)
+            elif res.status_code not in {404}:
+                logger.warning("[DEFERRED LOAD] GitHub HTTP %s", res.status_code)
+        except Exception as exc:
+            logger.warning("[DEFERRED LOAD] GitHub fallback to local: %s", exc)
+    if payload is None:
+        try:
+            with open(DEFERRED_DEEP_DIVE_STATE_PATH, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except FileNotFoundError:
+            payload = {"version": 1, "items": []}
+        except Exception as exc:
+            logger.warning("[DEFERRED LOAD] local state corrupt; fail-closed empty queue: %s", exc)
+            payload = {"version": 1, "items": []}
+    now = datetime.now(timezone.utc)
+    valid = []
+    for row in payload.get("items", []) if isinstance(payload, dict) else []:
+        try:
+            expiry = datetime.fromisoformat(str(row.get("expires_at", "")).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if expiry > now and row.get("key") and isinstance(row.get("repo"), dict):
+            valid.append(row)
+    return valid[:DEFERRED_DEEP_DIVE_MAX_QUEUE]
+
+
+def save_deferred_deep_dive_queue(items: list[dict]) -> bool:
+    payload = {"version": 1, "updated_at": datetime.now(timezone.utc).isoformat(), "items": items[:DEFERRED_DEEP_DIVE_MAX_QUEUE]}
+    try:
+        directory = os.path.dirname(DEFERRED_DEEP_DIVE_STATE_PATH)
+        if directory: os.makedirs(directory, exist_ok=True)
+        with open(DEFERRED_DEEP_DIVE_STATE_PATH, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        logger.error("[DEFERRED SAVE] local write failed: %s", exc)
+        return False
+    if not (EYECATCH_GITHUB_REPO and GH_PAT):
+        # Local-only is acceptable outside GitHub Actions; in production repo/token are preflighted.
+        return not os.environ.get("GITHUB_ACTIONS")
+    dest_path = f"{DEFERRED_DEEP_DIVE_GITHUB_DIR}/deferred_queue.json"
+    api_url = f"https://api.github.com/repos/{EYECATCH_GITHUB_REPO}/contents/{dest_path}"
+    headers = {"Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json"}
+    try:
+        current = requests.get(api_url, headers=headers, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=15)
+        body = base64.b64encode(json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")).decode("ascii")
+        put = {"message": "chore: update deferred deep dive queue", "content": body, "branch": EYECATCH_GITHUB_BRANCH}
+        if current.status_code == 200: put["sha"] = current.json().get("sha")
+        res = requests.put(api_url, headers=headers, json=put, timeout=30)
+        if res.status_code not in {200, 201}:
+            logger.error("[DEFERRED SAVE] GitHub HTTP %s %s", res.status_code, res.text[:300]); return False
+        return True
+    except Exception as exc:
+        logger.error("[DEFERRED SAVE] GitHub exception: %s", exc); return False
+
+
+def _fallback_deferred_rows_to_notion(rows: list[dict], reason: str) -> int:
+    """Fail-safe for queue loss/overflow: preserve candidates in existing Notion Pending Retry."""
+    moved = 0
+    seen = set()
+    for row in rows or []:
+        page_id = row.get("notion_page_id")
+        if not page_id or page_id in seen:
+            continue
+        seen.add(page_id)
+        try:
+            _mark_pending_retry_or_escalate(page_id, row.get("repo", {}).get("nameWithOwner", "Deferred candidate"), reason)
+            moved += 1
+        except Exception as exc:
+            logger.error("[DEFERRED FAILSAFE FAILED] %s: %s", page_id, exc)
+    return moved
+
+
+def enqueue_deferred_candidates(candidates: list[dict]) -> int:
+    if not candidates: return 0
+    queue = load_deferred_deep_dive_queue()
+    merged = {row.get("key"): row for row in queue if row.get("key")}
+    new_rows = []
+    for candidate in candidates:
+        row = _deferred_serializable(candidate); merged[row["key"]] = row; new_rows.append(row)
+    ranked = sorted(merged.values(), key=lambda r: (float(r.get("deep_dive_priority_score") or r.get("score") or 0), r.get("deferred_at", "")), reverse=True)
+    final = ranked[:DEFERRED_DEEP_DIVE_MAX_QUEUE]
+    evicted = ranked[DEFERRED_DEEP_DIVE_MAX_QUEUE:]
+    if save_deferred_deep_dive_queue(final):
+        if evicted:
+            _fallback_deferred_rows_to_notion(evicted, "Deferred queue capacity overflow")
+        logger.info("[DEFERRED SAVED] queued=%s total=%s evicted_to_pending=%s", len(new_rows), len(final), len(evicted)); return len(new_rows)
+    # Persistence failure must not silently lose any queue candidate (old or new).
+    _fallback_deferred_rows_to_notion(ranked, "Deferred queue persistence failed")
+    return 0
+
+
+def pop_deferred_candidates(limit: int) -> tuple[list[dict], list[dict]]:
+    queue = load_deferred_deep_dive_queue()
+    selected = queue[:max(0, limit)]
+    remaining = queue[len(selected):]
+    return selected, remaining
+
+
+def _call_product_review_pool(prompt: str, request_context: str):
+    last_error = None
+    for model_name in DEEP_DIVE_MODEL_POOL:
+        if model_name in SESSION_EXHAUSTED_MODELS or model_name in SESSION_UNAVAILABLE_MODELS:
+            continue
+        for attempt in range(2):
+            if not PRODUCT_REVIEW_REQUEST_BUDGET.can_request():
+                raise ProductReviewBudgetExceededError(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
+            try:
+                time.sleep(max(0, GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
+                return _generate_via_chat(
+                    model_name, prompt,
+                    config={"response_mime_type": "application/json", "max_output_tokens": 2200},
+                    request_kind="product_review" if attempt == 0 else "product_review_retry",
+                    request_context=request_context, count_as_deep_dive=False, request_origin="product_review",
+                ), model_name
+            except APIError as exc:
+                last_error = exc; code = getattr(exc, "code", None)
+                quota_type = classify_gemini_quota_error(exc) if code == 429 else ""
+                if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}: _mark_model_exhausted(model_name, quota_type); break
+                if code == 503 and attempt == 0: time.sleep(_extract_retry_delay(exc, 10)); continue
+                if code in {503, 404}: _mark_model_unavailable(model_name, str(code)); break
+                if code == 429 and quota_type in {"RPM", "TPM"} and attempt == 0: time.sleep(_extract_retry_delay(exc, 15)); continue
+                break
+            except (GeminiBudgetExceededError, GeminiCallTimeoutError) as exc:
+                last_error = exc; break
+    raise NoAvailableModelError("Product Reviewに利用可能なGeminiモデルがありません") from last_error
+
+
+def _product_review_prompt(repo: dict, source_info: dict, current: dict) -> str:
+    context = (source_info.get("context") or "")[:50000]
+    return (
+        "以下の一次情報だけを使い、会員向けTechnology Decision Intelligenceを評価せよ。記事は書かない。"
+        "入力外の市場シェア、価格、利用実績、競合優位性を推測しない。"
+        "adoption_scoreは Evidence Quality 25, Production Maturity 25, Use-case Utility / Fit 20, "
+        "Reliability / Security Risk 15, Integration / Migration Feasibility 10, Ecosystem / Support Durability 5 の合計100点。"
+        "adoption_statusは WATCH/TEST/ADOPT/AVOID。ADOPTはEvidence Confidence=HIGHかつProduction Readiness=HIGHのみ。"
+        "next_review_daysは7〜60。JSON objectのみを返す。\n"
+        "keys: adoption_score, components(object with the six exact English labels), adoption_status, evidence_confidence(LOW/MEDIUM/HIGH), "
+        "production_readiness(LOW/MEDIUM/HIGH), main_risk, best_for, avoid_for, short_rationale, next_review_days.\n"
+        f"Technology: {repo.get('nameWithOwner')}\nURL: {repo.get('url')}\nCurrent: {json.dumps(current, ensure_ascii=False)}\n"
+        f"Verified source context:\n{context}"
+    )
+
+
+def _parse_product_review_response(text: str) -> dict:
+    obj = json.loads(text or "{}")
+    if not isinstance(obj, dict): raise ValueError("Product Review response_not_object")
+    components = obj.get("components") or {}
+    breakdown = "\n".join(f"{label} {int(components.get(label, -999))}/{maximum}" for label, maximum in _ADOPTION_SCORE_COMPONENTS)
+    return {
+        "adoption_score": int(obj.get("adoption_score") or 0), "adoption_score_breakdown_text": breakdown,
+        "adoption_status": str(obj.get("adoption_status") or "").upper(),
+        "evidence_confidence": str(obj.get("evidence_confidence") or "").upper(),
+        "production_readiness": str(obj.get("production_readiness") or "").upper(),
+        "main_risk_text": str(obj.get("main_risk") or ""), "best_for_text": str(obj.get("best_for") or ""),
+        "avoid_for_text": str(obj.get("avoid_for") or ""), "short_rationale_text": str(obj.get("short_rationale") or ""),
+        "source_summary_text": "Product Review from verified primary evidence",
+        "next_review_days": max(7, min(60, int(obj.get("next_review_days") or TRACKING_REVIEW_DAYS))),
+    }
+
+
+def _technology_state_to_repo(state: dict) -> dict:
+    sources = state.get("sources") or ["GitHub"]
+    return {"source": sources[0] if sources else "GitHub", "nameWithOwner": state.get("technology_name") or "Technology",
+            "url": state.get("primary_url") or "", "primaryUrl": state.get("primary_url") or "", "description": state.get("source_summary") or state.get("short_rationale") or "",
+            "publishedAt": None, "stargazerCount": 0, "sourceDetails": {}}
+
+
+def select_product_review_candidates() -> list[dict]:
+    if not (ENABLE_REVENUE_PRODUCT_PHASE2 and decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB and PRODUCT_REVIEW_MAX_PER_RUN > 0): return []
+    pages = decision_intelligence.query_technology_records(max_records=5000)
+    states = [decision_intelligence.technology_page_to_state(page) for page in pages]
+    now = datetime.now(timezone.utc)
+    active = []
+    legacy = []
+    for state in states:
+        st = state.get("assessment_state") or ""
+        if st == "LEGACY_PENDING":
+            # Never spend Gemini on unresolved legacy identities. They may become resolvable when
+            # a future discovery supplies an official/project URL. Also honor evidence cooldown.
+            if state.get("entity_status") != "RESOLVED":
+                continue
+            if state.get("next_review"):
+                try:
+                    if datetime.fromisoformat(state["next_review"].replace("Z", "+00:00")) > now:
+                        continue
+                except Exception:
+                    pass
+            legacy.append(state); continue
+        if st == "HISTORY_PENDING" and state.get("tracking_eligibility"):
+            active.append((0, state)); continue
+        if st == "SCREENED" and state.get("tracking_eligibility"):
+            if state.get("next_review"):
+                try:
+                    if datetime.fromisoformat(state["next_review"].replace("Z", "+00:00")) > now:
+                        continue
+                except Exception:
+                    pass
+            active.append((0, state)); continue
+        if st == "ASSESSED" and state.get("tracking_eligibility") and state.get("tracking_status") != "ARCHIVED":
+            due = False
+            if state.get("next_review"):
+                try: due = datetime.fromisoformat(state["next_review"].replace("Z", "+00:00")) <= now
+                except Exception: due = True
+            elif state.get("last_reviewed"):
+                try: due = datetime.fromisoformat(state["last_reviewed"].replace("Z", "+00:00")) <= now - timedelta(days=TRACKING_REVIEW_DAYS)
+                except Exception: due = True
+            else: due = True
+            if due: active.append((1, state))
+    active.sort(key=lambda x: (x[0], -(x[1].get("screening_score") or 0), x[1].get("last_reviewed") or ""))
+    legacy.sort(key=lambda x: (-(x.get("screening_score") or 0), x.get("first_seen") or ""))
+    # Reserve a small legacy bootstrap lane so the migrated inventory cannot starve forever
+    # behind an always-full active review queue. Paid-product freshness still gets the majority.
+    legacy_slots = 0
+    if legacy and LEGACY_BOOTSTRAP_MAX_PER_RUN > 0:
+        legacy_slots = min(LEGACY_BOOTSTRAP_MAX_PER_RUN, PRODUCT_REVIEW_MAX_PER_RUN)
+    active_slots = max(0, PRODUCT_REVIEW_MAX_PER_RUN - legacy_slots)
+    selected = [state for _, state in active[:active_slots]]
+    if legacy_slots:
+        selected.extend(legacy[:legacy_slots])
+    # If no legacy work exists, return the unused reservation to active reviews.
+    remaining = PRODUCT_REVIEW_MAX_PER_RUN - len(selected)
+    if remaining > 0:
+        already = {str(x.get("canonical_entity_id") or x.get("technology_page_id") or id(x)) for x in selected}
+        for _, state in active[active_slots:]:
+            key = str(state.get("canonical_entity_id") or state.get("technology_page_id") or id(state))
+            if key in already:
+                continue
+            selected.append(state); already.add(key)
+            if len(selected) >= PRODUCT_REVIEW_MAX_PER_RUN:
+                break
+    return selected
+
+
+def _defer_product_review_candidate(state: dict, days: int = TRACKING_REVIEW_DAYS, reason: str = "review deferred") -> None:
+    page_id = state.get("page_id")
+    if not page_id:
+        return
+    nr = (datetime.now(timezone.utc) + timedelta(days=max(1, days))).isoformat()
+    res = requests.patch(
+        f"https://api.notion.com/v1/pages/{page_id}",
+        json={"properties": {decision_intelligence.TECH_PROP_NEXT_REVIEW: {"date": {"start": nr}}}},
+        headers=decision_intelligence._headers(), timeout=10,
+    )
+    if res.status_code != 200:
+        raise RuntimeError(f"Product review defer patch failed: {res.status_code}")
+    logger.info("[PRODUCT REVIEW DEFERRED] %s days=%s reason=%s", state.get("technology_name"), days, reason)
+
+
+def run_product_reviews() -> dict:
+    result = {"attempted": 0, "saved": 0, "skipped": 0}
+    for state in select_product_review_candidates():
+        if not PRODUCT_REVIEW_REQUEST_BUDGET.can_request() or not GEMINI_BUDGET.can_request(): break
+        if not _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL): break
+        repo = _technology_state_to_repo(state); result["attempted"] += 1
+        try:
+            source_info = prepare_source_context(repo)
+            evidence = assess_evidence_sufficiency(source_info)
+            if evidence.get("state") == EVIDENCE_SUPPLEMENT_REQUIRED:
+                source_info = supplement_source_evidence(source_info); evidence = assess_evidence_sufficiency(source_info)
+            if evidence.get("state") == EVIDENCE_INSUFFICIENT or not evidence.get("decision_scope_safe"):
+                logger.info("[PRODUCT REVIEW SKIP] %s evidence insufficient", repo.get("nameWithOwner"))
+                _defer_product_review_candidate(state, TRACKING_REVIEW_DAYS, "evidence insufficient")
+                result["skipped"] += 1; continue
+            response, model = _call_product_review_pool(_product_review_prompt(repo, source_info, state), f"product_review:{state.get('canonical_entity_id')}")
+            parsed = _parse_product_review_response(getattr(response, "text", ""))
+            reviewed_at = datetime.now(timezone.utc).isoformat()
+            persisted = persist_decision_intelligence_assessment(repo, parsed, source_info, evidence, reviewed_at,
+                screening_score=state.get("screening_score"), screening_reason=state.get("screening_reason", ""),
+                attribution_context={"portfolio_topic": state.get("category") or "OTHER"}, pipeline_status="Product Review",
+                content_status="Stocked", article_status=ARTICLE_STATUS_NOT_PLANNED)
+            if persisted.get("saved"):
+                # next_review is a product scheduler field and is intentionally patched after the common upsert.
+                days = parsed.get("next_review_days", TRACKING_REVIEW_DAYS)
+                page_id = persisted.get("page_id")
+                if page_id:
+                    nr = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+                    patch = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": {decision_intelligence.TECH_PROP_NEXT_REVIEW: {"date": {"start": nr}}}}, headers=decision_intelligence._headers(), timeout=10)
+                    if patch.status_code != 200: raise RuntimeError(f"Next Review patch failed: {patch.status_code}")
+                result["saved"] += 1
+            else: result["skipped"] += 1
+        except ProductReviewBudgetExceededError:
+            break
+        except NoAvailableModelError as exc:
+            logger.warning("[PRODUCT REVIEW STOP] %s", exc); break
+        except Exception as exc:
+            logger.error("[PRODUCT REVIEW FAILED] %s: %s", repo.get("nameWithOwner"), exc); result["skipped"] += 1
+    logger.info("[PRODUCT REVIEW] %s / %s", result, PRODUCT_REVIEW_REQUEST_BUDGET.summary())
+    return result
+
+
+def seed_tracking_candidates(screened: list[dict]) -> dict:
+    result = {"eligible": 0, "saved": 0, "ambiguous": 0, "failed": 0}
+    if not (ENABLE_REVENUE_PRODUCT_PHASE2 and decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB): return result
+    now = datetime.now(timezone.utc).isoformat()
+    for item in screened:
+        if item.get("screening_status") != "completed" or not item.get("tracking_eligible") or (item.get("score") or 0) < TRACKING_ELIGIBILITY_MIN_SCORE:
+            continue
+        result["eligible"] += 1; repo = item.get("repo", {})
+        resolution = decision_intelligence.resolve_canonical_entity_id(repo, {"primary_url": repo.get("primaryUrl") or repo.get("url")})
+        if resolution.status == "AMBIGUOUS": result["ambiguous"] += 1; continue
+        try:
+            saved = decision_intelligence.upsert_tracking_seed({
+                "name": repo.get("nameWithOwner"), "url": repo.get("url"), "source": repo.get("source"),
+                "category": item.get("portfolio_topic") or "OTHER", "screening_score": item.get("score"),
+                "screening_reason": item.get("reason", ""), "tracking_eligibility": True,
+                "tracking_reason": item.get("tracking_reason") or item.get("reason", ""), "source_summary": repo.get("description", ""),
+                "published_at": repo.get("publishedAt"), "analyzed_at": now, "first_seen": now,
+                # Initial product assessment should be eligible on the next run; later reviews set their own cadence.
+                "next_review": now,
+            }, resolution)
+            if saved.get("saved"): result["saved"] += 1
+        except Exception as exc:
+            logger.error("[TRACKING SEED FAILED] %s: %s", repo.get("nameWithOwner"), exc); result["failed"] += 1
+    logger.info("[TRACKING SEED] %s", result); return result
+
+
+def _previous_month_id(today) -> str:
+    first = today.replace(day=1)
+    prev = first - timedelta(days=1)
+    return f"{prev.year:04d}-{prev.month:02d}"
+
+
+def _current_month_id(today) -> str:
+    return f"{today.year:04d}-{today.month:02d}"
+
+
+def run_product_delivery_maintenance(today=None) -> dict:
+    result = {"subscriber": None, "monthly": []}
+    if not (ENABLE_REVENUE_PRODUCT_PHASE2 and decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB): return result
+    try:
+        result["subscriber"] = decision_intelligence.sync_subscriber_technology_db()
+        if result["subscriber"] and result["subscriber"].get("enabled"): logger.info("[SUBSCRIBER TECH SYNC] %s", result["subscriber"])
+    except Exception as exc:
+        logger.error("[SUBSCRIBER TECH SYNC FAILED] %s", exc)
+    if decision_intelligence.ENABLE_DECISION_MONTHLY_DIGEST:
+        local_today = today or datetime.now(ZoneInfo(NOTION_TIMEZONE)).date()
+        # Re-check the most recent three completed periods every run. Period ID idempotency makes
+        # this cheap and lets the paid monthly product recover even after a multi-week outage.
+        targets = []
+        cursor = local_today.replace(day=1)
+        for _ in range(3):
+            cursor = (cursor - timedelta(days=1)).replace(day=1)
+            targets.append(f"{cursor.year:04d}-{cursor.month:02d}")
+        tomorrow = local_today + timedelta(days=1)
+        if tomorrow.month != local_today.month:
+            targets.append(_current_month_id(local_today))
+        for period in dict.fromkeys(targets):
+            try:
+                row = decision_intelligence.create_history_monthly_digest(period); result["monthly"].append(row)
+                if row.get("created"): logger.info("[DECISION MONTHLY CREATED] %s events=%s", period, row.get("events"))
+            except Exception as exc:
+                logger.error("[DECISION MONTHLY FAILED] %s: %s", period, exc)
+    return result
+
+
+def process_article_backlog(pending_items: list[dict] | None, generated_count: int,
+                            next_candidate_rank: int) -> tuple[int, int]:
+    """Use leftover article capacity for deferred (never attempted) then pending (previously failed).
+
+    Fresh acquisition is intentionally scheduled before this helper. This prevents failure-prone
+    backlog items from consuming model availability before today's best new candidates. On a day
+    with no fresh candidates, main() calls this helper directly so valuable backlog is still recoverable.
+    """
+    # Deferred first: these candidates were not sent to Gemini in the previous run and therefore
+    # have a better expected publication yield than a transport/quality-failed Pending Retry item.
+    if generated_count < TOP_N_FOR_DEEP_DIVE and DEFERRED_DEEP_DIVE_MAX_PER_RUN > 0:
+        deferred_selected, deferred_remaining = pop_deferred_candidates(DEFERRED_DEEP_DIVE_MAX_PER_RUN)
+        deferred_keep = list(deferred_remaining)
+        for row in deferred_selected:
+            if generated_count >= TOP_N_FOR_DEEP_DIVE:
+                deferred_keep.insert(0, row)
+                continue
+            page_id = row.get("notion_page_id")
+            already_handled = False
+            if page_id and NOTION_API_KEY:
+                try:
+                    pg = requests.get(f"https://api.notion.com/v1/pages/{page_id}", headers=_notion_headers(), timeout=10)
+                    if pg.status_code == 200:
+                        props = pg.json().get("properties", {})
+                        article_state = ((props.get(PROP_ARTICLE_STATUS) or {}).get("select") or {}).get("name") or ""
+                        content_state = ((props.get(PROP_CONTENT_STATUS) or {}).get("select") or {}).get("name") or ""
+                        already_handled = article_state in {ARTICLE_STATUS_READY, ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW} or content_state in {CONTENT_STATUS_QUALITY_FAILED, CONTENT_STATUS_PENDING_RETRY}
+                except Exception as exc:
+                    logger.warning("[DEFERRED VERIFY] %s", exc)
+            if already_handled:
+                logger.info("[DEFERRED DROP] already handled: %s", row.get("repo", {}).get("nameWithOwner"))
+                continue
+            if not (GEMINI_BUDGET.can_request() and DEEP_DIVE_MODEL_BUDGET.can_request() and _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL)):
+                deferred_keep.insert(0, row)
+                continue
+            next_candidate_rank += 1
+            logger.info("[DEFERRED DEEP DIVE] %s", row.get("repo", {}).get("nameWithOwner"))
+            try:
+                report = generate_intelligence_report(
+                    row.get("repo", {}), notion_page_id=page_id, screening_score=row.get("score"),
+                    screening_reason=row.get("reason", ""), candidate_rank=next_candidate_rank,
+                    candidate_origin="deferred", attribution_context=row,
+                )
+                if report:
+                    generated_count += 1
+            except DailyQuotaExhaustedError:
+                deferred_keep.insert(0, row)
+                break
+        if not save_deferred_deep_dive_queue(deferred_keep):
+            logger.error("[DEFERRED QUEUE] post-attempt persistence failed; moving remaining queue to Notion Pending Retry")
+            _fallback_deferred_rows_to_notion(deferred_keep, "Deferred queue post-attempt persistence failed")
+
+    if generated_count >= TOP_N_FOR_DEEP_DIVE:
+        return generated_count, next_candidate_rank
+
+    for item in (pending_items or []):
+        if generated_count >= TOP_N_FOR_DEEP_DIVE:
+            break
+        if not PENDING_RETRY_REQUEST_BUDGET.can_request():
+            logger.info("[PENDING RETRY STOP] dedicated request budget exhausted; article target preserved")
+            break
+        if not (GEMINI_BUDGET.can_request() and DEEP_DIVE_MODEL_BUDGET.can_request() and _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL)):
+            logger.warning("[PENDING RETRY STOP] no remaining article/model budget")
+            break
+        next_candidate_rank += 1
+        logger.info("[PENDING RETRY] %s", item["repo"].get("nameWithOwner"))
+        try:
+            if generate_intelligence_report(
+                item["repo"], item.get("notion_page_id"), item.get("screening_score"), item.get("screening_reason", ""),
+                candidate_rank=next_candidate_rank, candidate_origin="pending_retry",
+            ):
+                generated_count += 1
+        except DailyQuotaExhaustedError:
+            logger.warning("[PENDING RETRY STOP] Gemini日次クォータ到達")
+            break
+    return generated_count, next_candidate_rank
 
 
 def main():
@@ -8219,28 +9194,14 @@ def main():
     source_roi_profile = compute_source_roi_profile(source_roi_state)
     source_fetch_limits = allocate_source_fetch_limits(source_roi_profile, MAX_SCREENING_CANDIDATES)
     log_source_roi_profile(source_roi_profile, source_fetch_limits)
-    retry_generated = 0
     pending_items = get_pending_retry_items(limit=TOP_N_FOR_DEEP_DIVE)
     if pending_items is None:
-        logger.error("[PENDING RETRY] Notion読み出し失敗のため、重複防止を優先して本日停止")
-        finalize_deep_dive_observability(funnel)
-        return
+        # Pending Retry is a recovery lane, not a prerequisite for fresh acquisition.
+        # The later full dedupe query remains the authoritative fail-closed check.
+        logger.warning("[PENDING RETRY] read failed; skip backlog recovery and continue fresh acquisition")
+        pending_items = []
     next_candidate_rank = 0
-    for item in pending_items:
-        if not PENDING_RETRY_REQUEST_BUDGET.can_request():
-            logger.info("[PENDING RETRY STOP] dedicated request budget exhausted; Fresh候補のDeep Dive枠を優先")
-            break
-        next_candidate_rank += 1
-        logger.info("[PENDING RETRY] %s", item["repo"].get("nameWithOwner"))
-        try:
-            if generate_intelligence_report(item["repo"], item.get("notion_page_id"), item.get("screening_score"), item.get("screening_reason", ""),
-                                            candidate_rank=next_candidate_rank, candidate_origin="pending_retry"):
-                retry_generated += 1
-        except DailyQuotaExhaustedError:
-            logger.warning("[PENDING RETRY STOP] Gemini日次クォータ到達")
-            source_roi_state = update_source_roi_state(source_roi_state, [], funnel)
-            finalize_deep_dive_observability(funnel)
-            return
+
     check_stale_content()
 
     github_items = fetch_github_trending(source_fetch_limits.get("GitHub", GITHUB_FETCH_LIMIT))
@@ -8269,6 +9230,7 @@ def main():
     if existing_urls is None:
         logger.error("[PIPELINE ABORTED] 重複チェック不能のためFail-Closed停止")
         source_roi_state = update_source_roi_state(source_roi_state, [], funnel)
+        run_product_delivery_maintenance()
         logger.info(GEMINI_BUDGET.summary())
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         finalize_deep_dive_observability(funnel)
@@ -8291,10 +9253,15 @@ def main():
             local_fallback_keys.add(fallback_key)
         deduped_repos.append(repo)
     if not deduped_repos:
-        logger.info("本日は新規候補が0件でした。")
+        logger.info("本日は新規候補が0件でした。Backlogから公開可能記事を救済します。")
+        generated_count, next_candidate_rank = process_article_backlog(pending_items, 0, next_candidate_rank)
+        run_product_reviews()
         source_roi_state = update_source_roi_state(source_roi_state, [], funnel)
+        run_product_delivery_maintenance()
+        logger.info("[ARTICLE DELIVERY] Ready=%s target=%s source=backlog", generated_count, TOP_N_FOR_DEEP_DIVE)
         logger.info(GEMINI_BUDGET.summary())
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
+        logger.info(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
         finalize_deep_dive_observability(funnel)
         return
 
@@ -8336,6 +9303,8 @@ def main():
         else:
             item["notion_page_id"] = None
 
+    seed_tracking_candidates(screened)
+
     logger.info(f"[STOCK] final_score>={NOTION_SAVE_THRESHOLD_SCORE} = {stocked_count}")
     logger.info(f">>> Screening {len(screened)}件 / Stock {stocked_count}件")
     if ENABLE_OBSERVED_HISTORY:
@@ -8353,11 +9322,12 @@ def main():
         logger.info(GEMINI_BUDGET.summary())
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         generate_monthly_digest()
+        run_product_delivery_maintenance()
         finalize_deep_dive_observability(funnel)
         return
 
     # TOP_Nは『候補数』ではなく『最大成功記事数』。失敗時は4位・5位へBackfillする。
-    generated_count = retry_generated
+    generated_count = 0
     attempted = 0
     # Deep Diveは3層設計上「Stocked上位」だけを対象にする。Score条件を満たしても
     # Notion Stock永続化に失敗した候補へGeminiを追加消費しない。保存失敗候補はDBに
@@ -8368,14 +9338,24 @@ def main():
             f"[DEEP DIVE POOL] Stock基準{NOTION_SAVE_THRESHOLD_SCORE}点以上は{len(candidates)}件。"
             "低スコア候補で本数を水増しせず、この範囲だけで記事生成します。"
         )
-    for candidate in candidates:
+    for candidate_index, candidate in enumerate(candidates):
         if generated_count >= TOP_N_FOR_DEEP_DIVE:
             break
         if attempted >= MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS:
             break
+        remaining_attempt_slots = max(0, MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS - attempted)
+        def _defer_remaining():
+            # Only candidates that could have been backfilled this run are carried forward; never queue the whole Stock DB.
+            enqueue_deferred_candidates(candidates[candidate_index:candidate_index + remaining_attempt_slots])
         if not GEMINI_BUDGET.can_request():
             logger.warning("[DEEP DIVE STOP] Gemini local budget残量なし")
-            break
+            _defer_remaining(); break
+        if not DEEP_DIVE_MODEL_BUDGET.can_request():
+            logger.warning("[DEEP DIVE STOP] run budget exhausted: %s/%s; remaining Backfill candidates deferred", DEEP_DIVE_MODEL_BUDGET.used, DEEP_DIVE_MODEL_BUDGET.budget)
+            _defer_remaining(); break
+        if not _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL):
+            logger.warning("[DEEP DIVE STOP] all configured Deep Dive models unavailable; remaining Backfill candidates deferred")
+            _defer_remaining(); break
         attempted += 1
         next_candidate_rank += 1
         repo = candidate["repo"]
@@ -8402,6 +9382,15 @@ def main():
             daily_quota_stop = True
             break
 
+    # Only after fresh acquisition has had first access to the article models, use leftover capacity
+    # for never-attempted Deferred candidates and then previously failed Pending Retry items.
+    generated_count, next_candidate_rank = process_article_backlog(pending_items, generated_count, next_candidate_rank)
+
+    # Paid Product Review runs after all free-article acquisition/recovery lanes. It keeps its own
+    # small request cap but shares global/persistent quotas. Product-side 503 cannot poison today's
+    # article model pool before acquisition is attempted.
+    run_product_reviews()
+
     if generated_count == 0:
         reason = "daily quota" if daily_quota_stop else "source/quality/API/budget"
         send_telegram_alert(f"⚠️ 本日のDeep Dive記事生成は0件でした。原因区分: {reason}")
@@ -8423,10 +9412,12 @@ def main():
     source_roi_state = update_source_roi_state(source_roi_state, screened, funnel)
     log_source_roi_profile(compute_source_roi_profile(source_roi_state), source_fetch_limits)
     generate_monthly_digest()
+    run_product_delivery_maintenance()
     finalize_deep_dive_observability(funnel)
     logger.info(GEMINI_BUDGET.summary())
     logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
     logger.info(PENDING_RETRY_REQUEST_BUDGET.summary())
+    logger.info(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
     logger.info(GEMINI_USAGE_AUDIT.summary(include_contexts=True))
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 

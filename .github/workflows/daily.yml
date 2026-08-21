@@ -57,6 +57,31 @@ jobs:
           NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
           NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          # Revenue Product Phase 2: article discovery and paid Decision Intelligence are separated.
+          ENABLE_REVENUE_PRODUCT_PHASE2: ${{ vars.ENABLE_REVENUE_PRODUCT_PHASE2 || 'true' }}
+          TRACKING_ELIGIBILITY_MIN_SCORE: "55"
+          TRACKING_REVIEW_DAYS: "14"
+          PRODUCT_REVIEW_MAX_PER_RUN: "2"
+          LEGACY_BOOTSTRAP_MAX_PER_RUN: "1"
+          GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET: "3"
+          DEFERRED_DEEP_DIVE_MAX_PER_RUN: "1"
+          DEFERRED_DEEP_DIVE_MAX_QUEUE: "20"
+          DEFERRED_DEEP_DIVE_STATE_PATH: "deferred_deep_dive/deferred_queue.json"
+          DEFERRED_DEEP_DIVE_GITHUB_DIR: "deferred_deep_dive"
+          DEFERRED_FLASH_TTL_DAYS: "2"
+          DEFERRED_TREND_TTL_DAYS: "14"
+          DEFERRED_EVERGREEN_TTL_DAYS: "60"
+          # Subscriber/Monthly destinations are separate sanitized product DBs and stay OFF until provisioned.
+          ENABLE_SUBSCRIBER_TECH_SYNC: ${{ vars.ENABLE_SUBSCRIBER_TECH_SYNC || 'false' }}
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          ENABLE_DECISION_MONTHLY_DIGEST: ${{ vars.ENABLE_DECISION_MONTHLY_DIGEST || 'false' }}
+          NOTION_MONTHLY_DATABASE_ID: ${{ secrets.NOTION_MONTHLY_DATABASE_ID }}
+          NOTION_MONTHLY_DATA_SOURCE_ID: ${{ secrets.NOTION_MONTHLY_DATA_SOURCE_ID }}
+          DI_MEANINGFUL_SCORE_DELTA: "5"
+          DI_STATUS_HYSTERESIS_SCORE_DELTA: "3"
+          DI_RISK_TEXT_SIMILARITY_THRESHOLD: "0.82"
+          DI_PRODUCT_TIMEZONE: "Asia/Tokyo"
           ARTICLE_PUBLICATION_MODE: "free"
           ENABLE_SUBSCRIPTION_ATTRIBUTION: "true"
           SUBSCRIPTION_LANDING_URL: ${{ vars.SUBSCRIPTION_LANDING_URL }}
@@ -66,6 +91,12 @@ jobs:
           EYECATCH_MIN_DECISION_SCORE: "60"
           PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
           TOP_N_FOR_DEEP_DIVE: "3"
+          # Free Article Delivery Reliability: keep Fact safety, improve publishable yield.
+          ENABLE_PUBLICATION_RELIABILITY_SLOT: "true"
+          PUBLICATION_RELIABILITY_SLOTS: "1"
+          PUBLICATION_RELIABILITY_MIN_DECISION_SCORE: "65"
+          PUBLICATION_RELIABILITY_MIN_ADVANTAGE: "8"
+          ENABLE_DETERMINISTIC_PUBLICATION_RESCUE: "true"
           NOTION_SAVE_THRESHOLD_SCORE: "60"
           GITHUB_FETCH_LIMIT: "50"
           HN_FETCH_LIMIT: "50"

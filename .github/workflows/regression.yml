@@ -9,6 +9,7 @@ on:
       - 'source_roi_history/**'
       - 'subscription_attribution/**'
       - 'eyecatch_images/**'
+      - 'deferred_deep_dive/**'
       - '.runtime/**'
   workflow_dispatch:
     inputs:

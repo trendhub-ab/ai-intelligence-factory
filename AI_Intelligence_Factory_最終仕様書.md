@@ -371,3 +371,114 @@ Adoption Score内訳:
 Legacy Migrationは必ずdry-run→plan artifact確認→applyの順で実施し、既存Internal DBはread-only。既存Decision Score/DecisionをAdoption Score/Statusへ変換せず、`LEGACY_PENDING`としてseedする。
 
 Phase 1のNotion property詳細、TEST DB作成、Secrets、Migration手順、Subscriber Viewは`DECISION_INTELLIGENCE_SETUP.md`を正式運用手順とする。Phase 2のTracking Eligibility、Change-driven/Periodic Review、History由来What Changed? Monthly DigestはShadow Write検証後に実装する。
+
+## 13. Revenue Product Phase 2 — Decision Intelligence商品完成仕様（2026-08-22）
+
+Phase 1 Shadow Write後の正式商品ロジックとして、無料note記事価値と有料Technology追跡価値を分離する。Phase 2はLegacy Migrationを変更せず、既存4 Quality Gates・Internal Stock/Ready状態・Decision Scoreの意味を維持する。
+
+### 13.1 Tracking Eligibility
+Screening structured outputで`tracking_eligible`と`tracking_reason`を独立判定する。記事Final Score 60未満でもFinal 55以上かつ追跡価値があるRESOLVED Technologyは`SCREENED`としてTechnology DBへseedできる。AMBIGUOUSは自動商品評価しない。
+
+### 13.2 Product Review / Legacy bootstrap
+有料DBの再評価は無料記事Deep Diveと別のrun-local最大3 request枠、最大2 Technology/Runで行う。ただしPipeline全体50 requestとPersistent model/day counterを共有し、Free Tier Safetyを迂回しない。Legacy Inventoryが永久に後回しにならないよう、RESOLVED Legacyを最大1件/Run予約する。Evidence不足はNext Reviewへ延期し、毎日同一候補を再試行しない。
+
+### 13.3 Deferred Deep Dive
+Deep Dive 12/12、Provider unavailable、global budget停止で未試行となった上位Backfill候補は期限付きQueueへ退避する。翌Run最大1件。FLASH 2日、TREND 14日、EVERGREEN 60日。Queue保存失敗、Queue capacity overflow、処理後の再保存失敗はNotion Pending RetryへFail-safeし、候補を黙って失わない。
+
+### 13.4 Source ROI v2
+503 / quota / provider unavailable / Deep Dive run budget stopはSourceの品質・収益性を示さないためROI denominatorから除外する。Quality Gate failureはSource/題材の実質的な歩留まりとして残す。旧v1履歴はProvider障害汚染の可能性があるためv2移行時に学習へ持ち越さない。
+
+### 13.5 Meaningful Change / History
+Score差5未満の微小揺れ、同義Risk言い換えではCHANGEを作らない。Readiness / Confidence / Evidence / Riskカテゴリ / Statusの実質変化をHistory化する。WATCH⇄TESTはScore差3未満をhysteresisで抑制する。Legacy初回はINITIAL。INITIAL Event IDはTechnology単位で一意かつ再送冪等とする。
+
+### 13.6 Subscriber安全分離
+会員にはInternal Technology DBのViewを直接共有しない。別のSanitized Subscriber Technology DBへ、`ASSESSED`かつTracking Eligibility=trueかつ非ARCHIVEDのTechnologyだけを同期する。内部管理列をコピーしない。同一内容はPATCHせず、Source/Evidenceの順序差も無視する。
+
+### 13.7 What Changed? Monthly
+旧「今月の記事一覧」ではなくDecision History起点で、Status変更・Score上昇・急落・新規評価を月次商品化する。`Period ID=YYYY-MM`を冪等キーにし、Decision Historyは全件ページネーションする。Safety limit超過やPeriod collisionは部分商品を生成せずFail-Closed。Dailyは直近3完了月をcatch-up確認し、月末は当月も対象にする。
+
+### 13.8 Product delivery maintenance
+Subscriber sync / Monthly catch-upはFresh記事0件、duplicate-check停止、Screening quota停止等の主要early-returnでも実行する。無料記事候補の有無によって有料商品保守が止まらない。
+
+### 13.9 正式運用手順
+Phase 2のDB schema、Secrets/Variables、Feature Flag、段階導入は`REVENUE_PRODUCT_PHASE2_SETUP.md`を正式手順とする。Subscriber/Monthlyは別DB完成前はFeature Flag=falseを維持する。
+
+---
+
+# 追加正式仕様：Free Article Delivery Reliability（2026-08-22）
+
+## 目的
+
+無料noteは集客・認知の一次エンジンであり、Technology Intelligence / Decision Historyは課金商品である。したがって「Quality Failedを安全に止められること」だけでは事業完成条件としない。Fact Safetyを維持したまま、一次情報が十分な日に公開可能記事へ到達する歩留まりを最大化する。
+
+ただし、`1日1本を何があっても公開する` は禁止する。一次情報不足・Provider障害・非修復Fact defectではReady=0を許容し、誤情報公開より売上KPIを優先しない。
+
+## Free ArticleとProduct Reviewの分離
+
+Free Article Deep Diveは記事本文と次の8管理項目だけを生成する。
+
+1. Source Summary
+2. What
+3. Why Important
+4. Decision
+5. Decision Reason
+6. Decision Score
+7. Action
+8. Article Value
+
+Adoption Score / Adoption Status / Evidence Confidence / Production Readiness / Main Risk / Best For / Avoid ForはProduct Review専用とし、記事Promptで生成しない。旧出力のparser互換は維持する。
+
+## Publication Reliability Slot
+
+Deep Dive visible slotsのうち最大1枠を、追加Gemini APIなしのPublication Probabilityで補正できる。
+
+- `ENABLE_PUBLICATION_RELIABILITY_SLOT=true`
+- `PUBLICATION_RELIABILITY_SLOTS=1`
+- `PUBLICATION_RELIABILITY_MIN_DECISION_SCORE=65`
+- `PUBLICATION_RELIABILITY_MIN_ADVANTAGE=8`
+
+Publication Probabilityは記事価値そのものではなく、Primary Source直結性・Source種別・metadata completeness・GitHub license等から「今日完成させやすいか」を推定する補助値。残り枠はDecision/Commercial/Portfolio優先を維持する。
+
+## Deterministic Publication Rescue
+
+`ENABLE_DETERMINISTIC_PUBLICATION_RESCUE=true`。
+
+Gemini Quality Retryを消費する前に、既にGateで局所特定された欠陥のみ0 APIで減算修正できる。
+
+許可：
+- unsupported hypeの削除/弱化
+- unsupported numeric claimを含む文の削除
+- unsupported named factを含む文の削除
+- fabricated personal experience文の削除
+
+禁止：
+- 新しいFactの追加
+- Evidence不足の補完
+- Generic unsupported claimの創作修正
+- title内のunsupported numeric/named factの自動修復
+- Actionを空にしてまでReady化
+
+修正後はFact / Publication / Humanの実Gateを再実行し、通らなければ通常Retry/Fail-Closedへ戻す。
+
+## Negation / Calendar false-positive対策
+
+強い語の否定判定は固定文字数windowではなく同一文単位で行う。`今すぐ…推奨しません`、`デファクトスタンダードというわけではありません`等を強い導入推奨と誤判定しない。
+
+`YYYY年M月`はcalendar表現として扱い、duration numeric claimと混同しない。
+
+## Model scheduling priority
+
+無料集客を先に保護する。
+
+1. Fresh Deep Dive
+2. Deferred Deep Dive（前Runで未試行）
+3. Pending Retry（過去に実試行して失敗）
+4. Product Review（有料DB評価）
+
+Product Reviewは記事生成後に回す。Product Reviewの失敗でFlash modelをrun-local unavailableにした後、まだFresh記事を試していない、という状態を禁止する。
+
+## Release Gate
+
+Unit/Syntheticだけでは記事事業の完成を宣言しない。Run 97実失敗稿をReal Article Regression fixtureとして維持し、既知のfalse-positive/局所修復可能failureが再発しないことを確認する。
+
+本番Release後は通常Dailyを1回実行し、Ready数・Generation success・Fact failure・Provider failure・Deterministic Rescue・Gemini使用量を監査する。Stock/Evidence/Generationが成立しているのにReady=0が継続する場合はBusiness Degradationとして再修正対象とする。

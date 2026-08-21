@@ -196,6 +196,40 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertIn("primary", pipeline.SESSION_UNAVAILABLE_MODELS)
         self.assertNotIn("primary", pipeline.SESSION_EXHAUSTED_MODELS)
 
+    def test_deep_dive_run_budget_stops_before_pacing_or_provider_call(self):
+        budget = pipeline.DeepDiveModelBudget(0)
+        with patch.object(pipeline, "DEEP_DIVE_MODEL_BUDGET", budget), \
+             patch.object(pipeline.time, "sleep") as sleep, \
+             patch.object(pipeline, "_generate_via_chat") as generate:
+            with self.assertRaises(pipeline.DeepDiveRunBudgetExceededError):
+                pipeline._call_model_pool(
+                    "p", None, "deep_dive", 0, ["primary", "fallback"], deep_dive=True
+                )
+        sleep.assert_not_called()
+        generate.assert_not_called()
+
+    def test_session_exhausted_deep_dive_pool_is_detected_before_next_candidate(self):
+        with patch.object(pipeline, "DEEP_DIVE_MODEL_POOL", ["m1", "m2"]):
+            pipeline.SESSION_UNAVAILABLE_MODELS.update({"m1", "m2"})
+            self.assertFalse(pipeline._model_pool_has_session_candidate(pipeline.DEEP_DIVE_MODEL_POOL))
+            pipeline.SESSION_UNAVAILABLE_MODELS.remove("m2")
+            self.assertTrue(pipeline._model_pool_has_session_candidate(pipeline.DEEP_DIVE_MODEL_POOL))
+
+    def test_deep_dive_run_budget_is_not_misclassified_as_no_available_model(self):
+        budget = pipeline.DeepDiveModelBudget(0)
+        with patch.object(pipeline, "DEEP_DIVE_MODEL_BUDGET", budget), \
+             patch.object(pipeline.time, "sleep"):
+            try:
+                pipeline._call_model_pool(
+                    "p", None, "quality_retry", 0, ["primary", "fallback"], deep_dive=True
+                )
+            except Exception as exc:
+                self.assertIsInstance(exc, pipeline.DeepDiveRunBudgetExceededError)
+                self.assertNotIsInstance(exc, pipeline.NoAvailableModelError)
+                self.assertIn("run budget exhausted", str(exc))
+            else:
+                self.fail("Deep Dive run budget exhaustion must raise")
+
     def test_rpd_marks_only_the_affected_model_exhausted(self):
         def fake_generate(model, *_args, **_kwargs):
             if model == "primary":

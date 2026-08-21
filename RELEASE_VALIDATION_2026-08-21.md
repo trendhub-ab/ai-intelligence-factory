@@ -125,3 +125,16 @@ Profit/Portfolio optimization may change which eligible Stock candidate is attem
 - Python syntax: PASS
 - New migration invariants: generic article URL remains ambiguous; title-only/different-URL ambiguous rows never merge; same-source + normalized Primary URL exact duplicates may collapse only as migration dedupe while remaining AMBIGUOUS; blank URLs remain page-scoped; legacy tracking paused/not eligible; audit artifact exposes projected null Adoption fields
 - Synthetic Full: 500/500 PASS, critical 0. Local run used the repository-equivalent google-genai import-only test stub; validator remained offline and performed no model/network/Notion writes. GitHub dry-run remains required before apply because only GitHub has the real Notion secrets/environment.
+
+## Daily Run 97 provider/budget + Decision Intelligence retry-retention addendum
+
+- Deep Dive per-run cap now raises a dedicated `DeepDiveRunBudgetExceededError`; run-local budget exhaustion is no longer converted into `MODEL_UNAVAILABLE`.
+- Deep Dive run/Pending Retry budgets are checked before pacing and provider invocation, so an exhausted local cap consumes no additional wait or model-pool traversal.
+- Fresh Backfill stops before the next candidate when the 12-request Deep Dive run cap is exhausted or when all configured Deep Dive models are already run-local unavailable/exhausted.
+- Decision Intelligence now retains the newest independently valid Adoption Assessment across free-note Quality Retry. A later invalid retry cannot erase a prior valid product assessment; a later valid retry replaces it.
+- Assessment retention adds **zero Gemini requests** and uses the existing strict DI validator both when capturing and before persistence.
+- Article Fact / Editorial / Publication Readiness / Human Appeal gates are unchanged.
+- Decision Intelligence tests: 43/43 PASS.
+- Full unittest discovery: 308/308 PASS.
+- Synthetic Full: 500/500 PASS, critical 0.
+- Detailed validation: `DAILY_RUN_97_STABILITY_FIX_VALIDATION_2026-08-21.md`.
