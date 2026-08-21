@@ -324,13 +324,18 @@ def resolve_canonical_entity_id(repo: dict, source_info: dict | None = None) -> 
     if primary:
         p = urlparse(primary)
         host = p.netloc.lower()
-        if host not in {"news.ycombinator.com", "www.producthunt.com", "producthunt.com"}:
-            # URL identity is intentionally conservative.  URL changes are reconciled when an
-            # explicit alias (GitHub/arXiv/official URL) remains available; no title-fuzzy merge.
-            return EntityResolution(f"web:{host}{p.path or '/'}".lower(), "RESOLVED", primary, aliases, "official/external primary URL")
+        path = p.path.rstrip("/")
+        # A generic article/news/docs URL is not, by itself, a stable Technology identity.
+        # Only root-like external project/product homepages are auto-resolved here.  Deeper
+        # paths remain AMBIGUOUS unless a stronger GitHub/arXiv identity was found above.
+        # This prevents the Decision Intelligence DB from reproducing the legacy article store.
+        discovery_hosts = {"news.ycombinator.com", "www.producthunt.com", "producthunt.com"}
+        root_like = path in {"", "/en", "/home", "/index.html"}
+        if host not in discovery_hosts and root_like:
+            return EntityResolution(f"web:{host}/".lower(), "RESOLVED", primary, aliases, "root-like official/external project URL")
 
     seed = "|".join([str(repo.get("source") or ""), name, str(repo.get("url") or "")])
-    return EntityResolution(_stable_legacy_id(seed), "AMBIGUOUS", primary, aliases, "stable official entity key could not be resolved")
+    return EntityResolution(_stable_legacy_id(seed), "AMBIGUOUS", primary, aliases, "stable Technology/Project identity could not be resolved conservatively")
 
 
 def _rich_text_value(prop: dict) -> str:
@@ -751,9 +756,9 @@ def build_legacy_seed_properties(record: dict, resolution: EntityResolution, mig
         TECH_PROP_ENTITY_ID: _rt(resolution.entity_id),
         TECH_PROP_ENTITY_STATUS: _select(resolution.status if resolution.status != "RESOLVED" else "RESOLVED"),
         TECH_PROP_ENTITY_ALIASES: _rt("\n".join(aliases)),
-        TECH_PROP_TRACKING_STATUS: _select("ACTIVE"),
-        TECH_PROP_TRACKING_ELIGIBILITY: {"checkbox": True},
-        TECH_PROP_TRACKING_REASON: _rt("Legacy Internal Pipeline DB seed; assessment pending"),
+        TECH_PROP_TRACKING_STATUS: _select("PAUSED"),
+        TECH_PROP_TRACKING_ELIGIBILITY: {"checkbox": False},
+        TECH_PROP_TRACKING_REASON: _rt("Legacy seed only; tracking eligibility pending reassessment"),
         TECH_PROP_ASSESSMENT_STATE: _select("LEGACY_PENDING"),
         TECH_PROP_PIPELINE_STATUS: _select(record.get("pipeline_status")),
         TECH_PROP_CONTENT_STATUS: _select(record.get("content_status")),

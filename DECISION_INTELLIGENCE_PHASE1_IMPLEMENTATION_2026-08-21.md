@@ -70,3 +70,17 @@
 7. `ENABLE_DECISION_INTELLIGENCE_DB=true`にしてDailyを1回だけShadow Write
 8. Internal DBと記事品質が不変、商品DBのEntity/Historyが正しいことを確認
 9. Phase 1を数Run観測してからPhase 2（Tracking Eligibility / Re-evaluation / What Changed? Monthly Digest）へ進む
+
+
+## 2026-08-21 Migration Entity Resolution hardening
+
+Dry-run artifact audit exposed that generic web article URLs were being marked RESOLVED and repeated AMBIGUOUS legacy rows could collapse under the same fallback ID. Hardened before apply:
+
+- generic deep-path web/news/blog URLs are no longer accepted as Technology identity by URL alone
+- only GitHub owner/repo, arXiv paper ID, and conservative root-like project/product URLs auto-resolve in this fallback layer
+- AMBIGUOUS legacy rows are page-scoped and never merged during migration
+- legacy seeds start `Tracking Status=PAUSED`, `Tracking Eligibility=false`, `Assessment State=LEGACY_PENDING`
+- dry-run artifact now emits resolution reason/aliases and projected assessment/tracking/adoption fields for audit
+- Adoption Score/Status remain null in legacy seed
+
+Validation after hardening: Decision Intelligence tests 37/37; all Unit 299/299 PASS. Synthetic full must be rerun in GitHub Actions because the local validation container cannot install google-genai (network unavailable).

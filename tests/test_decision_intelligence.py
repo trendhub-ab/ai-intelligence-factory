@@ -174,6 +174,24 @@ class TestEntityResolution(unittest.TestCase):
         self.assertEqual("AMBIGUOUS", r.status)
         self.assertTrue(r.entity_id.startswith("legacy:"))
 
+    def test_generic_article_url_is_ambiguous_not_technology_identity(self):
+        r = di.resolve_canonical_entity_id({
+            "source": "HackerNews",
+            "nameWithOwner": "Mojo is now open source",
+            "url": "https://www.modular.com/blog/mojo-open-source",
+        })
+        self.assertEqual("AMBIGUOUS", r.status)
+        self.assertTrue(r.entity_id.startswith("legacy:"))
+
+    def test_root_project_url_can_be_resolved(self):
+        r = di.resolve_canonical_entity_id({
+            "source": "HackerNews",
+            "nameWithOwner": "OpenLogi",
+            "url": "https://openlogi.org/en",
+        })
+        self.assertEqual("RESOLVED", r.status)
+        self.assertEqual("web:openlogi.org/", r.entity_id)
+
 
 class TestPromptAndParser(unittest.TestCase):
     def test_prompt_contains_adoption_fields_without_extra_call(self):
@@ -523,6 +541,25 @@ class TestLegacyMigrationSafety(unittest.TestCase):
         merged = migration._merge_seed_rows([a, b])
         self.assertEqual(2, len(merged))
 
+    def test_identical_ambiguous_legacy_rows_never_merge(self):
+        base_resolution = di.EntityResolution("legacy:same", "AMBIGUOUS", "https://example.com/article", ("https://example.com/article",), "test")
+        a = ({"internal_page_id": "page-a", "name": "Same", "sources": ["HackerNews"], "evidence_urls": []}, base_resolution)
+        b = ({"internal_page_id": "page-b", "name": "Same", "sources": ["HackerNews"], "evidence_urls": []}, base_resolution)
+        merged = migration._merge_seed_rows([a, b])
+        self.assertEqual(2, len(merged))
+        self.assertNotEqual(merged[0][1].entity_id, merged[1][1].entity_id)
+        self.assertTrue(all(x[1].status == "AMBIGUOUS" for x in merged))
+
+    def test_legacy_seed_is_paused_and_not_tracking_eligible_until_reassessment(self):
+        seed = {"name": "Legacy", "sources": ["HackerNews"], "evidence_urls": [], "first_seen": "2026-08-01T00:00:00Z"}
+        resolution = di.EntityResolution("legacy:x", "AMBIGUOUS", "", (), "test")
+        props = di.build_legacy_seed_properties(seed, resolution, "2026-08-21T00:00:00Z")
+        self.assertEqual("PAUSED", props[di.TECH_PROP_TRACKING_STATUS]["select"]["name"])
+        self.assertFalse(props[di.TECH_PROP_TRACKING_ELIGIBILITY]["checkbox"])
+        self.assertEqual("LEGACY_PENDING", props[di.TECH_PROP_ASSESSMENT_STATE]["select"]["name"])
+        self.assertNotIn(di.TECH_PROP_ADOPTION_SCORE, props)
+        self.assertNotIn(di.TECH_PROP_ADOPTION_STATUS, props)
+
 
 class TestProductSidePathIsolation(unittest.TestCase):
     def test_persistence_failure_is_caught_and_returned(self):
@@ -530,11 +567,11 @@ class TestProductSidePathIsolation(unittest.TestCase):
         source_info = {
             "verification_context": "一次情報では方式と制約条件が説明されている。",
             "context": "一次情報では方式と制約条件が説明されている。",
-            "evidence_metadata": {}, "primary_url": "https://example.com/project",
-            "evidence_documents": [{"url": "https://example.com/project", "retrieved": True}],
+            "evidence_metadata": {}, "primary_url": "https://example.com",
+            "evidence_documents": [{"url": "https://example.com", "retrieved": True}],
         }
         evidence = {"state": pipeline.EVIDENCE_SUFFICIENT, "decision_scope_safe": True}
-        repo = {"source": "HackerNews", "nameWithOwner": "Example", "url": "https://example.com/project", "publishedAt": None}
+        repo = {"source": "HackerNews", "nameWithOwner": "Example", "url": "https://example.com", "publishedAt": None}
         with patch.object(di, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
              patch.object(di, "upsert_technology_intelligence", side_effect=RuntimeError("Notion down")):
             result = pipeline.persist_decision_intelligence_assessment(

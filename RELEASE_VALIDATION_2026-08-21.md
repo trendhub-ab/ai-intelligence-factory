@@ -118,3 +118,10 @@ Profit/Portfolio optimization may change which eligible Stock candidate is attem
 - Workflow YAML: 5/5 PASS.
 - `decision_intelligence.py` / `migrate_decision_intelligence.py` requests timeout missing: 0.
 - `pipeline.py` top-level duplicate definitions: 0.
+
+
+## Migration Entity Resolution hardening addendum
+- Unit: 299/299 PASS
+- Python syntax: PASS
+- New migration invariants: generic article URL ambiguous; ambiguous rows never merge; legacy tracking paused/not eligible; audit artifact exposes projected null Adoption fields
+- Synthetic Full: not rerun locally due unavailable google-genai dependency/network; MUST rerun in GitHub before apply. Prior baseline was 500/500 critical 0.

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import hashlib
 from datetime import datetime, timezone
 
 import requests
@@ -107,7 +108,17 @@ def _page_to_seed(page: dict) -> tuple[dict, di.EntityResolution]:
 def _merge_seed_rows(rows: list[tuple[dict, di.EntityResolution]]) -> list[tuple[dict, di.EntityResolution]]:
     grouped: dict[str, list[tuple[dict, di.EntityResolution]]] = {}
     for seed, resolution in rows:
-        grouped.setdefault(resolution.entity_id, []).append((seed, resolution))
+        # RESOLVED identities may be merged by exact stable entity key.  AMBIGUOUS rows must
+        # never merge, even if their title/source/URL happen to be identical in the legacy DB.
+        # Give each ambiguous legacy row a page-scoped stable ID so migration is lossless.
+        if resolution.status == "RESOLVED":
+            key = resolution.entity_id
+        else:
+            page_id = str(seed.get("internal_page_id") or "")
+            suffix = hashlib.sha256((resolution.entity_id + "|" + page_id).encode("utf-8")).hexdigest()[:24]
+            key = "legacy:" + suffix
+            resolution = di.EntityResolution(key, "AMBIGUOUS", resolution.primary_url, resolution.aliases, resolution.reason)
+        grouped.setdefault(key, []).append((seed, resolution))
 
     merged: list[tuple[dict, di.EntityResolution]] = []
     for entity_id, group in grouped.items():
@@ -152,12 +163,21 @@ def main() -> int:
     skipped_existing = 0
     errors = []
     for seed, resolution in merged:
+        projected = di.build_legacy_seed_properties(seed, resolution, migrated_at)
         row = {
             "entity_id": resolution.entity_id,
             "resolution_status": resolution.status,
+            "resolution_reason": resolution.reason,
             "name": seed.get("name"),
             "primary_url": resolution.primary_url,
-            "legacy_rows_merged": sum(1 for s, r in converted if r.entity_id == resolution.entity_id),
+            "source": seed.get("source"),
+            "aliases": list(resolution.aliases),
+            "legacy_rows_merged": 1 if resolution.status != "RESOLVED" else sum(1 for s, r in converted if r.entity_id == resolution.entity_id and r.status == "RESOLVED"),
+            "assessment_state": ((projected.get(di.TECH_PROP_ASSESSMENT_STATE) or {}).get("select") or {}).get("name"),
+            "tracking_status": ((projected.get(di.TECH_PROP_TRACKING_STATUS) or {}).get("select") or {}).get("name"),
+            "tracking_eligibility": (projected.get(di.TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox"),
+            "adoption_score": None,
+            "adoption_status": None,
             "action": "DRY_RUN_CREATE",
         }
         try:
