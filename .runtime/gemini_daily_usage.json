@@ -16,10 +16,10 @@
           "by_kind": {
             "deep_dive": 6,
             "deep_dive_retry": 2,
-            "quality_retry": 5
+            "quality_retry": 6
           },
           "exhausted": false,
-          "used": 13
+          "used": 14
         }
       }
     }
@@ -29,5 +29,5 @@
   "quota_date": "2026-08-20",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-21T00:30:40.626255+00:00"
+  "updated_at": "2026-08-21T00:31:43.651484+00:00"
 }
