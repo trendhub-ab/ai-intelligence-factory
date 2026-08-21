@@ -78,9 +78,9 @@ Dry-run artifact audit exposed that generic web article URLs were being marked R
 
 - generic deep-path web/news/blog URLs are no longer accepted as Technology identity by URL alone
 - only GitHub owner/repo, arXiv paper ID, and conservative root-like project/product URLs auto-resolve in this fallback layer
-- AMBIGUOUS legacy rows are page-scoped and never merged during migration
+- AMBIGUOUS legacy rows are not Technology-resolved by title similarity. Migration-only dedupe is allowed only when `Source` and normalized `Primary URL` are exactly identical; the merged row remains `AMBIGUOUS`. Blank/unusable URLs remain page-scoped.
 - legacy seeds start `Tracking Status=PAUSED`, `Tracking Eligibility=false`, `Assessment State=LEGACY_PENDING`
 - dry-run artifact now emits resolution reason/aliases and projected assessment/tracking/adoption fields for audit
 - Adoption Score/Status remain null in legacy seed
 
-Validation after hardening: Decision Intelligence tests 37/37; all Unit 299/299 PASS. Synthetic full must be rerun in GitHub Actions because the local validation container cannot install google-genai (network unavailable).
+Validation after exact-URL migration dedupe fix: Decision Intelligence tests 41/41; all Unit 303/303 PASS. The uploaded 389-row dry-run artifact replays to 325 migration entities (64 duplicate legacy rows collapsed across 16 same-source exact-URL groups), while preserving `AMBIGUOUS`, `PAUSED`, `Tracking Eligibility=false`, and null Adoption fields. Synthetic Full 500/500 PASS, critical 0 (offline deterministic validator; google-genai import-only test stub, no model/network/Notion writes).

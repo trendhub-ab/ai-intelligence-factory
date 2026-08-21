@@ -105,19 +105,50 @@ def _page_to_seed(page: dict) -> tuple[dict, di.EntityResolution]:
     return seed, resolution
 
 
+def _legacy_ambiguous_url_key(seed: dict, resolution: di.EntityResolution) -> tuple[str, str] | None:
+    """Return a conservative exact-URL migration key for an AMBIGUOUS legacy row.
+
+    This is deliberately narrower than Technology entity resolution.  It only says that two
+    legacy rows from the same discovery source point at the exact same normalized Primary URL;
+    it does *not* promote the row to RESOLVED or infer that similarly titled/different URLs are
+    the same Technology.  Empty/unusable URLs are never grouped.
+    """
+    if resolution.status != "AMBIGUOUS":
+        return None
+    normalized_url = di.canonicalize_identity_url(resolution.primary_url or seed.get("url") or "")
+    source = str(seed.get("source") or "").strip().lower()
+    if not normalized_url or not source:
+        return None
+    return source, normalized_url
+
+
 def _merge_seed_rows(rows: list[tuple[dict, di.EntityResolution]]) -> list[tuple[dict, di.EntityResolution]]:
     grouped: dict[str, list[tuple[dict, di.EntityResolution]]] = {}
     for seed, resolution in rows:
-        # RESOLVED identities may be merged by exact stable entity key.  AMBIGUOUS rows must
-        # never merge, even if their title/source/URL happen to be identical in the legacy DB.
-        # Give each ambiguous legacy row a page-scoped stable ID so migration is lossless.
+        # RESOLVED identities may be merged by exact stable entity key.
         if resolution.status == "RESOLVED":
             key = resolution.entity_id
         else:
-            page_id = str(seed.get("internal_page_id") or "")
-            suffix = hashlib.sha256((resolution.entity_id + "|" + page_id).encode("utf-8")).hexdigest()[:24]
-            key = "legacy:" + suffix
-            resolution = di.EntityResolution(key, "AMBIGUOUS", resolution.primary_url, resolution.aliases, resolution.reason)
+            # For migration only, collapse exact duplicate legacy rows when both discovery source
+            # and normalized Primary URL are identical.  The identity remains AMBIGUOUS: this is
+            # legacy-row deduplication, not Technology inference.  Title-only and different-URL
+            # rows remain strictly separate.
+            exact_url_key = _legacy_ambiguous_url_key(seed, resolution)
+            if exact_url_key:
+                source, normalized_url = exact_url_key
+                suffix = hashlib.sha256(("ambiguous-url|" + source + "|" + normalized_url).encode("utf-8")).hexdigest()[:24]
+                key = "legacy:" + suffix
+                resolution = di.EntityResolution(
+                    key, "AMBIGUOUS", normalized_url, resolution.aliases,
+                    "exact same-source normalized legacy Primary URL; Technology identity remains ambiguous",
+                )
+            else:
+                # No stable exact URL: keep the row page-scoped so blank/unknown ambiguous records
+                # can never collapse accidentally.
+                page_id = str(seed.get("internal_page_id") or "")
+                suffix = hashlib.sha256((resolution.entity_id + "|" + page_id).encode("utf-8")).hexdigest()[:24]
+                key = "legacy:" + suffix
+                resolution = di.EntityResolution(key, "AMBIGUOUS", resolution.primary_url, resolution.aliases, resolution.reason)
         grouped.setdefault(key, []).append((seed, resolution))
 
     merged: list[tuple[dict, di.EntityResolution]] = []
@@ -137,7 +168,8 @@ def _merge_seed_rows(rows: list[tuple[dict, di.EntityResolution]]) -> list[tuple
         ))
         first_candidates = [seed.get("first_seen") for seed, _ in group_sorted if seed.get("first_seen")]
         out["first_seen"] = min(first_candidates) if first_candidates else latest.get("first_seen")
-        # Union aliases from every exact-resolved legacy row. No fuzzy matching.
+        out["legacy_rows_merged"] = len(group_sorted)
+        # Union aliases from every exact-resolved or exact-URL-grouped legacy row. No fuzzy matching.
         aliases = tuple(dict.fromkeys(alias for _, res in group_sorted for alias in res.aliases))
         resolution = di.EntityResolution(resolution.entity_id, resolution.status, resolution.primary_url, aliases, resolution.reason)
         merged.append((out, resolution))
@@ -172,7 +204,7 @@ def main() -> int:
             "primary_url": resolution.primary_url,
             "source": seed.get("source"),
             "aliases": list(resolution.aliases),
-            "legacy_rows_merged": 1 if resolution.status != "RESOLVED" else sum(1 for s, r in converted if r.entity_id == resolution.entity_id and r.status == "RESOLVED"),
+            "legacy_rows_merged": int(seed.get("legacy_rows_merged") or 1),
             "assessment_state": ((projected.get(di.TECH_PROP_ASSESSMENT_STATE) or {}).get("select") or {}).get("name"),
             "tracking_status": ((projected.get(di.TECH_PROP_TRACKING_STATUS) or {}).get("select") or {}).get("name"),
             "tracking_eligibility": (projected.get(di.TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox"),

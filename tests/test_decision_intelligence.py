@@ -541,14 +541,77 @@ class TestLegacyMigrationSafety(unittest.TestCase):
         merged = migration._merge_seed_rows([a, b])
         self.assertEqual(2, len(merged))
 
-    def test_identical_ambiguous_legacy_rows_never_merge(self):
-        base_resolution = di.EntityResolution("legacy:same", "AMBIGUOUS", "https://example.com/article", ("https://example.com/article",), "test")
-        a = ({"internal_page_id": "page-a", "name": "Same", "sources": ["HackerNews"], "evidence_urls": []}, base_resolution)
-        b = ({"internal_page_id": "page-b", "name": "Same", "sources": ["HackerNews"], "evidence_urls": []}, base_resolution)
+    def test_identical_same_source_ambiguous_urls_merge_but_remain_ambiguous(self):
+        base_resolution = di.EntityResolution(
+            "legacy:same", "AMBIGUOUS", "https://example.com/article/?utm_source=x#frag",
+            ("https://example.com/article",), "test"
+        )
+        a = ({"internal_page_id": "page-a", "name": "Same", "source": "HackerNews",
+              "sources": ["HackerNews"], "evidence_urls": [], "first_seen": "2026-08-01T00:00:00Z"}, base_resolution)
+        b = ({"internal_page_id": "page-b", "name": "Same", "source": "HackerNews",
+              "sources": ["HackerNews"], "evidence_urls": [], "first_seen": "2026-08-02T00:00:00Z"}, base_resolution)
+        merged = migration._merge_seed_rows([a, b])
+        self.assertEqual(1, len(merged))
+        seed, resolution = merged[0]
+        self.assertEqual("AMBIGUOUS", resolution.status)
+        self.assertTrue(resolution.entity_id.startswith("legacy:"))
+        self.assertEqual("https://example.com/article", resolution.primary_url)
+        self.assertEqual(2, seed["legacy_rows_merged"])
+        self.assertEqual("2026-08-01T00:00:00Z", seed["first_seen"])
+
+    def test_same_ambiguous_url_different_sources_do_not_merge(self):
+        resolution = di.EntityResolution(
+            "legacy:same", "AMBIGUOUS", "https://example.com/article",
+            ("https://example.com/article",), "test"
+        )
+        a = ({"internal_page_id": "page-a", "name": "Same", "source": "HackerNews",
+              "sources": ["HackerNews"], "evidence_urls": []}, resolution)
+        b = ({"internal_page_id": "page-b", "name": "Same", "source": "ProductHunt",
+              "sources": ["ProductHunt"], "evidence_urls": []}, resolution)
         merged = migration._merge_seed_rows([a, b])
         self.assertEqual(2, len(merged))
         self.assertNotEqual(merged[0][1].entity_id, merged[1][1].entity_id)
-        self.assertTrue(all(x[1].status == "AMBIGUOUS" for x in merged))
+
+    def test_ambiguous_urls_with_meaningful_query_difference_do_not_merge(self):
+        a_resolution = di.EntityResolution(
+            "legacy:a", "AMBIGUOUS", "https://example.com/article?version=1",
+            ("https://example.com/article?version=1",), "test"
+        )
+        b_resolution = di.EntityResolution(
+            "legacy:b", "AMBIGUOUS", "https://example.com/article?version=2",
+            ("https://example.com/article?version=2",), "test"
+        )
+        a = ({"internal_page_id": "page-a", "name": "Same", "source": "HackerNews",
+              "sources": ["HackerNews"], "evidence_urls": []}, a_resolution)
+        b = ({"internal_page_id": "page-b", "name": "Same", "source": "HackerNews",
+              "sources": ["HackerNews"], "evidence_urls": []}, b_resolution)
+        merged = migration._merge_seed_rows([a, b])
+        self.assertEqual(2, len(merged))
+
+    def test_ambiguous_exact_url_group_entity_id_is_order_independent(self):
+        resolution = di.EntityResolution(
+            "legacy:same", "AMBIGUOUS", "https://www.producthunt.com/r/ABC123",
+            ("https://www.producthunt.com/r/ABC123",), "test"
+        )
+        a = ({"internal_page_id": "page-a", "name": "Same", "source": "ProductHunt",
+              "sources": ["ProductHunt"], "evidence_urls": []}, resolution)
+        b = ({"internal_page_id": "page-b", "name": "Same", "source": "ProductHunt",
+              "sources": ["ProductHunt"], "evidence_urls": []}, resolution)
+        first = migration._merge_seed_rows([a, b])
+        second = migration._merge_seed_rows([b, a])
+        self.assertEqual(1, len(first))
+        self.assertEqual(1, len(second))
+        self.assertEqual(first[0][1].entity_id, second[0][1].entity_id)
+
+    def test_blank_ambiguous_urls_remain_page_scoped(self):
+        resolution = di.EntityResolution("legacy:same", "AMBIGUOUS", "", (), "test")
+        a = ({"internal_page_id": "page-a", "name": "Same", "source": "Unknown",
+              "sources": ["Unknown"], "evidence_urls": []}, resolution)
+        b = ({"internal_page_id": "page-b", "name": "Same", "source": "Unknown",
+              "sources": ["Unknown"], "evidence_urls": []}, resolution)
+        merged = migration._merge_seed_rows([a, b])
+        self.assertEqual(2, len(merged))
+        self.assertNotEqual(merged[0][1].entity_id, merged[1][1].entity_id)
 
     def test_legacy_seed_is_paused_and_not_tracking_eligible_until_reassessment(self):
         seed = {"name": "Legacy", "sources": ["HackerNews"], "evidence_urls": [], "first_seen": "2026-08-01T00:00:00Z"}

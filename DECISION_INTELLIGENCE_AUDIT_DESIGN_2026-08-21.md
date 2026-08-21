@@ -736,7 +736,7 @@ Internal Pipeline DBを読み、Technology DBへseedする。
 
 - Internal DBはMigration中read-only
 - Canonical Entity ID確定時だけ自動merge
-- ambiguousはmergeしない
+- ambiguousはタイトル類似・URL相違ではmergeしない。Migration時に限り、`Source`＋正規化`Primary URL`完全一致のlegacy重複は1 seedへ統合可。ただしEntity Resolutionは`AMBIGUOUS`のまま維持し、空URLはpage-scopedで分離する
 - First Seen = 既存created/Analyzed Atから最古値
 - Decision ScoreをAdoption Scoreへコピーしない
 - 既存DecisionをAdoption Statusへ自動変換しない

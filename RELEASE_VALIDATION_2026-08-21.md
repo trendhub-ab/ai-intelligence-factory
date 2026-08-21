@@ -121,7 +121,7 @@ Profit/Portfolio optimization may change which eligible Stock candidate is attem
 
 
 ## Migration Entity Resolution hardening addendum
-- Unit: 299/299 PASS
+- Unit: 303/303 PASS
 - Python syntax: PASS
-- New migration invariants: generic article URL ambiguous; ambiguous rows never merge; legacy tracking paused/not eligible; audit artifact exposes projected null Adoption fields
-- Synthetic Full: not rerun locally due unavailable google-genai dependency/network; MUST rerun in GitHub before apply. Prior baseline was 500/500 critical 0.
+- New migration invariants: generic article URL remains ambiguous; title-only/different-URL ambiguous rows never merge; same-source + normalized Primary URL exact duplicates may collapse only as migration dedupe while remaining AMBIGUOUS; blank URLs remain page-scoped; legacy tracking paused/not eligible; audit artifact exposes projected null Adoption fields
+- Synthetic Full: 500/500 PASS, critical 0. Local run used the repository-equivalent google-genai import-only test stub; validator remained offline and performed no model/network/Notion writes. GitHub dry-run remains required before apply because only GitHub has the real Notion secrets/environment.

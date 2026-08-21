@@ -151,7 +151,7 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 - Notion Upgradeは本文childrenを先に保存し、成功後にDeep Dive／Readyプロパティをcommitする。children失敗時はReady状態へ更新しない。properties commit失敗時は、今回追加したchildrenをbest-effortでrollbackし、Pending Retryへ遷移する。Pending Retryの状態保存にも失敗した場合はTelegramで運用者へ通知する。
 - 既にMarkdown manuscript childがあるRetryでは本文を再appendしない。これによりrollback失敗後の二重本文を防ぐ。
 - URL重複判定は新規候補・Notion既存URLに共通のcanonicalizationを適用する。末尾`/`、fragment、`utm_*`、`fbclid`、`gclid`、`ref`、`source`を除去するが、意味のあるquery parameterは維持する。
-- Cross-source identityには候補が明示的に保持する公式／一次URLに加え、HN item URL・Product Hunt discovery URLをmigration aliasとして利用する。これは旧Stock行との再重複防止専用で、タイトル類似だけによる推測dedupeは行わない。
+- Cross-source identityには候補が明示的に保持する公式／一次URLに加え、HN item URL・Product Hunt discovery URLをmigration aliasとして利用する。これは旧Stock行との再重複防止専用で、タイトル類似だけによる推測dedupeは行わない。Legacy migrationの重複除去はさらに限定し、`Source`と正規化`Primary URL`が完全一致するAMBIGUOUS行だけを1 seedへ統合できる。この場合もTechnology identityは`AMBIGUOUS`のままとし、URL相違・タイトル一致・空URLは統合しない。
 - arXivの429・503・timeoutはPending Retryのままにする。ID不正、title mismatch、実在確認失敗等の恒久的Source Integrity Failureは、既存Notionページがある場合に`Content Status=Quality Failed`、`Article Status=Not Planned`、`Grounding Status=Failed`へ反映する。未公開記事本文は保存しない。
 - Stale判定はStock作成日時ではなく、最新の`Article Status=Ready`記事の`Analyzed At`を基準にする。Needs Editorial ReviewはStaleを隠さない。
 - 会員公開DBへの同期条件は`Review Status=Public Approved` **AND** `Article Status=Ready`。内部DBをSource of Truthとしてreconciliationし、過去に同期済みでも承認取消・Review・Quality Failed等で条件を外れた内部レコードは会員DB側をarchiveする。内部DBに対応URLがない手動レコードは勝手に削除しない。
