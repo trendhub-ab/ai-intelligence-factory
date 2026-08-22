@@ -522,6 +522,19 @@ GATE_STATUS_FAIL = "FAIL"
 GATE_STATUS_WARNING = "WARNING"
 GATE_STATUS_REVIEW = "REVIEW"
 
+# Run 102: Gate名・既存statusは互換維持しつつ、公開停止強度を別軸で明示する。
+# HARD_BLOCK = 読者信頼/Fact/Evidence/Decision整合を壊すため公開不可。
+# REVIEW = 事実安全性ではなく「で、どうするか」という商品価値が欠け、1回の修正価値がある。
+# SOFT_QUALITY = 読める記事の美観・引力・文体改善。観測するが原則公開を止めない。
+GATE_SEVERITY_HARD = "HARD_BLOCK"
+GATE_SEVERITY_REVIEW = "REVIEW"
+GATE_SEVERITY_SOFT = "SOFT_QUALITY"
+GATE_SEVERITY_OPERATIONAL = "OPERATIONAL"
+GATE_DISPOSITION_PASS = "PASS"
+GATE_DISPOSITION_PASS_WITH_WARNINGS = "PASS_WITH_WARNINGS"
+GATE_DISPOSITION_REVIEW = "REVIEW"
+GATE_DISPOSITION_BLOCK = "BLOCK"
+
 REASON_CODE_MAX_TOKENS = "MAX_TOKENS"
 REASON_CODE_STRUCTURE_MISSING = "STRUCTURE_MISSING"
 REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT = "PRIMARY_EVIDENCE_INSUFFICIENT"
@@ -1730,9 +1743,34 @@ ARTICLE_DISPLAY_VARIANTS = (
 )
 
 
+# Run-local heading diversity.  The same article keeps the same profile across Quality Retry,
+# while new articles are balanced across the available profiles so two hash collisions do not
+# make a Daily run look template-generated.  Nothing is persisted across runs.
+_ARTICLE_DISPLAY_ASSIGNMENTS: dict[str, int] = {}
+_ARTICLE_DISPLAY_USAGE: list[int] = [0] * len(ARTICLE_DISPLAY_VARIANTS)
+
+
 def _article_display_variant(name: str) -> dict:
-    digest = hashlib.sha256((name or "article").encode("utf-8")).digest()[0]
-    return ARTICLE_DISPLAY_VARIANTS[digest % len(ARTICLE_DISPLAY_VARIANTS)]
+    key = (name or "article").strip() or "article"
+    if key in _ARTICLE_DISPLAY_ASSIGNMENTS:
+        return ARTICLE_DISPLAY_VARIANTS[_ARTICLE_DISPLAY_ASSIGNMENTS[key]]
+
+    preferred = hashlib.sha256(key.encode("utf-8")).digest()[0] % len(ARTICLE_DISPLAY_VARIANTS)
+    minimum_use = min(_ARTICLE_DISPLAY_USAGE) if _ARTICLE_DISPLAY_USAGE else 0
+    # Among the least-used profiles, pick the one nearest the article-specific hash preference.
+    # This preserves stable variety without allowing consecutive hash collisions to dominate a run.
+    candidates = [i for i, used in enumerate(_ARTICLE_DISPLAY_USAGE) if used == minimum_use]
+    chosen = min(candidates, key=lambda i: ((i - preferred) % len(ARTICLE_DISPLAY_VARIANTS), i))
+    _ARTICLE_DISPLAY_ASSIGNMENTS[key] = chosen
+    _ARTICLE_DISPLAY_USAGE[chosen] += 1
+    return ARTICLE_DISPLAY_VARIANTS[chosen]
+
+
+def _reset_article_display_variant_rotation() -> None:
+    """Test/support hook; normal process startup already creates a fresh run-local rotation."""
+    _ARTICLE_DISPLAY_ASSIGNMENTS.clear()
+    for i in range(len(_ARTICLE_DISPLAY_USAGE)):
+        _ARTICLE_DISPLAY_USAGE[i] = 0
 
 
 def _evidence_trace_url_key(url: str) -> str:
@@ -3729,14 +3767,17 @@ def evidence_reason_rows(evidence_result: dict) -> list[dict]:
         "high_risk_action_unsupported": REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
         "medium_risk_action_unsupported": REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
     }
-    rows = [{"reason_code": mapping.get(key, REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT), "message": key}
+    rows = [{"reason_code": mapping.get(key, REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT),
+             "message": key, "gate": "evidence", "severity": GATE_SEVERITY_HARD}
             for key in evidence_result.get("blocking_missing", [])]
     if evidence_result.get("evidence_gap_disclosed"):
         rows.append({"reason_code": REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED,
-                     "message": "Conditional evidence gap must be disclosed and action limited."})
+                     "message": "Conditional evidence gap must be disclosed and action limited.",
+                     "gate": "evidence", "severity": GATE_SEVERITY_HARD})
     if not rows:
         rows.append({"reason_code": REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT,
-                     "message": "Evidence-to-Decision Sufficiency cannot safely support the core decision."})
+                     "message": "Evidence-to-Decision Sufficiency cannot safely support the core decision.",
+                     "gate": "evidence", "severity": GATE_SEVERITY_HARD})
     return rows
 
 
@@ -5570,6 +5611,39 @@ def _find_management_score_leak(draft: str) -> list[str]:
     return leaks
 
 
+_EVIDENCE_ALIAS_GROUPS = (
+    # Canonical acronym/full-name pairs that commonly appear in primary technical sources.
+    # This is deliberately small and explicit: aliases improve matching, never create evidence.
+    ("MCP", "Model Context Protocol"),
+    ("RAG", "Retrieval Augmented Generation", "Retrieval-Augmented Generation"),
+    ("TTS", "Text to Speech", "Text-to-Speech"),
+)
+
+
+def _expand_evidence_aliases(source_context: str) -> str:
+    """Add canonical aliases only when one member is already present in the evidence.
+
+    This prevents a primary source that says ``MCP`` from making the public expansion
+    ``Model Context Protocol`` look like an unsupported named fact.  The helper does not
+    infer products, actors, versions, or capabilities.
+    """
+    raw = source_context or ""
+    normalized = _normalized_evidence_text(raw)
+    additions: list[str] = []
+
+    def alias_present(alias: str) -> bool:
+        # Short all-caps aliases must be token matches.  Plain substring matching would,
+        # for example, find RAG inside the ordinary word "storage" and fabricate support.
+        if alias.isupper() and len(alias) <= 6:
+            return bool(re.search(rf"(?<![A-Za-z0-9]){re.escape(alias)}(?![A-Za-z0-9])", raw, re.I))
+        return _normalized_evidence_text(alias) in normalized
+
+    for group in _EVIDENCE_ALIAS_GROUPS:
+        if any(alias_present(alias) for alias in group):
+            additions.extend(group)
+    return raw + (("\n" + " ".join(dict.fromkeys(additions))) if additions else "")
+
+
 def _find_source_boundary_violations(draft: str, source_context: str) -> list[str]:
     """Source Context外の「固有製品/企業/モデルに関する事実補完」だけを止める補助Gate。
 
@@ -5578,7 +5652,8 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
     断定する文でのみ判定する。これにより Cursor/Copilot の無根拠補完は止めつつ、
     PoC / What / API / SaaS 等の誤検知を避ける。
     """
-    evidence = _normalized_evidence_text(source_context)
+    alias_expanded_context = _expand_evidence_aliases(source_context)
+    evidence = _normalized_evidence_text(alias_expanded_context)
     if not draft or not evidence:
         return []
 
@@ -5659,7 +5734,7 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
             # PDF抽出で ``DiffVG`` が ``Diff VG`` / ``DiﬀVG`` になるケースを
             # 文字列一致だけで一次資料外と誤判定しない。
             compact_name = _normalized_named_fact(name)
-            compact_evidence = _normalized_named_fact(source_context)
+            compact_evidence = _normalized_named_fact(alias_expanded_context)
             if _normalized_evidence_text(name) not in evidence and compact_name not in compact_evidence:
                 if is_low_risk_action and _looks_like_operational_artifact(name):
                     continue
@@ -6194,8 +6269,36 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     return (not failures, list(dict.fromkeys(failures)))
 
 
+EDITORIAL_SOFT_WARNINGS = {
+    # Run 102: 文章美観・型・軽微な日本語Polishは観測するが公開停止しない。
+    "mechanical ordinal structure",
+    "repetitive AI-like sentence endings",
+    "repetitive fixed introduction",
+    "missing observation or reservation",
+    "mechanical three-reasons phrasing",
+    "too many reader questions",
+    "monotonous sentence endings",
+}
+
+
+def _editorial_warning_is_soft(warning: str) -> bool:
+    text = warning or ""
+    return (text in EDITORIAL_SOFT_WARNINGS
+            or text.startswith("too many article headings:")
+            or text.startswith("japanese_polish:"))
+
+
+def _blocking_editorial_warnings(warnings: list[str]) -> list[str]:
+    # list-heavy / fabricated experience / 未知の将来ruleはReview/Hard候補として残す。
+    return [warning for warning in (warnings or []) if not _editorial_warning_is_soft(warning)]
+
+
 def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[str]]:
-    """Editorial Gate: 読みやすさ・機械的構成・AI的な文体傾向を診断する。"""
+    """Editorial Gate: diagnose prose quality; only material defects block publication.
+
+    Soft style signals remain observable in Article Audit but do not turn a factually sound,
+    readable technical article into Quality Failed by themselves.
+    """
     warnings: list[str] = []
     draft = parsed.get("note_draft", "")
     if _article_list_ratio(draft) > 0.55:
@@ -6209,7 +6312,8 @@ def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[st
         warnings.append(f"too many article headings: {len(headings)}")
     warnings.extend(_find_humanization_violations(draft))
     warnings.extend(_find_final_japanese_polish_issues(draft))
-    return (not warnings, list(dict.fromkeys(warnings)))
+    warnings = list(dict.fromkeys(warnings))
+    return (not _blocking_editorial_warnings(warnings), warnings)
 
 
 def validate_publication_readiness_gate(parsed: dict, source_context: str = "", source_info: dict | None = None) -> tuple[str, list[str]]:
@@ -6369,6 +6473,8 @@ def _reason_code(message: str, gate: str) -> str:
             return REASON_CODE_FACT_CONDITIONALITY_LOSS
         return REASON_CODE_FACT_UNSUPPORTED_CLAIM
     if gate == "editorial":
+        if "unsupported personal experience" in text:
+            return REASON_CODE_APPEAL_FABRICATED_EXPERIENCE
         return REASON_CODE_EDITORIAL_STRUCTURE_ERROR
     if gate == "publication":
         mapping = {
@@ -6394,9 +6500,128 @@ def _reason_code(message: str, gate: str) -> str:
     return REASON_CODE_FACT_UNSUPPORTED_CLAIM
 
 
+def classify_gate_reason_severity(gate: str, message: str, reason_code: str = "") -> str:
+    """Run 102のHARD / REVIEW / SOFT分類。
+
+    Gateを緩めるためではなく、公開停止と改善提案を分離するための分類。
+    Fact/Evidence/Decision矛盾は守り、文章美観だけのためのGemini Retryを止める。
+    """
+    text = (message or "").lower()
+    code = reason_code or _reason_code(message, gate)
+    if gate in {"fact", "evidence"}:
+        return GATE_SEVERITY_HARD
+    if gate == "publication":
+        # headline/intro overclaimも読者誤認につながるため、修正されるまで公開しない。
+        return GATE_SEVERITY_HARD
+    if gate == "editorial":
+        if "unsupported personal experience" in text:
+            return GATE_SEVERITY_HARD
+        # 本文の過半が箇条書きの状態は「美観」ではなく読解性・商品価値の問題。
+        if "article too list-like" in text:
+            return GATE_SEVERITY_REVIEW
+        known_soft = (
+            "mechanical ordinal structure", "repetitive ai-like sentence endings",
+            "too many article headings", "repetitive fixed introduction",
+            "missing observation or reservation", "mechanical three-reasons phrasing",
+            "too many reader questions", "monotonous sentence endings", "japanese_polish:",
+        )
+        if any(token in text for token in known_soft):
+            return GATE_SEVERITY_SOFT
+        # 将来Editorial ruleが追加された時に、未知の重大欠陥を自動Soft化しないFail-safe。
+        return GATE_SEVERITY_REVIEW
+    if gate == "human_appeal":
+        if code == REASON_CODE_APPEAL_FABRICATED_EXPERIENCE or "fabricated_personal_experience" in text:
+            return GATE_SEVERITY_HARD
+        if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
+            return GATE_SEVERITY_SOFT
+        if message in {
+            "action_collapsed_to_generic_monitoring",
+            "decision_voice_missing",
+            "no_editorial_observation",
+            "over_hedging_without_decision",
+            "human_appeal_materially_degraded_after_reedit",
+        } or code == REASON_CODE_APPEAL_DECISION_VOICE_LOSS:
+            # 「何をすべきか」が消えた記事は獲得商品として弱い。Soft扱いして量産しない。
+            return GATE_SEVERITY_REVIEW
+        # 未知のHuman Appeal defectもまずReview。新ルール追加時の過剰通過を防ぐ。
+        return GATE_SEVERITY_REVIEW
+    return GATE_SEVERITY_HARD
+
+
 def map_gate_reasons(gate: str, messages: list[str] | None) -> list[dict]:
-    return [{"reason_code": _reason_code(message, gate), "message": message}
-            for message in (messages or [])]
+    rows: list[dict] = []
+    for message in (messages or []):
+        code = _reason_code(message, gate)
+        rows.append({
+            "reason_code": code,
+            "message": message,
+            "gate": gate,
+            "severity": classify_gate_reason_severity(gate, message, code),
+        })
+    return rows
+
+
+def _infer_gate_from_reason_code(reason_code: str) -> str:
+    code = reason_code or ""
+    if code.startswith("FACT_") or code in {REASON_CODE_MAX_TOKENS, REASON_CODE_STRUCTURE_MISSING}:
+        return "fact"
+    if code in {
+        REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT, REASON_CODE_PRIMARY_SOURCE_UNRESOLVED,
+        REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT, REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT,
+        REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED, REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
+        REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED,
+    }:
+        return "evidence"
+    if code.startswith("PUB_"):
+        return "publication"
+    if code == REASON_CODE_EDITORIAL_STRUCTURE_ERROR:
+        return "editorial"
+    if code.startswith("APPEAL_"):
+        return "human_appeal"
+    if code in {
+        REASON_CODE_PENDING_RETRY, REASON_CODE_MODEL_UNAVAILABLE,
+        REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, REASON_CODE_NOTION_PERSISTENCE_FAILED,
+    }:
+        return "operational"
+    return "fact"
+
+
+def normalize_gate_reason_rows(reason_rows: list[dict] | None) -> list[dict]:
+    normalized: list[dict] = []
+    for original in (reason_rows or []):
+        row = dict(original)
+        code = str(row.get("reason_code") or "")
+        gate = str(row.get("gate") or _infer_gate_from_reason_code(code))
+        row["gate"] = gate
+        if not row.get("severity"):
+            if gate == "operational":
+                row["severity"] = GATE_SEVERITY_OPERATIONAL
+            else:
+                row["severity"] = classify_gate_reason_severity(gate, str(row.get("message") or ""), code)
+        normalized.append(row)
+    return normalized
+
+
+def gate_reason_disposition(reason_rows: list[dict] | None) -> str:
+    rows = normalize_gate_reason_rows(reason_rows)
+    severities = {row.get("severity") for row in rows}
+    if GATE_SEVERITY_HARD in severities:
+        return GATE_DISPOSITION_BLOCK
+    if GATE_SEVERITY_REVIEW in severities:
+        return GATE_DISPOSITION_REVIEW
+    if GATE_SEVERITY_SOFT in severities:
+        return GATE_DISPOSITION_PASS_WITH_WARNINGS
+    return GATE_DISPOSITION_PASS
+
+
+def _reason_rows_by_severity(reason_rows: list[dict] | None, *severities: str) -> list[dict]:
+    allowed = set(severities)
+    return [row for row in normalize_gate_reason_rows(reason_rows) if row.get("severity") in allowed]
+
+
+def _quality_warning_messages(reason_rows: list[dict] | None) -> list[str]:
+    return [str(row.get("message", "")) for row in normalize_gate_reason_rows(reason_rows)
+            if row.get("severity") == GATE_SEVERITY_SOFT and row.get("message")]
 
 
 def finalize_retry_diagnostics(retry_diagnostics: dict | None, final_reason_codes: list[dict],
@@ -6425,19 +6650,24 @@ NON_REPAIRABLE_RETRY_REASON_CODES = {
 
 def should_attempt_dynamic_retry(reason_rows: list[dict], evidence_result: dict | None,
                                  candidate_origin: str = "new") -> tuple[bool, str]:
-    """書き直しで直せる失敗だけにGemini Quality Retryを使う。
+    """利益に近い修正だけにGemini Quality Retryを使う。
 
-    Evidenceそのものが足りない状態は再作文では増えないため、RetryせずReview/Failedへ。
-    Pending Retryは専用実送信枠を使い切ったら翌Runへ残し、Fresh候補の枠を守る。
+    SOFTだけなら公開可能なので0 API。Evidence不足は再作文で増えないので0 API。
+    HARDの局所修正、またはDecision Voice等のREVIEWだけを最大1回修正する。
     """
+    rows = list(reason_rows or [])
+    if rows and gate_reason_disposition(rows) == GATE_DISPOSITION_PASS_WITH_WARNINGS:
+        return False, "soft_quality_only"
     if candidate_origin == "pending_retry" and not PENDING_RETRY_REQUEST_BUDGET.can_request():
         return False, "pending_retry_budget_exhausted"
     evidence_result = evidence_result or {}
     if evidence_result.get("state") not in {None, "", EVIDENCE_SUFFICIENT}:
         return False, "evidence_not_sufficient"
-    codes = {row.get("reason_code") for row in (reason_rows or []) if row.get("reason_code")}
+    codes = {row.get("reason_code") for row in rows if row.get("reason_code")}
     if codes & NON_REPAIRABLE_RETRY_REASON_CODES:
         return False, "non_repairable_evidence_or_source_gap"
+    if not rows:
+        return False, "no_blocking_reason"
     return True, "repairable"
 
 
@@ -6606,19 +6836,18 @@ def _publication_rescue_can_be_ready(parsed: dict, source_context: str, source: 
     editorial_ok, editorial_warnings = validate_editorial_gate(parsed, "publication-rescue")
     publication_state, publication_issues = validate_publication_readiness_gate(parsed, source_context, source_info)
     human_state, human_issues = validate_human_appeal_gate(parsed)
-    hard_human = any(issue in {
-        "action_collapsed_to_generic_monitoring", "decision_voice_missing",
-        "headline_flattened", "fabricated_personal_experience",
-        "human_appeal_materially_degraded_after_reedit",
-    } for issue in human_issues)
-    # Editorial/soft Human Appeal warnings are allowed after the paid Gemini retry has already
-    # failed, matching the existing final-attempt policy. Fact, publication, and hard-human remain hard.
-    ready = fact_ok and publication_state == "PASS" and not hard_human
+    reason_rows = (map_gate_reasons("fact", fact_failures)
+                   + map_gate_reasons("editorial", editorial_warnings)
+                   + map_gate_reasons("publication", publication_issues)
+                   + map_gate_reasons("human_appeal", human_issues))
+    disposition = gate_reason_disposition(reason_rows)
+    ready = disposition in {GATE_DISPOSITION_PASS, GATE_DISPOSITION_PASS_WITH_WARNINGS}
     return ready, {
         "fact_ok": fact_ok, "fact_failures": fact_failures,
         "editorial_ok": editorial_ok, "editorial_warnings": editorial_warnings,
         "publication_state": publication_state, "publication_issues": publication_issues,
         "human_state": human_state, "human_issues": human_issues,
+        "reason_rows": reason_rows, "disposition": disposition,
     }
 
 
@@ -6631,11 +6860,14 @@ class DeepDiveGateFunnel:
         "evidence_sufficient", "evidence_supplement_required", "evidence_supplement_success",
         "evidence_insufficient", "deep_dive_generation_called", "deep_dive_calls_avoided",
         "retry_attempted", "retry_success", "retry_failed",
+        "retry_triggered_hard", "retry_triggered_review", "retry_avoided_soft_only",
         "deterministic_rescue_attempted", "deterministic_rescue_success",
         "retry_skipped_nonrepairable", "retry_skipped_budget",
         "max_tokens_failed", "structure_failed", "primary_evidence_failed",
-        "fact_gate_failed", "editorial_gate_failed", "publication_readiness_review",
-        "publication_readiness_failed", "human_appeal_warning", "human_appeal_review",
+        "fact_gate_failed", "editorial_gate_failed", "editorial_warning",
+        "publication_readiness_review", "publication_readiness_failed",
+        "human_appeal_warning", "human_appeal_review",
+        "hard_blocked", "review_required", "soft_warning_ready",
         "pending_retry", "ready_count", "notion_persistence_failed",
     )
 
@@ -6664,8 +6896,16 @@ class DeepDiveGateFunnel:
             self.incr("evidence_supplement_required")
         if record.get("evidence_supplement_success"):
             self.incr("evidence_supplement_success")
+        trigger_rows = (record.get("retry_diagnostics") or {}).get("trigger_reason_codes", []) or []
         if record.get("retry_attempted"):
             self.incr("retry_attempted")
+            trigger_severities = {row.get("severity") for row in trigger_rows}
+            if GATE_SEVERITY_HARD in trigger_severities:
+                self.incr("retry_triggered_hard")
+            if GATE_SEVERITY_REVIEW in trigger_severities:
+                self.incr("retry_triggered_review")
+        if (record.get("retry_diagnostics") or {}).get("retry_skipped_reason") == "soft_quality_only":
+            self.incr("retry_avoided_soft_only")
         if record.get("retry_succeeded"):
             self.incr("retry_success")
         elif record.get("retry_attempted"):
@@ -6685,7 +6925,9 @@ class DeepDiveGateFunnel:
         if record.get("fact_gate") == GATE_STATUS_FAIL:
             self.incr("fact_gate_failed")
         if record.get("editorial_gate") == GATE_STATUS_WARNING:
+            # backward-compatible counter is retained, but user-facing wording is Warning.
             self.incr("editorial_gate_failed")
+            self.incr("editorial_warning")
         if record.get("publication_readiness_gate") == GATE_STATUS_REVIEW:
             self.incr("publication_readiness_review")
         if record.get("publication_readiness_gate") == GATE_STATUS_FAIL:
@@ -6694,15 +6936,26 @@ class DeepDiveGateFunnel:
             self.incr("human_appeal_warning")
         if record.get("human_appeal_gate") == GATE_STATUS_REVIEW:
             self.incr("human_appeal_review")
+        severities = {row.get("severity") for row in record.get("reason_codes", [])}
+        if record.get("final_status") != ARTICLE_STATUS_READY and GATE_SEVERITY_HARD in severities:
+            self.incr("hard_blocked")
+        if record.get("final_status") == ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW:
+            self.incr("review_required")
         if record.get("final_status") == CONTENT_STATUS_PENDING_RETRY:
             self.incr("pending_retry")
         if record.get("final_status") == ARTICLE_STATUS_READY:
             self.incr("ready_count")
+            if GATE_SEVERITY_SOFT in severities and not ({GATE_SEVERITY_HARD, GATE_SEVERITY_REVIEW} & severities):
+                self.incr("soft_warning_ready")
         if record.get("final_status") == CONTENT_STATUS_PERSISTENCE_FAILED or REASON_CODE_NOTION_PERSISTENCE_FAILED in codes:
             self.incr("notion_persistence_failed")
 
     def render_text(self) -> str:
         c = self.counters
+        candidate_den = c["deep_dive_candidates_attempted"]
+        generated_den = c["generation_completed"]
+        candidate_yield = (100.0 * c["ready_count"] / candidate_den) if candidate_den else 0.0
+        generated_yield = (100.0 * c["ready_count"] / generated_den) if generated_den else 0.0
         return "\n".join([
             "Deep Dive Funnel", "",
             f"Candidates Attempted: {c['deep_dive_candidates_attempted']}",
@@ -6721,8 +6974,11 @@ class DeepDiveGateFunnel:
             f"Deep Dive Generation Called: {c['deep_dive_generation_called']}",
             f"Deep Dive Calls Avoided by Evidence Gate: {c['deep_dive_calls_avoided']}",
             f"Dynamic Retry Attempted: {c['retry_attempted']}",
-            f"Dynamic Retry Success: {c['retry_success']}", "",
+            f"Dynamic Retry Success: {c['retry_success']}",
             f"Dynamic Retry Failed: {c['retry_failed']}",
+            f"Retry Triggered by HARD: {c['retry_triggered_hard']}",
+            f"Retry Triggered by REVIEW: {c['retry_triggered_review']}",
+            f"Retry Avoided (SOFT only): {c['retry_avoided_soft_only']}", "",
             f"Deterministic Rescue Attempted: {c['deterministic_rescue_attempted']}",
             f"Deterministic Rescue Success: {c['deterministic_rescue_success']}",
             f"Dynamic Retry Skipped (Non-repairable): {c['retry_skipped_nonrepairable']}",
@@ -6731,14 +6987,19 @@ class DeepDiveGateFunnel:
             f"Structure Failed: {c['structure_failed']}",
             f"Primary Evidence Failed: {c['primary_evidence_failed']}",
             f"Fact Gate Failed: {c['fact_gate_failed']}",
-            f"Editorial Gate Failed: {c['editorial_gate_failed']}",
+            f"Editorial Warning: {c['editorial_warning']}",
             f"Publication Readiness Review: {c['publication_readiness_review']}",
             f"Publication Readiness Failed: {c['publication_readiness_failed']}",
             f"Human Appeal Warning: {c['human_appeal_warning']}",
             f"Human Appeal Review: {c['human_appeal_review']}",
+            f"Hard Blocked: {c['hard_blocked']}",
+            f"Needs Editorial Review: {c['review_required']}",
+            f"Ready with SOFT Warnings: {c['soft_warning_ready']}",
             f"Pending Retry: {c['pending_retry']}", "",
             f"Notion Persistence Failed: {c['notion_persistence_failed']}", "",
             f"Ready: {c['ready_count']}",
+            f"Candidate Publish Yield: {c['ready_count']}/{candidate_den} ({candidate_yield:.1f}%)",
+            f"Generated Publish Yield: {c['ready_count']}/{generated_den} ({generated_yield:.1f}%)",
         ])
 
     def render_ready_zero_summary(self) -> str:
@@ -6779,6 +7040,10 @@ class DeepDiveGateFunnel:
 
     def render_telegram_summary(self) -> str:
         c = self.counters
+        candidate_den = c["deep_dive_candidates_attempted"]
+        generated_den = c["generation_completed"]
+        candidate_yield = (100.0 * c["ready_count"] / candidate_den) if candidate_den else 0.0
+        generated_yield = (100.0 * c["ready_count"] / generated_den) if generated_den else 0.0
         top_gate = max(
             [("Publication Readiness", c["publication_readiness_review"] + c["publication_readiness_failed"]),
              ("Fact Gate", c["fact_gate_failed"]),
@@ -6791,7 +7056,10 @@ class DeepDiveGateFunnel:
             f"Ready: {c['ready_count']}",
             f"Needs Editorial Review: {review_saved}",
             f"Quality Failed: {c['fact_gate_failed'] + c['primary_evidence_failed']}",
-            f"Pending Retry: {c['pending_retry']}", "",
+            f"Pending Retry: {c['pending_retry']}",
+            f"Candidate Publish Yield: {candidate_yield:.1f}%",
+            f"Generated Publish Yield: {generated_yield:.1f}%", "",
+            f"Retry Avoided (SOFT only): {c['retry_avoided_soft_only']}",
             f"Deep Dive Calls Avoided: {c['deep_dive_calls_avoided']}",
             f"Top Gate: {top_gate}",
             f"Review Candidates Saved: {review_saved}",
@@ -6824,7 +7092,7 @@ def build_candidate_gate_record(candidate_rank: int, repo_name: str, source_url:
                                 retry_diagnostics: dict | None = None,
                                 candidate_origin: str = "new",
                                 source: str = "Unknown", generation_request_count: int = 0) -> dict:
-    reasons = reason_codes or []
+    reasons = normalize_gate_reason_rows(reason_codes)
     first = reasons[0] if reasons else {}
     return {
         "candidate_rank": candidate_rank,
@@ -6842,6 +7110,10 @@ def build_candidate_gate_record(candidate_rank: int, repo_name: str, source_url:
         "reason_code": first.get("reason_code", ""),
         "reason": first.get("message", ""),
         "reason_codes": reasons,
+        "gate_disposition": gate_reason_disposition(reasons),
+        "hard_reason_count": sum(1 for row in reasons if row.get("severity") == GATE_SEVERITY_HARD),
+        "review_reason_count": sum(1 for row in reasons if row.get("severity") == GATE_SEVERITY_REVIEW),
+        "soft_warning_count": sum(1 for row in reasons if row.get("severity") == GATE_SEVERITY_SOFT),
         "article_saved": article_saved,
         "evidence_sufficiency": (evidence_result or {}).get("state", ""),
         "evidence_initial_sufficiency": (evidence_result or {}).get("initial_state", (evidence_result or {}).get("state", "")),
@@ -6961,7 +7233,8 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
         lines = ["# Article Audit", ""]
         for label, key in (
             ("Status", "status"), ("Stage", "stage"), ("Source", "source"),
-            ("Decision Score", "decision_score"), ("Failure Reason", "failure_reason"),
+            ("Decision Score", "decision_score"), ("Quality Notes", "quality_notes"),
+            ("Failure Reason", "failure_reason"),
         ):
             value = meta.get(key)
             if value not in (None, ""):
@@ -6998,7 +7271,8 @@ def save_article_audit_package(repo: dict, status: str, parsed: dict | None,
         "status": status,
         "source": repo.get("source", ""),
         "decision_score": parsed.get("score"),
-        "failure_reason": failure_reason,
+        "quality_notes": failure_reason if status == "READY" else "",
+        "failure_reason": "" if status == "READY" else failure_reason,
         "evidence_urls": evidence_urls,
     }
     saved: list[str] = []
@@ -7043,13 +7317,17 @@ def _append_article_audit_summary(repo: dict, status: str, parsed: dict,
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("# Daily Article Audit Summary\n\n")
-                handle.write("| Candidate | Source | Decision Score | Final Status | Failure Reason | Markdown |\n")
-                handle.write("|---|---|---:|---|---|---|\n")
+                handle.write("| Candidate | Source | Decision Score | Final Status | Disposition | Quality Warnings / Failure Reason | Markdown |\n")
+                handle.write("|---|---|---:|---|---|---|---|\n")
         md_paths = [os.path.relpath(x, ARTICLE_AUDIT_DIR).replace(os.sep, "/") for x in saved_paths if x.endswith(".md")]
-        reason = (failure_reason or (gate_record or {}).get("reason", "")).replace("|", "\\|").replace("\n", " ")[:500]
+        gate_record = gate_record or {}
+        reason_rows = gate_record.get("reason_codes", []) or []
+        warning_text = "; ".join(_quality_warning_messages(reason_rows))
+        reason = (failure_reason or warning_text or gate_record.get("reason", "")).replace("|", "\\|").replace("\n", " ")[:500]
+        disposition = gate_record.get("gate_disposition", gate_reason_disposition(reason_rows))
         name = str(repo.get("nameWithOwner") or "untitled").replace("|", "\\|")
         with open(path, "a", encoding="utf-8") as handle:
-            handle.write(f"| {name} | {repo.get('source','')} | {parsed.get('score','')} | {status} | {reason} | {', '.join(md_paths)} |\n")
+            handle.write(f"| {name} | {repo.get('source','')} | {parsed.get('score','')} | {status} | {disposition} | {reason} | {', '.join(md_paths)} |\n")
     except Exception as exc:
         logger.error("[ARTICLE AUDIT SUMMARY FAILED] %s", exc)
 
@@ -7525,6 +7803,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     last_grounding = {"grounding_status": source_info.get("method", GROUNDING_METADATA_ONLY), "evidence_urls": [primary_url] if primary_url else []}
     quality_gate_passed = False
     final_quality_failures: list[str] = []
+    final_reason_rows: list[dict] = []
     appeal_before_reedit: dict | None = None
     retry_diagnostics: dict = {}
     deep_dive_generation_called = False
@@ -7706,31 +7985,52 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             elif human_appeal_materially_degraded(appeal_before_reedit, parsed):
                 human_appeal_issues.append("human_appeal_materially_degraded_after_reedit")
                 human_appeal = "WEAK"
-            # Human AppealはHumanizationとは別の品質軸。安全なだけで無難な記事を
-            # 自動Readyにしないが、軽微な文体警告をFact failureへ昇格させない。
-            appeal_review_required = any(issue in {
-                "action_collapsed_to_generic_monitoring", "decision_voice_missing",
-                "headline_flattened", "fabricated_personal_experience",
-                "human_appeal_materially_degraded_after_reedit",
-            } for issue in human_appeal_issues)
+            # Run 102: GateをHARD / REVIEW / SOFTへ分離する。
+            # 「文章が最高ではない」だけで無料枠と公開機会を失わない一方、
+            # Fact/Evidence/Decisionの信頼性と「で、どうするか」という商品価値は守る。
+            all_reason_rows = (map_gate_reasons("fact", fact_failures)
+                               + map_gate_reasons("editorial", editorial_warnings)
+                               + map_gate_reasons("publication", publication_issues)
+                               + map_gate_reasons("human_appeal", human_appeal_issues))
+            disposition = gate_reason_disposition(all_reason_rows)
+            final_reason_rows = list(all_reason_rows)
+            final_quality_failures = [str(row.get("message", "")) for row in all_reason_rows if row.get("message")]
+            failures = list(final_quality_failures)
+            human_rows = [row for row in all_reason_rows if row.get("gate") == "human_appeal"]
+            appeal_review_required = any(row.get("severity") in {GATE_SEVERITY_HARD, GATE_SEVERITY_REVIEW}
+                                         for row in human_rows)
             if appeal_review_required:
                 gate_statuses["human_appeal"] = GATE_STATUS_REVIEW
-            failures = fact_failures + editorial_warnings + publication_issues + human_appeal_issues
-            final_quality_failures = failures
-            if fact_ok and editorial_ok and publication_state == "PASS" and human_appeal == "ACCEPTABLE":
+
+            # PASS_WITH_WARNINGSはここで即出荷。SOFT文章改善だけのQuality Retryは禁止する。
+            if disposition in {GATE_DISPOSITION_PASS, GATE_DISPOSITION_PASS_WITH_WARNINGS}:
                 quality_gate_passed = True
+                if disposition == GATE_DISPOSITION_PASS_WITH_WARNINGS:
+                    soft_messages = _quality_warning_messages(all_reason_rows)
+                    logger.warning("[QUALITY PASS WITH WARNINGS] %s: %s", name, ", ".join(soft_messages))
+                    retry_diagnostics = {
+                        "original_article": parsed.get("note_draft", ""),
+                        "trigger_reason_codes": _reason_rows_by_severity(all_reason_rows, GATE_SEVERITY_SOFT),
+                        "changed_sections": [],
+                        "retry_attempted": False,
+                        "retry_skipped_reason": "soft_quality_only",
+                    }
                 break
 
-            reason_rows = (map_gate_reasons("fact", fact_failures) + map_gate_reasons("editorial", editorial_warnings)
-                           + map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues))
+            # Retry/Rescueへ渡すのは公開停止・意思決定価値に関係する理由だけ。
+            # Soft warningはArtifactへ残すが、修正プロンプトには混ぜない。
+            reason_rows = _reason_rows_by_severity(
+                all_reason_rows, GATE_SEVERITY_HARD, GATE_SEVERITY_REVIEW
+            )
 
             # Try the zero-API subtractive rescue before spending a Gemini quality-retry request.
             # This is especially valuable for isolated hype/named-fact/numeric defects: if Fact and
             # Publication become safe after deleting the exact offending material, an extra model
             # call would add cost and a new hallucination opportunity without adding evidence.
-            if ENABLE_DETERMINISTIC_PUBLICATION_RESCUE and attempt < MAX_QUALITY_RETRIES:
+            hard_reason_rows = _reason_rows_by_severity(reason_rows, GATE_SEVERITY_HARD)
+            if ENABLE_DETERMINISTIC_PUBLICATION_RESCUE and attempt < MAX_QUALITY_RETRIES and hard_reason_rows:
                 pre_rescue_article = parsed.get("note_draft", "")
-                rescued_parsed, rescue_changes = _apply_deterministic_publication_rescue(parsed, reason_rows)
+                rescued_parsed, rescue_changes = _apply_deterministic_publication_rescue(parsed, hard_reason_rows)
                 if rescue_changes:
                     rescue_ready, rescue_diag = _publication_rescue_can_be_ready(
                         rescued_parsed, verification_context, source, source_info.get("evidence_metadata", {}),
@@ -7761,10 +8061,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         editorial_warnings = list(rescue_diag.get("editorial_warnings") or [])
                         publication_issues = list(rescue_diag.get("publication_issues") or [])
                         human_appeal_issues = list(rescue_diag.get("human_issues") or [])
-                        final_quality_failures = editorial_warnings + human_appeal_issues
+                        final_reason_rows = list(rescue_diag.get("reason_rows") or [])
+                        final_quality_failures = [str(row.get("message", "")) for row in final_reason_rows if row.get("message")]
                         retry_diagnostics = {
                             "original_article": pre_rescue_article,
-                            "trigger_reason_codes": reason_rows,
+                            "trigger_reason_codes": hard_reason_rows,
                             "changed_sections": ["deterministic_subtractive_rescue"],
                             "retry_attempted": False,
                             "deterministic_rescue": rescue_changes,
@@ -7783,15 +8084,25 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     "retry_skipped_reason": retry_skip_reason,
                 }
                 if funnel:
-                    funnel.incr("retry_skipped_budget" if retry_skip_reason == "pending_retry_budget_exhausted" else "retry_skipped_nonrepairable")
+                    if retry_skip_reason == "pending_retry_budget_exhausted":
+                        funnel.incr("retry_skipped_budget")
+                    elif retry_skip_reason == "soft_quality_only":
+                        funnel.incr("retry_avoided_soft_only")
+                    else:
+                        funnel.incr("retry_skipped_nonrepairable")
                 logger.warning("[QUALITY RETRY SKIPPED] %s: %s", name, retry_skip_reason)
 
             # Fact Gate FAILは事実誤認/根拠外主張なのでReviewへ降格してはいけない。
-            # Needs Editorial ReviewはFact PASS済みの稿だけを対象にする。
-            if fact_ok and (publication_state == "REVIEW" or appeal_review_required) and final_attempt:
-                review_issues = publication_issues + human_appeal_issues
-                logger.warning("[PUBLICATION READINESS GATE] Needs Editorial Review: %s: %s", name, ", ".join(review_issues))
-                reason_rows = map_gate_reasons("publication", publication_issues) + map_gate_reasons("human_appeal", human_appeal_issues)
+            # Fact PASS後にHARD/REVIEWが残る場合は、公開せず人間レビューへ。
+            # Publication矛盾、Decision Voice消失、重大Editorial defectをここで安全に止める。
+            if (fact_ok and publication_state != "FAIL"
+                    and disposition in {GATE_DISPOSITION_BLOCK, GATE_DISPOSITION_REVIEW} and final_attempt):
+                blocking_rows = _reason_rows_by_severity(
+                    all_reason_rows, GATE_SEVERITY_HARD, GATE_SEVERITY_REVIEW
+                )
+                review_issues = [str(row.get("message", "")) for row in blocking_rows if row.get("message")]
+                logger.warning("[QUALITY REVIEW REQUIRED] %s: %s", name, ", ".join(review_issues))
+                reason_rows = blocking_rows
                 retry_final = finalize_retry_diagnostics(
                     retry_diagnostics, reason_rows, "NEEDS_EDITORIAL_REVIEW", parsed.get("note_draft", "")
                 )
@@ -7857,6 +8168,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     persistence_rows = reason_rows + [{
                         "reason_code": REASON_CODE_NOTION_PERSISTENCE_FAILED,
                         "message": "Needs Editorial Review manuscript could not be persisted to Notion; queued for retry",
+                        "gate": "persistence", "severity": GATE_SEVERITY_OPERATIONAL,
                     }]
                     record = record_gate_outcome(
                         "pending_retry", CONTENT_STATUS_PENDING_RETRY,
@@ -7877,19 +8189,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 record["article_saved"] = bool(saved_path)
                 send_telegram_alert(f"{alert_prefix}: {name}\n" + " / ".join(review_issues)[:1200])
                 return None
-            # Human Appealの軽微な警告（入口の弱さ等）は記録して公開を妨げない。
-            # 具体的Decisionの消失だけは上のReviewルートで人手確認に回す。
-            if fact_ok and editorial_ok and publication_state == "PASS" and final_attempt:
-                logger.warning(f"[HUMAN APPEAL GATE] warning: {name}: {', '.join(human_appeal_issues)}")
-                quality_gate_passed = True
-                final_quality_failures = human_appeal_issues
-                break
-            # Editorialだけの問題は1回だけ書き直しを促す。2回目はFactが通っていれば公開可。
-            if fact_ok and publication_state == "PASS" and not editorial_ok and final_attempt:
-                logger.warning(f"[EDITORIAL GATE WARN] {name}: {', '.join(editorial_warnings)}")
-                quality_gate_passed = True
-                final_quality_failures = editorial_warnings
-                break
             if final_attempt:
                 # Last-chance 0-API rescue: delete only the exact unsupported material already
                 # diagnosed by the gates. Never invent replacement facts or weaken evidence checks.
@@ -7925,7 +8224,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                             editorial_warnings = list(rescue_diag.get("editorial_warnings") or [])
                             publication_issues = list(rescue_diag.get("publication_issues") or [])
                             human_appeal_issues = list(rescue_diag.get("human_issues") or [])
-                            final_quality_failures = editorial_warnings + human_appeal_issues
+                            final_reason_rows = list(rescue_diag.get("reason_rows") or [])
+                            final_quality_failures = [str(row.get("message", "")) for row in final_reason_rows if row.get("message")]
                             retry_diagnostics = dict(retry_diagnostics or {})
                             retry_diagnostics["deterministic_rescue"] = rescue_changes
                             break
@@ -7939,6 +8239,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         publication_issues = list(rescue_diag.get("publication_issues") or [])
                         human_appeal_issues = list(rescue_diag.get("human_issues") or [])
                         failures = fact_failures + editorial_warnings + publication_issues + human_appeal_issues
+                        final_reason_rows = list(rescue_diag.get("reason_rows") or [])
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
                 if not persist_results:
                     # 再生成テストはGate調整そのものが目的。落ちた稿も捨てず、
@@ -7976,7 +8277,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 "changed_sections": changed_sections,
                 "retry_attempted": True,
             }
-            gate_name = "FACT+EDITORIAL" if fact_failures and editorial_warnings else ("FACT" if fact_failures else "EDITORIAL/HUMAN_APPEAL")
+            retry_severities = {row.get("severity") for row in reason_rows}
+            gate_name = "HARD" if GATE_SEVERITY_HARD in retry_severities else "DECISION_VALUE_REVIEW"
             logger.warning(f"[QUALITY RETRY:{gate_name}] {name}: {quality_feedback}")
 
         if not parsed:
@@ -8038,7 +8340,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     source, stars, parsed["title_text"], eyecatch_url, published_at, analyzed_at,
                     report_meta=parsed, screening_score=screening_score, screening_reason=screening_reason,
                 )
-            reason_rows = map_gate_reasons("editorial", final_quality_failures) if final_quality_failures else []
+            reason_rows = list(final_reason_rows)
             if not notion_persisted:
                 persist_product_sidecar_once(
                     parsed, CONTENT_STATUS_PERSISTENCE_FAILED, ARTICLE_STATUS_NOT_PLANNED
@@ -8049,6 +8351,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 persistence_reason_rows = reason_rows + [{
                     "reason_code": REASON_CODE_NOTION_PERSISTENCE_FAILED,
                     "message": "Quality Gate PASS after Notion save/upgrade failure",
+                    "gate": "persistence", "severity": GATE_SEVERITY_OPERATIONAL,
                 }]
                 record_gate_outcome(
                     "completed", CONTENT_STATUS_PERSISTENCE_FAILED,
@@ -8075,10 +8378,12 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 persist_product_sidecar_once(
                     parsed, CONTENT_STATUS_DEEP_DIVE, ARTICLE_STATUS_READY
                 )
-                record_gate_outcome(
+                editorial_soft = any(row.get("gate") == "editorial" and row.get("severity") == GATE_SEVERITY_SOFT for row in reason_rows)
+                human_soft = any(row.get("gate") == "human_appeal" and row.get("severity") == GATE_SEVERITY_SOFT for row in reason_rows)
+                ready_record = record_gate_outcome(
                     "completed", ARTICLE_STATUS_READY,
-                    GATE_STATUS_PASS, GATE_STATUS_PASS if not final_quality_failures else GATE_STATUS_WARNING,
-                    GATE_STATUS_PASS, GATE_STATUS_WARNING if final_quality_failures else GATE_STATUS_PASS,
+                    GATE_STATUS_PASS, GATE_STATUS_WARNING if editorial_soft else GATE_STATUS_PASS,
+                    GATE_STATUS_PASS, GATE_STATUS_WARNING if human_soft else GATE_STATUS_PASS,
                     reason_rows, decision_score=parsed.get("score"), evidence_result=evidence_result,
                     deep_dive_generation_called=deep_dive_generation_called,
                     retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "READY", parsed.get("note_draft", "")),
@@ -8091,8 +8396,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     attribution_context=attribution_context,
                 )
                 logger.info("[SUBSCRIPTION ATTRIBUTION] %s -> %s", name, attribution_path or "not-recorded")
+                ready_warnings = "; ".join(_quality_warning_messages(reason_rows))
                 save_article_audit_package(
-                    repo, "READY", parsed, source_info, None, "", snapshots=article_audit_snapshots,
+                    repo, "READY", parsed, source_info, ready_record, ready_warnings, snapshots=article_audit_snapshots,
                     clean_manuscript=clean_manuscript, eyecatch_path=eyecatch_path if 'eyecatch_path' in locals() else "",
                 )
         else:

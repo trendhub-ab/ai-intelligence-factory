@@ -1,9 +1,10 @@
 # AI Intelligence Factory 現行仕様
 
-最終更新: 2026-08-21  
+最終更新: 2026-08-22  
+現行コード基準: **Run 102 Publish Yield Precision 完成版**  
 基準ファイル: `ai-intelligence-factory/pipeline.py` / `.github/workflows/daily.yml`
 
-> 本仕様書は、直近のDeep Dive記事生成改善（出力途中切れ対策、限定的な増枠、Backfill強化）を反映した現行基準である。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。現在は両方ともDeep Dive 12回設定で統一されている。
+> 本仕様書は、Run 102 Publish Yield Precisionまでの現行基準である。Run 99以降のGate Precision、Eyecatch Final、Article Audit Artifact、production isolation、Regression群を維持しつつ、Gate理由をHARD BLOCK / REVIEW / SOFT QUALITYへ分類し、重大品質を守りながらSOFT QUALITYだけによる不要な廃棄・Gemini Retryを抑える。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。
 
 ## 1. 目的と情報設計
 
@@ -569,3 +570,82 @@ Dailyの`private-gate-review-<run_number>`を、Gate JSONだけでなく人間�
 - `article_audit/RUN_SUMMARY.md`: Candidate / Source / Decision Score / Final Status / Failure Reason / 対応Markdownの索引。
 
 未公開本文はRepositoryへcommitせず、Actions Artifactにのみ保存し、既存どおり14日retentionとする。Article Audit保存失敗は記事生成・Notion永続化の成否を上書きしない観測系Fail-Openとし、ログへ明示する。
+
+---
+
+## Run 101 Human Audit Precision（2026-08-22）
+
+Run 100 Article Auditで実生成本文を人間監査した結果、記事生成品質そのものよりもGate偽陽性が公開歩留まりを抑えているケースを確認したため、品質基準を緩和せず判定精度を修正した。
+
+### Evidence Alias / Acronym
+- 一次情報に略語が存在する場合に限り、明示的な同義語グループをEvidence照合へ追加する。
+- 初期対象: `MCP ↔ Model Context Protocol`、`RAG ↔ Retrieval Augmented Generation`、`TTS ↔ Text to Speech`。
+- 略語は単語境界一致を必須とし、`RAG` が `storage` の部分文字列として誤一致するようなEvidence捏造を禁止する。
+- AliasはEvidenceの存在認識だけを補助し、製品機能・主体・バージョン・数値を新規推論しない。
+
+### Editorial Soft Warning
+- `mechanical ordinal structure` は監査上の警告として保持するが、単独では公開Hard Blockにしない。
+- 箇条書き比率過多、反復的AI文体、過剰見出し等の実質的Editorial defectは従来どおりブロック対象。
+- Soft Warning単独ではQuality Retryを消費しない。
+
+### Cross-Article Template Diversity
+- 5種の表示プロファイルは同一Run内で使用回数を均衡化する。
+- 同一記事のQuality Retryでは初回割当を維持し、見出し型がRetryごとに揺れない。
+- 状態はrun-localのみ。永続化せず、記事内容・Fact判定・Decision Scoreには影響させない。
+
+### Run 100実記事から固定した回帰条件
+- 一次情報が`MCP`と記載している場合、記事中の`Model Context Protocol`をUnsupported Named Factと誤判定しない。
+- `第一に／第二に／第三に`だけでFact/Editorial Quality Failedにしない。
+- 同一RunでESP32記事とKobo記事が同一表示プロファイルへ連続衝突しない。
+- 未確認の`Enterprise Sync`等はAlias追加後もUnsupportedとして検出する。
+- 既存Fact Relation Hard Negative（Timescale→pgvector、Karpathy→未裏付け提唱等）は維持する。
+
+---
+
+## Run 102 Publish Yield Precision（2026-08-22）
+
+### 最上位事業原則
+AI Intelligence Factoryは記事生成品質そのものを目的化せず、低コストの顧客獲得・継続課金・高粗利化を最上位目的とする。無料note記事は市場検証と送客の入口であり、重大なFact/Evidence問題を止めながら、十分に良い記事を不必要に廃棄しないことも品質保証に含める。
+
+### Gate Severity
+既存4 Gateの正式名称・順序は維持するが、Reasonごとに公開停止強度を別軸で保持する。
+
+- `HARD_BLOCK`: Fact誤認、数値誤認、Evidence/Decision矛盾、読者を重大に誤解させる過剰断定、架空の個人体験等。公開不可。
+- `REVIEW`: Fact安全性ではなく、意思決定価値または重大な可読性が不足する状態。例: Actionが「注視」だけへ崩壊、Decision Voice消失、本文の過半が箇条書き。最大1回の局所Retry対象とし、解消しなければNeeds Editorial Review。
+- `SOFT_QUALITY`: 導入の弱さ、平凡なタイトル、反復語尾、機械的ordinal、軽微な見出し/Polish等。Warningとして監査するが、それだけでは公開を止めない。
+- `OPERATIONAL`: Notion保存失敗、provider障害等。記事品質とは分離する。
+
+未知の将来Editorial/Human Appeal ruleは自動的にSOFTへ倒さず、原則REVIEWとしてFail-safeする。
+
+### 状態遷移
+1. Fact / Editorial / Publication Readiness / Human Appealを従来どおり実行する。
+2. 全ReasonをSeverity付きで正規化する。
+3. HARD/REVIEWがなくSOFTのみなら`PASS_WITH_WARNINGS`として即Ready候補へ進み、Quality Retryを消費しない。
+4. HARDのうち0 APIで安全に除去できる既知箇所はDeterministic Rescueを先に試す。
+5. Evidence不足等の非修復HARDにはGemini Retryを使わない。
+6. 修復可能HARD、またはDecision Valueに関わるREVIEWだけ最大1回Quality Retryする。
+7. Fact PASS後もHARD/REVIEWが残る場合は、明示的Publication FAILを除きNeeds Editorial Reviewへ保存して公開しない。
+8. Fact FAILまたは明示的Publication FAILが残る場合はQuality Failedとする。
+
+### Profit Protection
+SOFTを通す目的は記事本数の最大化ではなく、実市場データを得る機会損失と無料枠浪費を減らすことである。一方、`action_collapsed_to_generic_monitoring`、`decision_voice_missing`、架空使用体験、Evidenceを超える推奨は「読者が何をすべきか」という商品価値・信頼に直結するためSOFT化しない。
+
+### Publish Yield観測
+固定目標値は設定しない。Daily Funnelでは以下を併記する。
+
+- Candidate Publish Yield = Ready / Deep Dive Candidates Attempted
+- Generated Publish Yield = Ready / Generation Completed
+- Candidates with HARD reasons
+- Needs Editorial Review
+- Ready with SOFT Warnings
+- Retry Triggered by HARD
+- Retry Triggered by REVIEW
+- Retry Avoided (SOFT only)
+
+`Editorial Gate Failed`という誤解を招く表示はuser-facing Funnelでは`Editorial Warning`へ変更し、旧counterは互換目的で内部保持する。
+
+### Article Audit
+Ready稿でもSOFT WarningをArticle Auditへ残す。`RUN_SUMMARY.md`はFinal Statusに加えDispositionとQuality Warnings / Failure Reasonを表示する。Ready記事の警告は`Failure Reason`ではなく`Quality Notes`としてfinal.mdへ保存する。
+
+### API原価
+SOFT Qualityだけの改善を目的とするQuality Retryは禁止する。追加外部APIは導入しない。Gemini Free Tier前提、Deep Dive最大Retry回数1回、Evidence Gate、Rescue Loss Limit、Article Audit、production isolationは維持する。
