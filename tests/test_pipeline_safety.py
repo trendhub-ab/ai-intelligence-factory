@@ -455,10 +455,31 @@ class TestPipelineSafety(unittest.TestCase):
                 pipeline.Image.new("RGB", (1280, 670), color=(20, 30, 50)).save(Path(directory) / "default.png")
                 output = Path(directory) / "score.png"
                 self.assertEqual(str(output), pipeline.generate_eyecatch_image("title", str(output), "Unknown", decision_score=82, technical_impact=21, urgency=16))
-                self.assertEqual((239, 68, 68), pipeline.Image.open(output).getpixel((130, 345)))
+                self.assertEqual((139, 92, 246), pipeline.Image.open(output).getpixel((130, 345)))
                 low = Path(directory) / "low.png"
                 self.assertEqual(str(low), pipeline.generate_eyecatch_image("title", str(low), "Unknown", decision_score=59, article_ready=True))
                 self.assertIsNone(pipeline.generate_eyecatch_image("title", str(Path(directory) / "skip.png"), "Unknown", decision_score=90, article_ready=False))
+
+
+    def test_eyecatch_score_band_colors_and_boundaries(self):
+        cases = {
+            0: (100, 116, 139), 59: (100, 116, 139),
+            60: (34, 211, 238), 69: (34, 211, 238),
+            70: (59, 130, 246), 79: (59, 130, 246),
+            80: (139, 92, 246), 89: (139, 92, 246),
+            90: (245, 185, 66), 100: (245, 185, 66),
+        }
+        for score, expected in cases.items():
+            with self.subTest(score=score):
+                self.assertEqual(expected, pipeline._eyecatch_score_color(score))
+
+    def test_eyecatch_extracts_approved_score_components(self):
+        breakdown = "Business Impact 19/25; Technical Impact 21/25; Urgency 12/20; Market Impact 14/15; Reliability 15/15; 合計 81/100"
+        self.assertEqual((21, 12), pipeline._extract_eyecatch_score_components(breakdown))
+
+    def test_eyecatch_score_components_fail_closed(self):
+        self.assertEqual((None, None), pipeline._extract_eyecatch_score_components("Business Impact 20/25; 合計 80/100"))
+        self.assertEqual((None, 12), pipeline._extract_eyecatch_score_components("Technical Impact 28/25; Urgency 12/20"))
 
     def test_synthetic_adapter_rejects_false_absence_claim(self):
         truth = {"forbidden_claims": [], "required_qualifiers": [], "numerical_truth": {}, "expected_flags": []}

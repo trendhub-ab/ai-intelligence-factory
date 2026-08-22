@@ -231,7 +231,7 @@ GitHub保存が失敗しても日次Pipelineは停止せず、ログとTelegram�
 - production起動時はNotion内部DBの必須Property名・型をPreflightし、Schema不整合ならGeminiを1回も消費する前にFail-Closed停止する。
 - Pending Retryは`last_edited_time ASC`で最も長く待っている候補から処理する。ただし`GEMINI_PENDING_RETRY_REQUEST_BUDGET=2`を既定値とし、旧失敗記事が当日のFresh候補用Deep Dive枠を食い潰さない。専用枠を使い切った候補は次Runへ残す。
 - 月末にはNotion保存資産を基に会員向け月次ダイジェストを生成する。会員限定性を守るためraw GitHub URLへcommitせず、`monthly_digests/`をGitHub ActionsのPrivate Artifactとして90日保持する。
-- アイキャッチはDecision Score 60点以上で生成し、GitHubへ保存する。
+- アイキャッチはDecision Score閾値ではなく、Article StatusがReadyとなる公開可能記事に生成し、GitHubへ保存する。
 - TelegramにはCollected、Screened、Screening API Calls、Calibration、Stock、Deep Dive Ready、Gemini予算に加え、model別・用途別のGemini API attempt内訳を通知する。
 - Free Article → Subscription Attributionの設定・CSV集計手順は`SUBSCRIPTION_ATTRIBUTION_SETUP.md`を運用基準とする。note標準Dashboardの数値だけからsubscriber conversionを推測しない。
 
@@ -493,6 +493,8 @@ Run 98本番稼働と生成4記事の人手監査により、Free Article Reliab
 - Publication Rescueはsubtractiveであることを維持する。ただし3文以上または重要数値を削除する場合は自動Ready禁止。初回ならQuality Retry 1回で再構成する。
 - Dynamic Retry FunnelはAttemptedを伴わないSuccessを禁止し、Deterministic Rescueと計測を分離する。
 - Eyecatch可否はDecision ScoreではなくArticle Ready gateを基準とする。
+- Eyecatch表示仕様（2026-08-22確定）: 1280×670、Source別背景画像の左側に半透明Decision Cardを重ねる。記事タイトルは画像内へ重複表示しない。主表示は「意思決定スコア (Decision Score) X/100」と進捗バー、下段はDeep Dive正式内訳から「技術的破壊力 (Technical Impact) X/25」「緊急度 (Urgency) X/20」を表示する。下段値は`Score Breakdown`から0 APIで抽出し、欠損時は推測せず`—`表示とする。バー色はブランド表現として赤固定、長さだけDecision Scoreに比例させる。
+
 - Fact Relation Gateを追加し、「AがBを提供」「XがYを提唱」「AがBを採用」等のEntity relationは同一Evidence文脈で関係性そのものを確認する。
 - Product Hunt / Hacker NewsはDiscovery Source。評価根拠は公式サイト、Docs、GitHub、論文等へPrimary Source Resolutionする。Discovery metadata単独ではProduct evaluationのPrimary Evidenceにしない。
 - 記事構造は問題提起型／実験型／数字型／意外性型／比較型の5型を安定ローテーションし、過去見出しは後方互換のみに保持する。
@@ -529,3 +531,11 @@ Run 98本番稼働と生成4記事の人手監査により、Free Article Reliab
 
 ### Unicode Dedup Safety
 タイトル照合キーはASCII限定正規化を廃止し、Unicode NFKC + casefold + Unicode word文字を保持する。中国語等が空文字キーへ潰れて誤重複する問題を防止する。
+
+
+## 2026-08-22 Eyecatch Decision Score Color Scale
+- Eyecatch progress-bar length is proportional to Decision Score.
+- Score-band colors are fixed as: 0–59 Slate Gray `#64748B`; 60–69 Cyan `#22D3EE`; 70–79 Blue `#3B82F6`; 80–89 Purple `#8B5CF6`; 90–100 Gold `#F5B942`.
+- These colors express Decision Score intensity only; they MUST NOT be interpreted as Adoption Status.
+- Red is reserved for future AVOID / warning semantics.
+- Eyecatch generation eligibility remains `Article Ready`, not a Decision Score threshold.

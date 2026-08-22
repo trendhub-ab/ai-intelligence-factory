@@ -2050,15 +2050,58 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
     return None
 
 
+def _extract_eyecatch_score_components(score_breakdown_text: str) -> tuple[int | None, int | None]:
+    """Extract the two approved eyecatch sub-scores from MANAGEMENT DATA.
+
+    The Deep Dive rubric is the source of truth:
+      Technical Impact X/25; Urgency X/20
+    No extra model call or score recomputation is allowed. Missing/malformed values return None.
+    """
+    text = str(score_breakdown_text or "")
+    tech = re.search(r"Technical\s*Impact\s*[:：]?\s*(\d{1,2})\s*/\s*25", text, re.IGNORECASE)
+    urgency = re.search(r"Urgency\s*[:：]?\s*(\d{1,2})\s*/\s*20", text, re.IGNORECASE)
+    tech_value = int(tech.group(1)) if tech else None
+    urgency_value = int(urgency.group(1)) if urgency else None
+    if tech_value is not None and not 0 <= tech_value <= 25:
+        tech_value = None
+    if urgency_value is not None and not 0 <= urgency_value <= 20:
+        urgency_value = None
+    return tech_value, urgency_value
+
+
+def _eyecatch_score_color(score: int | float | None) -> tuple[int, int, int]:
+    """Return the approved Decision Score band color (RGB).
+
+    Color is a visual intensity cue, not Adoption Status semantics. Red is
+    intentionally reserved for future AVOID / warning communication.
+    """
+    try:
+        value = max(0, min(100, int(score or 0)))
+    except (TypeError, ValueError):
+        value = 0
+    if value <= 59:
+        return (100, 116, 139)  # Slate Gray #64748B
+    if value <= 69:
+        return (34, 211, 238)   # Cyan       #22D3EE
+    if value <= 79:
+        return (59, 130, 246)   # Blue       #3B82F6
+    if value <= 89:
+        return (139, 92, 246)   # Purple     #8B5CF6
+    return (245, 185, 66)       # Gold       #F5B942
+
+
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub", decision_score: int | None = None,
                              technical_impact: int | None = None, urgency: int | None = None,
                              article_ready: bool = True) -> str | None:
-    """Preserve the source background and overlay the approved decision card.
+    """Generate the approved 1280x670 Decision Score card over the source background.
 
-    Eyecatch eligibility follows publication readiness, not Decision Score.  Decision Score
-    describes the subject's decision value and must not suppress a perfectly publishable article.
-    The caller invokes this only after all publication gates have passed.
+    Visual contract (2026-08-22 approved):
+    - article title is intentionally NOT rendered; note already shows it separately
+    - main KPI: 意思決定スコア (Decision Score) X/100
+    - lower cards: 技術的破壊力 (Technical Impact) X/25 and 緊急度 (Urgency) X/20
+    - progress color follows five Decision Score bands (gray/cyan/blue/purple/gold)
+    - eligibility is Article Ready, never a score threshold
     """
     if not article_ready:
         logger.info("[EYECATCH SKIP] article is not Ready")
@@ -2067,7 +2110,6 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
 
     img = _load_eyecatch_background(source, WIDTH, HEIGHT)
     if img is None:
-        # 背景画像が用意されていない場合のフォールバック（ダークサイバー風グラデーション）。
         img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
         draw_bg = ImageDraw.Draw(img)
         for y in range(HEIGHT):
@@ -2076,14 +2118,22 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
             b = int(28 + (y / HEIGHT) * 45)
             draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
-    # 80+ is red, 70s blue, and 60s teal.  Keep the background image visible.
-    score = int(decision_score or 0)
-    accent = (239, 68, 68) if score >= 80 else (59, 130, 246) if score >= 70 else (20, 184, 166)
+    score = max(0, min(100, int(decision_score or 0)))
+    tech = None if technical_impact is None else max(0, min(25, int(technical_impact)))
+    urg = None if urgency is None else max(0, min(20, int(urgency)))
+
     overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    draw.rounded_rectangle((100, 285, 1180, 570), radius=24, fill=(5, 12, 28, 218), outline=accent + (255,), width=4)
-    draw.rounded_rectangle((120, 325, 370, 382), radius=12, fill=accent + (255,))
-    font_paths = ["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/truetype/lato/Lato-Bold.ttf"]
+
+    # Fixed geometry follows the approved reference layout.
+    card = (72, 113, 755, 575)
+    draw.rounded_rectangle(card, radius=25, fill=(3, 13, 28, 205), outline=(205, 220, 239, 225), width=2)
+
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
     def font(size: int):
         for path in font_paths:
             try:
@@ -2091,11 +2141,45 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
             except OSError:
                 continue
         return ImageFont.load_default()
-    draw.text((137, 338), f"DECISION SCORE {score}/100", font=font(24), fill=(255, 255, 255, 255))
-    title = (title_text or "AI Intelligence").replace("\n", " ")[:48]
-    draw.text((125, 405), title, font=font(34), fill=(255, 255, 255, 255))
-    draw.text((125, 485), f"Technical Impact  {technical_impact if technical_impact is not None else '—'}", font=font(21), fill=(220, 230, 245, 255))
-    draw.text((610, 485), f"Urgency  {urgency if urgency is not None else '—'}", font=font(21), fill=(220, 230, 245, 255))
+
+    white = (250, 252, 255, 255)
+    soft = (235, 241, 250, 255)
+    border = (190, 207, 229, 225)
+    accent = (*_eyecatch_score_color(score), 255)
+    bar_bg = (56, 70, 91, 235)
+
+    # Header and main score.
+    draw.text((113, 157), "意思決定スコア  (Decision Score)", font=font(35), fill=white)
+    score_text = f"{score}/100"
+    bbox = draw.textbbox((0, 0), score_text, font=font(78))
+    score_w = bbox[2] - bbox[0]
+    draw.text((413 - score_w / 2, 222), score_text, font=font(78), fill=white)
+
+    # Progress bar: score-band accent, length proportional to Decision Score.
+    bx0, by0, bx1, by1 = 112, 325, 715, 367
+    draw.rounded_rectangle((bx0, by0, bx1, by1), radius=11, fill=bar_bg)
+    progress_x = bx0 + int((bx1 - bx0) * score / 100)
+    if progress_x > bx0:
+        draw.rounded_rectangle((bx0, by0, progress_x, by1), radius=11, fill=accent)
+
+    # Lower sub-score cards.
+    left_box = (102, 395, 409, 550)
+    right_box = (420, 395, 726, 550)
+    draw.rounded_rectangle(left_box, radius=17, fill=(2, 13, 29, 126), outline=border, width=2)
+    draw.rounded_rectangle(right_box, radius=17, fill=(2, 13, 29, 126), outline=border, width=2)
+
+    def centered(text: str, cx: int, y: int, fnt, fill=white):
+        b = draw.textbbox((0, 0), text, font=fnt)
+        draw.text((cx - (b[2] - b[0]) / 2, y), text, font=fnt, fill=fill)
+
+    centered("技術的破壊力", 255, 416, font(31))
+    centered("(Technical Impact)", 255, 454, font(20), soft)
+    centered(f"{tech if tech is not None else '—'}/25", 255, 484, font(48))
+
+    centered("緊急度", 573, 416, font(31))
+    centered("(Urgency)", 573, 454, font(20), soft)
+    centered(f"{urg if urg is not None else '—'}/20", 573, 484, font(48))
+
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     img.save(output_path, "PNG")
     return output_path
@@ -7581,7 +7665,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
                 eyecatch_filename = f"{_sanitize_filename(name)}.png"
                 eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
-                generated_path = generate_eyecatch_image(parsed["title_text"], eyecatch_path, source, decision_score=parsed.get("score"))
+                technical_impact, urgency = _extract_eyecatch_score_components(parsed.get("score_breakdown_text", ""))
+                generated_path = generate_eyecatch_image(
+                    parsed["title_text"], eyecatch_path, source, decision_score=parsed.get("score"),
+                    technical_impact=technical_impact, urgency=urgency, article_ready=True,
+                )
                 if generated_path:
                     logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
                     eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
