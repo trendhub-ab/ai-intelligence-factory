@@ -1684,7 +1684,6 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
 # かつ内容としても正確な表記を維持する。
 SOURCE_RIGHTS_NOTE = {
     "HackerNews": (
-        "- **発見経路**: Hacker News（記事タイトル・スコア等）。\n"
         "- **出典について**: 本文の技術的な事実・数値は、下記の公式リンクおよび参考情報で確認できる範囲を独自に分析・要約したものです。"
         "リンク先記事本文の著作権は原著作者に帰属します。\n"
     ),
@@ -1981,19 +1980,164 @@ def save_subscription_attribution_record(repo: dict, parsed: dict, analyzed_at: 
         return None
 
 
+_READER_SOURCE_LABELS = {
+    "GitHub": "GitHub",
+    "HackerNews": "Hacker News",
+    "ArXiv": "arXiv",
+    "ProductHunt": "Product Hunt",
+}
+
+
+def _reader_plain_text(text: str) -> str:
+    """Gate通過済みテキストから冒頭サマリー用のプレーン文だけを安全に取り出す。"""
+    value = normalize_markdown_for_note(str(text or ""))
+    if not value:
+        return ""
+    value = re.sub(r"!\[([^]]*)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"(?m)^#{1,6}\s*", "", value)
+    value = re.sub(r"(?m)^\s*[-*+]\s+", "", value)
+    value = value.replace("**", "").replace("__", "").replace("`", "")
+    value = re.sub(r"https?://\S+", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _compact_reader_summary(text: str, max_chars: int = 135) -> str:
+    """冒頭で一目で読める長さへ縮める。新しい事実は生成せず、先頭の完結文だけを使う。"""
+    value = _reader_plain_text(text)
+    if not value:
+        return ""
+    sentences = [m.group(0).strip() for m in re.finditer(r"[^。！？!?]+[。！？!?]?", value) if m.group(0).strip()]
+    if sentences:
+        first = sentences[0]
+        if len(first) <= max_chars:
+            return first
+    if len(value) <= max_chars:
+        return value
+    cut = value[:max_chars]
+    for sep in ("。", "、", "，", ",", "；", ";"):
+        pos = cut.rfind(sep)
+        if pos >= max_chars // 2:
+            return cut[:pos + 1].strip()
+    return cut.rstrip("、，, ") + "…"
+
+
+def _reader_decision_fallback(decision_text: str) -> str:
+    """内部Decision codeを公開せず、最小限の読者向け判断へ変換する。"""
+    return {
+        "NOW": "現時点で、具体的な導入・検証判断を進める価値があります。",
+        "TRY": "まずは限定した環境で小さく試し、条件を確かめる価値があります。",
+        "WATCH": "今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。",
+        "WAIT": "現時点では導入を急がず、条件とEvidenceが整うまで待つのが妥当です。",
+        "AVOID": "現時点では採用を見送り、代替手段を優先するのが妥当です。",
+    }.get((decision_text or "").strip().upper(), "")
+
+
+def build_reader_first_summary(parsed: dict) -> dict[str, str]:
+    """追加Gemini呼び出しなしで、Gate通過済みARTICLE/MANAGEMENT DATAから30秒要約を作る。"""
+    parsed = parsed or {}
+    draft = str(parsed.get("note_draft") or "")
+    intro = _extract_any_markdown_section(draft, _display_heading_aliases("intro"))
+    conclusion = _extract_any_markdown_section(draft, _display_heading_aliases("conclusion"))
+    final = _extract_any_markdown_section(draft, _display_heading_aliases("final"))
+
+    what = _compact_reader_summary(
+        parsed.get("what_text") or parsed.get("source_summary_text") or intro
+    )
+    why = _compact_reader_summary(
+        parsed.get("why_important_text") or conclusion
+    )
+    decision = _compact_reader_summary(
+        final or parsed.get("action_text") or parsed.get("decision_reason_text")
+    )
+    if not decision:
+        decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
+
+    # Quality Retry等で内部コードが混入しても、公開ヘッダーには露出させない。
+    decision_code_phrases = {
+        "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",
+        "WAIT": "条件が整うまで待つ", "AVOID": "現時点では採用を見送る",
+    }
+    if decision:
+        decision, _ = _replace_public_decision_code_leaks(decision, decision_code_phrases)
+        # 30秒要約は管理データと隣接するため、本文Gateより厳格に standalone code も全置換する。
+        # 通常英単語の小文字/Title Caseは対象にせず、内部管理値と同じ大文字コードだけを扱う。
+        for code, phrase in decision_code_phrases.items():
+            decision = re.sub(rf"\b{code}\b", phrase, decision)
+        decision = re.sub(r"\s{2,}", " ", decision).strip()
+
+    return {"what": what, "why": why, "decision": decision}
+
+
+def _reader_published_date(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(JST)
+        return dt.date().isoformat()
+    except ValueError:
+        m = re.match(r"(\d{4}-\d{2}-\d{2})", raw)
+        return m.group(1) if m else ""
+
+
+def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_url: str,
+                              source: str = "GitHub", published_at: str | None = None) -> str:
+    """タイトル直下へ置くReader-first header。詳細Evidence/権利表記は末尾に残す。"""
+    summary = reader_summary or {}
+    rows = [
+        ("何が出た？", _compact_reader_summary(summary.get("what", ""))),
+        ("なぜ重要？", _compact_reader_summary(summary.get("why", ""))),
+        ("結論は？", _compact_reader_summary(summary.get("decision", ""))),
+    ]
+    rows = [(label, value) for label, value in rows if value]
+    if not rows and not repo_url:
+        return ""
+
+    lines: list[str] = []
+    if rows:
+        lines.extend(["## 30秒でわかるこの記事", ""])
+        for idx, (label, value) in enumerate(rows):
+            if idx:
+                lines.append("")
+            lines.extend([f"**{label}**  ", value])
+
+    if repo_url:
+        if lines:
+            lines.append("")
+        lines.extend(["### 元情報", f"- **主一次情報**: [{repo_name}]({repo_url})"])
+        lines.append(f"- **発見経路**: {_READER_SOURCE_LABELS.get(source, source)}")
+        published = _reader_published_date(published_at)
+        if published:
+            lines.append(f"- **公開・更新**: {published}")
+    return "\n".join(lines).strip()
+
+
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
                                  spdx_id: str, source: str = "GitHub",
                                  evidence_urls: list[str] | None = None,
-                                 title_text: str = "", discovery_url: str = "") -> str:
-    """note投稿用Markdownを組み立て、一次出典と最大3件のEvidence URLを末尾へ付与する。"""
+                                 title_text: str = "", discovery_url: str = "",
+                                 reader_summary: dict | None = None,
+                                 published_at: str | None = None) -> str:
+    """note投稿用MarkdownをReader-first構造にし、詳細Evidenceは末尾へ二層化する。"""
     free_part, paid_part = split_free_paid(note_draft, repo_name)
     free_clean = normalize_markdown_for_note(free_part)
     paid_clean = normalize_markdown_for_note(paid_part)
 
     display_title = _normalize_note_title(title_text)
-    manuscript = (f"# {display_title}\n\n" if display_title else "") + free_clean
+    manuscript_parts: list[str] = []
+    if display_title:
+        manuscript_parts.append(f"# {display_title}")
+    reader_header = build_reader_first_header(reader_summary, repo_name, repo_url, source, published_at)
+    if reader_header:
+        manuscript_parts.append(reader_header)
+    if free_clean:
+        manuscript_parts.append(free_clean)
     if paid_clean:
-        manuscript += "\n\n" + paid_clean
+        manuscript_parts.append(paid_clean)
+    manuscript = "\n\n".join(manuscript_parts)
 
     if source == "GitHub":
         rights_line = (
@@ -2004,12 +2148,12 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     else:
         rights_line = SOURCE_RIGHTS_NOTE.get(source, "")
 
+    source_label = _READER_SOURCE_LABELS.get(source, source)
     source_block = (
         f"{DIVIDER_LINE}"
-        f"### 出典元\n"
-        f"- **発見経路**: {source}\n"
-        f"- **原資料**: リンク先の原著記事・技術報告\n"
-        f"- **原資料URL**: [{repo_name}]({repo_url})\n"
+        f"### Sources / Evidence\n"
+        f"- **発見経路**: {source_label}\n"
+        f"- **主一次情報**: [{repo_name}]({repo_url})\n"
         f"{rights_line}"
     )
 
@@ -2022,7 +2166,7 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
         if len(unique_evidence) >= 3:
             break
     if unique_evidence:
-        source_block += "\n### 参考情報\n" + "\n".join(f"- {u}" for u in unique_evidence) + "\n"
+        source_block += "\n### 補助Evidence\n" + "\n".join(f"- {u}" for u in unique_evidence) + "\n"
     if discovery_url and discovery_url != repo_url:
         source_block += f"- **関連情報**: 発見元の[{source}投稿]({discovery_url})\n"
 
@@ -8291,9 +8435,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         discovery_url = (repo.get("sourceDetails", {}) or {}).get("hn_url", "")
         if source == "ProductHunt":
             discovery_url = (repo.get("sourceDetails", {}) or {}).get("producthunt_url", "") or url
+        reader_summary = build_reader_first_summary(parsed)
         clean_manuscript = build_clean_note_manuscript(
             parsed["note_draft"], name, manuscript_primary_url, spdx_id, source, evidence_urls=evidence_urls,
             title_text=parsed.get("title_text", ""), discovery_url=discovery_url,
+            reader_summary=reader_summary, published_at=published_at,
         )
 
         eyecatch_url = ""

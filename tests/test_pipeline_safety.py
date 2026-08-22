@@ -347,8 +347,8 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertNotIn("ここから先は有料エリア", manuscript)
         self.assertNotIn("---有料エリア---", manuscript)
         self.assertNotIn("NOTE_DRAFT_END", manuscript)
-        self.assertIn("**発見経路**: HackerNews", manuscript)
-        self.assertIn("**原資料URL**: [Example](https://example.com)", manuscript)
+        self.assertIn("**発見経路**: Hacker News", manuscript)
+        self.assertIn("**主一次情報**: [Example](https://example.com)", manuscript)
         self.assertIn("**関連情報**: 発見元の[HackerNews投稿]", manuscript)
         self.assertIn("特定の効果・成果を保証するものではありません", manuscript)
 

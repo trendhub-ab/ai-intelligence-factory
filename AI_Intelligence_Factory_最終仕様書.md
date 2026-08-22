@@ -161,9 +161,11 @@ Observedの全件をNotionへ保存しない。NotionにはFinal Score 60点以�
 
 - note原稿は原則無料公開。paywall区分は出力しない。
 - タイトルは必ず「。」または「？」で終える。
-- 構成はタイトル、`はじめに`、結論、Why、What、要点、筆者ならどうするか、結局の順を基本とする。
-- 導入部では発見経路、原資料、技術背景を示す。
-- 出典には発見経路、原資料、原資料URL、関連情報、著作権注記を記載する。
+- 公開稿のReader-first構成は、タイトル → `30秒でわかるこの記事` → `元情報` → 人間らしい導入 → 本文（結論/Why/What/要点/判断/Action） → CTA → `Sources / Evidence` → Disclaimer を基本とする。
+- `30秒でわかるこの記事`は「何が出た？」「なぜ重要？」「結論は？」の最大3項目。追加Gemini requestは使わず、4 Quality Gateを通過した既存Management Data / ARTICLEから0 APIで抽出し、先頭の完結文だけを表示する。
+- `元情報`は主一次情報、発見経路、取得できる場合のみ公開・更新日を簡潔に示す。権利表記・補助Evidence・Discovery URL等の監査情報は末尾へ残し、冒頭をURL一覧にしない。
+- 詳細出典は末尾の`Sources / Evidence`に集約し、主一次情報、発見経路、ライセンス/著作権注記、補助Evidence、関連Discovery情報を監査可能な形で保持する。
+- 人間らしい導入では技術背景と実務上の問いを自然に展開し、冒頭サマリーと同じ説明を機械的に繰り返さない。
 - Deep DiveではURL Context、一次情報、必要に応じたPDF・公式リンクを確認する。
 - Google Search Groundingは既定でOFF。
 - Deep Dive前に`Evidence-to-Decision Sufficiency`を意味ベースで確認する。確認対象の網羅性ではなく、取得済みの一次情報から、結論強度・Action・時点を安全に限定した記事が成立するかを判定する。
@@ -649,3 +651,43 @@ Ready稿でもSOFT WarningをArticle Auditへ残す。`RUN_SUMMARY.md`はFinal S
 
 ### API原価
 SOFT Qualityだけの改善を目的とするQuality Retryは禁止する。追加外部APIは導入しない。Gemini Free Tier前提、Deep Dive最大Retry回数1回、Evidence Gate、Rescue Loss Limit、Article Audit、production isolationは維持する。
+
+
+---
+
+## Run 103 Reader-First Article Format（2026-08-22）
+
+### 目的
+無料noteの最初の10〜30秒で「何の記事か / なぜ重要か / どう判断すべきか / 根拠はどこか」を理解できるようにし、長文を読む前の認知負荷と離脱要因を減らす。記事のFact/Evidence基準を緩めず、追加API原価0で読者体験だけを改善する。
+
+### 公開稿の順序
+1. 記事タイトル
+2. `30秒でわかるこの記事`
+   - `何が出た？`
+   - `なぜ重要？`
+   - `結論は？`
+3. `元情報`
+   - 主一次情報
+   - 発見経路
+   - 公開・更新日（取得できる場合のみ。推測禁止）
+4. Human Editorial Styleの導入
+5. 本文・判断・Action
+6. 会員向けCTA（設定済みの場合のみ）
+7. `Sources / Evidence`
+8. Disclaimer
+
+### 30秒要約の安全設計
+- 新規Gemini requestを追加しない。`What / Source Summary / Why Important / Action / Decision Reason`とGate通過ARTICLEの結論節を再利用する。
+- 各項目は先頭の完結文を優先し、最大135文字程度へ0 APIで圧縮する。文章を新規創作して事実を足さない。
+- 結論はARTICLE最終判断を優先し、次にAction、Decision Reasonを使用する。利用できない場合だけ内部Decisionを読者向け自然文へ決定論的に変換する。
+- `NOW / TRY / WATCH / WAIT / AVOID`は冒頭要約では文脈を問わず公開禁止。大文字standalone codeも0 APIで自然文へ置換する。
+- 日付が解析不能・欠落の場合は公開・更新日を非表示にし、推測しない。
+
+### Evidence二層化
+- 冒頭は主一次情報を1件だけ示し、URL一覧・権利注記を置かない。
+- 末尾`Sources / Evidence`には従来の監査情報を保持する。補助Evidenceは最大3件の現行上限を維持する。
+- Hacker News等のDiscovery Source表記を権利注記内で重複させず、上部元情報と末尾Evidenceで各1回にする。
+
+### 非変更範囲
+- 4 Quality Gates、Gate Severity、Evidence-to-Decision Sufficiency、Fact Relation Gate、Primary Source Authority Gate、Rescue Loss Limit、Notion Ready条件、Article Audit、Gemini予算、Deep Dive順位、Source ROI、Subscription Attributionの意味は変更しない。
+- Reader-first headerはQuality Gate通過後の最終Markdown組み立てで追加するため、生成Promptのtoken面積とGemini呼出し回数を増やさない。
