@@ -482,3 +482,50 @@ Product Reviewは記事生成後に回す。Product Reviewの失敗でFlash mode
 Unit/Syntheticだけでは記事事業の完成を宣言しない。Run 97実失敗稿をReal Article Regression fixtureとして維持し、既知のfalse-positive/局所修復可能failureが再発しないことを確認する。
 
 本番Release後は通常Dailyを1回実行し、Ready数・Generation success・Fact failure・Provider failure・Deterministic Rescue・Gemini使用量を監査する。Stock/Evidence/Generationが成立しているのにReady=0が継続する場合はBusiness Degradationとして再修正対象とする。
+
+---
+
+## 2026-08-22 Run 98 Quality Hardening（正式追補）
+
+Run 98本番稼働と生成4記事の人手監査により、Free Article Reliabilityへ以下を正式追加する。
+
+- Screeningは25件Batchを維持し、出力上限5000 tokens + 完全JSON object salvage + missing-ID-only Recoveryを採用する。壊れたobjectの推測修復は禁止。
+- Publication Rescueはsubtractiveであることを維持する。ただし3文以上または重要数値を削除する場合は自動Ready禁止。初回ならQuality Retry 1回で再構成する。
+- Dynamic Retry FunnelはAttemptedを伴わないSuccessを禁止し、Deterministic Rescueと計測を分離する。
+- Eyecatch可否はDecision ScoreではなくArticle Ready gateを基準とする。
+- Fact Relation Gateを追加し、「AがBを提供」「XがYを提唱」「AがBを採用」等のEntity relationは同一Evidence文脈で関係性そのものを確認する。
+- Product Hunt / Hacker NewsはDiscovery Source。評価根拠は公式サイト、Docs、GitHub、論文等へPrimary Source Resolutionする。Discovery metadata単独ではProduct evaluationのPrimary Evidenceにしない。
+- 記事構造は問題提起型／実験型／数字型／意外性型／比較型の5型を安定ローテーションし、過去見出しは後方互換のみに保持する。
+- Final Japanese Polishを0 APIでGate前に実施し、明確な助詞重複・語句重複等を安全な範囲で修正する。
+
+詳細な検証結果は `RUN98_QUALITY_HARDENING_VALIDATION_2026-08-22.md` を正とする。
+
+---
+
+## Multilingual Title Normalization（2026-08-22 追加正式仕様）
+
+### 目的
+中国語・韓国語・Cyrillic等の非Latin原題を文字化けと誤認しないよう、原題の追跡性と日本語運用時の可読性を分離する。追加Gemini APIコールは使用しない。
+
+### 正本と表示名の分離
+- `nameWithOwner` / `originalTitle`: 収集元の原題をNFKC正規化して保持。Entity Resolution / URL Dedup / Source Integrityの正本として使う。
+- `displayName`: NotionおよびTechnology Intelligenceの人間向け表示専用。Identity判定には使用しない。
+- `sourceLanguage`: 0 APIのUnicode script判定（ja / en / zh-CN / ko / ru / und）。
+
+### 表示ルール
+- 日本語・英語: 従来タイトルを変更しない。
+- 非Latin原題: 英語tagline/descriptionの安全なキーワード分類から、日本語カテゴリ名 + 原題で表示する。
+  - 例: `电商出图吧` + e-commerce/product image context → `EC商品画像生成ツール「电商出图吧」`
+- 十分な分類根拠がない場合は翻訳を捏造せず、`海外プロダクト「原題」` 等の保守的表示を使う。
+
+### 原題保存
+非Latinタイトルは既存`Source Summary`へ次を先頭追記する。
+- `Original Title: ...`
+- `Language: ...`
+新規Notion必須プロパティは追加しないため、既存35-property preflightを壊さない。
+
+### 既存行の自動補修
+`get_existing_repo_urls()`で既に取得したNotionページ情報を再利用し、追加Readなし・Gemini 0 APIで最大25件/Runを補修する。補修対象は非Latin原題かつ未正規化の行のみ。`Name`と`Source Summary`だけをPATCHし、URL・原題・Canonical Entity ID等は変更しない。失敗時はwarningのみでDaily本体を止めない。
+
+### Unicode Dedup Safety
+タイトル照合キーはASCII限定正規化を廃止し、Unicode NFKC + casefold + Unicode word文字を保持する。中国語等が空文字キーへ潰れて誤重複する問題を防止する。

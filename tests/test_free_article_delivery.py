@@ -297,3 +297,90 @@ class TestProfitAwareScheduling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestRun98Corrections(unittest.TestCase):
+    def test_truncated_screening_json_salvages_complete_rows(self):
+        text = '[{"id":"B0001","score":80,"commercial_score":70,"shelf_life_score":60,"topic":"AI","tracking_eligible":true,"tracking_reason":"追跡","reason":"有望"},' \
+               '{"id":"B0002","score":75,"commercial_score":65,"shelf_life_score":55,"topic":"DEVTOOLS","tracking_eligible":true,"tracking_reason":"追跡","reason":"実務"},' \
+               '{"id":"B0003","score":'
+        parsed, missing, diagnostic = pipeline._parse_batch_screening_response(
+            text, {"B0001", "B0002", "B0003"}, include_diagnostic=True
+        )
+        self.assertEqual({"B0001", "B0002"}, set(parsed))
+        self.assertEqual(["B0003"], missing)
+        self.assertIn("salvaged=2", diagnostic)
+
+    def test_retry_success_never_increments_without_retry_attempt(self):
+        details = pipeline.finalize_retry_diagnostics(
+            {"retry_attempted": False, "deterministic_rescue": ["x"]}, [], "READY", "article"
+        )
+        self.assertFalse(details["retry_succeeded"])
+        funnel = pipeline.DeepDiveGateFunnel()
+        funnel.record(pipeline.build_candidate_gate_record(
+            1, "example", "https://example.com", 70, "completed",
+            retry_diagnostics=details, evidence_result={"state": pipeline.EVIDENCE_SUFFICIENT},
+        ))
+        self.assertEqual(0, funnel.counters["retry_attempted"])
+        self.assertEqual(0, funnel.counters["retry_success"])
+
+    def test_rescue_loss_limit_marks_three_sentence_deletion(self):
+        article = minimal_parsed()["note_draft"] + "\nAlphaは未確認です。Betaは未確認です。Gammaは未確認です。"
+        parsed = minimal_parsed(article=article)
+        rows = []
+        for token in ("Alpha", "Beta", "Gamma"):
+            rows += pipeline.map_gate_reasons("fact", [f"source-boundary unsupported named fact: {token}"])
+        rescued, changes = pipeline._apply_deterministic_publication_rescue(parsed, rows)
+        self.assertEqual(3, rescued["_rescue_loss"]["removed_sentences"])
+        self.assertTrue(rescued["_rescue_loss"]["loss_exceeded"])
+        self.assertEqual(3, len(changes))
+
+    def test_rescue_loss_limit_marks_important_numeric_deletion(self):
+        parsed = minimal_parsed(article=minimal_parsed()["note_draft"] + "\np95は56.8 msでした。")
+        rows = pipeline.map_gate_reasons("fact", ["unsupported numeric claim: 56.8 ms"])
+        rescued, _ = pipeline._apply_deterministic_publication_rescue(parsed, rows)
+        self.assertTrue(rescued["_rescue_loss"]["important_numeric_removed"])
+        self.assertTrue(rescued["_rescue_loss"]["loss_exceeded"])
+
+    def test_fact_relation_gate_rejects_unsupported_provider_relationship(self):
+        draft = "Timescale社がpgvectorを提供しています。"
+        evidence = "TimescaleDB is developed by Timescale. pgvector is an open-source vector similarity extension."
+        failures = pipeline._find_entity_relation_violations(draft, evidence)
+        self.assertTrue(failures)
+
+    def test_fact_relation_gate_accepts_supported_provider_relationship(self):
+        draft = "AcmeはWidgetXを提供しています。"
+        evidence = "Acme provides WidgetX for enterprise users."
+        failures = pipeline._find_entity_relation_violations(draft, evidence)
+        self.assertEqual([], failures)
+
+    def test_fact_relation_gate_rejects_unsupported_proposer_actor(self):
+        draft = "Karpathy氏が『エージェント向け共有記憶』を提唱しました。"
+        evidence = "The product uses a shared knowledge base for agents."
+        self.assertTrue(pipeline._find_entity_relation_violations(draft, evidence))
+
+    def test_discovery_source_is_not_primary_authority(self):
+        failures = pipeline._primary_source_authority_failures({
+            "source": "ProductHunt", "primary_url": "https://www.producthunt.com/r/abc",
+            "primary_source_resolved": True,
+        })
+        self.assertTrue(failures)
+        self.assertEqual([], pipeline._primary_source_authority_failures({
+            "source": "ProductHunt", "primary_url": "https://gorules.io/",
+            "primary_source_resolved": True,
+        }))
+
+    def test_final_japanese_polish_fixes_known_glitch_without_api(self):
+        parsed = minimal_parsed(article="性能をな低コストで実現できる道筋です。")
+        fixed, changes = pipeline._apply_final_japanese_polish(parsed)
+        self.assertIn("性能を低コスト", fixed["note_draft"])
+        self.assertTrue(changes)
+
+    def test_template_diversity_has_five_distinct_styles(self):
+        self.assertEqual(5, len(pipeline.ARTICLE_DISPLAY_VARIANTS))
+        self.assertEqual({"problem", "experiment", "numbers", "surprise", "comparison"},
+                         {row["style"] for row in pipeline.ARTICLE_DISPLAY_VARIANTS})
+
+    def test_eyecatch_is_not_blocked_by_low_decision_score(self):
+        src = inspect.getsource(pipeline.generate_eyecatch_image)
+        self.assertNotIn("decision_score < EYECATCH_MIN_DECISION_SCORE", src)
+        self.assertIn("article_ready", src)

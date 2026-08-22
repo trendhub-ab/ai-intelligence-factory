@@ -449,14 +449,16 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertIn("INTERNAL_DRAFT_DELIMITER_LEAKED", findings)
 
     @unittest.skipUnless(PIL_AVAILABLE, "Pillow is installed in CI through requirements.txt")
-    def test_eyecatch_uses_score_color_and_skips_low_scores(self):
+    def test_eyecatch_uses_ready_status_not_decision_score(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(pipeline, "EYECATCH_BACKGROUND_DIR", directory):
                 pipeline.Image.new("RGB", (1280, 670), color=(20, 30, 50)).save(Path(directory) / "default.png")
                 output = Path(directory) / "score.png"
                 self.assertEqual(str(output), pipeline.generate_eyecatch_image("title", str(output), "Unknown", decision_score=82, technical_impact=21, urgency=16))
                 self.assertEqual((239, 68, 68), pipeline.Image.open(output).getpixel((130, 345)))
-                self.assertIsNone(pipeline.generate_eyecatch_image("title", str(Path(directory) / "skip.png"), "Unknown", decision_score=59))
+                low = Path(directory) / "low.png"
+                self.assertEqual(str(low), pipeline.generate_eyecatch_image("title", str(low), "Unknown", decision_score=59, article_ready=True))
+                self.assertIsNone(pipeline.generate_eyecatch_image("title", str(Path(directory) / "skip.png"), "Unknown", decision_score=90, article_ready=False))
 
     def test_synthetic_adapter_rejects_false_absence_claim(self):
         truth = {"forbidden_claims": [], "required_qualifiers": [], "numerical_truth": {}, "expected_flags": []}

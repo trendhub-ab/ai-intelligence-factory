@@ -196,7 +196,7 @@ STALE_THRESHOLD_DAYS = int(os.environ.get("STALE_THRESHOLD_DAYS", "10"))
 SCREENING_PACING_SECONDS = int(os.environ.get("SCREENING_PACING_SECONDS", "4"))
 SCREENING_BATCH_SIZE = int(os.environ.get("SCREENING_BATCH_SIZE", "25"))
 SCREENING_RECOVERY_BATCH_SIZE = int(os.environ.get("SCREENING_RECOVERY_BATCH_SIZE", "10"))
-SCREENING_BATCH_MAX_OUTPUT_TOKENS = int(os.environ.get("SCREENING_BATCH_MAX_OUTPUT_TOKENS", "2500"))
+SCREENING_BATCH_MAX_OUTPUT_TOKENS = int(os.environ.get("SCREENING_BATCH_MAX_OUTPUT_TOKENS", "5000"))
 SCREENING_BATCH_PACING_SECONDS = int(os.environ.get("SCREENING_BATCH_PACING_SECONDS", "10"))
 ENABLE_GLOBAL_CALIBRATION = os.environ.get("ENABLE_GLOBAL_CALIBRATION", "true").lower() in {"1", "true", "yes", "on"}
 GLOBAL_CALIBRATION_MIN_RAW_SCORE = int(os.environ.get("GLOBAL_CALIBRATION_MIN_RAW_SCORE", "55"))
@@ -1701,18 +1701,31 @@ ARTICLE_DISCLAIMER = (
 # 内部のDecision構造は固定したまま、noteで読者に見える見出しだけを記事ごとに変える。
 # 名前から安定して選ぶため、Quality Retryで同じ記事の構成が無意味に揺れない。
 ARTICLE_DISPLAY_VARIANTS = (
-    {"intro": "はじめに", "conclusion": "まず、結論から", "why": "なぜ今、目を向けるのか。",
-     "what": "何が起きている？", "key": "要点を整理すると。", "decision": "私なら今はこうする。", "final": "結局、どう見るか。",
-     "opening": "reader_question", "intro_paragraphs": 3, "tone": "cautious_interest"},
-    {"intro": "気になった背景", "conclusion": "先に判断を書くと。", "why": "地味だけれど、ここが大きい。",
-     "what": "中身をざっくり見る。", "key": "見落としたくないポイント。", "decision": "実務で使うなら、私はこうする。", "final": "いま取るべき距離感。",
-     "opening": "observation", "intro_paragraphs": 2, "tone": "practical_interest"},
-    {"intro": "数字の前に見ておきたいこと", "conclusion": "この話をどう受け止めるか。", "why": "実務への影響はどこに出る？",
-     "what": "仕組みは意外とシンプルです。", "key": "ここで判断が分かれる。", "decision": "私なら、まず小さく確かめる。", "final": "急がず、でも見逃さない。",
-     "opening": "fact", "intro_paragraphs": 4, "tone": "skeptical_but_interesting"},
-    {"intro": "現場で起きがちな課題から", "conclusion": "いま導入を急ぐべきか。", "why": "従来の前提と、どこが違うのか。",
-     "what": "まずは何をしている技術なのか。", "key": "導入前に見ておきたいところ。", "decision": "私ならこの範囲で試す。", "final": "最後に、判断をまとめる。",
-     "opening": "practical_problem", "intro_paragraphs": 3, "tone": "watch_and_wait"},
+    # 問題提起型
+    {"style": "problem", "intro": "現場の困りごとから", "conclusion": "先に判断を書くと。",
+     "why": "なぜ、この問題が残り続けるのか。", "what": "今回の仕組みを見てみる。",
+     "key": "導入前に押さえたいポイント。", "decision": "私なら、この範囲から試す。",
+     "final": "結論として、いま取る距離感。", "opening": "practical_problem", "intro_paragraphs": 3, "tone": "practical_interest"},
+    # 実験型
+    {"style": "experiment", "intro": "まず、何を確かめればいい？", "conclusion": "試す価値はあるのか。",
+     "why": "検証したい仮説はここです。", "what": "仕組みを分解してみる。",
+     "key": "PoCで見るべき条件。", "decision": "私なら、こう検証する。",
+     "final": "本番投入は、その結果を見てから。", "opening": "observation", "intro_paragraphs": 2, "tone": "experimental"},
+    # 数字型
+    {"style": "numbers", "intro": "数字から見えるもの", "conclusion": "その数字をどう読むか。",
+     "why": "条件を外すと意味が変わる。", "what": "数字の裏側にある仕組み。",
+     "key": "再現するときの注意点。", "decision": "私なら、数字をこう確かめる。",
+     "final": "数字は魅力的。でも条件付きです。", "opening": "fact", "intro_paragraphs": 4, "tone": "skeptical_but_interesting"},
+    # 意外性型
+    {"style": "surprise", "intro": "一見すると地味。でも気になる。", "conclusion": "見逃したくない理由。",
+     "why": "従来の前提が少し揺らぐ。", "what": "何が違うのか。",
+     "key": "面白さとリスクを分けて見る。", "decision": "私なら、ここまでは踏み込む。",
+     "final": "面白いからこそ、急がない。", "opening": "discovery", "intro_paragraphs": 3, "tone": "cautious_interest"},
+    # 比較型
+    {"style": "comparison", "intro": "従来のやり方と比べると", "conclusion": "置き換える価値はある？",
+     "why": "比較軸を先にそろえる。", "what": "違いはどこにあるのか。",
+     "key": "得るもの、失うもの。", "decision": "私なら、全面移行はまだしない。",
+     "final": "勝ち負けではなく、適用範囲で決める。", "opening": "comparison", "intro_paragraphs": 3, "tone": "balanced_comparison"},
 )
 
 
@@ -2039,10 +2052,16 @@ def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Ima
 
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub", decision_score: int | None = None,
-                             technical_impact: int | None = None, urgency: int | None = None) -> str | None:
-    """Preserve the source background and overlay the approved decision card."""
-    if decision_score is not None and decision_score < EYECATCH_MIN_DECISION_SCORE:
-        logger.info("[EYECATCH SKIP] score=%s < %s", decision_score, EYECATCH_MIN_DECISION_SCORE)
+                             technical_impact: int | None = None, urgency: int | None = None,
+                             article_ready: bool = True) -> str | None:
+    """Preserve the source background and overlay the approved decision card.
+
+    Eyecatch eligibility follows publication readiness, not Decision Score.  Decision Score
+    describes the subject's decision value and must not suppress a perfectly publishable article.
+    The caller invokes this only after all publication gates have passed.
+    """
+    if not article_ready:
+        logger.info("[EYECATCH SKIP] article is not Ready")
         return None
     WIDTH, HEIGHT = 1280, 670
 
@@ -2395,6 +2414,7 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
         return None
 
     name = repo.get("nameWithOwner")
+    display_name = _notion_display_name(repo)
     repo_url = repo.get("url")
     source = repo.get("source", "GitHub")
     engagement = repo.get("stargazerCount", 0)
@@ -2409,8 +2429,8 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     payload = {
         "parent": _notion_parent(),
         "properties": build_metadata_notion_properties(
-            name, repo_url, score, reason, source, engagement,
-            published_at, analyzed_at, repo.get("description", ""),
+            display_name, repo_url, score, reason, source, engagement,
+            published_at, analyzed_at, _source_summary_with_original(repo, repo.get("description", "")),
             spdx_id,
         ),
     }
@@ -2418,7 +2438,7 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
         res = requests.post(url, json=payload, headers=headers, timeout=10)
         if res.status_code == 200:
             page_id = res.json().get("id")
-            logger.info(f"[NOTION STOCK SAVED] {name}: {score}点 -> メタデータのみでストックDBへ保存（page_id={page_id}）")
+            logger.info(f"[NOTION STOCK SAVED] {display_name}: {score}点 -> メタデータのみでストックDBへ保存（page_id={page_id}）")
             return page_id
         logger.error(f"[NOTION STOCK ERROR] {name} -> {res.text}")
         return None
@@ -2770,16 +2790,96 @@ def _analyzed_at_now_iso() -> str:
     return datetime.now(JST).isoformat()
 
 
+def _detect_title_language(title: str) -> str:
+    """追加APIなしでDB表示用の大まかな原文言語を判定する。
+
+    Entity ResolutionやDedupには使わない。日本語かなを含む場合はja、
+    Hanのみはzh-CN、Hangulはko、Cyrillicはru系として扱い、英数字中心はen。
+    """
+    text = unicodedata.normalize("NFKC", title or "")
+    if re.search(r"[\u3040-\u30ff]", text):
+        return "ja"
+    if re.search(r"[\uac00-\ud7af]", text):
+        return "ko"
+    if re.search(r"[\u4e00-\u9fff]", text):
+        return "zh-CN"
+    if re.search(r"[\u0400-\u04ff]", text):
+        return "ru"
+    if re.search(r"[A-Za-z]", text):
+        return "en"
+    return "und"
+
+
+def _japanese_product_descriptor(description: str, source: str) -> str:
+    """英語tagline/descriptionから0 APIで短い日本語カテゴリ名を付ける。
+
+    翻訳を捏造せず、十分なキーワードがある場合だけ具体化する。
+    """
+    text = unicodedata.normalize("NFKC", description or "").casefold()
+    rules = [
+        (("ecommerce", "e-commerce", "product photo", "product image", "listing image"), "EC商品画像生成ツール"),
+        (("image generator", "generate images", "image generation", "photo generator"), "AI画像生成ツール"),
+        (("video generator", "video generation", "generate videos"), "AI動画生成ツール"),
+        (("agent", "agentic", "multi-agent", "ai agent"), "AIエージェントツール"),
+        (("developer tool", "devtool", "coding", "code generation", "api"), "開発支援ツール"),
+        (("analytics", "analysis", "dashboard", "business intelligence"), "データ分析ツール"),
+        (("voice", "speech", "text-to-speech", "tts"), "音声AIツール"),
+    ]
+    for keywords, label in rules:
+        if any(k in text for k in keywords):
+            return label
+    return "海外プロダクト" if source == "ProductHunt" else "海外技術情報"
+
+
+def _multilingual_display_name(original_title: str, description: str = "", source: str = "") -> tuple[str, str]:
+    """原題を壊さず、人間がDB一覧で判別しやすい表示名を返す。
+
+    英語・日本語タイトルは従来表示を維持する。中国語/韓国語/Cyrillic等だけ、
+    日本語カテゴリ + 原題の形にするため、誤訳によるEntity誤マージを防ぐ。
+    """
+    original = unicodedata.normalize("NFKC", (original_title or "無題").strip()) or "無題"
+    lang = _detect_title_language(original)
+    if lang in {"ja", "en"} or lang == "und":
+        return original, lang
+    descriptor = _japanese_product_descriptor(description, source)
+    return f"{descriptor}「{original}」", lang
+
+
+def _notion_display_name(repo: dict) -> str:
+    return (repo.get("displayName") or repo.get("nameWithOwner") or "無題").strip() or "無題"
+
+
+def _source_summary_with_original(repo: dict, summary: str) -> str:
+    """非英語タイトルの原題・言語を既存Source Summaryへ非破壊で残す。"""
+    original = (repo.get("originalTitle") or repo.get("nameWithOwner") or "").strip()
+    lang = (repo.get("sourceLanguage") or _detect_title_language(original)).strip()
+    body = (summary or "").strip()
+    if lang in {"ja", "en", "und", ""}:
+        return body
+    prefix = f"Original Title: {original}\nLanguage: {lang}"
+    return (prefix + ("\n" + body if body else ""))[:2000]
+
+
 def normalize_item(source: str, name: str, url: str, description: str,
                     engagement: int, license_info: dict | None = None,
                     published_at: str | None = None, source_context: str = "",
                     primary_url: str | None = None, source_details: dict | None = None) -> dict:
-    """各ソースを既存互換キーへ正規化し、Deep Dive用一次コンテキストも保持する。"""
+    """各ソースを既存互換キーへ正規化し、Deep Dive用一次コンテキストも保持する。
+
+    nameWithOwnerは原題のまま保持し、Entity Resolution/Dedupの正本とする。
+    displayNameだけをNotion等の人間向け表示に利用する。
+    """
+    original = unicodedata.normalize("NFKC", (name or "無題").strip()) or "無題"
+    desc = (description or "説明なし").strip() or "説明なし"
+    display_name, language = _multilingual_display_name(original, desc, source)
     return {
         "source": source,
-        "nameWithOwner": (name or "無題").strip() or "無題",
+        "nameWithOwner": original,
+        "originalTitle": original,
+        "displayName": display_name,
+        "sourceLanguage": language,
         "url": (url or "").strip(),
-        "description": (description or "説明なし").strip() or "説明なし",
+        "description": desc,
         "stargazerCount": engagement or 0,
         "licenseInfo": license_info,
         "publishedAt": published_at,
@@ -3219,10 +3319,9 @@ def prepare_source_context(repo: dict) -> dict:
             substantive_parts.append(official_ctx)
     elif source == "ProductHunt":
         if stored:
-            pieces.append("Product Hunt metadata:\n" + stored)
-            substantive_parts.append(stored)
-            # Product Huntのmaker提供メタデータはsource-native一次情報として扱う。
-            primary_material_retrieved = True
+            pieces.append("Product Hunt discovery metadata:\n" + stored)
+            # Product Hunt/HNは発見経路。製品評価のPrimary Evidenceには数えない。
+            # 公式サイト・Docs・GitHub・論文の実取得が成功した場合だけprimary_source_resolvedとなる。
         # Product Huntのtagline/descriptionだけでなく、製品サイト本文を無料HTTP取得して補強。
         webpage = fetch_webpage_context(primary_url)
         if webpage:
@@ -3726,8 +3825,9 @@ def _fetch_arxiv_with_retry(url: str, params: dict):
 
 
 def _normalize_title_for_match(title: str) -> str:
-    title = re.sub(r"\s+", " ", (title or "").strip().lower())
-    title = re.sub(r"[^a-z0-9]+", " ", title)
+    """Unicode-safe title key. Non-Latin titles must not collapse to an empty key."""
+    title = unicodedata.normalize("NFKC", (title or "").strip()).casefold()
+    title = re.sub(r"[^\w]+", " ", title, flags=re.UNICODE)
     return re.sub(r"\s+", " ", title).strip()
 
 
@@ -4053,6 +4153,54 @@ def _query_notion_db_with_retry(url: str, headers: dict, payload: dict):
     return None
 
 
+EXISTING_NOTION_PAGE_INDEX: list[dict] = []
+
+
+def repair_existing_multilingual_notion_titles(max_updates: int = 25) -> int:
+    """既存Stockの非Latin原題を0 API(Gemini)で人間向け表示名へ安全に補正する。
+
+    get_existing_repo_urls()が同じNotion読取で作ったindexを再利用するため追加Readは不要。
+    NameだけをPATCHし、URL/原題/Entity keyは変更しない。失敗は本体処理を止めない。
+    """
+    if not NOTION_API_KEY:
+        return 0
+    updated = 0
+    for row in EXISTING_NOTION_PAGE_INDEX:
+        if updated >= max(0, int(max_updates or 0)):
+            break
+        current = (row.get("name") or "").strip()
+        if not current:
+            continue
+        language = _detect_title_language(current)
+        if language in {"ja", "en", "und"}:
+            continue
+        display, _ = _multilingual_display_name(current, row.get("summary", ""), row.get("source", ""))
+        if display == current:
+            continue
+        try:
+            repo_stub = {
+                "nameWithOwner": current, "originalTitle": current,
+                "sourceLanguage": language, "source": row.get("source", ""),
+            }
+            repaired_summary = _source_summary_with_original(repo_stub, row.get("summary", ""))
+            res = requests.patch(
+                f"https://api.notion.com/v1/pages/{row.get('page_id')}",
+                json={"properties": {
+                    PROP_NAME: {"title": [{"text": {"content": display[:2000]}}]},
+                    PROP_SOURCE_SUMMARY: {"rich_text": [{"text": {"content": repaired_summary[:2000]}}]},
+                }},
+                headers=_notion_headers(), timeout=10,
+            )
+            if res.status_code == 200:
+                updated += 1
+                logger.info("[MULTILINGUAL TITLE REPAIRED] %s -> %s", current, display)
+            else:
+                logger.warning("[MULTILINGUAL TITLE REPAIR SKIP] %s HTTP %s", current, res.status_code)
+        except Exception as exc:
+            logger.warning("[MULTILINGUAL TITLE REPAIR SKIP] %s: %s", current, exc)
+    return updated
+
+
 def get_existing_repo_urls():
     """
     Notion DB内の全ページからURLプロパティを収集し、集合として返す。
@@ -4083,6 +4231,8 @@ def get_existing_repo_urls():
     url = _notion_query_url()
     headers = _notion_headers()
 
+    global EXISTING_NOTION_PAGE_INDEX
+    EXISTING_NOTION_PAGE_INDEX = []
     existing_urls = set()
     next_cursor = None
 
@@ -4108,8 +4258,16 @@ def get_existing_repo_urls():
 
         data = res.json()
         for page in data.get("results", []):
-            url_prop = page.get("properties", {}).get(PROP_URL, {})
+            props = page.get("properties", {})
+            url_prop = props.get(PROP_URL, {})
             page_url = url_prop.get("url")
+            EXISTING_NOTION_PAGE_INDEX.append({
+                "page_id": page.get("id"),
+                "name": _notion_plain_text(props.get(PROP_NAME, {})),
+                "source": ((props.get(PROP_SOURCE, {}).get("select") or {}).get("name") or ""),
+                "summary": _notion_plain_text(props.get(PROP_SOURCE_SUMMARY, {})),
+                "url": page_url or "",
+            })
             if page_url:
                 existing_urls.add(canonicalize_url(page_url))
             # Deep Dive済みページではEvidence URLsも既知aliasとして再利用し、
@@ -4729,7 +4887,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 導入見出しは次を使う。
 ## {display['intro']}
 
-導入は2〜4段落で自然に構成する（今回は目安として{display['intro_paragraphs']}段落）。導入型は「{display['opening']}」、記事全体の温度感は「{display['tone']}」を参考にする。ただし型や段落数を機械的に再現せず、毎回「結論から言うと」「今回紹介するのは」「この記事では」で始めない。
+導入は2〜4段落で自然に構成する（今回は目安として{display['intro_paragraphs']}段落）。今回は「{display['style']}」型の記事として、導入型「{display['opening']}」、記事全体の温度感「{display['tone']}」を参考にする。5種類（問題提起・実験・数字・意外性・比較）は記事ごとに安定ローテーションし、別タイプの記事の定型見出しや語り出しを混ぜない。ただし型や段落数を機械的に再現せず、毎回「結論から言うと」「今回紹介するのは」「この記事では」で始めない。
 1段落目は、読者の疑問・実務課題・数字や事実への留保・発見のいずれかから自然に入り、{source}で発見した『{name}』のリンク先原資料を参照して実務への意味を整理する記事であることを示す。
 2段落目は、原資料の発表主体がSource Native Contextで確認できる場合だけ示し、「〜に関する一次情報に基づいています」と明記する。確認できない場合は主体を推測せず「リンク先原資料の一次情報に基づいています」と書く。
 3段落目は、原資料で確認できる技術的背景・従来課題・今回の手法を、固有の数値や条件を落とさずに簡潔に説明する。推論や実務的な評価はこの段落に混ぜない。
@@ -4819,10 +4977,13 @@ def _extract_any_markdown_section(markdown_text: str, headings: list[str]) -> st
 
 def _display_heading_aliases(kind: str) -> list[str]:
     legacy = {
-        "intro": ["はじめに"], "conclusion": ["この記事の結論"],
-        "why": ["なぜ今、この情報を見るべきなのか"], "what": ["What｜これは何か"],
-        "key": ["ここまでの要点"], "decision": ["私ならこう考える", "私の判定"],
-        "final": ["結局、どうするべきか"],
+        "intro": ["はじめに", "気になった背景", "数字の前に見ておきたいこと", "現場で起きがちな課題から"],
+        "conclusion": ["この記事の結論", "まず、結論から", "先に判断を書くと。", "この話をどう受け止めるか。", "いま導入を急ぐべきか。"],
+        "why": ["なぜ今、この情報を見るべきなのか", "なぜ今、目を向けるのか。", "地味だけれど、ここが大きい。", "実務への影響はどこに出る？", "従来の前提と、どこが違うのか。"],
+        "what": ["What｜これは何か", "何が起きている？", "中身をざっくり見る。", "仕組みは意外とシンプルです。", "まずは何をしている技術なのか。"],
+        "key": ["ここまでの要点", "要点を整理すると。", "見落としたくないポイント。", "ここで判断が分かれる。", "導入前に見ておきたいところ。"],
+        "decision": ["私ならこう考える", "私の判定", "私なら今はこうする。", "実務で使うなら、私はこうする。", "私なら、まず小さく確かめる。", "私ならこの範囲で試す。"],
+        "final": ["結局、どうするべきか", "結局、どう見るか。", "いま取るべき距離感。", "急がず、でも見逃さない。", "最後に、判断をまとめる。"],
     }
     return legacy.get(kind, []) + [variant[kind] for variant in ARTICLE_DISPLAY_VARIANTS]
 
@@ -5339,6 +5500,119 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
 
 
 
+_RELATION_FAMILIES = {
+    "provide": (r"提供(?:する|している|される|された|しています|しており)?|offers?|provides?|ships?|maintains?",),
+    "propose": (r"提唱(?:する|した|している)?|提案(?:する|した|している)?|propos(?:e|ed|es)|introduced?",),
+    "adopt": (r"採用(?:する|した|している|される|された)?|adopt(?:s|ed|ing)?|uses?|built on",),
+    "develop": (r"開発(?:する|した|している|された)?|develop(?:s|ed|ing)?|created?|built",),
+}
+
+
+def _entity_tokens_for_relation(text: str) -> list[str]:
+    """Extract conservative named-entity tokens for deterministic relationship checks."""
+    raw = re.findall(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9.+_-]{3,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?(?![A-Za-z0-9_])", text or "")
+    ignore = {"ARTICLE", "MANAGEMENT", "DATA", "Source", "Summary", "Decision", "Action", "HackerNews", "ProductHunt", "GitHub", "ArXiv",
+              "provides", "provide", "offers", "offer", "adopts", "adopt", "develops", "develop", "proposes", "propose"}
+    return [x for x in dict.fromkeys(raw) if x not in ignore][:8]
+
+
+def _find_entity_relation_violations(draft: str, source_context: str) -> list[str]:
+    """Fail closed on unsupported entity-to-entity relationships.
+
+    Presence of entity A and entity B somewhere in the evidence is not enough.  A relationship
+    claim such as "A provides B", "X proposed Y", or "A adopted B" must be co-supported in an
+    evidence sentence by the same two named entities and the same relation family.
+    """
+    if not draft or not source_context:
+        return []
+    evidence_sentences = re.split(r"(?<=[。！？.!?])\s+|\n+", source_context)
+    failures: list[str] = []
+    for sent in re.split(r"(?<=[。！？.!?])\s+|\n+", draft):
+        if not sent or re.search(r"一次情報(?:では|からは)確認できない|未確認|推測|可能性", sent):
+            continue
+        family = None
+        family_patterns = None
+        for key, patterns in _RELATION_FAMILIES.items():
+            if any(re.search(pattern, sent, re.I) for pattern in patterns):
+                family, family_patterns = key, patterns
+                break
+        if not family:
+            continue
+        entities = _entity_tokens_for_relation(sent)
+        if not entities:
+            continue
+        # At minimum the named actor and relation family must co-occur in one evidence sentence.
+        # If a second named entity exists, require it too. This catches "X proposed <Japanese concept>"
+        # even when the object is not an ASCII product name.
+        required_entities = min(2, len(entities[:4]))
+        supported = False
+        for ev in evidence_sentences:
+            if not any(re.search(pattern, ev, re.I) for pattern in family_patterns):
+                continue
+            normalized_ev = _normalized_named_fact(ev)
+            present = sum(1 for entity in entities[:4] if _normalized_named_fact(entity) in normalized_ev)
+            if present >= required_entities:
+                supported = True
+                break
+        if not supported:
+            failures.append(f"unsupported entity relation ({family}): " + ", ".join(entities[:4]))
+    return list(dict.fromkeys(failures))[:6]
+
+
+def _primary_source_authority_failures(source_info: dict | None) -> list[str]:
+    """Discovery platforms are not sufficient authority for product/technology evaluation."""
+    if not source_info:
+        return []
+    source = str(source_info.get("source") or "")
+    if source not in {"HackerNews", "ProductHunt"}:
+        return []
+    primary_url = str(source_info.get("primary_url") or "")
+    host = (urlparse(primary_url).netloc or "").lower()
+    discovery_host = (source == "HackerNews" and host in {"news.ycombinator.com", "www.news.ycombinator.com"}) or (
+        source == "ProductHunt" and host.endswith("producthunt.com")
+    )
+    if discovery_host or not source_info.get("primary_source_resolved"):
+        return ["PRIMARY_SOURCE_AUTHORITY_INSUFFICIENT: discovery source is not authoritative primary evidence"]
+    return []
+
+
+_JAPANESE_SAFE_FIXES = (
+    (re.compile(r"をな(?=[一-龥ぁ-んァ-ヶA-Za-z])"), "を"),
+    (re.compile(r"がを(?=[一-龥ぁ-んァ-ヶA-Za-z])"), "を"),
+    (re.compile(r"にを(?=[一-龥ぁ-んァ-ヶA-Za-z])"), "を"),
+    (re.compile(r"というという"), "という"),
+)
+
+
+def _apply_final_japanese_polish(parsed: dict) -> tuple[dict, list[str]]:
+    """0-API deterministic cleanup for unmistakable Japanese mechanical glitches."""
+    out = dict(parsed or {})
+    changes: list[str] = []
+    for key in ("note_draft", "title_text", "action_text", "decision_reason_text"):
+        text = str(out.get(key) or "")
+        for pattern, replacement in _JAPANESE_SAFE_FIXES:
+            new_text, count = pattern.subn(replacement, text)
+            if count:
+                changes.append(f"{key}:{pattern.pattern}:{count}")
+                text = new_text
+        out[key] = text
+    return out, changes
+
+
+def _find_final_japanese_polish_issues(text: str) -> list[str]:
+    issues = []
+    body = text or ""
+    suspicious = (
+        (r"[をがにでへ]な(?:を|が|に|で|へ)", "suspicious particle sequence"),
+        (r"(?:です|ます){2,}", "duplicated polite ending"),
+        (r"というという", "duplicated phrase"),
+    )
+    for pattern, label in suspicious:
+        if re.search(pattern, body):
+            issues.append("japanese_polish: " + label)
+    return issues
+
+
 _ADOPTION_SCORE_COMPONENTS = (
     ("Evidence Quality", 25),
     ("Production Maturity", 25),
@@ -5499,7 +5773,7 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
     evidence_urls = _collect_final_evidence_urls(source_info, None)
     candidate = attribution_context or {}
     assessment = {
-        "technology_name": repo.get("nameWithOwner") or "Technology",
+        "technology_name": _notion_display_name(repo) or "Technology",
         "primary_url": resolution.primary_url or source_info.get("primary_url") or repo.get("url"),
         "sources": [repo.get("source", "GitHub")],
         "category": candidate.get("portfolio_topic") or "OTHER",
@@ -5615,6 +5889,8 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_management_score_leak(draft))
     failures.extend(_find_decision_code_leak(draft))
     failures.extend(_find_source_boundary_violations(draft, source_context))
+    failures.extend(_find_entity_relation_violations(draft, source_context))
+    failures.extend(_primary_source_authority_failures(source_info))
 
     # 深い一次資料に明示された限界を記事から丸ごと落とすことを禁止する。
     limitation_present = re.search(r"limitation|limitations|issue|challenge|artifact|occlusion|noisy background|rough sketch|制約|限界|課題", source_context or "", re.I)
@@ -5642,6 +5918,7 @@ def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[st
     if len(headings) > 12:
         warnings.append(f"too many article headings: {len(headings)}")
     warnings.extend(_find_humanization_violations(draft))
+    warnings.extend(_find_final_japanese_polish_issues(draft))
     return (not warnings, list(dict.fromkeys(warnings)))
 
 
@@ -5787,12 +6064,14 @@ def _reason_code(message: str, gate: str) -> str:
         return REASON_CODE_MAX_TOKENS
     if "article_structure_incomplete" in text or "required heading missing" in text or "structure" in text:
         return REASON_CODE_STRUCTURE_MISSING
+    if "primary_source_authority_insufficient" in text or "primary source" in text and "authority" in text:
+        return REASON_CODE_PRIMARY_SOURCE_UNRESOLVED
     if "source_depth_insufficient" in text or "primary_evidence_insufficient" in text or "grounding failed" in text:
         return REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT
     if gate == "fact":
         if any(token in text for token in ("numeric", "number", "数値", "unit", "%")):
             return REASON_CODE_FACT_NUMERICAL_MISMATCH
-        if any(token in text for token in ("actor", "author", "attribution", "publisher", "発表主体", "帰属")):
+        if any(token in text for token in ("actor", "author", "attribution", "publisher", "発表主体", "帰属", "entity relation")):
             return REASON_CODE_FACT_ACTOR_MISMATCH
         if "named fact" in text or "unsupported named" in text or "固有名" in text:
             return REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT
@@ -5839,7 +6118,7 @@ def finalize_retry_diagnostics(retry_diagnostics: dict | None, final_reason_code
     details["final_reason_codes"] = list(final_reason_codes)
     details["final_gate_result"] = final_gate_result
     details["retry_article"] = final_article
-    details["retry_succeeded"] = final_gate_result == "READY"
+    details["retry_succeeded"] = bool(details.get("retry_attempted")) and final_gate_result == "READY"
     return details
 
 
@@ -5950,6 +6229,8 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
     title = str(rescued.get("title_text") or "")
     action = str(rescued.get("action_text") or "")
     changes: list[str] = []
+    removed_sentences = 0
+    important_numeric_removed = False
 
     hype_replacements = {
         "唯一": "", "一択": "", "必須": "", "デファクトスタンダード": "選択肢",
@@ -5982,6 +6263,9 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
             new_article, removed = _remove_sentences_with_token(article, token)
             if removed:
                 article = new_article
+                removed_sentences += removed
+                if code == REASON_CODE_FACT_NUMERICAL_MISMATCH and re.search(r"\d", token):
+                    important_numeric_removed = True
                 changes.append(f"remove_unsupported_sentence:{token}")
                 if token in action:
                     derived_action = _extract_any_markdown_section(article, _display_heading_aliases("decision"))
@@ -5994,6 +6278,7 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
             for snippet in _find_fabricated_personal_experience(article):
                 article, removed = _remove_sentences_with_token(article, snippet)
                 if removed:
+                    removed_sentences += removed
                     changes.append("remove_fabricated_experience")
 
     if not changes:
@@ -6009,6 +6294,11 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
     rescued["note_draft"] = article
     rescued["title_text"] = title
     rescued["action_text"] = action
+    rescued["_rescue_loss"] = {
+        "removed_sentences": removed_sentences,
+        "important_numeric_removed": important_numeric_removed,
+        "loss_exceeded": bool(important_numeric_removed or removed_sentences >= 3),
+    }
     return rescued, list(dict.fromkeys(changes))
 
 
@@ -6899,6 +7189,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             })
             last_grounding = grounding
             parsed = _parse_gemini_response(response.text or "")
+            parsed, polish_changes = _apply_final_japanese_polish(parsed)
+            if polish_changes:
+                logger.info("[FINAL JAPANESE POLISH] %s changes=%s", name, polish_changes)
             if funnel:
                 funnel.incr("article_parsed")
             parsed.update({
@@ -7034,11 +7327,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     )
                     if funnel:
                         funnel.incr("deterministic_rescue_attempted")
+                    rescue_loss = rescued_parsed.get("_rescue_loss", {})
+                    loss_exceeded = bool(rescue_loss.get("loss_exceeded"))
                     logger.info(
-                        "[PUBLICATION RESCUE PRE-RETRY] %s changes=%s ready=%s remaining_fact=%s publication=%s",
-                        name, rescue_changes, rescue_ready, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
+                        "[PUBLICATION RESCUE PRE-RETRY] %s changes=%s ready=%s loss=%s remaining_fact=%s publication=%s",
+                        name, rescue_changes, rescue_ready, rescue_loss, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
                     )
-                    if rescue_ready:
+                    if loss_exceeded:
+                        logger.warning("[RESCUE LOSS LIMIT] %s auto-Ready blocked; one dynamic recompose required", name)
+                    if rescue_ready and not loss_exceeded:
                         if funnel:
                             funnel.incr("deterministic_rescue_success")
                         parsed = rescued_parsed
@@ -7107,11 +7404,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     review_evidence_urls = _collect_final_evidence_urls(source_info, last_grounding)
                     review_meta = dict(parsed)
                     review_meta["evidence_urls_text"] = "\n".join(review_evidence_urls)
+                    manuscript_primary_url = source_info.get("primary_url") or url
+                    discovery_url = (repo.get("sourceDetails", {}) or {}).get("hn_url", "")
+                    if source == "ProductHunt":
+                        discovery_url = (repo.get("sourceDetails", {}) or {}).get("producthunt_url", "") or url
                     review_manuscript = build_clean_note_manuscript(
-                        parsed["note_draft"], name, url, spdx_id, source,
+                        parsed["note_draft"], name, manuscript_primary_url, spdx_id, source,
                         evidence_urls=review_evidence_urls,
                         title_text=parsed.get("title_text", ""),
-                        discovery_url=(repo.get("sourceDetails", {}) or {}).get("hn_url", ""),
+                        discovery_url=discovery_url,
                     )
                     review_properties = build_notion_properties(
                         name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
@@ -7184,11 +7485,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                             rescued_parsed, verification_context, source, source_info.get("evidence_metadata", {}),
                             source_info, freshness, output_truncated=output_truncated,
                         )
+                        rescue_loss = rescued_parsed.get("_rescue_loss", {})
+                        loss_exceeded = bool(rescue_loss.get("loss_exceeded"))
                         logger.info(
-                            "[PUBLICATION RESCUE] %s changes=%s ready=%s remaining_fact=%s publication=%s",
-                            name, rescue_changes, rescue_ready, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
+                            "[PUBLICATION RESCUE] %s changes=%s ready=%s loss=%s remaining_fact=%s publication=%s",
+                            name, rescue_changes, rescue_ready, rescue_loss, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
                         )
-                        if rescue_ready:
+                        if loss_exceeded:
+                            logger.warning("[RESCUE LOSS LIMIT] %s final subtractive rescue cannot auto-Ready", name)
+                        if rescue_ready and not loss_exceeded:
                             if funnel:
                                 funnel.incr("deterministic_rescue_success")
                             parsed = rescued_parsed
@@ -7205,6 +7510,16 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                             retry_diagnostics = dict(retry_diagnostics or {})
                             retry_diagnostics["deterministic_rescue"] = rescue_changes
                             break
+                        # Keep final failure diagnostics aligned with the rescued manuscript.
+                        fact_ok = bool(rescue_diag.get("fact_ok"))
+                        editorial_ok = bool(rescue_diag.get("editorial_ok"))
+                        publication_state = str(rescue_diag.get("publication_state"))
+                        human_appeal = str(rescue_diag.get("human_state"))
+                        fact_failures = list(rescue_diag.get("fact_failures") or [])
+                        editorial_warnings = list(rescue_diag.get("editorial_warnings") or [])
+                        publication_issues = list(rescue_diag.get("publication_issues") or [])
+                        human_appeal_issues = list(rescue_diag.get("human_issues") or [])
+                        failures = fact_failures + editorial_warnings + publication_issues + human_appeal_issues
                 logger.error(f"[QUALITY GATE FAILED] {name}: {', '.join(failures)}")
                 if not persist_results:
                     # 再生成テストはGate調整そのものが目的。落ちた稿も捨てず、
@@ -7251,10 +7566,13 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         evidence_urls = _collect_final_evidence_urls(source_info, last_grounding)
         # Notion側のEvidence URLsも、最終的にGateを支えた実取得資料と一致させる。
         parsed["evidence_urls_text"] = "\n".join(evidence_urls)
+        manuscript_primary_url = source_info.get("primary_url") or url
+        discovery_url = (repo.get("sourceDetails", {}) or {}).get("hn_url", "")
+        if source == "ProductHunt":
+            discovery_url = (repo.get("sourceDetails", {}) or {}).get("producthunt_url", "") or url
         clean_manuscript = build_clean_note_manuscript(
-            parsed["note_draft"], name, url, spdx_id, source, evidence_urls=evidence_urls,
-            title_text=parsed.get("title_text", ""),
-            discovery_url=(repo.get("sourceDetails", {}) or {}).get("hn_url", ""),
+            parsed["note_draft"], name, manuscript_primary_url, spdx_id, source, evidence_urls=evidence_urls,
+            title_text=parsed.get("title_text", ""), discovery_url=discovery_url,
         )
 
         eyecatch_url = ""
@@ -7273,13 +7591,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             logger.info(f"[REGEN TEST] eyecatch生成・GitHub uploadをスキップ: {name}")
 
         analyzed_at = _analyzed_at_now_iso()
+        notion_name = _notion_display_name(repo)
+        parsed["source_summary_text"] = _source_summary_with_original(repo, parsed.get("source_summary_text", ""))
         if persist_results:
             # Readyの定義: Quality Gate PASS AND Notion Persistence SUCCESS。
             # 戻り値を必ず確認し、Notionへ保存されていない記事をReadyとして扱わない。
             if notion_page_id:
                 notion_persisted = upgrade_notion_page_with_report(
                     notion_page_id,
-                    name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
+                    notion_name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
                     parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
                     spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
                     parsed["alternative_comparison_text"], parsed["migration_cost_text"],
@@ -7288,7 +7608,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 )
             else:
                 notion_persisted = save_to_notion(
-                    name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
+                    notion_name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
                     parsed["why_important_text"], parsed["why_not_important_text"], parsed["action_text"],
                     spdx_id, clean_manuscript, parsed["paradigm_shift_text"],
                     parsed["alternative_comparison_text"], parsed["migration_cost_text"],
@@ -7849,67 +8169,113 @@ def _attach_portfolio_topic(item: dict, topic=None, raw_topic=None) -> dict:
     return item
 
 
+def _salvage_screening_json_rows(text: str) -> list[dict]:
+    """Recover complete JSON objects from a truncated/partially malformed JSON array.
+
+    Gemini may return HTTP 200 yet cut the tail of a long array.  We never guess or repair a
+    partial object; only individually valid, balanced JSON objects are accepted.  Missing IDs are
+    then handled by the existing smaller recovery batches.
+    """
+    rows: list[dict] = []
+    src = text or ""
+    depth = 0
+    start = None
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(src):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    row = json.loads(src[start:i + 1])
+                    if isinstance(row, dict):
+                        rows.append(row)
+                except json.JSONDecodeError:
+                    pass
+                start = None
+    return rows
+
+
 def _parse_batch_screening_response(text: str, expected_ids: set[str], include_diagnostic: bool = False):
-    diagnostic = ""
+    diagnostic_parts: list[str] = []
     try:
         payload = json.loads(text or "[]")
     except json.JSONDecodeError as exc:
-        parsed, diagnostic = {}, f"json_decode_error:{exc.msg}"
-    else:
-        parsed = {}
-        if not isinstance(payload, list):
-            diagnostic = "response_not_list"
+        payload = _salvage_screening_json_rows(text or "")
+        diagnostic_parts.append(f"json_decode_error:{exc.msg}")
+        diagnostic_parts.append(f"salvaged={len(payload)}")
+
+    parsed: dict[str, dict] = {}
+    if not isinstance(payload, list):
+        diagnostic_parts.append("response_not_list")
+        payload = []
+
+    invalid: list[str] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            invalid.append("row_not_object")
+            continue
+        candidate_id = str(row.get("id", ""))
+        if candidate_id not in expected_ids:
+            invalid.append(f"unknown_id:{candidate_id}")
+            continue
+        if candidate_id in parsed:
+            invalid.append(f"duplicate_id:{candidate_id}")
+            continue
+        try:
+            score = int(row.get("score"))
+        except (TypeError, ValueError):
+            invalid.append(f"invalid_score:{candidate_id}")
+            continue
+        if not 0 <= score <= 100:
+            invalid.append(f"score_out_of_range:{candidate_id}")
+            continue
+        reason = str(row.get("reason", "取得失敗")).strip()[:120] or "取得失敗"
+        commercial_score = _bounded_optional_score(row.get("commercial_score"), candidate_id, "commercial_score", invalid)
+        shelf_life_score = _bounded_optional_score(row.get("shelf_life_score"), candidate_id, "shelf_life_score", invalid)
+        tracking_raw = row.get("tracking_eligible")
+        if isinstance(tracking_raw, bool):
+            tracking_eligible = tracking_raw
+        elif isinstance(tracking_raw, str) and tracking_raw.strip().lower() in {"true", "false"}:
+            tracking_eligible = tracking_raw.strip().lower() == "true"
         else:
-            invalid = []
-            for row in payload:
-                if not isinstance(row, dict):
-                    invalid.append("row_not_object")
-                    continue
-                candidate_id = str(row.get("id", ""))
-                if candidate_id not in expected_ids:
-                    invalid.append(f"unknown_id:{candidate_id}")
-                    continue
-                if candidate_id in parsed:
-                    invalid.append(f"duplicate_id:{candidate_id}")
-                    continue
-                try:
-                    score = int(row.get("score"))
-                except (TypeError, ValueError):
-                    invalid.append(f"invalid_score:{candidate_id}")
-                    continue
-                if not 0 <= score <= 100:
-                    invalid.append(f"score_out_of_range:{candidate_id}")
-                    continue
-                reason = str(row.get("reason", "取得失敗")).strip()[:120] or "取得失敗"
-                commercial_score = _bounded_optional_score(row.get("commercial_score"), candidate_id, "commercial_score", invalid)
-                shelf_life_score = _bounded_optional_score(row.get("shelf_life_score"), candidate_id, "shelf_life_score", invalid)
-                tracking_raw = row.get("tracking_eligible")
-                if isinstance(tracking_raw, bool):
-                    tracking_eligible = tracking_raw
-                elif isinstance(tracking_raw, str) and tracking_raw.strip().lower() in {"true", "false"}:
-                    tracking_eligible = tracking_raw.strip().lower() == "true"
-                else:
-                    tracking_eligible = score >= TRACKING_ELIGIBILITY_MIN_SCORE
-                    invalid.append(f"missing_tracking_eligible:{candidate_id}")
-                tracking_reason = str(row.get("tracking_reason", "")).strip()[:160]
-                raw_topic = row.get("topic")
-                normalized_topic = normalize_portfolio_topic(raw_topic)
-                topic_valid = raw_topic is not None
-                if raw_topic is None:
-                    invalid.append(f"missing_topic:{candidate_id}")
-                    topic_valid = False
-                elif normalized_topic == "OTHER" and str(raw_topic).strip().upper() not in {"OTHER", "RESEARCH", "UNKNOWN"}:
-                    invalid.append(f"invalid_topic:{candidate_id}")
-                    topic_valid = False
-                parsed[candidate_id] = {
-                    "score": score, "reason": reason,
-                    "commercial_score": commercial_score, "shelf_life_score": shelf_life_score,
-                    "tracking_eligible": tracking_eligible, "tracking_reason": tracking_reason,
-                    "portfolio_topic": normalized_topic, "topic_valid": topic_valid,
-                }
-            if invalid:
-                diagnostic = ";".join(invalid)
+            tracking_eligible = score >= TRACKING_ELIGIBILITY_MIN_SCORE
+            invalid.append(f"missing_tracking_eligible:{candidate_id}")
+        tracking_reason = str(row.get("tracking_reason", "")).strip()[:160]
+        raw_topic = row.get("topic")
+        normalized_topic = normalize_portfolio_topic(raw_topic)
+        topic_valid = raw_topic is not None
+        if raw_topic is None:
+            invalid.append(f"missing_topic:{candidate_id}")
+            topic_valid = False
+        elif normalized_topic == "OTHER" and str(raw_topic).strip().upper() not in {"OTHER", "RESEARCH", "UNKNOWN"}:
+            invalid.append(f"invalid_topic:{candidate_id}")
+            topic_valid = False
+        parsed[candidate_id] = {
+            "score": score, "reason": reason,
+            "commercial_score": commercial_score, "shelf_life_score": shelf_life_score,
+            "tracking_eligible": tracking_eligible, "tracking_reason": tracking_reason,
+            "portfolio_topic": normalized_topic, "topic_valid": topic_valid,
+        }
+    if invalid:
+        diagnostic_parts.extend(invalid)
     missing = sorted(expected_ids - set(parsed))
+    diagnostic = ";".join(diagnostic_parts)
     return (parsed, missing, diagnostic) if include_diagnostic else (parsed, missing)
 
 
@@ -9227,6 +9593,10 @@ def main():
         safe_repos.append(repo)
 
     existing_urls = get_existing_repo_urls()
+    if existing_urls is not None:
+        repaired_titles = repair_existing_multilingual_notion_titles()
+        if repaired_titles:
+            logger.info("[MULTILINGUAL TITLE NORMALIZATION] repaired_existing=%d", repaired_titles)
     if existing_urls is None:
         logger.error("[PIPELINE ABORTED] 重複チェック不能のためFail-Closed停止")
         source_roi_state = update_source_roi_state(source_roi_state, [], funnel)
