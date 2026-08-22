@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "runs": [
     {
-      "run_id": "20260821T004251Z",
-      "recorded_at": "2026-08-21T00:42:51.277893+00:00",
+      "run_id": "20260822T005736Z",
+      "recorded_at": "2026-08-22T00:57:36.959398+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -16,77 +16,31 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 49,
-          "stock_saved": 22,
-          "deep_dive_attempted": 7,
-          "generation_requests": 6,
-          "ready": 0,
-          "review": 0,
-          "quality_failed": 1,
-          "pending_retry": 4
-        },
-        "ArXiv": {
-          "screened": 19,
-          "stock_saved": 2,
-          "deep_dive_attempted": 3,
-          "generation_requests": 6,
-          "ready": 0,
-          "review": 1,
-          "quality_failed": 2,
-          "pending_retry": 0
-        },
-        "ProductHunt": {
-          "screened": 20,
-          "stock_saved": 2,
-          "deep_dive_attempted": 0,
-          "generation_requests": 0,
-          "ready": 0,
-          "review": 0,
-          "quality_failed": 0,
-          "pending_retry": 0
-        }
-      }
-    },
-    {
-      "run_id": "20260821T121548Z",
-      "recorded_at": "2026-08-21T12:15:48.250313+00:00",
-      "sources": {
-        "GitHub": {
-          "screened": 0,
-          "stock_saved": 0,
-          "deep_dive_attempted": 0,
-          "generation_requests": 0,
-          "ready": 0,
-          "review": 0,
-          "quality_failed": 0,
-          "pending_retry": 0
-        },
-        "HackerNews": {
-          "screened": 35,
-          "stock_saved": 11,
+          "screened": 25,
+          "stock_saved": 8,
           "deep_dive_attempted": 3,
           "generation_requests": 3,
-          "ready": 0,
+          "ready": 2,
           "review": 0,
-          "quality_failed": 0,
-          "pending_retry": 3
+          "quality_failed": 1,
+          "pending_retry": 0
         },
         "ArXiv": {
-          "screened": 50,
-          "stock_saved": 29,
-          "deep_dive_attempted": 5,
-          "generation_requests": 7,
-          "ready": 0,
-          "review": 0,
-          "quality_failed": 2,
-          "pending_retry": 3
-        },
-        "ProductHunt": {
-          "screened": 20,
+          "screened": 11,
           "stock_saved": 0,
           "deep_dive_attempted": 0,
           "generation_requests": 0,
           "ready": 0,
+          "review": 0,
+          "quality_failed": 0,
+          "pending_retry": 0
+        },
+        "ProductHunt": {
+          "screened": 17,
+          "stock_saved": 5,
+          "deep_dive_attempted": 1,
+          "generation_requests": 1,
+          "ready": 1,
           "review": 0,
           "quality_failed": 0,
           "pending_retry": 0
@@ -108,52 +62,52 @@
       "roi_score": 27.1,
       "allocation_weight": 0.38035,
       "mature": false,
-      "learning_active": true
+      "learning_active": false
     },
     "HackerNews": {
-      "screened": 80.57,
-      "stock_saved": 31.46,
-      "deep_dive_attempted": 9.510000000000002,
-      "generation_requests": 8.58,
-      "ready": 0.0,
+      "screened": 25.0,
+      "stock_saved": 8.0,
+      "deep_dive_attempted": 3.0,
+      "generation_requests": 3.0,
+      "ready": 2.0,
       "review": 0.0,
-      "stock_yield": 0.3824,
-      "ready_yield": 0.0967,
-      "generation_efficiency": 0.0741,
-      "roi_score": 19.22,
-      "allocation_weight": 0.256178,
-      "mature": true,
-      "learning_active": true
+      "stock_yield": 0.3333,
+      "ready_yield": 0.3889,
+      "generation_efficiency": 0.3422,
+      "roi_score": 36.01,
+      "allocation_weight": 0.428569,
+      "mature": false,
+      "learning_active": false
     },
     "ArXiv": {
-      "screened": 67.67,
-      "stock_saved": 30.86,
-      "deep_dive_attempted": 7.79,
-      "generation_requests": 12.58,
-      "ready": 0.0,
-      "review": 0.93,
-      "stock_yield": 0.4318,
-      "ready_yield": 0.1088,
-      "generation_efficiency": 0.0581,
-      "roi_score": 21.17,
-      "allocation_weight": 0.277741,
-      "mature": true,
-      "learning_active": true
-    },
-    "ProductHunt": {
-      "screened": 38.6,
-      "stock_saved": 1.86,
+      "screened": 11.0,
+      "stock_saved": 0.0,
       "deep_dive_attempted": 0.0,
       "generation_requests": 0.0,
       "ready": 0.0,
       "review": 0.0,
-      "stock_yield": 0.1512,
+      "stock_yield": 0.2258,
       "ready_yield": 0.25,
       "generation_efficiency": 0.18,
-      "roi_score": 20.14,
-      "allocation_weight": 0.283889,
+      "roi_score": 22.75,
+      "allocation_weight": 0.329206,
       "mature": false,
-      "learning_active": true
+      "learning_active": false
+    },
+    "ProductHunt": {
+      "screened": 17.0,
+      "stock_saved": 5.0,
+      "deep_dive_attempted": 1.0,
+      "generation_requests": 1.0,
+      "ready": 1.0,
+      "review": 0.0,
+      "stock_yield": 0.3243,
+      "ready_yield": 0.3571,
+      "generation_efficiency": 0.2971,
+      "roi_score": 33.37,
+      "allocation_weight": 0.413188,
+      "mature": false,
+      "learning_active": false
     }
   }
 }
