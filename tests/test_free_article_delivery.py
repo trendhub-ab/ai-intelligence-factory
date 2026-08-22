@@ -384,3 +384,80 @@ class TestRun98Corrections(unittest.TestCase):
         src = inspect.getsource(pipeline.generate_eyecatch_image)
         self.assertNotIn("decision_score < EYECATCH_MIN_DECISION_SCORE", src)
         self.assertIn("article_ready", src)
+
+
+class Run99GateHardeningTests(unittest.TestCase):
+    def test_relation_gate_ignores_bare_development_noun_and_entity_list(self):
+        draft = "OpenTelemetryの開発体制では、Core、Python、Ruby、Semantic Conventionsの状況を確認する必要があります。"
+        evidence = "OpenTelemetry has multiple repositories and language implementations."
+        self.assertEqual([], pipeline._find_entity_relation_violations(draft, evidence))
+
+    def test_relation_gate_ignores_run99_style_operational_list(self):
+        draft = "Forgejo、Coolify、Postgres、Redisを組み合わせた開発環境を検証します。"
+        evidence = "The author describes a self-hosted software factory."
+        self.assertEqual([], pipeline._find_entity_relation_violations(draft, evidence))
+
+    def test_relation_gate_still_rejects_explicit_timescale_pgvector_claim(self):
+        draft = "Timescale社がpgvectorを提供しています。"
+        evidence = "Timescale develops TimescaleDB. pgvector is an open-source vector similarity extension."
+        failures = pipeline._find_entity_relation_violations(draft, evidence)
+        self.assertTrue(failures)
+        self.assertIn("Timescale", failures[0])
+        self.assertIn("pgvector", failures[0])
+
+    def test_relation_gate_still_rejects_explicit_karpathy_proposer_claim(self):
+        draft = "Karpathy氏がAgentMemoryを提唱しました。"
+        evidence = "AgentMemory is a shared knowledge base for agents."
+        self.assertTrue(pipeline._find_entity_relation_violations(draft, evidence))
+
+    def test_relation_gate_accepts_supported_explicit_claim(self):
+        draft = "Acme社がWidgetXを提供しています。"
+        evidence = "Acme provides WidgetX for enterprise users."
+        self.assertEqual([], pipeline._find_entity_relation_violations(draft, evidence))
+
+    def test_false_negative_benchmark_requires_substantive_result_not_keyword(self):
+        metadata = {"coverage": {"benchmark": "FOUND"}}
+        evidence = "The article discusses why benchmark methodology can be misleading, but publishes no benchmark results."
+        draft = "具体的なベンチマーク結果は確認できない。"
+        self.assertEqual([], pipeline._find_false_negative_evidence_claims(draft, metadata, evidence))
+
+    def test_false_negative_benchmark_fails_when_concrete_result_exists(self):
+        metadata = {"coverage": {"benchmark": "FOUND"}}
+        evidence = "Benchmark results: p95 latency was 48 ms at 10 RPS on an H100 GPU."
+        draft = "ベンチマーク結果は確認できない。"
+        self.assertIn("FALSE_NEGATIVE_EVIDENCE_CLAIM: benchmark",
+                      pipeline._find_false_negative_evidence_claims(draft, metadata, evidence))
+
+    def test_decision_code_leak_is_case_sensitive_to_internal_codes(self):
+        self.assertTrue(pipeline._find_decision_code_leak("本文では WATCH と判断した。"))
+        self.assertEqual([], pipeline._find_decision_code_leak("Apple Watchを利用した。"))
+
+    def test_final_polish_translates_internal_code_without_touching_product_watch(self):
+        parsed = {"note_draft": "Apple Watchは対象外だが、今回は WATCH と判断する。", "title_text": "題名。"}
+        fixed, changes = pipeline._apply_final_japanese_polish(parsed)
+        self.assertIn("Apple Watch", fixed["note_draft"])
+        self.assertNotIn(" WATCH ", fixed["note_draft"])
+        self.assertTrue(any("decision_code_to_reader_phrase:WATCH" == x for x in changes))
+
+    def test_retry_instruction_reasserts_no_internal_codes(self):
+        text, _ = pipeline.build_dynamic_retry_instruction([
+            {"reason_code": pipeline.REASON_CODE_FACT_ACTOR_MISMATCH, "message": "actor"}
+        ])
+        self.assertIn("NOW / TRY / WATCH / WAIT / AVOID", text)
+
+class Run99PrimaryAuthorityTests(unittest.TestCase):
+    def test_hn_secondary_reuters_report_is_not_primary_authority(self):
+        failures = pipeline._primary_source_authority_failures({
+            "source": "HackerNews",
+            "primary_url": "https://www.reuters.com/technology/vendor-pricing-change/",
+            "primary_source_resolved": True,
+        })
+        self.assertTrue(failures)
+        self.assertIn("secondary news report", failures[0])
+
+    def test_hn_author_original_blog_can_be_primary_authority(self):
+        self.assertEqual([], pipeline._primary_source_authority_failures({
+            "source": "HackerNews",
+            "primary_url": "https://danluu.com/perf-opt/",
+            "primary_source_resolved": True,
+        }))

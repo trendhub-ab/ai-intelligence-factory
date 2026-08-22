@@ -539,3 +539,33 @@ Run 98本番稼働と生成4記事の人手監査により、Free Article Reliab
 - These colors express Decision Score intensity only; they MUST NOT be interpreted as Adoption Status.
 - Red is reserved for future AVOID / warning semantics.
 - Eyecatch generation eligibility remains `Article Ready`, not a Decision Score threshold.
+
+---
+
+## 2026-08-22 Run 99 Gate Precision / Eyecatch Final 追補
+
+Run 99本番監査により、Fact Relation GateのHard Failは高精度な明示関係主張に限定する。`開発体制`等の裸の名詞や技術名列挙をactor→object関係へ変換してはならない。主体・対象・関係動詞が文法的に明示され、Evidence内の同一関係で支持できない場合のみHard Failとする。これによりFalse Positiveを減らす一方、`A社がBを提供`、`X氏がYを提唱`等の高リスク帰属誤りは引き続きFail-Closedする。
+
+False Negative Evidence判定はmetadataの`FOUND`だけを根拠にしない。benchmark/runtime/hardware/code availabilityは、Source Context内に具体的結果・条件・実体が存在する場合だけ「Evidenceに存在する」とみなしてARTICLEの「不明/未公開」と矛盾判定する。
+
+Hacker News / Product HuntはDiscovery Source。Reuters等の二次ニュース媒体は取得できてもベンダー製品主張のPrimary Authorityではない。価格・仕様・リリース等は公式発表/Docs/GitHub等へ解決する。著者本人の技術ブログは、その本人の実験・意見についてPrimaryとして扱える。
+
+公開ARTICLEでは内部管理コード`NOW / TRY / WATCH / WAIT / AVOID`を禁止する。Retryにも同制約を再注入し、最終0 API Polishはdecision contextのmanagement labelだけを自然文へ変換する。`Apple Watch`やcode block等の通常技術表現は変更しない。
+
+Eyecatch最終仕様は1280x670 Source別背景＋左Decision Card。カード内は十分なpaddingを確保し、Header / Decision Score / progress bar / Technical Impact / Urgencyの情報群を上下中央に光学配置する。数値はGoogle Font Lato Boldを最優先し、GitHub Actionsで`fonts-lato`を導入する。フォントファイルはRepositoryへ同梱しない。進捗バーはScore帯に応じGray/Cyan/Blue/Purple/Gold、生成条件はArticle Readyである。
+
+
+## Run 100 Article Audit Artifact — 2026-08-22
+
+Dailyの`private-gate-review-<run_number>`を、Gate JSONだけでなく人間が記事本文を直接監査できるDaily監査パッケージへ拡張する。追加Gemini APIは使用しない。
+
+- `article_audit/articles/ready/<candidate>/final.md`: Ready確定後の最終公開稿のみ。
+- `article_audit/articles/quality_failed/<candidate>/generated_original.md`: 初回生成稿。
+- `article_audit/articles/quality_failed/<candidate>/after_quality_retry.md`: Quality Retry後稿（存在時）。
+- `article_audit/articles/quality_failed/<candidate>/final_after_rescue.md`: 最終Deterministic Rescue後稿。Rescueが不合格でも実際のRescue後本文を保存する。
+- `article_audit/articles/pending_retry/<candidate>/current.md`: Pending Retry時点の最新利用可能稿。
+- `article_audit/articles/needs_editorial_review/<candidate>/current.md`: Needs Editorial Review稿。
+- `article_audit/eyecatch/`: Ready記事の最終Eyecatch。
+- `article_audit/RUN_SUMMARY.md`: Candidate / Source / Decision Score / Final Status / Failure Reason / 対応Markdownの索引。
+
+未公開本文はRepositoryへcommitせず、Actions Artifactにのみ保存し、既存どおり14日retentionとする。Article Audit保存失敗は記事生成・Notion永続化の成否を上書きしない観測系Fail-Openとし、ログへ明示する。

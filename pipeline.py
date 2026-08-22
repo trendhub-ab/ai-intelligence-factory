@@ -514,6 +514,7 @@ REVIEW_CANDIDATES_DIR = os.environ.get("REVIEW_CANDIDATES_DIR", "review_candidat
 QUALITY_FAILURES_DIR = os.environ.get("QUALITY_FAILURES_DIR", "quality_failures")
 GATE_HISTORY_DIR = os.environ.get("GATE_HISTORY_DIR", "gate_history")
 REGRESSION_CASES_DIR = os.environ.get("REGRESSION_CASES_DIR", "regression_cases_pending")
+ARTICLE_AUDIT_DIR = os.environ.get("ARTICLE_AUDIT_DIR", "article_audit")
 
 GATE_STATUS_NOT_RUN = "NOT_RUN"
 GATE_STATUS_PASS = "PASS"
@@ -2096,10 +2097,12 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              article_ready: bool = True) -> str | None:
     """Generate the approved 1280x670 Decision Score card over the source background.
 
-    Visual contract (2026-08-22 approved):
+    Final visual contract (2026-08-22):
     - article title is intentionally NOT rendered; note already shows it separately
     - main KPI: 意思決定スコア (Decision Score) X/100
     - lower cards: 技術的破壊力 (Technical Impact) X/25 and 緊急度 (Urgency) X/20
+    - all numeric scores use Google Font Lato Bold (fonts-lato installed in GitHub Actions)
+    - content group is optically centered vertically with generous internal padding
     - progress color follows five Decision Score bands (gray/cyan/blue/purple/gold)
     - eligibility is Article Ready, never a score threshold
     """
@@ -2125,17 +2128,32 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
     overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # Fixed geometry follows the approved reference layout.
-    card = (72, 113, 755, 575)
-    draw.rounded_rectangle(card, radius=25, fill=(3, 13, 28, 205), outline=(205, 220, 239, 225), width=2)
+    # Larger card and wider breathing room than the first implementation.
+    # The content block below is vertically balanced around the card's optical center.
+    card = (60, 78, 770, 592)
+    draw.rounded_rectangle(card, radius=27, fill=(3, 13, 28, 205), outline=(205, 220, 239, 225), width=2)
 
-    font_paths = [
+    japanese_font_paths = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     ]
-    def font(size: int):
-        for path in font_paths:
+    lato_bold_paths = [
+        "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",
+        "/usr/share/fonts/truetype/lato/Lato-Heavy.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+
+    def text_font(size: int):
+        for path in japanese_font_paths:
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    def number_font(size: int):
+        for path in lato_bold_paths:
             try:
                 return ImageFont.truetype(path, size)
             except OSError:
@@ -2148,37 +2166,36 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
     accent = (*_eyecatch_score_color(score), 255)
     bar_bg = (56, 70, 91, 235)
 
-    # Header and main score.
-    draw.text((113, 157), "意思決定スコア  (Decision Score)", font=font(35), fill=white)
-    score_text = f"{score}/100"
-    bbox = draw.textbbox((0, 0), score_text, font=font(78))
-    score_w = bbox[2] - bbox[0]
-    draw.text((413 - score_w / 2, 222), score_text, font=font(78), fill=white)
+    def centered(text: str, cx: int, y: int, fnt, fill=white):
+        b = draw.textbbox((0, 0), text, font=fnt)
+        draw.text((cx - (b[2] - b[0]) / 2, y), text, font=fnt, fill=fill)
 
-    # Progress bar: score-band accent, length proportional to Decision Score.
-    bx0, by0, bx1, by1 = 112, 325, 715, 367
+    # Content group spans y=132..548 and is optically centered inside y=78..592.
+    centered("意思決定スコア  (Decision Score)", 415, 132, text_font(35))
+
+    score_text = f"{score}/100"
+    centered(score_text, 415, 204, number_font(88))
+
+    # Progress bar with generous vertical separation from the main number.
+    bx0, by0, bx1, by1 = 108, 318, 722, 360
     draw.rounded_rectangle((bx0, by0, bx1, by1), radius=11, fill=bar_bg)
     progress_x = bx0 + int((bx1 - bx0) * score / 100)
     if progress_x > bx0:
         draw.rounded_rectangle((bx0, by0, progress_x, by1), radius=11, fill=accent)
 
-    # Lower sub-score cards.
-    left_box = (102, 395, 409, 550)
-    right_box = (420, 395, 726, 550)
-    draw.rounded_rectangle(left_box, radius=17, fill=(2, 13, 29, 126), outline=border, width=2)
-    draw.rounded_rectangle(right_box, radius=17, fill=(2, 13, 29, 126), outline=border, width=2)
+    # Lower metric cards: increased horizontal/vertical padding and centered content.
+    left_box = (98, 395, 412, 548)
+    right_box = (430, 395, 744, 548)
+    draw.rounded_rectangle(left_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
+    draw.rounded_rectangle(right_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
 
-    def centered(text: str, cx: int, y: int, fnt, fill=white):
-        b = draw.textbbox((0, 0), text, font=fnt)
-        draw.text((cx - (b[2] - b[0]) / 2, y), text, font=fnt, fill=fill)
+    centered("技術的破壊力", 255, 416, text_font(29))
+    centered("(Technical Impact)", 255, 454, text_font(19), soft)
+    centered(f"{tech if tech is not None else '—'}/25", 255, 484, number_font(50))
 
-    centered("技術的破壊力", 255, 416, font(31))
-    centered("(Technical Impact)", 255, 454, font(20), soft)
-    centered(f"{tech if tech is not None else '—'}/25", 255, 484, font(48))
-
-    centered("緊急度", 573, 416, font(31))
-    centered("(Urgency)", 573, 454, font(20), soft)
-    centered(f"{urg if urg is not None else '—'}/20", 573, 484, font(48))
+    centered("緊急度", 587, 416, text_font(29))
+    centered("(Urgency)", 587, 454, text_font(19), soft)
+    centered(f"{urg if urg is not None else '—'}/20", 587, 484, number_font(50))
 
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     img.save(output_path, "PNG")
@@ -5385,19 +5402,49 @@ def _find_hype_claims(draft: str, source_context: str = "", evidence_metadata: d
     return failures
 
 
-def _find_false_negative_evidence_claims(draft: str, evidence_metadata: dict) -> list[str]:
-    """深い一次資料にあるのに「不明」と書く誤りを止める。"""
+def _evidence_has_substantive_coverage(key: str, source_context: str, evidence_metadata: dict | None = None) -> bool:
+    """Confirm that FOUND metadata represents substantive evidence, not a keyword hit.
+
+    Run 99 showed that the word "benchmark" alone can mark coverage=FOUND and then falsely reject a
+    sentence saying benchmark data are unavailable. For hard contradiction checks we require concrete
+    result/condition signals in the source itself.
+    """
+    text = source_context or ""
+    meta_found = ((evidence_metadata or {}).get("coverage", {}) or {}).get(key) == "FOUND"
+    if not meta_found or not text.strip():
+        return False
+    if key == "benchmark":
+        for m in re.finditer(r"\b(?:benchmark|evaluation|experiment|test|results?)\b|ベンチマーク|評価|実験|結果", text, re.I):
+            window = text[max(0, m.start() - 180): min(len(text), m.end() + 260)]
+            if re.search(r"\d+(?:\.\d+)?\s*(?:%|ms|s\b|sec|x\b|倍|MB|GB|RPS|req|score|points?)|p\d{2}|latency|throughput|faster|slower|improv", window, re.I):
+                return True
+        return False
+    if key == "runtime":
+        return bool(re.search(r"\d+(?:\.\d+)?\s*(?:ms|s\b|sec(?:onds?)?|minutes?|hours?|分|秒|時間)", text, re.I))
+    if key == "hardware":
+        return bool(re.search(r"\b(?:GPU|CPU|H100|A100|RTX\s?\d+|TPU|GB\s+(?:RAM|VRAM))\b", text, re.I))
+    if key == "code_availability":
+        return bool(re.search(r"github\.com|source code|repository|repo\b|コード|リポジトリ", text, re.I))
+    return meta_found
+
+
+def _find_false_negative_evidence_claims(draft: str, evidence_metadata: dict, source_context: str = "") -> list[str]:
+    """Stop a false 'unknown/not published' statement only when the source concretely proves otherwise."""
     text = draft or ""
     if not re.search(r"確認できない|記載されていない|不明|未公開|未評価|データがない", text):
         return []
-    coverage = (evidence_metadata or {}).get("coverage", {})
-    mapping = {"GPU|ハードウェア|環境": "hardware", "処理時間|runtime|速度|秒": "runtime", "コード|ソースコード": "code_availability", "評価|ベンチマーク": "benchmark"}
+    mapping = {
+        "GPU|ハードウェア|環境": "hardware",
+        "処理時間|runtime|速度|秒": "runtime",
+        "コード|ソースコード": "code_availability",
+        "評価|ベンチマーク": "benchmark",
+    }
     failures = []
     for sentence in re.split(r"(?<=[。！？])", text):
         if not re.search(r"確認できない|記載されていない|不明|未公開|未評価|データがない", sentence):
             continue
         for cue, key in mapping.items():
-            if re.search(cue, sentence, re.I) and coverage.get(key) == "FOUND":
+            if re.search(cue, sentence, re.I) and _evidence_has_substantive_coverage(key, source_context, evidence_metadata):
                 failures.append("FALSE_NEGATIVE_EVIDENCE_CLAIM: " + key)
     return list(dict.fromkeys(failures))
 
@@ -5459,15 +5506,54 @@ def _explicit_decision_conflict(parsed: dict) -> str:
 
 
 
+def _markdown_prose_only(text: str) -> str:
+    """Remove fenced/inline code from leak checks so technical constants are not mistaken for management codes."""
+    prose = re.sub(r"```.*?```", " ", text or "", flags=re.S)
+    prose = re.sub(r"`[^`]*`", " ", prose)
+    return prose
+
+
+def _decision_code_context_pattern(code: str) -> str:
+    # Public-article leaks are normally parenthetical labels such as （WATCH） or decision prose such as
+    # "WATCH と判断". Requiring decision context avoids false positives for unrelated technical acronyms.
+    return (
+        rf"(?:[（(]\s*{code}\s*[）)])|"
+        rf"(?:Decision|Status)\s*[:：]\s*{code}\b|"
+        rf"\b{code}\b(?=.{{0,20}}(?:と判断|という判断|スタンス|方針|採用|導入|見送|注視))"
+    )
+
+
 def _find_decision_code_leak(draft: str) -> list[str]:
-    """読者向けARTICLEに内部Decisionコードが漏れていないか検出する。"""
-    text = draft or ""
-    # 英単語として独立して現れる管理コードだけを対象にする。URL等の一部は除外。
+    """Detect internal Decision codes only when they appear as public decision labels."""
+    text = _markdown_prose_only(draft or "")
     leaked = []
     for code in ("NOW", "TRY", "WATCH", "WAIT", "AVOID"):
-        if re.search(rf"(?<![A-Za-z0-9_/-]){code}(?![A-Za-z0-9_/-])", text, re.IGNORECASE):
+        if re.search(_decision_code_context_pattern(code), text):
             leaked.append(code)
     return ["internal decision code leaked into ARTICLE: " + ", ".join(dict.fromkeys(leaked))] if leaked else []
+
+
+def _replace_public_decision_code_leaks(text: str, code_phrases: dict[str, str]) -> tuple[str, list[str]]:
+    """0-API repair of management labels in prose, preserving fenced/inline code exactly."""
+    changes: list[str] = []
+    # Split fenced code first; odd indices are code and remain byte-for-byte untouched.
+    fenced = re.split(r"(```.*?```)", text or "", flags=re.S)
+    for i in range(0, len(fenced), 2):
+        parts = re.split(r"(`[^`]*`)", fenced[i])
+        for j in range(0, len(parts), 2):
+            prose = parts[j]
+            for code, phrase in code_phrases.items():
+                # Parenthetical labels are redundant: remove the label only.
+                updated = re.sub(rf"[（(]\s*{code}\s*[）)]", "", prose)
+                # Explicit management label in prose becomes a reader-facing phrase.
+                updated = re.sub(rf"(?:Decision|Status)\s*[:：]\s*{code}\b", phrase, updated)
+                updated = re.sub(rf"\b{code}\b(?=.{{0,20}}(?:と判断|という判断|スタンス|方針|採用|導入|見送|注視))", phrase, updated)
+                if updated != prose:
+                    changes.append(f"decision_code_to_reader_phrase:{code}")
+                    prose = updated
+            parts[j] = prose
+        fenced[i] = "".join(parts)
+    return "".join(fenced), list(dict.fromkeys(changes))
 
 
 def _find_management_score_leak(draft: str) -> list[str]:
@@ -5585,78 +5671,188 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
 
 
 _RELATION_FAMILIES = {
-    "provide": (r"提供(?:する|している|される|された|しています|しており)?|offers?|provides?|ships?|maintains?",),
-    "propose": (r"提唱(?:する|した|している)?|提案(?:する|した|している)?|propos(?:e|ed|es)|introduced?",),
-    "adopt": (r"採用(?:する|した|している|される|された)?|adopt(?:s|ed|ing)?|uses?|built on",),
-    "develop": (r"開発(?:する|した|している|された)?|develop(?:s|ed|ing)?|created?|built",),
+    # Bare Japanese nouns such as 「開発体制」「提案内容」must never trigger a relation claim.
+    # Only explicit predicates are accepted here.
+    "provide": (
+        r"提供(?:する|した|しました|している|される|された|されています|しています|しており|していること)",
+        r"\b(?:provide|provides|provided|offer|offers|offered|ship|ships|shipped|maintain|maintains|maintained)\b",
+    ),
+    "propose": (
+        r"提唱(?:する|した|しました|している|されています|しています|しており)|提案(?:する|した|しました|している|されています|しています|しており)",
+        r"\b(?:propose|proposes|proposed|introduce|introduces|introduced)\b",
+    ),
+    "adopt": (
+        r"採用(?:する|した|しました|している|される|された|されています|しています|しており)",
+        r"\b(?:adopt|adopts|adopted|use|uses|used)\b|\bbuilt\s+on\b",
+    ),
+    "develop": (
+        r"開発(?:する|した|しました|している|される|された|されています|しています|しており)",
+        r"\b(?:develop|develops|developed|create|creates|created|build|builds|built)\b",
+    ),
 }
 
 
-def _entity_tokens_for_relation(text: str) -> list[str]:
-    """Extract conservative named-entity tokens for deterministic relationship checks."""
-    raw = re.findall(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9.+_-]{3,}(?:\s+[A-Z][A-Za-z0-9.+_-]{2,})?(?![A-Za-z0-9_])", text or "")
-    ignore = {"ARTICLE", "MANAGEMENT", "DATA", "Source", "Summary", "Decision", "Action", "HackerNews", "ProductHunt", "GitHub", "ArXiv",
-              "provides", "provide", "offers", "offer", "adopts", "adopt", "develops", "develop", "proposes", "propose"}
-    return [x for x in dict.fromkeys(raw) if x not in ignore][:8]
+def _relation_family_for_predicate(predicate: str) -> tuple[str | None, tuple[str, ...] | None]:
+    for family, patterns in _RELATION_FAMILIES.items():
+        if any(re.search(pattern, predicate or "", re.I) for pattern in patterns):
+            return family, patterns
+    return None, None
+
+
+def _clean_relation_entity(value: str) -> str:
+    text = re.sub(r"^[\s'\"「『（(]+|[\s'\"」』）),，、]+$", "", value or "").strip()
+    text = re.sub(r"(?:社|氏|チーム|財団|プロジェクト)$", "", text).strip()
+    # Keep the claim conservative. A full clause/list is not an entity.
+    if len(text) > 64 or re.search(r"[,，、;；]|(?:および|ならびに|または)", text):
+        return ""
+    return text
+
+
+def _looks_like_relation_entity(value: str) -> bool:
+    text = _clean_relation_entity(value)
+    if len(text) < 2:
+        return False
+    # At least one proper-name signal: Latin token/camel case, quoted Japanese name, or honorific/company marker
+    # in the original expression. Generic concepts such as 「開発体制」 are intentionally excluded.
+    return bool(
+        re.search(r"[A-Za-z][A-Za-z0-9.+_-]+", text)
+        or re.search(r"[「『][^」』]{2,}[」』]", value or "")
+        or re.search(r"(?:社|氏|チーム|財団|プロジェクト)", value or "")
+    )
+
+
+def _extract_explicit_relation_claim(sentence: str) -> tuple[str, str, str, tuple[str, ...]] | None:
+    """Extract only grammatically explicit actor→relation→object claims.
+
+    This deliberately prefers precision over recall. Relation Gate is a hard-fail gate, so a bare noun
+    such as 「開発」「提案」「採用」 or a list of product names must not be interpreted as a factual
+    actor relationship. Unsupported claims that are not explicit relations remain covered by the other
+    Fact/Source-Boundary gates.
+    """
+    sent = (sentence or "").strip()
+    if not sent:
+        return None
+
+    # Japanese active voice: Timescale社がpgvectorを提供しています。
+    # Keep actor/object windows small so headings and enumerations do not become pseudo-relations.
+    jp_patterns = [
+        re.compile(
+            r"(?P<actor>[A-Za-z0-9_.+\-/一-龥ぁ-んァ-ヶ々ー・「『』」 ]{2,48}?(?:社|氏|チーム|財団|プロジェクト)?)"
+            r"(?:が|は)\s*(?P<object>[A-Za-z0-9_.+\-/一-龥ぁ-んァ-ヶ々ー・「『』」 ]{2,64}?)を\s*"
+            r"(?P<predicate>提供(?:する|した|している|される|された|しています|しており)|"
+            r"提唱(?:する|した|しました|している|されています|しています|しており)|提案(?:する|した|しました|している|されています|しています|しており)|"
+            r"採用(?:する|した|しました|している|される|された|されています|しています|しており)|"
+            r"開発(?:する|した|しました|している|される|された|されています|しています|しており))"
+        ),
+        # Japanese passive voice: WidgetXはAcmeによって開発された。
+        re.compile(
+            r"(?P<object>[A-Za-z0-9_.+\-/一-龥ぁ-んァ-ヶ々ー・「『』」 ]{2,64}?)は\s*"
+            r"(?P<actor>[A-Za-z0-9_.+\-/一-龥ぁ-んァ-ヶ々ー・「『』」 ]{2,48}?(?:社|氏|チーム|財団|プロジェクト)?)"
+            r"によって\s*(?P<predicate>提供された|提唱された|提案された|採用された|開発された)"
+        ),
+    ]
+    for pattern in jp_patterns:
+        m = pattern.search(sent)
+        if not m:
+            continue
+        actor_raw, object_raw, predicate = m.group("actor"), m.group("object"), m.group("predicate")
+        actor, obj = _clean_relation_entity(actor_raw), _clean_relation_entity(object_raw)
+        family, family_patterns = _relation_family_for_predicate(predicate)
+        if family and family_patterns and _looks_like_relation_entity(actor_raw) and _looks_like_relation_entity(object_raw):
+            return family, actor, obj, family_patterns
+
+    # English active voice. Require proper-name-looking actor AND object; generic prose is ignored.
+    english_relation = r"provides?|provided|offers?|offered|ships?|shipped|maintains?|maintained|proposes?|proposed|introduced?|adopts?|adopted|uses?|used|develops?|developed|creates?|created|builds?|built"
+    m = re.search(
+        rf"(?P<actor>[A-Z][A-Za-z0-9_.+/-]*(?:\s+[A-Z][A-Za-z0-9_.+/-]*){{0,2}})\s+"
+        rf"(?P<predicate>{english_relation})\s+"
+        rf"(?P<object>[A-Z][A-Za-z0-9_.+/-]*(?:\s+[A-Z][A-Za-z0-9_.+/-]*){{0,2}})",
+        sent,
+    )
+    if m:
+        actor, obj, predicate = m.group("actor"), m.group("object"), m.group("predicate")
+        family, family_patterns = _relation_family_for_predicate(predicate)
+        if family and family_patterns:
+            return family, actor, obj, family_patterns
+
+    # English passive voice: WidgetX was developed by Acme.
+    m = re.search(
+        rf"(?P<object>[A-Z][A-Za-z0-9_.+/-]*(?:\s+[A-Z][A-Za-z0-9_.+/-]*){{0,2}})\s+"
+        rf"(?:is|was|are|were|has been|have been)\s+(?P<predicate>provided|offered|maintained|proposed|introduced|adopted|used|developed|created|built)\s+by\s+"
+        rf"(?P<actor>[A-Z][A-Za-z0-9_.+/-]*(?:\s+[A-Z][A-Za-z0-9_.+/-]*){{0,2}})",
+        sent,
+        re.I,
+    )
+    if m:
+        actor, obj, predicate = m.group("actor"), m.group("object"), m.group("predicate")
+        family, family_patterns = _relation_family_for_predicate(predicate)
+        if family and family_patterns:
+            return family, actor, obj, family_patterns
+    return None
+
+
+def _evidence_supports_relation(actor: str, obj: str, family_patterns: tuple[str, ...], source_context: str) -> bool:
+    actor_norm = _normalized_named_fact(actor)
+    object_norm = _normalized_named_fact(obj)
+    for ev in re.split(r"(?<=[。！？.!?])\s+|\n+", source_context or ""):
+        if not ev.strip() or not any(re.search(pattern, ev, re.I) for pattern in family_patterns):
+            continue
+        normalized_ev = _normalized_named_fact(ev)
+        if actor_norm and object_norm and actor_norm in normalized_ev and object_norm in normalized_ev:
+            return True
+    return False
 
 
 def _find_entity_relation_violations(draft: str, source_context: str) -> list[str]:
-    """Fail closed on unsupported entity-to-entity relationships.
+    """High-precision hard gate for unsupported actor→object factual relationships.
 
-    Presence of entity A and entity B somewhere in the evidence is not enough.  A relationship
-    claim such as "A provides B", "X proposed Y", or "A adopted B" must be co-supported in an
-    evidence sentence by the same two named entities and the same relation family.
+    Only explicit grammatical claims are eligible for hard failure. Lists, co-occurring product names,
+    headings, and nouns such as 「開発体制」 are ignored. This prevents Run-99-style false positives
+    while still rejecting high-confidence attribution errors such as "Timescale provides pgvector".
     """
     if not draft or not source_context:
         return []
-    evidence_sentences = re.split(r"(?<=[。！？.!?])\s+|\n+", source_context)
     failures: list[str] = []
     for sent in re.split(r"(?<=[。！？.!?])\s+|\n+", draft):
-        if not sent or re.search(r"一次情報(?:では|からは)確認できない|未確認|推測|可能性", sent):
+        if not sent or re.search(r"一次情報(?:では|からは)確認できない|未確認|推測|可能性|仮に|たとえば|例えば", sent):
             continue
-        family = None
-        family_patterns = None
-        for key, patterns in _RELATION_FAMILIES.items():
-            if any(re.search(pattern, sent, re.I) for pattern in patterns):
-                family, family_patterns = key, patterns
-                break
-        if not family:
+        claim = _extract_explicit_relation_claim(sent)
+        if not claim:
             continue
-        entities = _entity_tokens_for_relation(sent)
-        if not entities:
-            continue
-        # At minimum the named actor and relation family must co-occur in one evidence sentence.
-        # If a second named entity exists, require it too. This catches "X proposed <Japanese concept>"
-        # even when the object is not an ASCII product name.
-        required_entities = min(2, len(entities[:4]))
-        supported = False
-        for ev in evidence_sentences:
-            if not any(re.search(pattern, ev, re.I) for pattern in family_patterns):
-                continue
-            normalized_ev = _normalized_named_fact(ev)
-            present = sum(1 for entity in entities[:4] if _normalized_named_fact(entity) in normalized_ev)
-            if present >= required_entities:
-                supported = True
-                break
-        if not supported:
-            failures.append(f"unsupported entity relation ({family}): " + ", ".join(entities[:4]))
+        family, actor, obj, family_patterns = claim
+        if not _evidence_supports_relation(actor, obj, family_patterns, source_context):
+            failures.append(f"unsupported entity relation ({family}): {actor} -> {obj}")
     return list(dict.fromkeys(failures))[:6]
 
 
+_SECONDARY_NEWS_HOST_SUFFIXES = (
+    "reuters.com", "apnews.com", "bloomberg.com", "techcrunch.com", "theverge.com",
+    "wired.com", "arstechnica.com", "zdnet.com", "venturebeat.com", "cnbc.com",
+)
+
+
 def _primary_source_authority_failures(source_info: dict | None) -> list[str]:
-    """Discovery platforms are not sufficient authority for product/technology evaluation."""
+    """Require first-party/author-original evidence behind HN/PH discovery.
+
+    HN/PH are discovery channels. An external personal/author blog can be the primary source for that
+    author's experiment/opinion, but a secondary news report (for example Reuters reporting a vendor
+    pricing change) is not first-party authority for the vendor claim. In that case the pipeline must
+    resolve an official announcement/docs/repository or fail closed.
+    """
     if not source_info:
         return []
     source = str(source_info.get("source") or "")
     if source not in {"HackerNews", "ProductHunt"}:
         return []
     primary_url = str(source_info.get("primary_url") or "")
-    host = (urlparse(primary_url).netloc or "").lower()
+    host = (urlparse(primary_url).netloc or "").lower().split(":", 1)[0]
     discovery_host = (source == "HackerNews" and host in {"news.ycombinator.com", "www.news.ycombinator.com"}) or (
         source == "ProductHunt" and host.endswith("producthunt.com")
     )
-    if discovery_host or not source_info.get("primary_source_resolved"):
-        return ["PRIMARY_SOURCE_AUTHORITY_INSUFFICIENT: discovery source is not authoritative primary evidence"]
+    secondary_news = any(host == suffix or host.endswith("." + suffix) for suffix in _SECONDARY_NEWS_HOST_SUFFIXES)
+    if discovery_host or secondary_news or not source_info.get("primary_source_resolved"):
+        kind = "secondary news report" if secondary_news else "discovery source"
+        return [f"PRIMARY_SOURCE_AUTHORITY_INSUFFICIENT: {kind} is not authoritative primary evidence"]
     return []
 
 
@@ -5672,6 +5868,16 @@ def _apply_final_japanese_polish(parsed: dict) -> tuple[dict, list[str]]:
     """0-API deterministic cleanup for unmistakable Japanese mechanical glitches."""
     out = dict(parsed or {})
     changes: list[str] = []
+    # Quality retries can accidentally copy uppercase MANAGEMENT decision codes back into ARTICLE.
+    # Translate only exact uppercase standalone codes; normal English words such as "Watch" are untouched.
+    decision_code_phrases = {
+        "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",
+        "WAIT": "条件が整うまで待つ", "AVOID": "現時点では採用を見送る",
+    }
+    if out.get("note_draft"):
+        article, code_changes = _replace_public_decision_code_leaks(str(out.get("note_draft") or ""), decision_code_phrases)
+        changes.extend(code_changes)
+        out["note_draft"] = article
     for key in ("note_draft", "title_text", "action_text", "decision_reason_text"):
         text = str(out.get(key) or "")
         for pattern, replacement in _JAPANESE_SAFE_FIXES:
@@ -5967,7 +6173,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
 
     failures.extend(_find_unsupported_numeric_claims(draft, source_context, evidence_metadata))
     failures.extend(_find_hype_claims(draft, source_context, evidence_metadata))
-    failures.extend(_find_false_negative_evidence_claims(draft, evidence_metadata or {}))
+    failures.extend(_find_false_negative_evidence_claims(draft, evidence_metadata or {}, source_context))
     failures.extend(_find_final_wording_violations(draft, evidence_metadata or {}, freshness))
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
@@ -6268,6 +6474,9 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
             sections.append(section)
     if not instructions:
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
+    # Retry itself must not re-introduce internal management vocabulary into the public article.
+    instructions.append("ARTICLE本文には内部管理コード NOW / TRY / WATCH / WAIT / AVOID を絶対に出力せず、読者向けの自然な日本語判断文へ言い換えてください。")
+    instructions.append("修正対象外の一次情報・数値・固有名詞・見出し構造は不用意に書き換えず、局所修正に限定してください。")
     return "\n".join(dict.fromkeys(instructions)), list(dict.fromkeys(sections))
 
 
@@ -6725,11 +6934,124 @@ def save_needs_editorial_review_article(repo: dict, parsed: dict, gate_record: d
 
 
 def save_quality_failed_article(repo: dict, parsed: dict | None, gate_record: dict,
-                                source_info: dict | None, failure_reason: str) -> str | None:
-    return _save_json_private(
+                                source_info: dict | None, failure_reason: str,
+                                audit_snapshots: dict | None = None) -> str | None:
+    path = _save_json_private(
         QUALITY_FAILURES_DIR, repo.get("nameWithOwner", "untitled"), repo.get("url", ""),
         build_internal_article_record(repo, parsed, gate_record, source_info, failure_reason),
     )
+    save_article_audit_package(
+        repo, "QUALITY_FAILED", parsed, source_info, gate_record, failure_reason,
+        snapshots=audit_snapshots or {},
+    )
+    return path
+
+
+def _article_audit_key(repo: dict) -> str:
+    name = repo.get("nameWithOwner") or "untitled"
+    url = repo.get("url") or name
+    fingerprint = hashlib.sha256(url.encode("utf-8")).hexdigest()[:10]
+    return f"{_sanitize_filename(name)}_{fingerprint}"
+
+
+def _write_article_audit_markdown(path: str, article: str, metadata: dict | None = None) -> str | None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        meta = metadata or {}
+        lines = ["# Article Audit", ""]
+        for label, key in (
+            ("Status", "status"), ("Stage", "stage"), ("Source", "source"),
+            ("Decision Score", "decision_score"), ("Failure Reason", "failure_reason"),
+        ):
+            value = meta.get(key)
+            if value not in (None, ""):
+                lines.extend([f"## {label}", str(value), ""])
+        evidence_urls = meta.get("evidence_urls") or []
+        if evidence_urls:
+            lines.extend(["## Primary Evidence URLs", *[f"- {u}" for u in evidence_urls], ""])
+        lines.extend(["## Article", article or "（本文なし）", ""])
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines))
+        logger.info("[ARTICLE AUDIT SAVED] %s", path)
+        return path
+    except Exception as exc:
+        logger.error("[ARTICLE AUDIT SAVE FAILED] %s", exc)
+        return None
+
+
+def save_article_audit_package(repo: dict, status: str, parsed: dict | None,
+                               source_info: dict | None = None, gate_record: dict | None = None,
+                               failure_reason: str = "", snapshots: dict | None = None,
+                               clean_manuscript: str = "", eyecatch_path: str = "") -> list[str]:
+    """Private Artifact用の記事監査パッケージ。追加APIなしで既存生成稿を書き出す。"""
+    if not repo:
+        return []
+    status_slug = _sanitize_filename((status or "unknown").lower())
+    base = os.path.join(ARTICLE_AUDIT_DIR, "articles", status_slug, _article_audit_key(repo))
+    parsed = parsed or {}
+    snapshots = snapshots or {}
+    evidence_urls = list((source_info or {}).get("evidence_urls") or [])
+    primary = (source_info or {}).get("primary_url")
+    if primary and primary not in evidence_urls:
+        evidence_urls.insert(0, primary)
+    meta = {
+        "status": status,
+        "source": repo.get("source", ""),
+        "decision_score": parsed.get("score"),
+        "failure_reason": failure_reason,
+        "evidence_urls": evidence_urls,
+    }
+    saved: list[str] = []
+    # Readyは最終公開稿だけで十分。Quality Failedは原因切り分けのため最大3段階を残す。
+    if status == "READY":
+        final_article = clean_manuscript or parsed.get("note_draft", "")
+        path = _write_article_audit_markdown(os.path.join(base, "final.md"), final_article, {**meta, "stage": "final"})
+        if path: saved.append(path)
+    elif status == "QUALITY_FAILED":
+        for stage, filename in (("generated_original", "generated_original.md"), ("after_quality_retry", "after_quality_retry.md")):
+            article = snapshots.get(stage, "")
+            if article:
+                path = _write_article_audit_markdown(os.path.join(base, filename), article, {**meta, "stage": stage})
+                if path: saved.append(path)
+        final_article = snapshots.get("final_after_rescue", "") or parsed.get("note_draft", "")
+        path = _write_article_audit_markdown(os.path.join(base, "final_after_rescue.md"), final_article, {**meta, "stage": "final_after_rescue"})
+        if path: saved.append(path)
+    else:
+        final_article = parsed.get("note_draft", "") or snapshots.get("after_quality_retry", "") or snapshots.get("generated_original", "")
+        path = _write_article_audit_markdown(os.path.join(base, "current.md"), final_article, {**meta, "stage": "current"})
+        if path: saved.append(path)
+    if eyecatch_path and os.path.isfile(eyecatch_path):
+        try:
+            import shutil
+            out_dir = os.path.join(ARTICLE_AUDIT_DIR, "eyecatch")
+            os.makedirs(out_dir, exist_ok=True)
+            dst = os.path.join(out_dir, os.path.basename(eyecatch_path))
+            shutil.copy2(eyecatch_path, dst)
+            saved.append(dst)
+        except Exception as exc:
+            logger.warning("[ARTICLE AUDIT EYECATCH COPY FAILED] %s", exc)
+    _append_article_audit_summary(repo, status, parsed, gate_record, failure_reason, saved, evidence_urls)
+    return saved
+
+
+def _append_article_audit_summary(repo: dict, status: str, parsed: dict,
+                                  gate_record: dict | None, failure_reason: str,
+                                  saved_paths: list[str], evidence_urls: list[str]) -> None:
+    try:
+        os.makedirs(ARTICLE_AUDIT_DIR, exist_ok=True)
+        path = os.path.join(ARTICLE_AUDIT_DIR, "RUN_SUMMARY.md")
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("# Daily Article Audit Summary\n\n")
+                handle.write("| Candidate | Source | Decision Score | Final Status | Failure Reason | Markdown |\n")
+                handle.write("|---|---|---:|---|---|---|\n")
+        md_paths = [os.path.relpath(x, ARTICLE_AUDIT_DIR).replace(os.sep, "/") for x in saved_paths if x.endswith(".md")]
+        reason = (failure_reason or (gate_record or {}).get("reason", "")).replace("|", "\\|").replace("\n", " ")[:500]
+        name = str(repo.get("nameWithOwner") or "untitled").replace("|", "\\|")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"| {name} | {repo.get('source','')} | {parsed.get('score','')} | {status} | {reason} | {', '.join(md_paths)} |\n")
+    except Exception as exc:
+        logger.error("[ARTICLE AUDIT SUMMARY FAILED] %s", exc)
 
 
 def build_external_review_markdown(record: dict) -> str:
@@ -7092,6 +7414,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     source_info: dict = {}
     candidate_generation_request_count = 0
     generation_attempt_history: list[dict] = []
+    article_audit_snapshots: dict[str, str] = {}
 
     def record_gate_outcome(generation_status: str, final_status: str,
                             fact_gate: str | None = None,
@@ -7276,6 +7599,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             parsed, polish_changes = _apply_final_japanese_polish(parsed)
             if polish_changes:
                 logger.info("[FINAL JAPANESE POLISH] %s changes=%s", name, polish_changes)
+            if attempt == 0 and parsed.get("note_draft"):
+                article_audit_snapshots["generated_original"] = parsed.get("note_draft", "")
+            elif attempt > 0 and parsed.get("note_draft"):
+                article_audit_snapshots["after_quality_retry"] = parsed.get("note_draft", "")
             if funnel:
                 funnel.incr("article_parsed")
             parsed.update({
@@ -7413,6 +7740,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         funnel.incr("deterministic_rescue_attempted")
                     rescue_loss = rescued_parsed.get("_rescue_loss", {})
                     loss_exceeded = bool(rescue_loss.get("loss_exceeded"))
+                    if rescued_parsed.get("note_draft"):
+                        article_audit_snapshots["pre_retry_rescue"] = rescued_parsed.get("note_draft", "")
                     logger.info(
                         "[PUBLICATION RESCUE PRE-RETRY] %s changes=%s ready=%s loss=%s remaining_fact=%s publication=%s",
                         name, rescue_changes, rescue_ready, rescue_loss, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
@@ -7540,6 +7869,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     )
                     alert_prefix = "⚠️ Needs Editorial Review Persistence Failed / Pending Retry"
                 saved_path = save_needs_editorial_review_article(repo, parsed, record, source_info, " / ".join(review_issues))
+                save_article_audit_package(
+                    repo, "NEEDS_EDITORIAL_REVIEW", parsed, source_info, record, " / ".join(review_issues),
+                    snapshots=article_audit_snapshots,
+                )
                 record["notion_review_saved"] = review_notion_saved
                 record["article_saved"] = bool(saved_path)
                 send_telegram_alert(f"{alert_prefix}: {name}\n" + " / ".join(review_issues)[:1200])
@@ -7571,6 +7904,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         )
                         rescue_loss = rescued_parsed.get("_rescue_loss", {})
                         loss_exceeded = bool(rescue_loss.get("loss_exceeded"))
+                        if rescued_parsed.get("note_draft"):
+                            article_audit_snapshots["final_after_rescue"] = rescued_parsed.get("note_draft", "")
                         logger.info(
                             "[PUBLICATION RESCUE] %s changes=%s ready=%s loss=%s remaining_fact=%s publication=%s",
                             name, rescue_changes, rescue_ready, rescue_loss, rescue_diag.get("fact_failures"), rescue_diag.get("publication_state"),
@@ -7630,7 +7965,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     deep_dive_generation_called=deep_dive_generation_called,
                     retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "QUALITY_FAILED", parsed.get("note_draft", "")),
                 )
-                saved_path = save_quality_failed_article(repo, parsed, record, source_info, " / ".join(failures))
+                saved_path = save_quality_failed_article(repo, parsed, record, source_info, " / ".join(failures), audit_snapshots=article_audit_snapshots)
                 record["article_saved"] = bool(saved_path)
                 send_telegram_alert(f"ℹ️ Quality Failed: {name}\n" + " / ".join(failures)[:1500])
                 return None
@@ -7724,6 +8059,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, persistence_reason_rows, "NOTION_PERSISTENCE_FAILED", parsed.get("note_draft", "")),
                     article_saved=False,
                 )
+                save_article_audit_package(
+                    repo, "PENDING_RETRY", parsed, source_info, None, "Notion persistence failed after Quality Gate PASS",
+                    snapshots=article_audit_snapshots, clean_manuscript=clean_manuscript,
+                    eyecatch_path=eyecatch_path if 'eyecatch_path' in locals() else "",
+                )
                 send_telegram_alert(f"⚠️ Notion Persistence Failed: {name}\n記事はQuality Gateを通過しましたが、Notionへの保存/アップグレードに失敗したためReadyにしていません。")
                 # Readyの定義（Quality Gate PASS AND Notion Persistence SUCCESS）を
                 # 満たしていないため、ここでNoneを返してgenerated_count/retry_generated
@@ -7751,6 +8091,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     attribution_context=attribution_context,
                 )
                 logger.info("[SUBSCRIPTION ATTRIBUTION] %s -> %s", name, attribution_path or "not-recorded")
+                save_article_audit_package(
+                    repo, "READY", parsed, source_info, None, "", snapshots=article_audit_snapshots,
+                    clean_manuscript=clean_manuscript, eyecatch_path=eyecatch_path if 'eyecatch_path' in locals() else "",
+                )
         else:
             regen_status = "accepted" if quality_gate_passed else "rejected"
             save_regen_test_manuscript(
@@ -7775,6 +8119,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             page_id = save_screening_metadata_to_notion(repo, screening_score, screening_reason or "Deep Dive候補")
         if persist_results and page_id:
             update_notion_pending_retry(page_id, name, str(e))
+        if persist_results:
+            save_article_audit_package(repo, "PENDING_RETRY", parsed if isinstance(parsed, dict) else {}, source_info, None, str(e), snapshots=article_audit_snapshots)
         return None
     except DeepDiveRunBudgetExceededError as e:
         logger.warning(f"[DEEP DIVE RUN BUDGET STOP] {name}: {e}")
@@ -7784,6 +8130,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         )
         if persist_results and notion_page_id:
             update_notion_pending_retry(notion_page_id, name, str(e))
+        if persist_results:
+            save_article_audit_package(repo, "PENDING_RETRY", parsed if isinstance(parsed, dict) else {}, source_info, None, str(e), snapshots=article_audit_snapshots)
         return None
     except GeminiBudgetExceededError as e:
         logger.warning(f"[GEMINI BUDGET STOP] {name}: {e}")

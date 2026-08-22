@@ -943,3 +943,17 @@ class TestArxivEvidenceLinkFiltering(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Run99EyecatchFinalLayoutTests(unittest.TestCase):
+    def test_eyecatch_numeric_font_prefers_lato_bold(self):
+        import inspect
+        src = inspect.getsource(pipeline.generate_eyecatch_image)
+        self.assertIn("Lato-Bold.ttf", src)
+        self.assertIn("number_font", src)
+
+    def test_eyecatch_final_card_has_expanded_padding(self):
+        import inspect
+        src = inspect.getsource(pipeline.generate_eyecatch_image)
+        self.assertIn("card = (60, 78, 770, 592)", src)
+        self.assertIn("left_box = (98, 395, 412, 548)", src)

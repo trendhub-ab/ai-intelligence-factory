@@ -176,5 +176,6 @@ jobs:
             quality_failures/
             gate_history/
             regression_cases_pending/
+            article_audit/
           if-no-files-found: warn
           retention-days: 14
