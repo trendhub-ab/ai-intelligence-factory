@@ -523,6 +523,7 @@ class TestPipelineSafety(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(pipeline, "REVIEW_CANDIDATES_DIR", os.path.join(directory, "review")), \
              patch.object(pipeline, "QUALITY_FAILURES_DIR", os.path.join(directory, "failed")), \
+             patch.object(pipeline, "ARTICLE_AUDIT_DIR", os.path.join(directory, "article_audit")), \
              patch.object(pipeline, "update_notion_quality_failed") as notion_update:
             review_path = pipeline.save_needs_editorial_review_article(repo, parsed, gate, {"primary_url": repo["url"]}, "review")
             failure_path = pipeline.save_quality_failed_article(repo, parsed, gate, {"primary_url": repo["url"]}, "failed")
@@ -956,4 +957,5 @@ class Run99EyecatchFinalLayoutTests(unittest.TestCase):
         import inspect
         src = inspect.getsource(pipeline.generate_eyecatch_image)
         self.assertIn("card = (60, 78, 770, 592)", src)
-        self.assertIn("left_box = (98, 395, 412, 548)", src)
+        self.assertIn("left_box = (98, 395 + content_shift_y, 412, 548 + content_shift_y)", src)
+        self.assertIn("_draw_eyecatch_text_stack_centered", src)

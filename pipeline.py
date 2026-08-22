@@ -2002,8 +2002,8 @@ def _reader_plain_text(text: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def _compact_reader_summary(text: str, max_chars: int = 135) -> str:
-    """冒頭で一目で読める長さへ縮める。新しい事実は生成せず、先頭の完結文だけを使う。"""
+def _compact_reader_summary(text: str, max_chars: int = 110) -> str:
+    """冒頭で一目で読める長さへ縮める。新しい事実は生成せず、完結文を優先する。"""
     value = _reader_plain_text(text)
     if not value:
         return ""
@@ -2015,11 +2015,56 @@ def _compact_reader_summary(text: str, max_chars: int = 135) -> str:
     if len(value) <= max_chars:
         return value
     cut = value[:max_chars]
-    for sep in ("。", "、", "，", ",", "；", ";"):
+    # Reader-first要約では、専門語の長い列挙を途中で切って見せない。
+    # 完全文が収まらない場合は、意味が壊れにくい句読点まで戻す。
+    for sep in ("。", "；", ";", "、", "，", ","):
         pos = cut.rfind(sep)
         if pos >= max_chars // 2:
-            return cut[:pos + 1].strip()
+            candidate = cut[:pos + 1].strip()
+            if candidate.endswith(("され、", "して、", "おり、", "ため、", "ので、")):
+                continue
+            return candidate
     return cut.rstrip("、，, ") + "…"
+
+
+def _reader_summary_complexity(text: str) -> tuple[int, int]:
+    """同じGate通過情報の候補から、冒頭向けに専門語密度の低い文を選ぶための順位。"""
+    value = _reader_plain_text(text)
+    if not value:
+        return (10_000, 10_000)
+    technical_ids = len(re.findall(r"\b(?:SEP|RFC|CVE)-?\d+\b|`[^`]+`|/[a-z][a-z0-9_-]+", value, re.I))
+    # AI/LLM/API/MCP/OSS/GitHubは本媒体の読者に許容する基本語。それ以外の英字列挙を重くする。
+    ascii_terms = [
+        token for token in re.findall(r"\b[A-Za-z][A-Za-z0-9.-]{2,}\b", value)
+        if token.upper() not in {"AI", "LLM", "API", "MCP", "OSS", "GITHUB"}
+    ]
+    list_density = max(0, value.count("、") - 2)
+    paren_density = len(re.findall(r"[（(][^）)]{8,}[）)]", value))
+    return (technical_ids * 8 + len(ascii_terms) * 2 + list_density * 2 + paren_density, len(value))
+
+
+def _pick_reader_summary_candidate(candidates: list[str]) -> str:
+    """追加生成せず、既存のGate通過候補から最も読みやすい完結文を選ぶ。"""
+    usable = []
+    for candidate in candidates:
+        compact = _compact_reader_summary(candidate)
+        if compact:
+            usable.append(compact)
+    if not usable:
+        return ""
+    return min(usable, key=_reader_summary_complexity)
+
+
+def _find_reader_intro_fact_sentence(intro: str) -> str:
+    """導入から『何が出たか』を示す文だけを候補化する。事実の言い換えは行わない。"""
+    value = _reader_plain_text(intro)
+    if not value:
+        return ""
+    for m in re.finditer(r"[^。！？!?]+[。！？!?]?", value):
+        sentence = m.group(0).strip()
+        if re.search(r"公開|発表|公表|リリース|登場|策定|提示|示され", sentence):
+            return sentence
+    return ""
 
 
 def _reader_decision_fallback(decision_text: str) -> str:
@@ -2041,12 +2086,15 @@ def build_reader_first_summary(parsed: dict) -> dict[str, str]:
     conclusion = _extract_any_markdown_section(draft, _display_heading_aliases("conclusion"))
     final = _extract_any_markdown_section(draft, _display_heading_aliases("final"))
 
-    what = _compact_reader_summary(
-        parsed.get("what_text") or parsed.get("source_summary_text") or intro
-    )
-    why = _compact_reader_summary(
-        parsed.get("why_important_text") or conclusion
-    )
+    # Reader-firstの冒頭は「網羅性」より「理解速度」を優先する。
+    # what_textが仕様IDや認証方式の列挙になった場合でも、新規生成はせず、
+    # source_summary / 導入中の公開事実 / what_textの中から最も読みやすい既存文を選ぶ。
+    what = _pick_reader_summary_candidate([
+        parsed.get("source_summary_text", ""),
+        _find_reader_intro_fact_sentence(intro),
+        parsed.get("what_text", ""),
+    ])
+    why = _compact_reader_summary(parsed.get("why_important_text") or conclusion)
     decision = _compact_reader_summary(
         final or parsed.get("action_text") or parsed.get("decision_reason_text")
     )
@@ -2115,6 +2163,42 @@ def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_
     return "\n".join(lines).strip()
 
 
+def _remove_markdown_sections(markdown_text: str, headings: list[str]) -> str:
+    """Reader-firstヘッダーと役割が重なる本文セクションだけを公開稿から除く。"""
+    if not markdown_text or not headings:
+        return markdown_text or ""
+    alternatives = "|".join(re.escape(h) for h in sorted(set(headings), key=len, reverse=True))
+    pattern = re.compile(
+        rf"(?ms)^#{{2,6}}\s*(?:{alternatives})\s*$\n?.*?(?=^#{{2,6}}\s+|\Z)"
+    )
+    return pattern.sub("", markdown_text).strip()
+
+
+def _remove_reader_redundant_provenance(markdown_text: str) -> str:
+    """冒頭の元情報カードと重複する『本記事は一次情報に基づく』だけを削る。"""
+    if not markdown_text:
+        return ""
+    pattern = re.compile(
+        r"(?m)^[ \t]*(?:本記事|本稿|この記事)は、?[^\n。！？]{0,220}"
+        r"(?:一次情報|公開情報|公式(?:ブログ|資料|ドキュメント|リポジトリ|情報))[^\n。！？]{0,160}"
+        r"(?:基づいて|基づき|もとに)[^\n。！？]*[。！？][ \t]*$"
+    )
+    cleaned = pattern.sub("", markdown_text)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
+def _prepare_reader_first_body(markdown_text: str, reader_summary: dict | None) -> str:
+    """30秒ヘッダー導入時だけ、二重の出典説明と二重結論を公開本文から除く。"""
+    body = markdown_text or ""
+    if not reader_summary:
+        return body
+    body = _remove_reader_redundant_provenance(body)
+    # 「先に判断」は30秒欄の『結論は？』と役割が完全に重なる。
+    # 最終結論・Actionは残すため、情報価値を落とさず冒頭の反復だけを削る。
+    body = _remove_markdown_sections(body, _display_heading_aliases("conclusion"))
+    return body.strip()
+
+
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
                                  spdx_id: str, source: str = "GitHub",
                                  evidence_urls: list[str] | None = None,
@@ -2125,6 +2209,8 @@ def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
     free_part, paid_part = split_free_paid(note_draft, repo_name)
     free_clean = normalize_markdown_for_note(free_part)
     paid_clean = normalize_markdown_for_note(paid_part)
+    free_clean = _prepare_reader_first_body(free_clean, reader_summary)
+    paid_clean = _prepare_reader_first_body(paid_clean, reader_summary)
 
     display_title = _normalize_note_title(title_text)
     manuscript_parts: list[str] = []
@@ -2273,6 +2359,80 @@ def _eyecatch_score_color(score: int | float | None) -> tuple[int, int, int]:
     return (245, 185, 66)       # Gold       #F5B942
 
 
+def _eyecatch_vertical_center_shift(container_bounds: tuple[int, int],
+                                    content_bounds: tuple[int, int]) -> int:
+    """Return the integer Y shift that optically centers content in a container.
+
+    Bounds are visual top/bottom coordinates, not font baselines.  This keeps
+    eyecatch placement stable across CJK/Lato font metric differences.
+    """
+    container_top, container_bottom = container_bounds
+    content_top, content_bottom = content_bounds
+    container_center = (float(container_top) + float(container_bottom)) / 2.0
+    content_center = (float(content_top) + float(content_bottom)) / 2.0
+    return int(round(container_center - content_center))
+
+
+def _draw_eyecatch_text_stack_centered(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
+                                        rows: list[tuple[str, object, tuple[int, int, int, int]]],
+                                        gaps: tuple[int, ...]) -> tuple[int, int, int, int]:
+    """Draw a multi-line text group centered by its *visible* glyph bounds.
+
+    Pillow's text origin is a font baseline/anchor reference and differs between
+    Noto CJK and Lato.  Centering each line by its origin therefore makes the
+    lower score cards look vertically low.  This helper measures each line with
+    ``textbbox`` first, then centers the complete visible stack inside ``box``.
+    """
+    if len(gaps) != max(0, len(rows) - 1):
+        raise ValueError("gaps must contain exactly len(rows)-1 values")
+    if not rows:
+        return box
+
+    metrics = []
+    for text, font, fill in rows:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        metrics.append((text, font, fill, bbox, bbox[2] - bbox[0], bbox[3] - bbox[1]))
+
+    total_height = sum(item[5] for item in metrics) + sum(gaps)
+    box_center_y = (box[1] + box[3]) / 2.0
+    cursor_top = box_center_y - total_height / 2.0
+    box_center_x = (box[0] + box[2]) / 2.0
+
+    visible_bounds = []
+    for index, (text, font, fill, bbox, width, height) in enumerate(metrics):
+        x = int(round(box_center_x - (bbox[0] + bbox[2]) / 2.0))
+        y = int(round(cursor_top - bbox[1]))
+        draw.text((x, y), text, font=font, fill=fill)
+        visible_bounds.append((x + bbox[0], y + bbox[1], x + bbox[2], y + bbox[3]))
+        cursor_top += height
+        if index < len(gaps):
+            cursor_top += gaps[index]
+
+    return (
+        min(b[0] for b in visible_bounds),
+        min(b[1] for b in visible_bounds),
+        max(b[2] for b in visible_bounds),
+        max(b[3] for b in visible_bounds),
+    )
+
+
+def _eyecatch_centered_pair_boxes(container: tuple[int, int, int, int],
+                                  top: int, bottom: int, box_width: int, gap: int) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    """Return two equal-width lower metric boxes centered as a pair inside ``container``.
+
+    The previous implementation hard-coded x coordinates, which left the pair
+    6px right of the card center.  This helper derives both boxes from the
+    container center so the left/right margins are always equal.
+    """
+    container_center_x = (container[0] + container[2]) / 2.0
+    group_width = box_width * 2 + gap
+    left_x0 = int(round(container_center_x - group_width / 2.0))
+    left_x1 = left_x0 + box_width
+    right_x0 = left_x1 + gap
+    right_x1 = right_x0 + box_width
+    return (left_x0, top, left_x1, bottom), (right_x0, top, right_x1, bottom)
+
+
 def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub", decision_score: int | None = None,
                              technical_impact: int | None = None, urgency: int | None = None,
@@ -2284,7 +2444,8 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
     - main KPI: 意思決定スコア (Decision Score) X/100
     - lower cards: 技術的破壊力 (Technical Impact) X/25 and 緊急度 (Urgency) X/20
     - all numeric scores use Google Font Lato Bold (fonts-lato installed in GitHub Actions)
-    - content group is optically centered vertically with generous internal padding
+    - outer content group is centered from actual visible glyph bounds, not font baselines
+    - lower metric text stacks are vertically centered inside each frame by measured textbbox bounds
     - progress color follows five Decision Score bands (gray/cyan/blue/purple/gold)
     - eligibility is Article Ready, never a score threshold
     """
@@ -2350,34 +2511,65 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
 
     def centered(text: str, cx: int, y: int, fnt, fill=white):
         b = draw.textbbox((0, 0), text, font=fnt)
-        draw.text((cx - (b[2] - b[0]) / 2, y), text, font=fnt, fill=fill)
+        # Account for non-zero left bearing so the *visible* glyphs are centered.
+        draw.text((cx - (b[0] + b[2]) / 2, y), text, font=fnt, fill=fill)
 
-    # Content group spans y=132..548 and is optically centered inside y=78..592.
-    centered("意思決定スコア  (Decision Score)", 415, 132, text_font(35))
+    # Build the original composition, then calculate the shift from the actual
+    # visible title top to the lower-card bottom.  Noto CJK's top bearing makes
+    # the previous baseline-based layout appear about 10px too low.
+    title_label = "意思決定スコア  (Decision Score)"
+    title_fnt = text_font(35)
+    title_bbox = draw.textbbox((0, 0), title_label, font=title_fnt)
+    nominal_title_y = 132
+    nominal_lower_box_bottom = 548
+    content_shift_y = _eyecatch_vertical_center_shift(
+        (card[1], card[3]),
+        (nominal_title_y + title_bbox[1], nominal_lower_box_bottom),
+    )
+
+    centered(title_label, 415, nominal_title_y + content_shift_y, title_fnt)
 
     score_text = f"{score}/100"
-    centered(score_text, 415, 204, number_font(88))
+    centered(score_text, 415, 204 + content_shift_y, number_font(88))
 
     # Progress bar with generous vertical separation from the main number.
-    bx0, by0, bx1, by1 = 108, 318, 722, 360
+    bx0, by0, bx1, by1 = 108, 318 + content_shift_y, 722, 360 + content_shift_y
     draw.rounded_rectangle((bx0, by0, bx1, by1), radius=11, fill=bar_bg)
     progress_x = bx0 + int((bx1 - bx0) * score / 100)
     if progress_x > bx0:
         draw.rounded_rectangle((bx0, by0, progress_x, by1), radius=11, fill=accent)
 
-    # Lower metric cards: increased horizontal/vertical padding and centered content.
-    left_box = (98, 395, 412, 548)
-    right_box = (430, 395, 744, 548)
+    # Lower metric cards move with the outer content group.  Their text is not
+    # placed at fixed baselines: each three-line stack is measured and centered
+    # by visible glyph bounds inside its own card.
+    left_box, right_box = _eyecatch_centered_pair_boxes(
+        card,
+        395 + content_shift_y,
+        548 + content_shift_y,
+        box_width=314,
+        gap=18,
+    )
     draw.rounded_rectangle(left_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
     draw.rounded_rectangle(right_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
 
-    centered("技術的破壊力", 255, 416, text_font(29))
-    centered("(Technical Impact)", 255, 454, text_font(19), soft)
-    centered(f"{tech if tech is not None else '—'}/25", 255, 484, number_font(50))
-
-    centered("緊急度", 587, 416, text_font(29))
-    centered("(Urgency)", 587, 454, text_font(19), soft)
-    centered(f"{urg if urg is not None else '—'}/20", 587, 484, number_font(50))
+    _draw_eyecatch_text_stack_centered(
+        draw, left_box,
+        [
+            ("技術的破壊力", text_font(29), white),
+            ("(Technical Impact)", text_font(19), soft),
+            (f"{tech if tech is not None else '—'}/25", number_font(50), white),
+        ],
+        gaps=(8, 16),
+    )
+    _draw_eyecatch_text_stack_centered(
+        draw, right_box,
+        [
+            ("緊急度", text_font(29), white),
+            ("(Urgency)", text_font(19), soft),
+            (f"{urg if urg is not None else '—'}/20", number_font(50), white),
+        ],
+        gaps=(8, 16),
+    )
 
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     img.save(output_path, "PNG")
@@ -5413,6 +5605,9 @@ _VAGUE_QUANTIFIED_PATTERNS = [
     r"数万円(?:単位)?",
     r"数十万円(?:単位)?",
     r"数百万円(?:単位)?",
+    # 「coming months」から勝手に『半年』へ具体化するような期間の水増しを検知する。
+    r"半年",
+    r"数(?:日|週間|週|ヶ月|か月|月|年)",
 ]
 
 
@@ -5532,10 +5727,30 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
             if evidence_windows and not any(_numeric_condition_compatible(claim_window, window) for window in evidence_windows):
                 failures.append(f"numeric condition mismatch: {token}")
 
+    def vague_supported(token: str) -> bool:
+        normalized_evidence = _normalized_evidence_text(evidence_raw)
+        if _normalized_evidence_text(token) in normalized_evidence:
+            return True
+        # 日本語の自然な期間表現と英語一次情報の表記差だけを吸収する。
+        # 「半年」は six months / half a year が明示された場合のみ許可し、
+        # 単なる coming months からの勝手な具体化は許可しない。
+        temporal_map = {
+            "半年": r"(?:half\s+(?:a\s+)?year|six\s+months|6\s+months)",
+            "数日": r"(?:several|a\s+few)\s+days",
+            "数週間": r"(?:several|a\s+few)\s+weeks",
+            "数週": r"(?:several|a\s+few)\s+weeks",
+            "数ヶ月": r"(?:coming|next|several|a\s+few)\s+months",
+            "数か月": r"(?:coming|next|several|a\s+few)\s+months",
+            "数月": r"(?:several|a\s+few)\s+months",
+            "数年": r"(?:several|a\s+few)\s+years",
+        }
+        pattern = temporal_map.get(token)
+        return bool(pattern and re.search(pattern, evidence_raw, re.I))
+
     for pattern in _VAGUE_QUANTIFIED_PATTERNS:
         for m in re.finditer(pattern, scrubbed):
             token = m.group(0)
-            if _normalized_evidence_text(token) not in _normalized_evidence_text(evidence_raw):
+            if not vague_supported(token):
                 failures.append(f"unsupported vague quantified claim: {token}")
     return list(dict.fromkeys(failures))[:8]
 
@@ -7361,6 +7576,20 @@ def save_quality_failed_article(repo: dict, parsed: dict | None, gate_record: di
         snapshots=audit_snapshots or {},
     )
     return path
+
+
+def reset_article_audit_for_production_run() -> None:
+    """本番Artifactを1 Run単位に隔離し、同梱済み/前Run/テスト残骸の混入を防ぐ。"""
+    import shutil
+    root = Path(ARTICLE_AUDIT_DIR)
+    try:
+        if root.exists():
+            shutil.rmtree(root)
+        root.mkdir(parents=True, exist_ok=True)
+        logger.info("[ARTICLE AUDIT RESET] clean run directory: %s", root)
+    except Exception as exc:
+        # Human auditの完全性が壊れた状態で継続すると、Ready件数を誤認する。
+        raise RuntimeError(f"Article Audit初期化に失敗しました: {exc}") from exc
 
 
 def _article_audit_key(repo: dict) -> str:
@@ -10439,6 +10668,9 @@ def main():
         }, ensure_ascii=False))
         # No DB, image, upload, or messaging call is reachable in this mode.
         return
+    # Private Article Auditはrun-local成果物。配布ZIPや前Runに残ったテスト稿を
+    # 今回の本番Readyとして誤認しないよう、Production開始時に必ず初期化する。
+    reset_article_audit_for_production_run()
     initialize_runtime()
     if REGEN_TEST_MODE:
         run_regen_test_mode()

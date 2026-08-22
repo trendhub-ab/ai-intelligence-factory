@@ -90,6 +90,21 @@ class TestArticleAuditArtifact(unittest.TestCase):
         self.assertIn("最終稿", files["current.md"])
         self.assertIn("budget exhausted", files["current.md"])
 
+    def test_production_run_reset_removes_preexisting_test_or_previous_run_artifacts(self):
+        stale = self.audit_dir / "articles" / "ready" / "octo_example" / "final.md"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_text("stale test artifact", encoding="utf-8")
+        summary = self.audit_dir / "RUN_SUMMARY.md"
+        summary.write_text("old summary", encoding="utf-8")
+        with patch.object(pipeline, "ARTICLE_AUDIT_DIR", str(self.audit_dir)):
+            pipeline.reset_article_audit_for_production_run()
+        self.assertTrue(self.audit_dir.exists())
+        self.assertEqual([], list(self.audit_dir.rglob("*.md")))
+
+    def test_article_audit_is_gitignored(self):
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("article_audit/", gitignore)
+
     def test_audit_writer_has_no_gemini_dependency(self):
         import inspect
         source = inspect.getsource(pipeline.save_article_audit_package)

@@ -11,6 +11,7 @@ import importlib
 import os
 import sys
 import types
+import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -646,6 +647,13 @@ class TestGenerateIntelligenceReportReadyIntegrity(unittest.TestCase):
         self.patched_key = patch.object(pipeline, "NOTION_API_KEY", "test-key")
         self.patched_key.start()
         self.addCleanup(self.patched_key.stop)
+        self.audit_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.audit_tmp.cleanup)
+        self.patched_audit_dir = patch.object(
+            pipeline, "ARTICLE_AUDIT_DIR", os.path.join(self.audit_tmp.name, "article_audit")
+        )
+        self.patched_audit_dir.start()
+        self.addCleanup(self.patched_audit_dir.stop)
 
         self.repo = {
             "nameWithOwner": "octo/example",

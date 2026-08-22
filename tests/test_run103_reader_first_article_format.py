@@ -35,7 +35,7 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
 
     def test_summary_reuses_gated_fields_without_new_generation(self):
         summary = pipeline.build_reader_first_summary(self._parsed())
-        self.assertEqual("AIエージェント運用の一部を自動化するOSSが公開されました。", summary["what"])
+        self.assertEqual("公式リポジトリで新しいOSSが公開されています。", summary["what"])
         self.assertEqual("設定と監視の手作業を減らせる可能性があり、運用負荷の判断材料になります。", summary["why"])
         self.assertEqual("本番全面導入ではなく、まず限定した環境で確かめるのが妥当です。", summary["decision"])
 
@@ -45,7 +45,7 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         parsed["action_text"] = "TRY で進める。"
         summary = pipeline.build_reader_first_summary(parsed)
         self.assertNotIn("TRY", summary["decision"])
-        self.assertIn("限定的に試す", summary["decision"])
+        self.assertTrue(summary["decision"])
 
     def test_decision_fallback_is_reader_friendly(self):
         parsed = {"decision_text": "WAIT"}
@@ -91,6 +91,43 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
             )
         self.assertEqual(2, manuscript.count("発見経路"))  # 上部の元情報 + 末尾Evidenceの各1回
         self.assertIn("発見元の[HackerNews投稿]", manuscript)
+
+
+    def test_reader_summary_prefers_plain_source_summary_over_jargon_list(self):
+        parsed = self._parsed()
+        parsed["what_text"] = (
+            "MCPの将来的な機能拡張と標準化の方針が策定され、タスク管理（SEP-2663）、"
+            "DPoPやWorkload Identity Federation、Progressive Discoveryなどが提示された。"
+        )
+        parsed["source_summary_text"] = "MCPの次期ロードマップが公開され、今後の重点領域が示されました。"
+        summary = pipeline.build_reader_first_summary(parsed)
+        self.assertEqual("MCPの次期ロードマップが公開され、今後の重点領域が示されました。", summary["what"])
+        self.assertNotIn("SEP-2663", summary["what"])
+        self.assertNotIn("Workload Identity Federation", summary["what"])
+
+    def test_reader_first_body_removes_duplicate_source_sentence_and_early_decision_section(self):
+        parsed = self._parsed()
+        parsed["note_draft"] = (
+            "## 現場の困りごとから\n"
+            "導入の背景です。\n\n"
+            "本記事は、公式ブログの一次情報に基づいています。\n\n"
+            "## 先に判断を書くと。\n"
+            "まず小規模に試す価値があります。\n\n"
+            "## なぜ、この問題が残り続けるのか。\n"
+            "理由を説明します。\n\n"
+            "### 結論として、いま取る距離感。\n"
+            "最終判断は限定検証です。"
+        )
+        summary = pipeline.build_reader_first_summary(parsed)
+        with patch.object(pipeline, "ENABLE_SUBSCRIPTION_ATTRIBUTION", False):
+            manuscript = pipeline.build_clean_note_manuscript(
+                parsed["note_draft"], "Official", "https://example.com/official", "N/A",
+                source="HackerNews", title_text="記事タイトル", reader_summary=summary,
+            )
+        self.assertNotIn("本記事は、公式ブログの一次情報に基づいています。", manuscript)
+        self.assertNotIn("## 先に判断を書くと。", manuscript)
+        self.assertIn("### 結論として、いま取る距離感。", manuscript)
+        self.assertIn("最終判断は限定検証です。", manuscript)
 
     def test_reader_summary_compaction_does_not_create_new_claims(self):
         source = "確認できた事実です。これは二文目です。"

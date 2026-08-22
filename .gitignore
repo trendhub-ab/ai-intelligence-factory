@@ -19,3 +19,6 @@ migration_outputs/
 source_roi_history/
 subscription_attribution/
 .runtime/
+
+# Per-run private human-audit artifact; never commit/package as source state.
+article_audit/

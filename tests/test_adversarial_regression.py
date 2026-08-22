@@ -166,6 +166,22 @@ class TestNumericClaimAdversarial(unittest.TestCase):
         failures = pipeline._find_unsupported_numeric_claims('公開日は2026年8月20日。', 'Published on August 20, 2026.')
         self.assertFalse(any('20日' in row for row in failures), failures)
 
+    def test_coming_months_does_not_support_half_year_specificity(self):
+        failures = pipeline._find_unsupported_numeric_claims(
+            '今後数ヶ月から半年の間に仕様が進む。',
+            'The working groups will continue this work over the coming months.',
+        )
+        self.assertFalse(any('数ヶ月' in row for row in failures), failures)
+        self.assertTrue(any('半年' in row for row in failures), failures)
+
+    def test_explicit_six_months_supports_half_year(self):
+        failures = pipeline._find_unsupported_numeric_claims(
+            '半年を目安に確認する。',
+            'The evaluation period is six months.',
+        )
+        self.assertFalse(any('半年' in row for row in failures), failures)
+
+
 
 class TestPrimarySourceResolution(unittest.TestCase):
     def test_github_url_without_retrieved_content_is_not_resolved(self):
