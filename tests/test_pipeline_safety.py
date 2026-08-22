@@ -957,5 +957,16 @@ class Run99EyecatchFinalLayoutTests(unittest.TestCase):
         import inspect
         src = inspect.getsource(pipeline.generate_eyecatch_image)
         self.assertIn("card = (60, 78, 770, 592)", src)
-        self.assertIn("left_box = (98, 395 + content_shift_y, 412, 548 + content_shift_y)", src)
+        self.assertIn("_eyecatch_centered_pair_boxes", src)
+        self.assertIn("box_width=314", src)
+        self.assertIn("gap=18", src)
         self.assertIn("_draw_eyecatch_text_stack_centered", src)
+
+        # Run106+: lower metric cards are derived from the outer-card center,
+        # not pinned to the old asymmetric fixed X coordinates.
+        card = (60, 78, 770, 592)
+        left_box, right_box = pipeline._eyecatch_centered_pair_boxes(
+            card, 385, 538, box_width=314, gap=18
+        )
+        self.assertEqual(left_box[0] - card[0], card[2] - right_box[2])
+        self.assertEqual((card[0] + card[2]) / 2, (left_box[0] + right_box[2]) / 2)
