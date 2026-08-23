@@ -123,6 +123,32 @@ RESEARCH_TERMS = ("paper", "study", "benchmark", "empirical", "analysis", "theor
 RISK_TERMS = ("security", "attack", "vulnerability", "exploit", "threat", "malware", "injection", "governance", "safety", "privacy")
 OPINION_TERMS = ("opinion", "essay", "rant", "feels like", "thoughts on", "why i", "ask hn")
 
+IMPLEMENTATION_ARTIFACT_HOSTS = (
+    "github.com", "gitlab.com", "codeberg.org", "huggingface.co", "pypi.org", "npmjs.com",
+)
+IMPLEMENTATION_ARTIFACT_PHRASES = (
+    "code available at", "source code at", "official implementation", "github repository",
+    "implementation repository", "pip install", "npm install",
+)
+
+
+def has_implementation_artifact(record: TechnologyRecord) -> tuple[bool, tuple[str, ...]]:
+    """Return strong, planning-only evidence that an inspectable implementation exists.
+
+    Run111 deliberately uses a conservative test for ArXiv candidates. Merely sounding
+    practical (SDK/platform/deployment terminology) is not enough: an ArXiv record must
+    point to an implementation artifact through its URL/evidence/summary. This affects
+    review order only and never mutates the authoritative assessment.
+    """
+    evidence = " ".join((record.primary_url or "", record.primary_evidence_urls or "", record.source_summary or "")).lower()
+    for host in IMPLEMENTATION_ARTIFACT_HOSTS:
+        if host in evidence:
+            return True, (f"implementation_artifact_host:{host}",)
+    for phrase in IMPLEMENTATION_ARTIFACT_PHRASES:
+        if phrase in evidence and ("http://" in evidence or "https://" in evidence):
+            return True, (f"implementation_artifact_phrase:{phrase}",)
+    return False, ("implementation_artifact_missing",)
+
 
 def infer_planning_category(record: TechnologyRecord) -> tuple[str, tuple[str, ...]]:
     """Infer a planning-only category without mutating the authoritative assessment category.
@@ -155,9 +181,14 @@ def candidate_lane(record: TechnologyRecord, planning_category: str | None = Non
         return "RISK", ("lane:RISK",)
     if any(re.search(p, text, re.I) for p in NEWS_EVENT_PATTERNS) or any(term in text for term in OPINION_TERMS):
         return "DISCOVERY", ("lane:DISCOVERY",)
+    if "ArXiv" in set(record.source):
+        has_artifact, artifact_reasons = has_implementation_artifact(record)
+        if has_artifact:
+            return "PRACTICAL", ("lane:PRACTICAL_ARXIV_IMPLEMENTATION", *artifact_reasons)
+        return "RESEARCH", ("lane:RESEARCH_ARXIV_NO_IMPLEMENTATION", *artifact_reasons)
     if "GitHub" in set(record.source) or any(term in text for term in PRACTICAL_TERMS):
         return "PRACTICAL", ("lane:PRACTICAL",)
-    if "ArXiv" in set(record.source) or any(term in text for term in RESEARCH_TERMS):
+    if any(term in text for term in RESEARCH_TERMS):
         return "RESEARCH", ("lane:RESEARCH",)
     if planning_category and planning_category != "OTHER":
         return "PRACTICAL", ("lane:PRACTICAL_BY_CATEGORY",)
