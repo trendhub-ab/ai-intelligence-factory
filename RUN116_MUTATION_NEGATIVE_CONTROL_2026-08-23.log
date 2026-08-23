@@ -1,0 +1,63 @@
+Run116 Mutation Negative-Control
+Baseline SHA256: 5b450da13df9f55d1d3e3ee25fa70beaa8e361a85e67256786d991fdce658b28
+F
+======================================================================
+FAIL: test_sitemap_third_party_urls_are_never_ranked_or_fetched (tests.test_run116_bounded_first_party_discovery.Run116BoundedFirstPartyDiscoveryTests.test_sitemap_third_party_urls_are_never_ranked_or_fetched)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/ai_factory_review/AI_Intelligence_Factory_Run116_BoundedFirstPartyDiscovery完成版_2026-08-23/tests/test_run116_bounded_first_party_discovery.py", line 146, in test_sitemap_third_party_urls_are_never_ranked_or_fetched
+    self.assertEqual(['https://docs.tool.example/docs/tracking-server/'], pages)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['htt[29 chars]racking-server/'] != ['htt[29 chars]racking-server/', 'https://evil.example/docs/tracking-server/']
+
+Second list contains 1 additional elements.
+First extra element 1:
+'https://evil.example/docs/tracking-server/'
+
+- ['https://docs.tool.example/docs/tracking-server/']
+?                                                   ^
+
++ ['https://docs.tool.example/docs/tracking-server/',
+?                                                   ^
+
++  'https://evil.example/docs/tracking-server/']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
+MUTATION third-party sitemap filter disabled: KILLED (expected test failure, rc=1)
+RESTORE SHA: PASS 5b450da13df9f55d1d3e3ee25fa70beaa8e361a85e67256786d991fdce658b28
+F
+======================================================================
+FAIL: test_sitemap_candidate_url_does_not_prove_fact_without_exact_phrase_in_body (tests.test_run116_bounded_first_party_discovery.Run116BoundedFirstPartyDiscoveryTests.test_sitemap_candidate_url_does_not_prove_fact_without_exact_phrase_in_body)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/ai_factory_review/AI_Intelligence_Factory_Run116_BoundedFirstPartyDiscovery完成版_2026-08-23/tests/test_run116_bounded_first_party_discovery.py", line 132, in test_sitemap_candidate_url_does_not_prove_fact_without_exact_phrase_in_body
+    self.assertFalse(result['resolved'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 1 test in 0.512s
+
+FAILED (failures=1)
+MUTATION named-fact phrase proof disabled: KILLED (expected test failure, rc=1)
+RESTORE SHA: PASS 5b450da13df9f55d1d3e3ee25fa70beaa8e361a85e67256786d991fdce658b28
+F
+======================================================================
+FAIL: test_sitemap_index_following_is_bounded_and_first_party (tests.test_run116_bounded_first_party_discovery.Run116BoundedFirstPartyDiscoveryTests.test_sitemap_index_following_is_bounded_and_first_party)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/ai_factory_review/AI_Intelligence_Factory_Run116_BoundedFirstPartyDiscovery完成版_2026-08-23/tests/test_run116_bounded_first_party_discovery.py", line 166, in test_sitemap_index_following_is_bounded_and_first_party
+    self.assertIn('https://tool.example/docs/latest/tracking-server/', out['urls'])
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'https://tool.example/docs/latest/tracking-server/' not found in []
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
+MUTATION sitemap-index child priority disabled: KILLED (expected test failure, rc=1)
+RESTORE SHA: PASS 5b450da13df9f55d1d3e3ee25fa70beaa8e361a85e67256786d991fdce658b28
+Final SHA256: 5b450da13df9f55d1d3e3ee25fa70beaa8e361a85e67256786d991fdce658b28

@@ -804,3 +804,49 @@ Run115専用テストは正常系だけでなく、以下の敵対入力を直�
 - Decision History / Subscriber Sync / Notion保存意味。
 - 通常Dailyの収集、Screening、Calibration、記事Deep Dive、記事生成、Eyecatch。
 - Product Review Max Reviewsおよび既存Request Budgetの設定値。
+
+---
+
+## Run 116 Bounded First-Party Discovery（2026-08-23）
+
+### 目的
+Run115の実Bootstrap Applyで、Structured Output・Budget・Fail-Closedは正常化した一方、`mlflow/mlflow`の実在公式機能`Tracking Server`が初期Verification Contextに含まれず、Source-Boundary Reconciliationが4 fetch内で公式Docsへ到達できずFalse Rejectした。Run116はこのRecall不足だけを、Gemini追加0回・bounded HTTP・Fail-Closed維持で修正する。
+
+### Bounded First-Party Discovery
+- 対象は従来どおり`source-boundary unsupported named fact`のみ。Numeric / Relation / Hype / Evidence不足等の別Gateは対象外。
+- Assessment本文は書き換えない。根拠側だけを補強し、再度同じValidatorを通す。
+- Product Review前に明示的に得た公式Homepage / Docs / Primary SourceだけをSeedにする。
+- まず公式Seed本文を最大2ページ確認し、Seedが露出する同一first-party linkを優先する。
+- それでも未解決の場合だけ、Seed pathから決定論的に推定したfirst-party sitemapを最大3件取得する。
+- sitemap indexを発見した場合、同一first-partyの子sitemapを残りの推測sitemapより優先する。
+- sitemapから収集するURLは最大1,200件、named factとのURL lexical scoreで上位最大4件だけを本文取得候補にする。
+- HTML/text本文の実取得はSeed・direct link・sitemap候補を合計して最大6件。無制限crawlは禁止。
+- sitemap XML自体はEvidenceとして保存しない。
+- third-party URL、third-party sitemap entry、redirect後にfirst-party外へ出た本文・linkはすべて破棄する。
+- URLがnamed factに一致していても根拠とはみなさない。取得本文内にnamed factの完全token sequenceが存在する場合だけVerification Context / Evidenceへ追加する。
+- `Tracking Server`は`Tracking-Server`等の区切り揺れを許容するが、`Tracking Serverless`のようなprefix一致は不採用。
+- 根拠が見つからない場合は従来どおりFail-Closedで保存しない。
+
+### コスト / API
+- Discovery / sitemap / first-party page取得はHTTPのみでGemini 0回。
+- `_generate_via_chat`のproduction call site数はRun115から増やさない。
+- Product Review Request Budget / Global Gemini Budget / max_reviewsの意味は変更しない。
+- Boundary Reconciliationが成功しても同一Assessmentの再validationだけを行い、追加Geminiは送信しない。
+
+### 監査
+Reconciliation resultは後方互換の`fetches`に加えて以下を返す。
+- `body_fetches`
+- `discovery_fetches`
+- `discovered_urls`
+- `ranked_candidates_considered`
+- `documents_added`
+- `unresolved_names`
+
+### 非変更範囲
+- Run115 Structured Output / Local Semantic Schema / retry budget hardening。
+- Run113 Evidence-ready slot semantics。
+- Primary Source Authority / Evidence-to-Decision / Fact / Relation / Numeric / Hype各Gate。
+- Decision History / Subscriber Sync / Notion保存意味。
+- 通常Dailyの収集、Screening、Calibration、記事Deep Dive、記事生成、Eyecatch。
+- GitHub Actions workflowおよびInventory Bootstrap input contract。
+

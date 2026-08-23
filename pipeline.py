@@ -6520,14 +6520,184 @@ def _fetch_boundary_html(url: str) -> tuple[str, list[tuple[str, str]], str]:
     return _truncate_verification_context(unescape(text)), links[:200], final_url or url
 
 
-def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, failures: list[str]) -> dict:
-    """Resolve false source-boundary rejects by crawling explicit first-party docs with zero Gemini.
+# Run116: Source-boundary reconciliation remains zero-Gemini and fail-closed, but may
+# discover a small number of first-party docs through bounded sitemap inspection.
+# These are hard safety ceilings, not tuning targets.
+_PRODUCT_REVIEW_BOUNDARY_MAX_BODY_FETCHES = 6
+_PRODUCT_REVIEW_BOUNDARY_MAX_DISCOVERY_FETCHES = 3
+_PRODUCT_REVIEW_BOUNDARY_MAX_SITEMAP_URLS = 1200
+_PRODUCT_REVIEW_BOUNDARY_MAX_RANKED_CANDIDATES = 4
+_PRODUCT_REVIEW_BOUNDARY_MAX_SEED_BODY_FETCHES = 2
 
-    The function is intentionally narrow: it runs only after the strict validator reports an
-    unsupported named fact, follows only already-discovered official seeds and same-site child
-    links, accepts support only when the full named fact appears in the retrieved document, and
-    never changes the assessment text. If support cannot be proven, the original Fail-Closed
-    result remains unchanged.
+
+def _boundary_sitemap_urls_for_seed(seed: str) -> list[str]:
+    """Return a tiny deterministic set of likely first-party sitemap endpoints.
+
+    A docs URL such as ``/docs/latest/genai/tracing`` yields the most specific
+    ``/docs/latest/sitemap.xml`` first, then ``/docs/sitemap.xml``, then root.
+    No guessed product/feature path is constructed here.
+    """
+    parsed = urlparse(seed or "")
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return []
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    parts = [p for p in (parsed.path or "").split("/") if p]
+    candidates: list[str] = []
+    # Most docs generators publish a sitemap at the docs version root.
+    for depth in range(min(len(parts), 3), 0, -1):
+        prefix = "/" + "/".join(parts[:depth])
+        if parts[0].lower() in {"docs", "documentation", "guide", "guides", "manual"}:
+            candidates.append(origin + prefix + "/sitemap.xml")
+    candidates.append(origin + "/sitemap.xml")
+    return list(dict.fromkeys(candidates))[:4]
+
+
+def _boundary_text_supports_name(text: str, name: str) -> bool:
+    """Require the full named-fact token sequence, not a mere compact substring.
+
+    ``Tracking Server`` may match ``Tracking-Server`` or ``Tracking_Server`` but must not match
+    ``Tracking Serverless``. Boundary reconciliation works on HTML/plain-text docs, so a strict
+    token-boundary check is safer than the looser PDF/source-context normalization used elsewhere.
+    """
+    normalized_text = unicodedata.normalize("NFKC", text or "").lower()
+    tokens = [re.escape(t.lower()) for t in re.findall(r"[A-Za-z0-9]+", unicodedata.normalize("NFKC", name or ""))]
+    if not tokens:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"[\s\-_/.:]*".join(tokens) + r"(?![a-z0-9])"
+    return bool(re.search(pattern, normalized_text, re.I))
+
+
+def _boundary_candidate_score(url: str, names: list[str]) -> int:
+    """Rank a first-party URL by lexical evidence only; score never proves support."""
+    parsed = urlparse(url or "")
+    hay_raw = unescape((parsed.path or "") + "?" + (parsed.query or ""))
+    hay = _normalized_named_fact(hay_raw)
+    if not hay:
+        return 0
+    score = 0
+    for name in names:
+        full = _normalized_named_fact(name)
+        if full and full in hay:
+            score = max(score, 100)
+        tokens = [t.lower() for t in re.findall(r"[A-Za-z0-9]{3,}", name or "")]
+        matched = sum(1 for token in tokens if _normalized_named_fact(token) in hay)
+        if tokens:
+            score = max(score, matched * 18 + (20 if matched == len(tokens) else 0))
+            # Later words in a feature name (e.g. ``Server`` in ``Tracking Server``)
+            # are useful for ranking but can never establish evidence by themselves.
+            if len(tokens) >= 2 and _normalized_named_fact(tokens[-1]) in hay:
+                score += 4
+    lower_path = (parsed.path or "").lower()
+    if any(seg in lower_path for seg in ("/docs/", "/documentation/", "/guide/", "/guides/", "/reference/", "/architecture/")):
+        score += 6
+    return score
+
+
+def _parse_boundary_sitemap(raw: bytes, final_url: str, seed_host: str) -> tuple[list[str], list[str]]:
+    """Parse one sitemap document into same-first-party page URLs and child sitemaps."""
+    try:
+        root = ET.fromstring(raw)
+    except (ET.ParseError, ValueError):
+        return [], []
+    page_urls: list[str] = []
+    child_sitemaps: list[str] = []
+    root_name = root.tag.rsplit("}", 1)[-1].lower()
+    for loc in root.iter():
+        if loc.tag.rsplit("}", 1)[-1].lower() != "loc" or not (loc.text or "").strip():
+            continue
+        url = urldefrag((loc.text or "").strip())[0]
+        host = (urlparse(url).netloc or "").lower()
+        if not _same_first_party_host(host, seed_host):
+            continue
+        if root_name == "sitemapindex" or url.lower().split("?", 1)[0].endswith(("sitemap.xml", ".xml.gz")):
+            child_sitemaps.append(url)
+        else:
+            page_urls.append(url)
+        if len(page_urls) >= _PRODUCT_REVIEW_BOUNDARY_MAX_SITEMAP_URLS:
+            break
+    return list(dict.fromkeys(page_urls)), list(dict.fromkeys(child_sitemaps))
+
+
+def _discover_boundary_candidate_urls(
+    seeds: list[str], names: list[str], boundary_checked: set[str], checked: set[str]
+) -> dict:
+    """Discover ranked first-party page URLs with bounded, zero-Gemini sitemap reads.
+
+    Discovery XML is never itself added to Evidence. A candidate page still has to be fetched
+    under the body-fetch ceiling and contain the full normalized named fact before it can repair
+    a source-boundary failure.
+    """
+    sitemap_queue: list[tuple[str, str]] = []
+    for seed in seeds:
+        seed_host = (urlparse(seed).netloc or "").lower()
+        if not seed_host:
+            continue
+        for sm in _boundary_sitemap_urls_for_seed(seed):
+            sitemap_queue.append((sm, seed_host))
+    sitemap_queue = list(dict.fromkeys(sitemap_queue))
+
+    discovery_fetches = 0
+    discovered: list[str] = []
+    rejected: list[dict] = []
+    cursor = 0
+    while cursor < len(sitemap_queue) and discovery_fetches < _PRODUCT_REVIEW_BOUNDARY_MAX_DISCOVERY_FETCHES:
+        sitemap_url, seed_host = sitemap_queue[cursor]; cursor += 1
+        key = _evidence_trace_url_key(sitemap_url)
+        if not key or key in boundary_checked:
+            continue
+        boundary_checked.add(key); checked.add(key); discovery_fetches += 1
+        raw, _ctype, final_url = _http_get_limited(
+            sitemap_url,
+            ("application/xml", "text/xml", "application/rss+xml", "text/plain", "application/octet-stream"),
+            min(WEB_CONTEXT_MAX_BYTES, 1_500_000),
+        )
+        resolved = final_url or sitemap_url
+        final_host = (urlparse(resolved).netloc or "").lower()
+        if not _same_first_party_host(final_host, seed_host):
+            rejected.append({
+                "requested_url": sitemap_url, "final_url": resolved,
+                "reason": "discovery_redirect_outside_first_party",
+            })
+            continue
+        if not raw:
+            continue
+        pages, children = _parse_boundary_sitemap(raw, resolved, seed_host)
+        discovered.extend(pages)
+        # A sitemap index is stronger evidence than another guessed sitemap location.
+        # Follow its same-first-party children next, still under the same hard discovery budget.
+        child_rows = [(child, seed_host) for child in children]
+        if child_rows:
+            sitemap_queue[cursor:cursor] = [row for row in child_rows if row not in sitemap_queue[:cursor]]
+        if len(discovered) >= _PRODUCT_REVIEW_BOUNDARY_MAX_SITEMAP_URLS:
+            discovered = discovered[:_PRODUCT_REVIEW_BOUNDARY_MAX_SITEMAP_URLS]
+            break
+
+    ranked = sorted(
+        ((u, _boundary_candidate_score(u, names)) for u in list(dict.fromkeys(discovered))),
+        key=lambda row: (-row[1], len(urlparse(row[0]).path or ""), row[0]),
+    )
+    ranked = [u for u, score in ranked if score > 0][:_PRODUCT_REVIEW_BOUNDARY_MAX_RANKED_CANDIDATES]
+    return {
+        "urls": ranked,
+        "discovery_fetches": discovery_fetches,
+        "discovered_urls": len(set(discovered)),
+        "rejected_urls": rejected,
+    }
+
+
+def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, failures: list[str]) -> dict:
+    """Resolve false source-boundary rejects by bounded first-party discovery with zero Gemini.
+
+    Run116 keeps the Run115 fail-closed contract and adds only bounded recall:
+    1) inspect at most two explicit official seed pages,
+    2) if unresolved, inspect at most three first-party sitemap documents,
+    3) rank at most four candidate pages lexically,
+    4) fetch at most six HTML/text bodies total,
+    5) accept support only when the *full normalized named fact* is present in a fetched page.
+
+    Discovery XML never becomes Evidence, third-party redirects/bodies are discarded, and no
+    Gemini request is made. If the exact first-party support cannot be proven, the original
+    validator rejection remains unchanged.
     """
     names = _source_boundary_failure_names(failures)
     if not names:
@@ -6541,25 +6711,23 @@ def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, fa
     documents = source_info.setdefault("evidence_documents", [])
     added_parts: list[str] = []
     documents_added = 0
-    fetches = 0
-    max_fetches = 4
+    body_fetches = 0
+    discovery_fetches = 0
+    discovered_urls = 0
+    ranked_candidates_considered = 0
 
     def add_if_supports(url: str, seed_host: str) -> tuple[bool, list[tuple[str, str]]]:
-        nonlocal fetches, documents_added
-        if fetches >= max_fetches:
+        nonlocal body_fetches, documents_added
+        if body_fetches >= _PRODUCT_REVIEW_BOUNDARY_MAX_BODY_FETCHES:
             return False, []
         key = _evidence_trace_url_key(url)
         if not key or key in boundary_checked:
             return False, []
         if not _same_first_party_host(urlparse(url).netloc, seed_host):
             return False, []
-        boundary_checked.add(key); checked.add(key); fetches += 1
+        boundary_checked.add(key); checked.add(key); body_fetches += 1
         text, links, final_url = _fetch_boundary_html(url)
         resolved_url = final_url or url
-        # Run115: first-party scope must be enforced *after* HTTP redirects as well.
-        # A trusted seed that 30x-redirects to a different registrable/host scope must never
-        # become PRIMARY_SOURCE evidence, even if the redirected body contains the named fact.
-        # Drop its body and links entirely so a third-party redirect cannot bootstrap a crawl.
         final_host = (urlparse(resolved_url).netloc or "").lower()
         if not _same_first_party_host(final_host, seed_host):
             source_info.setdefault("boundary_rejected_urls", []).append({
@@ -6570,50 +6738,80 @@ def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, fa
                 seed_host, url, resolved_url,
             )
             return False, []
-        documents.append({
-            "url": resolved_url, "role": "PRIMARY_SOURCE", "source_type": "boundary_official_docs",
-            "retrieved": bool(text), "label": "Product Review boundary reconciliation",
-        })
         if not text:
             return False, links
-        normalized = _normalized_named_fact(text)
-        supported = [name for name in names if _normalized_named_fact(name) in normalized]
+        supported = [name for name in names if _boundary_text_supports_name(text, name)]
         if not supported:
             return False, links
-        piece = f"[PRIMARY_SOURCE_BOUNDARY_RECONCILIATION]\nURL: {final_url or url}\n{text}"
+        # Boundary exploration pages are not evidence merely because they are first-party.
+        # Only a page that actually proves the full named fact enters the audit trail.
+        documents.append({
+            "url": resolved_url, "role": "PRIMARY_SOURCE", "source_type": "boundary_official_docs",
+            "retrieved": True, "label": "Product Review boundary reconciliation",
+        })
+        piece = f"[PRIMARY_SOURCE_BOUNDARY_RECONCILIATION]\nURL: {resolved_url}\n{text}"
         added_parts.append(piece); documents_added += 1
-        source_info.setdefault("deep_source_urls", []).append(final_url or url)
+        source_info.setdefault("deep_source_urls", []).append(resolved_url)
         return True, links
 
     unresolved = set(names)
+    # Explicit official seeds remain the cheapest/highest-trust path, but they no longer consume
+    # the entire body-fetch budget before sitemap discovery gets a chance.
+    seed_fetches = 0
+    all_matching_links: list[tuple[str, str]] = []
     for seed in seeds:
-        if fetches >= max_fetches or not unresolved:
+        if body_fetches >= _PRODUCT_REVIEW_BOUNDARY_MAX_BODY_FETCHES or not unresolved:
+            break
+        if seed_fetches >= _PRODUCT_REVIEW_BOUNDARY_MAX_SEED_BODY_FETCHES:
             break
         seed_host = (urlparse(seed).netloc or "").lower()
         if not seed_host:
             continue
-        before = set(unresolved)
+        before_fetches = body_fetches
         supported, links = add_if_supports(seed, seed_host)
+        if body_fetches > before_fetches:
+            seed_fetches += 1
         if supported and added_parts:
             combined = _normalized_named_fact(added_parts[-1])
             unresolved = {n for n in unresolved if _normalized_named_fact(n) not in combined}
         if not unresolved:
             break
-        matching_links = [
-            link for link, label in links
-            if _same_first_party_host(urlparse(link).netloc, seed_host)
-            and any(_boundary_link_matches_name(name, label, link) for name in unresolved)
-        ]
-        for link in list(dict.fromkeys(matching_links))[:2]:
-            if fetches >= max_fetches or not unresolved:
+        for link, label in links:
+            if (_same_first_party_host(urlparse(link).netloc, seed_host)
+                    and any(_boundary_link_matches_name(name, label, link) for name in unresolved)):
+                all_matching_links.append((link, seed_host))
+
+    # Direct first-party links exposed by the seed are preferable to sitemap discovery.
+    for link, seed_host in list(dict.fromkeys(all_matching_links))[:2]:
+        if body_fetches >= _PRODUCT_REVIEW_BOUNDARY_MAX_BODY_FETCHES or not unresolved:
+            break
+        supported, _ = add_if_supports(link, seed_host)
+        if supported and added_parts:
+            combined = _normalized_named_fact(added_parts[-1])
+            unresolved = {n for n in unresolved if _normalized_named_fact(n) not in combined}
+
+    # Run116 bounded recall: discover likely docs URLs only when explicit links were insufficient.
+    if unresolved and body_fetches < _PRODUCT_REVIEW_BOUNDARY_MAX_BODY_FETCHES:
+        discovery = _discover_boundary_candidate_urls(seeds, sorted(unresolved), boundary_checked, checked)
+        discovery_fetches = int(discovery.get("discovery_fetches") or 0)
+        discovered_urls = int(discovery.get("discovered_urls") or 0)
+        for rejected in discovery.get("rejected_urls") or []:
+            source_info.setdefault("boundary_rejected_urls", []).append(rejected)
+        ranked = discovery.get("urls") or []
+        ranked_candidates_considered = len(ranked)
+        # Each ranked URL is still re-checked against the host of an explicit seed.
+        seed_hosts = [(urlparse(seed).netloc or "").lower() for seed in seeds]
+        for candidate in ranked:
+            if body_fetches >= _PRODUCT_REVIEW_BOUNDARY_MAX_BODY_FETCHES or not unresolved:
                 break
-            supported, _ = add_if_supports(link, seed_host)
+            host = (urlparse(candidate).netloc or "").lower()
+            seed_host = next((h for h in seed_hosts if _same_first_party_host(host, h)), "")
+            if not seed_host:
+                continue
+            supported, _ = add_if_supports(candidate, seed_host)
             if supported and added_parts:
                 combined = _normalized_named_fact(added_parts[-1])
                 unresolved = {n for n in unresolved if _normalized_named_fact(n) not in combined}
-        # Do not crawl arbitrary second-level pages when the explicit seed exposes no matching link.
-        if before == unresolved:
-            continue
 
     if added_parts:
         merged = source_info.get("verification_context") or source_info.get("context", "")
@@ -6626,7 +6824,11 @@ def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, fa
         )
     return {
         "attempted": True, "resolved": not unresolved, "names": names,
-        "unresolved_names": sorted(unresolved), "documents_added": documents_added, "fetches": fetches,
+        "unresolved_names": sorted(unresolved), "documents_added": documents_added,
+        # ``fetches`` is kept for artifact/backward compatibility and means body fetches.
+        "fetches": body_fetches, "body_fetches": body_fetches,
+        "discovery_fetches": discovery_fetches, "discovered_urls": discovered_urls,
+        "ranked_candidates_considered": ranked_candidates_considered,
     }
 
 
