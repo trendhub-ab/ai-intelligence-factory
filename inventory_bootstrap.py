@@ -95,9 +95,112 @@ class PlannedCandidate:
     primary_url: str
     source: tuple[str, ...]
     category: str
+    planning_category: str
+    candidate_lane: str
     screening_score: float | None
     bootstrap_priority: float
+    product_utility_score: float
+    portfolio_priority: float
     reasons: tuple[str, ...]
+
+
+PLANNING_CATEGORY_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("SECURITY", ("security", "attack", "vulnerability", "exploit", "malware", "threat", "injection", "auth", "identity", "privacy", "governance", "safety", "guardrail")),
+    ("AGENT", ("agent", "agentic", "multi-agent", "mcp", "tool use", "orchestration", "harness")),
+    ("MULTIMODAL", ("multimodal", "vision", "image", "video", "speech", "audio", "voice", "vlm")),
+    ("DATA", ("dataset", "data version", "database", "vector", "retrieval", "rag", "knowledge graph", "embedding", "recommendation")),
+    ("INFRA", ("inference", "serving", "runtime", "gpu", "distributed", "kubernetes", "deployment", "compute", "cache", "scheduler", "pipeline engine")),
+    ("DEVTOOLS", ("developer", "devtool", "sdk", "cli", "ide", "coding", "code", "mlops", "experiment", "observability", "workflow", "pipeline", "framework", "library", "repository")),
+    ("MODEL", ("model", "llm", "language model", "transformer", "training", "fine-tun", "distillation", "post-training", "reasoning")),
+)
+
+PRACTICAL_TERMS = (
+    "sdk", "api", "cli", "server", "platform", "tool", "framework", "library", "runtime",
+    "database", "dataset", "pipeline", "deployment", "serving", "orchestration", "mlops",
+    "developer", "workflow", "ide", "repository", "self-host", "open source", "open-source",
+)
+RESEARCH_TERMS = ("paper", "study", "benchmark", "empirical", "analysis", "theorem", "method", "model")
+RISK_TERMS = ("security", "attack", "vulnerability", "exploit", "threat", "malware", "injection", "governance", "safety", "privacy")
+OPINION_TERMS = ("opinion", "essay", "rant", "feels like", "thoughts on", "why i", "ask hn")
+
+
+def infer_planning_category(record: TechnologyRecord) -> tuple[str, tuple[str, ...]]:
+    """Infer a planning-only category without mutating the authoritative assessment category.
+
+    Legacy rows are frequently OTHER because they predate the product taxonomy. The
+    inferred value is used only to diversify which records are reviewed first.
+    """
+    if record.category and record.category != "OTHER":
+        return record.category, ("authoritative_category",)
+    text = f"{record.name} {record.source_summary}".lower()
+    scores: list[tuple[int, int, str]] = []
+    for order, (category, terms) in enumerate(PLANNING_CATEGORY_PATTERNS):
+        hits = sum(1 for term in terms if term in text)
+        if hits:
+            scores.append((hits, -order, category))
+    if not scores:
+        return "OTHER", ("planning_category_unresolved",)
+    _, _, category = max(scores)
+    return category, (f"planning_category:{category}",)
+
+
+def candidate_lane(record: TechnologyRecord, planning_category: str | None = None) -> tuple[str, tuple[str, ...]]:
+    """Classify candidate intent for portfolio planning only.
+
+    This is intentionally not an Adoption decision. A security paper can be RISK, an
+    ArXiv systems paper can be RESEARCH, and a GitHub product can be PRACTICAL.
+    """
+    text = f"{record.name} {record.source_summary}".lower()
+    if any(term in text for term in RISK_TERMS):
+        return "RISK", ("lane:RISK",)
+    if any(re.search(p, text, re.I) for p in NEWS_EVENT_PATTERNS) or any(term in text for term in OPINION_TERMS):
+        return "DISCOVERY", ("lane:DISCOVERY",)
+    if "GitHub" in set(record.source) or any(term in text for term in PRACTICAL_TERMS):
+        return "PRACTICAL", ("lane:PRACTICAL",)
+    if "ArXiv" in set(record.source) or any(term in text for term in RESEARCH_TERMS):
+        return "RESEARCH", ("lane:RESEARCH",)
+    if planning_category and planning_category != "OTHER":
+        return "PRACTICAL", ("lane:PRACTICAL_BY_CATEGORY",)
+    return "DISCOVERY", ("lane:DISCOVERY_FALLBACK",)
+
+
+def product_utility_score(record: TechnologyRecord, planning_category: str | None = None, lane: str | None = None) -> tuple[float, tuple[str, ...]]:
+    """Estimate paid-database usefulness for *review order*, not final Adoption.
+
+    The score rewards concrete things a subscriber can evaluate or deploy and mildly
+    defers pure research in the launch bootstrap. Research and risk remain eligible.
+    """
+    planning_category = planning_category or infer_planning_category(record)[0]
+    lane = lane or candidate_lane(record, planning_category)[0]
+    text = f"{record.name} {record.source_summary}".lower()
+    score = 0.0
+    reasons: list[str] = []
+    if lane == "PRACTICAL":
+        score += 14; reasons.append("practical_technology:+14")
+    elif lane == "RISK":
+        score += 9; reasons.append("decision_risk_value:+9")
+    elif lane == "RESEARCH":
+        score -= 3; reasons.append("research_launch_deferral:-3")
+    elif lane == "DISCOVERY":
+        score -= 8; reasons.append("discovery_only:-8")
+
+    practical_hits = sum(1 for term in PRACTICAL_TERMS if term in text)
+    if practical_hits >= 3:
+        score += 8; reasons.append("concrete_capability_terms:+8")
+    elif practical_hits >= 1:
+        score += 4; reasons.append("concrete_capability_terms:+4")
+
+    if planning_category == "OTHER":
+        score -= 6; reasons.append("planning_category_other:-6")
+    else:
+        score += 3; reasons.append(f"planning_category_resolved:{planning_category}:+3")
+
+    host = (urlparse(record.primary_url).hostname or "").lower()
+    if host == "github.com" or host.endswith(".github.com"):
+        score += 5; reasons.append("inspectable_repo:+5")
+    if any(term in text for term in OPINION_TERMS):
+        score -= 8; reasons.append("opinion_signal:-8")
+    return round(max(-25.0, min(25.0, score)), 2), tuple(reasons)
 
 
 class NotionClient:
@@ -357,46 +460,86 @@ def bootstrap_priority(record: TechnologyRecord, now: datetime | None = None) ->
 
 def plan_candidates(records: Iterable[TechnologyRecord], limit: int = 30,
                     max_source_share: float = 0.60, now: datetime | None = None) -> list[PlannedCandidate]:
+    """Rank a paid-product review queue with soft portfolio diversification.
+
+    No fixed source/category quota determines assessment outcomes. Instead, every next
+    position receives a marginal concentration penalty. The source-share limit is also
+    prefix-aware, fixing Run109's failure where the first four could all be ArXiv even
+    though the overall top-50 satisfied a 60% cap.
+    """
     now = now or datetime.now(timezone.utc)
-    candidates: list[tuple[TechnologyRecord, float, tuple[str, ...]]] = []
+    pool: list[dict[str, Any]] = []
     for r in records:
         if not is_bootstrap_eligible(r, now=now):
             continue
-        priority, reasons = bootstrap_priority(r, now=now)
-        candidates.append((r, priority, reasons))
-    candidates.sort(key=lambda x: (-x[1], -(x[0].screening_score or 0), x[0].name.lower()))
-
-    if limit <= 0:
+        base, base_reasons = bootstrap_priority(r, now=now)
+        pcat, cat_reasons = infer_planning_category(r)
+        lane, lane_reasons = candidate_lane(r, pcat)
+        utility, utility_reasons = product_utility_score(r, pcat, lane)
+        pool.append({
+            "record": r, "base": base, "utility": utility, "planning_category": pcat, "lane": lane,
+            "reasons": base_reasons + cat_reasons + lane_reasons + utility_reasons,
+        })
+    if limit <= 0 or not pool:
         return []
-    cap = max(1, math.ceil(limit * max(0.10, min(1.0, max_source_share))))
-    selected: list[tuple[TechnologyRecord, float, tuple[str, ...]]] = []
-    deferred: list[tuple[TechnologyRecord, float, tuple[str, ...]]] = []
-    counts: Counter[str] = Counter()
-    for row in candidates:
-        bucket = _source_bucket(row[0])
-        if counts[bucket] < cap and len(selected) < limit:
-            selected.append(row)
-            counts[bucket] += 1
-        else:
-            deferred.append(row)
-    # If diversity cannot fill the requested planning window, fill remaining slots rather than hide candidates.
-    for row in deferred:
-        if len(selected) >= limit:
-            break
-        selected.append(row)
+
+    max_share = max(0.10, min(1.0, max_source_share))
+    selected: list[dict[str, Any]] = []
+    source_counts: Counter[str] = Counter()
+    category_counts: Counter[str] = Counter()
+    lane_counts: Counter[str] = Counter()
+    remaining = list(pool)
+
+    while remaining and len(selected) < limit:
+        position = len(selected) + 1
+        # Prefix-aware cap: at position 4 and share .60, one source can occupy at most 3 slots.
+        prefix_cap = max(1, math.ceil(position * max_share))
+        feasible = [x for x in remaining if source_counts[_source_bucket(x["record"])] < prefix_cap]
+        # If the corpus cannot satisfy the diversity constraint, fail soft rather than hide all remaining candidates.
+        choice_pool = feasible or remaining
+
+        def marginal(item: dict[str, Any]) -> tuple[float, float, float, str]:
+            r = item["record"]
+            source = _source_bucket(r)
+            pcat = item["planning_category"]
+            lane = item["lane"]
+            # Repetition penalties are deliberately soft: a genuinely stronger candidate can still win.
+            concentration_penalty = (source_counts[source] * 5.0) + (category_counts[pcat] * 2.5) + (lane_counts[lane] * 3.5)
+            # OTHER gets an additional repeated penalty because legacy rows often lack taxonomy, but is never excluded.
+            if pcat == "OTHER":
+                concentration_penalty += 2.0 + category_counts[pcat] * 1.5
+            score = item["base"] + item["utility"] - concentration_penalty
+            return (score, item["base"] + item["utility"], r.screening_score or 0.0, r.name.lower())
+
+        chosen = max(choice_pool, key=marginal)
+        chosen = dict(chosen)
+        chosen["portfolio_priority"] = round(marginal(chosen)[0], 2)
+        selected.append(chosen)
+        r = chosen["record"]
+        source_counts[_source_bucket(r)] += 1
+        category_counts[chosen["planning_category"]] += 1
+        lane_counts[chosen["lane"]] += 1
+        # remove by record object identity from the original pool item
+        for idx, item in enumerate(remaining):
+            if item["record"] is r:
+                remaining.pop(idx)
+                break
 
     return [
         PlannedCandidate(
-            canonical_entity_id=r.canonical_entity_id,
-            name=r.name,
-            primary_url=r.primary_url,
-            source=r.source,
-            category=r.category,
-            screening_score=r.screening_score,
-            bootstrap_priority=priority,
-            reasons=reasons,
-        )
-        for r, priority, reasons in selected[:limit]
+            canonical_entity_id=x["record"].canonical_entity_id,
+            name=x["record"].name,
+            primary_url=x["record"].primary_url,
+            source=x["record"].source,
+            category=x["record"].category,
+            planning_category=x["planning_category"],
+            candidate_lane=x["lane"],
+            screening_score=x["record"].screening_score,
+            bootstrap_priority=x["base"],
+            product_utility_score=x["utility"],
+            portfolio_priority=x["portfolio_priority"],
+            reasons=x["reasons"],
+        ) for x in selected[:limit]
     ]
 
 
@@ -597,12 +740,12 @@ def _plan_markdown(readiness: dict[str, Any], planned: list[PlannedCandidate]) -
         "",
         "## Planned legacy candidates",
         "",
-        "| # | Bootstrap Priority | Screening | Source | Technology |",
-        "|---:|---:|---:|---|---|",
+        "| # | Portfolio | Utility | Base | Screening | Lane | Planning Category | Source | Technology |",
+        "|---:|---:|---:|---:|---:|---|---|---|---|",
     ]
     for i, c in enumerate(planned, 1):
         src = ", ".join(c.source) or "Unknown"
-        lines.append(f"| {i} | {c.bootstrap_priority:.2f} | {c.screening_score if c.screening_score is not None else ''} | {src} | {c.name.replace('|', '/')} |")
+        lines.append(f"| {i} | {c.portfolio_priority:.2f} | {c.product_utility_score:+.2f} | {c.bootstrap_priority:.2f} | {c.screening_score if c.screening_score is not None else ''} | {c.candidate_lane} | {c.planning_category} | {src} | {c.name.replace('|', '/')} |")
     return "\n".join(lines) + "\n"
 
 
