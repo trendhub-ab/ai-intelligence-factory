@@ -46,9 +46,67 @@ def _same_site(a: str, b: str) -> bool:
     return bool(ah and bh and (ah == bh or ah.endswith("." + bh) or bh.endswith("." + ah)))
 
 
+def _github_repo(url: str) -> str:
+    if _host(url) != "github.com":
+        return ""
+    parts=[p for p in (urlparse(url or "").path or "").split("/") if p]
+    return "/".join(parts[:2]).lower() if len(parts)>=2 else ""
+
+
+def _arxiv_id(url: str) -> str:
+    m=re.search(r"/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?(?:$|[?#])", url or "", re.I)
+    return m.group(1).lower() if m else ""
+
+
+def _trusted_metadata_urls(details: dict | None) -> list[str]:
+    details=details or {}; out=[]
+    for key in ("official_url","officialUrl","website","website_url","homepage","project_url","docs_url","documentation_url","external_url"):
+        v=details.get(key)
+        if isinstance(v,str) and v.startswith(("http://","https://")): out.append(v)
+    return out
+
+
+def _entity_binding(*, url: str, entity_id: str, pipeline_source: str, primary_url: str, origin: str, source_details: dict | None, evidence_extract: str) -> tuple[str,str]:
+    eid=(entity_id or "").lower().strip(); source=str(pipeline_source or ""); origin_l=str(origin or "").lower()
+    if not eid:
+        if _github_repo(url): return "IDENTITY_ANCHOR", "GitHub repository self-identifies when entity id is unavailable"
+        if _arxiv_id(url): return "IDENTITY_ANCHOR", "arXiv paper self-identifies when entity id is unavailable"
+        if primary_url and _same_site(url,primary_url) and not _host_matches(_host(primary_url), DISCOVERY_HOST_SUFFIXES + SECONDARY_NEWS_HOST_SUFFIXES):
+            return "SAME_PRIMARY_SITE", "evidence matches resolved primary site when entity id is unavailable"
+        if source in {"HackerNews","ProductHunt"} and not _host_matches(_host(url),DISCOVERY_HOST_SUFFIXES + SECONDARY_NEWS_HOST_SUFFIXES):
+            return "LEGACY_RESOLVED_PRIMARY", "legacy resolved external primary without canonical entity id"
+        if not _host_matches(_host(url),DISCOVERY_HOST_SUFFIXES + SECONDARY_NEWS_HOST_SUFFIXES):
+            return "LEGACY_NO_ENTITY_CONTEXT", "legacy classifier call without canonical entity id; production must provide entity context"
+        return "UNKNOWN", "canonical entity id unavailable"
+    if eid.startswith("github:"):
+        expected=eid.split(":",1)[1]
+        if _github_repo(url)==expected:
+            return "IDENTITY_ANCHOR", "exact GitHub owner/repository identity match"
+        trusted=_trusted_metadata_urls(source_details)
+        if any(_same_site(url,t) for t in trusted) and origin_l in {"github_metadata","metadata","boundary"}:
+            return "OFFICIAL_METADATA", "same first-party site as explicit repository metadata"
+        if any(_same_site(url,t) for t in trusted) and origin_l=="github_readme":
+            return "OFFICIAL_METADATA", "README link matches explicit repository homepage/docs site"
+        return "UNBOUND", "external evidence is not proven to belong to the GitHub entity"
+    if eid.startswith("arxiv:"):
+        expected=eid.split(":",1)[1].split("v",1)[0]
+        if _arxiv_id(url)==expected:
+            return "IDENTITY_ANCHOR", "exact arXiv paper identity match"
+        return "UNBOUND", "external evidence is not the same arXiv paper identity"
+    # For PH/HN/web entities, the resolved external primary site itself is the identity anchor.
+    if primary_url and _same_site(url,primary_url) and not _host_matches(_host(primary_url), DISCOVERY_HOST_SUFFIXES + SECONDARY_NEWS_HOST_SUFFIXES):
+        return "SAME_PRIMARY_SITE", "evidence is on the resolved entity primary site"
+    # Regulatory evidence may bind a named web entity only when the extract contains a stable entity token.
+    token=re.sub(r"[^a-z0-9]+"," ",eid.split(":",1)[-1]).strip()
+    if _host_matches(_host(url),REGULATORY_HOST_SUFFIXES) and token and token in re.sub(r"[^a-z0-9]+"," ",(evidence_extract or "").lower()):
+        return "CLAIM_BOUND", "regulatory evidence explicitly names the entity"
+    return "UNKNOWN", "no deterministic entity-binding proof"
+
+
 def classify_evidence(
     *, url: str, role: str = "", raw_source_type: str = "", label: str = "",
     origin: str = "", pipeline_source: str = "", primary_url: str = "",
+    entity_id: str = "", source_details: dict | None = None, evidence_extract: str = "",
 ) -> dict:
     """Return a conservative authority classification for one evidence document.
 
@@ -63,67 +121,55 @@ def classify_evidence(
     label_l = str(label or "").lower()
     origin_l = str(origin or "").lower()
     source = str(pipeline_source or "")
+    binding,binding_reason=_entity_binding(url=url,entity_id=entity_id,pipeline_source=source,primary_url=primary_url,origin=origin,source_details=source_details,evidence_extract=evidence_extract)
+    bound=binding not in {"UNBOUND","UNKNOWN"}
 
+    def out(source_type, authority_class, eligible, reason):
+        return {"source_type":source_type,"authority_class":authority_class,"decision_eligible":bool(eligible and bound),"reason":reason,"entity_binding":binding,"entity_binding_reason":binding_reason}
     if not host:
-        return {"source_type": "UNKNOWN", "authority_class": "UNKNOWN", "decision_eligible": False,
-                "reason": "invalid or missing evidence URL"}
+        return out("UNKNOWN","UNKNOWN",False,"invalid or missing evidence URL")
 
     if _host_matches(host, DISCOVERY_HOST_SUFFIXES):
-        return {"source_type": "DISCOVERY", "authority_class": "DISCOVERY", "decision_eligible": False,
-                "reason": "discovery platform is not decision authority"}
+        return out("DISCOVERY","DISCOVERY",False,"discovery platform is not decision authority")
 
     if _host_matches(host, SECONDARY_NEWS_HOST_SUFFIXES):
-        return {"source_type": "SECONDARY_NEWS", "authority_class": "SECONDARY", "decision_eligible": False,
-                "reason": "secondary news may corroborate but cannot raise primary evidence authority"}
+        return out("SECONDARY_NEWS","SECONDARY",False,"secondary news may corroborate but cannot raise primary evidence authority")
 
     if _host_matches(host, REGULATORY_HOST_SUFFIXES):
-        return {"source_type": "REGULATORY", "authority_class": "PRIMARY_REGULATORY", "decision_eligible": True,
-                "reason": "regulatory/government first-party source"}
+        return out("REGULATORY","PRIMARY_REGULATORY",True,"regulatory/government first-party source")
 
     if host == "github.com" or host.endswith(".github.com"):
-        return {"source_type": "GITHUB", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": role_u == "PRIMARY_SOURCE",
-                "reason": "GitHub repository evidence"}
+        return out("GITHUB","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","GitHub repository evidence")
 
     if host == "arxiv.org" or host.endswith(".arxiv.org"):
-        return {"source_type": "ARXIV", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": role_u == "PRIMARY_SOURCE",
-                "reason": "arXiv paper/version evidence"}
+        return out("ARXIV","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","arXiv paper/version evidence")
 
     # Explicit semantic signals from source discovery are stronger than guessing from domain alone.
     if re.search(r"changelog|release\s*notes?|what'?s\s+new", label_l + " " + path):
-        return {"source_type": "OFFICIAL_CHANGELOG", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": role_u == "PRIMARY_SOURCE",
-                "reason": "explicit changelog/release evidence"}
+        return out("OFFICIAL_CHANGELOG","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","explicit changelog/release evidence")
     if re.search(r"\bdocs?\b|documentation|reference|manual|guide", label_l + " " + path) or raw in {"official_docs", "boundary_official_docs"}:
-        return {"source_type": "OFFICIAL_DOCS", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": role_u == "PRIMARY_SOURCE",
-                "reason": "official documentation evidence"}
+        return out("OFFICIAL_DOCS","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","official documentation evidence")
     if re.search(r"interview|q&a|qanda", label_l) and role_u == "PRIMARY_SOURCE":
-        return {"source_type": "INTERVIEW_PRIMARY", "authority_class": "PRIMARY_INTERVIEW", "decision_eligible": True,
-                "reason": "explicit primary interview evidence"}
+        return out("INTERVIEW_PRIMARY","PRIMARY_INTERVIEW",True,"explicit primary interview evidence")
     if re.search(r"blog|announcement|newsroom|press", label_l + " " + path) and (origin_l in {"metadata", "github_metadata", "landing", "boundary"} or _same_site(url, primary_url)):
-        return {"source_type": "OFFICIAL_BLOG", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": role_u == "PRIMARY_SOURCE",
-                "reason": "official blog/announcement evidence"}
+        return out("OFFICIAL_BLOG","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","official blog/announcement evidence")
 
     # Product Hunt official landing and GitHub repository homepage are explicit official-site signals.
     if origin_l in {"github_metadata", "metadata"} and role_u == "PRIMARY_SOURCE":
-        return {"source_type": "OFFICIAL_SITE", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": True,
-                "reason": "explicit official site from source metadata"}
+        return out("OFFICIAL_SITE","PRIMARY_FIRST_PARTY",True,"explicit official site from source metadata")
     if source == "ProductHunt" and role_u == "PRIMARY_SOURCE" and not _host_matches(host, DISCOVERY_HOST_SUFFIXES):
-        return {"source_type": "OFFICIAL_SITE", "authority_class": "PRIMARY_FIRST_PARTY", "decision_eligible": True,
-                "reason": "Product Hunt discovery resolved to external primary site"}
+        return out("OFFICIAL_SITE","PRIMARY_FIRST_PARTY",True,"Product Hunt discovery resolved to external primary site")
 
     # Existing HN semantics allow an external author-original post to be primary, but known news hosts above never qualify.
     if source == "HackerNews" and role_u == "PRIMARY_SOURCE" and not _host_matches(host, DISCOVERY_HOST_SUFFIXES):
-        return {"source_type": "AUTHOR_ORIGINAL", "authority_class": "PRIMARY_AUTHOR", "decision_eligible": True,
-                "reason": "HN external primary/author-original source"}
+        return out("AUTHOR_ORIGINAL","PRIMARY_AUTHOR",True,"HN external primary/author-original source")
 
     if role_u == "PRIMARY_SOURCE":
         # Preserve backward-compatible primary evidence without falsely calling it first-party.
-        return {"source_type": "OTHER_PRIMARY", "authority_class": "PRIMARY_OTHER", "decision_eligible": True,
-                "reason": "primary role retained; authority type not specifically identified"}
+        return out("OTHER_PRIMARY","PRIMARY_OTHER",True,"primary role retained; authority type not specifically identified")
     if role_u == "SUPPLEMENTAL_SOURCE":
-        return {"source_type": "SUPPLEMENTAL", "authority_class": "SECONDARY", "decision_eligible": False,
-                "reason": "supplemental evidence cannot independently establish primary authority"}
-    return {"source_type": "UNKNOWN", "authority_class": "UNKNOWN", "decision_eligible": False,
-            "reason": "no explicit primary authority signal"}
+        return out("SUPPLEMENTAL","SECONDARY",False,"supplemental evidence cannot independently establish primary authority")
+    return out("UNKNOWN","UNKNOWN",False,"no explicit primary authority signal")
 
 
 def authority_rank(authority_class: str) -> int:

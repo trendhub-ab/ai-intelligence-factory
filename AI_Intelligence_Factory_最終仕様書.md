@@ -877,3 +877,10 @@ Hacker News / Product Huntは原則DISCOVERY。Reuters等の既知二次報道�
 
 既存Run117 Evidence Ledgerには`migrate-schema`を1回実行し3列を追加する。分類・migration・authority gateは0-Gemini。Subscriber DBには内部Authority Reason/Hash等を同期しない。
 
+
+## Run119 Evidence Entity Binding Gate（2026-08-24）
+Run118のAuthority分類に加え、Evidenceが評価対象Technology本人に結び付くことを決定論的に確認する。Decision Evidence EligibleはAuthorityだけでは成立せず、Entity Bindingが必要。
+
+Binding値: `IDENTITY_ANCHOR`, `OFFICIAL_METADATA`, `SAME_PRIMARY_SITE`, `CLAIM_BOUND`, `UNBOUND`, `UNKNOWN`。GitHubはcanonical owner/repo一致、arXivはpaper id一致を最強Anchorとする。GitHub外部Docsはrepository metadataで公式siteとの結び付きが証明された場合のみEligible。arXiv外部DOI/Zenodo/一般arXiv解説などは同一論文Identityを証明しない限りUNBOUND。Discovery/SecondaryはBinding有無にかかわらずDecision Evidence Eligible=false。
+
+Ledgerに`Entity Binding`と`Entity Binding Reason`を追加。既存Snapshotは削除せず、0-Gemini backfillで新Snapshotを作成して同一entity/live URLの旧Active Snapshotを非Active化する。Required化は再backfill後のTechnology-level coverage 100%確認後にのみ行う。

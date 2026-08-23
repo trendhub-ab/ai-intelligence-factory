@@ -33,10 +33,11 @@ P_URL="Evidence URL"; P_IMMUTABLE="Immutable Evidence URL"; P_RESOLVED="Resolved
 P_RETRIEVED="Retrieved At"; P_VERIFIED="Last Verified At"; P_HEALTH="Source Health"; P_DOC_HASH="Document Hash"
 P_EXTRACT_HASH="Extract Hash"; P_EXTRACT="Evidence Extract"; P_ID="Evidence Identity"; P_ACTIVE="Active Snapshot"; P_TRIGGER="Re-review Triggered"
 P_AUTHORITY="Authority Class"; P_ELIGIBLE="Decision Evidence Eligible"; P_AUTH_REASON="Authority Reason"
+P_BINDING="Entity Binding"; P_BIND_REASON="Entity Binding Reason"
 
 REQUIRED_PROPERTY_TYPES={P_TITLE:"title",P_ENTITY:"rich_text",P_TECH_PAGE:"rich_text",P_URL:"url",P_IMMUTABLE:"url",P_RESOLVED:"url",P_VERSION:"rich_text",
 P_SOURCE:"rich_text",P_ROLE:"rich_text",P_RETRIEVED:"date",P_VERIFIED:"date",P_HEALTH:"select",P_DOC_HASH:"rich_text",P_EXTRACT_HASH:"rich_text",
-P_EXTRACT:"rich_text",P_ID:"rich_text",P_ACTIVE:"checkbox",P_TRIGGER:"checkbox",P_AUTHORITY:"rich_text",P_ELIGIBLE:"checkbox",P_AUTH_REASON:"rich_text"}
+P_EXTRACT:"rich_text",P_ID:"rich_text",P_ACTIVE:"checkbox",P_TRIGGER:"checkbox",P_AUTHORITY:"rich_text",P_ELIGIBLE:"checkbox",P_AUTH_REASON:"rich_text",P_BINDING:"rich_text",P_BIND_REASON:"rich_text"}
 
 
 def _headers(token:str)->dict:
@@ -107,7 +108,7 @@ def preflight(token:str)->None:
 
 
 def ensure_authority_schema(token:str)->dict:
-    """Idempotently add Run118 authority columns to an existing Run117 data source."""
+    """Idempotently add Run118/Run119 authority and entity-binding columns."""
     if not token or not NOTION_EVIDENCE_DATA_SOURCE_ID:
         raise ValueError("Run118 schema migration requires NOTION_EVIDENCE_DATA_SOURCE_ID and token")
     r=requests.get(_schema_url(),headers=_headers(token),timeout=15); r.raise_for_status(); props=r.json().get("properties",{})
@@ -115,6 +116,19 @@ def ensure_authority_schema(token:str)->dict:
     if P_AUTHORITY not in props: additions[P_AUTHORITY]={"rich_text":{}}
     if P_ELIGIBLE not in props: additions[P_ELIGIBLE]={"checkbox":{}}
     if P_AUTH_REASON not in props: additions[P_AUTH_REASON]={"rich_text":{}}
+    if not additions: return {"changed":False,"added":[]}
+    u=requests.patch(_schema_url(),headers=_headers(token),json={"properties":additions},timeout=20); u.raise_for_status()
+    return {"changed":True,"added":list(additions)}
+
+
+def ensure_entity_binding_schema(token:str)->dict:
+    """Idempotently add Run119 entity-binding audit columns."""
+    if not token or not NOTION_EVIDENCE_DATA_SOURCE_ID:
+        raise ValueError("Run119 schema migration requires NOTION_EVIDENCE_DATA_SOURCE_ID and token")
+    r=requests.get(_schema_url(),headers=_headers(token),timeout=15); r.raise_for_status(); props=r.json().get("properties",{})
+    additions={}
+    if P_BINDING not in props: additions[P_BINDING]={"rich_text":{}}
+    if P_BIND_REASON not in props: additions[P_BIND_REASON]={"rich_text":{}}
     if not additions: return {"changed":False,"added":[]}
     u=requests.patch(_schema_url(),headers=_headers(token),json={"properties":additions},timeout=20); u.raise_for_status()
     return {"changed":True,"added":list(additions)}
@@ -134,11 +148,13 @@ def build_snapshots(entity_id:str, tech_page_id:str, source_info:dict, retrieved
         authority=classify_evidence(
             url=url, role=doc.get("role") or "PRIMARY_SOURCE", raw_source_type=doc.get("source_type") or "",
             label=doc.get("label") or "", origin=doc.get("origin") or "", pipeline_source=source_info.get("source") or "",
-            primary_url=source_info.get("primary_url") or "",
+            primary_url=source_info.get("primary_url") or "", entity_id=entity_id,
+            source_details=source_info.get("source_details") or {}, evidence_extract=extract,
         )
         docs.append({"entity_id":entity_id,"tech_page_id":tech_page_id,"url":url,"immutable_url":immutable,"resolved_url":resolved,"source_version":version,
                      "source_type":authority["source_type"],"role":doc.get("role") or "PRIMARY_SOURCE",
                      "authority_class":authority["authority_class"],"decision_eligible":bool(authority["decision_eligible"]),"authority_reason":authority["reason"],
+                     "entity_binding":authority.get("entity_binding","UNKNOWN"),"entity_binding_reason":authority.get("entity_binding_reason",""),
                      "retrieved_at":retrieved_at,"last_verified_at":retrieved_at,"source_health":"VERIFIED",
                      "document_hash":content_hash(doc.get("document_text") or extract),"extract_hash":content_hash(extract),"extract":extract})
     return docs
@@ -150,7 +166,8 @@ def _props(s:dict)->dict:
             P_URL:{"url":s['url'] or None},P_IMMUTABLE:{"url":s.get('immutable_url') or None},P_RESOLVED:{"url":s.get('resolved_url') or None},P_VERSION:_rt(s.get('source_version')),P_SOURCE:_rt(s.get('source_type')),P_ROLE:_rt(s.get('role')),
             P_RETRIEVED:_date(s['retrieved_at']),P_VERIFIED:_date(s.get('last_verified_at')),P_HEALTH:_select(s.get('source_health') or 'VERIFIED'),P_DOC_HASH:_rt(s.get('document_hash')),
             P_EXTRACT_HASH:_rt(s.get('extract_hash')),P_EXTRACT:_rt(s.get('extract')),P_ID:_rt(eid),P_ACTIVE:{"checkbox":True},P_TRIGGER:{"checkbox":False},
-            P_AUTHORITY:_rt(s.get('authority_class')),P_ELIGIBLE:{"checkbox":bool(s.get('decision_eligible'))},P_AUTH_REASON:_rt(s.get('authority_reason'))}
+            P_AUTHORITY:_rt(s.get('authority_class')),P_ELIGIBLE:{"checkbox":bool(s.get('decision_eligible'))},P_AUTH_REASON:_rt(s.get('authority_reason')),
+            P_BINDING:_rt(s.get('entity_binding')),P_BIND_REASON:_rt(s.get('entity_binding_reason'))}
 
 
 def persist_snapshots(snapshots:list[dict], token:str)->dict:
@@ -175,6 +192,7 @@ def page_to_state(page:dict)->dict:
     return {"page_id":page.get('id'),"entity_id":_rich(p.get(P_ENTITY,{})),"tech_page_id":_rich(p.get(P_TECH_PAGE,{})),"url":(p.get(P_URL) or {}).get('url') or "","immutable_url":(p.get(P_IMMUTABLE) or {}).get('url') or "",
             "resolved_url":(p.get(P_RESOLVED) or {}).get('url') or "","source_version":_rich(p.get(P_VERSION,{})),"source_type":_rich(p.get(P_SOURCE,{})),"source_health":((p.get(P_HEALTH) or {}).get('select') or {}).get('name') or "",
             "authority_class":_rich(p.get(P_AUTHORITY,{})),"decision_eligible":bool((p.get(P_ELIGIBLE) or {}).get('checkbox')),"authority_reason":_rich(p.get(P_AUTH_REASON,{})),
+            "entity_binding":_rich(p.get(P_BINDING,{})),"entity_binding_reason":_rich(p.get(P_BIND_REASON,{})),
             "document_hash":_rich(p.get(P_DOC_HASH,{})),"extract_hash":_rich(p.get(P_EXTRACT_HASH,{})),"extract":_rich(p.get(P_EXTRACT,{}))}
 
 

@@ -14,7 +14,9 @@ def main()->int:
     ap=argparse.ArgumentParser(); ap.add_argument('--limit',type=int,default=50); ap.add_argument('--dry-run',action='store_true'); ap.add_argument('--migrate-authority-schema',action='store_true'); args=ap.parse_args()
     decision_intelligence.preflight_decision_intelligence_schema()
     if args.migrate_authority_schema:
-        print(json.dumps(evidence_ledger.ensure_authority_schema(decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY),ensure_ascii=False,indent=2)); return 0
+        token=decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY
+        out={'authority':evidence_ledger.ensure_authority_schema(token),'entity_binding':evidence_ledger.ensure_entity_binding_schema(token),'zero_gemini_calls':True}
+        print(json.dumps(out,ensure_ascii=False,indent=2)); return 0
     evidence_ledger.preflight(decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY)
     pages=decision_intelligence.query_technology_records(max_records=5000)
     result={'scanned':0,'eligible':0,'snapshots':0,'saved':0,'failed':0,'dry_run':args.dry_run,'zero_gemini_calls':True}

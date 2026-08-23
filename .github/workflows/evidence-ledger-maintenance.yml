@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run or backfill"
+        description: "dry-run, migrate-schema, or backfill"
         required: true
         default: dry-run
         type: choice

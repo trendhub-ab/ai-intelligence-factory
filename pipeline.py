@@ -4249,6 +4249,7 @@ def prepare_source_context(repo: dict) -> dict:
         "verification_context": verification_context,
         "verification_context_length": len(verification_context),
         "source": source,
+        "canonical_entity_id": repo.get("canonicalEntityId") or "",
         "discovery_source": discovery_source,
         "source_name": name,
         "method": method,
@@ -7071,6 +7072,8 @@ def _classify_source_info_evidence(source_info: dict | None) -> list[dict]:
             raw_source_type=str(doc.get("source_type") or ""), label=str(doc.get("label") or ""),
             origin=str(doc.get("origin") or ""), pipeline_source=str(source_info.get("source") or ""),
             primary_url=str(source_info.get("primary_url") or ""),
+            entity_id=str(source_info.get("canonical_entity_id") or ""),
+            source_details=source_info.get("source_details") or {}, evidence_extract=str(doc.get("evidence_extract") or ""),
         )
         row=dict(doc); row.update(authority); rows.append(row)
     return rows
@@ -7112,6 +7115,7 @@ def _primary_source_authority_failures(source_info: dict | None) -> list[str]:
             url=str(source_info.get("primary_url") or ""), role="PRIMARY_SOURCE",
             raw_source_type=str(source_info.get("source") or ""), label="primary URL", origin="primary_url",
             pipeline_source=source, primary_url=str(source_info.get("primary_url") or ""),
+            entity_id=str(source_info.get("canonical_entity_id") or ""), source_details=source_info.get("source_details") or {},
         )
         rows=[{"url":source_info.get("primary_url"), **fallback}]
     eligible=[r for r in rows if r.get("decision_eligible") and authority_rank(r.get("authority_class")) >= 2]
