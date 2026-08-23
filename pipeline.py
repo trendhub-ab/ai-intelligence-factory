@@ -10507,15 +10507,23 @@ def _product_review_prompt(repo: dict, source_info: dict, current: dict) -> str:
     return (
         "以下の一次情報だけを使い、会員向けTechnology Decision Intelligenceを評価せよ。記事は書かない。"
         "入力外の市場シェア、価格、利用実績、競合優位性を推測しない。"
+        "categoryはSource種別や既存Categoryをコピーせず、一次情報で確認できる主用途・主機能だけから "
+        "MODEL/AGENT/DEVTOOLS/INFRA/DATA/SECURITY/MULTIMODAL/PRODUCT/OTHER のいずれか1つを選ぶ。"
+        "複数カテゴリが同程度、または根拠が弱く主用途を確定できない場合はOTHERにする。"
         "adoption_scoreは Evidence Quality 25, Production Maturity 25, Use-case Utility / Fit 20, "
         "Reliability / Security Risk 15, Integration / Migration Feasibility 10, Ecosystem / Support Durability 5 の合計100点。"
         "adoption_statusは WATCH/TEST/ADOPT/AVOID。ADOPTはEvidence Confidence=HIGHかつProduction Readiness=HIGHのみ。"
         "next_review_daysは7〜60。JSON objectのみを返す。\n"
-        "keys: adoption_score, components(object with the six exact English labels), adoption_status, evidence_confidence(LOW/MEDIUM/HIGH), "
+        "keys: category, adoption_score, components(object with the six exact English labels), adoption_status, evidence_confidence(LOW/MEDIUM/HIGH), "
         "production_readiness(LOW/MEDIUM/HIGH), main_risk, best_for, avoid_for, short_rationale, next_review_days.\n"
         f"Technology: {repo.get('nameWithOwner')}\nURL: {repo.get('url')}\nCurrent: {json.dumps(current, ensure_ascii=False)}\n"
         f"Verified source context:\n{context}"
     )
+
+
+def _normalize_product_review_category(value: object) -> str:
+    category = str(value or "").strip().upper()
+    return category if category in PORTFOLIO_TOPICS else "OTHER"
 
 
 def _parse_product_review_response(text: str) -> dict:
@@ -10524,6 +10532,7 @@ def _parse_product_review_response(text: str) -> dict:
     components = obj.get("components") or {}
     breakdown = "\n".join(f"{label} {int(components.get(label, -999))}/{maximum}" for label, maximum in _ADOPTION_SCORE_COMPONENTS)
     return {
+        "category": _normalize_product_review_category(obj.get("category")),
         "adoption_score": int(obj.get("adoption_score") or 0), "adoption_score_breakdown_text": breakdown,
         "adoption_status": str(obj.get("adoption_status") or "").upper(),
         "evidence_confidence": str(obj.get("evidence_confidence") or "").upper(),
@@ -10657,7 +10666,7 @@ def run_product_reviews() -> dict:
             reviewed_at = datetime.now(timezone.utc).isoformat()
             persisted = persist_decision_intelligence_assessment(repo, parsed, source_info, evidence, reviewed_at,
                 screening_score=state.get("screening_score"), screening_reason=state.get("screening_reason", ""),
-                attribution_context={"portfolio_topic": state.get("category") or "OTHER"}, pipeline_status="Product Review",
+                attribution_context={"portfolio_topic": parsed.get("category") or "OTHER"}, pipeline_status="Product Review",
                 content_status="Stocked", article_status=ARTICLE_STATUS_NOT_PLANNED)
             if persisted.get("saved"):
                 # next_review is a product scheduler field and is intentionally patched after the common upsert.
