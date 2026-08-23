@@ -62,29 +62,33 @@ def review_json(category="DATA"):
 
 
 class Run112ProductReviewCategoryResolutionTests(unittest.TestCase):
-    def test_prompt_requests_evidence_grounded_closed_category(self):
+    def test_prompt_requests_evidence_grounded_category_without_schema_duplication(self):
+        # Run115 supersedes Run112's prompt-level enum/key duplication: the closed set now lives
+        # only in response_json_schema, while the prompt keeps evidence-grounded decision semantics.
         prompt = pipeline._product_review_prompt(
             {"nameWithOwner": "huggingface/datasets", "url": "https://github.com/huggingface/datasets"},
             {"context": "Dataset loading and processing library."},
             {"category": "OTHER"},
         )
-        self.assertIn("keys: category, adoption_score", prompt)
-        self.assertIn("MODEL/AGENT/DEVTOOLS/INFRA/DATA/SECURITY/MULTIMODAL/PRODUCT/OTHER", prompt)
-        self.assertIn("根拠が弱く主用途を確定できない場合はOTHER", prompt)
+        self.assertNotIn("keys: category, adoption_score", prompt)
+        self.assertNotIn("MODEL/AGENT/DEVTOOLS/INFRA/DATA/SECURITY/MULTIMODAL/PRODUCT/OTHER", prompt)
+        self.assertIn("根拠が弱い場合はOTHER", prompt)
 
     def test_parser_keeps_valid_product_category(self):
-        parsed = pipeline._parse_product_review_response(review_json("data"))
+        parsed = pipeline._parse_product_review_response(review_json("DATA"))
         self.assertEqual(parsed["category"], "DATA")
 
-    def test_parser_fails_closed_to_other_for_unknown_category(self):
-        parsed = pipeline._parse_product_review_response(review_json("DATABASE"))
-        self.assertEqual(parsed["category"], "OTHER")
+    def test_unknown_category_is_structured_failure_not_silent_other(self):
+        # Run115 intentionally replaces Run112's silent OTHER coercion so schema violations
+        # trigger the one logical Product Review retry instead of hiding provider drift.
+        with self.assertRaisesRegex(ValueError, "category invalid"):
+            pipeline._parse_product_review_response(review_json("DATABASE"))
 
-    def test_missing_category_fails_closed_to_other(self):
+    def test_missing_category_is_structured_failure(self):
         payload = json.loads(review_json("DATA"))
         payload.pop("category")
-        parsed = pipeline._parse_product_review_response(json.dumps(payload, ensure_ascii=False))
-        self.assertEqual(parsed["category"], "OTHER")
+        with self.assertRaisesRegex(ValueError, "missing_fields=category"):
+            pipeline._parse_product_review_response(json.dumps(payload, ensure_ascii=False))
 
     def test_product_review_persists_review_category_not_legacy_other(self):
         state = {

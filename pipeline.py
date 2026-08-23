@@ -6416,6 +6416,219 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
     return list(dict.fromkeys(failures))[:6]
 
 
+class _BoundaryLinkParser(HTMLParser):
+    """Collect bounded first-party links for Product Review boundary reconciliation only."""
+    def __init__(self, base_url: str):
+        super().__init__(convert_charrefs=True)
+        self.base_url = base_url
+        self.links: list[tuple[str, str]] = []
+        self._href = ""
+        self._label: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            href = dict(attrs).get("href", "")
+            self._href = urljoin(self.base_url, href) if href else ""
+            self._label = []
+
+    def handle_data(self, data):
+        if self._href:
+            self._label.append(data)
+
+    def handle_endtag(self, tag):
+        if tag.lower() != "a" or not self._href:
+            return
+        href = urldefrag(self._href)[0]
+        label = re.sub(r"\s+", " ", " ".join(self._label)).strip()
+        if href.startswith(("http://", "https://")) and not _is_github_global_navigation_url(href):
+            self.links.append((href, label))
+        self._href, self._label = "", []
+
+
+def _source_boundary_failure_names(failures: list[str] | tuple[str, ...] | None) -> list[str]:
+    names: list[str] = []
+    prefix = "source-boundary unsupported named fact:"
+    for failure in failures or []:
+        text = str(failure or "")
+        if prefix not in text:
+            continue
+        tail = text.split(prefix, 1)[1]
+        names.extend(x.strip() for x in tail.split(",") if x.strip())
+    return list(dict.fromkeys(names))[:8]
+
+
+def _same_first_party_host(candidate_host: str, seed_host: str) -> bool:
+    a = (candidate_host or "").lower().split(":", 1)[0].removeprefix("www.")
+    b = (seed_host or "").lower().split(":", 1)[0].removeprefix("www.")
+    if not a or not b:
+        return False
+    return a == b or a.endswith("." + b) or b.endswith("." + a)
+
+
+def _boundary_link_matches_name(name: str, label: str, url: str) -> bool:
+    full = _normalized_named_fact(name)
+    hay = _normalized_named_fact((label or "") + " " + (urlparse(url or "").path or ""))
+    if full and full in hay:
+        return True
+    tokens = [t.lower() for t in re.findall(r"[A-Za-z0-9]{4,}", name or "")]
+    # For multi-word product features, a distinctive child token such as ``tracking`` is enough
+    # to select a page. The retrieved page must still contain the full named fact before support
+    # is accepted, so this selection rule cannot create evidence by itself.
+    if len(tokens) >= 2:
+        return any(_normalized_named_fact(token) in hay for token in tokens[1:])
+    return bool(tokens and _normalized_named_fact(tokens[0]) in hay)
+
+
+def _product_review_boundary_seed_urls(source_info: dict) -> list[str]:
+    """Return only explicit first-party candidates already discovered before Product Review."""
+    urls: list[str] = []
+    source = str(source_info.get("source") or "")
+    primary = str(source_info.get("primary_url") or "")
+    # Never reintroduce GitHub repository HTML scraping. README/REST are already represented in
+    # verification_context; feature reconciliation should use explicitly linked official docs.
+    if primary and not (source == "GitHub" and (urlparse(primary).netloc or "").lower() in {"github.com", "www.github.com"}):
+        urls.append(primary)
+    for row in source_info.get("supplement_candidates", []) or []:
+        if row.get("role") != "PRIMARY_SOURCE":
+            continue
+        url = str(row.get("url") or "")
+        if not url or _is_github_global_navigation_url(url):
+            continue
+        if source == "GitHub" and (urlparse(url).netloc or "").lower() in {"github.com", "www.github.com"}:
+            continue
+        urls.append(url)
+    details = source_info.get("source_details") or {}
+    for key in ("homepage", "official_url", "officialUrl", "website", "website_url", "docs_url", "documentation_url"):
+        url = str(details.get(key) or "")
+        if url and not _is_github_global_navigation_url(url):
+            urls.append(url)
+    return list(dict.fromkeys(urls))[:8]
+
+
+def _fetch_boundary_html(url: str) -> tuple[str, list[tuple[str, str]], str]:
+    raw, content_type, final_url = _http_get_limited(
+        url, ("text/html", "application/xhtml+xml", "text/plain"), min(WEB_CONTEXT_MAX_BYTES, 1_500_000)
+    )
+    if not raw:
+        return "", [], final_url or ""
+    text = raw.decode("utf-8", errors="replace")
+    links: list[tuple[str, str]] = []
+    if "html" in content_type or "<html" in text[:1000].lower():
+        body = _ReadableHTMLTextParser(); body.feed(text)
+        parser = _BoundaryLinkParser(final_url or url); parser.feed(text)
+        text = body.text(); links = list(dict.fromkeys(parser.links))
+    return _truncate_verification_context(unescape(text)), links[:200], final_url or url
+
+
+def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, failures: list[str]) -> dict:
+    """Resolve false source-boundary rejects by crawling explicit first-party docs with zero Gemini.
+
+    The function is intentionally narrow: it runs only after the strict validator reports an
+    unsupported named fact, follows only already-discovered official seeds and same-site child
+    links, accepts support only when the full named fact appears in the retrieved document, and
+    never changes the assessment text. If support cannot be proven, the original Fail-Closed
+    result remains unchanged.
+    """
+    names = _source_boundary_failure_names(failures)
+    if not names:
+        return {"attempted": False, "resolved": False, "names": [], "documents_added": 0}
+    seeds = _product_review_boundary_seed_urls(source_info)
+    if not seeds:
+        return {"attempted": True, "resolved": False, "names": names, "documents_added": 0}
+
+    checked = source_info.setdefault("checked_urls", set())
+    boundary_checked: set[str] = set()
+    documents = source_info.setdefault("evidence_documents", [])
+    added_parts: list[str] = []
+    documents_added = 0
+    fetches = 0
+    max_fetches = 4
+
+    def add_if_supports(url: str, seed_host: str) -> tuple[bool, list[tuple[str, str]]]:
+        nonlocal fetches, documents_added
+        if fetches >= max_fetches:
+            return False, []
+        key = _evidence_trace_url_key(url)
+        if not key or key in boundary_checked:
+            return False, []
+        if not _same_first_party_host(urlparse(url).netloc, seed_host):
+            return False, []
+        boundary_checked.add(key); checked.add(key); fetches += 1
+        text, links, final_url = _fetch_boundary_html(url)
+        resolved_url = final_url or url
+        # Run115: first-party scope must be enforced *after* HTTP redirects as well.
+        # A trusted seed that 30x-redirects to a different registrable/host scope must never
+        # become PRIMARY_SOURCE evidence, even if the redirected body contains the named fact.
+        # Drop its body and links entirely so a third-party redirect cannot bootstrap a crawl.
+        final_host = (urlparse(resolved_url).netloc or "").lower()
+        if not _same_first_party_host(final_host, seed_host):
+            source_info.setdefault("boundary_rejected_urls", []).append({
+                "requested_url": url, "final_url": resolved_url, "reason": "redirect_outside_first_party",
+            })
+            logger.warning(
+                "[PRODUCT REVIEW BOUNDARY REDIRECT REJECTED] seed_host=%s requested=%s final=%s",
+                seed_host, url, resolved_url,
+            )
+            return False, []
+        documents.append({
+            "url": resolved_url, "role": "PRIMARY_SOURCE", "source_type": "boundary_official_docs",
+            "retrieved": bool(text), "label": "Product Review boundary reconciliation",
+        })
+        if not text:
+            return False, links
+        normalized = _normalized_named_fact(text)
+        supported = [name for name in names if _normalized_named_fact(name) in normalized]
+        if not supported:
+            return False, links
+        piece = f"[PRIMARY_SOURCE_BOUNDARY_RECONCILIATION]\nURL: {final_url or url}\n{text}"
+        added_parts.append(piece); documents_added += 1
+        source_info.setdefault("deep_source_urls", []).append(final_url or url)
+        return True, links
+
+    unresolved = set(names)
+    for seed in seeds:
+        if fetches >= max_fetches or not unresolved:
+            break
+        seed_host = (urlparse(seed).netloc or "").lower()
+        if not seed_host:
+            continue
+        before = set(unresolved)
+        supported, links = add_if_supports(seed, seed_host)
+        if supported and added_parts:
+            combined = _normalized_named_fact(added_parts[-1])
+            unresolved = {n for n in unresolved if _normalized_named_fact(n) not in combined}
+        if not unresolved:
+            break
+        matching_links = [
+            link for link, label in links
+            if _same_first_party_host(urlparse(link).netloc, seed_host)
+            and any(_boundary_link_matches_name(name, label, link) for name in unresolved)
+        ]
+        for link in list(dict.fromkeys(matching_links))[:2]:
+            if fetches >= max_fetches or not unresolved:
+                break
+            supported, _ = add_if_supports(link, seed_host)
+            if supported and added_parts:
+                combined = _normalized_named_fact(added_parts[-1])
+                unresolved = {n for n in unresolved if _normalized_named_fact(n) not in combined}
+        # Do not crawl arbitrary second-level pages when the explicit seed exposes no matching link.
+        if before == unresolved:
+            continue
+
+    if added_parts:
+        merged = source_info.get("verification_context") or source_info.get("context", "")
+        for part in added_parts:
+            merged = _merge_verification_context(merged, part)
+        source_info["verification_context"] = _truncate_verification_context(merged)
+        source_info["verification_context_length"] = len(source_info["verification_context"])
+        source_info["evidence_metadata"] = _build_evidence_metadata(
+            source_info["verification_context"], bool(source_info.get("deep_source_scanned"))
+        )
+    return {
+        "attempted": True, "resolved": not unresolved, "names": names,
+        "unresolved_names": sorted(unresolved), "documents_added": documents_added, "fetches": fetches,
+    }
+
 
 _RELATION_FAMILIES = {
     # Bare Japanese nouns such as 「開発体制」「提案内容」must never trigger a relation claim.
@@ -10754,7 +10967,45 @@ def pop_deferred_candidates(limit: int) -> tuple[list[dict], list[dict]]:
     return selected, remaining
 
 
-def _call_product_review_pool(prompt: str, request_context: str):
+_PRODUCT_REVIEW_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "category": {"type": "string", "enum": sorted(PORTFOLIO_TOPICS)},
+        "adoption_score": {"type": "integer", "minimum": 1, "maximum": 100},
+        "components": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                label: {"type": "integer", "minimum": 0, "maximum": maximum}
+                for label, maximum in _ADOPTION_SCORE_COMPONENTS
+            },
+            "required": [label for label, _ in _ADOPTION_SCORE_COMPONENTS],
+        },
+        "adoption_status": {"type": "string", "enum": sorted(decision_intelligence.ADOPTION_STATUSES)},
+        "evidence_confidence": {"type": "string", "enum": sorted(decision_intelligence.CONFIDENCE_LEVELS)},
+        "production_readiness": {"type": "string", "enum": sorted(decision_intelligence.READINESS_LEVELS)},
+        "main_risk": {"type": "string"},
+        "best_for": {"type": "string"},
+        "avoid_for": {"type": "string"},
+        "short_rationale": {"type": "string"},
+        "next_review_days": {"type": "integer", "minimum": 7, "maximum": 60},
+    },
+    "required": [
+        "category", "adoption_score", "components", "adoption_status", "evidence_confidence",
+        "production_readiness", "main_risk", "best_for", "avoid_for", "short_rationale",
+        "next_review_days",
+    ],
+}
+
+
+def _call_product_review_pool(prompt: str, request_context: str, request_kind_base: str = "product_review"):
+    """Call Product Review with provider-enforced JSON Schema.
+
+    ``request_kind_base`` distinguishes the one logical structured-output repair request from
+    transport retries.  Both still consume the existing Product Review request budget; no new
+    quota lane or provider call path is introduced.
+    """
     last_error = None
     for model_name in DEEP_DIVE_MODEL_POOL:
         if model_name in SESSION_EXHAUSTED_MODELS or model_name in SESSION_UNAVAILABLE_MODELS:
@@ -10764,10 +11015,15 @@ def _call_product_review_pool(prompt: str, request_context: str):
                 raise ProductReviewBudgetExceededError(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
             try:
                 time.sleep(max(0, GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
+                kind = request_kind_base if attempt == 0 else "product_review_retry"
                 return _generate_via_chat(
                     model_name, prompt,
-                    config={"response_mime_type": "application/json", "max_output_tokens": 2200},
-                    request_kind="product_review" if attempt == 0 else "product_review_retry",
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_json_schema": _PRODUCT_REVIEW_RESPONSE_SCHEMA,
+                        "max_output_tokens": 2200,
+                    },
+                    request_kind=kind,
                     request_context=request_context, count_as_deep_dive=False, request_origin="product_review",
                 ), model_name
             except APIError as exc:
@@ -10785,45 +11041,151 @@ def _call_product_review_pool(prompt: str, request_context: str):
 
 def _product_review_prompt(repo: dict, source_info: dict, current: dict) -> str:
     context = (source_info.get("context") or "")[:50000]
+    # Run115: output shape/enums/ranges live in response_json_schema. Do not duplicate that
+    # contract in the prompt; Google's GenAI SDK documentation explicitly warns that repeating
+    # the schema in the prompt can reduce structured-output quality. Keep only decision semantics.
     return (
         "以下の一次情報だけを使い、会員向けTechnology Decision Intelligenceを評価せよ。記事は書かない。"
         "入力外の市場シェア、価格、利用実績、競合優位性を推測しない。"
-        "categoryはSource種別や既存Categoryをコピーせず、一次情報で確認できる主用途・主機能だけから "
-        "MODEL/AGENT/DEVTOOLS/INFRA/DATA/SECURITY/MULTIMODAL/PRODUCT/OTHER のいずれか1つを選ぶ。"
-        "複数カテゴリが同程度、または根拠が弱く主用途を確定できない場合はOTHERにする。"
+        "categoryはSource種別や既存Categoryをコピーせず、一次情報で確認できる主用途・主機能から判断し、"
+        "複数カテゴリが同程度または根拠が弱い場合はOTHERを選ぶ。"
         "adoption_scoreは Evidence Quality 25, Production Maturity 25, Use-case Utility / Fit 20, "
-        "Reliability / Security Risk 15, Integration / Migration Feasibility 10, Ecosystem / Support Durability 5 の合計100点。"
-        "adoption_statusは WATCH/TEST/ADOPT/AVOID。ADOPTはEvidence Confidence=HIGHかつProduction Readiness=HIGHのみ。"
-        "next_review_daysは7〜60。JSON objectのみを返す。\n"
-        "keys: category, adoption_score, components(object with the six exact English labels), adoption_status, evidence_confidence(LOW/MEDIUM/HIGH), "
-        "production_readiness(LOW/MEDIUM/HIGH), main_risk, best_for, avoid_for, short_rationale, next_review_days.\n"
+        "Reliability / Security Risk 15, Integration / Migration Feasibility 10, Ecosystem / Support Durability 5 の合計100点とし、"
+        "componentsの合計と必ず一致させる。"
+        "ADOPTはEvidence ConfidenceがHIGHかつProduction ReadinessがHIGHの場合に限る。"
+        "main_risk / best_for / avoid_for / short_rationaleは、一次情報から判断できる範囲で具体的かつ空欄にしない。\n"
         f"Technology: {repo.get('nameWithOwner')}\nURL: {repo.get('url')}\nCurrent: {json.dumps(current, ensure_ascii=False)}\n"
         f"Verified source context:\n{context}"
     )
 
 
-def _normalize_product_review_category(value: object) -> str:
-    category = str(value or "").strip().upper()
-    return category if category in PORTFOLIO_TOPICS else "OTHER"
+def _product_review_schema_error(message: str) -> ValueError:
+    return ValueError(f"Product Review schema_invalid: {message}")
 
 
-def _parse_product_review_response(text: str) -> dict:
-    obj = json.loads(text or "{}")
-    if not isinstance(obj, dict): raise ValueError("Product Review response_not_object")
-    components = obj.get("components") or {}
-    breakdown = "\n".join(f"{label} {int(components.get(label, -999))}/{maximum}" for label, maximum in _ADOPTION_SCORE_COMPONENTS)
+def _strict_schema_int(value: object, field: str, minimum: int, maximum: int) -> int:
+    # bool is a subclass of int in Python, but JSON Schema integer must not silently accept it
+    # for scoring/range decisions.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _product_review_schema_error(f"{field} must be integer")
+    if not minimum <= value <= maximum:
+        raise _product_review_schema_error(f"{field} out_of_range {value} not in {minimum}..{maximum}")
+    return value
+
+
+def _validate_product_review_payload(obj: dict) -> dict:
+    """Locally validate provider structured output before any semantic normalization.
+
+    Provider-side JSON Schema is a transport guard, not a trust boundary.  Run115 validates
+    required keys, additional keys, enums, component structure/ranges, score sum, text fields,
+    and review range again in application code.  Any violation is a structured-output failure
+    eligible for the single logical retry; no invalid enum is silently coerced to OTHER.
+    """
+    if not isinstance(obj, dict):
+        raise _product_review_schema_error("response_not_object")
+    required = set(_PRODUCT_REVIEW_RESPONSE_SCHEMA["required"])
+    actual = set(obj)
+    missing = sorted(required - actual)
+    extra = sorted(actual - required)
+    if missing:
+        raise _product_review_schema_error("missing_fields=" + ",".join(missing))
+    if extra:
+        raise _product_review_schema_error("unexpected_fields=" + ",".join(extra))
+
+    category = obj.get("category")
+    if not isinstance(category, str) or category not in PORTFOLIO_TOPICS:
+        raise _product_review_schema_error(f"category invalid={category!r}")
+
+    score = _strict_schema_int(obj.get("adoption_score"), "adoption_score", 1, 100)
+    components = obj.get("components")
+    if not isinstance(components, dict):
+        raise _product_review_schema_error("components must be object")
+    expected_components = {label for label, _ in _ADOPTION_SCORE_COMPONENTS}
+    component_keys = set(components)
+    if component_keys != expected_components:
+        missing_components = sorted(expected_components - component_keys)
+        extra_components = sorted(component_keys - expected_components)
+        detail = []
+        if missing_components:
+            detail.append("missing=" + ",".join(missing_components))
+        if extra_components:
+            detail.append("extra=" + ",".join(extra_components))
+        raise _product_review_schema_error("components_keys " + " ".join(detail))
+    component_values: dict[str, int] = {}
+    for label, maximum in _ADOPTION_SCORE_COMPONENTS:
+        component_values[label] = _strict_schema_int(components.get(label), f"components.{label}", 0, maximum)
+    component_total = sum(component_values.values())
+    if component_total != score:
+        raise _product_review_schema_error(f"adoption_score_sum_mismatch components={component_total} score={score}")
+
+    for field, allowed in (
+        ("adoption_status", decision_intelligence.ADOPTION_STATUSES),
+        ("evidence_confidence", decision_intelligence.CONFIDENCE_LEVELS),
+        ("production_readiness", decision_intelligence.READINESS_LEVELS),
+    ):
+        value = obj.get(field)
+        if not isinstance(value, str) or value not in allowed:
+            raise _product_review_schema_error(f"{field} invalid={value!r}")
+
+    for field in ("main_risk", "best_for", "avoid_for", "short_rationale"):
+        value = obj.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise _product_review_schema_error(f"{field} must be non-empty string")
+
+    _strict_schema_int(obj.get("next_review_days"), "next_review_days", 7, 60)
+    return obj
+
+
+def _decode_product_review_json(text: str) -> dict:
+    """Parse provider JSON with deterministic, zero-API wrapper cleanup.
+
+    Structured output should already be valid JSON. This fallback only tolerates harmless code
+    fences / leading or trailing transport text; it never repairs missing fields or invents values.
+    """
+    raw = (text or "").strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.I)
+        raw = re.sub(r"\s*```$", "", raw)
+    try:
+        obj = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        if start < 0:
+            raise
+        obj, _ = json.JSONDecoder().raw_decode(raw[start:])
+    if not isinstance(obj, dict):
+        raise ValueError("Product Review response_not_object")
+    return obj
+
+
+def _parse_product_review_response(payload: object) -> dict:
+    obj = payload if isinstance(payload, dict) else _decode_product_review_json(str(payload or ""))
+    obj = _validate_product_review_payload(obj)
+    components = obj["components"]
+    breakdown = "\n".join(f"{label} {components[label]}/{maximum}" for label, maximum in _ADOPTION_SCORE_COMPONENTS)
     return {
-        "category": _normalize_product_review_category(obj.get("category")),
-        "adoption_score": int(obj.get("adoption_score") or 0), "adoption_score_breakdown_text": breakdown,
-        "adoption_status": str(obj.get("adoption_status") or "").upper(),
-        "evidence_confidence": str(obj.get("evidence_confidence") or "").upper(),
-        "production_readiness": str(obj.get("production_readiness") or "").upper(),
-        "main_risk_text": str(obj.get("main_risk") or ""), "best_for_text": str(obj.get("best_for") or ""),
-        "avoid_for_text": str(obj.get("avoid_for") or ""), "short_rationale_text": str(obj.get("short_rationale") or ""),
+        "category": obj["category"],
+        "adoption_score": obj["adoption_score"], "adoption_score_breakdown_text": breakdown,
+        "adoption_status": obj["adoption_status"],
+        "evidence_confidence": obj["evidence_confidence"],
+        "production_readiness": obj["production_readiness"],
+        "main_risk_text": obj["main_risk"], "best_for_text": obj["best_for"],
+        "avoid_for_text": obj["avoid_for"], "short_rationale_text": obj["short_rationale"],
         "source_summary_text": "Product Review from verified primary evidence",
-        "next_review_days": max(7, min(60, int(obj.get("next_review_days") or TRACKING_REVIEW_DAYS))),
+        "next_review_days": obj["next_review_days"],
     }
 
+
+def _parse_product_review_model_response(response: object) -> dict:
+    provider_parsed = getattr(response, "parsed", None)
+    if isinstance(provider_parsed, dict):
+        return _parse_product_review_response(provider_parsed)
+    model_dump = getattr(provider_parsed, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        if isinstance(dumped, dict):
+            return _parse_product_review_response(dumped)
+    return _parse_product_review_response(getattr(response, "text", ""))
 
 def _technology_state_to_repo(state: dict) -> dict:
     """Rehydrate the minimum source identity lost by the legacy Notion schema.
@@ -11004,6 +11366,10 @@ def run_product_reviews() -> dict:
         "skipped": 0,
         "evidence_skipped": 0,
         "authority_skipped": 0,
+        "structured_retries": 0,
+        "structured_retry_recovered": 0,
+        "boundary_reconciliation_attempted": 0,
+        "boundary_reconciled": 0,
     }
     for state in select_product_review_candidates():
         # max_reviews is a Gemini review cap, not a zero-API evidence-inspection cap.
@@ -11053,18 +11419,66 @@ def run_product_reviews() -> dict:
                 break
             result["review_slots_used"] += 1
 
-            response, model = _call_product_review_pool(
-                _product_review_prompt(repo, source_info, state),
-                f"product_review:{state.get('canonical_entity_id')}",
-            )
-            parsed = _parse_product_review_response(getattr(response, "text", ""))
+            review_prompt = _product_review_prompt(repo, source_info, state)
+            request_context = f"product_review:{state.get('canonical_entity_id')}"
+            response, model = _call_product_review_pool(review_prompt, request_context)
+            try:
+                parsed = _parse_product_review_model_response(response)
+            except (ValueError, TypeError, json.JSONDecodeError) as parse_exc:
+                logger.warning(
+                    "[PRODUCT REVIEW STRUCTURED OUTPUT INVALID] %s: %s",
+                    repo.get("nameWithOwner"), parse_exc,
+                )
+                # Exactly one logical schema-repair request is allowed, and it must fit inside the
+                # existing Product Review + global Gemini budgets. A retry never consumes a new
+                # review slot because it is repairing the same candidate assessment.
+                if not (PRODUCT_REVIEW_REQUEST_BUDGET.can_request() and GEMINI_BUDGET.can_request()
+                        and _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL)):
+                    raise
+                result["structured_retries"] += 1
+                response, model = _call_product_review_pool(
+                    review_prompt,
+                    request_context + ":structured_retry",
+                    request_kind_base="product_review_retry",
+                )
+                parsed = _parse_product_review_model_response(response)
+                result["structured_retry_recovered"] += 1
+
             reviewed_at = datetime.now(timezone.utc).isoformat()
-            persisted = persist_decision_intelligence_assessment(
-                repo, parsed, source_info, evidence, reviewed_at,
+            persist_kwargs = dict(
                 screening_score=state.get("screening_score"), screening_reason=state.get("screening_reason", ""),
                 attribution_context={"portfolio_topic": parsed.get("category") or "OTHER"}, pipeline_status="Product Review",
                 content_status="Stocked", article_status=ARTICLE_STATUS_NOT_PLANNED,
             )
+            persisted = persist_decision_intelligence_assessment(
+                repo, parsed, source_info, evidence, reviewed_at, **persist_kwargs
+            )
+
+            # Run114: a named feature can be real first-party information yet absent from the
+            # initially fetched landing/README context. Reconcile only this narrow validator
+            # failure by following explicit first-party docs with zero Gemini. Gates are not
+            # relaxed: persistence is retried only after the exact named fact becomes verifiable.
+            boundary_failures = _source_boundary_failure_names(persisted.get("failures") or [])
+            if (not persisted.get("saved") and persisted.get("reason") == "assessment_invalid" and boundary_failures):
+                result["boundary_reconciliation_attempted"] += 1
+                reconciliation = reconcile_product_review_source_boundary(
+                    parsed, source_info, persisted.get("failures") or []
+                )
+                logger.info(
+                    "[PRODUCT REVIEW BOUNDARY RECONCILIATION] %s -> %s",
+                    repo.get("nameWithOwner"), reconciliation,
+                )
+                if reconciliation.get("resolved"):
+                    refreshed_evidence = assess_evidence_sufficiency(source_info)
+                    if (refreshed_evidence.get("state") != EVIDENCE_INSUFFICIENT
+                            and refreshed_evidence.get("decision_scope_safe")):
+                        persisted = persist_decision_intelligence_assessment(
+                            repo, parsed, source_info, refreshed_evidence, reviewed_at, **persist_kwargs
+                        )
+                        evidence = refreshed_evidence
+                        if persisted.get("saved"):
+                            result["boundary_reconciled"] += 1
+
             if persisted.get("saved"):
                 # next_review is a product scheduler field and is intentionally patched after the common upsert.
                 days = parsed.get("next_review_days", TRACKING_REVIEW_DAYS)

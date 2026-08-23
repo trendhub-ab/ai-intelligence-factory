@@ -1,0 +1,28 @@
+KILLED redirect_final_host_guard rc=1
+    self.assertFalse(result["resolved"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 1 test in 0.509s
+
+FAILED (failures=1)
+KILLED category_enum_guard rc=1
+    with self.assertRaisesRegex(ValueError, "category invalid"):
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+KILLED product_review_budget_guard rc=1
+    self.assertEqual(1, pr_budget.used)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 2
+
+----------------------------------------------------------------------
+Ran 1 test in 0.003s
+
+FAILED (failures=1)
+SUMMARY 3/3 mutations killed; restore_sha=4f978c7dbbc4d6ae55939c923595881af05d3daf02effc805b1d4b953b289a5d

@@ -1,10 +1,10 @@
 # AI Intelligence Factory 現行仕様
 
-最終更新: 2026-08-22  
-現行コード基準: **Run 102 Publish Yield Precision 完成版**  
-基準ファイル: `ai-intelligence-factory/pipeline.py` / `.github/workflows/daily.yml`
+最終更新: 2026-08-23  
+本パッケージコード基準: **Run 115 Product Review Adversarial Hardening 完成版候補**  
+基準ファイル: `pipeline.py` / `inventory_bootstrap.py` / `decision_intelligence.py` / `.github/workflows/`
 
-> 本仕様書は、Run 102 Publish Yield Precisionまでの現行基準である。Run 99以降のGate Precision、Eyecatch Final、Article Audit Artifact、production isolation、Regression群を維持しつつ、Gate理由をHARD BLOCK / REVIEW / SOFT QUALITYへ分類し、重大品質を守りながらSOFT QUALITYだけによる不要な廃棄・Gemini Retryを抑える。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。
+> 本仕様書はRun 102までのProduction基盤を維持しつつ、Run 103〜115で追加されたReader-First、Eyecatch精度、Human Editorial Naturalness、Subscriber Inventory Bootstrap、Cross-Source Evidence Resolution、Product Review Reliability、Product Review Adversarial Hardeningを含む本パッケージ仕様を記録する。Run115は完成版候補であり、main反映・実Provider運用確認前にProduction適用済みとは扱わない。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。
 
 ## 1. 目的と情報設計
 
@@ -691,3 +691,116 @@ SOFT Qualityだけの改善を目的とするQuality Retryは禁止する。追�
 ### 非変更範囲
 - 4 Quality Gates、Gate Severity、Evidence-to-Decision Sufficiency、Fact Relation Gate、Primary Source Authority Gate、Rescue Loss Limit、Notion Ready条件、Article Audit、Gemini予算、Deep Dive順位、Source ROI、Subscription Attributionの意味は変更しない。
 - Reader-first headerはQuality Gate通過後の最終Markdown組み立てで追加するため、生成Promptのtoken面積とGemini呼出し回数を増やさない。
+
+
+---
+
+## Run 114 Product Review Reliability（2026-08-23）
+
+### 目的
+Run113でEvidence-ready候補を最大3件まで到達させられるようになった後に実地で顕在化した、Product Review出力の2つの損失要因を修正する。
+
+1. GeminiがHTTP 200でも不正JSONを返し、Evidence-ready候補とGemini requestを廃棄する問題。
+2. 実在する公式機能名が初期Verification Contextに含まれず、Source Boundary GateがFalse Rejectする問題。
+
+### Structured Output
+- Product Reviewは既存`gemini-3.6-flash`等の既存Model Poolを利用し、追加Provider/API経路を作らない。
+- `response_mime_type=application/json`に加えて`response_json_schema`を指定する。
+- Category、Adoption Score、6 Components、Status、Evidence Confidence、Production Readiness、Main Risk、Best For、Avoid For、Short Rationale、Next Review DaysをSchemaで拘束する。
+- Providerの`response.parsed`がdict/Pydantic dumpとして利用可能なら優先し、なければJSON textを解析する。
+- code fenceや前後transport textだけは0 APIで除去可能。欠損値・壊れた値の創作修復は禁止する。
+- なお構造化出力が解析不能の場合に限り、同一候補を既存`PRODUCT_REVIEW_REQUEST_BUDGET`内で論理的に1回だけ再要求できる。`review_slots_used`は増やさない。
+
+### Source-Boundary Reconciliation
+- `source-boundary unsupported named fact`だけを対象とする。Numeric/Hype/Relation/Evidence不足等の別Gateは対象外。
+- Assessment本文は書き換えず、根拠側だけを補強する。
+- Product Review前に明示的に発見済みの公式Homepage/Docs/Primary Source URLだけをSeedにする。
+- GitHub Repository HTMLのsite-wide navigation scrapingは禁止を維持し、GitHub metadata/READMEから明示された公式Docsを使う。
+- Seed pageから同一first-party host配下のリンクだけを追跡し、unsupported named factに対応するlabel/pathを持つ子ページだけを最大2件選ぶ。
+- 1候補あたりHTTP fetchは最大4回。Geminiは0回。
+- 取得本文中にunsupported named factの完全名が実在した場合のみVerification Contextへ追加する。
+- 根拠が見つからない、外部hostへ出る、取得失敗の場合は従来どおりFail-Closed。
+- Reconciliation後はEvidence SufficiencyとDecision Intelligence Validatorを再実行し、全Gateを通った場合だけNotionへ保存する。
+
+### Gemini予算
+- Evidence reconciliationは0 Gemini。
+- Structured Output Schema自体は追加Gemini requestなし。
+- JSON破損時のlogical retryだけは既存Product Review request budgetを1回消費する。
+- 新しいDaily budget、専用model、別API keyは追加しない。
+
+### 監査メトリクス
+Product Review resultに以下を追加する。
+- `structured_retries`
+- `structured_retry_recovered`
+- `boundary_reconciliation_attempted`
+- `boundary_reconciled`
+
+### 非変更範囲
+- Run113 Cross-Source Evidence ResolutionのEvidence-ready slot semantics。
+- Quality Gates、Primary Source Authority、Fact Relation、Numeric/Hype Gate。
+- Subscriber Sync / Decision Historyの保存意味。
+- 通常Dailyの収集・Screening・Calibration・記事Deep Dive・記事生成順序。
+- Product Review Max Reviews / Request Budgetの既存上限。
+
+
+---
+
+## Run 115 Product Review Adversarial Hardening（2026-08-23）
+
+### 目的
+Run114の独立反証監査で、既存テストがすべてPASSしていても見逃せる3種の死角が確認されたため、Product Reviewを追加APIなしでFail-Closedに強化する。
+
+1. first-party SeedがHTTP redirectでthird-partyへ移動した後も本文をEvidenceとして採用できる問題。
+2. Provider Structured OutputがJSONとして成立していても、必須field欠損・未知enum・余分なfield・component不整合・range逸脱等のSemantic Schema違反を局所Parserが受理できる問題。
+3. Structured retryのテストがMock中心で、実Product Review Request Budgetの消費・上限を直接証明していなかった問題。
+
+### Redirect後のfirst-party再検証
+- Source-Boundary Reconciliationはrequest URLだけでなくHTTP取得後の`final_url`も再検証する。
+- `final_url`がSeedのfirst-party host範囲外なら、本文・リンク・Evidence documentをすべて破棄する。
+- Reject理由は`redirect_outside_first_party`として監査情報へ残す。
+- third-party本文にunsupported named factが完全一致していても解決済みとは扱わない。
+- 同一first-party host内のredirectだけは従来どおり利用可能。
+
+### Local Semantic Schema Validation
+Provider側`response_json_schema`を唯一のTrust Boundaryとは扱わず、保存前にapplication codeでも再検証する。
+
+- required field完全一致。
+- `additionalProperties=false`相当として未知fieldを拒否。
+- Category / Adoption Status / Evidence Confidence / Production Readinessのenumを厳密検証。
+- 6 Componentsのkey完全一致。
+- component値・Adoption Score・Next Review Daysのinteger/rangeを厳密検証し、boolをintegerとして受理しない。
+- 6 Components合計とAdoption Scoreの完全一致。
+- Main Risk / Best For / Avoid For / Short Rationaleは空文字禁止。
+- 未知Categoryを`OTHER`へ黙って丸めない。Schema違反として1回だけstructured retry対象にする。
+- retry後も違反なら従来どおりFail-Closedで保存しない。
+
+### Structured Output Prompt
+- output shape、enum一覧、range、key一覧は`response_json_schema`へ集約する。
+- PromptにはDecision semanticsだけを残し、Schema契約の重複記述を削減する。
+- Components合計=Adoption Score、ADOPT条件、一次情報限定、主用途からCategory判断等の意味制約はPromptに残す。
+
+### Gemini / Product Review Budget
+- Semantic Schema failureのlogical retryは同一候補について最大1回。
+- 既存`PRODUCT_REVIEW_REQUEST_BUDGET`とGlobal Gemini Budgetの双方に空きがある場合だけ送信する。
+- Product Review Budget=1で初回を消費済みなら2回目のProvider送信は禁止。
+- retryは`review_slots_used`を増やさないが、Product Review request数は実際に1追加消費する。
+- 新規Gemini lane、追加API key、追加Daily budgetは作らない。
+
+### 反証テストの強化
+Run115専用テストは正常系だけでなく、以下の敵対入力を直接固定する。
+
+- local HTTP 302でfirst-party URLから異なるhostへredirectし、redirect先本文にunsupported named factを置く。
+- missing/extra field、未知Category、component欠落、component range逸脱、score sum不一致、bool score、blank text、review day range逸脱。
+- `response.parsed`がSemantic違反なら正常な`response.text`へ勝手にfallbackしない。
+- Product Review Request Budget=2では初回+structured retryの2回を実消費。
+- Budget=1では2回目を送信せず、fake provider responseが未使用で残ることを確認。
+
+さらにMutation/Negative-Controlとして、redirect guard、Category enum guard、Product Review budget guardを一時的に破壊し、対応反証テストがすべて赤になることを確認する。Mutation後は`pipeline.py` SHA256を元へ完全復元する。
+
+### 非変更範囲
+- Run113 Cross-Source Evidence ResolutionのEvidence-ready slot semantics。
+- Run114 Source-Boundary Reconciliationの対象をnamed fact failureに限定する原則。
+- Primary Source Authority / Fact Relation / Numeric / Hype / Evidence-to-Decision Gate。
+- Decision History / Subscriber Sync / Notion保存意味。
+- 通常Dailyの収集、Screening、Calibration、記事Deep Dive、記事生成、Eyecatch。
+- Product Review Max Reviewsおよび既存Request Budgetの設定値。
