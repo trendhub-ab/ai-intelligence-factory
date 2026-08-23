@@ -272,6 +272,11 @@ SOURCE_ROI_MAX_FETCH_BY_SOURCE = {
 
 # ---- Revenue Product Phase 2 ----
 ENABLE_REVENUE_PRODUCT_PHASE2 = os.environ.get("ENABLE_REVENUE_PRODUCT_PHASE2", "true").lower() in {"1", "true", "yes", "on"}
+# Run109: manual subscriber-inventory bootstrap. This is intentionally not scheduled by Daily.
+INVENTORY_BOOTSTRAP_ACTIVE = os.environ.get("INVENTORY_BOOTSTRAP_ACTIVE", "false").lower() in {"1", "true", "yes", "on"}
+INVENTORY_BOOTSTRAP_ENTITY_IDS = tuple(
+    x.strip() for x in os.environ.get("INVENTORY_BOOTSTRAP_ENTITY_IDS", "").split(",") if x.strip()
+)
 TRACKING_ELIGIBILITY_MIN_SCORE = max(0, min(100, int(os.environ.get("TRACKING_ELIGIBILITY_MIN_SCORE", "55"))))
 TRACKING_REVIEW_DAYS = max(1, int(os.environ.get("TRACKING_REVIEW_DAYS", "14")))
 PRODUCT_REVIEW_MAX_PER_RUN = max(0, int(os.environ.get("PRODUCT_REVIEW_MAX_PER_RUN", "2")))
@@ -562,6 +567,7 @@ REASON_CODE_APPEAL_ACTION_COLLAPSE = "APPEAL_ACTION_COLLAPSE"
 REASON_CODE_APPEAL_TITLE_FLATTENING = "APPEAL_TITLE_FLATTENING"
 REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
 REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
+REASON_CODE_APPEAL_AI_STYLE_COMPOSITE = "APPEAL_AI_STYLE_COMPOSITE"
 REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
 REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED = "DEEP_DIVE_RUN_BUDGET_EXHAUSTED"
@@ -1457,6 +1463,29 @@ def initialize_runtime() -> None:
     SELECTED_DEEP_DIVE_MODEL = DEEP_DIVE_MODEL_POOL[0]
 
 
+def initialize_inventory_bootstrap_runtime() -> None:
+    """Validate only dependencies required by manual Product Review bootstrap.
+
+    Unlike normal Daily, this mode does not collect sources, screen articles, generate note drafts,
+    or write Article Audit artifacts. It therefore must not fail on unrelated article-DB or
+    Product Hunt configuration. Decision Intelligence + History + Subscriber schemas remain
+    fail-closed because Product Review writes through those authoritative paths.
+    """
+    global SELECTED_DEEP_DIVE_MODEL
+    if not GEMINI_API_KEY:
+        raise ValueError("Inventory Bootstrap requires GEMINI_API_KEY")
+    if GEMINI_PERSISTENT_DAILY_COUNTER and not GEMINI_COUNTER_SCOPE_ID:
+        raise ValueError("Inventory Bootstrap persistent counter requires a stable repository/counter scope")
+    if GEMINI_PERSISTENT_DAILY_COUNTER and (not GH_PAT or not os.environ.get("GITHUB_REPOSITORY", "").strip()):
+        raise ValueError("Inventory Bootstrap persistent counter requires GH_PAT and GITHUB_REPOSITORY")
+    if not DEEP_DIVE_MODEL_POOL:
+        raise ValueError("Inventory Bootstrap requires a non-empty product-review model pool")
+    decision_intelligence.preflight_decision_intelligence_schema()
+    _register_gemini_usage_atexit()
+    SELECTED_DEEP_DIVE_MODEL = DEEP_DIVE_MODEL_POOL[0]
+    logger.info("[INVENTORY BOOTSTRAP PREFLIGHT OK] Product Review / History / Subscriber only")
+
+
 def _mark_model_exhausted(model_name: str, reason: str = "") -> None:
     SESSION_EXHAUSTED_MODELS.add(model_name)
     logger.warning("[MODEL EXHAUSTED] %s %s", model_name, reason)
@@ -1711,7 +1740,7 @@ ARTICLE_DISCLAIMER = (
     "導入・利用にあたっては、一次情報と自社の条件を確認してください。\n"
 )
 
-# 内部のDecision構造は固定したまま、noteで読者に見える見出しだけを記事ごとに変える。
+# 旧稿との後方互換・section fallback用の見出しalias。Run108以降は生成プロンプトの可視テンプレートとしては使わない。
 # 名前から安定して選ぶため、Quality Retryで同じ記事の構成が無意味に揺れない。
 ARTICLE_DISPLAY_VARIANTS = (
     # 問題提起型
@@ -5219,28 +5248,28 @@ def _source_fact_discipline(source: str) -> str:
 
 
 def _human_editorial_style_rules() -> str:
-    """note本文を管理帳票から切り離し、人間の編集者が書いた読み物に寄せる。"""
+    """Human editorial guidance: fix editorial intent, not visible sentence templates."""
     return """
 【Human Editorial Style｜最重要】
-ARTICLEはNotion管理帳票ではない。読者が自然に読み進められるテック記事として書く。
+ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」でもない。人気のある人間のテックライターが、
+一次情報を読んで「自分はどこが面白いと思ったか」を選び、読者に順番をつけて渡す文章として書く。
 
-・同じ長さの段落、同じ語尾、同じ3点セットを繰り返さない。
-・「第一に／第二に／第三に」を機械的に並べない。必要なら一度だけ使う。
-・各節を結論→理由→箇条書きの同型にしない。短い段落と長めの段落を混ぜる。
-・一次情報を説明したあと、筆者自身の判断や迷いを自然に差し込む。
-・「ここまでは確認できる。一方で、ここはまだ分からない。だから今は導入を急がず、動向を見たい」のように、留保を自然な日本語で書く。
-・煽り語、営業コピー、読者を急かす命令口調を避ける。
-・架空の感情や体験を書かない。「私は驚いた」「使ってみた」「以前から気になっていた」は、根拠がない限り使わない。
-・「現場で○○を進める立場として」「日常の業務でも同じだ」のように、実在しない職務経験・日常体験を暗示する書き方も禁止する。
-  筆者の意見は「私なら」「私の見解では」のような判断として書き、体験した事実へ偽装しない。
-・導入・見出し・結論を定型句で埋めず、テーマに合う自然な言葉を選ぶ。
-・箇条書きは要点整理や検証項目にだけ使う。本文の半分以上は段落で読ませる。
-・具体例は一次情報または明示した推論の範囲だけで使う。架空の導入効果や期間を作らない。
-・「理由は3つあります」を根拠なしに使わない。項目数は事実上必要な数だけにする。
-・最終段落は筆者なら次に何をするかを、事実→実務上の意味→リスク→判断の順で自然に締める。
-・安全性のために記事全体を曖昧にしない。根拠のない主張だけを、その一文・その表現の範囲で修正する。
-・根拠に基づく観察、比較、筆者の実務判断は残す。具体的な検証・見送り・比較を、単なる「今後注視する」に置き換えない。
-・架空の感情や個人的体験は加えず、自然な好奇心と編集者としての視点で読ませる。
+・全部を同じ熱量で説明しない。この記事でいちばん読者に持ち帰ってほしい論点を1つ決め、そこを軸にする。
+・事実を網羅するより、判断に必要な事実を選ぶ。重要度の低い説明は短くするか、書かない。
+・段落の長さと文の長さを意図的に揃えない。ただし短文を3つ以上連打して広告コピーのように煽らない。
+・各節を「結論→理由→箇条書き→注意」の同型にしない。記事の流れに必要な順番を選ぶ。
+・見出しは記事固有の内容から作る。「なぜ重要か」「ポイント」「まとめ」など汎用ラベルだけで済ませない。
+・「ここで重要なのは」「注目すべきは」「ポイントは」「つまり」「言い換えると」を接着剤のように反復しない。
+・「Aではありません。Bです。」の対比構文を連発しない。効く場所で一度使うのはよい。
+・「ひとつは〜。もうひとつは〜。」「理由は3つあります。」のように、内容を型へ押し込まない。
+・「〜という点です」「〜と言えます」「〜となります」を同じ記事で何度も続けない。
+・一次情報を説明したあと、筆者の判断や留保を自然に差し込む。ただし架空の経験・感情は作らない。
+・「私は驚いた」「使ってみた」「以前から気になっていた」「現場で担当してきた」は、実体験の根拠がない限り禁止。
+・筆者の主観は「私なら、この条件なら試す」「ここはまだ評価を保留する」のような判断として書く。
+・読者を急かす煽り、営業コピー、過剰な疑問文を避ける。自然な好奇心で読ませる。
+・箇条書きは比較・条件・次のアクションなど、一覧にした方が理解が速いところだけに使う。
+・最終判断は曖昧な「注視したい」で逃げず、試す／待つ／見送る／比較する等の具体的な距離感を示す。
+・安全性のために記事全体を弱くしない。根拠のない一文だけを弱め、根拠のある面白さと判断は残す。
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
@@ -5361,26 +5390,29 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 
 【ARTICLE】
 記事はすべて無料公開する。有料エリア、有料マーカー、無料部分／有料部分という区分を一切出力しない。
-タイトルの直後には、読者が「何についての記事か」「自分に関係があるか」をすぐ理解できる導入を置く。
-導入見出しは次を使う。
-## {display['intro']}
 
-導入は2〜4段落で自然に構成する（今回は目安として{display['intro_paragraphs']}段落）。今回は「{display['style']}」型の記事として、導入型「{display['opening']}」、記事全体の温度感「{display['tone']}」を参考にする。5種類（問題提起・実験・数字・意外性・比較）は記事ごとに安定ローテーションし、別タイプの記事の定型見出しや語り出しを混ぜない。ただし型や段落数を機械的に再現せず、毎回「結論から言うと」「今回紹介するのは」「この記事では」で始めない。
-1段落目は、読者の疑問・実務課題・数字や事実への留保・発見のいずれかから自然に入り、{source}で発見した『{name}』のリンク先原資料を参照して実務への意味を整理する記事であることを示す。
-2段落目は、原資料の発表主体がSource Native Contextで確認できる場合だけ示し、「〜に関する一次情報に基づいています」と明記する。確認できない場合は主体を推測せず「リンク先原資料の一次情報に基づいています」と書く。
-3段落目は、原資料で確認できる技術的背景・従来課題・今回の手法を、固有の数値や条件を落とさずに簡潔に説明する。推論や実務的な評価はこの段落に混ぜない。
+今回は内部の編集ブリーフとして「{display['style']}」の角度、導入のヒント「{display['opening']}」、温度感「{display['tone']}」を使う。
+これらは読者に見せるラベルでも見出しでもない。既成の見出し文や段落テンプレートを再現せず、記事固有の内容に合わせて自由に構成する。
 
-その後、以下の見出しをこの順番で出す。
-## {display['conclusion']}
-## {display['why']}
-## {display['what']}
-## {display['key']}
-### {display['decision']}
-### {display['final']}
+タイトル直後は、読者が「何の話か」「なぜ自分に関係するか」をつかめる自然なリードから始める。
+リードの段落数は固定しない。1〜3段落程度を目安に、必要な情報だけを書く。
+発見経路や「一次情報に基づく」という説明を義務的な定型文として毎回入れない。出典は公開稿の「元情報」で別途提示されるため、本文では話を理解するのに必要な場合だけ自然に触れる。
 
-「{display['key']}」と「{display['decision']}」の間に、テーマに最も合う中見出しを必要な数だけ自分で自然な日本語で設計する。
-「なぜそう判断したのか」「本当に変わるのは何か」「誰が使うべきか」等を毎回固定で全部出さない。
-必要な論点だけを選び、文章の流れを優先する。
+本文の見出しは2〜6個程度を目安に、記事固有の内容から自分で作る。以下は内部の意味役割であり、見出し名や順番を固定しない。
+・何が起きた／何が変わったのか
+・なぜ読者の判断に関係するのか
+・仕組みや条件のうち、判断に必要な部分
+・面白さと同時に見ておくべき制約
+・筆者なら次に何をするか
+
+すべての役割を毎回独立セクションにしない。内容が自然につながるなら統合する。
+一方で、記事の終盤には「読者が結局どう動けばよいか」が分かる判断セクションを必ず1つ置く。見出しは記事内容に合わせて自然な日本語で作り、管理用Decisionコードは書かない。
+
+【構成上の禁止】
+・Why → What → Key → Decision のような内部構造を、そのまま同じ順番・同じ粒度の見出しへ露出しない。
+・旧テンプレートの「先に判断を書くと。」「なぜ、この問題が残り続けるのか。」「今回の仕組みを見てみる。」「導入前に押さえたいポイント。」等をセットで再利用しない。
+・各セクションを同じ文字量にそろえない。
+・全セクションを同じ「説明→注意→結論」で閉じない。
 
 【ARTICLEの追加ルール】
 ・NOW / TRY / WATCH / WAIT / AVOID は内部管理コードであり、ARTICLEには絶対に表示しない。括弧書き、英字併記、見出し内も禁止。
@@ -6577,29 +6609,40 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     }
     # 表示ラベルは記事ごとに変えられる。固定文字列ではなく見出しの意味役割で確認する。
     semantic_heading_roles = {
-        "導入": ("はじめに", "導入", "背景", "気になった背景", "なぜ今"),
-        "結論": ("結論", "まず、結論", "要するに"),
+        "導入": ("はじめに", "導入", "背景", "気になった背景", "なぜ今", "何が", "起き", "変わ", "気になる"),
+        "結論": ("結論", "まず、結論", "要するに", "判断", "どう見る", "どうする", "試す", "待つ", "見送", "距離"),
         "重要性": ("重要性", "なぜ重要", "ここが大きい", "気になった背景", "意味"),
         "概要": ("概要", "何が変わ", "仕組み", "変更点"),
         "要点": ("要点", "ポイント", "押さえる"),
         "筆者判断": ("筆者", "私なら", "実務で", "どうする", "次にやる"),
-        "最終判断": ("最終判断", "結局", "まとめ", "判断"),
+        "最終判断": ("最終判断", "結局", "まとめ", "判断", "どうする", "次に", "試す", "待つ", "見送", "距離", "導入"),
     }
     def has_heading_role(label: str, headings: tuple[str, ...]) -> bool:
         aliases = required_headings[label]
         exact = r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in aliases) + r")\s*$"
         semantic = r"^#{2,3}\s*.*(?:" + "|".join(re.escape(item) for item in headings) + r").*$"
         return bool(re.search(exact, draft, re.MULTILINE) or re.search(semantic, draft, re.MULTILINE | re.I))
-    # 読ませる中見出しの完全一致をFact failureにしない。
-    # Hard structureは「導入→結論→最終判断」があれば成立し、その他はEditorial品質として扱う。
+    # Run108: 可視見出しを固定しない。自然なリード＋内容固有の複数見出し＋終盤の具体判断が
+    # そろっていれば、旧テンプレート見出しの完全一致を要求しない。旧稿は従来aliasでも通す。
     hard_heading_roles = ("導入", "結論", "最終判断")
-    for label in hard_heading_roles:
-        if not has_heading_role(label, semantic_heading_roles[label]):
-            failures.append(f"required heading missing: {label}")
+    first_heading = re.search(r"^#{2,3}\s+", draft, re.MULTILINE)
+    lead_text = draft[:first_heading.start()] if first_heading else draft
+    lead_plain = re.sub(r"[#*_`>\-\s]+", "", lead_text)
+    heading_count = len(re.findall(r"^#{2,3}\s+.+$", draft, re.MULTILINE))
+    tail = draft[-900:]
+    tail_has_decision = bool(re.search(
+        r"(?:私なら|試(?:す|したい)|検証|比較|導入(?:を)?(?:急が|見送|進め)|見送|待(?:つ|ち)|距離|採用|使う|やめる)",
+        tail, re.I,
+    ))
+    natural_reader_structure = len(lead_plain) >= 40 and heading_count >= 2 and tail_has_decision
 
-    structural_missing = sum(1 for label in hard_heading_roles if not has_heading_role(label, semantic_heading_roles[label]))
-    if structural_missing >= 2:
-        failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
+    if not natural_reader_structure:
+        for label in hard_heading_roles:
+            if not has_heading_role(label, semantic_heading_roles[label]):
+                failures.append(f"required heading missing: {label}")
+        structural_missing = sum(1 for label in hard_heading_roles if not has_heading_role(label, semantic_heading_roles[label]))
+        if structural_missing >= 2:
+            failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
     if output_truncated:
         failures.append("OUTPUT_TRUNCATED")
     if source_info and source_info.get("deep_source_required") and not source_info.get("deep_source_scanned") and not source_info.get("decision_scope_safe"):
@@ -6748,6 +6791,114 @@ def _find_fabricated_personal_experience(text: str) -> list[str]:
     return list(dict.fromkeys(hits))[:4]
 
 
+def _ai_style_composite_signals(text: str) -> dict:
+    """High-precision, zero-API detector for *combinations* of formulaic AI prose signals.
+
+    A single short sentence, contrast, or transition is normal human writing.  We therefore
+    score only recurring/co-occurring patterns and use the composite threshold for review.
+    """
+    body = text or ""
+    headings = [re.sub(r"\s+", " ", h).strip() for h in re.findall(r"^#{2,3}\s+(.+)$", body, re.MULTILINE)]
+    prose = re.sub(r"^#{1,6}\s+.*$", "", body, flags=re.MULTILINE)
+
+    glue_phrases = ("ここで重要なのは", "注目すべきは", "ポイントは", "つまり", "言い換えると")
+    glue_counts = {phrase: prose.count(phrase) for phrase in glue_phrases}
+    glue_total = sum(glue_counts.values())
+    repeated_glue = max(glue_counts.values(), default=0) >= 2
+
+    point_ending_count = len(re.findall(r"という点(?:です|だ)[。！？]", prose))
+    contrast_count = len(re.findall(r"[^。！？\n]{1,70}ではありません[。！？][^。！？\n]{1,70}(?:です|なのです)[。！？]", prose))
+    enum_count = len(re.findall(r"(?:ひとつは|一つは|もうひとつは|もう一つは|理由は[二三23]つ|ポイントは[二三23]つ)", prose))
+
+    template_headings = {
+        variant[key]
+        for variant in ARTICLE_DISPLAY_VARIANTS
+        for key in ("intro", "conclusion", "why", "what", "key", "decision", "final")
+    }
+    template_heading_hits = sum(1 for h in headings if h in template_headings)
+    generic_heading_hits = sum(
+        1 for h in headings
+        if re.fullmatch(r"(?:なぜ重要なのか[。？]?|ポイント[。？]?|要点[。？]?|まとめ[。？]?|結論[。？]?|何が違うのか[。？]?|何が新しいのか[。？]?)", h)
+    )
+
+    # Detect paragraphs made of 3+ very short declarative sentences. One such burst can be
+    # deliberate copywriting, so it contributes only one point to the composite.
+    short_burst = False
+    for para in re.split(r"\n\s*\n", prose):
+        sentences = [s.strip() for s in re.split(r"(?<=[。！？])", para) if s.strip()]
+        run = 0
+        for sentence in sentences:
+            visible = re.sub(r"[\s。！？]", "", sentence)
+            run = run + 1 if 0 < len(visible) <= 18 else 0
+            if run >= 3:
+                short_burst = True
+                break
+        if short_burst:
+            break
+
+    # Uniform section size is only a weak signal. It matters only as part of the composite.
+    section_lengths = []
+    matches = list(re.finditer(r"^#{2,3}\s+.+$", body, re.MULTILINE))
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(body)
+        length = len(re.sub(r"\s+", "", body[start:end]))
+        if length >= 80:
+            section_lengths.append(length)
+    uniform_sections = False
+    if len(section_lengths) >= 5:
+        mean = sum(section_lengths) / len(section_lengths)
+        variance = sum((x - mean) ** 2 for x in section_lengths) / len(section_lengths)
+        cv = (variance ** 0.5) / mean if mean else 1.0
+        uniform_sections = cv < 0.18
+
+    score = 0
+    if glue_total >= 3: score += 2
+    if repeated_glue: score += 1
+    if point_ending_count >= 3: score += 2
+    if contrast_count >= 2: score += 2
+    if enum_count >= 2: score += 1
+    if template_heading_hits >= 3: score += 3
+    elif template_heading_hits >= 1: score += 1
+    if generic_heading_hits >= 4: score += 2
+    if short_burst: score += 1
+    if uniform_sections: score += 1
+
+    return {
+        "score": score,
+        "high": score >= 5,
+        "glue_total": glue_total,
+        "repeated_glue": repeated_glue,
+        "point_ending_count": point_ending_count,
+        "contrast_count": contrast_count,
+        "enum_count": enum_count,
+        "template_heading_hits": template_heading_hits,
+        "generic_heading_hits": generic_heading_hits,
+        "short_burst": short_burst,
+        "uniform_sections": uniform_sections,
+    }
+
+
+def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
+    """Return the actual reader-facing lead even when Run108 uses a content-specific heading."""
+    body = article or ""
+    first_heading = re.search(r"^#{2,3}\s+.+$", body, re.MULTILINE)
+    if first_heading and first_heading.start() > 0:
+        lead = body[:first_heading.start()].strip()
+        if lead:
+            return lead[:max_chars]
+    legacy = _extract_any_markdown_section(body, _display_heading_aliases("intro"))
+    if legacy:
+        return legacy[:max_chars]
+    # If the article starts with a content-specific heading, inspect its first section instead.
+    if first_heading:
+        start = first_heading.end()
+        next_heading = re.search(r"^#{2,3}\s+.+$", body[start:], re.MULTILINE)
+        end = start + next_heading.start() if next_heading else len(body)
+        return body[start:end].strip()[:max_chars]
+    return body[:max_chars]
+
+
 def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
     """Human Appeal Gate: Humanizationとは別に、読ませる力と判断の具体性を診断する。
 
@@ -6788,9 +6939,13 @@ def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
         issues.append("repeated_caveat_phrase")
 
     # 読み手への入口が説明文だけにならないかを軽く確認する。疑問符は必須にしない。
-    intro = _extract_any_markdown_section(article, _display_heading_aliases("intro"))
-    if intro and not re.search(r"(?:なぜ|どこ|何が|課題|現場|原資料|一見|数字|変わ)", intro[:500]):
+    intro = _article_opening_excerpt(article)
+    if intro and not re.search(r"(?:なぜ|どこ|何が|課題|現場|原資料|一見|数字|変わ|面白|気にな|使|困|発表|公開|登場)", intro[:500]):
         issues.append("opening_hook_weak")
+
+    ai_style = _ai_style_composite_signals(article)
+    if ai_style.get("high"):
+        issues.append("ai_style_composite_high")
 
     issues = list(dict.fromkeys(issues))
     return ("WEAK" if issues else "ACCEPTABLE", issues)
@@ -6853,6 +7008,7 @@ def _reason_code(message: str, gate: str) -> str:
             "headline_flattened": REASON_CODE_APPEAL_TITLE_FLATTENING,
             "decision_voice_missing": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
             "fabricated_personal_experience": REASON_CODE_APPEAL_FABRICATED_EXPERIENCE,
+            "ai_style_composite_high": REASON_CODE_APPEAL_AI_STYLE_COMPOSITE,
             "human_appeal_materially_degraded_after_reedit": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
         }
         return mapping.get(message, REASON_CODE_APPEAL_DECISION_VOICE_LOSS)
@@ -6893,6 +7049,8 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code: str = ""
             return GATE_SEVERITY_HARD
         if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
             return GATE_SEVERITY_SOFT
+        if message == "ai_style_composite_high" or code == REASON_CODE_APPEAL_AI_STYLE_COMPOSITE:
+            return GATE_SEVERITY_REVIEW
         if message in {
             "action_collapsed_to_generic_monitoring",
             "decision_voice_missing",
@@ -7049,6 +7207,7 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         REASON_CODE_APPEAL_TITLE_FLATTENING: ("Evidenceを超えない範囲でタイトルの引力だけを回復してください。", "title"),
         REASON_CODE_APPEAL_DECISION_VOICE_LOSS: ("架空体験や感情を足さず、原稿内の根拠に基づく筆者判断だけを復元してください。", "voice"),
         REASON_CODE_APPEAL_FABRICATED_EXPERIENCE: ("実際に経験していない現場体験・使用体験・感情を削除し、一次情報に基づく編集者の観察・判断へ書き換えてください。", "voice"),
+        REASON_CODE_APPEAL_AI_STYLE_COMPOSITE: ("事実・数値・判断の意味は変えず、汎用的な接続句の反復、同型見出し、短文連打、機械的な対比を崩してください。記事固有の焦点を1つ選び、人間の編集者が書いた自然なリズムへ再編集してください。新しい事実は追加しないでください。", "prose_style"),
         REASON_CODE_EDITORIAL_STRUCTURE_ERROR: ("読みやすさを損なう構造だけを自然な文章へ直してください。", "structure"),
     }
     instructions, sections = [], []
@@ -7065,7 +7224,10 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
     # Retry itself must not re-introduce internal management vocabulary into the public article.
     instructions.append("ARTICLE本文には内部管理コード NOW / TRY / WATCH / WAIT / AVOID を絶対に出力せず、読者向けの自然な日本語判断文へ言い換えてください。")
-    instructions.append("修正対象外の一次情報・数値・固有名詞・見出し構造は不用意に書き換えず、局所修正に限定してください。")
+    if any((row.get("reason_code") or "") == REASON_CODE_APPEAL_AI_STYLE_COMPOSITE for row in reason_rows):
+        instructions.append("AI臭の修正では見出し名・段落分割・文章リズムを変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。")
+    else:
+        instructions.append("修正対象外の一次情報・数値・固有名詞・見出し構造は不用意に書き換えず、局所修正に限定してください。")
     return "\n".join(dict.fromkeys(instructions)), list(dict.fromkeys(sections))
 
 
@@ -10384,6 +10546,16 @@ def select_product_review_candidates() -> list[dict]:
     if not (ENABLE_REVENUE_PRODUCT_PHASE2 and decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB and PRODUCT_REVIEW_MAX_PER_RUN > 0): return []
     pages = decision_intelligence.query_technology_records(max_records=5000)
     states = [decision_intelligence.technology_page_to_state(page) for page in pages]
+    bootstrap_order: dict[str, int] = {}
+    if INVENTORY_BOOTSTRAP_ACTIVE:
+        # Fail closed: manual acceleration must never review arbitrary inventory when the reviewed
+        # Plan was not propagated into this subprocess. An empty allowlist may still run Subscriber
+        # sync, but Product Review itself returns no candidates.
+        bootstrap_order = {entity_id: idx for idx, entity_id in enumerate(INVENTORY_BOOTSTRAP_ENTITY_IDS)}
+        if not bootstrap_order:
+            logger.warning("[INVENTORY BOOTSTRAP] ordered entity allowlist is empty; Product Review disabled")
+            return []
+        states = [s for s in states if str(s.get("canonical_entity_id") or "") in bootstrap_order]
     now = datetime.now(timezone.utc)
     active = []
     legacy = []
@@ -10421,8 +10593,12 @@ def select_product_review_candidates() -> list[dict]:
                 except Exception: due = True
             else: due = True
             if due: active.append((1, state))
-    active.sort(key=lambda x: (x[0], -(x[1].get("screening_score") or 0), x[1].get("last_reviewed") or ""))
-    legacy.sort(key=lambda x: (-(x.get("screening_score") or 0), x.get("first_seen") or ""))
+    if INVENTORY_BOOTSTRAP_ACTIVE:
+        active.sort(key=lambda x: bootstrap_order.get(str(x[1].get("canonical_entity_id") or ""), 10**9))
+        legacy.sort(key=lambda x: bootstrap_order.get(str(x.get("canonical_entity_id") or ""), 10**9))
+    else:
+        active.sort(key=lambda x: (x[0], -(x[1].get("screening_score") or 0), x[1].get("last_reviewed") or ""))
+        legacy.sort(key=lambda x: (-(x.get("screening_score") or 0), x.get("first_seen") or ""))
     # Reserve a small legacy bootstrap lane so the migrated inventory cannot starve forever
     # behind an always-full active review queue. Paid-product freshness still gets the majority.
     legacy_slots = 0
@@ -10667,6 +10843,16 @@ def main():
             "critical_failures": result["critical_failures"], "production_write_isolation": True,
         }, ensure_ascii=False))
         # No DB, image, upload, or messaging call is reachable in this mode.
+        return
+    if INVENTORY_BOOTSTRAP_ACTIVE:
+        logger.info("[INVENTORY BOOTSTRAP MODE] normal acquisition/article pipeline is bypassed")
+        initialize_inventory_bootstrap_runtime()
+        review_result = run_product_reviews()
+        delivery_result = run_product_delivery_maintenance()
+        logger.info("[INVENTORY BOOTSTRAP COMPLETE] product_review=%s subscriber=%s", review_result, delivery_result.get("subscriber"))
+        logger.info(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
+        logger.info(GEMINI_USAGE_AUDIT.summary(include_contexts=True))
+        logger.info(PERSISTENT_GEMINI_COUNTER.summary())
         return
     # Private Article Auditはrun-local成果物。配布ZIPや前Runに残ったテスト稿を
     # 今回の本番Readyとして誤認しないよう、Production開始時に必ず初期化する。
