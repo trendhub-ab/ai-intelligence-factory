@@ -71,7 +71,10 @@ class Run109InventoryBootstrapIntegrationTests(unittest.TestCase):
              patch.object(pipeline.decision_intelligence, "query_technology_records", return_value=pages), \
              patch.object(pipeline.decision_intelligence, "technology_page_to_state", side_effect=states):
             selected = pipeline.select_product_review_candidates()
-        self.assertEqual(["github:plan/first", "github:plan/second"], [x["canonical_entity_id"] for x in selected])
+        # Run113 bootstrap preflight may inspect beyond max_reviews so evidence-insufficient rows
+        # do not consume Gemini review slots. The reviewed Plan order must still be preserved.
+        self.assertEqual(["github:plan/first", "github:plan/second"], [x["canonical_entity_id"] for x in selected[:2]])
+        self.assertGreaterEqual(len(selected), 2)
 
     def test_normal_daily_candidate_order_remains_screening_score_based(self):
         states = [

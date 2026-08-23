@@ -18,7 +18,7 @@ on:
         required: true
         default: "24"
       max_reviews:
-        description: "Max technologies in one manual apply (1-6)"
+        description: "Max Evidence-ready Gemini reviews in one apply (1-6)"
         required: true
         default: "4"
       product_request_budget:

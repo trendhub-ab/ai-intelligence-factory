@@ -729,6 +729,9 @@ def product_only_environment(max_reviews: int, product_request_budget: int) -> d
         # Existing Phase-2 Product Review is the sole Gemini path.
         "PRODUCT_REVIEW_MAX_PER_RUN": str(max_reviews),
         "LEGACY_BOOTSTRAP_MAX_PER_RUN": str(max_reviews),
+        # Evidence preflight is zero Gemini. Inspect enough ordered candidates to fill the
+        # paid review slots even when some rows are unresolvable, but keep network work bounded.
+        "PRODUCT_REVIEW_PREFLIGHT_SCAN_LIMIT": str(min(24, max(max_reviews * 4, max_reviews + 6))),
         "GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET": str(product_request_budget),
     }
 

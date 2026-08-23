@@ -281,6 +281,12 @@ TRACKING_ELIGIBILITY_MIN_SCORE = max(0, min(100, int(os.environ.get("TRACKING_EL
 TRACKING_REVIEW_DAYS = max(1, int(os.environ.get("TRACKING_REVIEW_DAYS", "14")))
 PRODUCT_REVIEW_MAX_PER_RUN = max(0, int(os.environ.get("PRODUCT_REVIEW_MAX_PER_RUN", "2")))
 LEGACY_BOOTSTRAP_MAX_PER_RUN = max(0, int(os.environ.get("LEGACY_BOOTSTRAP_MAX_PER_RUN", "1")))
+# Run113: manual Bootstrap may inspect more candidates with 0 Gemini so that Evidence-unresolvable
+# rows do not consume the paid-review slots. Normal Daily still selects only PRODUCT_REVIEW_MAX_PER_RUN.
+PRODUCT_REVIEW_PREFLIGHT_SCAN_LIMIT = max(
+    PRODUCT_REVIEW_MAX_PER_RUN,
+    int(os.environ.get("PRODUCT_REVIEW_PREFLIGHT_SCAN_LIMIT", str(max(8, PRODUCT_REVIEW_MAX_PER_RUN * 4)))),
+)
 GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET = max(0, int(os.environ.get("GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET", "3")))
 DEFERRED_DEEP_DIVE_MAX_PER_RUN = max(0, int(os.environ.get("DEFERRED_DEEP_DIVE_MAX_PER_RUN", "1")))
 DEFERRED_DEEP_DIVE_MAX_QUEUE = max(1, int(os.environ.get("DEFERRED_DEEP_DIVE_MAX_QUEUE", "20")))
@@ -3472,6 +3478,189 @@ def fetch_github_readme_context(repo_name: str) -> str:
     return ""
 
 
+def _github_repo_name_from_url(url: str) -> str:
+    """Return owner/repo only for a concrete GitHub repository URL."""
+    try:
+        parsed = urlparse(url or "")
+    except Exception:
+        return ""
+    host = (parsed.netloc or "").lower().split(":", 1)[0]
+    if host not in {"github.com", "www.github.com"}:
+        return ""
+    parts = [x for x in (parsed.path or "").split("/") if x]
+    if len(parts) < 2:
+        return ""
+    if parts[0].lower() in {"features", "enterprise", "pricing", "solutions", "marketplace", "topics", "collections", "sponsors", "login", "signup", "settings", "organizations"}:
+        return ""
+    return f"{parts[0]}/{parts[1]}"
+
+
+def _github_repo_identity(repo: dict) -> str:
+    entity_id = str(repo.get("canonicalEntityId") or repo.get("canonical_entity_id") or "")
+    if entity_id.lower().startswith("github:") and "/" in entity_id.split(":", 1)[1]:
+        return entity_id.split(":", 1)[1]
+    for value in (repo.get("primaryUrl"), repo.get("url")):
+        name = _github_repo_name_from_url(str(value or ""))
+        if name:
+            return name
+    name = str(repo.get("nameWithOwner") or "").strip()
+    return name if "/" in name and not name.startswith(("http://", "https://")) else ""
+
+
+def _is_github_global_navigation_url(url: str) -> bool:
+    """Reject GitHub site-wide navigation that can be mistaken for project evidence."""
+    try:
+        parsed = urlparse(url or "")
+    except Exception:
+        return False
+    host = (parsed.netloc or "").lower().split(":", 1)[0]
+    if host not in {"github.com", "www.github.com"}:
+        return False
+    path = (parsed.path or "/").lower()
+    blocked = (
+        "/features/", "/enterprise", "/pricing", "/solutions/", "/marketplace",
+        "/topics/", "/collections/", "/sponsors", "/login", "/signup", "/settings",
+        "/organizations/enterprise", "/customer-stories/",
+    )
+    return any(path == x.rstrip("/") or path.startswith(x) for x in blocked)
+
+
+def _extract_markdown_evidence_links(text: str) -> list[tuple[str, str]]:
+    """Extract only explicit docs/source links from README-like Markdown.
+
+    Badge destinations, social links and arbitrary dependency repositories are intentionally
+    ignored. This is a zero-API candidate list; retrieval still happens later under the
+    evidence-document caps.
+    """
+    if not text:
+        return []
+    keywords = re.compile(r"\b(?:docs?|documentation|guide|reference|api|website|homepage|source\s*code|repository|github)\b", re.I)
+    out: list[tuple[str, str]] = []
+    for m in re.finditer(r"(?<!!)\[([^\]]{1,120})\]\((https?://[^\s\)]+)", text):
+        label, url = m.group(1).strip(), urldefrag(m.group(2).strip())[0]
+        if not keywords.search(label) and not keywords.search(urlparse(url).path or ""):
+            continue
+        host = (urlparse(url).netloc or "").lower()
+        if any(x in host for x in ("shields.io", "badge", "twitter.com", "x.com", "discord.gg", "linkedin.com")):
+            continue
+        if _is_github_global_navigation_url(url):
+            continue
+        out.append((url, label))
+    return list(dict.fromkeys(out))[:12]
+
+
+def fetch_github_repository_metadata_context(repo_name: str) -> tuple[str, dict]:
+    """Fetch current repository metadata from the GitHub REST API without Gemini."""
+    if not repo_name or "/" not in repo_name:
+        return "", {}
+    api_url = f"https://api.github.com/repos/{repo_name}"
+    headers = {
+        "Authorization": f"Bearer {GH_PAT}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        res = requests.get(api_url, headers=headers, timeout=15)
+        if res.status_code != 200:
+            logger.warning("[SOURCE CONTEXT] GitHub repo metadata取得失敗 %s: HTTP %s", repo_name, res.status_code)
+            return "", {}
+        data = res.json() or {}
+        license_info = data.get("license") or {}
+        text = "\n".join(filter(None, [
+            f"Repository: {data.get('full_name') or repo_name}",
+            f"Description: {data.get('description') or ''}",
+            f"Homepage: {data.get('homepage') or ''}",
+            f"Archived: {bool(data.get('archived'))}",
+            f"Disabled: {bool(data.get('disabled'))}",
+            f"Visibility: {data.get('visibility') or ''}",
+            f"Default branch: {data.get('default_branch') or ''}",
+            f"Pushed at: {data.get('pushed_at') or ''}",
+            f"Updated at: {data.get('updated_at') or ''}",
+            f"License: {license_info.get('spdx_id') or license_info.get('name') or ''}",
+            "Topics: " + ", ".join(data.get("topics") or []),
+        ]))
+        details = {
+            "homepage": data.get("homepage") or "",
+            "pushed_at": data.get("pushed_at") or "",
+            "updated_at": data.get("updated_at") or "",
+            "html_url": data.get("html_url") or "",
+        }
+        return _truncate_source_context(text), details
+    except Exception as exc:
+        logger.warning("[SOURCE CONTEXT] GitHub repo metadata取得例外 %s: %s", repo_name, exc)
+        return "", {}
+
+
+def fetch_arxiv_api_context(arxiv_id: str) -> tuple[str, dict]:
+    """Rehydrate official arXiv metadata for legacy Technology rows.
+
+    Legacy Notion rows do not retain the original sourceDetails. Re-querying the exact arXiv ID
+    is safer and cheaper than treating a migrated summary as verified evidence.
+    """
+    if not arxiv_id:
+        return "", {}
+    try:
+        res = _fetch_arxiv_with_retry(
+            "https://export.arxiv.org/api/query",
+            {"id_list": arxiv_id, "start": 0, "max_results": 1},
+        )
+        if res is None:
+            return "", {}
+        ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+        root = ET.fromstring(res.content)
+        entry = root.find("atom:entry", ns)
+        if entry is None:
+            return "", {}
+        title = re.sub(r"\s+", " ", entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
+        summary = re.sub(r"\s+", " ", entry.findtext("atom:summary", default="", namespaces=ns) or "").strip()
+        authors = [re.sub(r"\s+", " ", a.findtext("atom:name", default="", namespaces=ns) or "").strip()
+                   for a in entry.findall("atom:author", ns)]
+        authors = [x for x in authors if x]
+        categories = [c.get("term", "") for c in entry.findall("atom:category", ns) if c.get("term")]
+        comment = re.sub(r"\s+", " ", entry.findtext("arxiv:comment", default="", namespaces=ns) or "").strip()
+        external_links: list[str] = []
+        for link in entry.findall("atom:link", ns):
+            href = (link.get("href") or "").strip()
+            if href.startswith(("http://", "https://")) and "arxiv.org" not in urlparse(href).netloc.lower():
+                external_links.append(href)
+        text = "\n".join(filter(None, [
+            f"Title: {title}",
+            "Authors: " + ", ".join(authors[:30]) if authors else "",
+            "Categories: " + ", ".join(categories[:30]) if categories else "",
+            f"Abstract: {summary}",
+            f"Comment: {comment}" if comment else "",
+        ]))
+        return _truncate_verification_context(text), {
+            "authors": authors,
+            "categories": categories,
+            "comment": comment,
+            "official_external_links": list(dict.fromkeys(external_links))[:8],
+        }
+    except Exception as exc:
+        logger.warning("[SOURCE CONTEXT] arXiv API context失敗 %s: %s", arxiv_id, exc)
+        return "", {}
+
+
+def _effective_evidence_source(repo: dict) -> str:
+    """Promote HN/legacy discovery rows to the durable primary-source type when explicit."""
+    entity_id = str(repo.get("canonicalEntityId") or repo.get("canonical_entity_id") or "").lower()
+    primary = str(repo.get("primaryUrl") or repo.get("url") or "")
+    if entity_id.startswith("github:") or _github_repo_name_from_url(primary):
+        return "GitHub"
+    if entity_id.startswith("arxiv:") or _extract_arxiv_id(primary):
+        return "ArXiv"
+    return str(repo.get("source") or "GitHub")
+
+
+def _is_redundant_arxiv_doi(url: str, arxiv_id: str) -> bool:
+    if not arxiv_id:
+        return False
+    parsed = urlparse(url or "")
+    if (parsed.netloc or "").lower() not in {"doi.org", "dx.doi.org"}:
+        return False
+    return f"arxiv.{arxiv_id}" in (parsed.path or "").lower()
+
+
 class _ReadableHTMLTextParser(HTMLParser):
     """外部記事から本文候補を安全に抽出する標準ライブラリのみの軽量Parser。"""
     _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "footer", "header", "form", "aside"}
@@ -3771,16 +3960,30 @@ def fetch_webpage_context(url: str) -> str:
 
 
 def prepare_source_context(repo: dict) -> dict:
-    """Geminiを使わず一次情報を補強し、URL Contextより先にsource-native本文を確保する。"""
-    source = repo.get("source", "GitHub")
+    """Resolve first-party evidence with zero Gemini calls across all four discovery sources.
+
+    Run113 separates *discovery source* from *evidence source*. A Hacker News row whose durable
+    Primary URL is a GitHub repository is evaluated as GitHub evidence, while HN remains an
+    accumulated discovery source in Technology Intelligence. This prevents migrated rows from
+    losing source-native recovery simply because sourceDetails were not persisted in legacy DBs.
+    """
+    discovery_source = str(repo.get("source") or "GitHub")
+    source = _effective_evidence_source(repo)
     name = repo.get("nameWithOwner", "")
     desc = repo.get("description", "")
     primary_url = repo.get("primaryUrl") or repo.get("url") or ""
     stored = repo.get("sourceContext") or ""
+    stored_verified = bool(repo.get("sourceContextVerified", True))
     details = dict(repo.get("sourceDetails") or {})
+    github_repo_name = _github_repo_identity(repo) if source == "GitHub" else ""
+    arxiv_id = _extract_arxiv_id(primary_url) if source == "ArXiv" else ""
+    if source == "ArXiv" and not arxiv_id:
+        entity_id = str(repo.get("canonicalEntityId") or repo.get("canonical_entity_id") or "")
+        if entity_id.lower().startswith("arxiv:"):
+            arxiv_id = entity_id.split(":", 1)[1]
+            primary_url = primary_url or f"https://arxiv.org/abs/{arxiv_id}"
 
-    # Pending Retry等でProduct Huntの/r/URLだけが復元された場合にも、公式製品サイトを
-    # 一度だけ解決してEvidence Supplementの起点にする。
+    # Product Hunt redirect aliases may survive even when the official URL was not persisted.
     if source == "ProductHunt":
         redirect_url = details.get("producthunt_url") or primary_url
         resolved_official_url = _resolve_producthunt_official_url(redirect_url)
@@ -3788,24 +3991,59 @@ def prepare_source_context(repo: dict) -> dict:
             details["official_url"] = resolved_official_url
             primary_url = resolved_official_url
 
-    pieces = [f"[DISCOVERY_SOURCE]\nSource: {source}\nName: {name}\nDescription: {desc}"]
+    pieces = [
+        f"[DISCOVERY_SOURCE]\nSource: {discovery_source}\nEvidence Source: {source}\nName: {name}\nDescription: {desc}"
+    ]
     substantive_parts: list[str] = []
     method = GROUNDING_METADATA_ONLY
-    # URLが存在するだけでは「一次ソース解決済み」としない。実際にsource-native本文/
-    # 公式landing本文を取得できたかを別フラグで追跡する。
     primary_material_retrieved = False
+    primary_fetch_failed = False
+    freshness_status_available = False
+    source_native_links: list[tuple[str, str]] = []
+    research_links: list[tuple[str, str]] = []
 
     if source == "GitHub":
-        readme = fetch_github_readme_context(name)
-        if readme:
-            pieces.append("README:\n" + readme)
-            substantive_parts.append(readme)
-            primary_material_retrieved = True
+        if not github_repo_name:
+            primary_fetch_failed = True
+        else:
+            readme = fetch_github_readme_context(github_repo_name)
+            metadata_context, repo_meta = fetch_github_repository_metadata_context(github_repo_name)
+            if readme:
+                pieces.append("README:\n" + readme)
+                substantive_parts.append(readme)
+                source_native_links.extend(_extract_markdown_evidence_links(readme))
+                primary_material_retrieved = True
+            if metadata_context:
+                pieces.append("GitHub repository metadata:\n" + metadata_context)
+                substantive_parts.append(metadata_context)
+                primary_material_retrieved = True
+                freshness_status_available = True  # REST metadata was fetched at this run.
+            details.update({k: v for k, v in repo_meta.items() if v})
+            if not readme and not metadata_context:
+                primary_fetch_failed = True
+
     elif source == "ArXiv":
+        # Direct daily collection sourceContext is official Atom data. Reconstructed legacy context
+        # is explicitly marked unverified and must be rehydrated from the exact arXiv ID instead.
         if stored:
-            pieces.append("Abstract:\n" + stored)
-            substantive_parts.append(stored)
-            primary_material_retrieved = True
+            pieces.append(("Abstract:\n" if stored_verified else "Stored discovery summary (unverified):\n") + stored)
+            if stored_verified:
+                substantive_parts.append(stored)
+                primary_material_retrieved = True
+        if arxiv_id and (INVENTORY_BOOTSTRAP_ACTIVE or not primary_material_retrieved):
+            api_context, api_details = fetch_arxiv_api_context(arxiv_id)
+            if api_context:
+                pieces.append("Official arXiv metadata:\n" + api_context)
+                substantive_parts.append(api_context)
+                primary_material_retrieved = True
+                # Merge, never discard collection-time metadata.
+                for key, value in api_details.items():
+                    if isinstance(value, list):
+                        details[key] = list(dict.fromkeys((details.get(key) or []) + value))
+                    elif value and not details.get(key):
+                        details[key] = value
+            elif not primary_material_retrieved:
+                primary_fetch_failed = True
         authors = details.get("authors") or []
         categories = details.get("categories") or []
         if authors:
@@ -3813,89 +4051,119 @@ def prepare_source_context(repo: dict) -> dict:
         if categories:
             pieces.append("Categories: " + ", ".join(categories[:20]))
         comment = details.get("comment") or ""
-        if comment:
+        if comment and comment not in "\n".join(substantive_parts):
             pieces.append("ArXiv comment:\n" + comment)
-            substantive_parts.append(comment)
-            primary_material_retrieved = True
-        official_links = details.get("official_external_links") or []
-        for official_url, official_ctx in _fetch_arxiv_official_link_context(official_links):
-            pieces.append(f"Official linked resource ({official_url}):\n" + official_ctx)
-            substantive_parts.append(official_ctx)
-    elif source == "ProductHunt":
-        if stored:
-            pieces.append("Product Hunt discovery metadata:\n" + stored)
-            # Product Hunt/HNは発見経路。製品評価のPrimary Evidenceには数えない。
-            # 公式サイト・Docs・GitHub・論文の実取得が成功した場合だけprimary_source_resolvedとなる。
-        # Product Huntのtagline/descriptionだけでなく、製品サイト本文を無料HTTP取得して補強。
-        webpage = fetch_webpage_context(primary_url)
-        if webpage:
-            pieces.append("Product website content:\n" + webpage)
-            substantive_parts.append(webpage)
-            primary_material_retrieved = True
+            if stored_verified:
+                substantive_parts.append(comment)
+        # The arXiv HTML page is never treated as the substantive primary document here; Atom/PDF
+        # remain authoritative. We only harvest explicitly labelled research/code links so an
+        # implementation repository linked by the paper can be inspected. This preserves useful
+        # first-party linkage without reintroducing GitHub site-wide navigation contamination.
+        if primary_url:
+            _arxiv_landing, arxiv_page_links, _arxiv_final = _fetch_html_document(
+                primary_url, max_chars=min(12000, VERIFICATION_CONTEXT_MAX_CHARS)
+            )
+            research_links.extend(arxiv_page_links)
+
     elif source == "HackerNews":
         hn_text = stored.strip()
         if hn_text:
-            pieces.append("Hacker News post text:\n" + hn_text)
-            substantive_parts.append(hn_text)
+            pieces.append("Hacker News discovery text:\n" + hn_text)
+            if stored_verified:
+                substantive_parts.append(hn_text)
         hn_url = details.get("hn_url")
         if hn_url:
             pieces.append(f"HN discussion URL: {hn_url}")
         external_url = details.get("external_url") or ""
-        # 外部記事があるHNでは、HNコメントだけで外部一次ソース解決済みとはしない。
-        # self-post（外部URLなし）の場合だけHN本文そのものを一次情報として扱う。
-        if not external_url and hn_text:
-            primary_material_retrieved = True
-        # HNの外部記事本文をまずPython側で取得。成功すればURL Contextを使わない。
         if external_url:
             primary_url = external_url
-            webpage = fetch_webpage_context(external_url)
-            if webpage:
-                pieces.append("External article content:\n" + webpage)
-                substantive_parts.append(webpage)
-                primary_material_retrieved = True
+        elif primary_url and "news.ycombinator.com" not in (urlparse(primary_url).netloc or "").lower():
+            details["external_url"] = primary_url
+        elif hn_text and stored_verified:
+            primary_material_retrieved = True
+
+    elif source == "ProductHunt":
+        if stored:
+            pieces.append("Product Hunt discovery metadata:\n" + stored)
+        official = details.get("official_url") or details.get("website") or ""
+        if official and "producthunt.com" not in (urlparse(official).netloc or "").lower():
+            primary_url = official
+
     elif stored:
         pieces.append(stored)
-        substantive_parts.append(stored)
-        primary_material_retrieved = True
+        if stored_verified:
+            substantive_parts.append(stored)
+            primary_material_retrieved = True
 
-    # Landing/author pageから、補強に使える一次資料候補を抽出する。この時点では取得しない。
-    # Evidence SufficiencyがSUPPLEMENT_REQUIREDの候補だけが、後段で上限付き取得を行う。
-    landing_text, research_links, final_primary_url = _fetch_html_document(
-        primary_url, max_chars=VERIFICATION_CONTEXT_MAX_CHARS
-    )
-    if final_primary_url:
-        primary_url = final_primary_url
-    if landing_text and landing_text not in substantive_parts:
-        # Promptには従来上限だけを渡し、Fact/Evidence Gateには広い本文を別保持する。
-        pieces.append("[REFERENCE_SOURCE]\n" + _truncate_source_context(landing_text))
-        substantive_parts.append(landing_text)
-        primary_material_retrieved = True
-    supplement_candidates = []
+    # GitHub repository HTML contains site-wide Copilot/AI navigation and is not evidence. arXiv
+    # is better recovered from Atom/PDF. Other sources may still expose useful official links.
+    landing_text = ""
+    final_primary_url = ""
+    if source not in {"GitHub", "ArXiv"} and primary_url:
+        landing_text, research_links, final_primary_url = _fetch_html_document(
+            primary_url, max_chars=VERIFICATION_CONTEXT_MAX_CHARS
+        )
+        if final_primary_url:
+            primary_url = final_primary_url
+        host = (urlparse(primary_url).netloc or "").lower().split(":", 1)[0]
+        discovery_only_landing = (
+            source == "ProductHunt" and (host == "producthunt.com" or host.endswith(".producthunt.com"))
+        ) or (
+            source == "HackerNews" and host in {"news.ycombinator.com", "www.news.ycombinator.com"}
+        )
+        if landing_text:
+            label = "[DISCOVERY_REFERENCE]" if discovery_only_landing else "[REFERENCE_SOURCE]"
+            pieces.append(label + "\n" + _truncate_source_context(landing_text))
+            if not discovery_only_landing:
+                substantive_parts.append(landing_text)
+                primary_material_retrieved = True
+                freshness_status_available = True
+        elif not primary_material_retrieved:
+            primary_fetch_failed = True
+
+    supplement_candidates: list[dict] = []
     seen_candidate_keys = {_evidence_trace_url_key(primary_url)} if primary_url else set()
 
-    def _append_supplement_candidate(link: str, label: str, role: str = "PRIMARY_SOURCE") -> None:
+    def _append_supplement_candidate(link: str, label: str, role: str = "PRIMARY_SOURCE", origin: str = "landing") -> None:
+        nonlocal primary_url
         if not isinstance(link, str) or not link.startswith(("http://", "https://")):
             return
         link = urldefrag(link)[0]
+        if source == "ProductHunt" and "producthunt.com" in (urlparse(link).netloc or "").lower() and (urlparse(link).path or "").startswith("/r/"):
+            link = _resolve_producthunt_official_url(link) or link
+        if _is_low_value_arxiv_url(link) or _is_redundant_arxiv_doi(link, arxiv_id):
+            return
+        if _is_github_global_navigation_url(link):
+            return
+        # A GitHub project's GitHub-hosted evidence must remain inside the same repository.
+        if source == "GitHub" and (urlparse(link).netloc or "").lower() in {"github.com", "www.github.com"}:
+            linked_repo = _github_repo_name_from_url(link)
+            if not linked_repo or (github_repo_name and linked_repo.lower() != github_repo_name.lower()):
+                return
         link_key = _evidence_trace_url_key(link)
-        if not link or not link_key or link_key in seen_candidate_keys or _is_low_value_arxiv_url(link):
+        if not link or not link_key or link_key in seen_candidate_keys:
             return
         seen_candidate_keys.add(link_key)
         source_type = "arxiv_pdf" if link.lower().split("?", 1)[0].endswith(".pdf") or "pdf" in (label or "").lower() else "official_docs"
-        supplement_candidates.append({"url": link, "role": role, "source_type": source_type, "label": label})
+        supplement_candidates.append({
+            "url": link, "role": role, "source_type": source_type, "label": label, "origin": origin,
+        })
 
-    # arXivは同一論文PDFを最優先する。ナビゲーションリンクが補強回数を消費しないよう、
-    # HTMLから抽出したリンクより先に入れる。
-    arxiv_id = _extract_arxiv_id(primary_url)
+    # Source-native candidates are always ordered before generic landing links.
     if source == "ArXiv" and arxiv_id:
-        _append_supplement_candidate(f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv_pdf")
+        _append_supplement_candidate(f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv_pdf", origin="arxiv")
+    if source == "GitHub":
+        homepage = details.get("homepage") or ""
+        if homepage:
+            _append_supplement_candidate(homepage, "GitHub repository homepage", origin="github_metadata")
+        for link, label in source_native_links:
+            _append_supplement_candidate(link, label, origin="github_readme")
+    else:
+        for link, label in research_links:
+            role = "SUPPLEMENTAL_SOURCE" if re.search(r"supplement|appendix", label, re.I) else "PRIMARY_SOURCE"
+            _append_supplement_candidate(link, label, role, origin="landing")
 
-    for link, label in research_links:
-        role = "SUPPLEMENTAL_SOURCE" if re.search(r"supplement|appendix", label, re.I) else "PRIMARY_SOURCE"
-        _append_supplement_candidate(link, label, role)
-
-    # Landing pageに研究リンクが無い場合でも、収集済みメタデータが示す公式URLだけを
-    # 補強候補にする。検索・巡回はせず、同一URLも再取得しない。
+    # Persisted metadata/evidence URLs are explicit source signals and may recover legacy rows.
     metadata_urls: list[tuple[str, str]] = []
     for key in ("official_url", "officialUrl", "website", "website_url", "homepage", "project_url", "docs_url", "documentation_url", "external_url"):
         value = details.get(key)
@@ -3905,11 +4173,10 @@ def prepare_source_context(repo: dict) -> dict:
         for value in details.get(key, []) if isinstance(details.get(key), list) else []:
             metadata_urls.append((value, key))
     for link, label in metadata_urls:
-        _append_supplement_candidate(link, label)
+        _append_supplement_candidate(link, label, origin="metadata")
 
     deep_source_required = bool(supplement_candidates)
     substantive = "\n\n".join(x for x in substantive_parts if x)
-    # 互換フィールド。Deep Dive可否は後段の意味ベース判定で決め、文字数だけでは決めない。
     text_sufficient = bool(substantive.strip())
     if text_sufficient:
         method = GROUNDING_SOURCE_NATIVE
@@ -3922,20 +4189,23 @@ def prepare_source_context(repo: dict) -> dict:
         "verification_context": verification_context,
         "verification_context_length": len(verification_context),
         "source": source,
+        "discovery_source": discovery_source,
         "source_name": name,
         "method": method,
         "primary_url": primary_url,
         "source_details": details,
-        "sufficient": text_sufficient,  # URL Context fallbackとの互換用。Evidence Sufficiencyとは別。
+        "sufficient": text_sufficient,
         "text_sufficient": text_sufficient,
         "primary_source_resolved": bool(primary_url and primary_material_retrieved),
+        "primary_fetch_failed": bool(primary_fetch_failed and not primary_material_retrieved),
+        "freshness_status_available": freshness_status_available,
         "deep_source_required": deep_source_required,
         "deep_source_scanned": False,
         "evidence_sufficient": False,
         "deep_source_urls": [],
         "supplement_candidates": supplement_candidates,
         "evidence_documents": [{
-            "url": primary_url, "role": "PRIMARY_SOURCE", "source_type": "primary_url",
+            "url": primary_url, "role": "PRIMARY_SOURCE", "source_type": source.lower(),
             "retrieved": bool(primary_material_retrieved),
         }],
         "checked_urls": {_evidence_trace_url_key(primary_url)} if primary_url else set(),
@@ -4019,7 +4289,10 @@ def assess_evidence_sufficiency(source_info: dict) -> dict:
         "freshness_status_available_if_time_sensitive",
     ) if not checks[key]]
     blocking_missing = list(hard_missing)
-    if current_state_claim and not checks["freshness_status_available_if_time_sensitive"]:
+    # Research evidence is scoped to the paper/version itself. A phrase such as "current" inside
+    # a paper must not force a live-product freshness lookup; the article/assessment must instead
+    # present it as paper-time evidence. Mutable product/web sources still require freshness.
+    if current_state_claim and not research_scope and not checks["freshness_status_available_if_time_sensitive"]:
         blocking_missing.append("freshness_status_available_if_time_sensitive")
     checked_evidence_keys = source_info.get("checked_urls", set())
     candidates_available = any(
@@ -4100,6 +4373,14 @@ def supplement_source_evidence(source_info: dict) -> dict:
         documents.append(doc)
         if not raw_text:
             continue
+        if candidate.get("role") == "PRIMARY_SOURCE":
+            # Run113: a successfully retrieved first-party supplement (notably arXiv PDF /
+            # official docs) is itself enough to resolve the primary-source requirement.
+            # Previously the flag stayed False forever when the landing page fetch failed.
+            source_info["primary_source_resolved"] = True
+            source_info["primary_fetch_failed"] = False
+            if source_info.get("source") in {"GitHub", "ProductHunt"}:
+                source_info["freshness_status_available"] = True
         label = "[SUPPLEMENTAL_SOURCE]" if candidate.get("role") == "SUPPLEMENTAL_SOURCE" else "[PRIMARY_SOURCE]"
         fetched_parts.append(f"{label}\nURL: {evidence_url}\n{_compress_evidence(raw_text)}")
         verification_piece = f"{label}\nURL: {evidence_url}\n{raw_text}"
@@ -10545,10 +10826,57 @@ def _parse_product_review_response(text: str) -> dict:
 
 
 def _technology_state_to_repo(state: dict) -> dict:
-    sources = state.get("sources") or ["GitHub"]
-    return {"source": sources[0] if sources else "GitHub", "nameWithOwner": state.get("technology_name") or "Technology",
-            "url": state.get("primary_url") or "", "primaryUrl": state.get("primary_url") or "", "description": state.get("source_summary") or state.get("short_rationale") or "",
-            "publishedAt": None, "stargazerCount": 0, "sourceDetails": {}}
+    """Rehydrate the minimum source identity lost by the legacy Notion schema.
+
+    Technology rows intentionally do not store sourceDetails JSON. Run113 reconstructs only
+    explicit facts already present in Primary URL / Canonical Entity ID / Evidence URLs / aliases;
+    it never guesses an official site from the technology name.
+    """
+    sources = [str(x) for x in (state.get("sources") or ["GitHub"]) if x]
+    discovery_source = sources[0] if sources else "GitHub"
+    primary_url = str(state.get("primary_url") or "")
+    entity_id = str(state.get("canonical_entity_id") or "")
+    name = str(state.get("technology_name") or "Technology")
+    temp = {
+        "source": discovery_source, "primaryUrl": primary_url, "url": primary_url,
+        "canonicalEntityId": entity_id, "nameWithOwner": name,
+    }
+    effective_source = _effective_evidence_source(temp)
+    if effective_source == "GitHub":
+        repo_identity = _github_repo_identity(temp)
+        if repo_identity:
+            name = repo_identity
+    details: dict[str, object] = {
+        "discovery_sources": sources,
+        "related_links": list(state.get("evidence_urls") or []),
+    }
+    aliases = [str(x) for x in (state.get("entity_aliases") or []) if x]
+    for alias in aliases:
+        host = (urlparse(alias).netloc or "").lower()
+        if "news.ycombinator.com" in host and not details.get("hn_url"):
+            details["hn_url"] = alias
+        if "producthunt.com" in host and not details.get("producthunt_url"):
+            details["producthunt_url"] = alias
+    if effective_source == "HackerNews" and primary_url and "news.ycombinator.com" not in (urlparse(primary_url).netloc or "").lower():
+        details["external_url"] = primary_url
+    if effective_source == "ProductHunt" and primary_url and "producthunt.com" not in (urlparse(primary_url).netloc or "").lower():
+        details["official_url"] = primary_url
+    return {
+        "source": effective_source,
+        "discoverySource": discovery_source,
+        "nameWithOwner": name,
+        "canonicalEntityId": entity_id,
+        "url": primary_url,
+        "primaryUrl": primary_url,
+        "description": state.get("source_summary") or state.get("short_rationale") or "",
+        # Legacy Source Summary is useful discovery context but is not silently promoted to
+        # verified primary evidence. Exact GitHub/arXiv/official sources are re-fetched first.
+        "sourceContext": state.get("source_summary") or "",
+        "sourceContextVerified": False,
+        "publishedAt": None,
+        "stargazerCount": 0,
+        "sourceDetails": details,
+    }
 
 
 def select_product_review_candidates() -> list[dict]:
@@ -10605,6 +10933,18 @@ def select_product_review_candidates() -> list[dict]:
     if INVENTORY_BOOTSTRAP_ACTIVE:
         active.sort(key=lambda x: bootstrap_order.get(str(x[1].get("canonical_entity_id") or ""), 10**9))
         legacy.sort(key=lambda x: bootstrap_order.get(str(x.get("canonical_entity_id") or ""), 10**9))
+        # Run113: manual Bootstrap preflight may inspect beyond max_reviews without Gemini.
+        # Evidence-unresolvable candidates therefore cannot consume the paid Product Review slots.
+        ordered: list[dict] = [state for _, state in active] + list(legacy)
+        ordered.sort(key=lambda x: bootstrap_order.get(str(x.get("canonical_entity_id") or ""), 10**9))
+        deduped: list[dict] = []
+        seen_ids: set[str] = set()
+        for state in ordered:
+            key = str(state.get("canonical_entity_id") or state.get("page_id") or id(state))
+            if key in seen_ids:
+                continue
+            seen_ids.add(key); deduped.append(state)
+        return deduped[:PRODUCT_REVIEW_PREFLIGHT_SCAN_LIMIT]
     else:
         active.sort(key=lambda x: (x[0], -(x[1].get("screening_score") or 0), x[1].get("last_reviewed") or ""))
         legacy.sort(key=lambda x: (-(x.get("screening_score") or 0), x.get("first_seen") or ""))
@@ -10646,44 +10986,109 @@ def _defer_product_review_candidate(state: dict, days: int = TRACKING_REVIEW_DAY
     logger.info("[PRODUCT REVIEW DEFERRED] %s days=%s reason=%s", state.get("technology_name"), days, reason)
 
 
+def _product_review_evidence_defer_days(source_info: dict, evidence: dict) -> int:
+    """Use a short cooldown for likely transport failures, normal cadence for real evidence gaps."""
+    blocking = set(evidence.get("blocking_missing") or [])
+    if "primary_source_resolved" in blocking and source_info.get("primary_fetch_failed"):
+        return 1
+    return TRACKING_REVIEW_DAYS
+
+
 def run_product_reviews() -> dict:
-    result = {"attempted": 0, "saved": 0, "skipped": 0}
+    result = {
+        "attempted": 0,          # backward-compatible: candidates inspected by evidence preflight
+        "inspected": 0,
+        "evidence_ready": 0,
+        "review_slots_used": 0,  # candidates that reached Gemini Product Review
+        "saved": 0,
+        "skipped": 0,
+        "evidence_skipped": 0,
+        "authority_skipped": 0,
+    }
     for state in select_product_review_candidates():
-        if not PRODUCT_REVIEW_REQUEST_BUDGET.can_request() or not GEMINI_BUDGET.can_request(): break
-        if not _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL): break
-        repo = _technology_state_to_repo(state); result["attempted"] += 1
+        # max_reviews is a Gemini review cap, not a zero-API evidence-inspection cap.
+        if result["review_slots_used"] >= PRODUCT_REVIEW_MAX_PER_RUN:
+            break
+        repo = _technology_state_to_repo(state)
+        result["attempted"] += 1
+        result["inspected"] += 1
         try:
             source_info = prepare_source_context(repo)
             evidence = assess_evidence_sufficiency(source_info)
             if evidence.get("state") == EVIDENCE_SUPPLEMENT_REQUIRED:
-                source_info = supplement_source_evidence(source_info); evidence = assess_evidence_sufficiency(source_info)
+                source_info = supplement_source_evidence(source_info)
+                evidence = assess_evidence_sufficiency(source_info)
+
+            authority_failures = _primary_source_authority_failures(source_info)
+            if authority_failures:
+                logger.info(
+                    "[PRODUCT REVIEW SKIP] %s primary authority insufficient: %s",
+                    repo.get("nameWithOwner"), " / ".join(authority_failures)[:600],
+                )
+                _defer_product_review_candidate(state, TRACKING_REVIEW_DAYS, "primary authority insufficient")
+                result["skipped"] += 1
+                result["authority_skipped"] += 1
+                continue
+
             if evidence.get("state") == EVIDENCE_INSUFFICIENT or not evidence.get("decision_scope_safe"):
-                logger.info("[PRODUCT REVIEW SKIP] %s evidence insufficient", repo.get("nameWithOwner"))
-                _defer_product_review_candidate(state, TRACKING_REVIEW_DAYS, "evidence insufficient")
-                result["skipped"] += 1; continue
-            response, model = _call_product_review_pool(_product_review_prompt(repo, source_info, state), f"product_review:{state.get('canonical_entity_id')}")
+                logger.info(
+                    "[PRODUCT REVIEW SKIP] %s evidence insufficient blocking=%s",
+                    repo.get("nameWithOwner"), evidence.get("blocking_missing") or [],
+                )
+                days = _product_review_evidence_defer_days(source_info, evidence)
+                _defer_product_review_candidate(state, days, "evidence insufficient")
+                result["skipped"] += 1
+                result["evidence_skipped"] += 1
+                continue
+
+            result["evidence_ready"] += 1
+            # Only now consult/consume Gemini capacity. Evidence preflight itself is zero Gemini.
+            if not PRODUCT_REVIEW_REQUEST_BUDGET.can_request() or not GEMINI_BUDGET.can_request():
+                logger.info("[PRODUCT REVIEW STOP] Gemini budget unavailable after evidence preflight")
+                break
+            if not _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL):
+                logger.info("[PRODUCT REVIEW STOP] no session model available after evidence preflight")
+                break
+            if result["review_slots_used"] >= PRODUCT_REVIEW_MAX_PER_RUN:
+                break
+            result["review_slots_used"] += 1
+
+            response, model = _call_product_review_pool(
+                _product_review_prompt(repo, source_info, state),
+                f"product_review:{state.get('canonical_entity_id')}",
+            )
             parsed = _parse_product_review_response(getattr(response, "text", ""))
             reviewed_at = datetime.now(timezone.utc).isoformat()
-            persisted = persist_decision_intelligence_assessment(repo, parsed, source_info, evidence, reviewed_at,
+            persisted = persist_decision_intelligence_assessment(
+                repo, parsed, source_info, evidence, reviewed_at,
                 screening_score=state.get("screening_score"), screening_reason=state.get("screening_reason", ""),
                 attribution_context={"portfolio_topic": parsed.get("category") or "OTHER"}, pipeline_status="Product Review",
-                content_status="Stocked", article_status=ARTICLE_STATUS_NOT_PLANNED)
+                content_status="Stocked", article_status=ARTICLE_STATUS_NOT_PLANNED,
+            )
             if persisted.get("saved"):
                 # next_review is a product scheduler field and is intentionally patched after the common upsert.
                 days = parsed.get("next_review_days", TRACKING_REVIEW_DAYS)
                 page_id = persisted.get("page_id")
                 if page_id:
                     nr = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
-                    patch = requests.patch(f"https://api.notion.com/v1/pages/{page_id}", json={"properties": {decision_intelligence.TECH_PROP_NEXT_REVIEW: {"date": {"start": nr}}}}, headers=decision_intelligence._headers(), timeout=10)
-                    if patch.status_code != 200: raise RuntimeError(f"Next Review patch failed: {patch.status_code}")
+                    patch = requests.patch(
+                        f"https://api.notion.com/v1/pages/{page_id}",
+                        json={"properties": {decision_intelligence.TECH_PROP_NEXT_REVIEW: {"date": {"start": nr}}}},
+                        headers=decision_intelligence._headers(), timeout=10,
+                    )
+                    if patch.status_code != 200:
+                        raise RuntimeError(f"Next Review patch failed: {patch.status_code}")
                 result["saved"] += 1
-            else: result["skipped"] += 1
+            else:
+                result["skipped"] += 1
         except ProductReviewBudgetExceededError:
             break
         except NoAvailableModelError as exc:
-            logger.warning("[PRODUCT REVIEW STOP] %s", exc); break
+            logger.warning("[PRODUCT REVIEW STOP] %s", exc)
+            break
         except Exception as exc:
-            logger.error("[PRODUCT REVIEW FAILED] %s: %s", repo.get("nameWithOwner"), exc); result["skipped"] += 1
+            logger.error("[PRODUCT REVIEW FAILED] %s: %s", repo.get("nameWithOwner"), exc)
+            result["skipped"] += 1
     logger.info("[PRODUCT REVIEW] %s / %s", result, PRODUCT_REVIEW_REQUEST_BUDGET.summary())
     return result
 
