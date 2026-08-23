@@ -66,6 +66,8 @@ else:
     from google import genai
     from google.genai.errors import APIError
 import decision_intelligence as decision_intelligence
+import evidence_ledger
+from evidence_authority import classify_evidence, authority_rank
 
 # ==========================================
 # ログ設定
@@ -1462,6 +1464,7 @@ def initialize_runtime() -> None:
     # 商品DB side-pathを有効化した場合だけ、Gemini消費前に新2DBのSchemaも検証する。
     # Runtime書込み失敗は記事Pipelineへ波及させないが、設定ミスで無駄な生成をしない。
     decision_intelligence.preflight_decision_intelligence_schema()
+    evidence_ledger.preflight(decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY)
     _register_gemini_usage_atexit()
     # Availability is established by the first real request.  This avoids two
     # quota-consuming pings on every run and makes import/test completely safe.
@@ -1487,6 +1490,7 @@ def initialize_inventory_bootstrap_runtime() -> None:
     if not DEEP_DIVE_MODEL_POOL:
         raise ValueError("Inventory Bootstrap requires a non-empty product-review model pool")
     decision_intelligence.preflight_decision_intelligence_schema()
+    evidence_ledger.preflight(decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY)
     _register_gemini_usage_atexit()
     SELECTED_DEEP_DIVE_MODEL = DEEP_DIVE_MODEL_POOL[0]
     logger.info("[INVENTORY BOOTSTRAP PREFLIGHT OK] Product Review / History / Subscriber only")
@@ -3584,6 +3588,7 @@ def fetch_github_repository_metadata_context(repo_name: str) -> tuple[str, dict]
             "pushed_at": data.get("pushed_at") or "",
             "updated_at": data.get("updated_at") or "",
             "html_url": data.get("html_url") or "",
+            "default_branch": data.get("default_branch") or "",
         }
         return _truncate_source_context(text), details
     except Exception as exc:
@@ -3630,11 +3635,16 @@ def fetch_arxiv_api_context(arxiv_id: str) -> tuple[str, dict]:
             f"Abstract: {summary}",
             f"Comment: {comment}" if comment else "",
         ]))
+        entry_id = entry.findtext("atom:id", default="", namespaces=ns) or ""
+        version_match = re.search(r"v(\d+)$", entry_id)
+        arxiv_version = f"v{version_match.group(1)}" if version_match else ""
         return _truncate_verification_context(text), {
             "authors": authors,
             "categories": categories,
             "comment": comment,
             "official_external_links": list(dict.fromkeys(external_links))[:8],
+            "arxiv_version": arxiv_version,
+            "arxiv_versioned_url": f"https://arxiv.org/abs/{arxiv_id}{arxiv_version}" if arxiv_version else "",
         }
     except Exception as exc:
         logger.warning("[SOURCE CONTEXT] arXiv API context失敗 %s: %s", arxiv_id, exc)
@@ -3831,6 +3841,53 @@ def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int
     return b"", "", ""
 
 
+def _http_get_health_limited(url: str, byte_limit: int = 1_500_000) -> tuple[int, str, str]:
+    """Status-preserving sibling of _http_get_limited for evidence health checks.
+
+    Unlike the content helper, transient 5xx/429 must never be collapsed into 404/MISSING.
+    Redirects are manually validated at every hop to preserve the existing SSRF boundary.
+    """
+    if not (url or "").startswith(("http://", "https://")):
+        return 0, "", ""
+    current_url = url
+    for redirect_count in range(5):
+        try:
+            _validate_public_http_url(current_url)
+        except ValueError:
+            return 0, "", current_url
+        try:
+            with requests.get(current_url, headers={"User-Agent": WEB_CONTEXT_USER_AGENT, "Accept": "*/*"},
+                              timeout=WEB_CONTEXT_TIMEOUT_SECONDS, allow_redirects=False, stream=True) as res:
+                status = int(getattr(res, "status_code", 0) or 0)
+                if status in {301,302,303,307,308}:
+                    location=(getattr(res,"headers",{}) or {}).get("Location")
+                    if not location or redirect_count >= 4:
+                        return status, "", current_url
+                    next_url=urljoin(current_url,location)
+                    try:
+                        _validate_public_http_url(next_url)
+                    except ValueError:
+                        return 0, "", next_url
+                    current_url=next_url
+                    continue
+                final_url=getattr(res,"url",None) or current_url
+                try:
+                    _validate_public_http_url(final_url)
+                except ValueError:
+                    return 0, "", final_url
+                if status != 200:
+                    return status, "", final_url
+                chunks=[]; total=0
+                for chunk in res.iter_content(chunk_size=32768):
+                    if not chunk: continue
+                    chunk=chunk[:max(0, byte_limit-total)]; chunks.append(chunk); total+=len(chunk)
+                    if total>=byte_limit: break
+                return status, b"".join(chunks).decode("utf-8",errors="replace"), final_url
+        except requests.RequestException:
+            return 0, "", current_url
+    return 0, "", current_url
+
+
 def _validate_public_http_url(url: str) -> None:
     """Reject non-HTTP and private/link-local destinations before source fetches."""
     parsed = urlparse(url)
@@ -3995,6 +4052,7 @@ def prepare_source_context(repo: dict) -> dict:
         f"[DISCOVERY_SOURCE]\nSource: {discovery_source}\nEvidence Source: {source}\nName: {name}\nDescription: {desc}"
     ]
     substantive_parts: list[str] = []
+    ledger_primary_snapshot_text = ""
     method = GROUNDING_METADATA_ONLY
     primary_material_retrieved = False
     primary_fetch_failed = False
@@ -4011,6 +4069,7 @@ def prepare_source_context(repo: dict) -> dict:
             if readme:
                 pieces.append("README:\n" + readme)
                 substantive_parts.append(readme)
+                ledger_primary_snapshot_text = readme
                 source_native_links.extend(_extract_markdown_evidence_links(readme))
                 primary_material_retrieved = True
             if metadata_context:
@@ -4035,6 +4094,7 @@ def prepare_source_context(repo: dict) -> dict:
             if api_context:
                 pieces.append("Official arXiv metadata:\n" + api_context)
                 substantive_parts.append(api_context)
+                ledger_primary_snapshot_text = api_context
                 primary_material_retrieved = True
                 # Merge, never discard collection-time metadata.
                 for key, value in api_details.items():
@@ -4207,12 +4267,17 @@ def prepare_source_context(repo: dict) -> dict:
         "evidence_documents": [{
             "url": primary_url, "role": "PRIMARY_SOURCE", "source_type": source.lower(),
             "retrieved": bool(primary_material_retrieved),
+            "evidence_extract": _compress_evidence(ledger_primary_snapshot_text or substantive) if (ledger_primary_snapshot_text or substantive) else "",
+            "document_text": ledger_primary_snapshot_text or substantive or "",
+            "source_version": details.get("arxiv_version") or "",
+            "resolved_url": details.get("arxiv_versioned_url") or primary_url,
         }],
         "checked_urls": {_evidence_trace_url_key(primary_url)} if primary_url else set(),
         "evidence_supplement_attempted": False,
         "evidence_supplement_attempts": 0,
         "evidence_metadata": evidence_metadata,
     }
+    source_info["evidence_authority_summary"] = _evidence_authority_summary(source_info)
     return source_info
 
 
@@ -4370,6 +4435,10 @@ def supplement_source_evidence(source_info: dict) -> dict:
         raw_text = fetch_pdf_context(evidence_url) if is_pdf else fetch_webpage_context(evidence_url)
         doc = dict(candidate)
         doc["retrieved"] = bool(raw_text)
+        if raw_text:
+            doc["evidence_extract"] = _compress_evidence(raw_text)
+            doc["document_text"] = raw_text
+            doc["resolved_url"] = evidence_url
         documents.append(doc)
         if not raw_text:
             continue
@@ -4400,6 +4469,7 @@ def supplement_source_evidence(source_info: dict) -> dict:
         source_info["method"] = GROUNDING_SOURCE_NATIVE
     verification_context = source_info.get("verification_context") or source_info.get("context", "")
     source_info["evidence_metadata"] = _build_evidence_metadata(verification_context, bool(source_info.get("deep_source_scanned")))
+    source_info["evidence_authority_summary"] = _evidence_authority_summary(source_info)
     return source_info
 
 
@@ -6748,6 +6818,7 @@ def reconcile_product_review_source_boundary(parsed: dict, source_info: dict, fa
         documents.append({
             "url": resolved_url, "role": "PRIMARY_SOURCE", "source_type": "boundary_official_docs",
             "retrieved": True, "label": "Product Review boundary reconciliation",
+            "evidence_extract": _compress_evidence(text), "document_text": text, "resolved_url": resolved_url,
         })
         piece = f"[PRIMARY_SOURCE_BOUNDARY_RECONCILIATION]\nURL: {resolved_url}\n{text}"
         added_parts.append(piece); documents_added += 1
@@ -6987,6 +7058,36 @@ def _find_entity_relation_violations(draft: str, source_context: str) -> list[st
     return list(dict.fromkeys(failures))[:6]
 
 
+def _classify_source_info_evidence(source_info: dict | None) -> list[dict]:
+    """Return deterministic authority classifications for retrieved evidence documents."""
+    if not source_info:
+        return []
+    rows=[]
+    for doc in source_info.get("evidence_documents", []) or []:
+        if not doc.get("retrieved"):
+            continue
+        authority=classify_evidence(
+            url=str(doc.get("url") or ""), role=str(doc.get("role") or ""),
+            raw_source_type=str(doc.get("source_type") or ""), label=str(doc.get("label") or ""),
+            origin=str(doc.get("origin") or ""), pipeline_source=str(source_info.get("source") or ""),
+            primary_url=str(source_info.get("primary_url") or ""),
+        )
+        row=dict(doc); row.update(authority); rows.append(row)
+    return rows
+
+
+def _evidence_authority_summary(source_info: dict | None) -> dict:
+    rows=_classify_source_info_evidence(source_info)
+    eligible=[r for r in rows if r.get("decision_eligible")]
+    best=max((authority_rank(r.get("authority_class")) for r in eligible), default=0)
+    return {
+        "retrieved_documents":len(rows), "decision_eligible_documents":len(eligible),
+        "best_authority_rank":best,
+        "source_types":list(dict.fromkeys(str(r.get("source_type") or "UNKNOWN") for r in rows)),
+        "authority_classes":list(dict.fromkeys(str(r.get("authority_class") or "UNKNOWN") for r in rows)),
+    }
+
+
 _SECONDARY_NEWS_HOST_SUFFIXES = (
     "reuters.com", "apnews.com", "bloomberg.com", "techcrunch.com", "theverge.com",
     "wired.com", "arstechnica.com", "zdnet.com", "venturebeat.com", "cnbc.com",
@@ -6994,28 +7095,36 @@ _SECONDARY_NEWS_HOST_SUFFIXES = (
 
 
 def _primary_source_authority_failures(source_info: dict | None) -> list[str]:
-    """Require first-party/author-original evidence behind HN/PH discovery.
+    """Require decision-eligible authority behind HN/PH discovery.
 
-    HN/PH are discovery channels. An external personal/author blog can be the primary source for that
-    author's experiment/opinion, but a secondary news report (for example Reuters reporting a vendor
-    pricing change) is not first-party authority for the vendor claim. In that case the pipeline must
-    resolve an official announcement/docs/repository or fail closed.
+    Run118 evaluates the retrieved evidence set rather than trusting a URL simply because it
+    resolved. Discovery and secondary-news documents may remain in the audit ledger, but they
+    never satisfy paid Decision Intelligence primary-authority requirements.
     """
     if not source_info:
         return []
-    source = str(source_info.get("source") or "")
-    if source not in {"HackerNews", "ProductHunt"}:
+    source=str(source_info.get("source") or "")
+    if source not in {"HackerNews","ProductHunt"}:
         return []
-    primary_url = str(source_info.get("primary_url") or "")
-    host = (urlparse(primary_url).netloc or "").lower().split(":", 1)[0]
-    discovery_host = (source == "HackerNews" and host in {"news.ycombinator.com", "www.news.ycombinator.com"}) or (
-        source == "ProductHunt" and host.endswith("producthunt.com")
-    )
-    secondary_news = any(host == suffix or host.endswith("." + suffix) for suffix in _SECONDARY_NEWS_HOST_SUFFIXES)
-    if discovery_host or secondary_news or not source_info.get("primary_source_resolved"):
-        kind = "secondary news report" if secondary_news else "discovery source"
-        return [f"PRIMARY_SOURCE_AUTHORITY_INSUFFICIENT: {kind} is not authoritative primary evidence"]
-    return []
+    rows=_classify_source_info_evidence(source_info)
+    if not rows and source_info.get("primary_url"):
+        fallback=classify_evidence(
+            url=str(source_info.get("primary_url") or ""), role="PRIMARY_SOURCE",
+            raw_source_type=str(source_info.get("source") or ""), label="primary URL", origin="primary_url",
+            pipeline_source=source, primary_url=str(source_info.get("primary_url") or ""),
+        )
+        rows=[{"url":source_info.get("primary_url"), **fallback}]
+    eligible=[r for r in rows if r.get("decision_eligible") and authority_rank(r.get("authority_class")) >= 2]
+    if eligible and source_info.get("primary_source_resolved"):
+        return []
+    source_info["evidence_authority_summary"]=_evidence_authority_summary(source_info)
+    if any(r.get("source_type")=="SECONDARY_NEWS" for r in rows):
+        kind="secondary news report"
+    elif any(r.get("source_type")=="DISCOVERY" for r in rows) or not rows:
+        kind="discovery source"
+    else:
+        kind="non-authoritative evidence"
+    return [f"PRIMARY_SOURCE_AUTHORITY_INSUFFICIENT: {kind} cannot establish decision authority"]
 
 
 _JAPANESE_SAFE_FIXES = (
@@ -7191,6 +7300,35 @@ def _select_decision_intelligence_assessment_for_persistence(
     return final_parsed, current_evidence_result, "invalid"
 
 
+def _resolve_evidence_source_version(repo: dict, source_info: dict) -> tuple[str, str]:
+    """Resolve one immutable primary-source version with zero Gemini, only at persistence time."""
+    source = _effective_evidence_source(repo)
+    primary = source_info.get("primary_url") or repo.get("url") or ""
+    if source == "GitHub":
+        repo_name = _github_repo_name_from_url(primary) or str(repo.get("nameWithOwner") or "")
+        default_branch = (source_info.get("source_details") or {}).get("default_branch") or "HEAD"
+        if repo_name and GH_PAT:
+            try:
+                r = requests.get(
+                    f"https://api.github.com/repos/{repo_name}/commits/{default_branch}",
+                    headers={"Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+                    timeout=12,
+                )
+                if r.status_code == 200:
+                    sha = str((r.json() or {}).get("sha") or "")
+                    if re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                        return sha, f"https://github.com/{repo_name}/tree/{sha}"
+            except Exception as exc:
+                logger.warning("[EVIDENCE VERSION] GitHub commit resolve failed %s: %s", repo_name, exc)
+    if source == "ArXiv":
+        details = source_info.get("source_details") or {}
+        version = details.get("arxiv_version") or ""
+        versioned = details.get("arxiv_versioned_url") or ""
+        if version:
+            return version, versioned or primary
+    return "", ""
+
+
 def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_info: dict,
                                              evidence_result: dict, reviewed_at: str,
                                              screening_score: int | None = None,
@@ -7254,6 +7392,25 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
     }
     try:
         result = decision_intelligence.upsert_technology_intelligence(assessment, resolution)
+        if result.get("saved") and evidence_ledger.ENABLE_EVIDENCE_LEDGER:
+            try:
+                source_version, immutable_url = _resolve_evidence_source_version(repo, source_info)
+                snapshots = evidence_ledger.build_snapshots(
+                    resolution.entity_id, result.get("page_id") or "", source_info, reviewed_at,
+                    source_version=source_version, immutable_url=immutable_url,
+                )
+                ledger_result = evidence_ledger.persist_snapshots(snapshots, decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY)
+                result["evidence_ledger"] = ledger_result
+                logger.info("[EVIDENCE LEDGER] %s -> %s", repo.get("nameWithOwner"), ledger_result)
+                if evidence_ledger.EVIDENCE_LEDGER_REQUIRED and not snapshots:
+                    raise RuntimeError("Evidence Ledger required but no evidence snapshot was produced")
+            except Exception as ledger_exc:
+                result["evidence_ledger_error"] = str(ledger_exc)
+                logger.error("[EVIDENCE LEDGER FAILED] %s: %s", repo.get("nameWithOwner"), ledger_exc)
+                if evidence_ledger.EVIDENCE_LEDGER_REQUIRED:
+                    result["saved"] = False
+                    result["reason"] = "evidence_ledger_failed"
+                    return result
         if result.get("saved"):
             logger.info(
                 "[DECISION INTELLIGENCE SAVED] %s -> entity=%s created=%s changed=%s history=%s",
@@ -11745,9 +11902,70 @@ def _current_month_id(today) -> str:
     return f"{today.year:04d}-{today.month:02d}"
 
 
+def run_evidence_health_maintenance() -> dict:
+    """Zero-Gemini health checks. Material source changes only accelerate Next Review."""
+    result = {"enabled": evidence_ledger.ENABLE_EVIDENCE_LEDGER, "checked": 0, "material": 0, "missing": 0, "cosmetic": 0, "moved": 0, "errors": 0}
+    if not evidence_ledger.ENABLE_EVIDENCE_LEDGER:
+        return result
+    token = decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY
+    for state in evidence_ledger.query_health_candidates(token):
+        try:
+            def fetcher(url: str):
+                source_type = str(state.get("source_type") or "").lower()
+                if source_type == "github":
+                    repo_name = _github_repo_name_from_url(url)
+                    if repo_name:
+                        text = fetch_github_readme_context(repo_name)
+                        return (200 if text else 0), text, url
+                if source_type == "arxiv":
+                    arxiv_id = _extract_arxiv_id(url)
+                    if arxiv_id:
+                        text, details = fetch_arxiv_api_context(arxiv_id)
+                        final = details.get("arxiv_versioned_url") or url
+                        return (200 if text else 0), text, final
+                status, text, final = _http_get_health_limited(url, min(WEB_CONTEXT_MAX_BYTES, 1_500_000))
+                if status == 200 and ("<html" in text[:1200].lower() or "<!doctype html" in text[:1200].lower()):
+                    parser = _ReadableHTMLTextParser()
+                    try:
+                        parser.feed(text); text = parser.text()
+                    except Exception:
+                        pass
+                return status, text, final
+            health = evidence_ledger.check_health(state, fetcher)
+            result["checked"] += 1
+            h = health.get("health")
+            if h == "COSMETIC_CHANGE": result["cosmetic"] += 1
+            elif h == "MOVED": result["moved"] += 1
+            elif h == "MISSING": result["missing"] += 1
+            if health.get("material"):
+                result["material"] += 1
+                tech_page = state.get("tech_page_id")
+                if tech_page:
+                    now = datetime.now(timezone.utc).isoformat()
+                    patch = requests.patch(
+                        f"https://api.notion.com/v1/pages/{tech_page}",
+                        json={"properties": {decision_intelligence.TECH_PROP_NEXT_REVIEW: {"date": {"start": now}}}},
+                        headers=decision_intelligence._headers(), timeout=10,
+                    )
+                    if patch.status_code != 200:
+                        raise RuntimeError(f"Technology Next Review acceleration failed: {patch.status_code}")
+                evidence_ledger.update_health(state["page_id"], health, token, rereview_triggered=True)
+            else:
+                evidence_ledger.update_health(state["page_id"], health, token, rereview_triggered=False)
+        except Exception as exc:
+            result["errors"] += 1
+            logger.warning("[EVIDENCE HEALTH FAILED] %s: %s", state.get("url"), exc)
+    logger.info("[EVIDENCE HEALTH] %s", result)
+    return result
+
+
 def run_product_delivery_maintenance(today=None) -> dict:
-    result = {"subscriber": None, "monthly": []}
+    result = {"subscriber": None, "monthly": [], "evidence_health": None}
     if not (ENABLE_REVENUE_PRODUCT_PHASE2 and decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB): return result
+    try:
+        result["evidence_health"] = run_evidence_health_maintenance()
+    except Exception as exc:
+        logger.error("[EVIDENCE HEALTH MAINTENANCE FAILED] %s", exc)
     try:
         result["subscriber"] = decision_intelligence.sync_subscriber_technology_db()
         if result["subscriber"] and result["subscriber"].get("enabled"): logger.info("[SUBSCRIBER TECH SYNC] %s", result["subscriber"])

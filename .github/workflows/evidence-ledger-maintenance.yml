@@ -1,0 +1,56 @@
+name: Evidence Ledger Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run or backfill"
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, migrate-schema, backfill]
+      limit:
+        description: "Max assessed technologies to inspect"
+        required: true
+        default: "20"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-evidence-ledger
+  cancel-in-progress: false
+
+jobs:
+  evidence-ledger:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Backfill current evidence snapshots (zero Gemini)
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          ENABLE_DECISION_INTELLIGENCE_DB: "true"
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_EVIDENCE_LEDGER: "true"
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: "2026-03-11"
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.mode }}" = "dry-run" ]; then
+            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}" --dry-run
+          elif [ "${{ inputs.mode }}" = "migrate-schema" ]; then
+            python backfill_evidence_ledger.py --migrate-authority-schema
+          else
+            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}"
+          fi

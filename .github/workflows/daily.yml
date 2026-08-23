@@ -57,6 +57,11 @@ jobs:
           NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
           NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          EVIDENCE_HEALTH_MAX_CHECKS_PER_RUN: "20"
           # Revenue Product Phase 2: article discovery and paid Decision Intelligence are separated.
           ENABLE_REVENUE_PRODUCT_PHASE2: ${{ vars.ENABLE_REVENUE_PRODUCT_PHASE2 || 'true' }}
           TRACKING_ELIGIBILITY_MIN_SCORE: "55"

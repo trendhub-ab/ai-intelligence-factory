@@ -1,0 +1,48 @@
+F
+======================================================================
+FAIL: test_secondary_news_never_becomes_decision_evidence_even_if_role_primary (tests.test_run118_evidence_authority.Run118EvidenceAuthorityTests.test_secondary_news_never_becomes_decision_evidence_even_if_role_primary)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run118_work/tests/test_run118_evidence_authority.py", line 38, in test_secondary_news_never_becomes_decision_evidence_even_if_role_primary
+    self.assertEqual('SECONDARY_NEWS',out['source_type']); self.assertEqual('SECONDARY',out['authority_class']); self.assertFalse(out['decision_eligible'])
+                                                           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'SECONDARY' != 'PRIMARY_FIRST_PARTY'
+- SECONDARY
++ PRIMARY_FIRST_PARTY
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+secondary KILLED
+F
+======================================================================
+FAIL: test_discovery_platforms_never_become_decision_evidence (tests.test_run118_evidence_authority.Run118EvidenceAuthorityTests.test_discovery_platforms_never_become_decision_evidence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run118_work/tests/test_run118_evidence_authority.py", line 34, in test_discovery_platforms_never_become_decision_evidence
+    self.assertEqual('DISCOVERY',out['source_type']); self.assertFalse(out['decision_eligible'])
+                                                      ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+discovery KILLED
+F
+======================================================================
+FAIL: test_supplemental_source_cannot_independently_raise_authority (tests.test_run118_evidence_authority.Run118EvidenceAuthorityTests.test_supplemental_source_cannot_independently_raise_authority)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run118_work/tests/test_run118_evidence_authority.py", line 63, in test_supplemental_source_cannot_independently_raise_authority
+    self.assertFalse(out['decision_eligible']); self.assertLess(authority_rank(out['authority_class']),2)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
+supplemental KILLED

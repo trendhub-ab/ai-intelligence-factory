@@ -850,3 +850,30 @@ Reconciliation resultは後方互換の`fetches`に加えて以下を返す。
 - 通常Dailyの収集、Screening、Calibration、記事Deep Dive、記事生成、Eyecatch。
 - GitHub Actions workflowおよびInventory Bootstrap input contract。
 
+
+---
+
+## Run 117 Evidence Ledger & Change-Driven Review（2026-08-24）
+
+Decision Intelligenceの一次情報URLが将来404・移転・内容差替えになる問題に対し、URLを証拠そのものとして扱わず、Technology current state / Decision History / Evidence Ledgerの3層へ分離する。
+
+Evidence Ledgerは内部専用のappend-only監査DBであり、評価時に実際に使用した根拠抜粋、Document/Extract SHA-256、取得日時、Source Version、live URL、immutable URL、Source Healthを固定する。GitHubはcommit SHA、arXivはversion付きURLを優先して保持する。全文保存は原則行わない。
+
+通常Dailyでは最古のActive Snapshotから最大20件だけ0-GeminiでHealth Checkする。Evidence抜粋が残っているページ全体変更はCOSMETIC_CHANGEとしてGemini再評価しない。404/410、first-party外redirect、Evidence消失はMISSING/MATERIAL_CHANGEとしてTechnologyのNext Reviewを現在時刻へ繰り上げるが、そのHealth Check自身はGeminiを呼ばない。再評価は既存Product Review schedulerと既存budgetだけを使う。
+
+過去Evidence Snapshotは削除せず、新snapshot作成後に旧snapshotのActive Snapshotだけfalseにする。これにより監査履歴は保持しつつ、将来1,000件以上へ拡大してもroutine health check対象をcurrent snapshotへ限定する。
+
+Subscriber DBへHash・内部health metadataは同期しない。
+
+導入は`ENABLE_EVIDENCE_LEDGER=false`を既定とし、DB作成→0-Gemini dry-run/backfill→coverage確認→`EVIDENCE_LEDGER_REQUIRED=true`の順で段階導入する。Run117以前の既存record backfillは「backfill時点の現在Evidence」であり、過去本文を復元したと偽らない。
+
+---
+
+## Run118 Evidence Authority Classification（2026-08-24）
+
+Run117 Evidence Ledgerを全Evidence種別へ拡張し、DiscoveryとDecision Authorityを機械的に分離する。Source TypeはGITHUB / ARXIV / OFFICIAL_DOCS / OFFICIAL_BLOG / OFFICIAL_CHANGELOG / OFFICIAL_SITE / AUTHOR_ORIGINAL / INTERVIEW_PRIMARY / REGULATORY / SECONDARY_NEWS / DISCOVERY / OTHER_PRIMARY / SUPPLEMENTAL / UNKNOWN。各SnapshotにはAuthority Class、Decision Evidence Eligible、Authority Reasonを保存する。
+
+Hacker News / Product Huntは原則DISCOVERY。Reuters等の既知二次報道はSECONDARY_NEWSであり、取得成功やPRIMARY_SOURCEラベルだけではDecision Authorityへ昇格しない。公式Docs、公式サイト、公式Changelog/Blog、GitHub、arXiv、規制当局、既存ルールで認める著者一次情報/一次インタビューはDecision Evidence Eligibleになり得る。ただし既存Fact/Evidence/Relation/Numeric Gateを迂回しない。
+
+既存Run117 Evidence Ledgerには`migrate-schema`を1回実行し3列を追加する。分類・migration・authority gateは0-Gemini。Subscriber DBには内部Authority Reason/Hash等を同期しない。
+

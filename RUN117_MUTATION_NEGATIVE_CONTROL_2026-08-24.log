@@ -1,0 +1,49 @@
+======================================================================
+FAIL: test_404_is_missing_but_503_is_not_missing (tests.test_run117_evidence_ledger.Run117EvidenceLedgerTests.test_404_is_missing_but_503_is_not_missing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run117_work/tests/test_run117_evidence_ledger.py", line 59, in test_404_is_missing_but_503_is_not_missing
+    self.assertEqual('FETCH_ERROR',transient['health']); self.assertFalse(transient['material'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'FETCH_ERROR' != 'MISSING'
+- FETCH_ERROR
++ MISSING
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+KILLED 503 transient misclassified as missing
+======================================================================
+FAIL: test_build_snapshot_keeps_live_and_immutable_url_separate (tests.test_run117_evidence_ledger.Run117EvidenceLedgerTests.test_build_snapshot_keeps_live_and_immutable_url_separate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run117_work/tests/test_run117_evidence_ledger.py", line 39, in test_build_snapshot_keeps_live_and_immutable_url_separate
+    self.assertEqual('https://github.com/org/repo',r['url'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'https://github.com/org/repo' != 'https://github.com/org/repo/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+- https://github.com/org/repo
++ https://github.com/org/repo/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+KILLED immutable permalink replaces live health URL
+======================================================================
+FAIL: test_new_snapshot_deactivates_older_active_snapshot_after_create (tests.test_run117_evidence_ledger.Run117EvidenceLedgerTests.test_new_snapshot_deactivates_older_active_snapshot_after_create)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run117_work/tests/test_run117_evidence_ledger.py", line 111, in test_new_snapshot_deactivates_older_active_snapshot_after_create
+    self.assertEqual(1,out['saved']); self.assertEqual(3,post.call_count); self.assertEqual(1,patch_req.call_count)
+                                                                           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
+KILLED historical snapshots remain active forever
+43e69200d12c5d37216a541a2d3cc4a366fcebfe1d888bb98132ba39abd67afc  evidence_ledger.py
