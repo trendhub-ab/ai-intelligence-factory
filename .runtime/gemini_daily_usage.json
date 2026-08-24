@@ -15,11 +15,12 @@
         "gemini-3.7-flash": {
           "budget": 18,
           "by_kind": {
+            "deep_dive": 1,
             "deep_dive_retry": 1,
             "quality_retry": 1
           },
           "exhausted": false,
-          "used": 2
+          "used": 3
         }
       }
     }
@@ -28,5 +29,5 @@
   "quota_date": "2026-08-23",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-24T00:13:25.730420+00:00"
+  "updated_at": "2026-08-24T00:13:53.550982+00:00"
 }
