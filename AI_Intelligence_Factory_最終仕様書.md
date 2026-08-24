@@ -993,3 +993,63 @@ Run124をmain反映後のReal Article Regression実稿をそのままprivate fix
 - Run124の実MCP rejected稿を`tests/fixtures/run125_mcp_real_e2e_rejected.md`としてprivate regression fixtureに固定し、production `validate_fact_gate`経路でもprotocol False Positiveが再発しないことを確認する。
 - 新規Gemini call site: 0。Notion schema変更: なし。GitHub Secrets / Variables追加: なし。
 - Run125のProduction完成判定は、ローカル/反証/Synthetic Fullとは分離し、main反映後のReal Article Regression Testで最終確認する。
+
+---
+
+# Run126 Reader Experience Intelligence — 知的エンタメ × Decision Intelligence（2026-08-24）
+
+## 目的
+無料記事の裏側にあるFact / Evidence / Decision Intelligenceを非劣化で維持しつつ、表側の読者体験を「難しいことを難しく感じさせない」方向へ改善する。専門知識がなくても読み始められ、読後には重要用語と判断材料が自然に残る状態を目標とする。
+
+## 不変条件
+- Fact Gate / Editorial Gate / Publication Readiness Gate / Human Appeal Gateは緩和しない。
+- Primary Source Authority、Evidence-to-Decision Sufficiency、Fact Relation、Rescue Loss Limitを維持する。
+- 比喩、ユーモア、会話調、感情表現の有無をHARD FAIL条件にしない。
+- Reader Enjoyment専用LLM Judgeを追加しない。Gemini call siteを増やさない。
+- Notion DB Propertyは追加しない。Reader ExperienceはまずArticle Audit Artifactで観測する。
+
+## 生成編集方針
+- 専門用語は削除せず、必要な箇所で「意味・働き → 興味・関係性 → 正式名称」を優先する。
+- 冒頭は発表要約だけで始めず、記事固有の意外性・自分事・実務上の変化から入口を選ぶ。
+- 比喩や身近な例は理解を改善する場合のみ任意使用。数量固定・毎記事必須・特定題材の反復は禁止。
+- Security / Risk / Governance等では軽薄な比喩や笑いを強制しない。
+- 初心者向け化を理由にEvidence、数値、制約、一次情報、Decisionを削らない。
+- 記事固有の面白さ、最初につまずく概念、自分事化ポイント、読後に残す専門語、最重要Decisionを内部編集判断として選ぶ。可視固定見出しにはしない。
+
+## Reader Experience 0-API Audit
+Article Audit Artifactへ次を追加する。
+- Accessibility
+- Curiosity Pull
+- Reader Enjoyment
+- Return Pull
+- Analogy Used
+- Analogy Necessary
+- Unexplained Jargon
+
+診断はsoft-only。未説明略語、長文集中、技術語集中、発表要約だけの導入、読者への橋渡し不足、比喩過剰、深刻テーマとのトーン不一致等を観測するが、単独で公開不可にはしない。
+
+## 成功条件
+- 既存Gate・Evidence・Decision非劣化
+- API呼び出し増加なし
+- 比喩なしの良質記事もPASS可能
+- 専門家向けの深さを保持
+- 本番Real Article Regressionで「正しいか」だけでなく「最後まで読みたいか／専門書なしで理解できるか／少し詳しくなれたか／また読みたいか」を人間監査する
+
+---
+
+## Run127 — Intellectual Entertainment Pull（2026-08-25）
+
+Run126の「分かりやすさ」を維持しつつ、「続きを読みたい」知的エンタメへ進める。Fact/Evidence/DecisionのHARD制約は非劣化とし、Reader Experienceはsoft-onlyで観測する。
+
+追加編集思想:
+- 読者が次の段落へ進む理由を記事全体に配置する。
+- 取得済みEvidenceに基づき「なぜ今読むか」を早期提示し、架空の最新性を作らない。
+- 抽象説明・仕様列挙が続く場合、必要に応じて具体場面・比較・問いへ一度変換してから専門要件へ戻る。
+- 汎用見出しの連続を避け、記事固有の意味と引力を持つ見出しを使う。
+- 「30秒でわかるこの記事」はReader-first UIであり、本文の固定ストーリー構造ではない。
+- 日常例・比喩は任意。B2B専門テーマやSecurity/Riskで無理に軽薄化しない。
+- Decisionは報告書型の固定章ではなく、事実・制約・適用条件から自然に到達させる。
+
+Reader Experience監査に追加:
+Narrative Pull / Article-Specific Angle / Everyday Bridge / Headline Pull / News Relevance。
+Notion Property追加なし、Gemini call追加なし。

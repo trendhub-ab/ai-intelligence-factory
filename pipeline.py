@@ -5643,6 +5643,28 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・接続詞で論理を毎回明示しすぎない。段落の並びだけで意味がつながる場所では「一方で」「そのため」「つまり」を足さない。
 ・別の記事でも使える汎用的な導入・判断フレーズへ逃げず、この一次情報だから成立する入口と情報順序を選ぶ。
 ・「興味深い」「注目すべき」「実務的な示唆」「第一の柱／第一段階／第二段階」「妥当な判断と言えます」等の編集語彙を一記事に積み重ねない。必要な語を単発で使うのはよいが、説明を整えすぎず事実そのものに語らせる。
+
+【Reader Experience｜知的エンタメ × Decision Intelligence】
+・難しいことを難しく感じさせない。正確さ・Evidence・制約・Decisionを保ったまま、専門書や辞書なしで読み進められる入口を作る。
+・専門用語は消さない。初心者が最初につまずく概念では、可能なら「意味や身近な働き → なぜ気になるか → 正式名称」の順に説明し、読後に用語そのものが自然に残るようにする。
+・冒頭は発表要約だけで始めず、この話題のどこが人間的に面白いか、読者の仕事や生活に何が変わるか、あるいはどんな意外性があるかから入口を選ぶ。煽りは不要。
+・比喩や身近な例は、理解・記憶・心理的距離の改善に本当に効く場所だけで使う。比喩を入れること自体を目的にせず、1記事の個数も固定しない。
+・猫、恋愛、コンビニ、家族、学校など特定の題材を毎回使わない。Security / Risk / Governanceなど深刻なテーマでは軽薄な笑いや不釣り合いな比喩を強制しない。
+・面白さは笑いではなく、意外性、発見、比較、知的快感、自分とのつながり、常識が少し覆る感覚から記事ごとに選ぶ。
+・技術の価値を「すごい」「非常に魅力的」などの形容詞だけで済ませず、何がどう変わるから面白いのかを具体的な事実で見せる。
+・重要な場面では、この情報が最も関係する読者にとって何を意味するかを自然に橋渡しする。ただし会社員・経営者・学生など全対象を毎記事列挙しない。
+・初心者に合わせてEvidence、数値、制約、比較、一次情報、リスクを削らない。「素人でも読めるが、専門家が読んでも浅くない」を狙う。
+・記事末尾では、新しい理解、次に知りたい疑問、実生活とのつながり、具体的な判断または行動のいずれかが自然に残るようにする。毎回同じCTAや勧誘文で閉じない。
+・内部では、このテーマ固有の面白さ／最初につまずく概念／身近な例が有効な箇所／比喩を使わない方がよい箇所／自分事化ポイント／読後に残す専門語／最重要Decisionを選んでから書く。これらを可視の固定見出しにはしない。
+・「分かりやすい説明」で止めず、読者が次の段落へ進む理由を記事全体に置く。疑問、意外性、逆説、比較、具体場面、リスク、未来像のうち、この一次情報に本当に効くものだけを選ぶ。クリックベイトや過剰な煽りにはしない。
+・ニュース記事では、なぜ今日・今週・今回このテーマを読む価値があるのかを、公開日・更新・採用・仕様変更・普及・発見された問題など取得済みEvidenceから早い段階で示す。確認できない「最新」「急速に普及」「業界が注目」は作らない。
+・抽象説明や仕様列挙が長く続く箇所は、可能なら一度だけ具体的な場面・比較・問いへ置き換えてから技術要件へ戻す。重要な要件や制約自体は削らない。
+・中盤で企業ホワイトペーパーへ戻らない。権限、制約、要件などは、まず何が起こる場面なのかを理解させ、その後で必要な専門要件を渡す。
+・見出しは説明ラベルではなく、本文固有の意味と次を読む理由を持たせる。「なぜ重要か」「何が変わるか」「今後どうなるか」「最終判断」等を複数並べない。
+・Decisionは報告書の固定章として処理せず、事実・制約・適用条件から自然に「私ならまず何をするか」へ到達させる。主観とEvidenceは混同しない。
+・Reader-firstの「30秒でわかるこの記事」は公開UI上の要約であり、本文の段落順・見出し順・導入文型を固定するテンプレートではない。本文はその3項目をなぞらず、記事固有の流れを選ぶ。
+・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
+・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
@@ -5692,7 +5714,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 以下の一次情報から、無料公開のnote記事として読者の判断を助ける記事と、記事公開に必要な最小管理データを作成してください。
 会員向けTechnology評価（Adoption Score / Adoption Status / Evidence Confidence / Production Readiness / Main Risk / Best For / Avoid For）は別工程で作るため、ここでは絶対に生成しないでください。
 
-【読者】CTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。
+【読者】主対象はCTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。ただし専門知識を前提にせず、非エンジニアや一般読者でも入口から理解でき、専門家には判断材料が残る二層構造で書く。
 【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。
 【出力を途中で切らないための優先順位】
 1. SECTION_SPLIT_TOKEN、記事タイトル、記事本文の最後の「最終判断」までを最優先で完走する。
@@ -8002,6 +8024,21 @@ def _style_sequence(article: str) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _rhetorical_template_phrases(article: str) -> set[str]:
+    """Weak Run127 signature for entertainment-template reuse across articles.
+
+    A phrase never fails an article by itself; it only contributes to the existing cross-article
+    composite when multiple staging phrases recur with other structural similarity.
+    """
+    candidates = (
+        "実は", "少し考えてみましょう", "ここがおもしろいところです",
+        "また3文字の専門用語か", "恋愛に例えるなら", "猫で考えると",
+        "天才だけど", "に例えると", "例えるなら",
+    )
+    text = article or ""
+    return {phrase for phrase in candidates if phrase in text}
+
+
 def _cross_article_naturalness_signals(article: str, peers: list[dict] | None = None) -> dict:
     """Detect run-level template fingerprints without semantic/LLM comparison.
 
@@ -8014,11 +8051,19 @@ def _cross_article_naturalness_signals(article: str, peers: list[dict] | None = 
     heading_count = len(headings)
     intro = _article_opening_excerpt(article, 520)
     intro_shingles = _sentence_shingles(intro, 5)
-    best = {"score": 0, "peer": "", "sequence_similarity": 0.0, "opening_similarity": 0.0, "heading_count_match": False}
+    rhetorical = _rhetorical_template_phrases(article)
+    best = {"score": 0, "peer": "", "sequence_similarity": 0.0, "opening_similarity": 0.0, "heading_count_match": False, "shared_rhetorical_phrases": []}
     from difflib import SequenceMatcher
     for peer in peer_rows or []:
         other_seq = tuple(peer.get("sequence") or ())
+        shared_rhetorical = sorted(rhetorical & set(peer.get("rhetorical_phrases") or ()))
         if len(seq) < 18 or len(other_seq) < 18:
+            # Keep visibility of repeated staging phrases even for short articles, but never
+            # escalate to cross-article review without enough structural evidence.
+            if len(shared_rhetorical) >= 2 and not best.get("shared_rhetorical_phrases"):
+                best = {"score": 1, "peer": str(peer.get("name") or ""), "sequence_similarity": 0.0,
+                        "opening_similarity": 0.0, "heading_count_match": False,
+                        "shared_rhetorical_phrases": shared_rhetorical}
             continue
         sequence_similarity = SequenceMatcher(None, seq, other_seq, autojunk=False).ratio()
         opening_similarity = _jaccard(intro_shingles, set(peer.get("opening_shingles") or ()))
@@ -8029,9 +8074,11 @@ def _cross_article_naturalness_signals(article: str, peers: list[dict] | None = 
         if opening_similarity >= 0.58: score += 2
         elif opening_similarity >= 0.48: score += 1
         if heading_match: score += 1
+        if len(shared_rhetorical) >= 2: score += 1
         if score > best["score"]:
             best = {"score": score, "peer": str(peer.get("name") or ""), "sequence_similarity": sequence_similarity,
-                    "opening_similarity": opening_similarity, "heading_count_match": heading_match}
+                    "opening_similarity": opening_similarity, "heading_count_match": heading_match,
+                    "shared_rhetorical_phrases": shared_rhetorical}
     best["high"] = best["score"] >= 4
     return best
 
@@ -8045,6 +8092,7 @@ def _remember_article_style(name: str, article: str) -> None:
         "sequence": _style_sequence(article),
         "opening_shingles": tuple(_sentence_shingles(intro, 5)),
         "heading_count": len(re.findall(r"^#{2,3}\s+.+$", article, re.MULTILINE)),
+        "rhetorical_phrases": tuple(sorted(_rhetorical_template_phrases(article))),
     })
     # TOP3 + backfill is small, but cap memory defensively for long retry/backlog runs.
     del _RUN_ARTICLE_STYLE_MEMORY[:-12]
@@ -8072,6 +8120,127 @@ def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
         end = start + next_heading.start() if next_heading else len(body)
         return body[start:end].strip()[:max_chars]
     return body[:max_chars]
+
+
+def _reader_experience_signals(article: str) -> dict:
+    """Run127: 0-API soft diagnostics for reader pull without creating new hard gates.
+
+    The diagnostics distinguish accessibility from narrative/editorial pull. Missing analogy,
+    humor, everyday examples, or emotional language is never itself a failure.
+    """
+    body = article or ""
+    headings = [re.sub(r"\s+", " ", h).strip() for h in re.findall(r"^#{2,3}\s+(.+)$", body, re.MULTILINE)]
+    prose = re.sub(r"^#{1,6}\s+.*$", "", body, flags=re.MULTILINE)
+    visible = re.sub(r"\s+", "", prose)
+    sentences = [x.strip() for x in re.split(r"(?<=[。！？!?])", prose) if x.strip()]
+    long_sentences = sum(len(re.sub(r"\s+", "", x)) >= 105 for x in sentences)
+
+    common = {"AI", "API", "LLM", "OSS", "URL", "UI", "UX", "DB", "CPU", "GPU", "ID"}
+    acronyms = []
+    for m in re.finditer(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9-]{1,8})(?![A-Za-z0-9])", prose):
+        token = m.group(1)
+        if token in common or token in acronyms:
+            continue
+        near = prose[max(0, m.start()-90):m.end()+120]
+        explained = bool(re.search(rf"(?:{re.escape(token)}\s*[（(].{{2,70}}[）)]|[（(].{{2,70}}[）)]\s*{re.escape(token)}|.{{3,90}}[（(]{re.escape(token)}[）)]|{re.escape(token)}(?:とは|は、|は){{1}}.{{4,80}}(?:仕組み|方式|規格|標準|ツール|モデル|プロトコル|ルール))", near, re.S))
+        if not explained:
+            acronyms.append(token)
+
+    tech_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", prose)
+    technical_density = len(tech_tokens) * 1000.0 / max(len(visible), 1)
+
+    intro = _article_opening_excerpt(body, 700)
+    announcement_only = bool(
+        intro and re.match(r"^.{0,45}(?:発表|公開|リリース|更新)(?:しました|された|されました|した)", intro.strip())
+        and not re.search(r"(?:なぜ|困|変わ|仕事|生活|使|意外|面白|気にな|身近|たとえば|例えば|もし|ところが|実際)", intro[:520])
+    )
+    self_relevance = bool(re.search(r"(?:あなた|私たち|現場|仕事|会社|チーム|利用者|ユーザー|開発者|担当者|日常|スマホ|生活|導入する側|使う側|旅行|買い物|学校|家族)", intro[:700] or prose[:700]))
+    curiosity = bool(re.search(r"(?:意外|不思議|面白|なぜ|一見|ところが|変わる|違い|気になる|もし|何が|逆に|実際には)", intro[:700]))
+
+    analogy_markers = re.findall(r"(?:たとえば|例えば|〜のような|ようなもの|たとえるなら|例えるなら|まるで|身近な|もし.+なら)", prose)
+    analogy_used = bool(analogy_markers)
+    playful_topics = re.findall(r"(?:猫|犬|恋愛|デート|コンビニ|家族|料理|ゲーム|旅行)", prose)
+    analogy_overuse = len(analogy_markers) >= 4 or (len(playful_topics) >= 4 and len(set(playful_topics)) >= 2)
+    serious_theme = bool(re.search(r"(?:security|risk|governance|cyber|脆弱性|攻撃|侵害|情報漏えい|規制|監査|ガバナンス|セキュリティ|リスク)", body, re.I))
+    tone_mismatch = serious_theme and len(playful_topics) >= 2
+
+    # Run127: narrative pull is weakened by long uninterrupted explanatory blocks.
+    paragraphs = [re.sub(r"\s+", " ", x).strip() for x in re.split(r"\n\s*\n", prose) if re.sub(r"\s+", "", x)]
+    explanatory_paras = 0
+    max_explanatory_run = 0
+    current_run = 0
+    pull_markers_re = re.compile(r"(?:[？?]|たとえば|例えば|もし|ところが|一方|逆に|意外|実際|場面|朝\d{0,2}時|困る|怖い|変わる|比べ|なのに)")
+    for para in paragraphs:
+        is_explain = len(re.sub(r"\s+", "", para)) >= 90 and not pull_markers_re.search(para)
+        if is_explain:
+            explanatory_paras += 1
+            current_run += 1
+            max_explanatory_run = max(max_explanatory_run, current_run)
+        else:
+            current_run = 0
+    scene_present = bool(re.search(r"(?:朝\d{1,2}時|会議を|予約を|店を探|予定を|メールを|カレンダー|スマホで|旅行|買い物|学校で|家で|電車で|もし[^。！？]{4,100}(?:頼|言|すると|なら))", prose))
+    narrative_pull = curiosity or scene_present or max_explanatory_run <= 2
+
+    # Headings should carry article-specific nouns, not mostly generic labels.
+    generic_heading_re = re.compile(r"^(?:なぜ重要(?:なのか)?|何が変わる(?:のか)?|今後どうなる(?:のか)?|今すぐ導入すべき(?:なのか)?|最終判断|まとめ|結論|ポイント|要点|詳細)[。？?]?$" )
+    generic_headings = [h for h in headings if generic_heading_re.fullmatch(h)]
+    heading_pull = not (len(headings) >= 3 and len(generic_headings) >= 2)
+
+    # Article-specific angle: avoid copy-pastable meta prose without topic-bearing nouns.
+    generic_angle_hits = len(re.findall(r"(?:今回の発表|今回の変化|この技術|この仕組み|このニュース|今後に注目|動向を見ていき)", prose))
+    specific_heading_chars = sum(len(re.sub(r"(?:なぜ|重要|今後|判断|まとめ|結論|ポイント|詳細|何が|変わる)", "", h)) for h in headings)
+    article_specific_angle = generic_angle_hits <= 3 and (not headings or specific_heading_chars >= max(8, len(headings) * 3))
+
+    # Everyday bridge is optional: GOOD means present or clearly unnecessary, never required.
+    everyday_terms = bool(re.search(r"(?:旅行|レストラン|買い物|家族|恋愛|学校|趣味|猫|犬|ゲーム|SNS|スマホ|料理|引っ越し|電車|病院|天気|スポーツ|友人|会議|メール|カレンダー)", prose))
+    everyday_bridge = "PRESENT" if everyday_terms or scene_present else "NOT_REQUIRED"
+
+    # News relevance must come from explicit temporal/event language, not fabricated freshness.
+    news_relevance = bool(re.search(r"(?:今回|発表|公開|更新|リリース|対応を開始|採用|仕様変更|公開された|新たに|今週|今日|\d{4}[-年/]\d{1,2})", intro[:900]))
+
+    last = prose[-1000:]
+    return_pull = bool(re.search(r"(?:次に|次版|今後|試す|比較|検証|確かめ|判断|選択|待つ|見送|導入|変化|残る|問い|条件|自分なら|私なら)", last))
+
+    accessibility_issues = []
+    if acronyms: accessibility_issues.append("unexplained_acronyms")
+    if long_sentences >= 3: accessibility_issues.append("long_sentence_cluster")
+    if technical_density >= 34: accessibility_issues.append("technical_term_concentration")
+    enjoyment_issues = []
+    if analogy_overuse: enjoyment_issues.append("analogy_overuse")
+    if tone_mismatch: enjoyment_issues.append("serious_topic_tone_mismatch")
+    if announcement_only: enjoyment_issues.append("announcement_summary_opening")
+    if not self_relevance: enjoyment_issues.append("reader_bridge_weak")
+    if max_explanatory_run >= 4: enjoyment_issues.append("explanation_run_long")
+    if not heading_pull: enjoyment_issues.append("generic_heading_cluster")
+    if not article_specific_angle: enjoyment_issues.append("article_specific_angle_weak")
+    if not news_relevance: enjoyment_issues.append("news_relevance_weak")
+
+    accessibility = "GOOD" if not accessibility_issues else "REVIEW"
+    curiosity_pull = "GOOD" if (curiosity or self_relevance) and not announcement_only else "REVIEW"
+    reader_enjoyment = "GOOD" if not enjoyment_issues else "REVIEW"
+    return_status = "GOOD" if return_pull else "REVIEW"
+    return {
+        "accessibility": accessibility,
+        "curiosity_pull": curiosity_pull,
+        "reader_enjoyment": reader_enjoyment,
+        "return_pull": return_status,
+        "narrative_pull": "GOOD" if narrative_pull and max_explanatory_run < 4 else "REVIEW",
+        "article_specific_angle": "GOOD" if article_specific_angle else "REVIEW",
+        "everyday_bridge": everyday_bridge,
+        "headline_pull": "GOOD" if heading_pull else "REVIEW",
+        "news_relevance": "GOOD" if news_relevance else "REVIEW",
+        "analogy_used": analogy_used,
+        "analogy_necessary": "EDITORIAL_JUDGMENT" if analogy_used else "NOT_REQUIRED",
+        "unexplained_jargon": acronyms[:8],
+        "accessibility_issues": accessibility_issues,
+        "enjoyment_issues": enjoyment_issues,
+        "technical_terms_per_1000_chars": round(technical_density, 1),
+        "long_sentence_count": long_sentences,
+        "max_explanatory_paragraph_run": max_explanatory_run,
+        "generic_headings": generic_headings[:8],
+        "scene_present": scene_present,
+        "soft_only": True,
+    }
 
 
 def validate_human_appeal_gate(parsed: dict, peer_articles: list[dict] | None = None) -> tuple[str, list[str]]:
@@ -8962,6 +9131,23 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
         evidence_urls = meta.get("evidence_urls") or []
         if evidence_urls:
             lines.extend(["## Primary Evidence URLs", *[f"- {u}" for u in evidence_urls], ""])
+        reader = _reader_experience_signals(article or "")
+        lines.extend([
+            "## Reader Experience",
+            f"- Accessibility: {reader.get('accessibility')}",
+            f"- Curiosity Pull: {reader.get('curiosity_pull')}",
+            f"- Reader Enjoyment: {reader.get('reader_enjoyment')}",
+            f"- Return Pull: {reader.get('return_pull')}",
+            f"- Narrative Pull: {reader.get('narrative_pull')}",
+            f"- Article-Specific Angle: {reader.get('article_specific_angle')}",
+            f"- Everyday Bridge: {reader.get('everyday_bridge')}",
+            f"- Headline Pull: {reader.get('headline_pull')}",
+            f"- News Relevance: {reader.get('news_relevance')}",
+            f"- Analogy Used: {reader.get('analogy_used')}",
+            f"- Analogy Necessary: {reader.get('analogy_necessary')}",
+            f"- Unexplained Jargon: {', '.join(reader.get('unexplained_jargon') or []) or 'None'}",
+            "",
+        ])
         lines.extend(["## Article", article or "（本文なし）", ""])
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines))
