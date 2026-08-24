@@ -884,3 +884,26 @@ Run118のAuthority分類に加え、Evidenceが評価対象Technology本人に�
 Binding値: `IDENTITY_ANCHOR`, `OFFICIAL_METADATA`, `SAME_PRIMARY_SITE`, `CLAIM_BOUND`, `UNBOUND`, `UNKNOWN`。GitHubはcanonical owner/repo一致、arXivはpaper id一致を最強Anchorとする。GitHub外部Docsはrepository metadataで公式siteとの結び付きが証明された場合のみEligible。arXiv外部DOI/Zenodo/一般arXiv解説などは同一論文Identityを証明しない限りUNBOUND。Discovery/SecondaryはBinding有無にかかわらずDecision Evidence Eligible=false。
 
 Ledgerに`Entity Binding`と`Entity Binding Reason`を追加。既存Snapshotは削除せず、0-Gemini backfillで新Snapshotを作成して同一entity/live URLの旧Active Snapshotを非Active化する。Required化は再backfill後のTechnology-level coverage 100%確認後にのみ行う。
+
+
+## Run120 Japanese Display Label（2026-08-24）
+
+Technology / Projectの正本名称と、Subscriberが一覧で理解するための日本語表示ラベルを分離する。`Technology / Project Name`、Canonical Entity ID、Primary URL、Entity Aliasesは従来どおりIdentityの正本であり、`Japanese Display Label`はUI専用のrich_textとする。Identity Resolution、dedupe、Evidence Authority / Entity Binding、History Event ID、Meaningful Change判定には使用しない。
+
+Product Reviewの既存Structured Outputに任意`japanese_display_label`を追加し、別Gemini requestは追加しない。形式は原則`正式名称 — 日本語で何の技術か`。推奨・評価・誇張・Adoption Status・Scoreを禁止し、一次情報だけから安全に説明できない場合は空文字を許容する。不正・欠落は0 APIで空欄へSoft Dropし、Product Reviewの成功・retry・inventory readinessを阻害しない。
+
+Technology Intelligence DBとSanitized Subscriber Technology DBに`Japanese Display Label` rich_textを追加する。Decision Historyには追加しない。既存レコードのGemini一括backfillは行わず、今後の通常Product Review / Re-review時に自然充足させる。Feature Flag `ENABLE_JAPANESE_DISPLAY_LABEL`は既定false。0-Gemini schema migration成功後にtrueへ切り替える。
+
+## Run 121 Human Editorial Fingerprint / Cross-Article Naturalness Gate（2026-08-24）
+
+無料note記事の記事品質ロジックを、追加Gemini requestなしで一旦完成させる最終Human Editorial改修。
+
+- 既存Run108のAI-style composite detectorを維持し、既知のAI定型句・固定見出し・短文連打・均一セクション検知を継続する。
+- `Human Editorial Depth`を追加し、同一内容の言い換え反復、過剰な明示接続、説明型クロージャ反復を0 APIで複合評価する。単一シグナルだけでは公開を止めない。
+- `Cross-Article Naturalness Gate`を追加し、同一Production Run内ですでにQuality Gateを通過した記事との rhetorical fingerprint を比較する。技術用語の一致ではなく、文長・接続・文末・導入・見出し数を組み合わせ、複数条件が高一致した場合だけ `cross_article_fingerprint_high` とする。
+- Cross-Article defectは `APPEAL_CROSS_ARTICLE_FINGERPRINT` / REVIEW。Fact/Evidenceを変更せず、見出し・段落・文章リズム・必要なら情報提示順のみを1回の既存Quality Retryで変更できる。
+- run-local style memoryはProduction開始時に必ずresetし、最大12記事分だけメモリ保持する。Notion/GitHubへ永続化せず、EvidenceやDecisionには使用しない。
+- `persist_results=False` のRegen/Testではrun memoryを参照しないため、A/B検証の独立性を維持する。
+- Deterministic Publication Rescueも同じpeer memoryでHuman Appealを再評価し、別のFact defectを削除した結果Cross-Article defectが迂回通過することを禁止する。
+- Reader-First `30秒でわかるこの記事` はUX上の固定インターフェースとして維持するが、Cross-Article fingerprintは生成ARTICLE本文に対して評価するため、固定Reader-First UI自体をAI臭として誤検知しない。
+- 新規Gemini call siteを追加しない。記事品質改善のための追加API費用は0。

@@ -529,6 +529,10 @@ GATE_HISTORY_DIR = os.environ.get("GATE_HISTORY_DIR", "gate_history")
 REGRESSION_CASES_DIR = os.environ.get("REGRESSION_CASES_DIR", "regression_cases_pending")
 ARTICLE_AUDIT_DIR = os.environ.get("ARTICLE_AUDIT_DIR", "article_audit")
 
+# Run121: run-local article style memory. It contains only generated prose fingerprints and
+# is reset before each production run; it is never persisted to Notion or used as evidence.
+_RUN_ARTICLE_STYLE_MEMORY: list[dict] = []
+
 GATE_STATUS_NOT_RUN = "NOT_RUN"
 GATE_STATUS_PASS = "PASS"
 GATE_STATUS_FAIL = "FAIL"
@@ -576,6 +580,7 @@ REASON_CODE_APPEAL_TITLE_FLATTENING = "APPEAL_TITLE_FLATTENING"
 REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
 REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
 REASON_CODE_APPEAL_AI_STYLE_COMPOSITE = "APPEAL_AI_STYLE_COMPOSITE"
+REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT = "APPEAL_CROSS_ARTICLE_FINGERPRINT"
 REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
 REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED = "DEEP_DIVE_RUN_BUDGET_EXHAUSTED"
@@ -5622,6 +5627,9 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・箇条書きは比較・条件・次のアクションなど、一覧にした方が理解が速いところだけに使う。
 ・最終判断は曖昧な「注視したい」で逃げず、試す／待つ／見送る／比較する等の具体的な距離感を示す。
 ・安全性のために記事全体を弱くしない。根拠のない一文だけを弱め、根拠のある面白さと判断は残す。
+・同じ内容を言い換えて二度説明しない。読者が一度で理解できる説明はそこで止める。
+・接続詞で論理を毎回明示しすぎない。段落の並びだけで意味がつながる場所では「一方で」「そのため」「つまり」を足さない。
+・別の記事でも使える汎用的な導入・判断フレーズへ逃げず、この一次情報だから成立する入口と情報順序を選ぶ。
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
@@ -7379,6 +7387,7 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
         "best_for": parsed.get("best_for_text", ""),
         "avoid_for": parsed.get("avoid_for_text", ""),
         "short_rationale": parsed.get("short_rationale_text", ""),
+        "japanese_display_label": parsed.get("japanese_display_label", ""),
         "reviewed_at": reviewed_at,
         "evidence_urls": evidence_urls,
         "source_summary": parsed.get("source_summary_text", ""),
@@ -7736,6 +7745,146 @@ def _ai_style_composite_signals(text: str) -> dict:
     }
 
 
+def _sentence_shingles(value: str, width: int = 5) -> set[str]:
+    compact = re.sub(r"https?://\S+|`[^`]+`|[A-Za-z0-9_.:/+-]+", " ", value or "")
+    compact = re.sub(r"[\s。、！？!?「」『』（）()【】#*_>・:：;；,，.-]+", "", compact)
+    if len(compact) < width:
+        return set()
+    return {compact[i:i + width] for i in range(len(compact) - width + 1)}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / max(1, len(a | b))
+
+
+def _human_editorial_depth_signals(text: str) -> dict:
+    """Run121 zero-API signals for over-explaining and mechanically explicit prose.
+
+    These are deliberately weak on their own. Japanese professional prose can naturally use
+    transitions and repetition; only recurring combinations feed the composite review threshold.
+    """
+    body = text or ""
+    prose = re.sub(r"^#{1,6}\s+.*$", "", body, flags=re.MULTILINE)
+    sentences = [x.strip() for x in re.split(r"(?<=[。！？!?])", prose) if len(re.sub(r"\s+", "", x)) >= 28]
+    near_duplicate_pairs = 0
+    for i, left in enumerate(sentences):
+        a = _sentence_shingles(left)
+        if len(a) < 8:
+            continue
+        for right in sentences[i + 1:i + 7]:
+            b = _sentence_shingles(right)
+            if len(b) >= 8 and _jaccard(a, b) >= 0.66:
+                near_duplicate_pairs += 1
+                break
+
+    transitions = ("一方で", "ただし", "そのため", "つまり", "また", "さらに", "そこで", "とはいえ", "なお", "逆に")
+    transition_counts = {t: len(re.findall(rf"(?:^|[。！？!?\n])\s*{re.escape(t)}", prose)) for t in transitions}
+    transition_total = sum(transition_counts.values())
+    repeated_transition = max(transition_counts.values(), default=0) >= 3
+
+    # Repeated explanatory closers are a stronger signal than ordinary desu/masu endings.
+    explanatory_closer_count = len(re.findall(r"(?:と言えます|といえます|と考えられます|ということです|ことになります|わけです)[。！？]", prose))
+
+    score = 0
+    if near_duplicate_pairs >= 2: score += 3
+    elif near_duplicate_pairs == 1: score += 1
+    if transition_total >= 8: score += 2
+    elif transition_total >= 6: score += 1
+    if repeated_transition: score += 1
+    if explanatory_closer_count >= 3: score += 2
+    return {
+        "score": score,
+        "high": score >= 4,
+        "near_duplicate_pairs": near_duplicate_pairs,
+        "transition_total": transition_total,
+        "repeated_transition": repeated_transition,
+        "explanatory_closer_count": explanatory_closer_count,
+    }
+
+
+def _style_sequence(article: str) -> tuple[str, ...]:
+    prose = re.sub(r"^#{1,6}\s+.*$", "", article or "", flags=re.MULTILINE)
+    result: list[str] = []
+    transition_map = (("一方で", "T_CONTRAST"), ("ただし", "T_CAVEAT"), ("そのため", "T_CAUSE"),
+                      ("つまり", "T_SUMMARY"), ("また", "T_ADD"), ("さらに", "T_ADD"),
+                      ("そこで", "T_ACTION"), ("とはいえ", "T_CAVEAT"))
+    for raw in re.split(r"(?<=[。！？!?])", prose):
+        sentence = re.sub(r"\s+", " ", raw).strip()
+        visible = re.sub(r"[\s。！？!?]", "", sentence)
+        if len(visible) < 8:
+            continue
+        length = "S" if len(visible) <= 28 else "M" if len(visible) <= 58 else "L" if len(visible) <= 95 else "XL"
+        trans = "T_NONE"
+        for prefix, code in transition_map:
+            if sentence.startswith(prefix):
+                trans = code
+                break
+        if re.search(r"(?:たい|妥当|価値がある|見送り|急がない)[。！？!?]?$", sentence): end = "E_DECISION"
+        elif re.search(r"(?:可能性があります|考えられます|かもしれません)[。！？!?]?$", sentence): end = "E_HEDGE"
+        elif re.search(r"(?:ということです|わけです|と言えます|といえます)[。！？!?]?$", sentence): end = "E_EXPLAIN"
+        elif re.search(r"ます[。！？!?]?$", sentence): end = "E_MASU"
+        elif re.search(r"です[。！？!?]?$", sentence): end = "E_DESU"
+        else: end = "E_OTHER"
+        result.extend((length, trans, end))
+        if len(result) >= 45:
+            break
+    return tuple(result)
+
+
+def _cross_article_naturalness_signals(article: str, peers: list[dict] | None = None) -> dict:
+    """Detect run-level template fingerprints without semantic/LLM comparison.
+
+    A review requires both very similar rhetorical sequencing and at least one additional
+    structural coincidence. This keeps shared technical vocabulary from creating false hits.
+    """
+    peer_rows = peers if peers is not None else _RUN_ARTICLE_STYLE_MEMORY
+    seq = _style_sequence(article)
+    headings = [re.sub(r"[\s。、！？!?]", "", h) for h in re.findall(r"^#{2,3}\s+(.+)$", article or "", re.MULTILINE)]
+    heading_count = len(headings)
+    intro = _article_opening_excerpt(article, 520)
+    intro_shingles = _sentence_shingles(intro, 5)
+    best = {"score": 0, "peer": "", "sequence_similarity": 0.0, "opening_similarity": 0.0, "heading_count_match": False}
+    from difflib import SequenceMatcher
+    for peer in peer_rows or []:
+        other_seq = tuple(peer.get("sequence") or ())
+        if len(seq) < 18 or len(other_seq) < 18:
+            continue
+        sequence_similarity = SequenceMatcher(None, seq, other_seq, autojunk=False).ratio()
+        opening_similarity = _jaccard(intro_shingles, set(peer.get("opening_shingles") or ()))
+        heading_match = heading_count >= 3 and heading_count == int(peer.get("heading_count") or 0)
+        score = 0
+        if sequence_similarity >= 0.88: score += 3
+        elif sequence_similarity >= 0.82: score += 2
+        if opening_similarity >= 0.58: score += 2
+        elif opening_similarity >= 0.48: score += 1
+        if heading_match: score += 1
+        if score > best["score"]:
+            best = {"score": score, "peer": str(peer.get("name") or ""), "sequence_similarity": sequence_similarity,
+                    "opening_similarity": opening_similarity, "heading_count_match": heading_match}
+    best["high"] = best["score"] >= 4
+    return best
+
+
+def _remember_article_style(name: str, article: str) -> None:
+    if not article:
+        return
+    intro = _article_opening_excerpt(article, 520)
+    _RUN_ARTICLE_STYLE_MEMORY.append({
+        "name": name or "",
+        "sequence": _style_sequence(article),
+        "opening_shingles": tuple(_sentence_shingles(intro, 5)),
+        "heading_count": len(re.findall(r"^#{2,3}\s+.+$", article, re.MULTILINE)),
+    })
+    # TOP3 + backfill is small, but cap memory defensively for long retry/backlog runs.
+    del _RUN_ARTICLE_STYLE_MEMORY[:-12]
+
+
+def reset_article_style_memory() -> None:
+    _RUN_ARTICLE_STYLE_MEMORY.clear()
+
+
 def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
     """Return the actual reader-facing lead even when Run108 uses a content-specific heading."""
     body = article or ""
@@ -7756,7 +7905,7 @@ def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
     return body[:max_chars]
 
 
-def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
+def validate_human_appeal_gate(parsed: dict, peer_articles: list[dict] | None = None) -> tuple[str, list[str]]:
     """Human Appeal Gate: Humanizationとは別に、読ませる力と判断の具体性を診断する。
 
     WEAK は即時の事実エラーではない。具体的判断の消失など重要な場合だけ、
@@ -7801,8 +7950,15 @@ def validate_human_appeal_gate(parsed: dict) -> tuple[str, list[str]]:
         issues.append("opening_hook_weak")
 
     ai_style = _ai_style_composite_signals(article)
-    if ai_style.get("high"):
+    depth_style = _human_editorial_depth_signals(article)
+    # Run121: known-template detector + over-explanation detector are complementary.
+    # Either detector must be high-confidence; weak individual style quirks remain warnings-free.
+    if ai_style.get("high") or depth_style.get("high"):
         issues.append("ai_style_composite_high")
+
+    cross_style = _cross_article_naturalness_signals(article, peer_articles)
+    if cross_style.get("high"):
+        issues.append("cross_article_fingerprint_high")
 
     issues = list(dict.fromkeys(issues))
     return ("WEAK" if issues else "ACCEPTABLE", issues)
@@ -7866,6 +8022,7 @@ def _reason_code(message: str, gate: str) -> str:
             "decision_voice_missing": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
             "fabricated_personal_experience": REASON_CODE_APPEAL_FABRICATED_EXPERIENCE,
             "ai_style_composite_high": REASON_CODE_APPEAL_AI_STYLE_COMPOSITE,
+            "cross_article_fingerprint_high": REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT,
             "human_appeal_materially_degraded_after_reedit": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
         }
         return mapping.get(message, REASON_CODE_APPEAL_DECISION_VOICE_LOSS)
@@ -7906,7 +8063,7 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code: str = ""
             return GATE_SEVERITY_HARD
         if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
             return GATE_SEVERITY_SOFT
-        if message == "ai_style_composite_high" or code == REASON_CODE_APPEAL_AI_STYLE_COMPOSITE:
+        if message in {"ai_style_composite_high", "cross_article_fingerprint_high"} or code in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT}:
             return GATE_SEVERITY_REVIEW
         if message in {
             "action_collapsed_to_generic_monitoring",
@@ -8064,7 +8221,8 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         REASON_CODE_APPEAL_TITLE_FLATTENING: ("Evidenceを超えない範囲でタイトルの引力だけを回復してください。", "title"),
         REASON_CODE_APPEAL_DECISION_VOICE_LOSS: ("架空体験や感情を足さず、原稿内の根拠に基づく筆者判断だけを復元してください。", "voice"),
         REASON_CODE_APPEAL_FABRICATED_EXPERIENCE: ("実際に経験していない現場体験・使用体験・感情を削除し、一次情報に基づく編集者の観察・判断へ書き換えてください。", "voice"),
-        REASON_CODE_APPEAL_AI_STYLE_COMPOSITE: ("事実・数値・判断の意味は変えず、汎用的な接続句の反復、同型見出し、短文連打、機械的な対比を崩してください。記事固有の焦点を1つ選び、人間の編集者が書いた自然なリズムへ再編集してください。新しい事実は追加しないでください。", "prose_style"),
+        REASON_CODE_APPEAL_AI_STYLE_COMPOSITE: ("事実・数値・判断の意味は変えず、汎用的な接続句の反復、同型見出し、短文連打、説明の言い換え反復を崩してください。記事固有の焦点を1つ選び、人間の編集者が書いた自然なリズムへ再編集してください。新しい事実は追加しないでください。", "prose_style"),
+        REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT: ("同じRunの別記事と似た導入リズム・段落運び・判断の置き方を避け、この記事固有の一次情報に合う順序へ再編集してください。事実・数値・Decisionの意味は変えず、新しい事実は追加しないでください。", "cross_article_style"),
         REASON_CODE_EDITORIAL_STRUCTURE_ERROR: ("読みやすさを損なう構造だけを自然な文章へ直してください。", "structure"),
     }
     instructions, sections = [], []
@@ -8081,8 +8239,8 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
     # Retry itself must not re-introduce internal management vocabulary into the public article.
     instructions.append("ARTICLE本文には内部管理コード NOW / TRY / WATCH / WAIT / AVOID を絶対に出力せず、読者向けの自然な日本語判断文へ言い換えてください。")
-    if any((row.get("reason_code") or "") == REASON_CODE_APPEAL_AI_STYLE_COMPOSITE for row in reason_rows):
-        instructions.append("AI臭の修正では見出し名・段落分割・文章リズムを変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。")
+    if any((row.get("reason_code") or "") in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT} for row in reason_rows):
+        instructions.append("AI臭・量産テンプレ感の修正では見出し名・段落分割・文章リズムを変更してよい。必要なら情報提示順も変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。")
     else:
         instructions.append("修正対象外の一次情報・数値・固有名詞・見出し構造は不用意に書き換えず、局所修正に限定してください。")
     return "\n".join(dict.fromkeys(instructions)), list(dict.fromkeys(sections))
@@ -8205,7 +8363,7 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
 
 def _publication_rescue_can_be_ready(parsed: dict, source_context: str, source: str,
                                      evidence_metadata: dict, source_info: dict, freshness: dict,
-                                     output_truncated: bool = False) -> tuple[bool, dict]:
+                                     output_truncated: bool = False, peer_articles: list[dict] | None = None) -> tuple[bool, dict]:
     fact_ok, fact_failures = validate_fact_gate(
         parsed, "publication-rescue", source_context=source_context, source=source,
         evidence_metadata=evidence_metadata, source_info=source_info,
@@ -8213,7 +8371,7 @@ def _publication_rescue_can_be_ready(parsed: dict, source_context: str, source: 
     )
     editorial_ok, editorial_warnings = validate_editorial_gate(parsed, "publication-rescue")
     publication_state, publication_issues = validate_publication_readiness_gate(parsed, source_context, source_info)
-    human_state, human_issues = validate_human_appeal_gate(parsed)
+    human_state, human_issues = validate_human_appeal_gate(parsed, peer_articles)
     reason_rows = (map_gate_reasons("fact", fact_failures)
                    + map_gate_reasons("editorial", editorial_warnings)
                    + map_gate_reasons("publication", publication_issues)
@@ -9361,7 +9519,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             publication_state, publication_issues = validate_publication_readiness_gate(
                 parsed, verification_context, source_info,
             )
-            human_appeal, human_appeal_issues = validate_human_appeal_gate(parsed)
+            human_appeal, human_appeal_issues = validate_human_appeal_gate(parsed, _RUN_ARTICLE_STYLE_MEMORY if persist_results else [])
             gate_statuses.update({
                 "fact": GATE_STATUS_PASS if fact_ok else GATE_STATUS_FAIL,
                 "editorial": GATE_STATUS_PASS if editorial_ok else GATE_STATUS_WARNING,
@@ -9397,6 +9555,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             # PASS_WITH_WARNINGSはここで即出荷。SOFT文章改善だけのQuality Retryは禁止する。
             if disposition in {GATE_DISPOSITION_PASS, GATE_DISPOSITION_PASS_WITH_WARNINGS}:
                 quality_gate_passed = True
+                if persist_results:
+                    _remember_article_style(name, parsed.get("note_draft", ""))
                 if disposition == GATE_DISPOSITION_PASS_WITH_WARNINGS:
                     soft_messages = _quality_warning_messages(all_reason_rows)
                     logger.warning("[QUALITY PASS WITH WARNINGS] %s: %s", name, ", ".join(soft_messages))
@@ -9427,6 +9587,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     rescue_ready, rescue_diag = _publication_rescue_can_be_ready(
                         rescued_parsed, verification_context, source, source_info.get("evidence_metadata", {}),
                         source_info, freshness, output_truncated=output_truncated,
+                        peer_articles=_RUN_ARTICLE_STYLE_MEMORY if persist_results else [],
                     )
                     if funnel:
                         funnel.incr("deterministic_rescue_attempted")
@@ -9592,6 +9753,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         rescue_ready, rescue_diag = _publication_rescue_can_be_ready(
                             rescued_parsed, verification_context, source, source_info.get("evidence_metadata", {}),
                             source_info, freshness, output_truncated=output_truncated,
+                            peer_articles=_RUN_ARTICLE_STYLE_MEMORY if persist_results else [],
                         )
                         rescue_loss = rescued_parsed.get("_rescue_loss", {})
                         loss_exceeded = bool(rescue_loss.get("loss_exceeded"))
@@ -11352,6 +11514,7 @@ _PRODUCT_REVIEW_RESPONSE_SCHEMA = {
         "best_for": {"type": "string"},
         "avoid_for": {"type": "string"},
         "short_rationale": {"type": "string"},
+        "japanese_display_label": {"type": "string"},
         "next_review_days": {"type": "integer", "minimum": 7, "maximum": 60},
     },
     "required": [
@@ -11416,7 +11579,10 @@ def _product_review_prompt(repo: dict, source_info: dict, current: dict) -> str:
         "Reliability / Security Risk 15, Integration / Migration Feasibility 10, Ecosystem / Support Durability 5 の合計100点とし、"
         "componentsの合計と必ず一致させる。"
         "ADOPTはEvidence ConfidenceがHIGHかつProduction ReadinessがHIGHの場合に限る。"
-        "main_risk / best_for / avoid_for / short_rationaleは、一次情報から判断できる範囲で具体的かつ空欄にしない。\n"
+        "main_risk / best_for / avoid_for / short_rationaleは、一次情報から判断できる範囲で具体的かつ空欄にしない。"
+        "japanese_display_labelは任意の表示専用フィールド。正式な製品名・プロジェクト名・論文名を改変せず、"
+        "『名称 — 日本語で何の技術か』の短い説明ラベルにする。推奨・評価・誇張・スコア・Adoption Statusを含めず、"
+        "一次情報だけから安全に説明できない場合は空文字にする。Identity判定には使われない。\n"
         f"Technology: {repo.get('nameWithOwner')}\nURL: {repo.get('url')}\nCurrent: {json.dumps(current, ensure_ascii=False)}\n"
         f"Verified source context:\n{context}"
     )
@@ -11447,9 +11613,10 @@ def _validate_product_review_payload(obj: dict) -> dict:
     if not isinstance(obj, dict):
         raise _product_review_schema_error("response_not_object")
     required = set(_PRODUCT_REVIEW_RESPONSE_SCHEMA["required"])
+    allowed = set(_PRODUCT_REVIEW_RESPONSE_SCHEMA["properties"])
     actual = set(obj)
     missing = sorted(required - actual)
-    extra = sorted(actual - required)
+    extra = sorted(actual - allowed)
     if missing:
         raise _product_review_schema_error("missing_fields=" + ",".join(missing))
     if extra:
@@ -11499,6 +11666,29 @@ def _validate_product_review_payload(obj: dict) -> dict:
     return obj
 
 
+
+def _normalize_japanese_display_label(value: object) -> str:
+    """Soft-normalize the UI-only Japanese label without failing Product Review.
+
+    This field is deliberately excluded from assessment validity, retry triggers, entity identity,
+    evidence authority, History change detection, and launch readiness.
+    """
+    if not isinstance(value, str):
+        return ""
+    label = re.sub(r"\s+", " ", value).strip()
+    if not label or len(label) > 80 or "\n" in value or "\r" in value:
+        return ""
+    if not re.search(r"[\u3040-\u30ff\u3400-\u9fff]", label):
+        return ""
+    forbidden = re.compile(
+        r"(?:\b(?:WATCH|TEST|ADOPT|AVOID)\b|(?:Adoption|Decision)\s*Score|\d{1,3}\s*/\s*100|"
+        r"おすすめ|推奨|最強|最高|革命的|必須|今すぐ導入|採用すべき)", re.I,
+    )
+    if forbidden.search(label):
+        return ""
+    return label
+
+
 def _decode_product_review_json(text: str) -> dict:
     """Parse provider JSON with deterministic, zero-API wrapper cleanup.
 
@@ -11534,6 +11724,7 @@ def _parse_product_review_response(payload: object) -> dict:
         "production_readiness": obj["production_readiness"],
         "main_risk_text": obj["main_risk"], "best_for_text": obj["best_for"],
         "avoid_for_text": obj["avoid_for"], "short_rationale_text": obj["short_rationale"],
+        "japanese_display_label": _normalize_japanese_display_label(obj.get("japanese_display_label")),
         "source_summary_text": "Product Review from verified primary evidence",
         "next_review_days": obj["next_review_days"],
     }
@@ -12109,6 +12300,7 @@ def main():
     # Private Article Auditはrun-local成果物。配布ZIPや前Runに残ったテスト稿を
     # 今回の本番Readyとして誤認しないよう、Production開始時に必ず初期化する。
     reset_article_audit_for_production_run()
+    reset_article_style_memory()
     initialize_runtime()
     if REGEN_TEST_MODE:
         run_regen_test_mode()

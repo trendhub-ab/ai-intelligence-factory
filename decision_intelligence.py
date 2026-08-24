@@ -42,6 +42,8 @@ NOTION_MONTHLY_DATA_SOURCE_ID = os.environ.get("NOTION_MONTHLY_DATA_SOURCE_ID", 
 ENABLE_SUBSCRIBER_TECH_SYNC = os.environ.get("ENABLE_SUBSCRIBER_TECH_SYNC", "false").lower() in {"1", "true", "yes", "on"}
 ENABLE_DECISION_MONTHLY_DIGEST = os.environ.get("ENABLE_DECISION_MONTHLY_DIGEST", "false").lower() in {"1", "true", "yes", "on"}
 
+ENABLE_JAPANESE_DISPLAY_LABEL = os.environ.get("ENABLE_JAPANESE_DISPLAY_LABEL", "false").lower() == "true"
+
 ADOPTION_STATUSES = {"WATCH", "TEST", "ADOPT", "AVOID"}
 CONFIDENCE_LEVELS = {"LOW", "MEDIUM", "HIGH"}
 READINESS_LEVELS = {"LOW", "MEDIUM", "HIGH"}
@@ -56,6 +58,7 @@ RISK_TEXT_SIMILARITY_THRESHOLD = min(0.99, max(0.50, float(os.environ.get("DI_RI
 PRODUCT_TIMEZONE = os.environ.get("DI_PRODUCT_TIMEZONE", "Asia/Tokyo")
 
 TECH_PROP_NAME = "Technology / Project Name"
+TECH_PROP_JAPANESE_DISPLAY_LABEL = "Japanese Display Label"
 TECH_PROP_PRIMARY_URL = "Primary URL"
 TECH_PROP_SOURCE = "Source"
 TECH_PROP_CATEGORY = "Category"
@@ -111,6 +114,7 @@ HISTORY_PROP_ENTITY_ID = "Canonical Entity ID"
 HISTORY_PROP_EVENT_ID = "History Event ID"
 
 SUB_PROP_NAME = "Technology / Project Name"
+SUB_PROP_JAPANESE_DISPLAY_LABEL = "Japanese Display Label"
 SUB_PROP_PRIMARY_URL = "Primary URL"
 SUB_PROP_SOURCE = "Source"
 SUB_PROP_CATEGORY = "Category"
@@ -479,6 +483,7 @@ def _current_state(page: dict | None) -> dict:
     return {
         "page_id": page.get("id"),
         "technology_name": _rich_text_value(props.get(TECH_PROP_NAME, {})),
+        "japanese_display_label": _rich_text_value(props.get(TECH_PROP_JAPANESE_DISPLAY_LABEL, {})),
         "adoption_score": _number_value(props.get(TECH_PROP_ADOPTION_SCORE, {})),
         "adoption_status": _select_value(props.get(TECH_PROP_ADOPTION_STATUS, {})),
         "production_readiness": _select_value(props.get(TECH_PROP_PRODUCTION_READINESS, {})),
@@ -554,6 +559,9 @@ def _build_technology_properties(assessment: dict, resolution: EntityResolution,
         TECH_PROP_PUBLISHED_AT: _date(assessment.get("published_at")),
         TECH_PROP_ANALYZED_AT: _date(assessment.get("reviewed_at")),
     }
+    display_label = str(assessment.get("japanese_display_label") or current.get("japanese_display_label") or "").strip()
+    if ENABLE_JAPANESE_DISPLAY_LABEL and display_label:
+        props[TECH_PROP_JAPANESE_DISPLAY_LABEL] = _rt(display_label)
     return props
 
 
@@ -1060,6 +1068,7 @@ def _subscriber_values_from_internal(page: dict) -> dict:
     props = page.get("properties", {})
     return {
         "name": _rich_text_value(props.get(TECH_PROP_NAME, {})),
+        "japanese_display_label": _rich_text_value(props.get(TECH_PROP_JAPANESE_DISPLAY_LABEL, {})),
         "primary_url": (props.get(TECH_PROP_PRIMARY_URL) or {}).get("url") or "",
         "sources": sorted(set(_multi_select_values(props.get(TECH_PROP_SOURCE, {})))),
         "category": _select_value(props.get(TECH_PROP_CATEGORY, {})),
@@ -1086,7 +1095,7 @@ def _subscriber_values_from_internal(page: dict) -> dict:
 def _subscriber_values_from_destination(page: dict) -> dict:
     p = page.get("properties", {})
     return {
-        "name": _rich_text_value(p.get(SUB_PROP_NAME, {})), "primary_url": (p.get(SUB_PROP_PRIMARY_URL) or {}).get("url") or "",
+        "name": _rich_text_value(p.get(SUB_PROP_NAME, {})), "japanese_display_label": _rich_text_value(p.get(SUB_PROP_JAPANESE_DISPLAY_LABEL, {})), "primary_url": (p.get(SUB_PROP_PRIMARY_URL) or {}).get("url") or "",
         "sources": sorted(set(_multi_select_values(p.get(SUB_PROP_SOURCE, {})))), "category": _select_value(p.get(SUB_PROP_CATEGORY, {})),
         "adoption_score": _number_value(p.get(SUB_PROP_ADOPTION_SCORE, {})), "adoption_status": _select_value(p.get(SUB_PROP_ADOPTION_STATUS, {})),
         "evidence_confidence": _select_value(p.get(SUB_PROP_EVIDENCE_CONFIDENCE, {})), "production_readiness": _select_value(p.get(SUB_PROP_PRODUCTION_READINESS, {})),
@@ -1100,7 +1109,7 @@ def _subscriber_values_from_destination(page: dict) -> dict:
 
 
 def _subscriber_props(v: dict) -> dict:
-    return {
+    props = {
         SUB_PROP_NAME: _title(v.get("name")), SUB_PROP_PRIMARY_URL: {"url": v.get("primary_url") or None},
         SUB_PROP_SOURCE: {"multi_select": [{"name": x} for x in v.get("sources", [])]}, SUB_PROP_CATEGORY: _select(v.get("category") or "OTHER"),
         SUB_PROP_ADOPTION_SCORE: _number(v.get("adoption_score")), SUB_PROP_ADOPTION_STATUS: _select(v.get("adoption_status")),
@@ -1111,6 +1120,9 @@ def _subscriber_props(v: dict) -> dict:
         SUB_PROP_RELATED_ARTICLE: {"url": v.get("related_article") or None}, SUB_PROP_EVIDENCE_URLS: _rt("\n".join(v.get("evidence_urls", []))),
         SUB_PROP_ENTITY_ID: _rt(v.get("entity_id")),
     }
+    if ENABLE_JAPANESE_DISPLAY_LABEL:
+        props[SUB_PROP_JAPANESE_DISPLAY_LABEL] = _rt(v.get("japanese_display_label"))
+    return props
 
 
 def sync_subscriber_technology_db() -> dict:

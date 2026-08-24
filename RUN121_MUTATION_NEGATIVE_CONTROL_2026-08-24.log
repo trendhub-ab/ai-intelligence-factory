@@ -1,0 +1,3 @@
+cross_threshold_disabled: KILLED rc=1
+cross_issue_suppressed: KILLED rc=1
+rescue_peer_bypass: KILLED rc=1

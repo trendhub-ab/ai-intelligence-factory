@@ -1,0 +1,31 @@
+[optional_label_becomes_required] KILLED returncode=1
+    self.assertNotIn('japanese_display_label',pipeline._PRODUCT_REVIEW_RESPONSE_SCHEMA['required'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'japanese_display_label' unexpectedly found in ['category', 'adoption_score', 'components', 'adoption_status', 'evidence_confidence', 'production_readiness', 'main_risk', 'best_for', 'avoid_for', 'short_rationale', 'next_review_days', 'japanese_display_label']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)
+
+[marketing_label_allowed] KILLED returncode=1
+AssertionError: '' != 'MLflow — 今すぐ導入を推奨'
++ MLflow — 今すぐ導入を推奨
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.002s
+
+FAILED (failures=1)
+
+[subscriber_identity_contaminated] KILLED returncode=1
+- github:mlflow/mlflow
++ MLflow — AI・MLの実験管理基盤
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
+
+SUMMARY: 3/3 KILLED
