@@ -1670,6 +1670,17 @@ def _fix_bold_boundary_brackets(text: str) -> str:
         text = pattern.sub(repl, text)
     return text
 
+
+
+def _strip_internal_note_control_lines(text: str) -> tuple[str, int]:
+    """Remove exact transport-control lines before quality gates.
+
+    These markers are generation protocol, not article content. Exact standalone markers are
+    deterministically removable; marker-like prose remains untouched and can still be flagged.
+    """
+    cleaned, count = re.subn(r"(?mi)^\s*={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}\s*$\n?", "", text or "")
+    return cleaned.strip(), count
+
 def normalize_markdown_for_note(text: str) -> str:
     """
     note.comのMarkdownペースト機能にそのまま乗せられる形へ軽く正規化する。
@@ -1680,7 +1691,7 @@ def normalize_markdown_for_note(text: str) -> str:
 
     stripped = text.strip()
     # 生成プロトコル用の制御文字がnote本文に残る事故を防ぐ。
-    stripped = re.sub(r"(?mi)^\s*={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}\s*$", "", stripped)
+    stripped, _ = _strip_internal_note_control_lines(stripped)
     # Geminiが応答全体を1個の```（コードフェンス）で誤って包んでしまう
     # ケースのみ、外側のフェンスだけを安全に剥がす（中身のMarkdownは保持）。
     fence_match = re.match(r"^```[a-zA-Z0-9]*\n(.*)\n```$", stripped, re.DOTALL)
@@ -5872,6 +5883,7 @@ def _parse_gemini_response(full_text: str) -> dict:
     management_data = parts[0]
     if len(parts) > 1:
         title_text, note_draft = _extract_note_title(parts[1].strip())
+        note_draft, _ = _strip_internal_note_control_lines(note_draft)
     else:
         title_text, note_draft = "（タイトル抽出失敗）", ""
 
@@ -6368,6 +6380,7 @@ _EVIDENCE_ALIAS_GROUPS = (
     ("MCP", "Model Context Protocol"),
     ("RAG", "Retrieval Augmented Generation", "Retrieval-Augmented Generation"),
     ("TTS", "Text to Speech", "Text-to-Speech"),
+    ("ESP-IDF", "Espressif IoT Development Framework"),
 )
 
 
@@ -6395,7 +6408,7 @@ def _expand_evidence_aliases(source_context: str) -> str:
     return raw + (("\n" + " ".join(dict.fromkeys(additions))) if additions else "")
 
 
-def _find_source_boundary_violations(draft: str, source_context: str) -> list[str]:
+def _find_source_boundary_violations(draft: str, source_context: str, repo_name: str = "") -> list[str]:
     """Source Context外の「固有製品/企業/モデルに関する事実補完」だけを止める補助Gate。
 
     一般技術用語・略語・固定見出し・Decision語は対象外。さらに、単に未知の英字語が
@@ -6489,6 +6502,17 @@ def _find_source_boundary_violations(draft: str, source_context: str) -> list[st
             if _normalized_evidence_text(name) not in evidence and compact_name not in compact_evidence:
                 if is_low_risk_action and _looks_like_operational_artifact(name):
                     continue
+                # Run122: the current target entity plus a generic technical descriptor (SDK/API/CLI)
+                # is not a newly invented third-party product name. Require both the entity identity
+                # and descriptor to already exist in evidence; this cannot bootstrap an unsupported entity.
+                descriptor_match = re.fullmatch(r"(.+?)\s+(SDK|API|CLI)", name, re.I)
+                if descriptor_match and repo_name:
+                    entity_part, descriptor = descriptor_match.group(1).strip(), descriptor_match.group(2)
+                    repo_norm = _normalized_evidence_text(repo_name)
+                    entity_norm = _normalized_evidence_text(entity_part)
+                    if (entity_norm and (entity_norm == repo_norm or entity_norm in repo_norm or repo_norm in entity_norm)
+                            and entity_norm in evidence and re.search(rf"(?<![A-Za-z0-9]){re.escape(descriptor)}(?![A-Za-z0-9])", alias_expanded_context, re.I)):
+                        continue
                 unsupported.append(name)
         if unsupported:
             failures.append("source-boundary unsupported named fact: " + ", ".join(unsupported[:4]))
@@ -7467,48 +7491,9 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
             failures.append(f"{label} missing")
 
     # 内部構造は固定だが、noteに表示する見出しは記事ごとに可変とする。
-    required_headings = {
-        "導入": _display_heading_aliases("intro"), "結論": _display_heading_aliases("conclusion"),
-        "重要性": _display_heading_aliases("why"), "概要": _display_heading_aliases("what"),
-        "要点": _display_heading_aliases("key"), "筆者判断": _display_heading_aliases("decision"),
-        "最終判断": _display_heading_aliases("final"),
-    }
-    # 表示ラベルは記事ごとに変えられる。固定文字列ではなく見出しの意味役割で確認する。
-    semantic_heading_roles = {
-        "導入": ("はじめに", "導入", "背景", "気になった背景", "なぜ今", "何が", "起き", "変わ", "気になる"),
-        "結論": ("結論", "まず、結論", "要するに", "判断", "どう見る", "どうする", "試す", "待つ", "見送", "距離"),
-        "重要性": ("重要性", "なぜ重要", "ここが大きい", "気になった背景", "意味"),
-        "概要": ("概要", "何が変わ", "仕組み", "変更点"),
-        "要点": ("要点", "ポイント", "押さえる"),
-        "筆者判断": ("筆者", "私なら", "実務で", "どうする", "次にやる"),
-        "最終判断": ("最終判断", "結局", "まとめ", "判断", "どうする", "次に", "試す", "待つ", "見送", "距離", "導入"),
-    }
-    def has_heading_role(label: str, headings: tuple[str, ...]) -> bool:
-        aliases = required_headings[label]
-        exact = r"^#{2,3}\s*(?:" + "|".join(re.escape(item) for item in aliases) + r")\s*$"
-        semantic = r"^#{2,3}\s*.*(?:" + "|".join(re.escape(item) for item in headings) + r").*$"
-        return bool(re.search(exact, draft, re.MULTILINE) or re.search(semantic, draft, re.MULTILINE | re.I))
-    # Run108: 可視見出しを固定しない。自然なリード＋内容固有の複数見出し＋終盤の具体判断が
-    # そろっていれば、旧テンプレート見出しの完全一致を要求しない。旧稿は従来aliasでも通す。
-    hard_heading_roles = ("導入", "結論", "最終判断")
-    first_heading = re.search(r"^#{2,3}\s+", draft, re.MULTILINE)
-    lead_text = draft[:first_heading.start()] if first_heading else draft
-    lead_plain = re.sub(r"[#*_`>\-\s]+", "", lead_text)
-    heading_count = len(re.findall(r"^#{2,3}\s+.+$", draft, re.MULTILINE))
-    tail = draft[-900:]
-    tail_has_decision = bool(re.search(
-        r"(?:私なら|試(?:す|したい)|検証|比較|導入(?:を)?(?:急が|見送|進め)|見送|待(?:つ|ち)|距離|採用|使う|やめる)",
-        tail, re.I,
-    ))
-    natural_reader_structure = len(lead_plain) >= 40 and heading_count >= 2 and tail_has_decision
-
-    if not natural_reader_structure:
-        for label in hard_heading_roles:
-            if not has_heading_role(label, semantic_heading_roles[label]):
-                failures.append(f"required heading missing: {label}")
-        structural_missing = sum(1 for label in hard_heading_roles if not has_heading_role(label, semantic_heading_roles[label]))
-        if structural_missing >= 2:
-            failures.append("ARTICLE_STRUCTURE_INCOMPLETE")
+    # Run122: visible heading labels are editorial presentation, not factual safety.
+    # Run108 intentionally removed fixed heading names. Missing/unstyled section headings are handled
+    # by Publication Readiness as a repairable REVIEW/HARD publication defect, never as a Fact claim.
     if output_truncated:
         failures.append("OUTPUT_TRUNCATED")
     if source_info and source_info.get("deep_source_required") and not source_info.get("deep_source_scanned") and not source_info.get("decision_scope_safe"):
@@ -7521,7 +7506,7 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     failures.extend(_find_unsupported_competitor_claims(parsed, source_context))
     failures.extend(_find_management_score_leak(draft))
     failures.extend(_find_decision_code_leak(draft))
-    failures.extend(_find_source_boundary_violations(draft, source_context))
+    failures.extend(_find_source_boundary_violations(draft, source_context, repo_name))
     failures.extend(_find_entity_relation_violations(draft, source_context))
     failures.extend(_primary_source_authority_failures(source_info))
 
@@ -7592,6 +7577,12 @@ def validate_publication_readiness_gate(parsed: dict, source_context: str = "", 
     score = int(parsed.get("score") or 0)
     context = source_context or ""
     issues: list[str] = []
+    # Run122: require readable sectioning for long-form note prose, but do not require legacy labels.
+    # This is repairable presentation quality, not a factual contradiction.
+    heading_count = len(re.findall(r"^#{2,3}\s+.+$", article, re.MULTILINE))
+    visible_chars = len(re.sub(r"\s+", "", article))
+    if visible_chars >= 1200 and heading_count < 2:
+        issues.append("article_structure_needs_edit")
     strong = r"(?:革命的|圧倒的|ゲームチェンジャー|世界初|世界最速|必ず|完全に|従来技術を終わらせ|開発を変える)"
     weak_evidence = re.search(r"(?:abstract|要旨|experimental|prototype|proof of concept|demo|予備的|本番未検証|研究環境)", context, re.I)
     if re.search(strong, title) and weak_evidence:
@@ -8012,6 +8003,7 @@ def _reason_code(message: str, gate: str) -> str:
             "marketing_claim_adoption": REASON_CODE_PUB_UNSUPPORTED_CONCLUSION,
             "negative_evidence_omission": REASON_CODE_PUB_NEGATIVE_EVIDENCE_OMISSION,
             "primary_evidence_insufficient": REASON_CODE_PUB_SOURCE_SUFFICIENCY,
+            "article_structure_needs_edit": REASON_CODE_STRUCTURE_MISSING,
         }
         return mapping.get(message, REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH)
     if gate == "human_appeal":
@@ -9051,7 +9043,7 @@ def _find_humanization_violations(draft: str) -> list[str]:
         warnings.append("repetitive fixed introduction")
     if re.search(r"(?:私は驚きました|正直ワクワクしました|使ってみ(?:て)?|以前から気になっていました)", text):
         warnings.append("unsupported personal experience")
-    if not re.search(r"(?:ただ|一見すると|現時点では|注意(?:が必要|したい)|評価が分かれ|信用しすぎ)", text):
+    if not re.search(r"(?:ただ|一方(?:で|、)|一見すると|現時点では|注意(?:点|が必要|したい)?|制約|限界|リスク|課題|未検証|未対応|トレードオフ|保証されない|無保証|適していません|急ぐ必要はない)", text):
         warnings.append("missing observation or reservation")
     if len(re.findall(r"理由は(?:3|三)つ", text)) >= 1:
         warnings.append("mechanical three-reasons phrasing")

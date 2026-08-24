@@ -1,10 +1,10 @@
 # AI Intelligence Factory 現行仕様
 
-最終更新: 2026-08-23  
-本パッケージコード基準: **Run 115 Product Review Adversarial Hardening 完成版候補**  
+最終更新: 2026-08-24  
+本パッケージコード基準: **Run 122 Real Article Regression Hardening 完成版候補**  
 基準ファイル: `pipeline.py` / `inventory_bootstrap.py` / `decision_intelligence.py` / `.github/workflows/`
 
-> 本仕様書はRun 102までのProduction基盤を維持しつつ、Run 103〜115で追加されたReader-First、Eyecatch精度、Human Editorial Naturalness、Subscriber Inventory Bootstrap、Cross-Source Evidence Resolution、Product Review Reliability、Product Review Adversarial Hardeningを含む本パッケージ仕様を記録する。Run115は完成版候補であり、main反映・実Provider運用確認前にProduction適用済みとは扱わない。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。
+> 本仕様書はRun 102までのProduction基盤を維持しつつ、Run 103〜122で追加されたReader-First、Eyecatch精度、Human Editorial Naturalness、Subscriber Inventory Bootstrap、Evidence Ledger / Authority / Entity Binding、Japanese Display Label、Cross-Article Naturalness、Real Article Regression Hardeningを含む本パッケージ仕様を記録する。Run122は完成版候補であり、main反映・実ProviderによるReal Article Regression再実行前にProduction E2E確認済みとは扱わない。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。
 
 ## 1. 目的と情報設計
 
@@ -907,3 +907,35 @@ Technology Intelligence DBとSanitized Subscriber Technology DBに`Japanese Disp
 - Deterministic Publication Rescueも同じpeer memoryでHuman Appealを再評価し、別のFact defectを削除した結果Cross-Article defectが迂回通過することを禁止する。
 - Reader-First `30秒でわかるこの記事` はUX上の固定インターフェースとして維持するが、Cross-Article fingerprintは生成ARTICLE本文に対して評価するため、固定Reader-First UI自体をAI臭として誤検知しない。
 - 新規Gemini call siteを追加しない。記事品質改善のための追加API費用は0。
+
+
+## Run 122 — Real Article Regression Hardening（2026-08-24）
+
+Run121をmainへ反映後のReal Article Regressionで、Synthetic 500/500では露見しなかった実記事3件のFalse Rejectを反証fixtureとして扱った。新しい生成APIやNotionプロパティは追加せず、既存Gateの責務境界と高精度のSource Boundary照合だけを修正する。
+
+### 1. 固定見出しとFact Gateの責務分離
+
+- `導入 / 結論 / 最終判断`などの可視見出し名はFact GateのHard条件にしない。Run108以降の記事固有見出し方針を正とする。
+- 長文記事（本文可視文字1200以上）でMarkdown見出しが2個未満の場合は`article_structure_needs_edit`としてPublication Readinessへ送る。
+- 構造不足は「事実誤認」ではなく公開完成度の修復対象として扱う。ただし公開前に修正されるまでPublication側で停止する。
+
+### 2. Humanization reservation recall
+
+`missing observation or reservation`は、従来の「ただ / 一見すると / 現時点では / 注意」だけでなく、`制約 / 限界 / リスク / 課題 / 未検証 / 未対応 / トレードオフ / 無保証`等の実質的な留保表現を認識する。これにより、実際に制約を書いている記事を文言差だけでFalse Warningにしない。
+
+### 3. Source Boundary precision
+
+- Canonical aliasとして`ESP-IDF ↔ Espressif IoT Development Framework`を追加。片方が一次Evidenceに存在する場合のみ別表記を照合可能にする。
+- `Cobalt SDK`のような「現在の対象Entity + SDK/API/CLI」は、(a) Entity名が対象`repo_name`と一致、(b) Entity名がEvidenceに存在、(c) SDK/API/CLI種別もEvidenceに存在、の3条件を満たす時だけ既知Entityの記述として許可する。
+- 未知の別Entity + SDK/API/CLIは従来通りHard Fail。一般的な`SDK`という語だけでは新しい製品名を正当化できない。
+
+### 4. NOTE_DRAFT transport control
+
+`===NOTE_DRAFT_START=== / ===NOTE_DRAFT_END===`の完全な単独制御行は、Gemini出力のtransport protocolとしてparse直後に0-APIで除去する。本文中のmarker-like文字列は黙って消さず、従来の漏洩検査対象として残す。
+
+### 5. 追加コスト・DB変更
+
+- Gemini production call site追加: 0
+- Notion schema変更: なし
+- GitHub Secrets / Variables追加: なし
+- Run122導入後は`Synthetic Regression Suite = full`をPASSさせ、その後`Real Article Regression Test`をGitHub Actions上で再実行する。Real Article Regressionの実Provider E2Eが完了するまではRun122を「Production E2E確認済み」とは扱わない。
