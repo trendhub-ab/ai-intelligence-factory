@@ -3,6 +3,7 @@ import sys
 import json
 import atexit
 import unicodedata
+from collections import Counter
 
 # Keep the synthetic suite isolated from all network, credential, DB, and
 # publish side effects. It uses the installed production validation module so
@@ -6092,12 +6093,13 @@ def _numeric_condition_compatible(claim_window: str, evidence_window: str) -> bo
 
 
 def _is_protocol_cardinality_expression(text: str, start: int, end: int, token: str) -> bool:
-    """Return True only for structural request/response cardinality, not performance claims.
+    """Return True only for schematic protocol cardinality, never quantitative performance.
 
-    ``1リクエスト・1レスポンス`` describes a protocol shape. It is not a throughput,
-    quota, latency, cost, or capacity claim.  Keep the exception deliberately narrow:
-    the matched request count must be adjacent to a paired response count inside the
-    same sentence and the sentence must not contain quantitative performance cues.
+    Human technical prose often contrasts a simple interaction shape such as
+    ``1リクエスト・1レスポンス`` or ``1リクエスト・1ツール呼び出し`` with a more
+    agentic flow.  The leading ``1`` is structural notation, not a measured limit.  Keep this
+    exception fail-closed: require a paired interaction term in the same sentence, a clear
+    structural/contrast cue, and no quota/rate/latency/cost/capacity cue.
     """
     normalized_token = unicodedata.normalize("NFKC", token or "").lower()
     if not re.search(r"\d[\d,]*(?:\.\d+)?\s*(?:リクエスト|requests?)\b", normalized_token, re.I):
@@ -6108,16 +6110,24 @@ def _is_protocol_cardinality_expression(text: str, start: int, end: int, token: 
     following = [pos for ch in ("。", "！", "？", "!", "?", "\n") if (pos := raw.find(ch, end)) >= 0]
     right = min(following) if following else len(raw)
     window = raw[left:right]
+
     pair = re.search(
         r"\d[\d,]*(?:\.\d+)?\s*(?:リクエスト|requests?)\s*[・:/\-–—↔⇄とand ]+\s*"
-        r"\d[\d,]*(?:\.\d+)?\s*(?:レスポンス|responses?)(?![A-Za-z0-9_])",
+        r"(?:\d[\d,]*(?:\.\d+)?\s*)?(?:レスポンス|responses?|ツール呼び出し|tool\s+calls?)(?![A-Za-z0-9_])",
         window, re.I,
     )
     if not pair:
         return False
+    structural_cue = re.compile(
+        r"(?:従来|単純|単なる|標準的|対話型|構成|パターン|通信|やり取り|interaction|request[- ]?response|"
+        r"から.{0,80}(?:へ|に変化|に移行|を超え))",
+        re.I,
+    )
+    if not structural_cue.search(window):
+        return False
     performance_cue = re.compile(
         r"(?:毎秒|/s|per\s+second|秒間|分間|時間あたり|上限|最大|最低|平均|レート|rate|throughput|qps|rps|"
-        r"料金|価格|cost|price|quota|制限|limit|同時|concurrent|latency|レイテンシ)",
+        r"料金|価格|cost|price|quota|制限|limit|同時|concurrent|latency|レイテンシ|処理回数|回まで|件まで)",
         re.I,
     )
     return not performance_cue.search(window)
@@ -6480,7 +6490,8 @@ def _find_source_boundary_violations(draft: str, source_context: str, repo_name:
         "CLI","SDK","REST","GraphQL","SQL","NoSQL","CI","CD","DevOps","MLOps","AIOps","VPS","VM",
         "AWS","GCP","Azure","KPI","ROI","TCO","SLA","SSO","RBAC","OAuth","JWT","TLS","SSH","TCP",
         "UDP","DNS","CDN","NAT","VPN","VPC","RAM","SSD","HDD","GB","MB","TB","ms","RPM","TPM",
-        "RPD","VCS","IDE","OS","Web","Bot","Bots","Agent","Agents","Auditability","Inference"
+        "RPD","VCS","IDE","OS","Web","Bot","Bots","Agent","Agents","Auditability","Inference",
+        "Schema","Format","Protocol","Specification"
     }
 
     def _is_name_candidate(name: str) -> bool:
@@ -8382,7 +8393,7 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         REASON_CODE_APPEAL_FABRICATED_EXPERIENCE: ("実際に経験していない現場体験・使用体験・感情を削除し、一次情報に基づく編集者の観察・判断へ書き換えてください。", "voice"),
         REASON_CODE_APPEAL_AI_STYLE_COMPOSITE: ("事実・数値・判断の意味は変えず、汎用的な接続句の反復、同型見出し、短文連打、説明の言い換え反復を崩してください。記事固有の焦点を1つ選び、人間の編集者が書いた自然なリズムへ再編集してください。新しい事実は追加しないでください。", "prose_style"),
         REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT: ("同じRunの別記事と似た導入リズム・段落運び・判断の置き方を避け、この記事固有の一次情報に合う順序へ再編集してください。事実・数値・Decisionの意味は変えず、新しい事実は追加しないでください。", "cross_article_style"),
-        REASON_CODE_EDITORIAL_STRUCTURE_ERROR: ("読みやすさを損なう構造だけを自然な文章へ直してください。", "structure"),
+        REASON_CODE_EDITORIAL_STRUCTURE_ERROR: ("読みやすさを損なう構造だけを自然な文章へ直してください。文末単調が指摘された場合は語尾だけを機械的に置換せず、文の長短、主語の置き方、事実提示・判断・留保の順序を局所的に組み替えてリズムを変えてください。新しい事実は追加しないでください。", "structure"),
     }
     instructions, sections = [], []
     for row in reason_rows:
@@ -9217,9 +9228,35 @@ def _find_humanization_violations(draft: str) -> list[str]:
     if len(re.findall(r"[？?]", text)) > 5:
         warnings.append("too many reader questions")
     sentences = [s.strip() for s in re.split(r"(?<=[。！？])", text) if s.strip()]
-    endings = ["ます" if re.search(r"ます[。！？]?$", s) else "です" if re.search(r"です[。！？]?$", s) else "other" for s in sentences]
-    if len(endings) >= 8 and max(endings.count(kind) for kind in set(endings)) / len(endings) > 0.88:
-        warnings.append("monotonous sentence endings")
+
+    def _sentence_ending_family(sentence: str) -> str:
+        # Never collapse every plain-form ending into one ``other`` bucket.  That made
+        # ``〜する / 〜ある / 〜された / 〜ている`` look mechanically identical.
+        clean = re.sub(r"[。！？!?\s]+$", "", sentence or "")
+        patterns = (
+            ("ませんでした", r"ませんでした$"), ("でした", r"でした$"),
+            ("ません", r"ません$"), ("ます", r"ます$"), ("です", r"です$"),
+            ("である", r"である$"), ("と言える", r"(?:と|とい)言える$|といえる$"),
+            ("必要がある", r"必要がある$"), ("考えられる", r"考えられる$"),
+            ("している", r"している$"), ("ている", r"ている$"),
+            ("される", r"される$"), ("られる", r"られる$"),
+            ("できる", r"できる$"), ("となる", r"となる$"), ("になる", r"になる$"),
+            ("する", r"する$"), ("ある", r"ある$"), ("ない", r"ない$"),
+            ("した", r"した$"), ("された", r"された$"), ("だった", r"だった$"), ("だ", r"だ$"),
+        )
+        for label, pattern in patterns:
+            if re.search(pattern, clean):
+                return label
+        return ""
+
+    endings = [_sentence_ending_family(s) for s in sentences]
+    endings = [ending for ending in endings if ending]
+    # Only a known, repeated ending family may trigger. Unclassified prose never votes as one bucket.
+    if len(sentences) >= 8 and len(endings) >= 6:
+        counts = Counter(endings)
+        dominant_count = max(counts.values(), default=0)
+        if dominant_count >= 7 and dominant_count / max(1, len(sentences)) > 0.62:
+            warnings.append("monotonous sentence endings")
     return warnings
 
 

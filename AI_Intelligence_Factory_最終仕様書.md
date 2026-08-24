@@ -981,3 +981,15 @@ Run123のReal Article Regressionで残ったFalse RejectとAI編集語彙の積�
 - Human Editorial Naturalnessは評価語、説明型文末、段階整理、勧誘的締めを独立habitとして数え、複数habitが高密度で重なる場合だけReviewへ送る。単発の「興味深い」等はFail/Review理由にしない。
 - Run124はNotion schema、GitHub Secrets/Variables、Gemini call siteを増やさない。
 - Real Article Regressionの実Gemini E2EはGitHub Actions上で別途確認し、ローカル検証結果と混同しない。
+
+## Run125 Final Production E2E Closure（2026-08-24）
+
+Run124をmain反映後のReal Article Regression実稿をそのままprivate fixture化し、文字列単体ではなくproduction Gate呼び出し経路まで反証する。対象はMCP稿に残った`1リクエスト・1ツール呼び出し`、`JSON Schema`、`monotonous sentence endings`の3件に限定する。
+
+- Numeric Gateは、`1リクエスト・1ツール呼び出し`のような「単純/従来のinteraction shape」を、同一文内に構造・対比cueがあり、rate/quota/latency/cost/capacity cueがない場合だけschematic protocol cardinalityとして扱う。`毎秒1リクエスト`、`上限1リクエスト`、`処理回数1リクエスト`等は従来どおりEvidence必須。
+- Source Boundaryは、`JSON Schema`のように一般技術語＋`Schema / Format / Protocol / Specification`で構成される技術仕様名を、第三者製品名として扱わない。`Acme Schema`等の未知vendor/product名は引き続きHard Failし、一般descriptorが製品名のwhitelistにならないようFail-Closedを維持する。
+- Humanizationの`monotonous sentence endings`は、`ます/です`以外を全て`other`へ畳み込む旧ロジックを廃止する。`する / ある / だ / ている / される / できる`等を別ending familyとして扱い、未分類文末は単一bucketとして投票させない。8文以上かつ認識済みending 6件以上、同一family 7件以上かつ全文の62%超の場合のみWarningとする。
+- 文末単調のQuality Retryでは語尾だけの機械的置換を禁止し、文の長短、主語配置、事実提示・判断・留保の順序を局所的に組み替える。新しい事実は追加しない。
+- Run124の実MCP rejected稿を`tests/fixtures/run125_mcp_real_e2e_rejected.md`としてprivate regression fixtureに固定し、production `validate_fact_gate`経路でもprotocol False Positiveが再発しないことを確認する。
+- 新規Gemini call site: 0。Notion schema変更: なし。GitHub Secrets / Variables追加: なし。
+- Run125のProduction完成判定は、ローカル/反証/Synthetic Fullとは分離し、main反映後のReal Article Regression Testで最終確認する。
