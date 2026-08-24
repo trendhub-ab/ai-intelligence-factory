@@ -6091,6 +6091,38 @@ def _numeric_condition_compatible(claim_window: str, evidence_window: str) -> bo
     return True
 
 
+def _is_protocol_cardinality_expression(text: str, start: int, end: int, token: str) -> bool:
+    """Return True only for structural request/response cardinality, not performance claims.
+
+    ``1リクエスト・1レスポンス`` describes a protocol shape. It is not a throughput,
+    quota, latency, cost, or capacity claim.  Keep the exception deliberately narrow:
+    the matched request count must be adjacent to a paired response count inside the
+    same sentence and the sentence must not contain quantitative performance cues.
+    """
+    normalized_token = unicodedata.normalize("NFKC", token or "").lower()
+    if not re.search(r"\d[\d,]*(?:\.\d+)?\s*(?:リクエスト|requests?)\b", normalized_token, re.I):
+        return False
+    raw = text or ""
+    prev_boundaries = [raw.rfind(ch, 0, start) for ch in ("。", "！", "？", "!", "?", "\n")]
+    left = max(prev_boundaries) + 1
+    following = [pos for ch in ("。", "！", "？", "!", "?", "\n") if (pos := raw.find(ch, end)) >= 0]
+    right = min(following) if following else len(raw)
+    window = raw[left:right]
+    pair = re.search(
+        r"\d[\d,]*(?:\.\d+)?\s*(?:リクエスト|requests?)\s*[・:/\-–—↔⇄とand ]+\s*"
+        r"\d[\d,]*(?:\.\d+)?\s*(?:レスポンス|responses?)(?![A-Za-z0-9_])",
+        window, re.I,
+    )
+    if not pair:
+        return False
+    performance_cue = re.compile(
+        r"(?:毎秒|/s|per\s+second|秒間|分間|時間あたり|上限|最大|最低|平均|レート|rate|throughput|qps|rps|"
+        r"料金|価格|cost|price|quota|制限|limit|同時|concurrent|latency|レイテンシ)",
+        re.I,
+    )
+    return not performance_cue.search(window)
+
+
 def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_metadata: dict | None = None) -> list[str]:
     """記事中のセンシティブな具体値を一次情報の値+近傍条件で照合する。"""
     evidence_raw = source_context + "\n" + json.dumps(evidence_metadata or {}, ensure_ascii=False)
@@ -6113,6 +6145,8 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
                 continue
             occupied_spans.append((m.start(), m.end()))
             token = m.group(0).strip()
+            if _is_protocol_cardinality_expression(scrubbed, m.start(), m.end(), token):
+                continue
             normalized_token = _normalize_numeric_evidence_text(token)
             if normalized_token not in evidence:
                 failures.append(f"unsupported numeric claim: {token}")
@@ -6382,6 +6416,7 @@ _EVIDENCE_ALIAS_GROUPS = (
     ("RAG", "Retrieval Augmented Generation", "Retrieval-Augmented Generation"),
     ("TTS", "Text to Speech", "Text-to-Speech"),
     ("ESP-IDF", "Espressif IoT Development Framework"),
+    ("WIMSE", "Workload Identity in Multi-System Environments"),
 )
 
 
@@ -7783,21 +7818,51 @@ def _ai_style_composite_signals(text: str) -> dict:
         cv = (variance ** 0.5) / mean if mean else 1.0
         uniform_sections = cv < 0.18
 
-    # Run123: these are not banned words. Density/diversity only contributes when paired with
-    # another mechanical editorial habit, so one natural phrase cannot fail an article.
+    # Run124: editorial-register phrases are not a blacklist.  We classify them into
+    # independent habits and review only when several habits stack in one article.
+    # This catches polished-but-formulaic AI copy while preserving a natural one-off phrase.
     editorial_register_patterns = (
-        r"注目すべき", r"興味深い", r"重要なのは", r"実務的な示唆",
+        r"注目すべき", r"興味深い", r"重要なのは", r"実務的な示唆", r"示唆的",
         r"明確な(?:ユースケース|選択肢|メリット|方向性)", r"きわめて(?:エレガント|重要|有効)",
-        r"(?:妥当|適切)な判断(?:と言えます|です)", r"と言えます",
+        r"(?:非常に|きわめて)魅力的", r"(?:妥当|適切)な判断(?:と言えます|です)", r"と言えます",
         r"(?:ポイント|要点)を整理(?:します|すると)", r"第一の柱", r"(?:第一|第二|第三)段階(?:として|では)",
+        r"(?:第一歩|鍵となる|一番の近道)", r"確かめてみてはいかがでしょうか",
     )
     editorial_register_hits = [pat for pat in editorial_register_patterns if re.search(pat, prose)]
     editorial_register_count = sum(len(re.findall(pat, prose)) for pat in editorial_register_patterns)
     visible_prose_chars = max(1, len(re.sub(r"\s+", "", prose)))
     editorial_register_per_1000 = editorial_register_count * 1000.0 / visible_prose_chars
     ordinal_framing_count = len(re.findall(r"(?:第一の柱|第一段階|第二段階|第三段階|第一に|第二に|第三に)", prose))
-    editorial_register_dense = (editorial_register_count >= 5 and len(editorial_register_hits) >= 4 and editorial_register_per_1000 >= 1.0)
-    editorial_register_companion = bool(ordinal_framing_count >= 2 or point_ending_count >= 1 or repeated_glue)
+
+    evaluative_register_count = len(re.findall(
+        r"(?:非常に|きわめて)魅力的|示唆的|実務的な示唆|明確な(?:ユースケース|選択肢|メリット|方向性)|"
+        r"(?:妥当|適切)な判断(?:と言えます|です)|興味深い", prose
+    ))
+    explanatory_ending_count = len(re.findall(
+        r"(?:と言えます|と言える|ことがわかります|ことが分かります|ことを示しています|ことを意味します)[。！？]", prose
+    ))
+    staged_framing_count = len(re.findall(
+        r"(?:第一の柱|第一段階|第二段階|第三段階|第一に|第二に|第三に|第一歩|鍵となる|一番の近道)", prose
+    ))
+    invitational_close_count = len(re.findall(
+        r"(?:してみてはいかがでしょうか|確かめてみてはいかがでしょうか|試してみてはいかがでしょうか)[。！？]?", prose
+    ))
+    editorial_habit_types = sum(bool(v) for v in (
+        evaluative_register_count, explanatory_ending_count, staged_framing_count, invitational_close_count
+    ))
+
+    # Two paths, both deliberately composite:
+    # 1) classic Run123 density + mechanical companion; or
+    # 2) lower raw density but 3+ distinct editorial habits, which is what the real ESP32/Kobo
+    #    regressions exposed.  A single "興味深い" or one invitation never triggers this.
+    editorial_register_dense = (
+        (editorial_register_count >= 5 and len(editorial_register_hits) >= 4 and editorial_register_per_1000 >= 1.0)
+        or (editorial_register_count >= 4 and len(editorial_register_hits) >= 4 and editorial_habit_types >= 3)
+    )
+    editorial_register_companion = bool(
+        ordinal_framing_count >= 2 or staged_framing_count >= 2 or point_ending_count >= 1 or repeated_glue
+        or (evaluative_register_count >= 2 and invitational_close_count >= 1)
+    )
 
     score = 0
     if glue_total >= 3: score += 2
@@ -7830,6 +7895,11 @@ def _ai_style_composite_signals(text: str) -> dict:
         "editorial_register_dense": editorial_register_dense,
         "editorial_register_companion": editorial_register_companion,
         "ordinal_framing_count": ordinal_framing_count,
+        "evaluative_register_count": evaluative_register_count,
+        "explanatory_ending_count": explanatory_ending_count,
+        "staged_framing_count": staged_framing_count,
+        "invitational_close_count": invitational_close_count,
+        "editorial_habit_types": editorial_habit_types,
     }
 
 

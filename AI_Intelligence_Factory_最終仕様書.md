@@ -971,3 +971,13 @@ Run122後のReal Article Regression 1/3 Acceptedを最終反証fixtureとして�
 - Notion schema変更: なし。
 - GitHub Secrets / Variables追加: なし。
 - Run123をmainへ反映後、Synthetic Regression Suite = fullを実行し、その後Real Article Regression Testで同じ3 fixtureを再実行する。実Gemini E2E結果を確認するまでは「Production E2E確認済み」とは扱わない。
+
+## Run124 Article Quality Final Calibration（2026-08-24）
+
+Run123のReal Article Regressionで残ったFalse RejectとAI編集語彙の積み重なりを、追加Gemini APIなしで最終調整する。
+
+- Numeric Gateは`1リクエスト・1レスポンス`のようなprotocol cardinalityを性能・容量・料金Claimとして扱わない。ただし毎秒・上限・料金・同時数・rate/throughput等の定量条件が同一文にある場合は従来どおりEvidence照合する。
+- Source Boundaryは`WIMSE`と`Workload Identity in Multi-System Environments`を明示的なcanonical aliasとして扱う。aliasはEvidence中に片方が存在する場合だけ展開し、無関係な第三者製品名を正当化しない。
+- Human Editorial Naturalnessは評価語、説明型文末、段階整理、勧誘的締めを独立habitとして数え、複数habitが高密度で重なる場合だけReviewへ送る。単発の「興味深い」等はFail/Review理由にしない。
+- Run124はNotion schema、GitHub Secrets/Variables、Gemini call siteを増やさない。
+- Real Article Regressionの実Gemini E2EはGitHub Actions上で別途確認し、ローカル検証結果と混同しない。
