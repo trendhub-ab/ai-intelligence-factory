@@ -1,0 +1,61 @@
+=== M1 minute boundary broadened: 5分野 becomes 5分 ===
+test_five_fields_is_not_misread_as_five_minutes (tests.test_run123_article_quality_finalization.Run123ArticleQualityFinalizationTests.test_five_fields_is_not_misread_as_five_minutes) ... FAIL
+
+======================================================================
+FAIL: test_five_fields_is_not_misread_as_five_minutes (tests.test_run123_article_quality_finalization.Run123ArticleQualityFinalizationTests.test_five_fields_is_not_misread_as_five_minutes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run123_work/tests/test_run123_article_quality_finalization.py", line 30, in test_five_fields_is_not_misread_as_five_minutes
+    self.assertFalse(any("5分" in f for f in failures), failures)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false : ['unsupported numeric claim: 5分']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.018s
+
+FAILED (failures=1)
+KILLED (PASS) rc=1
+
+=== M2 single ambiguous line allowed to become heading ===
+test_single_ambiguous_plain_line_is_never_promoted (tests.test_run123_article_quality_finalization.Run123ArticleQualityFinalizationTests.test_single_ambiguous_plain_line_is_never_promoted) ... FAIL
+
+======================================================================
+FAIL: test_single_ambiguous_plain_line_is_never_promoted (tests.test_run123_article_quality_finalization.Run123ArticleQualityFinalizationTests.test_single_ambiguous_plain_line_is_never_promoted)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run123_work/tests/test_run123_article_quality_finalization.py", line 71, in test_single_ambiguous_plain_line_is_never_promoted
+    self.assertEqual([], changes)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+AssertionError: Lists differ: [] != ['今後の運用判断をどうするか']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'今後の運用判断をどうするか'
+
+- []
++ ['今後の運用判断をどうするか']
+
+----------------------------------------------------------------------
+Ran 1 test in 0.004s
+
+FAILED (failures=1)
+KILLED (PASS) rc=1
+
+=== M3 editorial-register composite disabled ===
+test_editorial_register_density_plus_ordinal_framing_is_review_signal (tests.test_run123_article_quality_finalization.Run123ArticleQualityFinalizationTests.test_editorial_register_density_plus_ordinal_framing_is_review_signal) ... FAIL
+
+======================================================================
+FAIL: test_editorial_register_density_plus_ordinal_framing_is_review_signal (tests.test_run123_article_quality_finalization.Run123ArticleQualityFinalizationTests.test_editorial_register_density_plus_ordinal_framing_is_review_signal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/data/run123_work/tests/test_run123_article_quality_finalization.py", line 86, in test_editorial_register_density_plus_ordinal_framing_is_review_signal
+    self.assertTrue(signals["high"], signals)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : {'score': 0, 'high': False, 'glue_total': 0, 'repeated_glue': False, 'point_ending_count': 0, 'contrast_count': 0, 'enum_count': 0, 'template_heading_hits': 0, 'generic_heading_hits': 0, 'short_burst': False, 'uniform_sections': False, 'editorial_register_count': 10, 'editorial_register_distinct': 8, 'editorial_register_per_1000': 65.359477124183, 'editorial_register_dense': True, 'editorial_register_companion': True, 'ordinal_framing_count': 3}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.004s
+
+FAILED (failures=1)
+KILLED (PASS) rc=1
+

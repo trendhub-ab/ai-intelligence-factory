@@ -939,3 +939,35 @@ Run121をmainへ反映後のReal Article Regressionで、Synthetic 500/500では
 - Notion schema変更: なし
 - GitHub Secrets / Variables追加: なし
 - Run122導入後は`Synthetic Regression Suite = full`をPASSさせ、その後`Real Article Regression Test`をGitHub Actions上で再実行する。Real Article Regressionの実Provider E2Eが完了するまではRun122を「Production E2E確認済み」とは扱わない。
+
+## Run 123 — Article Quality Finalization（2026-08-24）
+
+Run122後のReal Article Regression 1/3 Acceptedを最終反証fixtureとして扱い、記事品質ロジックを追加API 0で最終調整する。対象は、Kobo稿の裸見出し、MCP稿の`5分野`数値誤認、ESP32 Accepted稿に残ったAI Editorial Registerの3点に限定する。
+
+### 1. Deterministic Markdown Section Repair
+
+- 長文ARTICLEで、Reader-Firstの`### 元情報`より後にある「Markdown記号だけが欠落した内容固有のセクション名」を0-APIで`###`へ昇格できる。
+- 修復条件は、空行で独立、8〜56可視文字、日本語4文字以上、文末句点なし、URL/コード/箇条書きではない、直後に80文字以上の本文ブロックがあること。
+- さらに独立候補が2個以上ある場合だけ修復する。単独の曖昧行は見出し化しない。
+- 生成プロンプトにも、内容固有の見出し名は自由だが本文セクションには必ずMarkdown `##` / `###`を付けることを明示する。
+- `article_structure_needs_edit`のRetry指示は旧固定見出し名を要求せず、内容固有Markdown見出しでの区切りだけを要求する。
+
+### 2. Japanese Numeric Token Boundary
+
+- 時間単位`分`の照合で、`5分野 / 5分割 / 5分布 / 5分類 / 5分岐 / 5分析`等の日本語複合語を`5分`（five minutes）として部分一致させない。
+- 実際の`5分で完了`等は従来通りNumeric ClaimとしてEvidence照合する。
+- 数値Gateの安全性を緩和せず、日本語語境界のFalse Positiveだけを除去する。
+
+### 3. AI Editorial Register Density
+
+- `興味深い / 注目すべき / 実務的な示唆 / 明確なユースケース / きわめてエレガント / 第一の柱 / 第一段階・第二段階 / 妥当な判断と言えます`等を禁止語にはしない。
+- 記事全体で5回以上、4種類以上、1000可視文字あたり1.0以上という高密度に加え、段階列挙・説明型文末・repeated glue等の別シグナルが同時にある場合だけAI-style compositeをHighとする。
+- 単発の自然な使用は通す。高密度＋機械的編集習慣の組合せだけをHuman Appeal REVIEWへ送る。
+- Prompt側でも編集語彙の積み重ねを避け、事実そのものに語らせるよう事前抑制する。
+
+### 4. コスト・DB・運用
+
+- 新規Gemini call site: 0。既存Quality Retry回数は増やさない。
+- Notion schema変更: なし。
+- GitHub Secrets / Variables追加: なし。
+- Run123をmainへ反映後、Synthetic Regression Suite = fullを実行し、その後Real Article Regression Testで同じ3 fixtureを再実行する。実Gemini E2E結果を確認するまでは「Production E2E確認済み」とは扱わない。

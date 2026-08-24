@@ -5641,6 +5641,7 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・同じ内容を言い換えて二度説明しない。読者が一度で理解できる説明はそこで止める。
 ・接続詞で論理を毎回明示しすぎない。段落の並びだけで意味がつながる場所では「一方で」「そのため」「つまり」を足さない。
 ・別の記事でも使える汎用的な導入・判断フレーズへ逃げず、この一次情報だから成立する入口と情報順序を選ぶ。
+・「興味深い」「注目すべき」「実務的な示唆」「第一の柱／第一段階／第二段階」「妥当な判断と言えます」等の編集語彙を一記事に積み重ねない。必要な語を単発で使うのはよいが、説明を整えすぎず事実そのものに語らせる。
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
@@ -5769,7 +5770,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 リードの段落数は固定しない。1〜3段落程度を目安に、必要な情報だけを書く。
 発見経路や「一次情報に基づく」という説明を義務的な定型文として毎回入れない。出典は公開稿の「元情報」で別途提示されるため、本文では話を理解するのに必要な場合だけ自然に触れる。
 
-本文の見出しは2〜6個程度を目安に、記事固有の内容から自分で作る。以下は内部の意味役割であり、見出し名や順番を固定しない。
+本文の見出しは2〜6個程度を目安に、記事固有の内容から自分で作る。本文セクションの見出しは必ずMarkdownの `##` または `###` を付け、見出し文だけを裸の1行として置かない。以下は内部の意味役割であり、見出し名や順番を固定しない。
 ・何が起きた／何が変わったのか
 ・なぜ読者の判断に関係するのか
 ・仕組みや条件のうち、判断に必要な部分
@@ -5995,7 +5996,7 @@ _SENSITIVE_NUMERIC_PATTERNS = [
     r"\d+(?:\.\d+)?\s*%",
     r"\d+(?:\.\d+)?\s*(?:倍|x|×)",
     r"(?:約|およそ|最大|最低|平均)?\s*\d[\d,]*(?:\.\d+)?\s*(?:円|万円|億円|ドル|USD|JPY)",
-    r"\d+(?:\.\d+)?\s*(?:ms|ミリ秒|秒|分(?!\s*の)|時間)",
+    r"\d+(?:\.\d+)?\s*(?:ms|ミリ秒|秒|分(?!\s*(?:の|野|割|布|類|岐|析))|時間)",
     r"\d+(?:\.\d+)?\s*(?:日|週間|週|ヶ月|か月|月)\b",
     r"\d[\d,]*(?:\.\d+)?\s*(?:GB|MB|TB|GPU|台|人|件|行|リクエスト|requests?|tokens?|トークン)\b",
 ]
@@ -6034,7 +6035,7 @@ def _normalize_numeric_evidence_text(text: str) -> str:
     normalized = normalized.replace("トークン", "tokens").replace("リクエスト", "requests")
     normalized = re.sub(r"\btoken\b", "tokens", normalized)
     normalized = re.sub(r"\brequest\b", "requests", normalized)
-    normalized = re.sub(r"(?<=\d)分", "minutes", normalized)
+    normalized = re.sub(r"(?<=\d)分(?!\s*(?:野|割|布|類|岐|析))", "minutes", normalized)
     normalized = re.sub(r"(?<=\d)日", "days", normalized)
     normalized = normalized.replace("時間", "hours").replace("週間", "weeks").replace("週", "weeks")
     normalized = re.sub(r"\bminutes?\b|\bmins?\b", "minutes", normalized)
@@ -7569,6 +7570,79 @@ def validate_editorial_gate(parsed: dict, repo_name: str) -> tuple[bool, list[st
     return (not _blocking_editorial_warnings(warnings), warnings)
 
 
+def _promote_plaintext_section_titles(article: str) -> tuple[str, list[str]]:
+    """Promote unmistakable plain-text section labels to Markdown headings without an LLM.
+
+    Some strong long-form generations write content-specific section labels as standalone lines
+    but omit the ``###`` marker. This repair is deliberately conservative: long-form only, after
+    the Reader-First metadata block, blank-line isolated, short Japanese label, substantial prose
+    immediately after it, and at least two independent candidates. A single ambiguous line is
+    never promoted.
+    """
+    body = article or ""
+    if len(re.sub(r"\s+", "", body)) < 1200:
+        return body, []
+    lines = body.splitlines()
+    metadata_end = -1
+    for i, line in enumerate(lines):
+        if re.match(r"^#{2,4}\s+元情報\s*$", line.strip()):
+            metadata_end = i
+            break
+    if metadata_end < 0:
+        return body, []
+
+    candidates: list[int] = []
+    for i in range(metadata_end + 1, len(lines) - 2):
+        raw = lines[i]
+        label = raw.strip()
+        if not label or raw != label:
+            continue
+        if i == 0 or lines[i - 1].strip() or lines[i + 1].strip():
+            continue
+        if re.match(r"^(?:#{1,6}\s|[-*+]\s|\d+[.)、]\s*|>|```|---+$)", label):
+            continue
+        visible = re.sub(r"\s+", "", label)
+        if not (8 <= len(visible) <= 56):
+            continue
+        if re.search(r"[。！？!?；;：:]$", label) or re.search(r"https?://|`|\[[^]]+\]\(", label):
+            continue
+        if len(re.findall(r"[ぁ-んァ-ヶ一-龯々]", label)) < 4:
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        if j >= len(lines):
+            continue
+        block: list[str] = []
+        while j < len(lines) and lines[j].strip():
+            if re.match(r"^(?:#{1,6}\s|```|---+$)", lines[j].strip()):
+                break
+            block.append(lines[j].strip())
+            j += 1
+        if len(re.sub(r"\s+", "", "".join(block))) < 80:
+            continue
+        candidates.append(i)
+
+    if len(candidates) < 2:
+        return body, []
+    if any(b - a < 3 for a, b in zip(candidates, candidates[1:])):
+        return body, []
+    changed: list[str] = []
+    for i in candidates:
+        label = lines[i].strip()
+        lines[i] = f"### {label}"
+        changed.append(label)
+    return "\n".join(lines), changed
+
+
+def _apply_deterministic_structure_polish(parsed: dict) -> tuple[dict, list[str]]:
+    polished = dict(parsed or {})
+    article, headings = _promote_plaintext_section_titles(str(polished.get("note_draft") or ""))
+    if headings:
+        polished["note_draft"] = article
+    return polished, [f"promote_plaintext_heading:{h}" for h in headings]
+
+
 def validate_publication_readiness_gate(parsed: dict, source_context: str = "", source_info: dict | None = None) -> tuple[str, list[str]]:
     """Publication Readiness Gate: 公開完成度を横断確認し、根拠・判断の弱さはREVIEWへ分離する。"""
     article = parsed.get("note_draft", "")
@@ -7709,6 +7783,22 @@ def _ai_style_composite_signals(text: str) -> dict:
         cv = (variance ** 0.5) / mean if mean else 1.0
         uniform_sections = cv < 0.18
 
+    # Run123: these are not banned words. Density/diversity only contributes when paired with
+    # another mechanical editorial habit, so one natural phrase cannot fail an article.
+    editorial_register_patterns = (
+        r"注目すべき", r"興味深い", r"重要なのは", r"実務的な示唆",
+        r"明確な(?:ユースケース|選択肢|メリット|方向性)", r"きわめて(?:エレガント|重要|有効)",
+        r"(?:妥当|適切)な判断(?:と言えます|です)", r"と言えます",
+        r"(?:ポイント|要点)を整理(?:します|すると)", r"第一の柱", r"(?:第一|第二|第三)段階(?:として|では)",
+    )
+    editorial_register_hits = [pat for pat in editorial_register_patterns if re.search(pat, prose)]
+    editorial_register_count = sum(len(re.findall(pat, prose)) for pat in editorial_register_patterns)
+    visible_prose_chars = max(1, len(re.sub(r"\s+", "", prose)))
+    editorial_register_per_1000 = editorial_register_count * 1000.0 / visible_prose_chars
+    ordinal_framing_count = len(re.findall(r"(?:第一の柱|第一段階|第二段階|第三段階|第一に|第二に|第三に)", prose))
+    editorial_register_dense = (editorial_register_count >= 5 and len(editorial_register_hits) >= 4 and editorial_register_per_1000 >= 1.0)
+    editorial_register_companion = bool(ordinal_framing_count >= 2 or point_ending_count >= 1 or repeated_glue)
+
     score = 0
     if glue_total >= 3: score += 2
     if repeated_glue: score += 1
@@ -7720,6 +7810,7 @@ def _ai_style_composite_signals(text: str) -> dict:
     if generic_heading_hits >= 4: score += 2
     if short_burst: score += 1
     if uniform_sections: score += 1
+    if editorial_register_dense and editorial_register_companion: score += 5
 
     return {
         "score": score,
@@ -7733,6 +7824,12 @@ def _ai_style_composite_signals(text: str) -> dict:
         "generic_heading_hits": generic_heading_hits,
         "short_burst": short_burst,
         "uniform_sections": uniform_sections,
+        "editorial_register_count": editorial_register_count,
+        "editorial_register_distinct": len(editorial_register_hits),
+        "editorial_register_per_1000": editorial_register_per_1000,
+        "editorial_register_dense": editorial_register_dense,
+        "editorial_register_companion": editorial_register_companion,
+        "ordinal_framing_count": ordinal_framing_count,
     }
 
 
@@ -8221,7 +8318,7 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
     for row in reason_rows:
         code = row.get("reason_code", "")
         if code in {REASON_CODE_MAX_TOKENS, REASON_CODE_STRUCTURE_MISSING}:
-            instructions.append("必須見出しと最終判断を含む短縮完全版にし、前稿へ文章を継ぎ足さないでください。")
+            instructions.append("長文本文のセクションを内容固有のMarkdown見出し（##/###）で明確に区切り、最終判断が本文から読み取れる短縮完全版にしてください。『導入』『結論』『最終判断』などの固定見出し名は要求しません。前稿へ文章を継ぎ足さないでください。")
             sections.append("structure")
         elif code in rules:
             instruction, section = rules[code]
@@ -9420,6 +9517,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             parsed, polish_changes = _apply_final_japanese_polish(parsed)
             if polish_changes:
                 logger.info("[FINAL JAPANESE POLISH] %s changes=%s", name, polish_changes)
+            parsed, structure_changes = _apply_deterministic_structure_polish(parsed)
+            if structure_changes:
+                logger.info("[DETERMINISTIC STRUCTURE POLISH] %s changes=%s", name, structure_changes)
             if attempt == 0 and parsed.get("note_draft"):
                 article_audit_snapshots["generated_original"] = parsed.get("note_draft", "")
             elif attempt > 0 and parsed.get("note_draft"):
