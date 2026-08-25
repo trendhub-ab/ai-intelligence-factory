@@ -1,0 +1,165 @@
+name: Chat Automation Runner
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - '.github/chat-triggers/synthetic-full.txt'
+      - '.github/chat-triggers/real-article-fixed.txt'
+      - '.github/chat-triggers/real-article-fresh.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Resolve requested mode
+        id: mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")"
+          echo "$changed"
+
+          mode=""
+          if echo "$changed" | grep -Fxq '.github/chat-triggers/synthetic-full.txt'; then
+            mode='synthetic-full'
+          fi
+          if echo "$changed" | grep -Fxq '.github/chat-triggers/real-article-fixed.txt'; then
+            if [ -n "$mode" ]; then
+              echo 'Multiple chat trigger files changed in one commit; refusing to run.' >&2
+              exit 1
+            fi
+            mode='real-article-fixed'
+          fi
+          if echo "$changed" | grep -Fxq '.github/chat-triggers/real-article-fresh.txt'; then
+            if [ -n "$mode" ]; then
+              echo 'Multiple chat trigger files changed in one commit; refusing to run.' >&2
+              exit 1
+            fi
+            mode='real-article-fresh'
+          fi
+
+          if [ -z "$mode" ]; then
+            echo 'No supported chat trigger detected; refusing to run.' >&2
+            exit 1
+          fi
+
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Resolved mode: $mode"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install production dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install article rendering fonts
+        if: steps.mode.outputs.mode == 'real-article-fixed' || steps.mode.outputs.mode == 'real-article-fresh'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+
+      - name: Production safety unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Synthetic harness self-test
+        if: steps.mode.outputs.mode == 'synthetic-full'
+        run: python regression_suite.py --self-test
+
+      - name: Synthetic Regression Suite full
+        if: steps.mode.outputs.mode == 'synthetic-full'
+        run: python regression_suite.py --bootstrap --full
+
+      - name: Real Article Regression fixed
+        if: steps.mode.outputs.mode == 'real-article-fixed'
+        run: python pipeline.py
+        env:
+          REGEN_TEST_MODE: 'true'
+          REGEN_TEST_ARTICLE_SET: 'fixed'
+          REGEN_TEST_LIMIT: '3'
+          REGEN_FRESH_FETCH_PER_SOURCE: '12'
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: 'main'
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          GEMINI_SCREENING_MODEL_CANDIDATES: 'gemini-3.5-flash-lite,gemini-3.1-flash-lite'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash'
+          GEMINI_35_FLASH_LITE_DAILY_BUDGET: '450'
+          GEMINI_31_FLASH_LITE_DAILY_BUDGET: '450'
+          GEMINI_36_FLASH_DAILY_BUDGET: '18'
+          GEMINI_37_FLASH_DAILY_BUDGET: '18'
+          GEMINI_35_FLASH_DAILY_BUDGET: '18'
+          VERIFICATION_CONTEXT_MAX_CHARS: '180000'
+
+      - name: Real Article Regression fresh
+        if: steps.mode.outputs.mode == 'real-article-fresh'
+        run: python pipeline.py
+        env:
+          REGEN_TEST_MODE: 'true'
+          REGEN_TEST_ARTICLE_SET: 'fresh'
+          REGEN_TEST_LIMIT: '3'
+          REGEN_FRESH_FETCH_PER_SOURCE: '12'
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: 'main'
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          GEMINI_SCREENING_MODEL_CANDIDATES: 'gemini-3.5-flash-lite,gemini-3.1-flash-lite'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash'
+          GEMINI_35_FLASH_LITE_DAILY_BUDGET: '450'
+          GEMINI_31_FLASH_LITE_DAILY_BUDGET: '450'
+          GEMINI_36_FLASH_DAILY_BUDGET: '18'
+          GEMINI_37_FLASH_DAILY_BUDGET: '18'
+          GEMINI_35_FLASH_DAILY_BUDGET: '18'
+          VERIFICATION_CONTEXT_MAX_CHARS: '180000'
+
+      - name: Upload synthetic reports
+        if: always() && steps.mode.outputs.mode == 'synthetic-full'
+        uses: actions/upload-artifact@v7
+        with:
+          name: chat-synthetic-full-${{ github.run_number }}
+          path: regression_suite_runs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload real article outputs
+        if: always() && (steps.mode.outputs.mode == 'real-article-fixed' || steps.mode.outputs.mode == 'real-article-fresh')
+        uses: actions/upload-artifact@v7
+        with:
+          name: chat-${{ steps.mode.outputs.mode }}-${{ github.run_number }}
+          path: |
+            regen_test_outputs/
+            gate_history/
+          if-no-files-found: error
+          retention-days: 14
