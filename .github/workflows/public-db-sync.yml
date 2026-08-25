@@ -29,4 +29,17 @@ jobs:
           NOTION_PUBLIC_DATA_SOURCE_ID: ${{ secrets.NOTION_PUBLIC_DATA_SOURCE_ID }}
           NOTION_API_VERSION: "2026-03-11"
           PUBLIC_DB_SYNC_MODE: "true"
-        run: python pipeline.py
+        run: |
+          set -euo pipefail
+          mkdir -p public_db_sync_artifacts
+          printf 'run_id=%s\n' "${{ github.run_id }}" > public_db_sync_artifacts/request.txt
+          python pipeline.py 2>&1 | tee public_db_sync_artifacts/run.log
+
+      - name: Upload public DB sync audit artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: public-db-sync-${{ github.run_number }}
+          path: public_db_sync_artifacts/
+          if-no-files-found: error
+          retention-days: 30
