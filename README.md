@@ -32,3 +32,7 @@ Operational state and published eyecatch assets are intentionally different from
 ## Run128
 - `RUN128_NON_ENGINEER_ACCESSIBILITY_BRIDGE_SETUP.md`
 - `RUN128_NON_ENGINEER_ACCESSIBILITY_BRIDGE_VALIDATION_2026-08-25.md`
+
+
+### Run130 Fresh Article Regression
+`Real Article Regression Test` の手動実行時に `article_set` を選択できます。`fixed` は従来の固定A/B比較、`fresh` は新規候補3件による本番耐性確認です。freshの候補選定は0 Gemini Screening call・Notion READ ONLY・Production writeなしです。詳細は `RUN130_FRESH_ARTICLE_REGRESSION_SETUP.md` を参照してください。

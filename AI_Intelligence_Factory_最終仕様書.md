@@ -1109,3 +1109,7 @@ Run128のNon-Engineer Accessibility Bridgeに、noteで読み進めやすい「�
 - `genai.Client`追加なし。
 - Notion DB Property追加なし。
 - Existing Fact / Evidence / Decision / Publication / Human Appeal Gate変更なし。
+
+
+## Run130: Fresh Article Regression（2026-08-25）
+Real Article Regression Testは `article_set=fixed|fresh` を選択できる。`fixed` は従来の既存Deep Dive A/B比較を完全互換で維持する。`fresh` はGitHub/Hacker News/arXiv/Product Huntから小さな候補集合を新規取得し、Legal Safety GateとNotion既存URLのREAD ONLY dedupeを通した後、0-APIメタデータ選定で最大3件を選ぶ。選定をProduction Decision Scoreとは扱わず、Notion create/update、Stock保存、Screening、アイキャッチupload、公開は行わない。選択された記事のみ既存Deep Dive/Quality Gateを `persist_results=False` で実行する。Notion dedupe read失敗時はFail-Closed。追加Gemini Screening callは0。Run間の厳密比較はfixed、未知テーマ一般化性能の確認はfreshを使用する。

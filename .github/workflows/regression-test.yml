@@ -2,6 +2,15 @@ name: Real Article Regression Test
 
 on:
   workflow_dispatch:
+    inputs:
+      article_set:
+        description: 'Article set: fixed = existing A/B set, fresh = newly collected candidates'
+        required: true
+        default: 'fixed'
+        type: choice
+        options:
+          - fixed
+          - fresh
 
 concurrency:
   group: ai-intelligence-gemini-budget
@@ -28,6 +37,9 @@ jobs:
         run: python pipeline.py
         env:
           REGEN_TEST_MODE: "true"
+          REGEN_TEST_ARTICLE_SET: ${{ inputs.article_set }}
+          REGEN_TEST_LIMIT: "3"
+          REGEN_FRESH_FETCH_PER_SOURCE: "12"
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
