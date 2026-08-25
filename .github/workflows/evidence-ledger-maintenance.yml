@@ -47,10 +47,23 @@ jobs:
           NOTION_API_VERSION: "2026-03-11"
         run: |
           set -euo pipefail
+          mkdir -p evidence_ledger_artifacts
+          printf 'mode=%s\nlimit=%s\nrun_id=%s\n' \
+            "${{ inputs.mode }}" "${{ inputs.limit }}" "${{ github.run_id }}" \
+            > evidence_ledger_artifacts/request.txt
           if [ "${{ inputs.mode }}" = "dry-run" ]; then
-            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}" --dry-run
+            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}" --dry-run 2>&1 | tee evidence_ledger_artifacts/run.log
           elif [ "${{ inputs.mode }}" = "migrate-schema" ]; then
-            python backfill_evidence_ledger.py --migrate-authority-schema
+            python backfill_evidence_ledger.py --migrate-authority-schema 2>&1 | tee evidence_ledger_artifacts/run.log
           else
-            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}"
+            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}" 2>&1 | tee evidence_ledger_artifacts/run.log
           fi
+
+      - name: Upload evidence-ledger audit artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-ledger-${{ github.run_number }}-${{ inputs.mode }}
+          path: evidence_ledger_artifacts/
+          if-no-files-found: error
+          retention-days: 30
