@@ -5772,12 +5772,15 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
 ・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。
 ・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
-・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。ただし品質Gateを緩めたり、親しみ不足だけを理由にGemini再生成を増やしたりしない。最終出力前の編集段階で、硬い説明文・接続文のうち1〜2箇所を選び、情報量を増やさず読者に話しかける自然な文へその場で書き換える。記事に自然な箇所が1箇所しかなければ1箇所でよい。
+・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。ただし品質Gateを緩めたり、親しみ不足だけを理由にGemini再生成を増やしたりしない。記事全体の温度を1〜2個の口語句で済ませず、硬い説明が2段落続いたら次の段落では、既存文を「読者の経験／具体場面／平易な一言」のどれかへ書き換えて、人間の言葉へ戻す。新しい雑談段落は足さない。
 ・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。固定語でもない。特定の語尾を義務化せず、役割としての親近感を満たす。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
 ・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。『硬い説明→親しい説明』は置換であり追記ではない。
-・この記事で読者が持ち帰る専門概念を内部で2〜4個に絞る。Decisionを理解するために必須の概念だけを日常語や短い比喩で丁寧に翻訳し、それ以外の実装詳細・規格名・略語は、Evidenceと制約を失わない範囲で一文にまとめるか、本文理解に不要なら書かない。専門語の数を増やすことを専門性と取り違えない。
-・文字数上限の中でAccessibilityを足すためにEvidence、数値、制約、比較、反証、Decisionを削らない。削る優先順位は、重複説明、Decisionに不要な内部実装、汎用的な前置き、同じ意味の言い換え。分かりやすさは情報量の水増しではなく、情報の選択と順序で作る。
-・最終出力前にArticleだけを一度編集確認し、2,000〜3,200字の目安を超えそうなら、Reader ProximityやEvidenceを削る前に、Decisionに不要な内部実装、略語の列挙、二重説明、汎用的な接続文を圧縮する。3,200字を超えること自体をFact/Evidence違反にはしないが、長文化を『専門性』の代用品にしない。
+・この無料ARTICLEで読者が本当に覚える専門概念を内部で原則2〜3個に絞る。4個目がないとDecisionを誤解する場合だけ4個まで許す。核心概念は「普通の言葉で役割 → 必要なら短い日常例 → 正式名称」の順で理解させる。それ以外の略語・規格番号・内部実装名は、Decisionや重要な制約に不可欠でなければ本文から外すか、意味を一文に圧縮する。一次情報に存在する技術名を全部ARTICLEへ転記することは禁止する。
+・Evidenceの深さとARTICLEの専門語数を混同しない。数値、重要な制約、比較条件、反証、一次情報の根拠、Decisionに必要な技術事実は残す。一方、実装詳細の羅列はSources/Evidenceへ戻って確認できるため、無料ARTICLE本文では「判断に何を意味するか」を優先する。有料会員向けProduct Review / Notion DBの情報密度をARTICLE圧縮に合わせて削らない。
+・各見出しでは、最初の1〜2文で非エンジニアにも意味が取れる普通の日本語を置いてから専門語へ進む。専門語だけで段落を開始しない。専門語を説明するために別の未説明専門語を持ち込まない。
+・「読みやすくするための追加説明」で長くしない。削る優先順位は、Decisionに不要な内部実装、規格番号・略語の列挙、重複説明、汎用的な前置き、同じ意味の言い換え。Evidence、数値、制約、比較、反証、Decisionは先に削らない。分かりやすさは情報量の水増しではなく、選択・順序・言い換えで作る。
+・最終出力前にARTICLEだけを読者目線で再編集する。目標は2,200〜3,000字、3,200字はSoft Ceilingとする。3,200字を超えそうなら新しい説明を足さず、Decisionに不要な技術詳細を圧縮する。どうしても重要Evidenceや制約のため超える場合は許容するが、4,000字級を『専門テーマだから仕方ない』で正当化しない。
+・最終セルフチェックでは「中学生〜非エンジニアが、この記事を読み終えて『要するに○○の話』と一文で言えるか」「最初の800字だけでも続きを読みたいと思えるか」「3段落以上、専門用語の説明だけが連続していないか」を確認し、失敗していれば新しい情報を足さずに言い換え・圧縮・順序変更で直す。
 ・「ですよね。」は読者に同意を強要するためではなく、スマホの権限確認、買い物、通勤など多くの人が経験した具体場面を思い出してもらう用途に限る。根拠のない一般化や価値観への同意要求には使わない。
 ・親近感の一文や比喩から、Evidenceにない固有名詞・数値・市場評価・利用実績を新しく作らない。比喩は理解補助であり新しいFactではない。これにより親しみやすさを理由にFact Gate / Source Boundaryの表面積を増やさない。
 ・Fact / Evidence / 数値 / 制約 / Security上の重要事項は会話調でぼかさず、冷静で断定範囲の明確な文体を保つ。説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる温度にする。
@@ -5944,7 +5947,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。
 ・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
 ・根拠に照らして限定検証、比較テスト、導入見送り、次版待ちなどの判断が妥当なら、理由と対象範囲を添えて明確に書く。安全性のためにすべてを「可能性がある」「注視したい」へ弱めない。
-・記事本文は目安として2,000〜3,200字程度に収め、同じ事実を別の見出しで繰り返さない。
+・記事本文は目安として2,200〜3,000字、3,200字をSoft Ceilingとし、同じ事実を別の見出しで繰り返さない。重要Evidenceや制約のため超えることは許容するが、Decisionに不要な技術詳細の列挙で長文化しない。
 """
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
@@ -8368,12 +8371,42 @@ def _reader_experience_signals(article: str) -> dict:
     conversational_overuse = conversational_hits >= 7 or reader_question_hits >= 6 or repeated_conversational_phrase
     conversational_warmth = reader_proximity_moments >= 1
 
+    # Run133: Reader-first rhythm and editorial compression diagnostics.
+    # The goal is not to reward chatter. We measure whether a non-engineer gets an early foothold,
+    # whether dense technical explanation runs too long, and whether the article exposes too many
+    # implementation identifiers for a free reader-facing note article. All signals stay soft-only.
+    opening_prose = re.sub(r"\s+", " ", prose[:900]).strip()
+    opening_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", opening_prose)
+    opening_density = len(opening_tokens) * 1000.0 / max(len(re.sub(r"\s+", "", opening_prose)), 1)
+    opening_reader_bridge = bool(re.search(
+        r"(?:[？?]|ありませんか|ありますよね|ですよね|たとえば|例えば|もし|スマホ|買い物|旅行|学校|家族|仕事で|使う側|普通の言葉|簡単に言えば|要するに|意外|困った|迷った)",
+        opening_prose,
+    ))
+    opening_non_engineer_access = "GOOD" if opening_density < 42.0 and (opening_reader_bridge or not bridge_needed) else "REVIEW"
+
+    # Count implementation-heavy identifiers. This is deliberately conservative: we do not claim
+    # every token is jargon, only detect an overloaded surface area that often correlates with the
+    # Run132 failure mode (RFC numbers, flags, acronyms, internal component names, etc.).
+    implementation_identifiers = re.findall(
+        r"\b(?:SEP-\d+|RFC\s?\d+|[A-Z]{2,8}-\d{2,}|[A-Z]{2,8}\d{2,}|[A-Z]{3,8}|[A-Za-z]+/[A-Za-z0-9_.-]+)\b",
+        prose,
+    )
+    unique_implementation_identifiers = sorted(set(implementation_identifiers))
+    implementation_detail_load = "REVIEW" if len(unique_implementation_identifiers) >= 8 else "GOOD"
+
+    # A reader-friendly article should not stay in dense-explanation mode for three paragraphs in a row.
+    # We reuse max_explanatory_run so this adds no model call and no second parsing pipeline.
+    reader_temperature_rhythm = "GOOD" if max_explanatory_run <= 2 else "REVIEW"
+
     accessibility_issues = []
     if acronyms: accessibility_issues.append("unexplained_acronyms")
     if long_sentences >= 3: accessibility_issues.append("long_sentence_cluster")
     if technical_density >= 34: accessibility_issues.append("technical_term_concentration")
     if bridge_needed and not plain_language_bridge_present: accessibility_issues.append("plain_language_bridge_missing")
     if jargon_dense_paragraphs >= 2: accessibility_issues.append("jargon_translation_weak")
+    if opening_non_engineer_access != "GOOD": accessibility_issues.append("opening_non_engineer_access_weak")
+    if implementation_detail_load != "GOOD": accessibility_issues.append("implementation_detail_overload")
+    if reader_temperature_rhythm != "GOOD": accessibility_issues.append("reader_temperature_rhythm_weak")
     enjoyment_issues = []
     if analogy_overuse: enjoyment_issues.append("analogy_overuse")
     if tone_mismatch: enjoyment_issues.append("serious_topic_tone_mismatch")
@@ -8394,7 +8427,7 @@ def _reader_experience_signals(article: str) -> dict:
     if (
         jargon_dense_paragraphs >= 3
         or (len(analogy_markers) >= 3 and technical_density >= 30.0)
-        or article_char_count > 3400
+        or article_char_count > 3200
     ):
         information_budget = "REVIEW"
 
@@ -8420,6 +8453,11 @@ def _reader_experience_signals(article: str) -> dict:
         "reader_proximity_moment_count": reader_proximity_moments,
         "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
         "information_budget": information_budget,
+        "opening_non_engineer_access": opening_non_engineer_access,
+        "opening_technical_terms_per_1000_chars": round(opening_density, 1),
+        "implementation_detail_load": implementation_detail_load,
+        "implementation_identifier_count": len(unique_implementation_identifiers),
+        "reader_temperature_rhythm": reader_temperature_rhythm,
         "article_char_count": article_char_count,
         "reader_proximity_per_1000_chars": round(reader_proximity_moments * 1000.0 / max(article_char_count, 1), 2),
         "conversational_overuse": conversational_overuse,
@@ -9346,6 +9384,11 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Reader Proximity: {reader.get('reader_proximity')}",
             f"- Reader Proximity Moment Count: {reader.get('reader_proximity_moment_count')}",
             f"- Information Budget: {reader.get('information_budget')}",
+            f"- Opening Non-Engineer Access: {reader.get('opening_non_engineer_access')}",
+            f"- Opening Technical Terms / 1000 chars: {reader.get('opening_technical_terms_per_1000_chars')}",
+            f"- Implementation Detail Load: {reader.get('implementation_detail_load')}",
+            f"- Implementation Identifier Count: {reader.get('implementation_identifier_count')}",
+            f"- Reader Temperature Rhythm: {reader.get('reader_temperature_rhythm')}",
             f"- Article Character Count: {reader.get('article_char_count')}",
             f"- Reader Proximity / 1000 chars: {reader.get('reader_proximity_per_1000_chars')}",
             f"- Headline Pull: {reader.get('headline_pull')}",

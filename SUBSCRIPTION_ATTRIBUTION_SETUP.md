@@ -63,3 +63,7 @@ python subscription_attribution.py \
 現段階では`metrics_rollup.json`をCommercial Value / Source ROI / Deep Dive Priorityへ自動反映しない。
 
 実績件数が少ない、あるいは帰属精度が低い状態で記事選定を自己強化すると、偶然の1件を「勝ち筋」と誤学習するため。Revenue Feedback Loopは十分な実測データが溜まった後に別Gate付きで実装する。
+
+
+## Run134 Revenue Measurement Readiness
+集計JSON schema v2では `revenue_measurement_readiness`、`performance_by_source`、`performance_by_topic` を追加する。これは実績観測用であり、十分なsampleに到達してもProduction rankingを自動変更しない。`ranking_feedback_enabled=false` / `auto_feedback_permitted=false` が正式仕様。

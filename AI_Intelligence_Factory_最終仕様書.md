@@ -1,7 +1,7 @@
 # AI Intelligence Factory 現行仕様
 
-最終更新: 2026-08-24  
-本パッケージコード基準: **Run 122 Real Article Regression Hardening 完成版候補**  
+最終更新: 2026-08-25  
+本パッケージコード基準: **Run 134 Revenue Measurement Foundation + Paid Product Value 完成版候補**  
 基準ファイル: `pipeline.py` / `inventory_bootstrap.py` / `decision_intelligence.py` / `.github/workflows/`
 
 > 本仕様書はRun 102までのProduction基盤を維持しつつ、Run 103〜122で追加されたReader-First、Eyecatch精度、Human Editorial Naturalness、Subscriber Inventory Bootstrap、Evidence Ledger / Authority / Entity Binding、Japanese Display Label、Cross-Article Naturalness、Real Article Regression Hardeningを含む本パッケージ仕様を記録する。Run122は完成版候補であり、main反映・実ProviderによるReal Article Regression再実行前にProduction E2E確認済みとは扱わない。Pipeline本体の既定値とGitHub Actionsの環境変数指定が異なる場合は、GitHub Actionsの環境変数が優先される。
@@ -1131,3 +1131,31 @@ Article Auditには Reader Proximity / Reader Proximity Moment Count / Informati
 - 3,400字超はArticle AuditのInformation BudgetをSoft REVIEWにする。Hard Gate / Quality Retry条件にはしない。
 - Article AuditにArticle Character Count、Reader Proximity / 1000 charsを追加。
 - Gemini API追加なし、Notion schema変更なし、有料会員向けProduct Review/DB情報密度のロジック変更なし。
+
+# Run133 Reader-First Editorial Compression（2026-08-25）
+Run132 fixed実稿の人間監査で、局所的な比喩や「ですよね」があっても記事全体は技術メディア調のまま、4,000〜6,000字級へ長文化し、非エンジニアには難しいという反証が成立した。Run133では会話表現の追加ではなく、硬い既存文の置換、核心専門概念の原則2〜3個への編集選択、Decisionに不要な技術名・規格番号・内部実装の圧縮を強化する。
+
+ARTICLEは2,200〜3,000字を目標、3,200字をSoft Ceilingとする。重要Evidence・数値・制約・比較・反証・Decisionは削らず、一次情報にある技術名をすべて本文へ転記することを禁止する。硬い技術説明が2段落続いた場合は、次の既存段落を読者の経験・具体場面・平易な一言へ書き換え、記事温度を戻す。固定口癖や日常例の義務化はしない。
+
+Article Auditへ Opening Non-Engineer Access / Opening Technical Terms per 1000 chars / Implementation Detail Load / Implementation Identifier Count / Reader Temperature Rhythm を追加する。すべて0-API soft診断であり、Quality Retry、Fact/Evidence/Decision Hard Gate、Notion schema、Gemini call siteを変更しない。無料ARTICLEの圧縮はProduct Review / 有料Notion DBの情報密度へ伝播させない。
+
+
+## Run134 Revenue Measurement Foundation + Paid Product Value
+
+### Revenue Measurement Foundation
+- `subscription_attribution.py` schema v2は記事別集計に加えSource別・Portfolio Topic別の集計を出力する。
+- `revenue_measurement_readiness`は測定記事数、Views、CTA clicks、新規Subscriber、tracked CTA coverage、end-to-end coverageを0-APIで診断する。
+- 十分なsampleが集まっても `ranking_feedback_enabled=false` / `auto_feedback_permitted=false` を維持する。Revenue実績をProduction rankingへ戻すには将来の別Runで人間承認を必須とする。
+- PII禁止、未知article_id拒否、attribution_methodごとの測定可能範囲Fail-Closedは従来どおり維持する。
+
+### Paid Product Value Density
+- `inventory_bootstrap.py`はSellable件数だけでなく、Main Risk / Best For / Avoid For / Short Rationaleの具体性、Evidence、Best/Avoid差別化を決定論的に診断する。
+- HIGH件数、MEDIUM+件数、平均Utilityを `paid_product_value` として返す。Run134ではdiagnostic onlyで、Adoption Score/StatusおよびLaunch ReadyのHard Blockには接続しない。
+
+### Monthly Decision Brief
+- Decision Historyからstatus changeとmeaningful score movementを決定論的に優先し、月次ページ冒頭に「今月、何を再判断すべきか？」最大3件を表示する。
+- ADOPT/TEST/WATCH/AVOIDの既存Statusを会員向け行動ラベルへ変換するだけで、新しい判断やFactを生成しない。Gemini API追加なし。
+- 従来のStatus変更・上昇・低下・新規評価セクションは監査可能性のため保持する。
+
+### Scope protection
+Run134はRun133 ARTICLE生成、Fact/Evidence/Source Boundary、Product Review Gemini、Adoption scoring、Source ROI、Subscriber sanitization、Evidence Ledger、Notion schemaを変更しない。

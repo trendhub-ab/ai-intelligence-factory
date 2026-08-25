@@ -1,6 +1,6 @@
 # AI Intelligence Factory
 
-Production baseline: **Run127 – Intellectual Entertainment Pull**.
+Production candidate: **Run134 – Revenue Measurement Foundation + Paid Product Value** (article-generation baseline remains Run133 pending live Real Article Regression).
 
 ## Repository map
 
@@ -45,3 +45,12 @@ Run129/130実稿で確認された「日常語はあるが会話距離が遠い�
 
 ## Run132 Warm Rewrite + Length Budget
 Run131 fixed実稿の反証を受け、親しみ表現を追記せず既存の硬い文へ置換し、長文化をSoft Auditで可視化します。詳細は `RUN132_WARM_REWRITE_LENGTH_BUDGET_SETUP.md`。
+
+### Run133 Reader-First Editorial Compression
+Run132実稿の人間監査で判明した「局所的な親しみ表現はあるが、記事全体が難しく長い」問題を修正。無料ARTICLEで読者が覚える核心専門概念を原則2〜3個へ編集選択し、硬い説明が2段落続いたら既存文を読者の経験・具体場面・平易な一言へ置換する。目標2,200〜3,000字、3,200字Soft Ceiling。Evidence/数値/制約/比較/反証/Decisionおよび有料Notion Product Reviewの情報密度は保護する。Article AuditにOpening Non-Engineer Access / Implementation Detail Load / Reader Temperature Rhythm等の0-API soft診断を追加。
+
+
+### Run134 Revenue Measurement Foundation + Paid Product Value
+Adds zero-Gemini revenue-measurement readiness, source/topic performance rollups, paid-member utility-density diagnostics, and a `今月、何を再判断すべきか？` Monthly Decision Brief. Revenue feedback remains diagnostic only and cannot automatically change ranking. Article generation remains Run133.
+- `RUN134_REVENUE_PRODUCT_VALUE_SETUP.md`
+- `RUN134_REVENUE_PRODUCT_VALUE_VALIDATION_2026-08-25.md`

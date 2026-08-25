@@ -23,8 +23,8 @@ class Run131ReaderProximityInformationBudgetTests(unittest.TestCase):
         self.assertIn('「読者との距離が近くなる一文」', prompt)
         self.assertIn('固定語でもない', prompt)
         self.assertIn('親しみやすさのために文章を足し算しない', prompt)
-        self.assertIn('専門概念を内部で2〜4個に絞る', prompt)
-        self.assertIn('Evidence、数値、制約、比較、反証、Decisionを削らない', prompt)
+        self.assertIn('原則2〜3個に絞る', prompt)
+        self.assertIn('Evidence、数値、制約、比較、反証、Decisionは先に削らない', prompt)
         self.assertIn('Fact Gate / Source Boundaryの表面積を増やさない', prompt)
 
     def test_dry_everyday_noun_no_longer_counts_as_warmth(self):

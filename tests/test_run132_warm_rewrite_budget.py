@@ -20,15 +20,15 @@ class Run132WarmRewriteBudgetTests(unittest.TestCase):
     def test_prompt_makes_proximity_a_generation_completion_condition(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
         self.assertIn('無料note記事の完成条件として扱う', prompt)
-        self.assertIn('硬い説明文・接続文のうち1〜2箇所', prompt)
-        self.assertIn('情報量を増やさず読者に話しかける自然な文へその場で書き換える', prompt)
+        self.assertIn('硬い説明が2段落続いたら次の段落', prompt)
+        self.assertIn('人間の言葉へ戻す', prompt)
         self.assertIn('置換であり追記ではない', prompt)
 
     def test_prompt_protects_evidence_before_length_compression(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
-        self.assertIn('2,000〜3,200字の目安', prompt)
-        self.assertIn('Reader ProximityやEvidenceを削る前に', prompt)
-        self.assertIn('Decisionに不要な内部実装、略語の列挙、二重説明、汎用的な接続文を圧縮', prompt)
+        self.assertIn('2,200〜3,000字、3,200字はSoft Ceiling', prompt)
+        self.assertIn('Evidence、数値、制約、比較、反証、Decisionは先に削らない', prompt)
+        self.assertIn('Decisionに不要な内部実装、規格番号・略語の列挙、重複説明', prompt)
 
     def test_long_article_is_soft_information_budget_review(self):
         article = ('名前は難しそうですが、やっていることは意外と単純です。'
