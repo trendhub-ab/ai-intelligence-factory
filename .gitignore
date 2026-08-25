@@ -22,3 +22,12 @@ subscription_attribution/
 
 # Per-run private human-audit artifact; never commit/package as source state.
 article_audit/
+# Repository hygiene (Run127 cleanup)
+.pytest_cache/
+*.zip
+*_work/
+*_fresh_verify/
+SHA256SUMS.txt
+RUN*_MUTATION_NEGATIVE_CONTROL_*.log
+inventory_bootstrap_artifacts/*
+!inventory_bootstrap_artifacts/README.md
