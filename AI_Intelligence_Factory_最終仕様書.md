@@ -1122,3 +1122,12 @@ Run129のConversational Warmthは実装されていたが、実稿では日常�
 同時にEditorial Information Budgetを導入する。専門記事ですべての専門語に日常例を追加すると、本文目安2,000〜3,200字を圧迫し、Evidence/制約/Decisionの希薄化またはSource Boundary表面積の増加につながる。このため、読者が持ち帰る専門概念を内部で2〜4個へ絞り、Decision理解に必須の概念のみ丁寧に翻訳する。それ以外はEvidenceと重要制約を維持したまま圧縮する。会話的な一文・日常例は新しい段落として追加せず、硬い説明・接続文の置換を優先する。
 
 Article Auditには Reader Proximity / Reader Proximity Moment Count / Information Budget を追加する。日常語だけではConversational WarmthをGOODにせず、実際のProximity機能がなければ REVIEW_MISSING とする。これらはsoft-onlyであり、Quality Retry budget、Fact/Evidence/Publication/Decision Hard Gate、Notion schema、Gemini call siteを変更しない。
+
+
+## Run132 — Warm Rewrite + Length Budget（2026-08-25）
+- Run131 fixed実稿の反証を反映。Reader Proximityは語尾の必須化ではなく、硬い既存文を1〜2箇所だけ読者に近い自然文へ置換して成立させる。
+- 親しみ表現は追記せず、記事の情報量を水増ししない。
+- 2,000〜3,200字を目安とし、長文化時はEvidence / 数値 / 制約 / 比較 / 反証 / Decisionより先に、Decisionに不要な内部実装・略語列挙・二重説明・汎用接続文を圧縮する。
+- 3,400字超はArticle AuditのInformation BudgetをSoft REVIEWにする。Hard Gate / Quality Retry条件にはしない。
+- Article AuditにArticle Character Count、Reader Proximity / 1000 charsを追加。
+- Gemini API追加なし、Notion schema変更なし、有料会員向けProduct Review/DB情報密度のロジック変更なし。

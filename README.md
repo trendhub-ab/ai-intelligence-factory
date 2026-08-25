@@ -41,3 +41,7 @@ Operational state and published eyecatch assets are intentionally different from
 Run129/130実稿で確認された「日常語はあるが会話距離が遠い」問題を修正。1記事1〜3箇所の機能的Reader Proximityを求める一方、会話文・比喩を足し算せず既存説明を置換する。読者が持ち帰る専門概念を2〜4個へ編集選択し、Evidence/制約/Decisionを削らず本文2,000〜3,200字の情報予算を守る。Warmth不足は0-API soft診断であり、追加Gemini RetryやHard Rejectには接続しない。
 - `RUN131_READER_PROXIMITY_INFORMATION_BUDGET_SETUP.md`
 - `RUN131_READER_PROXIMITY_INFORMATION_BUDGET_VALIDATION_2026-08-25.md`
+
+
+## Run132 Warm Rewrite + Length Budget
+Run131 fixed実稿の反証を受け、親しみ表現を追記せず既存の硬い文へ置換し、長文化をSoft Auditで可視化します。詳細は `RUN132_WARM_REWRITE_LENGTH_BUDGET_SETUP.md`。

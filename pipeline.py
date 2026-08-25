@@ -5772,10 +5772,12 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
 ・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。
 ・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
+・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。ただし品質Gateを緩めたり、親しみ不足だけを理由にGemini再生成を増やしたりしない。最終出力前の編集段階で、硬い説明文・接続文のうち1〜2箇所を選び、情報量を増やさず読者に話しかける自然な文へその場で書き換える。記事に自然な箇所が1箇所しかなければ1箇所でよい。
 ・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。固定語でもない。特定の語尾を義務化せず、役割としての親近感を満たす。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
-・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。
+・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。『硬い説明→親しい説明』は置換であり追記ではない。
 ・この記事で読者が持ち帰る専門概念を内部で2〜4個に絞る。Decisionを理解するために必須の概念だけを日常語や短い比喩で丁寧に翻訳し、それ以外の実装詳細・規格名・略語は、Evidenceと制約を失わない範囲で一文にまとめるか、本文理解に不要なら書かない。専門語の数を増やすことを専門性と取り違えない。
 ・文字数上限の中でAccessibilityを足すためにEvidence、数値、制約、比較、反証、Decisionを削らない。削る優先順位は、重複説明、Decisionに不要な内部実装、汎用的な前置き、同じ意味の言い換え。分かりやすさは情報量の水増しではなく、情報の選択と順序で作る。
+・最終出力前にArticleだけを一度編集確認し、2,000〜3,200字の目安を超えそうなら、Reader ProximityやEvidenceを削る前に、Decisionに不要な内部実装、略語の列挙、二重説明、汎用的な接続文を圧縮する。3,200字を超えること自体をFact/Evidence違反にはしないが、長文化を『専門性』の代用品にしない。
 ・「ですよね。」は読者に同意を強要するためではなく、スマホの権限確認、買い物、通勤など多くの人が経験した具体場面を思い出してもらう用途に限る。根拠のない一般化や価値観への同意要求には使わない。
 ・親近感の一文や比喩から、Evidenceにない固有名詞・数値・市場評価・利用実績を新しく作らない。比喩は理解補助であり新しいFactではない。これにより親しみやすさを理由にFact Gate / Source Boundaryの表面積を増やさない。
 ・Fact / Evidence / 数値 / 制約 / Security上の重要事項は会話調でぼかさず、冷静で断定範囲の明確な文体を保つ。説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる温度にする。
@@ -8387,8 +8389,13 @@ def _reader_experience_signals(article: str) -> dict:
     # Information-budget signal: do not solve accessibility by adding more prose. Several dense
     # jargon paragraphs plus many analogies indicate the article may be explaining everything twice.
     # This is diagnostic only; it never removes Evidence or changes a hard gate.
+    article_char_count = len(re.sub(r"\s+", "", prose))
     information_budget = "GOOD"
-    if jargon_dense_paragraphs >= 3 or (len(analogy_markers) >= 3 and technical_density >= 30.0):
+    if (
+        jargon_dense_paragraphs >= 3
+        or (len(analogy_markers) >= 3 and technical_density >= 30.0)
+        or article_char_count > 3400
+    ):
         information_budget = "REVIEW"
 
     accessibility = "GOOD" if not accessibility_issues else "REVIEW"
@@ -8413,6 +8420,8 @@ def _reader_experience_signals(article: str) -> dict:
         "reader_proximity_moment_count": reader_proximity_moments,
         "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
         "information_budget": information_budget,
+        "article_char_count": article_char_count,
+        "reader_proximity_per_1000_chars": round(reader_proximity_moments * 1000.0 / max(article_char_count, 1), 2),
         "conversational_overuse": conversational_overuse,
         "analogy_used": analogy_used,
         "analogy_necessary": "EDITORIAL_JUDGMENT" if analogy_used else ("BRIDGE_RECOMMENDED" if bridge_needed and not plain_language_bridge_present else "NOT_REQUIRED"),
@@ -9337,6 +9346,8 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Reader Proximity: {reader.get('reader_proximity')}",
             f"- Reader Proximity Moment Count: {reader.get('reader_proximity_moment_count')}",
             f"- Information Budget: {reader.get('information_budget')}",
+            f"- Article Character Count: {reader.get('article_char_count')}",
+            f"- Reader Proximity / 1000 chars: {reader.get('reader_proximity_per_1000_chars')}",
             f"- Headline Pull: {reader.get('headline_pull')}",
             f"- News Relevance: {reader.get('news_relevance')}",
             f"- Analogy Used: {reader.get('analogy_used')}",
