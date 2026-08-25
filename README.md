@@ -28,3 +28,7 @@ Production baseline: **Run127 – Intellectual Entertainment Pull**.
 Synthetic/Real Article outputs, Article Audit outputs, temporary regression fixtures, caches, release ZIPs and checksum manifests are generated artifacts and should not be committed as source. GitHub Actions artifacts are the preferred retention location.
 
 Operational state and published eyecatch assets are intentionally different from disposable artifacts and must not be bulk-deleted without a migration plan.
+
+## Run128
+- `RUN128_NON_ENGINEER_ACCESSIBILITY_BRIDGE_SETUP.md`
+- `RUN128_NON_ENGINEER_ACCESSIBILITY_BRIDGE_VALIDATION_2026-08-25.md`

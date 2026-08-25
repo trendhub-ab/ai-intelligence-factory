@@ -5646,7 +5646,10 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 
 【Reader Experience｜知的エンタメ × Decision Intelligence】
 ・難しいことを難しく感じさせない。正確さ・Evidence・制約・Decisionを保ったまま、専門書や辞書なしで読み進められる入口を作る。
-・専門用語は消さない。初心者が最初につまずく概念では、可能なら「意味や身近な働き → なぜ気になるか → 正式名称」の順に説明し、読後に用語そのものが自然に残るようにする。
+・専門用語は消さない。この記事の判断に必要な難しい概念は、初出時に「意味や身近な働き＝普通の言葉で何をするものか → 必要なら日常の具体場面・比喩 → 正式名称」の順で橋を架ける。中学生〜非エンジニアが一読後に核心を自分の言葉で1文説明でき、専門家には正式名称・条件・Evidenceが残る状態を狙う。
+・判断の中心となる未知語を、説明なしで2個以上ひとつの文・段落へ積み上げない。DPoP、WIF、microVMのような略語・規格名・技術語が続くなら、先に「何を防ぐ／何を可能にする仕組みか」を平易な一文で置いてから詳細へ進む。
+・専門語密度が高い記事では、少なくとも一度は非エンジニアの日常と接続する具体的な橋を選ぶ。恋愛、買い物、スマホの権限、鍵、学校、旅行、料理、家族、趣味などは候補にすぎず、記事に最も自然な題材だけを使う。毎回同じ題材や決まり文句を使わない。
+・比喩は概念理解の補助でありEvidenceではない。比喩で理解させた直後に技術上の正式な意味へ戻り、似ていない部分まで同一視しない。正確さを落とす比喩なら使わず、平易な機能説明か具体場面で代替する。
 ・冒頭は発表要約だけで始めず、この話題のどこが人間的に面白いか、読者の仕事や生活に何が変わるか、あるいはどんな意外性があるかから入口を選ぶ。煽りは不要。
 ・比喩や身近な例は、理解・記憶・心理的距離の改善に本当に効く場所だけで使う。比喩を入れること自体を目的にせず、1記事の個数も固定しない。
 ・猫、恋愛、コンビニ、家族、学校など特定の題材を毎回使わない。Security / Risk / Governanceなど深刻なテーマでは軽薄な笑いや不釣り合いな比喩を強制しない。
@@ -5665,6 +5668,11 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・Reader-firstの「30秒でわかるこの記事」は公開UI上の要約であり、本文の段落順・見出し順・導入文型を固定するテンプレートではない。本文はその3項目をなぞらず、記事固有の流れを選ぶ。
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
 ・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。
+・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感を狙う。です・ます調を土台にしつつ、難しい概念の翻訳、身近な場面への接続、意外性、読者が実体験を思い出す箇所では、自然な会話調を少量混ぜてよい。
+・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
+・「ですよね。」は読者に同意を強要するためではなく、スマホの権限確認、買い物、通勤など多くの人が経験した具体場面を思い出してもらう用途に限る。根拠のない一般化や価値観への同意要求には使わない。
+・Fact / Evidence / 数値 / 制約 / Security上の重要事項は会話調でぼかさず、冷静で断定範囲の明確な文体を保つ。説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる温度にする。
+・会話調を記事全体へ均一に散らさない。連続した文末の「〜ですよね。」「〜なんですよ。」や、毎段落の読者呼びかけは避ける。親近感は口癖ではなく、語彙の平易さ、具体場面、文章の間、問いかけの自然さで作る。
 """
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
@@ -8191,9 +8199,38 @@ def _reader_experience_signals(article: str) -> dict:
     specific_heading_chars = sum(len(re.sub(r"(?:なぜ|重要|今後|判断|まとめ|結論|ポイント|詳細|何が|変わる)", "", h)) for h in headings)
     article_specific_angle = generic_angle_hits <= 3 and (not headings or specific_heading_chars >= max(8, len(headings) * 3))
 
-    # Everyday bridge is optional: GOOD means present or clearly unnecessary, never required.
-    everyday_terms = bool(re.search(r"(?:旅行|レストラン|買い物|家族|恋愛|学校|趣味|猫|犬|ゲーム|SNS|スマホ|料理|引っ越し|電車|病院|天気|スポーツ|友人|会議|メール|カレンダー)", prose))
-    everyday_bridge = "PRESENT" if everyday_terms or scene_present else "NOT_REQUIRED"
+    # Run128: an everyday/plain-language bridge becomes recommended when jargon load is high.
+    # This remains a soft diagnostic: Evidence/Fact/Decision gates are never weakened or blocked by it.
+    everyday_terms = bool(re.search(r"(?:旅行|レストラン|買い物|家族|恋愛|デート|学校|趣味|猫|犬|ゲーム|SNS|スマホ|料理|引っ越し|電車|病院|天気|スポーツ|友人|会議|メール|カレンダー|鍵|合鍵|受付|店|財布|地図|図書館)", prose))
+    plain_explanation = bool(re.search(
+        r"(?:簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|言葉を変えると|"
+        r"つまり[^。！？]{3,90}(?:仕組み|ルール|方法|考え方|役割)|"
+        r"(?:これは|これはつまり|この仕組みは)[^。！？]{4,100}(?:ための|ような)(?:仕組み|ルール|方法|考え方|もの))",
+        prose,
+    ))
+    bridge_needed = bool(acronyms) or technical_density >= 26.0
+    plain_language_bridge_present = bool(everyday_terms or scene_present or analogy_used or plain_explanation)
+    if plain_language_bridge_present:
+        everyday_bridge = "PRESENT"
+    elif bridge_needed:
+        everyday_bridge = "REVIEW_NEEDED"
+    else:
+        everyday_bridge = "NOT_REQUIRED"
+
+    # A dense paragraph with several technical tokens and no translation marker is a useful
+    # zero-API signal for the exact failure mode seen in the Run127 real-article regression.
+    jargon_dense_paragraphs = 0
+    for para in paragraphs:
+        pv = re.sub(r"\s+", "", para)
+        if len(pv) < 70:
+            continue
+        p_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", para)
+        p_density = len(p_tokens) * 1000.0 / max(len(pv), 1)
+        has_translation = bool(re.search(r"(?:たとえば|例えば|簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|ようなもの|身近な|スマホ|買い物|恋愛|デート|鍵|学校|旅行|料理|家族)", para))
+        if p_density >= 38.0 and not has_translation:
+            jargon_dense_paragraphs += 1
+    jargon_translation = "GOOD" if not (bridge_needed and not plain_language_bridge_present) and jargon_dense_paragraphs <= 1 else "REVIEW"
+    non_engineer_core_clarity = "GOOD" if jargon_translation == "GOOD" and (not bridge_needed or plain_language_bridge_present) else "REVIEW"
 
     # News relevance must come from explicit temporal/event language, not fabricated freshness.
     news_relevance = bool(re.search(r"(?:今回|発表|公開|更新|リリース|対応を開始|採用|仕様変更|公開された|新たに|今週|今日|\d{4}[-年/]\d{1,2})", intro[:900]))
@@ -8201,10 +8238,31 @@ def _reader_experience_signals(article: str) -> dict:
     last = prose[-1000:]
     return_pull = bool(re.search(r"(?:次に|次版|今後|試す|比較|検証|確かめ|判断|選択|待つ|見送|導入|変化|残る|問い|条件|自分なら|私なら)", last))
 
+    # Run129: conversational warmth is a soft editorial diagnostic, never a hard gate.
+    # Natural conversational markers may improve note readability, but fixed catchphrases or
+    # agreement-seeking repetition create an AI/template feel, so both absence and overuse
+    # are interpreted contextually rather than as pass/fail requirements.
+    conversational_patterns = [
+        r"ですよね[。！？!?]", r"なんですよ[。！？!?]", r"やっぱり[、,]",
+        r"ちょっと想像してみてください", r"ここが面白いところ",
+        r"思い出してみてください", r"ありますよね[。！？!?]",
+    ]
+    conversational_hits = sum(len(re.findall(p, prose)) for p in conversational_patterns)
+    repeated_conversational_phrase = any(len(re.findall(p, prose)) >= 3 for p in conversational_patterns)
+    conversational_overuse = conversational_hits >= 7 or repeated_conversational_phrase
+    conversational_warmth = bool(
+        conversational_hits >= 1
+        or scene_present
+        or everyday_terms
+        or re.search(r"(?:難しそう|身近|普段|私たち|使ったこと|見たこと|経験|思い浮かべ)", prose)
+    )
+
     accessibility_issues = []
     if acronyms: accessibility_issues.append("unexplained_acronyms")
     if long_sentences >= 3: accessibility_issues.append("long_sentence_cluster")
     if technical_density >= 34: accessibility_issues.append("technical_term_concentration")
+    if bridge_needed and not plain_language_bridge_present: accessibility_issues.append("plain_language_bridge_missing")
+    if jargon_dense_paragraphs >= 2: accessibility_issues.append("jargon_translation_weak")
     enjoyment_issues = []
     if analogy_overuse: enjoyment_issues.append("analogy_overuse")
     if tone_mismatch: enjoyment_issues.append("serious_topic_tone_mismatch")
@@ -8214,6 +8272,7 @@ def _reader_experience_signals(article: str) -> dict:
     if not heading_pull: enjoyment_issues.append("generic_heading_cluster")
     if not article_specific_angle: enjoyment_issues.append("article_specific_angle_weak")
     if not news_relevance: enjoyment_issues.append("news_relevance_weak")
+    if conversational_overuse: enjoyment_issues.append("conversational_tone_overuse")
 
     accessibility = "GOOD" if not accessibility_issues else "REVIEW"
     curiosity_pull = "GOOD" if (curiosity or self_relevance) and not announcement_only else "REVIEW"
@@ -8227,14 +8286,23 @@ def _reader_experience_signals(article: str) -> dict:
         "narrative_pull": "GOOD" if narrative_pull and max_explanatory_run < 4 else "REVIEW",
         "article_specific_angle": "GOOD" if article_specific_angle else "REVIEW",
         "everyday_bridge": everyday_bridge,
+        "plain_language_bridge": "GOOD" if plain_language_bridge_present or not bridge_needed else "REVIEW",
+        "jargon_translation": jargon_translation,
+        "non_engineer_core_clarity": non_engineer_core_clarity,
         "headline_pull": "GOOD" if heading_pull else "REVIEW",
         "news_relevance": "GOOD" if news_relevance else "REVIEW",
+        "conversational_warmth": "GOOD" if conversational_warmth and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "NEUTRAL"),
+        "conversational_marker_count": conversational_hits,
+        "conversational_overuse": conversational_overuse,
         "analogy_used": analogy_used,
-        "analogy_necessary": "EDITORIAL_JUDGMENT" if analogy_used else "NOT_REQUIRED",
+        "analogy_necessary": "EDITORIAL_JUDGMENT" if analogy_used else ("BRIDGE_RECOMMENDED" if bridge_needed and not plain_language_bridge_present else "NOT_REQUIRED"),
         "unexplained_jargon": acronyms[:8],
         "accessibility_issues": accessibility_issues,
         "enjoyment_issues": enjoyment_issues,
         "technical_terms_per_1000_chars": round(technical_density, 1),
+        "bridge_needed": bridge_needed,
+        "plain_language_bridge_present": plain_language_bridge_present,
+        "jargon_dense_paragraph_count": jargon_dense_paragraphs,
         "long_sentence_count": long_sentences,
         "max_explanatory_paragraph_run": max_explanatory_run,
         "generic_headings": generic_headings[:8],
@@ -9141,6 +9209,11 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Narrative Pull: {reader.get('narrative_pull')}",
             f"- Article-Specific Angle: {reader.get('article_specific_angle')}",
             f"- Everyday Bridge: {reader.get('everyday_bridge')}",
+            f"- Plain-Language Bridge: {reader.get('plain_language_bridge')}",
+            f"- Jargon Translation: {reader.get('jargon_translation')}",
+            f"- Non-Engineer Core Clarity: {reader.get('non_engineer_core_clarity')}",
+            f"- Conversational Warmth: {reader.get('conversational_warmth')}",
+            f"- Conversational Marker Count: {reader.get('conversational_marker_count')}",
             f"- Headline Pull: {reader.get('headline_pull')}",
             f"- News Relevance: {reader.get('news_relevance')}",
             f"- Analogy Used: {reader.get('analogy_used')}",

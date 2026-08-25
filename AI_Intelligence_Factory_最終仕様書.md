@@ -1053,3 +1053,59 @@ Run126の「分かりやすさ」を維持しつつ、「続きを読みたい�
 Reader Experience監査に追加:
 Narrative Pull / Article-Specific Angle / Everyday Bridge / Headline Pull / News Relevance。
 Notion Property追加なし、Gemini call追加なし。
+
+
+# Run128 Non-Engineer Accessibility Bridge — 専門性を落とさない日常翻訳（2026-08-25）
+
+## 目的
+Run127のReal Article Regressionで、Evidence / Decisionロジックは維持できた一方、非エンジニア読者には専門語密度が高く、日常の具体例・比喩による翻訳層が不足する実稿が確認された。Run128は「専門性を一切落とさず、中学生〜非エンジニアでも核心だけは理解できる」ことを狙う局所改修とする。
+
+## 生成方針
+- 判断に必要な専門語は削除せず、初出時に普通の言葉で役割を説明し、必要なら日常の具体場面・比喩を挟んでから正式名称・条件・Evidenceへ戻る。
+- 説明なしの未知語を一文・一段落へ積み上げない。略語・規格名・認証方式等が続く場合は「何を防ぐ／何を可能にするか」を先に渡す。
+- 専門語密度が高い記事では、恋愛、買い物、スマホ権限、鍵、学校、旅行、料理、家族、趣味等から記事に自然な日常ブリッジを少なくとも一度選ぶ。ただし題材・文型は固定しない。
+- 比喩は概念理解の補助でありEvidenceではない。比喩の直後に正式な技術的意味へ戻り、類似しない部分まで同一視しない。
+- Fact / Evidence / Decision / Publication / Human Appealの既存HARD制約は一切緩和しない。
+
+## 0-API Reader Experience Audit
+既存Reader Experienceへ以下を追加する。
+- Plain-Language Bridge
+- Jargon Translation
+- Non-Engineer Core Clarity
+- bridge_needed
+- plain_language_bridge_present
+- jargon_dense_paragraph_count
+
+専門語負荷が高いのに平易な橋がない場合は `Everyday Bridge: REVIEW_NEEDED` とする。これらはsoft-only診断であり、公開HARD Gateへ直接接続しない。
+
+## API / DB影響
+- Gemini API call site追加なし。
+- `genai.Client`追加なし。
+- Notion DB Property追加なし。
+- Existing Evidence/Decisionロジック変更なし。
+
+# Run129 Conversational Warmth — 親近感のある語り口調（2026-08-25）
+
+## 目的
+Run128のNon-Engineer Accessibility Bridgeに、noteで読み進めやすい「詳しい友人が隣で説明してくれる」距離感を追加する。専門性・Evidence・Decision品質は落とさず、難しい概念の翻訳や身近な場面への接続でのみ会話調を少量使い、読者との心理的距離を縮める。
+
+## 生成方針
+- です・ます調を土台にしつつ、難しい概念の翻訳、日常例、意外性、読者が実体験を思い出す箇所では自然な会話調を少量混ぜてよい。
+- 「ですよね。」「やっぱり、」「なんですよ。」等は使用可能な例であり必須語ではない。固定句化・反復は禁止。
+- 「ですよね。」は価値観への同意強要ではなく、多くの読者が経験した具体場面を思い出させる用途に限定する。
+- Fact / Evidence / 数値 / 制約 / Security上の重要事項は会話調でぼかさない。「説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる」温度差を保つ。
+- 親近感は口癖ではなく、平易な語彙、具体場面、自然な問い、文章の間で作る。会話調を全段落へ均一配置しない。
+
+## 0-API Reader Experience Audit
+既存Reader Experienceへ以下を追加する。
+- Conversational Warmth
+- Conversational Marker Count
+- conversational_overuse
+
+会話調の不在はHARD FAILにしない。一方、同一の呼びかけ・語尾が3回以上反復、または会話マーカーが過剰な場合は `REVIEW_OVERUSE` としてsoft-onlyで可視化する。
+
+## API / DB影響
+- Gemini API call site追加なし。
+- `genai.Client`追加なし。
+- Notion DB Property追加なし。
+- Existing Fact / Evidence / Decision / Publication / Human Appeal Gate変更なし。
