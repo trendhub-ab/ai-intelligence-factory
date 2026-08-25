@@ -1113,3 +1113,12 @@ Run128のNon-Engineer Accessibility Bridgeに、noteで読み進めやすい「�
 
 ## Run130: Fresh Article Regression（2026-08-25）
 Real Article Regression Testは `article_set=fixed|fresh` を選択できる。`fixed` は従来の既存Deep Dive A/B比較を完全互換で維持する。`fresh` はGitHub/Hacker News/arXiv/Product Huntから小さな候補集合を新規取得し、Legal Safety GateとNotion既存URLのREAD ONLY dedupeを通した後、0-APIメタデータ選定で最大3件を選ぶ。選定をProduction Decision Scoreとは扱わず、Notion create/update、Stock保存、Screening、アイキャッチupload、公開は行わない。選択された記事のみ既存Deep Dive/Quality Gateを `persist_results=False` で実行する。Notion dedupe read失敗時はFail-Closed。追加Gemini Screening callは0。Run間の厳密比較はfixed、未知テーマ一般化性能の確認はfreshを使用する。
+
+
+# Run131 Reader Proximity + Information Budget（2026-08-25）
+
+Run129のConversational Warmthは実装されていたが、実稿では日常語の存在だけでWarmth相当と判定でき、実際の「人との距離」は保証されなかった。Run131ではReader Proximityを機能として定義し、原則1〜3箇所、読者の実体験想起・難しい概念への一言・自然な問い等を成立させる。ただし「ですよね」「なんですよ」等の固定句は必須化しない。
+
+同時にEditorial Information Budgetを導入する。専門記事ですべての専門語に日常例を追加すると、本文目安2,000〜3,200字を圧迫し、Evidence/制約/Decisionの希薄化またはSource Boundary表面積の増加につながる。このため、読者が持ち帰る専門概念を内部で2〜4個へ絞り、Decision理解に必須の概念のみ丁寧に翻訳する。それ以外はEvidenceと重要制約を維持したまま圧縮する。会話的な一文・日常例は新しい段落として追加せず、硬い説明・接続文の置換を優先する。
+
+Article Auditには Reader Proximity / Reader Proximity Moment Count / Information Budget を追加する。日常語だけではConversational WarmthをGOODにせず、実際のProximity機能がなければ REVIEW_MISSING とする。これらはsoft-onlyであり、Quality Retry budget、Fact/Evidence/Publication/Decision Hard Gate、Notion schema、Gemini call siteを変更しない。

@@ -36,3 +36,8 @@ Operational state and published eyecatch assets are intentionally different from
 
 ### Run130 Fresh Article Regression
 `Real Article Regression Test` の手動実行時に `article_set` を選択できます。`fixed` は従来の固定A/B比較、`fresh` は新規候補3件による本番耐性確認です。freshの候補選定は0 Gemini Screening call・Notion READ ONLY・Production writeなしです。詳細は `RUN130_FRESH_ARTICLE_REGRESSION_SETUP.md` を参照してください。
+
+### Run131 Reader Proximity + Information Budget
+Run129/130実稿で確認された「日常語はあるが会話距離が遠い」問題を修正。1記事1〜3箇所の機能的Reader Proximityを求める一方、会話文・比喩を足し算せず既存説明を置換する。読者が持ち帰る専門概念を2〜4個へ編集選択し、Evidence/制約/Decisionを削らず本文2,000〜3,200字の情報予算を守る。Warmth不足は0-API soft診断であり、追加Gemini RetryやHard Rejectには接続しない。
+- `RUN131_READER_PROXIMITY_INFORMATION_BUDGET_SETUP.md`
+- `RUN131_READER_PROXIMITY_INFORMATION_BUDGET_VALIDATION_2026-08-25.md`
