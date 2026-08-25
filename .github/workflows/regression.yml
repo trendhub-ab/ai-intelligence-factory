@@ -11,6 +11,7 @@ on:
       - 'eyecatch_images/**'
       - 'deferred_deep_dive/**'
       - '.runtime/**'
+      - '.github/chat-triggers/**'
   workflow_dispatch:
     inputs:
       suite:
