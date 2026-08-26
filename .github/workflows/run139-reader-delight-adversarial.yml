@@ -29,4 +29,5 @@ jobs:
           GEMINI_API_KEY: test-key
           GH_PAT: test-token
           GEMINI_QUOTA_PROJECT_ID: test-project
+          PYTHONPATH: .
         run: python tools/run139_reader_delight_adversarial.py
