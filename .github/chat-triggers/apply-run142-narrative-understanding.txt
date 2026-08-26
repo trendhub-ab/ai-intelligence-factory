@@ -1,3 +1,4 @@
 mode=apply-run142-narrative-understanding
-requested_at=2026-08-26T22:19+09:00
+requested_at=2026-08-26T22:28+09:00
 api=zero
+attempt=2
