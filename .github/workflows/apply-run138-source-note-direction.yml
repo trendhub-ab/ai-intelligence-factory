@@ -1,0 +1,57 @@
+name: Apply Run138 Source Note Direction
+
+on:
+  push:
+    branches:
+      - run129-conversational-warmth
+    paths:
+      - .github/chat-triggers/apply-run138-source-note-direction.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-intelligence-run138-patch
+  cancel-in-progress: false
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run129-conversational-warmth
+          fetch-depth: 2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply Run138 patch
+        run: python tools/apply_run138_source_note_direction.py
+      - name: Run dedicated Run138 tests
+        run: python -m unittest tests.test_run138_source_note_direction -v
+      - name: Run full unit suite
+        run: python -m unittest discover -s tests -v
+      - name: Verify Gemini call sites unchanged
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('pipeline.py').read_text(encoding='utf-8')
+          assert text.count('_generate_via_chat(') == 7, text.count('_generate_via_chat(')
+          assert text.count('genai.Client(') == 1, text.count('genai.Client(')
+          print('Gemini call-site anchors unchanged')
+          PY
+      - name: Commit Run138 if tests pass
+        run: |
+          git config user.name "TrendHub"
+          git config user.email "trendhub.biz@gmail.com"
+          git add pipeline.py tests/test_run138_source_note_direction.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: Run138 correct source note direction"
+          git push origin HEAD:run129-conversational-warmth
