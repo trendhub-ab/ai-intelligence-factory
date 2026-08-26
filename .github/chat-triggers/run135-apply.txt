@@ -1,2 +1,2 @@
-requested_at=2026-08-26T17:48:00+09:00
-reason=rerun after sentence-safe patch correction
+requested_at=2026-08-26T17:56:00+09:00
+reason=wrapper-aware final manuscript budget and tutorial suppression
