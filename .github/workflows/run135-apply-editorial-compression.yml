@@ -1,0 +1,60 @@
+name: Run135 Apply Editorial Compression
+
+on:
+  push:
+    branches:
+      - run129-conversational-warmth
+    paths:
+      - '.github/chat-triggers/run135-apply.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run129-conversational-warmth
+          fetch-depth: 2
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Apply Run135 prompt patch
+        run: python tools/apply_run135_editorial_compression_patch.py
+      - name: Install production dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Run133 compression tests
+        run: python -m unittest tests.test_run133_reader_first_editorial_compression -v
+      - name: Run full production unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify Run135 anchors
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t = Path('pipeline.py').read_text(encoding='utf-8')
+          required = [
+              '3,200字を超えそうなら',
+              '列挙で専門性を演出しない',
+              'Retryで本文を長くすることは禁止',
+              '根拠にない保証表現、業界標準との断定',
+          ]
+          missing = [s for s in required if s not in t]
+          if missing:
+              raise SystemExit(f'missing Run135 anchors: {missing}')
+          print('Run135 anchors verified')
+          PY
+      - name: Commit patched pipeline
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add pipeline.py
+          git diff --cached --quiet && { echo 'No pipeline change to commit'; exit 1; }
+          git commit -m 'Run135: enforce reader-first editorial compression'
+          git push origin HEAD:run129-conversational-warmth
