@@ -5,19 +5,19 @@ import pipeline
 
 class Run137HumanVoiceTests(unittest.TestCase):
     def test_prompt_treats_reader_as_real_person_not_abstract_user(self):
-        src = inspect.getsource(pipeline.build_decision_prompt)
+        src = inspect.getsource(pipeline._human_editorial_style_rules)
         self.assertIn('読者を抽象的な「ユーザー」として扱わず', src)
         self.assertIn('実際にスマホやPCを触り', src)
 
     def test_prompt_avoids_ai_staging_phrase_repetition(self):
-        src = inspect.getsource(pipeline.build_decision_prompt)
+        src = inspect.getsource(pipeline._human_editorial_style_rules)
         self.assertIn('ここで重要なのは', src)
         self.assertIn('ポイントは', src)
         self.assertIn('常套句', src)
         self.assertIn('前の段落で生まれた疑問・意外性・判断', src)
 
     def test_reader_question_must_have_function(self):
-        src = inspect.getsource(pipeline.build_decision_prompt)
+        src = inspect.getsource(pipeline._human_editorial_style_rules)
         self.assertIn('語りかけは装飾ではなく理解の橋', src)
         self.assertIn('中身のない問い', src)
         self.assertIn('何を見ればよいか・なぜ自分に関係するか', src)
