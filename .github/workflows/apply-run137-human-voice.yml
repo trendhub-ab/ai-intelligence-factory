@@ -1,0 +1,64 @@
+name: Apply Run137 Human Voice
+
+on:
+  push:
+    branches:
+      - run129-conversational-warmth
+    paths:
+      - .github/chat-triggers/apply-run137-human-voice.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-intelligence-run137-patch
+  cancel-in-progress: false
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run129-conversational-warmth
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Apply Run137 patch
+        run: python tools/apply_run137_human_voice.py
+
+      - name: Run dedicated Run137 tests
+        run: python -m unittest tests.test_run137_human_voice -v
+
+      - name: Run full unit suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify Gemini call sites unchanged
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('pipeline.py').read_text(encoding='utf-8')
+          assert text.count('_generate_via_chat(') == 7, text.count('_generate_via_chat(')
+          assert text.count('genai.Client(') == 1, text.count('genai.Client(')
+          print('Gemini call-site anchors unchanged')
+          PY
+
+      - name: Commit Run137 if tests pass
+        run: |
+          git config user.name "TrendHub"
+          git config user.email "trendhub.biz@gmail.com"
+          git add pipeline.py tests/test_run137_human_voice.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat: Run137 reinforce human voice and anti-AI style"
+          git push origin HEAD:run129-conversational-warmth
