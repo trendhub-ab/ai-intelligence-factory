@@ -51,11 +51,21 @@ inject = r'''    # Run142: Narrative Understanding Progression.
         and body_reader_bridge_hits <= 1
     )
     analogy_substance_thin = analogy_hits >= 3 and factual_substance_hits <= 3 and causal_explanation_hits <= 2
-    narrative_understanding_progression = (
-        narrative_progression_hits >= 2
-        and causal_explanation_hits >= 2
-        and decision_or_implication_hits >= 1
+    practical_reader_progression = (
+        len(_paras) >= 3
+        and self_relevance
+        and reader_proximity_moments >= 1
+        and decision_or_implication_hits >= 3
         and factual_substance_hits >= 2
+    )
+    narrative_understanding_progression = (
+        (
+            narrative_progression_hits >= 2
+            and causal_explanation_hits >= 2
+            and decision_or_implication_hits >= 1
+            and factual_substance_hits >= 2
+        )
+        or practical_reader_progression
     )
     if warm_hook_cold_body:
         enjoyment_issues.append("warm_hook_cold_body")
