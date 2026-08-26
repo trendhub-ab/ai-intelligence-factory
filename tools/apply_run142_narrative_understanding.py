@@ -1,25 +1,22 @@
 from pathlib import Path
-import re
 
 p = Path('pipeline.py')
 s = p.read_text(encoding='utf-8')
 original = s
 
-# 1) Expand natural reader-question recognition so genuinely good prose is not rejected
+# 1) Expand natural reader-question recognition so genuinely good prose is not rejected.
 old = r'''reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね)[。！？!?]", prose))'''
 new = r'''reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね|感じませんか|思いませんか|考えたくなりますよね)[。！？!?]", prose))'''
 if old not in s:
     raise SystemExit('reader_question_hits anchor not found')
 s = s.replace(old, new, 1)
 
-# 2) Inject Run142 progression/substance diagnostics immediately before Reader-value budget comment
-anchor = '''    # Reader-value budget: length itself is never a defect. Diagnose only the patterns that make\n'''
+# 2) Calculate Run142 diagnostics BEFORE the existing Run140 Reader Delight verdict.
+anchor = '''    # Run140: composite reader outcome. This remains 0-API and soft-only: it does not trigger\n'''
 if anchor not in s:
-    raise SystemExit('reader-value anchor not found')
+    raise SystemExit('Run140 anchor not found')
 inject = r'''    # Run142: Narrative Understanding Progression.
     # Reader Delight must reflect understanding that moves forward, not a checklist of warm words.
-    # Detect: (a) warm hook followed by cold report prose, (b) analogy-heavy but substance-thin copy,
-    # and (c) genuine question -> explanation -> consequence/decision progression.
     _paras = [x.strip() for x in re.split(r"\n\s*\n", prose) if x.strip()]
     _body_after_opening = "\n\n".join(_paras[1:]) if len(_paras) > 1 else prose
     narrative_progression_hits = len(re.findall(
@@ -70,27 +67,25 @@ inject = r'''    # Run142: Narrative Understanding Progression.
 '''
 s = s.replace(anchor, inject + anchor, 1)
 
-# 3) Strengthen Reader Delight final verdict. Replace the first assignment statement robustly.
-pat = re.compile(r'(^\s*reader_delight\s*=\s*)(.+)$', re.M)
-m = pat.search(s)
-if not m:
-    raise SystemExit('reader_delight assignment not found')
-indent = re.match(r'\s*', m.group(1)).group(0)
-replacement = indent + '''reader_delight = "GOOD" if (\n        reader_delight == "GOOD"\n        and narrative_understanding_progression\n        and not warm_hook_cold_body\n        and not analogy_substance_thin\n    ) else "REVIEW"'''
-s = s[:m.start()] + replacement + s[m.end():]
+# 3) Strengthen existing Run140 verdict without self-reference.
+old_verdict = '''    reader_delight = "GOOD" if reader_delight_good else "REVIEW"\n'''
+new_verdict = '''    reader_delight = "GOOD" if (\n        reader_delight_good\n        and narrative_understanding_progression\n        and not warm_hook_cold_body\n        and not analogy_substance_thin\n    ) else "REVIEW"\n'''
+if old_verdict not in s:
+    raise SystemExit('reader_delight verdict anchor not found')
+s = s.replace(old_verdict, new_verdict, 1)
 
-# 4) Expose diagnostics in returned signal dict next to reader_delight key if present.
+# 4) Expose diagnostics.
 needle = '        "reader_delight": reader_delight,\n'
 if needle not in s:
     raise SystemExit('reader_delight return key not found')
 s = s.replace(needle, needle + '''        "narrative_understanding_progression": "GOOD" if narrative_understanding_progression else "REVIEW",\n        "narrative_progression_hits": narrative_progression_hits,\n        "causal_explanation_hits": causal_explanation_hits,\n        "factual_substance_hits": factual_substance_hits,\n        "analogy_hits": analogy_hits,\n        "warm_hook_cold_body": warm_hook_cold_body,\n        "analogy_substance_thin": analogy_substance_thin,\n''', 1)
 
-# 5) Add audit fields
+# 5) Audit fields.
 needle2 = '            f"- Reader Delight: {reader.get(\'reader_delight\')}",\n'
 if needle2 in s:
     s = s.replace(needle2, needle2 + '''            f"- Narrative Understanding Progression: {reader.get('narrative_understanding_progression')}",\n            f"- Warm Hook Cold Body: {reader.get('warm_hook_cold_body')}",\n            f"- Analogy Substance Thin: {reader.get('analogy_substance_thin')}",\n''', 1)
 
-# 6) Prompt: explicitly forbid gaming the opening/analogy and require progression.
+# 6) Prompt rules.
 prompt_anchor = '・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。'
 if prompt_anchor not in s:
     raise SystemExit('prompt anchor not found')
