@@ -1,0 +1,3 @@
+mode=run143-reader-delight-strong-redteam
+requested_at=2026-08-26T22:40+09:00
+api=zero
