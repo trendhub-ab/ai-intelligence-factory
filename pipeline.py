@@ -5773,6 +5773,8 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
 ・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。「ここで重要なのは」「ポイントは」「つまり」「注目すべきは」のようなAIが説明を整理するときの常套句も、便利だからという理由で段落頭に繰り返さない。接続語で流れを作るのではなく、前の段落で生まれた疑問・意外性・判断の続きを次の段落が自然に受ける。
 ・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、読者を抽象的な「ユーザー」として扱わず、実際にスマホやPCを触り、仕事や生活で迷う一人の人として書く。1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。ただし毎節で呼びかけたり、相づちを連打したりしない。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
+・Reader Delightは冒頭だけで作らない。導入で親近感を出した後に本文が技術レポートへ戻る構成は禁止する。記事全体で「読者の疑問 → 普通の言葉で理解 → なぜそうなるか → 何が面白い／困るか → 自分ならどう見る・判断するか」と理解が前へ進む流れを作る。各段落は前段落で生まれた疑問か意味を受け、情報カードの羅列にしない。
+・比喩は理解のための橋であり、面白さの代用品ではない。比喩だけで分かった気にさせず、比喩の直後または近接段落で「実際の技術では何が対応するのか」「なぜその現象が起きるのか」を最低1つ具体化する。かわいい例・日常例・口語表現が多くても、技術的な芯や因果が薄ければ完成としない。
 ・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。ただし品質Gateを緩めたり、親しみ不足だけを理由にGemini再生成を増やしたりしない。記事全体の温度を1〜2個の口語句で済ませず、硬い説明が2段落続いたら次の段落では、追加説明を足さず、既存文を「読者の判断／具体場面／平易な一言」のどれかへ置き換えて人間の言葉へ戻す。語りかけは装飾ではなく理解の橋として使い、「あなたならどうしますか？」のような中身のない問いは置かない。問いかけたなら、その直後の文で読者が何を見ればよいか・なぜ自分に関係するかへつなげる。ARTICLE全体が長い場合は段落追加ではなく削除・統合を優先する。
 ・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。固定語でもない。特定の語尾を義務化せず、役割としての親近感を満たす。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
 ・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。『硬い説明→親しい説明』は置換であり追記ではない。
@@ -8366,7 +8368,7 @@ def _reader_experience_signals(article: str) -> dict:
         r"(?:想像|思い浮かべ)して(?:みる|みて)",
     ]
     conversational_hits = sum(len(re.findall(p, prose)) for p in conversational_patterns)
-    reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね)[。！？!?]", prose))
+    reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね|感じませんか|思いませんか|考えたくなりますよね)[。！？!?]", prose))
     friendly_turn_hits = len(re.findall(r"(?:難しそう(?:ですが|でも)|名前は難し|意外と単純|やっていることは[^。！？]{0,35}(?:単純|シンプル)|身近な話にすると)", prose))
     reader_proximity_moments = conversational_hits + reader_question_hits + friendly_turn_hits
     repeated_conversational_phrase = any(len(re.findall(p, prose)) >= 3 for p in conversational_patterns)
@@ -8421,6 +8423,65 @@ def _reader_experience_signals(article: str) -> dict:
     if not conversational_warmth: enjoyment_issues.append("reader_proximity_missing")
     if conversational_overuse: enjoyment_issues.append("conversational_tone_overuse")
 
+    # Run142: Narrative Understanding Progression.
+    # Reader Delight must reflect understanding that moves forward, not a checklist of warm words.
+    _paras = [x.strip() for x in re.split(r"\n\s*\n", prose) if x.strip()]
+    _body_after_opening = "\n\n".join(_paras[1:]) if len(_paras) > 1 else prose
+    narrative_progression_hits = len(re.findall(
+        r"(?:ところが|理由(?:の一つ)?が|なぜなら|その結果|だからこそ|だから|すると|そこで|一方で|でも|では導入すれば|つまり何が|何が困る|何を意味する|につながる|ためです|からです)",
+        prose,
+    ))
+    causal_explanation_hits = len(re.findall(
+        r"(?:理由|なぜ|ため|ので|その結果|だから|そこで|つまり|一方で|ところが|すると)", prose
+    ))
+    decision_or_implication_hits = len(re.findall(
+        r"(?:私なら|判断|導入|安全性|意味|困る|価値|影響|使うなら|見るべき|確認|試して|比較)", prose
+    ))
+    factual_substance_hits = len(re.findall(
+        r"(?:ニューロン|特徴|活性化|非直交|ベクトル|重み|回路|因果|制約|互換性|一次資料|Sparse Autoencoder|Superposition|Polysemanticity|辞書学習|スパース)",
+        prose, re.I,
+    ))
+    analogy_hits = len(re.findall(
+        r"(?:たとえば|例える|ような|みたい|押し入れ|収納|合鍵|家族|スマホ|料理|電車|棚|箱|引き出し)", prose
+    ))
+    report_style_body_hits = len(re.findall(
+        r"(?:評価します|解析します|同定します|抽出します|確認します|検討します|必要があります|方式です|発生します|分布します)",
+        _body_after_opening,
+    ))
+    body_reader_bridge_hits = len(re.findall(
+        r"(?:ですよね|ませんか|感じませんか|思いませんか|難しそう|身近|困る|なぜ|だから|ところが|でも|そこで|私なら)",
+        _body_after_opening,
+    ))
+    warm_hook_cold_body = (
+        reader_proximity_moments >= 1
+        and len(_paras) >= 3
+        and report_style_body_hits >= 4
+        and body_reader_bridge_hits <= 1
+    )
+    analogy_substance_thin = analogy_hits >= 3 and factual_substance_hits <= 3 and causal_explanation_hits <= 2
+    practical_reader_progression = (
+        len(_paras) >= 3
+        and self_relevance
+        and reader_proximity_moments >= 1
+        and decision_or_implication_hits >= 3
+        and factual_substance_hits >= 2
+    )
+    narrative_understanding_progression = (
+        (
+            narrative_progression_hits >= 2
+            and causal_explanation_hits >= 2
+            and decision_or_implication_hits >= 1
+            and factual_substance_hits >= 2
+        )
+        or practical_reader_progression
+    )
+    if warm_hook_cold_body:
+        enjoyment_issues.append("warm_hook_cold_body")
+    if analogy_substance_thin:
+        enjoyment_issues.append("analogy_substance_thin")
+    if not narrative_understanding_progression:
+        enjoyment_issues.append("narrative_understanding_progression_weak")
+
     # Run140: composite reader outcome. This remains 0-API and soft-only: it does not trigger
     # an extra Gemini call by itself. The generation prompt is responsible for achieving it.
     reader_delight_good = (
@@ -8431,7 +8492,20 @@ def _reader_experience_signals(article: str) -> dict:
         and self_relevance
         and (plain_language_bridge_present or not bridge_needed)
     )
-    reader_delight = "GOOD" if reader_delight_good else "REVIEW"
+    reader_delight_base = (
+        opening_non_engineer_access == "GOOD"
+        and reader_proximity_moments >= 1
+        and not conversational_overuse
+        and article_specific_angle
+        and (plain_language_bridge_present or not bridge_needed)
+        and (self_relevance or decision_or_implication_hits >= 2)
+    )
+    reader_delight = "GOOD" if (
+        reader_delight_base
+        and narrative_understanding_progression
+        and not warm_hook_cold_body
+        and not analogy_substance_thin
+    ) else "REVIEW"
 
     # Reader-value budget: length itself is never a defect. Diagnose only the patterns that make
     # an article *feel* long to a non-engineer: repeated dense explanation, duplicated analogy,
@@ -8469,6 +8543,13 @@ def _reader_experience_signals(article: str) -> dict:
         "reader_proximity_moment_count": reader_proximity_moments,
         "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
         "reader_delight": reader_delight,
+        "narrative_understanding_progression": "GOOD" if narrative_understanding_progression else "REVIEW",
+        "narrative_progression_hits": narrative_progression_hits,
+        "causal_explanation_hits": causal_explanation_hits,
+        "factual_substance_hits": factual_substance_hits,
+        "analogy_hits": analogy_hits,
+        "warm_hook_cold_body": warm_hook_cold_body,
+        "analogy_substance_thin": analogy_substance_thin,
         "information_budget": information_budget,
         "opening_non_engineer_access": opening_non_engineer_access,
         "opening_technical_terms_per_1000_chars": round(opening_density, 1),
@@ -9406,6 +9487,9 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Conversational Marker Count: {reader.get('conversational_marker_count')}",
             f"- Reader Proximity: {reader.get('reader_proximity')}",
             f"- Reader Delight: {reader.get('reader_delight')}",
+            f"- Narrative Understanding Progression: {reader.get('narrative_understanding_progression')}",
+            f"- Warm Hook Cold Body: {reader.get('warm_hook_cold_body')}",
+            f"- Analogy Substance Thin: {reader.get('analogy_substance_thin')}",
             f"- Reader Proximity Moment Count: {reader.get('reader_proximity_moment_count')}",
             f"- Information Budget: {reader.get('information_budget')}",
             f"- Opening Non-Engineer Access: {reader.get('opening_non_engineer_access')}",
