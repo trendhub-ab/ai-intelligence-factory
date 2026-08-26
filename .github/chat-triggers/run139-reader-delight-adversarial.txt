@@ -1,0 +1,3 @@
+mode=run139-reader-delight-adversarial
+requested_at=2026-08-26T20:59+09:00
+api=zero
