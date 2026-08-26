@@ -1,4 +1,4 @@
 mode=apply-run144-reader-delight-balance
-requested_at=2026-08-26T23:01+09:00
+requested_at=2026-08-26T23:04+09:00
 api=zero
-attempt=5
+attempt=6
