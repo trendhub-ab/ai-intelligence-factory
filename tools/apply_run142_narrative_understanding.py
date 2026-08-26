@@ -67,9 +67,11 @@ inject = r'''    # Run142: Narrative Understanding Progression.
 '''
 s = s.replace(anchor, inject + anchor, 1)
 
-# 3) Strengthen existing Run140 verdict without self-reference.
+# 3) Strengthen existing Run140 verdict. A strong meaning/decision arc can substitute for
+# literal self-relevance tokens such as "仕事" or "生活"; this prevents false negatives on
+# genuinely engaging science/AI explanations while adversarial warm-hook and analogy cases stay blocked.
 old_verdict = '''    reader_delight = "GOOD" if reader_delight_good else "REVIEW"\n'''
-new_verdict = '''    reader_delight = "GOOD" if (\n        reader_delight_good\n        and narrative_understanding_progression\n        and not warm_hook_cold_body\n        and not analogy_substance_thin\n    ) else "REVIEW"\n'''
+new_verdict = '''    reader_delight_base = (\n        opening_non_engineer_access == "GOOD"\n        and reader_proximity_moments >= 1\n        and not conversational_overuse\n        and article_specific_angle\n        and (plain_language_bridge_present or not bridge_needed)\n        and (self_relevance or decision_or_implication_hits >= 2)\n    )\n    reader_delight = "GOOD" if (\n        reader_delight_base\n        and narrative_understanding_progression\n        and not warm_hook_cold_body\n        and not analogy_substance_thin\n    ) else "REVIEW"\n'''
 if old_verdict not in s:
     raise SystemExit('reader_delight verdict anchor not found')
 s = s.replace(old_verdict, new_verdict, 1)
