@@ -5773,6 +5773,7 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
 ・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。「ここで重要なのは」「ポイントは」「つまり」「注目すべきは」のようなAIが説明を整理するときの常套句も、便利だからという理由で段落頭に繰り返さない。接続語で流れを作るのではなく、前の段落で生まれた疑問・意外性・判断の続きを次の段落が自然に受ける。
 ・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、読者を抽象的な「ユーザー」として扱わず、実際にスマホやPCを触り、仕事や生活で迷う一人の人として書く。1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。ただし毎節で呼びかけたり、相づちを連打したりしない。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
+・親近感は疑問形や相づちの数で採点しない。Security・Risk・Hardware・Researchのようなテーマでは、落ち着いた語りでも、読者が普通の言葉で核心を理解し、制約と判断まで自然に到達できれば十分に人間的で親しみやすい。口語句を足すためだけの修正は禁止する。
 ・Reader Delightは冒頭だけで作らない。導入で親近感を出した後に本文が技術レポートへ戻る構成は禁止する。記事全体で「読者の疑問 → 普通の言葉で理解 → なぜそうなるか → 何が面白い／困るか → 自分ならどう見る・判断するか」と理解が前へ進む流れを作る。各段落は前段落で生まれた疑問か意味を受け、情報カードの羅列にしない。
 ・比喩は理解のための橋であり、面白さの代用品ではない。比喩だけで分かった気にさせず、比喩の直後または近接段落で「実際の技術では何が対応するのか」「なぜその現象が起きるのか」を最低1つ具体化する。かわいい例・日常例・口語表現が多くても、技術的な芯や因果が薄ければ完成としない。
 ・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。ただし品質Gateを緩めたり、親しみ不足だけを理由にGemini再生成を増やしたりしない。記事全体の温度を1〜2個の口語句で済ませず、硬い説明が2段落続いたら次の段落では、追加説明を足さず、既存文を「読者の判断／具体場面／平易な一言」のどれかへ置き換えて人間の言葉へ戻す。語りかけは装飾ではなく理解の橋として使い、「あなたならどうしますか？」のような中身のない問いは置かない。問いかけたなら、その直後の文で読者が何を見ればよいか・なぜ自分に関係するかへつなげる。ARTICLE全体が長い場合は段落追加ではなく削除・統合を優先する。
@@ -8438,7 +8439,10 @@ def _reader_experience_signals(article: str) -> dict:
         r"(?:私なら|判断|導入|安全性|意味|困る|価値|影響|使うなら|見るべき|確認|試して|比較)", prose
     ))
     factual_substance_hits = len(re.findall(
-        r"(?:ニューロン|特徴|活性化|非直交|ベクトル|重み|回路|因果|制約|互換性|一次資料|Sparse Autoencoder|Superposition|Polysemanticity|辞書学習|スパース)",
+        r"(?:ニューロン|特徴|活性化|非直交|ベクトル|重み|回路|因果|制約|互換性|一次資料|"
+        r"Sparse Autoencoder|Superposition|Polysemanticity|辞書学習|スパース|"
+        r"権限|最小権限|アクセス|ログ|承認|監視|演算性能|メモリ|帯域|消費電力|ベンチマーク|"
+        r"コスト|冷却|モデル|トークン|暗号|認証|脆弱性|API|プロトコル)",
         prose, re.I,
     ))
     analogy_hits = len(re.findall(
@@ -8459,12 +8463,27 @@ def _reader_experience_signals(article: str) -> dict:
         and body_reader_bridge_hits <= 1
     )
     analogy_substance_thin = analogy_hits >= 3 and factual_substance_hits <= 3 and causal_explanation_hits <= 2
+    # Run144: concise good prose can show progression through a concrete technical core + caveat/action,
+    # without mandatory catchphrases or a fixed number of explicit causal connectors.
+    caveat_or_concrete_action = bool(re.search(
+        r"(?:ただし|とは限ら|わけではありません|保証されるわけでは|まず[^。！？]{0,80}(?:試|比較|確認|限定)|"
+        r"小さ(?:く|な環境)|範囲を広げ|比較対象|見送|待つ|段階(?:的に)?導入)",
+        prose, re.I,
+    ))
+    explicit_reader_decision_action = bool(re.search(
+        r"(?:私なら|導入するなら|使うなら|判断(?:します|する|材料)|比較(?:します|する|対象)|"
+        r"確認(?:します|する)|まず[^。！？]{0,80}(?:試|比べ|確認)|見送(?:ります|る)|追(?:います|う)|"
+        r"検証(?:します|する)|段階(?:的に)?導入)",
+        prose, re.I,
+    ))
     practical_reader_progression = (
         len(_paras) >= 3
-        and self_relevance
-        and reader_proximity_moments >= 1
-        and decision_or_implication_hits >= 3
         and factual_substance_hits >= 2
+        and opening_non_engineer_access == "GOOD"
+        and (self_relevance or plain_language_bridge_present or reader_proximity_moments >= 1)
+        and explicit_reader_decision_action
+        and caveat_or_concrete_action
+        and decision_or_implication_hits >= 1
     )
     narrative_understanding_progression = (
         (
@@ -8492,19 +8511,57 @@ def _reader_experience_signals(article: str) -> dict:
         and self_relevance
         and (plain_language_bridge_present or not bridge_needed)
     )
+    # Run144: Reader Delight is a balance, not an AND-list of conversational tokens.
+    # Hard-negative patterns stay strict; positive quality may be demonstrated by independent signals.
+    reader_delight_overclaim = bool(re.search(
+        r"(?:完全に理解できれば|完全に整理できます|完全に取り出せ|ブラックボックス問題は解決|"
+        r"危険な挙動も事前に見抜け|必須条件にします|すぐ全社導入|私なら今のうちに導入します)",
+        prose, re.I,
+    ))
+    # Repetition is measured across distinct paragraphs, not by repeated technical nouns.
+    _paragraph_fragment_counts = {}
+    for _para in _paras:
+        _compact = re.sub(r"https?://\S+|`[^`]+`|[A-Za-z0-9_.:/+-]+|[\s。、！？!?「」『』（）()【】#*_>・:：;；,，.-]+", "", _para)
+        _seen = set()
+        for _idx in range(max(0, len(_compact) - 6)):
+            _piece = _compact[_idx:_idx + 7]
+            if len(_piece) == 7:
+                _seen.add(_piece)
+        for _piece in _seen:
+            _paragraph_fragment_counts[_piece] = _paragraph_fragment_counts.get(_piece, 0) + 1
+    repeated_cross_paragraph_fragments = [k for k, v in _paragraph_fragment_counts.items() if v >= 3]
+    repetitive_insight = len(repeated_cross_paragraph_fragments) >= 3
+    if reader_delight_overclaim:
+        enjoyment_issues.append("reader_delight_overclaim")
+    if repetitive_insight:
+        enjoyment_issues.append("repetitive_insight")
+
+    positive_reader_signals = sum(bool(x) for x in (
+        opening_non_engineer_access == "GOOD",
+        article_specific_angle,
+        plain_language_bridge_present or not bridge_needed,
+        self_relevance or reader_proximity_moments >= 1 or everyday_terms or scene_present,
+        factual_substance_hits >= 2,
+        explicit_reader_decision_action and caveat_or_concrete_action,
+        narrative_understanding_progression,
+        curiosity or return_pull,
+    ))
     reader_delight_base = (
-        opening_non_engineer_access == "GOOD"
-        and reader_proximity_moments >= 1
-        and not conversational_overuse
+        positive_reader_signals >= 6
+        and opening_non_engineer_access == "GOOD"
         and article_specific_angle
         and (plain_language_bridge_present or not bridge_needed)
-        and (self_relevance or decision_or_implication_hits >= 2)
+        and factual_substance_hits >= 2
+        and explicit_reader_decision_action
     )
     reader_delight = "GOOD" if (
         reader_delight_base
         and narrative_understanding_progression
+        and not conversational_overuse
         and not warm_hook_cold_body
         and not analogy_substance_thin
+        and not reader_delight_overclaim
+        and not repetitive_insight
     ) else "REVIEW"
 
     # Reader-value budget: length itself is never a defect. Diagnose only the patterns that make
@@ -8543,6 +8600,11 @@ def _reader_experience_signals(article: str) -> dict:
         "reader_proximity_moment_count": reader_proximity_moments,
         "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
         "reader_delight": reader_delight,
+        "reader_delight_positive_signals": positive_reader_signals,
+        "reader_delight_overclaim": reader_delight_overclaim,
+        "repetitive_insight": repetitive_insight,
+        "caveat_or_concrete_action": caveat_or_concrete_action,
+        "explicit_reader_decision_action": explicit_reader_decision_action,
         "narrative_understanding_progression": "GOOD" if narrative_understanding_progression else "REVIEW",
         "narrative_progression_hits": narrative_progression_hits,
         "causal_explanation_hits": causal_explanation_hits,
