@@ -1,0 +1,65 @@
+name: Apply Run142 Narrative Understanding
+
+on:
+  push:
+    branches:
+      - run129-conversational-warmth
+    paths:
+      - .github/chat-triggers/apply-run142-narrative-understanding.txt
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run129-conversational-warmth
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply Run142 patch
+        run: python tools/apply_run142_narrative_understanding.py
+      - name: Run dedicated Run142 tests
+        env:
+          GEMINI_API_KEY: test-key
+          GH_PAT: test-token
+          GEMINI_QUOTA_PROJECT_ID: test-project
+          PYTHONPATH: .
+        run: python -m unittest tests.test_run142_narrative_understanding -v
+      - name: Run Run141 red-team again
+        env:
+          GEMINI_API_KEY: test-key
+          GH_PAT: test-token
+          GEMINI_QUOTA_PROJECT_ID: test-project
+          PYTHONPATH: .
+        run: python tools/run141_reader_delight_redteam.py
+      - name: Run full unit suite
+        env:
+          GEMINI_API_KEY: test-key
+          GH_PAT: test-token
+          GEMINI_QUOTA_PROJECT_ID: test-project
+          PYTHONPATH: .
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Verify Gemini call sites unchanged
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('pipeline.py').read_text(encoding='utf-8')
+          assert s.count('_generate_via_chat(')==7
+          assert s.count('genai.Client(')==1
+          print('Gemini call-site invariant PASS')
+          PY
+      - name: Commit Run142 if tests pass
+        run: |
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add pipeline.py tests/test_run142_narrative_understanding.py
+          git commit -m 'feat: Run142 require narrative understanding progression' || exit 0
+          git push origin HEAD:run129-conversational-warmth
