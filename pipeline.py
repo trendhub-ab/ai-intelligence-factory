@@ -5947,7 +5947,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。
 ・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
 ・根拠に照らして限定検証、比較テスト、導入見送り、次版待ちなどの判断が妥当なら、理由と対象範囲を添えて明確に書く。安全性のためにすべてを「可能性がある」「注視したい」へ弱めない。
-・記事本文は目安として2,200〜3,000字、3,200字をSoft Ceilingとし、同じ事実を別の見出しで繰り返さない。重要Evidenceや制約のため超えることは許容するが、Decisionに不要な技術詳細の列挙で長文化しない。
+・記事本文の文字数を品質目標にしない。同じ事実の言い換え反復、Decisionに不要な実装列挙、長いコード例、説明の二重化は削る。一方で、Evidence・数値条件・制約・比較・反証・Decisionを文字数のために削らない。長くても読者が迷わず読み進められる情報順序と温度変化を優先する。
 """
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
@@ -8419,15 +8419,17 @@ def _reader_experience_signals(article: str) -> dict:
     if not conversational_warmth: enjoyment_issues.append("reader_proximity_missing")
     if conversational_overuse: enjoyment_issues.append("conversational_tone_overuse")
 
-    # Information-budget signal: do not solve accessibility by adding more prose. Several dense
-    # jargon paragraphs plus many analogies indicate the article may be explaining everything twice.
-    # This is diagnostic only; it never removes Evidence or changes a hard gate.
+    # Reader-value budget: length itself is never a defect. Diagnose only the patterns that make
+    # an article *feel* long to a non-engineer: repeated dense explanation, duplicated analogy,
+    # implementation overload, or long uninterrupted explanatory runs. Evidence/Decision depth may
+    # legitimately require a longer article, so character count remains observability only.
     article_char_count = len(re.sub(r"\s+", "", prose))
     information_budget = "GOOD"
     if (
         jargon_dense_paragraphs >= 3
         or (len(analogy_markers) >= 3 and technical_density >= 30.0)
-        or article_char_count > 3200
+        or (max_explanatory_run >= 4 and technical_density >= 26.0)
+        or (len(unique_implementation_identifiers) >= 10 and jargon_dense_paragraphs >= 2)
     ):
         information_budget = "REVIEW"
 
@@ -8813,10 +8815,16 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
     # Retry itself must not re-introduce internal management vocabulary into the public article.
     instructions.append("ARTICLE本文には内部管理コード NOW / TRY / WATCH / WAIT / AVOID を絶対に出力せず、読者向けの自然な日本語判断文へ言い換えてください。")
-    if any((row.get("reason_code") or "") in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT} for row in reason_rows):
-        instructions.append("AI臭・量産テンプレ感の修正では見出し名・段落分割・文章リズムを変更してよい。必要なら情報提示順も変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。")
+    hard_retry = any(row.get("severity") == GATE_SEVERITY_HARD for row in normalize_gate_reason_rows(reason_rows))
+    if hard_retry:
+        # HARD retry has one job: repair factual/publication safety. Combining it with whole-article
+        # compression caused new overclaims in real regression, so explicitly forbid broad rewriting.
+        instructions.append("HARD修正では記事全体の短文化・全面再構成を同時に行わず、指摘された事実・条件・導入・結論など必要箇所だけを最小限修正してください。修正対象外のEvidence・数値・固有名詞・制約・比較・反証・Decisionの意味と文章構造はできるだけ保持してください。")
+        instructions.append("Retry中に『安全性が担保される』『保証される』『完全に防げる』『必ず改善する』等、一次情報より強い保証・一般化を新たに作らないでください。根拠にない時間・金額・性能・業界標準も追加しないでください。")
+    elif any((row.get("reason_code") or "") in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT} for row in reason_rows):
+        instructions.append("AI臭・量産テンプレ感の修正では見出し名・段落分割・文章リズムを変更してよい。必要なら情報提示順も変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。文字数合わせではなく、重複説明を減らして長く感じさせないことを優先してください。")
     else:
-        instructions.append("修正対象外の一次情報・数値・固有名詞は不用意に書き換えないでください。ただしARTICLE本文が2,300字を超えている場合は、局所修正だけで長文を温存せず、Evidence・数値・制約・比較・反証・Decisionを保持したまま、実装列挙・二重説明・一般論・完全なコードブロック・実装チュートリアルを削除または統合して1,800〜2,300字へ再編集してください。Retryで本文を長くすることは禁止です。根拠にない保証表現、業界標準との断定、時間・金額・性能などの数値を新たに補わないでください。")
+        instructions.append("修正対象外の一次情報・数値・固有名詞は不用意に書き換えないでください。文字数を目標にせず、同じ事実の言い換え、不要な実装列挙、一般論、完全なコードブロック、実装チュートリアルなど読者の判断に不要な重複だけを削除・統合してください。Evidence・数値・制約・比較・反証・Decisionは短文化のために削らず、非エンジニアでも流れを追える説明順序を優先してください。")
     return "\n".join(dict.fromkeys(instructions)), list(dict.fromkeys(sections))
 
 
