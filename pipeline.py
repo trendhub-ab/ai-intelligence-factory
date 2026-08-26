@@ -5766,6 +5766,7 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・ニュース記事では、なぜ今日・今週・今回このテーマを読む価値があるのかを、公開日・更新・採用・仕様変更・普及・発見された問題など取得済みEvidenceから早い段階で示す。確認できない「最新」「急速に普及」「業界が注目」は作らない。
 ・抽象説明や仕様列挙が長く続く箇所は、可能なら一度だけ具体的な場面・比較・問いへ置き換えてから技術要件へ戻す。重要な要件や制約自体は削らない。
 ・中盤で企業ホワイトペーパーへ戻らない。権限、制約、要件などは、まず何が起こる場面なのかを理解させ、その後で必要な専門要件を渡す。
+・【無料note記事の最上位編集目標】読み手が「楽しい」「わかりやすい」「自分にも関係がある」と感じ、AIやITに詳しい人から面白い話を聞いていたら、いつの間にか核心を理解できていた状態を最優先する。技術レポートとして整っているだけでは完成としない。Evidence・数値・制約・反証・Decisionの正確さは絶対に落とさず、それらを読者が自然に理解できる順番と言葉へ編集する。親近感は口語句の数ではなく、読者の経験・疑問・判断と本文がつながっていることで成立させる。
 ・見出しは説明ラベルではなく、本文固有の意味と次を読む理由を持たせる。「なぜ重要か」「何が変わるか」「今後どうなるか」「最終判断」等を複数並べない。
 ・Decisionは報告書の固定章として処理せず、事実・制約・適用条件から自然に「私ならまず何をするか」へ到達させる。主観とEvidenceは混同しない。
 ・Reader-firstの「30秒でわかるこの記事」は公開UI上の要約であり、本文の段落順・見出し順・導入文型を固定するテンプレートではない。本文はその3項目をなぞらず、記事固有の流れを選ぶ。
@@ -8243,10 +8244,11 @@ def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
 
 
 def _reader_experience_signals(article: str) -> dict:
-    """Run127: 0-API soft diagnostics for reader pull without creating new hard gates.
+    """0-API diagnostics for reader pull without creating new hard gates.
 
-    The diagnostics distinguish accessibility from narrative/editorial pull. Missing analogy,
-    humor, everyday examples, or emotional language is never itself a failure.
+    Run140 treats delight as the combination of clarity, human proximity, and an article-specific
+    reason to keep reading. Missing analogy, humor, or a particular catchphrase is never itself
+    a failure; a plain but engaging explanation can still be GOOD.
     """
     body = article or ""
     headings = [re.sub(r"\s+", " ", h).strip() for h in re.findall(r"^#{2,3}\s+(.+)$", body, re.MULTILINE)]
@@ -8419,6 +8421,18 @@ def _reader_experience_signals(article: str) -> dict:
     if not conversational_warmth: enjoyment_issues.append("reader_proximity_missing")
     if conversational_overuse: enjoyment_issues.append("conversational_tone_overuse")
 
+    # Run140: composite reader outcome. This remains 0-API and soft-only: it does not trigger
+    # an extra Gemini call by itself. The generation prompt is responsible for achieving it.
+    reader_delight_good = (
+        opening_non_engineer_access == "GOOD"
+        and reader_proximity_moments >= 1
+        and not conversational_overuse
+        and article_specific_angle
+        and self_relevance
+        and (plain_language_bridge_present or not bridge_needed)
+    )
+    reader_delight = "GOOD" if reader_delight_good else "REVIEW"
+
     # Reader-value budget: length itself is never a defect. Diagnose only the patterns that make
     # an article *feel* long to a non-engineer: repeated dense explanation, duplicated analogy,
     # implementation overload, or long uninterrupted explanatory runs. Evidence/Decision depth may
@@ -8454,6 +8468,7 @@ def _reader_experience_signals(article: str) -> dict:
         "conversational_marker_count": conversational_hits,
         "reader_proximity_moment_count": reader_proximity_moments,
         "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
+        "reader_delight": reader_delight,
         "information_budget": information_budget,
         "opening_non_engineer_access": opening_non_engineer_access,
         "opening_technical_terms_per_1000_chars": round(opening_density, 1),
@@ -9390,6 +9405,7 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Conversational Warmth: {reader.get('conversational_warmth')}",
             f"- Conversational Marker Count: {reader.get('conversational_marker_count')}",
             f"- Reader Proximity: {reader.get('reader_proximity')}",
+            f"- Reader Delight: {reader.get('reader_delight')}",
             f"- Reader Proximity Moment Count: {reader.get('reader_proximity_moment_count')}",
             f"- Information Budget: {reader.get('information_budget')}",
             f"- Opening Non-Engineer Access: {reader.get('opening_non_engineer_access')}",
