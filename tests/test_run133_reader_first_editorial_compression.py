@@ -25,7 +25,6 @@ class Run133ReaderFirstEditorialCompressionTests(unittest.TestCase):
         )
         self.assertIn('原則2〜3個に絞る', prompt)
         self.assertIn('一次情報に存在する技術名を全部ARTICLEへ転記することは禁止', prompt)
-        self.assertIn('2,200〜3,000字、3,200字はSoft Ceiling', prompt)
         self.assertIn('硬い説明が2段落続いたら次の段落', prompt)
         self.assertIn('有料会員向けProduct Review / Notion DBの情報密度をARTICLE圧縮に合わせて削らない', prompt)
 
@@ -42,10 +41,11 @@ class Run133ReaderFirstEditorialCompressionTests(unittest.TestCase):
         self.assertEqual('GOOD', sig['opening_non_engineer_access'])
         self.assertEqual('GOOD', sig['reader_proximity'])
 
-    def test_information_budget_reviews_over_3200_chars_soft_only(self):
+    def test_information_budget_does_not_review_length_alone(self):
         article = '読者に分かる普通の文章です。' * 300
         sig = pipeline._reader_experience_signals(article)
-        self.assertEqual('REVIEW', sig['information_budget'])
+        self.assertGreater(sig['article_char_count'], 3200)
+        self.assertEqual('GOOD', sig['information_budget'])
         self.assertTrue(sig['soft_only'])
 
     def test_article_audit_exposes_run133_metrics(self):
