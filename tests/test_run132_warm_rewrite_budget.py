@@ -24,18 +24,17 @@ class Run132WarmRewriteBudgetTests(unittest.TestCase):
         self.assertIn('人間の言葉へ戻す', prompt)
         self.assertIn('置換であり追記ではない', prompt)
 
-    def test_prompt_protects_evidence_before_length_compression(self):
+    def test_prompt_protects_evidence_before_editorial_compression(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
-        self.assertIn('2,200〜3,000字、3,200字はSoft Ceiling', prompt)
         self.assertIn('Evidence、数値、制約、比較、反証、Decisionは先に削らない', prompt)
         self.assertIn('Decisionに不要な内部実装、規格番号・略語の列挙、重複説明', prompt)
 
-    def test_long_article_is_soft_information_budget_review(self):
+    def test_long_article_alone_does_not_force_information_budget_review(self):
         article = ('名前は難しそうですが、やっていることは意外と単純です。'
                    '必要な範囲だけ許可する仕組みです。') + (' 技術上の条件を一次資料で確認します。' * 260)
         sig = pipeline._reader_experience_signals(article)
         self.assertGreater(sig['article_char_count'], 3400)
-        self.assertEqual('REVIEW', sig['information_budget'])
+        self.assertEqual('GOOD', sig['information_budget'])
         self.assertTrue(sig['soft_only'])
 
     def test_normal_length_warm_article_keeps_good_budget(self):
