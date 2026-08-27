@@ -14,10 +14,19 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 DEFAULT_MAX_CHARS = 280
+_TRACKING_KEYS = {
+    "fbclid",
+    "gclid",
+    "mc_cid",
+    "mc_eid",
+    "ref",
+    "referrer",
+    "source",
+}
 
 
 def _first(item: Mapping[str, Any], *keys: str, default: str = "") -> str:
@@ -43,12 +52,12 @@ def _trim(text: str, limit: int) -> str:
     return text[: limit - 1].rstrip("、。,. ") + "…"
 
 
-def _clean_source_url(url: str) -> str:
-    """Remove query/fragment noise while retaining the canonical destination.
+def _contains_japanese(text: str) -> bool:
+    return bool(re.search(r"[ぁ-んァ-ン一-龯]", text or ""))
 
-    Factory snapshots can contain long Product Hunt tracking parameters. They
-    add no reader value and consume most of an X post's character budget.
-    """
+
+def _clean_source_url(url: str) -> str:
+    """Strip tracking noise without breaking functional query parameters."""
 
     value = _clean(url)
     if not value:
@@ -56,7 +65,19 @@ def _clean_source_url(url: str) -> str:
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"}:
         return value
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+    # Product Hunt redirect URLs work without their API campaign query and are
+    # dramatically shorter that way.
+    if parsed.netloc.lower() == "www.producthunt.com" and parsed.path.startswith("/r/"):
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+    kept = []
+    for key, val in parse_qsl(parsed.query, keep_blank_values=True):
+        lower = key.lower()
+        if lower.startswith("utm_") or lower in _TRACKING_KEYS:
+            continue
+        kept.append((key, val))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(kept), ""))
 
 
 def _source_label(item: Mapping[str, Any]) -> str:
@@ -109,9 +130,9 @@ def _signal_line(item: Mapping[str, Any]) -> str:
     shelf_life = _first(item, "shelf_life", "Shelf Life").upper()
 
     if engagement >= 300:
-        return "海外で反応が大きい話題です。"
+        return "海外で大きく反応されている話題です。"
     if screening >= 75:
-        return "Factoryでは重要度の高い更新として抽出。"
+        return "実務への影響が大きい更新として要チェック。"
     if shelf_life == "FLASH":
         return "速報性が高く、早めに確認したい話題です。"
     return "今後の動きを追う価値がある話題です。"
@@ -129,11 +150,17 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
 
     source = _source_label(item)
     topic = _topic_label(item)
-    hook = f"【{topic}】{title}"
-    sections: list[str] = [hook]
 
-    if summary:
-        sections.append(_trim(summary.rstrip("。") + "。", 82))
+    if summary and _contains_japanese(summary):
+        hook = f"【{topic}】{summary.rstrip('。')}"
+        sections: list[str] = [_trim(hook, 96)]
+        if title and _contains_japanese(title) and title not in summary:
+            sections.append(_trim(title, 70))
+    else:
+        sections = [_trim(f"【{topic}】{title}", 96)]
+        if summary:
+            sections.append(_trim(summary.rstrip("。") + "。", 82))
+
     sections.append(_signal_line(item))
 
     if why and why != summary:
@@ -166,8 +193,6 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
 
 
 def render_markdown(draft: Mapping[str, Any]) -> str:
-    """Render a human-review artifact."""
-
     return (
         "# X Pending Review\n\n"
         f"- Generator: `{draft.get('generator_mode', '')}`\n"
@@ -186,8 +211,6 @@ def save_pending_post(
     output_dir: str | Path = "artifacts/x_posts/pending",
     stem: str | None = None,
 ) -> tuple[Path, Path]:
-    """Save JSON + Markdown review artifacts locally."""
-
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     safe_stem = stem or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
