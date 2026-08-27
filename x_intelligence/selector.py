@@ -28,18 +28,42 @@ def _first(item: Mapping[str, Any], *keys: str, default: Any = "") -> Any:
     return default
 
 
+def _screening_score(item: Mapping[str, Any]) -> float:
+    return _number(
+        _first(
+            item,
+            "final_screening_score",
+            "screening_score",
+            "Screening Score",
+            "raw_screening_score",
+        )
+    )
+
+
+def _decision_score(item: Mapping[str, Any]) -> float:
+    return _number(_first(item, "decision_score", "Decision Score"))
+
+
 def candidate_score(item: Mapping[str, Any]) -> float:
     """Return a deterministic X suitability score from existing Factory data.
 
-    Decision value remains primary, while screening/engagement provide a small
-    tie-break. This deliberately avoids replacing the Factory's article quality
-    logic with a new hidden model.
+    If Decision Score exists it remains primary. Screening-only snapshots use
+    the Factory's screening/commercial signals plus capped engagement so the X
+    layer can consume observed_history without any new model call.
     """
 
-    decision = _number(_first(item, "decision_score", "Decision Score"))
-    screening = _number(_first(item, "screening_score", "Screening Score"))
-    engagement = _number(_first(item, "engagement", "Engagement"))
-    return round((decision * 0.65) + (screening * 0.30) + (min(engagement, 100.0) * 0.05), 2)
+    decision = _decision_score(item)
+    screening = _screening_score(item)
+    commercial = _number(
+        _first(item, "commercial_value_score", "Commercial Value Score", "raw_commercial_value_score")
+    )
+    engagement = min(_number(_first(item, "engagement", "Engagement")), 100.0)
+
+    if decision > 0:
+        score = (decision * 0.60) + (screening * 0.25) + (commercial * 0.10) + (engagement * 0.05)
+    else:
+        score = (screening * 0.60) + (commercial * 0.30) + (engagement * 0.10)
+    return round(score, 2)
 
 
 def select_x_candidates(
@@ -49,14 +73,7 @@ def select_x_candidates(
     min_decision_score: float = DEFAULT_MIN_DECISION_SCORE,
     max_items: int = DEFAULT_MAX_ITEMS,
 ) -> list[dict[str, Any]]:
-    """Select reviewable X candidates from existing Factory intelligence items.
-
-    Fail-closed rules:
-    - a source URL is mandatory;
-    - items below both screening and decision thresholds are excluded;
-    - no external API is called;
-    - input objects are never mutated.
-    """
+    """Select reviewable X candidates from existing Factory intelligence items."""
 
     if max_items <= 0:
         return []
@@ -68,20 +85,22 @@ def select_x_candidates(
         if not url:
             continue
 
-        screening = _number(_first(item, "screening_score", "Screening Score"))
-        decision = _number(_first(item, "decision_score", "Decision Score"))
+        screening = _screening_score(item)
+        decision = _decision_score(item)
         if screening < min_screening_score and decision < min_decision_score:
             continue
 
         item["x_candidate_score"] = candidate_score(item)
         item["x_primary_url"] = url
+        item["x_screening_score"] = screening
+        item["x_decision_score"] = decision
         selected.append(item)
 
     selected.sort(
         key=lambda item: (
             _number(item.get("x_candidate_score")),
-            _number(_first(item, "decision_score", "Decision Score")),
-            _number(_first(item, "screening_score", "Screening Score")),
+            _number(item.get("x_decision_score")),
+            _number(item.get("x_screening_score")),
         ),
         reverse=True,
     )
