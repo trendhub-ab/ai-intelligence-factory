@@ -42,7 +42,7 @@ jobs:
         run: |
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
-          git add pipeline.py
+          git add pipeline.py tests/test_free_article_delivery.py
           git diff --cached --quiet && exit 0
           git commit -m 'fix: Run147 allow safe single numeric rescue'
           git push origin HEAD:run129-conversational-warmth
