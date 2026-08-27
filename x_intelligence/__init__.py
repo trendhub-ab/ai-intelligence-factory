@@ -1,6 +1,6 @@
 """Zero-Gemini X output layer for AI Intelligence Factory."""
 
-from .generator import build_x_post, render_markdown, save_pending_post
+from .generator import X_VARIANTS, build_x_post, build_x_variants, render_markdown, save_pending_post
 from .runner import (
     find_latest_screening_snapshot,
     generate_batch,
@@ -11,7 +11,9 @@ from .runner import (
 from .selector import select_x_candidates
 
 __all__ = [
+    "X_VARIANTS",
     "build_x_post",
+    "build_x_variants",
     "render_markdown",
     "save_pending_post",
     "select_x_candidates",
