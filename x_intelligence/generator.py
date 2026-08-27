@@ -28,8 +28,7 @@ def _first(item: Mapping[str, Any], *keys: str, default: str = "") -> str:
 
 
 def _clean(text: str) -> str:
-    text = re.sub(r"\s+", " ", str(text or "")).strip()
-    return text
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
 def _trim(text: str, limit: int) -> str:
@@ -43,40 +42,50 @@ def _trim(text: str, limit: int) -> str:
     return text[: limit - 1].rstrip("、。,. ") + "…"
 
 
-def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str]:
+def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
     title = _clean(_first(item, "name", "Name", "title", "Title"))
-    summary = _clean(_first(item, "source_summary", "Source Summary", "summary", "reason", "Reason"))
-    why = _clean(_first(item, "reason", "Reason", "decision_reason", "Decision Reason"))
+    summary = _clean(
+        _first(
+            item,
+            "source_summary",
+            "Source Summary",
+            "screening_reason",
+            "summary",
+            "reason",
+            "Reason",
+        )
+    )
+    why = _clean(_first(item, "decision_reason", "Decision Reason", "reason", "Reason"))
     action = _clean(_first(item, "action", "Action", "recommended_action", "Recommended Action"))
+    source = _clean(_first(item, "source", "Source"))
     url = _clean(_first(item, "x_primary_url", "url", "URL", "source_url", "primary_url"))
 
     hook = title or summary or "AI最新情報"
     importance = why if why and why != summary else ""
     implication = action
-    return hook, summary, importance, implication, url
+    return hook, summary, importance, implication, source, url
 
 
 def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS) -> dict[str, Any]:
-    """Build a deterministic Japanese X draft.
-
-    The URL is always retained. The post is intentionally a draft for human
-    review and never triggers an external write.
-    """
+    """Build a deterministic Japanese X draft for human review."""
 
     if max_chars < 80:
         raise ValueError("max_chars must be at least 80")
 
-    hook, summary, importance, implication, url = _compose(item)
+    hook, summary, importance, implication, source, url = _compose(item)
     if not url:
         raise ValueError("primary source URL is required")
 
-    sections: list[str] = [_trim(hook, 90)]
+    if source:
+        hook = f"【{source}】{hook}"
+
+    sections: list[str] = [_trim(hook, 95)]
     if summary and summary != hook:
-        sections.append(_trim(summary, 95))
+        sections.append(_trim(summary, 105))
     if importance:
-        sections.append("重要：" + _trim(importance, 75))
+        sections.append("重要：" + _trim(importance, 70))
     if implication:
-        sections.append("見るべき点：" + _trim(implication, 65))
+        sections.append("見るべき点：" + _trim(implication, 60))
 
     suffix = f"一次情報：{url}"
     body = "\n\n".join(sections)
@@ -95,6 +104,7 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
         "characters": len(candidate),
         "max_characters": max_chars,
         "primary_url": url,
+        "source": source,
         "generator_mode": "deterministic_zero_api",
         "gemini_calls": 0,
         "x_api_calls": 0,
@@ -103,8 +113,6 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
 
 
 def render_markdown(draft: Mapping[str, Any]) -> str:
-    """Render a human-review artifact."""
-
     return (
         "# X Pending Review\n\n"
         f"- Generator: `{draft.get('generator_mode', '')}`\n"
@@ -123,11 +131,7 @@ def save_pending_post(
     output_dir: str | Path = "artifacts/x_posts/pending",
     stem: str | None = None,
 ) -> tuple[Path, Path]:
-    """Save JSON + Markdown review artifacts locally.
-
-    This function only writes to the caller's filesystem. It does not interact
-    with X, Notion, GitHub, or the Factory production pipeline.
-    """
+    """Save JSON + Markdown review artifacts locally only."""
 
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
