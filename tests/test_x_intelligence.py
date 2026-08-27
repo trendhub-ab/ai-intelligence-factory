@@ -1,8 +1,16 @@
+import csv
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from x_intelligence import build_x_post, save_pending_post, select_x_candidates
+from x_intelligence import (
+    build_x_post,
+    generate_batch,
+    load_records,
+    save_pending_post,
+    select_x_candidates,
+)
 
 
 def _item(**overrides):
@@ -87,6 +95,55 @@ class XIntelligenceTests(unittest.TestCase):
             self.assertTrue(md_path.exists())
             self.assertIn("X Pending Review", md_path.read_text(encoding="utf-8"))
             self.assertIn('"x_api_calls": 0', json_path.read_text(encoding="utf-8"))
+
+    def test_load_records_accepts_wrapped_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "factory.json"
+            path.write_text(json.dumps({"items": [_item()]}, ensure_ascii=False), encoding="utf-8")
+            records = load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["Decision Score"], 81)
+
+    def test_load_records_accepts_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "factory.csv"
+            row = _item()
+            with path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(row.keys()))
+                writer.writeheader()
+                writer.writerow(row)
+            records = load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["URL"], row["URL"])
+
+    def test_generate_batch_outputs_top_five_review_drafts_and_manifest(self):
+        records = [
+            _item(Name=f"candidate-{i}", URL=f"https://example.com/{i}", **{"Decision Score": 95 - i, "Screening Score": 80 - i})
+            for i in range(8)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "pending"
+            manifest = generate_batch(records, output_dir=output_dir, max_items=5)
+
+            self.assertEqual(manifest["input_records"], 8)
+            self.assertEqual(manifest["generated_drafts"], 5)
+            self.assertEqual(manifest["gemini_calls"], 0)
+            self.assertEqual(manifest["x_api_calls"], 0)
+            self.assertFalse(manifest["auto_posted"])
+            self.assertTrue((output_dir / "manifest.json").exists())
+            self.assertEqual(len(list(output_dir.glob("*.md"))), 5)
+            self.assertEqual(len([p for p in output_dir.glob("*.json") if p.name != "manifest.json"]), 5)
+
+    def test_generate_batch_skips_weak_or_url_less_records(self):
+        records = [
+            _item(Name="strong"),
+            _item(Name="weak", URL="https://example.com/weak", **{"Decision Score": 10, "Screening Score": 10}),
+            _item(Name="missing-url", URL="", **{"Decision Score": 99, "Screening Score": 99}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = generate_batch(records, output_dir=tmp, max_items=5)
+            self.assertEqual(manifest["generated_drafts"], 1)
+            self.assertEqual(manifest["drafts"][0]["name"], "strong")
 
 
 if __name__ == "__main__":
