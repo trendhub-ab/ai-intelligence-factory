@@ -9124,7 +9124,7 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
     rescued["_rescue_loss"] = {
         "removed_sentences": removed_sentences,
         "important_numeric_removed": important_numeric_removed,
-        "loss_exceeded": bool(important_numeric_removed or removed_sentences >= 3),
+        "loss_exceeded": bool(removed_sentences >= 3 or (important_numeric_removed and removed_sentences != 1)),
     }
     return rescued, list(dict.fromkeys(changes))
 
