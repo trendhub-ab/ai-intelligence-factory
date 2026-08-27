@@ -1,0 +1,47 @@
+name: X Intelligence Layer Test
+
+on:
+  push:
+    branches:
+      - feature/x-intelligence-layer
+    paths:
+      - 'x_intelligence/**'
+      - 'tests/test_x_intelligence.py'
+      - '.github/workflows/x-intelligence-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x-intelligence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Compile isolated module
+        run: python -m compileall -q x_intelligence tests/test_x_intelligence.py
+
+      - name: Run X intelligence unit tests
+        run: python -m unittest tests.test_x_intelligence -v
+
+      - name: Assert no X/Gemini SDK dependency in isolated layer
+        run: |
+          if grep -R -nE '(^|[[:space:]])(import|from)[[:space:]]+(google\.genai|tweepy|twitter|x_api)' x_intelligence; then
+            echo 'Forbidden external SDK import detected in x_intelligence/'
+            exit 1
+          fi
+
+      - name: Assert production article pipeline is untouched by branch feature
+        run: git diff --exit-code origin/main...HEAD -- pipeline.py decision_intelligence.py evidence_ledger.py evidence_authority.py
