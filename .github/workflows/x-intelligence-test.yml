@@ -34,7 +34,7 @@ jobs:
         run: python -m compileall -q x_intelligence tests/test_x_intelligence.py
 
       - name: Run X intelligence unit tests
-        run: python -m unittest tests.test_x_intelligence -v
+        run: python -m unittest discover -s tests -p 'test_x_intelligence.py' -v
 
       - name: Assert no X/Gemini SDK dependency in isolated layer
         run: |
