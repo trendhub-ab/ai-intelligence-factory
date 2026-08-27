@@ -6,6 +6,7 @@ post drafts without calling external APIs or mutating production state.
 """
 
 from .generator import build_x_post, render_markdown, save_pending_post
+from .runner import generate_batch, load_records
 from .selector import select_x_candidates
 
 __all__ = [
@@ -13,4 +14,6 @@ __all__ = [
     "render_markdown",
     "save_pending_post",
     "select_x_candidates",
+    "load_records",
+    "generate_batch",
 ]
