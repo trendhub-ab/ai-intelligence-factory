@@ -6,6 +6,7 @@ from pathlib import Path
 
 from x_intelligence import (
     build_x_post,
+    build_x_variants,
     generate_batch,
     load_records,
     save_pending_post,
@@ -32,10 +33,22 @@ class XIntelligenceTests(unittest.TestCase):
     def test_build_x_post_is_zero_api_and_review_only(self):
         draft = build_x_post(_item())
         self.assertEqual(draft["status"], "X Pending Review")
+        self.assertEqual(draft["variant"], "breaking")
         self.assertEqual(draft["gemini_calls"], 0)
         self.assertEqual(draft["x_api_calls"], 0)
         self.assertFalse(draft["auto_posted"])
         self.assertEqual(draft["generator_mode"], "deterministic_zero_api")
+
+    def test_build_x_variants_returns_three_distinct_human_choices(self):
+        variants = build_x_variants(_item(**{"portfolio_topic": "AGENT"}))
+        self.assertEqual(set(variants), {"breaking", "curiosity", "decision"})
+        self.assertIn("【速報｜AIエージェント】", variants["breaking"]["post"])
+        self.assertIn("地味に大きな変化", variants["curiosity"]["post"])
+        self.assertIn("【実務判断｜AIエージェント】", variants["decision"]["post"])
+        for draft in variants.values():
+            self.assertLessEqual(draft["characters"], 280)
+            self.assertEqual(draft["gemini_calls"], 0)
+            self.assertEqual(draft["x_api_calls"], 0)
 
     def test_build_x_post_retains_primary_source_and_stays_within_limit(self):
         item = _item(
@@ -59,19 +72,15 @@ class XIntelligenceTests(unittest.TestCase):
             },
         )
         draft = build_x_post(item)
-        self.assertTrue(draft["post"].startswith("【AIエージェント】MCPの標準ロードマップ策定で実務影響大"))
+        self.assertTrue(draft["post"].startswith("【速報｜AIエージェント】MCPの標準ロードマップ策定で実務影響大"))
 
     def test_build_x_post_strips_producthunt_tracking_query(self):
-        item = _item(
-            URL="https://www.producthunt.com/r/ABC123?utm_campaign=x&utm_medium=api&foo=bar",
-        )
+        item = _item(URL="https://www.producthunt.com/r/ABC123?utm_campaign=x&utm_medium=api&foo=bar")
         draft = build_x_post(item)
         self.assertEqual(draft["primary_url"], "https://www.producthunt.com/r/ABC123")
 
     def test_build_x_post_preserves_functional_youtube_query(self):
-        item = _item(
-            URL="https://www.youtube.com/watch?v=abc123&utm_source=test",
-        )
+        item = _item(URL="https://www.youtube.com/watch?v=abc123&utm_source=test")
         draft = build_x_post(item)
         self.assertEqual(draft["primary_url"], "https://www.youtube.com/watch?v=abc123")
         self.assertIn("?v=abc123", draft["post"])
@@ -162,7 +171,7 @@ class XIntelligenceTests(unittest.TestCase):
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]["URL"], row["URL"])
 
-    def test_generate_batch_outputs_top_five_review_drafts_and_manifest(self):
+    def test_generate_batch_outputs_three_variants_for_top_five(self):
         records = [
             _item(Name=f"candidate-{i}", URL=f"https://example.com/{i}", **{"Decision Score": 95 - i, "Screening Score": 80 - i})
             for i in range(8)
@@ -172,13 +181,16 @@ class XIntelligenceTests(unittest.TestCase):
             manifest = generate_batch(records, output_dir=output_dir, max_items=5)
 
             self.assertEqual(manifest["input_records"], 8)
-            self.assertEqual(manifest["generated_drafts"], 5)
+            self.assertEqual(manifest["generated_candidates"], 5)
+            self.assertEqual(manifest["variants_per_candidate"], 3)
+            self.assertEqual(manifest["generated_drafts"], 15)
             self.assertEqual(manifest["gemini_calls"], 0)
             self.assertEqual(manifest["x_api_calls"], 0)
             self.assertFalse(manifest["auto_posted"])
+            self.assertEqual(len(manifest["candidates"]), 5)
             self.assertTrue((output_dir / "manifest.json").exists())
-            self.assertEqual(len(list(output_dir.glob("*.md"))), 5)
-            self.assertEqual(len([p for p in output_dir.glob("*.json") if p.name != "manifest.json"]), 5)
+            self.assertEqual(len(list(output_dir.glob("*-COMPARE.md"))), 5)
+            self.assertEqual(len(list(output_dir.glob("*.json"))), 16)
 
     def test_generate_batch_skips_weak_or_url_less_records(self):
         records = [
@@ -188,8 +200,9 @@ class XIntelligenceTests(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as tmp:
             manifest = generate_batch(records, output_dir=tmp, max_items=5)
-            self.assertEqual(manifest["generated_drafts"], 1)
-            self.assertEqual(manifest["drafts"][0]["name"], "strong")
+            self.assertEqual(manifest["generated_candidates"], 1)
+            self.assertEqual(manifest["generated_drafts"], 3)
+            self.assertEqual(manifest["candidates"][0]["name"], "strong")
 
 
 if __name__ == "__main__":
