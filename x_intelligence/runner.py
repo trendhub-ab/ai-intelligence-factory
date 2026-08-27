@@ -1,4 +1,4 @@
-"""Phase 0.6 runner for the isolated X Intelligence Layer.
+"""Phase 0.7 runner for the isolated X Intelligence Layer.
 
 Consumes already-produced Factory records or the latest local observed_history
 screening snapshot and writes review-only X draft artifacts.
@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from .generator import build_x_post, save_pending_post
+from .generator import X_VARIANTS, build_x_variants, save_pending_post
 from .selector import select_x_candidates
 
 
@@ -66,8 +66,6 @@ def load_records(path: str | Path) -> list[dict[str, Any]]:
 
 
 def find_latest_screening_snapshot(observed_history_dir: str | Path = "observed_history") -> Path:
-    """Return the latest locally available Factory screening snapshot."""
-
     directory = Path(observed_history_dir)
     if not directory.exists():
         raise FileNotFoundError(directory)
@@ -86,6 +84,35 @@ def _slug(index: int, item: Mapping[str, Any]) -> str:
     value = str(item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "candidate")
     compact = "-".join(value.split())[:48].strip("-") or "candidate"
     return f"{index:02d}-{compact}"
+
+
+def _render_comparison(candidate: Mapping[str, Any]) -> str:
+    lines = [
+        f"# X Variant Review — Rank {candidate['rank']}",
+        "",
+        f"- Name: {candidate['name']}",
+        f"- Source: {candidate['source']}",
+        f"- X candidate score: {candidate['x_candidate_score']}",
+        "",
+        "同じ情報から3種類を生成しています。投稿したい型を人間が選んでください。",
+        "",
+    ]
+    labels = {
+        "breaking": "A. 速報型",
+        "curiosity": "B. 意外性・好奇心型",
+        "decision": "C. 実務判断型",
+    }
+    for variant in X_VARIANTS:
+        draft = candidate["variants"][variant]
+        lines.extend([
+            f"## {labels[variant]}",
+            "",
+            draft["post"],
+            "",
+            f"文字数: {draft['characters']} / {draft['max_characters']}",
+            "",
+        ])
+    return "\n".join(lines)
 
 
 def generate_batch(
@@ -108,33 +135,48 @@ def generate_batch(
 
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
-    drafts: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
 
     for index, item in enumerate(selected, start=1):
-        draft = build_x_post(item, max_chars=max_chars)
+        variants = build_x_variants(item, max_chars=max_chars)
         stem = _slug(index, item)
-        json_path, md_path = save_pending_post(draft, output_dir=target, stem=stem)
-        drafts.append(
-            {
-                "rank": index,
-                "name": item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "",
-                "source": item.get("Source") or item.get("source") or "",
-                "x_candidate_score": item.get("x_candidate_score"),
-                "screening_score": item.get("x_screening_score"),
-                "decision_score": item.get("x_decision_score"),
-                "primary_url": draft["primary_url"],
-                "characters": draft["characters"],
-                "json_artifact": json_path.name,
-                "markdown_artifact": md_path.name,
+        artifact_map: dict[str, dict[str, str]] = {}
+        for variant, draft in variants.items():
+            json_path, md_path = save_pending_post(
+                draft,
+                output_dir=target,
+                stem=f"{stem}-{variant}",
+            )
+            artifact_map[variant] = {
+                "json": json_path.name,
+                "markdown": md_path.name,
             }
-        )
+
+        candidate = {
+            "rank": index,
+            "name": item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "",
+            "source": item.get("Source") or item.get("source") or "",
+            "x_candidate_score": item.get("x_candidate_score"),
+            "screening_score": item.get("x_screening_score"),
+            "decision_score": item.get("x_decision_score"),
+            "primary_url": variants["breaking"]["primary_url"],
+            "variants": variants,
+            "artifacts": artifact_map,
+        }
+        comparison_name = f"{stem}-COMPARE.md"
+        (target / comparison_name).write_text(_render_comparison(candidate), encoding="utf-8")
+        candidate["comparison_artifact"] = comparison_name
+        candidates.append(candidate)
 
     manifest = {
-        "status": "X Batch Pending Review",
+        "status": "X Variant Batch Pending Human Selection",
         "input_path": input_path,
         "input_records": len(source_records),
         "selected_records": len(selected),
-        "generated_drafts": len(drafts),
+        "generated_candidates": len(candidates),
+        "variants_per_candidate": len(X_VARIANTS),
+        "generated_drafts": len(candidates) * len(X_VARIANTS),
+        "variant_names": list(X_VARIANTS),
         "max_items": max_items,
         "min_screening_score": min_screening_score,
         "min_decision_score": min_decision_score,
@@ -142,7 +184,7 @@ def generate_batch(
         "gemini_calls": 0,
         "x_api_calls": 0,
         "auto_posted": False,
-        "drafts": drafts,
+        "candidates": candidates,
     }
     (target / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
@@ -170,7 +212,7 @@ def generate_from_latest_observed_history(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate review-only X drafts from Factory outputs")
+    parser = argparse.ArgumentParser(description="Generate review-only X variants from Factory outputs")
     parser.add_argument("input", nargs="?", help="JSON, JSONL/NDJSON, or CSV export")
     parser.add_argument("--latest-observed-history", action="store_true")
     parser.add_argument("--observed-history-dir", default="observed_history")
