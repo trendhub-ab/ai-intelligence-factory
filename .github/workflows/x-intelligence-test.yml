@@ -6,7 +6,7 @@ on:
       - feature/x-intelligence-layer
     paths:
       - 'x_intelligence/**'
-      - 'tests/test_x_intelligence.py'
+      - 'tests/test_x_*.py'
       - '.github/workflows/x-intelligence-test.yml'
   workflow_dispatch:
 
@@ -33,10 +33,10 @@ jobs:
           python-version: '3.11'
 
       - name: Compile isolated module
-        run: python -m compileall -q x_intelligence tests/test_x_intelligence.py
+        run: python -m compileall -q x_intelligence tests/test_x_intelligence.py tests/test_x_observed_history_adapter.py
 
       - name: Run X intelligence unit tests
-        run: python -m unittest discover -s tests -p 'test_x_intelligence.py' -v
+        run: python -m unittest discover -s tests -p 'test_x_*.py' -v
 
       - name: Assert no X/Gemini SDK dependency in isolated layer
         run: |
