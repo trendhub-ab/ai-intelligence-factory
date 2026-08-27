@@ -48,7 +48,33 @@ class XIntelligenceTests(unittest.TestCase):
         draft = build_x_post(item, max_chars=280)
         self.assertLessEqual(draft["characters"], 280)
         self.assertIn(item["URL"], draft["post"])
-        self.assertIn("一次情報：", draft["post"])
+        self.assertIn("一次情報", draft["post"])
+
+    def test_build_x_post_uses_existing_japanese_summary_as_hook(self):
+        item = _item(
+            Name="The New MCP Roadmap",
+            **{
+                "Source Summary": "MCPの標準ロードマップ策定で実務影響大",
+                "portfolio_topic": "AGENT",
+            },
+        )
+        draft = build_x_post(item)
+        self.assertTrue(draft["post"].startswith("【AIエージェント】MCPの標準ロードマップ策定で実務影響大"))
+
+    def test_build_x_post_strips_producthunt_tracking_query(self):
+        item = _item(
+            URL="https://www.producthunt.com/r/ABC123?utm_campaign=x&utm_medium=api&foo=bar",
+        )
+        draft = build_x_post(item)
+        self.assertEqual(draft["primary_url"], "https://www.producthunt.com/r/ABC123")
+
+    def test_build_x_post_preserves_functional_youtube_query(self):
+        item = _item(
+            URL="https://www.youtube.com/watch?v=abc123&utm_source=test",
+        )
+        draft = build_x_post(item)
+        self.assertEqual(draft["primary_url"], "https://www.youtube.com/watch?v=abc123")
+        self.assertIn("?v=abc123", draft["post"])
 
     def test_build_x_post_fails_closed_without_source_url(self):
         with self.assertRaisesRegex(ValueError, "primary source URL"):
@@ -83,6 +109,26 @@ class XIntelligenceTests(unittest.TestCase):
         second = select_x_candidates([low, high], max_items=2)
         self.assertEqual([x["Name"] for x in first], ["high", "low"])
         self.assertEqual(first, second)
+
+    def test_screening_only_x_ranking_can_surface_high_audience_interest(self):
+        high_engagement = {
+            "name": "audience",
+            "url": "https://example.com/audience",
+            "final_screening_score": 62,
+            "commercial_value_score": 52,
+            "engagement": 580,
+            "shelf_life": "TREND",
+        }
+        high_screening = {
+            "name": "quality",
+            "url": "https://example.com/quality",
+            "final_screening_score": 78,
+            "commercial_value_score": 72,
+            "engagement": 14,
+            "shelf_life": "EVERGREEN",
+        }
+        selected = select_x_candidates([high_screening, high_engagement], max_items=2)
+        self.assertEqual(selected[0]["name"], "audience")
 
     def test_save_pending_post_writes_only_review_artifacts(self):
         draft = build_x_post(_item())
