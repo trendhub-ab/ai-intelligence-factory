@@ -22,6 +22,7 @@ def _item(**overrides):
         "Decision Score": 81,
         "Engagement": 40,
         "Source Summary": "複数ステップの作業を自動で進められる機能が公開されました。",
+        "core_conclusion": "複数ステップの作業をAIエージェントにまとめて実行させられるようになる。",
         "Reason": "回答するAIから、仕事を実行するAIへの移行を示す更新です。",
         "Action": "既存の定型業務で置き換え可能な工程を確認する。",
     }
@@ -51,26 +52,14 @@ class XIntelligenceTests(unittest.TestCase):
             self.assertEqual(draft["x_api_calls"], 0)
 
     def test_build_x_post_retains_primary_source_and_stays_within_limit(self):
-        item = _item(
-            **{
-                "Source Summary": "長い説明です。" * 80,
-                "Reason": "重要な理由です。" * 80,
-                "Action": "確認すべき内容です。" * 80,
-            }
-        )
+        item = _item(**{"Source Summary": "長い説明です。" * 80, "Reason": "重要な理由です。" * 80, "Action": "確認すべき内容です。" * 80})
         draft = build_x_post(item, max_chars=280)
         self.assertLessEqual(draft["characters"], 280)
         self.assertIn(item["URL"], draft["post"])
         self.assertIn("一次情報", draft["post"])
 
     def test_build_x_post_uses_existing_japanese_summary_as_hook(self):
-        item = _item(
-            Name="The New MCP Roadmap",
-            **{
-                "Source Summary": "MCPの標準ロードマップ策定で実務影響大",
-                "portfolio_topic": "AGENT",
-            },
-        )
+        item = _item(Name="The New MCP Roadmap", **{"Source Summary": "MCPの標準ロードマップ策定で実務影響大", "portfolio_topic": "AGENT"})
         draft = build_x_post(item)
         self.assertTrue(draft["post"].startswith("【速報｜AIエージェント】MCPの標準ロードマップ策定で実務影響大"))
 
@@ -120,22 +109,8 @@ class XIntelligenceTests(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_screening_only_x_ranking_can_surface_high_audience_interest(self):
-        high_engagement = {
-            "name": "audience",
-            "url": "https://example.com/audience",
-            "final_screening_score": 62,
-            "commercial_value_score": 52,
-            "engagement": 580,
-            "shelf_life": "TREND",
-        }
-        high_screening = {
-            "name": "quality",
-            "url": "https://example.com/quality",
-            "final_screening_score": 78,
-            "commercial_value_score": 72,
-            "engagement": 14,
-            "shelf_life": "EVERGREEN",
-        }
+        high_engagement = {"name": "audience", "url": "https://example.com/audience", "final_screening_score": 62, "commercial_value_score": 52, "engagement": 580, "shelf_life": "TREND"}
+        high_screening = {"name": "quality", "url": "https://example.com/quality", "final_screening_score": 78, "commercial_value_score": 72, "engagement": 14, "shelf_life": "EVERGREEN"}
         selected = select_x_candidates([high_screening, high_engagement], max_items=2)
         self.assertEqual(selected[0]["name"], "audience")
 
@@ -172,14 +147,10 @@ class XIntelligenceTests(unittest.TestCase):
             self.assertEqual(records[0]["URL"], row["URL"])
 
     def test_generate_batch_outputs_three_variants_for_top_five(self):
-        records = [
-            _item(Name=f"candidate-{i}", URL=f"https://example.com/{i}", **{"Decision Score": 95 - i, "Screening Score": 80 - i})
-            for i in range(8)
-        ]
+        records = [_item(Name=f"candidate-{i}", URL=f"https://example.com/{i}", **{"Decision Score": 95 - i, "Screening Score": 80 - i}) for i in range(8)]
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp) / "pending"
             manifest = generate_batch(records, output_dir=output_dir, max_items=5)
-
             self.assertEqual(manifest["input_records"], 8)
             self.assertEqual(manifest["generated_candidates"], 5)
             self.assertEqual(manifest["variants_per_candidate"], 3)
