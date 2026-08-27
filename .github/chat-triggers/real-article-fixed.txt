@@ -1,3 +1,5 @@
-requested_at=2026-08-26T18:00:00+09:00
+requested_at=2026-08-27T18:31:00+09:00
 requested_by=chat
-purpose=run135_wrapper_aware_fixed_regression
+purpose=run144_reader_delight_real_article_regression
+model_target=gemini-3.6-flash
+limit=3
