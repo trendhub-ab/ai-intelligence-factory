@@ -21,7 +21,7 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
             "engagement": 65,
             "final_screening_score": 75,
             "commercial_value_score": 85,
-            "screening_reason": "最新フロンティアモデルの価格改定に関する速報。",
+            "screening_reason": "GPT 5.6 Solの価格が20%引き下げられ、同じ予算で利用量を増やせる。",
             "stock_eligible": True,
         }
         item.update(overrides)
@@ -34,7 +34,7 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
         self.assertGreater(selected[0]["x_candidate_score"], 0)
         draft = build_x_post(selected[0])
         self.assertIn("一次情報（HN）", draft["post"])
-        self.assertIn("価格改定", draft["post"])
+        self.assertIn("価格", draft["post"])
         self.assertEqual(draft["gemini_calls"], 0)
         self.assertEqual(draft["x_api_calls"], 0)
 
@@ -64,7 +64,11 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
             self.assertEqual(manifest["gemini_calls"], 0)
             self.assertEqual(manifest["x_api_calls"], 0)
             self.assertFalse(manifest["auto_posted"])
-            self.assertEqual(manifest["candidates"][0]["free_draft"]["composition_mode"], "free_history_aware_zero_api")
+            free = manifest["candidates"][0]["free_draft"]
+            self.assertEqual(free["composition_mode"], "free_history_aware_zero_api")
+            self.assertTrue(free["grounded_conclusion"])
+            self.assertIn("20%", free["core_conclusion"])
+            self.assertIn(free["core_conclusion"], free["post"])
             self.assertTrue((output / "manifest.json").exists())
             self.assertEqual(len(list(output.glob("*-COMPARE.md"))), 1)
 
