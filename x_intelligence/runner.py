@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -79,8 +80,11 @@ def load_latest_observed_history(observed_history_dir: str | Path = "observed_hi
 
 def _slug(index: int, item: Mapping[str, Any]) -> str:
     value = str(item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "candidate")
-    compact = "-".join(value.split())[:48].strip("-") or "candidate"
-    return f"{index:02d}-{compact}"
+    compact = "-".join(value.split())[:64]
+    # Keep filenames portable across GitHub artifacts / Windows / Android unzip tools.
+    compact = re.sub(r'[<>:"/\\|?*]+', "-", compact)
+    compact = re.sub(r"[^A-Za-z0-9._-]+", "-", compact).strip(".-_") or "candidate"
+    return f"{index:02d}-{compact[:48]}"
 
 
 def _render_comparison(candidate: Mapping[str, Any]) -> str:
@@ -106,8 +110,6 @@ def generate_batch(
     max_chars: int = 280, input_path: str | None = None,
 ) -> dict[str, Any]:
     source_records = [dict(record) for record in records]
-    # Search deeper than the requested output count so headline-only candidates can
-    # be skipped without leaving the review set empty. This remains zero API.
     pool_limit = min(len(source_records), max(max_items * 4, max_items))
     selected = select_x_candidates(
         source_records,
