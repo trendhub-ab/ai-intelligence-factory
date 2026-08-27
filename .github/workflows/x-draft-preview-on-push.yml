@@ -25,14 +25,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Generate five candidate sets from latest Factory screening snapshot
+      - name: Generate Chip free drafts from latest Factory screening snapshot
         run: |
           python -m x_intelligence.runner \
             --latest-observed-history \
             --max-items 5 \
             --output-dir x_preview/pending
 
-      - name: Verify zero-API mode and three variants per candidate
+      - name: Verify free composition, memory and zero-API mode
         run: |
           python - <<'PY'
           import json
@@ -42,18 +42,22 @@ jobs:
           assert manifest['x_api_calls'] == 0
           assert manifest['auto_posted'] is False
           assert 1 <= manifest['generated_candidates'] <= 5
-          assert manifest['variants_per_candidate'] == 3
-          assert manifest['generated_drafts'] == manifest['generated_candidates'] * 3
-          assert manifest['variant_names'] == ['breaking', 'curiosity', 'decision']
+          assert manifest['free_drafts'] == manifest['generated_candidates']
+          assert manifest['legacy_variants_per_candidate'] == 3
+          assert manifest['generated_drafts'] == manifest['generated_candidates'] * 4
+          angles = []
           for candidate in manifest['candidates']:
+              draft = candidate['free_draft']
               assert candidate['primary_url']
+              assert draft['composition_mode'] == 'free_history_aware_zero_api'
+              assert draft['characters'] <= 280
+              assert draft['gemini_calls'] == 0
+              assert draft['x_api_calls'] == 0
+              assert 'ワン' not in draft['post']
+              angles.append(draft['angle'])
               assert Path('x_preview/pending', candidate['comparison_artifact']).exists()
-              for variant in manifest['variant_names']:
-                  draft = candidate['variants'][variant]
-                  assert draft['variant'] == variant
-                  assert draft['characters'] <= 280
-                  assert draft['gemini_calls'] == 0
-                  assert draft['x_api_calls'] == 0
+          if len(angles) >= 4:
+              assert len(set(angles[:4])) >= 3
           print(json.dumps(manifest, ensure_ascii=False, indent=2))
           PY
 
