@@ -1,0 +1,62 @@
+name: X Draft Preview (Zero API)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: "Number of X draft candidates"
+        required: true
+        default: "5"
+        type: choice
+        options:
+          - "3"
+          - "5"
+          - "8"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x-draft-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Generate drafts from latest Factory screening snapshot
+        run: |
+          python -m x_intelligence.runner \
+            --latest-observed-history \
+            --max-items "${{ github.event.inputs.max_items || '5' }}" \
+            --output-dir x_preview/pending
+
+      - name: Assert zero external AI/X API mode
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('x_preview/pending/manifest.json').read_text(encoding='utf-8'))
+          assert manifest['gemini_calls'] == 0
+          assert manifest['x_api_calls'] == 0
+          assert manifest['auto_posted'] is False
+          assert manifest['generated_drafts'] > 0
+          print(f"Generated {manifest['generated_drafts']} review-only X drafts")
+          PY
+
+      - name: Upload human-review X drafts
+        uses: actions/upload-artifact@v7
+        with:
+          name: x-draft-preview-${{ github.run_number }}
+          path: x_preview/
+          if-no-files-found: error
+          retention-days: 14
