@@ -18,6 +18,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 DEFAULT_MAX_CHARS = 280
+X_VARIANTS = ("breaking", "curiosity", "decision")
 _TRACKING_KEYS = {
     "fbclid",
     "gclid",
@@ -66,8 +67,6 @@ def _clean_source_url(url: str) -> str:
     if parsed.scheme not in {"http", "https"}:
         return value
 
-    # Product Hunt redirect URLs work without their API campaign query and are
-    # dramatically shorter that way.
     if parsed.netloc.lower() == "www.producthunt.com" and parsed.path.startswith("/r/"):
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
 
@@ -105,7 +104,7 @@ def _topic_label(item: Mapping[str, Any]) -> str:
     }.get(topic, "AI")
 
 
-def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str]:
+def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
     title = _clean(_first(item, "name", "Name", "title", "Title"))
     summary = _clean(
         _first(
@@ -138,35 +137,80 @@ def _signal_line(item: Mapping[str, Any]) -> str:
     return "今後の動きを追う価値がある話題です。"
 
 
-def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS) -> dict[str, Any]:
-    """Build a deterministic Japanese X draft for human review."""
+def _main_fact(title: str, summary: str) -> str:
+    if summary and _contains_japanese(summary):
+        return summary.rstrip("。")
+    return title.rstrip("。")
+
+
+def _variant_sections(
+    item: Mapping[str, Any],
+    *,
+    variant: str,
+    title: str,
+    summary: str,
+    why: str,
+    action: str,
+) -> list[str]:
+    topic = _topic_label(item)
+    fact = _main_fact(title, summary)
+    signal = _signal_line(item)
+
+    if variant == "breaking":
+        sections = [f"【速報｜{topic}】{fact}", signal]
+        if why and why != summary:
+            sections.append("注目点：" + _trim(why, 58))
+        return sections
+
+    if variant == "curiosity":
+        hook = f"これ、地味に大きな変化かもしれません。{fact}"
+        sections = [f"【{topic}】{hook}"]
+        if signal:
+            sections.append(signal)
+        if title and _contains_japanese(title) and title not in fact:
+            sections.append(_trim(title, 62))
+        return sections
+
+    if variant == "decision":
+        sections = [f"【実務判断｜{topic}】{fact}"]
+        if action:
+            sections.append("いま見るべき点：" + _trim(action, 68))
+        elif why and why != summary:
+            sections.append("判断材料：" + _trim(why, 68))
+        else:
+            sections.append(signal)
+        return sections
+
+    raise ValueError(f"unsupported X variant: {variant}")
+
+
+def build_x_post(
+    item: Mapping[str, Any],
+    *,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    variant: str = "breaking",
+) -> dict[str, Any]:
+    """Build one deterministic Japanese X draft for human review."""
 
     if max_chars < 80:
         raise ValueError("max_chars must be at least 80")
+    if variant not in X_VARIANTS:
+        raise ValueError(f"unsupported X variant: {variant}")
 
     title, summary, why, action, url = _compose(item)
     if not url:
         raise ValueError("primary source URL is required")
 
     source = _source_label(item)
-    topic = _topic_label(item)
-
-    if summary and _contains_japanese(summary):
-        hook = f"【{topic}】{summary.rstrip('。')}"
-        sections: list[str] = [_trim(hook, 96)]
-        if title and _contains_japanese(title) and title not in summary:
-            sections.append(_trim(title, 70))
-    else:
-        sections = [_trim(f"【{topic}】{title}", 96)]
-        if summary:
-            sections.append(_trim(summary.rstrip("。") + "。", 82))
-
-    sections.append(_signal_line(item))
-
-    if why and why != summary:
-        sections.append("注目点：" + _trim(why, 58))
-    elif action:
-        sections.append("見るべき点：" + _trim(action, 58))
+    sections = _variant_sections(
+        item,
+        variant=variant,
+        title=title,
+        summary=summary,
+        why=why,
+        action=action,
+    )
+    sections = [_trim(section, 112) for section in sections if section]
 
     suffix = f"一次情報（{source}）：{url}"
     body = "\n".join(sections)
@@ -181,6 +225,7 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
 
     return {
         "status": "X Pending Review",
+        "variant": variant,
         "post": candidate,
         "characters": len(candidate),
         "max_characters": max_chars,
@@ -192,9 +237,19 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
     }
 
 
+def build_x_variants(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS) -> dict[str, dict[str, Any]]:
+    """Build breaking, curiosity, and decision drafts from one Factory item."""
+
+    return {
+        variant: build_x_post(item, max_chars=max_chars, variant=variant)
+        for variant in X_VARIANTS
+    }
+
+
 def render_markdown(draft: Mapping[str, Any]) -> str:
     return (
         "# X Pending Review\n\n"
+        f"- Variant: `{draft.get('variant', 'breaking')}`\n"
         f"- Generator: `{draft.get('generator_mode', '')}`\n"
         f"- Characters: {draft.get('characters', 0)} / {draft.get('max_characters', DEFAULT_MAX_CHARS)}\n"
         f"- Gemini calls: {draft.get('gemini_calls', 0)}\n"
