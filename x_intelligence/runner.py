@@ -1,4 +1,4 @@
-"""Phase 0.8 runner for the isolated X Intelligence Layer.
+"""Phase 0.9 runner for the isolated X Intelligence Layer.
 
 Consumes already-produced Factory records or the latest local observed_history
 screening snapshot and writes review-only X draft artifacts.
@@ -87,7 +87,8 @@ def _render_comparison(candidate: Mapping[str, Any]) -> str:
     lines = [
         f"# X Review — Rank {candidate['rank']}", "",
         f"- Name: {candidate['name']}", f"- Source: {candidate['source']}",
-        f"- X candidate score: {candidate['x_candidate_score']}", "",
+        f"- X candidate score: {candidate['x_candidate_score']}",
+        f"- Grounded conclusion: {candidate['free_draft']['core_conclusion']}", "",
         "最初にチップの自由投稿案、その後に旧3型を比較用として残しています。", "",
         "## Chip Free Composition", "", candidate["free_draft"]["post"], "",
         f"Angle: {candidate['free_draft']['angle']}", "",
@@ -109,10 +110,23 @@ def generate_batch(
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     candidates: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     recent_free: list[dict[str, Any]] = []
 
-    for index, item in enumerate(selected, start=1):
-        free_draft = build_free_chip_post(item, recent=recent_free, max_chars=max_chars)
+    for selected_rank, item in enumerate(selected, start=1):
+        try:
+            free_draft = build_free_chip_post(item, recent=recent_free, max_chars=max_chars)
+        except ValueError as exc:
+            if "grounded core conclusion" not in str(exc):
+                raise
+            skipped.append({
+                "selected_rank": selected_rank,
+                "name": item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "",
+                "reason": "missing_grounded_core_conclusion",
+            })
+            continue
+
+        index = len(candidates) + 1
         recent_free.append({"angle": free_draft["angle"], "dog_flavor_used": free_draft["dog_flavor_used"], "post": free_draft["post"]})
         variants = build_x_variants(item, max_chars=max_chars)
         stem = _slug(index, item)
@@ -122,6 +136,7 @@ def generate_batch(
             artifact_map[variant] = {"json": json_path.name, "markdown": md_path.name}
         candidate = {
             "rank": index,
+            "selected_rank": selected_rank,
             "name": item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "",
             "source": item.get("Source") or item.get("source") or "",
             "x_candidate_score": item.get("x_candidate_score"),
@@ -143,13 +158,16 @@ def generate_batch(
         "input_records": len(source_records),
         "selected_records": len(selected),
         "generated_candidates": len(candidates),
+        "skipped_candidates": len(skipped),
+        "skipped": skipped,
         "free_drafts": len(candidates),
         "variants_per_candidate": len(X_VARIANTS),
         "legacy_variants_per_candidate": len(X_VARIANTS),
         "variant_names": list(X_VARIANTS),
         "generated_drafts": len(candidates) * len(X_VARIANTS),
         "total_review_drafts": len(candidates) * (len(X_VARIANTS) + 1),
-        "composition_mode": "persona_angle_router_recent_memory_anti_repetition_zero_api",
+        "core_conclusion_required": True,
+        "composition_mode": "persona_angle_router_recent_memory_grounded_conclusion_zero_api",
         "max_items": max_items,
         "min_screening_score": min_screening_score,
         "min_decision_score": min_decision_score,
