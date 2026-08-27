@@ -32,7 +32,6 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0]["x_screening_score"], 75)
         self.assertGreater(selected[0]["x_candidate_score"], 0)
-
         draft = build_x_post(selected[0])
         self.assertIn("一次情報（HN）", draft["post"])
         self.assertIn("価格改定", draft["post"])
@@ -54,22 +53,17 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
             output = root / "pending"
             history.mkdir()
             snapshot = history / "screening_20260822T083036Z.json"
-            snapshot.write_text(
-                json.dumps({"run_id": "test", "items": [self._snapshot_item()]}, ensure_ascii=False),
-                encoding="utf-8",
-            )
-
-            manifest = generate_from_latest_observed_history(
-                observed_history_dir=history,
-                output_dir=output,
-            )
+            snapshot.write_text(json.dumps({"run_id": "test", "items": [self._snapshot_item()]}, ensure_ascii=False), encoding="utf-8")
+            manifest = generate_from_latest_observed_history(observed_history_dir=history, output_dir=output)
             self.assertEqual(manifest["generated_candidates"], 1)
-            self.assertEqual(manifest["generated_drafts"], 3)
-            self.assertEqual(manifest["variants_per_candidate"], 3)
+            self.assertEqual(manifest["free_drafts"], 1)
+            self.assertEqual(manifest["generated_drafts"], 4)
+            self.assertEqual(manifest["legacy_variants_per_candidate"], 3)
             self.assertEqual(manifest["input_path"], str(snapshot))
             self.assertEqual(manifest["gemini_calls"], 0)
             self.assertEqual(manifest["x_api_calls"], 0)
             self.assertFalse(manifest["auto_posted"])
+            self.assertEqual(manifest["candidates"][0]["free_draft"]["composition_mode"], "free_history_aware_zero_api")
             self.assertTrue((output / "manifest.json").exists())
             self.assertEqual(len(list(output.glob("*-COMPARE.md"))), 1)
 
