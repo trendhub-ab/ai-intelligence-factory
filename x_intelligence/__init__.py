@@ -1,12 +1,13 @@
-"""Zero-Gemini X output layer for AI Intelligence Factory.
-
-This package is intentionally isolated from the article pipeline. It reads
-already-produced intelligence data and turns suitable items into reviewable X
-post drafts without calling external APIs or mutating production state.
-"""
+"""Zero-Gemini X output layer for AI Intelligence Factory."""
 
 from .generator import build_x_post, render_markdown, save_pending_post
-from .runner import generate_batch, load_records
+from .runner import (
+    find_latest_screening_snapshot,
+    generate_batch,
+    generate_from_latest_observed_history,
+    load_latest_observed_history,
+    load_records,
+)
 from .selector import select_x_candidates
 
 __all__ = [
@@ -15,5 +16,8 @@ __all__ = [
     "save_pending_post",
     "select_x_candidates",
     "load_records",
+    "find_latest_screening_snapshot",
+    "load_latest_observed_history",
     "generate_batch",
+    "generate_from_latest_observed_history",
 ]
