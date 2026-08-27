@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from .persona import CHIP_PERSONA, validate_chip_text
+
 
 DEFAULT_MAX_CHARS = 280
 X_VARIANTS = ("breaking", "curiosity", "decision")
@@ -190,7 +192,12 @@ def build_x_post(
     max_chars: int = DEFAULT_MAX_CHARS,
     variant: str = "breaking",
 ) -> dict[str, Any]:
-    """Build one deterministic Japanese X draft for human review."""
+    """Build one deterministic Japanese X draft for human review.
+
+    Chip's dog-like flavor is intentionally not injected here. The persona
+    policy keeps normal Japanese as the default and reserves dog metaphors for
+    a future history-aware compositor that can enforce genuinely low frequency.
+    """
 
     if max_chars < 80:
         raise ValueError("max_chars must be at least 80")
@@ -223,8 +230,14 @@ def build_x_post(
         body = _trim(body, room)
         candidate = f"{body}\n\n{suffix}"
 
+    validate_chip_text(candidate)
+
     return {
         "status": "X Pending Review",
+        "character": CHIP_PERSONA["name"],
+        "character_romanized": CHIP_PERSONA["romanized_name"],
+        "dog_endings_enabled": CHIP_PERSONA["voice"]["dog_endings_enabled"],
+        "dog_flavor_mode": "metaphor_only_low_frequency",
         "variant": variant,
         "post": candidate,
         "characters": len(candidate),
@@ -249,6 +262,7 @@ def build_x_variants(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CH
 def render_markdown(draft: Mapping[str, Any]) -> str:
     return (
         "# X Pending Review\n\n"
+        f"- Character: `{draft.get('character', CHIP_PERSONA['name'])}`\n"
         f"- Variant: `{draft.get('variant', 'breaking')}`\n"
         f"- Generator: `{draft.get('generator_mode', '')}`\n"
         f"- Characters: {draft.get('characters', 0)} / {draft.get('max_characters', DEFAULT_MAX_CHARS)}\n"
