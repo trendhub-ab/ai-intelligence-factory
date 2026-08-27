@@ -5745,6 +5745,8 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・同じ内容を言い換えて二度説明しない。読者が一度で理解できる説明はそこで止める。
 ・接続詞で論理を毎回明示しすぎない。段落の並びだけで意味がつながる場所では「一方で」「そのため」「つまり」を足さない。
 ・別の記事でも使える汎用的な導入・判断フレーズへ逃げず、この一次情報だから成立する入口と情報順序を選ぶ。
+・Roadmap、protocol、SDK、仕様変更のような抽象テーマでも、定義や項目列挙から始めない。読者が実際に困る場面、従来の前提が崩れる瞬間、または「なぜ今これが話題なのか」という記事固有の違和感から入り、そこから技術の核心へ進む。架空の体験談は作らない。
+・Security / Sandbox / Isolationでは「何をしてもPCへ影響しない」「被害をこの範囲だけに抑え込める」「安全が担保される」のような保証相当の断定をしない。一次情報が示す隔離機構と、残る条件・制約を分けて書く。
 ・「興味深い」「注目すべき」「実務的な示唆」「第一の柱／第一段階／第二段階」「妥当な判断と言えます」等の編集語彙を一記事に積み重ねない。必要な語を単発で使うのはよいが、説明を整えすぎず事実そのものに語らせる。
 
 【Reader Experience｜知的エンタメ × Decision Intelligence】
@@ -5914,6 +5916,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 これらは読者に見せるラベルでも見出しでもない。既成の見出し文や段落テンプレートを再現せず、記事固有の内容に合わせて自由に構成する。
 
 タイトル直後は、読者が「何の話か」「なぜ自分に関係するか」をつかめる自然なリードから始める。
+Roadmapやprotocolの話でも、冒頭を「〜とは」「主な変更点は」「今回のロードマップでは」の説明開始に固定しない。まず読者が引っかかる変化・困りごと・意外性を1つ置き、専門用語は理解が必要になった時点で名前を付ける。
 リードの段落数は固定しない。1〜3段落程度を目安に、必要な情報だけを書く。
 発見経路や「一次情報に基づく」という説明を義務的な定型文として毎回入れない。出典は公開稿の「元情報」で別途提示されるため、本文では話を理解するのに必要な場合だけ自然に触れる。
 
@@ -6387,6 +6390,19 @@ def _find_hype_claims(draft: str, source_context: str = "", evidence_metadata: d
                 continue
             failures.append(f"{label}: {m.group(0)}")
             break
+    # Run145: 実記事で確認したsandbox/securityの絶対保証を個別に閉じる。
+    # 「影響を狭めやすい」のような限定表現は対象外。何をしても影響なし／被害を特定範囲に
+    # 抑え込める、といった保証相当の断定だけをHard Fact defectとして扱う。
+    run145_security_overclaims = (
+        (r"(?:AI|エージェント|サンドボックス|sandbox)[^。！？\n]{0,90}(?:どんな|いかなる|何をしても)[^。！？\n]{0,90}(?:PC|ホスト|端末|本体)[^。！？\n]{0,50}(?:影響が及びません|影響は及びません|影響しません)", "unsupported absolute isolation"),
+        (r"(?:被害|影響)(?:の)?範囲を[^。！？\n]{0,80}(?:だけ|のみ|内|範囲内)[^。！？\n]{0,50}(?:に)?(?:抑え込める|封じ込められる|限定できる)", "unsupported containment guarantee"),
+    )
+    for pattern, label in run145_security_overclaims:
+        for m in re.finditer(pattern, text, re.I):
+            if not _claim_is_negated(text, m.start(), m.end()):
+                failures.append(f"{label}: {m.group(0)}")
+                break
+
     # 「保証」単独もHigh Risk Claimとして検査する。ただし公式の保証があれば許可する。
     for m in re.finditer(r"保証(?:される|した|する|された)", text):
         if _claim_is_negated(text, m.start(), m.end()):
@@ -7827,12 +7843,24 @@ def _promote_plaintext_section_titles(article: str) -> tuple[str, list[str]]:
     return "\n".join(lines), changed
 
 
+def _repair_malformed_reader_numbering(article: str) -> tuple[str, list[str]]:
+    """Repair only unmistakable line-leading ordinal collisions without changing facts.
+
+    Real regression produced e.g. ``2.2026年〜``.  This is typography, not content, so repair it
+    locally with zero Gemini calls.  Mid-sentence decimals/versions are intentionally untouched.
+    """
+    body = article or ""
+    repaired, count = re.subn(r"(?m)^(\s*\d{1,2})\.(?=20\d{2}年)", r"\1. ", body)
+    return repaired, ([f"repair_malformed_ordinal_year:{count}"] if count else [])
+
+
 def _apply_deterministic_structure_polish(parsed: dict) -> tuple[dict, list[str]]:
     polished = dict(parsed or {})
     article, headings = _promote_plaintext_section_titles(str(polished.get("note_draft") or ""))
-    if headings:
+    article, numbering_changes = _repair_malformed_reader_numbering(article)
+    if headings or numbering_changes:
         polished["note_draft"] = article
-    return polished, [f"promote_plaintext_heading:{h}" for h in headings]
+    return polished, [f"promote_plaintext_heading:{h}" for h in headings] + numbering_changes
 
 
 def validate_publication_readiness_gate(parsed: dict, source_context: str = "", source_info: dict | None = None) -> tuple[str, list[str]]:
