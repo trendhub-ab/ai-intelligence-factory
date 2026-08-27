@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlsplit, urlunsplit
 
 
 DEFAULT_MAX_CHARS = 280
@@ -42,28 +43,78 @@ def _trim(text: str, limit: int) -> str:
     return text[: limit - 1].rstrip("、。,. ") + "…"
 
 
-def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
+def _clean_source_url(url: str) -> str:
+    """Remove query/fragment noise while retaining the canonical destination.
+
+    Factory snapshots can contain long Product Hunt tracking parameters. They
+    add no reader value and consume most of an X post's character budget.
+    """
+
+    value = _clean(url)
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        return value
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+
+def _source_label(item: Mapping[str, Any]) -> str:
+    raw = _first(item, "source", "Source")
+    aliases = {
+        "HackerNews": "HN",
+        "Hacker News": "HN",
+        "ProductHunt": "Product Hunt",
+        "Product Hunt": "Product Hunt",
+        "ArXiv": "arXiv",
+        "GitHub": "GitHub",
+    }
+    return aliases.get(raw, raw or "AI")
+
+
+def _topic_label(item: Mapping[str, Any]) -> str:
+    topic = _first(item, "portfolio_topic", "raw_portfolio_topic", "Portfolio Topic").upper()
+    return {
+        "AGENT": "AIエージェント",
+        "MODEL": "AIモデル",
+        "DEVTOOLS": "開発ツール",
+        "DATA": "AI・データ",
+        "SECURITY": "AI・セキュリティ",
+        "INFRA": "AIインフラ",
+    }.get(topic, "AI")
+
+
+def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str]:
     title = _clean(_first(item, "name", "Name", "title", "Title"))
     summary = _clean(
         _first(
             item,
             "source_summary",
             "Source Summary",
-            "screening_reason",
             "summary",
+            "screening_reason",
             "reason",
             "Reason",
         )
     )
-    why = _clean(_first(item, "decision_reason", "Decision Reason", "reason", "Reason"))
+    why = _clean(_first(item, "reason", "Reason", "decision_reason", "Decision Reason"))
     action = _clean(_first(item, "action", "Action", "recommended_action", "Recommended Action"))
-    source = _clean(_first(item, "source", "Source"))
-    url = _clean(_first(item, "x_primary_url", "url", "URL", "source_url", "primary_url"))
+    url = _clean_source_url(_first(item, "x_primary_url", "url", "URL", "source_url", "primary_url"))
+    return title or "AI最新情報", summary, why, action, url
 
-    hook = title or summary or "AI最新情報"
-    importance = why if why and why != summary else ""
-    implication = action
-    return hook, summary, importance, implication, source, url
+
+def _signal_line(item: Mapping[str, Any]) -> str:
+    screening = float(item.get("x_screening_score") or 0)
+    engagement = float(_first(item, "engagement", "Engagement", default="0") or 0)
+    shelf_life = _first(item, "shelf_life", "Shelf Life").upper()
+
+    if engagement >= 300:
+        return "海外で反応が大きい話題です。"
+    if screening >= 75:
+        return "Factoryでは重要度の高い更新として抽出。"
+    if shelf_life == "FLASH":
+        return "速報性が高く、早めに確認したい話題です。"
+    return "今後の動きを追う価値がある話題です。"
 
 
 def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS) -> dict[str, Any]:
@@ -72,23 +123,26 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
     if max_chars < 80:
         raise ValueError("max_chars must be at least 80")
 
-    hook, summary, importance, implication, source, url = _compose(item)
+    title, summary, why, action, url = _compose(item)
     if not url:
         raise ValueError("primary source URL is required")
 
-    if source:
-        hook = f"【{source}】{hook}"
+    source = _source_label(item)
+    topic = _topic_label(item)
+    hook = f"【{topic}】{title}"
+    sections: list[str] = [hook]
 
-    sections: list[str] = [_trim(hook, 95)]
-    if summary and summary != hook:
-        sections.append(_trim(summary, 105))
-    if importance:
-        sections.append("重要：" + _trim(importance, 70))
-    if implication:
-        sections.append("見るべき点：" + _trim(implication, 60))
+    if summary:
+        sections.append(_trim(summary.rstrip("。") + "。", 82))
+    sections.append(_signal_line(item))
 
-    suffix = f"一次情報：{url}"
-    body = "\n\n".join(sections)
+    if why and why != summary:
+        sections.append("注目点：" + _trim(why, 58))
+    elif action:
+        sections.append("見るべき点：" + _trim(action, 58))
+
+    suffix = f"一次情報（{source}）：{url}"
+    body = "\n".join(sections)
     candidate = f"{body}\n\n{suffix}"
 
     if len(candidate) > max_chars:
@@ -104,7 +158,6 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
         "characters": len(candidate),
         "max_characters": max_chars,
         "primary_url": url,
-        "source": source,
         "generator_mode": "deterministic_zero_api",
         "gemini_calls": 0,
         "x_api_calls": 0,
@@ -113,6 +166,8 @@ def build_x_post(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS)
 
 
 def render_markdown(draft: Mapping[str, Any]) -> str:
+    """Render a human-review artifact."""
+
     return (
         "# X Pending Review\n\n"
         f"- Generator: `{draft.get('generator_mode', '')}`\n"
@@ -131,7 +186,7 @@ def save_pending_post(
     output_dir: str | Path = "artifacts/x_posts/pending",
     stem: str | None = None,
 ) -> tuple[Path, Path]:
-    """Save JSON + Markdown review artifacts locally only."""
+    """Save JSON + Markdown review artifacts locally."""
 
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
