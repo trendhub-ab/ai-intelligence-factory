@@ -1,0 +1,57 @@
+name: X Draft Preview Smoke (Zero API)
+
+on:
+  push:
+    branches:
+      - feature/x-intelligence-layer
+    paths:
+      - '.github/workflows/x-draft-preview-on-push.yml'
+      - 'x_intelligence/**'
+      - 'observed_history/**'
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Generate five drafts from latest Factory screening snapshot
+        run: |
+          python -m x_intelligence.runner \
+            --latest-observed-history \
+            --max-items 5 \
+            --output-dir x_preview/pending
+
+      - name: Verify zero-API mode and preview content
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('x_preview/pending/manifest.json').read_text(encoding='utf-8'))
+          assert manifest['gemini_calls'] == 0
+          assert manifest['x_api_calls'] == 0
+          assert manifest['auto_posted'] is False
+          assert 1 <= manifest['generated_drafts'] <= 5
+          for draft in manifest['drafts']:
+              assert draft['primary_url']
+              assert draft['characters'] <= 280
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: x-draft-preview-smoke-${{ github.run_number }}
+          path: x_preview/
+          if-no-files-found: error
+          retention-days: 14
