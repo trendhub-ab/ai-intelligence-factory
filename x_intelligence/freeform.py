@@ -1,8 +1,9 @@
 """History-aware, zero-API free composition for Chip.
 
-Free composition stays stylistically flexible, but every published candidate must
-carry a grounded core conclusion from existing Factory data. We never invent a
-conclusion from a title alone.
+Free composition stays stylistically flexible, but every publishable candidate
+must carry a grounded, conclusion-like Japanese statement from existing Factory
+data. We never promote a topic label or headline-like noun phrase into a
+"conclusion" just because it came from screening.
 """
 from __future__ import annotations
 
@@ -15,18 +16,21 @@ from .persona import CHIP_PERSONA, validate_chip_text
 
 ANGLES = ("reaction", "plain", "work", "skeptic", "future", "analogy", "question", "observation")
 DOG_METAPHORS = tuple(CHIP_PERSONA["allowed_dog_metaphors"])
-CONCLUSION_FIELDS = (
-    "core_conclusion",
-    "Core Conclusion",
-    "source_conclusion",
-    "Source Conclusion",
-    "decision_conclusion",
-    "Decision Conclusion",
-    "source_summary",
-    "Source Summary",
-    "screening_reason",
-    "reason",
-    "Reason",
+
+_STRONG_CONCLUSION_FIELDS = (
+    "core_conclusion", "Core Conclusion",
+    "source_conclusion", "Source Conclusion",
+    "decision_conclusion", "Decision Conclusion",
+)
+_SUMMARY_FIELDS = (
+    "source_summary", "Source Summary", "summary", "Summary",
+)
+_SCREENING_FIELDS = ("screening_reason", "reason", "Reason")
+_CONCLUSION_MARKERS = (
+    "できる", "可能", "対応", "実現", "削減", "低下", "向上", "改善", "増加", "減少",
+    "公開", "提供", "追加", "廃止", "終了", "開始", "変更", "移行", "統合", "分離",
+    "採用", "導入", "利用", "実行", "動作", "使える", "使えない", "なる", "なった",
+    "進む", "進める", "進めて", "整備", "破棄", "禁止", "許可", "必要", "不要",
 )
 
 
@@ -47,7 +51,6 @@ def _clean_sentence(text: str) -> str:
 
 
 def _topic(item: Mapping[str, Any]) -> str:
-    """Use a Japanese topic label only when Factory already has one."""
     for key in ("name", "Name", "title", "Title"):
         value = _clean_sentence(_first(item, key))
         if value and _jp(value):
@@ -55,15 +58,31 @@ def _topic(item: Mapping[str, Any]) -> str:
     return ""
 
 
+def _is_conclusion_like(value: str) -> bool:
+    """Reject headline-like noun phrases while keeping concrete outcome statements."""
+    value = _clean_sentence(value)
+    if not value or not _jp(value) or len(value) < 10:
+        return False
+    if any(marker in value for marker in _CONCLUSION_MARKERS):
+        return True
+    # Full explanatory sentences are acceptable even without a curated marker.
+    return len(value) >= 28 and any(token in value for token in ("ため", "ことで", "として", "により", "一方", "ただし"))
+
+
 def extract_core_conclusion(item: Mapping[str, Any]) -> tuple[str, str]:
     """Return a grounded Japanese conclusion and its source field.
 
-    Screening-stage summaries are accepted because they are already Factory
-    outputs. A title by itself is deliberately not accepted as a conclusion.
+    Explicit conclusion fields are trusted Factory conclusions. Summary/screening
+    fields must additionally look like an outcome statement; topic-only labels such
+    as "MCPのロードマップ策定" are rejected.
     """
-    for key in CONCLUSION_FIELDS:
+    for key in _STRONG_CONCLUSION_FIELDS:
         value = _clean_sentence(_first(item, key))
         if value and _jp(value) and len(value) >= 8:
+            return value, key
+    for key in _SUMMARY_FIELDS + _SCREENING_FIELDS:
+        value = _clean_sentence(_first(item, key))
+        if _is_conclusion_like(value):
             return value, key
     raise ValueError("grounded core conclusion is required for Chip free composition")
 
@@ -102,7 +121,6 @@ def choose_angle(item: Mapping[str, Any], recent: list[Mapping[str, Any]] | None
     lower = conclusion.lower()
     engagement = float(_first(item, "engagement", "Engagement", default="0") or 0)
     screening = float(item.get("x_screening_score") or _first(item, "final_screening_score", "Screening Score", default="0") or 0)
-
     if any(word in lower for word in ("倫理", "破棄", "監視", "surveillance", "defcon", "危険", "問題")):
         preferred = ("reaction", "observation", "skeptic", "plain")
     elif any(word in lower for word in ("ロードマップ", "標準", "規格", "protocol", "mcp")):
@@ -145,18 +163,17 @@ def _apply_dog_flavor(lines: list[str], dog: str) -> list[str]:
 
 
 def _content_lines(angle: str, topic: str, conclusion: str) -> list[str]:
-    """Compose freely while always exposing the grounded conclusion."""
     c = conclusion + "。"
     t = topic + "。" if topic and topic != conclusion else ""
     by_angle = {
-        "reaction": ["これはちょっと考えさせられます。", t, c, "AIの便利さだけでは片づけにくい話です。"],
-        "plain": [t, c, "難しい話でも、ここまで分かればまず十分です。"],
+        "reaction": ["これはちょっと考えさせられます。", t, c, "ここまで分かると、ニュースの見え方が変わります。"],
+        "plain": [t, c, "難しい話でも、結論はここです。"],
         "work": ["仕事目線だと、ここは気になります。", t, c, "自分の作業がどう変わるかで見ると分かりやすいです。"],
         "skeptic": [t, c, "新しい＝使うべき、ではないので、実際のメリットまで見たいところです。"],
         "future": ["数年後に振り返ると、こういう地味な話の方が効いているかもしれません。", t, c, "仕組み側の変化は長く残ります。"],
         "analogy": [t, c, "派手な新製品というより、土台のルールが変わるタイプの話です。"],
         "question": [t, c, "これ、自分の仕事に入れるならどこでしょう。", "使う場面まで考えると見え方が変わります。"],
-        "observation": ["最近のAI界隈、性能競争とは別の変化が増えています。", t, c, "こういう結論まで追うと、ニュースが急に分かりやすくなります。"],
+        "observation": ["最近のAI界隈、性能競争とは別の変化が増えています。", t, c, "結論まで追うと、ニュースはずっと分かりやすいです。"],
     }
     return [line for line in by_angle[angle] if line]
 
@@ -171,14 +188,11 @@ def build_free_chip_post(item: Mapping[str, Any], *, recent: list[Mapping[str, A
     angle = choose_angle(item, recent)
     seed = url + conclusion
     dog = _dog_flavor(recent, seed)
-
     lines = _apply_dog_flavor(_content_lines(angle, topic, conclusion), dog)
     body = "\n\n".join(lines)
     link_mode = _link_mode(seed)
     candidate = body if link_mode == "reference_only" else body + f"\n\n元ネタ（英語）：{url}"
-
     if len(candidate) > max_chars:
-        # Preserve the conclusion before optional commentary when space is tight.
         essential = conclusion + "。"
         if link_mode == "inline":
             source_line = f"元ネタ（英語）：{url}"
@@ -192,11 +206,9 @@ def build_free_chip_post(item: Mapping[str, Any], *, recent: list[Mapping[str, A
             candidate = essential
     if len(candidate) > max_chars:
         raise ValueError("grounded core conclusion does not fit X character limit")
-
     validate_chip_text(candidate)
     if conclusion not in candidate:
         raise ValueError("grounded core conclusion was lost during composition")
-
     return {
         "status": "X Pending Review",
         "character": CHIP_PERSONA["name"],
