@@ -32,7 +32,7 @@ jobs:
             --max-items 5 \
             --output-dir x_preview/pending
 
-      - name: Verify free composition, memory and zero-API mode
+      - name: Verify grounded composition and zero-API mode
         run: |
           python - <<'PY'
           import json
@@ -41,28 +41,35 @@ jobs:
           assert manifest['gemini_calls'] == 0
           assert manifest['x_api_calls'] == 0
           assert manifest['auto_posted'] is False
-          assert 1 <= manifest['generated_candidates'] <= 5
+          assert 0 <= manifest['generated_candidates'] <= 5
           assert manifest['free_drafts'] == manifest['generated_candidates']
           assert manifest['legacy_variants_per_candidate'] == 3
           assert manifest['generated_drafts'] == manifest['generated_candidates'] * 3
           assert manifest['total_review_drafts'] == manifest['generated_candidates'] * 4
+          assert manifest['core_conclusion_required'] is True
+          assert manifest['headline_only_conclusion_rejected'] is True
           angles = []
           for candidate in manifest['candidates']:
               draft = candidate['free_draft']
               assert candidate['primary_url']
               assert draft['composition_mode'] == 'free_history_aware_zero_api'
+              assert draft['grounded_conclusion'] is True
+              assert draft['core_conclusion'] in draft['post']
               assert draft['characters'] <= 280
               assert draft['gemini_calls'] == 0
               assert draft['x_api_calls'] == 0
               assert 'ワン' not in draft['post']
               angles.append(draft['angle'])
               assert Path('x_preview/pending', candidate['comparison_artifact']).exists()
+          if manifest['generated_candidates'] == 0:
+              assert manifest['skipped_candidates'] > 0
+              print('DATA GAP: current Factory screening snapshot has no publishable grounded core conclusions.')
           if len(angles) >= 4:
               assert len(set(angles[:4])) >= 3
           print(json.dumps(manifest, ensure_ascii=False, indent=2))
           PY
 
-      - name: Upload preview artifact
+      - name: Upload preview or diagnostic artifact
         uses: actions/upload-artifact@v7
         with:
           name: x-draft-preview-smoke-${{ github.run_number }}
