@@ -63,12 +63,15 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
                 observed_history_dir=history,
                 output_dir=output,
             )
-            self.assertEqual(manifest["generated_drafts"], 1)
+            self.assertEqual(manifest["generated_candidates"], 1)
+            self.assertEqual(manifest["generated_drafts"], 3)
+            self.assertEqual(manifest["variants_per_candidate"], 3)
             self.assertEqual(manifest["input_path"], str(snapshot))
             self.assertEqual(manifest["gemini_calls"], 0)
             self.assertEqual(manifest["x_api_calls"], 0)
             self.assertFalse(manifest["auto_posted"])
             self.assertTrue((output / "manifest.json").exists())
+            self.assertEqual(len(list(output.glob("*-COMPARE.md"))), 1)
 
 
 if __name__ == "__main__":
