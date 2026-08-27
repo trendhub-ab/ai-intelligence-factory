@@ -116,8 +116,7 @@ def generate_batch(
         recent_free.append({"angle": free_draft["angle"], "dog_flavor_used": free_draft["dog_flavor_used"], "post": free_draft["post"]})
         variants = build_x_variants(item, max_chars=max_chars)
         stem = _slug(index, item)
-        free_json, free_md = save_pending_post(free_draft, output_dir=target, stem=f"{stem}-chip-free")
-        artifact_map: dict[str, dict[str, str]] = {"free": {"json": free_json.name, "markdown": free_md.name}}
+        artifact_map: dict[str, dict[str, str]] = {}
         for variant, draft in variants.items():
             json_path, md_path = save_pending_post(draft, output_dir=target, stem=f"{stem}-{variant}")
             artifact_map[variant] = {"json": json_path.name, "markdown": md_path.name}
@@ -145,8 +144,11 @@ def generate_batch(
         "selected_records": len(selected),
         "generated_candidates": len(candidates),
         "free_drafts": len(candidates),
+        "variants_per_candidate": len(X_VARIANTS),
         "legacy_variants_per_candidate": len(X_VARIANTS),
-        "generated_drafts": len(candidates) * (len(X_VARIANTS) + 1),
+        "variant_names": list(X_VARIANTS),
+        "generated_drafts": len(candidates) * len(X_VARIANTS),
+        "total_review_drafts": len(candidates) * (len(X_VARIANTS) + 1),
         "composition_mode": "persona_angle_router_recent_memory_anti_repetition_zero_api",
         "max_items": max_items,
         "min_screening_score": min_screening_score,
