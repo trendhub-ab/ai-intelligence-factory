@@ -1,5 +1,5 @@
-requested_at=2026-08-27T18:45:00+09:00
+requested_at=2026-08-27T19:02:00+09:00
 requested_by=chat
-purpose=run145_real_article_closure_ab_regression
-model_target=gemini-3.6-flash
+purpose=run146_model_locked_real_article_regression
+model_target=gemini-3.6-flash-only
 limit=3
