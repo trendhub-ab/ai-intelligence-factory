@@ -1,0 +1,48 @@
+name: Apply Run147 Rescue Loss Precision
+
+on:
+  push:
+    branches:
+      - run129-conversational-warmth
+    paths:
+      - '.github/chat-triggers/apply-run147-rescue-loss-precision.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Apply Run147 patch
+        run: python tools/apply_run147_rescue_loss_precision.py
+      - name: Run dedicated Run147 tests
+        run: python -m unittest tests.test_run147_rescue_loss_precision -v
+      - name: Run full unit suite
+        run: python -m unittest discover -s tests -v
+      - name: Verify Gemini call sites unchanged
+        run: |
+          python - <<'PY'
+          import pathlib
+          s=pathlib.Path('pipeline.py').read_text(encoding='utf-8')
+          assert s.count('_generate_via_chat(')==7
+          assert s.count('genai.Client(')==1
+          print('Gemini call sites unchanged')
+          PY
+      - name: Commit Run147 if tests pass
+        run: |
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add pipeline.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: Run147 allow safe single numeric rescue'
+          git push origin HEAD:run129-conversational-warmth
