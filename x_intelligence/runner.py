@@ -1,4 +1,4 @@
-"""Phase 0.9 runner for the isolated X Intelligence Layer.
+"""Phase 0.10 runner for the isolated X Intelligence Layer.
 
 Consumes already-produced Factory records or the latest local observed_history
 screening snapshot and writes review-only X draft artifacts.
@@ -106,7 +106,15 @@ def generate_batch(
     max_chars: int = 280, input_path: str | None = None,
 ) -> dict[str, Any]:
     source_records = [dict(record) for record in records]
-    selected = select_x_candidates(source_records, min_screening_score=min_screening_score, min_decision_score=min_decision_score, max_items=max_items)
+    # Search deeper than the requested output count so headline-only candidates can
+    # be skipped without leaving the review set empty. This remains zero API.
+    pool_limit = min(len(source_records), max(max_items * 4, max_items))
+    selected = select_x_candidates(
+        source_records,
+        min_screening_score=min_screening_score,
+        min_decision_score=min_decision_score,
+        max_items=pool_limit,
+    )
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     candidates: list[dict[str, Any]] = []
@@ -114,6 +122,8 @@ def generate_batch(
     recent_free: list[dict[str, Any]] = []
 
     for selected_rank, item in enumerate(selected, start=1):
+        if len(candidates) >= max_items:
+            break
         try:
             free_draft = build_free_chip_post(item, recent=recent_free, max_chars=max_chars)
         except ValueError as exc:
@@ -122,7 +132,7 @@ def generate_batch(
             skipped.append({
                 "selected_rank": selected_rank,
                 "name": item.get("Name") or item.get("name") or item.get("Title") or item.get("title") or "",
-                "reason": "missing_grounded_core_conclusion",
+                "reason": "missing_or_headline_only_grounded_core_conclusion",
             })
             continue
 
@@ -156,6 +166,7 @@ def generate_batch(
         "status": "X Chip Free Composition Pending Human Review",
         "input_path": input_path,
         "input_records": len(source_records),
+        "selection_pool_records": len(selected),
         "selected_records": len(selected),
         "generated_candidates": len(candidates),
         "skipped_candidates": len(skipped),
@@ -167,6 +178,7 @@ def generate_batch(
         "generated_drafts": len(candidates) * len(X_VARIANTS),
         "total_review_drafts": len(candidates) * (len(X_VARIANTS) + 1),
         "core_conclusion_required": True,
+        "headline_only_conclusion_rejected": True,
         "composition_mode": "persona_angle_router_recent_memory_grounded_conclusion_zero_api",
         "max_items": max_items,
         "min_screening_score": min_screening_score,
