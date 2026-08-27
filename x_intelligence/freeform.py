@@ -22,15 +22,23 @@ _STRONG_CONCLUSION_FIELDS = (
     "source_conclusion", "Source Conclusion",
     "decision_conclusion", "Decision Conclusion",
 )
-_SUMMARY_FIELDS = (
-    "source_summary", "Source Summary", "summary", "Summary",
-)
+_SUMMARY_FIELDS = ("source_summary", "Source Summary", "summary", "Summary")
 _SCREENING_FIELDS = ("screening_reason", "reason", "Reason")
-_CONCLUSION_MARKERS = (
-    "できる", "可能", "対応", "実現", "削減", "低下", "向上", "改善", "増加", "減少",
-    "公開", "提供", "追加", "廃止", "終了", "開始", "変更", "移行", "統合", "分離",
-    "採用", "導入", "利用", "実行", "動作", "使える", "使えない", "なる", "なった",
-    "進む", "進める", "進めて", "整備", "破棄", "禁止", "許可", "必要", "不要",
+
+# These patterns require an outcome/predicate, not merely a noun such as
+# 「提供」「向上」「破棄」inside a headline-like phrase.
+_OUTCOME_PATTERNS = (
+    r"できる", r"できた", r"可能にな", r"可能である", r"可能です",
+    r"された", r"される", r"している", r"していく", r"となる", r"になった", r"になる",
+    r"を公開(?:した|している|する)", r"が公開(?:された|される)",
+    r"を提供(?:した|している|する)", r"が提供(?:された|される)",
+    r"を追加(?:した|している|する)", r"が追加(?:された|される)",
+    r"を廃止(?:した|する)", r"が終了(?:した|する)", r"を開始(?:した|する)",
+    r"に変更(?:した|された|する)", r"へ移行(?:した|する)", r"を統合(?:した|する)",
+    r"が改善(?:した|する)", r"を削減(?:した|する)", r"が増加(?:した|する)", r"が減少(?:した|する)",
+    r"を実行できる", r"で動作(?:した|する)", r"を破棄(?:した|している|する)",
+    r"引き下げ(?:られ|た)", r"引き上げ(?:られ|た)", r"整備(?:していく|される|する)",
+    r"使える", r"使えない", r"必要になる", r"不要になる",
 )
 
 
@@ -59,22 +67,19 @@ def _topic(item: Mapping[str, Any]) -> str:
 
 
 def _is_conclusion_like(value: str) -> bool:
-    """Reject headline-like noun phrases while keeping concrete outcome statements."""
+    """Accept only a concrete outcome statement, never a headline-like noun phrase."""
     value = _clean_sentence(value)
     if not value or not _jp(value) or len(value) < 10:
         return False
-    if any(marker in value for marker in _CONCLUSION_MARKERS):
-        return True
-    # Full explanatory sentences are acceptable even without a curated marker.
-    return len(value) >= 28 and any(token in value for token in ("ため", "ことで", "として", "により", "一方", "ただし"))
+    return any(re.search(pattern, value) for pattern in _OUTCOME_PATTERNS)
 
 
 def extract_core_conclusion(item: Mapping[str, Any]) -> tuple[str, str]:
     """Return a grounded Japanese conclusion and its source field.
 
     Explicit conclusion fields are trusted Factory conclusions. Summary/screening
-    fields must additionally look like an outcome statement; topic-only labels such
-    as "MCPのロードマップ策定" are rejected.
+    fields must contain a concrete outcome predicate. A title or topic label alone
+    is never accepted as a conclusion.
     """
     for key in _STRONG_CONCLUSION_FIELDS:
         value = _clean_sentence(_first(item, key))
@@ -121,7 +126,7 @@ def choose_angle(item: Mapping[str, Any], recent: list[Mapping[str, Any]] | None
     lower = conclusion.lower()
     engagement = float(_first(item, "engagement", "Engagement", default="0") or 0)
     screening = float(item.get("x_screening_score") or _first(item, "final_screening_score", "Screening Score", default="0") or 0)
-    if any(word in lower for word in ("倫理", "破棄", "監視", "surveillance", "defcon", "危険", "問題")):
+    if any(word in lower for word in ("倫理", "監視", "surveillance", "defcon", "危険", "問題")):
         preferred = ("reaction", "observation", "skeptic", "plain")
     elif any(word in lower for word in ("ロードマップ", "標準", "規格", "protocol", "mcp")):
         preferred = ("future", "analogy", "work", "plain")
