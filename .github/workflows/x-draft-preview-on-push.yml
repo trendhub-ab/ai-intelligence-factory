@@ -44,7 +44,8 @@ jobs:
           assert 1 <= manifest['generated_candidates'] <= 5
           assert manifest['free_drafts'] == manifest['generated_candidates']
           assert manifest['legacy_variants_per_candidate'] == 3
-          assert manifest['generated_drafts'] == manifest['generated_candidates'] * 4
+          assert manifest['generated_drafts'] == manifest['generated_candidates'] * 3
+          assert manifest['total_review_drafts'] == manifest['generated_candidates'] * 4
           angles = []
           for candidate in manifest['candidates']:
               draft = candidate['free_draft']
