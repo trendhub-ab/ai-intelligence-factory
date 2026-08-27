@@ -34,7 +34,7 @@ class XObservedHistoryAdapterTests(unittest.TestCase):
         self.assertGreater(selected[0]["x_candidate_score"], 0)
 
         draft = build_x_post(selected[0])
-        self.assertIn("HackerNews", draft["post"])
+        self.assertIn("一次情報（HN）", draft["post"])
         self.assertIn("価格改定", draft["post"])
         self.assertEqual(draft["gemini_calls"], 0)
         self.assertEqual(draft["x_api_calls"], 0)
