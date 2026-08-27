@@ -1,14 +1,14 @@
 """History-aware, zero-API free composition for Chip.
 
-This module deliberately avoids fixed post templates. It selects a conversational
-angle and surface structure from existing Factory signals while remembering the
-recent batch to reduce repetition.
+The goal is not to imitate an LLM. It is to avoid a visibly fixed posting
+format while staying grounded in already-produced Factory facts.
 """
 from __future__ import annotations
 
 import hashlib
 import re
 from typing import Any, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .persona import CHIP_PERSONA, validate_chip_text
 
@@ -36,8 +36,23 @@ def _fact(item: Mapping[str, Any]) -> str:
     return _first(item, "name", "Name", "title", "Title", default="AIの新しい動き").rstrip("。")
 
 
+def _clean_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        return value
+    if parsed.netloc.lower() == "www.producthunt.com" and parsed.path.startswith("/r/"):
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    kept = []
+    for key, val in parse_qsl(parsed.query, keep_blank_values=True):
+        low = key.lower()
+        if low.startswith("utm_") or low in {"fbclid", "gclid", "ref", "referrer", "source"}:
+            continue
+        kept.append((key, val))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(kept), ""))
+
+
 def _url(item: Mapping[str, Any]) -> str:
-    return _first(item, "x_primary_url", "url", "URL", "source_url", "primary_url")
+    return _clean_url(_first(item, "x_primary_url", "url", "URL", "source_url", "primary_url"))
 
 
 def _pick(options: tuple[str, ...], seed: str, blocked: set[str]) -> str:
@@ -51,32 +66,55 @@ def _pick(options: tuple[str, ...], seed: str, blocked: set[str]) -> str:
 def choose_angle(item: Mapping[str, Any], recent: list[Mapping[str, Any]] | None = None) -> str:
     recent = recent or []
     blocked = {str(x.get("angle")) for x in recent[-3:]}
+    fact = _fact(item)
+    lower = fact.lower()
     engagement = float(_first(item, "engagement", "Engagement", default="0") or 0)
     screening = float(item.get("x_screening_score") or _first(item, "final_screening_score", "Screening Score", default="0") or 0)
-    preferred: tuple[str, ...]
-    if engagement >= 300:
-        preferred = ("reaction", "question", "observation", "skeptic")
+
+    if any(word in lower for word in ("倫理", "破棄", "監視", "surveillance", "defcon", "危険", "問題")):
+        preferred = ("reaction", "observation", "skeptic", "plain")
+    elif any(word in lower for word in ("ロードマップ", "標準", "規格", "protocol", "mcp")):
+        preferred = ("future", "analogy", "work", "plain")
+    elif any(word in lower for word in ("エージェント", "agent", "ツール", "tool", "アプリ", "機能")):
+        preferred = ("work", "question", "plain", "skeptic")
+    elif engagement >= 300:
+        preferred = ("reaction", "observation", "skeptic", "plain")
     elif screening >= 75:
         preferred = ("work", "plain", "future", "analogy")
     else:
         preferred = ANGLES
-    seed = _url(item) + _fact(item) + str(len(recent))
-    return _pick(preferred, seed, blocked)
+    return _pick(preferred, _url(item) + fact + str(len(recent)), blocked)
 
 
 def _dog_flavor(recent: list[Mapping[str, Any]], seed: str) -> str:
-    # At most once per 12 recent posts; never a dog-like sentence ending.
     if any(bool(x.get("dog_flavor_used")) for x in recent[-12:]):
         return ""
     digest = int(hashlib.sha256((seed + "dog").encode("utf-8")).hexdigest(), 16)
-    if digest % 7 != 0:
+    if digest % 9 != 0:
         return ""
     return DOG_METAPHORS[digest % len(DOG_METAPHORS)]
 
 
-def build_free_chip_post(
-    item: Mapping[str, Any], *, recent: list[Mapping[str, Any]] | None = None, max_chars: int = 280
-) -> dict[str, Any]:
+def _link_mode(seed: str) -> str:
+    # Most posts should be understandable without sending a Japanese reader to
+    # a technical English page. The URL always remains in metadata for trust.
+    digest = int(hashlib.sha256((seed + "link").encode("utf-8")).hexdigest(), 16)
+    return "inline" if digest % 5 in {0, 1} else "reference_only"
+
+
+def _apply_dog_flavor(lines: list[str], dog: str) -> list[str]:
+    if not dog:
+        return lines
+    if dog == "ちょっと耳が立ちました":
+        return ["この話、ちょっと耳が立ちました。", *lines]
+    if dog == "くんくん調べてみると":
+        return ["くんくん調べてみると、思ったより面白い話でした。", *lines]
+    if dog == "これは追っておきたい匂いがします":
+        return [*lines, "これは追っておきたい匂いがします。"]
+    return ["散歩中に拾ったAIニュースです。", *lines]
+
+
+def build_free_chip_post(item: Mapping[str, Any], *, recent: list[Mapping[str, Any]] | None = None, max_chars: int = 280) -> dict[str, Any]:
     recent = list(recent or [])
     fact = _fact(item)
     url = _url(item)
@@ -87,27 +125,22 @@ def build_free_chip_post(
     dog = _dog_flavor(recent, seed)
 
     lines_by_angle = {
-        "reaction": ["これはちょっと気になりました。", fact + "。", "話題の派手さより、この先どこに効いてくるかを見たいです。"],
-        "plain": [fact + "。", "難しく見えますが、要するに『何が変わるのか』だけ押さえれば十分です。"],
-        "work": ["仕事目線で見ると、ここはチェックしておきたいです。", fact + "。", "新機能そのものより、自分の作業が1つ減るかで見ると分かりやすい。"],
-        "skeptic": ["これ、本当に必要？という目線で見ています。", fact + "。", "新しい＝使うべき、ではないので、実際に何が楽になるかが本題です。"],
-        "future": ["数年後に振り返ると、こういう話の方が効いているかもしれません。", fact + "。", "今は地味でも、仕組み側の変化は追っておきたいです。"],
-        "analogy": [fact + "。", "たとえるなら、新しい家電より『コンセントの規格が変わる』タイプの話に近いかもしれません。"],
-        "question": ["これ、みなさんなら使いますか？", fact + "。", "便利そう、で終わらず、自分の仕事に置き換えると見え方が変わります。"],
-        "observation": ["最近のAIニュースを見ていて感じるのですが、主役が少しずつ変わっています。", fact + "。", "性能競争だけ追うより、使われ方の変化を見る方が面白いです。"],
+        "reaction": ["これはちょっと考えさせられます。", fact + "。", "AIの便利さだけでは片づけにくい話です。"],
+        "plain": [fact + "。", "難しく見えますが、まずは『何が変わるのか』だけ押さえれば十分です。"],
+        "work": ["仕事目線だと、ここは気になります。", fact + "。", "新しいかどうかより、自分の作業が減るかで見たいところです。"],
+        "skeptic": [fact + "。", "新しい＝使うべき、ではないので、便利さと引き換えに何が増えるのかも見ておきたいです。"],
+        "future": ["数年後に振り返ると、こういう地味な話の方が効いているかもしれません。", fact + "。", "派手な新機能より、仕組み側の変化は長く残ります。"],
+        "analogy": [fact + "。", "新しい家電が出たというより、『コンセントの規格が変わる』タイプの話に近いかもしれません。"],
+        "question": [fact + "。", "これ、実際に自分の仕事へ入れるならどこでしょう。", "便利そう、で終わらず、使う場面まで考えると見え方が変わります。"],
+        "observation": ["最近のAI界隈を見ていると、性能競争とは別の変化が増えています。", fact + "。", "こういう話を追う方が、AIが社会でどう使われるかは見えやすいです。"],
     }
-    lines = list(lines_by_angle[angle])
-    if dog:
-        lines.insert(1, dog + "。")
-    source_line = f"元ネタ（英語）：{url}"
+    lines = _apply_dog_flavor(list(lines_by_angle[angle]), dog)
     body = "\n\n".join(lines)
-    candidate = body + "\n\n" + source_line
+    link_mode = _link_mode(seed)
+    candidate = body if link_mode == "reference_only" else body + f"\n\n元ネタ（英語）：{url}"
+
     if len(candidate) > max_chars:
-        room = max_chars - len(source_line) - 2
-        body = body[: max(0, room - 1)].rstrip("、。,. ") + "…"
-        candidate = body + "\n\n" + source_line
-    if len(candidate) > max_chars:
-        raise ValueError("source URL leaves no room for free-form post")
+        candidate = candidate[: max_chars - 1].rstrip("、。,. ") + "…"
     validate_chip_text(candidate)
     return {
         "status": "X Pending Review",
@@ -115,6 +148,7 @@ def build_free_chip_post(
         "composition_mode": "free_history_aware_zero_api",
         "angle": angle,
         "dog_flavor_used": bool(dog),
+        "source_delivery": link_mode,
         "post": candidate,
         "characters": len(candidate),
         "max_characters": max_chars,
