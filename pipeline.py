@@ -5761,9 +5761,13 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・Reader-firstの「30秒でわかるこの記事」は公開UI上の要約であり、本文の段落順・見出し順・導入文型を固定するテンプレートではない。本文はその3項目をなぞらず、記事固有の流れを選ぶ。
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
 ・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。
-・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感を狙う。です・ます調を土台にしつつ、難しい概念の翻訳、身近な場面への接続、意外性、読者が実体験を思い出す箇所では、自然な会話調を少量混ぜてよい。
-・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
+・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
+・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。固定語でもない。特定の語尾を義務化せず、役割としての親近感を満たす。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
+・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。
+・この記事で読者が持ち帰る専門概念を内部で2〜4個に絞る。Decisionを理解するために必須の概念だけを日常語や短い比喩で丁寧に翻訳し、それ以外の実装詳細・規格名・略語は、Evidenceと制約を失わない範囲で一文にまとめるか、本文理解に不要なら書かない。専門語の数を増やすことを専門性と取り違えない。
+・文字数上限の中でAccessibilityを足すためにEvidence、数値、制約、比較、反証、Decisionを削らない。削る優先順位は、重複説明、Decisionに不要な内部実装、汎用的な前置き、同じ意味の言い換え。分かりやすさは情報量の水増しではなく、情報の選択と順序で作る。
 ・「ですよね。」は読者に同意を強要するためではなく、スマホの権限確認、買い物、通勤など多くの人が経験した具体場面を思い出してもらう用途に限る。根拠のない一般化や価値観への同意要求には使わない。
+・親近感の一文や比喩から、Evidenceにない固有名詞・数値・市場評価・利用実績を新しく作らない。比喩は理解補助であり新しいFactではない。これにより親しみやすさを理由にFact Gate / Source Boundaryの表面積を増やさない。
 ・Fact / Evidence / 数値 / 制約 / Security上の重要事項は会話調でぼかさず、冷静で断定範囲の明確な文体を保つ。説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる温度にする。
 ・会話調を記事全体へ均一に散らさない。連続した文末の「〜ですよね。」「〜なんですよ。」や、毎段落の読者呼びかけは避ける。親近感は口癖ではなく、語彙の平易さ、具体場面、文章の間、問いかけの自然さで作る。
 """
@@ -8339,16 +8343,18 @@ def _reader_experience_signals(article: str) -> dict:
         r"ですよね[。！？!?]", r"なんですよ[。！？!?]", r"やっぱり[、,]",
         r"ちょっと想像してみてください", r"ここが面白いところ",
         r"思い出してみてください", r"ありますよね[。！？!?]",
+        r"(?:使った|見た|聞かれた|困った|迷った)こと(?:は)?(?:ありませんか|ありますか|ありますよね)",
+        r"(?:難しそう|大げさ|物々しい)(?:な名前|に見え|に聞こえ)[^。！？]{0,45}(?:ですが|けれど|ものの)",
+        r"名前は難しそう[^。！？]{0,45}(?:ですが|でも)",
+        r"(?:想像|思い浮かべ)して(?:みる|みて)",
     ]
     conversational_hits = sum(len(re.findall(p, prose)) for p in conversational_patterns)
+    reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね)[。！？!?]", prose))
+    friendly_turn_hits = len(re.findall(r"(?:難しそう(?:ですが|でも)|名前は難し|意外と単純|やっていることは[^。！？]{0,35}(?:単純|シンプル)|身近な話にすると)", prose))
+    reader_proximity_moments = conversational_hits + reader_question_hits + friendly_turn_hits
     repeated_conversational_phrase = any(len(re.findall(p, prose)) >= 3 for p in conversational_patterns)
-    conversational_overuse = conversational_hits >= 7 or repeated_conversational_phrase
-    conversational_warmth = bool(
-        conversational_hits >= 1
-        or scene_present
-        or everyday_terms
-        or re.search(r"(?:難しそう|身近|普段|私たち|使ったこと|見たこと|経験|思い浮かべ)", prose)
-    )
+    conversational_overuse = conversational_hits >= 7 or reader_question_hits >= 6 or repeated_conversational_phrase
+    conversational_warmth = reader_proximity_moments >= 1
 
     accessibility_issues = []
     if acronyms: accessibility_issues.append("unexplained_acronyms")
@@ -8365,7 +8371,15 @@ def _reader_experience_signals(article: str) -> dict:
     if not heading_pull: enjoyment_issues.append("generic_heading_cluster")
     if not article_specific_angle: enjoyment_issues.append("article_specific_angle_weak")
     if not news_relevance: enjoyment_issues.append("news_relevance_weak")
+    if not conversational_warmth: enjoyment_issues.append("reader_proximity_missing")
     if conversational_overuse: enjoyment_issues.append("conversational_tone_overuse")
+
+    # Information-budget signal: do not solve accessibility by adding more prose. Several dense
+    # jargon paragraphs plus many analogies indicate the article may be explaining everything twice.
+    # This is diagnostic only; it never removes Evidence or changes a hard gate.
+    information_budget = "GOOD"
+    if jargon_dense_paragraphs >= 3 or (len(analogy_markers) >= 3 and technical_density >= 30.0):
+        information_budget = "REVIEW"
 
     accessibility = "GOOD" if not accessibility_issues else "REVIEW"
     curiosity_pull = "GOOD" if (curiosity or self_relevance) and not announcement_only else "REVIEW"
@@ -8384,8 +8398,11 @@ def _reader_experience_signals(article: str) -> dict:
         "non_engineer_core_clarity": non_engineer_core_clarity,
         "headline_pull": "GOOD" if heading_pull else "REVIEW",
         "news_relevance": "GOOD" if news_relevance else "REVIEW",
-        "conversational_warmth": "GOOD" if conversational_warmth and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "NEUTRAL"),
+        "conversational_warmth": "GOOD" if conversational_warmth and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
         "conversational_marker_count": conversational_hits,
+        "reader_proximity_moment_count": reader_proximity_moments,
+        "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
+        "information_budget": information_budget,
         "conversational_overuse": conversational_overuse,
         "analogy_used": analogy_used,
         "analogy_necessary": "EDITORIAL_JUDGMENT" if analogy_used else ("BRIDGE_RECOMMENDED" if bridge_needed and not plain_language_bridge_present else "NOT_REQUIRED"),
@@ -9307,6 +9324,9 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Non-Engineer Core Clarity: {reader.get('non_engineer_core_clarity')}",
             f"- Conversational Warmth: {reader.get('conversational_warmth')}",
             f"- Conversational Marker Count: {reader.get('conversational_marker_count')}",
+            f"- Reader Proximity: {reader.get('reader_proximity')}",
+            f"- Reader Proximity Moment Count: {reader.get('reader_proximity_moment_count')}",
+            f"- Information Budget: {reader.get('information_budget')}",
             f"- Headline Pull: {reader.get('headline_pull')}",
             f"- News Relevance: {reader.get('news_relevance')}",
             f"- Analogy Used: {reader.get('analogy_used')}",
