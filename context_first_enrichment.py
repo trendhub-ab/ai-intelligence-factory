@@ -81,8 +81,11 @@ def _clean_sentence(value: str, *, limit: int = 260) -> str:
     if not value:
         return ""
     if len(value) > limit:
-        # Prefer a natural sentence boundary; otherwise truncate conservatively.
-        cut = max(value.rfind("。", 0, limit + 1), value.rfind("！", 0, limit + 1), value.rfind("？", 0, limit + 1))
+        cut = max(
+            value.rfind("。", 0, limit + 1),
+            value.rfind("！", 0, limit + 1),
+            value.rfind("？", 0, limit + 1),
+        )
         if cut >= max(40, limit // 2):
             value = value[: cut + 1]
         else:
@@ -99,12 +102,10 @@ def _display_description(label: str, name: str) -> str:
         return ""
     for separator in (" — ", " – ", " - ", "：", ":"):
         if separator in label:
-            left, right = label.split(separator, 1)
+            _left, right = label.split(separator, 1)
             right = right.strip()
             if right and right.casefold() != str(name or "").strip().casefold():
                 return _clean_sentence(right, limit=220)
-    # A label that differs materially from the formal name can itself be a safe
-    # descriptive phrase, but avoid repeating a bare product name as a summary.
     if label.casefold() != str(name or "").strip().casefold() and len(label) >= 12:
         return _clean_sentence(label, limit=220)
     return ""
@@ -130,8 +131,6 @@ def derive_topic_trigger(state: dict[str, Any]) -> str:
     """Explain why the item is being looked at now without fabricating breaking news."""
     rationale = _clean_sentence(str(state.get("short_rationale") or ""), limit=220)
     if rationale:
-        # `Short Rationale` is produced from verified primary evidence in Product Review.
-        # Framing it as "今回の確認" communicates recency without claiming an announcement.
         return _clean_sentence(f"今回の確認では、{rationale}", limit=260)
 
     screening = _clean_sentence(str(state.get("screening_reason") or ""), limit=200)
@@ -159,7 +158,9 @@ def _page_state(page: dict) -> dict[str, Any]:
         "canonical_entity_id": _text(props.get(decision_intelligence.TECH_PROP_ENTITY_ID)),
         "assessment_state": _select(props.get(decision_intelligence.TECH_PROP_ASSESSMENT_STATE)),
         "tracking_status": _select(props.get(decision_intelligence.TECH_PROP_TRACKING_STATUS)),
-        "tracking_eligibility": bool((props.get(decision_intelligence.TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox")),
+        "tracking_eligibility": bool(
+            (props.get(decision_intelligence.TECH_PROP_TRACKING_ELIGIBILITY) or {}).get("checkbox")
+        ),
         "last_reviewed": _date(props.get(decision_intelligence.TECH_PROP_LAST_REVIEWED)),
     }
 
@@ -244,13 +245,14 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
     """Backfill/refresh reader context and safely mirror it to subscriber inventory.
 
     `previous_reviewed` is the snapshot captured immediately before Product Review.
-    A Topic Trigger is refreshed only if Last Reviewed changed (or an entity is new).
-    Existing member Plain Summary is never overwritten, preserving human curation.
-    Empty internal values are never propagated to members.
+    When it is unavailable, existing Topic Trigger copy is preserved rather than
+    assuming every record was just reviewed. Existing member Plain Summary is never
+    overwritten, and empty internal values are never propagated to members.
     """
     if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
         return {"enabled": False, "reason": "decision_intelligence_disabled"}
 
+    has_review_snapshot = previous_reviewed is not None
     previous_reviewed = dict(previous_reviewed or {})
     pages = decision_intelligence.query_technology_records(max_records=5000)
     desired_by_id: dict[str, dict[str, Any]] = {}
@@ -263,12 +265,14 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
         if not entity_id or state["assessment_state"] != "ASSESSED":
             continue
 
-        # Only rows that can legitimately cross the subscriber boundary need reader context.
         eligible = bool(state["tracking_eligibility"]) and state["tracking_status"] != "ARCHIVED"
         if not eligible:
             continue
 
-        reviewed_now = entity_id not in previous_reviewed or previous_reviewed.get(entity_id) != state.get("last_reviewed")
+        reviewed_now = has_review_snapshot and (
+            entity_id not in previous_reviewed
+            or previous_reviewed.get(entity_id) != state.get("last_reviewed")
+        )
         plain = derive_plain_summary(state)
         if state.get("topic_trigger") and not reviewed_now:
             topic = str(state["topic_trigger"]).strip()
@@ -278,7 +282,10 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
         patch: dict[str, dict] = {}
         if plain and not state.get("plain_summary"):
             patch[TECH_PROP_PLAIN_SUMMARY] = _rt(plain)
-        if topic and (not state.get("topic_trigger") or (reviewed_now and topic != state.get("topic_trigger"))):
+        if topic and (
+            not state.get("topic_trigger")
+            or (reviewed_now and topic != state.get("topic_trigger"))
+        ):
             patch[TECH_PROP_TOPIC_TRIGGER] = _rt(topic)
         if patch:
             _patch_context(state["page_id"], patch, "Technology Intelligence")
@@ -298,8 +305,6 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
     subscriber_missing = 0
 
     if decision_intelligence.ENABLE_SUBSCRIBER_TECH_SYNC:
-        # First ensure canonical sanitized rows exist. This function never writes our
-        # context properties, so it cannot erase the hand-curated fields.
         subscriber_sync = decision_intelligence.sync_subscriber_technology_db()
         destination = decision_intelligence._query_external_db(
             decision_intelligence.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID,
@@ -319,15 +324,14 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
                 subscriber_missing += 1
                 continue
             patch = {}
-            # Plain Summary is evergreen definition copy. Never overwrite existing
-            # member copy; manual editing must remain authoritative.
             if desired["plain_summary"] and not current.get("plain_summary"):
                 patch[SUB_PROP_PLAIN_SUMMARY] = _rt(desired["plain_summary"])
-            # Topic Trigger is intentionally current. Refresh only after an actual
-            # Product Review; otherwise preserve existing member copy.
             if desired["topic_trigger"] and (
                 not current.get("topic_trigger")
-                or (desired["reviewed_now"] and desired["topic_trigger"] != current.get("topic_trigger"))
+                or (
+                    desired["reviewed_now"]
+                    and desired["topic_trigger"] != current.get("topic_trigger")
+                )
             ):
                 patch[SUB_PROP_TOPIC_TRIGGER] = _rt(desired["topic_trigger"])
             if patch:
