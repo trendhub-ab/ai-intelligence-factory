@@ -6,6 +6,7 @@ on:
       - integration/main-run147-reconciliation
     paths:
       - 'tools/reconcile_run134_paid_product_value.py'
+      - 'tools/reconcile_run134_paid_product_value.trigger'
   workflow_dispatch:
 
 permissions:
