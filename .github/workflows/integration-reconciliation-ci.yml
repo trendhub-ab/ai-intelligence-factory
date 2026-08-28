@@ -11,14 +11,11 @@ on:
       - 'pipeline.py'
       - '.github/workflows/regression-test.yml'
       - 'tests/**'
-      - 'tools/reconcile_run131_reader_proximity_information_budget.py'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
 
-# TEMPORARY: persist only the Run131 pipeline change after all zero-API tests pass.
-# Returned to contents:read immediately after success.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   zero-api-regression:
@@ -26,45 +23,46 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Apply Run131 reader-proximity patch if absent
-        run: |
-          if grep -q '"reader_proximity_moment_count": reader_proximity_moments' pipeline.py; then
-            echo 'Run131 Reader Proximity already present.'
-          else
-            python tools/reconcile_run131_reader_proximity_information_budget.py
-          fi
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Compile core modules and Run131 test
+      - name: Compile reconciled production modules
         run: |
           python -m compileall -q \
             subscription_attribution.py \
             inventory_bootstrap.py \
             decision_intelligence.py \
-            pipeline.py \
-            tests/test_run131_reader_proximity_information_budget_reconciliation.py
+            pipeline.py
       - name: Validate Run130 regression workflow safety surface
         run: |
           grep -F 'article_set:' .github/workflows/regression-test.yml
           grep -F -- '- fresh' .github/workflows/regression-test.yml
           grep -F 'permissions:' .github/workflows/regression-test.yml
           grep -F 'contents: read' .github/workflows/regression-test.yml
-      - name: Run current reconciliation cohorts
+      - name: Run article quality reconciliation tests
         run: |
-          python -m unittest discover -s tests -p 'test_run131_reader_proximity_information_budget_reconciliation.py' -v
           python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
+          python -m unittest discover -s tests -p 'test_run131_reader_proximity_information_budget.py' -v
+          python -m unittest discover -s tests -p 'test_run132_warm_rewrite_budget.py' -v
+          python -m unittest discover -s tests -p 'test_run133_reader_first_editorial_compression.py' -v
+          python -m unittest discover -s tests -p 'test_run136_reader_value_priority.py' -v
+          python -m unittest discover -s tests -p 'test_run137_human_voice.py' -v
+          python -m unittest discover -s tests -p 'test_run138_source_note_direction.py' -v
+          python -m unittest discover -s tests -p 'test_run140_reader_delight_priority.py' -v
+          python -m unittest discover -s tests -p 'test_run142_narrative_understanding.py' -v
+          python -m unittest discover -s tests -p 'test_run144_reader_delight_balance.py' -v
+          python -m unittest discover -s tests -p 'test_run145_real_article_closure.py' -v
+          python -m unittest discover -s tests -p 'test_run147_rescue_loss_precision.py' -v
+      - name: Run Run134 reconciliation tests
+        run: |
           python -m unittest discover -s tests -p 'test_run134_revenue_product_value.py' -v
           python -m unittest discover -s tests -p 'test_run134_paid_product_value_reconciliation.py' -v
           python -m unittest discover -s tests -p 'test_run134_monthly_decision_brief_reconciliation.py' -v
-      - name: Run adjacent product regressions
+      - name: Run adjacent product and context regressions
         run: |
           python -m unittest discover -s tests -p 'test_revenue_product_phase2.py' -v
           python -m unittest discover -s tests -p 'test_inventory_bootstrap.py' -v
@@ -72,22 +70,9 @@ jobs:
           python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
       - name: Run full unittest regression
-        run: |
-          python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -v
       - name: Run synthetic smoke with production isolation
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
         run: python pipeline.py
-      - name: Commit only validated Run131 pipeline change
-        run: |
-          git add pipeline.py
-          git diff --cached --check
-          if git diff --cached --quiet; then
-            echo 'No Run131 production change to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Reconcile Run131 Reader Proximity and Information Budget'
-          git push origin HEAD:integration/main-run147-reconciliation
