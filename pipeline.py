@@ -12373,6 +12373,12 @@ def _call_product_review_pool(prompt: str, request_context: str, request_kind_ba
     quota lane or provider call path is introduced.
     """
     last_error = None
+    # Run149: preserve full Product Review reasoning quality on the normal path.
+    # Only the one logical structured-output repair request uses low thinking so a
+    # malformed/truncated JSON response can be repaired within the existing budget.
+    structured_repair = request_kind_base == "product_review_retry"
+    thinking_level = "low" if structured_repair else "medium"
+    max_output_tokens = 5000 if structured_repair else 8000
     for model_name in DEEP_DIVE_MODEL_POOL:
         if model_name in SESSION_EXHAUSTED_MODELS or model_name in SESSION_UNAVAILABLE_MODELS:
             continue
@@ -12387,13 +12393,11 @@ def _call_product_review_pool(prompt: str, request_context: str, request_kind_ba
                     config={
                         "response_mime_type": "application/json",
                         "response_json_schema": _PRODUCT_REVIEW_RESPONSE_SCHEMA,
-                        # Gemini 3.6 Flash defaults to medium thinking. Thinking tokens count
-                        # against max_output_tokens, so the former 2200 cap could exhaust the
-                        # generation budget before the schema-constrained JSON body closed.
-                        # Product Review is structured classification/extraction; low thinking
-                        # preserves reasoning while reserving enough budget for complete JSON.
-                        "thinking_config": {"thinking_level": "low"},
-                        "max_output_tokens": 5000,
+                        # Normal Product Review keeps medium thinking for decision quality.
+                        # Only a schema-repair request switches to low thinking. Both paths retain
+                        # enough generation budget for the schema-constrained JSON body to close.
+                        "thinking_config": {"thinking_level": thinking_level},
+                        "max_output_tokens": max_output_tokens,
                     },
                     request_kind=kind,
                     request_context=request_context, count_as_deep_dive=False, request_origin="product_review",
