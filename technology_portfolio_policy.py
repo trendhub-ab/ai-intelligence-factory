@@ -1,27 +1,25 @@
-"""Technology portfolio policy for AI Intelligence Factory.
+"""Profit-aligned technology portfolio policy for AI Intelligence Factory.
 
-Run130 goal
-===========
-Keep the product differentiated as *technology decision intelligence* without
-letting any discovery source (especially GitHub) become the product taxonomy.
+Run131
+======
+Run130 correctly removed the large automatic GitHub advantage, but adversarial
+review found two business defects: a hard source-share cap could force a much
+weaker candidate upward, and the policy only affected the manual bootstrap.
 
-This module is deliberately planning-only:
+Run131 keeps portfolio diversity as a *tie-breaker among competitive candidates*.
+Quality / decision value always wins outside a configurable tolerance. Discovery
+source is never treated as product taxonomy, Product Hunt alone never implies an
+applied product, and multi-source records are handled without source-order bias.
+
+This module remains planning-only:
 - it never changes Adoption Score/Status;
 - it never bypasses Evidence or Product Review;
-- it only changes which already-eligible legacy technologies are reviewed first.
-
-The portfolio has three reader-facing layers:
-1. APPLIED_AI      — directly usable products/services when the technical change matters;
-2. PRACTICAL_TECH  — agents, security, data, infra, models, multimodal and tooling;
-3. DEEP_TECH       — research / emerging mechanisms that may matter next.
-
-There are no forced quotas. Quality can always stop the run. Diversification is
-implemented as a marginal concentration penalty so a clearly stronger candidate
-can still win.
+- it never creates a model/API call;
+- it only changes review order among already-eligible candidates.
 """
 from __future__ import annotations
 
-import math
+import os
 import re
 from collections import Counter
 from datetime import datetime, timezone
@@ -29,13 +27,18 @@ from typing import Any, Iterable
 from urllib.parse import urlparse
 
 
+DEFAULT_PORTFOLIO_TOLERANCE = max(
+    0.0, float(os.environ.get("PORTFOLIO_DIVERSITY_TOLERANCE", "8"))
+)
+
 STRATEGIC_TECH_TERMS = (
     "agent", "agentic", "mcp", "model context protocol", "rag", "retrieval",
     "inference", "serving", "reasoning", "multimodal", "vision", "speech",
     "security", "privacy", "governance", "guardrail", "sandbox",
     "vector", "embedding", "observability", "tracing", "eval", "evaluation",
-    "gateway", "orchestration", "tool use", "memory", "fine-tun", "distill",
-    "quantization", "latency", "gpu", "distributed", "on-device", "edge ai",
+    "gateway", "orchestration", "tool use", "memory", "fine-tune", "fine-tuning",
+    "finetune", "finetuning", "distill", "distillation", "quantization",
+    "latency", "gpu", "distributed", "on-device", "edge ai",
 )
 
 GENERIC_REPO_TERMS = (
@@ -59,12 +62,24 @@ def _text(record: Any) -> str:
 
 
 def _sources(record: Any) -> set[str]:
-    return {str(x) for x in (getattr(record, "source", ()) or ())}
+    return {str(x) for x in (getattr(record, "source", ()) or ()) if str(x)}
+
+
+def _term_pattern(term: str) -> re.Pattern[str]:
+    """Match technical terms as tokens/phrases, not accidental substrings."""
+    escaped = re.escape(term).replace(r"\ ", r"\s+")
+    return re.compile(rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])", re.I)
+
+
+def _has_term(text: str, term: str) -> bool:
+    return bool(_term_pattern(term).search(text))
+
+
+def _count_terms(text: str, terms: Iterable[str]) -> int:
+    return sum(1 for term in terms if _has_term(text, term))
 
 
 def _age_days(record: Any, now: datetime) -> int | None:
-    # Avoid depending on inventory_bootstrap private helpers. ISO dates are enough
-    # for planning freshness and a parse failure simply means no freshness bonus.
     value = getattr(record, "published_at", None) or getattr(record, "analyzed_at", None)
     if not value:
         return None
@@ -77,31 +92,77 @@ def _age_days(record: Any, now: datetime) -> int | None:
         return None
 
 
+def infer_portfolio_category(bootstrap_module: Any, record: Any) -> tuple[str, tuple[str, ...]]:
+    """Boundary-safe planning category; authoritative non-OTHER category always wins."""
+    authoritative = str(getattr(record, "category", "") or "")
+    if authoritative and authoritative != "OTHER":
+        return authoritative, ("authoritative_category",)
+    text = _text(record)
+    scores: list[tuple[int, int, str]] = []
+    patterns = getattr(bootstrap_module, "PLANNING_CATEGORY_PATTERNS", ())
+    for order, (category, terms) in enumerate(patterns):
+        hits = _count_terms(text, terms)
+        if hits:
+            scores.append((hits, -order, category))
+    if not scores:
+        return "OTHER", ("planning_category_unresolved",)
+    _, _, category = max(scores)
+    return category, (f"planning_category:{category}",)
+
+
+def infer_portfolio_lane(bootstrap_module: Any, record: Any, planning_category: str) -> tuple[str, tuple[str, ...]]:
+    """Boundary-safe equivalent of the legacy planning lane classifier."""
+    text = _text(record)
+    sources = _sources(record)
+    risk_terms = getattr(bootstrap_module, "RISK_TERMS", ())
+    opinion_terms = getattr(bootstrap_module, "OPINION_TERMS", ())
+    practical_terms = getattr(bootstrap_module, "PRACTICAL_TERMS", ())
+    research_terms = getattr(bootstrap_module, "RESEARCH_TERMS", ())
+
+    if _count_terms(text, risk_terms):
+        return "RISK", ("lane:RISK",)
+    if any(re.search(p, text, re.I) for p in NEWS_EVENT_PATTERNS) or _count_terms(text, opinion_terms):
+        return "DISCOVERY", ("lane:DISCOVERY",)
+    if "ArXiv" in sources:
+        has_artifact, artifact_reasons = bootstrap_module.has_implementation_artifact(record)
+        if has_artifact:
+            return "PRACTICAL", ("lane:PRACTICAL_ARXIV_IMPLEMENTATION", *artifact_reasons)
+        return "RESEARCH", ("lane:RESEARCH_ARXIV_NO_IMPLEMENTATION", *artifact_reasons)
+    if "GitHub" in sources or _count_terms(text, practical_terms):
+        return "PRACTICAL", ("lane:PRACTICAL",)
+    if _count_terms(text, research_terms):
+        return "RESEARCH", ("lane:RESEARCH",)
+    if planning_category and planning_category != "OTHER":
+        return "PRACTICAL", ("lane:PRACTICAL_BY_CATEGORY",)
+    return "DISCOVERY", ("lane:DISCOVERY_FALLBACK",)
+
+
 def technology_layer(record: Any, planning_category: str, lane: str) -> tuple[str, tuple[str, ...]]:
-    """Classify the *portfolio layer*, never the Adoption outcome."""
+    """Classify portfolio layer independently from discovery source and Adoption."""
     sources = _sources(record)
     text = _text(record)
 
     if lane == "RESEARCH" or ("ArXiv" in sources and lane != "PRACTICAL"):
         return "DEEP_TECH", ("technology_layer:DEEP_TECH",)
 
-    # ProductHunt is only a discovery signal. It does not make something valuable,
-    # but a concrete product/service belongs in the applied layer for diversification.
-    if planning_category == "PRODUCT" or "ProductHunt" in sources:
-        return "APPLIED_AI", ("technology_layer:APPLIED_AI",)
-    if any(term in text for term in PRODUCT_TERMS) and any(term in text for term in STRATEGIC_TECH_TERMS):
+    # Product Hunt is discovery only. APPLIED_AI requires product taxonomy or an
+    # explicit product/service term plus a strategic AI/technology signal.
+    if planning_category == "PRODUCT":
+        return "APPLIED_AI", ("technology_layer:APPLIED_AI_PRODUCT_CATEGORY",)
+    if any(_has_term(text, term) for term in PRODUCT_TERMS) and any(
+        _has_term(text, term) for term in STRATEGIC_TECH_TERMS
+    ):
         return "APPLIED_AI", ("technology_layer:APPLIED_AI_TECHNICAL_PRODUCT",)
 
     return "PRACTICAL_TECH", ("technology_layer:PRACTICAL_TECH",)
 
 
 def portfolio_base_priority(record: Any, now: datetime | None = None) -> tuple[float, tuple[str, ...]]:
-    """Source-neutral replacement for the old durable-source-heavy bootstrap score."""
+    """Source-neutral planning score; never an Adoption Score."""
     now = now or datetime.now(timezone.utc)
     reasons: list[str] = []
     screening = max(0.0, min(100.0, float(getattr(record, "screening_score", 0.0) or 0.0)))
 
-    # Screening/reader relevance is the main signal. Discovery source is deliberately tiny.
     score = screening * 0.60
     reasons.append(f"screening_component={screening * 0.60:.1f}")
 
@@ -150,7 +211,7 @@ def portfolio_base_priority(record: Any, now: datetime | None = None) -> tuple[f
 
 
 def portfolio_utility_score(record: Any, planning_category: str, lane: str) -> tuple[float, tuple[str, ...]]:
-    """Paid-product usefulness without rewarding a repository merely for being a repository."""
+    """Estimate paid-product usefulness without rewarding a repo merely for being a repo."""
     text = _text(record)
     sources = _sources(record)
     layer, layer_reasons = technology_layer(record, planning_category, lane)
@@ -162,10 +223,9 @@ def portfolio_utility_score(record: Any, planning_category: str, lane: str) -> t
     elif layer == "APPLIED_AI":
         score += 5; reasons.append("applied_technical_product:+5")
     else:
-        # Deep Tech is part of the differentiation and is no longer automatically deferred.
         score += 3; reasons.append("deep_tech_option_value:+3")
 
-    strategic_hits = sum(1 for term in STRATEGIC_TECH_TERMS if term in text)
+    strategic_hits = _count_terms(text, STRATEGIC_TECH_TERMS)
     if strategic_hits >= 3:
         score += 9; reasons.append("strategic_technology_signals:+9")
     elif strategic_hits >= 1:
@@ -176,96 +236,119 @@ def portfolio_utility_score(record: Any, planning_category: str, lane: str) -> t
     else:
         score += 3; reasons.append(f"planning_category_resolved:{planning_category}:+3")
 
-    # This is the key anti-skew rule: GitHub is not a product category.
-    # Generic DEVTOOLS/OTHER repos need an actual strategic-technology signal to compete.
     if "GitHub" in sources and planning_category in {"DEVTOOLS", "OTHER"} and strategic_hits == 0:
         score -= 10; reasons.append("generic_github_repo_without_decision_signal:-10")
 
-    if any(term in text for term in GENERIC_REPO_TERMS) and strategic_hits == 0:
+    if any(_has_term(text, term) for term in GENERIC_REPO_TERMS) and strategic_hits == 0:
         score -= 8; reasons.append("generic_learning_or_template_repo:-8")
 
     return round(max(-25.0, min(25.0, score)), 2), tuple(reasons)
 
 
-def balanced_plan_candidates(
-    bootstrap_module: Any,
-    records: Iterable[Any],
-    limit: int = 30,
-    max_source_share: float = 0.45,
-    now: datetime | None = None,
-) -> list[Any]:
-    """Portfolio-aware replacement for inventory_bootstrap.plan_candidates.
-
-    It preserves the original PlannedCandidate output contract and all eligibility gates.
-    """
-    now = now or datetime.now(timezone.utc)
-    pool: list[dict[str, Any]] = []
+def _build_items(bootstrap_module: Any, records: Iterable[Any], now: datetime) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     for record in records:
-        if not bootstrap_module.is_bootstrap_eligible(record, now=now):
-            continue
         base, base_reasons = portfolio_base_priority(record, now=now)
-        pcat, cat_reasons = bootstrap_module.infer_planning_category(record)
-        lane, lane_reasons = bootstrap_module.candidate_lane(record, pcat)
+        pcat, cat_reasons = infer_portfolio_category(bootstrap_module, record)
+        lane, lane_reasons = infer_portfolio_lane(bootstrap_module, record, pcat)
         utility, utility_reasons = portfolio_utility_score(record, pcat, lane)
-        layer, layer_reasons = technology_layer(record, pcat, lane)
-        pool.append({
+        layer, _ = technology_layer(record, pcat, lane)
+        items.append({
             "record": record,
             "base": base,
             "utility": utility,
             "planning_category": pcat,
             "lane": lane,
             "layer": layer,
-            "reasons": base_reasons + cat_reasons + lane_reasons + utility_reasons + layer_reasons,
+            "reasons": base_reasons + cat_reasons + lane_reasons + utility_reasons,
         })
+    return items
 
-    if limit <= 0 or not pool:
+
+def rank_portfolio_records(
+    bootstrap_module: Any,
+    records: Iterable[Any],
+    limit: int = 30,
+    tolerance: float | None = None,
+    now: datetime | None = None,
+) -> list[Any]:
+    """Rank a pre-filtered candidate pool with profit-protecting diversification.
+
+    A diversity preference may reorder only candidates whose core score is within
+    ``tolerance`` points of the strongest remaining candidate. Therefore diversity
+    can never force a materially weaker record upward.
+    """
+    now = now or datetime.now(timezone.utc)
+    tolerance = DEFAULT_PORTFOLIO_TOLERANCE if tolerance is None else max(0.0, float(tolerance))
+    remaining = _build_items(bootstrap_module, records, now)
+    if limit <= 0 or not remaining:
         return []
 
-    max_share = max(0.10, min(1.0, max_source_share))
     selected: list[dict[str, Any]] = []
     source_counts: Counter[str] = Counter()
     category_counts: Counter[str] = Counter()
     lane_counts: Counter[str] = Counter()
     layer_counts: Counter[str] = Counter()
-    remaining = list(pool)
 
-    def source_bucket(record: Any) -> str:
-        return record.source[0] if getattr(record, "source", ()) else "Unknown"
+    def core(item: dict[str, Any]) -> float:
+        return float(item["base"]) + float(item["utility"])
+
+    def source_repeat(item: dict[str, Any]) -> float:
+        names = sorted(_sources(item["record"])) or ["Unknown"]
+        return sum(source_counts[x] for x in names) / len(names)
+
+    def concentration_penalty(item: dict[str, Any]) -> float:
+        pcat = item["planning_category"]
+        lane = item["lane"]
+        layer = item["layer"]
+        repeat = source_repeat(item)
+        penalty = (
+            repeat * 2.5
+            + category_counts[pcat] * 2.5
+            + lane_counts[lane] * 1.5
+            + layer_counts[layer] * 2.0
+        )
+        if pcat == "OTHER":
+            penalty += 2.0 + category_counts[pcat] * 1.5
+        if "GitHub" in _sources(item["record"]) and pcat in {"DEVTOOLS", "OTHER"}:
+            penalty += repeat * 1.5
+        return penalty
+
+    def stable_key(item: dict[str, Any]) -> tuple[float, float, str]:
+        record = item["record"]
+        return (
+            core(item),
+            float(getattr(record, "screening_score", 0.0) or 0.0),
+            str(getattr(record, "name", "")).lower(),
+        )
 
     while remaining and len(selected) < limit:
-        position = len(selected) + 1
-        prefix_cap = max(1, math.ceil(position * max_share))
-        feasible = [x for x in remaining if source_counts[source_bucket(x["record"])] < prefix_cap]
-        choice_pool = feasible or remaining
+        strongest = max(remaining, key=stable_key)
+        strongest_core = core(strongest)
+        competitive = [x for x in remaining if core(x) >= strongest_core - tolerance]
 
-        def marginal(item: dict[str, Any]) -> tuple[float, float, float, str]:
+        def diversified_key(item: dict[str, Any]) -> tuple[float, float, float, str]:
             record = item["record"]
-            source = source_bucket(record)
-            pcat = item["planning_category"]
-            lane = item["lane"]
-            layer = item["layer"]
-
-            # Source is penalized most strongly because source != product taxonomy.
-            concentration_penalty = (
-                source_counts[source] * 7.0
-                + category_counts[pcat] * 3.0
-                + lane_counts[lane] * 2.0
-                + layer_counts[layer] * 4.0
+            adjusted = core(item) - concentration_penalty(item)
+            return (
+                adjusted,
+                core(item),
+                float(getattr(record, "screening_score", 0.0) or 0.0),
+                str(getattr(record, "name", "")).lower(),
             )
-            if pcat == "OTHER":
-                concentration_penalty += 3.0 + category_counts[pcat] * 2.0
-            if source == "GitHub" and pcat in {"DEVTOOLS", "OTHER"}:
-                concentration_penalty += source_counts[source] * 2.0
 
-            score = item["base"] + item["utility"] - concentration_penalty
-            return (score, item["base"] + item["utility"], getattr(record, "screening_score", 0.0) or 0.0, record.name.lower())
-
-        chosen = max(choice_pool, key=marginal)
-        chosen = dict(chosen)
-        chosen["portfolio_priority"] = round(marginal(chosen)[0], 2)
+        chosen = dict(max(competitive, key=diversified_key))
+        penalty = concentration_penalty(chosen)
+        chosen["portfolio_priority"] = round(core(chosen) - penalty, 2)
+        chosen["reasons"] = chosen["reasons"] + (
+            f"run131_competitive_tolerance:{tolerance:.1f}",
+            f"run131_diversity_penalty:{penalty:.2f}",
+        )
         selected.append(chosen)
+
         record = chosen["record"]
-        source_counts[source_bucket(record)] += 1
+        for source in (sorted(_sources(record)) or ["Unknown"]):
+            source_counts[source] += 1
         category_counts[chosen["planning_category"]] += 1
         lane_counts[chosen["lane"]] += 1
         layer_counts[chosen["layer"]] += 1
@@ -290,14 +373,36 @@ def balanced_plan_candidates(
     ]
 
 
+def balanced_plan_candidates(
+    bootstrap_module: Any,
+    records: Iterable[Any],
+    limit: int = 30,
+    max_source_share: float = 0.60,
+    now: datetime | None = None,
+    tolerance: float | None = None,
+) -> list[Any]:
+    """Portfolio-aware bootstrap plan preserving the historical call contract.
+
+    ``max_source_share`` is retained only so older callers do not break. Run131
+    deliberately does not enforce a hard source cap; tolerance-protected diversity
+    replaces it.
+    """
+    _ = max_source_share
+    now = now or datetime.now(timezone.utc)
+    eligible = [r for r in records if bootstrap_module.is_bootstrap_eligible(r, now=now)]
+    return rank_portfolio_records(bootstrap_module, eligible, limit=limit, tolerance=tolerance, now=now)
+
+
 def install_on(bootstrap_module: Any) -> None:
-    """Install the policy as a reversible planning overlay."""
+    """Install Run131 as a reversible planning overlay for manual Bootstrap."""
     original = bootstrap_module.plan_candidates
 
-    def _plan(records: Iterable[Any], limit: int = 30, max_source_share: float = 0.45, now: datetime | None = None) -> list[Any]:
-        return balanced_plan_candidates(bootstrap_module, records, limit, max_source_share, now)
+    def _plan(records: Iterable[Any], limit: int = 30, max_source_share: float = 0.60, now: datetime | None = None) -> list[Any]:
+        return balanced_plan_candidates(
+            bootstrap_module, records, limit=limit, max_source_share=max_source_share, now=now
+        )
 
-    _plan.__name__ = "run130_balanced_plan_candidates"
-    _plan.__doc__ = "Run130 technology-portfolio-aware planning policy."
-    _plan._run130_original = original  # type: ignore[attr-defined]
+    _plan.__name__ = "run131_profit_aligned_plan_candidates"
+    _plan.__doc__ = "Run131 tolerance-protected technology portfolio planning policy."
+    _plan._run131_original = original  # type: ignore[attr-defined]
     bootstrap_module.plan_candidates = _plan

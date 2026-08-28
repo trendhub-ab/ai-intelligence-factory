@@ -63,12 +63,13 @@ jobs:
           NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           EVIDENCE_HEALTH_MAX_CHECKS_PER_RUN: "20"
-          # Revenue Product Phase 2: article discovery and paid Decision Intelligence are separated.
+          # Run131: Product Review is intentionally disabled in the article pass.
+          # A portfolio-aware product-only pass runs immediately afterwards.
           ENABLE_REVENUE_PRODUCT_PHASE2: ${{ vars.ENABLE_REVENUE_PRODUCT_PHASE2 || 'true' }}
           TRACKING_ELIGIBILITY_MIN_SCORE: "55"
           TRACKING_REVIEW_DAYS: "14"
-          PRODUCT_REVIEW_MAX_PER_RUN: "2"
-          LEGACY_BOOTSTRAP_MAX_PER_RUN: "1"
+          PRODUCT_REVIEW_MAX_PER_RUN: "0"
+          LEGACY_BOOTSTRAP_MAX_PER_RUN: "0"
           GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET: "3"
           DEFERRED_DEEP_DIVE_MAX_PER_RUN: "1"
           DEFERRED_DEEP_DIVE_MAX_QUEUE: "20"
@@ -161,6 +162,51 @@ jobs:
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: "2"
           MAX_EVIDENCE_DOCUMENTS: "3"
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
+
+      - name: Run131 Portfolio-aware Product Review
+        run: |
+          python daily_portfolio_review.py
+        env:
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: "2026-03-11"
+          ENABLE_DECISION_INTELLIGENCE_DB: ${{ vars.ENABLE_DECISION_INTELLIGENCE_DB || 'false' }}
+          ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
+          ENABLE_REVENUE_PRODUCT_PHASE2: ${{ vars.ENABLE_REVENUE_PRODUCT_PHASE2 || 'true' }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          ENABLE_SUBSCRIBER_TECH_SYNC: ${{ vars.ENABLE_SUBSCRIBER_TECH_SYNC || 'false' }}
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}
+          TRACKING_REVIEW_DAYS: "14"
+          DAILY_PORTFOLIO_REVIEW_MAX: "2"
+          DAILY_PORTFOLIO_REQUEST_BUDGET: "3"
+          DAILY_PORTFOLIO_SCAN_LIMIT: "12"
+          PORTFOLIO_DIVERSITY_TOLERANCE: "8"
+          GEMINI_PERSISTENT_DAILY_COUNTER: "true"
+          GEMINI_COUNTER_BRANCH: "main"
+          GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
+          GEMINI_35_FLASH_LITE_DAILY_BUDGET: "450"
+          GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
+          GEMINI_36_FLASH_DAILY_BUDGET: "18"
+          GEMINI_37_FLASH_DAILY_BUDGET: "18"
+          GEMINI_35_FLASH_DAILY_BUDGET: "18"
+          GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
 
       # 未公開記事・Gate履歴はRepositoryへcommitせず、アクセス制限されたArtifactとしてのみ保持する。
       - name: 月次ダイジェストをPrivate Artifactとして保存
