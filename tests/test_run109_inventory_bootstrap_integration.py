@@ -119,7 +119,10 @@ class Run109InventoryBootstrapIntegrationTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("schedule:", workflow)
         self.assertIn("contents: read", workflow)
-        self.assertIn("max_source_share", workflow)
+        # Run131 removes the hard source-share quota. Diversification is now
+        # tolerance-protected so materially weaker candidates are never forced upward.
+        self.assertNotIn("max_source_share", workflow)
+        self.assertIn("PORTFOLIO_DIVERSITY_TOLERANCE", workflow)
 
 
 if __name__ == "__main__":
