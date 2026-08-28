@@ -66,11 +66,7 @@ def _sources(record: Any) -> set[str]:
 
 
 def _term_pattern(term: str) -> re.Pattern[str]:
-    """Match technical terms as tokens/phrases, not accidental substrings.
-
-    Examples: ``rag`` must not match ``ragged`` and ``app`` must not match
-    ``application``. Spaces inside phrases may be one-or-more whitespace chars.
-    """
+    """Match technical terms as tokens/phrases, not accidental substrings."""
     escaped = re.escape(term).replace(r"\ ", r"\s+")
     return re.compile(rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])", re.I)
 
@@ -94,6 +90,51 @@ def _age_days(record: Any, now: datetime) -> int | None:
         return max(0, (now - dt.astimezone(timezone.utc)).days)
     except (TypeError, ValueError):
         return None
+
+
+def infer_portfolio_category(bootstrap_module: Any, record: Any) -> tuple[str, tuple[str, ...]]:
+    """Boundary-safe planning category; authoritative non-OTHER category always wins."""
+    authoritative = str(getattr(record, "category", "") or "")
+    if authoritative and authoritative != "OTHER":
+        return authoritative, ("authoritative_category",)
+    text = _text(record)
+    scores: list[tuple[int, int, str]] = []
+    patterns = getattr(bootstrap_module, "PLANNING_CATEGORY_PATTERNS", ())
+    for order, (category, terms) in enumerate(patterns):
+        hits = _count_terms(text, terms)
+        if hits:
+            scores.append((hits, -order, category))
+    if not scores:
+        return "OTHER", ("planning_category_unresolved",)
+    _, _, category = max(scores)
+    return category, (f"planning_category:{category}",)
+
+
+def infer_portfolio_lane(bootstrap_module: Any, record: Any, planning_category: str) -> tuple[str, tuple[str, ...]]:
+    """Boundary-safe equivalent of the legacy planning lane classifier."""
+    text = _text(record)
+    sources = _sources(record)
+    risk_terms = getattr(bootstrap_module, "RISK_TERMS", ())
+    opinion_terms = getattr(bootstrap_module, "OPINION_TERMS", ())
+    practical_terms = getattr(bootstrap_module, "PRACTICAL_TERMS", ())
+    research_terms = getattr(bootstrap_module, "RESEARCH_TERMS", ())
+
+    if _count_terms(text, risk_terms):
+        return "RISK", ("lane:RISK",)
+    if any(re.search(p, text, re.I) for p in NEWS_EVENT_PATTERNS) or _count_terms(text, opinion_terms):
+        return "DISCOVERY", ("lane:DISCOVERY",)
+    if "ArXiv" in sources:
+        has_artifact, artifact_reasons = bootstrap_module.has_implementation_artifact(record)
+        if has_artifact:
+            return "PRACTICAL", ("lane:PRACTICAL_ARXIV_IMPLEMENTATION", *artifact_reasons)
+        return "RESEARCH", ("lane:RESEARCH_ARXIV_NO_IMPLEMENTATION", *artifact_reasons)
+    if "GitHub" in sources or _count_terms(text, practical_terms):
+        return "PRACTICAL", ("lane:PRACTICAL",)
+    if _count_terms(text, research_terms):
+        return "RESEARCH", ("lane:RESEARCH",)
+    if planning_category and planning_category != "OTHER":
+        return "PRACTICAL", ("lane:PRACTICAL_BY_CATEGORY",)
+    return "DISCOVERY", ("lane:DISCOVERY_FALLBACK",)
 
 
 def technology_layer(record: Any, planning_category: str, lane: str) -> tuple[str, tuple[str, ...]]:
@@ -126,7 +167,6 @@ def portfolio_base_priority(record: Any, now: datetime | None = None) -> tuple[f
     reasons.append(f"screening_component={screening * 0.60:.1f}")
 
     sources = _sources(record)
-    # Small inspectability/discovery signals only. No source is a product category.
     if "GitHub" in sources:
         score += 3; reasons.append("source_signal:GitHub:+3")
     if "ArXiv" in sources:
@@ -209,8 +249,8 @@ def _build_items(bootstrap_module: Any, records: Iterable[Any], now: datetime) -
     items: list[dict[str, Any]] = []
     for record in records:
         base, base_reasons = portfolio_base_priority(record, now=now)
-        pcat, cat_reasons = bootstrap_module.infer_planning_category(record)
-        lane, lane_reasons = bootstrap_module.candidate_lane(record, pcat)
+        pcat, cat_reasons = infer_portfolio_category(bootstrap_module, record)
+        lane, lane_reasons = infer_portfolio_lane(bootstrap_module, record, pcat)
         utility, utility_reasons = portfolio_utility_score(record, pcat, lane)
         layer, _ = technology_layer(record, pcat, lane)
         items.append({
