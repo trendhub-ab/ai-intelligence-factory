@@ -33,8 +33,10 @@ jobs:
         run: |
           python -m py_compile technology_portfolio_policy.py portfolio_inventory_bootstrap.py inventory_bootstrap.py
       - name: Run portfolio and bootstrap regressions
+        env:
+          PYTHONPATH: .
         run: |
-          pytest -q \
+          python -m pytest -q \
             tests/test_run130_technology_portfolio_policy.py \
             tests/test_inventory_bootstrap.py \
             tests/test_run110_inventory_portfolio_precision.py
