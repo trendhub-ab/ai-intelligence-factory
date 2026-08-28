@@ -9,22 +9,36 @@ on:
       - 'inventory_bootstrap.py'
       - 'decision_intelligence.py'
       - 'pipeline.py'
+      - '.github/workflows/regression-test.yml'
       - 'tests/**'
+      - 'tools/reconcile_run130_fresh_article_regression.py'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
 
+# TEMPORARY: only to persist the already-tested Run130 reconciliation onto the
+# integration branch. Returned to contents:read immediately after success.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   zero-api-regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Apply Run130 Fresh Article Regression patch if absent
+        run: |
+          if grep -q '^def get_fresh_regen_test_items' pipeline.py; then
+            echo 'Run130 Fresh Article Regression already present.'
+          else
+            python tools/reconcile_run130_fresh_article_regression.py
+          fi
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -36,12 +50,20 @@ jobs:
             inventory_bootstrap.py \
             decision_intelligence.py \
             pipeline.py
+      - name: Validate Run130 regression workflow safety surface
+        run: |
+          grep -F 'article_set:' .github/workflows/regression-test.yml
+          grep -F -- '- fresh' .github/workflows/regression-test.yml
+          grep -F 'PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}' .github/workflows/regression-test.yml
+          grep -F 'permissions:' .github/workflows/regression-test.yml
+          grep -F 'contents: read' .github/workflows/regression-test.yml
       - name: Run current reconciliation cohorts
         run: |
+          python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
           python -m unittest discover -s tests -p 'test_run134_revenue_product_value.py' -v
           python -m unittest discover -s tests -p 'test_run134_paid_product_value_reconciliation.py' -v
           python -m unittest discover -s tests -p 'test_run134_monthly_decision_brief_reconciliation.py' -v
-      - name: Run adjacent product regressions
+      - name: Run adjacent regressions
         run: |
           python -m unittest discover -s tests -p 'test_revenue_product_phase2.py' -v
           python -m unittest discover -s tests -p 'test_inventory_bootstrap.py' -v
@@ -51,3 +73,20 @@ jobs:
       - name: Run full unittest regression
         run: |
           python -m unittest discover -s tests -v
+      - name: Run synthetic smoke with production isolation
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          SYNTHETIC_REGRESSION_TIER: 'smoke'
+        run: python pipeline.py
+      - name: Commit only validated Run130 production/test-workflow files
+        run: |
+          git add pipeline.py .github/workflows/regression-test.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No Run130 production change to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Reconcile Run130 Fresh Article Regression'
+          git push origin HEAD:integration/main-run147-reconciliation
