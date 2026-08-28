@@ -61,6 +61,8 @@ jobs:
           python -m unittest discover -s tests -p 'test_run145_real_article_closure.py' -v
           python -m unittest discover -s tests -p 'test_run147_rescue_loss_precision.py' -v
       - name: Run Reader Delight adversarial red-team
+        env:
+          PYTHONPATH: .
         run: |
           python tools/run139_reader_delight_adversarial.py
           python tools/run141_reader_delight_redteam.py
