@@ -12387,7 +12387,13 @@ def _call_product_review_pool(prompt: str, request_context: str, request_kind_ba
                     config={
                         "response_mime_type": "application/json",
                         "response_json_schema": _PRODUCT_REVIEW_RESPONSE_SCHEMA,
-                        "max_output_tokens": 2200,
+                        # Gemini 3.6 Flash defaults to medium thinking. Thinking tokens count
+                        # against max_output_tokens, so the former 2200 cap could exhaust the
+                        # generation budget before the schema-constrained JSON body closed.
+                        # Product Review is structured classification/extraction; low thinking
+                        # preserves reasoning while reserving enough budget for complete JSON.
+                        "thinking_config": {"thinking_level": "low"},
+                        "max_output_tokens": 5000,
                     },
                     request_kind=kind,
                     request_context=request_context, count_as_deep_dive=False, request_origin="product_review",
