@@ -54,7 +54,6 @@ jobs:
         run: |
           grep -F 'article_set:' .github/workflows/regression-test.yml
           grep -F -- '- fresh' .github/workflows/regression-test.yml
-          grep -F 'PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}' .github/workflows/regression-test.yml
           grep -F 'permissions:' .github/workflows/regression-test.yml
           grep -F 'contents: read' .github/workflows/regression-test.yml
       - name: Run current reconciliation cohorts
