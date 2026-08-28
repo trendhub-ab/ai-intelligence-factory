@@ -1,0 +1,50 @@
+name: Apply Run134 Paid Product Reconciliation
+
+on:
+  push:
+    branches:
+      - integration/main-run147-reconciliation
+    paths:
+      - 'tools/reconcile_run134_paid_product_value.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: integration/main-run147-reconciliation
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Apply narrow reconciliation patch
+        run: python tools/reconcile_run134_paid_product_value.py
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile and run focused regressions
+        run: |
+          python -m compileall -q inventory_bootstrap.py
+          python -m unittest discover -s tests -p 'test_run134_paid_product_value_reconciliation.py' -v
+          python -m unittest discover -s tests -p 'test_inventory_bootstrap.py' -v
+          python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
+      - name: Commit only reconciled production file
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add inventory_bootstrap.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No production change to commit.'
+            exit 0
+          fi
+          git commit -m 'Reconcile Run134 paid product value diagnostics'
+          git push origin HEAD:integration/main-run147-reconciliation
