@@ -1,14 +1,17 @@
-name: Run130 Portfolio Policy Tests
+name: Run131 Profit-Aligned Portfolio Tests
 
 on:
   pull_request:
     paths:
       - 'technology_portfolio_policy.py'
       - 'portfolio_inventory_bootstrap.py'
+      - 'daily_portfolio_review.py'
       - 'inventory_bootstrap.py'
       - 'tests/test_run130_technology_portfolio_policy.py'
+      - 'tests/test_run131_profit_aligned_portfolio.py'
       - 'tests/test_inventory_bootstrap.py'
       - 'tests/test_run110_inventory_portfolio_precision.py'
+      - '.github/workflows/daily.yml'
       - '.github/workflows/inventory-bootstrap.yml'
       - '.github/workflows/run130-portfolio-test.yml'
 
@@ -31,7 +34,16 @@ jobs:
           pip install pytest
       - name: Compile policy entry points
         run: |
-          python -m py_compile technology_portfolio_policy.py portfolio_inventory_bootstrap.py inventory_bootstrap.py
+          python -m py_compile \
+            technology_portfolio_policy.py \
+            portfolio_inventory_bootstrap.py \
+            daily_portfolio_review.py \
+            inventory_bootstrap.py
+      - name: Run Run131 adversarial unittest
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
       - name: Run portfolio and bootstrap regressions
         env:
           PYTHONPATH: .
