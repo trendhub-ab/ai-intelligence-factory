@@ -25,10 +25,6 @@ on:
         description: "Product Review Gemini local budget (1-9)"
         required: true
         default: "6"
-      max_source_share:
-        description: "Portfolio planning cap for one discovery source (0.10-1.00)"
-        required: true
-        default: "0.45"
       confirm:
         description: "apply only: type CONFIRM_BOOTSTRAP"
         required: false
@@ -60,9 +56,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run portfolio-aware bootstrap planner / accelerator
+      - name: Run profit-aligned portfolio bootstrap planner / accelerator
         env:
           ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
+          PORTFOLIO_DIVERSITY_TOLERANCE: "8"
           TZ: Asia/Tokyo
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -94,15 +91,13 @@ jobs:
           if [ "${{ inputs.mode }}" = "plan" ]; then
             python portfolio_inventory_bootstrap.py plan \
               --target "${{ inputs.target_inventory }}" \
-              --min-sellable "${{ inputs.min_sellable }}" \
-              --max-source-share "${{ inputs.max_source_share }}"
+              --min-sellable "${{ inputs.min_sellable }}"
           else
             python portfolio_inventory_bootstrap.py apply \
               --target "${{ inputs.target_inventory }}" \
               --min-sellable "${{ inputs.min_sellable }}" \
               --max-reviews "${{ inputs.max_reviews }}" \
               --product-request-budget "${{ inputs.product_request_budget }}" \
-              --max-source-share "${{ inputs.max_source_share }}" \
               --confirm "${{ inputs.confirm }}"
           fi
 
