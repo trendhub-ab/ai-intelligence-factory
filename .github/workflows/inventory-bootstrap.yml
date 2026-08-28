@@ -26,9 +26,9 @@ on:
         required: true
         default: "6"
       max_source_share:
-        description: "Planning cap for one discovery source (0.10-1.00)"
+        description: "Portfolio planning cap for one discovery source (0.10-1.00)"
         required: true
-        default: "0.60"
+        default: "0.45"
       confirm:
         description: "apply only: type CONFIRM_BOOTSTRAP"
         required: false
@@ -60,7 +60,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run bootstrap planner / accelerator
+      - name: Run portfolio-aware bootstrap planner / accelerator
         env:
           ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
           TZ: Asia/Tokyo
@@ -92,11 +92,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ inputs.mode }}" = "plan" ]; then
-            python inventory_bootstrap.py plan \
+            python portfolio_inventory_bootstrap.py plan \
               --target "${{ inputs.target_inventory }}" \
-              --min-sellable "${{ inputs.min_sellable }}"
+              --min-sellable "${{ inputs.min_sellable }}" \
+              --max-source-share "${{ inputs.max_source_share }}"
           else
-            python inventory_bootstrap.py apply \
+            python portfolio_inventory_bootstrap.py apply \
               --target "${{ inputs.target_inventory }}" \
               --min-sellable "${{ inputs.min_sellable }}" \
               --max-reviews "${{ inputs.max_reviews }}" \
