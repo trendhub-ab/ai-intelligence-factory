@@ -360,6 +360,10 @@ REGEN_TEST_MODE = os.environ.get("REGEN_TEST_MODE", "false").lower() in {"1", "t
 REGEN_TEST_LIMIT = int(os.environ.get("REGEN_TEST_LIMIT", "3"))
 REGEN_TEST_SOURCE = os.environ.get("REGEN_TEST_SOURCE", "").strip()
 REGEN_TEST_OUTPUT_DIR = os.environ.get("REGEN_TEST_OUTPUT_DIR", "regen_test_outputs")
+# Run130: choose historical fixed/A-B articles or newly collected candidates.
+# Fresh selection itself is deterministic and adds zero Gemini Screening calls.
+REGEN_TEST_ARTICLE_SET = os.environ.get("REGEN_TEST_ARTICLE_SET", "fixed").strip().lower()
+REGEN_FRESH_FETCH_PER_SOURCE = int(os.environ.get("REGEN_FRESH_FETCH_PER_SOURCE", "12"))
 
 # Deep Dive一次情報補強。URL ContextはScreeningには使わず、source-native情報が
 # 不足する候補（特にHN/PH）を中心に使用する。Google Searchは別枠利用条件が
@@ -5273,6 +5277,95 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] 
     logger.info(
         f"[REGEN TEST] 既存Deep Dive {len(items)}件を読み込み"
         + (f"（Source={source_filter}）" if source_filter else "")
+    )
+    return items
+
+
+def _fresh_regen_candidate_score(repo: dict) -> tuple[float, int, str]:
+    """0-API ranking used only to choose fresh regression candidates."""
+    publishability = publication_probability_score({"repo": repo})
+    engagement = int(repo.get("stargazerCount") or 0)
+    published = str(repo.get("publishedAt") or "")
+    return (float(publishability), engagement, published)
+
+
+def get_fresh_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] | None:
+    """Collect new regression candidates with zero Gemini Screening calls and zero product writes.
+
+    The selector reuses normal source-native fetchers, Production Legal Safety,
+    Notion URL READ-ONLY dedupe, and deterministic metadata ranking. A dedupe-read
+    failure is fail-closed. Selection is never persisted as a Production Decision Score.
+    """
+    fetch_limit = min(max(REGEN_FRESH_FETCH_PER_SOURCE, max(limit, 1)), 50)
+    source_groups = {
+        "GitHub": fetch_github_trending(fetch_limit),
+        "HackerNews": fetch_hackernews_top(fetch_limit),
+        "ArXiv": fetch_arxiv_ai_ml(fetch_limit),
+        "ProductHunt": fetch_producthunt_trending(fetch_limit),
+    }
+    if source_filter:
+        source_groups = {source_filter: source_groups.get(source_filter, [])}
+
+    existing_urls = get_existing_repo_urls()
+    if existing_urls is None:
+        logger.error("[REGEN FRESH] Notion重複チェックに失敗したためFail-Closed停止")
+        return None
+
+    eligible_by_source: dict[str, list[dict]] = {}
+    seen_identity_urls: set[str] = set()
+    seen_fallback_keys: set[str] = set()
+    for source, repos in source_groups.items():
+        bucket: list[dict] = []
+        for repo in repos:
+            is_safe, license_status = legal_safety_gate(repo)
+            if not is_safe:
+                logger.info("[REGEN FRESH SKIP: LICENSE] %s -> %s", repo.get("nameWithOwner"), license_status)
+                continue
+            identity_urls = candidate_identity_urls(repo)
+            title_key = _normalize_title_for_match(repo.get("nameWithOwner", ""))
+            fallback_key = f"{repo.get('source', source)}:{title_key}"
+            if (
+                (identity_urls & existing_urls)
+                or (identity_urls & seen_identity_urls)
+                or (not identity_urls and fallback_key in seen_fallback_keys)
+            ):
+                logger.info("[REGEN FRESH SKIP: KNOWN] %s", repo.get("nameWithOwner"))
+                continue
+            seen_identity_urls.update(identity_urls)
+            if not identity_urls:
+                seen_fallback_keys.add(fallback_key)
+            bucket.append(repo)
+        bucket.sort(key=_fresh_regen_candidate_score, reverse=True)
+        eligible_by_source[source] = bucket
+
+    selected: list[dict] = []
+    source_order = ["GitHub", "HackerNews", "ArXiv", "ProductHunt"]
+    active_order = [source for source in source_order if source in eligible_by_source]
+    for source in active_order:
+        if len(selected) >= limit:
+            break
+        if eligible_by_source.get(source):
+            selected.append(eligible_by_source[source].pop(0))
+
+    if len(selected) < limit:
+        remaining = [repo for source in active_order for repo in eligible_by_source.get(source, [])]
+        remaining.sort(key=_fresh_regen_candidate_score, reverse=True)
+        selected.extend(remaining[: max(0, limit - len(selected))])
+
+    items: list[dict] = []
+    for repo in selected[:limit]:
+        metadata_score = publication_probability_score({"repo": repo})
+        items.append({
+            "notion_page_id": None,
+            "screening_score": max(NOTION_SAVE_THRESHOLD_SCORE, int(metadata_score)),
+            "screening_reason": "Fresh regression: 0-API source-native metadata selection; not a production Decision Score",
+            "repo": repo,
+        })
+    logger.info(
+        "[REGEN FRESH] collected=%s selected=%s sources=%s GeminiScreeningCalls=0 writes=0",
+        sum(len(v) for v in source_groups.values()),
+        len(items),
+        ",".join(str(x["repo"].get("source") or "Unknown") for x in items),
     )
     return items
 
@@ -11372,9 +11465,16 @@ def run_regen_test_mode():
     logger.warning(" Notion/GitHubへの書き込みは行いません")
     logger.warning("==========================================")
 
-    items = get_regen_test_items(REGEN_TEST_LIMIT, REGEN_TEST_SOURCE)
+    if REGEN_TEST_ARTICLE_SET not in {"fixed", "fresh"}:
+        raise ValueError("REGEN_TEST_ARTICLE_SET must be fixed or fresh")
+    if REGEN_TEST_ARTICLE_SET == "fresh":
+        logger.warning(" REGEN ARTICLE SET: FRESH（新規候補・0-API選定）")
+        items = get_fresh_regen_test_items(REGEN_TEST_LIMIT, REGEN_TEST_SOURCE)
+    else:
+        logger.warning(" REGEN ARTICLE SET: FIXED（既存Deep Dive A/B比較）")
+        items = get_regen_test_items(REGEN_TEST_LIMIT, REGEN_TEST_SOURCE)
     if items is None:
-        logger.error("[REGEN TEST ABORTED] 既存記事の読み出しに失敗しました。")
+        logger.error("[REGEN TEST ABORTED] 回帰テスト候補の読み出し/収集に失敗しました。")
         logger.info(GEMINI_BUDGET.summary())
         logger.info(DEEP_DIVE_MODEL_BUDGET.summary())
         logger.info(PENDING_RETRY_REQUEST_BUDGET.summary())
