@@ -11,6 +11,9 @@ on:
       - 'pipeline.py'
       - '.github/workflows/regression-test.yml'
       - 'tests/**'
+      - 'tools/run139_reader_delight_adversarial.py'
+      - 'tools/run141_reader_delight_redteam.py'
+      - 'tools/run143_reader_delight_strong_redteam.py'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
 
@@ -57,6 +60,11 @@ jobs:
           python -m unittest discover -s tests -p 'test_run144_reader_delight_balance.py' -v
           python -m unittest discover -s tests -p 'test_run145_real_article_closure.py' -v
           python -m unittest discover -s tests -p 'test_run147_rescue_loss_precision.py' -v
+      - name: Run Reader Delight adversarial red-team
+        run: |
+          python tools/run139_reader_delight_adversarial.py
+          python tools/run141_reader_delight_redteam.py
+          python tools/run143_reader_delight_strong_redteam.py
       - name: Run Run134 reconciliation tests
         run: |
           python -m unittest discover -s tests -p 'test_run134_revenue_product_value.py' -v
