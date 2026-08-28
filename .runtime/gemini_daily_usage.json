@@ -6,10 +6,10 @@
           "budget": 18,
           "by_kind": {
             "product_review": 7,
-            "product_review_retry": 1
+            "product_review_retry": 2
           },
           "exhausted": false,
-          "used": 8
+          "used": 9
         }
       }
     }
@@ -17,5 +17,5 @@
   "quota_date": "2026-08-28",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-28T08:12:11.138381+00:00"
+  "updated_at": "2026-08-28T08:13:20.253589+00:00"
 }
