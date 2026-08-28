@@ -2,42 +2,19 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 1,
-            "quality_retry": 1
-          },
-          "exhausted": false,
-          "used": 2
-        },
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 9,
-            "deep_dive_retry": 1,
-            "product_review": 5,
-            "product_review_retry": 1,
-            "quality_retry": 2
+            "product_review": 1
           },
           "exhausted": false,
-          "used": 18
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 1,
-            "quality_retry": 1
-          },
-          "exhausted": false,
-          "used": 2
+          "used": 1
         }
       }
     }
   },
-  "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-08-27",
+  "quota_date": "2026-08-28",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-27T10:40:31.834559+00:00"
+  "updated_at": "2026-08-28T08:02:54.394595+00:00"
 }
