@@ -1,6 +1,7 @@
 import io
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 import context_first_enrichment as cfe
@@ -108,6 +109,11 @@ class ContextFirstDerivationTests(unittest.TestCase):
         self.assertNotIn("新発表", result)
         self.assertNotIn("リリースされた", result)
 
+    def test_context_module_has_no_provider_generation_call_site(self):
+        source = Path(cfe.__file__).read_text(encoding="utf-8")
+        for forbidden in ("import google", "from google", "generate_content(", "_generate_with"):
+            self.assertNotIn(forbidden, source)
+
 
 class ContextFirstSyncTests(unittest.TestCase):
     def _common_patches(self, internal, subscriber):
@@ -137,6 +143,23 @@ class ContextFirstSyncTests(unittest.TestCase):
         patch_context.assert_not_called()
         self.assertEqual(result["subscriber_preserved"], 1)
         self.assertTrue(result["zero_gemini_calls"])
+
+    def test_missing_review_snapshot_defaults_to_preserve_not_refresh(self):
+        internal = _internal_page(
+            plain="内部の説明。",
+            topic="内部の前回話題。",
+            reviewed="2026-08-29T00:00:00+00:00",
+        )
+        subscriber = _subscriber_page(
+            plain="会員向けに手で磨いた説明。",
+            topic="会員向けに手で磨いた話題。",
+        )
+        p1, p2, p3, p4, p5, p6 = self._common_patches(internal, subscriber)
+        with p1, p2, p3, p4, p5, p6 as patch_context:
+            result = cfe.enrich_context_first(None)
+
+        patch_context.assert_not_called()
+        self.assertEqual(result["subscriber_preserved"], 1)
 
     def test_review_refreshes_topic_but_never_overwrites_member_plain_summary(self):
         internal = _internal_page(
