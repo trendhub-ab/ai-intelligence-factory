@@ -37,6 +37,17 @@ METHOD_ALLOWED_METRICS = {
     "manual_verified": set(NUMERIC_COLUMNS),
 }
 
+# Run134: revenue measurement readiness. These thresholds only decide whether observed
+# revenue data are mature enough to *consider* future ranking feedback. They never
+# enable ranking feedback automatically.
+MIN_FEEDBACK_MEASURED_ARTICLES = 20
+MIN_FEEDBACK_VIEWS = 5000
+MIN_FEEDBACK_CTA_CLICKS = 100
+MIN_FEEDBACK_NEW_SUBSCRIBERS = 20
+MIN_TRACKED_CTA_COVERAGE = 0.70
+MIN_END_TO_END_COVERAGE = 0.50
+
+
 
 def _optional_number(value: str, field: str):
     text = (value or "").strip()
@@ -119,6 +130,71 @@ def _safe_rate(num, den):
     return num / den
 
 
+def _ratio(num: int, den: int) -> float:
+    return (num / den) if den else 0.0
+
+
+def _revenue_measurement_readiness(articles: list[dict], totals: dict, manifest_count: int) -> dict:
+    measured = [a for a in articles if any(v is not None for v in a["metrics"].values())]
+    tracked = [a for a in measured if any(m in {"tracked_cta", "end_to_end", "manual_verified"} for m in a["attribution_methods"])]
+    end_to_end = [a for a in measured if any(m in {"end_to_end", "manual_verified"} for m in a["attribution_methods"])]
+    measured_count = len(measured)
+    tracked_ratio = _ratio(len(tracked), measured_count)
+    e2e_ratio = _ratio(len(end_to_end), measured_count)
+    blockers = []
+    if manifest_count == 0:
+        blockers.append("no_attribution_manifests")
+    if measured_count < MIN_FEEDBACK_MEASURED_ARTICLES:
+        blockers.append(f"measured_articles<{MIN_FEEDBACK_MEASURED_ARTICLES} ({measured_count})")
+    if (totals.get("note_views") or 0) < MIN_FEEDBACK_VIEWS:
+        blockers.append(f"note_views<{MIN_FEEDBACK_VIEWS} ({int(totals.get('note_views') or 0)})")
+    if (totals.get("cta_clicks") or 0) < MIN_FEEDBACK_CTA_CLICKS:
+        blockers.append(f"cta_clicks<{MIN_FEEDBACK_CTA_CLICKS} ({int(totals.get('cta_clicks') or 0)})")
+    if (totals.get("new_subscribers") or 0) < MIN_FEEDBACK_NEW_SUBSCRIBERS:
+        blockers.append(f"new_subscribers<{MIN_FEEDBACK_NEW_SUBSCRIBERS} ({int(totals.get('new_subscribers') or 0)})")
+    if tracked_ratio < MIN_TRACKED_CTA_COVERAGE:
+        blockers.append(f"tracked_cta_coverage<{MIN_TRACKED_CTA_COVERAGE:.2f} ({tracked_ratio:.2f})")
+    if e2e_ratio < MIN_END_TO_END_COVERAGE:
+        blockers.append(f"end_to_end_coverage<{MIN_END_TO_END_COVERAGE:.2f} ({e2e_ratio:.2f})")
+    return {
+        "measurement_status": "READY_FOR_HUMAN_REVENUE_REVIEW" if not blockers else "COLLECTING",
+        "ranking_feedback_enabled": False,
+        "auto_feedback_permitted": False,
+        "measured_article_count": measured_count,
+        "manifest_count": manifest_count,
+        "tracked_cta_article_ratio": round(tracked_ratio, 4),
+        "end_to_end_article_ratio": round(e2e_ratio, 4),
+        "blockers": blockers,
+        "policy": "Revenue observations remain diagnostic until a separate human-approved feedback release.",
+    }
+
+
+def _group_performance(articles: list[dict], field: str) -> list[dict]:
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for article in articles:
+        key = str(article.get(field) or "UNKNOWN").strip() or "UNKNOWN"
+        groups[key].append(article)
+    out = []
+    for key, members in sorted(groups.items()):
+        sums = {}
+        for metric in NUMERIC_COLUMNS:
+            values = [a["metrics"][metric] for a in members if a["metrics"].get(metric) is not None]
+            sums[metric] = sum(values) if values else None
+        out.append({
+            field: key,
+            "article_count": len(members),
+            "measured_article_count": sum(1 for a in members if any(v is not None for v in a["metrics"].values())),
+            "metrics": sums,
+            "cta_click_rate": _safe_rate(sums["cta_clicks"], sums["note_views"]),
+            "subscriber_conversion_per_view": _safe_rate(sums["new_subscribers"], sums["note_views"]),
+            "subscription_revenue_per_1000_views_yen": (
+                _safe_rate(sums["subscription_revenue_yen"], sums["note_views"]) * 1000
+                if _safe_rate(sums["subscription_revenue_yen"], sums["note_views"]) is not None else None
+            ),
+        })
+    return out
+
+
 def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
     grouped: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -159,9 +235,10 @@ def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
     for field in NUMERIC_COLUMNS:
         vals = [a["metrics"][field] for a in articles if a["metrics"][field] is not None]
         totals[field] = sum(vals) if vals else None
+    readiness = _revenue_measurement_readiness(articles, totals, len(manifests))
     return {
-        "schema_version": 1,
-        "business_model": "free_note -> paid decision DB + monthly summary subscription",
+        "schema_version": 2,
+        "business_model": "free_note -> paid decision DB + monthly decision brief subscription",
         "privacy": "aggregate metrics only; subscriber PII forbidden",
         "ranking_feedback_enabled": False,
         "article_count": len(manifests),
@@ -170,6 +247,9 @@ def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
         "overall_cta_click_rate": _safe_rate(totals["cta_clicks"], totals["note_views"]),
         "overall_subscriber_conversion_per_click": _safe_rate(totals["new_subscribers"], totals["cta_clicks"]),
         "overall_subscriber_conversion_per_view": _safe_rate(totals["new_subscribers"], totals["note_views"]),
+        "revenue_measurement_readiness": readiness,
+        "performance_by_source": _group_performance(articles, "source"),
+        "performance_by_topic": _group_performance(articles, "portfolio_topic"),
         "articles": articles,
     }
 
