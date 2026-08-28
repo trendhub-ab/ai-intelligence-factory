@@ -360,8 +360,11 @@ REGEN_TEST_MODE = os.environ.get("REGEN_TEST_MODE", "false").lower() in {"1", "t
 REGEN_TEST_LIMIT = int(os.environ.get("REGEN_TEST_LIMIT", "3"))
 REGEN_TEST_SOURCE = os.environ.get("REGEN_TEST_SOURCE", "").strip()
 REGEN_TEST_OUTPUT_DIR = os.environ.get("REGEN_TEST_OUTPUT_DIR", "regen_test_outputs")
-# Run130: choose historical fixed/A-B articles or newly collected candidates.
-# Fresh selection itself is deterministic and adds zero Gemini Screening calls.
+# Run130: Real Article Regression can keep the historical fixed/A-B set or collect
+# genuinely new candidates without adding Gemini screening calls.  "fixed" preserves
+# the previous behavior exactly.  "fresh" performs source-native collection + legal/dedupe
+# checks + deterministic 0-API metadata ranking, then sends only the selected articles to
+# the existing Deep Dive/Quality pipeline with persist_results=False.
 REGEN_TEST_ARTICLE_SET = os.environ.get("REGEN_TEST_ARTICLE_SET", "fixed").strip().lower()
 REGEN_FRESH_FETCH_PER_SOURCE = int(os.environ.get("REGEN_FRESH_FETCH_PER_SOURCE", "12"))
 
@@ -1744,7 +1747,7 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
 # かつ内容としても正確な表記を維持する。
 SOURCE_RIGHTS_NOTE = {
     "HackerNews": (
-        "- **出典について**: 本文の技術的な事実・数値は、下記の公式リンクおよび参考情報で確認できる範囲を独自に分析・要約したものです。"
+        "- **出典について**: 本文の技術的な事実・数値は、上記の公式リンクおよび参考情報で確認できる範囲を独自に分析・要約したものです。"
         "リンク先記事本文の著作権は原著作者に帰属します。\n"
     ),
     "ArXiv": (
@@ -5282,7 +5285,13 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] 
 
 
 def _fresh_regen_candidate_score(repo: dict) -> tuple[float, int, str]:
-    """0-API ranking used only to choose fresh regression candidates."""
+    """0-API ranking for fresh regression candidates.
+
+    The score is intentionally not a Decision Score and is never persisted.  It only makes
+    the test set reproducible enough to favor candidates with usable first-party evidence,
+    current source metadata, and some source-native engagement.  Source diversity is applied
+    separately so a single feed cannot dominate all three regression articles.
+    """
     publishability = publication_probability_score({"repo": repo})
     engagement = int(repo.get("stargazerCount") or 0)
     published = str(repo.get("publishedAt") or "")
@@ -5290,11 +5299,15 @@ def _fresh_regen_candidate_score(repo: dict) -> tuple[float, int, str]:
 
 
 def get_fresh_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] | None:
-    """Collect new regression candidates with zero Gemini Screening calls and zero product writes.
+    """Collect *new* regression candidates with zero Gemini screening calls and zero writes.
 
-    The selector reuses normal source-native fetchers, Production Legal Safety,
-    Notion URL READ-ONLY dedupe, and deterministic metadata ranking. A dedupe-read
-    failure is fail-closed. Selection is never persisted as a Production Decision Score.
+    Safety/behavior:
+    - Fetches a small bounded slice from the four normal acquisition sources.
+    - Applies the same legal safety check used by production.
+    - Reads the internal Notion URL set and excludes anything already known there.
+    - Uses deterministic metadata-only ranking and round-robin source diversity.
+    - Does not create/update Notion pages, upload images, run Screening, or publish anything.
+    - The selected candidates still go through the normal Deep Dive + Quality Gate later.
     """
     fetch_limit = min(max(REGEN_FRESH_FETCH_PER_SOURCE, max(limit, 1)), 50)
     source_groups = {
@@ -5324,11 +5337,7 @@ def get_fresh_regen_test_items(limit: int = 3, source_filter: str = "") -> list[
             identity_urls = candidate_identity_urls(repo)
             title_key = _normalize_title_for_match(repo.get("nameWithOwner", ""))
             fallback_key = f"{repo.get('source', source)}:{title_key}"
-            if (
-                (identity_urls & existing_urls)
-                or (identity_urls & seen_identity_urls)
-                or (not identity_urls and fallback_key in seen_fallback_keys)
-            ):
+            if (identity_urls & existing_urls) or (identity_urls & seen_identity_urls) or (not identity_urls and fallback_key in seen_fallback_keys):
                 logger.info("[REGEN FRESH SKIP: KNOWN] %s", repo.get("nameWithOwner"))
                 continue
             seen_identity_urls.update(identity_urls)
@@ -5338,15 +5347,17 @@ def get_fresh_regen_test_items(limit: int = 3, source_filter: str = "") -> list[
         bucket.sort(key=_fresh_regen_candidate_score, reverse=True)
         eligible_by_source[source] = bucket
 
+    # First pass: one strongest candidate per source, preserving normal source order.
     selected: list[dict] = []
     source_order = ["GitHub", "HackerNews", "ArXiv", "ProductHunt"]
-    active_order = [source for source in source_order if source in eligible_by_source]
+    active_order = [s for s in source_order if s in eligible_by_source]
     for source in active_order:
         if len(selected) >= limit:
             break
         if eligible_by_source.get(source):
             selected.append(eligible_by_source[source].pop(0))
 
+    # Backfill any remaining slots globally by the same 0-API ranking.
     if len(selected) < limit:
         remaining = [repo for source in active_order for repo in eligible_by_source.get(source, [])]
         remaining.sort(key=_fresh_regen_candidate_score, reverse=True)
@@ -5363,8 +5374,7 @@ def get_fresh_regen_test_items(limit: int = 3, source_filter: str = "") -> list[
         })
     logger.info(
         "[REGEN FRESH] collected=%s selected=%s sources=%s GeminiScreeningCalls=0 writes=0",
-        sum(len(v) for v in source_groups.values()),
-        len(items),
+        sum(len(v) for v in source_groups.values()), len(items),
         ",".join(str(x["repo"].get("source") or "Unknown") for x in items),
     )
     return items
@@ -5735,6 +5745,8 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・同じ内容を言い換えて二度説明しない。読者が一度で理解できる説明はそこで止める。
 ・接続詞で論理を毎回明示しすぎない。段落の並びだけで意味がつながる場所では「一方で」「そのため」「つまり」を足さない。
 ・別の記事でも使える汎用的な導入・判断フレーズへ逃げず、この一次情報だから成立する入口と情報順序を選ぶ。
+・Roadmap、protocol、SDK、仕様変更のような抽象テーマでも、定義や項目列挙から始めない。読者が実際に困る場面、従来の前提が崩れる瞬間、または「なぜ今これが話題なのか」という記事固有の違和感から入り、そこから技術の核心へ進む。架空の体験談は作らない。
+・Security / Sandbox / Isolationでは「何をしてもPCへ影響しない」「被害をこの範囲だけに抑え込める」「安全が担保される」のような保証相当の断定をしない。一次情報が示す隔離機構と、残る条件・制約を分けて書く。
 ・「興味深い」「注目すべき」「実務的な示唆」「第一の柱／第一段階／第二段階」「妥当な判断と言えます」等の編集語彙を一記事に積み重ねない。必要な語を単発で使うのはよいが、説明を整えすぎず事実そのものに語らせる。
 
 【Reader Experience｜知的エンタメ × Decision Intelligence】
@@ -5756,16 +5768,25 @@ ARTICLEは管理帳票でも、AIが「きれいに整理した説明文」で�
 ・ニュース記事では、なぜ今日・今週・今回このテーマを読む価値があるのかを、公開日・更新・採用・仕様変更・普及・発見された問題など取得済みEvidenceから早い段階で示す。確認できない「最新」「急速に普及」「業界が注目」は作らない。
 ・抽象説明や仕様列挙が長く続く箇所は、可能なら一度だけ具体的な場面・比較・問いへ置き換えてから技術要件へ戻す。重要な要件や制約自体は削らない。
 ・中盤で企業ホワイトペーパーへ戻らない。権限、制約、要件などは、まず何が起こる場面なのかを理解させ、その後で必要な専門要件を渡す。
+・【無料note記事の最上位編集目標】読み手が「楽しい」「わかりやすい」「自分にも関係がある」と感じ、AIやITに詳しい人から面白い話を聞いていたら、いつの間にか核心を理解できていた状態を最優先する。技術レポートとして整っているだけでは完成としない。Evidence・数値・制約・反証・Decisionの正確さは絶対に落とさず、それらを読者が自然に理解できる順番と言葉へ編集する。親近感は口語句の数ではなく、読者の経験・疑問・判断と本文がつながっていることで成立させる。
 ・見出しは説明ラベルではなく、本文固有の意味と次を読む理由を持たせる。「なぜ重要か」「何が変わるか」「今後どうなるか」「最終判断」等を複数並べない。
 ・Decisionは報告書の固定章として処理せず、事実・制約・適用条件から自然に「私ならまず何をするか」へ到達させる。主観とEvidenceは混同しない。
 ・Reader-firstの「30秒でわかるこの記事」は公開UI上の要約であり、本文の段落順・見出し順・導入文型を固定するテンプレートではない。本文はその3項目をなぞらず、記事固有の流れを選ぶ。
 ・会社、営業、会議、CRMだけに例が偏らない。旅行、買い物、家族、学校、趣味、スマホ、SNS等の方が理解が速い場合だけ選ぶ。ただしB2B専門テーマに無理な生活ネタを入れない。
-・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。
-・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
+・「実は」「少し考えてみましょう」「○○に例えると」「また3文字の専門用語か」等の演出句へ逃げない。単発使用はよいが、別記事でも使える決まり文句として反復しない。「ここで重要なのは」「ポイントは」「つまり」「注目すべきは」のようなAIが説明を整理するときの常套句も、便利だからという理由で段落頭に繰り返さない。接続語で流れを作るのではなく、前の段落で生まれた疑問・意外性・判断の続きを次の段落が自然に受ける。
+・語り口は「教師が講義する」より「AIやITに詳しい友人が隣で、面白いところを一緒に見せてくれる」距離感にする。です・ます調を土台にし、読者を抽象的な「ユーザー」として扱わず、実際にスマホやPCを触り、仕事や生活で迷う一人の人として書く。1記事の中で原則1〜3箇所は、読者の実体験を思い出させる問いかけ、難しい名前への一言、身近な場面への接続など「読者との距離が近くなる一文」を自然に成立させる。ただし毎節で呼びかけたり、相づちを連打したりしない。Security / Risk等で軽い語りが不適切な場合は、無理な冗談ではなく静かな問いかけや平易な一言で距離を縮める。
+・親近感は疑問形や相づちの数で採点しない。Security・Risk・Hardware・Researchのようなテーマでは、落ち着いた語りでも、読者が普通の言葉で核心を理解し、制約と判断まで自然に到達できれば十分に人間的で親しみやすい。口語句を足すためだけの修正は禁止する。
+・Reader Delightは冒頭だけで作らない。導入で親近感を出した後に本文が技術レポートへ戻る構成は禁止する。記事全体で「読者の疑問 → 普通の言葉で理解 → なぜそうなるか → 何が面白い／困るか → 自分ならどう見る・判断するか」と理解が前へ進む流れを作る。各段落は前段落で生まれた疑問か意味を受け、情報カードの羅列にしない。
+・比喩は理解のための橋であり、面白さの代用品ではない。比喩だけで分かった気にさせず、比喩の直後または近接段落で「実際の技術では何が対応するのか」「なぜその現象が起きるのか」を最低1つ具体化する。かわいい例・日常例・口語表現が多くても、技術的な芯や因果が薄ければ完成としない。
+・Reader Proximityは「使ってもよい装飾」ではなく、無料note記事の完成条件として扱う。ただし品質Gateを緩めたり、親しみ不足だけを理由にGemini再生成を増やしたりしない。記事全体の温度を1〜2個の口語句で済ませず、硬い説明が2段落続いたら次の段落では、追加説明を足さず、既存文を「読者の判断／具体場面／平易な一言」のどれかへ置き換えて人間の言葉へ戻す。語りかけは装飾ではなく理解の橋として使い、「あなたならどうしますか？」のような中身のない問いは置かない。問いかけたなら、その直後の文で読者が何を見ればよいか・なぜ自分に関係するかへつなげる。ARTICLE全体が長い場合は段落追加ではなく削除・統合を優先する。
 ・「ですよね。」「やっぱり、」「なんですよ。」「ちょっと想像してみてください。」「ここが面白いところです。」等は使用可能な例であり必須語ではない。固定語でもない。特定の語尾を義務化せず、役割としての親近感を満たす。1記事で同じ語尾・呼びかけを反復せず、記事ごとに語彙を変える。
-・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。
-・この記事で読者が持ち帰る専門概念を内部で2〜4個に絞る。Decisionを理解するために必須の概念だけを日常語や短い比喩で丁寧に翻訳し、それ以外の実装詳細・規格名・略語は、Evidenceと制約を失わない範囲で一文にまとめるか、本文理解に不要なら書かない。専門語の数を増やすことを専門性と取り違えない。
-・文字数上限の中でAccessibilityを足すためにEvidence、数値、制約、比較、反証、Decisionを削らない。削る優先順位は、重複説明、Decisionに不要な内部実装、汎用的な前置き、同じ意味の言い換え。分かりやすさは情報量の水増しではなく、情報の選択と順序で作る。
+・親しみやすさのために文章を足し算しない。会話的な一文や日常例は、既存の硬い説明・接続文を置き換えて作る。独立した雑談段落を追加せず、同じ事実を「専門説明＋比喩説明」で二重に説明しない。『硬い説明→親しい説明』は置換であり追記ではない。
+・この無料ARTICLEで読者が本当に覚える専門概念を内部で原則2〜3個に絞る。4個目がないとDecisionを誤解する場合だけ4個まで許す。核心概念は「普通の言葉で役割 → 必要なら短い日常例 → 正式名称」の順で理解させる。それ以外の略語・規格番号・内部実装名は、Decisionや重要な制約に不可欠でなければ本文から外すか、意味を一文に圧縮する。一次情報に存在する技術名を全部ARTICLEへ転記することは禁止する。ARTICLE本文で説明する中核概念は原則2〜3個、実装識別子・規格名・コマンド名は意思決定に必要なものだけに限定し、列挙で専門性を演出しない。
+・Evidenceの深さとARTICLEの専門語数を混同しない。数値、重要な制約、比較条件、反証、一次情報の根拠、Decisionに必要な技術事実は残す。一方、実装詳細の羅列はSources/Evidenceへ戻って確認できるため、無料ARTICLE本文では「判断に何を意味するか」を優先する。有料会員向けProduct Review / Notion DBの情報密度をARTICLE圧縮に合わせて削らない。
+・各見出しでは、最初の1〜2文で非エンジニアにも意味が取れる普通の日本語を置いてから専門語へ進む。専門語だけで段落を開始しない。専門語を説明するために別の未説明専門語を持ち込まない。
+・「読みやすくするための追加説明」で長くしない。削る優先順位は、Decisionに不要な内部実装、規格番号・略語の列挙、重複説明、汎用的な前置き、同じ意味の言い換え。Evidence、数値、制約、比較、反証、Decisionは先に削らない。分かりやすさは情報量の水増しではなく、選択・順序・言い換えで作る。
+・最終出力前にARTICLEだけを読者目線で再編集する。目標は最終公開稿の目標は2,200〜3,000字、3,200字はSoft Ceiling。『30秒でわかるこの記事』・元情報・Sources / Evidenceなどが後段で追加されるため、生成するARTICLE本文は原則1,800〜2,300字に収める。最終稿が3,200字を超えそうなら、Evidence・数値・制約・比較・反証・Decisionを残し、実装手順の網羅、固有技術名の列挙、二重説明、長いコード例、一般論を先に削って完成させる。ARTICLEは実装チュートリアルやリファレンスマニュアルではなく、読者が採用・試用・見送りを判断するための記事である。コードブロックは意思決定に不可欠な場合を除き出さず、手順・機能・注意点の列挙はそれぞれ最大3項目まで。『詳しく書けるから書く』は禁止とする。3,200字を超えそうなら新しい説明を足さず、Decisionに不要な技術詳細を圧縮する。どうしても重要Evidenceや制約のため超える場合は許容するが、4,000字級を『専門テーマだから仕方ない』で正当化しない。
+・最終セルフチェックでは「中学生〜非エンジニアが、この記事を読み終えて『要するに○○の話』と一文で言えるか」「最初の800字だけでも続きを読みたいと思えるか」「3段落以上、専門用語の説明だけが連続していないか」を確認し、失敗していれば新しい情報を足さずに言い換え・圧縮・順序変更で直す。
 ・「ですよね。」は読者に同意を強要するためではなく、スマホの権限確認、買い物、通勤など多くの人が経験した具体場面を思い出してもらう用途に限る。根拠のない一般化や価値観への同意要求には使わない。
 ・親近感の一文や比喩から、Evidenceにない固有名詞・数値・市場評価・利用実績を新しく作らない。比喩は理解補助であり新しいFactではない。これにより親しみやすさを理由にFact Gate / Source Boundaryの表面積を増やさない。
 ・Fact / Evidence / 数値 / 制約 / Security上の重要事項は会話調でぼかさず、冷静で断定範囲の明確な文体を保つ。説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる温度にする。
@@ -5895,6 +5916,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 これらは読者に見せるラベルでも見出しでもない。既成の見出し文や段落テンプレートを再現せず、記事固有の内容に合わせて自由に構成する。
 
 タイトル直後は、読者が「何の話か」「なぜ自分に関係するか」をつかめる自然なリードから始める。
+Roadmapやprotocolの話でも、冒頭を「〜とは」「主な変更点は」「今回のロードマップでは」の説明開始に固定しない。まず読者が引っかかる変化・困りごと・意外性を1つ置き、専門用語は理解が必要になった時点で名前を付ける。
 リードの段落数は固定しない。1〜3段落程度を目安に、必要な情報だけを書く。
 発見経路や「一次情報に基づく」という説明を義務的な定型文として毎回入れない。出典は公開稿の「元情報」で別途提示されるため、本文では話を理解するのに必要な場合だけ自然に触れる。
 
@@ -5932,7 +5954,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
 ・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。
 ・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
 ・根拠に照らして限定検証、比較テスト、導入見送り、次版待ちなどの判断が妥当なら、理由と対象範囲を添えて明確に書く。安全性のためにすべてを「可能性がある」「注視したい」へ弱めない。
-・記事本文は目安として2,000〜3,200字程度に収め、同じ事実を別の見出しで繰り返さない。
+・記事本文の文字数を品質目標にしない。同じ事実の言い換え反復、Decisionに不要な実装列挙、長いコード例、説明の二重化は削る。一方で、Evidence・数値条件・制約・比較・反証・Decisionを文字数のために削らない。長くても読者が迷わず読み進められる情報順序と温度変化を優先する。
 """
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
@@ -6368,6 +6390,19 @@ def _find_hype_claims(draft: str, source_context: str = "", evidence_metadata: d
                 continue
             failures.append(f"{label}: {m.group(0)}")
             break
+    # Run145: 実記事で確認したsandbox/securityの絶対保証を個別に閉じる。
+    # 「影響を狭めやすい」のような限定表現は対象外。何をしても影響なし／被害を特定範囲に
+    # 抑え込める、といった保証相当の断定だけをHard Fact defectとして扱う。
+    run145_security_overclaims = (
+        (r"(?:AI|エージェント|サンドボックス|sandbox)[^。！？\n]{0,90}(?:どんな|いかなる|何をしても)[^。！？\n]{0,90}(?:PC|ホスト|端末|本体)[^。！？\n]{0,50}(?:影響が及びません|影響は及びません|影響しません)", "unsupported absolute isolation"),
+        (r"(?:被害|影響)(?:の)?範囲を[^。！？\n]{0,80}(?:だけ|のみ|内|範囲内)[^。！？\n]{0,50}(?:に)?(?:抑え込める|封じ込められる|限定できる)", "unsupported containment guarantee"),
+    )
+    for pattern, label in run145_security_overclaims:
+        for m in re.finditer(pattern, text, re.I):
+            if not _claim_is_negated(text, m.start(), m.end()):
+                failures.append(f"{label}: {m.group(0)}")
+                break
+
     # 「保証」単独もHigh Risk Claimとして検査する。ただし公式の保証があれば許可する。
     for m in re.finditer(r"保証(?:される|した|する|された)", text):
         if _claim_is_negated(text, m.start(), m.end()):
@@ -7808,12 +7843,24 @@ def _promote_plaintext_section_titles(article: str) -> tuple[str, list[str]]:
     return "\n".join(lines), changed
 
 
+def _repair_malformed_reader_numbering(article: str) -> tuple[str, list[str]]:
+    """Repair only unmistakable line-leading ordinal collisions without changing facts.
+
+    Real regression produced e.g. ``2.2026年〜``.  This is typography, not content, so repair it
+    locally with zero Gemini calls.  Mid-sentence decimals/versions are intentionally untouched.
+    """
+    body = article or ""
+    repaired, count = re.subn(r"(?m)^(\s*\d{1,2})\.(?=20\d{2}年)", r"\1. ", body)
+    return repaired, ([f"repair_malformed_ordinal_year:{count}"] if count else [])
+
+
 def _apply_deterministic_structure_polish(parsed: dict) -> tuple[dict, list[str]]:
     polished = dict(parsed or {})
     article, headings = _promote_plaintext_section_titles(str(polished.get("note_draft") or ""))
-    if headings:
+    article, numbering_changes = _repair_malformed_reader_numbering(article)
+    if headings or numbering_changes:
         polished["note_draft"] = article
-    return polished, [f"promote_plaintext_heading:{h}" for h in headings]
+    return polished, [f"promote_plaintext_heading:{h}" for h in headings] + numbering_changes
 
 
 def validate_publication_readiness_gate(parsed: dict, source_context: str = "", source_info: dict | None = None) -> tuple[str, list[str]]:
@@ -8228,10 +8275,11 @@ def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
 
 
 def _reader_experience_signals(article: str) -> dict:
-    """Run127: 0-API soft diagnostics for reader pull without creating new hard gates.
+    """0-API diagnostics for reader pull without creating new hard gates.
 
-    The diagnostics distinguish accessibility from narrative/editorial pull. Missing analogy,
-    humor, everyday examples, or emotional language is never itself a failure.
+    Run140 treats delight as the combination of clarity, human proximity, and an article-specific
+    reason to keep reading. Missing analogy, humor, or a particular catchphrase is never itself
+    a failure; a plain but engaging explanation can still be GOOD.
     """
     body = article or ""
     headings = [re.sub(r"\s+", " ", h).strip() for h in re.findall(r"^#{2,3}\s+(.+)$", body, re.MULTILINE)]
@@ -8335,10 +8383,10 @@ def _reader_experience_signals(article: str) -> dict:
     last = prose[-1000:]
     return_pull = bool(re.search(r"(?:次に|次版|今後|試す|比較|検証|確かめ|判断|選択|待つ|見送|導入|変化|残る|問い|条件|自分なら|私なら)", last))
 
-    # Run129: conversational warmth is a soft editorial diagnostic, never a hard gate.
-    # Natural conversational markers may improve note readability, but fixed catchphrases or
-    # agreement-seeking repetition create an AI/template feel, so both absence and overuse
-    # are interpreted contextually rather than as pass/fail requirements.
+    # Run131: measure actual reader proximity, not merely the presence of an everyday noun.
+    # Run129 was too permissive: a dry sentence containing "スマホ" could be labelled warm even
+    # when no human conversational distance was created. We now require a functional proximity
+    # moment while keeping it soft-only so warmth cannot consume retry budget or raise rejection.
     conversational_patterns = [
         r"ですよね[。！？!?]", r"なんですよ[。！？!?]", r"やっぱり[、,]",
         r"ちょっと想像してみてください", r"ここが面白いところ",
@@ -8349,12 +8397,39 @@ def _reader_experience_signals(article: str) -> dict:
         r"(?:想像|思い浮かべ)して(?:みる|みて)",
     ]
     conversational_hits = sum(len(re.findall(p, prose)) for p in conversational_patterns)
-    reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね)[。！？!?]", prose))
+    reader_question_hits = len(re.findall(r"(?:でしょうか|ませんか|ありますか|ありますよね|ですよね|感じませんか|思いませんか|考えたくなりますよね)[。！？!?]", prose))
     friendly_turn_hits = len(re.findall(r"(?:難しそう(?:ですが|でも)|名前は難し|意外と単純|やっていることは[^。！？]{0,35}(?:単純|シンプル)|身近な話にすると)", prose))
     reader_proximity_moments = conversational_hits + reader_question_hits + friendly_turn_hits
     repeated_conversational_phrase = any(len(re.findall(p, prose)) >= 3 for p in conversational_patterns)
     conversational_overuse = conversational_hits >= 7 or reader_question_hits >= 6 or repeated_conversational_phrase
     conversational_warmth = reader_proximity_moments >= 1
+
+    # Run133: Reader-first rhythm and editorial compression diagnostics.
+    # The goal is not to reward chatter. We measure whether a non-engineer gets an early foothold,
+    # whether dense technical explanation runs too long, and whether the article exposes too many
+    # implementation identifiers for a free reader-facing note article. All signals stay soft-only.
+    opening_prose = re.sub(r"\s+", " ", prose[:900]).strip()
+    opening_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", opening_prose)
+    opening_density = len(opening_tokens) * 1000.0 / max(len(re.sub(r"\s+", "", opening_prose)), 1)
+    opening_reader_bridge = bool(re.search(
+        r"(?:[？?]|ありませんか|ありますよね|ですよね|たとえば|例えば|もし|スマホ|買い物|旅行|学校|家族|仕事で|使う側|普通の言葉|簡単に言えば|要するに|意外|困った|迷った)",
+        opening_prose,
+    ))
+    opening_non_engineer_access = "GOOD" if opening_density < 42.0 and (opening_reader_bridge or not bridge_needed) else "REVIEW"
+
+    # Count implementation-heavy identifiers. This is deliberately conservative: we do not claim
+    # every token is jargon, only detect an overloaded surface area that often correlates with the
+    # Run132 failure mode (RFC numbers, flags, acronyms, internal component names, etc.).
+    implementation_identifiers = re.findall(
+        r"\b(?:SEP-\d+|RFC\s?\d+|[A-Z]{2,8}-\d{2,}|[A-Z]{2,8}\d{2,}|[A-Z]{3,8}|[A-Za-z]+/[A-Za-z0-9_.-]+)\b",
+        prose,
+    )
+    unique_implementation_identifiers = sorted(set(implementation_identifiers))
+    implementation_detail_load = "REVIEW" if len(unique_implementation_identifiers) >= 8 else "GOOD"
+
+    # A reader-friendly article should not stay in dense-explanation mode for three paragraphs in a row.
+    # We reuse max_explanatory_run so this adds no model call and no second parsing pipeline.
+    reader_temperature_rhythm = "GOOD" if max_explanatory_run <= 2 else "REVIEW"
 
     accessibility_issues = []
     if acronyms: accessibility_issues.append("unexplained_acronyms")
@@ -8362,6 +8437,9 @@ def _reader_experience_signals(article: str) -> dict:
     if technical_density >= 34: accessibility_issues.append("technical_term_concentration")
     if bridge_needed and not plain_language_bridge_present: accessibility_issues.append("plain_language_bridge_missing")
     if jargon_dense_paragraphs >= 2: accessibility_issues.append("jargon_translation_weak")
+    if opening_non_engineer_access != "GOOD": accessibility_issues.append("opening_non_engineer_access_weak")
+    if implementation_detail_load != "GOOD": accessibility_issues.append("implementation_detail_overload")
+    if reader_temperature_rhythm != "GOOD": accessibility_issues.append("reader_temperature_rhythm_weak")
     enjoyment_issues = []
     if analogy_overuse: enjoyment_issues.append("analogy_overuse")
     if tone_mismatch: enjoyment_issues.append("serious_topic_tone_mismatch")
@@ -8374,11 +8452,158 @@ def _reader_experience_signals(article: str) -> dict:
     if not conversational_warmth: enjoyment_issues.append("reader_proximity_missing")
     if conversational_overuse: enjoyment_issues.append("conversational_tone_overuse")
 
-    # Information-budget signal: do not solve accessibility by adding more prose. Several dense
-    # jargon paragraphs plus many analogies indicate the article may be explaining everything twice.
-    # This is diagnostic only; it never removes Evidence or changes a hard gate.
+    # Run142: Narrative Understanding Progression.
+    # Reader Delight must reflect understanding that moves forward, not a checklist of warm words.
+    _paras = [x.strip() for x in re.split(r"\n\s*\n", prose) if x.strip()]
+    _body_after_opening = "\n\n".join(_paras[1:]) if len(_paras) > 1 else prose
+    narrative_progression_hits = len(re.findall(
+        r"(?:ところが|理由(?:の一つ)?が|なぜなら|その結果|だからこそ|だから|すると|そこで|一方で|でも|では導入すれば|つまり何が|何が困る|何を意味する|につながる|ためです|からです)",
+        prose,
+    ))
+    causal_explanation_hits = len(re.findall(
+        r"(?:理由|なぜ|ため|ので|その結果|だから|そこで|つまり|一方で|ところが|すると)", prose
+    ))
+    decision_or_implication_hits = len(re.findall(
+        r"(?:私なら|判断|導入|安全性|意味|困る|価値|影響|使うなら|見るべき|確認|試して|比較)", prose
+    ))
+    factual_substance_hits = len(re.findall(
+        r"(?:ニューロン|特徴|活性化|非直交|ベクトル|重み|回路|因果|制約|互換性|一次資料|"
+        r"Sparse Autoencoder|Superposition|Polysemanticity|辞書学習|スパース|"
+        r"権限|最小権限|アクセス|ログ|承認|監視|演算性能|メモリ|帯域|消費電力|ベンチマーク|"
+        r"コスト|冷却|モデル|トークン|暗号|認証|脆弱性|API|プロトコル)",
+        prose, re.I,
+    ))
+    analogy_hits = len(re.findall(
+        r"(?:たとえば|例える|ような|みたい|押し入れ|収納|合鍵|家族|スマホ|料理|電車|棚|箱|引き出し)", prose
+    ))
+    report_style_body_hits = len(re.findall(
+        r"(?:評価します|解析します|同定します|抽出します|確認します|検討します|必要があります|方式です|発生します|分布します)",
+        _body_after_opening,
+    ))
+    body_reader_bridge_hits = len(re.findall(
+        r"(?:ですよね|ませんか|感じませんか|思いませんか|難しそう|身近|困る|なぜ|だから|ところが|でも|そこで|私なら)",
+        _body_after_opening,
+    ))
+    warm_hook_cold_body = (
+        reader_proximity_moments >= 1
+        and len(_paras) >= 3
+        and report_style_body_hits >= 4
+        and body_reader_bridge_hits <= 1
+    )
+    analogy_substance_thin = analogy_hits >= 3 and factual_substance_hits <= 3 and causal_explanation_hits <= 2
+    # Run144: concise good prose can show progression through a concrete technical core + caveat/action,
+    # without mandatory catchphrases or a fixed number of explicit causal connectors.
+    caveat_or_concrete_action = bool(re.search(
+        r"(?:ただし|とは限ら|わけではありません|保証されるわけでは|まず[^。！？]{0,80}(?:試|比較|確認|限定)|"
+        r"小さ(?:く|な環境)|範囲を広げ|比較対象|見送|待つ|段階(?:的に)?導入)",
+        prose, re.I,
+    ))
+    explicit_reader_decision_action = bool(re.search(
+        r"(?:私なら|導入するなら|使うなら|判断(?:します|する|材料)|比較(?:します|する|対象)|"
+        r"確認(?:します|する)|まず[^。！？]{0,80}(?:試|比べ|確認)|見送(?:ります|る)|追(?:います|う)|"
+        r"検証(?:します|する)|段階(?:的に)?導入)",
+        prose, re.I,
+    ))
+    practical_reader_progression = (
+        len(_paras) >= 3
+        and factual_substance_hits >= 2
+        and opening_non_engineer_access == "GOOD"
+        and (self_relevance or plain_language_bridge_present or reader_proximity_moments >= 1)
+        and explicit_reader_decision_action
+        and caveat_or_concrete_action
+        and decision_or_implication_hits >= 1
+    )
+    narrative_understanding_progression = (
+        (
+            narrative_progression_hits >= 2
+            and causal_explanation_hits >= 2
+            and decision_or_implication_hits >= 1
+            and factual_substance_hits >= 2
+        )
+        or practical_reader_progression
+    )
+    if warm_hook_cold_body:
+        enjoyment_issues.append("warm_hook_cold_body")
+    if analogy_substance_thin:
+        enjoyment_issues.append("analogy_substance_thin")
+    if not narrative_understanding_progression:
+        enjoyment_issues.append("narrative_understanding_progression_weak")
+
+    # Run140: composite reader outcome. This remains 0-API and soft-only: it does not trigger
+    # an extra Gemini call by itself. The generation prompt is responsible for achieving it.
+    reader_delight_good = (
+        opening_non_engineer_access == "GOOD"
+        and reader_proximity_moments >= 1
+        and not conversational_overuse
+        and article_specific_angle
+        and self_relevance
+        and (plain_language_bridge_present or not bridge_needed)
+    )
+    # Run144: Reader Delight is a balance, not an AND-list of conversational tokens.
+    # Hard-negative patterns stay strict; positive quality may be demonstrated by independent signals.
+    reader_delight_overclaim = bool(re.search(
+        r"(?:完全に理解できれば|完全に整理できます|完全に取り出せ|ブラックボックス問題は解決|"
+        r"危険な挙動も事前に見抜け|必須条件にします|すぐ全社導入|私なら今のうちに導入します)",
+        prose, re.I,
+    ))
+    # Repetition is measured across distinct paragraphs, not by repeated technical nouns.
+    _paragraph_fragment_counts = {}
+    for _para in _paras:
+        _compact = re.sub(r"https?://\S+|`[^`]+`|[A-Za-z0-9_.:/+-]+|[\s。、！？!?「」『』（）()【】#*_>・:：;；,，.-]+", "", _para)
+        _seen = set()
+        for _idx in range(max(0, len(_compact) - 6)):
+            _piece = _compact[_idx:_idx + 7]
+            if len(_piece) == 7:
+                _seen.add(_piece)
+        for _piece in _seen:
+            _paragraph_fragment_counts[_piece] = _paragraph_fragment_counts.get(_piece, 0) + 1
+    repeated_cross_paragraph_fragments = [k for k, v in _paragraph_fragment_counts.items() if v >= 3]
+    repetitive_insight = len(repeated_cross_paragraph_fragments) >= 3
+    if reader_delight_overclaim:
+        enjoyment_issues.append("reader_delight_overclaim")
+    if repetitive_insight:
+        enjoyment_issues.append("repetitive_insight")
+
+    positive_reader_signals = sum(bool(x) for x in (
+        opening_non_engineer_access == "GOOD",
+        article_specific_angle,
+        plain_language_bridge_present or not bridge_needed,
+        self_relevance or reader_proximity_moments >= 1 or everyday_terms or scene_present,
+        factual_substance_hits >= 2,
+        explicit_reader_decision_action and caveat_or_concrete_action,
+        narrative_understanding_progression,
+        curiosity or return_pull,
+    ))
+    reader_delight_base = (
+        positive_reader_signals >= 6
+        and opening_non_engineer_access == "GOOD"
+        and article_specific_angle
+        and (plain_language_bridge_present or not bridge_needed)
+        and factual_substance_hits >= 2
+        and explicit_reader_decision_action
+    )
+    reader_delight = "GOOD" if (
+        reader_delight_base
+        and narrative_understanding_progression
+        and not conversational_overuse
+        and not warm_hook_cold_body
+        and not analogy_substance_thin
+        and not reader_delight_overclaim
+        and not repetitive_insight
+    ) else "REVIEW"
+
+    # Reader-value budget: length itself is never a defect. Diagnose only the patterns that make
+    # an article *feel* long to a non-engineer: repeated dense explanation, duplicated analogy,
+    # implementation overload, or long uninterrupted explanatory runs. Evidence/Decision depth may
+    # legitimately require a longer article, so character count remains observability only.
+    article_char_count = len(re.sub(r"\s+", "", prose))
     information_budget = "GOOD"
-    if jargon_dense_paragraphs >= 3 or (len(analogy_markers) >= 3 and technical_density >= 30.0):
+    if (
+        jargon_dense_paragraphs >= 3
+        or (len(analogy_markers) >= 3 and technical_density >= 30.0)
+        or (max_explanatory_run >= 4 and technical_density >= 26.0)
+        or (len(unique_implementation_identifiers) >= 10 and jargon_dense_paragraphs >= 2)
+    ):
         information_budget = "REVIEW"
 
     accessibility = "GOOD" if not accessibility_issues else "REVIEW"
@@ -8402,7 +8627,27 @@ def _reader_experience_signals(article: str) -> dict:
         "conversational_marker_count": conversational_hits,
         "reader_proximity_moment_count": reader_proximity_moments,
         "reader_proximity": "GOOD" if reader_proximity_moments >= 1 and not conversational_overuse else ("REVIEW_OVERUSE" if conversational_overuse else "REVIEW_MISSING"),
+        "reader_delight": reader_delight,
+        "reader_delight_positive_signals": positive_reader_signals,
+        "reader_delight_overclaim": reader_delight_overclaim,
+        "repetitive_insight": repetitive_insight,
+        "caveat_or_concrete_action": caveat_or_concrete_action,
+        "explicit_reader_decision_action": explicit_reader_decision_action,
+        "narrative_understanding_progression": "GOOD" if narrative_understanding_progression else "REVIEW",
+        "narrative_progression_hits": narrative_progression_hits,
+        "causal_explanation_hits": causal_explanation_hits,
+        "factual_substance_hits": factual_substance_hits,
+        "analogy_hits": analogy_hits,
+        "warm_hook_cold_body": warm_hook_cold_body,
+        "analogy_substance_thin": analogy_substance_thin,
         "information_budget": information_budget,
+        "opening_non_engineer_access": opening_non_engineer_access,
+        "opening_technical_terms_per_1000_chars": round(opening_density, 1),
+        "implementation_detail_load": implementation_detail_load,
+        "implementation_identifier_count": len(unique_implementation_identifiers),
+        "reader_temperature_rhythm": reader_temperature_rhythm,
+        "article_char_count": article_char_count,
+        "reader_proximity_per_1000_chars": round(reader_proximity_moments * 1000.0 / max(article_char_count, 1), 2),
         "conversational_overuse": conversational_overuse,
         "analogy_used": analogy_used,
         "analogy_necessary": "EDITORIAL_JUDGMENT" if analogy_used else ("BRIDGE_RECOMMENDED" if bridge_needed and not plain_language_bridge_present else "NOT_REQUIRED"),
@@ -8756,10 +9001,16 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
     # Retry itself must not re-introduce internal management vocabulary into the public article.
     instructions.append("ARTICLE本文には内部管理コード NOW / TRY / WATCH / WAIT / AVOID を絶対に出力せず、読者向けの自然な日本語判断文へ言い換えてください。")
-    if any((row.get("reason_code") or "") in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT} for row in reason_rows):
-        instructions.append("AI臭・量産テンプレ感の修正では見出し名・段落分割・文章リズムを変更してよい。必要なら情報提示順も変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。")
+    hard_retry = any(row.get("severity") == GATE_SEVERITY_HARD for row in normalize_gate_reason_rows(reason_rows))
+    if hard_retry:
+        # HARD retry has one job: repair factual/publication safety. Combining it with whole-article
+        # compression caused new overclaims in real regression, so explicitly forbid broad rewriting.
+        instructions.append("HARD修正では記事全体の短文化・全面再構成を同時に行わず、指摘された事実・条件・導入・結論など必要箇所だけを最小限修正してください。修正対象外のEvidence・数値・固有名詞・制約・比較・反証・Decisionの意味と文章構造はできるだけ保持してください。")
+        instructions.append("Retry中に『安全性が担保される』『保証される』『完全に防げる』『必ず改善する』等、一次情報より強い保証・一般化を新たに作らないでください。根拠にない時間・金額・性能・業界標準も追加しないでください。")
+    elif any((row.get("reason_code") or "") in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT} for row in reason_rows):
+        instructions.append("AI臭・量産テンプレ感の修正では見出し名・段落分割・文章リズムを変更してよい。必要なら情報提示順も変更してよい。ただし一次情報、数値、固有名詞、Decisionの意味、制約条件は変更・追加しないでください。文字数合わせではなく、重複説明を減らして長く感じさせないことを優先してください。『ここで重要なのは』『ポイントは』『つまり』『注目すべきは』等の常套句へ置き換えるだけの修正は禁止です。1〜3箇所の自然な読者接続は残してよいが、呼びかけ・相づち・疑問形を連打せず、記事固有の疑問や場面から自然に次段落へつないでください。")
     else:
-        instructions.append("修正対象外の一次情報・数値・固有名詞・見出し構造は不用意に書き換えず、局所修正に限定してください。")
+        instructions.append("修正対象外の一次情報・数値・固有名詞は不用意に書き換えないでください。文字数を目標にせず、同じ事実の言い換え、不要な実装列挙、一般論、完全なコードブロック、実装チュートリアルなど読者の判断に不要な重複だけを削除・統合してください。Evidence・数値・制約・比較・反証・Decisionは短文化のために削らず、非エンジニアでも流れを追える説明順序を優先してください。")
     return "\n".join(dict.fromkeys(instructions)), list(dict.fromkeys(sections))
 
 
@@ -8873,7 +9124,7 @@ def _apply_deterministic_publication_rescue(parsed: dict, reason_rows: list[dict
     rescued["_rescue_loss"] = {
         "removed_sentences": removed_sentences,
         "important_numeric_removed": important_numeric_removed,
-        "loss_exceeded": bool(important_numeric_removed or removed_sentences >= 3),
+        "loss_exceeded": bool(removed_sentences >= 3 or (important_numeric_removed and removed_sentences != 1)),
     }
     return rescued, list(dict.fromkeys(changes))
 
@@ -9325,8 +9576,19 @@ def _write_article_audit_markdown(path: str, article: str, metadata: dict | None
             f"- Conversational Warmth: {reader.get('conversational_warmth')}",
             f"- Conversational Marker Count: {reader.get('conversational_marker_count')}",
             f"- Reader Proximity: {reader.get('reader_proximity')}",
+            f"- Reader Delight: {reader.get('reader_delight')}",
+            f"- Narrative Understanding Progression: {reader.get('narrative_understanding_progression')}",
+            f"- Warm Hook Cold Body: {reader.get('warm_hook_cold_body')}",
+            f"- Analogy Substance Thin: {reader.get('analogy_substance_thin')}",
             f"- Reader Proximity Moment Count: {reader.get('reader_proximity_moment_count')}",
             f"- Information Budget: {reader.get('information_budget')}",
+            f"- Opening Non-Engineer Access: {reader.get('opening_non_engineer_access')}",
+            f"- Opening Technical Terms / 1000 chars: {reader.get('opening_technical_terms_per_1000_chars')}",
+            f"- Implementation Detail Load: {reader.get('implementation_detail_load')}",
+            f"- Implementation Identifier Count: {reader.get('implementation_identifier_count')}",
+            f"- Reader Temperature Rhythm: {reader.get('reader_temperature_rhythm')}",
+            f"- Article Character Count: {reader.get('article_char_count')}",
+            f"- Reader Proximity / 1000 chars: {reader.get('reader_proximity_per_1000_chars')}",
             f"- Headline Pull: {reader.get('headline_pull')}",
             f"- News Relevance: {reader.get('news_relevance')}",
             f"- Analogy Used: {reader.get('analogy_used')}",
