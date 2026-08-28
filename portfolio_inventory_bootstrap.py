@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Run Subscriber Inventory Bootstrap with Run130 Technology Portfolio policy.
+"""Run Subscriber Inventory Bootstrap with Run131 profit-aligned portfolio policy.
 
-The mature inventory_bootstrap.py remains untouched. This entry point installs a
-planning-only portfolio policy, then delegates to the original command. This keeps
-rollback trivial and preserves all Evidence, Product Review, Notion and quota safety.
+The mature inventory_bootstrap.py remains authoritative for Evidence, Product
+Review, Notion persistence and quota safety. This entry point installs only the
+Run131 review-order overlay, then delegates to the original command.
+
+Run131 intentionally ignores the legacy hard source-share cap. Diversity may
+reorder only candidates within PORTFOLIO_DIVERSITY_TOLERANCE of the strongest
+remaining candidate, so a materially weaker record is never force-promoted.
 """
 from __future__ import annotations
 
