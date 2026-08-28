@@ -7,7 +7,9 @@ small second pass then:
 2. keeps the existing Product Review eligibility/cooldown semantics;
 3. ranks eligible records with Run131 tolerance-protected portfolio diversity;
 4. invokes the existing pipeline in its product-only fail-closed mode using an
-   explicit ordered allowlist.
+   explicit ordered allowlist;
+5. runs Run132 Context-First enrichment with zero additional Gemini requests so
+   every subscriber-facing decision starts with "what it is" and "why now".
 
 This avoids invasive edits to pipeline.py and keeps Evidence, assessment, History,
 Subscriber sync and Gemini accounting under the existing authoritative code path.
@@ -22,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
+import context_first_enrichment
 import decision_intelligence
 import inventory_bootstrap as ib
 from technology_portfolio_policy import rank_portfolio_records
@@ -216,16 +219,29 @@ def main() -> int:
     if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
         print(json.dumps({"skipped": True, "reason": "decision_intelligence_disabled"}))
         return 0
-    if DEFAULT_MAX_REVIEWS <= 0 or DEFAULT_REQUEST_BUDGET <= 0:
-        print(json.dumps({"skipped": True, "reason": "daily_product_review_disabled"}))
-        return 0
+
+    # Run132 is a product-readiness requirement, not a cosmetic best-effort pass.
+    # Validate its persistence contract before spending a Product Review request.
+    context_first_enrichment.preflight_context_first_schema()
 
     pages = decision_intelligence.query_technology_records(max_records=5000)
     states = [decision_intelligence.technology_page_to_state(page) for page in pages]
+    previous_reviewed = {
+        str(state.get("canonical_entity_id")): state.get("last_reviewed")
+        for state in states
+        if str(state.get("canonical_entity_id") or "")
+    }
+
     scan_limit = min(24, max(DEFAULT_SCAN_LIMIT, DEFAULT_MAX_REVIEWS * 4, DEFAULT_MAX_REVIEWS + 6))
     allowlist = plan_daily_review_allowlist(states, scan_limit=scan_limit)
     result = _run_product_only(allowlist, DEFAULT_MAX_REVIEWS, DEFAULT_REQUEST_BUDGET)
     result["ordered_allowlist"] = allowlist
+
+    # This is intentionally outside pipeline.py. It consumes no Gemini quota and
+    # cannot alter Evidence/Adoption decisions. A failure is loud: silently serving
+    # context-less member rows would be a product regression.
+    result["context_first"] = context_first_enrichment.enrich_context_first(previous_reviewed)
+
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
