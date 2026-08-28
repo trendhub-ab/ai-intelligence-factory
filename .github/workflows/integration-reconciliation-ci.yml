@@ -1,0 +1,78 @@
+name: Integration Reconciliation CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'subscription_attribution.py'
+      - 'inventory_bootstrap.py'
+      - 'decision_intelligence.py'
+      - 'pipeline.py'
+      - '.github/workflows/regression-test.yml'
+      - 'tests/**'
+      - '.github/workflows/integration-reconciliation-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zero-api-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile reconciled production modules
+        run: |
+          python -m compileall -q \
+            subscription_attribution.py \
+            inventory_bootstrap.py \
+            decision_intelligence.py \
+            pipeline.py
+      - name: Validate Run130 regression workflow safety surface
+        run: |
+          grep -F 'article_set:' .github/workflows/regression-test.yml
+          grep -F -- '- fresh' .github/workflows/regression-test.yml
+          grep -F 'permissions:' .github/workflows/regression-test.yml
+          grep -F 'contents: read' .github/workflows/regression-test.yml
+      - name: Run article quality reconciliation tests
+        run: |
+          python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
+          python -m unittest discover -s tests -p 'test_run131_reader_proximity_information_budget.py' -v
+          python -m unittest discover -s tests -p 'test_run132_warm_rewrite_budget.py' -v
+          python -m unittest discover -s tests -p 'test_run133_reader_first_editorial_compression.py' -v
+          python -m unittest discover -s tests -p 'test_run136_reader_value_priority.py' -v
+          python -m unittest discover -s tests -p 'test_run137_human_voice.py' -v
+          python -m unittest discover -s tests -p 'test_run138_source_note_direction.py' -v
+          python -m unittest discover -s tests -p 'test_run140_reader_delight_priority.py' -v
+          python -m unittest discover -s tests -p 'test_run142_narrative_understanding.py' -v
+          python -m unittest discover -s tests -p 'test_run144_reader_delight_balance.py' -v
+          python -m unittest discover -s tests -p 'test_run145_real_article_closure.py' -v
+          python -m unittest discover -s tests -p 'test_run147_rescue_loss_precision.py' -v
+      - name: Run Run134 reconciliation tests
+        run: |
+          python -m unittest discover -s tests -p 'test_run134_revenue_product_value.py' -v
+          python -m unittest discover -s tests -p 'test_run134_paid_product_value_reconciliation.py' -v
+          python -m unittest discover -s tests -p 'test_run134_monthly_decision_brief_reconciliation.py' -v
+      - name: Run adjacent product and context regressions
+        run: |
+          python -m unittest discover -s tests -p 'test_revenue_product_phase2.py' -v
+          python -m unittest discover -s tests -p 'test_inventory_bootstrap.py' -v
+          python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
+          python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
+          python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
+      - name: Run full unittest regression
+        run: python -m unittest discover -s tests -v
+      - name: Run synthetic smoke with production isolation
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          SYNTHETIC_REGRESSION_TIER: 'smoke'
+        run: python pipeline.py

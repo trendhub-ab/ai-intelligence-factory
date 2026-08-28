@@ -334,12 +334,13 @@ class TestRun98Corrections(unittest.TestCase):
         self.assertTrue(rescued["_rescue_loss"]["loss_exceeded"])
         self.assertEqual(3, len(changes))
 
-    def test_rescue_loss_limit_marks_important_numeric_deletion(self):
+    def test_rescue_loss_limit_allows_single_unsupported_numeric_sentence(self):
         parsed = minimal_parsed(article=minimal_parsed()["note_draft"] + "\np95は56.8 msでした。")
         rows = pipeline.map_gate_reasons("fact", ["unsupported numeric claim: 56.8 ms"])
         rescued, _ = pipeline._apply_deterministic_publication_rescue(parsed, rows)
         self.assertTrue(rescued["_rescue_loss"]["important_numeric_removed"])
-        self.assertTrue(rescued["_rescue_loss"]["loss_exceeded"])
+        self.assertEqual(1, rescued["_rescue_loss"]["removed_sentences"])
+        self.assertFalse(rescued["_rescue_loss"]["loss_exceeded"])
 
     def test_fact_relation_gate_rejects_unsupported_provider_relationship(self):
         draft = "Timescale社がpgvectorを提供しています。"
