@@ -19,7 +19,6 @@ NOTION_API_KEY = os.environ.get("NOTION_DECISION_INTELLIGENCE_API_KEY", "").stri
 NOTION_API_VERSION = os.environ.get("NOTION_API_VERSION", "2026-03-11")
 SUBSCRIBER_DATABASE_ID = os.environ.get("NOTION_SUBSCRIBER_TECH_DATABASE_ID", "").strip()
 SUBSCRIBER_DATA_SOURCE_ID = os.environ.get("NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID", "").strip()
-ENABLE_SUBSCRIBER_TECH_SYNC = os.environ.get("ENABLE_SUBSCRIBER_TECH_SYNC", "false").lower() in {"1", "true", "yes", "on"}
 ENABLE_SUBSCRIBER_DECISION_BRIEF = os.environ.get("ENABLE_SUBSCRIBER_DECISION_BRIEF", "true").lower() in {"1", "true", "yes", "on"}
 REQUEST_PACING_SECONDS = max(0.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_PACING_SECONDS", "0.35")))
 
@@ -299,7 +298,7 @@ def query_subscriber_pages() -> list[dict]:
 
 
 def sync_subscriber_decision_briefs() -> dict[str, Any]:
-    if not ENABLE_SUBSCRIBER_TECH_SYNC or not ENABLE_SUBSCRIBER_DECISION_BRIEF:
+    if not ENABLE_SUBSCRIBER_DECISION_BRIEF:
         return {"enabled": False, "total": 0, "created": 0, "updated": 0, "unchanged": 0, "errors": 0}
     if not NOTION_API_KEY:
         raise ValueError("Subscriber Decision Brief requires NOTION_DECISION_INTELLIGENCE_API_KEY")
