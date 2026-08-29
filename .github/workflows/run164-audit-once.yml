@@ -1,0 +1,43 @@
+name: Run164 Audit Once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: contains(github.event.head_commit.message, 'RUN164 AUDIT 150')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Read-only portfolio audit
+        env:
+          TZ: Asia/Tokyo
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+        run: |
+          python portfolio_inventory_bootstrap.py plan --target 200 --min-sellable 150
+      - name: Upload audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: run164-audit-${{ github.run_id }}
+          path: inventory_bootstrap_artifacts/
+          if-no-files-found: warn
+          retention-days: 30
