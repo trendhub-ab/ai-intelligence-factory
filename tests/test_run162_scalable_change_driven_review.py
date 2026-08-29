@@ -64,6 +64,7 @@ class Run162ScalableChangeDrivenReviewTests(unittest.TestCase):
         self.assertEqual(dpr.review_priority_tier(state), "NORMAL")
         self.assertIsNone(dpr.daily_review_reason(state, now=NOW))
         state["last_reviewed"] = (NOW - timedelta(days=31)).isoformat()
+        state["last_evidence_update"] = (NOW - timedelta(days=32)).isoformat()
         self.assertEqual(dpr.daily_review_reason(state, now=NOW), "TIER_DUE")
 
     def test_unchanged_low_entity_waits_60_days_but_is_not_abandoned(self):
@@ -75,6 +76,7 @@ class Run162ScalableChangeDrivenReviewTests(unittest.TestCase):
         )
         self.assertIsNone(dpr.daily_review_reason(state, now=NOW))
         state["last_reviewed"] = (NOW - timedelta(days=61)).isoformat()
+        state["last_evidence_update"] = (NOW - timedelta(days=62)).isoformat()
         self.assertEqual(dpr.daily_review_reason(state, now=NOW), "TIER_DUE")
 
     def test_high_value_entity_keeps_existing_14_day_default(self):
