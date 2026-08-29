@@ -30,6 +30,24 @@ class Run166MemberPageBodyTests(unittest.TestCase):
             "related_article": "https://note.com/example/n/abc",
         }
 
+    @staticmethod
+    def _paragraph_after_heading(children, heading):
+        for index, item in enumerate(children[:-1]):
+            if item.get("type") != "heading_3":
+                continue
+            text = "".join(
+                x["text"]["content"]
+                for x in item["heading_3"]["rich_text"]
+            )
+            if text != heading:
+                continue
+            following = children[index + 1]
+            return "".join(
+                x["text"]["content"]
+                for x in following["paragraph"]["rich_text"]
+            )
+        return ""
+
     def test_parent_callout_has_no_nested_children_for_notion_api(self):
         block = body._new_callout_block(self._state())
         self.assertEqual(block["type"], "callout")
@@ -55,6 +73,33 @@ class Run166MemberPageBodyTests(unittest.TestCase):
         self.assertEqual(body._status_summary(state), "TEST 78/100｜実用度 中｜根拠 高")
         first_text = body._build_children(state)[0]["paragraph"]["rich_text"][0]["text"]["content"]
         self.assertIn("TEST 78/100", first_text)
+
+    def test_duplicate_topic_and_reason_uses_evaluation_basis(self):
+        state = self._state()
+        duplicate = "高負荷LLMサービングではvLLMと並ぶ優先比較候補。"
+        state.update(
+            {
+                "status": "ADOPT",
+                "score": 92,
+                "readiness": "高",
+                "confidence": "高",
+                "topic": duplicate,
+                "judgment_reason": duplicate,
+            }
+        )
+        children = body._build_children(state)
+        rendered_reason = self._paragraph_after_heading(children, "判断理由")
+        self.assertIn("判断スコア92点", rendered_reason)
+        self.assertIn("実用度高", rendered_reason)
+        self.assertIn("根拠の確かさ高", rendered_reason)
+        self.assertIn("導入候補", rendered_reason)
+        self.assertNotEqual(body._norm_key(duplicate), body._norm_key(rendered_reason))
+
+    def test_distinct_reason_is_preserved(self):
+        state = self._state()
+        children = body._build_children(state)
+        rendered_reason = self._paragraph_after_heading(children, "判断理由")
+        self.assertEqual(state["judgment_reason"], rendered_reason)
 
     def test_signature_changes_when_customer_decision_changes(self):
         state = self._state()
