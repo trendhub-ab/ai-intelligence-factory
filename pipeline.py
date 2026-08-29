@@ -38,6 +38,9 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+from editorial_eyecatch import (
+    NOTE_EYECATCH_OUTPUT_DIR, generate_note_editorial_eyecatch, infer_editorial_category,
+)
 # Synthetic regression is intentionally provider-free. On an offline CI/dev machine the
 # regression re-imports pipeline.py as a module, so allow a minimal SDK stub only in that mode.
 # Production still fails loudly if google-genai is missing.
@@ -10685,6 +10688,34 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             reader_summary=reader_summary, published_at=published_at,
         )
 
+        # Run150: note acquisition and paid-DB decision support are different visual jobs.
+        # The public note image is an editorial/curiosity surface with no internal score card.
+        # The existing Decision Card below remains Notion-facing and preserves paid-product utility.
+        note_eyecatch_path = ""
+        try:
+            note_output_dir = NOTE_EYECATCH_OUTPUT_DIR if persist_results else os.path.join(REGEN_TEST_OUTPUT_DIR, "eyecatch")
+            os.makedirs(note_output_dir, exist_ok=True)
+            note_eyecatch_filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__note.png"
+            note_eyecatch_path = os.path.join(note_output_dir, note_eyecatch_filename)
+            editorial_category = infer_editorial_category(
+                parsed.get("title_text", ""),
+                parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
+                source,
+            )
+            generate_note_editorial_eyecatch(
+                parsed.get("title_text", "") or name,
+                parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
+                note_eyecatch_path,
+                category=editorial_category,
+            )
+            logger.info(
+                "[NOTE EDITORIAL EYECATCH] %s -> %s category=%s",
+                name, note_eyecatch_path, editorial_category,
+            )
+        except Exception as e:
+            note_eyecatch_path = ""
+            logger.warning("[NOTE EDITORIAL EYECATCH SKIP] %s: %s", name, e)
+
         eyecatch_url = ""
         if persist_results:
             try:
@@ -10702,7 +10733,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             except Exception as e:
                 logger.warning(f"[EYECATCH SKIP] {name}: {e}")
         else:
-            logger.info(f"[REGEN TEST] eyecatch生成・GitHub uploadをスキップ: {name}")
+            logger.info(f"[REGEN TEST] Notion Decision Card/GitHub uploadをスキップ（note Editorial EyecatchはArtifactへ生成済み）: {name}")
 
         analyzed_at = _analyzed_at_now_iso()
         notion_name = _notion_display_name(repo)
@@ -10754,7 +10785,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 save_article_audit_package(
                     repo, "PENDING_RETRY", parsed, source_info, None, "Notion persistence failed after Quality Gate PASS",
                     snapshots=article_audit_snapshots, clean_manuscript=clean_manuscript,
-                    eyecatch_path=eyecatch_path if 'eyecatch_path' in locals() else "",
+                    eyecatch_path=note_eyecatch_path if note_eyecatch_path else "",
                 )
                 send_telegram_alert(f"⚠️ Notion Persistence Failed: {name}\n記事はQuality Gateを通過しましたが、Notionへの保存/アップグレードに失敗したためReadyにしていません。")
                 # Readyの定義（Quality Gate PASS AND Notion Persistence SUCCESS）を
@@ -10788,7 +10819,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 ready_warnings = "; ".join(_quality_warning_messages(reason_rows))
                 save_article_audit_package(
                     repo, "READY", parsed, source_info, ready_record, ready_warnings, snapshots=article_audit_snapshots,
-                    clean_manuscript=clean_manuscript, eyecatch_path=eyecatch_path if 'eyecatch_path' in locals() else "",
+                    clean_manuscript=clean_manuscript, eyecatch_path=note_eyecatch_path if note_eyecatch_path else "",
                 )
         else:
             regen_status = "accepted" if quality_gate_passed else "rejected"
