@@ -51,40 +51,39 @@ jobs:
                   raise SystemExit(f'Run150 import anchor count={count}, expected 1')
               text = text.replace(import_anchor, import_anchor + import_line, 1)
 
-          anchor = '''        eyecatch_url = ""
-          if persist_results:
-          '''
-          replacement = '''        # Run150: note acquisition and paid-DB decision support are different visual jobs.
-          # The public note image is an editorial/curiosity surface with no internal score card.
-          # The existing Decision Card below remains Notion-facing and preserves paid-product utility.
-          note_eyecatch_path = ""
-          try:
-              note_output_dir = NOTE_EYECATCH_OUTPUT_DIR if persist_results else os.path.join(REGEN_TEST_OUTPUT_DIR, "eyecatch")
-              os.makedirs(note_output_dir, exist_ok=True)
-              note_eyecatch_filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__note.png"
-              note_eyecatch_path = os.path.join(note_output_dir, note_eyecatch_filename)
-              editorial_category = infer_editorial_category(
-                  parsed.get("title_text", ""),
-                  parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
-                  source,
-              )
-              generate_note_editorial_eyecatch(
-                  parsed.get("title_text", "") or name,
-                  parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
-                  note_eyecatch_path,
-                  category=editorial_category,
-              )
-              logger.info(
-                  "[NOTE EDITORIAL EYECATCH] %s -> %s category=%s",
-                  name, note_eyecatch_path, editorial_category,
-              )
-          except Exception as e:
-              note_eyecatch_path = ""
-              logger.warning("[NOTE EDITORIAL EYECATCH SKIP] %s: %s", name, e)
-
-          eyecatch_url = ""
-          if persist_results:
-          '''
+          anchor = '        eyecatch_url = ""\n        if persist_results:\n'
+          replacement = (
+              '        # Run150: note acquisition and paid-DB decision support are different visual jobs.\n'
+              '        # The public note image is an editorial/curiosity surface with no internal score card.\n'
+              '        # The existing Decision Card below remains Notion-facing and preserves paid-product utility.\n'
+              '        note_eyecatch_path = ""\n'
+              '        try:\n'
+              '            note_output_dir = NOTE_EYECATCH_OUTPUT_DIR if persist_results else os.path.join(REGEN_TEST_OUTPUT_DIR, "eyecatch")\n'
+              '            os.makedirs(note_output_dir, exist_ok=True)\n'
+              '            note_eyecatch_filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__note.png"\n'
+              '            note_eyecatch_path = os.path.join(note_output_dir, note_eyecatch_filename)\n'
+              '            editorial_category = infer_editorial_category(\n'
+              '                parsed.get("title_text", ""),\n'
+              '                parsed.get("what_text", "") or parsed.get("source_summary_text", ""),\n'
+              '                source,\n'
+              '            )\n'
+              '            generate_note_editorial_eyecatch(\n'
+              '                parsed.get("title_text", "") or name,\n'
+              '                parsed.get("what_text", "") or parsed.get("source_summary_text", ""),\n'
+              '                note_eyecatch_path,\n'
+              '                category=editorial_category,\n'
+              '            )\n'
+              '            logger.info(\n'
+              '                "[NOTE EDITORIAL EYECATCH] %s -> %s category=%s",\n'
+              '                name, note_eyecatch_path, editorial_category,\n'
+              '            )\n'
+              '        except Exception as e:\n'
+              '            note_eyecatch_path = ""\n'
+              '            logger.warning("[NOTE EDITORIAL EYECATCH SKIP] %s: %s", name, e)\n'
+              '\n'
+              '        eyecatch_url = ""\n'
+              '        if persist_results:\n'
+          )
           if replacement not in text:
               count = text.count(anchor)
               if count != 1:
@@ -105,10 +104,45 @@ jobs:
               text = text.replace(old_log, new_log, 1)
 
           path.write_text(text, encoding='utf-8')
+
+          # Topic classification must never be driven by GitHub/HN/arXiv/ProductHunt source identity.
+          editorial_path = Path('editorial_eyecatch.py')
+          editorial = editorial_path.read_text(encoding='utf-8')
+          source_based = '    text = f"{title}\\n{summary}\\n{source}".lower()\n'
+          topic_only = (
+              '    # Source is intentionally ignored: the public eyecatch category describes the topic, not discovery origin.\n'
+              '    text = f"{title}\\n{summary}".lower()\n'
+          )
+          if source_based in editorial:
+              editorial = editorial.replace(source_based, topic_only, 1)
+          editorial_path.write_text(editorial, encoding='utf-8')
           PY
 
       - name: Compile
         run: python -m py_compile pipeline.py editorial_eyecatch.py
+
+      - name: Render selected-style preview
+        run: |
+          python - <<'PY'
+          import os
+          from editorial_eyecatch import generate_note_editorial_eyecatch
+          os.makedirs('run150_preview', exist_ok=True)
+          generate_note_editorial_eyecatch(
+              'AIに“同僚”ができ始めた。',
+              'エージェント同士が、勝手に仕事を分担する時代へ。',
+              'run150_preview/run150_editorial_preview.png',
+              category='AI AGENTS',
+              date_label='2026.08',
+          )
+          PY
+
+      - name: Upload visual preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: run150-eyecatch-preview
+          path: run150_preview/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run Run150 focused tests
         env:
