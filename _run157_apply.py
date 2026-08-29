@@ -107,16 +107,18 @@ def _find_causal_inference_overclaims(draft: str, source_context: str) -> list[s
     return failures
 '''
 
-text = text.replace(marker, helper + marker, 1)
+before_gate, gate_and_after = text.split(marker, 1)
+text = before_gate + helper + marker + gate_and_after
 
 call_anchor = "    failures.extend(_find_entity_relation_violations(draft, source_context))\n"
-if call_anchor not in text:
+if call_anchor not in gate_and_after:
     raise SystemExit("fact gate call anchor not found")
-text = text.replace(
+gate_and_after = gate_and_after.replace(
     call_anchor,
     call_anchor + "    failures.extend(_find_causal_inference_overclaims(draft, source_context))\n",
     1,
 )
+text = before_gate + helper + marker + gate_and_after
 
 path.write_text(text, encoding="utf-8")
 print("Run157 patch applied")
