@@ -52,6 +52,7 @@ jobs:
               'member_home': 'https://api.notion.com/v1/pages/3c5479ff-dca9-8103-bff0-f2d5f408d35f',
               'continuation_page': 'https://api.notion.com/v1/pages/3cb479ff-dca9-8196-a397-faae03a090ec',
               'new_member_database': 'https://api.notion.com/v1/databases/7160e83d3a4f41a18bf661df92423bda',
+              'subscriber_record_host': 'https://api.notion.com/v1/pages/3c5479ff-dca9-8178-867c-d9249a3ff5c8',
           }
           for name, url in targets.items():
               r = requests.get(url, headers=headers, timeout=15)
@@ -61,6 +62,7 @@ jobs:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
 
       - name: Sync clean member DB
+        continue-on-error: true
         run: python member_presentation_sync.py
         env:
           TZ: 'Asia/Tokyo'
