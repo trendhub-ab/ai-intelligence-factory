@@ -1,4 +1,3 @@
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -67,14 +66,6 @@ def managed_toggle(block_id="t1"):
     }
 
 
-def callout(key):
-    return {
-        "id": "c1",
-        "type": "callout",
-        "callout": {"rich_text": [{"plain_text": key, "text": {"content": key}}]},
-    }
-
-
 class Run158DecisionBriefTests(unittest.TestCase):
     def test_page_parser_uses_only_existing_subscriber_properties(self):
         values = sdb.page_to_values(subscriber_page())
@@ -106,18 +97,31 @@ class Run158DecisionBriefTests(unittest.TestCase):
         append.assert_called_once()
         delete.assert_not_called()
 
-    def test_current_key_is_idempotent(self):
+    def test_full_brief_signature_is_idempotent(self):
         values = sdb.page_to_values(subscriber_page())
-        key = sdb.decision_key(values)
-        with patch.object(sdb, "_list_children", side_effect=[[managed_toggle()], [callout(key)]]), patch.object(sdb, "_append_toggle") as append, patch.object(sdb, "_delete_block") as delete:
+        current_children = sdb.build_decision_brief_toggle(values)["toggle"]["children"]
+        with patch.object(sdb, "_list_children", side_effect=[[managed_toggle()], current_children]), patch.object(sdb, "_append_toggle") as append, patch.object(sdb, "_delete_block") as delete:
             state = sdb.sync_page(values)
         self.assertEqual(state, "unchanged")
         append.assert_not_called()
         delete.assert_not_called()
 
+    def test_risk_only_change_refreshes_brief_even_when_decision_key_is_same(self):
+        old_values = sdb.page_to_values(subscriber_page())
+        current_children = sdb.build_decision_brief_toggle(old_values)["toggle"]["children"]
+        new_values = dict(old_values)
+        new_values["main_risk"] = "新しい運用リスクが一次情報で確認された。"
+        self.assertEqual(sdb.decision_key(old_values), sdb.decision_key(new_values))
+        with patch.object(sdb, "_list_children", side_effect=[[managed_toggle("old1")], current_children]), patch.object(sdb, "_append_toggle", return_value="new1") as append, patch.object(sdb, "_delete_block") as delete, patch.object(sdb, "_sleep"):
+            state = sdb.sync_page(new_values)
+        self.assertEqual(state, "updated")
+        append.assert_called_once()
+        delete.assert_called_once_with("old1")
+
     def test_stale_auto_block_is_replaced_content_first(self):
         values = sdb.page_to_values(subscriber_page())
-        with patch.object(sdb, "_list_children", side_effect=[[managed_toggle("old1")], [callout("OLD")]]), patch.object(sdb, "_append_toggle", return_value="new1") as append, patch.object(sdb, "_delete_block") as delete, patch.object(sdb, "_sleep"):
+        stale = [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "OLD"}]}}]
+        with patch.object(sdb, "_list_children", side_effect=[[managed_toggle("old1")], stale]), patch.object(sdb, "_append_toggle", return_value="new1") as append, patch.object(sdb, "_delete_block") as delete, patch.object(sdb, "_sleep"):
             state = sdb.sync_page(values)
         self.assertEqual(state, "updated")
         append.assert_called_once()
