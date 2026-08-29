@@ -3,8 +3,9 @@
 
 Re-review Run153 external backfill records using verified primary evidence while
 preserving the production Product Review validator, entity identity and History.
-Run156 adds a paid-product context gate so a review cannot be imported with a
-one-line category label that leaves subscribers unable to decide.
+Run156 adds paid-product context and lifecycle-consistency gates so a review
+cannot be imported with thin copy or an adoption recommendation that contradicts
+an explicit end-of-life statement in its own evidence-grounded decision context.
 
 ZERO provider/Gemini calls: assessment prose is supplied by the external reviewer.
 """
@@ -31,6 +32,20 @@ GENERIC_CONTEXT = {
     "AI開発支援ツール。",
     "AIセキュリティ評価技術。",
 }
+
+# Explicit lifecycle language that is incompatible with a positive new-adoption
+# recommendation. Keep this intentionally narrow: it catches clear EOL states,
+# not ordinary deprecations of individual APIs/features inside an active project.
+HARD_EOL_MARKERS = (
+    "archived",
+    "no longer maintained",
+    "no longer actively maintained",
+    "no longer active",
+    "maintenance mode",
+    "read-only",
+    "保守終了",
+    "サポート終了",
+)
 
 
 def _clean(value: Any) -> str:
@@ -71,6 +86,23 @@ def validate_decision_density(row: dict[str, Any]) -> list[str]:
     best = _clean(review.get("best_for"))
     if "ことを自社のAI導入・開発・運用で具体的に必要としているチーム" in best:
         failures.append("best_for contains malformed Run153 boilerplate")
+
+    # Commercial safety: if the reviewer itself states that the project is
+    # archived/maintenance-only/read-only, it cannot simultaneously tell a paid
+    # subscriber to ADOPT/TEST it as a current new-adoption candidate.
+    lifecycle_text = "\n".join((plain, trigger, rationale)).casefold()
+    marker = next((m for m in HARD_EOL_MARKERS if m.casefold() in lifecycle_text), "")
+    if marker:
+        status = _clean(review.get("adoption_status")).upper()
+        readiness = _clean(review.get("production_readiness")).upper()
+        if status in {"ADOPT", "TEST"}:
+            failures.append(
+                f"lifecycle contradiction: explicit EOL marker '{marker}' cannot be {status}"
+            )
+        if readiness == "HIGH":
+            failures.append(
+                f"lifecycle contradiction: explicit EOL marker '{marker}' cannot have HIGH production_readiness"
+            )
     return failures
 
 
