@@ -2,6 +2,9 @@ name: Member Presentation Sync
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ['Daily Intelligence & Content Pipeline']
+    types: [completed]
   push:
     paths:
       - 'member_presentation_sync.py'
@@ -17,6 +20,7 @@ permissions:
 
 jobs:
   sync:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
