@@ -127,9 +127,22 @@ class Run158DecisionBriefTests(unittest.TestCase):
         append.assert_called_once()
         delete.assert_called_once_with("old1")
 
+    def test_database_sync_runs_when_brief_enabled_even_without_property_sync_flag(self):
+        old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
+        sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
+        sdb.NOTION_API_KEY = "x"
+        try:
+            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), patch.object(sdb, "sync_page", return_value="created") as sync, patch.object(sdb, "_sleep"):
+                result = sdb.sync_subscriber_decision_briefs()
+            self.assertTrue(result["enabled"])
+            self.assertEqual(result["total"], 1)
+            self.assertEqual(result["created"], 1)
+            sync.assert_called_once()
+        finally:
+            sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
+
     def test_database_sync_fails_closed_on_partial_error(self):
-        old_sync, old_brief, old_key = sdb.ENABLE_SUBSCRIBER_TECH_SYNC, sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
-        sdb.ENABLE_SUBSCRIBER_TECH_SYNC = True
+        old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
@@ -137,7 +150,7 @@ class Run158DecisionBriefTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     sdb.sync_subscriber_decision_briefs()
         finally:
-            sdb.ENABLE_SUBSCRIBER_TECH_SYNC, sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_sync, old_brief, old_key
+            sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
 
 
 if __name__ == "__main__":
