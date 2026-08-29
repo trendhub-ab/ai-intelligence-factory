@@ -28,12 +28,12 @@ EVIDENCE_EXTRACT_MAX_CHARS = max(300, min(1800, int(os.environ.get("EVIDENCE_EXT
 
 HEALTH_VALUES = {"VERIFIED","COSMETIC_CHANGE","MOVED","MATERIAL_CHANGE","MISSING","FETCH_ERROR"}
 
-P_TITLE="Evidence Record"; P_ENTITY="Technology Entity ID"; P_TECH_PAGE="Technology Page ID"
-P_URL="Evidence URL"; P_IMMUTABLE="Immutable Evidence URL"; P_RESOLVED="Resolved URL"; P_VERSION="Source Version"; P_SOURCE="Source Type"; P_ROLE="Evidence Role"
-P_RETRIEVED="Retrieved At"; P_VERIFIED="Last Verified At"; P_HEALTH="Source Health"; P_DOC_HASH="Document Hash"
-P_EXTRACT_HASH="Extract Hash"; P_EXTRACT="Evidence Extract"; P_ID="Evidence Identity"; P_ACTIVE="Active Snapshot"; P_TRIGGER="Re-review Triggered"
-P_AUTHORITY="Authority Class"; P_ELIGIBLE="Decision Evidence Eligible"; P_AUTH_REASON="Authority Reason"
-P_BINDING="Entity Binding"; P_BIND_REASON="Entity Binding Reason"
+P_TITLE='根拠レコード'; P_ENTITY='技術エンティティID'; P_TECH_PAGE='技術ページID'
+P_URL='根拠URL'; P_IMMUTABLE='不変根拠URL'; P_RESOLVED='解決済みURL'; P_VERSION='ソース版'; P_SOURCE='ソース種別'; P_ROLE='根拠役割'
+P_RETRIEVED='取得日'; P_VERIFIED='最終検証日'; P_HEALTH='ソース状態'; P_DOC_HASH='文書ハッシュ'
+P_EXTRACT_HASH='抽出ハッシュ'; P_EXTRACT='根拠抜粋'; P_ID='根拠ID'; P_ACTIVE='有効スナップショット'; P_TRIGGER='再レビュー対象'
+P_AUTHORITY='権威性クラス'; P_ELIGIBLE='判断根拠利用可'; P_AUTH_REASON='権威性理由'
+P_BINDING='エンティティ紐付け'; P_BIND_REASON='紐付け理由'
 
 REQUIRED_PROPERTY_TYPES={P_TITLE:"title",P_ENTITY:"rich_text",P_TECH_PAGE:"rich_text",P_URL:"url",P_IMMUTABLE:"url",P_RESOLVED:"url",P_VERSION:"rich_text",
 P_SOURCE:"rich_text",P_ROLE:"rich_text",P_RETRIEVED:"date",P_VERIFIED:"date",P_HEALTH:"select",P_DOC_HASH:"rich_text",P_EXTRACT_HASH:"rich_text",
