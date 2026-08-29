@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch-feature-branch:
-    if: github.event.head_commit.message == 'chore: run Run160 branch patch validation'
+    if: "github.event.head_commit.message == 'chore: rerun Run160 branch patch validation'"
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Run160 branch
