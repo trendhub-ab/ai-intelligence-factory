@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   audit:
-    if: contains(github.event.head_commit.message, 'RUN164 AUDIT EXPAND 220')
+    if: contains(github.event.head_commit.message, 'RUN164 AUDIT EXPAND 300')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,7 +32,7 @@ jobs:
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python portfolio_inventory_bootstrap.py plan --target 220 --min-sellable 150
+          python portfolio_inventory_bootstrap.py plan --target 300 --min-sellable 150
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
