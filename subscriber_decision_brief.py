@@ -204,6 +204,15 @@ def _block_text(block: dict) -> str:
     return "".join(str(x.get("plain_text") or (x.get("text") or {}).get("content") or "") for x in payload.get("rich_text") or []).strip()
 
 
+def _children_signature(children: list[dict]) -> tuple[tuple[str, str], ...]:
+    return tuple((str(child.get("type") or ""), _block_text(child)) for child in children)
+
+
+def _desired_signature(values: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    toggle = build_decision_brief_toggle(values)
+    return _children_signature(toggle["toggle"]["children"])
+
+
 def _list_children(block_id: str) -> list[dict]:
     rows: list[dict] = []
     cursor = ""
@@ -228,11 +237,8 @@ def _managed_toggles(page_id: str) -> list[dict]:
     return [x for x in _list_children(page_id) if x.get("type") == "toggle" and _block_text(x) == AUTO_MARKER]
 
 
-def _current_decision_key(toggle_id: str) -> str:
-    for child in _list_children(toggle_id):
-        if child.get("type") == "callout":
-            return _block_text(child)
-    return ""
+def _current_signature(toggle_id: str) -> tuple[tuple[str, str], ...]:
+    return _children_signature(_list_children(toggle_id))
 
 
 def _append_toggle(page_id: str, values: dict[str, Any]) -> str:
@@ -259,8 +265,7 @@ def sync_page(values: dict[str, Any]) -> str:
     if not page_id:
         raise ValueError("Subscriber page missing id")
     current = _managed_toggles(page_id)
-    wanted_key = decision_key(values)
-    if len(current) == 1 and _current_decision_key(str(current[0].get("id") or "")) == wanted_key:
+    if len(current) == 1 and _current_signature(str(current[0].get("id") or "")) == _desired_signature(values):
         return "unchanged"
 
     # Content-first replacement: append the new managed brief before deleting old AUTO blocks.
