@@ -8,6 +8,7 @@ regression_suite_runs/
 regression_suite/fixtures/
 observed_history/
 eyecatch_images/
+note_eyecatch_images/
 monthly_digests/
 review_candidates/
 quality_failures/
