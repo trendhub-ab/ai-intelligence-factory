@@ -105,9 +105,10 @@ jobs:
 
           path.write_text(text, encoding='utf-8')
 
-          # Topic classification must never be driven by GitHub/HN/arXiv/ProductHunt source identity.
           editorial_path = Path('editorial_eyecatch.py')
           editorial = editorial_path.read_text(encoding='utf-8')
+
+          # Public category describes the topic, never the discovery/source channel.
           source_based = '    text = f"{title}\\n{summary}\\n{source}".lower()\n'
           topic_only = (
               '    # Source is intentionally ignored: the public eyecatch category describes the topic, not discovery origin.\n'
@@ -115,6 +116,67 @@ jobs:
           )
           if source_based in editorial:
               editorial = editorial.replace(source_based, topic_only, 1)
+
+          # Prefer a natural, balanced Japanese two-line break before falling back to character wrapping.
+          old_fit = '''def _fit_headline(draw: ImageDraw.ImageDraw, text: str, max_width: int = 760, max_lines: int = 3):
+              for size in range(82, 49, -2):
+                  font = _jp_font(size, bold=True)
+                  lines = _wrap_chars(draw, text, font, max_width, max_lines)
+                  if lines and len(lines) <= max_lines and all(_text_width(draw, line, font) <= max_width for line in lines):
+                      return font, lines
+              font = _jp_font(48, bold=True)
+              return font, _wrap_chars(draw, text, font, max_width, max_lines)
+          '''
+          # Dedent the literal above because YAML heredoc indentation is not part of the Python string intent.
+          import textwrap
+          old_fit = textwrap.dedent(old_fit)
+          new_fit = textwrap.dedent('''
+          def balanced_headline_lines(text: str) -> list[str]:
+              """Choose a reader-natural two-line break for short/medium Japanese headlines.
+
+              Typography must not split conjugations merely to fill width. Prefer punctuation/particles
+              near the visual midpoint, with balanced line length as a secondary criterion.
+              """
+              value = (text or "").strip()
+              if len(value) < 8:
+                  return [value] if value else []
+              preferred_after = set("がはをにでとへも、。！？!?：:")
+              midpoint = len(value) / 2.0
+              candidates = []
+              for index in range(3, len(value) - 2):
+                  left, right = value[:index], value[index:]
+                  if not left.strip() or not right.strip():
+                      continue
+                  boundary_bonus = 0 if left[-1] in preferred_after else 4
+                  balance = abs(len(left) - len(right))
+                  center_distance = abs(index - midpoint)
+                  candidates.append((boundary_bonus + balance + center_distance * 0.35, index, left, right))
+              if not candidates:
+                  return [value]
+              _, _, left, right = min(candidates, key=lambda row: row[0])
+              return [left, right]
+
+
+          def _fit_headline(draw: ImageDraw.ImageDraw, text: str, max_width: int = 760, max_lines: int = 3):
+              preferred = balanced_headline_lines(text)
+              if 1 <= len(preferred) <= 2:
+                  for size in range(82, 49, -2):
+                      font = _jp_font(size, bold=True)
+                      if all(_text_width(draw, line, font) <= max_width for line in preferred):
+                          return font, preferred
+              for size in range(76, 47, -2):
+                  font = _jp_font(size, bold=True)
+                  lines = _wrap_chars(draw, text, font, max_width, max_lines)
+                  if lines and len(lines) <= max_lines and all(_text_width(draw, line, font) <= max_width for line in lines):
+                      return font, lines
+              font = _jp_font(46, bold=True)
+              return font, _wrap_chars(draw, text, font, max_width, max_lines)
+          ''')
+          if 'def balanced_headline_lines(' not in editorial:
+              if old_fit not in editorial:
+                  raise SystemExit('Run150 headline-fit anchor not found')
+              editorial = editorial.replace(old_fit, new_fit, 1)
+
           editorial_path.write_text(editorial, encoding='utf-8')
           PY
 
@@ -152,12 +214,9 @@ jobs:
       - name: Run existing eyecatch tests
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
-        run: |
-          python -m unittest discover -s tests -p 'test_*eyecatch*.py' -v
+        run: python -m unittest discover -s tests -p 'test_*eyecatch*.py' -v
 
       - name: Run full unittest
-        env:
-          SYNTHETIC_REGRESSION_MODE: 'true'
         run: python -m unittest discover -s tests -p 'test_*.py'
 
       - name: Run synthetic smoke
