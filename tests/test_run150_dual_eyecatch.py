@@ -57,16 +57,21 @@ class Run150EditorialEyecatchTests(unittest.TestCase):
                 self.assertEqual(image.size, (1280, 670))
                 self.assertEqual(image.mode, "RGB")
 
-    def test_pipeline_keeps_notion_decision_card_and_uses_editorial_for_audit(self):
+    def test_pipeline_uses_single_editorial_eyecatch_for_public_and_notion(self):
         source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
         self.assertIn("from editorial_eyecatch import", source)
         self.assertIn("generate_note_editorial_eyecatch(", source)
-        # Existing Decision Card generation/upload remains the Notion-facing image path.
-        self.assertIn("generated_path = generate_eyecatch_image(", source)
-        self.assertIn("eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename)", source)
-        # Human audit / note delivery must receive the editorial image instead of the score card.
+        # Legacy Decision Card rendering remains available only as an internal/regression utility.
+        self.assertIn("def generate_eyecatch_image(", source)
+        publication = source.split("# Run160: public note delivery", 1)[1].split("        analyzed_at = _analyzed_at_now_iso()", 1)[0]
+        self.assertNotIn("generate_eyecatch_image(", publication)
+        self.assertNotIn("technical_impact, urgency", publication)
+        # The exact Editorial image generated for note/audit is also the image uploaded for Notion.
+        self.assertIn("eyecatch_url = upload_eyecatch_to_github(note_eyecatch_path, eyecatch_filename)", publication)
+        self.assertIn("旧Decision Cardへフォールバックしません", publication)
+        # Human audit / note delivery continue to receive the Editorial image.
         self.assertGreaterEqual(source.count("eyecatch_path=note_eyecatch_path"), 2)
-        # Fresh/fixed real-article regression stores the editorial image inside its existing artifact tree.
+        # Fresh/fixed real-article regression stores the Editorial image inside its existing artifact tree.
         self.assertIn("os.path.join(REGEN_TEST_OUTPUT_DIR, \"eyecatch\")", source)
 
 
