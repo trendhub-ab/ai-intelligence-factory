@@ -6,10 +6,13 @@ on:
     workflows: ['Daily Intelligence & Content Pipeline']
     types: [completed]
   push:
+    branches: [main]
     paths:
       - 'provision_member_presentation_db.py'
       - 'member_presentation_sync.py'
+      - 'member_presentation_body_sync.py'
       - 'tests/test_run158_member_presentation_sync.py'
+      - 'tests/test_run166_member_page_body.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 concurrency:
@@ -23,7 +26,7 @@ jobs:
   sync:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -39,7 +42,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Member UX unit tests
-        run: python -m unittest tests/test_run158_member_presentation_sync.py
+        run: |
+          python -m unittest tests/test_run158_member_presentation_sync.py
+          python -m unittest tests/test_run166_member_page_body.py
 
       - name: Resolve clean member DB
         run: python provision_member_presentation_db.py
@@ -59,3 +64,10 @@ jobs:
           DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
           MEMBER_HOME_MAX: '8'
           MEMBER_HOME_DIVERSITY_TOLERANCE: '0'
+
+      - name: Sync readable member page bodies
+        run: python member_presentation_body_sync.py
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
