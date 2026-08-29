@@ -48,7 +48,8 @@ _INTERNAL_PATTERNS = (
 
 
 def infer_editorial_category(title: str = "", summary: str = "", source: str = "") -> str:
-    text = f"{title}\n{summary}\n{source}".lower()
+    # Source is intentionally ignored: the public eyecatch category describes the topic, not discovery origin.
+    text = f"{title}\n{summary}".lower()
     for label, keywords in _CATEGORY_RULES:
         if any(keyword.lower() in text for keyword in keywords):
             return label
@@ -159,13 +160,46 @@ def _wrap_chars(draw: ImageDraw.ImageDraw, text: str, font, max_width: int, max_
     return lines[:max_lines]
 
 
+
+def balanced_headline_lines(text: str) -> list[str]:
+    """Choose a reader-natural two-line break for short/medium Japanese headlines.
+
+    Typography must not split conjugations merely to fill width. Prefer punctuation/particles
+    near the visual midpoint, with balanced line length as a secondary criterion.
+    """
+    value = (text or "").strip()
+    if len(value) < 8:
+        return [value] if value else []
+    preferred_after = set("がはをにでとへも、。！？!?：:")
+    midpoint = len(value) / 2.0
+    candidates = []
+    for index in range(3, len(value) - 2):
+        left, right = value[:index], value[index:]
+        if not left.strip() or not right.strip():
+            continue
+        boundary_bonus = 0 if left[-1] in preferred_after else 4
+        balance = abs(len(left) - len(right))
+        center_distance = abs(index - midpoint)
+        candidates.append((boundary_bonus + balance + center_distance * 0.35, index, left, right))
+    if not candidates:
+        return [value]
+    _, _, left, right = min(candidates, key=lambda row: row[0])
+    return [left, right]
+
+
 def _fit_headline(draw: ImageDraw.ImageDraw, text: str, max_width: int = 760, max_lines: int = 3):
-    for size in range(82, 49, -2):
+    preferred = balanced_headline_lines(text)
+    if 1 <= len(preferred) <= 2:
+        for size in range(82, 49, -2):
+            font = _jp_font(size, bold=True)
+            if all(_text_width(draw, line, font) <= max_width for line in preferred):
+                return font, preferred
+    for size in range(76, 47, -2):
         font = _jp_font(size, bold=True)
         lines = _wrap_chars(draw, text, font, max_width, max_lines)
         if lines and len(lines) <= max_lines and all(_text_width(draw, line, font) <= max_width for line in lines):
             return font, lines
-    font = _jp_font(48, bold=True)
+    font = _jp_font(46, bold=True)
     return font, _wrap_chars(draw, text, font, max_width, max_lines)
 
 
