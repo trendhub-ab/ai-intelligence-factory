@@ -34,6 +34,24 @@ def assessed(**overrides):
 
 
 class Run162ScalableChangeDrivenReviewTests(unittest.TestCase):
+    def test_persisted_last_evidence_update_is_wired_into_review_state(self):
+        page = {
+            "id": "page-1",
+            "properties": {
+                dpr.decision_intelligence.TECH_PROP_LAST_EVIDENCE_UPDATE: {
+                    "date": {"start": NOW.isoformat()}
+                }
+            },
+        }
+        with patch.object(
+            dpr.decision_intelligence,
+            "technology_page_to_state",
+            return_value={"canonical_entity_id": "entity-1", "last_reviewed": (NOW - timedelta(days=1)).isoformat()},
+        ):
+            state = dpr.technology_page_to_review_state(page)
+        self.assertEqual(state["last_evidence_update"], NOW.isoformat())
+        self.assertTrue(dpr.has_fresh_evidence(state))
+
     def test_priority_tiers_are_deterministic_and_zero_schema(self):
         high = assessed(adoption_status="ADOPT", adoption_score=80)
         normal = assessed(adoption_status="WATCH", adoption_score=70)
