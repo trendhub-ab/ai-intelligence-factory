@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   validate:
-    if: contains(github.event.head_commit.message, 'RUN164 VALIDATE B11 FIX')
+    if: contains(github.event.head_commit.message, 'RUN164 VALIDATE B12')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -38,12 +38,12 @@ jobs:
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python external_product_review_import.py validate --input external_reviews/run164_batch11_fix.json --target 200 --max-rows 15
+          python external_product_review_import.py validate --input external_reviews/run164_batch12.json --target 200 --max-rows 13
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-b11-fix-validate-${{ github.run_id }}
+          name: run164-b12-validate-${{ github.run_id }}
           path: external_review_artifacts/
           if-no-files-found: warn
           retention-days: 30
