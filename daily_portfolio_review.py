@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Run Daily Product Review through the Run131 profit-aligned portfolio queue.
+"""Run Daily Product Review through the profit-aligned portfolio queue.
 
 The normal Daily article pipeline runs first with Product Review disabled. This
 small second pass then:
 1. reads the updated Technology Intelligence state with zero Gemini calls;
-2. keeps the existing Product Review eligibility/cooldown semantics;
-3. ranks eligible records with Run131 tolerance-protected portfolio diversity;
-4. invokes the existing pipeline in its product-only fail-closed mode using an
+2. applies bounded, change-driven review eligibility before any Gemini request;
+3. ranks eligible records with the existing profit-aligned portfolio policy;
+4. invokes the authoritative pipeline in product-only fail-closed mode using an
    explicit ordered allowlist;
-5. runs Run132 Context-First enrichment with zero additional Gemini requests so
-   every subscriber-facing decision starts with "what it is" and "why now".
+5. runs Context-First enrichment with zero additional Gemini requests.
 
-This avoids invasive edits to pipeline.py and keeps Evidence, assessment, History,
-Subscriber sync and Gemini accounting under the existing authoritative code path.
+Run162 scaling contract:
+- article/entity volume must not make Gemini usage grow linearly;
+- fresh evidence can immediately promote an assessed entity for review;
+- unchanged assessed entities use deterministic HIGH/NORMAL/LOW review cadence;
+- HISTORY_PENDING integrity recovery remains first;
+- existing daily max-review and request-budget hard caps remain authoritative;
+- no new Notion properties and no Gemini calls are introduced by this planner.
 """
 from __future__ import annotations
 
@@ -34,6 +38,9 @@ DEFAULT_MAX_REVIEWS = max(0, int(os.environ.get("DAILY_PORTFOLIO_REVIEW_MAX", "2
 DEFAULT_REQUEST_BUDGET = max(0, int(os.environ.get("DAILY_PORTFOLIO_REQUEST_BUDGET", "3")))
 DEFAULT_SCAN_LIMIT = max(1, int(os.environ.get("DAILY_PORTFOLIO_SCAN_LIMIT", "12")))
 TRACKING_REVIEW_DAYS = max(1, int(os.environ.get("TRACKING_REVIEW_DAYS", "14")))
+REVIEW_TIER_HIGH_DAYS = max(1, int(os.environ.get("REVIEW_TIER_HIGH_DAYS", str(TRACKING_REVIEW_DAYS))))
+REVIEW_TIER_NORMAL_DAYS = max(REVIEW_TIER_HIGH_DAYS, int(os.environ.get("REVIEW_TIER_NORMAL_DAYS", "30")))
+REVIEW_TIER_LOW_DAYS = max(REVIEW_TIER_NORMAL_DAYS, int(os.environ.get("REVIEW_TIER_LOW_DAYS", "60")))
 
 
 def _dt(value: Any) -> datetime | None:
@@ -53,8 +60,68 @@ def _is_due(value: Any, now: datetime) -> bool:
     return parsed is None or parsed <= now
 
 
-def daily_review_bucket(state: dict[str, Any], now: datetime | None = None) -> str | None:
-    """Mirror Product Review eligibility without changing persisted product state."""
+def technology_page_to_review_state(page: dict[str, Any]) -> dict[str, Any]:
+    """Read the authoritative product state plus the evidence-change timestamp.
+
+    ``technology_page_to_state`` intentionally predates the event-driven planner
+    and does not currently expose Last Evidence Update. Read that already-existing
+    canonical property directly here rather than changing the shared parser/schema.
+    Missing/malformed property shapes remain empty and therefore fail closed.
+    """
+    state = decision_intelligence.technology_page_to_state(page)
+    props = page.get("properties", {}) if isinstance(page, dict) else {}
+    evidence_prop = props.get(decision_intelligence.TECH_PROP_LAST_EVIDENCE_UPDATE, {}) or {}
+    evidence_date = evidence_prop.get("date") or {}
+    state["last_evidence_update"] = evidence_date.get("start") or ""
+    return state
+
+
+def review_priority_tier(state: dict[str, Any]) -> str:
+    """Derive review cadence with zero API calls and no persisted schema changes.
+
+    HIGH is deliberately narrow: high-value/high-confidence deployed candidates.
+    NORMAL covers useful TEST/WATCH inventory and mid/high scores.
+    LOW is the long tail. A LOW entity is never permanently suppressed because
+    fresh evidence bypasses cadence in ``daily_review_reason``.
+    """
+    status = str(state.get("adoption_status") or "").upper()
+    confidence = str(state.get("evidence_confidence") or "").upper()
+    readiness = str(state.get("production_readiness") or "").upper()
+    try:
+        score = int(state.get("adoption_score"))
+    except (TypeError, ValueError):
+        score = 0
+
+    if status == "ADOPT" or score >= 85 or (status == "TEST" and confidence == "HIGH" and readiness == "HIGH"):
+        return "HIGH"
+    if status in {"TEST", "WATCH"} or score >= 65:
+        return "NORMAL"
+    return "LOW"
+
+
+def review_interval_days(state: dict[str, Any]) -> int:
+    tier = review_priority_tier(state)
+    if tier == "HIGH":
+        return REVIEW_TIER_HIGH_DAYS
+    if tier == "NORMAL":
+        return REVIEW_TIER_NORMAL_DAYS
+    return REVIEW_TIER_LOW_DAYS
+
+
+def has_fresh_evidence(state: dict[str, Any]) -> bool:
+    """Return True only when evidence was updated after the last Product Review.
+
+    Missing/invalid timestamps fail closed to False so malformed metadata cannot
+    force extra Gemini consumption. A never-reviewed entity is handled separately
+    by the ordinary due logic.
+    """
+    last_evidence = _dt(state.get("last_evidence_update"))
+    last_reviewed = _dt(state.get("last_reviewed"))
+    return bool(last_evidence and last_reviewed and last_evidence > last_reviewed)
+
+
+def daily_review_reason(state: dict[str, Any], now: datetime | None = None) -> str | None:
+    """Return the zero-API reason an entity may enter the Product Review queue."""
     now = now or datetime.now(timezone.utc)
     assessment = str(state.get("assessment_state") or "")
     tracking_eligible = bool(state.get("tracking_eligibility"))
@@ -65,26 +132,34 @@ def daily_review_bucket(state: dict[str, Any], now: datetime | None = None) -> s
     if assessment == "LEGACY_PENDING":
         if str(state.get("entity_status") or "") != "RESOLVED":
             return None
-        if not _is_due(state.get("next_review"), now):
-            return None
-        return "PORTFOLIO"
+        return "SCHEDULED" if _is_due(state.get("next_review"), now) else None
 
     if assessment == "SCREENED" and tracking_eligible:
-        if not _is_due(state.get("next_review"), now):
-            return None
-        return "PORTFOLIO"
+        return "SCHEDULED" if _is_due(state.get("next_review"), now) else None
 
     if (
         assessment == "ASSESSED"
         and tracking_eligible
         and str(state.get("tracking_status") or "") != "ARCHIVED"
     ):
+        if has_fresh_evidence(state):
+            return "FRESH_EVIDENCE"
         if state.get("next_review"):
-            return "PORTFOLIO" if _is_due(state.get("next_review"), now) else None
+            return "SCHEDULED" if _is_due(state.get("next_review"), now) else None
         last_reviewed = _dt(state.get("last_reviewed"))
-        if last_reviewed is None or last_reviewed <= now - timedelta(days=TRACKING_REVIEW_DAYS):
-            return "PORTFOLIO"
+        if last_reviewed is None:
+            return "NEVER_REVIEWED"
+        if last_reviewed <= now - timedelta(days=review_interval_days(state)):
+            return "TIER_DUE"
     return None
+
+
+def daily_review_bucket(state: dict[str, Any], now: datetime | None = None) -> str | None:
+    """Compatibility wrapper used by existing callers/tests."""
+    reason = daily_review_reason(state, now=now)
+    if reason == "HISTORY_PENDING":
+        return "HISTORY_PENDING"
+    return "PORTFOLIO" if reason else None
 
 
 def _infer_sources(state: dict[str, Any]) -> tuple[str, ...]:
@@ -141,6 +216,12 @@ def state_to_record(state: dict[str, Any]) -> ib.TechnologyRecord:
     )
 
 
+def _rank_states(states: list[dict[str, Any]], limit: int, now: datetime) -> list[str]:
+    records = [state_to_record(x) for x in states if str(x.get("canonical_entity_id") or "")]
+    ranked = rank_portfolio_records(ib, records, limit=max(0, limit), now=now)
+    return [x.canonical_entity_id for x in ranked if x.canonical_entity_id]
+
+
 def plan_daily_review_allowlist(
     states: list[dict[str, Any]],
     *,
@@ -149,32 +230,39 @@ def plan_daily_review_allowlist(
 ) -> list[str]:
     """Return an ordered fail-closed allowlist for the existing Product Review path.
 
-    HISTORY_PENDING is integrity recovery and remains first. Everything else competes
-    in one portfolio pool: no legacy quota, no source quota and no weak-candidate
-    promotion merely to make the mix look diverse.
+    Priority order is integrity recovery -> fresh evidence -> periodic portfolio.
+    Within fresh/periodic groups the established profit-aligned ranking remains
+    authoritative. The scan limit and downstream Gemini budget remain hard caps.
     """
     now = now or datetime.now(timezone.utc)
     history: list[dict[str, Any]] = []
-    portfolio_states: list[dict[str, Any]] = []
+    fresh: list[dict[str, Any]] = []
+    periodic: list[dict[str, Any]] = []
     for state in states:
-        bucket = daily_review_bucket(state, now=now)
-        if bucket == "HISTORY_PENDING":
+        reason = daily_review_reason(state, now=now)
+        if reason == "HISTORY_PENDING":
             history.append(state)
-        elif bucket == "PORTFOLIO":
-            portfolio_states.append(state)
+        elif reason == "FRESH_EVIDENCE":
+            fresh.append(state)
+        elif reason:
+            periodic.append(state)
 
     history.sort(key=lambda x: (str(x.get("last_reviewed") or ""), str(x.get("canonical_entity_id") or "")))
-    records = [state_to_record(x) for x in portfolio_states if str(x.get("canonical_entity_id") or "")]
-    ranked = rank_portfolio_records(ib, records, limit=max(0, scan_limit), now=now)
 
     ordered: list[str] = []
     for state in history:
         entity_id = str(state.get("canonical_entity_id") or "")
         if entity_id and entity_id not in ordered:
             ordered.append(entity_id)
-    for candidate in ranked:
-        if candidate.canonical_entity_id and candidate.canonical_entity_id not in ordered:
-            ordered.append(candidate.canonical_entity_id)
+
+    remaining = max(0, scan_limit - len(ordered))
+    for entity_id in _rank_states(fresh, remaining, now):
+        if entity_id not in ordered:
+            ordered.append(entity_id)
+    remaining = max(0, scan_limit - len(ordered))
+    for entity_id in _rank_states(periodic, remaining, now):
+        if entity_id not in ordered:
+            ordered.append(entity_id)
     return ordered[: max(0, scan_limit)]
 
 
@@ -189,7 +277,6 @@ def _run_product_only(allowlist: list[str], max_reviews: int, request_budget: in
         [sys.executable, "pipeline.py"], env=env, capture_output=True, text=True, timeout=timeout
     )
     combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    # Preserve the authoritative pipeline logs in Actions output.
     if proc.stdout:
         print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n")
     if proc.stderr:
@@ -220,12 +307,10 @@ def main() -> int:
         print(json.dumps({"skipped": True, "reason": "decision_intelligence_disabled"}))
         return 0
 
-    # Run132 is a product-readiness requirement, not a cosmetic best-effort pass.
-    # Validate its persistence contract before spending a Product Review request.
     context_first_enrichment.preflight_context_first_schema()
 
     pages = decision_intelligence.query_technology_records(max_records=5000)
-    states = [decision_intelligence.technology_page_to_state(page) for page in pages]
+    states = [technology_page_to_review_state(page) for page in pages]
     previous_reviewed = {
         str(state.get("canonical_entity_id")): state.get("last_reviewed")
         for state in states
@@ -236,10 +321,14 @@ def main() -> int:
     allowlist = plan_daily_review_allowlist(states, scan_limit=scan_limit)
     result = _run_product_only(allowlist, DEFAULT_MAX_REVIEWS, DEFAULT_REQUEST_BUDGET)
     result["ordered_allowlist"] = allowlist
+    result["review_policy"] = {
+        "high_days": REVIEW_TIER_HIGH_DAYS,
+        "normal_days": REVIEW_TIER_NORMAL_DAYS,
+        "low_days": REVIEW_TIER_LOW_DAYS,
+        "max_reviews": DEFAULT_MAX_REVIEWS,
+        "request_budget": DEFAULT_REQUEST_BUDGET,
+    }
 
-    # This is intentionally outside pipeline.py. It consumes no Gemini quota and
-    # cannot alter Evidence/Adoption decisions. A failure is loud: silently serving
-    # context-less member rows would be a product regression.
     result["context_first"] = context_first_enrichment.enrich_context_first(previous_reviewed)
 
     print(json.dumps(result, ensure_ascii=False))
