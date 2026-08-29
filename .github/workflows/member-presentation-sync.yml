@@ -63,7 +63,7 @@ jobs:
           NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
           DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
           MEMBER_HOME_MAX: '8'
-          MEMBER_HOME_DIVERSITY_TOLERANCE: '0'
+          MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
 
       - name: Sync readable member page bodies
         run: python member_presentation_body_sync.py
