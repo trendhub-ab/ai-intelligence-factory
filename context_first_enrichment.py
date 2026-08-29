@@ -33,10 +33,10 @@ import requests
 import decision_intelligence
 
 
-TECH_PROP_PLAIN_SUMMARY = "Plain Summary"
-TECH_PROP_TOPIC_TRIGGER = "Topic Trigger"
-SUB_PROP_PLAIN_SUMMARY = "Plain Summary"
-SUB_PROP_TOPIC_TRIGGER = "Topic Trigger"
+TECH_PROP_PLAIN_SUMMARY = "わかりやすい要約（内部）"
+TECH_PROP_TOPIC_TRIGGER = "今回の話題（内部）"
+SUB_PROP_PLAIN_SUMMARY = "わかりやすい要約（内部）"
+SUB_PROP_TOPIC_TRIGGER = "今回の話題（内部）"
 SUB_PROP_MEMBER_SCORE_CHANGE = "評価の変化"
 SUB_PROP_MEMBER_CHANGE_AT = "重要変化日"
 SUB_PROP_MEMBER_CHANGE_REASON = "評価が変わった理由"

@@ -376,23 +376,23 @@ def _strip_review_suffix(label: str) -> str:
 
 def _source_state(page: dict) -> dict[str, Any] | None:
     p = page.get("properties") or {}
-    sync_id = _text(p.get("Canonical Entity ID"))
+    sync_id = _text(p.get("正規エンティティID"))
     if not sync_id:
         return None
-    raw_name = _text(p.get("Technology / Project Name"))
+    raw_name = _text(p.get("技術・プロジェクト名"))
     name = (
         _text(p.get("AI・技術名"))
-        or _strip_review_suffix(_text(p.get("Japanese Display Label")))
+        or _strip_review_suffix(_text(p.get("日本語表示名")))
         or raw_name
     )
-    status = _select(p.get("Adoption Status"))
-    score = _number(p.get("Adoption Score"))
-    confidence_raw = _select(p.get("Evidence Confidence"))
-    readiness_raw = _select(p.get("Production Readiness"))
-    category_raw = _select(p.get("Category")) or "OTHER"
-    rationale_raw = _text(p.get("Short Rationale"))
-    topic_raw = _text(p.get("Topic Trigger"))
-    main_risk_raw = _text(p.get("Main Risk"))
+    status = _select(p.get("採用判断（内部）"))
+    score = _number(p.get("採用スコア（内部）"))
+    confidence_raw = _select(p.get("根拠信頼度（内部）"))
+    readiness_raw = _select(p.get("実用準備度（内部）"))
+    category_raw = _select(p.get("分野（内部）")) or "OTHER"
+    rationale_raw = _text(p.get("判断理由（内部）"))
+    topic_raw = _text(p.get("今回の話題（内部）"))
+    main_risk_raw = _text(p.get("主リスク（内部）"))
     delta = _number(p.get("評価の変化"))
     important_at = _date(p.get("重要変化日"))
     important_reason_raw = _text(p.get("評価が変わった理由"))
@@ -404,15 +404,15 @@ def _source_state(page: dict) -> dict[str, Any] | None:
     return {
         "sync_id": sync_id,
         "name": name,
-        "plain_summary": _text(p.get("これは何？")) or _text(p.get("Plain Summary")),
+        "plain_summary": _text(p.get("これは何？")) or _text(p.get("わかりやすい要約（内部）")),
         "status": status,
         "score": score,
         "judgment_reason": reason,
         "topic": topic,
         "next_action": action,
         "main_risk": clean_risk(main_risk_raw),
-        "best_for": clean_best_for(_text(p.get("Best For"))),
-        "avoid_for": clean_avoid_for(_text(p.get("Avoid For"))),
+        "best_for": clean_best_for(_text(p.get("向いている用途（内部）"))),
+        "avoid_for": clean_avoid_for(_text(p.get("向いていない用途（内部）"))),
         "confidence": CONFIDENCE_JA.get(confidence_raw, "中"),
         "readiness": READINESS_JA.get(readiness_raw, "中"),
         "category": CATEGORY_JA.get(category_raw, "その他"),
@@ -424,12 +424,12 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         "delta": delta,
         "change_reason": clean_change_reason(important_reason_raw, delta, action=action),
         "important_at": important_at,
-        "last_reviewed": _date(p.get("Last Reviewed")),
-        "first_seen": _date(p.get("First Seen")),
-        "evidence": _norm(_text(p.get("Primary Evidence URLs"))),
-        "related_article": _url(p.get("Related Article")),
-        "primary_url": _url(p.get("Primary URL")),
-        "sources": _multi_select(p.get("Source")),
+        "last_reviewed": _date(p.get("最終レビュー日（内部）")),
+        "first_seen": _date(p.get("初回発見日（内部）")),
+        "evidence": _norm(_text(p.get("一次情報URL（内部）"))),
+        "related_article": _url(p.get("関連記事（内部）")),
+        "primary_url": _url(p.get("公式URL")),
+        "sources": _multi_select(p.get("情報源（内部）")),
         "rank": None,
         "current_month_change": False,
     }
