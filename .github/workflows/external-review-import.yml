@@ -1,0 +1,88 @@
+name: External Product Review Import
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "validate=read-only, apply=write through production DI persistence"
+        required: true
+        default: validate
+        type: choice
+        options: [validate, apply]
+      input_path:
+        description: "Repository path to external review JSON"
+        required: true
+        default: "external_reviews/run153_backfill.json"
+      target:
+        description: "Stop target for assessed inventory"
+        required: true
+        default: "100"
+      max_rows:
+        description: "Maximum rows to inspect in this run"
+        required: true
+        default: "100"
+      confirm:
+        description: "apply only: CONFIRM_EXTERNAL_REVIEW_IMPORT"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-external-review-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: External Product Review Import — zero Gemini
+        env:
+          TZ: Asia/Tokyo
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_DECISION_INTELLIGENCE_DB: "true"
+          ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          ENABLE_SUBSCRIBER_TECH_SYNC: "false"
+          NOTION_API_VERSION: "2026-03-11"
+          # Deliberately NO GEMINI_API_KEY. The Python path also installs a hard
+          # provider-call guard, so this workflow cannot consume Gemini quota.
+        run: |
+          set -euo pipefail
+          python external_product_review_import.py "${{ inputs.mode }}" \
+            --input "${{ inputs.input_path }}" \
+            --target "${{ inputs.target }}" \
+            --max-rows "${{ inputs.max_rows }}" \
+            --confirm "${{ inputs.confirm }}"
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: external-review-import-${{ github.run_id }}
+          path: external_review_artifacts/
+          if-no-files-found: warn
+          retention-days: 30
