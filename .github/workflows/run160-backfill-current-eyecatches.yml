@@ -1,0 +1,74 @@
+name: Run160 Backfill Current Editorial Eyecatches
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  backfill:
+    if: "github.event.head_commit.message == 'chore: backfill Run103 Editorial eyecatches'"
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download exact Daily 103 audit artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/run103
+          gh api repos/${GITHUB_REPOSITORY}/actions/artifacts/9713517688/zip > /tmp/run103.zip
+          unzip -q /tmp/run103.zip -d /tmp/run103
+
+      - name: Verify and replace three already-published legacy cards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import shutil
+
+          src = Path('/tmp/run103/article_audit/eyecatch')
+          mapping = {
+              'HackerNews__GLM-5_3_is_now_open-weight__note.png': 'eyecatch_images/GLM-5_3_is_now_open-weight.png',
+              'HackerNews__Our_decision_on_Cursor_following_its_acquisition_by_SpaceX__note.png': 'eyecatch_images/Our_decision_on_Cursor_following_its_acquisition_by_SpaceX.png',
+              'ArXiv__Sophistication_in_GenAI_Use_Field_Evidence_from_a_Large_Firm__note.png': 'eyecatch_images/Sophistication_in_GenAI_Use_Field_Evidence_from_a_Large_Firm.png',
+          }
+          for source_name, dest_name in mapping.items():
+              source = src / source_name
+              dest = Path(dest_name)
+              if not source.is_file():
+                  raise SystemExit(f'Run160 backfill fail-closed: missing Editorial source {source}')
+              with Image.open(source) as image:
+                  if image.size != (1280, 670) or image.mode != 'RGB':
+                      raise SystemExit(f'Run160 backfill fail-closed: invalid Editorial image {source_name} size={image.size} mode={image.mode}')
+              if not dest.is_file():
+                  raise SystemExit(f'Run160 backfill fail-closed: expected published destination missing {dest}')
+              shutil.copyfile(source, dest)
+              print(f'REPLACED {dest} <- {source_name}')
+          PY
+
+      - name: Verify binary replacements differ from legacy blobs
+        run: |
+          git diff --exit-code --quiet -- eyecatch_images && {
+            echo 'Run160 backfill fail-closed: no image changes detected'; exit 1;
+          } || true
+          git status --short -- eyecatch_images
+
+      - name: Commit images and remove one-time workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/run160-backfill-current-eyecatches.yml
+          git add eyecatch_images/GLM-5_3_is_now_open-weight.png \
+                  eyecatch_images/Our_decision_on_Cursor_following_its_acquisition_by_SpaceX.png \
+                  eyecatch_images/Sophistication_in_GenAI_Use_Field_Evidence_from_a_Large_Firm.png
+          git commit -m 'Run160: backfill current Editorial eyecatches'
+          git push origin HEAD:main
