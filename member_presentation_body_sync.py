@@ -48,6 +48,10 @@ def _norm(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _norm_key(value: Any) -> str:
+    return re.sub(r"[\W_]+", "", _norm(value)).casefold()
+
+
 def _signature(state: dict[str, Any]) -> str:
     keys = (
         "sync_id",
@@ -128,6 +132,27 @@ def _status_summary(state: dict[str, Any]) -> str:
     return f"{status} {score_text}｜実用度 {readiness}｜根拠 {confidence}"
 
 
+def _decision_basis_reason(state: dict[str, Any]) -> str:
+    """Explain the decision from existing evaluation fields when source copy duplicates topic."""
+    status = _norm(state.get("status"))
+    score = state.get("score")
+    readiness = _norm(state.get("readiness")) or "—"
+    confidence = _norm(state.get("confidence")) or "—"
+    metrics: list[str] = []
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        metrics.append(f"判断スコア{int(score)}点")
+    metrics.append(f"実用度{readiness}")
+    metrics.append(f"根拠の確かさ{confidence}")
+    basis = "、".join(metrics)
+    conclusion = {
+        "ADOPT": "現時点では導入候補として扱う判断です。",
+        "TEST": "現時点では小さく検証してから本番判断へ進む位置づけです。",
+        "WATCH": "現時点では導入を急がず、変化を追跡する位置づけです。",
+        "AVOID": "現時点では新規採用を見送る位置づけです。",
+    }.get(status, "現在の条件を確認しながら判断する位置づけです。")
+    return f"{basis}を踏まえ、{conclusion}"
+
+
 def _extract_urls(*values: str) -> list[str]:
     urls: list[str] = []
     for raw in values:
@@ -162,6 +187,8 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(_paragraph(topic))
 
     reason = _norm(state.get("judgment_reason"))
+    if reason and topic and _norm_key(reason) == _norm_key(topic):
+        reason = _decision_basis_reason(state)
     if reason:
         children.append(_heading("判断理由"))
         children.append(_paragraph(reason))
