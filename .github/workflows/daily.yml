@@ -23,12 +23,25 @@ jobs:
       - name: リポジトリのチェックアウト
         uses: actions/checkout@v6
 
+      - name: 2026-08-30 JST scheduled skip guard
+        id: daily_guard
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" && "$(TZ=Asia/Tokyo date +%F)" == "2026-08-30" ]]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Scheduled Daily skipped for 2026-08-30 JST. workflow_dispatch remains available."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Python環境のセットアップ
+        if: steps.daily_guard.outputs.run == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: 最小限の依存ライブラリのインストール
+        if: steps.daily_guard.outputs.run == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk fonts-lato
@@ -36,6 +49,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: 通常Pipelineを実行
+        if: steps.daily_guard.outputs.run == 'true'
         run: |
           python pipeline.py
         env:
@@ -164,6 +178,7 @@ jobs:
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
 
       - name: Run131 Portfolio-aware Product Review
+        if: steps.daily_guard.outputs.run == 'true'
         run: |
           python daily_portfolio_review.py
         env:
@@ -210,7 +225,7 @@ jobs:
 
       # 未公開記事・Gate履歴はRepositoryへcommitせず、アクセス制限されたArtifactとしてのみ保持する。
       - name: 月次ダイジェストをPrivate Artifactとして保存
-        if: always()
+        if: always() && steps.daily_guard.outputs.run == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: monthly-digest-${{ github.run_number }}
@@ -219,7 +234,7 @@ jobs:
           retention-days: 90
 
       - name: Gate履歴・内部レビュー候補を保存
-        if: always()
+        if: always() && steps.daily_guard.outputs.run == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: private-gate-review-${{ github.run_number }}
