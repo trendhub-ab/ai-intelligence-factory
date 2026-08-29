@@ -434,9 +434,9 @@ EYECATCH_BACKGROUND_DEFAULT = "default.png"
 # ==========================================
 # 2. Notion プロパティ定義
 # ==========================================
-PROP_NAME = "Name"
-PROP_URL = "URL"
-PROP_SCORE = "Decision Score"
+PROP_NAME = '記事名'
+PROP_URL = '元情報URL'
+PROP_SCORE = '判断スコア'
 # Decision Scoreは「Deep Dive済みならStep2詳細スコア／ストックのみなら
 # Step1軽量スクリーニングスコア」という、採点基準の異なる2種類の値が
 # 同じ列に混在する（詳細はNOTION_SAVE_THRESHOLD_SCOREのコメントを参照）。
@@ -444,68 +444,68 @@ PROP_SCORE = "Decision Score"
 # Statusプロパティを追加する。Notion側では管理画面上でプロパティを
 # 追加するだけでよく、コード側もこの定数と各プロパティ辞書への1行追加のみで
 # 対応できる（新規プロパティ・値ともに事前にNotion側で用意しておくこと）。
-PROP_STATUS = "Status"
+PROP_STATUS = '評価状態'
 STATUS_STOCKED = "Stocked"       # Decision Score = Step1軽量スクリーニングスコア
 STATUS_DEEP_DIVE = "Deep Dive"   # Decision Score = Step2詳細スコア
-PROP_SCORE_BREAKDOWN = "Score Breakdown"
-PROP_WHAT = "What"
-PROP_WHY_IMPORTANT = "Why Important"
-PROP_WHY_NOT_IMPORTANT = "Why NOT Important"
-PROP_WHO = "Who"
-PROP_ACTION = "Action"
-PROP_LICENSE = "License"
-PROP_PARADIGM_SHIFT = "Paradigm Shift"
-PROP_ALTERNATIVE_COMPARISON = "Alternative Comparison"
-PROP_MIGRATION_COST = "Migration Cost"
+PROP_SCORE_BREAKDOWN = 'スコア内訳'
+PROP_WHAT = 'これは何？'
+PROP_WHY_IMPORTANT = 'なぜ重要？'
+PROP_WHY_NOT_IMPORTANT = 'なぜ重要ではない？'
+PROP_WHO = '対象'
+PROP_ACTION = '次にやること'
+PROP_LICENSE = 'ライセンス'
+PROP_PARADIGM_SHIFT = 'パラダイム変化'
+PROP_ALTERNATIVE_COMPARISON = '代替比較'
+PROP_MIGRATION_COST = '移行コスト'
 # note記事タイトル（コピーライター調のキャッチータイトル）を独立プロパティとして
 # 構造化保存するためのキー。以前はnote_draft本文の先頭行に埋め込まれたまま
 # 扱われており、Notion側でタイトルだけを抽出・一覧表示・ソートすることが
 # できなかった。_extract_note_title()で本文から分離した上でここに保存する。
-PROP_TITLE = "Note Title"
+PROP_TITLE = 'note記事タイトル'
 # マルチソース化に伴い追加: Notion側でソース別の絞り込み・ビュー分割を
 # 可能にするための構造化プロパティ。従来はsourceがnote本文末尾の
 # テキストにしか埋め込まれておらず、フィルタ・ソートができなかった。
-PROP_SOURCE = "Source"
+PROP_SOURCE = '情報源'
 # アイキャッチ画像（ファイル＆メディアプロパティ）。generate_eyecatch_imageで
 # 生成したPNGをupload_eyecatch_to_githubでGitHubへコミットし、得られた
 # raw.githubusercontent.comの公開URLをexternal fileとして紐付ける。
-PROP_EYECATCH = "Eyecatch"
+PROP_EYECATCH = 'アイキャッチ'
 # 人気指標（GitHub Stars / HN Score / PH Votes）を横断的に数値として保持。
 # ArXivは指標が存在しないため0を格納する（screen_repo/decision prompt側の
 # ENGAGEMENT_LABELSと対応）。
-PROP_ENGAGEMENT = "Engagement Score"
+PROP_ENGAGEMENT = '注目度'
 # 一次ソース側のオリジナル公開日時（GitHubのpushedAt、Hacker Newsの投稿日時、
 # ArXivの論文公開日、Product Huntの投稿日）。「今まさに鮮度の高い情報か」を
 # ユーザーが一目で判別できるようにするための日付プロパティ。normalize_item()で
 # 各ソースの生データから抽出し、"publishedAt"キーとしてNormalizedItemに保持する。
 # ソース側で取得できなかった場合はNoneのままとし、Notion側には未設定として送る
 # （不正確な日付を捏造して埋めるよりは空欄の方が安全なため）。
-PROP_PUBLISHED_AT = "Published At"
+PROP_PUBLISHED_AT = '公開日'
 # 自社のAIインテリジェンス工場（Gemini）がスクリーニング・分析を実行した日付
 # （＝Notion DBへの登録・更新日）。「いつのトレンドとして自社システムが捕捉したか」
 # の記録であり、月次ダイジェスト集計やNotion側デフォルトソート軸（降順：最新順）
 # として使う。Notionの組み込みcreated_time/last_edited_timeとは別に、
 # アプリケーション側で明示的に管理する構造化プロパティとして持たせる。
-PROP_ANALYZED_AT = "Analyzed At"
+PROP_ANALYZED_AT = '分析日'
 
 # Decision Intelligence / サブスク商品化のための追加プロパティ。
 # 既存Statusはスコア種別互換のため絶対に意味変更せず、情報ライフサイクルは
 # Content Status、記事ライフサイクルはArticle Statusで別管理する。
-PROP_CONTENT_STATUS = "Content Status"
-PROP_ARTICLE_STATUS = "Article Status"
-PROP_SUBSCRIPTION_VISIBILITY = "Subscription Visibility"
-PROP_SOURCE_SUMMARY = "Source Summary"
-PROP_SCREENING_SCORE = "Screening Score"
-PROP_SCREENING_REASON = "Screening Reason"
-PROP_DECISION = "Decision"
-PROP_DECISION_REASON = "Decision Reason"
-PROP_WHO_SHOULD_USE = "Who Should Use"
-PROP_WHO_SHOULD_NOT_USE = "Who Should NOT Use"
-PROP_FUTURE_SCENARIO = "Future Scenario"
-PROP_ARTICLE_VALUE = "Article Value"
-PROP_GROUNDING_STATUS = "Grounding Status"
-PROP_EVIDENCE_URLS = "Evidence URLs"
-PROP_REVIEW_STATUS = "Review Status"
+PROP_CONTENT_STATUS = 'コンテンツ状態'
+PROP_ARTICLE_STATUS = '記事状態'
+PROP_SUBSCRIPTION_VISIBILITY = '公開範囲'
+PROP_SOURCE_SUMMARY = '元情報要約'
+PROP_SCREENING_SCORE = '選別スコア'
+PROP_SCREENING_REASON = '選別理由'
+PROP_DECISION = '判断'
+PROP_DECISION_REASON = '判断理由'
+PROP_WHO_SHOULD_USE = '向いている人'
+PROP_WHO_SHOULD_NOT_USE = '向いていない人'
+PROP_FUTURE_SCENARIO = '今後の見通し'
+PROP_ARTICLE_VALUE = '記事価値'
+PROP_GROUNDING_STATUS = '根拠取得状態'
+PROP_EVIDENCE_URLS = '一次情報URL'
+PROP_REVIEW_STATUS = 'レビュー状態'
 REVIEW_STATUS_PUBLIC_APPROVED = "Public Approved"
 
 CONTENT_STATUS_STOCKED = "Stocked"
