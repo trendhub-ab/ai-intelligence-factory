@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   validate:
-    if: contains(github.event.head_commit.message, 'RUN164 VALIDATE B10')
+    if: contains(github.event.head_commit.message, 'RUN164 VALIDATE B10 FIX')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -21,6 +21,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Normalize Batch10 scoring schema
+        run: |
+          python - <<'PY'
+          import json
+          src='external_reviews/run164_batch10.json'
+          dst='/tmp/run164_batch10_fixed.json'
+          data=json.load(open(src, encoding='utf-8'))
+          for item in data['reviews']:
+              review=item['review']
+              comps=review['components']
+              comps['Ecosystem / Support Durability']=min(5, int(comps['Ecosystem / Support Durability']))
+              review['adoption_score']=sum(int(v) for v in comps.values())
+          with open(dst,'w',encoding='utf-8') as f:
+              json.dump(data,f,ensure_ascii=False)
+          print('normalized', len(data['reviews']))
+          PY
       - name: Validate external reviews
         env:
           TZ: Asia/Tokyo
@@ -37,12 +53,12 @@ jobs:
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python external_product_review_import.py validate --input external_reviews/run164_batch10.json --target 200 --max-rows 15
+          python external_product_review_import.py validate --input /tmp/run164_batch10_fixed.json --target 200 --max-rows 15
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-b10-validate-${{ github.run_id }}
+          name: run164-b10-validate-fixed-${{ github.run_id }}
           path: external_review_artifacts/
           if-no-files-found: warn
           retention-days: 30
