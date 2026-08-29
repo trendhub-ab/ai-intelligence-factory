@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
-"""Run Subscriber Inventory Bootstrap with Run131 profit-aligned portfolio policy.
+"""Run Subscriber Inventory Bootstrap with profit-aligned portfolio and launch policy.
 
 The mature inventory_bootstrap.py remains authoritative for Evidence, Product
-Review, Notion persistence and quota safety. This entry point installs only the
-Run131 review-order overlay, then delegates to the original command.
+Review, Notion persistence and quota safety. This entry point installs only
+zero-API policy overlays, then delegates to the original command.
 
-Run131 intentionally ignores the legacy hard source-share cap. Diversity may
-reorder only candidates within PORTFOLIO_DIVERSITY_TOLERANCE of the strongest
-remaining candidate, so a materially weaker record is never force-promoted.
+Run131: diversity may reorder only candidates within PORTFOLIO_DIVERSITY_TOLERANCE
+of the strongest remaining candidate, so a materially weaker record is never
+force-promoted.
+
+Run152: commercial launch readiness is stricter than mere inventory completeness.
+It requires a sufficiently deep, AI-relevant, category-balanced member catalog
+before launch_ready can become true. It never changes Adoption Score or Product
+Review output.
 """
 from __future__ import annotations
 
 import inventory_bootstrap
-from technology_portfolio_policy import install_on
+from paid_db_launch_readiness import install_on as install_launch_readiness
+from technology_portfolio_policy import install_on as install_portfolio_policy
 
 
 def main() -> int:
-    install_on(inventory_bootstrap)
+    install_portfolio_policy(inventory_bootstrap)
+    install_launch_readiness(inventory_bootstrap)
     return inventory_bootstrap.main()
 
 
