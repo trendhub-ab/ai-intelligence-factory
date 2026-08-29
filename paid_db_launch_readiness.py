@@ -1,9 +1,11 @@
-"""Run152 — Paid DB Launch Readiness v2.
+"""Run155 — Paid DB Launch Relevance Precision.
 
-This module deliberately does not change Product Review, Adoption Score, evidence,
-or subscriber persistence.  It adds a stricter commercial launch gate on top of
-the existing inventory bootstrap so a technically complete but thin or skewed
-catalog cannot be labelled launch-ready.
+This module keeps Run152's commercial launch-quality policy, but fixes AI
+relevance false negatives exposed by the 100-record catalog.  Product Review
+category remains evidence-grounded; AI-native categories can therefore act as a
+strong taxonomy signal.  Mixed categories still require substantive AI evidence
+from the record text so generic software cannot enter the AI core shelf merely
+because boilerplate decision copy mentions AI.
 
 The policy is deterministic and consumes zero Gemini requests.
 """
@@ -14,7 +16,7 @@ import os
 import re
 from typing import Any, Iterable
 
-POLICY_VERSION = "run152-paid-db-launch-readiness-v2"
+POLICY_VERSION = "run155-paid-db-launch-relevance-precision-v3"
 
 DEFAULT_STRETCH_TARGET = int(os.environ.get("PAID_DB_STRETCH_TARGET", "60"))
 DEFAULT_LAUNCH_MIN_SELLABLE = int(os.environ.get("PAID_DB_LAUNCH_MIN_SELLABLE", "50"))
@@ -35,6 +37,11 @@ REQUIRED_LAUNCH_CATEGORIES = (
     "MULTIMODAL",
     "PRODUCT",
 )
+
+# Product Review's closed taxonomy makes these categories intrinsically AI-native.
+# Mixed categories (INFRA/DATA/DEVTOOLS/SECURITY/PRODUCT/OTHER) deliberately do
+# not get this shortcut because they can contain useful but non-AI software.
+AI_NATIVE_CATEGORIES = frozenset({"MODEL", "AGENT", "MULTIMODAL"})
 
 # Reference material can remain searchable for members, but it must not make a
 # thin catalog look like a broad decision product.
@@ -67,46 +74,60 @@ AI_NEGATIVE_PATTERNS = (
     r"not (?:an? )?AI (?:tool|technology|product)",
 )
 
+# Do not use Unicode \b around ASCII acronyms.  In Python, Japanese characters
+# are word characters, so patterns such as \bLLM\b miss ordinary Japanese text
+# like "LLM推論" and "VLMの評価".  ASCII-only lookarounds retain token safety
+# while allowing Japanese adjacency.
 AI_RELEVANCE_PATTERNS = (
-    r"\bartificial intelligence\b",
-    r"\bmachine learning\b",
-    r"\bdeep learning\b",
-    r"\bmlops\b",
-    r"\bllm\b",
-    r"\blarge language model",
-    r"\bagentic\b",
-    r"\bmulti[- ]agent\b",
-    r"\bai agent",
-    r"\brag\b",
+    r"(?<![A-Za-z0-9_])artificial intelligence(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])machine learning(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])deep learning(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])MLOps(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])LLMs?(?![A-Za-z0-9_])",
+    r"large language model",
+    r"(?<![A-Za-z0-9_])agentic(?![A-Za-z0-9_])",
+    r"multi[- ]agent",
+    r"(?<![A-Za-z0-9_])AI[ -]?agents?(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])RAG(?![A-Za-z0-9_])",
     r"retrieval[- ]augmented",
-    r"\bembedding",
-    r"\bvector (?:search|database|store)",
-    r"\bneural\b",
-    r"\btransformer\b",
-    r"\bmultimodal\b",
+    r"(?<![A-Za-z0-9_])embedding",
+    r"vector (?:search|database|store)",
+    r"(?<![A-Za-z0-9_])neural",
+    r"(?<![A-Za-z0-9_])transformer",
+    r"(?<![A-Za-z0-9_])multimodal",
     r"vision[- ]language",
-    r"\bvlm\b",
+    r"(?<![A-Za-z0-9_])VLMs?(?![A-Za-z0-9_])",
     r"federated (?:learning|ai)",
-    r"\bfine[- ]?tun",
-    r"\binference\b",
-    r"\bprompt(?:ing| management| optimization)?\b",
-    r"\brecommender|recommendation system",
-    r"\bdata science\b",
-    r"(?:^|\W)AI(?:\W|$)",
+    r"fine[- ]?tun",
+    r"(?<![A-Za-z0-9_])inference(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])prompt(?:ing| management| optimization)?(?![A-Za-z0-9_])",
+    r"recommender|recommendation system",
+    r"data science",
+    r"(?<![A-Za-z0-9_])AI(?![A-Za-z0-9_])",
     r"人工知能",
     r"機械学習",
     r"深層学習",
     r"言語モデル",
+    r"大規模モデル",
     r"AIエージェント",
     r"マルチエージェント",
     r"生成AI",
+    r"生成モデル",
+    r"動画生成",
+    r"画像生成",
+    r"音声生成",
+    r"音声認識",
+    r"音声合成",
+    r"顔認識",
     r"ベクトル検索",
     r"埋め込み",
-    r"モデル推論",
+    r"モデル(?:学習|推論|サービング|最適化|評価)",
+    r"ニューラル",
 )
 
 
 def _record_text(record: Any) -> str:
+    """Broad text used for reference-material classification."""
     values = (
         getattr(record, "name", ""),
         getattr(record, "source_summary", ""),
@@ -118,20 +139,48 @@ def _record_text(record: Any) -> str:
     return " ".join(str(v or "") for v in values)
 
 
+def _ai_relevance_text(record: Any) -> str:
+    """Use only descriptive evidence, never generic decision-copy boilerplate.
+
+    Run153's Best For intentionally talks about an organisation's "AI導入" for
+    many records.  Counting that field would make a generic library look AI-native.
+    Name, source summary and short rationale describe what the technology actually
+    is and are therefore the safe deterministic relevance surface.
+    """
+    values = (
+        getattr(record, "name", ""),
+        getattr(record, "source_summary", ""),
+        getattr(record, "short_rationale", ""),
+    )
+    return " ".join(str(v or "") for v in values)
+
+
+def _has_ai_signal(text: str) -> bool:
+    return any(re.search(pattern, text, re.I) for pattern in AI_RELEVANCE_PATTERNS)
+
+
 def is_reference_only(record: Any) -> bool:
     text = _record_text(record)
     return any(re.search(pattern, text, re.I) for pattern in REFERENCE_ONLY_PATTERNS)
 
 
 def is_ai_relevant(record: Any) -> bool:
-    text = _record_text(record)
-    if any(re.search(pattern, text, re.I) for pattern in AI_NEGATIVE_PATTERNS):
-        # A negative statement by itself must not turn a generic library into AI inventory.
+    text = _ai_relevance_text(record)
+    category = str(getattr(record, "category", "") or "OTHER").upper()
+    negative = any(re.search(pattern, text, re.I) for pattern in AI_NEGATIVE_PATTERNS)
+
+    if negative:
+        # Explicit negative evidence is respected.  Remove only the negative
+        # phrase, then require a separate substantive AI signal even for a
+        # nominally AI-native category.
         stripped = text
         for pattern in AI_NEGATIVE_PATTERNS:
             stripped = re.sub(pattern, " ", stripped, flags=re.I)
-        return any(re.search(pattern, stripped, re.I) for pattern in AI_RELEVANCE_PATTERNS)
-    return any(re.search(pattern, text, re.I) for pattern in AI_RELEVANCE_PATTERNS)
+        return _has_ai_signal(stripped)
+
+    if category in AI_NATIVE_CATEGORIES:
+        return True
+    return _has_ai_signal(text)
 
 
 def is_front_shelf(record: Any) -> bool:
