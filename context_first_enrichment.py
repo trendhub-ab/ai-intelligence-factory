@@ -6,7 +6,7 @@ recommendation and maintains a durable member-facing change highlight:
 
 - Plain Summary  -> member formula: 「これは何？」
 - Topic Trigger  -> member formula: 「今回の話題」
-- Member Score Change / At / Reason -> member formulas for durable change display
+- 「重要変化スコア」「重要変化日」「重要変化理由」 -> durable member change display
 
 Design constraints:
 - ZERO Gemini requests. It only reuses already-persisted Product Review state and
@@ -37,9 +37,9 @@ TECH_PROP_PLAIN_SUMMARY = "Plain Summary"
 TECH_PROP_TOPIC_TRIGGER = "Topic Trigger"
 SUB_PROP_PLAIN_SUMMARY = "Plain Summary"
 SUB_PROP_TOPIC_TRIGGER = "Topic Trigger"
-SUB_PROP_MEMBER_SCORE_CHANGE = "Member Score Change"
-SUB_PROP_MEMBER_CHANGE_AT = "Member Change At"
-SUB_PROP_MEMBER_CHANGE_REASON = "Member Change Reason"
+SUB_PROP_MEMBER_SCORE_CHANGE = "重要変化スコア"
+SUB_PROP_MEMBER_CHANGE_AT = "重要変化日"
+SUB_PROP_MEMBER_CHANGE_REASON = "重要変化理由"
 
 _CATEGORY_SUMMARY = {
     "MODEL": "{name}は、文章生成や推論などに使われるAIモデル・モデル技術です。",
