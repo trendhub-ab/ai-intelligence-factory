@@ -1291,6 +1291,21 @@ class GeminiCallTimeoutError(TimeoutError):
     pass
 
 
+def _is_gemini_transport_timeout(exc: Exception) -> bool:
+    """Recognize SDK transport timeouts without importing httpx as a hard dependency.
+
+    SIGALRM can interrupt an httpx/httpcore read inside google-genai. Those layers may
+    translate our GeminiCallTimeoutError into their own ReadTimeout before control
+    returns to _call_model_pool. Only timeout-family transport exceptions are treated
+    as transient; unrelated exceptions must still fail loudly.
+    """
+    if isinstance(exc, GeminiCallTimeoutError):
+        return True
+    module = str(getattr(exc.__class__, '__module__', '')).lower()
+    name = str(getattr(exc.__class__, '__name__', '')).lower()
+    return module.startswith(('httpx', 'httpcore')) and 'timeout' in name
+
+
 @contextmanager
 def _gemini_call_timeout(seconds: int):
     """main thread/Linux向けの同期Gemini call watchdog。"""
@@ -1597,7 +1612,14 @@ def _call_model_pool(prompt: str, config: dict | None, kind: str, reserve: int,
                 break
             except GeminiCallTimeoutError as exc:
                 last_error = exc
+                logger.warning("[GEMINI TRANSIENT TIMEOUT] model=%s kind=%s error=%s; falling back", model_name, kind, exc)
                 break
+            except Exception as exc:
+                if _is_gemini_transport_timeout(exc):
+                    last_error = exc
+                    logger.warning("[GEMINI TRANSIENT TIMEOUT] model=%s kind=%s error=%s; falling back", model_name, kind, exc)
+                    break
+                raise
     raise NoAvailableModelError("利用可能なGeminiモデルがありません") from last_error
 
 
