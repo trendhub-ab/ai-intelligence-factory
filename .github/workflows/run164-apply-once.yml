@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   apply:
-    if: contains(github.event.head_commit.message, 'RUN164 APPLY B1')
+    if: contains(github.event.head_commit.message, 'RUN164 APPLY B2')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -34,18 +34,18 @@ jobs:
           ENABLE_DECISION_INTELLIGENCE_DB: 'true'
           ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
           ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
-          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
           NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           ENABLE_SUBSCRIBER_TECH_SYNC: 'false'
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python external_product_review_import.py apply --input external_reviews/run164_batch1.json --target 150 --max-rows 15 --confirm CONFIRM_EXTERNAL_REVIEW_IMPORT
+          python external_product_review_import.py apply --input external_reviews/run164_batch2.json --target 150 --max-rows 15 --confirm CONFIRM_EXTERNAL_REVIEW_IMPORT
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-b1-apply-${{ github.run_id }}
+          name: run164-b2-apply-${{ github.run_id }}
           path: external_review_artifacts/
           if-no-files-found: warn
           retention-days: 30
