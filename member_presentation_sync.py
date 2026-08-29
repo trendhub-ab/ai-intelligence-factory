@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
 """Clean member-facing presentation sync for AI Decision Intelligence.
 
-This module deliberately sits *after* the existing sanitized Subscriber Technology DB.
-The existing subscriber DB remains the compatibility/automation bridge.  This module
-copies only reader-facing Japanese information into a separate presentation DB, so a
-member never needs to see Factory property names or duplicated formula/raw columns.
+The existing Subscriber Technology DB remains the compatibility bridge used by
+the Factory. This module copies only reader-facing Japanese information into a
+separate presentation DB.
 
-Design goals
-------------
-- ZERO Gemini/API model requests.
+Principles:
+- ZERO Gemini/model requests.
 - One real title property: ``AI・技術名``.
-- Separate "what happened", "why this judgment", and "why the score changed".
-- Remove repetitive operational boilerplate from member copy.
-- Add a deterministic ``次にやること`` suited to ADOPT/TEST/WATCH/AVOID.
-- Keep at most eight homepage recommendations with near-tie category diversity.
-- Preserve durable important-change memory already maintained by
-  ``context_first_enrichment.py``.
-- Fail closed when either Notion source/destination is not configured.
+- ``今回の話題`` / ``判断理由`` / ``評価が変わった理由`` have distinct roles.
+- ``次にやること`` must be an executable action, not another evaluation sentence.
+- Generic Factory boilerplate is removed from member copy.
+- Homepage recommendations are capped and only diversified among near-ties.
+- Durable change memory comes from the bridge DB's important-change fields.
 """
 from __future__ import annotations
 
@@ -32,17 +28,18 @@ import requests
 import decision_intelligence
 
 
+# Production workflows resolve these IDs during the provision step.  Empty
+# defaults are deliberate: a developer invocation must not silently write to an
+# obsolete/test database.
 NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID = os.environ.get(
-    "NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID",
-    "ba993457-49f3-491a-9f58-b0a690b45558",
+    "NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID", ""
 ).strip()
 NOTION_MEMBER_PRESENTATION_DATABASE_ID = os.environ.get(
-    "NOTION_MEMBER_PRESENTATION_DATABASE_ID",
-    "7160e83d3a4f41a18bf661df92423bda",
+    "NOTION_MEMBER_PRESENTATION_DATABASE_ID", ""
 ).strip()
 MEMBER_HOME_MAX = max(1, min(12, int(os.environ.get("MEMBER_HOME_MAX", "8"))))
 MEMBER_HOME_DIVERSITY_TOLERANCE = max(
-    0.0, float(os.environ.get("MEMBER_HOME_DIVERSITY_TOLERANCE", "3"))
+    0.0, float(os.environ.get("MEMBER_HOME_DIVERSITY_TOLERANCE", "0.5"))
 )
 
 GENERIC_RISK_SUFFIX = "導入前に対象環境と実データでこの条件を確認し、運用責任者を決める必要がある。"
@@ -93,6 +90,17 @@ PUBLIC_SCHEMA = {
     "同期ID": "rich_text",
 }
 
+_ACTION_END_RE = re.compile(
+    r"(?:確認|検証|評価|比較|実装|運用|設計|計画|固定|監視|再評価|再選定|"
+    r"切り替|移行|導入|試験|テスト|測定|測る|試す|選ぶ|決める|絞る|移す|"
+    r"待つ|追う|行う|進める|見送る|優先する)(?:する|します|した|して)?[。！？]?$"
+)
+_DECLARATIVE_MARKERS = (
+    "候補", "価値が高い", "完成度", "優先度が高い", "成熟しています",
+    "成熟している", "対応しています", "対応している", "提供しています",
+    "提供している", "備えています", "備えている", "重要です", "重要である",
+)
+
 
 def _plain_text(values: list[dict] | None) -> str:
     return "".join(
@@ -118,8 +126,7 @@ def _number(prop: dict | None) -> int | float | None:
     value = prop.get("number")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return value
-    formula = prop.get("formula") or {}
-    value = formula.get("number")
+    value = (prop.get("formula") or {}).get("number")
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
@@ -129,7 +136,11 @@ def _select(prop: dict | None) -> str:
 
 def _multi_select(prop: dict | None) -> list[str]:
     return sorted(
-        {str(x.get("name") or "").strip() for x in ((prop or {}).get("multi_select") or []) if x.get("name")}
+        {
+            str(x.get("name") or "").strip()
+            for x in ((prop or {}).get("multi_select") or [])
+            if x.get("name")
+        }
     )
 
 
@@ -153,6 +164,10 @@ def _norm(text: str) -> str:
     return text.strip()
 
 
+def _norm_key(text: str) -> str:
+    return re.sub(r"[\W_]+", "", _norm(text)).casefold()
+
+
 def _strip_suffix(text: str, suffix: str) -> str:
     text = _norm(text)
     suffix = _norm(suffix)
@@ -165,31 +180,12 @@ def _sentences(text: str) -> list[str]:
     text = _norm(text)
     if not text:
         return []
-    parts = re.split(r"(?<=[。！？])\s*", text)
-    return [x.strip() for x in parts if x.strip()]
+    return [x.strip() for x in re.split(r"(?<=[。！？])\s*", text) if x.strip()]
 
 
-def clean_topic_trigger(text: str, *, name: str = "") -> str:
-    """Keep the 'what is happening now' portion, not the judgment/action tail."""
-    text = _norm(text)
-    if not text:
-        return ""
-    if "判断点は" in text:
-        before, after = text.split("判断点は", 1)
-        before = before.rstrip(" 、,:：。")
-        if before:
-            text = before + ("。" if before[-1] not in "。！？" else "")
-        else:
-            text = after.lstrip(" 、,:：")
-    # Remove exact accidental repeated halves such as "A。A。".
-    s = _sentences(text)
-    if len(s) >= 2 and re.sub(r"\W", "", s[0]) == re.sub(r"\W", "", s[1]):
-        s = [s[0], *s[2:]]
-    result = "".join(s) if s else text
-    result = _norm(result)
-    if not result and name:
-        return f"{name}の現在の機能・保守状況を確認しています。"
-    return result
+def _is_action_sentence(sentence: str) -> bool:
+    sentence = _norm(sentence)
+    return bool(sentence and _ACTION_END_RE.search(sentence))
 
 
 def clean_risk(text: str) -> str:
@@ -208,39 +204,7 @@ def _clean_rationale(text: str) -> str:
     return _strip_suffix(text, GENERIC_RATIONALE_SUFFIX)
 
 
-def _action_score(sentence: str, status: str) -> int:
-    sentence = sentence.strip()
-    if not sentence:
-        return -99
-    terms = {
-        "ADOPT": ("確認", "導入", "固定", "測", "運用", "比較", "検証"),
-        "TEST": ("実装", "試", "検証", "確認", "測", "評価", "比較"),
-        "WATCH": ("待", "監視", "確認", "再評価", "追", "移行", "成熟"),
-        "AVOID": ("移", "比較", "代替", "優先", "再選定", "切り替", "見送"),
-    }.get(status, ("確認", "比較", "検証"))
-    score = sum(3 for t in terms if t in sentence)
-    if "判断点は" in sentence:
-        score -= 1
-    if len(sentence) >= 20:
-        score += 1
-    if sentence in {"新規採用は見送り。", "まず小さく試す。", "本格導入を検討してよい。"}:
-        score -= 5
-    return score
-
-
-def derive_next_action(status: str, rationale: str, topic: str = "") -> str:
-    rationale = _clean_rationale(rationale)
-    candidates = _sentences(rationale)
-    if topic:
-        # The action is intentionally derived from rationale first. Topic is only a fallback.
-        candidates += [x for x in _sentences(topic) if x not in candidates]
-    best = max(candidates, key=lambda x: _action_score(x, status), default="")
-    if best and _action_score(best, status) >= 3:
-        best = best.replace("判断点は、", "").replace("判断点は", "").strip()
-        if status == "AVOID" and GENERIC_BEST_SUFFIX in best:
-            best = ""
-        if best:
-            return best
+def _fallback_action(status: str) -> str:
     return {
         "ADOPT": "導入候補として、自社要件との適合と運用条件を最終確認する。",
         "TEST": "代表業務を1つ選び、小さく試して効果と運用負荷を確認する。",
@@ -249,30 +213,137 @@ def derive_next_action(status: str, rationale: str, topic: str = "") -> str:
     }.get(status, "必要な条件を確認してから次の判断へ進む。")
 
 
-def derive_judgment_reason(status: str, rationale: str, topic: str, main_risk: str) -> str:
-    """Separate current-decision reason from the next action."""
+def _action_score(sentence: str, status: str) -> int:
+    sentence = _norm(sentence)
+    if not sentence:
+        return -99
+    if not _is_action_sentence(sentence):
+        return -20
+    terms = {
+        "ADOPT": ("確認", "導入", "固定", "測", "運用", "比較", "検証", "決め"),
+        "TEST": ("実装", "試", "検証", "確認", "測", "評価", "比較", "テスト"),
+        "WATCH": ("待", "監視", "確認", "再評価", "追", "移行", "成熟"),
+        "AVOID": ("移", "比較", "代替", "再選定", "切り替", "見送", "優先"),
+    }.get(status, ("確認", "比較", "検証"))
+    score = 8 + sum(3 for term in terms if term in sentence)
+    if "判断点は" in sentence:
+        score -= 2
+    if any(marker in sentence for marker in _DECLARATIVE_MARKERS):
+        score -= 5
+    if sentence in {"新規採用は見送り。", "まず小さく試す。", "本格導入を検討してよい。"}:
+        score -= 10
+    return score
+
+
+def derive_next_action(status: str, rationale: str, topic: str = "") -> str:
     rationale = _clean_rationale(rationale)
-    action = derive_next_action(status, rationale, topic)
-    remaining = [s for s in _sentences(rationale) if s != action]
-    if remaining:
-        reason = remaining[0]
-        # A verdict-only first sentence is too weak. Prefer a causal current-context sentence.
-        verdict_only = len(reason) <= 22 and any(x in reason for x in ("採用", "見送り", "テスト", "WATCH", "ADOPT", "TEST", "AVOID"))
-        if verdict_only:
-            topical = clean_topic_trigger(topic)
-            if topical and topical != reason and len(topical) > len(reason) + 8:
-                return topical
-            risk = clean_risk(main_risk)
-            if risk:
-                return risk
-        return reason
-    topical = clean_topic_trigger(topic)
+    candidates = _sentences(rationale)
+    if topic:
+        candidates.extend(x for x in _sentences(topic) if x not in candidates)
+    actionable = [x for x in candidates if _is_action_sentence(x)]
+    if not actionable:
+        return _fallback_action(status)
+    best = max(actionable, key=lambda x: _action_score(x, status))
+    if _action_score(best, status) < 5:
+        return _fallback_action(status)
+    best = best.replace("判断点は、", "").replace("判断点は", "").lstrip("、,:： ").strip()
+    return best or _fallback_action(status)
+
+
+def clean_topic_trigger(text: str, *, name: str = "", action: str = "") -> str:
+    """Keep current context, excluding judgment/action tails where possible."""
+    text = _norm(text)
+    if not text:
+        return f"{name}の現在の機能・保守状況を確認しています。" if name else ""
+    if "判断点は" in text:
+        before = text.split("判断点は", 1)[0].rstrip(" 、,:：。")
+        if before:
+            text = before + ("。" if before[-1] not in "。！？" else "")
+    sentences = _sentences(text)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for sentence in sentences:
+        key = _norm_key(sentence)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(sentence)
+    if action:
+        action_key = _norm_key(action)
+        without_action = [s for s in deduped if _norm_key(s) != action_key]
+        if without_action:
+            deduped = without_action
+    # If there is at least one descriptive sentence, remove imperative/action
+    # sentences from the topic field. This keeps Mastra-like "what/why now" copy
+    # separate from the concrete next step.
+    descriptive = [s for s in deduped if not _is_action_sentence(s)]
+    if descriptive:
+        deduped = descriptive
+    result = _norm("".join(deduped))
+    if not result and name:
+        return f"{name}の現在の機能・保守状況を確認しています。"
+    return result
+
+
+def _status_reason_from_risk(status: str, risk: str) -> str:
+    risk = clean_risk(risk)
+    if not risk:
+        return ""
+    base = risk.rstrip("。！？")
+    if status == "AVOID":
+        return f"{base}ため、新規採用は見送る判断が妥当です。"
+    if status == "WATCH":
+        return f"{base}ため、現時点では導入を急がず状況を追う判断が妥当です。"
+    if status == "TEST":
+        return f"{base}ため、本番採用の前に小さく検証する判断が妥当です。"
+    return risk
+
+
+def derive_judgment_reason(
+    status: str,
+    rationale: str,
+    topic: str,
+    main_risk: str,
+    action: str = "",
+) -> str:
+    """Explain the current judgment rather than restating the topic/action."""
+    rationale = _clean_rationale(rationale)
+    action_key = _norm_key(action)
+    candidates = []
+    for sentence in _sentences(rationale):
+        if action_key and _norm_key(sentence) == action_key:
+            continue
+        if _is_action_sentence(sentence):
+            continue
+        if sentence in {"新規採用は見送り。", "まず小さく試す。", "本格導入を検討してよい。"}:
+            continue
+        candidates.append(sentence)
+    topical = clean_topic_trigger(topic, action=action)
+    for candidate in candidates:
+        if _norm_key(candidate) != _norm_key(topical):
+            return candidate
+    # If the only rationale is effectively the topic, use the risk-based causal
+    # explanation for TEST/WATCH/AVOID instead of showing duplicate properties.
+    if status in {"TEST", "WATCH", "AVOID"}:
+        risk_reason = _status_reason_from_risk(status, main_risk)
+        if risk_reason:
+            return risk_reason
+    if candidates:
+        candidate = candidates[0]
+        if status == "ADOPT":
+            return candidate
+        return candidate
     if topical:
         return topical
     return clean_risk(main_risk)
 
 
-def clean_change_reason(reason: str, delta: int | float | None) -> str:
+def clean_change_reason(
+    reason: str,
+    delta: int | float | None,
+    *,
+    action: str = "",
+) -> str:
     reason = _norm(reason)
     if not reason or delta is None or abs(float(delta)) < decision_intelligence.MEANINGFUL_SCORE_DELTA:
         return ""
@@ -280,6 +351,18 @@ def clean_change_reason(reason: str, delta: int | float | None) -> str:
         before = reason.split("判断点は", 1)[0].rstrip(" 、,:：。")
         if before:
             reason = before + ("。" if before[-1] not in "。！？" else "")
+    sentences = _sentences(reason)
+    if action:
+        action_key = _norm_key(action)
+        kept = [s for s in sentences if _norm_key(s) != action_key]
+        if kept:
+            sentences = kept
+    descriptive = [s for s in sentences if not _is_action_sentence(s)]
+    if descriptive:
+        sentences = descriptive
+    reason = _norm("".join(sentences))
+    if not reason:
+        return ""
     if reason.startswith("前回より評価"):
         return reason
     direction = "上がった" if float(delta) > 0 else "下がった"
@@ -288,8 +371,7 @@ def clean_change_reason(reason: str, delta: int | float | None) -> str:
 
 def _strip_review_suffix(label: str) -> str:
     label = _norm(label)
-    label = re.sub(r"\s*[—–-]\s*判断用レビュー\s*$", "", label).strip()
-    return label
+    return re.sub(r"\s*[—–-]\s*判断用レビュー\s*$", "", label).strip()
 
 
 def _source_state(page: dict) -> dict[str, Any] | None:
@@ -298,7 +380,11 @@ def _source_state(page: dict) -> dict[str, Any] | None:
     if not sync_id:
         return None
     raw_name = _text(p.get("Technology / Project Name"))
-    name = _text(p.get("AI・技術名")) or _strip_review_suffix(_text(p.get("Japanese Display Label"))) or raw_name
+    name = (
+        _text(p.get("AI・技術名"))
+        or _strip_review_suffix(_text(p.get("Japanese Display Label")))
+        or raw_name
+    )
     status = _select(p.get("Adoption Status"))
     score = _number(p.get("Adoption Score"))
     confidence_raw = _select(p.get("Evidence Confidence"))
@@ -312,9 +398,9 @@ def _source_state(page: dict) -> dict[str, Any] | None:
     important_reason_raw = _text(p.get("評価が変わった理由"))
     classification = _text(p.get("会員向け棚")) or "実務判断"
 
-    topic = clean_topic_trigger(topic_raw, name=name)
     action = derive_next_action(status, rationale_raw, topic_raw)
-    reason = derive_judgment_reason(status, rationale_raw, topic_raw, main_risk_raw)
+    topic = clean_topic_trigger(topic_raw, name=name, action=action)
+    reason = derive_judgment_reason(status, rationale_raw, topic_raw, main_risk_raw, action)
     return {
         "sync_id": sync_id,
         "name": name,
@@ -327,12 +413,16 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         "main_risk": clean_risk(main_risk_raw),
         "best_for": clean_best_for(_text(p.get("Best For"))),
         "avoid_for": clean_avoid_for(_text(p.get("Avoid For"))),
-        "confidence": CONFIDENCE_JA.get(confidence_raw, "低" if confidence_raw == "LOW" else "中"),
-        "readiness": READINESS_JA.get(readiness_raw, "低" if readiness_raw == "LOW" else "中"),
+        "confidence": CONFIDENCE_JA.get(confidence_raw, "中"),
+        "readiness": READINESS_JA.get(readiness_raw, "中"),
         "category": CATEGORY_JA.get(category_raw, "その他"),
-        "classification": classification if classification in {"実務判断", "Deep Tech", "参考資料"} else "実務判断",
+        "classification": (
+            classification
+            if classification in {"実務判断", "Deep Tech", "参考資料"}
+            else "実務判断"
+        ),
         "delta": delta,
-        "change_reason": clean_change_reason(important_reason_raw, delta),
+        "change_reason": clean_change_reason(important_reason_raw, delta, action=action),
         "important_at": important_at,
         "last_reviewed": _date(p.get("Last Reviewed")),
         "first_seen": _date(p.get("First Seen")),
@@ -340,8 +430,6 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         "related_article": _url(p.get("Related Article")),
         "primary_url": _url(p.get("Primary URL")),
         "sources": _multi_select(p.get("Source")),
-        "confidence_raw": confidence_raw,
-        "readiness_raw": readiness_raw,
         "rank": None,
         "current_month_change": False,
     }
@@ -359,7 +447,9 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
 
 
-def mark_current_month_changes(states: list[dict[str, Any]], *, now: datetime | None = None) -> None:
+def mark_current_month_changes(
+    states: list[dict[str, Any]], *, now: datetime | None = None
+) -> None:
     tz = ZoneInfo(decision_intelligence.PRODUCT_TIMEZONE)
     now_local = (now or datetime.now(timezone.utc)).astimezone(tz)
     for state in states:
@@ -371,32 +461,42 @@ def mark_current_month_changes(states: list[dict[str, Any]], *, now: datetime | 
         )
 
 
-def assign_home_ranks(states: list[dict[str, Any]], *, limit: int = MEMBER_HOME_MAX) -> list[dict[str, Any]]:
-    """Rank no more than ``limit`` practical choices, diversifying only near-ties."""
+def assign_home_ranks(
+    states: list[dict[str, Any]], *, limit: int = MEMBER_HOME_MAX
+) -> list[dict[str, Any]]:
+    """Rank practical choices; diversity may reorder only genuinely near-tied items."""
     for state in states:
         state["rank"] = None
     remaining = [
-        s for s in states
+        s
+        for s in states
         if s.get("classification") == "実務判断"
         and s.get("status") in {"ADOPT", "TEST"}
         and s.get("confidence") != "低"
         and isinstance(s.get("score"), (int, float))
     ]
 
-    def merit(s: dict[str, Any]) -> float:
-        value = float(s.get("score") or 0)
-        if s.get("confidence") == "高":
+    def merit(state: dict[str, Any]) -> float:
+        value = float(state.get("score") or 0)
+        if state.get("confidence") == "高":
             value += 1.5
-        if s.get("readiness") == "高":
+        if state.get("readiness") == "高":
             value += 1.0
-        if s.get("current_month_change") and isinstance(s.get("delta"), (int, float)) and float(s["delta"]) >= 5:
+        if (
+            state.get("current_month_change")
+            and isinstance(state.get("delta"), (int, float))
+            and float(state["delta"]) >= 5
+        ):
             value += 1.0
         return value
 
     selected: list[dict[str, Any]] = []
     category_counts: dict[str, int] = {}
     while remaining and len(selected) < max(1, limit):
-        strongest = max(remaining, key=lambda s: (merit(s), float(s.get("score") or 0), s.get("name") or ""))
+        strongest = max(
+            remaining,
+            key=lambda s: (merit(s), float(s.get("score") or 0), s.get("name") or ""),
+        )
         floor = merit(strongest) - MEMBER_HOME_DIVERSITY_TOLERANCE
         competitive = [s for s in remaining if merit(s) >= floor]
         winner = max(
@@ -409,8 +509,8 @@ def assign_home_ranks(states: list[dict[str, Any]], *, limit: int = MEMBER_HOME_
             ),
         )
         selected.append(winner)
-        cat = str(winner.get("category") or "その他")
-        category_counts[cat] = category_counts.get(cat, 0) + 1
+        category = str(winner.get("category") or "その他")
+        category_counts[category] = category_counts.get(category, 0) + 1
         remaining.remove(winner)
     for rank, state in enumerate(selected, 1):
         state["rank"] = rank
@@ -419,7 +519,11 @@ def assign_home_ranks(states: list[dict[str, Any]], *, limit: int = MEMBER_HOME_
 
 def _rt(value: str) -> dict:
     value = _norm(value)[:2000]
-    return {"rich_text": []} if not value else {"rich_text": [{"type": "text", "text": {"content": value}}]}
+    return (
+        {"rich_text": []}
+        if not value
+        else {"rich_text": [{"type": "text", "text": {"content": value}}]}
+    )
 
 
 def _title(value: str) -> dict:
@@ -432,7 +536,11 @@ def _sel(value: str) -> dict:
 
 
 def _num(value: int | float | None) -> dict:
-    return {"number": value if isinstance(value, (int, float)) and not isinstance(value, bool) else None}
+    return {
+        "number": value
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else None
+    }
 
 
 def _date_prop(value: str | None) -> dict:
@@ -463,7 +571,9 @@ def _props(state: dict[str, Any]) -> dict[str, dict]:
         "一次情報": _rt(state.get("evidence") or ""),
         "関連記事": {"url": state.get("related_article") or None},
         "公式ページ": {"url": state.get("primary_url") or None},
-        "情報源": {"multi_select": [{"name": x} for x in (state.get("sources") or [])]},
+        "情報源": {
+            "multi_select": [{"name": x} for x in (state.get("sources") or [])]
+        },
         "注目順位": _num(state.get("rank")),
         "今月の重要変化": {"checkbox": bool(state.get("current_month_change"))},
         "同期ID": _rt(state.get("sync_id") or ""),
@@ -505,15 +615,47 @@ def _destination_state(page: dict) -> dict[str, Any]:
 
 def _comparable(state: dict[str, Any]) -> dict[str, Any]:
     keys = (
-        "sync_id", "name", "plain_summary", "status", "score", "judgment_reason", "topic",
-        "next_action", "main_risk", "best_for", "avoid_for", "confidence", "readiness",
-        "category", "classification", "delta", "change_reason", "important_at", "last_reviewed",
-        "first_seen", "evidence", "related_article", "primary_url", "sources", "rank",
+        "sync_id",
+        "name",
+        "plain_summary",
+        "status",
+        "score",
+        "judgment_reason",
+        "topic",
+        "next_action",
+        "main_risk",
+        "best_for",
+        "avoid_for",
+        "confidence",
+        "readiness",
+        "category",
+        "classification",
+        "delta",
+        "change_reason",
+        "important_at",
+        "last_reviewed",
+        "first_seen",
+        "evidence",
+        "related_article",
+        "primary_url",
+        "sources",
+        "rank",
         "current_month_change",
     )
-    out = {k: state.get(k) for k in keys}
+    out = {key: state.get(key) for key in keys}
     out["sources"] = sorted(out.get("sources") or [])
-    for key in ("name", "plain_summary", "judgment_reason", "topic", "next_action", "main_risk", "best_for", "avoid_for", "change_reason", "evidence"):
+    for key in (
+        "name",
+        "plain_summary",
+        "judgment_reason",
+        "topic",
+        "next_action",
+        "main_risk",
+        "best_for",
+        "avoid_for",
+        "change_reason",
+        "evidence",
+    ):
         out[key] = _norm(out.get(key) or "")
     return out
 
@@ -532,11 +674,13 @@ def _validate_destination_schema() -> None:
     missing = [name for name in PUBLIC_SCHEMA if name not in props]
     wrong = [
         f"{name}:{(props.get(name) or {}).get('type')}"
-        for name, typ in PUBLIC_SCHEMA.items()
-        if name in props and (props.get(name) or {}).get("type") != typ
+        for name, expected in PUBLIC_SCHEMA.items()
+        if name in props and (props.get(name) or {}).get("type") != expected
     ]
     if missing or wrong:
-        raise ValueError(f"Member presentation schema incompatible: missing={missing} wrong={wrong}")
+        raise ValueError(
+            f"Member presentation schema incompatible: missing={missing} wrong={wrong}"
+        )
 
 
 def _write(method: str, url: str, *, json: dict) -> requests.Response:
@@ -549,8 +693,7 @@ def _write(method: str, url: str, *, json: dict) -> requests.Response:
             timeout=25,
         )
         if res.status_code == 429:
-            wait = float(res.headers.get("Retry-After") or 1.0)
-            time.sleep(max(0.8, wait))
+            time.sleep(max(0.8, float(res.headers.get("Retry-After") or 1.0)))
             continue
         if 500 <= res.status_code < 600 and attempt < 4:
             time.sleep(1.0 + attempt)
@@ -562,9 +705,15 @@ def _write(method: str, url: str, *, json: dict) -> requests.Response:
 def sync_member_presentation() -> dict[str, Any]:
     if not decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY:
         raise ValueError("NOTION_DECISION_INTELLIGENCE_API_KEY is required")
-    if not (decision_intelligence.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID or decision_intelligence.NOTION_SUBSCRIBER_TECH_DATABASE_ID):
+    if not (
+        decision_intelligence.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID
+        or decision_intelligence.NOTION_SUBSCRIBER_TECH_DATABASE_ID
+    ):
         raise ValueError("Subscriber Technology DB is not configured")
-    if not (NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID or NOTION_MEMBER_PRESENTATION_DATABASE_ID):
+    if not (
+        NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID
+        or NOTION_MEMBER_PRESENTATION_DATABASE_ID
+    ):
         raise ValueError("Member presentation DB is not configured")
 
     _validate_destination_schema()
@@ -573,7 +722,7 @@ def sync_member_presentation() -> dict[str, Any]:
         decision_intelligence.NOTION_SUBSCRIBER_TECH_DATABASE_ID,
         max_records=5000,
     )
-    states = [s for s in (_source_state(page) for page in source_pages) if s]
+    states = [state for state in (_source_state(page) for page in source_pages) if state]
     mark_current_month_changes(states)
     selected = assign_home_ranks(states)
 
@@ -604,7 +753,10 @@ def sync_member_presentation() -> dict[str, Any]:
                 json={"properties": _props(state)},
             )
             if res.status_code != 200:
-                raise RuntimeError(f"Member presentation update failed {sync_id}: {res.status_code} {res.text[:500]}")
+                raise RuntimeError(
+                    f"Member presentation update failed {sync_id}: "
+                    f"{res.status_code} {res.text[:500]}"
+                )
             updated += 1
         else:
             parent = decision_intelligence._parent(
@@ -617,7 +769,10 @@ def sync_member_presentation() -> dict[str, Any]:
                 json={"parent": parent, "properties": _props(state)},
             )
             if res.status_code != 200:
-                raise RuntimeError(f"Member presentation create failed {sync_id}: {res.status_code} {res.text[:500]}")
+                raise RuntimeError(
+                    f"Member presentation create failed {sync_id}: "
+                    f"{res.status_code} {res.text[:500]}"
+                )
             created += 1
         time.sleep(0.34)
 
@@ -630,7 +785,10 @@ def sync_member_presentation() -> dict[str, Any]:
             json={"archived": True},
         )
         if res.status_code != 200:
-            raise RuntimeError(f"Member presentation archive failed {sync_id}: {res.status_code} {res.text[:500]}")
+            raise RuntimeError(
+                f"Member presentation archive failed {sync_id}: "
+                f"{res.status_code} {res.text[:500]}"
+            )
         archived += 1
         time.sleep(0.34)
 
