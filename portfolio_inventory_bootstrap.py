@@ -13,16 +13,23 @@ Run152: commercial launch readiness is stricter than mere inventory completeness
 It requires a sufficiently deep, AI-relevant, category-balanced member catalog
 before launch_ready can become true. It never changes Adoption Score or Product
 Review output.
+
+Run164: high-precision relevance vocabulary is calibrated against the expanded
+catalog before the launch gate is installed. Bare agent/model/GPU/ML tokens stay
+excluded so generic software cannot gain AI relevance accidentally.
 """
 from __future__ import annotations
 
 import inventory_bootstrap
+import paid_db_launch_readiness
 from paid_db_launch_readiness import install_on as install_launch_readiness
+from run164_ai_relevance_calibration import install_on as install_ai_relevance_calibration
 from technology_portfolio_policy import install_on as install_portfolio_policy
 
 
 def main() -> int:
     install_portfolio_policy(inventory_bootstrap)
+    install_ai_relevance_calibration(paid_db_launch_readiness)
     install_launch_readiness(inventory_bootstrap)
     return inventory_bootstrap.main()
 
