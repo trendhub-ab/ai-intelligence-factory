@@ -1,4 +1,4 @@
-name: Run157 Workflow Trigger Check
+name: Run157 Causal Inference Guard Validation
 
 on:
   pull_request:
@@ -6,10 +6,40 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  trigger-check:
+  apply-and-validate:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Run157 PR trigger OK"
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/run157-causal-inference-evidence-guard
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Apply Run157 patch
+        run: python _run157_apply.py
+      - name: Compile
+        run: python -m py_compile pipeline.py tests/test_run157_causal_inference_evidence_guard.py
+      - name: Focused Run157 tests
+        run: python -m unittest tests.test_run157_causal_inference_evidence_guard -v
+      - name: Full unittest
+        run: python -m unittest discover -s tests -p 'test_*.py' -q
+      - name: Synthetic smoke
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          SYNTHETIC_REGRESSION_TIER: smoke
+        run: python pipeline.py
+      - name: Commit validated production patch
+        shell: bash
+        run: |
+          rm -f _run157_apply.py .github/workflows/run157-causal-guard-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pipeline.py tests/test_run157_causal_inference_evidence_guard.py _run157_apply.py .github/workflows/run157-causal-guard-apply.yml
+          git commit -m "fix: block causal and ROI evidence overclaims"
+          git push origin HEAD:fix/run157-causal-inference-evidence-guard
