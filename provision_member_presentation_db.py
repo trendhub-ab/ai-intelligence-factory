@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Resolve or create the API-owned clean member presentation database.
 
-The production Notion integration has workspace-level access to the existing
-subscriber database, while pages created through another connector are outside
-its access graph.  To keep the member presentation layer fully automatic, this
-script creates (or rediscovers) a dedicated database owned by the same Notion
-integration that runs the Factory.
+The Factory uses an internal Notion integration. Internal integrations cannot
+create workspace-level private databases, so the database is initially created
+under an API-accessible host page. The member UI uses linked views, so this
+physical host is not part of the member navigation. A separate UI connector may
+move the database later if the API connection retains access after the move.
 
-It writes resolved IDs to GITHUB_ENV when available, so the following workflow
-step can run member_presentation_sync.py without hard-coded destination IDs.
+Resolved IDs are written to GITHUB_ENV so the following workflow step can sync
+without hard-coded destination IDs.
 """
 from __future__ import annotations
 
@@ -22,6 +22,10 @@ import decision_intelligence
 
 TITLE = os.environ.get("MEMBER_PRESENTATION_DB_TITLE", "AI・技術一覧｜判断DB").strip()
 DESCRIPTION = "会員向けの判断専用DB。内部Factory項目を分離し、日本語の判断情報だけを表示します。"
+PARENT_PAGE_ID = os.environ.get(
+    "MEMBER_PRESENTATION_PARENT_PAGE_ID",
+    "3c5479ff-dca9-8178-867c-d9249a3ff5c8",
+).strip()
 
 
 def _headers() -> dict[str, str]:
@@ -81,7 +85,10 @@ def _properties_schema() -> dict[str, Any]:
 
 def _plain_title(obj: dict[str, Any]) -> str:
     title = obj.get("title") or []
-    return "".join(str(x.get("plain_text") or ((x.get("text") or {}).get("content")) or "") for x in title).strip()
+    return "".join(
+        str(x.get("plain_text") or ((x.get("text") or {}).get("content")) or "")
+        for x in title
+    ).strip()
 
 
 def _search_existing() -> tuple[str, str] | None:
@@ -93,9 +100,7 @@ def _search_existing() -> tuple[str, str] | None:
     )
     res.raise_for_status()
     for item in res.json().get("results") or []:
-        if item.get("object") != "data_source":
-            continue
-        if _plain_title(item) != TITLE:
+        if item.get("object") != "data_source" or _plain_title(item) != TITLE:
             continue
         ds_id = str(item.get("id") or "").strip()
         parent = item.get("parent") or {}
@@ -109,16 +114,24 @@ def _search_existing() -> tuple[str, str] | None:
                 timeout=20,
             )
             detail.raise_for_status()
-            parent = detail.json().get("parent") or {}
-            db_id = str(parent.get("database_id") or "").strip()
+            db_id = str((detail.json().get("parent") or {}).get("database_id") or "").strip()
             if db_id:
                 return db_id, ds_id
     return None
 
 
 def _create() -> tuple[str, str]:
+    if not PARENT_PAGE_ID:
+        raise ValueError("MEMBER_PRESENTATION_PARENT_PAGE_ID is required for an internal Notion integration")
+    host = requests.get(
+        f"https://api.notion.com/v1/pages/{PARENT_PAGE_ID}",
+        headers=_headers(),
+        timeout=20,
+    )
+    if host.status_code != 200:
+        raise RuntimeError(f"Member presentation parent is not API-accessible: HTTP {host.status_code}")
     payload = {
-        "parent": {"type": "workspace", "workspace": True},
+        "parent": {"type": "page_id", "page_id": PARENT_PAGE_ID},
         "title": _text(TITLE),
         "description": _text(DESCRIPTION),
         "is_inline": False,
@@ -147,7 +160,9 @@ def _create() -> tuple[str, str]:
         sources = detail.json().get("data_sources") or []
         ds_id = str((sources[0] if sources else {}).get("id") or "").strip()
     if not db_id or not ds_id:
-        raise RuntimeError(f"Member presentation DB created but IDs were incomplete: database={db_id!r} data_source={ds_id!r}")
+        raise RuntimeError(
+            f"Member presentation DB created but IDs were incomplete: database={db_id!r} data_source={ds_id!r}"
+        )
     return db_id, ds_id
 
 
@@ -166,15 +181,15 @@ def provision() -> dict[str, Any]:
     existing = _search_existing()
     created = existing is None
     db_id, ds_id = existing or _create()
-    # A second read is intentional: creation success is not enough; the same API
-    # connection must be able to resolve the new data source before we sync rows.
     verify = requests.get(
         f"https://api.notion.com/v1/data_sources/{ds_id}",
         headers=_headers(),
         timeout=20,
     )
     if verify.status_code != 200:
-        raise RuntimeError(f"Member presentation data source is not readable after provision: {verify.status_code}")
+        raise RuntimeError(
+            f"Member presentation data source is not readable after provision: {verify.status_code}"
+        )
     _write_env(db_id, ds_id)
     return {"created": created, "database_id": db_id, "data_source_id": ds_id}
 
