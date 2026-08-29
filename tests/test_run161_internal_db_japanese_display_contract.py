@@ -1,8 +1,8 @@
-"""Run161 regression: internal Notion DB Japanese display is presentation-only.
+"""Run165 supersedes Run161's presentation-only contract.
 
-The production write contract must keep using the existing English properties.
-Japanese columns are Notion formula/view aliases and therefore must never become
-required write properties or trigger row rewrites / model calls.
+Internal Notion databases now use Japanese physical property names as the
+production write contract.  Existing Japanese formula/display aliases remain
+presentation helpers and must not collide with the physical backend fields.
 """
 
 import unittest
@@ -10,12 +10,30 @@ import unittest
 import decision_intelligence as di
 
 
-class Run161InternalDbJapaneseDisplayContractTests(unittest.TestCase):
-    def test_backend_contract_keeps_canonical_english_properties(self):
-        # Only assert fields that are part of the established required schema.
-        # Plain Summary / Topic Trigger are enrichment fields and intentionally
-        # are not required by TECH_REQUIRED_PROPERTY_TYPES.
+class Run165InternalDbJapaneseSchemaContractTests(unittest.TestCase):
+    def test_backend_contract_uses_japanese_physical_properties(self):
         expected = {
+            "技術・プロジェクト名",
+            "採用スコア（内部）",
+            "採用判断（内部）",
+            "根拠信頼度（内部）",
+            "実用準備度（内部）",
+            "主リスク（内部）",
+            "向いている用途（内部）",
+            "向いていない用途（内部）",
+            "判断理由（内部）",
+            "分野（内部）",
+            "初回発見日（内部）",
+            "最終レビュー日（内部）",
+            "スコア変化",
+            "公式URL",
+            "関連記事（内部）",
+            "一次情報URL（内部）",
+        }
+        self.assertTrue(expected.issubset(di.TECH_REQUIRED_PROPERTY_TYPES))
+
+    def test_old_english_canonical_names_are_no_longer_required(self):
+        old_english = {
             "Technology / Project Name",
             "Adoption Score",
             "Adoption Status",
@@ -33,9 +51,9 @@ class Run161InternalDbJapaneseDisplayContractTests(unittest.TestCase):
             "Related Article",
             "Primary Evidence URLs",
         }
-        self.assertTrue(expected.issubset(di.TECH_REQUIRED_PROPERTY_TYPES))
+        self.assertTrue(old_english.isdisjoint(di.TECH_REQUIRED_PROPERTY_TYPES))
 
-    def test_japanese_display_aliases_are_not_required_write_properties(self):
+    def test_display_aliases_remain_distinct_from_backend_fields(self):
         display_only = {
             "AI・技術名",
             "判断スコア",
