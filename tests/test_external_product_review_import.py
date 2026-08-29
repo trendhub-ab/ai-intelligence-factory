@@ -64,6 +64,32 @@ class Run153ExternalReviewImportTests(unittest.TestCase):
         persist.assert_not_called()
 
     @patch.object(ext, "_prepare_verified_evidence")
+    def test_explicit_eol_context_blocks_positive_adoption_before_evidence_fetch(self, prepare):
+        row = json.loads(json.dumps(ROW, ensure_ascii=False))
+        row["decision_context"] = {
+            "plain_summary": "このプロジェクトは従来のAIエージェント基盤です。公式一次情報でリポジトリがArchivedになったことを明示しています。",
+            "topic_trigger": "Archived後の新規導入可否を再評価し、現在の保守状況と移行判断を会員向けに明確化します。",
+        }
+        row["review"]["adoption_status"] = "ADOPT"
+        row["review"]["production_readiness"] = "HIGH"
+        result = ext.process_row(row, apply=True)
+        self.assertEqual(result["status"], "invalid_lifecycle_consistency")
+        self.assertFalse(result["saved"])
+        self.assertTrue(any("lifecycle contradiction" in f for f in result["failures"]))
+        prepare.assert_not_called()
+
+    def test_explicit_eol_context_allows_avoid_low(self):
+        row = json.loads(json.dumps(ROW, ensure_ascii=False))
+        row["decision_context"] = {
+            "plain_summary": "このプロジェクトは従来のAIエージェント基盤です。公式一次情報でリポジトリがArchivedになったことを明示しています。",
+            "topic_trigger": "Archived後は新規採用ではなく既存資産の移行判断として評価します。",
+        }
+        row["review"]["adoption_status"] = "AVOID"
+        row["review"]["production_readiness"] = "LOW"
+        parsed = ext.pipeline._parse_product_review_response(row["review"])
+        self.assertEqual([], ext.validate_lifecycle_consistency(row, parsed))
+
+    @patch.object(ext, "_prepare_verified_evidence")
     def test_insufficient_evidence_fails_before_write(self, prepare):
         prepare.return_value = (
             {"context": ""},
