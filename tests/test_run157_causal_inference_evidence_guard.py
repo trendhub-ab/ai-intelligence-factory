@@ -1,6 +1,7 @@
 import os
 import unittest
 
+# Run157 protects publication quality without adding provider/API calls.
 os.environ.setdefault("SYNTHETIC_REGRESSION_MODE", "true")
 
 import pipeline
