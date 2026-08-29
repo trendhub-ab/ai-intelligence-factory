@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   audit:
-    if: contains(github.event.head_commit.message, 'RUN164 AUDIT UNSEEN CANDIDATES')
+    if: contains(github.event.head_commit.message, 'RUN164 AUDIT CURATED GITHUB GAPS')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,80 +21,79 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Read-only expanded portfolio plan
+      - name: Compare curated AI repos with current Technology Intelligence DB
         env:
-          TZ: Asia/Tokyo
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
           NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
-          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
-          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python portfolio_inventory_bootstrap.py plan --target 300 --min-sellable 150
-      - name: Extract candidates not reviewed in Run164 batches 1-10
-        run: |
+          mkdir -p inventory_bootstrap_artifacts
           python - <<'PY'
-          import glob, json, os
-          from urllib.parse import urlsplit, urlunsplit
+          import json, os, requests
 
-          def norm(url):
-              url = (url or '').strip()
-              if not url:
-                  return ''
-              p = urlsplit(url)
-              path = p.path.rstrip('/') or '/'
-              return urlunsplit((p.scheme.lower(), p.netloc.lower(), path, p.query, ''))
-
-          plan_files = sorted(glob.glob('inventory_bootstrap_artifacts/*_inventory_bootstrap_plan.json'))
-          if not plan_files:
-              raise SystemExit('plan artifact missing')
-          plan = json.load(open(plan_files[-1], encoding='utf-8'))
-
-          seen = set()
-          reviewed = 0
-          for path in sorted(glob.glob('external_reviews/run164_batch*.json')):
-              base = os.path.basename(path)
-              if not base.startswith('run164_batch'):
-                  continue
-              try:
-                  n = int(base.split('batch',1)[1].split('.',1)[0])
-              except Exception:
-                  continue
-              if not 1 <= n <= 10:
-                  continue
-              data = json.load(open(path, encoding='utf-8'))
-              for r in data.get('reviews', []):
-                  u = norm(r.get('primary_url') or r.get('url'))
-                  if u:
-                      seen.add(u)
-                      reviewed += 1
-
-          unseen = []
-          for item in plan.get('planned', []):
-              u = norm(item.get('primary_url'))
-              if u and u not in seen:
-                  unseen.append(item)
-
-          out = {
-              'zero_gemini_calls': True,
-              'planned_count': len(plan.get('planned', [])),
-              'reviewed_rows_scanned': reviewed,
-              'unique_reviewed_urls': len(seen),
-              'unseen_count': len(unseen),
-              'unseen': unseen,
-          }
-          out_path = 'inventory_bootstrap_artifacts/run164_unseen_candidates.json'
-          with open(out_path, 'w', encoding='utf-8') as f:
-              json.dump(out, f, ensure_ascii=False, indent=2)
-          print(json.dumps(out, ensure_ascii=False, indent=2))
+          curated = [
+            'microsoft/agent-framework',
+            'opensearch-project/agent-health',
+            'comet-ml/opik',
+            'HKUDS/nanobot',
+            'ag2ai/ag2',
+            'Agenta-AI/agenta',
+            'demml/scouter',
+            'tuliplabs-ai/tulip-agents',
+            'pydantic/pydantic-ai',
+            'BerriAI/litellm',
+            'huggingface/smolagents',
+            'browser-use/browser-use',
+            'NVIDIA/NeMo-Guardrails',
+            'confident-ai/deepeval',
+            'openai/evals',
+            'langchain-ai/langgraph',
+            'microsoft/semantic-kernel',
+            'run-llama/llama_index',
+            'instructor-ai/instructor',
+            'vllm-project/vllm',
+            'google/adk-python',
+            'modelcontextprotocol/python-sdk',
+            'modelcontextprotocol/servers',
+            'openai/openai-agents-python',
+            'microsoft/playwright-mcp',
+            'getsentry/sentry-mcp',
+          ]
+          token = os.environ['NOTION_DECISION_INTELLIGENCE_API_KEY']
+          ds = os.environ.get('NOTION_TECH_DATA_SOURCE_ID','').strip()
+          db = os.environ.get('NOTION_TECH_DATABASE_ID','').strip()
+          url = f'https://api.notion.com/v1/data_sources/{ds}/query' if ds else f'https://api.notion.com/v1/databases/{db}/query'
+          headers = {'Authorization':f'Bearer {token}','Content-Type':'application/json','Notion-Version':os.environ.get('NOTION_API_VERSION','2026-03-11')}
+          existing = set()
+          cursor = None
+          pages = 0
+          while True:
+              payload = {'page_size':100}
+              if cursor: payload['start_cursor'] = cursor
+              r = requests.post(url, headers=headers, json=payload, timeout=30)
+              r.raise_for_status()
+              data = r.json(); pages += 1
+              for p in data.get('results',[]):
+                  prop = (p.get('properties') or {}).get('Canonical Entity ID') or {}
+                  txt = ''.join(x.get('plain_text','') for x in prop.get('rich_text',[])).strip().lower()
+                  if txt: existing.add(txt)
+              if not data.get('has_more'): break
+              cursor = data.get('next_cursor')
+          rows = []
+          for repo in curated:
+              cid = 'github:' + repo.lower()
+              rows.append({'repo':repo,'canonical_entity_id':cid,'exists':cid in existing})
+          out = {'zero_gemini_calls':True,'db_entity_count':len(existing),'query_pages':pages,'curated_count':len(rows),'missing_count':sum(not x['exists'] for x in rows),'rows':rows}
+          with open('inventory_bootstrap_artifacts/run164_curated_github_gaps.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps(out,ensure_ascii=False,indent=2))
           PY
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-unseen-candidates-${{ github.run_id }}
+          name: run164-curated-github-gaps-${{ github.run_id }}
           path: inventory_bootstrap_artifacts/
           if-no-files-found: error
           retention-days: 30
