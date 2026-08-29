@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from editorial_eyecatch import (
+    balanced_headline_lines,
     editorial_hook_from_title,
     editorial_subheadline,
     generate_note_editorial_eyecatch,
@@ -21,6 +22,14 @@ class Run150EditorialEyecatchTests(unittest.TestCase):
         self.assertEqual(infer_editorial_category("新しい脆弱性への対策", "security update", "ArXiv"), "SECURITY")
         self.assertEqual(infer_editorial_category("GPU推論を高速化", "serving latency", "HackerNews"), "MODELS")
         self.assertNotEqual(infer_editorial_category("AIエージェント同士が仕事を分担", "", "GitHub"), "GitHub")
+        # Discovery source alone must never become a public editorial category.
+        self.assertEqual(infer_editorial_category("新しい利用体験", "日常作業をもっと簡単にする", "GitHub"), "AI & TECH")
+
+    def test_balanced_headline_prefers_natural_japanese_break(self):
+        self.assertEqual(
+            balanced_headline_lines("AIに“同僚”ができ始めた。"),
+            ["AIに“同僚”が", "でき始めた。"],
+        )
 
     def test_public_copy_does_not_surface_internal_decision_metrics(self):
         hook = editorial_hook_from_title("【Decision Score: 88】AIに“同僚”ができ始めた。 WATCH")
