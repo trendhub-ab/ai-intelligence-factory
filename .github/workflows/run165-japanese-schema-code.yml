@@ -29,8 +29,8 @@ jobs:
               p = Path(path)
               text = p.read_text(encoding='utf-8')
               for var, new in mapping.items():
-                  pat = rf'(?m)^({re.escape(var)}\s*=\s*)[\"\'][^\"\']*[\"\']'
-                  text2, n = re.subn(pat, lambda m: m.group(1) + repr(new), text, count=1)
+                  pat = rf'(?m)(^|;\s*)({re.escape(var)}\s*=\s*)[\"\'][^\"\']*[\"\']'
+                  text2, n = re.subn(pat, lambda m: m.group(1) + m.group(2) + repr(new), text, count=1)
                   if n != 1:
                       raise SystemExit(f'{path}: expected one assignment for {var}, found {n}')
                   text = text2
