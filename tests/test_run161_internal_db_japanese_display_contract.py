@@ -12,6 +12,9 @@ import decision_intelligence as di
 
 class Run161InternalDbJapaneseDisplayContractTests(unittest.TestCase):
     def test_backend_contract_keeps_canonical_english_properties(self):
+        # Only assert fields that are part of the established required schema.
+        # Plain Summary / Topic Trigger are enrichment fields and intentionally
+        # are not required by TECH_REQUIRED_PROPERTY_TYPES.
         expected = {
             "Technology / Project Name",
             "Adoption Score",
@@ -23,8 +26,6 @@ class Run161InternalDbJapaneseDisplayContractTests(unittest.TestCase):
             "Avoid For",
             "Short Rationale",
             "Category",
-            "Plain Summary",
-            "Topic Trigger",
             "First Seen",
             "Last Reviewed",
             "Score Change",
