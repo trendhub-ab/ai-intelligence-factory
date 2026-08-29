@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Apply Run157 patch
-        run: python _run157_apply.py
+        run: python _run157_apply.py && python _run157_postpatch.py
       - name: Compile
         run: python -m py_compile pipeline.py tests/test_run157_causal_inference_evidence_guard.py
       - name: Focused Run157 tests
@@ -37,9 +37,9 @@ jobs:
       - name: Commit validated production patch
         shell: bash
         run: |
-          rm -f _run157_apply.py .github/workflows/run157-causal-guard-apply.yml
+          rm -f _run157_apply.py _run157_postpatch.py .github/workflows/run157-causal-guard-apply.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pipeline.py tests/test_run157_causal_inference_evidence_guard.py _run157_apply.py .github/workflows/run157-causal-guard-apply.yml
+          git add pipeline.py tests/test_run157_causal_inference_evidence_guard.py _run157_apply.py _run157_postpatch.py .github/workflows/run157-causal-guard-apply.yml
           git commit -m "fix: block causal and ROI evidence overclaims"
           git push origin HEAD:fix/run157-causal-inference-evidence-guard
