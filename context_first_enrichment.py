@@ -1,25 +1,32 @@
 #!/usr/bin/env python3
 """Run132 Context-First enrichment for Decision Intelligence.
 
-This module adds the two reader-facing context fields that should come before a
-score or recommendation:
+This module adds the reader-facing context that should come before a score or
+recommendation and maintains a durable member-facing change highlight:
 
 - Plain Summary  -> member formula: 「これは何？」
 - Topic Trigger  -> member formula: 「今回の話題」
+- Member Score Change / At / Reason -> member formulas for durable change display
 
 Design constraints:
-- ZERO Gemini requests. It only reuses already-persisted Product Review state.
+- ZERO Gemini requests. It only reuses already-persisted Product Review state and
+  append-only Decision History.
 - Never changes Adoption/Evidence/History semantics.
-- Never clears a subscriber value when the internal value is blank.
+- Never clears a subscriber value when the internal/history value is blank.
 - Preserve existing human-curated member copy. Plain Summary is only filled when
-  missing; Topic Trigger is refreshed only after an actual Product Review change.
+  missing; Topic Trigger is refreshed only after an actual Product Review.
+- A later no-change review must never erase an earlier meaningful score movement.
+- Within the current product month, keep the largest meaningful score movement so
+  a later smaller/no-change review cannot hide a major movement from members.
 - Fail closed when the required Notion properties are missing, so a Daily run
-  cannot silently produce context-less member inventory.
+  cannot silently produce context-less or change-less member inventory.
 """
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -30,6 +37,9 @@ TECH_PROP_PLAIN_SUMMARY = "Plain Summary"
 TECH_PROP_TOPIC_TRIGGER = "Topic Trigger"
 SUB_PROP_PLAIN_SUMMARY = "Plain Summary"
 SUB_PROP_TOPIC_TRIGGER = "Topic Trigger"
+SUB_PROP_MEMBER_SCORE_CHANGE = "Member Score Change"
+SUB_PROP_MEMBER_CHANGE_AT = "Member Change At"
+SUB_PROP_MEMBER_CHANGE_REASON = "Member Change Reason"
 
 _CATEGORY_SUMMARY = {
     "MODEL": "{name}は、文章生成や推論などに使われるAIモデル・モデル技術です。",
@@ -68,11 +78,24 @@ def _date(prop: dict | None) -> str | None:
     return ((prop or {}).get("date") or {}).get("start")
 
 
+def _number(prop: dict | None) -> int | float | None:
+    value = (prop or {}).get("number")
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
 def _rt(value: str) -> dict:
     value = str(value or "").strip()[:2000]
     if not value:
         return {"rich_text": []}
     return {"rich_text": [{"type": "text", "text": {"content": value}}]}
+
+
+def _date_prop(value: str | None) -> dict:
+    return {"date": {"start": value}} if value else {"date": None}
+
+
+def _number_prop(value: int | float | None) -> dict:
+    return {"number": value if isinstance(value, (int, float)) and not isinstance(value, bool) else None}
 
 
 def _clean_sentence(value: str, *, limit: int = 260) -> str:
@@ -172,7 +195,91 @@ def _subscriber_context(page: dict) -> dict[str, Any]:
         "entity_id": _text(props.get(decision_intelligence.SUB_PROP_ENTITY_ID)),
         "plain_summary": _text(props.get(SUB_PROP_PLAIN_SUMMARY)),
         "topic_trigger": _text(props.get(SUB_PROP_TOPIC_TRIGGER)),
+        "member_score_change": _number(props.get(SUB_PROP_MEMBER_SCORE_CHANGE)),
+        "member_change_at": _date(props.get(SUB_PROP_MEMBER_CHANGE_AT)),
+        "member_change_reason": _text(props.get(SUB_PROP_MEMBER_CHANGE_REASON)),
     }
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except (TypeError, ValueError):
+        return None
+
+
+def _member_change_highlights(events: list[dict[str, Any]], *, now: datetime | None = None) -> dict[str, dict[str, Any]]:
+    """Select one durable member-facing score movement per entity.
+
+    Decision History is authoritative. Only CHANGE events whose score moved by at
+    least the product meaningful threshold qualify. During the current product
+    month, the largest absolute movement wins (latest wins ties), so +25 followed
+    by +6 or 0 cannot hide the +25 from the monthly member view. If an entity has no
+    qualifying movement this month, its latest historical meaningful movement is
+    retained for durable detail-page context.
+    """
+    tz = ZoneInfo(decision_intelligence.PRODUCT_TIMEZONE)
+    now_local = (now or datetime.now(timezone.utc)).astimezone(tz)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        if str(event.get("snapshot_type") or "").upper() != "CHANGE":
+            continue
+        delta = event.get("score_delta")
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool):
+            continue
+        if abs(float(delta)) < decision_intelligence.MEANINGFUL_SCORE_DELTA:
+            continue
+        entity_id = str(event.get("canonical_entity_id") or "").strip()
+        reviewed = _parse_datetime(event.get("reviewed_at"))
+        if not entity_id or reviewed is None:
+            continue
+        normalized = dict(event)
+        normalized["_reviewed_dt"] = reviewed
+        grouped.setdefault(entity_id, []).append(normalized)
+
+    selected: dict[str, dict[str, Any]] = {}
+    for entity_id, candidates in grouped.items():
+        this_month = []
+        for event in candidates:
+            local = event["_reviewed_dt"].astimezone(tz)
+            if (local.year, local.month) == (now_local.year, now_local.month):
+                this_month.append(event)
+        if this_month:
+            winner = max(
+                this_month,
+                key=lambda e: (abs(float(e.get("score_delta") or 0)), e["_reviewed_dt"]),
+            )
+        else:
+            winner = max(candidates, key=lambda e: e["_reviewed_dt"])
+        winner = dict(winner)
+        winner.pop("_reviewed_dt", None)
+        selected[entity_id] = winner
+    return selected
+
+
+def _same_instant(left: str | None, right: str | None) -> bool:
+    a, b = _parse_datetime(left), _parse_datetime(right)
+    if a is None or b is None:
+        return bool(left and right and left == right)
+    return a.astimezone(timezone.utc) == b.astimezone(timezone.utc)
+
+
+def _member_change_reason(event: dict[str, Any], desired: dict[str, Any] | None) -> str:
+    """Use natural current-review context when safe; otherwise preserve factual History wording."""
+    desired = desired or {}
+    if _same_instant(event.get("reviewed_at"), desired.get("last_reviewed")):
+        topic = str(desired.get("topic_trigger") or "").strip()
+        if topic:
+            return topic
+    reason = str(event.get("change_reason") or "").strip()
+    if reason and reason != "No meaningful decision change":
+        return reason
+    return ""
 
 
 def _schema_properties(data_source_id: str, database_id: str, label: str) -> dict:
@@ -208,8 +315,29 @@ def _require_context_columns(properties: dict, label: str) -> None:
         raise ValueError(f"Run132 {label} schema incompatible: " + " / ".join(parts))
 
 
+def _require_member_change_columns(properties: dict, label: str) -> None:
+    expected = {
+        SUB_PROP_MEMBER_SCORE_CHANGE: "number",
+        SUB_PROP_MEMBER_CHANGE_AT: "date",
+        SUB_PROP_MEMBER_CHANGE_REASON: "rich_text",
+    }
+    missing = [name for name in expected if name not in properties]
+    wrong = [
+        f"{name}:{(properties.get(name) or {}).get('type')}"
+        for name, expected_type in expected.items()
+        if name in properties and (properties.get(name) or {}).get("type") != expected_type
+    ]
+    if missing or wrong:
+        parts = []
+        if missing:
+            parts.append("missing=" + ", ".join(missing))
+        if wrong:
+            parts.append("type=" + ", ".join(wrong))
+        raise ValueError(f"Run132 {label} member-change schema incompatible: " + " / ".join(parts))
+
+
 def preflight_context_first_schema() -> None:
-    """Fail before Product Review if the context fields cannot be persisted."""
+    """Fail before Product Review if reader-facing context/change fields cannot be persisted."""
     if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
         return
     tech = _schema_properties(
@@ -226,6 +354,7 @@ def preflight_context_first_schema() -> None:
             "Subscriber Technology DB",
         )
         _require_context_columns(sub, "Subscriber Technology DB")
+        _require_member_change_columns(sub, "Subscriber Technology DB")
 
 
 def _patch_context(page_id: str, properties: dict[str, dict], label: str) -> None:
@@ -242,12 +371,16 @@ def _patch_context(page_id: str, properties: dict[str, dict], label: str) -> Non
 
 
 def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None) -> dict[str, Any]:
-    """Backfill/refresh reader context and safely mirror it to subscriber inventory.
+    """Backfill/refresh reader context and durable change memory for member inventory.
 
     `previous_reviewed` is the snapshot captured immediately before Product Review.
     When it is unavailable, existing Topic Trigger copy is preserved rather than
     assuming every record was just reviewed. Existing member Plain Summary is never
-    overwritten, and empty internal values are never propagated to members.
+    overwritten, and empty internal/history values are never propagated to members.
+
+    Durable member change fields are rebuilt from append-only Decision History, not
+    from the mutable current `Score Change`, so later no-change reviews cannot erase
+    a change members still need to understand.
     """
     if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
         return {"enabled": False, "reason": "decision_intelligence_disabled"}
@@ -297,12 +430,25 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
             "plain_summary": plain,
             "topic_trigger": topic,
             "reviewed_now": reviewed_now,
+            "last_reviewed": state.get("last_reviewed"),
         }
+
+    member_highlights: dict[str, dict[str, Any]] = {}
+    history_configured = bool(
+        decision_intelligence.NOTION_HISTORY_DATA_SOURCE_ID
+        or decision_intelligence.NOTION_HISTORY_DATABASE_ID
+    )
+    if decision_intelligence.ENABLE_SUBSCRIBER_TECH_SYNC and history_configured:
+        history_pages = decision_intelligence.query_history_records(max_records=10000)
+        history_events = [decision_intelligence.history_page_to_state(page) for page in history_pages]
+        member_highlights = _member_change_highlights(history_events)
 
     subscriber_sync = {"enabled": False}
     subscriber_updated = 0
     subscriber_preserved = 0
     subscriber_missing = 0
+    member_change_updated = 0
+    member_change_preserved = 0
 
     if decision_intelligence.ENABLE_SUBSCRIBER_TECH_SYNC:
         subscriber_sync = decision_intelligence.sync_subscriber_technology_db()
@@ -323,7 +469,7 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
             if not current:
                 subscriber_missing += 1
                 continue
-            patch = {}
+            patch: dict[str, dict] = {}
             if desired["plain_summary"] and not current.get("plain_summary"):
                 patch[SUB_PROP_PLAIN_SUMMARY] = _rt(desired["plain_summary"])
             if desired["topic_trigger"] and (
@@ -334,6 +480,39 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
                 )
             ):
                 patch[SUB_PROP_TOPIC_TRIGGER] = _rt(desired["topic_trigger"])
+
+            highlight = member_highlights.get(entity_id)
+            if highlight:
+                change_score = highlight.get("score_delta")
+                change_at = str(highlight.get("reviewed_at") or "").strip()
+                same_change = (
+                    current.get("member_score_change") == change_score
+                    and _same_instant(current.get("member_change_at"), change_at)
+                )
+                if not same_change:
+                    patch[SUB_PROP_MEMBER_SCORE_CHANGE] = _number_prop(change_score)
+                    patch[SUB_PROP_MEMBER_CHANGE_AT] = _date_prop(change_at)
+                    reason = _member_change_reason(highlight, desired)
+                    if reason:
+                        patch[SUB_PROP_MEMBER_CHANGE_REASON] = _rt(reason)
+                    member_change_updated += 1
+                elif not current.get("member_change_reason"):
+                    reason = _member_change_reason(highlight, desired)
+                    if reason:
+                        patch[SUB_PROP_MEMBER_CHANGE_REASON] = _rt(reason)
+                        member_change_updated += 1
+                    else:
+                        member_change_preserved += 1
+                else:
+                    # Keep the original explanation for the selected event. In particular,
+                    # do not replace a natural reason with mechanical History wording on a
+                    # later no-change run.
+                    member_change_preserved += 1
+            elif current.get("member_score_change") is not None:
+                # History is authoritative but absence of a qualifying event is not permission
+                # to erase existing member copy. Preserve rather than guessing/clearing.
+                member_change_preserved += 1
+
             if patch:
                 _patch_context(current["page_id"], patch, "Subscriber Technology")
                 subscriber_updated += 1
@@ -349,5 +528,8 @@ def enrich_context_first(previous_reviewed: dict[str, str | None] | None = None)
         "subscriber_updated": subscriber_updated,
         "subscriber_preserved": subscriber_preserved,
         "subscriber_missing": subscriber_missing,
+        "member_change_candidates": len(member_highlights),
+        "member_change_updated": member_change_updated,
+        "member_change_preserved": member_change_preserved,
         "subscriber_sync": subscriber_sync,
     }
