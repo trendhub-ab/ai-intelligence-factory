@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   audit:
-    if: contains(github.event.head_commit.message, 'RUN164 AUDIT CURATED GITHUB GAPS')
+    if: contains(github.event.head_commit.message, 'RUN164 AUDIT B12 CANONICAL')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,7 +21,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Compare curated AI repos with current Technology Intelligence DB
+      - name: Confirm Batch12 canonical gaps
         env:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
@@ -31,69 +31,45 @@ jobs:
           mkdir -p inventory_bootstrap_artifacts
           python - <<'PY'
           import json, os, requests
-
           curated = [
             'microsoft/agent-framework',
             'opensearch-project/agent-health',
             'comet-ml/opik',
-            'HKUDS/nanobot',
             'ag2ai/ag2',
-            'Agenta-AI/agenta',
-            'demml/scouter',
-            'tuliplabs-ai/tulip-agents',
-            'pydantic/pydantic-ai',
             'BerriAI/litellm',
-            'huggingface/smolagents',
-            'browser-use/browser-use',
-            'NVIDIA/NeMo-Guardrails',
+            'NVIDIA-NeMo/Guardrails',
             'confident-ai/deepeval',
-            'openai/evals',
-            'langchain-ai/langgraph',
-            'microsoft/semantic-kernel',
-            'run-llama/llama_index',
-            'instructor-ai/instructor',
-            'vllm-project/vllm',
             'google/adk-python',
             'modelcontextprotocol/python-sdk',
-            'modelcontextprotocol/servers',
-            'openai/openai-agents-python',
             'microsoft/playwright-mcp',
             'getsentry/sentry-mcp',
+            'run-llama/llama_index',
+            '567-labs/instructor',
           ]
-          token = os.environ['NOTION_DECISION_INTELLIGENCE_API_KEY']
-          ds = os.environ.get('NOTION_TECH_DATA_SOURCE_ID','').strip()
-          db = os.environ.get('NOTION_TECH_DATABASE_ID','').strip()
-          url = f'https://api.notion.com/v1/data_sources/{ds}/query' if ds else f'https://api.notion.com/v1/databases/{db}/query'
-          headers = {'Authorization':f'Bearer {token}','Content-Type':'application/json','Notion-Version':os.environ.get('NOTION_API_VERSION','2026-03-11')}
-          existing = set()
-          cursor = None
-          pages = 0
+          token=os.environ['NOTION_DECISION_INTELLIGENCE_API_KEY']; ds=os.environ.get('NOTION_TECH_DATA_SOURCE_ID','').strip(); db=os.environ.get('NOTION_TECH_DATABASE_ID','').strip()
+          url=f'https://api.notion.com/v1/data_sources/{ds}/query' if ds else f'https://api.notion.com/v1/databases/{db}/query'
+          headers={'Authorization':f'Bearer {token}','Content-Type':'application/json','Notion-Version':os.environ.get('NOTION_API_VERSION','2026-03-11')}
+          existing=set(); cursor=None
           while True:
-              payload = {'page_size':100}
-              if cursor: payload['start_cursor'] = cursor
-              r = requests.post(url, headers=headers, json=payload, timeout=30)
-              r.raise_for_status()
-              data = r.json(); pages += 1
+              payload={'page_size':100}
+              if cursor: payload['start_cursor']=cursor
+              r=requests.post(url,headers=headers,json=payload,timeout=30); r.raise_for_status(); data=r.json()
               for p in data.get('results',[]):
-                  prop = (p.get('properties') or {}).get('Canonical Entity ID') or {}
-                  txt = ''.join(x.get('plain_text','') for x in prop.get('rich_text',[])).strip().lower()
+                  prop=(p.get('properties') or {}).get('Canonical Entity ID') or {}
+                  txt=''.join(x.get('plain_text','') for x in prop.get('rich_text',[])).strip().lower()
                   if txt: existing.add(txt)
               if not data.get('has_more'): break
-              cursor = data.get('next_cursor')
-          rows = []
-          for repo in curated:
-              cid = 'github:' + repo.lower()
-              rows.append({'repo':repo,'canonical_entity_id':cid,'exists':cid in existing})
-          out = {'zero_gemini_calls':True,'db_entity_count':len(existing),'query_pages':pages,'curated_count':len(rows),'missing_count':sum(not x['exists'] for x in rows),'rows':rows}
-          with open('inventory_bootstrap_artifacts/run164_curated_github_gaps.json','w',encoding='utf-8') as f:
-              json.dump(out,f,ensure_ascii=False,indent=2)
+              cursor=data.get('next_cursor')
+          rows=[{'repo':r,'canonical_entity_id':'github:'+r.lower(),'exists':('github:'+r.lower()) in existing} for r in curated]
+          out={'zero_gemini_calls':True,'db_entity_count':len(existing),'candidate_count':len(rows),'missing_count':sum(not x['exists'] for x in rows),'rows':rows}
+          open('inventory_bootstrap_artifacts/run164_b12_canonical.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2))
           print(json.dumps(out,ensure_ascii=False,indent=2))
           PY
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-curated-github-gaps-${{ github.run_id }}
+          name: run164-b12-canonical-${{ github.run_id }}
           path: inventory_bootstrap_artifacts/
           if-no-files-found: error
           retention-days: 30
