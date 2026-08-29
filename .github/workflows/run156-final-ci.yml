@@ -1,0 +1,41 @@
+name: Run156 Final Regression
+
+on:
+  push:
+    branches: [feature/run156-paid-db-decision-density]
+    paths:
+      - .github/workflows/run156-final-ci.yml
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GEMINI_API_KEY: forbidden-run156-final-ci
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install production dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Focused Run156 and shared importer tests
+        run: python -m unittest -v tests.test_run156_decision_density tests.test_external_product_review_import
+      - name: Full production unittest suite
+        run: python -m unittest discover -s tests -v
+      - name: Regression harness self-test
+        run: python regression_suite.py --self-test
+      - name: Synthetic full regression
+        run: python regression_suite.py --bootstrap --full
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: run156-final-regression-${{ github.run_id }}
+          path: regression_suite_runs/
+          if-no-files-found: warn
+          retention-days: 14
