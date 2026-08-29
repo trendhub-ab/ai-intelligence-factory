@@ -1,0 +1,41 @@
+name: Run165.1 Subscriber Japanese Schema
+
+on:
+  push:
+    branches: [run165-1-subscriber-japanese-schema]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-test:
+    if: contains(github.event.head_commit.message, 'RUN165.1 TEST')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run165-1-subscriber-japanese-schema
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - run: python run165_1_subscriber_schema_migration.py
+      - run: python -m compileall -q decision_intelligence.py context_first_enrichment.py subscriber_decision_brief.py member_presentation_sync.py
+      - name: Full unittest
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Synthetic smoke
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          SYNTHETIC_REGRESSION_TIER: smoke
+        run: python pipeline.py
+      - name: Commit production changes
+        if: success()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add decision_intelligence.py context_first_enrichment.py subscriber_decision_brief.py member_presentation_sync.py tests/
+          git commit -m 'Run165.1: Japanese physical subscriber schema contract'
+          git push origin HEAD:run165-1-subscriber-japanese-schema

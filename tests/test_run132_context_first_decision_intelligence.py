@@ -127,55 +127,30 @@ class ContextFirstSyncTests(unittest.TestCase):
         )
 
     def test_existing_member_copy_is_preserved_when_not_reviewed(self):
-        internal = _internal_page(
-            plain="内部の説明。",
-            topic="内部の前回話題。",
-            reviewed="2026-08-28T00:00:00+00:00",
-        )
-        subscriber = _subscriber_page(
-            plain="会員向けに手で磨いた説明。",
-            topic="会員向けに手で磨いた話題。",
-        )
+        internal = _internal_page(plain="内部の説明。", topic="内部の前回話題。", reviewed="2026-08-28T00:00:00+00:00")
+        subscriber = _subscriber_page(plain="会員向けに手で磨いた説明。", topic="会員向けに手で磨いた話題。")
         p1, p2, p3, p4, p5, p6 = self._common_patches(internal, subscriber)
         with p1, p2, p3, p4, p5, p6 as patch_context:
             result = cfe.enrich_context_first({"tech-1": "2026-08-28T00:00:00+00:00"})
-
         patch_context.assert_not_called()
         self.assertEqual(result["subscriber_preserved"], 1)
         self.assertTrue(result["zero_gemini_calls"])
 
     def test_missing_review_snapshot_defaults_to_preserve_not_refresh(self):
-        internal = _internal_page(
-            plain="内部の説明。",
-            topic="内部の前回話題。",
-            reviewed="2026-08-29T00:00:00+00:00",
-        )
-        subscriber = _subscriber_page(
-            plain="会員向けに手で磨いた説明。",
-            topic="会員向けに手で磨いた話題。",
-        )
+        internal = _internal_page(plain="内部の説明。", topic="内部の前回話題。", reviewed="2026-08-29T00:00:00+00:00")
+        subscriber = _subscriber_page(plain="会員向けに手で磨いた説明。", topic="会員向けに手で磨いた話題。")
         p1, p2, p3, p4, p5, p6 = self._common_patches(internal, subscriber)
         with p1, p2, p3, p4, p5, p6 as patch_context:
             result = cfe.enrich_context_first(None)
-
         patch_context.assert_not_called()
         self.assertEqual(result["subscriber_preserved"], 1)
 
     def test_review_refreshes_topic_but_never_overwrites_member_plain_summary(self):
-        internal = _internal_page(
-            plain="内部の説明。",
-            topic="古い話題。",
-            reviewed="2026-08-29T00:00:00+00:00",
-            rationale="AIエージェントの評価機能が現在の判断材料になっている。",
-        )
-        subscriber = _subscriber_page(
-            plain="会員向けに手で磨いた説明。",
-            topic="古い会員向け話題。",
-        )
+        internal = _internal_page(plain="内部の説明。", topic="古い話題。", reviewed="2026-08-29T00:00:00+00:00", rationale="AIエージェントの評価機能が現在の判断材料になっている。")
+        subscriber = _subscriber_page(plain="会員向けに手で磨いた説明。", topic="古い会員向け話題。")
         p1, p2, p3, p4, p5, p6 = self._common_patches(internal, subscriber)
         with p1, p2, p3, p4, p5, p6 as patch_context:
             result = cfe.enrich_context_first({"tech-1": "2026-08-28T00:00:00+00:00"})
-
         self.assertEqual(patch_context.call_count, 2)
         internal_props = patch_context.call_args_list[0].args[1]
         subscriber_props = patch_context.call_args_list[1].args[1]
@@ -189,20 +164,13 @@ class ContextFirstSyncTests(unittest.TestCase):
         internal = _internal_page(plain="", topic="")
         subscriber = _subscriber_page(plain="既存説明。", topic="既存話題。")
         p1, p2, p3, p4, p5, p6 = self._common_patches(internal, subscriber)
-        with p1, p2, p3, p4, p5, p6 as patch_context, \
-             patch.object(cfe, "derive_plain_summary", return_value=""), \
-             patch.object(cfe, "derive_topic_trigger", return_value=""):
+        with p1, p2, p3, p4, p5, p6 as patch_context, patch.object(cfe, "derive_plain_summary", return_value=""), patch.object(cfe, "derive_topic_trigger", return_value=""):
             cfe.enrich_context_first({"tech-1": "2026-08-28T00:00:00+00:00"})
-
         patch_context.assert_not_called()
 
     def test_preflight_fails_closed_when_required_context_property_is_missing(self):
-        with patch.object(cfe.decision_intelligence, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
-             patch.object(cfe.decision_intelligence, "ENABLE_SUBSCRIBER_TECH_SYNC", False), \
-             patch.object(cfe, "_schema_properties", return_value={
-                 cfe.TECH_PROP_PLAIN_SUMMARY: {"type": "rich_text"},
-             }):
-            with self.assertRaisesRegex(ValueError, "Topic Trigger"):
+        with patch.object(cfe.decision_intelligence, "ENABLE_DECISION_INTELLIGENCE_DB", True), patch.object(cfe.decision_intelligence, "ENABLE_SUBSCRIBER_TECH_SYNC", False), patch.object(cfe, "_schema_properties", return_value={cfe.TECH_PROP_PLAIN_SUMMARY: {"type": "rich_text"}}):
+            with self.assertRaisesRegex(ValueError, "今回の話題（内部）"):
                 cfe.preflight_context_first_schema()
 
 
@@ -210,17 +178,8 @@ class DailyRun132IntegrationTests(unittest.TestCase):
     def test_context_enrichment_runs_even_when_product_review_budget_is_zero(self):
         state = {"canonical_entity_id": "tech-1", "last_reviewed": "2026-08-28T00:00:00+00:00"}
         output = io.StringIO()
-        with patch.object(daily.decision_intelligence, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
-             patch.object(daily, "DEFAULT_MAX_REVIEWS", 0), \
-             patch.object(daily, "DEFAULT_REQUEST_BUDGET", 0), \
-             patch.object(daily.decision_intelligence, "query_technology_records", return_value=[{"id": "p1"}]), \
-             patch.object(daily.decision_intelligence, "technology_page_to_state", return_value=state), \
-             patch.object(daily, "plan_daily_review_allowlist", return_value=[]), \
-             patch.object(daily.context_first_enrichment, "preflight_context_first_schema") as preflight, \
-             patch.object(daily.context_first_enrichment, "enrich_context_first", return_value={"enabled": True, "zero_gemini_calls": True}) as enrich, \
-             redirect_stdout(output):
+        with patch.object(daily.decision_intelligence, "ENABLE_DECISION_INTELLIGENCE_DB", True), patch.object(daily, "DEFAULT_MAX_REVIEWS", 0), patch.object(daily, "DEFAULT_REQUEST_BUDGET", 0), patch.object(daily.decision_intelligence, "query_technology_records", return_value=[{"id": "p1"}]), patch.object(daily.decision_intelligence, "technology_page_to_state", return_value=state), patch.object(daily, "plan_daily_review_allowlist", return_value=[]), patch.object(daily.context_first_enrichment, "preflight_context_first_schema") as preflight, patch.object(daily.context_first_enrichment, "enrich_context_first", return_value={"enabled": True, "zero_gemini_calls": True}) as enrich, redirect_stdout(output):
             rc = daily.main()
-
         self.assertEqual(rc, 0)
         preflight.assert_called_once_with()
         enrich.assert_called_once_with({"tech-1": "2026-08-28T00:00:00+00:00"})
