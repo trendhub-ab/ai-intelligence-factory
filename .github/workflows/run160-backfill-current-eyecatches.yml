@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   backfill:
-    if: "github.event.head_commit.message == 'chore: retry Run103 Editorial eyecatch backfill'"
+    if: "github.event.head_commit.message == 'chore: finalize Run103 Editorial eyecatch backfill'"
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout main
@@ -77,8 +77,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm .github/workflows/run160-backfill-current-eyecatches.yml
-          git add eyecatch_images/GLM-5_3_is_now_open-weight.png \
-                  eyecatch_images/Our_decision_on_Cursor_following_its_acquisition_by_SpaceX.png \
-                  eyecatch_images/Sophistication_in_GenAI_Use_Field_Evidence_from_a_Large_Firm.png
+          git add -f eyecatch_images/GLM-5_3_is_now_open-weight.png \
+                     eyecatch_images/Our_decision_on_Cursor_following_its_acquisition_by_SpaceX.png \
+                     eyecatch_images/Sophistication_in_GenAI_Use_Field_Evidence_from_a_Large_Firm.png
           git commit -m 'Run160: backfill current Editorial eyecatches'
           git push origin HEAD:main
