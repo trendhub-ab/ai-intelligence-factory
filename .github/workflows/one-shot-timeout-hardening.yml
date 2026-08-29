@@ -1,4 +1,4 @@
-name: One-shot Gemini Timeout Hardening
+name: One-shot Gemini Timeout Verification
 
 on:
   push:
@@ -6,51 +6,35 @@ on:
       - '.github/workflows/one-shot-timeout-hardening.yml'
 
 permissions:
-  contents: write
+  actions: write
+  contents: read
 
 jobs:
-  patch-and-test:
+  verify-and-dispatch:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Patch timeout handling and add regression tests
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('pipeline.py')
-          s = p.read_text(encoding='utf-8')
-          old_helper = '''class GeminiCallTimeoutError(TimeoutError):\n    pass\n\n\n@contextmanager\ndef _gemini_call_timeout(seconds: int):\n'''
-          new_helper = '''class GeminiCallTimeoutError(TimeoutError):\n    pass\n\n\ndef _is_gemini_transport_timeout(exc: Exception) -> bool:\n    \"\"\"Recognize SDK transport timeouts without importing httpx as a hard dependency.\n\n    SIGALRM can interrupt an httpx/httpcore read inside google-genai. Those layers may\n    translate our GeminiCallTimeoutError into their own ReadTimeout before control\n    returns to _call_model_pool. Only timeout-family transport exceptions are treated\n    as transient; unrelated exceptions must still fail loudly.\n    \"\"\"\n    if isinstance(exc, GeminiCallTimeoutError):\n        return True\n    module = str(getattr(exc.__class__, '__module__', '')).lower()\n    name = str(getattr(exc.__class__, '__name__', '')).lower()\n    return module.startswith(('httpx', 'httpcore')) and 'timeout' in name\n\n\n@contextmanager\ndef _gemini_call_timeout(seconds: int):\n'''
-          if s.count(old_helper) != 1:
-              raise SystemExit(f'helper anchor mismatch: {s.count(old_helper)}')
-          s = s.replace(old_helper, new_helper, 1)
-
-          old_catch = '''            except GeminiCallTimeoutError as exc:\n                last_error = exc\n                break\n    raise NoAvailableModelError(\"利用可能なGeminiモデルがありません\") from last_error\n'''
-          new_catch = '''            except GeminiCallTimeoutError as exc:\n                last_error = exc\n                logger.warning(\"[GEMINI TRANSIENT TIMEOUT] model=%s kind=%s error=%s; falling back\", model_name, kind, exc)\n                break\n            except Exception as exc:\n                if _is_gemini_transport_timeout(exc):\n                    last_error = exc\n                    logger.warning(\"[GEMINI TRANSIENT TIMEOUT] model=%s kind=%s error=%s; falling back\", model_name, kind, exc)\n                    break\n                raise\n    raise NoAvailableModelError(\"利用可能なGeminiモデルがありません\") from last_error\n'''
-          if s.count(old_catch) != 1:
-              raise SystemExit(f'catch anchor mismatch: {s.count(old_catch)}')
-          s = s.replace(old_catch, new_catch, 1)
-          p.write_text(s, encoding='utf-8')
-
-          test = Path('tests/test_run159_gemini_timeout_fallback.py')
-          test.write_text('''import unittest\nfrom unittest.mock import patch\n\nimport pipeline\n\n\nclass FakeHttpxReadTimeout(Exception):\n    pass\n\n\nFakeHttpxReadTimeout.__module__ = \"httpx\"\n\n\nclass TestGeminiTransportTimeoutFallback(unittest.TestCase):\n    def setUp(self):\n        pipeline.SESSION_EXHAUSTED_MODELS.clear()\n        pipeline.SESSION_UNAVAILABLE_MODELS.clear()\n\n    def test_httpx_timeout_is_recognized_but_runtime_error_is_not(self):\n        self.assertTrue(pipeline._is_gemini_transport_timeout(FakeHttpxReadTimeout(\"slow\")))\n        self.assertTrue(pipeline._is_gemini_transport_timeout(pipeline.GeminiCallTimeoutError(\"watchdog\")))\n        self.assertFalse(pipeline._is_gemini_transport_timeout(RuntimeError(\"bug\")))\n\n    def test_screening_timeout_falls_back_to_next_model(self):\n        sentinel = object()\n        with patch.object(\n            pipeline,\n            \"_generate_via_chat\",\n            side_effect=[FakeHttpxReadTimeout(\"Gemini call exceeded 60s\"), sentinel],\n        ) as generate:\n            response, model = pipeline._call_model_pool(\n                \"prompt\", None, \"screening_batch\", 0, [\"primary-lite\", \"fallback-lite\"],\n                deep_dive=False, request_context=\"test-timeout\",\n            )\n        self.assertIs(response, sentinel)\n        self.assertEqual(model, \"fallback-lite\")\n        self.assertEqual(generate.call_count, 2)\n\n    def test_unrelated_exception_still_fails_loudly(self):\n        with patch.object(pipeline, \"_generate_via_chat\", side_effect=RuntimeError(\"programming bug\")):\n            with self.assertRaisesRegex(RuntimeError, \"programming bug\"):\n                pipeline._call_model_pool(\n                    \"prompt\", None, \"screening_batch\", 0, [\"primary-lite\", \"fallback-lite\"],\n                    deep_dive=False, request_context=\"test-non-timeout\",\n                )\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n''', encoding='utf-8')
-          PY
       - name: Install production dependencies
-        run: pip install -r requirements.txt
-      - name: Run targeted timeout regression
-        run: python -m unittest tests/test_run159_gemini_timeout_fallback.py
-      - name: Run production safety tests
-        run: python -m unittest tests/test_pipeline_safety.py
-      - name: Commit hardening
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pipeline.py tests/test_run159_gemini_timeout_fallback.py
-          git commit -m 'Handle Gemini transport timeouts in model fallback'
-          git push origin HEAD:main
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run all unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Run harness self-test
+        run: python regression_suite.py --self-test
+      - name: Run synthetic smoke regression
+        run: python regression_suite.py --bootstrap --smoke
+      - name: Dispatch Daily after verification
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'daily.yml',
+              ref: 'main'
+            })
