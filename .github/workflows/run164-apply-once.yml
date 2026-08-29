@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   apply:
-    if: contains(github.event.head_commit.message, 'RUN164 APPLY B4')
+    if: contains(github.event.head_commit.message, 'RUN164 APPLY B5')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -40,12 +40,12 @@ jobs:
           ENABLE_SUBSCRIBER_TECH_SYNC: 'false'
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python external_product_review_import.py apply --input external_reviews/run164_batch4.json --target 150 --max-rows 4 --confirm CONFIRM_EXTERNAL_REVIEW_IMPORT
+          python external_product_review_import.py apply --input external_reviews/run164_batch5.json --target 200 --max-rows 1 --confirm CONFIRM_EXTERNAL_REVIEW_IMPORT
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-b4-apply-${{ github.run_id }}
+          name: run164-b5-apply-${{ github.run_id }}
           path: external_review_artifacts/
           if-no-files-found: warn
           retention-days: 30
