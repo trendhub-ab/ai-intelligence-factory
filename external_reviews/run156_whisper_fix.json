@@ -1,0 +1,13 @@
+{
+  "reviewer": "GPT-5.6 Sol external reviewer — primary-source decision-grade rewrite",
+  "run": "Run156-pilot-whisper-fix",
+  "reviews": [
+    {
+      "source":"GitHub","name":"openai/whisper","url":"https://github.com/openai/whisper","primary_url":"https://github.com/openai/whisper",
+      "description":"OpenAIが公開する多言語音声認識・音声翻訳モデルと推論実装。",
+      "screening_reason":"Run156 decision-density re-review from official repository evidence.",
+      "review":{"category":"MULTIMODAL","adoption_score":88,"components":{"Evidence Quality":25,"Production Maturity":24,"Use-case Utility / Fit":17,"Reliability / Security Risk":10,"Integration / Migration Feasibility":7,"Ecosystem / Support Durability":5},"adoption_status":"ADOPT","evidence_confidence":"HIGH","production_readiness":"HIGH","main_risk":"雑音、話者の癖、専門用語、言語によって認識精度が変わり、音声が不明瞭な場面では誤認識や存在しない語句の出力も起こり得る。モデルサイズが大きいほど計算負荷も増えるため、対象音声でWERだけでなく処理時間・GPU/CPU負荷・固有名詞精度を確認する必要がある。","best_for":"会議、インタビュー、動画、コール録音などを自社で文字起こししたいチーム。多言語音声認識や英語への音声翻訳を組み込みたい、音声データを外部の文字起こしSaaSへ送らず自社環境で処理する選択肢を持ちたい場合に向く。","avoid_for":"完全なリアルタイム性や、特定業界の専門語について追加調整なしでも常に高い認識精度が必須となる用途。クラウド音声APIの運用性・辞書機能・SLAを重視し、自前でモデル実行環境を持ちたくない場合はマネージドサービスの方が適することがある。","short_rationale":"Whisperは大規模な弱教師あり音声データで学習された汎用音声認識モデルとして、音声認識・多言語処理・英語への音声翻訳を一つのモデル群で扱える。自社環境へ組み込める点は強いが、採用可否は実際の会議音声や専門用語を使った精度・速度テストで決めるべき。","japanese_display_label":"Whisper — 多言語音声認識・文字起こしモデル","next_review_days":30},
+      "decision_context":{"plain_summary":"OpenAIが公開する汎用音声認識モデルで、音声からの文字起こしに加え、多言語の音声認識や英語への音声翻訳を同じモデル群で扱えます。APIサービスではなくモデルと推論コードが公開されているため、会議・動画・録音の文字化を自社環境へ組み込みたい場合の基盤候補になります。","topic_trigger":"音声データをAI活用へ回す企業では、文字起こし精度だけでなく『外部へ音声を送るか、自社で処理するか』がコスト・プライバシーの判断点になります。Whisperはローカル実装の基準候補として成熟していますが、専門用語や雑音を含む自社音声での実測が採用前提です。"}
+    }
+  ]
+}
