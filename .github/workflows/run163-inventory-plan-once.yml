@@ -1,4 +1,4 @@
-name: Run163 Inventory Expansion Plan Once
+name: Run163 Inventory Expansion Apply Once
 
 on:
   push:
@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  plan:
-    if: contains(github.event.head_commit.message, 'RUN163 INVENTORY EXPANSION PLAN')
+  apply:
+    if: contains(github.event.head_commit.message, 'RUN163 INVENTORY EXPANSION APPLY')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -25,7 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run zero-API inventory expansion plan
+      - name: Run bounded inventory expansion apply
         env:
           ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
           PORTFOLIO_DIVERSITY_TOLERANCE: '8'
@@ -56,12 +56,17 @@ jobs:
           GEMINI_37_FLASH_DAILY_BUDGET: '18'
           GEMINI_35_FLASH_DAILY_BUDGET: '18'
         run: |
-          python portfolio_inventory_bootstrap.py plan --target '130' --min-sellable '100'
-      - name: Upload plan audit
+          python portfolio_inventory_bootstrap.py apply \
+            --target '130' \
+            --min-sellable '100' \
+            --max-reviews '4' \
+            --product-request-budget '5' \
+            --confirm 'CONFIRM_BOOTSTRAP'
+      - name: Upload apply audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run163-inventory-plan-${{ github.run_id }}
+          name: run163-inventory-apply-${{ github.run_id }}
           path: inventory_bootstrap_artifacts/
           if-no-files-found: warn
           retention-days: 30
