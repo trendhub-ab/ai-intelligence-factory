@@ -1,0 +1,234 @@
+name: Run157 Causal Inference Guard Apply
+
+on:
+  push:
+    branches:
+      - fix/run157-causal-inference-evidence-guard
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Apply focused production patch and tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('pipeline.py')
+          text = path.read_text(encoding='utf-8')
+
+          marker = '\n\ndef validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", source: str = "",\n'
+          if marker not in text:
+              raise SystemExit('validate_fact_gate insertion marker not found')
+
+          helper = r'''
+
+# Run157: high-precision guard against turning observational/correlational evidence
+# into causal or financial-outcome claims.  This is deliberately deterministic and
+# zero-provider: it blocks only when the evidence itself signals observational or
+# associative framing and the article upgrades that into an uncaveated causal claim,
+# or when it asserts ROI/financial outcomes that the evidence does not measure.
+_OBSERVATIONAL_EVIDENCE_PATTERNS = (
+    r"\bobservational\b", r"\bfield evidence\b", r"\bfield study\b",
+    r"\bcorrelat(?:ion|ed|es|ional)\b", r"\bassociat(?:ed|ion|ions)\b",
+    r"\bconsistent with\b", r"\bsuggest(?:s|ed|ing)?\b",
+    r"\bwe (?:observe|observed|find|found|document|documented)\b",
+    r"観察研究", r"相関", r"関連", r"示唆",
+)
+
+_CAUSAL_IDENTIFICATION_PATTERNS = (
+    r"\brandomi[sz]ed\b", r"\brandomized controlled trial\b",
+    r"\bcausal (?:effect|estimate|identification|inference)\b",
+    r"\binstrumental variable\b", r"\bdifference[- ]in[- ]differences\b",
+    r"\bregression discontinuity\b", r"\bnatural experiment\b",
+    r"ランダム化", r"無作為", r"因果効果", r"因果推論",
+)
+
+_CAUSAL_OVERCLAIM_PATTERNS = (
+    r"(?:その)?理由(?:は|が).{0,80}(?:にあります|である|です)[。！？]?",
+    r"原因(?:は|が).{0,80}(?:にあります|である|です)[。！？]?",
+    r"[^。！？\n]{1,80}(?:が|によって)[^。！？\n]{0,80}(?:を引き起こす|をもたらす|につながる|を生み出す)[。！？]?",
+    r"\b(?:causes?|caused|because of|due to|leads? to|results? in)\b",
+)
+
+_CAUSAL_CAVEAT_PATTERN = re.compile(
+    r"可能性|示唆|と考えられ|と解釈|仮説|断定でき(?:ない|ません)|"
+    r"因果(?:関係)?(?:は|を)?.{0,24}(?:不明|未検証|示せない|断定できない)|"
+    r"相関|関連にとどま|may|might|could|suggest|consistent with|cannot infer|not establish caus",
+    re.I,
+)
+
+_ROI_CLAIM_PATTERN = re.compile(r"\bROI\b|投資対効果|投資の成果|return on investment", re.I)
+_ROI_EVIDENCE_PATTERN = re.compile(
+    r"\bROI\b|return on investment|投資対効果|financial return|profit(?:ability)?|"
+    r"revenue impact|cost savings?|cost reduction|measured productivity gains?",
+    re.I,
+)
+_ROI_CAVEAT_PATTERN = re.compile(
+    r"断定でき(?:ない|ません)|分からない|不明|測っていない|測定していない|"
+    r"検証していない|示していない|扱っていない|cannot (?:infer|conclude|determine)|"
+    r"not (?:measure|measured|estimate|estimated|evaluate|evaluated)",
+    re.I,
+)
+
+
+def _find_causal_inference_overclaims(draft: str, source_context: str) -> list[str]:
+    """Reject correlation→causation and unsupported ROI leaps with high precision.
+
+    The guard activates causal checks only when the source itself carries observational /
+    associative language and lacks an explicit causal-identification design.  Caveated
+    interpretation remains publishable.  ROI is rejected only when an article makes an
+    affirmative ROI/financial-outcome claim but the evidence has no measured ROI/financial
+    outcome surface.  This keeps the gate strict on unsupported inference without turning
+    ordinary explanation prose into false positives.
+    """
+    article = draft or ""
+    evidence = source_context or ""
+    if not article or not evidence:
+        return []
+
+    failures: list[str] = []
+    observational = any(re.search(p, evidence, re.I) for p in _OBSERVATIONAL_EVIDENCE_PATTERNS)
+    causal_design = any(re.search(p, evidence, re.I) for p in _CAUSAL_IDENTIFICATION_PATTERNS)
+
+    if observational and not causal_design:
+        for sentence in re.split(r"(?<=[。！？.!?])\s+|\n+", article):
+            sent = sentence.strip()
+            if not sent or _CAUSAL_CAVEAT_PATTERN.search(sent):
+                continue
+            if any(re.search(p, sent, re.I) for p in _CAUSAL_OVERCLAIM_PATTERNS):
+                failures.append("causal inference overclaim: observational evidence upgraded to causation")
+                break
+
+    if _ROI_CLAIM_PATTERN.search(article) and not _ROI_EVIDENCE_PATTERN.search(evidence):
+        for sentence in re.split(r"(?<=[。！？.!?])\s+|\n+", article):
+            if _ROI_CLAIM_PATTERN.search(sentence) and not _ROI_CAVEAT_PATTERN.search(sentence):
+                failures.append("unsupported outcome extrapolation: ROI/financial outcome not measured by evidence")
+                break
+
+    return failures
+'''
+
+          text = text.replace(marker, helper + marker, 1)
+
+          call_anchor = '    failures.extend(_find_entity_relation_violations(draft, source_context))\n'
+          if call_anchor not in text:
+              raise SystemExit('fact gate call anchor not found')
+          text = text.replace(
+              call_anchor,
+              call_anchor + '    failures.extend(_find_causal_inference_overclaims(draft, source_context))\n',
+              1,
+          )
+          path.write_text(text, encoding='utf-8')
+
+          test = r'''import os
+import unittest
+
+os.environ.setdefault("SYNTHETIC_REGRESSION_MODE", "true")
+
+import pipeline
+
+
+OBSERVATIONAL_CONTEXT = """
+Sophistication in GenAI Use: Field Evidence from a Large Firm.
+We document an association between employee seniority and more sophisticated GenAI use.
+The pattern is consistent with domain knowledge complementing AI capability and suggests
+that expertise may shape how workers use generative AI. This observational field evidence
+does not establish a causal effect and does not measure return on investment.
+"""
+
+
+class Run157CausalInferenceEvidenceGuardTests(unittest.TestCase):
+    def test_actual_false_positive_style_causal_leap_is_blocked(self):
+        draft = "シニア社員ほど高度な使い方が見られました。その理由は『ドメイン知識』にあります。"
+        failures = pipeline._find_causal_inference_overclaims(draft, OBSERVATIONAL_CONTEXT)
+        self.assertIn(
+            "causal inference overclaim: observational evidence upgraded to causation",
+            failures,
+        )
+
+    def test_caveated_interpretation_is_allowed(self):
+        draft = "この結果は、業務知識がAI活用を補完している可能性を示しています。因果関係までは断定できません。"
+        self.assertEqual([], pipeline._find_causal_inference_overclaims(draft, OBSERVATIONAL_CONTEXT))
+
+    def test_unsupported_roi_conclusion_is_blocked(self):
+        draft = "一律研修だけでは、AI投資の成果（ROI）を得るのが難しいことは明白です。"
+        failures = pipeline._find_causal_inference_overclaims(draft, OBSERVATIONAL_CONTEXT)
+        self.assertIn(
+            "unsupported outcome extrapolation: ROI/financial outcome not measured by evidence",
+            failures,
+        )
+
+    def test_explicit_roi_limitation_is_allowed(self):
+        draft = "この研究だけでROIへの影響までは断定できません。利用回数だけを成功指標にする際は注意が必要です。"
+        self.assertEqual([], pipeline._find_causal_inference_overclaims(draft, OBSERVATIONAL_CONTEXT))
+
+    def test_causal_design_does_not_trigger_observational_guard(self):
+        context = OBSERVATIONAL_CONTEXT + "\nA randomized controlled trial estimates a causal effect of the intervention."
+        draft = "その理由は介入にあります。"
+        failures = pipeline._find_causal_inference_overclaims(draft, context)
+        self.assertNotIn(
+            "causal inference overclaim: observational evidence upgraded to causation",
+            failures,
+        )
+
+    def test_fact_gate_integrates_guard(self):
+        parsed = {
+            "note_draft": "この企業ログでは相関が確認されました。その理由はドメイン知識にあります。",
+            "decision_text": "TRY",
+            "score": 80,
+            "title_text": "企業AI活用の差はどこから生まれる？",
+            "decision_reason_text": "限定的な検証価値がある。",
+            "action_text": "自社データで限定検証する。",
+            "source_summary_text": "大手企業の利用ログを分析した観察研究。",
+        }
+        ok, failures = pipeline.validate_fact_gate(
+            parsed,
+            "Sophistication in GenAI Use",
+            source_context=OBSERVATIONAL_CONTEXT,
+            evidence_metadata={},
+        )
+        self.assertFalse(ok)
+        self.assertIn(
+            "causal inference overclaim: observational evidence upgraded to causation",
+            failures,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+'''
+          Path('tests/test_run157_causal_inference_evidence_guard.py').write_text(test, encoding='utf-8')
+          PY
+      - name: Compile
+        run: python -m py_compile pipeline.py tests/test_run157_causal_inference_evidence_guard.py
+      - name: Focused Run157 tests
+        run: python -m unittest tests.test_run157_causal_inference_evidence_guard -v
+      - name: Full unittest
+        run: python -m unittest discover -s tests -p 'test_*.py' -q
+      - name: Synthetic smoke
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          SYNTHETIC_REGRESSION_TIER: smoke
+        run: python pipeline.py
+      - name: Remove one-shot workflow and commit validated patch
+        shell: bash
+        run: |
+          rm -f .github/workflows/run157-causal-guard-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pipeline.py tests/test_run157_causal_inference_evidence_guard.py .github/workflows/run157-causal-guard-apply.yml
+          git commit -m "fix: block causal and ROI evidence overclaims"
+          git push origin HEAD:fix/run157-causal-inference-evidence-guard
