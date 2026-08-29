@@ -76,6 +76,11 @@ class MemberChangeSelectionTests(unittest.TestCase):
 
 
 class MemberChangeSchemaTests(unittest.TestCase):
+    def test_member_change_property_names_are_japanese(self):
+        self.assertEqual("重要変化スコア", cfe.SUB_PROP_MEMBER_SCORE_CHANGE)
+        self.assertEqual("重要変化日", cfe.SUB_PROP_MEMBER_CHANGE_AT)
+        self.assertEqual("重要変化理由", cfe.SUB_PROP_MEMBER_CHANGE_REASON)
+
     def test_member_change_columns_are_required_with_exact_types(self):
         schema = {
             cfe.SUB_PROP_MEMBER_SCORE_CHANGE: {"type": "number"},
@@ -85,7 +90,7 @@ class MemberChangeSchemaTests(unittest.TestCase):
         cfe._require_member_change_columns(schema, "Subscriber")
         bad = dict(schema)
         bad[cfe.SUB_PROP_MEMBER_CHANGE_AT] = {"type": "rich_text"}
-        with self.assertRaisesRegex(ValueError, "Member Change At"):
+        with self.assertRaisesRegex(ValueError, "重要変化日"):
             cfe._require_member_change_columns(bad, "Subscriber")
 
 
