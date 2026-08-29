@@ -15,6 +15,14 @@ class MemberCopySeparationTests(unittest.TestCase):
             mps.clean_topic_trigger(raw),
         )
 
+    def test_topic_drops_selected_action_sentence(self):
+        action = "代表業務を1本実装し、既存Web基盤との親和性を確認する。"
+        raw = "TypeScript組織ではテスト優先度が高い。" + action
+        self.assertEqual(
+            "TypeScript組織ではテスト優先度が高い。",
+            mps.clean_topic_trigger(raw, action=action),
+        )
+
     def test_generic_suffixes_are_removed(self):
         self.assertEqual(
             "権限設計が重要。",
@@ -40,6 +48,22 @@ class MemberCopySeparationTests(unittest.TestCase):
             mps.derive_next_action("TEST", rationale),
         )
 
+    def test_declarative_candidate_falls_back_to_real_action(self):
+        rationale = "エコシステムと一次情報の厚さから標準比較対象に置く価値が高い。"
+        action = mps.derive_next_action("ADOPT", rationale)
+        self.assertTrue(mps._is_action_sentence(action))
+        self.assertIn("最終確認", action)
+
+    def test_action_prefers_executable_second_sentence(self):
+        rationale = (
+            "高負荷LLMサービングではvLLMと並ぶ優先比較候補。"
+            "自社モデル・GPU・同時接続条件で負荷試験し、総コストで選ぶ。"
+        )
+        self.assertEqual(
+            "自社モデル・GPU・同時接続条件で負荷試験し、総コストで選ぶ。",
+            mps.derive_next_action("ADOPT", rationale),
+        )
+
     def test_avoid_action_never_uses_adoption_boilerplate(self):
         rationale = (
             "新規採用は見送り。"
@@ -49,6 +73,18 @@ class MemberCopySeparationTests(unittest.TestCase):
         action = mps.derive_next_action("AVOID", rationale)
         self.assertIn("比較対象を移す", action)
         self.assertNotIn("採用時は", action)
+
+    def test_duplicate_test_reason_uses_risk_based_causal_reason(self):
+        topic = "TypeScript組織ではテスト優先度が高い。"
+        reason = mps.derive_judgment_reason(
+            "TEST",
+            topic + "代表業務を1本実装して確認する。",
+            topic,
+            "固有APIへの依存範囲を確認する必要がある。",
+            "代表業務を1本実装して確認する。",
+        )
+        self.assertNotEqual(mps._norm_key(topic), mps._norm_key(reason))
+        self.assertIn("本番採用の前", reason)
 
     def test_change_reason_explains_direction_and_drops_action_tail(self):
         reason = (
@@ -60,6 +96,13 @@ class MemberCopySeparationTests(unittest.TestCase):
         self.assertIn("Archived", cleaned)
         self.assertNotIn("判断点は", cleaned)
         self.assertNotIn("代替候補へ移す", cleaned)
+
+    def test_change_reason_drops_same_action_sentence(self):
+        action = "代表業務を1本実装して確認する。"
+        reason = "TypeScript組織ではテスト優先度が高い。" + action
+        cleaned = mps.clean_change_reason(reason, 7, action=action)
+        self.assertIn("TypeScript組織", cleaned)
+        self.assertNotIn("代表業務", cleaned)
 
     def test_subthreshold_change_reason_stays_empty(self):
         self.assertEqual("", mps.clean_change_reason("少し変化", 3))
@@ -86,7 +129,7 @@ class HomepageRankingTests(unittest.TestCase):
         self.assertEqual(8, len(selected))
         self.assertEqual(list(range(1, 9)), sorted(s["rank"] for s in selected))
 
-    def test_diversity_only_reorders_near_ties(self):
+    def test_diversity_does_not_push_materially_higher_score_below_lower_score(self):
         states = [
             self._state("A", 95, "開発ツール"),
             self._state("B", 94, "開発ツール"),
@@ -94,10 +137,19 @@ class HomepageRankingTests(unittest.TestCase):
             self._state("D", 80, "AIモデル"),
         ]
         selected = mps.assign_home_ranks(states, limit=3)
+        self.assertEqual(["A", "B", "C"], [s["name"] for s in selected])
+        self.assertNotIn("D", [s["name"] for s in selected])
+
+    def test_exact_tie_can_use_category_diversity(self):
+        states = [
+            self._state("A", 95, "開発ツール"),
+            self._state("B", 94, "開発ツール"),
+            self._state("C", 94, "セキュリティ"),
+        ]
+        selected = mps.assign_home_ranks(states, limit=3)
         self.assertEqual("A", selected[0]["name"])
         self.assertEqual("C", selected[1]["name"])
         self.assertEqual("B", selected[2]["name"])
-        self.assertNotIn("D", [s["name"] for s in selected])
 
     def test_watch_avoid_low_confidence_and_non_practical_are_excluded(self):
         states = [
@@ -113,8 +165,15 @@ class HomepageRankingTests(unittest.TestCase):
 
 class ChangeMonthTests(unittest.TestCase):
     def test_important_change_date_not_last_review_drives_month_flag(self):
-        states = [{"important_at": "2026-08-10T00:00:00+00:00", "last_reviewed": "2026-09-01T00:00:00+00:00"}]
-        mps.mark_current_month_changes(states, now=datetime(2026, 8, 29, tzinfo=timezone.utc))
+        states = [
+            {
+                "important_at": "2026-08-10T00:00:00+00:00",
+                "last_reviewed": "2026-09-01T00:00:00+00:00",
+            }
+        ]
+        mps.mark_current_month_changes(
+            states, now=datetime(2026, 8, 29, tzinfo=timezone.utc)
+        )
         self.assertTrue(states[0]["current_month_change"])
 
 
