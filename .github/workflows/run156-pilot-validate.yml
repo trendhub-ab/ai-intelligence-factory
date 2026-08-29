@@ -6,6 +6,7 @@ on:
     paths:
       - run156_decision_review_import.py
       - external_reviews/run156_pilot.json
+      - external_reviews/run156_whisper_fix.json
       - tests/test_run156_decision_density.py
       - .github/workflows/run156-pilot-validate.yml
 
@@ -24,7 +25,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run156 focused tests
         run: python -m unittest -v tests.test_run156_decision_density
-      - name: Validate pilot against production evidence
+      - name: Validate six decision-grade reviews against production evidence
         env:
           TZ: Asia/Tokyo
           GEMINI_API_KEY: forbidden-run156
@@ -42,9 +43,35 @@ jobs:
           NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
           NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
         run: |
-          python run156_decision_review_import.py validate \
-            --input external_reviews/run156_pilot.json \
-            --audit-path run156_artifacts/pilot_validate.json
+          python - <<'PY'
+          import json
+          import run156_decision_review_import as r
+
+          base = r.run(
+              'external_reviews/run156_pilot.json',
+              apply=False,
+              audit_path='run156_artifacts/pilot_validate.json',
+          )
+          # Original pilot contains the one wording false-positive already diagnosed;
+          # five other rows must remain production-valid.
+          assert base['density_gate'] == 'passed', base
+          assert base['product_review']['validated'] == 5, base['product_review']['results']
+          failed = [x for x in base['product_review']['results'] if x.get('status') != 'validated']
+          assert len(failed) == 1 and failed[0]['name'] == 'openai/whisper', failed
+
+          whisper = r.run(
+              'external_reviews/run156_whisper_fix.json',
+              apply=False,
+              audit_path='run156_artifacts/whisper_validate.json',
+          )
+          assert whisper['density_gate'] == 'passed', whisper
+          assert whisper['validated'] == 1, whisper
+          print(json.dumps({
+              'decision_density_gate': 'PASS',
+              'production_evidence_validated': 6,
+              'zero_gemini_calls': True,
+          }, ensure_ascii=False))
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
