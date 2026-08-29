@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   audit:
-    if: contains(github.event.head_commit.message, 'RUN164 AUDIT CALIBRATED 180')
+    if: contains(github.event.head_commit.message, 'RUN164 AUDIT EXPAND 220')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,7 +21,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Read-only calibrated portfolio audit
+      - name: Read-only expanded portfolio plan
         env:
           TZ: Asia/Tokyo
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -32,12 +32,12 @@ jobs:
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           NOTION_API_VERSION: '2026-03-11'
         run: |
-          python portfolio_inventory_bootstrap.py plan --target 200 --min-sellable 150
+          python portfolio_inventory_bootstrap.py plan --target 220 --min-sellable 150
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-calibrated-audit-${{ github.run_id }}
+          name: run164-expanded-plan-${{ github.run_id }}
           path: inventory_bootstrap_artifacts/
           if-no-files-found: error
           retention-days: 30
