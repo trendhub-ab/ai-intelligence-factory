@@ -60,6 +60,22 @@ def _is_due(value: Any, now: datetime) -> bool:
     return parsed is None or parsed <= now
 
 
+def technology_page_to_review_state(page: dict[str, Any]) -> dict[str, Any]:
+    """Read the authoritative product state plus the evidence-change timestamp.
+
+    ``technology_page_to_state`` intentionally predates the event-driven planner
+    and does not currently expose Last Evidence Update. Read that already-existing
+    canonical property directly here rather than changing the shared parser/schema.
+    Missing/malformed property shapes remain empty and therefore fail closed.
+    """
+    state = decision_intelligence.technology_page_to_state(page)
+    props = page.get("properties", {}) if isinstance(page, dict) else {}
+    evidence_prop = props.get(decision_intelligence.TECH_PROP_LAST_EVIDENCE_UPDATE, {}) or {}
+    evidence_date = evidence_prop.get("date") or {}
+    state["last_evidence_update"] = evidence_date.get("start") or ""
+    return state
+
+
 def review_priority_tier(state: dict[str, Any]) -> str:
     """Derive review cadence with zero API calls and no persisted schema changes.
 
@@ -126,8 +142,6 @@ def daily_review_reason(state: dict[str, Any], now: datetime | None = None) -> s
         and tracking_eligible
         and str(state.get("tracking_status") or "") != "ARCHIVED"
     ):
-        # Event-driven promotion is intentionally checked before Next Review.
-        # Fresh first-party/evidence-ledger input should not wait 30/60 days.
         if has_fresh_evidence(state):
             return "FRESH_EVIDENCE"
         if state.get("next_review"):
@@ -296,7 +310,7 @@ def main() -> int:
     context_first_enrichment.preflight_context_first_schema()
 
     pages = decision_intelligence.query_technology_records(max_records=5000)
-    states = [decision_intelligence.technology_page_to_state(page) for page in pages]
+    states = [technology_page_to_review_state(page) for page in pages]
     previous_reviewed = {
         str(state.get("canonical_entity_id")): state.get("last_reviewed")
         for state in states
