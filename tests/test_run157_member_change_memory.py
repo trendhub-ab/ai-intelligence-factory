@@ -76,10 +76,10 @@ class MemberChangeSelectionTests(unittest.TestCase):
 
 
 class MemberChangeSchemaTests(unittest.TestCase):
-    def test_member_change_property_names_are_japanese(self):
-        self.assertEqual("重要変化スコア", cfe.SUB_PROP_MEMBER_SCORE_CHANGE)
+    def test_member_change_property_names_are_consolidated(self):
+        self.assertEqual("評価の変化", cfe.SUB_PROP_MEMBER_SCORE_CHANGE)
         self.assertEqual("重要変化日", cfe.SUB_PROP_MEMBER_CHANGE_AT)
-        self.assertEqual("重要変化理由", cfe.SUB_PROP_MEMBER_CHANGE_REASON)
+        self.assertEqual("評価が変わった理由", cfe.SUB_PROP_MEMBER_CHANGE_REASON)
 
     def test_member_change_columns_are_required_with_exact_types(self):
         schema = {
