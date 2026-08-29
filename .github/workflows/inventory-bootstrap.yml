@@ -12,11 +12,11 @@ on:
       target_inventory:
         description: "Stretch target; never force-promotes records"
         required: true
-        default: "30"
+        default: "60"
       min_sellable:
-        description: "Launch-readiness minimum"
+        description: "Commercial launch-readiness minimum"
         required: true
-        default: "24"
+        default: "50"
       max_reviews:
         description: "Max Evidence-ready Gemini reviews in one apply (1-6)"
         required: true
