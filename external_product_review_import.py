@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,57 @@ import pipeline
 
 CONFIRM_TOKEN = "CONFIRM_EXTERNAL_REVIEW_IMPORT"
 DEFAULT_AUDIT_PATH = "external_review_artifacts/run153_external_review_import.json"
+
+# Explicit project-level lifecycle states that are incompatible with a positive
+# new-adoption recommendation. Intentionally narrow: ordinary API/feature
+# deprecations in an otherwise active project must not trip this guard.
+HARD_EOL_MARKERS = (
+    "archived",
+    "no longer maintained",
+    "no longer actively maintained",
+    "no longer active",
+    "maintenance mode",
+    "read-only",
+    "保守終了",
+    "サポート終了",
+)
+
+
+def _clean(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def validate_lifecycle_consistency(row: dict[str, Any], review: dict[str, Any]) -> list[str]:
+    """Reject explicit project-EOL context paired with current adoption advice.
+
+    The guard only evaluates reviewer-authored decision context plus its short
+    rationale. It intentionally does not scan an entire fetched README/docs blob,
+    where unrelated mentions of archived dependencies could create false positives.
+    """
+    ctx = row.get("decision_context")
+    if not isinstance(ctx, dict):
+        return []
+    lifecycle_text = "\n".join(
+        (
+            _clean(ctx.get("plain_summary")),
+            _clean(ctx.get("topic_trigger")),
+            _clean(review.get("short_rationale")),
+        )
+    ).casefold()
+    marker = next((m for m in HARD_EOL_MARKERS if m.casefold() in lifecycle_text), "")
+    if not marker:
+        return []
+
+    failures: list[str] = []
+    status = _clean(review.get("adoption_status")).upper()
+    readiness = _clean(review.get("production_readiness")).upper()
+    if status in {"ADOPT", "TEST"}:
+        failures.append(f"lifecycle contradiction: explicit EOL marker '{marker}' cannot be {status}")
+    if readiness == "HIGH":
+        failures.append(
+            f"lifecycle contradiction: explicit EOL marker '{marker}' cannot have HIGH production_readiness"
+        )
+    return failures
 
 
 def _forbid_gemini(*_args, **_kwargs):
@@ -127,6 +179,19 @@ def process_row(row: dict[str, Any], *, apply: bool) -> dict[str, Any]:
 
     # Reuse the exact production structured-output validator/normalizer.
     parsed = pipeline._parse_product_review_response(review)
+    lifecycle_failures = validate_lifecycle_consistency(row, parsed)
+    if lifecycle_failures:
+        return {
+            "name": repo.get("nameWithOwner"),
+            "url": repo.get("url"),
+            "category": parsed.get("category"),
+            "adoption_score": parsed.get("adoption_score"),
+            "mode": "apply" if apply else "validate",
+            "status": "invalid_lifecycle_consistency",
+            "saved": False,
+            "failures": lifecycle_failures,
+        }
+
     source_info, evidence, authority_failures = _prepare_verified_evidence(repo)
     result: dict[str, Any] = {
         "name": repo.get("nameWithOwner"),
