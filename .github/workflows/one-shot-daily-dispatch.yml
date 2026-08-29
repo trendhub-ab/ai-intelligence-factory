@@ -13,10 +13,16 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch Daily
+      - name: Enable and dispatch Daily
         uses: actions/github-script@v8
         with:
           script: |
+            await github.rest.actions.enableWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'daily.yml'
+            })
+            await new Promise(resolve => setTimeout(resolve, 1500))
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
