@@ -2525,7 +2525,10 @@ def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
                              source: str = "GitHub", decision_score: int | None = None,
                              technical_impact: int | None = None, urgency: int | None = None,
                              article_ready: bool = True) -> str | None:
-    """Generate the approved 1280x670 Decision Score card over the source background.
+    """Generate the legacy/internal 1280x670 Decision Score card over the source background.
+
+    Run160: this renderer is retained for internal/regression compatibility only.  The production
+    publication path must use ``generate_note_editorial_eyecatch`` instead.
 
     Final visual contract (2026-08-22):
     - article title is intentionally NOT rendered; note already shows it separately
@@ -10807,9 +10810,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             reader_summary=reader_summary, published_at=published_at,
         )
 
-        # Run150: note acquisition and paid-DB decision support are different visual jobs.
-        # The public note image is an editorial/curiosity surface with no internal score card.
-        # The existing Decision Card below remains Notion-facing and preserves paid-product utility.
+        # Run160: public note delivery and the Notion Eyecatch property use one visual contract.
+        # The Editorial Eyecatch is the single public source of truth.  The legacy Decision Card
+        # renderer remains available only for internal/regression compatibility and is never
+        # invoked from the publication path.  If Editorial generation/upload fails, publish no
+        # image rather than falling back to an internal score card.
         note_eyecatch_path = ""
         try:
             note_output_dir = NOTE_EYECATCH_OUTPUT_DIR if persist_results else os.path.join(REGEN_TEST_OUTPUT_DIR, "eyecatch")
@@ -10837,22 +10842,36 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 
         eyecatch_url = ""
         if persist_results:
-            try:
-                os.makedirs(EYECATCH_OUTPUT_DIR, exist_ok=True)
-                eyecatch_filename = f"{_sanitize_filename(name)}.png"
-                eyecatch_path = os.path.join(EYECATCH_OUTPUT_DIR, eyecatch_filename)
-                technical_impact, urgency = _extract_eyecatch_score_components(parsed.get("score_breakdown_text", ""))
-                generated_path = generate_eyecatch_image(
-                    parsed["title_text"], eyecatch_path, source, decision_score=parsed.get("score"),
-                    technical_impact=technical_impact, urgency=urgency, article_ready=True,
+            if not note_eyecatch_path:
+                logger.warning(
+                    "[PUBLIC EDITORIAL EYECATCH SKIP] %s: Editorial生成に失敗したため、旧Decision Cardへフォールバックせず画像なしで継続",
+                    name,
                 )
-                if generated_path:
-                    logger.info(f"[EYECATCH] {name} -> {eyecatch_path} を生成しました。")
-                    eyecatch_url = upload_eyecatch_to_github(eyecatch_path, eyecatch_filename) or ""
-            except Exception as e:
-                logger.warning(f"[EYECATCH SKIP] {name}: {e}")
+            else:
+                try:
+                    # Keep the existing public URL namespace for backward compatibility, but upload
+                    # the Editorial bytes.  Notion and note/audit therefore reference the same visual.
+                    eyecatch_filename = f"{_sanitize_filename(name)}.png"
+                    eyecatch_url = upload_eyecatch_to_github(note_eyecatch_path, eyecatch_filename) or ""
+                    if eyecatch_url:
+                        logger.info(
+                            "[PUBLIC EDITORIAL EYECATCH] %s -> %s (source=%s)",
+                            name, eyecatch_url, note_eyecatch_path,
+                        )
+                    else:
+                        logger.warning(
+                            "[PUBLIC EDITORIAL EYECATCH UPLOAD FAILED] %s: 旧Decision Cardへフォールバックしません",
+                            name,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "[PUBLIC EDITORIAL EYECATCH UPLOAD SKIP] %s: %s / 旧Decision Cardへフォールバックしません",
+                        name, e,
+                    )
         else:
-            logger.info(f"[REGEN TEST] Notion Decision Card/GitHub uploadをスキップ（note Editorial EyecatchはArtifactへ生成済み）: {name}")
+            logger.info(
+                f"[REGEN TEST] public Editorial EyecatchのGitHub uploadをスキップ（Editorial画像はArtifactへ生成済み）: {name}"
+            )
 
         analyzed_at = _analyzed_at_now_iso()
         notion_name = _notion_display_name(repo)
