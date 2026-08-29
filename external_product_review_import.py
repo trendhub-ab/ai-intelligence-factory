@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,9 +33,21 @@ def _forbid_gemini(*_args, **_kwargs):
     raise RuntimeError("Run153 External Review Import forbids Gemini/provider calls")
 
 
-# Hard runtime guard. If any future refactor accidentally routes this path through
-# a provider call, fail immediately instead of spending quota.
-pipeline._generate_via_chat = _forbid_gemini
+@contextmanager
+def _provider_calls_forbidden():
+    """Block provider generation only while this importer is executing.
+
+    Importing this module must not mutate global pipeline behavior; the regular
+    Product Review path and its regression tests remain untouched. The official
+    Run153 run() path enters this scope before evidence/import work and restores
+    the original provider wrapper even if validation or persistence fails.
+    """
+    original = pipeline._generate_via_chat
+    pipeline._generate_via_chat = _forbid_gemini
+    try:
+        yield
+    finally:
+        pipeline._generate_via_chat = original
 
 
 def _load_rows(path: str) -> list[dict[str, Any]]:
@@ -195,7 +208,7 @@ def process_row(row: dict[str, Any], *, apply: bool) -> dict[str, Any]:
     return result
 
 
-def run(path: str, *, apply: bool, target: int, max_rows: int, audit_path: str) -> dict[str, Any]:
+def _run_guarded(path: str, *, apply: bool, target: int, max_rows: int, audit_path: str) -> dict[str, Any]:
     decision_intelligence.preflight_decision_intelligence_schema()
     context_first_enrichment.preflight_context_first_schema()
     previous_reviewed = _assessed_snapshot()
@@ -247,6 +260,19 @@ def run(path: str, *, apply: bool, target: int, max_rows: int, audit_path: str) 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return report
+
+
+def run(path: str, *, apply: bool, target: int, max_rows: int, audit_path: str) -> dict[str, Any]:
+    # The public execution entry point is always provider-free, while merely
+    # importing this module has zero effect on the ordinary production pipeline.
+    with _provider_calls_forbidden():
+        return _run_guarded(
+            path,
+            apply=apply,
+            target=target,
+            max_rows=max_rows,
+            audit_path=audit_path,
+        )
 
 
 def main() -> int:
