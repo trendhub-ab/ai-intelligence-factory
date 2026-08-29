@@ -1,0 +1,167 @@
+{
+  "reviewer": "GPT-5.6 Sol external reviewer — Run164 AI-only expansion",
+  "run": "Run164-batch11-fix",
+  "reviews": [
+    {
+      "source": "ArXiv",
+      "name": "GEO-Flag: Detecting and Measuring GEO-Optimized Web Content",
+      "url": "https://arxiv.org/abs/2608.16824",
+      "primary_url": "https://arxiv.org/abs/2608.16824",
+      "description": "Generative Engine OptimizationされたWebコンテンツを検知し、生成検索の引用元リスクを監査するAI/Search Security研究。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "SECURITY",
+        "adoption_score": 72,
+        "components": {"Evidence Quality":24,"Production Maturity":13,"Use-case Utility / Fit":15,"Reliability / Security Risk":9,"Integration / Migration Feasibility":7,"Ecosystem / Support Durability":4},
+        "adoption_status": "TEST",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "MEDIUM",
+        "main_risk": "GEO検知性能はoptimizer familyや著者条件で変動し、未知手法や実運用分布への一般化を保証できない。",
+        "best_for": "生成検索やRAGで外部Webを使い、引用元のGEO操作・権威性・検証可能性を監査したいAI Governance/Securityチーム。",
+        "avoid_for": "単一Detectorの判定だけで情報源の真偽や権威性を自動確定する運用。",
+        "short_rationale": "生成検索固有の情報源操作リスクへ直接対応し、Benchmarkと実Web評価があるため監査手法として検証価値が高い。",
+        "japanese_display_label": "GEO-Flag — 生成検索向けGEO検知・引用監査",
+        "next_review_days": 30
+      },
+      "decision_context": {"plain_summary":"生成AI検索で引用されやすく加工されたWebページを検知し、引用元の権威性や検証可能性を監査する研究。","topic_trigger":"生成検索・RAGの情報源品質を守るため、GEO操作を新しい情報源リスクとして監視すべきか判断する。"}
+    },
+    {
+      "source": "ArXiv",
+      "name": "Cross-Sign Language Transfer Learning Using Domain Adaptation with Multi-scale Temporal Alignment",
+      "url": "https://arxiv.org/abs/2608.16804",
+      "primary_url": "https://arxiv.org/abs/2608.16804",
+      "description": "手話認識でDomain AdaptationとMulti-scale Temporal Alignmentを使い、言語間Transfer Learningを検証するVision AI研究。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "MULTIMODAL",
+        "adoption_score": 65,
+        "components": {"Evidence Quality":23,"Production Maturity":10,"Use-case Utility / Fit":13,"Reliability / Security Risk":7,"Integration / Migration Feasibility":7,"Ecosystem / Support Durability":5},
+        "adoption_status": "WATCH",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "LOW",
+        "main_risk": "手話言語・撮影条件・データセット差が大きく、特定言語間の転移結果が別言語や本番環境へ再現する保証はない。",
+        "best_for": "少量データの手話認識やCross-domain Vision AIでDomain Adaptationを研究するチーム。",
+        "avoid_for": "十分な対象言語データがあり、成熟した専用認識モデルで要件を満たせる一般用途。",
+        "short_rationale": "低リソース手話認識へTransfer Learningを適用する明確なAI研究だが、実運用前に対象言語で再検証が必要。",
+        "japanese_display_label": "Cross-Sign Language Transfer Learning",
+        "next_review_days": 60
+      },
+      "decision_context": {"plain_summary":"ある手話言語で学んだ認識能力を、Domain Adaptationで別の手話言語へ移すVision AI研究。","topic_trigger":"データが少ない言語・ドメインへ既存AIモデルを転用する方法として再現性を監視する。"}
+    },
+    {
+      "source": "ArXiv",
+      "name": "Historical Backtesting for Scientific Question Discovery: A Protocol and Astronomy Pilot",
+      "url": "https://arxiv.org/abs/2608.16795",
+      "primary_url": "https://arxiv.org/abs/2608.16795",
+      "description": "AI/LLMによる科学的Question Generationを未来文献で歴史的にBacktestし、LLM-as-judge依存を検証する評価研究。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "AGENT",
+        "adoption_score": 66,
+        "components": {"Evidence Quality":24,"Production Maturity":9,"Use-case Utility / Fit":13,"Reliability / Security Risk":8,"Integration / Migration Feasibility":7,"Ecosystem / Support Durability":5},
+        "adoption_status": "WATCH",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "LOW",
+        "main_risk": "Astronomy pilotと歴史的cutoffでの評価結果を、一般的なResearch Agentや他分野の研究発見能力へ直接一般化できない。",
+        "best_for": "Research Agent、科学Question Generation、LLM-as-judgeの評価設計を改善したい研究・AI評価チーム。",
+        "avoid_for": "このBacktestだけでResearch Agentの将来発見能力や業務ROIを判断する用途。",
+        "short_rationale": "Research Agentを主観評価ではなく時間分離された未来情報で検証する考え方に価値があり、評価基盤として追跡する。",
+        "japanese_display_label": "Historical Backtesting for Scientific Question Discovery",
+        "next_review_days": 45
+      },
+      "decision_context": {"plain_summary":"AIが生成した研究質問を過去時点で凍結し、その後の文献で実際に支持・反証・独立発見されたかを評価する手法。","topic_trigger":"Research AgentやLLM-as-judgeを、同じAIによる自己評価ではなく時間分離された情報で測る方法として注視する。"}
+    },
+    {
+      "source": "ArXiv",
+      "name": "One-Stage Object Detectors in Autonomous Driving",
+      "url": "https://arxiv.org/abs/2608.19014",
+      "primary_url": "https://arxiv.org/abs/2608.19014",
+      "description": "自動運転向けOne-stage Object Detectionの速度・精度・効率・Robustnessを比較するVision AI Survey。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "MULTIMODAL",
+        "adoption_score": 68,
+        "components": {"Evidence Quality":24,"Production Maturity":14,"Use-case Utility / Fit":14,"Reliability / Security Risk":8,"Integration / Migration Feasibility":4,"Ecosystem / Support Durability":4},
+        "adoption_status": "WATCH",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "MEDIUM",
+        "main_risk": "Survey中のBenchmark比較は学習条件・Dataset・Hardwareが異なり、本番自動運転の安全性や実時間性能を直接保証しない。",
+        "best_for": "自動運転・Edge VisionでOne-stage Detector候補と評価軸を整理したいComputer Visionチーム。",
+        "avoid_for": "Surveyの掲載順位だけで安全重要システムのDetectorを決定する用途。",
+        "short_rationale": "主要Detectorとdeployment trade-offを俯瞰できるが、新規実装ではないため導入判断の参考情報として扱う。",
+        "japanese_display_label": "One-Stage Object Detectors for Autonomous Driving",
+        "next_review_days": 45
+      },
+      "decision_context": {"plain_summary":"自動運転で使う高速物体検出AIを、速度・精度・効率・堅牢性の観点から比較整理したSurvey。","topic_trigger":"Edge/Vision AIのDetector選定でBenchmarkだけを見ず、本番制約とのTrade-offを整理する参考にする。"}
+    },
+    {
+      "source": "ArXiv",
+      "name": "Exponential quantum advantage for learning signals with a single qubit",
+      "url": "https://arxiv.org/abs/2608.13521",
+      "primary_url": "https://arxiv.org/abs/2608.13521",
+      "description": "単一Qubitを古典Sensorへ結合し、Classical Signal Learningの測定回数を大幅削減するQuantum-enhanced Learning研究。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "MODEL",
+        "adoption_score": 63,
+        "components": {"Evidence Quality":25,"Production Maturity":8,"Use-case Utility / Fit":12,"Reliability / Security Risk":7,"Integration / Migration Feasibility":6,"Ecosystem / Support Durability":5},
+        "adoption_status": "WATCH",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "LOW",
+        "main_risk": "Quantum sensingの実験成果は特殊Hardwareと対象タスクに依存し、一般的なML推論・企業AIへ直接移植できない。",
+        "best_for": "Quantum-enhanced sensing、Signal Learning、Near-term Quantum MLの実験可能性を追う研究チーム。",
+        "avoid_for": "通常のLLM、生成AI、一般企業MLの短期導入候補として扱うケース。",
+        "short_rationale": "実験的な大幅測定削減は注目に値するが、専門Hardware前提のDeep Techであり現時点は監視対象。",
+        "japanese_display_label": "Single-Qubit Quantum Feature Sensing",
+        "next_review_days": 60
+      },
+      "decision_context": {"plain_summary":"単一量子ビットをセンサーへ加え、古典信号を学習するための測定回数を大きく減らすQuantum-enhanced Learning研究。","topic_trigger":"Near-term Quantum技術がAI/学習処理の実用的な計測コストを変える兆候として長期監視する。"}
+    },
+    {
+      "source": "ArXiv",
+      "name": "Equivariant learning of a transferable three-dimensional classical density functional",
+      "url": "https://arxiv.org/abs/2608.13506",
+      "primary_url": "https://arxiv.org/abs/2608.13506",
+      "description": "3次元平衡密度場から対称性と変分整合性を保つTransferable Density Functionalを学習するScientific ML研究。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "MODEL",
+        "adoption_score": 64,
+        "components": {"Evidence Quality":24,"Production Maturity":9,"Use-case Utility / Fit":13,"Reliability / Security Risk":7,"Integration / Migration Feasibility":6,"Ecosystem / Support Durability":5},
+        "adoption_status": "WATCH",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "LOW",
+        "main_risk": "流体系と学習条件に特化したScientific ML成果で、異なる物質系や一般的AIワークロードへの転用性は未確認。",
+        "best_for": "Physics-informed ML、分子シミュレーション、材料・流体のScientific AIを研究するチーム。",
+        "avoid_for": "一般的な生成AI・業務AIの導入判断や、対象物理系を検証せず他系へ適用する用途。",
+        "short_rationale": "3DへTransfer可能な学習FunctionalというScientific AI価値は高いが、専門領域向けDeep Techとして監視する。",
+        "japanese_display_label": "Equivariant Transferable 3D Density Functional",
+        "next_review_days": 60
+      },
+      "decision_context": {"plain_summary":"物理対称性を保ちながら3次元の液体データから再利用可能な物理Functionalを学習するScientific ML研究。","topic_trigger":"Scientific AIが個別Simulationから再利用可能な学習モデルへ進む例として技術成熟を追う。"}
+    },
+    {
+      "source": "ArXiv",
+      "name": "Analysis of Types of Inquiries in Student-AI Interaction: A case study of two CS2 tasks",
+      "url": "https://arxiv.org/abs/2608.17919",
+      "primary_url": "https://arxiv.org/abs/2608.17919",
+      "description": "学生と生成AIの830 interactionsを分類し、問題解決中に質問タイプがどう変化するか分析するAI Usage/Education研究。",
+      "screening_reason": "Run164 AI-only expansion; primary-source validation required.",
+      "review": {
+        "category": "PRODUCT",
+        "adoption_score": 65,
+        "components": {"Evidence Quality":23,"Production Maturity":12,"Use-case Utility / Fit":13,"Reliability / Security Risk":7,"Integration / Migration Feasibility":6,"Ecosystem / Support Durability":4},
+        "adoption_status": "WATCH",
+        "evidence_confidence": "HIGH",
+        "production_readiness": "LOW",
+        "main_risk": "2つのCS2課題・特定学生群での観察結果であり、一般教育、企業研修、他のAI利用者へ行動傾向を一般化できない。",
+        "best_for": "AI Tutorや教育AIの対話設計で、学習者がどの段階で何を質問するかを研究するEdTech/UXチーム。",
+        "avoid_for": "この研究だけを根拠に教育効果や生成AI導入ROIを判断する用途。",
+        "short_rationale": "生成AI利用時の質問行動を実interactionで分析しておりUX設計の参考になるが、導入製品そのものではない。",
+        "japanese_display_label": "Student-AI Inquiry Patterns",
+        "next_review_days": 60
+      },
+      "decision_context": {"plain_summary":"学生が生成AIへどんな質問をし、問題解決の進行に合わせて質問タイプがどう変わるかを実利用ログで分析した研究。","topic_trigger":"AI Tutorや社内AI支援のUXで、ユーザーが必要とする支援の変化を設計する情報として参照する。"}
+    }
+  ]
+}
