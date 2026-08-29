@@ -1,0 +1,51 @@
+name: Member Presentation Sync
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'member_presentation_sync.py'
+      - 'tests/test_run158_member_presentation_sync.py'
+      - '.github/workflows/member-presentation-sync.yml'
+
+concurrency:
+  group: member-presentation-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Member UX unit tests
+        run: python -m unittest tests/test_run158_member_presentation_sync.py
+
+      - name: Sync clean member DB
+        run: python member_presentation_sync.py
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: '7160e83d3a4f41a18bf661df92423bda'
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: 'ba993457-49f3-491a-9f58-b0a690b45558'
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
+          MEMBER_HOME_MAX: '8'
+          MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
