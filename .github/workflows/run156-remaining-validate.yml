@@ -9,6 +9,7 @@ on:
       - tests/test_run156_decision_density.py
       - .github/workflows/run156-remaining-validate.yml
 
+# Revalidation marker: run repaired review set at the current branch HEAD.
 permissions:
   contents: read
 
