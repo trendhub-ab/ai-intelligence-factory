@@ -1,0 +1,110 @@
+name: Run151 Repository Hygiene Builder
+
+on:
+  push:
+    branches:
+      - cleanup/run151-repository-hygiene
+    paths:
+      - .github/workflows/run151-repository-hygiene-builder.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact cleanup branch
+        uses: actions/checkout@v6
+        with:
+          ref: cleanup/run151-repository-hygiene
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Apply conservative repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Preserve development history, but remove it from the active root surface.
+          mkdir -p docs/archive
+          git mv RUN127_INTELLECTUAL_ENTERTAINMENT_PULL_SETUP.md docs/archive/
+          git mv RUN127_INTELLECTUAL_ENTERTAINMENT_PULL_VALIDATION_2026-08-25.md docs/archive/
+          git mv RUN127_SOURCE_REQUIREMENTS_知的エンタメ強化.md docs/archive/
+          git mv RUN128_NON_ENGINEER_ACCESSIBILITY_BRIDGE_SETUP.md docs/archive/
+          git mv RUN128_NON_ENGINEER_ACCESSIBILITY_BRIDGE_VALIDATION_2026-08-25.md docs/archive/
+          git mv RUN129_CONVERSATIONAL_WARMTH_SETUP.md docs/archive/
+          git mv RUN129_CONVERSATIONAL_WARMTH_VALIDATION_2026-08-25.md docs/archive/
+          git mv RUN130_TECHNOLOGY_PORTFOLIO_INTELLIGENCE_SETUP.md docs/archive/
+          git mv RUN131_PROFIT_ALIGNED_PORTFOLIO_SETUP.md docs/archive/
+
+          # Preserve the earlier cleanup audit trail, but keep active docs uncluttered.
+          mkdir -p docs/archive/repository-cleanup-2026-08-25
+          git mv docs/APPLY_REPOSITORY_CLEANUP.md docs/archive/repository-cleanup-2026-08-25/
+          git mv docs/REPOSITORY_CLEANUP_MANIFEST_2026-08-25.md docs/archive/repository-cleanup-2026-08-25/
+
+          # Remove obsolete legacy runtime snapshots. The active scoped counter is
+          # .runtime/gemini_daily_usage.json and is intentionally retained.
+          git rm .runtime/gemini_gemini_3_5_flash_lite_daily_usage.json
+          git rm .runtime/gemini_gemini_3_6_flash_daily_usage.json
+          git rm .runtime/pending_retry_migration.json
+
+          # Remove superseded intermediate visual calibration previews only.
+          # Keep EYECATCH_FINAL_PREVIEW_81.png as historical visual evidence.
+          git rm docs/archive/EYECATCH_HORIZONTAL_CENTER_PREVIEW_75.png
+          git rm docs/archive/EYECATCH_VERTICAL_CENTER_PREVIEW_75.png
+
+          # The builder must never survive in the source tree.
+          git rm .github/workflows/run151-repository-hygiene-builder.yml
+
+      - name: Verify protected state remains present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .runtime/gemini_daily_usage.json
+          test -d observed_history
+          test -d source_roi_history
+          test -d eyecatch_images
+          test -d assets/eyecatch_backgrounds
+          test -f deferred_deep_dive/deferred_queue.json
+          test -f inventory_bootstrap_artifacts/README.md
+          test -f docs/archive/EYECATCH_FINAL_PREVIEW_81.png
+          test -f AI_Intelligence_Factory_最終仕様書.md
+          test -f .github/workflows/daily.yml
+          test -f .github/workflows/regression.yml
+          test -f .github/workflows/regression-test.yml
+          test -f tests/test_run150_dual_eyecatch.py
+
+      - name: Compile production modules
+        run: |
+          python -m compileall -q pipeline.py editorial_eyecatch.py decision_intelligence.py inventory_bootstrap.py technology_portfolio_policy.py context_first_enrichment.py subscription_attribution.py evidence_ledger.py evidence_authority.py
+
+      - name: Run full unittest regression
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Run synthetic regression self-test
+        run: python regression_suite.py --self-test
+
+      - name: Run synthetic smoke with production isolation
+        run: python regression_suite.py --bootstrap --smoke
+
+      - name: Commit validated cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
+          git add -A
+          git commit -m "Run151: conservative repository hygiene [skip ci]"
+          git push origin HEAD:cleanup/run151-repository-hygiene
