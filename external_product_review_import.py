@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -201,14 +200,21 @@ def run(path: str, *, apply: bool, target: int, max_rows: int, audit_path: str) 
     context_first_enrichment.preflight_context_first_schema()
     previous_reviewed = _assessed_snapshot()
     before = _assessed_count()
+    estimated_assessed = before
     rows = _load_rows(path)
     results: list[dict[str, Any]] = []
 
+    # Do not re-query the full Notion DB before every row. New backfill candidates
+    # normally create one assessed entity each; duplicates are explicitly not counted
+    # in this local estimate. The authoritative count is re-read once after the batch.
     for row in rows[: max(0, max_rows) if max_rows else None]:
-        if apply and target > 0 and _assessed_count() >= target:
+        if apply and target > 0 and estimated_assessed >= target:
             break
         try:
-            results.append(process_row(row, apply=apply))
+            item_result = process_row(row, apply=apply)
+            results.append(item_result)
+            if apply and item_result.get("saved") and item_result.get("created"):
+                estimated_assessed += 1
         except Exception as exc:
             results.append({
                 "name": str(row.get("name") or row.get("nameWithOwner") or "unknown"),
