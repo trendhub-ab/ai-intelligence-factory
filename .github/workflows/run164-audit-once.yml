@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   audit:
-    if: contains(github.event.head_commit.message, 'RUN164 AUDIT EXPAND 300')
+    if: contains(github.event.head_commit.message, 'RUN164 AUDIT UNSEEN CANDIDATES')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -33,11 +33,68 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
         run: |
           python portfolio_inventory_bootstrap.py plan --target 300 --min-sellable 150
+      - name: Extract candidates not reviewed in Run164 batches 1-10
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          from urllib.parse import urlsplit, urlunsplit
+
+          def norm(url):
+              url = (url or '').strip()
+              if not url:
+                  return ''
+              p = urlsplit(url)
+              path = p.path.rstrip('/') or '/'
+              return urlunsplit((p.scheme.lower(), p.netloc.lower(), path, p.query, ''))
+
+          plan_files = sorted(glob.glob('inventory_bootstrap_artifacts/*_inventory_bootstrap_plan.json'))
+          if not plan_files:
+              raise SystemExit('plan artifact missing')
+          plan = json.load(open(plan_files[-1], encoding='utf-8'))
+
+          seen = set()
+          reviewed = 0
+          for path in sorted(glob.glob('external_reviews/run164_batch*.json')):
+              base = os.path.basename(path)
+              if not base.startswith('run164_batch'):
+                  continue
+              try:
+                  n = int(base.split('batch',1)[1].split('.',1)[0])
+              except Exception:
+                  continue
+              if not 1 <= n <= 10:
+                  continue
+              data = json.load(open(path, encoding='utf-8'))
+              for r in data.get('reviews', []):
+                  u = norm(r.get('primary_url') or r.get('url'))
+                  if u:
+                      seen.add(u)
+                      reviewed += 1
+
+          unseen = []
+          for item in plan.get('planned', []):
+              u = norm(item.get('primary_url'))
+              if u and u not in seen:
+                  unseen.append(item)
+
+          out = {
+              'zero_gemini_calls': True,
+              'planned_count': len(plan.get('planned', [])),
+              'reviewed_rows_scanned': reviewed,
+              'unique_reviewed_urls': len(seen),
+              'unseen_count': len(unseen),
+              'unseen': unseen,
+          }
+          out_path = 'inventory_bootstrap_artifacts/run164_unseen_candidates.json'
+          with open(out_path, 'w', encoding='utf-8') as f:
+              json.dump(out, f, ensure_ascii=False, indent=2)
+          print(json.dumps(out, ensure_ascii=False, indent=2))
+          PY
       - name: Upload audit
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: run164-expanded-plan-${{ github.run_id }}
+          name: run164-unseen-candidates-${{ github.run_id }}
           path: inventory_bootstrap_artifacts/
           if-no-files-found: error
           retention-days: 30
