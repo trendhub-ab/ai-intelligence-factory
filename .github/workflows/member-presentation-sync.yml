@@ -40,6 +40,26 @@ jobs:
       - name: Member UX unit tests
         run: python -m unittest tests/test_run158_member_presentation_sync.py
 
+      - name: Probe Notion presentation access
+        run: |
+          python - <<'PY'
+          import os, requests
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_DECISION_INTELLIGENCE_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+          }
+          targets = {
+              'member_home': 'https://api.notion.com/v1/pages/3c5479ff-dca9-8103-bff0-f2d5f408d35f',
+              'continuation_page': 'https://api.notion.com/v1/pages/3cb479ff-dca9-8196-a397-faae03a090ec',
+              'new_member_database': 'https://api.notion.com/v1/databases/7160e83d3a4f41a18bf661df92423bda',
+          }
+          for name, url in targets.items():
+              r = requests.get(url, headers=headers, timeout=15)
+              print(f'{name}={r.status_code}')
+          PY
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+
       - name: Sync clean member DB
         run: python member_presentation_sync.py
         env:
