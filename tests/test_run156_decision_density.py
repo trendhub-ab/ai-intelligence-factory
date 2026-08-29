@@ -12,6 +12,8 @@ class TestRun156DecisionDensity(unittest.TestCase):
                 "topic_trigger": "現在も公式一次情報が更新されており、本番導入候補として運用条件と制約を確認する価値があるため今回取り上げます。",
             },
             "review": {
+                "adoption_status": "TEST",
+                "production_readiness": "HIGH",
                 "main_risk": "本番では権限、入力データ、依存サービス、障害時の復旧を設計し、自社環境の負荷と品質で検証しないと期待した効果が出ない可能性があります。",
                 "best_for": "複数の工程をAIで処理しながら、実行状態と結果を自社の業務システムへ安全に接続したいチームに向いています。",
                 "avoid_for": "単純な一回の生成だけで十分で、状態管理や外部連携を持たない小規模用途では、追加の運用基盤が過剰になる可能性があります。",
@@ -39,6 +41,34 @@ class TestRun156DecisionDensity(unittest.TestCase):
         row["review"]["short_rationale"] = "公式一次情報で主用途を確認でき、導入候補として比較する価値がある。"
         failures = run156.validate_decision_density(row)
         self.assertTrue(any("short_rationale" in f for f in failures))
+
+    def test_explicit_archived_project_cannot_be_adopted(self):
+        row = self._row()
+        row["review"]["adoption_status"] = "ADOPT"
+        row["decision_context"]["topic_trigger"] = (
+            "公式一次情報でこのリポジトリはArchivedと明示されており、新規の本番基盤として継続保守を期待できないため、現在の採用可否を再評価します。"
+        )
+        failures = run156.validate_decision_density(row)
+        self.assertTrue(any("lifecycle contradiction" in f for f in failures))
+
+    def test_explicit_maintenance_project_cannot_be_high_readiness(self):
+        row = self._row()
+        row["review"]["adoption_status"] = "AVOID"
+        row["review"]["production_readiness"] = "HIGH"
+        row["decision_context"]["topic_trigger"] = (
+            "公式READMEでmaintenance modeと明示され、新規機能より既存利用者の保守が中心となっているため、現在の採用可否を再評価します。"
+        )
+        failures = run156.validate_decision_density(row)
+        self.assertTrue(any("HIGH production_readiness" in f for f in failures))
+
+    def test_explicit_archived_project_can_be_avoid_low(self):
+        row = self._row()
+        row["review"]["adoption_status"] = "AVOID"
+        row["review"]["production_readiness"] = "LOW"
+        row["decision_context"]["topic_trigger"] = (
+            "公式一次情報でこのリポジトリはArchivedと明示されており、新規採用ではなく既存資産の移行判断として今回取り上げます。"
+        )
+        self.assertEqual([], run156.validate_decision_density(row))
 
 
 if __name__ == "__main__":
