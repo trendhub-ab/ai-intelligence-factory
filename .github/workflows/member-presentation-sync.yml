@@ -7,6 +7,7 @@ on:
     types: [completed]
   push:
     paths:
+      - 'provision_member_presentation_db.py'
       - 'member_presentation_sync.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - '.github/workflows/member-presentation-sync.yml'
@@ -22,7 +23,7 @@ jobs:
   sync:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -40,32 +41,14 @@ jobs:
       - name: Member UX unit tests
         run: python -m unittest tests/test_run158_member_presentation_sync.py
 
-      - name: Probe subscriber database parent
-        run: |
-          python - <<'PY'
-          import os, requests
-          headers = {
-              'Authorization': f"Bearer {os.environ['NOTION_DECISION_INTELLIGENCE_API_KEY']}",
-              'Notion-Version': '2026-03-11',
-          }
-          dbid = os.environ['NOTION_SUBSCRIBER_TECH_DATABASE_ID']
-          r = requests.get(f'https://api.notion.com/v1/databases/{dbid}', headers=headers, timeout=15)
-          print(f'subscriber_database={r.status_code}')
-          if r.ok:
-              parent = r.json().get('parent') or {}
-              print(f"subscriber_parent_type={parent.get('type')}")
-              parent_id = parent.get('page_id') or parent.get('database_id') or parent.get('workspace')
-              print(f'subscriber_parent_id={parent_id}')
-              if parent.get('page_id'):
-                  p = requests.get(f"https://api.notion.com/v1/pages/{parent['page_id']}", headers=headers, timeout=15)
-                  print(f'subscriber_parent_page={p.status_code}')
-          PY
+      - name: Resolve clean member DB
+        run: python provision_member_presentation_db.py
         env:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
 
       - name: Sync clean member DB
-        continue-on-error: true
         run: python member_presentation_sync.py
         env:
           TZ: 'Asia/Tokyo'
@@ -73,8 +56,6 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
           NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
-          NOTION_MEMBER_PRESENTATION_DATABASE_ID: '7160e83d3a4f41a18bf661df92423bda'
-          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: 'ba993457-49f3-491a-9f58-b0a690b45558'
           DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
           MEMBER_HOME_MAX: '8'
           MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
