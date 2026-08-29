@@ -1,0 +1,77 @@
+name: Run156 Pilot Apply
+
+on:
+  push:
+    branches: [feature/run156-paid-db-decision-density]
+    paths:
+      - .github/workflows/run156-pilot-apply.yml
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Apply five validated pilot rows plus corrected Whisper
+        env:
+          TZ: Asia/Tokyo
+          GEMINI_API_KEY: forbidden-run156
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_DECISION_INTELLIGENCE_DB: 'true'
+          ENABLE_JAPANESE_DISPLAY_LABEL: 'true'
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_SUBSCRIBER_TECH_SYNC: 'true'
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+        run: |
+          python - <<'PY'
+          import json
+          import run156_decision_review_import as r
+
+          base = r.run(
+              'external_reviews/run156_pilot.json',
+              apply=True,
+              audit_path='run156_artifacts/pilot_apply.json',
+          )
+          assert base['density_gate'] == 'passed', base
+          assert base['product_review']['saved'] == 5, base['product_review']['results']
+          failed = [x for x in base['product_review']['results'] if not x.get('saved')]
+          assert len(failed) == 1 and failed[0]['name'] == 'openai/whisper', failed
+          assert base['subscriber_context_missing'] == 0, base
+
+          whisper = r.run(
+              'external_reviews/run156_whisper_fix.json',
+              apply=True,
+              audit_path='run156_artifacts/whisper_apply.json',
+          )
+          assert whisper['density_gate'] == 'passed', whisper
+          assert whisper['saved'] == 1, whisper
+          assert whisper['subscriber_context_missing'] == 0, whisper
+
+          print(json.dumps({
+              'updated_records': 6,
+              'created_records': 0,
+              'decision_context_internal': base['internal_context_updated'] + whisper['internal_context_updated'],
+              'decision_context_subscriber': base['subscriber_context_updated'] + whisper['subscriber_context_updated'],
+              'zero_gemini_calls': True,
+          }, ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: run156-pilot-apply-${{ github.run_id }}
+          path: run156_artifacts/
+          retention-days: 30
