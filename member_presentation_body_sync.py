@@ -2,15 +2,22 @@
 """Render readable, deterministic member-page bodies for the clean presentation DB.
 
 Run166 keeps the presentation database useful on both desktop and mobile by
-turning already-sanitized properties into a visible decision brief.  No model or
-Gemini request is made.  The body is stored inside one AUTO callout so future
-syncs can replace only the generated section while preserving any manual notes.
+turning already-sanitized properties into a visible decision brief. No model or
+Gemini request is made. The body is stored inside one AUTO callout so future
+syncs can replace only the generated section while preserving manual notes.
+
+Notion API note:
+A parent callout and its nested children are created in two API operations.
+Appending a callout carrying nested ``children`` in the same request is rejected
+by the 2026-03-11 API. Keeping those writes separate also makes interrupted runs
+recoverable on the next sync.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import time
 from typing import Any
 
@@ -34,6 +41,7 @@ STATUS_COLOR = {
     "WATCH": "yellow_background",
     "AVOID": "red_background",
 }
+_URL_RE = re.compile(r"https?://[^\s\]\[()<>、,。]+")
 
 
 def _norm(value: Any) -> str:
@@ -120,6 +128,15 @@ def _status_summary(state: dict[str, Any]) -> str:
     return f"{status} {score_text}｜実用度 {readiness}｜根拠 {confidence}"
 
 
+def _extract_urls(*values: str) -> list[str]:
+    urls: list[str] = []
+    for raw in values:
+        for url in _URL_RE.findall(_norm(raw)):
+            if url not in urls:
+                urls.append(url)
+    return urls
+
+
 def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     children: list[dict[str, Any]] = []
     status = _norm(state.get("status"))
@@ -172,14 +189,9 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     evidence = _norm(state.get("evidence"))
     primary_url = _norm(state.get("primary_url"))
     related_article = _norm(state.get("related_article"))
-    if evidence or primary_url or related_article:
+    urls = _extract_urls(evidence, primary_url)
+    if urls or related_article:
         children.append(_heading("確認する一次情報"))
-        urls: list[str] = []
-        for raw in (evidence, primary_url):
-            for token in raw.replace("\n", " ").split():
-                token = token.strip("[]()<>、,。")
-                if token.startswith("http") and token not in urls:
-                    urls.append(token)
         for index, url in enumerate(urls[:5], 1):
             children.append(_link_paragraph(f"一次情報 {index}", url))
         if related_article:
@@ -198,22 +210,33 @@ def _callout_data(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def _new_callout_block(state: dict[str, Any]) -> dict[str, Any]:
+    """Return only the parent block; children must be appended separately."""
     return {
         "object": "block",
         "type": "callout",
         "callout": _callout_data(state),
-        "children": _build_children(state),
     }
 
 
 def _plain_rich_text(values: list[dict[str, Any]] | None) -> str:
-    return "".join(str(item.get("plain_text") or "") for item in (values or [])).strip()
+    return "".join(
+        str(item.get("plain_text") or ((item.get("text") or {}).get("content")) or "")
+        for item in (values or [])
+    ).strip()
 
 
 def _block_text(block: dict[str, Any]) -> str:
     block_type = str(block.get("type") or "")
     payload = block.get(block_type) or {}
     return _plain_rich_text(payload.get("rich_text"))
+
+
+def _body_fingerprint(blocks: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    return [(str(block.get("type") or ""), _block_text(block)) for block in blocks]
+
+
+def _body_matches(actual: list[dict[str, Any]], state: dict[str, Any]) -> bool:
+    return _body_fingerprint(actual) == _body_fingerprint(_build_children(state))
 
 
 def _request(method: str, url: str, *, json_payload: dict[str, Any] | None = None) -> requests.Response:
@@ -260,9 +283,9 @@ def _delete_block(block_id: str) -> None:
         raise RuntimeError(f"Member body block delete failed {block_id}: {res.status_code} {res.text[:500]}")
 
 
-def _append_children(block_id: str, children: list[dict[str, Any]]) -> None:
+def _append_children(block_id: str, children: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not children:
-        return
+        return []
     res = _request(
         "PATCH",
         f"https://api.notion.com/v1/blocks/{block_id}/children",
@@ -270,6 +293,17 @@ def _append_children(block_id: str, children: list[dict[str, Any]]) -> None:
     )
     if res.status_code != 200:
         raise RuntimeError(f"Member body append failed {block_id}: {res.status_code} {res.text[:500]}")
+    return list((res.json() or {}).get("results") or [])
+
+
+def _create_auto_callout(page_id: str, state: dict[str, Any]) -> None:
+    created = _append_children(page_id, [_new_callout_block(state)])
+    if not created:
+        raise RuntimeError(f"Member AUTO callout creation returned no block: {page_id}")
+    callout_id = str((created[0] or {}).get("id") or "")
+    if not callout_id:
+        raise RuntimeError(f"Member AUTO callout creation returned no id: {page_id}")
+    _append_children(callout_id, _build_children(state))
 
 
 def _replace_auto_callout(block: dict[str, Any], state: dict[str, Any]) -> None:
@@ -313,7 +347,13 @@ def sync_member_page_bodies() -> dict[str, Any]:
             if block.get("type") == "callout" and _block_text(block).startswith(AUTO_PREFIX)
         ]
         expected_label = _auto_label(state)
-        if auto_blocks and _block_text(auto_blocks[0]) == expected_label:
+        first_auto = auto_blocks[0] if auto_blocks else None
+        first_auto_children = _children(str(first_auto.get("id"))) if first_auto and first_auto.get("id") else []
+        if (
+            first_auto
+            and _block_text(first_auto) == expected_label
+            and _body_matches(first_auto_children, state)
+        ):
             unchanged += 1
             for duplicate in auto_blocks[1:]:
                 duplicate_id = str(duplicate.get("id") or "")
@@ -322,8 +362,8 @@ def sync_member_page_bodies() -> dict[str, Any]:
                     duplicates_removed += 1
             continue
 
-        if auto_blocks:
-            _replace_auto_callout(auto_blocks[0], state)
+        if first_auto:
+            _replace_auto_callout(first_auto, state)
             updated += 1
             for duplicate in auto_blocks[1:]:
                 duplicate_id = str(duplicate.get("id") or "")
@@ -333,7 +373,7 @@ def sync_member_page_bodies() -> dict[str, Any]:
         else:
             if root_blocks:
                 manual_pages += 1
-            _append_children(page_id, [_new_callout_block(state)])
+            _create_auto_callout(page_id, state)
             created += 1
         if REQUEST_SLEEP_SECONDS:
             time.sleep(REQUEST_SLEEP_SECONDS)
