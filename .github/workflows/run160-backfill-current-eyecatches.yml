@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   backfill:
-    if: "github.event.head_commit.message == 'chore: backfill Run103 Editorial eyecatches'"
+    if: "github.event.head_commit.message == 'chore: retry Run103 Editorial eyecatch backfill'"
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout main
@@ -32,8 +32,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          from PIL import Image
           import shutil
+          import struct
+
+          def verify_editorial_png(path: Path) -> None:
+              data = path.read_bytes()[:33]
+              if len(data) < 33 or data[:8] != b'\x89PNG\r\n\x1a\n' or data[12:16] != b'IHDR':
+                  raise SystemExit(f'Run160 backfill fail-closed: invalid PNG header {path}')
+              width, height, bit_depth, color_type = struct.unpack('>IIBB', data[16:26])
+              if (width, height) != (1280, 670) or bit_depth != 8 or color_type not in (2, 6):
+                  raise SystemExit(
+                      f'Run160 backfill fail-closed: unexpected PNG {path.name} '
+                      f'size={(width, height)} bit_depth={bit_depth} color_type={color_type}'
+                  )
 
           src = Path('/tmp/run103/article_audit/eyecatch')
           mapping = {
@@ -46,9 +57,7 @@ jobs:
               dest = Path(dest_name)
               if not source.is_file():
                   raise SystemExit(f'Run160 backfill fail-closed: missing Editorial source {source}')
-              with Image.open(source) as image:
-                  if image.size != (1280, 670) or image.mode != 'RGB':
-                      raise SystemExit(f'Run160 backfill fail-closed: invalid Editorial image {source_name} size={image.size} mode={image.mode}')
+              verify_editorial_png(source)
               if not dest.is_file():
                   raise SystemExit(f'Run160 backfill fail-closed: expected published destination missing {dest}')
               shutil.copyfile(source, dest)
@@ -57,9 +66,10 @@ jobs:
 
       - name: Verify binary replacements differ from legacy blobs
         run: |
-          git diff --exit-code --quiet -- eyecatch_images && {
-            echo 'Run160 backfill fail-closed: no image changes detected'; exit 1;
-          } || true
+          if git diff --exit-code --quiet -- eyecatch_images; then
+            echo 'Run160 backfill fail-closed: no image changes detected'
+            exit 1
+          fi
           git status --short -- eyecatch_images
 
       - name: Commit images and remove one-time workflow
