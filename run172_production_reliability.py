@@ -172,11 +172,14 @@ def _material_claim_gaps(title: str, context: str) -> list[str]:
     return list(dict.fromkeys(gaps))
 
 
-def _extract_management_lines(raw_text: str) -> dict[str, str]:
-    """Recover exact management values when Gemini changes only bullet punctuation."""
+def _extract_management_lines(
+    raw_text: str,
+    section_split_token: str = "===NOTE_DRAFT_START===",
+) -> dict[str, str]:
+    """Recover management values without ever scanning the article body."""
     text = str(raw_text or "")
-    marker = "=== ARTICLE ==="
-    if marker in text:
+    marker = str(section_split_token or "").strip()
+    if marker and marker in text:
         text = text.split(marker, 1)[0]
     labels = {
         "Source Summary": "source_summary_text",
@@ -277,12 +280,19 @@ def install(pipeline_module: Any) -> Any:
             result["state"] = getattr(pipeline_module, "EVIDENCE_SUPPLEMENT_REQUIRED", "SUPPLEMENT_REQUIRED")
         else:
             result["state"] = getattr(pipeline_module, "EVIDENCE_INSUFFICIENT", "INSUFFICIENT")
+        # Keep the historical/diagnostic alias coherent with the authoritative state.
+        # A split-brain result here can make downstream diagnostics claim SUFFICIENT
+        # while the execution path correctly blocks the candidate.
+        result["sufficiency"] = result["state"]
         pipeline_module.logger.warning("[CORE CLAIM EVIDENCE GAP] title=%s gaps=%s", title, gaps)
         return result
 
     def parse_with_bullet_recovery(full_text: str):
         parsed = original_parse(full_text)
-        recovered = _extract_management_lines(full_text)
+        recovered = _extract_management_lines(
+            full_text,
+            getattr(pipeline_module, "SECTION_SPLIT_TOKEN", "===NOTE_DRAFT_START==="),
+        )
         for key, value in recovered.items():
             if not str(parsed.get(key) or "").strip():
                 if key == "decision_text" and hasattr(pipeline_module, "_normalize_decision"):
