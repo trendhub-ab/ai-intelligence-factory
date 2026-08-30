@@ -11,8 +11,11 @@ on:
       - 'provision_member_presentation_db.py'
       - 'member_presentation_sync.py'
       - 'member_presentation_body_sync.py'
+      - 'member_ux_guard.py'
+      - 'external_reviews/**'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
+      - 'tests/test_run169_member_ux_guard.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 concurrency:
@@ -45,6 +48,7 @@ jobs:
         run: |
           python -m unittest tests/test_run158_member_presentation_sync.py
           python -m unittest tests/test_run166_member_page_body.py
+          python -m unittest tests/test_run169_member_ux_guard.py
 
       - name: Resolve clean member DB
         run: python provision_member_presentation_db.py
@@ -53,8 +57,8 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
 
-      - name: Sync clean member DB
-        run: python member_presentation_sync.py
+      - name: Sync clean member DB with UX guard
+        run: python member_ux_guard.py presentation
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -62,11 +66,11 @@ jobs:
           NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
           NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
           DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
-          MEMBER_HOME_MAX: '8'
+          MEMBER_HOME_MAX: '3'
           MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
 
-      - name: Sync readable member page bodies
-        run: python member_presentation_body_sync.py
+      - name: Sync readable member page bodies without internal markers
+        run: python member_ux_guard.py body
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
