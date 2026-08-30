@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   regression:
-    name: Synthetic Regression (${{ github.event.inputs.suite || 'smoke' }})
+    name: Synthetic Regression (${{ github.event.inputs.suite || 'full' }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -57,13 +57,13 @@ jobs:
         run: python regression_suite.py --self-test
 
       - name: Run synthetic regression suite
-        run: python regression_suite.py --bootstrap --${{ github.event.inputs.suite || 'smoke' }}
+        run: python regression_suite.py --bootstrap --${{ github.event.inputs.suite || 'full' }}
 
       - name: Upload regression reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: regression-${{ github.event.inputs.suite || 'smoke' }}-${{ github.run_number }}
+          name: regression-${{ github.event.inputs.suite || 'full' }}-${{ github.run_number }}
           path: regression_suite_runs/
           if-no-files-found: warn
           retention-days: 30
