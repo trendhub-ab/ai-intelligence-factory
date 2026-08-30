@@ -19,6 +19,8 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.original_human_appeal = pipeline.validate_human_appeal_gate
         cls.original_retry = pipeline.should_attempt_dynamic_retry
+        cls.original_build_prompt = pipeline.build_decision_prompt
+        cls.original_build_retry_instruction = pipeline.build_dynamic_retry_instruction
         cls.had_installed_attr = hasattr(pipeline, bridge._INSTALLED_ATTR)
         cls.old_installed_attr = getattr(pipeline, bridge._INSTALLED_ATTR, None)
         bridge.install(pipeline)
@@ -27,6 +29,8 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
     def tearDownClass(cls):
         pipeline.validate_human_appeal_gate = cls.original_human_appeal
         pipeline.should_attempt_dynamic_retry = cls.original_retry
+        pipeline.build_decision_prompt = cls.original_build_prompt
+        pipeline.build_dynamic_retry_instruction = cls.original_build_retry_instruction
         if cls.had_installed_attr:
             setattr(pipeline, bridge._INSTALLED_ATTR, cls.old_installed_attr)
         elif hasattr(pipeline, bridge._INSTALLED_ATTR):
