@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Install minimal dependency
+        run: pip install requests
       - name: Unit tests
         run: |
           python -m unittest tests.test_notion_access_policy_guard -v
