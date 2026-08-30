@@ -75,7 +75,8 @@ def _properties_schema() -> dict[str, Any]:
         "関連記事": {"url": {}},
         "公式ページ": {"url": {}},
         "情報源": _multi_options([
-            ("GitHub", "default"), ("HackerNews", "orange"), ("ArXiv", "red"), ("ProductHunt", "blue")
+            ("GitHub", "default"), ("HackerNews", "orange"), ("ArXiv", "red"),
+            ("ProductHunt", "blue"), ("Unknown", "gray")
         ]),
         "注目順位": {"number": {}},
         "今月の重要変化": {"checkbox": {}},

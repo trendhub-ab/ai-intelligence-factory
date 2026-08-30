@@ -1,0 +1,115 @@
+name: Cross DB Contract Guard
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'cross_db_contract_guard.py'
+      - 'decision_intelligence.py'
+      - 'member_presentation_sync.py'
+      - 'provision_member_presentation_db.py'
+      - 'tests/test_cross_db_contract_guard.py'
+      - '.github/workflows/cross-db-contract-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cross_db_contract_guard.py'
+      - 'decision_intelligence.py'
+      - 'member_presentation_sync.py'
+      - 'provision_member_presentation_db.py'
+      - 'tests/test_cross_db_contract_guard.py'
+      - '.github/workflows/cross-db-contract-guard.yml'
+  schedule:
+    # 08:50 JST: validate live DB contracts shortly before the 09:00 Daily run.
+    - cron: '50 23 * * *'
+  workflow_run:
+    workflows: ['Daily Intelligence & Content Pipeline', 'Member Presentation Sync']
+    types: [completed]
+
+concurrency:
+  group: cross-db-contract-guard-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m unittest tests/test_cross_db_contract_guard.py
+
+  live-schema-contract:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.name == 'Daily Intelligence & Content Pipeline' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate live Decision Intelligence DB contracts
+        run: python cross_db_contract_guard.py schemas
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_DECISION_INTELLIGENCE_DB: ${{ vars.ENABLE_DECISION_INTELLIGENCE_DB || 'false' }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_SUBSCRIBER_TECH_SYNC: ${{ vars.ENABLE_SUBSCRIBER_TECH_SYNC || 'false' }}
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          ENABLE_DECISION_MONTHLY_DIGEST: ${{ vars.ENABLE_DECISION_MONTHLY_DIGEST || 'false' }}
+          NOTION_MONTHLY_DATABASE_ID: ${{ secrets.NOTION_MONTHLY_DATABASE_ID }}
+          NOTION_MONTHLY_DATA_SOURCE_ID: ${{ secrets.NOTION_MONTHLY_DATA_SOURCE_ID }}
+
+  live-member-contract:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'Member Presentation Sync' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Resolve clean member presentation DB
+        run: python provision_member_presentation_db.py
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
+      - name: Validate clean member product completeness
+        run: python cross_db_contract_guard.py member
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
