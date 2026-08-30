@@ -5,12 +5,15 @@ on:
   pull_request:
     paths:
       - 'cross_db_contract_guard.py'
+      - 'content_db_contract_guard.py'
       - 'evidence_db_contract_guard.py'
       - 'decision_intelligence.py'
       - 'evidence_ledger.py'
+      - 'pipeline.py'
       - 'member_presentation_sync.py'
       - 'provision_member_presentation_db.py'
       - 'tests/test_cross_db_contract_guard.py'
+      - 'tests/test_content_db_contract_guard.py'
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
       - '.github/workflows/cross-db-contract-guard.yml'
@@ -18,12 +21,15 @@ on:
     branches: [main]
     paths:
       - 'cross_db_contract_guard.py'
+      - 'content_db_contract_guard.py'
       - 'evidence_db_contract_guard.py'
       - 'decision_intelligence.py'
       - 'evidence_ledger.py'
+      - 'pipeline.py'
       - 'member_presentation_sync.py'
       - 'provision_member_presentation_db.py'
       - 'tests/test_cross_db_contract_guard.py'
+      - 'tests/test_content_db_contract_guard.py'
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
       - '.github/workflows/cross-db-contract-guard.yml'
@@ -55,6 +61,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -m unittest tests/test_cross_db_contract_guard.py
+          python -m unittest tests/test_content_db_contract_guard.py
           python -m unittest tests/test_evidence_db_contract_guard.py
           python -m unittest tests/test_member_presentation_resolution_guard.py
 
@@ -78,6 +85,13 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Validate live Content Intelligence DB contract
+        run: python content_db_contract_guard.py
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
       - name: Validate live Decision Intelligence DB contracts
         run: python cross_db_contract_guard.py schemas
         env:
