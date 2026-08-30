@@ -92,7 +92,31 @@ def _plain_title(obj: dict[str, Any]) -> str:
     ).strip()
 
 
+def _candidate_ids(item: dict[str, Any]) -> tuple[str, str] | None:
+    ds_id = str(item.get("id") or "").strip()
+    parent = item.get("parent") or {}
+    db_id = str(parent.get("database_id") or "").strip()
+    if ds_id and db_id:
+        return db_id, ds_id
+    if not ds_id:
+        return None
+    detail = requests.get(
+        f"https://api.notion.com/v1/data_sources/{ds_id}",
+        headers=_headers(),
+        timeout=20,
+    )
+    detail.raise_for_status()
+    db_id = str((detail.json().get("parent") or {}).get("database_id") or "").strip()
+    return (db_id, ds_id) if db_id else None
+
+
 def _search_existing() -> tuple[str, str] | None:
+    """Resolve the destination by exact title and fail closed on ambiguity.
+
+    Choosing the first Notion search result is unsafe because copied/legacy DBs can
+    share a title. Ambiguity must stop the sync rather than write member data into
+    an unintended database.
+    """
     res = requests.post(
         "https://api.notion.com/v1/search",
         headers=_headers(),
@@ -100,25 +124,21 @@ def _search_existing() -> tuple[str, str] | None:
         timeout=20,
     )
     res.raise_for_status()
+    matches: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for item in res.json().get("results") or []:
         if item.get("object") != "data_source" or _plain_title(item) != TITLE:
             continue
-        ds_id = str(item.get("id") or "").strip()
-        parent = item.get("parent") or {}
-        db_id = str(parent.get("database_id") or "").strip()
-        if ds_id and db_id:
-            return db_id, ds_id
-        if ds_id:
-            detail = requests.get(
-                f"https://api.notion.com/v1/data_sources/{ds_id}",
-                headers=_headers(),
-                timeout=20,
-            )
-            detail.raise_for_status()
-            db_id = str((detail.json().get("parent") or {}).get("database_id") or "").strip()
-            if db_id:
-                return db_id, ds_id
-    return None
+        ids = _candidate_ids(item)
+        if ids and ids not in seen:
+            seen.add(ids)
+            matches.append(ids)
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"Ambiguous member presentation DB title {TITLE!r}: found {len(matches)} exact matches. "
+            "Rename/archive legacy copies before syncing."
+        )
+    return matches[0] if matches else None
 
 
 def _create() -> tuple[str, str]:

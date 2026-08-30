@@ -5,19 +5,33 @@ on:
   pull_request:
     paths:
       - 'cross_db_contract_guard.py'
+      - 'content_db_contract_guard.py'
+      - 'evidence_db_contract_guard.py'
       - 'decision_intelligence.py'
+      - 'evidence_ledger.py'
+      - 'pipeline.py'
       - 'member_presentation_sync.py'
       - 'provision_member_presentation_db.py'
       - 'tests/test_cross_db_contract_guard.py'
+      - 'tests/test_content_db_contract_guard.py'
+      - 'tests/test_evidence_db_contract_guard.py'
+      - 'tests/test_member_presentation_resolution_guard.py'
       - '.github/workflows/cross-db-contract-guard.yml'
   push:
     branches: [main]
     paths:
       - 'cross_db_contract_guard.py'
+      - 'content_db_contract_guard.py'
+      - 'evidence_db_contract_guard.py'
       - 'decision_intelligence.py'
+      - 'evidence_ledger.py'
+      - 'pipeline.py'
       - 'member_presentation_sync.py'
       - 'provision_member_presentation_db.py'
       - 'tests/test_cross_db_contract_guard.py'
+      - 'tests/test_content_db_contract_guard.py'
+      - 'tests/test_evidence_db_contract_guard.py'
+      - 'tests/test_member_presentation_resolution_guard.py'
       - '.github/workflows/cross-db-contract-guard.yml'
   schedule:
     # 08:50 JST: validate live DB contracts shortly before the 09:00 Daily run.
@@ -47,6 +61,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -m unittest tests/test_cross_db_contract_guard.py
+          python -m unittest tests/test_content_db_contract_guard.py
+          python -m unittest tests/test_evidence_db_contract_guard.py
+          python -m unittest tests/test_member_presentation_resolution_guard.py
 
   live-schema-contract:
     if: >-
@@ -68,6 +85,13 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Validate live Content Intelligence DB contract
+        run: python content_db_contract_guard.py
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
       - name: Validate live Decision Intelligence DB contracts
         run: python cross_db_contract_guard.py schemas
         env:
@@ -84,6 +108,15 @@ jobs:
           ENABLE_DECISION_MONTHLY_DIGEST: ${{ vars.ENABLE_DECISION_MONTHLY_DIGEST || 'false' }}
           NOTION_MONTHLY_DATABASE_ID: ${{ secrets.NOTION_MONTHLY_DATABASE_ID }}
           NOTION_MONTHLY_DATA_SOURCE_ID: ${{ secrets.NOTION_MONTHLY_DATA_SOURCE_ID }}
+      - name: Validate live Evidence Ledger contract
+        run: python evidence_db_contract_guard.py
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
 
   live-member-contract:
     if: >-
