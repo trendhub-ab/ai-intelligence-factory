@@ -1,0 +1,62 @@
+name: Apply Gemini Counter Reconciliation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-gemini-counter-reconciliation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install production dependencies
+        run: pip install -r requirements.txt
+
+      - name: Normalize one-time patch marker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_gemini_counter_reconciliation_patch.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('f"{MARKER}', 'f"[GEMINI PERSISTENT RECONCILE]')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Apply deterministic patch
+        run: python tools/apply_gemini_counter_reconciliation_patch.py
+
+      - name: Compile and focused tests
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+        run: |
+          python -m py_compile pipeline.py
+          python -m unittest tests.test_gemini_counter_reconciliation -v
+
+      - name: Commit verified production change
+        run: |
+          git checkout -- tools/apply_gemini_counter_reconciliation_patch.py
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add pipeline.py tests/test_gemini_counter_reconciliation.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No patch changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Reconcile Gemini quota reservations on transport timeouts'
+          git push origin HEAD:main
