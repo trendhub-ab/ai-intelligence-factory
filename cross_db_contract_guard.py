@@ -37,6 +37,17 @@ CATEGORY_OPTIONS = {
     "PRODUCT",
     "OTHER",
 }
+MEMBER_CATEGORY_OPTIONS = {
+    "AIモデル",
+    "エージェント",
+    "開発ツール",
+    "基盤",
+    "データ",
+    "セキュリティ",
+    "マルチモーダル",
+    "製品・サービス",
+    "その他",
+}
 PIPELINE_STATUS_OPTIONS = {"Stocked", "Deep Dive", "Product Review", "External Review Import"}
 CONTENT_STATUS_OPTIONS = {"Stocked", "Pending Retry", "Quality Failed", "Deep Dive"}
 ARTICLE_STATUS_OPTIONS = {"Not Planned", "Needs Editorial Review", "Ready"}
@@ -69,6 +80,15 @@ SUBSCRIBER_ENUM_CONTRACTS: dict[str, set[str]] = {
     di.SUB_PROP_ADOPTION_STATUS: set(di.ADOPTION_STATUSES),
     di.SUB_PROP_EVIDENCE_CONFIDENCE: set(di.CONFIDENCE_LEVELS),
     di.SUB_PROP_PRODUCTION_READINESS: set(di.READINESS_LEVELS),
+}
+
+MEMBER_ENUM_CONTRACTS: dict[str, set[str]] = {
+    "判断": set(di.ADOPTION_STATUSES),
+    "根拠の確かさ": {"高", "中", "低"},
+    "実用度": {"高", "中", "低"},
+    "分野": MEMBER_CATEGORY_OPTIONS,
+    "分類": {"実務判断", "Deep Tech", "参考資料"},
+    "情報源": SOURCE_OPTIONS,
 }
 
 MEMBER_REQUIRED_TEXT_FIELDS = (
@@ -216,11 +236,18 @@ def validate_member_states(states: Iterable[dict[str, Any]]) -> dict[str, Any]:
 
 
 def run_member_contract() -> dict[str, Any]:
-    """Read the clean presentation DB after sync and verify the member product itself."""
+    """Read the clean presentation DB after sync and verify schema + member content."""
     if not di.NOTION_DECISION_INTELLIGENCE_API_KEY:
         raise ValueError("NOTION_DECISION_INTELLIGENCE_API_KEY is required")
     if not (mps.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID or mps.NOTION_MEMBER_PRESENTATION_DATABASE_ID):
         raise ValueError("Member presentation DB is not configured")
+
+    schema = _fetch_schema(
+        mps.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID,
+        mps.NOTION_MEMBER_PRESENTATION_DATABASE_ID,
+        "Member Presentation DB",
+    )
+    validate_enum_contracts(schema, MEMBER_ENUM_CONTRACTS, "Member Presentation DB")
 
     pages = di._query_external_db(
         mps.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID,
@@ -229,7 +256,7 @@ def run_member_contract() -> dict[str, Any]:
     )
     states = [mps._destination_state(page) for page in pages]
     result = validate_member_states(states)
-    result.update({"enabled": True, "zero_gemini_calls": True})
+    result.update({"enabled": True, "zero_gemini_calls": True, "enum_contracts": "ok"})
     return result
 
 
