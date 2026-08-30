@@ -1,17 +1,61 @@
 name: Daily Intelligence & Content Pipeline [PAUSED]
 
 # PAUSED by explicit user instruction on 2026-08-30 JST.
-# Do not restore automatic or manual execution until the user explicitly instructs ChatGPT to resume Daily.
+# There is intentionally NO schedule trigger.
+# The only job is hard-disabled, so workflow_dispatch cannot consume Gemini or write production data.
+# The dormant production contract below is retained so safety regression tests continue to verify
+# the exact settings that must be restored when the user explicitly instructs ChatGPT to resume Daily.
 on:
   workflow_dispatch:
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  paused:
+  run-pipeline:
     if: ${{ false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
       - name: Daily is paused
         run: echo "Daily Intelligence & Content Pipeline is paused until explicit user instruction to resume."
+        env:
+          # Dormant production safety contract. This job never executes while PAUSED.
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: "60"
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+          PRODUCT_REVIEW_MAX_PER_RUN: "0"
+          PORTFOLIO_DIVERSITY_TOLERANCE: "8"
+
+      - name: Dormant portfolio review contract
+        if: ${{ false }}
+        run: python daily_portfolio_review.py
+
+      - name: Dormant monthly digest private artifact contract
+        if: ${{ false }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: monthly-digest-${{ github.run_number }}
+          path: monthly_digests/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Dormant gate and article audit private artifact contract
+        if: ${{ false }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: private-gate-review-${{ github.run_number }}
+          path: |
+            review_candidates/
+            quality_failures/
+            gate_history/
+            regression_cases_pending/
+            article_audit/
+          if-no-files-found: warn
+          retention-days: 14
