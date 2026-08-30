@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
-"""Run170.2: final member-first UX guard for Decision Intelligence.
+"""Run170.3: final member-first UX guard for Decision Intelligence.
 
 This presentation-only layer keeps the member product understandable for
 non-engineers without changing Product Review scores, Evidence, article
 quality logic, or the internal decision model.
 
-It adds two durable guarantees on top of Run170/170.1:
-- the three homepage picks are editorially selected for broad member utility,
-  with the score-based ranker retained only as a fallback;
-- the three featured records keep plain Japanese, concrete next actions, and
-  customer-facing risk/use-case copy after every automated Notion sync.
+Durable guarantees:
+- homepage picks are editorially selected for broad member utility, while the
+  score-based ranker remains as a fallback;
+- featured records keep plain Japanese and concrete next actions after sync;
+- generic actions across the catalog become category-specific actions;
+- a small conservative glossary makes common infrastructure terms readable in
+  list views without changing the underlying technical judgment.
 
 ZERO Gemini/model requests.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -127,6 +130,18 @@ EDITORIAL_COPY_OVERRIDES: dict[str, dict[str, str]] = {
     },
 }
 
+GENERIC_MEMBER_ACTIONS = {
+    "導入候補として、自社要件との適合と運用条件を最終確認する。",
+    "代表業務を1つ選び、小さく試して効果と運用負荷を確認する。",
+    "次回レビューまで監視し、成熟度・保守状況の変化を確認する。",
+    "新規採用は見送り、保守中の代替候補を比較する。",
+    "導入前に、自社の要件・費用・運用体制に合うかを最終確認する。",
+    "実際の業務を1つ選び、小さく試して品質・費用・運用負荷を確認する。",
+    "今すぐ導入はせず、自社に関係する用途が出たときに最新の研究結果を確認する。",
+    "今は導入せず、保守状況や後継版の動きが変わったときに再確認する。",
+    "新規採用は見送り、現在も保守されている代替候補を比較する。",
+}
+
 
 def _deep_tech_reason(state: dict[str, Any]) -> str:
     status = base._clean(state.get("status"))
@@ -146,7 +161,6 @@ def refine_judgment_reason(
     topic_key = mps._norm_key(state.get("topic"))
     action_key = mps._norm_key(state.get("next_action"))
 
-    # A clean, single-role reason should be preserved.
     if (
         current
         and not base.BAD_REASON_RE.search(current)
@@ -190,6 +204,77 @@ def refine_judgment_reason(
     if descriptive:
         return descriptive[0]
     return current
+
+
+def _simplify_plain_summary(text: Any) -> str:
+    """Conservatively explain common technical terms used in list-view summaries."""
+    value = base._humanize_terms(text)
+    if not value:
+        return ""
+    if "RAG" in value and "検索して回答に使う仕組み（RAG）" not in value:
+        value = re.sub(r"(?<![A-Za-z0-9])RAG(?![A-Za-z0-9])", "社内文書などを検索して回答に使う仕組み（RAG）", value)
+    if "Vector Database" in value:
+        value = value.replace("Vector Database", "意味の近さで情報を探すデータベース（ベクトルDB）")
+    if "ベクトルデータベース" in value and "意味の近さで情報を探すデータベース" not in value:
+        value = value.replace("ベクトルデータベース", "意味の近さで情報を探すデータベース（ベクトルDB）")
+    if "埋め込みベクトル" in value and "文章などの意味を数値化したデータ" not in value:
+        value = value.replace("埋め込みベクトル", "文章などの意味を数値化したデータ（埋め込みベクトル）")
+    if "推論・サービング" in value:
+        value = value.replace("推論・サービング", "AIモデルを動かして多くの利用者へ回答を返す処理")
+    if "推論基盤" in value:
+        value = value.replace("推論基盤", "AIモデルを実際に動かす基盤")
+    if "ハイブリッド検索" in value and "キーワード検索と意味検索" not in value:
+        value = value.replace("ハイブリッド検索", "キーワード検索と意味検索を組み合わせる「ハイブリッド検索」")
+    if "量子化" in value and "モデルを軽くする" not in value:
+        value = value.replace("量子化", "モデルを軽くする「量子化」")
+    if "トレーシング" in value and "処理過程を記録" not in value:
+        value = value.replace("トレーシング", "AIの処理過程を記録・追跡する機能")
+    if "ベンチマーク" in value and "性能比較テスト" not in value:
+        value = value.replace("ベンチマーク", "性能比較テスト（ベンチマーク）")
+    return value
+
+
+def _member_first_action(state: dict[str, Any]) -> str:
+    """Turn only generic actions into concrete, category-aware member actions."""
+    current = base._clean(state.get("next_action"))
+    if current and current not in GENERIC_MEMBER_ACTIONS:
+        return current
+
+    status = base._clean(state.get("status"))
+    category = base._clean(state.get("category"))
+    classification = base._clean(state.get("classification"))
+
+    if status == "ADOPT":
+        if category == "製品・サービス":
+            return "実際の業務を1つ選び、5人程度で試し、現在の方法と比べて時間・費用・使いやすさを確認してから導入範囲を決める。"
+        if category == "セキュリティ":
+            return "守りたい情報と禁止したい操作を10件程度挙げ、検証環境で防げるか確認し、既存の安全対策との役割分担を決める。"
+        if category in {"AIモデル", "エージェント", "マルチモーダル"}:
+            return "代表的な業務タスクを20件程度用意し、現在の候補と同じ条件で品質・速度・費用を比較する。"
+        if category in {"開発ツール", "基盤", "データ"}:
+            return "代表的な1つの処理を検証環境で動かし、現在の方法と速度・費用・運用負荷を比較する。"
+        return "実際の利用場面を1つ決め、小規模に試して効果・費用・運用負荷を確認してから導入を判断する。"
+
+    if status == "TEST":
+        if category == "製品・サービス":
+            return "実際の利用者3〜5人で1週間ほど試し、使いやすさ・回答品質・費用を現在の方法と比較する。"
+        if category == "セキュリティ":
+            return "想定する事故や禁止操作を10件程度用意し、検証環境でどこまで防げるかを確認する。"
+        if category in {"AIモデル", "エージェント", "マルチモーダル"}:
+            return "代表タスクを20件程度用意し、小規模テストで品質・速度・費用を現行候補と比較する。"
+        if category in {"開発ツール", "基盤", "データ"}:
+            return "代表的な1つの処理だけを検証環境で動かし、導入前後の速度・費用・運用負荷を比較する。"
+        return "実際の利用場面を1つ選び、小規模テストで効果・費用・運用負荷を確認する。"
+
+    if status == "WATCH":
+        if classification == "Deep Tech":
+            return "自社に関係する用途を1つ決め、次回レビュー時に性能・再現性・公開実装の有無が変わったか確認する。"
+        return "今は導入せず、次回レビュー時または大型更新時に、保守状況・価格・主要機能の変化を再確認する。"
+
+    if status == "AVOID":
+        return "新規採用は止め、同じ用途で現在も保守されている候補を2〜3件比較する。"
+
+    return current or "利用場面を1つ決め、必要な条件を確認してから次の判断へ進む。"
 
 
 def _eligible_home_pick(state: dict[str, Any]) -> bool:
@@ -257,6 +342,8 @@ def install_refined_language_guard() -> tuple[dict[str, int], dict[str, int]]:
     stats = {
         "review_copy_used": 0,
         "reasons_role_separated": 0,
+        "summaries_simplified": 0,
+        "generic_actions_made_specific": 0,
         "editorial_copy_overrides": 0,
         "bad_reasons_remaining": 0,
         "generic_topics_remaining": 0,
@@ -270,11 +357,23 @@ def install_refined_language_guard() -> tuple[dict[str, int], dict[str, int]]:
         if reviewed:
             stats["review_copy_used"] += 1
         state = base.humanize_state(state, reviewed)
+
+        before_summary = base._clean(state.get("plain_summary"))
+        state["plain_summary"] = _simplify_plain_summary(before_summary)
+        if base._clean(state.get("plain_summary")) != before_summary:
+            stats["summaries_simplified"] += 1
+
+        before_action = base._clean(state.get("next_action"))
+        state["next_action"] = _member_first_action(state)
+        if base._clean(state.get("next_action")) != before_action:
+            stats["generic_actions_made_specific"] += 1
+
         before = base._clean(state.get("judgment_reason"))
         after = refine_judgment_reason(state, reviewed)
         state["judgment_reason"] = after
         if before != after:
             stats["reasons_role_separated"] += 1
+
         if _apply_editorial_copy(state):
             stats["editorial_copy_overrides"] += 1
         if base.BAD_REASON_RE.search(base._clean(state.get("judgment_reason"))):
