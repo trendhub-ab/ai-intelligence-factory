@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,6 +41,25 @@ class NotionAccessPolicyGuardTests(unittest.TestCase):
             failures = guard.scan_repository(root)
             self.assertEqual(len(failures), 1)
             self.assertEqual(failures[0]["file"], "bad_runtime.py")
+
+    def test_repository_manifest_covers_every_registered_database(self):
+        root = Path(guard.__file__).resolve().parent
+        data = guard.load_audit_manifest(root)
+        self.assertEqual(guard.validate_audit_manifest(data), [])
+        self.assertEqual(
+            set(data["databases"]),
+            guard.EXPECTED_AUDIT_DATABASE_KEYS,
+        )
+
+    def test_manifest_rejects_missing_database_and_bad_view_id(self):
+        root = Path(guard.__file__).resolve().parent
+        data = json.loads((root / guard.AUDIT_MANIFEST).read_text(encoding="utf-8"))
+        data["databases"].pop("decision_monthly")
+        data["databases"]["content_intelligence"]["views"]["ready_articles"] = "bad"
+        failures = guard.validate_audit_manifest(data)
+        reasons = " | ".join(item["reason"] for item in failures)
+        self.assertIn("missing audit contract", reasons)
+        self.assertIn("invalid view id", reasons)
 
 
 if __name__ == "__main__":
