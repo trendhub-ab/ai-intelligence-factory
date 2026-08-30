@@ -24,7 +24,7 @@ jobs:
           python-version: '3.11'
       - name: Install project dependencies
         run: pip install -r requirements.txt
-      - name: Run exactly two Product Reviews
+      - name: Run one Product Review with one repair reserve
         env:
           TZ: Asia/Tokyo
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -62,12 +62,9 @@ jobs:
           import sys
           from inventory_bootstrap import product_only_environment, detect_unsafe_pipeline_activity
 
-          selected = (
-              'arxiv:2608.27364',
-              'arxiv:2608.27424',
-          )
+          selected = ('arxiv:2608.27427',)
           env = os.environ.copy()
-          env.update(product_only_environment(max_reviews=2, product_request_budget=3))
+          env.update(product_only_environment(max_reviews=1, product_request_budget=2))
           env['INVENTORY_BOOTSTRAP_ENTITY_IDS'] = ','.join(selected)
           env['GEMINI_DEEP_DIVE_MODEL_CANDIDATES'] = 'gemini-3.6-flash'
 
