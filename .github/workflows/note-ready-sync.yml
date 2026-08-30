@@ -1,0 +1,44 @@
+name: Note Ready Article Sync
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Daily Intelligence & Content Pipeline
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  sync-note-ready:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependency
+        run: pip install requests
+
+      - name: Zero-API unit tests
+        run: python -m unittest tests.test_note_ready_sync -v
+
+      - name: Sync Ready articles to note posting DB
+        run: python note_ready_sync.py
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
