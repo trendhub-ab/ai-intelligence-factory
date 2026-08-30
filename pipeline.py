@@ -160,6 +160,25 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
         response = chat.send_message(prompt)
     except Exception as exc:
         GEMINI_USAGE_AUDIT.record_outcome(audit_id, "error", exc)
+        # Persistent RPD state is reserved before send to remain concurrency-safe.
+        # Provider-visible API/HTTP errors (429/503 etc.) stay counted because the
+        # provider may charge/count those attempts. Only transport/watchdog timeout
+        # families without a usable provider response are released. This rule is
+        # model-agnostic and therefore applies to Flash / Flash-Lite and future models.
+        if _is_gemini_transport_timeout(exc):
+            try:
+                PERSISTENT_GEMINI_COUNTER.release_unobserved(request_kind, model_name=model_name)
+                logger.warning(
+                    f"[GEMINI PERSISTENT RECONCILE] released unobserved timeout reservation "
+                    f"model={model_name} kind={request_kind} error={exc.__class__.__name__}"
+                )
+            except Exception as reconcile_exc:
+                # Reconciliation must never convert a provider timeout into a pipeline
+                # outage. Keeping the reservation is the safe failure mode.
+                logger.warning(
+                    f"[GEMINI PERSISTENT RECONCILE] release failed; reservation kept fail-closed "
+                    f"model={model_name} kind={request_kind} error={reconcile_exc}"
+                )
         raise
     GEMINI_USAGE_AUDIT.record_outcome(audit_id, "success")
     GEMINI_USAGE_AUDIT.record_response_usage(audit_id, response)
@@ -815,11 +834,11 @@ class PersistentGeminiDailyCounter:
             raise GeminiBudgetExceededError(f"Persistent Gemini counter parse failed: {e}")
         return data, body.get("sha")
 
-    def _write_remote(self, data: dict, sha: str | None) -> None:
+    def _write_remote(self, data: dict, sha: str | None, action: str = "reserve") -> None:
         import json
         content = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         payload = {
-            "message": f"chore: reserve Gemini request {data.get('quota_date','')} ({self.counter_scope})",
+            "message": f"chore: {action} Gemini request {data.get('quota_date','')} ({self.counter_scope})",
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
         }
         if sha:
@@ -879,6 +898,71 @@ class PersistentGeminiDailyCounter:
                 raise
 
         raise GeminiBudgetExceededError("Persistent Gemini counter reservation failed after retries")
+
+    def release_unobserved(self, kind: str, model_name: str = "default") -> None:
+        """Release one pre-send reservation after a transport/watchdog timeout.
+
+        This method is deliberately *not* used for provider-visible API/HTTP errors
+        such as 429/503. The provider dashboard can count those attempts, so keeping
+        them reserved is the fail-closed truth. Release is restricted to timeout
+        families classified by ``_is_gemini_transport_timeout`` at the call site.
+
+        ``session_used`` and the per-run budgets remain attempt counters and are not
+        decremented; only the cross-run persistent RPD safety estimate is reconciled.
+        """
+        if not self.enabled:
+            return
+        if not self.counter_scope:
+            raise GeminiBudgetExceededError("Persistent Gemini counter has no stable scope")
+        quota_date = self._quota_date()
+        budget = self.budget_for(model_name)
+        for attempt in range(3):
+            data, sha = self._read_remote()
+            data = self._normalized_day(data, quota_date)
+            state = self._model_state(data, model_name)
+            used = int(state.get("used", 0) or 0)
+            by_kind = state.get("by_kind") if isinstance(state.get("by_kind"), dict) else {}
+            kind_used = int(by_kind.get(kind, 0) or 0)
+
+            # Never manufacture quota. If the matching reservation cannot be proven,
+            # retain the existing count rather than risk under-counting provider usage.
+            if used <= 0 or kind_used <= 0:
+                logger.warning(
+                    f"[GEMINI PERSISTENT RECONCILE] no matching reservation; kept fail-closed "
+                    f"model={model_name} kind={kind} used={used} kind_used={kind_used}"
+                )
+                return
+
+            state["used"] = used - 1
+            state["budget"] = budget
+            state["exhausted"] = state["used"] >= budget
+            by_kind[kind] = kind_used - 1
+            if by_kind[kind] <= 0:
+                by_kind.pop(kind, None)
+            state["by_kind"] = by_kind
+            state["released_unobserved"] = int(state.get("released_unobserved", 0) or 0) + 1
+            released_by_kind = (
+                state.get("released_by_kind")
+                if isinstance(state.get("released_by_kind"), dict)
+                else {}
+            )
+            released_by_kind[kind] = int(released_by_kind.get(kind, 0) or 0) + 1
+            state["released_by_kind"] = released_by_kind
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            data["scope_kind"] = "repository_local"
+            if self.provider_project_scope:
+                data["provider_project_fingerprint"] = self.provider_project_scope
+            try:
+                self._write_remote(data, sha, action="release-unobserved")
+                return
+            except GeminiBudgetExceededError as e:
+                msg = str(e)
+                if attempt < 2 and ("HTTP 409" in msg or "HTTP 422" in msg):
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                raise
+
+        raise GeminiBudgetExceededError("Persistent Gemini counter release failed after retries")
 
     def summary(self) -> str:
         if not self.enabled:
