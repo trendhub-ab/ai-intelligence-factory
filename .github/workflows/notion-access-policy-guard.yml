@@ -1,0 +1,34 @@
+name: Notion Access Policy Guard
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '**/*.py'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'NOTION_ACCESS_POLICY.md'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'NOTION_ACCESS_POLICY.md'
+
+permissions:
+  contents: read
+
+jobs:
+  notion-access-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Unit tests
+        run: python -m unittest tests.test_notion_access_policy_guard -v
+      - name: Enforce Public API / View-first policy
+        run: python notion_access_policy_guard.py
