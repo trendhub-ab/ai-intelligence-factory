@@ -2,7 +2,7 @@
 """SQL-free contract guard for the secret-configured Notion Public mirror DB.
 
 This guard uses only the Notion Public API. It makes ZERO Gemini/model requests and
-never depends on Notion MCP query-data-sources SQL quota.
+never depends on Notion MCP SQL quota.
 """
 from __future__ import annotations
 
