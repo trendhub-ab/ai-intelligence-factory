@@ -14,12 +14,14 @@ on:
       - 'member_ux_guard.py'
       - 'member_ux_body_fast.py'
       - 'member_human_language_ux.py'
+      - 'member_human_language_ux_v2.py'
       - 'external_reviews/**'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
       - 'tests/test_run169_1_member_body_fast.py'
       - 'tests/test_run170_member_human_language_ux.py'
+      - 'tests/test_run170_1_member_copy_role_separation.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 concurrency:
@@ -55,6 +57,7 @@ jobs:
           python -m unittest tests/test_run169_member_ux_guard.py
           python -m unittest tests/test_run169_1_member_body_fast.py
           python -m unittest tests/test_run170_member_human_language_ux.py
+          python -m unittest tests/test_run170_1_member_copy_role_separation.py
 
       - name: Resolve clean member DB
         run: python provision_member_presentation_db.py
@@ -63,8 +66,8 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
 
-      - name: Sync clean member DB with human-language UX guard
-        run: python member_human_language_ux.py presentation
+      - name: Sync clean member DB with role-separated human-language UX guard
+        run: python member_human_language_ux_v2.py presentation
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -76,7 +79,7 @@ jobs:
           MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
 
       - name: Sync readable member page bodies in reader order
-        run: python member_human_language_ux.py body
+        run: python member_human_language_ux_v2.py body
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
