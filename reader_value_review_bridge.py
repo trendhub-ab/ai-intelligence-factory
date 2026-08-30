@@ -1,20 +1,8 @@
 """Run171 Production Yield Guardrails + Run169 Reader Value Review Bridge.
 
-This policy layer keeps the existing Fact/Evidence/Publications gates intact while
-closing two production gaps observed in Daily Run #105:
-
-1. zero-API reader diagnostics can identify materially dense/repetitive articles;
-2. the generation/retry prompt can still drift between Decision, Decision Score,
-   Action, article conclusion, evidence-bounded numbers/named facts, and explicit
-   editorial decision voice.
-
-Design constraints:
-- never weaken Fact/Evidence gates;
-- never turn reader-value defects into HARD/Quality Failed by themselves;
-- never add a Gemini call site or change model/budget selection;
-- improve the first generation and mixed-failure retry instructions instead of
-  spending more requests;
-- genuine evidence insufficiency must remain blocked.
+The existing reader-value policy remains unchanged.  Production main additionally
+installs Run172 reliability fixes before these editorial wrappers so Fact/Evidence
+and transport fixes become active without altering the historical bridge contract.
 """
 from __future__ import annotations
 
@@ -59,9 +47,6 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
         return []
     signals = pipeline_module._reader_experience_signals(article)
     issues: list[str] = []
-
-    # Real-production closure: the 2026-08-29 READY set repeatedly showed this exact
-    # combination. One weak stylistic signal is not enough; all four must agree.
     dense_report_cluster = all(
         signals.get(key) == "REVIEW"
         for key in (
@@ -76,10 +61,6 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
             READER_VALUE_MARKER
             + "dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"
         )
-
-    # These are already explicit severe failure modes in the existing reader diagnostics.
-    # They are safe to bridge because they describe structural failure, not a preference
-    # for jokes, analogies, conversational phrases, or a specific editorial tone.
     severe_flags = (
         ("warm_hook_cold_body", "warm_hook_cold_body"),
         ("analogy_substance_thin", "analogy_substance_thin"),
@@ -89,7 +70,6 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
     for key, label in severe_flags:
         if bool(signals.get(key)):
             issues.append(READER_VALUE_MARKER + label)
-
     return list(dict.fromkeys(issues))
 
 
@@ -99,7 +79,7 @@ def _row_is_reader_value(row: dict) -> bool:
 
 
 def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> str:
-    """Return local repair guidance only for Run #105 failure classes that are present."""
+    """Return local repair guidance only for failure classes actually present."""
     rows = list(reason_rows or [])
     codes = {str(row.get("reason_code") or "") for row in rows}
     messages = "\n".join(str(row.get("message") or row.get("reason") or "") for row in rows)
@@ -111,32 +91,28 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
             "ARTICLE終盤の判断を同じ行動距離へそろえてください。Evidenceやスコア根拠は作り替えず、"
             "矛盾する緊急度表現・結論・Actionだけを局所修正してください。"
         )
-
     if getattr(pipeline_module, "REASON_CODE_APPEAL_DECISION_VOICE_LOSS", "") in codes or "decision_voice_missing" in messages:
         additions.append(
             "Decision Voice修正では、架空の経験・感情を追加せず、既存Evidenceから導ける編集者自身の判断を1文だけ復元し、"
             "限定検証・比較・待機・見送り等の具体的な次Actionへ接続してください。『注視する』だけへの置換は禁止です。"
         )
-
     if "repetitive_insight" in messages:
         additions.append(
             "反復修正では、同じ核心事実・洞察を説明している重複文を削除または1箇所へ統合してください。"
             "新しい説明や比喩を足さず、後段は同じ説明の言い換えではなく、その事実が判断に与える意味へ進めてください。"
         )
-
     if "dense_report_cluster" in messages:
         additions.append(
             "Dense report修正では、Evidence・数値・制約を削らず、重複説明・汎用前置き・Decisionに不要な実装列挙だけを"
             "削除または平易な1文へ置換してください。記事全体の再構成や新事実の追加はしないでください。"
         )
-
     if not additions:
         return ""
     return "\n".join(["【Run171 局所修正ガード】", *["・" + item for item in additions]])
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install the policy bridge onto an imported pipeline module, idempotently."""
+    """Install the historical reader-value policy bridge idempotently."""
     if getattr(pipeline_module, _INSTALLED_ATTR, False):
         return pipeline_module
 
@@ -154,8 +130,6 @@ def install(pipeline_module: Any) -> Any:
         )
         if reader_issues:
             issues.extend(x for x in reader_issues if x not in issues)
-            # Existing caller maps non-ACCEPTABLE Human Appeal to warning/review rows.
-            # Do not introduce a new hard-fail state.
             if state == "ACCEPTABLE":
                 state = "WEAK"
         return state, issues
@@ -201,7 +175,11 @@ def install(pipeline_module: Any) -> Any:
 
 def main() -> None:
     import pipeline
+    import run172_production_reliability
 
+    # Reliability/Evidence/transport wrappers first; reader-value wrappers then
+    # compose on top of the corrected prompt/retry functions.
+    run172_production_reliability.install(pipeline)
     install(pipeline)
     pipeline.main()
 
