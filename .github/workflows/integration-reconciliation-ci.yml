@@ -9,6 +9,8 @@ on:
       - 'inventory_bootstrap.py'
       - 'decision_intelligence.py'
       - 'pipeline.py'
+      - 'reader_value_review_bridge.py'
+      - '.github/workflows/daily.yml'
       - '.github/workflows/regression-test.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
@@ -36,7 +38,8 @@ jobs:
             subscription_attribution.py \
             inventory_bootstrap.py \
             decision_intelligence.py \
-            pipeline.py
+            pipeline.py \
+            reader_value_review_bridge.py
       - name: Validate Run130 regression workflow safety surface
         run: |
           grep -F 'article_set:' .github/workflows/regression-test.yml
@@ -57,6 +60,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_run144_reader_delight_balance.py' -v
           python -m unittest discover -s tests -p 'test_run145_real_article_closure.py' -v
           python -m unittest discover -s tests -p 'test_run147_rescue_loss_precision.py' -v
+          python -m unittest discover -s tests -p 'test_run169_reader_value_review_bridge.py' -v
       - name: Run Run134 reconciliation tests
         run: |
           python -m unittest discover -s tests -p 'test_run134_revenue_product_value.py' -v
@@ -75,4 +79,4 @@ jobs:
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
-        run: python pipeline.py
+        run: python reader_value_review_bridge.py
