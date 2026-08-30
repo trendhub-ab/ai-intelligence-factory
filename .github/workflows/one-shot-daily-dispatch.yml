@@ -1,0 +1,20 @@
+name: One Shot Daily Dispatcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.daily-run-once'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch current Daily on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run daily.yml --ref main --repo trendhub-ab/ai-intelligence-factory
