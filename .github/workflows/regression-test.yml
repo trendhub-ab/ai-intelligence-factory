@@ -34,7 +34,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: 指定3記事を再生成・検証
-        run: python pipeline.py
+        run: python reader_value_review_bridge.py
         env:
           REGEN_TEST_MODE: "true"
           REGEN_TEST_ARTICLE_SET: ${{ inputs.article_set }}

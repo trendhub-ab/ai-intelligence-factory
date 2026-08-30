@@ -51,7 +51,7 @@ jobs:
       - name: 通常Pipelineを実行
         if: steps.daily_guard.outputs.run == 'true'
         run: |
-          python pipeline.py
+          python reader_value_review_bridge.py
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
