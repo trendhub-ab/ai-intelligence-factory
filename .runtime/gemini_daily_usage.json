@@ -17,10 +17,10 @@
             "deep_dive": 9,
             "deep_dive_retry": 1,
             "product_review": 2,
-            "quality_retry": 4
+            "quality_retry": 5
           },
           "exhausted": false,
-          "used": 16
+          "used": 17
         }
       }
     }
@@ -29,5 +29,5 @@
   "quota_date": "2026-08-30",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-30T09:33:39.436658+00:00"
+  "updated_at": "2026-08-30T09:34:26.241969+00:00"
 }
