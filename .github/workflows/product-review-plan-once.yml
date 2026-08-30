@@ -1,0 +1,56 @@
+name: Product Review Plan Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/product-review-plan-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run zero-API Product Review plan
+        env:
+          ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
+          PORTFOLIO_DIVERSITY_TOLERANCE: '8'
+          TZ: Asia/Tokyo
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+        run: |
+          python portfolio_inventory_bootstrap.py plan --target 60 --min-sellable 50
+      - name: Upload plan audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: product-review-plan-${{ github.run_id }}
+          path: inventory_bootstrap_artifacts/
+          if-no-files-found: warn
+          retention-days: 7
