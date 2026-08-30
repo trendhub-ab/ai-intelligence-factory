@@ -80,7 +80,8 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
             "message": "decision voice missing",
             "gate": "human_appeal",
         }]
-        expected = self.original_retry(mixed_rows, {"sufficiency": "SUFFICIENT"}, "new")
+        # Access through the class so the stored plain function is not descriptor-bound to self.
+        expected = type(self).original_retry(mixed_rows, {"sufficiency": "SUFFICIENT"}, "new")
         actual = pipeline.should_attempt_dynamic_retry(mixed_rows, {"sufficiency": "SUFFICIENT"}, "new")
         self.assertEqual(expected, actual)
 
