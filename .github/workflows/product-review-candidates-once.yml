@@ -1,0 +1,70 @@
+name: Product Review Candidates Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/product-review-candidates-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Select Product Review candidates without Gemini
+        env:
+          TZ: Asia/Tokyo
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_DECISION_INTELLIGENCE_DB: 'true'
+          ENABLE_REVENUE_PRODUCT_PHASE2: 'true'
+          PRODUCT_REVIEW_MAX_PER_RUN: '8'
+          INVENTORY_BOOTSTRAP_ACTIVE: 'false'
+          SYNTHETIC_REGRESSION_MODE: 'true'
+        run: |
+          mkdir -p inventory_bootstrap_artifacts
+          python - <<'PY' | tee inventory_bootstrap_artifacts/product_review_candidates.json
+          import json
+          import pipeline
+          rows = pipeline.select_product_review_candidates()
+          safe = []
+          for i, r in enumerate(rows, 1):
+              safe.append({
+                  'rank': i,
+                  'canonical_entity_id': r.get('canonical_entity_id'),
+                  'name': r.get('name') or r.get('title'),
+                  'assessment_state': r.get('assessment_state'),
+                  'tracking_status': r.get('tracking_status'),
+                  'tracking_eligibility': r.get('tracking_eligibility'),
+                  'adoption_status': r.get('adoption_status'),
+                  'adoption_score': r.get('adoption_score'),
+                  'category': r.get('category'),
+                  'source': r.get('source'),
+                  'primary_url': r.get('primary_url'),
+                  'last_reviewed': r.get('last_reviewed'),
+                  'next_review': r.get('next_review'),
+              })
+          print(json.dumps({'zero_gemini_calls': True, 'count': len(safe), 'candidates': safe}, ensure_ascii=False, indent=2))
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-review-candidates-${{ github.run_id }}
+          path: inventory_bootstrap_artifacts/product_review_candidates.json
+          retention-days: 7
