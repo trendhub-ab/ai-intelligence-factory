@@ -26,7 +26,7 @@
           "by_kind": {
             "deep_dive": 10,
             "deep_dive_retry": 1,
-            "product_review": 3,
+            "product_review": 4,
             "quality_retry": 5
           },
           "exhausted": false,
@@ -36,7 +36,7 @@
             "reason": "Google AI Studio actual usage confirmed by operator on 2026-08-31 JST; by_kind retained as historical reservation/attempt audit and intentionally not rewritten.",
             "reconciled_at": "2026-08-30T22:30:10+00:00"
           },
-          "used": 16
+          "used": 17
         },
         "gemini-3.7-flash": {
           "budget": 18,
@@ -56,5 +56,5 @@
   "quota_date": "2026-08-30",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-30T22:33:15.764328+00:00"
+  "updated_at": "2026-08-30T22:36:24.956251+00:00"
 }
