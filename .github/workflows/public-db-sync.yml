@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Zero-API Public mirror guard tests
+        run: python -m unittest tests.test_public_db_contract_guard -v
+
       - name: Sync Public Approved records
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -34,6 +37,14 @@ jobs:
           mkdir -p public_db_sync_artifacts
           printf 'run_id=%s\n' "${{ github.run_id }}" > public_db_sync_artifacts/request.txt
           python pipeline.py 2>&1 | tee public_db_sync_artifacts/run.log
+
+      - name: Validate Public mirror via Notion Public API only
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_PUBLIC_DATABASE_ID: ${{ secrets.NOTION_PUBLIC_DATABASE_ID }}
+          NOTION_PUBLIC_DATA_SOURCE_ID: ${{ secrets.NOTION_PUBLIC_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: "2026-03-11"
+        run: python public_db_contract_guard.py | tee public_db_sync_artifacts/contract_guard.json
 
       - name: Upload public DB sync audit artifact
         if: always()
