@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run170.3: final member-first UX guard for Decision Intelligence.
+"""Run170.4: final member-first UX guard for Decision Intelligence.
 
 This presentation-only layer keeps the member product understandable for
 non-engineers without changing Product Review scores, Evidence, article
@@ -10,8 +10,8 @@ Durable guarantees:
   score-based ranker remains as a fallback;
 - featured records keep plain Japanese and concrete next actions after sync;
 - generic actions across the catalog become category-specific actions;
-- a small conservative glossary makes common infrastructure terms readable in
-  list views without changing the underlying technical judgment.
+- only safe, context-stable technical terms are expanded in list summaries;
+  natural source copy wins over aggressive mechanical rewriting.
 
 ZERO Gemini/model requests.
 """
@@ -28,19 +28,12 @@ import member_ux_body_fast as body_fast
 import member_ux_guard as guard
 
 
-# Homepage is an editorial product surface, not a leaderboard. These picks cover
-# three questions a broad non-engineer member can act on immediately:
-# 1) how to build a business AI, 2) how to try internal-document AI,
-# 3) how to add a safety layer before wider deployment.
 EDITORIAL_HOME_SYNC_IDS = (
     "github:langgenius/dify",
     "github:mintplex-labs/anything-llm",
     "github:nvidia-nemo/guardrails",
 )
 
-# Presentation-only copy. Internal scores, evidence, classifications and source
-# records remain untouched. Keeping this keyed by canonical sync ID makes the
-# copy deterministic and resilient to title changes.
 EDITORIAL_COPY_OVERRIDES: dict[str, dict[str, str]] = {
     "github:langgenius/dify": {
         "plain_summary": (
@@ -207,30 +200,24 @@ def refine_judgment_reason(
 
 
 def _simplify_plain_summary(text: Any) -> str:
-    """Conservatively explain common technical terms used in list-view summaries."""
+    """Explain only terms whose replacement is safe in ordinary sentence grammar."""
     value = base._humanize_terms(text)
     if not value:
         return ""
-    if "RAG" in value and "検索して回答に使う仕組み（RAG）" not in value:
-        value = re.sub(r"(?<![A-Za-z0-9])RAG(?![A-Za-z0-9])", "社内文書などを検索して回答に使う仕組み（RAG）", value)
-    if "Vector Database" in value:
-        value = value.replace("Vector Database", "意味の近さで情報を探すデータベース（ベクトルDB）")
-    if "ベクトルデータベース" in value and "意味の近さで情報を探すデータベース" not in value:
-        value = value.replace("ベクトルデータベース", "意味の近さで情報を探すデータベース（ベクトルDB）")
-    if "埋め込みベクトル" in value and "文章などの意味を数値化したデータ" not in value:
-        value = value.replace("埋め込みベクトル", "文章などの意味を数値化したデータ（埋め込みベクトル）")
+    if "RAG" in value and "文書を検索して回答に使う仕組み（RAG）" not in value:
+        value = re.sub(
+            r"(?<![A-Za-z0-9])RAG(?![A-Za-z0-9])",
+            "文書を検索して回答に使う仕組み（RAG）",
+            value,
+        )
+    if "Agent Harness" in value and "AIエージェントの実行環境" not in value:
+        value = value.replace("Agent Harness", "AIエージェントの実行環境（Agent Harness）")
+    if "Vector Database" in value and "意味の近さで情報を探す" not in value:
+        value = value.replace("Vector Database", "意味の近さで情報を探すデータベース（Vector Database）")
     if "推論・サービング" in value:
-        value = value.replace("推論・サービング", "AIモデルを動かして多くの利用者へ回答を返す処理")
-    if "推論基盤" in value:
-        value = value.replace("推論基盤", "AIモデルを実際に動かす基盤")
-    if "ハイブリッド検索" in value and "キーワード検索と意味検索" not in value:
-        value = value.replace("ハイブリッド検索", "キーワード検索と意味検索を組み合わせる「ハイブリッド検索」")
-    if "量子化" in value and "モデルを軽くする" not in value:
-        value = value.replace("量子化", "モデルを軽くする「量子化」")
-    if "トレーシング" in value and "処理過程を記録" not in value:
-        value = value.replace("トレーシング", "AIの処理過程を記録・追跡する機能")
-    if "ベンチマーク" in value and "性能比較テスト" not in value:
-        value = value.replace("ベンチマーク", "性能比較テスト（ベンチマーク）")
+        value = value.replace("推論・サービング", "AIモデルを動かして回答を返す処理")
+    if "トレーシング" in value and "記録・追跡" not in value:
+        value = value.replace("トレーシング", "処理の記録・追跡（トレーシング）")
     return value
 
 
