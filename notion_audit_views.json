@@ -1,0 +1,82 @@
+{
+  "policy_version": 1,
+  "policy": "notion_public_api_and_view_first",
+  "databases": {
+    "content_intelligence": {
+      "database_id": "3bb479ff-dca9-801b-9ea9-d19d4b7552ae",
+      "data_source_id": "3bb479ff-dca9-80d3-bcfe-000b99691046",
+      "audit_mode": "view+public_api",
+      "views": {
+        "ready_articles": "view://3cc479ff-dca9-81be-8460-000c7b0e8f80",
+        "ready_required_missing": "view://3cc479ff-dca9-8171-8c01-000cf680a420",
+        "editorial_review": "view://3cc479ff-dca9-81d8-983e-000c109c97a2"
+      }
+    },
+    "technology_intelligence": {
+      "database_id": "3c3479ff-dca9-8020-83f2-cdfd3b863baa",
+      "data_source_id": "3c3479ff-dca9-80d4-909a-000bd8599345",
+      "audit_mode": "view+public_api",
+      "views": {
+        "assessed_required_missing": "view://3cc479ff-dca9-81be-b558-000ce191dbd5",
+        "entity_unresolved": "view://3cc479ff-dca9-81f9-b588-000c4a2f2898"
+      }
+    },
+    "decision_history": {
+      "database_id": "3c3479ff-dca9-8011-b671-e5e25f6f6d88",
+      "data_source_id": "3c3479ff-dca9-80f9-9a99-000b4e407e15",
+      "audit_mode": "view+public_api",
+      "views": {
+        "required_missing": "view://3cc479ff-dca9-817c-90aa-000c9b0fff9d"
+      }
+    },
+    "subscriber_bridge": {
+      "database_id": "3bf479ff-dca9-80c3-bdf5-d2bfcf14098e",
+      "data_source_id": "3bf479ff-dca9-80f6-9857-000b454a84c3",
+      "audit_mode": "view+public_api",
+      "views": {
+        "member_sync_required_missing": "view://3cc479ff-dca9-8137-8ac7-000cb509c151"
+      }
+    },
+    "member_presentation": {
+      "database_id": "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1",
+      "data_source_id": "d1461b6f-0940-4bf9-803a-6686a37c4ba2",
+      "audit_mode": "view+public_api",
+      "views": {
+        "required_missing": "view://3cc479ff-dca9-81a5-829f-000c6a277b33"
+      }
+    },
+    "decision_monthly": {
+      "database_id": "3c3479ff-dca9-80e4-a04f-ea876199dc1d",
+      "data_source_id": "3c3479ff-dca9-803f-a848-000b4bf508b3",
+      "audit_mode": "view+public_api",
+      "views": {
+        "required_missing": "view://3cc479ff-dca9-81ec-be13-000c2ce60f74"
+      }
+    },
+    "evidence_ledger": {
+      "database_id": "35995781-3e16-453b-97a2-226bd7318316",
+      "data_source_id": "bfd0e83c-8d45-4aec-8662-587201b76afe",
+      "audit_mode": "view+public_api",
+      "views": {
+        "active_required_missing": "view://3cc479ff-dca9-8158-b5a7-000c8538ea6d",
+        "usable_source_abnormal": "view://3cc479ff-dca9-8131-83b8-000ca84d43ca",
+        "re_review": "view://3cb479ff-dca9-8165-8680-000c5b5d60c7"
+      }
+    },
+    "note_posting": {
+      "database_id": "198667bc-e724-43f3-ad2e-3b9706a0edb3",
+      "data_source_id": "0b79b64d-4823-4084-be57-8bb11d7d2ce6",
+      "audit_mode": "view+public_api",
+      "views": {
+        "ready_revoked": "view://3cc479ff-dca9-81fb-8b90-000cf70643d5"
+      }
+    },
+    "public_mirror": {
+      "database_id": "secret:NOTION_PUBLIC_DATABASE_ID",
+      "data_source_id": "secret:NOTION_PUBLIC_DATA_SOURCE_ID",
+      "audit_mode": "public_api",
+      "guard": "public_db_contract_guard.py",
+      "views": {}
+    }
+  }
+}
