@@ -8,6 +8,7 @@ on:
       - '**/*.yml'
       - '**/*.yaml'
       - 'NOTION_ACCESS_POLICY.md'
+      - 'notion_audit_views.json'
   push:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ on:
       - '**/*.yml'
       - '**/*.yaml'
       - 'NOTION_ACCESS_POLICY.md'
+      - 'notion_audit_views.json'
 
 permissions:
   contents: read
@@ -29,6 +31,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Unit tests
-        run: python -m unittest tests.test_notion_access_policy_guard -v
+        run: |
+          python -m unittest tests.test_notion_access_policy_guard -v
+          python -m unittest tests.test_public_db_contract_guard -v
       - name: Enforce Public API / View-first policy
         run: python notion_access_policy_guard.py
