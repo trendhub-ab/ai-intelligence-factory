@@ -60,7 +60,7 @@ jobs:
           import os
           import subprocess
           import sys
-          from portfolio_inventory_bootstrap import product_only_environment, detect_unsafe_pipeline_activity
+          from inventory_bootstrap import product_only_environment, detect_unsafe_pipeline_activity
 
           selected = (
               'arxiv:2608.27364',
