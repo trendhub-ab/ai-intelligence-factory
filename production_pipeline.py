@@ -11,12 +11,14 @@ def install_runtime_layers(pipeline_module):
     import run173_operational_yield
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
+    import run176_scope_fidelity
     import reader_value_review_bridge
 
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
     run175_semantic_fact_precision.install(pipeline_module)
+    run176_scope_fidelity.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
     return pipeline_module
 
