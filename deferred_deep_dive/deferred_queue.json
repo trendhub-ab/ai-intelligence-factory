@@ -1,5 +1,134 @@
 {
   "version": 1,
-  "updated_at": "2026-08-31T10:08:40.024387+00:00",
-  "items": []
+  "updated_at": "2026-08-31T16:03:26.931912+00:00",
+  "items": [
+    {
+      "key": "https://news.ycombinator.com/item?id=49510612",
+      "deferred_at": "2026-08-31T16:03:26.931566+00:00",
+      "expires_at": "2026-10-30T16:03:26.931566+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Agentic Trust Controls",
+        "originalTitle": "Agentic Trust Controls",
+        "displayName": "Agentic Trust Controls",
+        "sourceLanguage": "en",
+        "url": "https://trustcontrols.ai/",
+        "description": "Agentic Trust Controls",
+        "stargazerCount": 10,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T15:01:04+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://trustcontrols.ai/",
+        "sourceDetails": {
+          "hn_id": 49510612,
+          "hn_url": "https://news.ycombinator.com/item?id=49510612",
+          "external_url": "https://trustcontrols.ai/"
+        }
+      },
+      "notion_page_id": "3cd479ff-dca9-81a4-87d2-e1059b6ad191",
+      "score": 75,
+      "reason": "エージェントのガバナンスと信頼性制御。",
+      "commercial_score": 70,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://iggy.apache.org/blogs/2026/08/24/apache-iggy-top-level-project-tlp-graduation",
+      "deferred_at": "2026-08-31T16:03:26.931420+00:00",
+      "expires_at": "2026-10-30T16:03:26.931420+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Apache Iggy, a message streaming platform in Rust, graduates to an Apache TLP",
+        "originalTitle": "Apache Iggy, a message streaming platform in Rust, graduates to an Apache TLP",
+        "displayName": "Apache Iggy, a message streaming platform in Rust, graduates to an Apache TLP",
+        "sourceLanguage": "en",
+        "url": "https://iggy.apache.org/blogs/2026/08/24/apache-iggy-top-level-project-tlp-graduation/",
+        "description": "Apache Iggy, a message streaming platform in Rust, graduates to an Apache TLP",
+        "stargazerCount": 38,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T14:54:20+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://iggy.apache.org/blogs/2026/08/24/apache-iggy-top-level-project-tlp-graduation/",
+        "sourceDetails": {
+          "hn_id": 49510540,
+          "hn_url": "https://news.ycombinator.com/item?id=49510540",
+          "external_url": "https://iggy.apache.org/blogs/2026/08/24/apache-iggy-top-level-project-tlp-graduation/"
+        }
+      },
+      "notion_page_id": "3cd479ff-dca9-8184-ae4b-f78fc285846b",
+      "score": 75,
+      "reason": "Apache IggyのTLP昇格。",
+      "commercial_score": 70,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49511007",
+      "deferred_at": "2026-08-31T16:03:26.931643+00:00",
+      "expires_at": "2026-09-14T16:03:26.931643+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Launch HN: Almanac (YC S26) – AI that knows your company",
+        "originalTitle": "Launch HN: Almanac (YC S26) – AI that knows your company",
+        "displayName": "Launch HN: Almanac (YC S26) – AI that knows your company",
+        "sourceLanguage": "en",
+        "url": "https://usealmanac.com/",
+        "description": "Launch HN: Almanac (YC S26) – AI that knows your company",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T15:34:34+00:00",
+        "sourceContext": "Hi HN, I&#x27;m Kushagra, one of three founders of Almanac, a Hermes with a brain that knows everything about your company. We started our journey with setting up Hermes for our company, thinking it must be easy. We wanted an agent that would know every context about our company, so we could ask questions and get context-appropriate responses to. This started a very annoying and difficult journey. Setting up Hermes, getting it to talk right, building OAuth apps for every connector myself, then feeding it context myself, and ultimately struggling with Hermes&#x27;s default memory. At the same time, we saw our YC batchmates struggling with the same problem, and we saw an opportunity. So we built Almanac. This is how it works. You sign up, you get a Hermes agent straight out of the box. You have a one-click connect to any account (Gmail, Calendar, Granola, PostHog, etc). You have personal accounts (only accessible by you) and also shared accounts (accessible by everyone in the company). The consequence being I can never see my cofounders&#x27; accounts. The “brain” of this agent is wikis. We pull in information from your connected sources, and start organizing this information in two wikis. A personal one, for you, which understands who you are, what your preferences are, the people in your life, and the things going on in your life. The second wiki is a company wiki, which includes what the company is, what you’re working on, what the roadmap is, and what the blockers of the company are. Your agent ultimately has access to these two wikis and the original accounts, which invoke the feeling of “it just knows you.” Here’s a demo: https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=ajXP5PHuK18 We&#x27;re three cofounders, Rohan, Kushagra, and Divit, and we&#x27;ve been friends for 11 years, since studying for the IIT-JEE. We all did Electrical Engineering (Rohan at IIT Delhi, me at IIT Kharagpur, Divit at BITS Pilani, Hyderabad), and Rohan and I later went to Harvard, where this pre-compilation layer became our capstone thesis. We have built multiple products around the idea of a pre-compiled knowledge layer. Our main differentiating point is the way we approach memory and context in general. Most AI assistant tools treat memory as an afterthought. We have worked on wikis for AI for more than a year now, building products for Harvard and NASA. The one thing we have learnt is that one needs to spend a lot more compute upfront, in the pre-compilation of this knowledge base, to get it right. Having this pre-compiled knowledge base enables a lot of interesting ideas. First is a proactive agent. Since I have compiled what’s going on in both my company and my current life, Almanac can start completing tasks on its own. Concretely, we run a background worker which takes a look at tasks that could be completed, pings the main agent, who then pings me, suggesting which tasks it could automate. As a result, I wake up to proactive notifications which look like “I already prepared a draft of your fundraising pitch deck, want to take a look?” Second, long-horizon tasks. In our wikis, we maintain a section on ongoing projects, so Almanac can pick a task back up days later without losing the thread. Most agents are session-bound: they run once, finish, and forget. But a lot of real work isn&#x27;t one shot; it plays out over hours and days with people in the loop. The clearest example is anything that involves waiting on a human, like scheduling a meeting, following up on a sales thread, or chasing a document. Almanac can send an email on your behalf, and because it&#x27;s always on and remembers the project, it notices the reply four hours later and drafts the right follow-up in context. Since launching, we&#x27;ve seen a lot of use cases for Almanac. One person runs her dog-rescue operation through it: finding available fosters, tracking pickups, and sending reminders for consent forms. Another researches Polymarket strategies with Almanac, where its memory holds what past strategies were, proposes new ones, and compares them against what went right or wrong last time. Another builds marketing campaigns on it without having to re-explain the business and the whole campaign every single time. Regarding privacy and security, Almanac only accesses accounts you explicitly connect. Your OAuth credentials are held by our connection provider, not in Almanac’s database. We only store the wiki and the source behind its citations. So an email used as a citation may be retained as Markdown. We’re live: https:&#x2F;&#x2F;usealmanac.com . We have a 7-day trial on all of our plans. Happy to hear if people have done similar setups, and what new features they’d like in Almanac. If you’re a company that wants to get an agent that actually gets tasks done, I would love to talk: https:&#x2F;&#x2F;cal.com&#x2F;team&#x2F;almanac&#x2F;demo .",
+        "primaryUrl": "https://usealmanac.com/",
+        "sourceDetails": {
+          "hn_id": 49511007,
+          "hn_url": "https://news.ycombinator.com/item?id=49511007",
+          "external_url": "https://usealmanac.com/"
+        }
+      },
+      "notion_page_id": "3cd479ff-dca9-8132-855c-d12a5ec16627",
+      "score": 70,
+      "reason": "社内データ統合AIのローンチ。",
+      "commercial_score": 75,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 71.75
+    },
+    {
+      "key": "https://www.producthunt.com/products/oconee-runtime",
+      "deferred_at": "2026-08-31T16:03:26.931713+00:00",
+      "expires_at": "2026-09-14T16:03:26.931713+00:00",
+      "repo": {
+        "source": "ProductHunt",
+        "nameWithOwner": "Oconee Runtime",
+        "originalTitle": "Oconee Runtime",
+        "displayName": "Oconee Runtime",
+        "sourceLanguage": "en",
+        "url": "https://www.producthunt.com/r/EFU6BG4ZQWROUW?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
+        "description": "Govern what AI agents can actually do.",
+        "stargazerCount": 2,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T07:01:00Z",
+        "sourceContext": "Tagline: Govern what AI agents can actually do.\nDescription: Oconee Runtime is an enterprise AI governance platform that helps organizations see and control what AI tools and agents actually do. Govern activity across browsers, IDEs, and AI coding agents with context-aware policies that allow, warn, or block actions based on risk. Get a unified audit trail of AI activity so teams can adopt AI without giving up control.",
+        "primaryUrl": "https://www.producthunt.com/r/EFU6BG4ZQWROUW?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
+        "sourceDetails": {
+          "producthunt_url": "https://www.producthunt.com/products/oconee-runtime?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
+          "official_url": "",
+          "website": "https://www.producthunt.com/r/EFU6BG4ZQWROUW?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29"
+        }
+      },
+      "notion_page_id": "3cd479ff-dca9-81a7-a372-fab103dad443",
+      "score": 72,
+      "reason": "AIエージェントの実行制御ランタイム。",
+      "commercial_score": 70,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 71.3
+    }
+  ]
 }
