@@ -29,7 +29,8 @@ _PROTOCOL_TOKEN_RE = re.compile(
     re.I,
 )
 _RETROSPECTIVE_RE = re.compile(
-    r"(?:後に|のちに|その後|後年|現在では|結果的に|やがて|later|subsequently|eventually|today|now)",
+    r"(?:後に|のちに|その後|後年|現在では|現在でいう|現在でいえば|結果的に|やがて|"
+    r"later|subsequently|eventually|today|now known as|what is now)",
     re.I,
 )
 
@@ -66,26 +67,52 @@ def _sentences(text: str) -> list[str]:
     return [m.group(0).strip() for m in _SENTENCE_RE.finditer(str(text or "")) if m.group(0).strip()]
 
 
-def _source_anchor_windows(source_context: str, anchor: str, radius: int = 900) -> list[str]:
+def _source_rfc_windows(source_context: str, number: str, radius: int = 900) -> list[str]:
+    """Return RFC-local windows while tolerating RFC1631 / RFC-1631 / RFC 1631 spelling."""
     source = _norm(source_context)
-    low = source.lower()
-    needle = anchor.lower()
+    pattern = re.compile(
+        rf"(?<![0-9A-Za-z])RFC\s*[- ]?{re.escape(str(number))}(?![0-9A-Za-z])",
+        re.I,
+    )
     windows: list[str] = []
-    start = 0
-    while True:
-        pos = low.find(needle, start)
-        if pos < 0:
-            break
-        windows.append(source[max(0, pos - radius): min(len(source), pos + len(anchor) + radius)])
-        start = pos + len(needle)
+    for match in pattern.finditer(source):
+        windows.append(source[max(0, match.start() - radius): min(len(source), match.end() + radius)])
     return windows
+
+
+def _protocol_literal_present(local_evidence: str, token: str) -> bool:
+    """Compare protocol literals without treating harmless ASCII spacing as semantic absence."""
+    compact_local = re.sub(r"[\s-]+", "", _norm(local_evidence)).lower()
+    compact_token = re.sub(r"[\s-]+", "", _norm(token)).lower()
+    return bool(compact_token and compact_token in compact_local)
+
+
+def _is_retrospective_mapping(sentence: str, token_match: re.Match[str], max_gap: int = 14) -> bool:
+    """Allow a retrospective marker only when it actually qualifies the protocol mapping.
+
+    A sentence-wide exemption is unsafe: e.g. "現在ではNATが一般的だが、RFC 1631はIPv6を..."
+    contains a retrospective word that does not qualify the RFC->IPv6 attribution.  Requiring
+    the marker to sit close to the protocol token preserves legitimate "後にIPv6" / "現在でいうIPv6"
+    wording without turning unrelated temporal prose into a bypass.
+    """
+    for marker in _RETROSPECTIVE_RE.finditer(sentence):
+        if marker.end() <= token_match.start():
+            gap = token_match.start() - marker.end()
+        elif token_match.end() <= marker.start():
+            gap = marker.start() - token_match.end()
+        else:
+            gap = 0
+        if gap <= max_gap:
+            return True
+    return False
 
 
 def historical_source_attribution_failures(article: str, source_context: str) -> list[str]:
     """Reject literal RFC attribution of a protocol/version absent from RFC-local evidence.
 
-    Retrospective wording ("後に...", "later...") is allowed because it clearly separates
-    present-day interpretation from what the historical document literally said.
+    Retrospective wording is allowed only when the temporal marker locally qualifies the
+    protocol mapping; unrelated words such as "現在では" elsewhere in the sentence must not
+    disable the guard.
     """
     source = _norm(source_context)
     if not article or not source:
@@ -93,18 +120,22 @@ def historical_source_attribution_failures(article: str, source_context: str) ->
     failures: list[str] = []
     for sentence in _sentences(article):
         anchor_match = _RFC_ANCHOR_RE.search(sentence)
-        if not anchor_match or _RETROSPECTIVE_RE.search(sentence):
+        if not anchor_match:
             continue
-        protocol_tokens = [m.group(0) for m in _PROTOCOL_TOKEN_RE.finditer(sentence)]
-        if not protocol_tokens:
+        protocol_matches = list(_PROTOCOL_TOKEN_RE.finditer(sentence))
+        if not protocol_matches:
             continue
-        anchor = f"RFC {anchor_match.group(1)}"
-        windows = _source_anchor_windows(source, anchor)
+        anchor_number = anchor_match.group(1)
+        anchor = f"RFC {anchor_number}"
+        windows = _source_rfc_windows(source, anchor_number)
         if not windows:
             continue
-        local = "\n".join(windows).lower()
-        for token in protocol_tokens:
-            if token.lower() in local:
+        local = "\n".join(windows)
+        for token_match in protocol_matches:
+            token = token_match.group(0)
+            if _is_retrospective_mapping(sentence, token_match):
+                continue
+            if _protocol_literal_present(local, token):
                 continue
             failures.append(
                 "historical_source_attribution_drift: "
