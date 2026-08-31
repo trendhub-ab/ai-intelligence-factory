@@ -1,0 +1,49 @@
+name: Member Presentation Sync Audit Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/member-presentation-sync-audit-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Verify member presentation logic
+        run: |
+          python -m unittest tests/test_run158_member_presentation_sync.py
+          python -m unittest tests/test_run166_member_page_body.py
+          python -m unittest tests/test_run169_member_ux_guard.py
+          python -m unittest tests/test_run170_member_human_language_ux.py
+      - name: Sync clean member presentation
+        env:
+          TZ: Asia/Tokyo
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: 'd6ca3c1f-cb2c-4686-b442-d9ba3923e5f1'
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: 'd1461b6f-0940-4bf9-803a-6686a37c4ba2'
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          DI_PRODUCT_TIMEZONE: Asia/Tokyo
+          MEMBER_HOME_MAX: '3'
+          MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
+        run: python member_human_language_ux_v2.py presentation
+      - name: Sync readable member page bodies
+        env:
+          TZ: Asia/Tokyo
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: 'd6ca3c1f-cb2c-4686-b442-d9ba3923e5f1'
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: 'd1461b6f-0940-4bf9-803a-6686a37c4ba2'
+        run: python member_human_language_ux_v2.py body
