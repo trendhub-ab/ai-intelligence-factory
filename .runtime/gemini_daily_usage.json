@@ -39,7 +39,8 @@
           "budget": 18,
           "by_kind": {
             "deep_dive": 3,
-            "product_review": 1
+            "product_review": 1,
+            "product_review_retry": 1
           },
           "exhausted": false,
           "released_by_kind": {
@@ -47,7 +48,7 @@
             "quality_retry": 1
           },
           "released_unobserved": 7,
-          "used": 4
+          "used": 5
         }
       }
     }
@@ -56,5 +57,5 @@
   "quota_date": "2026-08-31",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-31T22:53:55.388431+00:00"
+  "updated_at": "2026-08-31T22:54:26.622855+00:00"
 }
