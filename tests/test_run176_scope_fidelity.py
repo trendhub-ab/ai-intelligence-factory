@@ -33,6 +33,29 @@ class Run176ScopeFidelityTests(unittest.TestCase):
         failures = run176.historical_source_attribution_failures(article, source)
         self.assertTrue(any(x.startswith("historical_source_attribution_drift:") for x in failures), failures)
 
+    def test_compact_rfc_anchor_variant_is_blocked(self):
+        article = "RFC1631ではIPv6までの一時策としてNATが提案されました。"
+        source = "RFC1631 Network Address Translator. Long-term solutions propose new protocols with larger addresses."
+        failures = run176.historical_source_attribution_failures(article, source)
+        self.assertTrue(any(x.startswith("historical_source_attribution_drift:") for x in failures), failures)
+
+    def test_hyphenated_rfc_anchor_variant_is_blocked(self):
+        article = "RFC-1631ではIPv6までの一時策としてNATが提案されました。"
+        source = "RFC-1631 Network Address Translator. Long-term solutions propose new protocols with larger addresses."
+        failures = run176.historical_source_attribution_failures(article, source)
+        self.assertTrue(any(x.startswith("historical_source_attribution_drift:") for x in failures), failures)
+
+    def test_unrelated_retrospective_word_does_not_disable_literal_attribution_guard(self):
+        article = "現在ではNATが一般的ですが、RFC 1631はIPv6までの一時策としてNATを提案しました。"
+        source = "RFC 1631. Long-term solutions propose new internet protocols with larger addresses. NAT is temporary relief."
+        failures = run176.historical_source_attribution_failures(article, source)
+        self.assertTrue(any(x.startswith("historical_source_attribution_drift:") for x in failures), failures)
+
+    def test_local_retrospective_mapping_in_same_sentence_is_allowed(self):
+        article = "RFC 1631が想定した長期策は、後にIPv6へつながる新しいプロトコル群でした。"
+        source = "RFC 1631. The long-term solutions consist of proposals for new internet protocols with larger addresses."
+        self.assertEqual([], run176.historical_source_attribution_failures(article, source))
+
     def test_retrospective_protocol_mapping_is_allowed(self):
         article = (
             "RFC 1631は長期策を具体名では示していません。後にIPv6へつながる、"
@@ -47,6 +70,11 @@ class Run176ScopeFidelityTests(unittest.TestCase):
     def test_protocol_name_present_in_rfc_local_evidence_is_allowed(self):
         article = "RFC 8200ではIPv6の基本仕様が定義されています。"
         source = "RFC 8200 Internet Protocol, Version 6 (IPv6) Specification."
+        self.assertEqual([], run176.historical_source_attribution_failures(article, source))
+
+    def test_protocol_literal_spacing_difference_does_not_false_block(self):
+        article = "RFC 8446ではTLS 1.3が定義されています。"
+        source = "RFC8446 The Transport Layer Security (TLS1.3) Protocol."
         self.assertEqual([], run176.historical_source_attribution_failures(article, source))
 
     def test_unrelated_protocol_mention_without_rfc_attribution_is_allowed(self):
@@ -124,7 +152,6 @@ class Run176ScopeFidelityTests(unittest.TestCase):
 
     def test_production_entrypoint_installs_run176_after_run175_before_reader_bridge(self):
         src = inspect.getsource(production_pipeline.install_runtime_layers)
-        # This assertion becomes active once the production entrypoint is updated in this change set.
         self.assertIn("run176_scope_fidelity.install", src)
         self.assertLess(src.index("run175_semantic_fact_precision.install"), src.index("run176_scope_fidelity.install"))
         self.assertLess(src.index("run176_scope_fidelity.install"), src.index("reader_value_review_bridge.install"))

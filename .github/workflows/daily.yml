@@ -3,8 +3,9 @@ name: Daily Intelligence & Content Pipeline [PAUSED]
 # PAUSED by explicit user instruction on 2026-08-30 JST.
 # There is intentionally NO schedule trigger.
 # The only job is hard-disabled, so workflow_dispatch cannot consume Gemini or write production data.
-# The dormant production contract below is retained so safety regression tests continue to verify
-# the exact settings that must be restored when the user explicitly instructs ChatGPT to resume Daily.
+# The dormant block below is a MINIMUM SAFETY CONTRACT only, not a full copy of production env settings.
+# When Daily is explicitly resumed, restore operational settings from the then-validated ONE-SHOT workflow
+# and keep the zero-API workflow contract tests green; do not infer production defaults from this paused stub.
 on:
   workflow_dispatch:
 
@@ -25,7 +26,7 @@ jobs:
       - name: Daily is paused
         run: echo "Daily Intelligence & Content Pipeline is paused until explicit user instruction to resume."
         env:
-          # Dormant production safety contract. This job never executes while PAUSED.
+          # Dormant minimum safety contract. This job never executes while PAUSED.
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
           GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: "60"

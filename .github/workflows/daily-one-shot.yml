@@ -4,11 +4,21 @@ name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 # Important safety contract:
 # - workflow_dispatch only: pipeline self-commits can never start another run.
 # - explicit RUN_ONCE confirmation is required.
+# - full mode preserves the normal one-shot contract.
+# - article_validation mode skips only the separate Product Review pass, saving up to 3 Gemini requests.
 # - the same Gemini-budget concurrency group as production prevents overlap.
 # - this workflow does NOT resume or schedule the normal Daily workflow.
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'full = normal one-shot; article_validation = skip Product Review to save API during article QA'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - article_validation
       confirm:
         description: 'Type RUN_ONCE to execute exactly one production Daily run'
         required: true
@@ -32,7 +42,8 @@ jobs:
       - name: One-shot safety contract
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
-          echo "Manual one-shot confirmed. Automatic triggers are intentionally absent."
+          test "${{ inputs.mode }}" = "full" -o "${{ inputs.mode }}" = "article_validation"
+          echo "Manual one-shot confirmed. mode=${{ inputs.mode }}. Automatic triggers are intentionally absent."
 
       - name: リポジトリのチェックアウト
         uses: actions/checkout@v6
@@ -175,6 +186,7 @@ jobs:
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
 
       - name: Portfolio-aware Product Review
+        if: ${{ inputs.mode == 'full' }}
         run: python daily_portfolio_review.py
         env:
           TZ: 'Asia/Tokyo'
@@ -217,6 +229,10 @@ jobs:
           GEMINI_35_FLASH_DAILY_BUDGET: "18"
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
+
+      - name: Article validation API-saving guard
+        if: ${{ inputs.mode == 'article_validation' }}
+        run: echo "article_validation mode: separate Product Review intentionally skipped; article pipeline and audit artifacts still run."
 
       - name: 月次ダイジェストをPrivate Artifactとして保存
         if: always()
