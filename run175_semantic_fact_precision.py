@@ -30,8 +30,11 @@ _SOURCE_EXPLICIT_PROBABILITY_SIMILARITY_PATTERNS = (
     re.compile(r"\bprobability[- ]based\s+(?:similarity|distance)\b", re.I),
 )
 
+# Do not use Unicode \w boundaries here. In Japanese prose a latency value is often
+# attached directly to a particle (e.g. "待たずに4ミリ秒で"), and Japanese letters are
+# Unicode word characters. We only exclude adjacent ASCII numeric/identifier characters.
 _PERFORMANCE_NUMBER_RE = re.compile(
-    r"(?<![\w.])(\d+(?:\.\d+)?)\s*(ms|msec|milliseconds?|ミリ秒|s|sec|seconds?|秒)(?!\w)",
+    r"(?<![0-9A-Za-z.])(\d+(?:\.\d+)?)\s*(ms|msec|milliseconds?|ミリ秒|s|sec|seconds?|秒)(?![0-9A-Za-z])",
     re.I,
 )
 
