@@ -1,20 +1,14 @@
-name: Daily Intelligence & Content Pipeline [ONE-SHOT STOP]
+name: Daily Intelligence & Content Pipeline [ONE-SHOT DISABLED]
 
 on:
-  push:
-    branches:
-      - daily-once-20260901
-
-concurrency:
-  group: ai-intelligence-gemini-budget
-  cancel-in-progress: true
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  stop-recursive-runs:
+  disabled:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - name: Stop recursive one-shot Daily runs
-        run: echo "One-shot Daily completed. Recursive push-triggered runs are intentionally cancelled."
+      - run: echo "One-shot Daily is disabled."
