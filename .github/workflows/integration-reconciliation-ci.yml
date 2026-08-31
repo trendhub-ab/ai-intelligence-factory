@@ -9,8 +9,12 @@ on:
       - 'inventory_bootstrap.py'
       - 'decision_intelligence.py'
       - 'pipeline.py'
+      - 'production_pipeline.py'
+      - 'daily_portfolio_review.py'
+      - 'run*.py'
       - 'reader_value_review_bridge.py'
       - '.github/workflows/daily.yml'
+      - '.github/workflows/daily-one-shot.yml'
       - '.github/workflows/regression-test.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
@@ -39,7 +43,21 @@ jobs:
             inventory_bootstrap.py \
             decision_intelligence.py \
             pipeline.py \
+            production_pipeline.py \
+            daily_portfolio_review.py \
+            run175_semantic_fact_precision.py \
+            run176_scope_fidelity.py \
             reader_value_review_bridge.py
+      - name: Validate manual production workflow safety surface
+        run: |
+          grep -F 'workflow_dispatch:' .github/workflows/daily-one-shot.yml
+          grep -F "inputs.confirm == 'RUN_ONCE'" .github/workflows/daily-one-shot.yml
+          grep -F -- '- article_validation' .github/workflows/daily-one-shot.yml
+          grep -F "inputs.mode == 'full'" .github/workflows/daily-one-shot.yml
+          grep -F 'ref: main' .github/workflows/daily-one-shot.yml
+          ! grep -Eq '^[[:space:]]+(push|schedule):' .github/workflows/daily-one-shot.yml
+          grep -F 'if: ${{ false }}' .github/workflows/daily.yml
+          ! grep -Eq '^[[:space:]]+schedule:' .github/workflows/daily.yml
       - name: Validate Run130 regression workflow safety surface
         run: |
           grep -F 'article_set:' .github/workflows/regression-test.yml
