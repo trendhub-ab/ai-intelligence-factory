@@ -56,7 +56,7 @@ jobs:
           grep -F "inputs.mode == 'full'" .github/workflows/daily-one-shot.yml
           grep -F 'ref: main' .github/workflows/daily-one-shot.yml
           ! grep -Eq '^[[:space:]]+(push|schedule):' .github/workflows/daily-one-shot.yml
-          grep -F 'if: ${{ false }}' .github/workflows/daily.yml
+          grep -F 'if: $' .github/workflows/daily.yml | grep -F '{{ false }}'
           ! grep -Eq '^[[:space:]]+schedule:' .github/workflows/daily.yml
       - name: Validate Run130 regression workflow safety surface
         run: |
