@@ -3,7 +3,9 @@ name: Member Presentation Sync
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ['Daily Intelligence & Content Pipeline']
+    workflows:
+      - 'Daily Intelligence & Content Pipeline'
+      - 'Daily Intelligence & Content Pipeline [ONE SHOT]'
     types: [completed]
   push:
     branches: [main]

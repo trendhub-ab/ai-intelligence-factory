@@ -30,8 +30,13 @@ jobs:
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
           GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: "60"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+          GEMINI_MODEL_TIMEOUT_CIRCUIT_BREAKER_THRESHOLD: "2"
           PRODUCT_REVIEW_MAX_PER_RUN: "0"
           PORTFOLIO_DIVERSITY_TOLERANCE: "8"
+
+      - name: Dormant production entrypoint contract
+        if: ${{ false }}
+        run: python production_pipeline.py
 
       - name: Dormant portfolio review contract
         if: ${{ false }}
