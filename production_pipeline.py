@@ -9,10 +9,12 @@ from __future__ import annotations
 def install_runtime_layers(pipeline_module):
     import run172_production_reliability
     import run173_operational_yield
+    import run174_monthly_digest_integrity
     import reader_value_review_bridge
 
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
+    run174_monthly_digest_integrity.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
     return pipeline_module
 
