@@ -107,7 +107,7 @@ class Run173OperationalYieldTests(unittest.TestCase):
         self.assertIs(core, rescued)
         self.assertEqual(["core_change"], changes)
 
-    def test_workflow_contract_keeps_daily_paused_and_covers_one_shot_member_sync(self):
+    def test_workflow_contract_keeps_daily_paused_and_normal_member_sync_linked(self):
         root = Path(__file__).resolve().parents[1]
         daily = (root / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")
         member = (root / ".github" / "workflows" / "member-presentation-sync.yml").read_text(encoding="utf-8")
@@ -115,8 +115,8 @@ class Run173OperationalYieldTests(unittest.TestCase):
         self.assertIn("if: ${{ false }}", daily)
         self.assertNotIn("schedule:", daily)
         self.assertIn("python production_pipeline.py", daily)
-        self.assertIn("Daily Intelligence & Content Pipeline'", member)
-        self.assertIn("Daily Intelligence & Content Pipeline [ONE SHOT]", member)
+        self.assertIn("Daily Intelligence & Content Pipeline", member)
+        self.assertNotIn("Daily Intelligence & Content Pipeline [ONE SHOT]", member)
 
 
 if __name__ == "__main__":
