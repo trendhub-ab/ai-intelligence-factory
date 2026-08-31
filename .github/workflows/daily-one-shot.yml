@@ -232,7 +232,8 @@ jobs:
 
       - name: Article validation API-saving guard
         if: ${{ inputs.mode == 'article_validation' }}
-        run: echo "article_validation mode: separate Product Review intentionally skipped; article pipeline and audit artifacts still run."
+        run: |
+          echo "article_validation mode: separate Product Review intentionally skipped; article pipeline and audit artifacts still run."
 
       - name: 月次ダイジェストをPrivate Artifactとして保存
         if: always()
