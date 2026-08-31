@@ -16,8 +16,6 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      SYNTHETIC_REGRESSION_MODE: "true"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -33,5 +31,9 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Run regression harness self-test
         run: python regression_suite.py --self-test
+        env:
+          SYNTHETIC_REGRESSION_MODE: "true"
       - name: Run full synthetic regression
         run: python regression_suite.py --bootstrap --full
+        env:
+          SYNTHETIC_REGRESSION_MODE: "true"
