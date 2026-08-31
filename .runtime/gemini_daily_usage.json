@@ -2,59 +2,20 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 3,
-            "product_review": 1,
-            "quality_retry": 4
-          },
-          "exhausted": false,
-          "used": 8
-        },
         "gemini-3.5-flash-lite": {
           "budget": 450,
           "by_kind": {
-            "global_calibration": 2,
-            "screening_batch": 7
+            "screening_batch": 1
           },
           "exhausted": false,
-          "used": 9
-        },
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 10,
-            "deep_dive_retry": 1,
-            "product_review": 4,
-            "quality_retry": 5
-          },
-          "exhausted": false,
-          "provider_reconciliation": {
-            "confirmed_used": 15,
-            "delta": -3,
-            "reason": "Google AI Studio actual usage confirmed by operator on 2026-08-31 JST; by_kind retained as historical reservation/attempt audit and intentionally not rewritten.",
-            "reconciled_at": "2026-08-30T22:30:10+00:00"
-          },
-          "used": 17
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive_retry": 1,
-            "product_review": 1,
-            "product_review_retry": 1,
-            "quality_retry": 1
-          },
-          "exhausted": false,
-          "used": 4
+          "used": 1
         }
       }
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-08-30",
+  "quota_date": "2026-08-31",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-08-30T22:36:24.956251+00:00"
+  "updated_at": "2026-08-31T09:47:25.706322+00:00"
 }
