@@ -17,6 +17,26 @@ def _has_trigger(text: str, name: str) -> bool:
     return bool(re.search(rf"^\s+{re.escape(name)}:\s*$", text, re.MULTILINE))
 
 
+def _unsafe_inline_run_scalars(text: str) -> list[str]:
+    """Catch the YAML hazard that caused the Run177 ONE-SHOT parse failure.
+
+    Shell quoting does not quote a YAML plain scalar. Therefore an inline
+    ``run: echo \"label: value\"`` still contains YAML's ``: `` mapping token.
+    Block scalars (``run: |`` / ``run: >``) and YAML-quoted scalars are safe.
+    """
+    unsafe: list[str] = []
+    for raw in text.splitlines():
+        stripped = raw.lstrip()
+        if not stripped.startswith("run: "):
+            continue
+        value = stripped[len("run: "):].strip()
+        if not value or value.startswith(("|", ">", "'", '"')):
+            continue
+        if ": " in value:
+            unsafe.append(raw)
+    return unsafe
+
+
 class Run177ZeroApiProductionContractTests(unittest.TestCase):
     def test_one_shot_cannot_self_retrigger(self):
         text = _read(ONE_SHOT)
@@ -61,6 +81,13 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
         self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', review_block)
         self.assertIn('DAILY_PORTFOLIO_REVIEW_MAX: "2"', review_block)
         self.assertIn("if: ${{ inputs.mode == 'full' }}", review_block)
+
+    def test_one_shot_has_no_yaml_plain_run_colon_hazard(self):
+        text = _read(ONE_SHOT)
+        self.assertEqual([], _unsafe_inline_run_scalars(text))
+        guard_step = text.index("- name: Article validation API-saving guard")
+        next_step = text.index("- name: 月次ダイジェストをPrivate Artifactとして保存")
+        self.assertIn("run: |", text[guard_step:next_step])
 
     def test_integration_ci_watches_production_contract_surface(self):
         text = _read(INTEGRATION_CI)
