@@ -13,6 +13,7 @@ def install_runtime_layers(pipeline_module):
     import run175_semantic_fact_precision
     import run176_scope_fidelity
     import run177_paid_funnel_alignment
+    import run178_eyecatch_editorial_layout_optimizer
     import reader_value_review_bridge
 
     run172_production_reliability.install(pipeline_module)
@@ -21,6 +22,7 @@ def install_runtime_layers(pipeline_module):
     run175_semantic_fact_precision.install(pipeline_module)
     run176_scope_fidelity.install(pipeline_module)
     run177_paid_funnel_alignment.install(pipeline_module)
+    run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
     return pipeline_module
 
