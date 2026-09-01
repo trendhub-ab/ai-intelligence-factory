@@ -1,9 +1,13 @@
 """Run181: deterministic visual balance refinement for public note eyecatches.
 
-This layer spends no model requests.  It keeps Run180's semantic line breaks, then uses
+This layer spends no model requests. It keeps Run180's semantic line breaks, then uses
 actual font metrics to make the title up to four pixels larger when the 760px geometry
-allows it.  The title block moves 30px lower and the subheadline 16px lower so the card's
+allows it. The title block moves 30px lower and the subheadline 16px lower so the card's
 visual center sits more naturally below the brand/header row.
+
+Run183 reuses this renderer and raises only the validated conclusion emphasis. The
+renderer therefore supports a configurable highlight scale while still fitting every
+mixed-color line against the same 760px geometry and a conservative vertical bound.
 """
 from __future__ import annotations
 
@@ -22,6 +26,9 @@ TITLE_Y_SHIFT = 30
 SUBTITLE_Y_SHIFT = 16
 TITLE_NAVY = (7, 30, 66)
 HIGHLIGHT_ORANGE = (242, 140, 40)  # #F28C28
+HIGHLIGHT_FONT_SCALE = 1.0
+HIGHLIGHT_MAX_FONT = 96
+TITLE_SAFE_BOTTOM = 468
 
 
 def _boost_title_size(lines: list[str], base_size: int) -> int:
@@ -72,6 +79,89 @@ def _split_line_for_highlight(
     return [(text, emphasized) for text, emphasized in runs if text]
 
 
+def _run_bbox_height(draw: ImageDraw.ImageDraw, text: str, font: Any) -> int:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return max(0, bbox[3] - bbox[1])
+
+
+def _mixed_line_metrics(
+    draw: ImageDraw.ImageDraw,
+    runs: list[tuple[str, bool]],
+    normal_font: Any,
+    highlight_font: Any,
+) -> tuple[int, int]:
+    width = 0
+    height = 0
+    for text, emphasized in runs:
+        font = highlight_font if emphasized else normal_font
+        width += ee._text_width(draw, text, font)
+        height = max(height, _run_bbox_height(draw, text, font))
+    return width, height
+
+
+def _fit_highlight_size(
+    lines: list[str],
+    normal_size: int,
+    line_gap: int,
+    highlight_text: str | None,
+) -> int:
+    """Fit one shared emphasis size for all highlighted runs.
+
+    Run183 targets +20%, but geometry remains fail-safe: the highlighted size is reduced
+    toward the normal title size if any mixed line exceeds 760px or if the whole title
+    block would collide with the reserved subheadline area.
+    """
+    if not highlight_text or HIGHLIGHT_FONT_SCALE <= 1.0:
+        return int(normal_size)
+
+    base = int(normal_size)
+    target = min(HIGHLIGHT_MAX_FONT, max(base, int(round(base * HIGHLIGHT_FONT_SCALE))))
+    probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
+    draw = ImageDraw.Draw(probe)
+    normal_font = ee._jp_font(base, bold=True)
+    all_runs = [_split_line_for_highlight(lines, index, highlight_text) for index in range(len(lines))]
+
+    for candidate in range(target, base - 1, -1):
+        highlight_font = ee._jp_font(candidate, bold=True)
+        heights: list[int] = []
+        widths_ok = True
+        for runs in all_runs:
+            width, height = _mixed_line_metrics(draw, runs, normal_font, highlight_font)
+            if width > TITLE_MAX_WIDTH:
+                widths_ok = False
+                break
+            heights.append(height)
+        if not widths_ok:
+            continue
+        block_height = sum(heights) + max(0, len(heights) - 1) * int(line_gap)
+        block_bottom = 160 + TITLE_Y_SHIFT + block_height
+        if block_bottom <= TITLE_SAFE_BOTTOM or candidate == base:
+            return candidate
+    return base
+
+
+def _draw_mixed_title_line(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    top_y: int,
+    runs: list[tuple[str, bool]],
+    normal_font: Any,
+    highlight_font: Any,
+) -> int:
+    """Bottom-align visible glyph boxes so mixed-size Japanese remains visually stable."""
+    _width, line_height = _mixed_line_metrics(draw, runs, normal_font, highlight_font)
+    cursor_x = x
+    for text, emphasized in runs:
+        font = highlight_font if emphasized else normal_font
+        bbox = draw.textbbox((0, 0), text, font=font)
+        visible_height = max(0, bbox[3] - bbox[1])
+        draw_y = top_y + (line_height - visible_height) - bbox[1]
+        color = HIGHLIGHT_ORANGE if emphasized else TITLE_NAVY
+        draw.text((cursor_x, draw_y), text, font=font, fill=color)
+        cursor_x += ee._text_width(draw, text, font)
+    return line_height
+
+
 def _render_balanced_plan(
     title: str,
     summary: str,
@@ -82,7 +172,7 @@ def _render_balanced_plan(
     *,
     highlight_text: str | None = None,
 ) -> str:
-    """Render Run180 typography with deterministic Run181 balance adjustments."""
+    """Render Run180 typography with deterministic Run181/183 balance adjustments."""
     category = (category or ee.infer_editorial_category(title, summary)).strip() or "AI & TECH"
     accent = ee._CATEGORY_ACCENTS.get(category, ee._CATEGORY_ACCENTS["AI & TECH"])
     date_label = date_label or ee.datetime.now(ee.ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
@@ -99,18 +189,16 @@ def _render_balanced_plan(
 
     title_lines = list(validated["title_lines"])
     title_size = _boost_title_size(title_lines, validated["title_font_size"])
-    headline_font = ee._jp_font(title_size, bold=True)
+    line_gap = int(validated["title_line_gap"])
+    normal_font = ee._jp_font(title_size, bold=True)
+    highlight_size = _fit_highlight_size(title_lines, title_size, line_gap, highlight_text)
+    highlight_font = ee._jp_font(highlight_size, bold=True)
     y = 160 + TITLE_Y_SHIFT
 
-    for index, line_text in enumerate(title_lines):
-        bbox = draw.textbbox((0, 0), line_text, font=headline_font)
-        draw_y = y - bbox[1]
-        cursor_x = 48
-        for segment, emphasized in _split_line_for_highlight(title_lines, index, highlight_text):
-            color = HIGHLIGHT_ORANGE if emphasized else TITLE_NAVY
-            draw.text((cursor_x, draw_y), segment, font=headline_font, fill=color)
-            cursor_x += ee._text_width(draw, segment, headline_font)
-        y += (bbox[3] - bbox[1]) + int(validated["title_line_gap"])
+    for index, _line_text in enumerate(title_lines):
+        runs = _split_line_for_highlight(title_lines, index, highlight_text)
+        line_height = _draw_mixed_title_line(draw, 48, y, runs, normal_font, highlight_font)
+        y += line_height + line_gap
 
     base_sub_y = min(535, max(485, y + 18))
     sub_y = min(551, base_sub_y + SUBTITLE_Y_SHIFT)

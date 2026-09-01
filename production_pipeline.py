@@ -18,6 +18,7 @@ def install_runtime_layers(pipeline_module):
     import run180_eyecatch_semantic_layout
     import run181_eyecatch_visual_balance
     import run182_eyecatch_conclusion_emphasis
+    import run183_eyecatch_emphasis_scale
     import reader_value_review_bridge
 
     run172_production_reliability.install(pipeline_module)
@@ -31,6 +32,7 @@ def install_runtime_layers(pipeline_module):
     run180_eyecatch_semantic_layout.install(pipeline_module)
     run181_eyecatch_visual_balance.install(pipeline_module)
     run182_eyecatch_conclusion_emphasis.install(pipeline_module)
+    run183_eyecatch_emphasis_scale.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
     return pipeline_module
 
