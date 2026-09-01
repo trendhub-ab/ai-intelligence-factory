@@ -21,6 +21,10 @@ source_roi_history/
 subscription_attribution/
 .runtime/
 
+# note browser authentication state is a credential. Never commit local capture output.
+note_storage_state*.json
+note_storage_state*.b64
+
 # Per-run private human-audit artifact; never commit/package as source state.
 article_audit/
 # Repository hygiene (Run127 cleanup)
