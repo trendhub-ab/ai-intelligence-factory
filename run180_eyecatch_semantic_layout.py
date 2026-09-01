@@ -9,7 +9,8 @@ Run178 proved the architecture but real visual QA exposed three production issue
 
 This layer keeps the safety contract intact: exactly one layout-only Gemini request,
 no model retry/fallback, no copy rewrite, strict kinsoku/geometry validation, and a
-deterministic PIL fallback.  Gemini chooses typography; code remains the final gate.
+deterministic PIL fallback. Gemini chooses typography and one exact conclusion phrase;
+code remains the final gate.
 """
 from __future__ import annotations
 
@@ -31,6 +32,15 @@ SUB_MIN_FONT = 22
 SUB_MAX_FONT = 28
 TITLE_MAX_WIDTH = 760
 SUB_MAX_WIDTH = 725
+
+_LAYOUT_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        **r178._LAYOUT_RESPONSE_SCHEMA["properties"],
+        "highlight_text": {"type": "string"},
+    },
+    "required": [*r178._LAYOUT_RESPONSE_SCHEMA["required"], "highlight_text"],
+}
 
 
 def _parse_plan_response(response: Any) -> dict[str, Any] | None:
@@ -77,8 +87,32 @@ def _layout_prompt(headline: str, subheadline: str) -> str:
 - 文節、句読点、助詞のまとまりを優先する。行頭に句読点・閉じ括弧・小書き仮名を置かない。行末に開き括弧を置かない。
 - 短い1文字だけの行を作らない。
 - 行長を機械的に均等化するのではなく、意味のまとまりと視覚的な重心を両立する。
+- highlight_textにはheadline内で最も読者の目を止める「結論・問い・含意」の連続した1フレーズを、headlineから完全一致で抜き出す。言い換えない。
+- highlight_textは原則として後半の意味ブロックを選び、短すぎる単語だけやタイトル全体は選ばない。複数行にまたがってもよい。
+- 例: 「AIは重要。でも正直、もう追いきれない。」なら「もう追いきれない。」。
+- 例: 「生成AIの『速さ』競争が変わる。小さなモデルは実務でどこまで使えるのか。」なら「小さなモデルは実務でどこまで使えるのか。」。
 - JSON以外は返さない。
 """
+
+
+def _validate_highlight_text(headline: str, title_lines: list[str], value: Any) -> str:
+    """Allow one exact, restrained contiguous emphasis phrase; otherwise disable color only."""
+    if not isinstance(value, str):
+        return ""
+    highlight = value.strip()
+    joined = "".join(title_lines)
+    canonical = r178._canonical_partition_text(highlight)
+    total = r178._canonical_partition_text(joined)
+    if len(canonical) < 4 or not total:
+        return ""
+    if highlight not in joined or joined.count(highlight) != 1:
+        return ""
+    if canonical not in r178._canonical_partition_text(headline):
+        return ""
+    # Keep orange as a focal accent rather than turning most of the title orange.
+    if len(canonical) / len(total) > 0.70:
+        return ""
+    return highlight
 
 
 def _validate_layout_plan(headline: str, subheadline: str, plan: Any) -> dict[str, Any] | None:
@@ -132,6 +166,7 @@ def _validate_layout_plan(headline: str, subheadline: str, plan: Any) -> dict[st
         "title_line_gap": line_gap,
         "subheadline_lines": sub_lines,
         "subheadline_font_size": sub_size,
+        "highlight_text": _validate_highlight_text(headline, title_lines, plan.get("highlight_text")),
     }
 
 
@@ -144,7 +179,7 @@ def _request_layout_plan(pipeline_module: Any, headline: str, subheadline: str) 
             _layout_prompt(headline, subheadline),
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": r178._LAYOUT_RESPONSE_SCHEMA,
+                "response_json_schema": _LAYOUT_RESPONSE_SCHEMA,
                 "max_output_tokens": EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS,
                 "thinking_config": {"thinking_level": "minimal"},
             },
@@ -176,7 +211,7 @@ def install(pipeline_module: Any) -> Any:
         category: str | None = None,
         date_label: str | None = None,
     ) -> str:
-        # Keep the complete public title for normal note-length headlines.  This
+        # Keep the complete public title for normal note-length headlines. This
         # avoids hallucinated completion of a pre-truncated ellipsis while still
         # bounding pathological input before the layout request.
         headline = ee.editorial_hook_from_title(title, max_chars=48)
