@@ -53,11 +53,15 @@ class NoteAuthenticationExpired(NoteDraftError):
     pass
 
 
-def _plain_text(values: list[dict] | None) -> str:
+def _rich_text_raw(values: list[dict] | None) -> str:
     return "".join(
         str(item.get("plain_text") or ((item.get("text") or {}).get("content")) or "")
         for item in (values or [])
-    ).strip()
+    )
+
+
+def _plain_text(values: list[dict] | None) -> str:
+    return _rich_text_raw(values).strip()
 
 
 def _prop_text(prop: dict | None) -> str:
@@ -188,7 +192,7 @@ def _code_block_text(block: dict) -> tuple[str, str] | None:
     if block.get("type") != "code":
         return None
     code = block.get("code") or {}
-    body = _plain_text(code.get("rich_text"))
+    body = _rich_text_raw(code.get("rich_text"))
     caption = _plain_text(code.get("caption"))
     return body, caption
 
@@ -273,11 +277,7 @@ def _inline_markdown(value: str) -> str:
 
 
 def _markdown_to_safe_html(markdown_text: str) -> str:
-    """Convert the article's limited editorial Markdown to safe paste HTML.
-
-    Raw HTML is escaped first. The converter intentionally supports the structures used by
-    AIIF public manuscripts and avoids executing arbitrary markup in the browser context.
-    """
+    """Convert the article's limited editorial Markdown to safe paste HTML."""
     lines = str(markdown_text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     out: list[str] = []
     paragraph: list[str] = []
@@ -377,7 +377,7 @@ def _first_visible(page: Any, selectors: list[str], timeout_ms: int = 2500) -> A
     return None
 
 
-def _set_title(page: Any, title: str) -> Any:
+def _find_title(page: Any) -> Any:
     selectors = [
         'textarea[placeholder*="タイトル"]',
         'input[placeholder*="タイトル"]',
@@ -389,6 +389,11 @@ def _set_title(page: Any, title: str) -> Any:
     field = _first_visible(page, selectors, timeout_ms=4000)
     if field is None:
         raise NoteDraftError("note title field was not found")
+    return field
+
+
+def _set_title(page: Any, title: str) -> Any:
+    field = _find_title(page)
     tag = str(field.evaluate("el => el.tagName.toLowerCase()"))
     if tag in {"input", "textarea"}:
         field.fill(title)
@@ -583,7 +588,7 @@ def _looks_logged_out(page: Any) -> bool:
 
 def _wait_for_draft_url(page: Any, timeout_seconds: int = 35) -> str:
     deadline = time.time() + timeout_seconds
-    pattern = re.compile(r"https://(?:editor\.)?note\.com/notes/[^/?#]+/edit(?:[?#].*)?$", re.I)
+    pattern = re.compile(r"https://(?:editor\.)?note\.com/notes/[^/?#]+/edit/?(?:[?#].*)?$", re.I)
     while time.time() < deadline:
         current = str(page.url or "")
         if pattern.match(current):
@@ -613,8 +618,7 @@ def _save_draft_and_verify(page: Any, title: str, manuscript: str, image_require
     page.wait_for_timeout(1200)
     if _looks_logged_out(page):
         raise NoteAuthenticationExpired("note session expired while reopening the draft")
-    title_field = _set_title(page, title)
-    # _set_title is idempotent but writing it again would hide a title persistence bug. Read it.
+    title_field = _find_title(page)
     try:
         tag = str(title_field.evaluate("el => el.tagName.toLowerCase()"))
         if tag in {"input", "textarea"}:
@@ -636,8 +640,6 @@ def _save_draft_and_verify(page: Any, title: str, manuscript: str, image_require
         except NoteDraftError:
             raise
         except Exception:
-            # Some note UI revisions do not expose the change control. Upload success plus
-            # title/body persistence remains sufficient; do not invent a false failure.
             pass
     return draft_url
 
@@ -787,7 +789,6 @@ def main() -> None:
         target = Path(args.result_file)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    # Never print the private draft URL to a public GitHub Actions log.
     safe = {key: value for key, value in result.items() if key != "draft_url"}
     print(json.dumps(safe, ensure_ascii=False))
 
