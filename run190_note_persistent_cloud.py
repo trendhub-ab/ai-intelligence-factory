@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -26,12 +27,14 @@ from urllib.parse import urlparse
 import note_draft_automation as base
 import run185_note_ready_legacy_skip as run185
 import run189_note_editor_route_gate as run189
+import run187_note_editor_readiness as run187
 
 
 PROFILE_ENV = "NOTE_CHROME_USER_DATA_DIR"
 CHANNEL_ENV = "NOTE_CHROME_CHANNEL"
 HEADLESS_ENV = "NOTE_CHROME_HEADLESS"
 DEFAULT_PROFILE_DIR = Path.home() / ".aiif-note" / "chrome-profile"
+_ORIGINAL_DECODE_STORAGE_STATE = base._decode_storage_state
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -80,6 +83,26 @@ def _decode_bootstrap_state() -> dict[str, Any] | None:
     return parsed
 
 
+def _compat_storage_path() -> Path:
+    """Satisfy the legacy Run184 call signature without making the secret mandatory.
+
+    When the bootstrap secret still exists, preserve the old validation/temporary-file path.
+    Once the persistent Chrome profile is established, an empty private compatibility file is
+    enough because Run190 never launches Chrome from this path.
+    """
+    if os.environ.get("NOTE_STORAGE_STATE_B64", "").strip():
+        return _ORIGINAL_DECODE_STORAGE_STATE()
+    fd, name = tempfile.mkstemp(prefix="note-run190-compat-", suffix=".json")
+    os.close(fd)
+    path = Path(name)
+    path.write_text("{}", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return path
+
+
 def _seed_note_state(context: Any, page: Any) -> bool:
     """Optionally seed only note.com cookies/localStorage into the persistent profile.
 
@@ -95,7 +118,6 @@ def _seed_note_state(context: Any, page: Any) -> bool:
         if not isinstance(item, dict) or not _note_domain(str(item.get("domain") or "")):
             continue
         cookie = dict(item)
-        # Playwright accepts sameSite only in this spelling/value set.
         same_site = cookie.get("sameSite")
         if same_site not in {None, "Strict", "Lax", "None"}:
             cookie.pop("sameSite", None)
@@ -178,11 +200,7 @@ def _establish_editor(page: Any, context: Any) -> None:
 
 
 def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, storage_path: Path) -> str:
-    """Run the existing draft mutation/verification logic inside persistent real Chrome.
-
-    ``storage_path`` remains in the signature for compatibility with the base Run184 call
-    graph, but Run190 does not launch from that temporary Playwright storage-state file.
-    """
+    """Run the existing draft mutation/verification logic inside persistent real Chrome."""
     del storage_path
     try:
         from playwright.sync_api import sync_playwright
@@ -199,7 +217,7 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
             page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1000)
             _establish_editor(page, context)
-            if not run189.run187._is_editor_url(str(page.url or "")):
+            if not run187._is_editor_url(str(page.url or "")):
                 raise base.NoteDraftError("persistent Chrome did not remain on a confirmed note editor route")
 
             base._upload_header_image(page, eyecatch_path)
@@ -220,8 +238,9 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
 
 
 def install() -> None:
-    # Keep all Run185-189 fail-closed patches, replacing only the browser-lifecycle layer.
+    # Keep all Run185-189 fail-closed patches, replacing only browser lifecycle/auth storage.
     run189.install()
+    base._decode_storage_state = _compat_storage_path
     base._create_browser_draft = _create_browser_draft
 
 
