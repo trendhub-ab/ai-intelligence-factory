@@ -49,6 +49,7 @@ jobs:
           python -m unittest tests.test_note_draft_automation -v
           python -m unittest tests.test_run185_note_ready_legacy_skip -v
           python -m unittest tests.test_run186_note_header_image_resilience -v
+          python -m unittest tests.test_run187_note_editor_readiness -v
 
       - name: Create one private note draft
         env:
@@ -66,7 +67,7 @@ jobs:
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python run186_note_header_image_resilience.py
+        run: python run187_note_editor_readiness.py
 
       - name: Summarize result without exposing the draft URL
         if: success()
