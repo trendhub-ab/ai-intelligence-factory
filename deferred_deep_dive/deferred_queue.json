@@ -1,5 +1,232 @@
 {
   "version": 1,
-  "updated_at": "2026-08-31T22:49:14.682909+00:00",
-  "items": []
+  "updated_at": "2026-09-01T08:11:30.624322+00:00",
+  "items": [
+    {
+      "key": "https://arxiv.org/abs/2608.31082",
+      "deferred_at": "2026-09-01T08:11:30.623659+00:00",
+      "expires_at": "2026-10-31T08:11:30.623659+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Token-Efficient Data Reasoning Agents via Adaptive Structuring of Unstructured Data",
+        "originalTitle": "Token-Efficient Data Reasoning Agents via Adaptive Structuring of Unstructured Data",
+        "displayName": "Token-Efficient Data Reasoning Agents via Adaptive Structuring of Unstructured Data",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2608.31082v1",
+        "description": "Valuable data remains embedded in unstructured sources: web pages, reports, contracts, filings, earnings calls, and PDFs. The big bet in enterprise AI is deploying LLM agents that reason over this data to answer complex questions for every knowledge worker. Agents can do this today, but at prohibitive cost. Each question repeatedly opens large documents to recover scattered evidence, consuming up to a million tokens. However, if the data were already structured, the same question would reduce to",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T16:53:45Z",
+        "sourceContext": "Valuable data remains embedded in unstructured sources: web pages, reports, contracts, filings, earnings calls, and PDFs. The big bet in enterprise AI is deploying LLM agents that reason over this data to answer complex questions for every knowledge worker. Agents can do this today, but at prohibitive cost. Each question repeatedly opens large documents to recover scattered evidence, consuming up to a million tokens. However, if the data were already structured, the same question would reduce to a cheap database lookup. For example, on FanOutQA benchmark, reasoning over an ideal pre-structured store is 28X cheaper, and the gap grows to orders of magnitude as questions fan out over more documents. Yet structuring everything in advance is not viable: documents hold vastly more possible structure than any workload will use, and the useful structure and documents are unknown until queries arrive. We propose agentic data cracking, a method that structures unstructured data adaptively and speculatively as a byproduct of reasoning itself. Structuring is adaptive because observed queries decide when it happens and what matters, and speculative because it goes beyond the current question. Whenever the agent opens a document to answer, a cracking sub-agent forks from the already-loaded context at marginal cost and extracts grounded structure likely to serve related future queries. Over time, an increasing share of queries is fully covered by structured data and answered without opening a document, keeping agentic accuracy at close to RAG cost. On FanOutQA, extended with merely one related question per test question, cracking cuts cost by 53% while preserving accuracy. Agentic data cracking is a first step toward next-generation data infrastructure for agentic reasoning over unstructured data: a shared substrate beneath the model where knowledge that reasoning already paid to uncover accumulates.",
+        "primaryUrl": "https://arxiv.org/abs/2608.31082v1",
+        "sourceDetails": {
+          "authors": [
+            "Milad Rezaei Hajidehi",
+            "Qitong Wang",
+            "Stratos Idreos"
+          ],
+          "categories": [
+            "cs.AI",
+            "cs.CL",
+            "cs.DB"
+          ]
+        }
+      },
+      "notion_page_id": "3ce479ff-dca9-811e-a1c9-ed37ae8109bc",
+      "score": 84,
+      "reason": "非構造化データの構造化によるコスト削減はエージェント導入の急務",
+      "commercial_score": 80,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 82.6
+    },
+    {
+      "key": "https://arxiv.org/abs/2608.30963",
+      "deferred_at": "2026-09-01T08:11:30.623956+00:00",
+      "expires_at": "2026-10-31T08:11:30.623956+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "A Universal Context-Reuse Layer for Cross-Model KV Sharing",
+        "originalTitle": "A Universal Context-Reuse Layer for Cross-Model KV Sharing",
+        "displayName": "A Universal Context-Reuse Layer for Cross-Model KV Sharing",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2608.30963v1",
+        "description": "Modern large language model (LLM) serving systems increasingly operate over repeated or shared context, yet each model typically performs its own prefill computation even when another model has already processed the same input. Existing KV-cache reuse mechanisms substantially reduce redundant computation within a single model, but generally assume that the producer and consumer of a cache are identical. We study \\emph{cross-model KV sharing}, which translates the KV state produced by a source mo",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T15:28:17Z",
+        "sourceContext": "Modern large language model (LLM) serving systems increasingly operate over repeated or shared context, yet each model typically performs its own prefill computation even when another model has already processed the same input. Existing KV-cache reuse mechanisms substantially reduce redundant computation within a single model, but generally assume that the producer and consumer of a cache are identical. We study \\emph{cross-model KV sharing}, which translates the KV state produced by a source model into a representation that can be consumed by a different target model, including models that differ in scale, architecture, attention configuration, tokenizer, and model family. We evaluate the approach in both within-family and cross-family settings. For Qwen2.5-7B $\\rightarrow$ Qwen2.5-1.5B, translated KV states improve LongBench2 accuracy from 27.59\\% to 34.48\\%, a gain of 6.89 percentage points over the native 1.5B baseline, while reducing handoff cost relative to native target prefill. For the cross-family Qwen2.5-1.5B $\\rightarrow$ Gemma-2-2B setting, KV handoff reduces target-side prefill cost by up to 67.05\\% at 4K context length while maintaining decoding perplexity close to native-model baselines. In a more heterogeneous Llama3.1-70B $\\rightarrow$ Qwen2.5-7B setting, cross-family handoff achieves 44.0\\% accuracy compared with 45.7\\% for native Qwen2.5-7B inference, while reducing measured latency from 899ms to 138ms. These results provide initial evidence that KV states can serve as transferable computational representations rather than strictly model-local caches, and motivate \\emph{context mobility} as a systems abstraction for reducing redundant prefill across heterogeneous LLM and multi-agent inference workflows.",
+        "primaryUrl": "https://arxiv.org/abs/2608.30963v1",
+        "sourceDetails": {
+          "authors": [
+            "Yi Li",
+            "Dongming Jiang",
+            "Yi Zhao",
+            "Bingzhe Li"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3ce479ff-dca9-8136-99ce-d9e1a0e5919a",
+      "score": 80,
+      "reason": "クロスモデルKV共有を実現する汎用コンテキスト再利用層",
+      "commercial_score": 85,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 81.75
+    },
+    {
+      "key": "https://arxiv.org/abs/2608.31142",
+      "deferred_at": "2026-09-01T08:11:30.624074+00:00",
+      "expires_at": "2026-10-31T08:11:30.624074+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Auditing Anonymous AI Models: A Four-Stage Protocol for Black-Box Identity Verification",
+        "originalTitle": "Auditing Anonymous AI Models: A Four-Stage Protocol for Black-Box Identity Verification",
+        "displayName": "Auditing Anonymous AI Models: A Four-Stage Protocol for Black-Box Identity Verification",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2608.31142v1",
+        "description": "The 2025--2026 AI market has seen a wave of stealth releases: frontier models launched anonymously on developer platforms under codenames. For their users, identity determines data-handling terms, supply-chain risk, and capability expectations. No validated methodology exists for black-box identity verification of anonymous models: practitioner checklists lack accuracy evidence, and self-identification is untrustworthy by design. We propose a four-stage forensic audit protocol for API-served mod",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T17:48:24Z",
+        "sourceContext": "The 2025--2026 AI market has seen a wave of stealth releases: frontier models launched anonymously on developer platforms under codenames. For their users, identity determines data-handling terms, supply-chain risk, and capability expectations. No validated methodology exists for black-box identity verification of anonymous models: practitioner checklists lack accuracy evidence, and self-identification is untrustworthy by design. We propose a four-stage forensic audit protocol for API-served models. Stage 0 reconstructs launch-time configuration from archived platform snapshots (Internet Archive), exposing preview--production drift. Stage 1 fingerprints configuration (context, output ceiling, reasoning, modality) against the platform catalog. Stage 2 tests tokenizer identity with a cross-length differential that rejects short-prompt collisions. Stage 3 corroborates with behavioral probes. We test declaration consistency on 10 known-identity releases (7 exact, 2 precision-differences, 1 partial, 0 counter-directional), not end-to-end identification under anonymity. Identification is validated prospectively on a flagship case whose 2026-08-23 analysis pointed to the GLM-5.3 version line and whose official reveal confirmed those family and version-line inferences (deployment variant was not pre-asserted; Flash was consistent post-reveal), and on three Stage-0-only cases where the protocol produced a graded hypothesis or declined rather than guessed. A standard-library-only implementation is provided as supplementary material.",
+        "primaryUrl": "https://arxiv.org/abs/2608.31142v1",
+        "sourceDetails": {
+          "authors": [
+            "Yisen Xi"
+          ],
+          "categories": [
+            "cs.SE",
+            "cs.AI",
+            "cs.CR"
+          ]
+        }
+      },
+      "notion_page_id": "3ce479ff-dca9-81ea-a1a6-de99236d99ef",
+      "score": 82,
+      "reason": "サプライチェーンリスク管理に直結する重要な検証プロトコル",
+      "commercial_score": 75,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 79.55
+    },
+    {
+      "key": "https://arxiv.org/abs/2608.31017",
+      "deferred_at": "2026-09-01T08:11:30.624218+00:00",
+      "expires_at": "2026-10-31T08:11:30.624218+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "One note in three: a verified census of three deployed AI scribes, and the instrument that counted it",
+        "originalTitle": "One note in three: a verified census of three deployed AI scribes, and the instrument that counted it",
+        "displayName": "One note in three: a verified census of three deployed AI scribes, and the instrument that counted it",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2608.31017v1",
+        "description": "Ambient AI scribes draft clinical notes under the reassurance that a clinician signs every note. We audited three commercial AI scribes on the same 142 consultations: 565 notes from recorded UK primary-care and US ambulatory encounters plus authored scenarios. Twelve discovery passes proposed 13,678 candidate errors; the 5,898 clearing an importance filter went to an adversarial panel of two models from different families, each told to refute what it could, and 618 survived. One note in three (3",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T16:00:27Z",
+        "sourceContext": "Ambient AI scribes draft clinical notes under the reassurance that a clinician signs every note. We audited three commercial AI scribes on the same 142 consultations: 565 notes from recorded UK primary-care and US ambulatory encounters plus authored scenarios. Twelve discovery passes proposed 13,678 candidate errors; the 5,898 clearing an importance filter went to an adversarial panel of two models from different families, each told to refute what it could, and 618 survived. One note in three (31.3% [27.0, 35.6]) carries a verified failure, concentrated in allergy and medication information, invented patient identity, and history written up as examination on telephone consultations that can contain none. No product was given a patient record; setting aside the two classes a record would have prefilled, invented identity and dates, the rate is 24.8% [20.8, 29.0]. One failure mode did not fit our scheme, drawn from published scribe-error taxonomies: a treatment the clinician retracts, recorded as delivered care. Two clinicians adjudicated blind, disjoint samples: a physician author upheld 20 of 21 findings (95.2% [77.3, 99.2]) and an independent clinician, not an author, 12 of 12 ([75.8, 100]); both judged every sampled refusal genuine. A failure rate depends on the instrument as much as the scribes. With model, evidence and settings fixed, the review instruction alone moves the share of candidates verified from 9.3% to 79.0%, and the reviewing family moves it too: alone at that instruction the gentler flags 54.8% of notes against 27.8%. Between 28% and 97% of sampled notes carry a failure depending on the standard. Published audits disagree among themselves by a margin instrument differences alone can produce: omission is 54-86% of their errors against our 23.1%. We release all 618 findings with transcript-side evidence, every prompt and model version, and the re-runnable pipeline.",
+        "primaryUrl": "https://arxiv.org/abs/2608.31017v1",
+        "sourceDetails": {
+          "authors": [
+            "Sebastian Fox",
+            "Luke Markham",
+            "Ryan Lail",
+            "Michael Karotsieris"
+          ],
+          "categories": [
+            "cs.CL",
+            "cs.AI",
+            "cs.CY"
+          ]
+        }
+      },
+      "notion_page_id": "3ce479ff-dca9-81e1-8d4f-e06706418844",
+      "score": 75,
+      "reason": "医療用AIスクリプトのエラー検証監査",
+      "commercial_score": 80,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 76.75
+    },
+    {
+      "key": "https://antigravity.google/docs/boost",
+      "deferred_at": "2026-09-01T08:11:30.624129+00:00",
+      "expires_at": "2026-09-15T08:11:30.624129+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Google Antigravity introduces Boost deep reasoning (/boost)",
+        "originalTitle": "Google Antigravity introduces Boost deep reasoning (/boost)",
+        "displayName": "Google Antigravity introduces Boost deep reasoning (/boost)",
+        "sourceLanguage": "en",
+        "url": "https://antigravity.google/docs/boost/",
+        "description": "Google Antigravity introduces Boost deep reasoning (/boost)",
+        "stargazerCount": 67,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-01T03:05:55+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://antigravity.google/docs/boost/",
+        "sourceDetails": {
+          "hn_id": 49517537,
+          "hn_url": "https://news.ycombinator.com/item?id=49517537",
+          "external_url": "https://antigravity.google/docs/boost/"
+        }
+      },
+      "notion_page_id": "3ce479ff-dca9-81a5-81b0-f35a82db0a07",
+      "score": 75,
+      "reason": "Googleの新推論機能 Boost の発表",
+      "commercial_score": 80,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 76.75
+    },
+    {
+      "key": "https://arxiv.org/abs/2608.31016",
+      "deferred_at": "2026-09-01T08:11:30.624270+00:00",
+      "expires_at": "2026-10-31T08:11:30.624270+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "LLM Judges Verify Presence, Not Absence: Omission Blindness in AI Clinical Notes and What Recovers It",
+        "originalTitle": "LLM Judges Verify Presence, Not Absence: Omission Blindness in AI Clinical Notes and What Recovers It",
+        "displayName": "LLM Judges Verify Presence, Not Absence: Omission Blindness in AI Clinical Notes and What Recovers It",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2608.31016v1",
+        "description": "Ambient AI scribes draft clinical notes, and published audits find their dominant error is omission: information the encounter established that the note fails to record. The standard check is an LLM judge: a second model reads the note against the transcript and flags problems. We ask whether judges detect omissions. Public corpora cannot supply the answer key: their clinician reference notes and transcripts are materially discrepant. Our benchmark has 500 single-error note pairs from audited fa",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-31T15:59:54Z",
+        "sourceContext": "Ambient AI scribes draft clinical notes, and published audits find their dominant error is omission: information the encounter established that the note fails to record. The standard check is an LLM judge: a second model reads the note against the transcript and flags problems. We ask whether judges detect omissions. Public corpora cannot supply the answer key: their clinician reference notes and transcripts are materially discrepant. Our benchmark has 500 single-error note pairs from audited fact sheets, 298 with a named fact certainly absent and 202 added-or-altered controls. Across eight judge designs, paired discrimination (the flawed note below its clean twin, 0.5 a coin flip) reads 0.79-0.94 on added or altered content and 0.50-0.63 on omissions. On single notes, no design flags omissions reliably more often than perfect notes. Wording changes, voting and GEPA prompt optimisation move the operating point without creating usable detection. Restructuring the task recovers it: list the facts the transcript establishes, then check the note for each. Two methods reach it independently and trade off: a per-fact pipeline, and a GEPA-evolved prompt doing the same in one call. The pipeline's flags name the missing fact and its severity at 2.7% false alarms. The single call detects more (36.9% against 24.6%, p=0.002) at 6.2% false alarms and a tenth of the cost per note. A physician author validated 70 items and, where the two routes disagree, sided with the pipeline on 10 of 10 (p=0.002). A second clinician, not an author, graded the severity rubric blind and agrees to within a grade. On real vendor notes from a companion census no benchmark threshold transfers, but the re-calibrated single call detects more than the best of the eight at half its false-alarm rate. Omissions whose fact is restated elsewhere defeat both routes. We release the benchmark, prompts and judgements.",
+        "primaryUrl": "https://arxiv.org/abs/2608.31016v1",
+        "sourceDetails": {
+          "authors": [
+            "Sebastian Fox",
+            "Luke Markham",
+            "Ryan Lail",
+            "Michael Karotsieris"
+          ],
+          "categories": [
+            "cs.CL",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3ce479ff-dca9-815c-9c23-c22ab5bdf0cf",
+      "score": 70,
+      "reason": "LLMジャッジの欠落盲点に関する検証",
+      "commercial_score": 75,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 71.75
+    }
+  ]
 }
