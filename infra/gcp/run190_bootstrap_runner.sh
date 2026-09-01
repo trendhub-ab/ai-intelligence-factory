@@ -11,6 +11,7 @@ set -euo pipefail
 : "${GITHUB_RUNNER_TOKEN:?Set GITHUB_RUNNER_TOKEN to a fresh self-hosted runner registration token}"
 REPO_URL="${GITHUB_REPO_URL:-https://github.com/trendhub-ab/ai-intelligence-factory}"
 RUNNER_LABEL="${GITHUB_RUNNER_LABEL:-aiif-note-cloud}"
+RUNNER_NAME="${GITHUB_RUNNER_NAME:-aiif-note-draft}"
 RUNNER_DIR="${GITHUB_RUNNER_DIR:-$HOME/actions-runner}"
 PROFILE_DIR="${NOTE_CHROME_USER_DATA_DIR:-$HOME/.aiif-note/chrome-profile}"
 
@@ -48,12 +49,14 @@ if [ ! -x ./config.sh ]; then
   sudo ./bin/installdependencies.sh
 fi
 
+# Use a stable short name instead of the VM hostname. On GCE, `hostname` may resolve to a
+# long internal FQDN that exceeds GitHub's 64-character runner-name limit.
 # Replace is intentional: re-running the bootstrap repairs an old registration without
 # creating duplicate cloud runners.
 ./config.sh \
   --url "$REPO_URL" \
   --token "$GITHUB_RUNNER_TOKEN" \
-  --name "$(hostname)-note" \
+  --name "$RUNNER_NAME" \
   --labels "$RUNNER_LABEL" \
   --work _work \
   --unattended \
@@ -71,12 +74,13 @@ profile.mkdir(parents=True, exist_ok=True)
 print(f'Persistent Chrome profile: {profile}')
 PY
 
-cat <<'EOF'
+cat <<EOF
 
 Run190 VM bootstrap completed.
 - Google Chrome stable: installed
 - Xvfb: installed
-- GitHub self-hosted runner label: aiif-note-cloud (unless overridden)
+- GitHub self-hosted runner name: ${RUNNER_NAME}
+- GitHub self-hosted runner label: ${RUNNER_LABEL}
 - Runner service: started and enabled
 - Chrome profile: persistent under the runner user's home directory
 
