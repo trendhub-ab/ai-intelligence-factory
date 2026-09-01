@@ -15,6 +15,7 @@ def install_runtime_layers(pipeline_module):
     import run177_paid_funnel_alignment
     import run178_eyecatch_editorial_layout_optimizer
     import run179_eyecatch_font_refinement
+    import run180_eyecatch_semantic_layout
     import reader_value_review_bridge
 
     run172_production_reliability.install(pipeline_module)
@@ -25,6 +26,7 @@ def install_runtime_layers(pipeline_module):
     run177_paid_funnel_alignment.install(pipeline_module)
     run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
     run179_eyecatch_font_refinement.install(pipeline_module)
+    run180_eyecatch_semantic_layout.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
     return pipeline_module
 
