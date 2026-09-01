@@ -24,6 +24,7 @@ subscription_attribution/
 # note browser authentication state is a credential. Never commit local capture output.
 note_storage_state*.json
 note_storage_state*.b64
+.note-session-chrome/
 
 # Per-run private human-audit artifact; never commit/package as source state.
 article_audit/
