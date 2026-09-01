@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import os
 import unittest
-from pathlib import Path
+from unittest.mock import patch
 
 import run190_note_persistent_cloud as run190
 
@@ -33,6 +34,16 @@ class Run190PersistentCloudTests(unittest.TestCase):
         self.assertIn("_note_domain", source)
         self.assertIn("_note_origin", source)
         self.assertNotIn("print(", source)
+
+    def test_persistent_profile_can_run_without_legacy_storage_secret(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("NOTE_STORAGE_STATE_B64", None)
+            path = run190._compat_storage_path()
+        try:
+            self.assertTrue(path.exists())
+            self.assertEqual("{}", path.read_text(encoding="utf-8"))
+        finally:
+            path.unlink(missing_ok=True)
 
     def test_run190_reuses_existing_fail_closed_draft_verification(self) -> None:
         source = inspect.getsource(run190._create_browser_draft)
