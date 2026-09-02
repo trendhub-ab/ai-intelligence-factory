@@ -17,6 +17,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, MutableMapping
 
 import requests
@@ -74,11 +75,28 @@ def apply_runtime_state_env(env: MutableMapping[str, str] | None = None) -> str:
     return branch
 
 
+def persist_github_actions_env(branch: str) -> None:
+    """Persist state isolation for later steps in the same GitHub Actions job.
+
+    ``production_pipeline.py`` and the separate Product Review step are different
+    processes. Appending to ``GITHUB_ENV`` ensures the latter inherits the corrected
+    branch even if the historical workflow YAML still says ``main``.
+    """
+    path = (os.environ.get("GITHUB_ENV") or "").strip()
+    if not path or not branch:
+        return
+    with Path(path).open("a", encoding="utf-8") as handle:
+        handle.write(f"AIIF_RUNTIME_STATE_BRANCH={branch}\n")
+        handle.write(f"GEMINI_COUNTER_BRANCH={branch}\n")
+        handle.write(f"EYECATCH_GITHUB_BRANCH={branch}\n")
+
+
 def install(pipeline_module: Any) -> Any:
     """Redirect every existing mutable GitHub state writer to the runtime-state branch."""
     branch = apply_runtime_state_env()
     if not branch:
         return pipeline_module
+    persist_github_actions_env(branch)
 
     # Existing state writers in pipeline.py share EYECATCH_GITHUB_BRANCH for their
     # Contents API target. Redirecting this runtime variable covers eyecatches,
