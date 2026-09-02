@@ -19,7 +19,7 @@ class Run204GeminiTransientRecoveryTests(unittest.TestCase):
             logger=logger,
         )
 
-    def test_503_is_not_session_blacklisted(self):
+    def test_first_503_is_not_session_blacklisted(self):
         pipeline = self._pipeline()
         recovery.install(pipeline)
 
@@ -29,15 +29,27 @@ class Run204GeminiTransientRecoveryTests(unittest.TestCase):
         self.assertEqual(pipeline._aiif_transient_503_counts["gemini-3.6-flash"], 1)
         pipeline.logger.warning.assert_called_once()
 
-    def test_repeated_503_remains_bounded_recoverable_not_hard_unavailable(self):
+    def test_second_503_enters_run_local_cooldown(self):
         pipeline = self._pipeline()
         recovery.install(pipeline)
 
         pipeline._mark_model_unavailable("gemini-3.7-flash", "503")
         pipeline._mark_model_unavailable("gemini-3.7-flash", "503 Service Unavailable")
 
-        self.assertNotIn("gemini-3.7-flash", pipeline.SESSION_UNAVAILABLE_MODELS)
+        self.assertIn("gemini-3.7-flash", pipeline.SESSION_UNAVAILABLE_MODELS)
         self.assertEqual(pipeline._aiif_transient_503_counts["gemini-3.7-flash"], 2)
+
+    def test_503_counters_are_model_local(self):
+        pipeline = self._pipeline()
+        recovery.install(pipeline)
+
+        pipeline._mark_model_unavailable("gemini-3.6-flash", "503")
+        pipeline._mark_model_unavailable("gemini-3.7-flash", "503")
+
+        self.assertNotIn("gemini-3.6-flash", pipeline.SESSION_UNAVAILABLE_MODELS)
+        self.assertNotIn("gemini-3.7-flash", pipeline.SESSION_UNAVAILABLE_MODELS)
+        self.assertEqual(pipeline._aiif_transient_503_counts["gemini-3.6-flash"], 1)
+        self.assertEqual(pipeline._aiif_transient_503_counts["gemini-3.7-flash"], 1)
 
     def test_404_stays_hard_unavailable(self):
         pipeline = self._pipeline()
