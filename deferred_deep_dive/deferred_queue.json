@@ -1,46 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-01T08:11:32.179352+00:00",
+  "updated_at": "2026-09-02T08:47:35.704170+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2608.31082",
-      "deferred_at": "2026-09-01T08:11:30.623659+00:00",
-      "expires_at": "2026-10-31T08:11:30.623659+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Token-Efficient Data Reasoning Agents via Adaptive Structuring of Unstructured Data",
-        "originalTitle": "Token-Efficient Data Reasoning Agents via Adaptive Structuring of Unstructured Data",
-        "displayName": "Token-Efficient Data Reasoning Agents via Adaptive Structuring of Unstructured Data",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2608.31082v1",
-        "description": "Valuable data remains embedded in unstructured sources: web pages, reports, contracts, filings, earnings calls, and PDFs. The big bet in enterprise AI is deploying LLM agents that reason over this data to answer complex questions for every knowledge worker. Agents can do this today, but at prohibitive cost. Each question repeatedly opens large documents to recover scattered evidence, consuming up to a million tokens. However, if the data were already structured, the same question would reduce to",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-08-31T16:53:45Z",
-        "sourceContext": "Valuable data remains embedded in unstructured sources: web pages, reports, contracts, filings, earnings calls, and PDFs. The big bet in enterprise AI is deploying LLM agents that reason over this data to answer complex questions for every knowledge worker. Agents can do this today, but at prohibitive cost. Each question repeatedly opens large documents to recover scattered evidence, consuming up to a million tokens. However, if the data were already structured, the same question would reduce to a cheap database lookup. For example, on FanOutQA benchmark, reasoning over an ideal pre-structured store is 28X cheaper, and the gap grows to orders of magnitude as questions fan out over more documents. Yet structuring everything in advance is not viable: documents hold vastly more possible structure than any workload will use, and the useful structure and documents are unknown until queries arrive. We propose agentic data cracking, a method that structures unstructured data adaptively and speculatively as a byproduct of reasoning itself. Structuring is adaptive because observed queries decide when it happens and what matters, and speculative because it goes beyond the current question. Whenever the agent opens a document to answer, a cracking sub-agent forks from the already-loaded context at marginal cost and extracts grounded structure likely to serve related future queries. Over time, an increasing share of queries is fully covered by structured data and answered without opening a document, keeping agentic accuracy at close to RAG cost. On FanOutQA, extended with merely one related question per test question, cracking cuts cost by 53% while preserving accuracy. Agentic data cracking is a first step toward next-generation data infrastructure for agentic reasoning over unstructured data: a shared substrate beneath the model where knowledge that reasoning already paid to uncover accumulates.",
-        "primaryUrl": "https://arxiv.org/abs/2608.31082v1",
-        "sourceDetails": {
-          "authors": [
-            "Milad Rezaei Hajidehi",
-            "Qitong Wang",
-            "Stratos Idreos"
-          ],
-          "categories": [
-            "cs.AI",
-            "cs.CL",
-            "cs.DB"
-          ]
-        }
-      },
-      "notion_page_id": "3ce479ff-dca9-811e-a1c9-ed37ae8109bc",
-      "score": 84,
-      "reason": "非構造化データの構造化によるコスト削減はエージェント導入の急務",
-      "commercial_score": 80,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 82.6
-    },
     {
       "key": "https://arxiv.org/abs/2608.30963",
       "deferred_at": "2026-09-01T08:11:30.623956+00:00",
