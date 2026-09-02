@@ -277,7 +277,8 @@ class Run172ProductionReliabilityTests(unittest.TestCase):
     def test_historical_reader_bridge_delegates_to_current_production_stack(self):
         bridge_source = inspect.getsource(reader_value_review_bridge.main)
         self.assertIn("production_pipeline.main()", bridge_source)
-        self.assertNotIn("pipeline.main()", bridge_source)
+        self.assertNotIn("import pipeline", bridge_source)
+        self.assertNotIn("run172_production_reliability.install(", bridge_source)
 
         production_pipeline = __import__("production_pipeline")
         layer_source = inspect.getsource(production_pipeline.install_runtime_layers)
