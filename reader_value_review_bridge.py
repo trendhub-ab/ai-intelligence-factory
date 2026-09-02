@@ -1,8 +1,9 @@
 """Run171 Production Yield Guardrails + Run169 Reader Value Review Bridge.
 
-The existing reader-value policy remains unchanged.  Production main additionally
-installs Run172 reliability fixes before these editorial wrappers so Fact/Evidence
-and transport fixes become active without altering the historical bridge contract.
+This module remains an installable editorial layer, but its standalone entrypoint is no longer
+an independent production stack.  Direct execution delegates to production_pipeline.main so
+manual/regression callers cannot accidentally run only Run172 + the historical reader bridge
+while bypassing later fact, eyecatch, funnel, and publication-integrity layers.
 """
 from __future__ import annotations
 
@@ -174,14 +175,11 @@ def install(pipeline_module: Any) -> Any:
 
 
 def main() -> None:
-    import pipeline
-    import run172_production_reliability
+    # Historical direct execution used to install only Run172 + this bridge and therefore
+    # silently bypassed later production layers.  There is now exactly one production stack.
+    import production_pipeline
 
-    # Reliability/Evidence/transport wrappers first; reader-value wrappers then
-    # compose on top of the corrected prompt/retry functions.
-    run172_production_reliability.install(pipeline)
-    install(pipeline)
-    pipeline.main()
+    production_pipeline.main()
 
 
 if __name__ == "__main__":
