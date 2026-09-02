@@ -12,9 +12,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: note-ready-article-sync
+  cancel-in-progress: false
+
 jobs:
   sync-note-ready:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -33,7 +39,7 @@ jobs:
       - name: Zero-API unit tests
         run: python -m unittest tests.test_note_ready_sync -v
 
-      - name: Sync Ready articles to note posting DB
+      - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}

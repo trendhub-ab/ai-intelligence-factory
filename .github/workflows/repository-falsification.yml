@@ -1,0 +1,34 @@
+name: Repository-wide Falsification Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-falsification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  falsify-all-tracked-surfaces:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Compile guard and publication contract
+        run: python -m py_compile repository_falsification_guard.py publication_contract.py
+
+      - name: Scan repository-wide executable, workflow, provenance and secret surfaces
+        run: python repository_falsification_guard.py

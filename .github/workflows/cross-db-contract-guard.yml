@@ -33,16 +33,15 @@ on:
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
       - '.github/workflows/cross-db-contract-guard.yml'
-  schedule:
-    # 08:50 JST: validate live DB contracts shortly before the 09:00 Daily run.
-    - cron: '50 23 * * *'
   workflow_run:
-    workflows: ['Daily Intelligence & Content Pipeline', 'Member Presentation Sync']
+    workflows:
+      - Daily Intelligence & Content Pipeline [ONE-SHOT]
+      - Member Presentation Sync
     types: [completed]
 
 concurrency:
-  group: cross-db-contract-guard-${{ github.event_name }}
-  cancel-in-progress: true
+  group: cross-db-contract-guard
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -67,12 +66,12 @@ jobs:
 
   live-schema-contract:
     if: >-
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.name == 'Daily Intelligence & Content Pipeline' &&
-       github.event.workflow_run.conclusion == 'success')
+       github.event.workflow_run.name == 'Daily Intelligence & Content Pipeline [ONE-SHOT]' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -122,7 +121,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.name == 'Member Presentation Sync' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -33,8 +33,8 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk fonts-lato
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: 指定3記事を再生成・検証
-        run: python reader_value_review_bridge.py
+      - name: 指定3記事を現行Production stackで再生成・検証
+        run: python production_pipeline.py
         env:
           REGEN_TEST_MODE: "true"
           REGEN_TEST_ARTICLE_SET: ${{ inputs.article_set }}

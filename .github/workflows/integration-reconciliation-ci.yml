@@ -10,12 +10,20 @@ on:
       - 'decision_intelligence.py'
       - 'pipeline.py'
       - 'production_pipeline.py'
+      - 'publication_contract.py'
+      - 'note_ready_sync.py'
+      - 'note_draft_automation.py'
       - 'daily_portfolio_review.py'
       - 'run*.py'
       - 'reader_value_review_bridge.py'
+      - 'repository_falsification_guard.py'
       - '.github/workflows/daily.yml'
       - '.github/workflows/daily-one-shot.yml'
       - '.github/workflows/regression-test.yml'
+      - '.github/workflows/note-ready-sync.yml'
+      - '.github/workflows/note-create-draft.yml'
+      - '.github/workflows/member-presentation-sync.yml'
+      - '.github/workflows/subscriber-decision-brief.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
@@ -44,10 +52,17 @@ jobs:
             decision_intelligence.py \
             pipeline.py \
             production_pipeline.py \
+            publication_contract.py \
+            note_ready_sync.py \
+            run194_publication_contract.py \
+            run194_note_current_contract.py \
+            reader_value_review_bridge.py \
             daily_portfolio_review.py \
             run175_semantic_fact_precision.py \
             run176_scope_fidelity.py \
-            reader_value_review_bridge.py
+            repository_falsification_guard.py
+      - name: Run repository-wide falsification guard
+        run: python repository_falsification_guard.py
       - name: Validate manual production workflow safety surface
         run: |
           grep -F 'workflow_dispatch:' .github/workflows/daily-one-shot.yml
@@ -58,12 +73,14 @@ jobs:
           ! grep -Eq '^[[:space:]]+(push|schedule):' .github/workflows/daily-one-shot.yml
           grep -F 'if: $' .github/workflows/daily.yml | grep -F '{{ false }}'
           ! grep -Eq '^[[:space:]]+schedule:' .github/workflows/daily.yml
-      - name: Validate Run130 regression workflow safety surface
+      - name: Validate current-stack real regression workflow
         run: |
           grep -F 'article_set:' .github/workflows/regression-test.yml
           grep -F -- '- fresh' .github/workflows/regression-test.yml
           grep -F 'permissions:' .github/workflows/regression-test.yml
           grep -F 'contents: read' .github/workflows/regression-test.yml
+          grep -F 'run: python production_pipeline.py' .github/workflows/regression-test.yml
+          ! grep -F 'run: python reader_value_review_bridge.py' .github/workflows/regression-test.yml
       - name: Run article quality reconciliation tests
         run: |
           python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
@@ -93,8 +110,8 @@ jobs:
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
       - name: Run full unittest regression
         run: python -m unittest discover -s tests -v
-      - name: Run synthetic smoke with production isolation
+      - name: Run synthetic smoke through current production stack
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
-        run: python reader_value_review_bridge.py
+        run: python production_pipeline.py
