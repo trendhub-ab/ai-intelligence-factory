@@ -20,12 +20,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, MutableMapping
 
-import requests
-
 DEFAULT_RUNTIME_STATE_BRANCH = "runtime-state"
 RUNTIME_STATE_HEALTH_PATH = ".runtime/runtime_state_health.json"
 _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _PRODUCTION_BRANCH_NAMES = {"main", "master"}
+
+
+def _http_client():
+    """Load requests only when network preflight actually runs.
+
+    Repository falsification imports this module in a deliberately dependency-light,
+    zero-network job. Production already installs requirements.txt before preflight.
+    """
+    import requests
+    return requests
 
 
 def resolve_runtime_state_branch() -> str:
@@ -134,16 +142,17 @@ def preflight_runtime_state_channel() -> dict[str, str]:
     if not token:
         raise RuntimeError("GH_PAT is required for runtime-state preflight")
 
+    http = _http_client()
     headers = _headers(token)
     branch_url = f"https://api.github.com/repos/{repo}/branches/{branch}"
-    branch_res = requests.get(branch_url, headers=headers, timeout=15)
+    branch_res = http.get(branch_url, headers=headers, timeout=15)
     if branch_res.status_code != 200:
         raise RuntimeError(
             f"Runtime-state branch is not readable: HTTP {branch_res.status_code} {branch_res.text[:200]}"
         )
 
     api_url = f"https://api.github.com/repos/{repo}/contents/{RUNTIME_STATE_HEALTH_PATH}"
-    current = requests.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
+    current = http.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
     if current.status_code not in {200, 404}:
         raise RuntimeError(
             f"Runtime-state health read failed: HTTP {current.status_code} {current.text[:200]}"
@@ -169,7 +178,7 @@ def preflight_runtime_state_channel() -> dict[str, str]:
         if sha:
             payload["sha"] = sha
 
-    put_res = requests.put(api_url, headers=headers, json=payload, timeout=20)
+    put_res = http.put(api_url, headers=headers, json=payload, timeout=20)
     if put_res.status_code not in {200, 201}:
         raise RuntimeError(
             f"Runtime-state write preflight failed: HTTP {put_res.status_code} {put_res.text[:300]}"
