@@ -111,7 +111,8 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
     def test_readme_declares_current_baseline_and_cleanup_safety(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Current functional baseline:** Run199", readme)
-        self.assertIn("repository consolidation with no intended runtime behavior change", readme)
+        self.assertIn("Current repository organization baseline:** Run201", readme)
+        self.assertIn("repository garbage cleanup without intended runtime behavior change", readme)
         self.assertIn("Daily:** PAUSED", readme)
         self.assertIn("Historical `RUN*.md`", readme)
         self.assertIn("do **not** bulk-delete", readme)
