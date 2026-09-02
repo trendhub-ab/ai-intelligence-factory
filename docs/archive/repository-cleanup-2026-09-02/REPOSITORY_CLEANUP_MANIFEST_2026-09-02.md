@@ -30,6 +30,19 @@ The following historical Run documents were moved byte-for-byte to `root-run-doc
 - `RUN190_NOTE_PERSISTENT_CLOUD.md`
 - `RUN196_NOTION_RATE_LIMIT_AUDIT.md`
 
+## Canonical specification reconciliation
+
+The root `AI_Intelligence_Factory_最終仕様書.md` claimed an old Run122 package baseline and its appended history ended at Run129. Keeping it as the canonical current specification would conflict with the Run199 production code.
+
+Run200 therefore:
+
+- preserved the old 111KB specification byte-for-byte as `docs/archive/specifications/AI_Intelligence_Factory_仕様書_through_Run129_2026-08-25.md`;
+- reused the original Git blob SHA `07248b6c4975a1a959bcfd4cb78a9492f68d896e` for that historical copy;
+- replaced the root `AI_Intelligence_Factory_最終仕様書.md` with a concise current Production Contract tied to Run199 and `main`;
+- explicitly defines executable code/tests/workflows as the highest source of truth so documentation cannot silently override runtime behavior.
+
+No Python, Notion, Gemini, note or workflow production behavior was changed by this specification reconciliation.
+
 ## Explicitly retained active production code
 
 ### Production runtime layers
