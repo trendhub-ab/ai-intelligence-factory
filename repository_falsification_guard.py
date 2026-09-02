@@ -18,6 +18,7 @@ import publication_contract
 
 ROOT = Path(__file__).resolve().parent
 WORKFLOWS = ROOT / ".github" / "workflows"
+SELF = Path(__file__).resolve()
 
 DERIVED_DAILY_WORKFLOWS = {
     "note-ready-sync.yml",
@@ -76,6 +77,8 @@ def audit() -> list[str]:
 
     # 1. High-confidence credential leakage anywhere in the tracked text surface.
     for path, text in all_text:
+        if path.resolve() == SELF:
+            continue  # regex literals in this guard intentionally resemble secret prefixes
         rel = path.relative_to(ROOT).as_posix()
         for label, pattern in HIGH_CONFIDENCE_SECRET_PATTERNS:
             if pattern.search(text):
@@ -158,17 +161,18 @@ def audit() -> list[str]:
     # delegate to the sole current production entrypoint.
     bridge = (ROOT / "reader_value_review_bridge.py").read_text(encoding="utf-8")
     main_tail = bridge[bridge.rfind("def main()"):] if "def main()" in bridge else ""
-    if "production_pipeline.main()" not in main_tail or "pipeline.main()" in main_tail:
+    direct_call = "pipeline" + ".main()"
+    if "production_pipeline.main()" not in main_tail or direct_call in main_tail:
         failures.append("reader_bridge_standalone_bypasses_current_stack")
 
     # 7. All root Python executables are scanned for a direct pipeline.main() bypass.
     # production_pipeline.py is the only allowed owner of that call.
     for path, text in all_text:
-        if path.parent != ROOT or path.suffix != ".py":
+        if path.resolve() == SELF or path.parent != ROOT or path.suffix != ".py":
             continue
         if path.name == "production_pipeline.py":
             continue
-        if "pipeline.main()" in text:
+        if direct_call in text:
             failures.append(f"root_python_direct_pipeline_main:{path.name}")
 
     # 8. Publication policy is auto-derived from real files; the manifest must include every
@@ -190,15 +194,18 @@ def audit() -> list[str]:
         failures.append("publication_manifest_missing_reader_or_eyecatch_core")
 
     # 9. Removed fixed-caption API must not creep back into executable Python/tests.
+    fixed_symbol = "CURRENT" + "_READY_CAPTION"
     for path, text in all_text:
+        if path.resolve() == SELF:
+            continue
         rel = path.relative_to(ROOT).as_posix()
-        if path.suffix == ".py" and "CURRENT_READY_CAPTION" in text:
+        if path.suffix == ".py" and fixed_symbol in text:
             failures.append(f"fixed_publication_caption_reintroduced:{rel}")
 
     # 10. No private/undocumented note API transport in executable code or workflows.
     for path, text in all_text:
         rel = path.relative_to(ROOT).as_posix()
-        if not (path.suffix in {".py", ".yml", ".yaml", ".sh"}):
+        if path.resolve() == SELF or not (path.suffix in {".py", ".yml", ".yaml", ".sh"}):
             continue
         if re.search(r"https?://(?:www\.)?note\.com/(?:api|api/|api/v\d)", text, re.I):
             failures.append(f"private_note_api_reference:{rel}")
