@@ -27,17 +27,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile guard and publication contract
-        run: python -m py_compile repository_falsification_guard.py publication_contract.py run203_runtime_state_channel.py
+      - name: Compile guard and production infrastructure contracts
+        run: python -m py_compile repository_falsification_guard.py publication_contract.py run203_runtime_state_channel.py gemini_transient_recovery.py
 
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
 
-      - name: Falsify repository organization and mutable-state safety contract
+      - name: Falsify repository organization and runtime safety contracts
         run: |
           python -m unittest tests.test_run200_repository_layout -v
           python -m unittest tests.test_run201_repository_garbage_cleanup -v
           python -m unittest tests.test_run203_runtime_state_channel -v
+          python -m unittest tests.test_run204_gemini_transient_recovery -v
 
       - name: Falsify Note Ready policy-change reconciliation contract
         run: |
