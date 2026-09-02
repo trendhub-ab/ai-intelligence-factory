@@ -26,6 +26,7 @@ jobs:
       github.event.comment.user.login == 'trendhub-ab' &&
       github.actor == 'trendhub-ab' &&
       (github.event.comment.body == '/aiif run article_validation' ||
+       github.event.comment.body == '/aiif run pending_retry_validation' ||
        github.event.comment.body == '/aiif run full')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -54,7 +55,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|full) ;;
+            article_validation|pending_retry_validation|full) ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -67,6 +68,9 @@ jobs:
           case "$MODE" in
             article_validation)
               payload='{"ref":"main","inputs":{"mode":"article_validation","confirm":"RUN_ONCE"}}'
+              ;;
+            pending_retry_validation)
+              payload='{"ref":"main","inputs":{"mode":"pending_retry_validation","confirm":"RUN_ONCE"}}'
               ;;
             full)
               payload='{"ref":"main","inputs":{"mode":"full","confirm":"RUN_ONCE"}}'

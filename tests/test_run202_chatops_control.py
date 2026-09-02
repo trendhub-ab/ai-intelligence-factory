@@ -26,6 +26,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "article_validation")
 
+    def test_pending_retry_validation_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run pending_retry_validation"))
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "pending_retry_validation")
+
     def test_full_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run full"))
         self.assertTrue(result["authorized"])
@@ -46,6 +51,8 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
             " /aiif run article_validation",
             "/aiif run article_validation\n",
             "/aiif run article_validation please",
+            "/aiif run pending_retry_validation ",
+            "/aiif run pending_retry",
             "/aiif run FULL",
             "RUN_ONCE",
         ):
@@ -73,11 +80,13 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("github.event.comment.user.login == 'trendhub-ab'", text)
         self.assertIn("github.actor == 'trendhub-ab'", text)
         self.assertIn("/aiif run article_validation", text)
+        self.assertIn("/aiif run pending_retry_validation", text)
         self.assertIn("/aiif run full", text)
         self.assertIn("daily-one-shot.yml/dispatches", text)
         self.assertIn('"ref":"main"', text)
         self.assertIn('"confirm":"RUN_ONCE"', text)
         self.assertNotIn("production_pipeline.py", text)
+        self.assertNotIn("pending_retry_validation.py", text)
         self.assertNotIn("note-create-draft.yml", text)
         self.assertNotIn("run194_note_persistent_cloud.py", text)
         self.assertNotIn("playwright", text)
