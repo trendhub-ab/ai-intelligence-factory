@@ -26,8 +26,11 @@ on:
       - 'tests/test_run170_1_member_copy_role_separation.py'
       - '.github/workflows/member-presentation-sync.yml'
 
+# This workflow and Subscriber Decision Brief write the same member product through
+# NOTION_DECISION_INTELLIGENCE_API_KEY. Keep a single cross-workflow writer lock so
+# ONE-SHOT/push fan-out cannot create a Notion request burst or interleaved writes.
 concurrency:
-  group: member-presentation-sync
+  group: member-derived-notion-writes
   cancel-in-progress: false
 
 permissions:
