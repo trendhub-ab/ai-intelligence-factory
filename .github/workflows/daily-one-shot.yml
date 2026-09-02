@@ -6,21 +6,23 @@ name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 # - explicit RUN_ONCE confirmation is required.
 # - full mode preserves the normal one-shot contract.
 # - article_validation mode skips only the separate Product Review pass, saving up to 3 Gemini requests.
+# - pending_retry_validation runs only the high-value Pending Retry recovery lane and stops after one success.
 # - the same Gemini-budget concurrency group as production prevents overlap.
 # - this workflow does NOT resume or schedule the normal Daily workflow.
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'full = normal one-shot; article_validation = skip Product Review to save API during article QA'
+        description: 'full = normal; article_validation = article QA; pending_retry_validation = retry one high-value failed article only'
         required: true
         default: 'full'
         type: choice
         options:
           - full
           - article_validation
+          - pending_retry_validation
       confirm:
-        description: 'Type RUN_ONCE to execute exactly one production Daily run'
+        description: 'Type RUN_ONCE to execute exactly one production ONE-SHOT'
         required: true
         default: ''
         type: string
@@ -42,7 +44,10 @@ jobs:
       - name: One-shot safety contract
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
-          test "${{ inputs.mode }}" = "full" -o "${{ inputs.mode }}" = "article_validation"
+          case "${{ inputs.mode }}" in
+            full|article_validation|pending_retry_validation) ;;
+            *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
+          esac
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }}. Automatic triggers are intentionally absent."
 
       - name: リポジトリのチェックアウト
@@ -62,8 +67,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 通常Pipelineを1回だけ実行
-        run: python production_pipeline.py
+      - name: Production entrypointを1回だけ実行
+        run: |
+          set -euo pipefail
+          case "${{ inputs.mode }}" in
+            pending_retry_validation)
+              python pending_retry_validation.py
+              ;;
+            full|article_validation)
+              python production_pipeline.py
+              ;;
+            *)
+              echo "::error::Refusing unknown ONE-SHOT mode"
+              exit 1
+              ;;
+          esac
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -230,10 +248,10 @@ jobs:
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
 
-      - name: Article validation API-saving guard
-        if: ${{ inputs.mode == 'article_validation' }}
+      - name: API-saving mode guard
+        if: ${{ inputs.mode != 'full' }}
         run: |
-          echo "article_validation mode: separate Product Review intentionally skipped; article pipeline and audit artifacts still run."
+          echo "${{ inputs.mode }} mode: separate Product Review intentionally skipped."
 
       - name: 月次ダイジェストをPrivate Artifactとして保存
         if: always()
