@@ -3,7 +3,7 @@
 ## Production baseline
 
 - **Current functional baseline:** Run199 — publish-safe note VM preflight
-- **Current repository organization baseline:** Run200 — repository consolidation with no intended runtime behavior change
+- **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
 - Canonical specification: `AI_Intelligence_Factory_最終仕様書.md`
@@ -49,27 +49,26 @@ The current note path is intentionally layered and fail-closed:
 ## Repository map
 
 - `tests/` — production regression, adversarial and contract tests
-- `.github/workflows/` — Daily, ONE-SHOT, Regression, Inventory, Notion and note operational workflows
+- `.github/workflows/` — currently actionable Daily, ONE-SHOT, Regression, Inventory, Notion and note workflows only
 - `assets/` — production image/template assets
 - `eyecatch_images/` — published Notion-linked Decision Card assets; **not disposable cache**
 - `.runtime/`, `source_roi_history/`, `deferred_deep_dive/`, `observed_history/` — operational state/history required for production continuity
 - `docs/reference/` — architecture/business reference documents
-- `docs/archive/` — historical setup, validation, Run notes and cleanup records retained for audit
+- `docs/archive/` — historical setup, validation, retired workflows, Run notes and cleanup records retained for audit
 
 ## Root-document policy
 
-The repository root is reserved for canonical/operator documents and executable entry points. Historical `RUN*.md` implementation notes belong under `docs/archive/`; Git history already preserves their original location and chronology.
+The repository root is reserved for canonical/operator documents and executable entry points. Historical `RUN*.md` implementation notes and superseded setup documents belong under `docs/archive/`; Git history preserves their original location and chronology.
 
 The following operator documents are intentionally retained at root for discoverability:
 
 - `AI_Intelligence_Factory_最終仕様書.md`
-- `DECISION_INTELLIGENCE_SETUP.md`
 - `GEMINI_QUOTA_SETUP.md`
 - `NOTION_ACCESS_POLICY.md`
 - `REVENUE_PRODUCT_PHASE2_SETUP.md`
 - `SUBSCRIPTION_ATTRIBUTION_SETUP.md`
 
-Run200 archived the remaining root-level Run177–Run196 historical notes without changing their file contents. See `docs/archive/repository-cleanup-2026-09-02/REPOSITORY_CLEANUP_MANIFEST_2026-09-02.md`.
+The old Decision Intelligence Phase 1 migration guide is archived at `docs/archive/repository-cleanup-2026-09-02/legacy-operator-docs/DECISION_INTELLIGENCE_SETUP_PHASE1_2026-08-21.md`. Completed one-time migration workflows are retained under `docs/archive/repository-cleanup-2026-09-02/retired-workflows/` instead of remaining runnable in GitHub Actions.
 
 ## Branch policy
 
@@ -78,12 +77,15 @@ The intended long-lived branches are deliberately small:
 - `main` — sole Production baseline and source of truth
 - `feature/x-intelligence-layer` — isolated future X Intelligence work
 - `integration/main-run147-reconciliation` — retained historical reconciliation snapshot; reference-only
+- `daily-once-20260901` — retained ONE-SHOT operational history
+- `run192-note-failure-snapshot` — retained failure/recovery forensic snapshot
+- `run200-pre-archive-safety-snapshot` — retained pre-cleanup safety snapshot
 
 Short-lived feature/fix/ops/Run branches should be removed after their changes are preserved in `main`, merged PRs, tags, or `docs/archive/`. Branch cleanup is administrative and must not be confused with deleting production files from `main`.
 
 ## Artifact and state policy
 
-Synthetic/Real Article outputs, Article Audit outputs, temporary regression fixtures, caches, release ZIPs and checksum manifests are generated artifacts and should not be committed as source. GitHub Actions artifacts are the preferred retention location.
+Synthetic/Real Article outputs, Article Audit outputs, temporary regression fixtures, caches, release ZIPs, previews and checksum manifests are generated artifacts and should not be committed as source. GitHub Actions artifacts are the preferred retention location.
 
 Operational state, learning history and published Notion-linked eyecatch assets are intentionally different from disposable artifacts. In particular, do **not** bulk-delete or relocate `.runtime/`, `source_roi_history/`, `deferred_deep_dive/`, `observed_history/` or `eyecatch_images/` without an explicit migration plan and reference audit.
 
@@ -95,6 +97,6 @@ Repository cleanup must be behavior-preserving by default:
 
 1. Prove whether a file is referenced by production entrypoints, workflows or tests before moving it.
 2. Keep ambiguous files until their dependency status is proven.
-3. Move historical documentation to `docs/archive/` rather than deleting it.
+3. Move historical documentation and retired operational definitions to `docs/archive/` rather than deleting audit history.
 4. Preserve operational state and published assets.
 5. Run repository-wide falsification and relevant regression checks before merging cleanup into `main`.
