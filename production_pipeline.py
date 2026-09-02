@@ -22,14 +22,10 @@ def install_runtime_layers(pipeline_module):
     import run182_eyecatch_conclusion_emphasis
     import run183_eyecatch_emphasis_scale
     import reader_value_review_bridge
+    import run208_reader_value_repair
     import run194_publication_contract
 
-    # Mutable operational state must be redirected before any production layer can
-    # inspect or write it. Protected main remains code/provenance only. These infra
-    # aliases are intentionally outside the publication-policy Run-layer manifest.
     runtime_state_channel.install(pipeline_module)
-    # HTTP 503 is provider-transient: fall back for the current candidate but do not
-    # blacklist the model for the whole run. Existing 404/quota/timeout guards remain.
     gemini_transient_recovery.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
@@ -44,9 +40,9 @@ def install_runtime_layers(pipeline_module):
     run182_eyecatch_conclusion_emphasis.install(pipeline_module)
     run183_eyecatch_emphasis_scale.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
-    # Stamp persisted Ready manuscripts only after every current article-quality and
-    # eyecatch layer has been installed. Downstream note publication paths require this
-    # exact contract and therefore cannot silently reuse historical Ready inventory.
+    # Reader-only dynamic repair is installed after the historical bridge so it can
+    # selectively override only the bridge's reader_value_review_no_retry decision.
+    run208_reader_value_repair.install(pipeline_module)
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
 
@@ -58,9 +54,6 @@ def main() -> None:
 
     install_runtime_layers(pipeline)
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
-        # Prove GH_PAT can write the isolated state branch before any Gemini reserve.
-        # This converts future protection/permission drift into a cheap preflight failure
-        # instead of the misleading "no available model" symptom seen in Run202.
         runtime_state_channel.preflight_runtime_state_channel()
     run179_eyecatch_font_refinement.ensure_google_font_assets(
         enabled=not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)),
