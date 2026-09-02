@@ -19,26 +19,27 @@ import time
 from typing import Any
 
 import note_draft_automation as base
+import run185_note_ready_legacy_skip as run185
 import run188_note_header_upload_fallback as run188
 import run189_note_editor_route_gate as run189
 
 
-_POSITIVE_TERMS = (
+_STRONG_POSITIVE_TERMS = (
     "保存",
     "完了",
     "決定",
     "適用",
     "確定",
-    "使用",
-    "反映",
-    "挿入",
-    "設定",
     "save",
     "done",
     "apply",
     "confirm",
+)
+_SECONDARY_POSITIVE_TERMS = (
+    "この画像を使用",
+    "画像を使用",
+    "使用する",
     "use image",
-    "insert",
 )
 _REJECT_TERMS = (
     "公開",
@@ -79,13 +80,19 @@ def _semantic_text(control: Any) -> str:
     return " ".join(parts).strip().lower()
 
 
-def _is_safe_completion_semantic(text: str) -> bool:
+def _completion_rank(text: str) -> int | None:
     normalized = (text or "").strip().lower()
-    if not normalized:
-        return False
-    if any(term in normalized for term in _REJECT_TERMS):
-        return False
-    return any(term in normalized for term in _POSITIVE_TERMS)
+    if not normalized or any(term in normalized for term in _REJECT_TERMS):
+        return None
+    if any(term in normalized for term in _STRONG_POSITIVE_TERMS):
+        return 0
+    if any(term in normalized for term in _SECONDARY_POSITIVE_TERMS):
+        return 1
+    return None
+
+
+def _is_safe_completion_semantic(text: str) -> bool:
+    return _completion_rank(text) is not None
 
 
 def _visible_modal_roots(page: Any) -> list[Any]:
@@ -105,8 +112,8 @@ def _visible_modal_roots(page: Any) -> list[Any]:
     return roots
 
 
-def _safe_completion_candidates(root: Any) -> list[tuple[str, Any]]:
-    candidates: list[tuple[str, Any]] = []
+def _safe_completion_candidates(root: Any) -> list[tuple[int, str, Any]]:
+    candidates: list[tuple[int, str, Any]] = []
     controls = root.locator('button, [role="button"]')
     try:
         count = min(controls.count(), 40)
@@ -120,14 +127,16 @@ def _safe_completion_candidates(root: Any) -> list[tuple[str, Any]]:
         except Exception:
             continue
         semantic = _semantic_text(control)
-        if _is_safe_completion_semantic(semantic):
-            candidates.append((semantic, control))
+        rank = _completion_rank(semantic)
+        if rank is not None:
+            candidates.append((rank, semantic, control))
     return candidates
 
 
 def _control_diagnostics(page: Any) -> str:
     labels: list[str] = []
-    for root_index, root in enumerate(_visible_modal_roots(page)):
+    roots = _visible_modal_roots(page)
+    for root_index, root in enumerate(roots):
         controls = root.locator('button, [role="button"]')
         try:
             count = min(controls.count(), 16)
@@ -144,7 +153,7 @@ def _control_diagnostics(page: Any) -> str:
             if semantic:
                 labels.append(f"d{root_index}:{semantic}")
     joined = " | ".join(labels[:20])
-    return f"visible_modals={len(_visible_modal_roots(page))}; controls={joined or 'none'}"
+    return f"visible_modals={len(roots)}; controls={joined or 'none'}"
 
 
 def _finish_crop_dialog(page: Any) -> None:
@@ -161,16 +170,13 @@ def _finish_crop_dialog(page: Any) -> None:
 
         ranked: list[tuple[int, int, str, Any, Any]] = []
         for root_index, root in enumerate(roots):
-            for semantic, control in _safe_completion_candidates(root):
-                # Prefer conventional completion verbs before broader "use/insert/set" terms.
-                rank = 0 if any(term in semantic for term in ("保存", "完了", "決定", "適用", "確定", "save", "done", "apply", "confirm")) else 1
+            for rank, semantic, control in _safe_completion_candidates(root):
                 ranked.append((rank, root_index, semantic, control, root))
 
         if ranked:
             ranked.sort(key=lambda row: (row[0], row[1], row[2]))
             best_rank = ranked[0][0]
             best = [row for row in ranked if row[0] == best_rank]
-            # Multiple identical completion controls across layered dialogs are ambiguous.
             if len(best) != 1:
                 raise base.NoteDraftError(
                     "note eyecatch crop dialog has multiple safe completion controls; "
@@ -179,10 +185,17 @@ def _finish_crop_dialog(page: Any) -> None:
             _, _, _, control, root = best[0]
             try:
                 control.click()
-                root.wait_for(state="hidden", timeout=15000)
-                return
             except Exception as exc:
-                raise base.NoteDraftError("note eyecatch crop/save step failed") from exc
+                raise base.NoteDraftError("note eyecatch crop/save control could not be clicked") from exc
+
+            # Some note builds keep a parent modal mounted while replacing only the crop
+            # panel. Do not require the exact root to disappear; the existing Run188 header
+            # preview verification remains the authoritative post-condition.
+            try:
+                root.wait_for(state="hidden", timeout=5000)
+            except Exception:
+                page.wait_for_timeout(500)
+            return
 
         page.wait_for_timeout(350)
 
@@ -204,7 +217,7 @@ def install() -> None:
 
 def main() -> None:
     install()
-    run189.run185.main()
+    run185.main()
 
 
 if __name__ == "__main__":
