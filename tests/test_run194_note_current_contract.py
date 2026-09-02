@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import inspect
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import note_draft_automation as base
@@ -141,6 +145,60 @@ class Run194NoteCurrentContractTests(unittest.TestCase):
         ):
             with self.assertRaises(run194.StalePublicationContract):
                 run194._prepare_article(stale_id)
+
+    def test_automatic_empty_queue_is_successful_noop_and_writes_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_file = Path(tmpdir) / "note_result.json"
+            env = {
+                "NOTE_TARGET_SYNC_ID": "",
+                "NOTE_DRAFT_RESULT_FILE": str(result_file),
+            }
+            with (
+                patch.dict(os.environ, env, clear=False),
+                patch.object(
+                    base,
+                    "main",
+                    side_effect=base.NoteDraftError("No eligible Ready / 投稿待ち article is available"),
+                ),
+            ):
+                result = run194.run_base_main_with_safe_noop()
+
+            self.assertEqual("no_eligible_ready", result["status"])
+            self.assertTrue(result["zero_gemini_calls"])
+            self.assertFalse(result["telegram_notified"])
+            persisted = json.loads(result_file.read_text(encoding="utf-8"))
+            self.assertEqual("no_eligible_ready", persisted["status"])
+            self.assertEqual(contract.CONTRACT_ID, persisted["publication_contract"])
+
+    def test_automatic_all_current_candidates_rejected_is_also_safe_noop(self) -> None:
+        with patch.dict(os.environ, {"NOTE_TARGET_SYNC_ID": ""}, clear=False), patch.object(
+            base,
+            "main",
+            side_effect=base.NoteDraftError(
+                "No complete current publication-contract Ready article is available "
+                "(stale_skipped=2, asset_skipped=1, paid_marker_skipped=0)"
+            ),
+        ):
+            result = run194.run_base_main_with_safe_noop()
+        self.assertEqual("no_eligible_ready", result["status"])
+
+    def test_explicit_sync_id_empty_queue_remains_fail_closed(self) -> None:
+        with patch.dict(os.environ, {"NOTE_TARGET_SYNC_ID": "a" * 32}, clear=False), patch.object(
+            base,
+            "main",
+            side_effect=base.NoteDraftError("No eligible Ready / 投稿待ち article is available"),
+        ):
+            with self.assertRaises(base.NoteDraftError):
+                run194.run_base_main_with_safe_noop()
+
+    def test_unrelated_note_error_remains_fail_closed(self) -> None:
+        with patch.dict(os.environ, {"NOTE_TARGET_SYNC_ID": ""}, clear=False), patch.object(
+            base,
+            "main",
+            side_effect=base.NoteDraftError("Notion API key is not configured"),
+        ):
+            with self.assertRaises(base.NoteDraftError):
+                run194.run_base_main_with_safe_noop()
 
     def test_module_adds_zero_model_and_no_public_release_action(self) -> None:
         source = inspect.getsource(run194)
