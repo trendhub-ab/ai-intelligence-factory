@@ -8,7 +8,11 @@ do not spend another run discovering fresh candidates before attempting recovery
 Safety contract:
 - installs the exact current Production runtime/publication layers;
 - proves runtime-state writability before any Gemini reservation;
-- uses the existing Pending Retry request budget and persistent daily counters;
+- caps this fast lane at three Pending Retry requests so one transient provider
+  failure can still leave room for one generation and one quality recompose;
+- cools a model for the rest of this fast-lane run after its first HTTP 503, while
+  the normal Production Run205 policy remains unchanged at two occurrences;
+- reuses the persistent daily counters and all global Deep Dive/provider caps;
 - ranks the fetched Pending Retry backlog by screening score, while preserving the
   core query's stable order as the tie-breaker;
 - stops immediately after the first successful article;
@@ -17,7 +21,18 @@ Safety contract:
 """
 from __future__ import annotations
 
-from typing import Any
+import os
+from typing import Any, MutableMapping
+
+FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = 3
+FAST_LANE_503_COOLDOWN_THRESHOLD = 1
+
+
+def prepare_fast_lane_env(env: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
+    """Pin the narrow fast-lane request ceiling before ``pipeline`` is imported."""
+    target = env if env is not None else os.environ
+    target["GEMINI_PENDING_RETRY_REQUEST_BUDGET"] = str(FAST_LANE_PENDING_RETRY_REQUEST_BUDGET)
+    return target
 
 
 def _score(item: dict[str, Any]) -> float:
@@ -78,12 +93,24 @@ def run_pending_retry_lane(pipeline_module, items: list[dict[str, Any]] | None, 
 
 
 def main() -> int:
+    # pipeline.py constructs its dedicated Pending Retry budget during import, so pin
+    # the fast-lane ceiling first. This does not change full/article_validation modes.
+    prepare_fast_lane_env()
+
+    import gemini_transient_recovery
     import pipeline
     import production_pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
 
     production_pipeline.install_runtime_layers(pipeline)
+    # In this deliberately tiny budget, a model that already returned 503 is lower
+    # value than preserving one request for a quality-driven recompose. This setting
+    # is in-process only; normal Production keeps Run205's two-occurrence default.
+    gemini_transient_recovery.configure_cooldown_threshold(
+        pipeline,
+        FAST_LANE_503_COOLDOWN_THRESHOLD,
+    )
 
     # Same pre-provider safety ordering as production_pipeline.main().
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
