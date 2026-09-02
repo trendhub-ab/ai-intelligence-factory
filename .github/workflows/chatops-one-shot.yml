@@ -1,0 +1,97 @@
+name: AIIF ChatOps ONE-SHOT Bridge
+
+# Safe bridge from the dedicated GitHub control issue to the existing manual ONE-SHOT.
+# This workflow never runs Production directly, never resumes Daily, and never opens note.com.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: read
+
+concurrency:
+  group: aiif-chatops-one-shot-control
+  cancel-in-progress: false
+
+jobs:
+  authorize-and-dispatch:
+    # Defense layer 1: reject every event except an exact command from the repository owner
+    # on the dedicated non-PR control issue. Manual re-runs are blocked by run_attempt == 1.
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      (github.event.comment.body == '/aiif run article_validation' ||
+       github.event.comment.body == '/aiif run full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout main safety contract
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Run zero-API ChatOps adversarial tests
+        run: python -m unittest tests.test_run202_chatops_control -v
+
+      - name: Re-authorize event fail-closed
+        id: auth
+        run: python run202_chatops_control.py
+
+      - name: Require successful second authorization
+        env:
+          AUTHORIZED: ${{ steps.auth.outputs.authorized }}
+          MODE: ${{ steps.auth.outputs.mode }}
+        run: |
+          set -euo pipefail
+          test "$AUTHORIZED" = "true"
+          case "$MODE" in
+            article_validation|full) ;;
+            *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
+          esac
+
+      - name: Dispatch existing ONE-SHOT exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ steps.auth.outputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            article_validation)
+              payload='{"ref":"main","inputs":{"mode":"article_validation","confirm":"RUN_ONCE"}}'
+              ;;
+            full)
+              payload='{"ref":"main","inputs":{"mode":"full","confirm":"RUN_ONCE"}}'
+              ;;
+            *)
+              echo "::error::Refusing unknown mode"
+              exit 1
+              ;;
+          esac
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/daily-one-shot.yml/dispatches" \
+            --input -
+
+      - name: Record safe dispatch
+        env:
+          MODE: ${{ steps.auth.outputs.mode }}
+        run: |
+          {
+            echo '### AIIF ChatOps ONE-SHOT'
+            echo "- control issue: #71"
+            echo "- requested mode: \`$MODE\`"
+            echo '- target: `daily-one-shot.yml` on `main`'
+            echo '- confirmation injected: `RUN_ONCE`'
+            echo '- Daily schedule changed: `false`'
+            echo '- public note release performed: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"
