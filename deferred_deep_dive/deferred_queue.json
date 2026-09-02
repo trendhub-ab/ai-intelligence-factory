@@ -1,7 +1,71 @@
 {
   "version": 1,
-  "updated_at": "2026-09-02T08:47:35.704170+00:00",
+  "updated_at": "2026-09-02T16:23:08.046491+00:00",
   "items": [
+    {
+      "key": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber",
+      "deferred_at": "2026-09-02T16:23:08.046238+00:00",
+      "expires_at": "2026-09-16T16:23:08.046238+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Gemini 3.8 Flash and 3.8 Flash Cyber",
+        "originalTitle": "Gemini 3.8 Flash and 3.8 Flash Cyber",
+        "displayName": "Gemini 3.8 Flash and 3.8 Flash Cyber",
+        "sourceLanguage": "en",
+        "url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/",
+        "description": "Gemini 3.8 Flash and 3.8 Flash Cyber",
+        "stargazerCount": 17,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-02T15:44:06+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/",
+        "sourceDetails": {
+          "hn_id": 49538007,
+          "hn_url": "https://news.ycombinator.com/item?id=49538007",
+          "external_url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/"
+        }
+      },
+      "notion_page_id": "3cf479ff-dca9-8155-8253-ecad8d910506",
+      "score": 85,
+      "reason": "Flash系の新モデル仕様変更は実務への影響大。",
+      "commercial_score": 80,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 83.25
+    },
+    {
+      "key": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
+      "deferred_at": "2026-09-02T16:23:08.046113+00:00",
+      "expires_at": "2026-11-01T16:23:08.046113+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Mistral now trains on user input by default, except on enterprise tier",
+        "originalTitle": "Mistral now trains on user input by default, except on enterprise tier",
+        "displayName": "Mistral now trains on user input by default, except on enterprise tier",
+        "sourceLanguage": "en",
+        "url": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
+        "description": "Mistral now trains on user input by default, except on enterprise tier",
+        "stargazerCount": 167,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-02T12:30:39+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
+        "sourceDetails": {
+          "hn_id": 49535284,
+          "hn_url": "https://news.ycombinator.com/item?id=49535284",
+          "external_url": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training"
+        }
+      },
+      "notion_page_id": "3cf479ff-dca9-816f-951b-cf8ffe9274ed",
+      "score": 80,
+      "reason": "データプライバシー規約の変更は企業導入で重要。",
+      "commercial_score": 85,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 81.75
+    },
     {
       "key": "https://arxiv.org/abs/2608.30963",
       "deferred_at": "2026-09-01T08:11:30.623956+00:00",
@@ -149,6 +213,102 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 76.75
+    },
+    {
+      "key": "https://aisle.com/blog/aisle-discovered-six-curl-cves-after-openai-and-anthropic-found-zero",
+      "deferred_at": "2026-09-02T16:23:08.046300+00:00",
+      "expires_at": "2026-11-01T16:23:08.046300+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Six curl CVEs after OpenAI and Anthropic came back with zero",
+        "originalTitle": "Six curl CVEs after OpenAI and Anthropic came back with zero",
+        "displayName": "Six curl CVEs after OpenAI and Anthropic came back with zero",
+        "sourceLanguage": "en",
+        "url": "https://aisle.com/blog/aisle-discovered-six-curl-cves-after-openai-and-anthropic-found-zero",
+        "description": "Six curl CVEs after OpenAI and Anthropic came back with zero",
+        "stargazerCount": 89,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-02T13:43:14+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://aisle.com/blog/aisle-discovered-six-curl-cves-after-openai-and-anthropic-found-zero",
+        "sourceDetails": {
+          "hn_id": 49536114,
+          "hn_url": "https://news.ycombinator.com/item?id=49536114",
+          "external_url": "https://aisle.com/blog/aisle-discovered-six-curl-cves-after-openai-and-anthropic-found-zero"
+        }
+      },
+      "notion_page_id": "3cf479ff-dca9-8145-9f72-e69c2b4f44ca",
+      "score": 78,
+      "reason": "AI生成コードに潜むセキュリティリスクを指摘。",
+      "commercial_score": 72,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 75.9
+    },
+    {
+      "key": "https://hausresearch.com/reports/perplexity-citation-audit",
+      "deferred_at": "2026-09-02T16:23:08.046433+00:00",
+      "expires_at": "2026-09-16T16:23:08.046433+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "A third of Perplexity's citations don't contain the number they're cited for",
+        "originalTitle": "A third of Perplexity's citations don't contain the number they're cited for",
+        "displayName": "A third of Perplexity's citations don't contain the number they're cited for",
+        "sourceLanguage": "en",
+        "url": "https://hausresearch.com/reports/perplexity-citation-audit/",
+        "description": "A third of Perplexity's citations don't contain the number they're cited for",
+        "stargazerCount": 43,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-02T13:49:23+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://hausresearch.com/reports/perplexity-citation-audit/",
+        "sourceDetails": {
+          "hn_id": 49536201,
+          "hn_url": "https://news.ycombinator.com/item?id=49536201",
+          "external_url": "https://hausresearch.com/reports/perplexity-citation-audit/"
+        }
+      },
+      "notion_page_id": "3cf479ff-dca9-81ee-bd09-fa5924c2cd17",
+      "score": 75,
+      "reason": "RAGの引用品質に関する課題を検証できる。",
+      "commercial_score": 70,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DATA",
+      "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://grapheneos.social/@GrapheneOS/117194007157499435",
+      "deferred_at": "2026-09-02T16:23:08.046380+00:00",
+      "expires_at": "2026-11-01T16:23:08.046380+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "GrapheneOS says Pixel 11 has MTE support after all",
+        "originalTitle": "GrapheneOS says Pixel 11 has MTE support after all",
+        "displayName": "GrapheneOS says Pixel 11 has MTE support after all",
+        "sourceLanguage": "en",
+        "url": "https://grapheneos.social/@GrapheneOS/117194007157499435",
+        "description": "GrapheneOS says Pixel 11 has MTE support after all",
+        "stargazerCount": 88,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-02T14:00:28+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://grapheneos.social/@GrapheneOS/117194007157499435",
+        "sourceDetails": {
+          "hn_id": 49536384,
+          "hn_url": "https://news.ycombinator.com/item?id=49536384",
+          "external_url": "https://grapheneos.social/@GrapheneOS/117194007157499435"
+        }
+      },
+      "notion_page_id": "3cf479ff-dca9-81e6-976d-f171cad825c9",
+      "score": 75,
+      "reason": "ハードウェアレベルのメモリ安全機能の普及に注目。",
+      "commercial_score": 70,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 73.25
     },
     {
       "key": "https://arxiv.org/abs/2608.31016",
