@@ -2,7 +2,9 @@ name: Subscriber Decision Brief Sync
 
 on:
   workflow_run:
-    workflows: ["Daily Intelligence & Content Pipeline"]
+    workflows:
+      - Daily Intelligence & Content Pipeline
+      - Daily Intelligence & Content Pipeline [ONE-SHOT]
     types: [completed]
   push:
     branches: [main]
@@ -18,7 +20,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: subscriber-decision-brief-sync-${{ github.event_name }}
+  group: subscriber-decision-brief-sync
   cancel-in-progress: false
 
 permissions:
