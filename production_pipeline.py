@@ -8,6 +8,7 @@ from __future__ import annotations
 
 def install_runtime_layers(pipeline_module):
     import run203_runtime_state_channel as runtime_state_channel
+    import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
     import run172_production_reliability
     import run173_operational_yield
@@ -26,6 +27,10 @@ def install_runtime_layers(pipeline_module):
     import run194_publication_contract
 
     runtime_state_channel.install(pipeline_module)
+    # Provider RPD telemetry proved that transport timeouts can still consume daily quota.
+    # Keep the pre-send reservation fail-closed while preserving the existing 18-request
+    # per-model safety ceiling configured by the Production workflows.
+    gemini_timeout_rpd_fail_closed.install(pipeline_module)
     gemini_transient_recovery.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
