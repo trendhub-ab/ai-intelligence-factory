@@ -7,6 +7,7 @@ from __future__ import annotations
 
 
 def install_runtime_layers(pipeline_module):
+    import run203_runtime_state_channel
     import run172_production_reliability
     import run173_operational_yield
     import run174_monthly_digest_integrity
@@ -22,6 +23,9 @@ def install_runtime_layers(pipeline_module):
     import reader_value_review_bridge
     import run194_publication_contract
 
+    # Mutable operational state must be redirected before any production layer can
+    # inspect or write it. Protected main remains code/provenance only.
+    run203_runtime_state_channel.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
