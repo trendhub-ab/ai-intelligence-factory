@@ -84,9 +84,9 @@ class Run203RuntimeStateChannelTests(unittest.TestCase):
         }
         get = Mock(side_effect=[_Response(200), _Response(404)])
         put = Mock(return_value=_Response(201, {"content": {"sha": "new"}}))
+        http = SimpleNamespace(get=get, put=put)
         with patch.dict(os.environ, env, clear=True), \
-             patch.object(run203.requests, "get", get), \
-             patch.object(run203.requests, "put", put):
+             patch.object(run203, "_http_client", return_value=http):
             result = run203.preflight_runtime_state_channel()
 
         self.assertEqual(result["branch"], "runtime-state")
@@ -107,9 +107,9 @@ class Run203RuntimeStateChannelTests(unittest.TestCase):
         }
         get = Mock(side_effect=[_Response(200), _Response(404)])
         put = Mock(return_value=_Response(409, text="repository rule violation"))
+        http = SimpleNamespace(get=get, put=put)
         with patch.dict(os.environ, env, clear=True), \
-             patch.object(run203.requests, "get", get), \
-             patch.object(run203.requests, "put", put):
+             patch.object(run203, "_http_client", return_value=http):
             with self.assertRaisesRegex(RuntimeError, "write preflight failed"):
                 run203.preflight_runtime_state_channel()
 
