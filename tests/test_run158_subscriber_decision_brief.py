@@ -10,11 +10,12 @@ if str(ROOT) not in sys.path:
 import subscriber_decision_brief as sdb
 
 
-def resp(status=200, data=None, text=""):
+def resp(status=200, data=None, text="", headers=None):
     r = MagicMock()
     r.status_code = status
     r.json.return_value = data or {}
     r.text = text
+    r.headers = headers or {}
     return r
 
 
@@ -88,6 +89,76 @@ class Run158DecisionBriefTests(unittest.TestCase):
         self.assertIn("継続監視", sdb._status_conclusion("WATCH"))
         self.assertIn("新規採用を見送る", sdb._status_conclusion("AVOID"))
 
+    def test_notion_request_honors_json_retry_after_and_recovers(self):
+        old_pacing = sdb.REQUEST_PACING_SECONDS
+        old_attempts = sdb.REQUEST_MAX_ATTEMPTS
+        sdb.REQUEST_PACING_SECONDS = 0.0
+        sdb.REQUEST_MAX_ATTEMPTS = 3
+        try:
+            limited = resp(
+                429,
+                {"additional_data": {"retry_after": "2.5"}},
+                text="rate limited",
+            )
+            ok = resp(200, {"results": []})
+            with patch.object(sdb.requests, "get", side_effect=[limited, ok]) as get, patch.object(sdb.time, "sleep") as sleep:
+                result = sdb._request("GET", "https://api.notion.com/v1/blocks/test/children")
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(get.call_count, 2)
+            sleep.assert_called_once_with(2.5)
+        finally:
+            sdb.REQUEST_PACING_SECONDS = old_pacing
+            sdb.REQUEST_MAX_ATTEMPTS = old_attempts
+
+    def test_notion_request_prefers_retry_after_header_and_caps_delay(self):
+        old_pacing = sdb.REQUEST_PACING_SECONDS
+        old_attempts = sdb.REQUEST_MAX_ATTEMPTS
+        old_cap = sdb.RETRY_AFTER_MAX_SECONDS
+        sdb.REQUEST_PACING_SECONDS = 0.0
+        sdb.REQUEST_MAX_ATTEMPTS = 3
+        sdb.RETRY_AFTER_MAX_SECONDS = 10.0
+        try:
+            limited = resp(
+                429,
+                {"additional_data": {"retry_after": "3"}},
+                headers={"Retry-After": "99"},
+            )
+            ok = resp(200, {"results": []})
+            with patch.object(sdb.requests, "get", side_effect=[limited, ok]), patch.object(sdb.time, "sleep") as sleep:
+                result = sdb._request("GET", "https://api.notion.com/v1/blocks/test/children")
+            self.assertEqual(result.status_code, 200)
+            sleep.assert_called_once_with(10.0)
+        finally:
+            sdb.REQUEST_PACING_SECONDS = old_pacing
+            sdb.REQUEST_MAX_ATTEMPTS = old_attempts
+            sdb.RETRY_AFTER_MAX_SECONDS = old_cap
+
+    def test_notion_request_retries_transient_5xx_then_succeeds(self):
+        old_pacing = sdb.REQUEST_PACING_SECONDS
+        old_attempts = sdb.REQUEST_MAX_ATTEMPTS
+        sdb.REQUEST_PACING_SECONDS = 0.0
+        sdb.REQUEST_MAX_ATTEMPTS = 3
+        try:
+            with patch.object(sdb.requests, "post", side_effect=[resp(503), resp(200, {"results": []})]) as post, patch.object(sdb.time, "sleep") as sleep:
+                result = sdb._request("POST", "https://api.notion.com/v1/data_sources/test/query", json_payload={"page_size": 100})
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(post.call_count, 2)
+            sleep.assert_called_once_with(1.0)
+        finally:
+            sdb.REQUEST_PACING_SECONDS = old_pacing
+            sdb.REQUEST_MAX_ATTEMPTS = old_attempts
+
+    def test_notion_request_paces_each_successful_transport_call(self):
+        old_pacing = sdb.REQUEST_PACING_SECONDS
+        sdb.REQUEST_PACING_SECONDS = 0.4
+        try:
+            with patch.object(sdb.requests, "get", return_value=resp(200, {"results": []})), patch.object(sdb.time, "sleep") as sleep:
+                result = sdb._request("GET", "https://api.notion.com/v1/blocks/test/children")
+            self.assertEqual(result.status_code, 200)
+            sleep.assert_called_once_with(0.4)
+        finally:
+            sdb.REQUEST_PACING_SECONDS = old_pacing
+
     def test_no_managed_block_appends_without_deleting_manual_content(self):
         values = sdb.page_to_values(subscriber_page())
         manual = {"id": "manual1", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "manual"}]}}
@@ -132,7 +203,7 @@ class Run158DecisionBriefTests(unittest.TestCase):
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
-            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), patch.object(sdb, "sync_page", return_value="created") as sync, patch.object(sdb, "_sleep"):
+            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), patch.object(sdb, "sync_page", return_value="created") as sync:
                 result = sdb.sync_subscriber_decision_briefs()
             self.assertTrue(result["enabled"])
             self.assertEqual(result["total"], 1)
@@ -146,7 +217,7 @@ class Run158DecisionBriefTests(unittest.TestCase):
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
-            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1"), subscriber_page("p2")]), patch.object(sdb, "sync_page", side_effect=["created", RuntimeError("boom")]), patch.object(sdb, "_sleep"):
+            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1"), subscriber_page("p2")]), patch.object(sdb, "sync_page", side_effect=["created", RuntimeError("boom")]):
                 with self.assertRaises(RuntimeError):
                     sdb.sync_subscriber_decision_briefs()
         finally:

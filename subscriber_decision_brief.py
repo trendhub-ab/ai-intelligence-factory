@@ -4,6 +4,11 @@ This module enriches the member-facing AI Decision Intelligence database by addi
 one AUTO-managed toggle block to each subscriber page. It never calls Gemini and
 never deletes or rewrites manual page content. Existing subscriber properties are
 the only factual source used to build the brief.
+
+Run196 centralizes all Notion traffic through a paced retry transport. 429 responses
+honor Notion Retry-After guidance, transient 5xx responses back off, and successful
+requests are paced individually so a page that needs multiple reads cannot create a
+short burst even when the outer page loop is slow enough on average.
 """
 from __future__ import annotations
 
@@ -20,7 +25,10 @@ NOTION_API_VERSION = os.environ.get("NOTION_API_VERSION", "2026-03-11")
 SUBSCRIBER_DATABASE_ID = os.environ.get("NOTION_SUBSCRIBER_TECH_DATABASE_ID", "").strip()
 SUBSCRIBER_DATA_SOURCE_ID = os.environ.get("NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID", "").strip()
 ENABLE_SUBSCRIBER_DECISION_BRIEF = os.environ.get("ENABLE_SUBSCRIBER_DECISION_BRIEF", "true").lower() in {"1", "true", "yes", "on"}
-REQUEST_PACING_SECONDS = max(0.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_PACING_SECONDS", "0.35")))
+REQUEST_PACING_SECONDS = max(0.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_PACING_SECONDS", "0.40")))
+REQUEST_MAX_ATTEMPTS = max(1, int(os.environ.get("SUBSCRIBER_DECISION_BRIEF_REQUEST_MAX_ATTEMPTS", "8")))
+RETRY_AFTER_MAX_SECONDS = max(1.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_RETRY_AFTER_MAX_SECONDS", "120")))
+SERVER_BACKOFF_MAX_SECONDS = max(1.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_SERVER_BACKOFF_MAX_SECONDS", "12")))
 
 AUTO_MARKER = "🧭 Decision Brief｜AUTO"
 
@@ -41,9 +49,66 @@ def _query_url() -> str:
     raise ValueError("Subscriber Decision Brief requires NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID or NOTION_SUBSCRIBER_TECH_DATABASE_ID")
 
 
-def _sleep() -> None:
-    if REQUEST_PACING_SECONDS:
-        time.sleep(REQUEST_PACING_SECONDS)
+def _sleep(seconds: float | None = None) -> None:
+    delay = REQUEST_PACING_SECONDS if seconds is None else max(0.0, float(seconds))
+    if delay:
+        time.sleep(delay)
+
+
+def _response_retry_after(response: requests.Response, attempt: int) -> float:
+    """Resolve Notion's rate-limit delay from header/body, with a safe fallback."""
+    candidates: list[Any] = []
+    try:
+        headers = response.headers or {}
+        candidates.append(headers.get("Retry-After"))
+    except Exception:
+        pass
+    try:
+        body = response.json() or {}
+        candidates.append((body.get("additional_data") or {}).get("retry_after"))
+    except Exception:
+        pass
+    for value in candidates:
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            continue
+        if seconds >= 0:
+            return min(max(seconds, 0.05), RETRY_AFTER_MAX_SECONDS)
+    return min(max(1.0, 2.0 ** min(attempt, 4)), RETRY_AFTER_MAX_SECONDS)
+
+
+def _request(
+    method: str,
+    url: str,
+    *,
+    json_payload: dict[str, Any] | None = None,
+    timeout: float = 30,
+) -> requests.Response:
+    """Perform one Notion request with per-request pacing and bounded transient retries."""
+    request_fn = getattr(requests, method.lower())
+    last: requests.Response | None = None
+    for attempt in range(REQUEST_MAX_ATTEMPTS):
+        kwargs: dict[str, Any] = {"headers": _headers(), "timeout": timeout}
+        if json_payload is not None:
+            kwargs["json"] = json_payload
+        last = request_fn(url, **kwargs)
+
+        if last.status_code == 429 and attempt < REQUEST_MAX_ATTEMPTS - 1:
+            _sleep(_response_retry_after(last, attempt))
+            continue
+        if 500 <= last.status_code < 600 and attempt < REQUEST_MAX_ATTEMPTS - 1:
+            _sleep(min(1.0 * (2 ** attempt), SERVER_BACKOFF_MAX_SECONDS))
+            continue
+
+        # Pace every completed request, not merely every page. A normal page often performs
+        # two consecutive reads (root children + managed toggle children), which was the
+        # Run196 live-rate-limit failure surface.
+        _sleep()
+        return last
+
+    assert last is not None
+    return last
 
 
 def _plain_text(prop: dict | None) -> str:
@@ -219,7 +284,7 @@ def _list_children(block_id: str) -> list[dict]:
         url = f"https://api.notion.com/v1/blocks/{block_id}/children?page_size=100"
         if cursor:
             url += f"&start_cursor={cursor}"
-        res = requests.get(url, headers=_headers(), timeout=20)
+        res = _request("GET", url, timeout=20)
         if res.status_code != 200:
             raise RuntimeError(f"Decision Brief children query failed: HTTP {res.status_code} {res.text[:500]}")
         body = res.json()
@@ -229,7 +294,6 @@ def _list_children(block_id: str) -> list[dict]:
         cursor = str(body.get("next_cursor") or "")
         if not cursor:
             raise RuntimeError("Decision Brief children pagination inconsistent")
-        _sleep()
 
 
 def _managed_toggles(page_id: str) -> list[dict]:
@@ -241,10 +305,10 @@ def _current_signature(toggle_id: str) -> tuple[tuple[str, str], ...]:
 
 
 def _append_toggle(page_id: str, values: dict[str, Any]) -> str:
-    res = requests.patch(
+    res = _request(
+        "PATCH",
         f"https://api.notion.com/v1/blocks/{page_id}/children",
-        json={"children": [build_decision_brief_toggle(values)]},
-        headers=_headers(),
+        json_payload={"children": [build_decision_brief_toggle(values)]},
         timeout=30,
     )
     if res.status_code != 200:
@@ -254,7 +318,7 @@ def _append_toggle(page_id: str, values: dict[str, Any]) -> str:
 
 
 def _delete_block(block_id: str) -> None:
-    res = requests.delete(f"https://api.notion.com/v1/blocks/{block_id}", headers=_headers(), timeout=20)
+    res = _request("DELETE", f"https://api.notion.com/v1/blocks/{block_id}", timeout=20)
     if res.status_code != 200:
         raise RuntimeError(f"Decision Brief old block cleanup failed: HTTP {res.status_code} {res.text[:500]}")
 
@@ -270,12 +334,10 @@ def sync_page(values: dict[str, Any]) -> str:
     # Content-first replacement: append the new managed brief before deleting old AUTO blocks.
     # A mid-flight failure therefore never destroys manual content and usually leaves at least one brief.
     new_id = _append_toggle(page_id, values)
-    _sleep()
     for block in current:
         old_id = str(block.get("id") or "")
         if old_id and old_id != new_id:
             _delete_block(old_id)
-            _sleep()
     return "created" if not current else "updated"
 
 
@@ -283,7 +345,7 @@ def query_subscriber_pages() -> list[dict]:
     payload: dict[str, Any] = {"page_size": 100}
     rows: list[dict] = []
     while True:
-        res = requests.post(_query_url(), json=payload, headers=_headers(), timeout=30)
+        res = _request("POST", _query_url(), json_payload=payload, timeout=30)
         if res.status_code != 200:
             raise RuntimeError(f"Subscriber Decision Brief query failed: HTTP {res.status_code} {res.text[:500]}")
         body = res.json()
@@ -294,7 +356,6 @@ def query_subscriber_pages() -> list[dict]:
         if not cursor:
             raise RuntimeError("Subscriber Decision Brief pagination inconsistent")
         payload["start_cursor"] = cursor
-        _sleep()
 
 
 def sync_subscriber_decision_briefs() -> dict[str, Any]:
@@ -313,7 +374,6 @@ def sync_subscriber_decision_briefs() -> dict[str, Any]:
         except Exception as exc:
             result["errors"] += 1
             result["error_pages"].append({"page_id": values.get("page_id"), "name": values.get("name"), "error": str(exc)[:300]})
-        _sleep()
     if result["errors"]:
         raise RuntimeError("Subscriber Decision Brief sync incomplete: " + json.dumps(result, ensure_ascii=False))
     return result

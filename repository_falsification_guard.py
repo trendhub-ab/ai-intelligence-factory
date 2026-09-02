@@ -125,6 +125,36 @@ def audit() -> list[str]:
     if "group: note-ready-article-sync" not in note_sync:
         failures.append("note_ready_sync_missing_single_writer_lock")
 
+    # Member Presentation and Decision Brief share the same Decision Intelligence integration
+    # and write the same member product family. A ONE-SHOT/push fan-out must never run both
+    # writers concurrently; Run195 live validation reproduced 76 Notion 429 failures without it.
+    shared_member_notion_group = "group: member-derived-notion-writes"
+    for name in ("member-presentation-sync.yml", "subscriber-decision-brief.yml"):
+        text = _workflow_text(name)
+        if shared_member_notion_group not in text:
+            failures.append(f"member_notion_writer_not_shared_serialized:{name}")
+        if "NOTION_DECISION_INTELLIGENCE_API_KEY:" not in text:
+            failures.append(f"member_notion_writer_missing_expected_integration:{name}")
+
+    subscriber_workflow = _workflow_text("subscriber-decision-brief.yml")
+    for required in (
+        'timeout-minutes: 30',
+        'SUBSCRIBER_DECISION_BRIEF_PACING_SECONDS: "0.40"',
+        'SUBSCRIBER_DECISION_BRIEF_REQUEST_MAX_ATTEMPTS: "8"',
+        'SUBSCRIBER_DECISION_BRIEF_RETRY_AFTER_MAX_SECONDS: "120"',
+    ):
+        if required not in subscriber_workflow:
+            failures.append(f"subscriber_brief_rate_limit_contract_missing:{required}")
+
+    subscriber_source = (ROOT / "subscriber_decision_brief.py").read_text(encoding="utf-8")
+    for required in ("def _response_retry_after(", "def _request(", "additional_data", "Retry-After"):
+        if required not in subscriber_source:
+            failures.append(f"subscriber_brief_retry_transport_missing:{required}")
+    # All live GET/POST/PATCH/DELETE calls must pass through _request so retry/pacing policy
+    # cannot be bypassed by a future helper added elsewhere in this module.
+    if re.search(r"requests\.(?:get|post|patch|delete)\s*\(", subscriber_source):
+        failures.append("subscriber_brief_direct_notion_transport_bypass")
+
     # 4. Scheduled Daily remains impossible until explicitly redesigned/resumed.
     daily = _workflow_text("daily.yml")
     if not daily:
