@@ -1,39 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-02T16:23:09.831549+00:00",
+  "updated_at": "2026-09-02T16:50:59.746003+00:00",
   "items": [
-    {
-      "key": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber",
-      "deferred_at": "2026-09-02T16:23:08.046238+00:00",
-      "expires_at": "2026-09-16T16:23:08.046238+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Gemini 3.8 Flash and 3.8 Flash Cyber",
-        "originalTitle": "Gemini 3.8 Flash and 3.8 Flash Cyber",
-        "displayName": "Gemini 3.8 Flash and 3.8 Flash Cyber",
-        "sourceLanguage": "en",
-        "url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/",
-        "description": "Gemini 3.8 Flash and 3.8 Flash Cyber",
-        "stargazerCount": 17,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-02T15:44:06+00:00",
-        "sourceContext": "",
-        "primaryUrl": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/",
-        "sourceDetails": {
-          "hn_id": 49538007,
-          "hn_url": "https://news.ycombinator.com/item?id=49538007",
-          "external_url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/3-8-flash-and-3-8-flash-cyber/"
-        }
-      },
-      "notion_page_id": "3cf479ff-dca9-8155-8253-ecad8d910506",
-      "score": 85,
-      "reason": "Flash系の新モデル仕様変更は実務への影響大。",
-      "commercial_score": 80,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 83.25
-    },
     {
       "key": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
       "deferred_at": "2026-09-02T16:23:08.046113+00:00",
