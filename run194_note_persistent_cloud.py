@@ -7,7 +7,6 @@ There are no Gemini/model calls and no public-release action in this entrypoint.
 """
 from __future__ import annotations
 
-import note_draft_automation as base
 import run190_note_persistent_cloud as cloud
 import run194_note_current_contract as current_contract
 
@@ -15,7 +14,7 @@ import run194_note_current_contract as current_contract
 def main() -> None:
     cloud.install()
     current_contract.install()
-    base.main()
+    current_contract.run_base_main_with_safe_noop()
 
 
 if __name__ == "__main__":
