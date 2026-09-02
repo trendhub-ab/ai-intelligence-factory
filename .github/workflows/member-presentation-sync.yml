@@ -3,7 +3,9 @@ name: Member Presentation Sync
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ['Daily Intelligence & Content Pipeline']
+    workflows:
+      - Daily Intelligence & Content Pipeline
+      - Daily Intelligence & Content Pipeline [ONE-SHOT]
     types: [completed]
   push:
     branches: [main]
@@ -26,14 +28,16 @@ on:
 
 concurrency:
   group: member-presentation-sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   sync:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
