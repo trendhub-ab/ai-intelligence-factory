@@ -113,18 +113,23 @@ class Run203RuntimeStateChannelTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "write preflight failed"):
                 run203.preflight_runtime_state_channel()
 
-    def test_production_entrypoint_installs_and_preflights_run203_before_pipeline(self):
+    def test_production_entrypoint_installs_and_preflights_infra_before_pipeline(self):
         text = Path("production_pipeline.py").read_text(encoding="utf-8")
-        self.assertIn("run203_runtime_state_channel.install(pipeline_module)", text)
-        self.assertIn("run203_runtime_state_channel.preflight_runtime_state_channel()", text)
+        self.assertIn("import run203_runtime_state_channel as runtime_state_channel", text)
+        self.assertIn("runtime_state_channel.install(pipeline_module)", text)
+        self.assertIn("runtime_state_channel.preflight_runtime_state_channel()", text)
         self.assertLess(
-            text.index("run203_runtime_state_channel.install(pipeline_module)"),
+            text.index("runtime_state_channel.install(pipeline_module)"),
             text.index("run172_production_reliability.install(pipeline_module)"),
         )
         self.assertLess(
-            text.index("run203_runtime_state_channel.preflight_runtime_state_channel()"),
+            text.index("runtime_state_channel.preflight_runtime_state_channel()"),
             text.index("pipeline.main()"),
         )
+        # Runtime-state isolation is infrastructure, not article policy. Keeping the
+        # alias prevents the publication-policy Run-layer detector from invalidating
+        # Ready manuscripts for operational-only changes.
+        self.assertNotIn("run203_runtime_state_channel.install(pipeline_module)", text)
 
     def test_inventory_apply_uses_same_state_preflight_but_plan_stays_read_only(self):
         text = Path("portfolio_inventory_bootstrap.py").read_text(encoding="utf-8")
