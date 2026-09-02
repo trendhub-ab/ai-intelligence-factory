@@ -50,7 +50,8 @@ Reason: both are completed one-time migration entrypoints. Keeping them runnable
 
 ## Corrected stale operational configuration
 
-`.github/workflows/external-review-import.yml` no longer defaults `input_path` to the nonexistent `external_reviews/run153_backfill.json`. The input remains required, so an operator must now deliberately select the review JSON to import.
+- `.github/workflows/external-review-import.yml` no longer defaults `input_path` to the nonexistent `external_reviews/run153_backfill.json`. The input remains required, so an operator must now deliberately select the review JSON to import.
+- `.github/workflows/member-presentation-sync.yml` no longer watches the retired `external_reviews/**` path on push. The member sync continues to run from its actual code/test/workflow triggers and from successful Daily/ONE-SHOT workflow completion.
 
 ## Explicit KEEP decisions after falsification
 
@@ -72,10 +73,23 @@ Reason: both are completed one-time migration entrypoints. Keeping them runnable
 
 ## Validation status
 
-Local container clone was attempted but the isolated execution environment cannot resolve `github.com`; therefore no local clone-based result is claimed. Formal validation is delegated to GitHub PR checks, especially:
+The code-changing Run201 head `6c6d23d926c8282ad65a4d98d64d2924ed6d5b7a` was validated on PR #69 with all three current PR checks green:
 
-1. Repository-wide Falsification Guard
-2. Integration Reconciliation CI / full unittest regression
-3. Synthetic smoke through `production_pipeline.py`
+- Repository-wide Falsification Guard — run `33640918073` — SUCCESS.
+  - repository-wide executable/workflow/provenance/secret scan: SUCCESS
+  - Run200 + Run201 repository organization contracts: SUCCESS
+  - Note Ready policy-change reconciliation contract: SUCCESS
+- Notion Access Policy Guard — run `33640918088` — SUCCESS.
+- Integration Reconciliation CI — run `33640918104` — SUCCESS.
+  - production module compile: SUCCESS
+  - manual Production workflow safety validation: SUCCESS
+  - current-stack real-regression workflow validation: SUCCESS
+  - article-quality reconciliation tests: SUCCESS
+  - Run134 reconciliation tests: SUCCESS
+  - adjacent product/context regressions: SUCCESS
+  - full unittest regression: SUCCESS
+  - Synthetic smoke through `production_pipeline.py`: SUCCESS
 
-Do not merge Run201 into `main` unless required PR checks are green and main remains protected.
+The local container clone attempt is not counted as validation because that isolated environment could not resolve `github.com`. GitHub PR CI is the formal validation surface.
+
+This audit-record update is documentation-only. Before merge, verify that the final PR remains mergeable, required checks are green, `main` is still protected, and no new executable/runtime change was introduced after the validated code head.
