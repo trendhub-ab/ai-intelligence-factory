@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import note_draft_automation as base
 import run185_note_ready_legacy_skip as run185
 import run189_note_editor_route_gate as run189
+import run191_note_crop_dialog_resilience as run191
 import run187_note_editor_readiness as run187
 
 
@@ -238,8 +239,8 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
 
 
 def install() -> None:
-    # Keep all Run185-189 fail-closed patches, replacing only browser lifecycle/auth storage.
-    run189.install()
+    # Keep all Run185-191 fail-closed patches, replacing only browser lifecycle/auth storage.
+    run191.install()
     base._decode_storage_state = _compat_storage_path
     base._create_browser_draft = _create_browser_draft
 
