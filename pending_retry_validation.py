@@ -12,6 +12,8 @@ Safety contract:
   failure can still leave room for one generation and one quality recompose;
 - cools a model for the rest of this fast-lane run after its first HTTP 503, while
   the normal Production Run205 policy remains unchanged at two occurrences;
+- permits at most one Reader Value recompose, only when factual/evidence blockers
+  are absent and the existing reader bridge reports repairable reader-only reasons;
 - reuses the persistent daily counters and all global Deep Dive/provider caps;
 - ranks the fetched Pending Retry backlog by screening score, while preserving the
   core query's stable order as the tie-breaker;
@@ -26,12 +28,14 @@ from typing import Any, MutableMapping
 
 FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = 3
 FAST_LANE_503_COOLDOWN_THRESHOLD = 1
+FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 
 
 def prepare_fast_lane_env(env: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
-    """Pin the narrow fast-lane request ceiling before ``pipeline`` is imported."""
+    """Pin narrow fast-lane controls before ``pipeline`` is imported."""
     target = env if env is not None else os.environ
     target["GEMINI_PENDING_RETRY_REQUEST_BUDGET"] = str(FAST_LANE_PENDING_RETRY_REQUEST_BUDGET)
+    target[FAST_LANE_ENV] = "1"
     return target
 
 
@@ -43,12 +47,10 @@ def _score(item: dict[str, Any]) -> float:
 
 
 def prioritize_pending_items(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """Highest screening value first; Python's stable sort preserves age order on ties."""
     return sorted(list(items or []), key=_score, reverse=True)
 
 
 def run_pending_retry_lane(pipeline_module, items: list[dict[str, Any]] | None, *, success_target: int = 1) -> dict[str, int]:
-    """Attempt Pending Retry candidates within the existing dedicated/provider budgets."""
     attempted = 0
     succeeded = 0
     success_target = max(1, int(success_target or 1))
@@ -93,8 +95,6 @@ def run_pending_retry_lane(pipeline_module, items: list[dict[str, Any]] | None, 
 
 
 def main() -> int:
-    # pipeline.py constructs its dedicated Pending Retry budget during import, so pin
-    # the fast-lane ceiling first. This does not change full/article_validation modes.
     prepare_fast_lane_env()
 
     import gemini_transient_recovery
@@ -104,15 +104,11 @@ def main() -> int:
     import run203_runtime_state_channel as runtime_state_channel
 
     production_pipeline.install_runtime_layers(pipeline)
-    # In this deliberately tiny budget, a model that already returned 503 is lower
-    # value than preserving one request for a quality-driven recompose. This setting
-    # is in-process only; normal Production keeps Run205's two-occurrence default.
     gemini_transient_recovery.configure_cooldown_threshold(
         pipeline,
         FAST_LANE_503_COOLDOWN_THRESHOLD,
     )
 
-    # Same pre-provider safety ordering as production_pipeline.main().
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
     run179_eyecatch_font_refinement.ensure_google_font_assets(
@@ -125,8 +121,6 @@ def main() -> int:
     pipeline.initialize_runtime()
     funnel = pipeline.reset_deep_dive_gate_funnel()
 
-    # Fetch broadly once, then choose by value locally. The core query already excludes
-    # anything that is not currently Pending Retry.
     items = pipeline.get_pending_retry_items(limit=100)
     if items is None:
         raise RuntimeError("Pending Retry read failed")
