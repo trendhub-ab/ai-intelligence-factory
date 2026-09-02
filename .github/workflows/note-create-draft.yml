@@ -159,6 +159,7 @@ jobs:
           python -m unittest tests.test_run189_note_editor_route_gate -v
           python -m unittest tests.test_run190_note_persistent_cloud -v
           python -m unittest tests.test_run191_note_crop_dialog_resilience -v
+          python -m unittest tests.test_run193_note_official_header_upload -v
 
       - name: Create one private note draft in persistent Chrome
         env:
