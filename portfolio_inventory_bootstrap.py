@@ -20,14 +20,24 @@ excluded so generic software cannot gain AI relevance accidentally.
 """
 from __future__ import annotations
 
+import sys
+
 import inventory_bootstrap
 import paid_db_launch_readiness
+import run203_runtime_state_channel
 from paid_db_launch_readiness import install_on as install_launch_readiness
 from run164_ai_relevance_calibration import install_on as install_ai_relevance_calibration
 from technology_portfolio_policy import install_on as install_portfolio_policy
 
 
 def main() -> int:
+    # Manual bootstrap apply also launches the authoritative pipeline directly, so it
+    # must use the same protected-main state isolation as ONE-SHOT. Plan mode remains
+    # read-only and therefore does not perform the write preflight.
+    run203_runtime_state_channel.apply_runtime_state_env()
+    if len(sys.argv) > 1 and str(sys.argv[1]).lower() == "apply":
+        run203_runtime_state_channel.preflight_runtime_state_channel()
+
     install_portfolio_policy(inventory_bootstrap)
     install_ai_relevance_calibration(paid_db_launch_readiness)
     install_launch_readiness(inventory_bootstrap)
