@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Repository-wide fail-closed guard for cross-path production regressions.
 
-This is intentionally zero-network and zero-provider.  It scans the checked-out repository,
+This is intentionally zero-network and zero-provider. It scans the checked-out repository,
 not a hand-picked subset, so a future file/workflow can fail CI as soon as it reintroduces a
 bypass that ordinary unit tests may never import.
 
-The guard distinguishes executable/live surfaces from docs/archive/history.  Historical text
+The guard distinguishes executable/live surfaces from docs/archive/history. Historical text
 may describe old Runs; it is not a production bug unless a live workflow or root entrypoint can
 execute it.
 """
@@ -26,10 +26,10 @@ DERIVED_DAILY_WORKFLOWS = {
     "subscriber-decision-brief.yml",
 }
 
-OLD_WORKFLOW_ENTRYPOINTS = (
-    "run: python reader_value_review_bridge.py",
-    "xvfb-run -a python run190_note_persistent_cloud.py",
-    "run: python run185_note_ready_legacy_skip.py",
+OLD_WORKFLOW_RUN_PATTERNS = (
+    re.compile(r"^\s*run:\s*python\s+reader_value_review_bridge\.py\s*$", re.MULTILINE),
+    re.compile(r"^\s*run:\s*xvfb-run\s+-a\s+python\s+run190_note_persistent_cloud\.py\s*$", re.MULTILINE),
+    re.compile(r"^\s*run:\s*python\s+run185_note_ready_legacy_skip\.py\s*$", re.MULTILINE),
 )
 
 HIGH_CONFIDENCE_SECRET_PATTERNS = (
@@ -43,7 +43,6 @@ TEXT_SUFFIXES = {
     ".py", ".yml", ".yaml", ".md", ".txt", ".json", ".toml", ".ini", ".cfg",
     ".sh", ".html", ".css", ".js", ".ts", ".csv",
 }
-
 EXCLUDED_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
 
 
@@ -78,7 +77,7 @@ def audit() -> list[str]:
     # 1. High-confidence credential leakage anywhere in the tracked text surface.
     for path, text in all_text:
         if path.resolve() == SELF:
-            continue  # regex literals in this guard intentionally resemble secret prefixes
+            continue
         rel = path.relative_to(ROOT).as_posix()
         for label, pattern in HIGH_CONFIDENCE_SECRET_PATTERNS:
             if pattern.search(text):
@@ -90,20 +89,21 @@ def audit() -> list[str]:
     )
     for path, text in workflow_items:
         name = path.name
-        for old in OLD_WORKFLOW_ENTRYPOINTS:
-            if old in text:
-                failures.append(f"old_workflow_entrypoint:{name}:{old}")
+        for pattern in OLD_WORKFLOW_RUN_PATTERNS:
+            if pattern.search(text):
+                failures.append(f"old_workflow_entrypoint:{name}:{pattern.pattern}")
 
         # pipeline.py is allowed only for the intentionally isolated zero-Gemini Public DB mirror.
-        if re.search(r"\bpython\s+pipeline\.py\b", text):
+        if re.search(r"^\s*run:\s*\|?[\s\S]*?\bpython\s+pipeline\.py\b", text, re.MULTILINE):
             if name != "public-db-sync.yml" or "PUBLIC_DB_SYNC_MODE: \"true\"" not in text:
                 failures.append(f"direct_pipeline_bypass:{name}")
 
-        # Any workflow that can spend Gemini must share the persistent budget lock.
-        if "GEMINI_API_KEY" in text and "group: ai-intelligence-gemini-budget" not in text:
+        # Count only an active YAML env key, not comments saying "NO GEMINI_API_KEY".
+        has_gemini_env = bool(re.search(r"^\s+GEMINI_API_KEY:\s*", text, re.MULTILINE))
+        if has_gemini_env and "group: ai-intelligence-gemini-budget" not in text:
             failures.append(f"gemini_without_shared_budget_lock:{name}")
 
-        # A derived view listening to normal Daily must also follow the operational ONE-SHOT.
+        # A derived view listening to Daily must also follow the operational ONE-SHOT.
         if "Daily Intelligence & Content Pipeline" in text and "workflow_run:" in text:
             if "Daily Intelligence & Content Pipeline [ONE-SHOT]" not in text:
                 failures.append(f"daily_listener_missing_one_shot:{name}")
@@ -154,29 +154,28 @@ def audit() -> list[str]:
         failures.append("real_regression_missing_non_persist_mode")
     if "run: python production_pipeline.py" not in regression:
         failures.append("real_regression_not_using_current_production_stack")
-    if "run: python reader_value_review_bridge.py" in regression:
+    if OLD_WORKFLOW_RUN_PATTERNS[0].search(regression):
         failures.append("real_regression_uses_historical_partial_stack")
 
-    # 6. The historical reader bridge may remain importable, but standalone execution must
-    # delegate to the sole current production entrypoint.
+    # 6. Historical reader bridge remains importable, but standalone execution delegates to
+    # the sole current production entrypoint. Avoid substring confusion with production_pipeline.
     bridge = (ROOT / "reader_value_review_bridge.py").read_text(encoding="utf-8")
     main_tail = bridge[bridge.rfind("def main()"):] if "def main()" in bridge else ""
-    direct_call = "pipeline" + ".main()"
-    if "production_pipeline.main()" not in main_tail or direct_call in main_tail:
+    direct_pipeline_call = re.compile(r"(?<!production_)\bpipeline\.main\(\)")
+    if "production_pipeline.main()" not in main_tail or direct_pipeline_call.search(main_tail):
         failures.append("reader_bridge_standalone_bypasses_current_stack")
 
     # 7. All root Python executables are scanned for a direct pipeline.main() bypass.
-    # production_pipeline.py is the only allowed owner of that call.
     for path, text in all_text:
         if path.resolve() == SELF or path.parent != ROOT or path.suffix != ".py":
             continue
         if path.name == "production_pipeline.py":
             continue
-        if direct_call in text:
+        if direct_pipeline_call.search(text):
             failures.append(f"root_python_direct_pipeline_main:{path.name}")
 
-    # 8. Publication policy is auto-derived from real files; the manifest must include every
-    # installed Run layer named by production_pipeline.py plus its reader bridge.
+    # 8. Publication policy is auto-derived from real files; manifest must include every
+    # installed Run layer named by production_pipeline.py plus reader/eyecatch cores.
     try:
         publication_contract.policy_sha256()
     except Exception as exc:
@@ -201,6 +200,15 @@ def audit() -> list[str]:
         rel = path.relative_to(ROOT).as_posix()
         if path.suffix == ".py" and fixed_symbol in text:
             failures.append(f"fixed_publication_caption_reintroduced:{rel}")
+
+    # Publication consumers outside the contract module must validate body + caption together.
+    for path, text in all_text:
+        if path.resolve() == SELF or path.parent != ROOT or path.suffix != ".py":
+            continue
+        if path.name == "publication_contract.py":
+            continue
+        if "is_current_ready_caption(" in text:
+            failures.append(f"caption_only_publication_validation:{path.name}")
 
     # 10. No private/undocumented note API transport in executable code or workflows.
     for path, text in all_text:
