@@ -12,6 +12,9 @@ remain fail-closed and never silently switch to another article.  Public release
 """
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 from typing import Any
 
 import note_draft_automation as base
@@ -25,6 +28,10 @@ class StalePublicationContract(base.NoteDraftError):
 
 class IncompletePublicationAsset(base.NoteDraftError):
     """A current manuscript is missing a required public asset such as the eyecatch."""
+
+
+_AUTOMATIC_NOOP_EXACT = "No eligible Ready / 投稿待ち article is available"
+_AUTOMATIC_NOOP_PREFIX = "No complete current publication-contract Ready article is available"
 
 
 def _manuscript_from_blocks(blocks: list[dict]) -> str:
@@ -136,6 +143,47 @@ def _prepare_article(requested_sync_id: str = "") -> dict[str, Any]:
     )
 
 
+def _is_automatic_noop_error(exc: BaseException) -> bool:
+    """Return True only for an automatic run whose safe candidate set is empty."""
+    if base._normalize_sync_id(os.environ.get("NOTE_TARGET_SYNC_ID", "")):
+        return False
+    message = str(exc).strip()
+    return message == _AUTOMATIC_NOOP_EXACT or message.startswith(_AUTOMATIC_NOOP_PREFIX)
+
+
+def _write_noop_result(reason: str) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": "no_eligible_ready",
+        "zero_gemini_calls": True,
+        "telegram_notified": False,
+        "publication_contract": contract.CONTRACT_ID,
+        "reason": str(reason or "").strip(),
+    }
+    result_file = os.environ.get("NOTE_DRAFT_RESULT_FILE", "").strip()
+    if result_file:
+        path = Path(result_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    return result
+
+
+def run_base_main_with_safe_noop() -> dict[str, Any] | None:
+    """Convert only an empty automatic safe queue into a successful no-op."""
+    try:
+        base.main()
+    except base.NoteDraftError as exc:
+        if not _is_automatic_noop_error(exc):
+            raise
+        result = _write_noop_result(str(exc))
+        print("[RUN198 NOTE DRAFT] no eligible publish-safe Ready article; nothing to do")
+        print(json.dumps(result, ensure_ascii=False))
+        return result
+    return None
+
+
 def install() -> None:
     run185.install()
     base._manuscript_from_blocks = _manuscript_from_blocks
@@ -144,7 +192,7 @@ def install() -> None:
 
 def main() -> None:
     install()
-    base.main()
+    run_base_main_with_safe_noop()
 
 
 if __name__ == "__main__":
