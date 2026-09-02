@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "purpose": "runtime-state branch bootstrap; mutable production state only",
+  "branch": "runtime-state",
+  "bootstrap": true
+}
