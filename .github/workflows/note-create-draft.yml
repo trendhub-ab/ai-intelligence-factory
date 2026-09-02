@@ -25,10 +25,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare-only:
-    if: ${{ inputs.prepare_only == true }}
+  preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.decision.outputs.should_start_vm }}
+      selected_sync_id: ${{ steps.decision.outputs.selected_sync_id }}
+      status: ${{ steps.decision.outputs.status }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -43,12 +46,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Validate and select current Ready article only
+      - name: Zero-VM preflight regression tests
+        run: |
+          python -m unittest tests.test_run194_note_current_contract -v
+          python -m unittest tests.test_run199_note_vm_preflight -v
+
+      - name: Validate exact publish-safe candidate before any VM start
         env:
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_SYNC_ID: ${{ inputs.sync_id }}
-          NOTE_PREPARE_ONLY: 'true'
-          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
@@ -56,25 +63,46 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: python run194_note_current_contract.py
+        run: python run199_note_vm_preflight.py
 
-      - name: Summarize prepare-only result
-        if: success()
+      - name: Export VM decision
+        id: decision
         env:
-          RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
+          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          should_start = 'true' if result.get('should_start_vm') is True else 'false'
+          selected = str(result.get('selected_sync_id') or '').strip()
+          status = str(result.get('status') or 'unknown').strip()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'should_start_vm={should_start}\n')
+              fh.write(f'selected_sync_id={selected}\n')
+              fh.write(f'status={status}\n')
+          PY
+
+      - name: Summarize preflight result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### note draft prepare-only\n')
+              fh.write('### note draft zero-VM preflight\n')
               fh.write(f'- status: `{result.get("status", "unknown")}`\n')
+              fh.write(f'- VM required: `{result.get("should_start_vm") is True}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
+              if result.get('status') == 'no_eligible_ready':
+                  fh.write('- No publish-safe Ready article exists, so the Chrome VM was not started.\n')
           PY
 
   start-cloud-vm:
-    if: ${{ inputs.prepare_only == false }}
+    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -123,8 +151,8 @@ jobs:
           echo "Persistent note VM is running; waiting for its registered GitHub runner."
 
   create-draft:
-    if: ${{ inputs.prepare_only == false }}
-    needs: start-cloud-vm
+    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 20
     steps:
@@ -162,11 +190,12 @@ jobs:
           python -m unittest tests.test_run193_note_official_header_upload -v
           python -m unittest tests.test_run194_publication_contract -v
           python -m unittest tests.test_run194_note_current_contract -v
+          python -m unittest tests.test_run199_note_vm_preflight -v
 
-      - name: Create one private note draft in persistent Chrome
+      - name: Create one private note draft for the preflight-pinned article
         env:
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
-          NOTE_TARGET_SYNC_ID: ${{ inputs.sync_id }}
+          NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
           NOTE_PREPARE_ONLY: 'false'
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
@@ -204,8 +233,8 @@ jobs:
           PY
 
   stop-cloud-vm:
-    if: ${{ always() && inputs.prepare_only == false }}
-    needs: [start-cloud-vm, create-draft]
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, create-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
