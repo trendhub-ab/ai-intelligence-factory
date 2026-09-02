@@ -52,10 +52,11 @@ class Run190PersistentCloudTests(unittest.TestCase):
         self.assertIn("base._save_draft_and_verify", source)
         self.assertNotIn("Gemini", source)
 
-    def test_run190_installs_run191_crop_resilience(self) -> None:
+    def test_run190_installs_latest_official_header_upload_overlay(self) -> None:
         source = inspect.getsource(run190.install)
-        self.assertIn("run191.install()", source)
+        self.assertIn("run193.install()", source)
         self.assertNotIn("run189.install()", source)
+        self.assertNotIn("run191.install()", source)
 
     def test_module_contains_no_public_release_action(self) -> None:
         source = inspect.getsource(run190)
