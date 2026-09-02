@@ -8,6 +8,7 @@ from __future__ import annotations
 
 def install_runtime_layers(pipeline_module):
     import run203_runtime_state_channel as runtime_state_channel
+    import gemini_transient_recovery
     import run172_production_reliability
     import run173_operational_yield
     import run174_monthly_digest_integrity
@@ -24,9 +25,12 @@ def install_runtime_layers(pipeline_module):
     import run194_publication_contract
 
     # Mutable operational state must be redirected before any production layer can
-    # inspect or write it. Protected main remains code/provenance only. This infra
-    # alias is intentionally outside the publication-policy Run-layer manifest.
+    # inspect or write it. Protected main remains code/provenance only. These infra
+    # aliases are intentionally outside the publication-policy Run-layer manifest.
     runtime_state_channel.install(pipeline_module)
+    # HTTP 503 is provider-transient: fall back for the current candidate but do not
+    # blacklist the model for the whole run. Existing 404/quota/timeout guards remain.
+    gemini_transient_recovery.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
