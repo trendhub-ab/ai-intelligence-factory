@@ -20,6 +20,7 @@ def install_runtime_layers(pipeline_module):
     import run182_eyecatch_conclusion_emphasis
     import run183_eyecatch_emphasis_scale
     import reader_value_review_bridge
+    import run194_publication_contract
 
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
@@ -34,6 +35,10 @@ def install_runtime_layers(pipeline_module):
     run182_eyecatch_conclusion_emphasis.install(pipeline_module)
     run183_eyecatch_emphasis_scale.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
+    # Stamp persisted Ready manuscripts only after every current article-quality and
+    # eyecatch layer has been installed.  Downstream note publication paths require this
+    # exact contract and therefore cannot silently reuse historical Ready inventory.
+    run194_publication_contract.install(pipeline_module)
     return pipeline_module
 
 
