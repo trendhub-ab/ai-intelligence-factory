@@ -41,6 +41,12 @@ class Run185NoteReadyLegacySkipTests(unittest.TestCase):
     def test_control_marker_detection_is_line_scoped(self):
         self.assertTrue(run185._contains_paid_control_marker("前半\n---有料エリア---\n後半"))
         self.assertTrue(run185._contains_paid_control_marker("前半\nここから 有料エリア\n後半"))
+        self.assertTrue(
+            run185._contains_paid_control_marker(
+                "前半\n**▼▼▼ ここから先は有料エリアです ▼▼▼**\n後半"
+            )
+        )
+        self.assertTrue(run185._contains_paid_control_marker("前半\n▽ この先は有料エリアです ▽\n後半"))
         self.assertFalse(
             run185._contains_paid_control_marker(
                 "この記事では有料エリアという古い運用について説明します。"
@@ -55,7 +61,7 @@ class Run185NoteReadyLegacySkipTests(unittest.TestCase):
             queue_page(clean, "clean", created="2026-08-01T00:00:00.000Z"),
         ]
         blocks = {
-            old: [code_block(("A" * 220) + "\n---有料エリア---\n" + ("B" * 220))],
+            old: [code_block(("A" * 220) + "\n**▼▼▼ ここから先は有料エリアです ▼▼▼**\n" + ("B" * 220))],
             clean: [code_block("C" * 450)],
         }
         source = {
@@ -74,7 +80,7 @@ class Run185NoteReadyLegacySkipTests(unittest.TestCase):
     def test_explicit_legacy_candidate_stays_fail_closed(self):
         sid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         pages = [queue_page(sid, "legacy", created="2026-07-01T00:00:00.000Z")]
-        blocks = [code_block(("A" * 220) + "\n---有料エリア---\n" + ("B" * 220))]
+        blocks = [code_block(("A" * 220) + "\n**▼▼▼ ここから先は有料エリアです ▼▼▼**\n" + ("B" * 220))]
         source = {"properties": {"アイキャッチ": {"files": [{"type": "external", "external": {"url": "https://example.com/a.png"}}]}}}
         with patch.object(base.ready_sync, "NOTION_API_KEY", "x"), \
              patch.object(base.ready_sync, "DEST_DATA_SOURCE_ID", "dest"), \
