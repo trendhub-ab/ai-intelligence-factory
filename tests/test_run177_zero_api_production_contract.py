@@ -63,20 +63,22 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
     def test_article_validation_mode_preserves_article_pipeline_but_skips_product_review(self):
         text = _read(ONE_SHOT)
         self.assertIn("- article_validation", text)
+        self.assertIn("- pending_retry_validation", text)
         self.assertIn("default: 'full'", text, "default behavior must remain the full production one-shot")
-        article_step = text.index("- name: 通常Pipelineを1回だけ実行")
+        article_step = text.index("- name: 通常Production entrypointを1回だけ実行")
         review_step = text.index("- name: Portfolio-aware Product Review")
-        guard_step = text.index("- name: Article validation API-saving guard")
+        guard_step = text.index("- name: API-saving mode guard")
         self.assertLess(article_step, review_step)
         self.assertLess(review_step, guard_step)
+        article_block = text[article_step:review_step]
+        self.assertIn("if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' }}", article_block)
         self.assertIn("if: ${{ inputs.mode == 'full' }}", text[review_step:guard_step])
-        self.assertIn("if: ${{ inputs.mode == 'article_validation' }}", text[guard_step:])
-        self.assertNotIn("inputs.mode == 'article_validation'", text[article_step:review_step])
+        self.assertIn("if: ${{ inputs.mode != 'full' }}", text[guard_step:])
 
     def test_article_validation_saves_only_bounded_separate_review_budget(self):
         text = _read(ONE_SHOT)
         review_step = text.index("- name: Portfolio-aware Product Review")
-        guard_step = text.index("- name: Article validation API-saving guard")
+        guard_step = text.index("- name: API-saving mode guard")
         review_block = text[review_step:guard_step]
         self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', review_block)
         self.assertIn('DAILY_PORTFOLIO_REVIEW_MAX: "2"', review_block)
@@ -85,7 +87,7 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
     def test_one_shot_has_no_yaml_plain_run_colon_hazard(self):
         text = _read(ONE_SHOT)
         self.assertEqual([], _unsafe_inline_run_scalars(text))
-        guard_step = text.index("- name: Article validation API-saving guard")
+        guard_step = text.index("- name: API-saving mode guard")
         next_step = text.index("- name: 月次ダイジェストをPrivate Artifactとして保存")
         self.assertIn("run: |", text[guard_step:next_step])
 
