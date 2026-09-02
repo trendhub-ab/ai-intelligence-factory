@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
-  "purpose": "runtime-state branch bootstrap; mutable production state only",
+  "purpose": "prove mutable runtime state is isolated from protected main",
   "branch": "runtime-state",
-  "bootstrap": true
+  "run_id": "33653431428",
+  "updated_at": "2026-09-02T16:13:20.326672+00:00"
 }
