@@ -274,13 +274,18 @@ class Run172ProductionReliabilityTests(unittest.TestCase):
         self.assertEqual(62, p.publication_probability_score(issue_item))
         self.assertEqual(50, p.publication_probability_score(plain_item))
 
-    def test_production_bridge_activates_run172_before_pipeline_main(self):
-        source = inspect.getsource(reader_value_review_bridge.main)
-        self.assertIn("run172_production_reliability.install(pipeline)", source)
-        self.assertLess(
-            source.index("run172_production_reliability.install(pipeline)"),
-            source.index("install(pipeline)"),
-        )
+    def test_historical_reader_bridge_delegates_to_current_production_stack(self):
+        bridge_source = inspect.getsource(reader_value_review_bridge.main)
+        self.assertIn("production_pipeline.main()", bridge_source)
+        self.assertNotIn("pipeline.main()", bridge_source)
+
+        production_pipeline = __import__("production_pipeline")
+        layer_source = inspect.getsource(production_pipeline.install_runtime_layers)
+        run172_call = "run172_production_reliability.install(pipeline_module)"
+        reader_call = "reader_value_review_bridge.install(pipeline_module)"
+        self.assertIn(run172_call, layer_source)
+        self.assertIn(reader_call, layer_source)
+        self.assertLess(layer_source.index(run172_call), layer_source.index(reader_call))
 
 
 if __name__ == "__main__":
