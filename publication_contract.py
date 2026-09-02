@@ -34,6 +34,7 @@ PUBLICATION_POLICY_FILES = (
     "evidence_ledger.py",
     "subscription_attribution.py",
     "reader_value_review_bridge.py",
+    "run208_reader_value_repair.py",
     "run172_production_reliability.py",
     "run173_operational_yield.py",
     "run174_monthly_digest_integrity.py",
