@@ -78,7 +78,9 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn('"ref":"main"', text)
         self.assertIn('"confirm":"RUN_ONCE"', text)
         self.assertNotIn("production_pipeline.py", text)
-        self.assertNotIn("note.com", text)
+        self.assertNotIn("note-create-draft.yml", text)
+        self.assertNotIn("run194_note_persistent_cloud.py", text)
+        self.assertNotIn("playwright", text)
 
 
 if __name__ == "__main__":
