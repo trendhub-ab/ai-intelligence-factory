@@ -9,8 +9,8 @@ Run185 therefore:
 - keeps explicit sync_id requests fail-closed;
 - for automatic selection only, skips legacy Ready rows containing an actual control-marker
   line and tries the next eligible Ready row;
-- narrows marker detection to control lines instead of rejecting ordinary editorial prose
-  that merely contains the words "有料エリア";
+- recognizes historical decorated control lines such as
+  `▼▼▼ ここから先は有料エリアです ▼▼▼` while remaining line-scoped;
 - never mutates skipped queue rows;
 - adds no Gemini/model calls and does not change the human-only public release boundary.
 """
@@ -28,12 +28,20 @@ class UnsafeLegacyPaidMarker(base.NoteDraftError):
     """A Ready manuscript contains a historical paywall control marker."""
 
 
-_DECORATION_RE = re.compile(r"[\s\-‐‑‒–—―_=＊*#・:：|/\\\[\]()（）【】<>＜＞]+")
+_DECORATION_RE = re.compile(
+    r"[\s\-‐‑‒–—―_=＊*#・:：|/\\\[\]()（）【】<>＜＞"
+    r"▼▽▲△▶▷◀◁◆◇■□●○★☆]+"
+)
+_PAID_CONTROL_RE = re.compile(
+    r"^(?:(?:ここから先は|ここから|この先は|以下は|以下)?有料エリア(?:です)?)$"
+)
 
 
 def _is_paid_control_line(line: str) -> bool:
-    normalized = _DECORATION_RE.sub("", str(line or ""))
-    return normalized in {"有料エリア", "ここから有料エリア", "以下有料エリア"}
+    # Full-line matching prevents ordinary prose such as
+    # "有料エリアという古い運用を説明する" from becoming a false positive.
+    normalized = _DECORATION_RE.sub("", str(line or "")).strip().rstrip("。．.")
+    return bool(_PAID_CONTROL_RE.fullmatch(normalized))
 
 
 def _contains_paid_control_marker(manuscript: str) -> bool:

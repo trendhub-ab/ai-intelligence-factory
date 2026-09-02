@@ -4,11 +4,15 @@
 Design:
 - ZERO Gemini/model requests.
 - Content Intelligence DB remains the quality Source of Truth.
-- Only rows with 記事状態=Ready are publishable.
+- `記事状態=Ready` is necessary but no longer sufficient for publication: the source page
+  must also contain a Ready manuscript stamped with the current publication contract.
+- Historical/unversioned Ready inventory is excluded from the posting DB and any existing
+  non-published destination row is revoked on the next sync.
 - Human workflow fields (投稿状態, note公開URL, 投稿予定日, 投稿日) are never
   overwritten during normal Ready updates.
-- If Ready is later revoked, 品質状態 becomes Ready取消. Non-published rows are
-  moved to 取下げ; already-published rows remain 投稿済み for auditability.
+- If Ready/current-contract eligibility is later revoked, 品質状態 becomes Ready取消.
+  Non-published rows are moved to 取下げ; already-published rows remain 投稿済み for
+  auditability.
 """
 from __future__ import annotations
 
@@ -17,8 +21,11 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
+
+import publication_contract as publication_contract
 
 NOTION_API_KEY = (
     os.environ.get("NOTION_NOTE_READY_API_KEY", "").strip()
@@ -183,6 +190,47 @@ def _source_state(page: dict) -> dict[str, Any] | None:
     }
 
 
+def _block_children(block_id: str) -> list[dict]:
+    """Read root children used to persist the canonical manuscript code block."""
+    rows: list[dict] = []
+    cursor = ""
+    for _ in range(30):
+        query: dict[str, Any] = {"page_size": 100}
+        if cursor:
+            query["start_cursor"] = cursor
+        res = _request(
+            "GET",
+            f"https://api.notion.com/v1/blocks/{block_id}/children?{urlencode(query)}",
+        )
+        if res.status_code != 200:
+            raise RuntimeError(
+                f"Content Intelligence manuscript fetch failed {block_id}: HTTP {res.status_code} {res.text[:300]}"
+            )
+        data = res.json()
+        rows.extend(data.get("results") or [])
+        if not data.get("has_more"):
+            return rows
+        cursor = str(data.get("next_cursor") or "")
+        if not cursor:
+            return rows
+    raise RuntimeError("Content Intelligence manuscript pagination exceeded safety limit")
+
+
+def _code_caption(block: dict) -> str:
+    if block.get("type") != "code":
+        return ""
+    code = block.get("code") or {}
+    return _plain_text(code.get("caption"))
+
+
+def _source_has_current_ready_manuscript(page_id: str) -> bool:
+    """Ready status is publishable only when current production provenance is present."""
+    return any(
+        publication_contract.is_current_ready_caption(_code_caption(block))
+        for block in _block_children(page_id)
+    )
+
+
 def _destination_state(page: dict) -> dict[str, Any]:
     p = page.get("properties") or {}
     return {
@@ -274,7 +322,18 @@ def sync_note_ready_db() -> dict[str, Any]:
             }
         },
     )
-    states = [s for s in (_source_state(page) for page in source_pages) if s]
+
+    states: list[dict[str, Any]] = []
+    stale_contract = 0
+    for page in source_pages:
+        state = _source_state(page)
+        if state is None:
+            continue
+        if not _source_has_current_ready_manuscript(state["sync_id"]):
+            stale_contract += 1
+            continue
+        state["publication_contract"] = publication_contract.CONTRACT_ID
+        states.append(state)
     source_by_id = {s["sync_id"]: s for s in states}
 
     dest_pages = _query_db(DEST_DATA_SOURCE_ID, DEST_DATABASE_ID)
@@ -346,7 +405,10 @@ def sync_note_ready_db() -> dict[str, Any]:
     return {
         "enabled": True,
         "zero_gemini_calls": True,
+        "publication_contract": publication_contract.CONTRACT_ID,
+        "source_ready_status_rows": len(source_pages),
         "source_ready": len(source_by_id),
+        "stale_publication_contract": stale_contract,
         "destination_rows": len(dest_pages),
         "created": created,
         "updated": updated,

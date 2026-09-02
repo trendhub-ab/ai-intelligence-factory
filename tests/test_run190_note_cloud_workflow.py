@@ -11,7 +11,8 @@ class Run190CloudWorkflowTests(unittest.TestCase):
     def test_actual_draft_runs_on_persistent_self_hosted_vm(self) -> None:
         source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: [self-hosted, linux, x64, aiif-note-cloud]", source)
-        self.assertIn("xvfb-run -a python run190_note_persistent_cloud.py", source)
+        self.assertIn("xvfb-run -a python run194_note_persistent_cloud.py", source)
+        self.assertNotIn("xvfb-run -a python run190_note_persistent_cloud.py", source)
         self.assertIn("NOTE_CHROME_CHANNEL: 'chrome'", source)
         self.assertNotIn("python -m playwright install --with-deps chromium", source)
 
@@ -29,6 +30,7 @@ class Run190CloudWorkflowTests(unittest.TestCase):
         self.assertIn("prepare-only:", source)
         self.assertIn("if: ${{ inputs.prepare_only == true }}", source)
         self.assertIn("NOTE_PREPARE_ONLY: 'true'", source)
+        self.assertIn("python run194_note_current_contract.py", source)
 
     def test_bootstrap_has_cost_failsafe_and_persistent_profile(self) -> None:
         controller = (ROOT / "infra/gcp/run190_setup_controller.sh").read_text(encoding="utf-8")

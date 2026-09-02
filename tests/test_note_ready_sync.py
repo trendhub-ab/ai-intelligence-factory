@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
 import note_ready_sync as sync
+import publication_contract as contract
 
 
 def rt(value):
@@ -9,6 +11,16 @@ def rt(value):
 
 def title(value):
     return {"title": [{"type": "text", "plain_text": value, "text": {"content": value}}]}
+
+
+def code_block(caption):
+    return {
+        "type": "code",
+        "code": {
+            "rich_text": [{"plain_text": "article" * 50, "text": {"content": "article" * 50}}],
+            "caption": rt(caption)["rich_text"] if caption else [],
+        },
+    }
 
 
 class NoteReadySyncTests(unittest.TestCase):
@@ -36,6 +48,14 @@ class NoteReadySyncTests(unittest.TestCase):
 
         page["properties"]["記事状態"] = {"select": {"name": "Needs Editorial Review"}}
         self.assertIsNone(sync._source_state(page))
+
+    def test_source_publishability_requires_exact_current_ready_contract(self):
+        with patch.object(sync, "_block_children", return_value=[code_block(contract.CURRENT_READY_CAPTION)]):
+            self.assertTrue(sync._source_has_current_ready_manuscript("page"))
+        with patch.object(sync, "_block_children", return_value=[code_block(contract.LEGACY_READY_CAPTION)]):
+            self.assertFalse(sync._source_has_current_ready_manuscript("page"))
+        with patch.object(sync, "_block_children", return_value=[code_block("")]):
+            self.assertFalse(sync._source_has_current_ready_manuscript("page"))
 
     def test_system_props_never_overwrite_human_workflow_fields(self):
         state = {

@@ -43,7 +43,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Validate and select Ready article only
+      - name: Validate and select current Ready article only
         env:
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_SYNC_ID: ${{ inputs.sync_id }}
@@ -56,7 +56,7 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: python run185_note_ready_legacy_skip.py
+        run: python run194_note_current_contract.py
 
       - name: Summarize prepare-only result
         if: success()
@@ -160,6 +160,8 @@ jobs:
           python -m unittest tests.test_run190_note_persistent_cloud -v
           python -m unittest tests.test_run191_note_crop_dialog_resilience -v
           python -m unittest tests.test_run193_note_official_header_upload -v
+          python -m unittest tests.test_run194_publication_contract -v
+          python -m unittest tests.test_run194_note_current_contract -v
 
       - name: Create one private note draft in persistent Chrome
         env:
@@ -179,7 +181,7 @@ jobs:
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: xvfb-run -a python run190_note_persistent_cloud.py
+        run: xvfb-run -a python run194_note_persistent_cloud.py
 
       - name: Summarize result without exposing the draft URL
         if: success()
