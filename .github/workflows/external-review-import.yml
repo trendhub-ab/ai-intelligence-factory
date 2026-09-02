@@ -10,9 +10,8 @@ on:
         type: choice
         options: [validate, apply]
       input_path:
-        description: "Repository path to external review JSON"
+        description: "Repository path to external review JSON (must be selected explicitly)"
         required: true
-        default: "external_reviews/run153_backfill.json"
       target:
         description: "Stop target for assessed inventory"
         required: true
