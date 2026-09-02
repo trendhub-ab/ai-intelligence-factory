@@ -45,12 +45,15 @@ class Run197NoteReadyPolicyReconciliationTests(unittest.TestCase):
         ):
             self.assertIn(f"- '{operational}'", source)
 
-    def test_policy_change_reconciliation_remains_zero_model_and_never_opens_note(self) -> None:
+    def test_policy_change_reconciliation_remains_zero_model_and_never_opens_note_browser(self) -> None:
         source = WORKFLOW.read_text(encoding="utf-8")
         self.assertNotIn("GEMINI_API_KEY", source)
         self.assertNotIn("run194_note_persistent_cloud.py", source)
         self.assertNotIn("note_draft_automation.py", source)
-        self.assertNotIn("note.com", source)
+        self.assertNotIn("NOTE_STORAGE_STATE_B64", source)
+        self.assertNotIn("xvfb-run", source)
+        self.assertNotIn("playwright", source.lower())
+        self.assertNotIn("google-chrome", source.lower())
         self.assertIn("run: python note_ready_sync.py", source)
 
     def test_reconciliation_revokes_unmatched_waiting_rows_but_preserves_posted_state(self) -> None:
