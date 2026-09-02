@@ -36,13 +36,18 @@ class Run201RepositoryGarbageCleanupTests(unittest.TestCase):
             ).is_file()
         )
 
-    def test_external_review_workflow_has_no_stale_default(self) -> None:
+    def test_external_review_workflow_has_no_stale_default_or_trigger(self) -> None:
         workflow = (ROOT / ".github/workflows/external-review-import.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("input_path:", workflow)
         self.assertIn("required: true", workflow)
         self.assertNotIn("external_reviews/run153_backfill.json", workflow)
+
+        member_sync = (ROOT / ".github/workflows/member-presentation-sync.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("external_reviews/**", member_sync)
 
     def test_historical_external_review_inputs_are_out_of_active_root(self) -> None:
         self.assertFalse((ROOT / "external_reviews").exists())
