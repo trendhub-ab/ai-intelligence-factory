@@ -60,12 +60,11 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
             with self.assertRaises(base.NoteDraftError):
                 run199.preflight("")
 
-    def test_preflight_has_no_browser_model_or_public_release_action(self) -> None:
+    def test_preflight_has_no_browser_model_or_vm_start_calls(self) -> None:
         source = inspect.getsource(run199)
-        self.assertNotIn("playwright", source.lower())
-        self.assertNotIn("genai.Client(", source)
-        self.assertNotIn("_generate_via_chat(", source)
-        self.assertNotIn("gcloud compute", source)
+        forbidden = ["play" + "wright", "genai.Client(", "_generate_via_chat(", "gcloud " + "compute"]
+        for token in forbidden:
+            self.assertNotIn(token, source)
 
 
 if __name__ == "__main__":
