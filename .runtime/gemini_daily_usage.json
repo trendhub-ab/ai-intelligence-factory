@@ -15,10 +15,10 @@
           "budget": 18,
           "by_kind": {
             "deep_dive": 3,
-            "quality_retry": 1
+            "quality_retry": 2
           },
           "exhausted": false,
-          "used": 4
+          "used": 5
         }
       }
     }
@@ -27,5 +27,5 @@
   "quota_date": "2026-09-02",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-02T08:39:09.674162+00:00"
+  "updated_at": "2026-09-02T08:40:12.700050+00:00"
 }
