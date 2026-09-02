@@ -93,6 +93,21 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         missing = [name for name in expected if not (archive / name).is_file()]
         self.assertEqual([], missing)
 
+    def test_current_spec_is_run199_and_old_spec_is_preserved(self) -> None:
+        current = (ROOT / "AI_Intelligence_Factory_最終仕様書.md").read_text(encoding="utf-8")
+        self.assertIn("現行Functional Baseline: **Run199", current)
+        self.assertIn("Production Source of Truth: **`main`**", current)
+        self.assertNotIn("本パッケージコード基準: **Run 122", current)
+
+        historical_path = (
+            ROOT
+            / "docs/archive/specifications/AI_Intelligence_Factory_仕様書_through_Run129_2026-08-25.md"
+        )
+        self.assertTrue(historical_path.is_file())
+        historical = historical_path.read_text(encoding="utf-8")
+        self.assertIn("本パッケージコード基準: **Run 122", historical)
+        self.assertIn("Run129 Conversational Warmth", historical)
+
     def test_readme_declares_current_baseline_and_cleanup_safety(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Current functional baseline:** Run199", readme)
