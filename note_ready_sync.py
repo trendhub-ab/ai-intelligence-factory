@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Synchronize note-publishable Ready articles into a dedicated Notion DB.
+"""Synchronize only complete, current-policy Ready articles into the note posting DB.
 
 Design:
 - ZERO Gemini/model requests.
 - Content Intelligence DB remains the quality Source of Truth.
-- `記事状態=Ready` is necessary but no longer sufficient for publication: the source page
-  must also contain a Ready manuscript stamped with the current publication contract.
-- Historical/unversioned Ready inventory is excluded from the posting DB and any existing
-  non-published destination row is revoked on the next sync.
-- Human workflow fields (投稿状態, note公開URL, 投稿予定日, 投稿日) are never
-  overwritten during normal Ready updates.
-- If Ready/current-contract eligibility is later revoked, 品質状態 becomes Ready取消.
-  Non-published rows are moved to 取下げ; already-published rows remain 投稿済み for
-  auditability.
+- `記事状態=Ready` is necessary but not sufficient for publication.
+- The latest persisted Ready manuscript must carry the current automatic policy fingerprint
+  and its caption manuscript SHA must match the actual body bytes.
+- A source eyecatch is mandatory before a row can enter/remain in the note posting queue.
+- Historical, corrupted, or incomplete Ready inventory is excluded; existing non-published
+  destination rows are revoked on the next sync.
+- Human workflow fields (投稿状態, note公開URL, 投稿予定日, 投稿日) are never overwritten
+  during normal Ready updates. Published rows remain 投稿済み for auditability.
 """
 from __future__ import annotations
 
@@ -25,7 +24,7 @@ from urllib.parse import urlencode
 
 import requests
 
-import publication_contract as publication_contract
+import publication_contract
 
 NOTION_API_KEY = (
     os.environ.get("NOTION_NOTE_READY_API_KEY", "").strip()
@@ -40,6 +39,7 @@ DEST_DATA_SOURCE_ID = os.environ.get("NOTION_NOTE_READY_DATA_SOURCE_ID", "").str
 
 SOURCE_ARTICLE_STATUS = "記事状態"
 SOURCE_READY = "Ready"
+SOURCE_EYECATCH = "アイキャッチ"
 
 DEST_SCHEMA = {
     "記事タイトル": "title",
@@ -163,6 +163,21 @@ def _normalize_page_id(value: str) -> str:
     return re.sub(r"[^0-9a-fA-F]", "", str(value or "")).lower()
 
 
+def _files_url(prop: dict | None) -> str:
+    for item in ((prop or {}).get("files") or []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "external":
+            value = str((item.get("external") or {}).get("url") or "").strip()
+        elif item.get("type") == "file":
+            value = str((item.get("file") or {}).get("url") or "").strip()
+        else:
+            value = ""
+        if value.startswith(("https://", "http://")):
+            return value
+    return ""
+
+
 def _source_state(page: dict) -> dict[str, Any] | None:
     p = page.get("properties") or {}
     if _select(p.get(SOURCE_ARTICLE_STATUS)) != SOURCE_READY:
@@ -187,11 +202,12 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         "original_url": original_url,
         "primary_url": primary_url,
         "content_page_url": str(page.get("url") or "").strip(),
+        "eyecatch_url": _files_url(p.get(SOURCE_EYECATCH)),
     }
 
 
 def _block_children(block_id: str) -> list[dict]:
-    """Read root children used to persist the canonical manuscript code block."""
+    """Read root children used to persist canonical manuscript code blocks."""
     rows: list[dict] = []
     cursor = ""
     for _ in range(30):
@@ -219,16 +235,32 @@ def _block_children(block_id: str) -> list[dict]:
 def _code_caption(block: dict) -> str:
     if block.get("type") != "code":
         return ""
+    return _plain_text(((block.get("code") or {}).get("caption")))
+
+
+def _code_body(block: dict) -> str:
+    if block.get("type") != "code":
+        return ""
     code = block.get("code") or {}
-    return _plain_text(code.get("caption"))
+    return "".join(
+        str(item.get("plain_text") or ((item.get("text") or {}).get("content")) or "")
+        for item in (code.get("rich_text") or [])
+    )
+
+
+def _source_current_ready_manuscript(page_id: str) -> str:
+    """Return the latest byte-valid manuscript for the checked-out publication policy."""
+    current: list[str] = []
+    for block in _block_children(page_id):
+        body = _code_body(block)
+        caption = _code_caption(block)
+        if body and publication_contract.is_current_ready_block(body, caption):
+            current.append(body)
+    return current[-1] if current else ""
 
 
 def _source_has_current_ready_manuscript(page_id: str) -> bool:
-    """Ready status is publishable only when current production provenance is present."""
-    return any(
-        publication_contract.is_current_ready_caption(_code_caption(block))
-        for block in _block_children(page_id)
-    )
+    return bool(_source_current_ready_manuscript(page_id))
 
 
 def _destination_state(page: dict) -> dict[str, Any]:
@@ -325,14 +357,19 @@ def sync_note_ready_db() -> dict[str, Any]:
 
     states: list[dict[str, Any]] = []
     stale_contract = 0
+    incomplete_assets = 0
     for page in source_pages:
         state = _source_state(page)
         if state is None:
             continue
-        if not _source_has_current_ready_manuscript(state["sync_id"]):
+        if not _source_current_ready_manuscript(state["sync_id"]):
             stale_contract += 1
             continue
+        if not state.get("eyecatch_url"):
+            incomplete_assets += 1
+            continue
         state["publication_contract"] = publication_contract.CONTRACT_ID
+        state["publication_policy_sha256"] = publication_contract.policy_sha256()
         states.append(state)
     source_by_id = {s["sync_id"]: s for s in states}
 
@@ -372,7 +409,6 @@ def sync_note_ready_db() -> dict[str, Any]:
                 raise RuntimeError(f"note Ready create failed {sid}: {res.status_code} {res.text[:500]}")
             created += 1
         else:
-            # Normal sync intentionally leaves human workflow fields untouched.
             res = _request(
                 "PATCH",
                 f"https://api.notion.com/v1/pages/{current['page_id']}",
@@ -406,9 +442,11 @@ def sync_note_ready_db() -> dict[str, Any]:
         "enabled": True,
         "zero_gemini_calls": True,
         "publication_contract": publication_contract.CONTRACT_ID,
+        "publication_policy_sha256": publication_contract.policy_sha256(),
         "source_ready_status_rows": len(source_pages),
         "source_ready": len(source_by_id),
         "stale_publication_contract": stale_contract,
+        "incomplete_publication_assets": incomplete_assets,
         "destination_rows": len(dest_pages),
         "created": created,
         "updated": updated,
