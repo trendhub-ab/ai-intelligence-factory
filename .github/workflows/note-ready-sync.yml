@@ -8,6 +8,39 @@ on:
       - Daily Intelligence & Content Pipeline [ONE-SHOT]
     types:
       - completed
+  # Publication-policy changes invalidate previously queued manuscript fingerprints.
+  # Reconcile the human-facing queue immediately on main instead of waiting for a
+  # later production run. This workflow is zero-model and never opens note.com.
+  push:
+    branches: [main]
+    paths:
+      - 'pipeline.py'
+      - 'production_pipeline.py'
+      - 'editorial_eyecatch.py'
+      - 'decision_intelligence.py'
+      - 'evidence_authority.py'
+      - 'evidence_ledger.py'
+      - 'subscription_attribution.py'
+      - 'reader_value_review_bridge.py'
+      - 'run172_production_reliability.py'
+      - 'run173_operational_yield.py'
+      - 'run174_monthly_digest_integrity.py'
+      - 'run175_semantic_fact_precision.py'
+      - 'run176_scope_fidelity.py'
+      - 'run177_paid_funnel_alignment.py'
+      - 'run178_eyecatch_editorial_layout_optimizer.py'
+      - 'run179_eyecatch_font_refinement.py'
+      - 'run180_eyecatch_semantic_layout.py'
+      - 'run181_eyecatch_visual_balance.py'
+      - 'run182_eyecatch_conclusion_emphasis.py'
+      - 'run183_eyecatch_emphasis_scale.py'
+      - 'publication_contract.py'
+      - 'run194_publication_contract.py'
+      - 'note_ready_sync.py'
+      - 'tests/test_note_ready_sync.py'
+      - 'tests/test_run194_note_ready_workflow.py'
+      - 'tests/test_run197_note_ready_policy_reconciliation.py'
+      - '.github/workflows/note-ready-sync.yml'
 
 permissions:
   contents: read
@@ -20,6 +53,7 @@ jobs:
   sync-note-ready:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -37,7 +71,10 @@ jobs:
         run: pip install requests
 
       - name: Zero-API unit tests
-        run: python -m unittest tests.test_note_ready_sync -v
+        run: |
+          python -m unittest tests.test_note_ready_sync -v
+          python -m unittest tests.test_run194_note_ready_workflow -v
+          python -m unittest tests.test_run197_note_ready_policy_reconciliation -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
