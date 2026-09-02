@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import note_ready_sync as sync
 import publication_contract as contract
 
 
@@ -55,6 +54,10 @@ class Run197NoteReadyPolicyReconciliationTests(unittest.TestCase):
         self.assertIn("run: python note_ready_sync.py", source)
 
     def test_reconciliation_revokes_unmatched_waiting_rows_but_preserves_posted_state(self) -> None:
+        # Import the live sync module only inside the integration-capable test. The repository-wide
+        # static guard intentionally runs without third-party dependencies such as requests.
+        import note_ready_sync as sync
+
         waiting = destination("waiting-page", "old-waiting", "投稿待ち")
         posted = destination("posted-page", "old-posted", "投稿済み")
         response = MagicMock(status_code=200, text="")
