@@ -13,18 +13,18 @@ def title(value):
     return {"title": [{"type": "text", "plain_text": value, "text": {"content": value}}]}
 
 
-def code_block(caption):
+def code_block(body, caption):
     return {
         "type": "code",
         "code": {
-            "rich_text": [{"plain_text": "article" * 50, "text": {"content": "article" * 50}}],
+            "rich_text": [{"plain_text": body, "text": {"content": body}}],
             "caption": rt(caption)["rich_text"] if caption else [],
         },
     }
 
 
 class NoteReadySyncTests(unittest.TestCase):
-    def test_source_state_accepts_only_ready_and_uses_first_primary_url(self):
+    def test_source_state_accepts_only_ready_uses_first_primary_url_and_reads_eyecatch(self):
         page = {
             "id": "12345678-1234-1234-1234-1234567890ab",
             "url": "https://www.notion.so/123456781234123412341234567890ab",
@@ -38,6 +38,9 @@ class NoteReadySyncTests(unittest.TestCase):
                 "情報源": {"select": {"name": "GitHub"}},
                 "元情報URL": {"url": "https://example.com/source"},
                 "一次情報URL": rt("https://example.com/primary\nhttps://example.com/secondary"),
+                "アイキャッチ": {
+                    "files": [{"type": "external", "external": {"url": "https://example.com/current.png"}}]
+                },
             },
         }
         state = sync._source_state(page)
@@ -45,17 +48,40 @@ class NoteReadySyncTests(unittest.TestCase):
         self.assertEqual(state["sync_id"], "123456781234123412341234567890ab")
         self.assertEqual(state["title"], "note title")
         self.assertEqual(state["primary_url"], "https://example.com/primary")
+        self.assertEqual(state["eyecatch_url"], "https://example.com/current.png")
 
         page["properties"]["記事状態"] = {"select": {"name": "Needs Editorial Review"}}
         self.assertIsNone(sync._source_state(page))
 
-    def test_source_publishability_requires_exact_current_ready_contract(self):
-        with patch.object(sync, "_block_children", return_value=[code_block(contract.CURRENT_READY_CAPTION)]):
+    def test_source_publishability_requires_body_hash_and_current_policy(self):
+        body = "article" * 50
+        current = contract.current_ready_caption(body)
+        with patch.object(sync, "_block_children", return_value=[code_block(body, current)]):
+            self.assertEqual(body, sync._source_current_ready_manuscript("page"))
             self.assertTrue(sync._source_has_current_ready_manuscript("page"))
-        with patch.object(sync, "_block_children", return_value=[code_block(contract.LEGACY_READY_CAPTION)]):
+
+        with patch.object(sync, "_block_children", return_value=[code_block(body + "tampered", current)]):
+            self.assertEqual("", sync._source_current_ready_manuscript("page"))
+
+        with patch.object(sync, "_block_children", return_value=[code_block(body, contract.LEGACY_READY_CAPTION)]):
             self.assertFalse(sync._source_has_current_ready_manuscript("page"))
-        with patch.object(sync, "_block_children", return_value=[code_block("")]):
-            self.assertFalse(sync._source_has_current_ready_manuscript("page"))
+
+    def test_latest_valid_current_block_wins(self):
+        old = "old" * 100
+        new = "new" * 100
+        blocks = [
+            code_block(old, contract.current_ready_caption(old)),
+            code_block(new, contract.current_ready_caption(new)),
+        ]
+        with patch.object(sync, "_block_children", return_value=blocks):
+            self.assertEqual(new, sync._source_current_ready_manuscript("page"))
+
+    def test_files_url_rejects_non_http_asset(self):
+        self.assertEqual("", sync._files_url({"files": [{"type": "external", "external": {"url": "file:///tmp/a.png"}}]}))
+        self.assertEqual(
+            "https://example.com/a.png",
+            sync._files_url({"files": [{"type": "file", "file": {"url": "https://example.com/a.png"}}]}),
+        )
 
     def test_system_props_never_overwrite_human_workflow_fields(self):
         state = {
