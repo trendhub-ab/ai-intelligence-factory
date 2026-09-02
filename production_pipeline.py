@@ -40,7 +40,7 @@ def install_runtime_layers(pipeline_module):
     run183_eyecatch_emphasis_scale.install(pipeline_module)
     reader_value_review_bridge.install(pipeline_module)
     # Stamp persisted Ready manuscripts only after every current article-quality and
-    # eyecatch layer has been installed.  Downstream note publication paths require this
+    # eyecatch layer has been installed. Downstream note publication paths require this
     # exact contract and therefore cannot silently reuse historical Ready inventory.
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
@@ -49,8 +49,14 @@ def install_runtime_layers(pipeline_module):
 def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
+    import run203_runtime_state_channel
 
     install_runtime_layers(pipeline)
+    if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
+        # Prove GH_PAT can write the isolated state branch before any Gemini reserve.
+        # This converts future protection/permission drift into a cheap preflight failure
+        # instead of the misleading "no available model" symptom seen in Run202.
+        run203_runtime_state_channel.preflight_runtime_state_channel()
     run179_eyecatch_font_refinement.ensure_google_font_assets(
         enabled=not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)),
         logger=getattr(pipeline, "logger", None),
