@@ -107,14 +107,17 @@ class Run209TimeoutRpdFailClosedTests(unittest.TestCase):
 
     def test_flash_daily_safety_ceiling_remains_18_not_provider_limit_20(self):
         one_shot = (ROOT / ".github" / "workflows" / "daily-one-shot.yml").read_text(encoding="utf-8")
+        for model in ("36", "37", "35"):
+            self.assertIn(f'GEMINI_{model}_FLASH_DAILY_BUDGET: "18"', one_shot)
+            self.assertNotIn(f'GEMINI_{model}_FLASH_DAILY_BUDGET: "20"', one_shot)
+
+    def test_paused_daily_remains_hard_disabled_and_does_not_expand_cap_to_20(self):
         daily = (ROOT / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")
-        for workflow in (one_shot, daily):
-            self.assertIn('GEMINI_36_FLASH_DAILY_BUDGET: "18"', workflow)
-            self.assertIn('GEMINI_37_FLASH_DAILY_BUDGET: "18"', workflow)
-            self.assertIn('GEMINI_35_FLASH_DAILY_BUDGET: "18"', workflow)
-            self.assertNotIn('GEMINI_36_FLASH_DAILY_BUDGET: "20"', workflow)
-            self.assertNotIn('GEMINI_37_FLASH_DAILY_BUDGET: "20"', workflow)
-            self.assertNotIn('GEMINI_35_FLASH_DAILY_BUDGET: "20"', workflow)
+        self.assertIn("Daily Intelligence & Content Pipeline [PAUSED]", daily)
+        self.assertIn("if: ${{ false }}", daily)
+        self.assertNotIn("schedule:", daily)
+        for model in ("36", "37", "35"):
+            self.assertNotIn(f'GEMINI_{model}_FLASH_DAILY_BUDGET: "20"', daily)
 
 
 if __name__ == "__main__":
