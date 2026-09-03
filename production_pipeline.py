@@ -14,6 +14,7 @@ def install_runtime_layers(pipeline_module):
     import run173_operational_yield
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
+    import run223_technical_claim_precision
     import run176_scope_fidelity
     import run177_paid_funnel_alignment
     import run178_eyecatch_editorial_layout_optimizer
@@ -37,6 +38,9 @@ def install_runtime_layers(pipeline_module):
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
     run175_semantic_fact_precision.install(pipeline_module)
+    # Run223 extends semantic precision to method-specific parameters, scoped breaking changes,
+    # benchmark/expectation multipliers, first-party dates and obvious Japanese particle damage.
+    run223_technical_claim_precision.install(pipeline_module)
     run176_scope_fidelity.install(pipeline_module)
     run177_paid_funnel_alignment.install(pipeline_module)
     run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)

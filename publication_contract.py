@@ -39,6 +39,7 @@ PUBLICATION_POLICY_FILES = (
     "run173_operational_yield.py",
     "run174_monthly_digest_integrity.py",
     "run175_semantic_fact_precision.py",
+    "run223_technical_claim_precision.py",
     "run176_scope_fidelity.py",
     "run177_paid_funnel_alignment.py",
     "run178_eyecatch_editorial_layout_optimizer.py",
