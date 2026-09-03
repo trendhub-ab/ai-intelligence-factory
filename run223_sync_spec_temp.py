@@ -1,5 +1,19 @@
 from pathlib import Path
 
+# Patch two real Japanese/Markdown boundary cases discovered by the first regression run.
+run223_path = Path('run223_technical_claim_precision.py')
+run223_text = run223_path.read_text(encoding='utf-8')
+replacements = {
+    '_JOIN_RE = re.compile(r"\\bjoin\\b", re.I)': '_JOIN_RE = re.compile(r"join", re.I)',
+    '_GROUP_BY_RE = re.compile(r"\\bgroup_by\\b", re.I)': '_GROUP_BY_RE = re.compile(r"group_by", re.I)',
+    '_DATE_LINE_RE = re.compile(r"(?:公開・更新|公開日|一次情報(?:の)?公開日)\\s*[:：]\\s*(\\d{4}-\\d{2}-\\d{2})")': '_DATE_LINE_RE = re.compile(r"(?:\\*\\*)?(?:公開・更新|公開日|一次情報(?:の)?公開日)(?:\\*\\*)?\\s*[:：]\\s*(\\d{4}-\\d{2}-\\d{2})")',
+}
+for old, new in replacements.items():
+    if old not in run223_text and new not in run223_text:
+        raise SystemExit(f'Run223 patch anchor not found: {old}')
+    run223_text = run223_text.replace(old, new, 1)
+run223_path.write_text(run223_text, encoding='utf-8')
+
 path = Path('AI_Intelligence_Factory_最終仕様書.md')
 text = path.read_text(encoding='utf-8')
 
