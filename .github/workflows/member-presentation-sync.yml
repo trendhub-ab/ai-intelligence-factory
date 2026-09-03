@@ -35,6 +35,7 @@ on:
       - 'tests/test_run214_member_action_specificity.py'
       - 'tests/test_run215_member_action_final_dedup.py'
       - 'tests/test_run219_member_human_language_ui.py'
+      - 'tests/test_run220_member_db_canonical_cutover.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -85,13 +86,17 @@ jobs:
           python -m unittest tests/test_run214_member_action_specificity.py
           python -m unittest tests/test_run215_member_action_final_dedup.py
           python -m unittest tests/test_run219_member_human_language_ui.py
+          python -m unittest tests/test_run220_member_db_canonical_cutover.py
 
-      - name: Resolve clean member DB
+      - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
         env:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
+          MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: 'b2787ee0-5b58-4ca7-b4eb-774f60237f1f'
+          MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
 
       - name: Sync clean member DB with human-language member UI
         run: python run219_member_human_language_ui.py presentation

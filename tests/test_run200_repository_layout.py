@@ -118,8 +118,12 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("Current repository organization baseline:** Run201", readme)
         self.assertIn("repository garbage cleanup without intended runtime behavior change", readme)
         self.assertIn("Daily:** PAUSED", readme)
-        self.assertIn("Historical `RUN*.md`", readme)
-        self.assertIn("do **not** bulk-delete", readme)
+        self.assertTrue(
+            "Historical `RUN*.md`" in readme
+            or "Historical Run implementation notes" in readme
+        )
+        self.assertIn("do **not** bulk-delete", readme.lower())
+        self.assertIn("docs/archive/", readme)
 
 
 if __name__ == "__main__":

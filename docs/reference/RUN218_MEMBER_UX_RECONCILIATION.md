@@ -1,7 +1,7 @@
 # Run218 — Paid Member UX Reconciliation
 
 Date: 2026-09-03  
-Status: **current paid-member navigation/UI contract**  
+Status: **current paid-member navigation/UI contract; database destination superseded by Run220**  
 Gemini/model requests used for this run: **0**
 
 ## Purpose
@@ -11,6 +11,8 @@ Run218 reconciles the live paid-member Notion experience from the customer's poi
 The core operating assumption is explicit:
 
 **PC is the primary member experience. Mobile/simple views are secondary fallback surfaces only.**
+
+Run220 later corrected the physical presentation-database destination. Run218 remains authoritative for information architecture and UX; Run220 is authoritative for the exact current Database/Data Source IDs.
 
 ## Root cause corrected
 
@@ -42,14 +44,18 @@ The page created by Run217 is superseded:
 
 ## Current member product data
 
-- Current presentation DB ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`
-- Current presentation data source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`
+Run220 current destination:
+
+- Current presentation DB ID: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
+- Current presentation data source ID: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
+- Pre-Run220 presentation DB ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`
+- Pre-Run220 data source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`
 - Legacy 100-row DB ID: `9430d2a5-b9ce-423a-b76e-d9214f3f6204`
 - Legacy data source ID: `ec2ac2b3-89b6-4242-89b9-e94060826fca`
 
-The legacy database remains `旧版・使用禁止` and is not an onboarding target.
+The two old presentation generations remain `旧版・使用禁止` / audit-only and are not onboarding or workflow destinations.
 
-Run218 moved the current presentation DB and current Digest under the canonical member home. A member opening an item should see the customer-facing hierarchy:
+The current presentation DB and current Digest are under the canonical member home. A member opening an item should see the customer-facing hierarchy:
 
 `AI Decision Intelligence｜会員ホーム → AI・技術一覧｜判断DB → individual item`
 
@@ -59,7 +65,7 @@ The internal `mlflow/mlflow` source record must not appear in the normal custome
 
 ### 1. First view: live priority Top3
 
-The home must not depend on manually written fixed cards for Dify or any other product. The first section is a live linked view using `注目順位 <= 3`, sorted ascending.
+The home must not depend on manually written fixed cards for Dify or any other product. The first section is a live view using `注目順位 <= 3`, sorted ascending.
 
 Member-facing columns are intentionally limited to decision-useful fields such as:
 - AI・技術名
@@ -75,7 +81,7 @@ The title column is frozen and cells wrap for PC comparison.
 
 The old broad “導入・お試し候補” surface could expose over 100 rows and did not function as a shortlist.
 
-The current high-priority practical view is deliberately narrower. Its current selection logic is:
+The current high-priority practical view is deliberately narrower. Its selection logic is:
 - `分類 = 実務判断`
 - `判断 IN (ADOPT, TEST)`
 - `根拠の確かさ != 低`
@@ -86,23 +92,23 @@ The exact row count may change as the DB changes; customer copy must not hard-co
 
 ### 3. Full search and status/category views
 
-The primary full-inventory surface is `全件検索｜PC`.
+The primary full-inventory surface is the current canonical DB's `すべてから探す` view.
 
 Secondary PC views include:
-- `分野別に探す｜PC`
-- `ADOPT｜導入を検討`
-- `TEST｜まず試す`
-- `WATCH｜様子を見る`
-- `AVOID｜見送る`
-- `判断ボード｜PC`
-- `評価が上がったもの｜+5点以上`
-- `Deep Techレーダー｜PC`
+- `分野から探す`
+- `導入を考えてよいもの`
+- `まず小さく試したいもの`
+- `もう少し様子を見たいもの`
+- `今は選ばない方がよいもの`
+- `まとめて比べる`
+- `最近、評価が上がったもの`
+- `これから注目したい新技術`
 
 These views should prioritize fields that help a member decide or act. Internal sync identifiers and other operator-only properties are not part of the default customer surface.
 
 ### 4. Mobile/simple views are secondary
 
-`スマホ用｜全件リスト` and the simple important-change list remain available as fallback surfaces, but they are intentionally placed behind secondary/collapsed navigation.
+`スマホで見る` remains available as a fallback surface, but it is intentionally secondary.
 
 No primary home copy may imply that mobile is the default or preferred usage environment while the product is PC-first.
 
@@ -116,21 +122,13 @@ At the Run218 audit time:
 - `今月の重要変化 = true`: 0 rows
 - records with `ABS(評価の変化) >= 20`: 10 rows
 
-The previous view required both the monthly checkbox and a ±20 score change, so both its PC and mobile surfaces were empty.
-
-The corrected primary view is:
-
-`最近の大きな評価変化｜PC`
-
-It displays existing authoritative history where:
+The corrected presentation shows existing authoritative history where:
 - `評価の変化 >= 20`, or
 - `評価の変化 <= -20`
 
-and sorts by `重要変化日 DESC`.
-
 This is a **presentation-only fallback**. It does not mark a record as an important change, does not modify the monthly checkbox, and does not invent a score movement.
 
-A primary customer surface must not show an unexplained empty table when a meaningful alternative view can be derived from already-authoritative data. If no relevant rows exist even after the defined presentation fallback, show a clear empty-state explanation rather than a blank primary block.
+A primary customer surface must not show an unexplained blank table when a meaningful alternative view can be derived from already-authoritative data. If no relevant rows exist even after the defined presentation fallback, show a clear empty-state explanation rather than a blank primary block.
 
 ## Dynamic-copy contract
 
@@ -156,7 +154,7 @@ A paid member using a PC should be able to:
 
 1. open one canonical home URL
 2. understand within the first screen that the product is for decisions, not raw news consumption
-3. compare the live Top3 without expanding a toggle
+3. reach the live Top3 immediately
 4. move to a deliberately short high-priority practical list
 5. search the full inventory from a clear PC-first entrypoint
 6. filter by judgment or category without exposing internal fields
@@ -167,7 +165,7 @@ A paid member using a PC should be able to:
 
 ## Safety / non-goals
 
-Run218 does not:
+Run218 / Run220 navigation work does not:
 - call Gemini or any model API
 - change article-generation logic
 - change Decision scores or judgments
@@ -176,6 +174,7 @@ Run218 does not:
 - change `評価の変化` values
 - resume Daily
 - enable public note auto-release
-- delete the legacy database
 
 Daily remains PAUSED and public note release remains human-only.
+
+Exact current DB destination contract: `docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md`.

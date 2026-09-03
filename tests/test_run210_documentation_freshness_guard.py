@@ -107,9 +107,7 @@ def install_runtime_layers(pipeline_module):
         self.assertTrue(any("Daily workflow is no longer hard PAUSED" in error for error in errors))
 
     def _member_contract_docs(self):
-        spec = (
-            "Run211 Inventory plan Subscriber Decision Brief Sync Member Presentation Sync\n"
-        )
+        spec = "Run211 Inventory plan Subscriber Decision Brief Sync Member Presentation Sync\n"
         readme = "Run211 Subscriber Decision Brief Sync Member Presentation Sync\n"
         return spec, readme
 
@@ -135,9 +133,7 @@ workflow_run:
 group: member-derived-notion-writes
 """
         spec, readme = self._member_contract_docs()
-        errors = guard.member_product_sync_errors(
-            inventory, subscriber, presentation, spec, readme
-        )
+        errors = guard.member_product_sync_errors(inventory, subscriber, presentation, spec, readme)
         self.assertTrue(any("racing its source" in error for error in errors))
 
     def test_inventory_plan_write_fanout_is_rejected(self):
@@ -160,30 +156,47 @@ workflow_run:
 group: member-derived-notion-writes
 """
         spec, readme = self._member_contract_docs()
-        errors = guard.member_product_sync_errors(
-            inventory, subscriber, presentation, spec, readme
-        )
+        errors = guard.member_product_sync_errors(inventory, subscriber, presentation, spec, readme)
         self.assertTrue(any("apply-only downstream filter" in error for error in errors))
 
-    def _run218_contract_docs(self):
-        common = (
+    def _run220_contract_docs(self):
+        current = (
             f"{guard.CANONICAL_MEMBER_HOME_ID}\n"
             f"{guard.CANONICAL_MEMBER_HOME_TITLE}\n"
             f"{guard.CURRENT_MEMBER_DB_ID}\n"
             f"{guard.CURRENT_MEMBER_DATA_SOURCE_ID}\n"
+        )
+        legacy = (
+            f"{guard.PRE_RUN220_MEMBER_DB_ID}\n"
+            f"{guard.PRE_RUN220_MEMBER_DATA_SOURCE_ID}\n"
             f"{guard.LEGACY_MEMBER_DATA_SOURCE_ID}\n"
             "旧版・使用禁止\n"
-            "PC-first live Top3 今月の重要変化 評価の変化 >= 20 <= -20\n"
         )
-        spec = "Paid Member Navigation/UI Baseline: **Run218\n" + common
-        readme = "paid member navigation/UI baseline:** Run218\n" + common
+        spec = (
+            "Paid Member Navigation/UI Baseline: **Run218\n"
+            "Paid Member Database Destination Baseline: **Run220\n"
+            "Run220 MEMBER_PRESENTATION_ALLOW_CREATE: 'false'\n"
+            "PC-first live Top3 今月の重要変化 評価の変化 >= 20 <= -20\n"
+            + current
+            + legacy
+        )
+        readme = (
+            "paid member navigation/UI baseline:** Run218\n"
+            "paid member DB destination baseline:** Run220\n"
+            "Run220 PC-first live Top3\n"
+            + current
+            + legacy
+        )
         run217 = (
+            f"{guard.CANONICAL_MEMBER_HOME_ID}\n"
             f"{guard.SUPERSEDED_RUN217_HOME_ID}\n"
             "superseded by Run218\n"
             "【旧・統合済み】AI Intelligence｜会員ホーム\n"
         )
         run218 = (
-            common
+            "current paid-member navigation/UI contract\n"
+            + current
+            + legacy
             + f"{guard.SUPERSEDED_RUN217_HOME_ID}\n"
             + "PC is the primary member experience\n"
             + "Mobile/simple views are secondary fallback surfaces only\n"
@@ -191,32 +204,62 @@ group: member-derived-notion-writes
             + "presentation-only fallback\n"
             + "does not modify the monthly checkbox\n"
             + "blank table\n"
-            + "評価の変化 >= 20 評価の変化 <= -20\n"
+            + "今月の重要変化 評価の変化 >= 20 評価の変化 <= -20\n"
             + "Gemini/model requests used for this run: **0**\n"
         )
-        return spec, readme, run217, run218
+        run220 = (
+            "Run220 fail closed MEMBER_PRESENTATION_ALLOW_CREATE=false\n"
+            + current
+            + legacy
+        )
+        return spec, readme, run217, run218, run220
 
-    def test_run218_canonical_navigation_contract_is_accepted(self):
-        docs = self._run218_contract_docs()
+    def test_run220_canonical_navigation_contract_is_accepted(self):
+        docs = self._run220_contract_docs()
         self.assertEqual(guard.member_navigation_ux_errors(*docs), [])
 
     def test_old_run217_home_cannot_be_promoted_back_to_canonical(self):
-        spec, readme, run217, run218 = self._run218_contract_docs()
+        spec, readme, run217, run218, run220 = self._run220_contract_docs()
         spec += "\n正規会員入口は`AI Intelligence｜会員ホーム`\n"
-        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218)
+        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218, run220)
         self.assertTrue(any("promoted back" in error for error in errors))
 
     def test_pc_first_contract_cannot_be_silently_removed(self):
-        spec, readme, run217, run218 = self._run218_contract_docs()
+        spec, readme, run217, run218, run220 = self._run220_contract_docs()
         run218 = run218.replace("PC is the primary member experience", "PC optional")
-        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218)
+        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218, run220)
         self.assertTrue(any("PC is the primary member experience" in error for error in errors))
 
     def test_important_change_fallback_cannot_mutate_source_semantics(self):
-        spec, readme, run217, run218 = self._run218_contract_docs()
+        spec, readme, run217, run218, run220 = self._run220_contract_docs()
         run218 = run218.replace("does not modify the monthly checkbox", "checkbox may be set for display")
-        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218)
+        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218, run220)
         self.assertTrue(any("monthly checkbox" in error for error in errors))
+
+    def _destination_contract(self):
+        workflow = (
+            "Resolve canonical member DB\n"
+            f"MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: '{guard.CURRENT_MEMBER_DB_ID}'\n"
+            f"MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '{guard.CURRENT_MEMBER_DATA_SOURCE_ID}'\n"
+            "MEMBER_PRESENTATION_ALLOW_CREATE: 'false'\n"
+        )
+        common = f"Run220 {guard.CURRENT_MEMBER_DB_ID} {guard.CURRENT_MEMBER_DATA_SOURCE_ID}\n"
+        return workflow, common, common, common
+
+    def test_run220_destination_workflow_contract_is_accepted(self):
+        self.assertEqual(guard.member_destination_workflow_errors(*self._destination_contract()), [])
+
+    def test_run220_auto_create_regression_is_rejected(self):
+        workflow, spec, readme, run220 = self._destination_contract()
+        workflow = workflow.replace("MEMBER_PRESENTATION_ALLOW_CREATE: 'false'", "MEMBER_PRESENTATION_ALLOW_CREATE: 'true'")
+        errors = guard.member_destination_workflow_errors(workflow, spec, readme, run220)
+        self.assertTrue(any("automatic DB creation disabled" in error for error in errors))
+
+    def test_run220_destination_drift_is_rejected(self):
+        workflow, spec, readme, run220 = self._destination_contract()
+        workflow = workflow.replace(guard.CURRENT_MEMBER_DATA_SOURCE_ID, "00000000-0000-0000-0000-000000000000")
+        errors = guard.member_destination_workflow_errors(workflow, spec, readme, run220)
+        self.assertTrue(any("missing canonical destination" in error for error in errors))
 
 
 if __name__ == "__main__":
