@@ -1,4 +1,4 @@
-name: Ops One-shot note Draft Dispatch 2026-09-04
+name: Ops One-shot note Ready Sync 2026-09-04
 
 on:
   push:
@@ -15,15 +15,12 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch existing Create note Draft workflow on main
+      - name: Dispatch existing Note Ready Article Sync workflow on main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run note-create-draft.yml \
+          gh workflow run note-ready-sync.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f confirm=CREATE_NOTE_DRAFT \
-            -f sync_id= \
-            -f prepare_only=false
-          echo 'Dispatched note-create-draft.yml on main with prepare_only=false.'
+            --ref main
+          echo 'Dispatched note-ready-sync.yml on main.'
