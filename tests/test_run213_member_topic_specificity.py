@@ -70,7 +70,7 @@ class Run213MemberTopicSpecificityTests(unittest.TestCase):
         out = run213.apply_current_topic_specificity(state)
         self.assertEqual(out["topic"], "実道路安全性の根拠を待つ。")
         self.assertEqual(
-            out["judgment_reason"], "現実タスクへの実環境への転移を示す根拠が重要。"
+            out["judgment_reason"], "現実タスクへの転移を示す根拠が重要。"
         )
         self.assertEqual(out["name"], state["name"])
         self.assertEqual(out["primary_url"], state["primary_url"])
