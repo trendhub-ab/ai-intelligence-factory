@@ -51,7 +51,7 @@ class Run218MemberUxReconciliationTests(unittest.TestCase):
         for marker in (
             "PC is the primary member experience",
             "Mobile/simple views are secondary fallback surfaces only",
-            "スマホ用｜全件リスト",
+            "スマホで見る",
         ):
             self.assertIn(marker, self.run218)
         self.assertIn("PC-first", self.readme)
