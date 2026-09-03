@@ -27,6 +27,9 @@ on:
       - 'tests/test_run211_member_sync_ordering.py'
       - '.github/workflows/member-presentation-sync.yml'
 
+# Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
+# Daily Intelligence & Content Pipeline and Daily Intelligence & Content Pipeline [ONE-SHOT].
+# This workflow intentionally follows that bridge instead of listening to either source directly.
 # This workflow and Subscriber Decision Brief write the same member product through
 # NOTION_DECISION_INTELLIGENCE_API_KEY. Keep a single cross-workflow writer lock so
 # source->brief->presentation writes cannot overlap or leave stale member rows.
