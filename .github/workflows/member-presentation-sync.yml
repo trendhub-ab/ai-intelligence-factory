@@ -18,6 +18,7 @@ on:
       - 'member_ux_body_fast.py'
       - 'member_human_language_ux.py'
       - 'member_human_language_ux_v2.py'
+      - 'run212_member_review_copy.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
@@ -25,6 +26,7 @@ on:
       - 'tests/test_run170_member_human_language_ux.py'
       - 'tests/test_run170_1_member_copy_role_separation.py'
       - 'tests/test_run211_member_sync_ordering.py'
+      - 'tests/test_run212_member_review_copy.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -70,6 +72,7 @@ jobs:
           python -m unittest tests/test_run170_member_human_language_ux.py
           python -m unittest tests/test_run170_1_member_copy_role_separation.py
           python -m unittest tests/test_run211_member_sync_ordering.py
+          python -m unittest tests/test_run212_member_review_copy.py
 
       - name: Resolve clean member DB
         run: python provision_member_presentation_db.py
@@ -78,8 +81,8 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
 
-      - name: Sync clean member DB with role-separated human-language UX guard
-        run: python member_human_language_ux_v2.py presentation
+      - name: Sync clean member DB with current-authority reviewed-copy recovery
+        run: python run212_member_review_copy.py presentation
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -91,7 +94,7 @@ jobs:
           MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
 
       - name: Sync readable member page bodies in reader order
-        run: python member_human_language_ux_v2.py body
+        run: python run212_member_review_copy.py body
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
