@@ -2,11 +2,13 @@
 
 ## Production baseline
 
-- **Current functional baseline:** Run199 — publish-safe note VM preflight
+- **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
+- **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
 - Canonical specification: `AI_Intelligence_Factory_最終仕様書.md`
+- Gemini quota specification: `GEMINI_QUOTA_SETUP.md`
 
 New development must start from `main`. Historical/archive branches are reference-only and must not be used as a development base.
 
@@ -15,7 +17,10 @@ New development must start from `main`. Historical/archive branches are referenc
 ### Core production pipeline
 
 - `pipeline.py` — acquisition, screening, Deep Dive, article quality, Notion persistence and operational state
-- `production_pipeline.py` — stable production entrypoint
+- `production_pipeline.py` — stable production entrypoint and runtime-layer installer
+- `run203_runtime_state_channel.py` — Production runtime-state continuity / writability preflight
+- `gemini_timeout_rpd_fail_closed.py` — Run209 timeout RPD fail-closed accounting; keeps the 18-request Flash safety ceiling
+- `gemini_transient_recovery.py` — bounded transient provider recovery / cooldown
 - `decision_intelligence.py` — Decision Intelligence persistence/domain logic
 - `editorial_eyecatch.py` — deterministic note Editorial Eyecatch renderer
 - `evidence_ledger.py`, `evidence_authority.py` — Evidence Ledger / authority / binding logic
@@ -24,7 +29,19 @@ New development must start from `main`. Historical/archive branches are referenc
 - `context_first_enrichment.py` — Context-First Decision Intelligence enrichment
 - `subscription_attribution.py` — aggregate/privacy-safe subscription attribution
 
-`production_pipeline.py` currently installs the Run172–Run183 reliability/quality/eyecatch layers, `reader_value_review_bridge`, and `run194_publication_contract` in an explicit order. Those Run-numbered Python modules are **active production code**, not historical clutter, and must not be archived or renamed without a dedicated compatibility refactor and full regression proof.
+`production_pipeline.py` currently installs the runtime-state/quota layers, Run172–Run183 reliability/quality/eyecatch layers, `reader_value_review_bridge`, `run208_reader_value_repair`, and `run194_publication_contract` in an explicit order. These Run-numbered Python modules are **active production code**, not historical clutter, and must not be archived or renamed without a dedicated compatibility refactor and full regression proof.
+
+### Pending Retry fast lane
+
+`pending_retry_validation.py` is the bounded low-cost recovery path for high-value Pending Retry articles.
+
+- no fresh collection/screening
+- score-ranked recovery
+- max 3 dedicated requests in fast-lane mode
+- first 503 cools that model for the rest of the fast-lane run
+- one Reader Value recompose at most, only for repairable reader-only failures
+- stop after first successful article
+- no public note release
 
 ### note draft automation
 
@@ -45,6 +62,17 @@ The current note path is intentionally layered and fail-closed:
 - `run199_note_vm_preflight.py`
 
 `.github/workflows/note-create-draft.yml` first performs a zero-browser, zero-Gemini publication-safety preflight on GitHub-hosted Ubuntu. The GCP Chrome VM starts only when an eligible current-contract article exists, and the selected `sync_id` is pinned into the VM job. Public release remains human-only.
+
+## Gemini quota safety
+
+The repository-local Persistent Counter is a safety control, not the Google quota API. Google AI Studio Rate Limits remains the Project-wide external source of truth.
+
+- 3.5 / 3.6 / 3.7 Flash stay capped at **18 requests/day** in Production even when AI Studio currently exposes 20 RPD.
+- The remaining 2 requests are safety margin, not spare capacity to consume.
+- Run209 keeps timeout reservations counted; transport/watchdog timeout does not restore Factory RPD availability.
+- `.runtime/` is protected Production continuity state.
+
+See `GEMINI_QUOTA_SETUP.md` for the full contract.
 
 ## Repository map
 
@@ -91,6 +119,15 @@ Operational state, learning history and published Notion-linked eyecatch assets 
 
 Generated output directories are covered by `.gitignore`; if a test or workflow introduces a new generated directory, add it to `.gitignore` before merging.
 
+## Documentation freshness policy
+
+Run210 makes documentation freshness a CI contract rather than a manual reminder.
+
+- Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
+- README / canonical spec baseline labels must remain aligned.
+- Gemini safety ceiling 18, timeout fail-closed behavior, Daily PAUSED, and Pending Retry fast-lane contracts must remain consistent with code/workflows.
+- A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
+
 ## Change discipline
 
 Repository cleanup must be behavior-preserving by default:
@@ -99,4 +136,4 @@ Repository cleanup must be behavior-preserving by default:
 2. Keep ambiguous files until their dependency status is proven.
 3. Move historical documentation and retired operational definitions to `docs/archive/` rather than deleting audit history.
 4. Preserve operational state and published assets.
-5. Run repository-wide falsification and relevant regression checks before merging cleanup into `main`.
+5. Run repository-wide falsification, Documentation Freshness Guard, and relevant regression checks before merging into `main`.
