@@ -30,11 +30,11 @@ _INSTALLED = False
 _PRIOR_HUMANIZE: Callable[..., dict[str, Any]] | None = None
 
 # These two mixed-language artifacts were produced by the older broad
-# ``Evidence`` presentation replacement.  Repairs are narrow and semantic; we
-# do not globally rewrite English identifiers or titles.
+# ``Evidence`` presentation replacement. Repairs are deliberately local; we do
+# not globally rewrite English identifiers or titles.
 _HYBRID_COPY_REPAIRS = (
     ("Safety 根拠", "安全性の根拠"),
-    ("Transfer 根拠", "実環境への転移を示す根拠"),
+    ("Transfer 根拠", "転移を示す根拠"),
 )
 
 
@@ -66,7 +66,7 @@ def apply_current_topic_specificity(state: dict[str, Any]) -> dict[str, Any]:
     """Replace only a residual generic topic with a current specific reason."""
     out = dict(state)
 
-    # Repair only known customer-visible mixed-language artifacts.  This does
+    # Repair only known customer-visible mixed-language artifacts. This does
     # not alter source identifiers, URL, score, status, Evidence, or category.
     for key in ("topic", "judgment_reason", "main_risk", "next_action"):
         if key in out:
