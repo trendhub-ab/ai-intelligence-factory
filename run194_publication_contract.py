@@ -10,6 +10,11 @@ The contract is now content-addressed: the caption contains an automatic SHA-256
 publication-policy files and SHA-256 of the manuscript body.  Upgrade idempotency skips append
 only when the *latest valid current-policy Ready block* is byte-equivalent to the manuscript
 being saved.  Older blocks remain for audit but can never satisfy a newer/different save.
+
+Notion rich_text segmentation is transport-only and must never change manuscript bytes.  The
+legacy paragraph-aware chunker can drop a newline when a chunk boundary is crossed, while Notion
+may merge rich_text segments again on readback.  This overlay therefore rewrites code-block
+rich_text with lossless fixed-size slices before persistence and verifies the in-memory roundtrip.
 """
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ from typing import Any
 import publication_contract as contract
 
 _INSTALLED_ATTR = "_run194_publication_contract_installed"
+_DEFAULT_NOTION_RICH_TEXT_LIMIT = 1900
 
 
 def _block_body(block: dict) -> str:
@@ -27,6 +33,36 @@ def _block_body(block: dict) -> str:
         str(item.get("plain_text") or ((item.get("text") or {}).get("content")) or "")
         for item in (code.get("rich_text") or [])
     )
+
+
+def _lossless_text_segments(text: str, limit: int) -> list[str]:
+    """Split only for Notion transport; joining the segments must reproduce text exactly."""
+    if limit <= 0:
+        raise ValueError("Notion rich_text limit must be positive")
+    value = str(text or "")
+    return [value[i:i + limit] for i in range(0, len(value), limit)]
+
+
+def _rewrite_code_rich_text_losslessly(children: list, manuscript: str, limit: int) -> list:
+    """Replace a real Notion code-block payload's rich_text without changing stub/test shapes."""
+    if not children or not isinstance(children[0], dict):
+        return children
+    code = children[0].get("code")
+    if not isinstance(code, dict) or "rich_text" not in code:
+        return children
+
+    segments = _lossless_text_segments(manuscript, limit)
+    code["rich_text"] = [
+        {"type": "text", "text": {"content": segment}}
+        for segment in segments
+    ]
+    roundtrip = "".join(
+        str(((item.get("text") or {}).get("content")) or "")
+        for item in code["rich_text"]
+    )
+    if roundtrip != str(manuscript or ""):
+        raise RuntimeError("Notion manuscript segmentation changed persisted bytes")
+    return children
 
 
 def _latest_current_block(pipeline_module: Any, page_id: str, headers: dict) -> tuple[str, str] | None:
@@ -54,7 +90,12 @@ def install(pipeline_module: Any) -> Any:
         effective = caption
         if effective is None or str(effective).strip() == legacy_ready_caption:
             effective = contract.current_ready_caption(clean_manuscript)
-        return original_build_children(clean_manuscript, effective)
+        children = original_build_children(clean_manuscript, effective)
+        limit = int(
+            getattr(pipeline_module, "NOTION_BLOCK_LIMIT", _DEFAULT_NOTION_RICH_TEXT_LIMIT)
+            or _DEFAULT_NOTION_RICH_TEXT_LIMIT
+        )
+        return _rewrite_code_rich_text_losslessly(children, clean_manuscript, limit)
 
     def has_current_ready_manuscript(page_id: str, headers: dict) -> bool:
         return _latest_current_block(pipeline_module, page_id, headers) is not None

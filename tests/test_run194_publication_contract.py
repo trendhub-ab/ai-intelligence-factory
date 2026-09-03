@@ -86,6 +86,37 @@ class Run194PublicationContractTests(unittest.TestCase):
         self.assertEqual(contract.CONTRACT_ID, module.CURRENT_PUBLICATION_CONTRACT)
         self.assertEqual(contract.policy_sha256(), module.CURRENT_PUBLICATION_POLICY_SHA256)
 
+    def test_notion_transport_segments_rejoin_to_exact_manuscript_bytes(self) -> None:
+        module = self._module()
+        module.NOTION_BLOCK_LIMIT = 10
+
+        def lossy_original_builder(body, caption="AIIF_MANUSCRIPT:READY"):
+            # Simulate the real Notion payload shape.  The overlay must replace these
+            # transport segments with byte-exact slices before persistence.
+            return [{
+                "object": "block",
+                "type": "code",
+                "code": {
+                    "rich_text": [{"type": "text", "text": {"content": body.replace("\n", "")}}],
+                    "language": "markdown",
+                    "caption": [{"type": "text", "text": {"content": caption}}],
+                },
+            }]
+
+        module.build_notion_manuscript_children = lossy_original_builder
+        run194.install(module)
+
+        body = "123456789\nABCDEFGHIJ\nklmnopqrst\n最後の行"
+        children = module.build_notion_manuscript_children(body)
+        code = children[0]["code"]
+        segments = [item["text"]["content"] for item in code["rich_text"]]
+        persisted = "".join(segments)
+        caption = code["caption"][0]["text"]["content"]
+
+        self.assertEqual(body, persisted)
+        self.assertTrue(all(0 < len(segment) <= module.NOTION_BLOCK_LIMIT for segment in segments))
+        self.assertTrue(contract.is_current_ready_block(persisted, caption))
+
     def test_review_caption_is_not_rewritten_as_ready(self) -> None:
         module = self._module()
         run194.install(module)
