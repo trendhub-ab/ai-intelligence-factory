@@ -2,8 +2,9 @@
 
 ## Production baseline
 
-- **Current functional baseline:** Run211 — paid member sync ordering
+- **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
+- **Current paid member sync baseline:** Run211 — paid member sync ordering
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
