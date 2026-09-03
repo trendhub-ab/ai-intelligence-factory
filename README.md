@@ -5,7 +5,7 @@
 - **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
-- **Current paid member UX baseline:** Run212 — current-authority reviewed-copy recovery
+- **Current paid member UX baseline:** Run213 — current-authority topic specificity
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -69,8 +69,20 @@ Member-facing Notion data is derived in a fixed order rather than by parallel wr
 - Historical score, status, judgment reason, risk, best-for, avoid-for, Evidence and primary URL can never override current Decision Intelligence state through the archive path.
 - Explicitly time-sensitive archive copy such as dated “時点” claims, “現時点”, “最新”, and freshness/update claims is rejected instead of being mechanically rewritten.
 - If a future current `external_reviews/` source exists, active review copy outranks archive copy and keeps the existing Run170 behavior.
-- Member Presentation workflow runs the Run212 wrapper for both presentation and body entrypoints.
 - Run212 contains no Gemini/provider path and keeps derived member sync zero-Gemini.
+
+### Paid member topic specificity — Run213
+
+`run213_member_topic_specificity.py` layers on Run212 without weakening its archive-safety boundary.
+
+- Run212 remains responsible for safe archive copy recovery.
+- If the final post-Run212 `今回の話題` is still the deterministic generic topic, Run213 may reuse only the **current authoritative `判断理由`** as the topic fallback.
+- Missing or malformed current reasons fail safe and leave the existing topic unchanged.
+- Existing non-generic topics are never replaced.
+- Run170.4 keeps its existing role-separation pass, so a promoted topic does not leave `判断理由` duplicated; the reason is re-derived from current risk/decision context where necessary.
+- Known mechanical mixed-language artifacts `Safety 根拠` and `Transfer 根拠` are repaired narrowly in member-visible copy; product names, identifiers, URLs, scores, statuses, Evidence and categories are not rewritten.
+- Member Presentation workflow runs the Run213 wrapper for presentation and body entrypoints.
+- Run213 adds no historical decision authority, no new factual claim, and no Gemini/provider request path.
 
 ### note draft automation
 
@@ -150,13 +162,14 @@ Generated output directories are covered by `.gitignore`; if a test or workflow 
 
 ## Documentation freshness policy
 
-Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the paid member presentation-copy authority boundary without changing the Run209 functional baseline.
+Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback without changing the Run209 functional baseline.
 
 - Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
 - README / canonical spec baseline labels must remain aligned.
 - Gemini safety ceiling 18, timeout fail-closed behavior, Daily PAUSED, and Pending Retry fast-lane contracts must remain consistent with code/workflows.
 - Subscriber Decision Brief Sync must precede Member Presentation Sync; Inventory plan must not trigger downstream member writes.
 - Archived Product Review data must remain copy-only when reused by Run212 and must not become authoritative for current decision state.
+- Run213 topic fallback may use current `判断理由` only after Run212 leaves a deterministic generic topic; it must not source historical judgment fields or generate new facts.
 - A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
 
 ## Change discipline
