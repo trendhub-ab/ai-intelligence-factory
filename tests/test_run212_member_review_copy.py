@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import member_human_language_ux as base
 import member_ux_guard as guard
@@ -102,7 +103,7 @@ class Run212ArchiveReviewCopyTests(unittest.TestCase):
         self.assertEqual(out["topic"], active["topic_trigger"])
 
     def test_module_contains_no_model_provider_path(self):
-        source = open("run212_member_review_copy.py", encoding="utf-8").read()
+        source = Path("run212_member_review_copy.py").read_text(encoding="utf-8")
         self.assertNotIn("GEMINI_API_KEY", source)
         self.assertNotIn("google.genai", source)
         self.assertNotIn("generate_content", source)
