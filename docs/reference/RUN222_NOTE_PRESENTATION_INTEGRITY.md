@@ -32,7 +32,9 @@ The stored Ready manuscript remains the byte-exact object validated by the Publi
 
 - remove a leading `# <title>` when it duplicates the note title field;
 - demote any remaining body H1 to H2 outside fenced code blocks so raw `#` markup is never exposed;
-- move a historical pre-Run222 CTA from before Sources/Evidence to the end.
+- normalize a current-contract manuscript whose footer still needs the Run222 ordering rule.
+
+A manuscript stamped under a pre-Run222 policy is **not** accepted directly. Because Run222 is part of the publication-policy fingerprint, a stale manuscript must first be deterministically rebuilt/restamped under the current policy and pass byte-exact readback validation. Run222 never bypasses or relaxes the current Publication Contract.
 
 These presentation transforms must not be applied before Publication Contract validation.
 
@@ -43,7 +45,8 @@ These presentation transforms must not be applied before Publication Contract va
 - no Evidence, Decision, score, source URL, or article fact changes;
 - stored current-contract manuscript validation remains fail-closed;
 - transform is idempotent when footer order is already correct;
-- code fences are not rewritten while demoting body H1 headings.
+- code fences are not rewritten while demoting body H1 headings;
+- stale policy fingerprints are never promoted by editor-only presentation logic.
 
 ## Implementation
 
