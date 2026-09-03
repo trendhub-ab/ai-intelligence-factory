@@ -4,7 +4,12 @@
 Run220 removes the old "search by title, then auto-create" ambiguity from the
 normal member sync path. Production must write only to the canonical database
 that the member home actually exposes. If that database is not readable through
-the Notion integration, the sync fails closed instead of creating a new copy.
+the Notion integration, the sync fails closed instead of creating or selecting
+a different copy.
+
+A bootstrap search/create path remains available only when an operator
+explicitly clears both canonical IDs *and* sets MEMBER_PRESENTATION_ALLOW_CREATE
+true. Production pins both IDs and keeps that switch false.
 
 Resolved IDs are written to GITHUB_ENV for the following workflow steps.
 """
@@ -33,7 +38,7 @@ ALLOW_CREATE = os.environ.get("MEMBER_PRESENTATION_ALLOW_CREATE", "false").strip
 }
 PARENT_PAGE_ID = os.environ.get(
     "MEMBER_PRESENTATION_PARENT_PAGE_ID",
-    "3c5479ff-dca9-8178-867c-d9249a3ff5c8",
+    "3c5479ff-dca9-8103-bff0-f2d5f408d35f",
 ).strip()
 
 
@@ -154,7 +159,7 @@ def _resolve_canonical() -> tuple[str, str] | None:
 
 
 def _search_existing() -> tuple[str, str] | None:
-    """Bootstrap-only exact-title lookup; normal Production uses pinned IDs."""
+    """Explicit bootstrap-only exact-title lookup."""
     res = requests.post(
         "https://api.notion.com/v1/search",
         headers=_headers(),
@@ -246,6 +251,11 @@ def provision() -> dict[str, Any]:
         db_id, ds_id = canonical
         created = False
     else:
+        if not ALLOW_CREATE:
+            raise RuntimeError(
+                "Canonical member presentation IDs are required in normal operation; "
+                "title search and DB creation are disabled unless bootstrap is explicitly enabled."
+            )
         existing = _search_existing()
         if existing:
             db_id, ds_id = existing
