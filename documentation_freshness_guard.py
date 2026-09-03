@@ -14,6 +14,9 @@ PRODUCTION_PATH = "production_pipeline.py"
 ONE_SHOT_PATH = ".github/workflows/daily-one-shot.yml"
 DAILY_PATH = ".github/workflows/daily.yml"
 PENDING_RETRY_PATH = "pending_retry_validation.py"
+INVENTORY_WORKFLOW_PATH = ".github/workflows/inventory-bootstrap.yml"
+SUBSCRIBER_BRIEF_WORKFLOW_PATH = ".github/workflows/subscriber-decision-brief.yml"
+MEMBER_PRESENTATION_WORKFLOW_PATH = ".github/workflows/member-presentation-sync.yml"
 
 FLASH_BUDGET_VARS = (
     "GEMINI_36_FLASH_DAILY_BUDGET",
@@ -55,6 +58,7 @@ def baseline_errors(spec_text: str, readme_text: str) -> list[str]:
     for marker in (
         "Run209",
         "Run210",
+        "Run211",
         "Daily workflowはPAUSED",
         "Documentation Freshness Guard",
     ):
@@ -64,6 +68,7 @@ def baseline_errors(spec_text: str, readme_text: str) -> list[str]:
     for marker in (
         "Run209",
         "Run210",
+        "Run211",
         "**Daily:** PAUSED",
         "Documentation Freshness Guard",
     ):
@@ -138,6 +143,74 @@ def quota_contract_errors(
     return errors
 
 
+def _workflow_run_block(text: str) -> str:
+    if "workflow_run:" not in text:
+        return ""
+    tail = text.split("workflow_run:", 1)[1]
+    return tail.split("types: [completed]", 1)[0]
+
+
+def member_product_sync_errors(
+    inventory_text: str,
+    subscriber_brief_text: str,
+    member_presentation_text: str,
+    spec_text: str,
+    readme_text: str,
+) -> list[str]:
+    """Protect the zero-Gemini source -> brief -> presentation ordering contract."""
+    errors: list[str] = []
+
+    if "run-name: Subscriber Inventory Bootstrap [${{ inputs.mode }}]" not in inventory_text:
+        errors.append("Inventory workflow must expose plan/apply in run-name for safe downstream filtering")
+
+    subscriber_block = _workflow_run_block(subscriber_brief_text)
+    for upstream in (
+        "Daily Intelligence & Content Pipeline",
+        "Daily Intelligence & Content Pipeline [ONE-SHOT]",
+        "Subscriber Inventory Bootstrap",
+    ):
+        if upstream not in subscriber_block:
+            errors.append(f"Subscriber Decision Brief missing upstream workflow_run source: {upstream}")
+
+    if "github.event.workflow_run.name != 'Subscriber Inventory Bootstrap'" not in subscriber_brief_text:
+        errors.append("Subscriber Decision Brief no longer distinguishes Inventory Bootstrap from other upstream runs")
+    if "contains(github.event.workflow_run.display_title, '[apply]')" not in subscriber_brief_text:
+        errors.append("Inventory plan could fan out into writes; apply-only downstream filter is missing")
+
+    presentation_block = _workflow_run_block(member_presentation_text)
+    if "Subscriber Decision Brief Sync" not in presentation_block:
+        errors.append("Member Presentation must run after Subscriber Decision Brief Sync")
+    for forbidden in (
+        "Daily Intelligence & Content Pipeline",
+        "Subscriber Inventory Bootstrap",
+    ):
+        if forbidden in presentation_block:
+            errors.append(
+                f"Member Presentation is racing its source again; direct workflow_run trigger found: {forbidden}"
+            )
+
+    lock_marker = "group: member-derived-notion-writes"
+    if lock_marker not in subscriber_brief_text or lock_marker not in member_presentation_text:
+        errors.append("Derived member Notion writers must share the member-derived-notion-writes lock")
+
+    if "GEMINI_API_KEY" in subscriber_brief_text or "GEMINI_API_KEY" in member_presentation_text:
+        errors.append("Derived member sync workflows must remain zero-Gemini")
+
+    for marker in (
+        "Run211",
+        "Subscriber Decision Brief Sync",
+        "Member Presentation Sync",
+        "Inventory plan",
+    ):
+        if marker not in spec_text:
+            errors.append(f"Canonical specification missing member sync marker: {marker}")
+    for marker in ("Run211", "Subscriber Decision Brief Sync", "Member Presentation Sync"):
+        if marker not in readme_text:
+            errors.append(f"README missing member sync marker: {marker}")
+
+    return errors
+
+
 def validate(root: str | Path = ".") -> list[str]:
     root_path = Path(root)
     spec_text = _read(root_path, SPEC_PATH)
@@ -147,6 +220,9 @@ def validate(root: str | Path = ".") -> list[str]:
     one_shot_text = _read(root_path, ONE_SHOT_PATH)
     daily_text = _read(root_path, DAILY_PATH)
     pending_retry_text = _read(root_path, PENDING_RETRY_PATH)
+    inventory_text = _read(root_path, INVENTORY_WORKFLOW_PATH)
+    subscriber_brief_text = _read(root_path, SUBSCRIBER_BRIEF_WORKFLOW_PATH)
+    member_presentation_text = _read(root_path, MEMBER_PRESENTATION_WORKFLOW_PATH)
 
     errors: list[str] = []
     errors.extend(runtime_layer_errors(production_source, spec_text))
@@ -158,6 +234,15 @@ def validate(root: str | Path = ".") -> list[str]:
             pending_retry_text,
             quota_text,
             spec_text,
+        )
+    )
+    errors.extend(
+        member_product_sync_errors(
+            inventory_text,
+            subscriber_brief_text,
+            member_presentation_text,
+            spec_text,
+            readme_text,
         )
     )
     return errors

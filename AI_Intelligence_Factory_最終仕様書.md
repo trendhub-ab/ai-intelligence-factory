@@ -3,6 +3,7 @@
 最終更新: 2026-09-03  
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
+Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -142,6 +143,21 @@ AI Intelligence Factoryの事業構造は次で固定する。
 
 詳細は`GEMINI_QUOTA_SETUP.md`を参照する。
 
+### 5.3 Paid member product sync — Run211
+
+会員向けNotion商品は、内部Technology/Subscriber DBから派生する表示DBを並列更新しない。Run211以降の権威ある順序は次で固定する。
+
+**Source/Product Review更新 → Subscriber Decision Brief Sync → Member Presentation Sync**
+
+- Daily / ONE-SHOT完了後は、まず`Subscriber Decision Brief Sync`が会員向けbridgeを整える。
+- `Member Presentation Sync`はその成功後だけ自動実行し、Source workflowと並列に走らせない。
+- `Subscriber Inventory Bootstrap`は**apply**のみ上記同期チェーンへ接続する。
+- **Inventory plan**は0-API/read-only契約を維持し、下流のNotion書込みを発火させない。
+- Subscriber Decision BriefとMember Presentationは`member-derived-notion-writes`で直列化し、同じ会員商品を同時更新しない。
+- この派生同期はGemini APIを使用しない。
+- `主なリスク` / `向いている用途` / `向いていない用途`等はSourceに存在する値を会員表示へ同期し、生成し直さない。
+- `関連記事`はSourceの`関連記事（内部）`に実在する確定URLがある場合だけ伝播する。Public note releaseはhuman-onlyのため、公開URLが未確定なら空欄を許容し、推測URLを生成しない。
+
 ## 6. Publication Contract / note Ready契約
 
 note投稿対象は、単にContent Intelligence側が`Ready`であるだけでは不十分。
@@ -225,8 +241,9 @@ Run210以降、CIは少なくとも次を機械検証する。
 - 現行Functional Baseline / Documentation Governance BaselineがREADMEと本仕様書で整合すること。
 - Gemini Flash safety ceiling 18、Daily PAUSED、AI Studioを最終外部実態とするquota契約が`GEMINI_QUOTA_SETUP.md`とworkflowで矛盾しないこと。
 - Pending Retry fast laneの最大3 request / 1回Reader repair契約がCanonical docsから欠落していないこと。
+- Run211以降は、Inventory apply → Subscriber Decision Brief Sync → Member Presentation Syncの派生商品同期順序と、Inventory planのread-only境界も監視する。
 
-将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
+将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約、会員商品同期契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
 
 ## 11. Repository organization
 

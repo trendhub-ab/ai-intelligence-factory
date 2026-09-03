@@ -1,4 +1,5 @@
 name: Subscriber Inventory Bootstrap
+run-name: Subscriber Inventory Bootstrap [${{ inputs.mode }}]
 
 on:
   workflow_dispatch:
