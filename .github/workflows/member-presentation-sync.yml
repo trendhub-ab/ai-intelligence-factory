@@ -22,6 +22,7 @@ on:
       - 'run213_member_topic_specificity.py'
       - 'run214_member_action_specificity.py'
       - 'run215_member_action_final_dedup.py'
+      - 'run219_member_human_language_ui.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
@@ -33,6 +34,7 @@ on:
       - 'tests/test_run213_member_topic_specificity.py'
       - 'tests/test_run214_member_action_specificity.py'
       - 'tests/test_run215_member_action_final_dedup.py'
+      - 'tests/test_run219_member_human_language_ui.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -82,6 +84,7 @@ jobs:
           python -m unittest tests/test_run213_member_topic_specificity.py
           python -m unittest tests/test_run214_member_action_specificity.py
           python -m unittest tests/test_run215_member_action_final_dedup.py
+          python -m unittest tests/test_run219_member_human_language_ui.py
 
       - name: Resolve clean member DB
         run: python provision_member_presentation_db.py
@@ -90,8 +93,8 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
 
-      - name: Sync clean member DB with final current-authority action dedup
-        run: python run215_member_action_final_dedup.py presentation
+      - name: Sync clean member DB with human-language member UI
+        run: python run219_member_human_language_ui.py presentation
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -102,8 +105,8 @@ jobs:
           MEMBER_HOME_MAX: '3'
           MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
 
-      - name: Sync readable member page bodies in reader order
-        run: python run215_member_action_final_dedup.py body
+      - name: Sync readable member page bodies in plain Japanese
+        run: python run219_member_human_language_ui.py body
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
