@@ -1,8 +1,9 @@
 # AI Intelligence Factory — 現行Production仕様
 
 最終更新: 2026-09-03  
-現行Functional Baseline: **Run211 — paid member sync ordering**  
+現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
+Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
