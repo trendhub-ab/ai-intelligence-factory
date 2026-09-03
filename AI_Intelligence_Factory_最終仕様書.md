@@ -4,6 +4,7 @@
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
+Paid Member UX Baseline: **Run212 — current-authority reviewed-copy recovery**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -158,6 +159,22 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - `主なリスク` / `向いている用途` / `向いていない用途`等はSourceに存在する値を会員表示へ同期し、生成し直さない。
 - `関連記事`はSourceの`関連記事（内部）`に実在する確定URLがある場合だけ伝播する。Public note releaseはhuman-onlyのため、公開URLが未確定なら空欄を許容し、推測URLを生成しない。
 
+### 5.4 Paid member presentation copy authority — Run212
+
+`run212_member_review_copy.py` は、Run201で監査用archiveへ移した過去Product Reviewを「現在の判断」として復活させず、読者向け説明コピーだけを限定利用するPresentation層である。
+
+- `docs/archive/repository-cleanup-2026-09-02/external-review-history/` は引き続きhistorical/audit領域であり、active `external_reviews/` namespaceへ戻さない。
+- archive由来で再利用できるのは `plain_summary` と `topic_trigger` のみ。
+- archive `plain_summary` は現在値がMember UXのdeterministic fallbackと一致する場合だけ置換できる。
+- archive `topic_trigger` は現在Topicがgenericな場合だけ置換できる。
+- 現在DBに固有の非fallback summaryがある場合は現在値を優先する。
+- archive由来の `short_rationale` / `main_risk` / `best_for` / `avoid_for` は空にしてから既存Human UXへ渡し、過去判断を現在値へ混入させない。
+- score / status / Evidence / primary URL等のCurrent Decision Intelligence stateはRun212のarchive pathから変更しない。
+- `20xx年x月時点`、`現時点`、`最新`、更新継続性を断定する等の時間依存archive copyは再利用せずFail-Safeで捨てる。
+- 将来active `external_reviews/` が存在する場合はactive reviewをarchiveより優先し、既存Run170 behaviorを維持する。
+- Member Presentation workflowはPresentation/BodyともRun212 wrapperをentrypointとする。
+- Run212はGemini/provider request pathを持たず、派生会員同期はzero-Geminiを維持する。
+
 ## 6. Publication Contract / note Ready契約
 
 note投稿対象は、単にContent Intelligence側が`Ready`であるだけでは不十分。
@@ -242,6 +259,7 @@ Run210以降、CIは少なくとも次を機械検証する。
 - Gemini Flash safety ceiling 18、Daily PAUSED、AI Studioを最終外部実態とするquota契約が`GEMINI_QUOTA_SETUP.md`とworkflowで矛盾しないこと。
 - Pending Retry fast laneの最大3 request / 1回Reader repair契約がCanonical docsから欠落していないこと。
 - Run211以降は、Inventory apply → Subscriber Decision Brief Sync → Member Presentation Syncの派生商品同期順序と、Inventory planのread-only境界も監視する。
+- Run212以降は、archive Product Reviewを再利用する場合でも読者向けcopy-onlyに限定し、現在Decision Intelligenceの判断・Evidence・risk等へ昇格させない。
 
 将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約、会員商品同期契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
 
