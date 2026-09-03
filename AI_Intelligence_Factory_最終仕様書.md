@@ -5,6 +5,7 @@
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
 Paid Member UX Baseline: **Run215 — final current-authority action dedup**  
+Paid Member Commerce/Onboarding Baseline: **Run217 — zero-API monetization readiness / member home**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -33,6 +34,8 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - 記事単体を有料note商品へ戻すことを前提にしない。
 - subscriber PIIをGitHubの集計・attribution artifactへ持ち込まない。
 - Public releaseは人間の最終操作とし、note自動化はprivate draftまで。
+- Paid memberの正規入口はRun217で定義する`AI Intelligence｜会員ホーム`とし、内部Source pageや旧Presentation DBを商品入口として案内しない。
+- LPでDigestを提供物として掲げる限り、Digest自動生成が停止中でも各月の提供サイクルを無提供にしてはならない。必要に応じて現在DBだけを使うhuman/zero-model Digestで履行する。
 
 ## 2. 運用契約
 
@@ -214,6 +217,22 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - Member Presentation workflowはPresentation/BodyともRun215 wrapperをentrypointとする。
 - Run215はGemini/provider request pathを持たず、新しい事実・評価・判断を生成しない。
 
+### 5.8 Paid member commerce / onboarding — Run217
+
+Run217は記事生成・判断ロジックを変更せず、支払後の顧客が正しい商品へ到達できる状態を固定するzero-API商品運用Baselineである。
+
+- 正規会員入口は`AI Intelligence｜会員ホーム`。
+- Member Home Page ID: `3d0479ff-dca9-819e-9da0-c951225de6b3`。
+- 現行Member Presentation DB ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`。
+- 現行Member Presentation Data Source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`。
+- 会員ホームは同じ現行Data Sourceを参照する`① 今すぐ見る3件` / `② 実務判断だけ` / `③ すべての判断DB`を基本導線とする。
+- 旧100件Presentation Data Source `ec2ac2b3-89b6-4242-89b9-e94060826fca` は`⚠️ 旧版・使用禁止｜AI・技術一覧（100件・更新停止）`へ改名済みであり、会員招待先・商品URLとして使用しない。
+- 旧DBは監査目的で保持し、Run217を理由に削除しない。
+- LP CTAはnote membershipへ接続する。入会確認後のNotion案内は内部`mlflow/mlflow` pageではなく会員ホームを使用する。
+- `会員限定Digest｜2026年9月 初回版`は現行DBの確定情報だけで作成し、Gemini/model requestを使用していない。
+- `今月の重要変化`と`今すぐ見る3件`は意味を分離する。重要変化0件の月初に、活性を演出する目的でPriority Top3を重要変化へ偽装しない。
+- 詳細Operator仕様は`docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md`を正とする。
+
 ## 6. Publication Contract / note Ready契約
 
 note投稿対象は、単にContent Intelligence側が`Ready`であるだけでは不十分。
@@ -302,6 +321,7 @@ Run210以降、CIは少なくとも次を機械検証する。
 - Run213以降は、残存generic topicの最終fallbackがcurrent `判断理由`のみに限定され、archive判断や新しいFact生成へ広がっていないこと。
 - Run214以降は、共通 `次にやること` の具体化がcurrent product contextに限定され、非template action・既存検証条件・Decision/Evidence stateを変更しないこと。
 - Run215以降は、specific `向いている用途` を維持しつつ、既知generic best-for fallbackだけをcurrent non-generic topicへ退避できる。重複解消自体を目的に新しい文脈を生成してはならない。
+- Run217以降は、README / Canonical docs / Operator仕様が正規会員ホームと現行Presentation DBを同じ値で指し、旧100件DBを現行商品として案内しないこと。
 
 将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約、会員商品同期契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
 
