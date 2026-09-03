@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve or create the API-owned clean member presentation database.
+"""Resolve the one canonical paid-member presentation database.
 
-The Factory uses an internal Notion integration. Internal integrations cannot
-create workspace-level private databases, so the database is initially created
-under an API-accessible host page. The member UI uses linked views, so this
-physical host is not part of the member navigation. A separate UI connector may
-move the database later if the API connection retains access after the move.
+Run220 removes the old "search by title, then auto-create" ambiguity from the
+normal member sync path. Production must write only to the canonical database
+that the member home actually exposes. If that database is not readable through
+the Notion integration, the sync fails closed instead of creating a new copy.
 
-Resolved IDs are written to GITHUB_ENV so the following workflow step can sync
-without hard-coded destination IDs.
+Resolved IDs are written to GITHUB_ENV for the following workflow steps.
 """
 from __future__ import annotations
 
@@ -22,6 +20,17 @@ import decision_intelligence
 
 TITLE = os.environ.get("MEMBER_PRESENTATION_DB_TITLE", "AI・技術一覧｜判断DB").strip()
 DESCRIPTION = "会員向けの判断専用DB。内部Factory項目を分離し、日本語の判断情報だけを表示します。"
+CANONICAL_DATABASE_ID = os.environ.get(
+    "MEMBER_PRESENTATION_CANONICAL_DATABASE_ID",
+    "b2787ee0-5b58-4ca7-b4eb-774f60237f1f",
+).strip()
+CANONICAL_DATA_SOURCE_ID = os.environ.get(
+    "MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID",
+    "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404",
+).strip()
+ALLOW_CREATE = os.environ.get("MEMBER_PRESENTATION_ALLOW_CREATE", "false").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 PARENT_PAGE_ID = os.environ.get(
     "MEMBER_PRESENTATION_PARENT_PAGE_ID",
     "3c5479ff-dca9-8178-867c-d9249a3ff5c8",
@@ -110,13 +119,42 @@ def _candidate_ids(item: dict[str, Any]) -> tuple[str, str] | None:
     return (db_id, ds_id) if db_id else None
 
 
-def _search_existing() -> tuple[str, str] | None:
-    """Resolve the destination by exact title and fail closed on ambiguity.
+def _resolve_canonical() -> tuple[str, str] | None:
+    """Return the pinned canonical DB only when both IDs verify exactly."""
+    if bool(CANONICAL_DATABASE_ID) != bool(CANONICAL_DATA_SOURCE_ID):
+        raise RuntimeError(
+            "Canonical member presentation IDs are incomplete; database and data source IDs must be set together."
+        )
+    if not CANONICAL_DATABASE_ID:
+        return None
 
-    Choosing the first Notion search result is unsafe because copied/legacy DBs can
-    share a title. Ambiguity must stop the sync rather than write member data into
-    an unintended database.
-    """
+    detail = requests.get(
+        f"https://api.notion.com/v1/data_sources/{CANONICAL_DATA_SOURCE_ID}",
+        headers=_headers(),
+        timeout=20,
+    )
+    if detail.status_code != 200:
+        raise RuntimeError(
+            "Canonical member presentation data source is not readable; refusing to create or select another DB "
+            f"(HTTP {detail.status_code})."
+        )
+    obj = detail.json()
+    parent_db = str((obj.get("parent") or {}).get("database_id") or "").strip()
+    if parent_db != CANONICAL_DATABASE_ID:
+        raise RuntimeError(
+            "Canonical member presentation ID mismatch: "
+            f"configured database={CANONICAL_DATABASE_ID!r} data_source_parent={parent_db!r}."
+        )
+    actual_title = _plain_title(obj)
+    if actual_title and actual_title != TITLE:
+        raise RuntimeError(
+            f"Canonical member presentation title mismatch: expected {TITLE!r}, got {actual_title!r}."
+        )
+    return CANONICAL_DATABASE_ID, CANONICAL_DATA_SOURCE_ID
+
+
+def _search_existing() -> tuple[str, str] | None:
+    """Bootstrap-only exact-title lookup; normal Production uses pinned IDs."""
     res = requests.post(
         "https://api.notion.com/v1/search",
         headers=_headers(),
@@ -135,13 +173,16 @@ def _search_existing() -> tuple[str, str] | None:
             matches.append(ids)
     if len(matches) > 1:
         raise RuntimeError(
-            f"Ambiguous member presentation DB title {TITLE!r}: found {len(matches)} exact matches. "
-            "Rename/archive legacy copies before syncing."
+            f"Ambiguous member presentation DB title {TITLE!r}: found {len(matches)} exact matches."
         )
     return matches[0] if matches else None
 
 
 def _create() -> tuple[str, str]:
+    if not ALLOW_CREATE:
+        raise RuntimeError(
+            "Automatic member presentation DB creation is disabled. Configure the canonical IDs instead."
+        )
     if not PARENT_PAGE_ID:
         raise ValueError("MEMBER_PRESENTATION_PARENT_PAGE_ID is required for an internal Notion integration")
     host = requests.get(
@@ -199,20 +240,28 @@ def _write_env(db_id: str, ds_id: str) -> None:
 def provision() -> dict[str, Any]:
     if not decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY:
         raise ValueError("NOTION_DECISION_INTELLIGENCE_API_KEY is required")
-    existing = _search_existing()
-    created = existing is None
-    db_id, ds_id = existing or _create()
-    verify = requests.get(
-        f"https://api.notion.com/v1/data_sources/{ds_id}",
-        headers=_headers(),
-        timeout=20,
-    )
-    if verify.status_code != 200:
-        raise RuntimeError(
-            f"Member presentation data source is not readable after provision: {verify.status_code}"
-        )
+
+    canonical = _resolve_canonical()
+    if canonical:
+        db_id, ds_id = canonical
+        created = False
+    else:
+        existing = _search_existing()
+        if existing:
+            db_id, ds_id = existing
+            created = False
+        else:
+            db_id, ds_id = _create()
+            created = True
+
     _write_env(db_id, ds_id)
-    return {"created": created, "database_id": db_id, "data_source_id": ds_id}
+    return {
+        "created": created,
+        "database_id": db_id,
+        "data_source_id": ds_id,
+        "canonical": bool(canonical),
+        "auto_create_enabled": ALLOW_CREATE,
+    }
 
 
 def main() -> None:
