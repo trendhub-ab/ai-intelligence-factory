@@ -1,8 +1,9 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-02  
-現行Functional Baseline: **Run199 — publish-safe note VM preflight**  
-Repository Organization Baseline: **Run200 — behavior-preserving consolidation**  
+最終更新: 2026-09-03  
+現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
+Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
+Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
 ## 0. この仕様書の位置づけ
@@ -14,9 +15,10 @@ Production Source of Truth: **`main`**
 1. `main` の実行コード、テスト、GitHub Actions workflow
 2. 本ファイルの現行Production契約
 3. `README.md` の運用・リポジトリ構造
-4. `docs/archive/` の過去Run仕様・検証記録
+4. `GEMINI_QUOTA_SETUP.md` 等の領域別Operator仕様
+5. `docs/archive/` の過去Run仕様・検証記録
 
-旧 `AI_Intelligence_Factory_最終仕様書.md` はRun122を基準にRun129まで追記された歴史仕様であり、内容を変更せず `docs/archive/specifications/AI_Intelligence_Factory_仕様書_through_Run129_2026-08-25.md` に保存する。Run130以降の挙動を旧仕様書から推測してはならない。
+旧仕様は監査用であり、Run130以降の挙動をarchive文書から推測してはならない。
 
 ## 1. 事業・商品契約
 
@@ -34,9 +36,11 @@ AI Intelligence Factoryの事業構造は次で固定する。
 
 - **Daily workflowはPAUSED。**
 - Production実行は明示的なONE-SHOT / workflow_dispatchを基本とする。
+- ChatOps ONE-SHOT BridgeはIssue #71の許可済みコマンドからのみ安全にdispatchする。
 - API・外部サービス障害時はFail-Closedまたは局所的Fail-Safeとし、成功していない処理を成功扱いしない。
 - Gemini、Notion、note、GCP等の外部状態を推測で補完しない。
 - Productionの品質条件を「処理を通すため」に緩和しない。
+- Public note releaseは引き続きhuman-only。
 
 ## 3. Core Intelligence Pipeline
 
@@ -52,7 +56,31 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - Profit/Portfolio最適化は品質閾値・Evidence・Fact条件を迂回しない
 - Observed履歴、Source ROI、deferred state等のProduction continuity dataを保持する
 
-具体的な環境変数・重み・model候補・quota値は、将来変更され得るため実行コードとworkflowの値を優先する。
+具体的な環境変数・重み・model候補・quota値は将来変更され得るため、実行コードとworkflowの値を優先する。
+
+### 3.1 Pending Retry fast lane — Run206 / Run207
+
+`pending_retry_validation.py` は、すでにScreening済みの高価値Pending Retryだけを再処理する低コストRecovery entrypointである。
+
+- fresh collection / screeningを行わない。
+- Screening Score降順で処理し、同点は既存安定順を維持する。
+- 1記事成功で即停止する。
+- 専用Gemini request budgetは**最大3回**。
+- fast laneでは1回目のHTTP 503で当該modelをそのrun中cooldownし、`provider failure → valid generation → one quality recompose`の余地を残す。
+- Persistent daily counter、global Deep Dive/run budget、Evidence/Fact/Reader/Publication gateは迂回しない。
+- Public note releaseは行わない。
+
+通常Productionのtransient 503 policyはRun205契約を維持し、fast lane専用overrideをProduction全体へ波及させない。
+
+### 3.2 Reader Value repair — Run208
+
+`run208_reader_value_repair.py` は、Pending Retry fast laneに限りReader-only failureを1回だけ再構成できる。
+
+- 対象は既存reader bridgeがrepairableと判定したReader Value理由のみ。
+- `dense_report_cluster` / `repetitive_insight` 等のReader-only失敗に限定する。
+- Fact/Evidence blocker、過剰主張、非Reader Hard/Review理由が混ざる場合は発火しない。
+- 1 processで最大1回。
+- Evidenceを削ってReady化することは禁止。
 
 ## 4. 品質・Evidence契約
 
@@ -73,6 +101,9 @@ AI Intelligence Factoryの事業構造は次で固定する。
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
 
+- `run203_runtime_state_channel.py`
+- `gemini_timeout_rpd_fail_closed.py`
+- `gemini_transient_recovery.py`
 - `run172_production_reliability.py`
 - `run173_operational_yield.py`
 - `run174_monthly_digest_integrity.py`
@@ -86,9 +117,30 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - `run182_eyecatch_conclusion_emphasis.py`
 - `run183_eyecatch_emphasis_scale.py`
 - `reader_value_review_bridge.py`
+- `run208_reader_value_repair.py`
 - `run194_publication_contract.py`
 
 これらはRun番号が古く見えても現役Production codeである。整理目的だけで削除・rename・統合してはならない。
+
+### 5.1 Runtime state — Run203
+
+`run203_runtime_state_channel.py` は、Gemini Persistent Counter等のProduction continuity stateをruntime-state channelとして扱う。
+
+- Gemini reservation前にwritability / state preflightを行う。
+- Production stateの書込み不能を楽観的に無視しない。
+- `.runtime/` は生成ゴミではなく保護対象。
+
+### 5.2 Gemini timeout RPD — Run209
+
+`gemini_timeout_rpd_fail_closed.py` は、transport/watchdog timeoutでもprovider側RPDが消費され得るというAI Studio実測に合わせ、**pre-send reservationを巻き戻さない**。
+
+- 3.5 / 3.6 / 3.7 FlashのFactory daily safety ceilingは**18**を維持する。
+- Provider上限まで使い切る方向へ変更しない。
+- timeout時の`release_unobserved`はProduction RPD残量を増やす目的には使わない。
+- 過去の`released_unobserved`は監査履歴として残り得る。
+- Google AI Studio Rate LimitsのProject-wide表示を最終的な外部実態として優先する。
+
+詳細は`GEMINI_QUOTA_SETUP.md`を参照する。
 
 ## 6. Publication Contract / note Ready契約
 
@@ -160,13 +212,24 @@ note draft pathはGemini/model requestを行わない。
 - `tests/`のRun番号付きtestは、古い名前だけを理由に削除しない。現在のinvariantを検証している可能性がある。
 - similarly named workflowも役割を確認してから扱う。
 - Production codeのsemantic refactorはrepository cleanupとは分離する。
-- main反映前にRepository-wide Falsification Guardと関連CIを通す。
+- main反映前にRepository-wide Falsification Guard、zero-API regression、Synthetic smoke、関連CIを通す。
 - Cleanup PRでproduction Pythonの削除・renameを行う場合は、別途明示的なequivalence proofが必要。
+
+### 10.1 Documentation Freshness Guard — Run210
+
+Canonical documentationを「後で更新する」運用は禁止する。Production変更と仕様更新を同一変更セットで扱う。
+
+Run210以降、CIは少なくとも次を機械検証する。
+
+- `production_pipeline.py`のactive runtime layerが本仕様書にすべて記載されていること。
+- 現行Functional Baseline / Documentation Governance BaselineがREADMEと本仕様書で整合すること。
+- Gemini Flash safety ceiling 18、Daily PAUSED、AI Studioを最終外部実態とするquota契約が`GEMINI_QUOTA_SETUP.md`とworkflowで矛盾しないこと。
+- Pending Retry fast laneの最大3 request / 1回Reader repair契約がCanonical docsから欠落していないこと。
+
+将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
 
 ## 11. Repository organization
 
 rootは現在のoperator/canonical documentsと実行entrypointを優先し、過去Runの説明資料は`docs/archive/`へ置く。
 
-Run200の整理内容と「意図的に整理しなかったもの」は次を参照する。
-
-`docs/archive/repository-cleanup-2026-09-02/REPOSITORY_CLEANUP_MANIFEST_2026-09-02.md`
+Run200/201の整理内容と「意図的に整理しなかったもの」は`docs/archive/repository-cleanup-2026-09-02/`配下を参照する。
