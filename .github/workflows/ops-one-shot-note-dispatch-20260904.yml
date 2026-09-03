@@ -1,4 +1,4 @@
-name: Ops Dispatch note Ready Sync after repair 2026-09-04
+name: Ops Dispatch real private note Draft 2026-09-04
 
 on:
   push:
@@ -15,10 +15,15 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch existing Note Ready Article Sync workflow on main
+      - name: Dispatch existing Create note Draft workflow on main for repaired Polars article
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run note-ready-sync.yml --repo "$GITHUB_REPOSITORY" --ref main
-          echo 'Dispatched note-ready-sync.yml on main after byte-exact repair.'
+          gh workflow run note-create-draft.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f confirm=CREATE_NOTE_DRAFT \
+            -f sync_id=3d0479ffdca9811aad6fc525655c21ff \
+            -f prepare_only=false
+          echo 'Dispatched one private note draft for Polars current Ready article.'
