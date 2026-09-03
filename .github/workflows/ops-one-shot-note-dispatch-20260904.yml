@@ -1,4 +1,4 @@
-name: Ops One-shot note Ready Sync 2026-09-04
+name: Ops Diagnose note Publication Contract 2026-09-04
 
 on:
   push:
@@ -9,18 +9,67 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
-  dispatch:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch existing Note Ready Article Sync workflow on main
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Inspect current publication contract and persisted Polars Ready blocks
         env:
-          GH_TOKEN: ${{ github.token }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
         run: |
           set -euo pipefail
-          gh workflow run note-ready-sync.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref main
-          echo 'Dispatched note-ready-sync.yml on main.'
+          echo '--- publication overlay installation references ---'
+          grep -nE 'run194_publication_contract|publication_contract.*install|install\(pipeline' production_pipeline.py pipeline.py || true
+          python - <<'PY'
+          import hashlib, os, requests
+          import publication_contract as pc
+
+          page_id = '3d0479ffdca9811aad6fc525655c21ff'
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json',
+          }
+          current = pc.policy_sha256()
+          print('CURRENT_CONTRACT', pc.CONTRACT_ID)
+          print('CURRENT_POLICY_SHA256', current)
+          url = f'https://api.notion.com/v1/blocks/{page_id}/children?page_size=100'
+          rows = []
+          while url:
+              r = requests.get(url, headers=headers, timeout=30)
+              print('NOTION_HTTP', r.status_code)
+              r.raise_for_status()
+              data = r.json()
+              rows.extend(data.get('results') or [])
+              cursor = data.get('next_cursor') if data.get('has_more') else None
+              url = f'https://api.notion.com/v1/blocks/{page_id}/children?page_size=100&start_cursor={cursor}' if cursor else ''
+          ready_count = 0
+          for i, block in enumerate(rows):
+              if block.get('type') != 'code':
+                  continue
+              code = block.get('code') or {}
+              cap = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('caption') or []))
+              if not pc.is_ready_family_caption(cap):
+                  continue
+              body = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('rich_text') or []))
+              ready_count += 1
+              fields = pc._caption_fields(cap)
+              print('READY_BLOCK_INDEX', i)
+              print('CAPTION', cap)
+              print('STORED_POLICY_SHA256', fields.get('policy_sha256',''))
+              print('STORED_MANUSCRIPT_SHA256', fields.get('manuscript_sha256',''))
+              print('ACTUAL_BODY_SHA256', pc.manuscript_sha256(body))
+              print('POLICY_MATCH', fields.get('policy_sha256','') == current)
+              print('BODY_MATCH', fields.get('manuscript_sha256','') == pc.manuscript_sha256(body))
+              print('IS_CURRENT_READY_BLOCK', pc.is_current_ready_block(body, cap))
+              print('BODY_LEN', len(body))
+          print('READY_FAMILY_BLOCKS', ready_count)
+          PY
