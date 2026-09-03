@@ -5,7 +5,8 @@
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
 Paid Member UX Baseline: **Run215 — final current-authority action dedup**  
-Paid Member Commerce/Onboarding Baseline: **Run217 — zero-API monetization readiness / member home**  
+Paid Member Commerce/Onboarding Baseline: **Run217 — zero-API monetization readiness / product fulfillment**  
+Paid Member Navigation/UI Baseline: **Run218 — PC-first member UX reconciliation**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -34,7 +35,8 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - 記事単体を有料note商品へ戻すことを前提にしない。
 - subscriber PIIをGitHubの集計・attribution artifactへ持ち込まない。
 - Public releaseは人間の最終操作とし、note自動化はprivate draftまで。
-- Paid memberの正規入口はRun217で定義する`AI Intelligence｜会員ホーム`とし、内部Source pageや旧Presentation DBを商品入口として案内しない。
+- Paid memberの正規入口はRun218で定義する`AI Decision Intelligence｜会員ホーム`（Page ID `3c5479ff-dca9-8103-bff0-f2d5f408d35f`）とし、内部Source page、Run217で作成した旧ホーム、旧Presentation DBを商品入口として案内しない。
+- PCを会員利用の主画面とし、mobile/simple viewは補助導線として扱う。
 - LPでDigestを提供物として掲げる限り、Digest自動生成が停止中でも各月の提供サイクルを無提供にしてはならない。必要に応じて現在DBだけを使うhuman/zero-model Digestで履行する。
 
 ## 2. 運用契約
@@ -219,19 +221,35 @@ AI Intelligence Factoryの事業構造は次で固定する。
 
 ### 5.8 Paid member commerce / onboarding — Run217
 
-Run217は記事生成・判断ロジックを変更せず、支払後の顧客が正しい商品へ到達できる状態を固定するzero-API商品運用Baselineである。
+Run217は記事生成・判断ロジックを変更せず、現行会員DB・Digest履行・旧100件DB隔離をzero-APIで確認した商品運用Baselineである。Run217で新設した並行ホームを正規入口とした判断はRun218で訂正された。
 
-- 正規会員入口は`AI Intelligence｜会員ホーム`。
-- Member Home Page ID: `3d0479ff-dca9-819e-9da0-c951225de6b3`。
 - 現行Member Presentation DB ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`。
 - 現行Member Presentation Data Source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`。
-- 会員ホームは同じ現行Data Sourceを参照する`① 今すぐ見る3件` / `② 実務判断だけ` / `③ すべての判断DB`を基本導線とする。
-- 旧100件Presentation Data Source `ec2ac2b3-89b6-4242-89b9-e94060826fca` は`⚠️ 旧版・使用禁止｜AI・技術一覧（100件・更新停止）`へ改名済みであり、会員招待先・商品URLとして使用しない。
+- 旧100件Presentation Data Source `ec2ac2b3-89b6-4242-89b9-e94060826fca` は`⚠️ 旧版・使用禁止｜AI・技術一覧（100件・更新停止）`であり、会員招待先・商品URLとして使用しない。
 - 旧DBは監査目的で保持し、Run217を理由に削除しない。
-- LP CTAはnote membershipへ接続する。入会確認後のNotion案内は内部`mlflow/mlflow` pageではなく会員ホームを使用する。
+- Run217で作成したPage ID `3d0479ff-dca9-819e-9da0-c951225de6b3` は現在`【旧・統合済み】AI Intelligence｜会員ホーム`であり、新規会員入口として使用しない。
+- LP CTAはnote membershipへ接続する。入会確認後のNotion案内はRun218の正規会員ホームを使用する。
 - `会員限定Digest｜2026年9月 初回版`は現行DBの確定情報だけで作成し、Gemini/model requestを使用していない。
-- `今月の重要変化`と`今すぐ見る3件`は意味を分離する。重要変化0件の月初に、活性を演出する目的でPriority Top3を重要変化へ偽装しない。
-- 詳細Operator仕様は`docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md`を正とする。
+- `今月の重要変化`とPriorityは意味を分離する。表示を埋める目的で重要変化フラグを偽装しない。
+- 詳細履歴は`docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md`を参照する。
+
+### 5.9 Paid member navigation / UI — Run218
+
+Run218は実際の会員利用画面をPC中心の顧客行動で再監査し、Run217で残った情報設計ミスを訂正するCurrent Navigation/UI Baselineである。
+
+- 正規会員入口は`AI Decision Intelligence｜会員ホーム`。
+- Member Home Page ID: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`。
+- **PC-first**を原則とし、mobile/simple viewは補助導線へ限定する。
+- ホーム最上位のTop3は固定カードではなく、現行Data Sourceの`注目順位 <= 3`に追随する**live Top3**とする。
+- 「導入・お試し候補」は100件超の広域リストへ戻さず、高優先の実務候補を短く比較できるShortlistとして維持する。
+- `全件検索｜PC`、判断別、分野別、判断ボード、評価上昇、Deep Tech等の主要viewは意思決定に必要な会員向け列を優先し、internal sync identifierを通常表示しない。
+- `今月の重要変化` source semanticsは維持する。0件を埋める目的でcheckboxやscore changeを改変しない。
+- 月次重要変化が0件でも、既存authoritative historyに`評価の変化 >= 20`または`<= -20`が存在する場合は、`最近の大きな評価変化｜PC`としてpresentation-onlyで表示できる。これは重要変化フラグの変更ではない。
+- primary customer surfaceに説明のない空表を置かない。authoritativeな代替表示が定義できない真の0件時は、空白テーブルではなく意味のあるempty-state説明を表示する。
+- 現行Presentation DBとDigestは正規会員ホーム配下に置き、個別技術ページの通常パンくずに内部`mlflow/mlflow` source recordを出さない。
+- 手書きTop3、固定総件数、固定Shortlist件数、固定「今月0件」のような同期で陳腐化するevergreen copyを会員ホームのauthorityにしない。
+- Run218はGemini/model APIを使用せず、Decision score / judgment / Evidence / article generation / Daily状態を変更しない。
+- 詳細Operator仕様は`docs/reference/RUN218_MEMBER_UX_RECONCILIATION.md`を正とする。
 
 ## 6. Publication Contract / note Ready契約
 
@@ -321,9 +339,12 @@ Run210以降、CIは少なくとも次を機械検証する。
 - Run213以降は、残存generic topicの最終fallbackがcurrent `判断理由`のみに限定され、archive判断や新しいFact生成へ広がっていないこと。
 - Run214以降は、共通 `次にやること` の具体化がcurrent product contextに限定され、非template action・既存検証条件・Decision/Evidence stateを変更しないこと。
 - Run215以降は、specific `向いている用途` を維持しつつ、既知generic best-for fallbackだけをcurrent non-generic topicへ退避できる。重複解消自体を目的に新しい文脈を生成してはならない。
-- Run217以降は、README / Canonical docs / Operator仕様が正規会員ホームと現行Presentation DBを同じ値で指し、旧100件DBを現行商品として案内しないこと。
+- Run217の商品履行契約では旧100件DB隔離とDigest履行を維持し、Run217で作成した並行ホームを再び正規入口へ昇格させない。
+- Run218以降は、README / Canonical docs / Operator仕様が`AI Decision Intelligence｜会員ホーム`、Page ID `3c5479ff-dca9-8103-bff0-f2d5f408d35f`、現行Presentation DBを同じ値で指すこと。
+- Run218以降はPC-first / mobile-secondary、live Top3、旧Run217ホーム禁止、legacy DB禁止、重要変化source semanticsとpresentation fallbackの分離を維持する。
+- 会員向け主要画面を説明のない空表へ退行させたり、空表回避のために`今月の重要変化`等のauthority fieldを捏造・改変してはならない。
 
-将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約、会員商品同期契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
+将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約、会員商品同期契約、会員Navigation/UI契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
 
 ## 11. Repository organization
 
