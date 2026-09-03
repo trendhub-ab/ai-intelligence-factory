@@ -28,7 +28,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          playwright install-deps chromium
 
       - name: Update canonical specification and finalize Run223 boundary guards
         run: python run223_sync_spec_temp.py
@@ -50,10 +49,15 @@ jobs:
       - name: Run repository-wide falsification guard
         run: python repository_falsification_guard.py
 
-      - name: Run full zero-API unittest regression
+      - name: Run full zero-API unittest regression with failure tail
         env:
           SYNTHETIC_REGRESSION_MODE: '1'
-        run: python -m unittest discover -s tests -v
+        run: |
+          set +e
+          python -m unittest discover -s tests -v > /tmp/run223_full_unittest.log 2>&1
+          rc=$?
+          tail -n 300 /tmp/run223_full_unittest.log
+          exit $rc
 
       - name: Run synthetic smoke through current production stack
         env:
