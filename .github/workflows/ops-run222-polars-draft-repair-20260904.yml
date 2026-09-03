@@ -1,0 +1,414 @@
+name: Ops Run222 Polars Draft Repair 2026-09-04
+
+on:
+  push:
+    branches:
+      - ops-run222-polars-draft-repair-20260904
+    paths:
+      - '.github/workflows/ops-run222-polars-draft-repair-20260904.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  restamp-current-manuscript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - run: pip install requests
+
+      - name: Deterministically rebuild and restamp Polars manuscript under Run222
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import os
+          from urllib.parse import urlencode
+          import requests
+          import publication_contract as pc
+          import run222_note_presentation_integrity as run222
+
+          PAGE_ID = '3d0479ffdca9811aad6fc525655c21ff'
+          EXPECTED_PRE_RUN222_SHA = '7a8653b8b9855c36a5bd780d752109b387da8ced711046a8b42c2c9b7759937a'
+          LIMIT = 1900
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json',
+          }
+
+          def req(method, url, **kwargs):
+              r = requests.request(method, url, headers=headers, timeout=30, **kwargs)
+              r.raise_for_status()
+              return r
+
+          page = req('GET', f'https://api.notion.com/v1/pages/{PAGE_ID}').json()
+          props = page.get('properties') or {}
+          status_prop = props.get('記事状態') or {}
+          status = str(((status_prop.get('select') or {}).get('name')) or ((status_prop.get('status') or {}).get('name')) or '')
+          if status != 'Ready':
+              raise SystemExit(f'source page is not Ready: {status!r}')
+
+          def blocks():
+              out = []
+              cursor = ''
+              while True:
+                  query = {'page_size': 100}
+                  if cursor:
+                      query['start_cursor'] = cursor
+                  data = req('GET', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children?{urlencode(query)}').json()
+                  out.extend(data.get('results') or [])
+                  if not data.get('has_more'):
+                      return out
+                  cursor = str(data.get('next_cursor') or '')
+                  if not cursor:
+                      return out
+
+          def caption(block):
+              if block.get('type') != 'code':
+                  return ''
+              return ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in ((block.get('code') or {}).get('caption') or []))
+
+          def body(block):
+              if block.get('type') != 'code':
+                  return ''
+              return ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in ((block.get('code') or {}).get('rich_text') or []))
+
+          existing_current = []
+          pre_run222 = []
+          for block in blocks():
+              b = body(block)
+              c = caption(block)
+              if b and pc.is_current_ready_block(b, c):
+                  existing_current.append(b)
+              if b and pc.is_ready_family_caption(c) and hashlib.sha256(b.encode('utf-8')).hexdigest() == EXPECTED_PRE_RUN222_SHA:
+                  pre_run222.append(b)
+
+          if existing_current:
+              rebuilt = existing_current[-1]
+              if run222.move_subscription_cta_after_evidence(rebuilt) != rebuilt:
+                  raise SystemExit('current Run222 manuscript still has pre-Run222 footer order')
+              print('RESTAMP_ALREADY_CURRENT', True)
+              print('CURRENT_POLICY_SHA256', pc.policy_sha256())
+              print('CURRENT_MANUSCRIPT_SHA256', pc.manuscript_sha256(rebuilt))
+              raise SystemExit(0)
+
+          if not pre_run222:
+              raise SystemExit('authoritative pre-Run222 Polars manuscript not found by exact SHA')
+          source = pre_run222[-1]
+          if len(source) != 3665:
+              raise SystemExit(f'unexpected pre-Run222 manuscript length: {len(source)}')
+
+          rebuilt = run222.move_subscription_cta_after_evidence(source)
+          if rebuilt == source:
+              raise SystemExit('Run222 deterministic rebuild made no footer-order change')
+          if '### Sources / Evidence' not in rebuilt or '### 「自分はどうする？」まで判断したい方へ' not in rebuilt:
+              raise SystemExit('required Sources/CTA headings missing after rebuild')
+          if rebuilt.index('### Sources / Evidence') > rebuilt.index('### 「自分はどうする？」まで判断したい方へ'):
+              raise SystemExit('Run222 footer order is still incorrect')
+          disclaimer = '※本記事に含まれる見解・提案は筆者個人の意見'
+          if disclaimer not in rebuilt or rebuilt.index(disclaimer) > rebuilt.index('### 「自分はどうする？」まで判断したい方へ'):
+              raise SystemExit('disclaimer does not precede CTA after rebuild')
+
+          current_caption = pc.current_ready_caption(rebuilt)
+          segments = [rebuilt[i:i + LIMIT] for i in range(0, len(rebuilt), LIMIT)]
+          if ''.join(segments) != rebuilt:
+              raise SystemExit('lossless segmentation assertion failed')
+
+          payload = {
+              'children': [{
+                  'object': 'block',
+                  'type': 'code',
+                  'code': {
+                      'rich_text': [{'type': 'text', 'text': {'content': segment}} for segment in segments],
+                      'language': 'markdown',
+                      'caption': [{'type': 'text', 'text': {'content': current_caption}}],
+                  },
+              }]
+          }
+          write = req('PATCH', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children', json=payload).json()
+          created_ids = [str(x.get('id') or '') for x in (write.get('results') or []) if x.get('id')]
+          if not created_ids:
+              raise SystemExit('Notion returned no created Ready block id')
+
+          verified = False
+          for block in blocks():
+              if str(block.get('id') or '') not in created_ids:
+                  continue
+              b = body(block)
+              c = caption(block)
+              if b == rebuilt and pc.is_current_ready_block(b, c):
+                  verified = True
+                  break
+          if not verified:
+              for block_id in created_ids:
+                  try:
+                      requests.delete(f'https://api.notion.com/v1/blocks/{block_id}', headers=headers, timeout=30)
+                  except Exception:
+                      pass
+              raise SystemExit('current Run222 Ready block failed byte-exact Notion readback')
+
+          print('RUN222_RESTAMP_VERIFIED', True)
+          print('CURRENT_POLICY_SHA256', pc.policy_sha256())
+          print('CURRENT_MANUSCRIPT_SHA256', pc.manuscript_sha256(rebuilt))
+          print('CURRENT_MANUSCRIPT_LENGTH', len(rebuilt))
+          PY
+
+      - name: Reconcile note Ready metadata after current-policy restamp
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python note_ready_sync.py
+
+  start-cloud-vm:
+    needs: restamp-current-manuscript
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  repair-existing-private-draft:
+    needs: [restamp-current-manuscript, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+
+      - name: Update existing Polars private draft in place and verify rendered order
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          xvfb-run -a python - <<'PY'
+          from __future__ import annotations
+          import os
+          from urllib.parse import urlencode
+          import requests
+          from playwright.sync_api import sync_playwright
+          import note_draft_automation as base
+          import publication_contract as pc
+          import run187_note_editor_readiness as run187
+          import run190_note_persistent_cloud as cloud
+          import run222_note_presentation_integrity as run222
+
+          PAGE_ID = '3d0479ffdca9811aad6fc525655c21ff'
+          DEST_PAGE_ID = '3d0479ffdca981cd9e4ad21d17bc166d'
+          DRAFT_URL = 'https://editor.note.com/notes/n2eca77886891/edit/'
+          NOTE_ID = 'n2eca77886891'
+          TITLE = 'Polars 2.0が目指す「静かな進化」は、なぜデータ開発の現場に大きな影響を与えるのか。'
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json',
+          }
+
+          def req(method, url, **kwargs):
+              r = requests.request(method, url, headers=headers, timeout=30, **kwargs)
+              r.raise_for_status()
+              return r
+
+          def blocks():
+              out = []
+              cursor = ''
+              while True:
+                  query = {'page_size': 100}
+                  if cursor:
+                      query['start_cursor'] = cursor
+                  data = req('GET', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children?{urlencode(query)}').json()
+                  out.extend(data.get('results') or [])
+                  if not data.get('has_more'):
+                      return out
+                  cursor = str(data.get('next_cursor') or '')
+                  if not cursor:
+                      return out
+
+          current = []
+          for block in blocks():
+              if block.get('type') != 'code':
+                  continue
+              code = block.get('code') or {}
+              body = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('rich_text') or []))
+              caption = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('caption') or []))
+              if body and pc.is_current_ready_block(body, caption):
+                  current.append(body)
+          if not current:
+              raise SystemExit('no byte-valid current Run222 manuscript exists after restamp')
+          canonical = current[-1]
+          presentation = run222.prepare_note_editor_manuscript(canonical, TITLE)
+          if presentation.startswith('# '):
+              raise SystemExit('presentation still starts with raw H1')
+          source_heading = 'Sources / Evidence'
+          cta_heading = '「自分はどうする？」まで判断したい方へ'
+          disclaimer = '※本記事に含まれる見解・提案は筆者個人の意見'
+          for token in (source_heading, cta_heading, disclaimer):
+              if token not in presentation:
+                  raise SystemExit(f'presentation missing required token: {token}')
+          if not (presentation.index(source_heading) < presentation.index(disclaimer) < presentation.index(cta_heading)):
+              raise SystemExit('presentation trust/CTA order is incorrect before browser write')
+
+          base.ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+          with sync_playwright() as playwright:
+              context = cloud._launch_persistent_context(playwright)
+              pages = list(context.pages)
+              page = pages[0] if pages else context.new_page()
+              page.set_default_timeout(30000)
+              try:
+                  page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                  page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      if not cloud._seed_note_state(context, page):
+                          raise base.NoteAuthenticationExpired('persistent note session is not authenticated')
+                      page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                      page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      raise base.NoteAuthenticationExpired('note login did not recover')
+                  if not run187._is_editor_url(str(page.url or '')) or NOTE_ID not in str(page.url or ''):
+                      raise base.NoteDraftError('browser did not open the expected existing note draft editor')
+
+                  title_field = base._find_title(page)
+                  if title_field is None:
+                      raise base.NoteDraftError('note title field not found')
+                  current_title = (title_field.input_value() if title_field.evaluate("el => ['INPUT','TEXTAREA'].includes(el.tagName)") else title_field.inner_text()).strip()
+                  if current_title != TITLE:
+                      raise base.NoteDraftError(f'existing draft title mismatch: {current_title!r}')
+
+                  body = base._find_body(page, title_field)
+                  base._paste_manuscript(page, body, presentation)
+                  body = base._find_body(page, title_field)
+                  base._verify_body_content(body, presentation)
+                  saved_url = base._save_draft_and_verify(page, TITLE, presentation, image_required=False)
+                  if NOTE_ID not in saved_url:
+                      raise base.NoteDraftError('save verification returned a different draft URL')
+
+                  title_field = base._find_title(page)
+                  body = base._find_body(page, title_field)
+                  visible = body.inner_text().strip()
+                  if visible.startswith('#') or '\n# ' in visible:
+                      raise base.NoteDraftError('raw Markdown # remains visible after reload')
+                  if TITLE in visible[:250]:
+                      raise base.NoteDraftError('duplicate article title remains in note body after reload')
+                  for token in (source_heading, cta_heading, disclaimer):
+                      if token not in visible:
+                          raise base.NoteDraftError(f'rendered note body missing required token: {token}')
+                  if not (visible.index(source_heading) < visible.index(disclaimer) < visible.index(cta_heading)):
+                      raise base.NoteDraftError('rendered note body trust/CTA order is incorrect')
+
+                  req('PATCH', f'https://api.notion.com/v1/pages/{DEST_PAGE_ID}', json={
+                      'properties': {
+                          '品質状態': {'select': {'name': 'Ready'}},
+                          '投稿状態': {'select': {'name': '投稿準備中'}},
+                      }
+                  })
+                  print('EXISTING_DRAFT_UPDATED_IN_PLACE', True)
+                  print('NOTE_ID', NOTE_ID)
+                  print('ZERO_GEMINI_CALLS', True)
+                  print('RENDERED_ORDER_VERIFIED', True)
+                  print('DUPLICATE_H1_REMOVED', True)
+              except Exception:
+                  try:
+                      page.screenshot(path=str(base.ARTIFACT_DIR / 'run222_existing_draft_repair_failure.png'), full_page=False)
+                  except Exception:
+                      pass
+                  raise
+              finally:
+                  context.close()
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [restamp-current-manuscript, start-cloud-vm, repair-existing-private-draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+
+      - name: Stop persistent note Chrome VM
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
