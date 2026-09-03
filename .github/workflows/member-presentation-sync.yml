@@ -3,9 +3,10 @@ name: Member Presentation Sync
 on:
   workflow_dispatch:
   workflow_run:
+    # The presentation DB is derived from the Subscriber Technology/Decision Brief bridge.
+    # Run only after that bridge has finished so we never race a source update.
     workflows:
-      - Daily Intelligence & Content Pipeline
-      - Daily Intelligence & Content Pipeline [ONE-SHOT]
+      - Subscriber Decision Brief Sync
     types: [completed]
   push:
     branches: [main]
@@ -23,11 +24,12 @@ on:
       - 'tests/test_run169_1_member_body_fast.py'
       - 'tests/test_run170_member_human_language_ux.py'
       - 'tests/test_run170_1_member_copy_role_separation.py'
+      - 'tests/test_run211_member_sync_ordering.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # This workflow and Subscriber Decision Brief write the same member product through
 # NOTION_DECISION_INTELLIGENCE_API_KEY. Keep a single cross-workflow writer lock so
-# ONE-SHOT/push fan-out cannot create a Notion request burst or interleaved writes.
+# source->brief->presentation writes cannot overlap or leave stale member rows.
 concurrency:
   group: member-derived-notion-writes
   cancel-in-progress: false
@@ -64,6 +66,7 @@ jobs:
           python -m unittest tests/test_run169_1_member_body_fast.py
           python -m unittest tests/test_run170_member_human_language_ux.py
           python -m unittest tests/test_run170_1_member_copy_role_separation.py
+          python -m unittest tests/test_run211_member_sync_ordering.py
 
       - name: Resolve clean member DB
         run: python provision_member_presentation_db.py
