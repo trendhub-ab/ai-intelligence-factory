@@ -1,4 +1,4 @@
-name: Ops Inspect manuscript persistence source 2026-09-04
+name: Ops Inspect safe chunking 2026-09-04
 
 on:
   push:
@@ -17,17 +17,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: main
-      - name: Show manuscript persistence code
+      - name: Show safe_chunk_text implementation and usages
         run: |
           set -euo pipefail
-          echo '=== symbol locations ==='
-          grep -nE 'def build_notion_manuscript_children|def _notion_page_manuscript_blocks|def _notion_code_caption|def upgrade_notion_page_with_report|MANUSCRIPT_CAPTION_READY|rich_text.*2000|\[:2000\]' pipeline.py | head -120 || true
-          for sym in build_notion_manuscript_children _notion_page_manuscript_blocks upgrade_notion_page_with_report; do
-            line=$(grep -n "def ${sym}" pipeline.py | head -1 | cut -d: -f1 || true)
-            if [ -n "$line" ]; then
-              start=$((line-25)); [ "$start" -lt 1 ] && start=1
-              end=$((line+150))
-              echo "=== ${sym} lines ${start}-${end} ==="
-              sed -n "${start},${end}p" pipeline.py
-            fi
-          done
+          line=$(grep -n '^def safe_chunk_text' pipeline.py | head -1 | cut -d: -f1)
+          start=$((line-20)); [ "$start" -lt 1 ] && start=1
+          end=$((line+100))
+          echo "SAFE_CHUNK_LINE=$line"
+          sed -n "${start},${end}p" pipeline.py
+          echo '=== usages ==='
+          grep -R -n 'safe_chunk_text(' --exclude-dir=.git . | head -80
