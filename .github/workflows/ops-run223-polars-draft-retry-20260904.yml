@@ -1,0 +1,259 @@
+name: Ops Run223 Polars Draft Retry 2026-09-04
+
+on:
+  push:
+    branches:
+      - ops-run223-polars-audit-repair-20260904
+    paths:
+      - '.github/workflows/ops-run223-polars-draft-retry-20260904.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  start-cloud-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing repository variable: ${name}"; exit 1; }
+          done
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  repair-existing-private-draft:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install persistent Chrome dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Update same private draft and verify rendered content
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          xvfb-run -a python - <<'PY'
+          from __future__ import annotations
+          import os
+          from urllib.parse import urlencode
+          import requests
+          from playwright.sync_api import sync_playwright
+          import note_draft_automation as base
+          import publication_contract as pc
+          import run187_note_editor_readiness as run187
+          import run190_note_persistent_cloud as cloud
+          import run222_note_presentation_integrity as run222
+
+          PAGE_ID = '3d0479ffdca9811aad6fc525655c21ff'
+          DEST_PAGE_ID = '3d0479ffdca981cd9e4ad21d17bc166d'
+          DRAFT_URL = 'https://editor.note.com/notes/n2eca77886891/edit/'
+          NOTE_ID = 'n2eca77886891'
+          TITLE = 'Polars 2.0が目指す「静かな進化」は、なぜデータ開発の現場に大きな影響を与えるのか。'
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json',
+          }
+
+          def req(method, url, **kwargs):
+              r = requests.request(method, url, headers=headers, timeout=30, **kwargs)
+              r.raise_for_status()
+              return r
+
+          def blocks():
+              out, cursor = [], ''
+              while True:
+                  query = {'page_size': 100}
+                  if cursor:
+                      query['start_cursor'] = cursor
+                  data = req('GET', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children?{urlencode(query)}').json()
+                  out.extend(data.get('results') or [])
+                  if not data.get('has_more'):
+                      return out
+                  cursor = str(data.get('next_cursor') or '')
+                  if not cursor:
+                      return out
+
+          current = []
+          for block in blocks():
+              if block.get('type') != 'code':
+                  continue
+              code = block.get('code') or {}
+              body = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('rich_text') or []))
+              caption = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('caption') or []))
+              if body and pc.is_current_ready_block(body, caption):
+                  current.append(body)
+          if not current:
+              raise SystemExit('no byte-valid current Run223 Polars manuscript exists')
+
+          canonical = current[-1]
+          presentation = run222.prepare_note_editor_manuscript(canonical, TITLE)
+          presentation_plain = presentation.replace('**', '')
+
+          must_have = (
+              '公開・更新: 2026-09-02',
+              'maintain_order="left"',
+              '一部の暗黙的な型変換をより厳格にし',
+              '5倍程度の高速化を期待している',
+              '実際の改善幅は処理内容や実行環境によって変わります',
+              'ストリーミング処理による高速化・省メモリ化の恩恵',
+              'Sources / Evidence',
+              '「自分はどうする？」まで判断したい方へ',
+          )
+          forbidden = (
+              '公開・更新: 2026-09-03',
+              '著者の試算では、集計処理などで全体として5倍近く高速化',
+              '勝手に省メモリで速くなる',
+              '曖昧な型変換を禁止',
+              'AIが20分間実行した挙動',
+              'ストリーミング処理によるな処理速度',
+          )
+          for token in must_have:
+              if token not in presentation_plain:
+                  raise SystemExit(f'presentation missing approved token before browser write: {token}')
+          if any(token in presentation_plain for token in forbidden):
+              raise SystemExit('presentation still contains an audited rejected phrase')
+
+          base.ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+          with sync_playwright() as playwright:
+              context = cloud._launch_persistent_context(playwright)
+              page = list(context.pages)[0] if context.pages else context.new_page()
+              page.set_default_timeout(30000)
+              try:
+                  page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                  page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      if not cloud._seed_note_state(context, page):
+                          raise base.NoteAuthenticationExpired('persistent note session is not authenticated')
+                      page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                      page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      raise base.NoteAuthenticationExpired('note login did not recover')
+                  if not run187._is_editor_url(str(page.url or '')) or NOTE_ID not in str(page.url or ''):
+                      raise base.NoteDraftError('browser did not open the expected existing Polars draft')
+
+                  title_field = base._find_title(page)
+                  if title_field is None:
+                      raise base.NoteDraftError('note title field not found')
+                  current_title = (title_field.input_value() if title_field.evaluate("el => ['INPUT','TEXTAREA'].includes(el.tagName)") else title_field.inner_text()).strip()
+                  if current_title != TITLE:
+                      raise base.NoteDraftError(f'existing draft title mismatch: {current_title!r}')
+
+                  body = base._find_body(page, title_field)
+                  base._paste_manuscript(page, body, presentation)
+                  body = base._find_body(page, title_field)
+                  base._verify_body_content(body, presentation)
+                  saved_url = base._save_draft_and_verify(page, TITLE, presentation, image_required=False)
+                  if NOTE_ID not in saved_url:
+                      raise base.NoteDraftError('save verification returned a different note ID')
+
+                  page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                  page.wait_for_timeout(1200)
+                  title_field = base._find_title(page)
+                  if title_field is None:
+                      raise base.NoteDraftError('title field missing on readback')
+                  body = base._find_body(page, title_field)
+                  visible = body.inner_text().strip()
+                  if visible.startswith('#') or '\n# ' in visible:
+                      raise base.NoteDraftError('raw Markdown H1 remains visible')
+                  if TITLE in visible[:250]:
+                      raise base.NoteDraftError('duplicate title remains in note body')
+                  for token in must_have:
+                      if token not in visible:
+                          raise base.NoteDraftError(f'rendered note body missing audited token: {token}')
+                  if any(token in visible for token in forbidden):
+                      raise base.NoteDraftError('rendered note body contains an audited rejected phrase')
+
+                  source_heading = 'Sources / Evidence'
+                  disclaimer = '※本記事に含まれる見解・提案は筆者個人の意見'
+                  cta_heading = '「自分はどうする？」まで判断したい方へ'
+                  if not (visible.index(source_heading) < visible.index(disclaimer) < visible.index(cta_heading)):
+                      raise base.NoteDraftError('Sources/disclaimer/CTA order regressed')
+
+                  req('PATCH', f'https://api.notion.com/v1/pages/{DEST_PAGE_ID}', json={
+                      'properties': {
+                          '品質状態': {'select': {'name': 'Ready'}},
+                          '投稿状態': {'select': {'name': '投稿準備中'}},
+                      }
+                  })
+                  print('EXISTING_DRAFT_UPDATED_IN_PLACE', True)
+                  print('NOTE_ID', NOTE_ID)
+                  print('RUN223_AUDITED_CONTENT_VERIFIED', True)
+                  print('RENDERED_ORDER_VERIFIED', True)
+                  print('ZERO_GEMINI_CALLS', True)
+                  print('PUBLIC_RELEASE', False)
+              finally:
+                  context.close()
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, repair-existing-private-draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+      - name: Stop persistent note Chrome VM
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
