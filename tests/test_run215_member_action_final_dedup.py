@@ -40,15 +40,28 @@ class Run215MemberActionFinalDedupTests(unittest.TestCase):
         self.assertEqual("best_for", source)
         self.assertIn("実験監査", focus)
 
-    def test_generic_best_for_is_preserved_when_topic_is_not_specific(self):
+    def test_generic_best_for_is_preserved_when_topic_matches_canonical_generic_pattern(self):
         generic_best_for = "論文の対象課題が自社ユースケースと一致し、既存手法との比較を小規模に再現できる研究・開発チーム。"
+        canonical_generic_topic = "Exampleの現在の機能・保守状況を確認しています。"
+        self.assertIsNotNone(base.GENERIC_TOPIC_RE.match(canonical_generic_topic))
         state = {
             "best_for": generic_best_for,
-            "topic": "最近の変化を確認し、いま検討する価値があるかを見る。",
+            "topic": canonical_generic_topic,
         }
         source, focus = run215._specific_context(state)
         self.assertEqual("best_for", source)
         self.assertTrue(focus.startswith("論文の対象課題"))
+
+    def test_noncanonical_broad_topic_remains_current_specific_context(self):
+        topic = "最近の変化を確認し、いま検討する価値があるかを見る。"
+        self.assertIsNone(base.GENERIC_TOPIC_RE.match(topic))
+        state = {
+            "best_for": "論文の対象課題が自社ユースケースと一致し、既存手法との比較を小規模に再現できる研究・開発チーム。",
+            "topic": topic,
+        }
+        source, focus = run215._specific_context(state)
+        self.assertEqual("topic", source)
+        self.assertEqual("最近の変化を確認し、いま検討する価値があるかを見る", focus)
 
     def test_explicit_action_remains_untouched(self):
         action = "vLLM/SGLangを第一比較にし、ローカル用途はllama.cpp等も含めて再選定する。"
