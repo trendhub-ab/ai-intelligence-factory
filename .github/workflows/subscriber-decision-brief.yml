@@ -5,17 +5,20 @@ on:
     workflows:
       - Daily Intelligence & Content Pipeline
       - Daily Intelligence & Content Pipeline [ONE-SHOT]
+      - Subscriber Inventory Bootstrap
     types: [completed]
   push:
     branches: [main]
     paths:
       - subscriber_decision_brief.py
       - tests/test_run158_subscriber_decision_brief.py
+      - tests/test_run211_member_sync_ordering.py
       - .github/workflows/subscriber-decision-brief.yml
   pull_request:
     paths:
       - subscriber_decision_brief.py
       - tests/test_run158_subscriber_decision_brief.py
+      - tests/test_run211_member_sync_ordering.py
       - .github/workflows/subscriber-decision-brief.yml
   workflow_dispatch:
 
@@ -30,9 +33,18 @@ permissions:
 
 jobs:
   sync:
+    # Inventory plan is contractually read-only. Only an explicitly labelled apply run
+    # may fan out into subscriber/member writes. Daily and ONE-SHOT retain the existing path.
     if: >-
       github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        (
+          github.event.workflow_run.name != 'Subscriber Inventory Bootstrap' ||
+          contains(github.event.workflow_run.display_title, '[apply]')
+        )
+      )
     runs-on: ubuntu-latest
     # A valid Notion Retry-After can be tens of seconds. Allow bounded recovery across the
     # full member inventory rather than converting normal throttling into a partial failure.
@@ -51,7 +63,9 @@ jobs:
         run: python -m pip install requests
 
       - name: Run Run158 focused regression
-        run: python -m unittest tests.test_run158_subscriber_decision_brief -v
+        run: |
+          python -m unittest tests.test_run158_subscriber_decision_brief -v
+          python -m unittest tests.test_run211_member_sync_ordering -v
 
       - name: Sync member Decision Briefs
         if: github.event_name != 'pull_request'
