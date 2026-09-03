@@ -1,0 +1,441 @@
+name: Ops Run223 Polars Audit Repair 2026-09-04
+
+on:
+  push:
+    branches:
+      - ops-run223-polars-audit-repair-20260904
+    paths:
+      - '.github/workflows/ops-run223-polars-audit-repair-20260904.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild-current-manuscript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install zero-model dependencies
+        run: pip install requests
+
+      - name: Deterministically apply the audited Polars corrections and restamp
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import os
+          from urllib.parse import urlencode
+          import requests
+          import publication_contract as pc
+          import run223_technical_claim_precision as run223
+
+          PAGE_ID = '3d0479ffdca9811aad6fc525655c21ff'
+          PRE_RUN223_SHA = 'b8729114b6abb38ce07a7cef80f78f45be2ac449f1c114cd3c67655929809a3c'
+          LIMIT = 1900
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json',
+          }
+
+          def req(method, url, **kwargs):
+              r = requests.request(method, url, headers=headers, timeout=30, **kwargs)
+              r.raise_for_status()
+              return r
+
+          def blocks():
+              out, cursor = [], ''
+              while True:
+                  query = {'page_size': 100}
+                  if cursor:
+                      query['start_cursor'] = cursor
+                  data = req('GET', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children?{urlencode(query)}').json()
+                  out.extend(data.get('results') or [])
+                  if not data.get('has_more'):
+                      return out
+                  cursor = str(data.get('next_cursor') or '')
+                  if not cursor:
+                      return out
+
+          def code_body(block):
+              if block.get('type') != 'code':
+                  return ''
+              return ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in ((block.get('code') or {}).get('rich_text') or []))
+
+          def code_caption(block):
+              if block.get('type') != 'code':
+                  return ''
+              return ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in ((block.get('code') or {}).get('caption') or []))
+
+          existing_current = []
+          source_candidates = []
+          for block in blocks():
+              body = code_body(block)
+              caption = code_caption(block)
+              if body and pc.is_current_ready_block(body, caption):
+                  existing_current.append(body)
+              if body and hashlib.sha256(body.encode('utf-8')).hexdigest() == PRE_RUN223_SHA:
+                  source_candidates.append(body)
+
+          required_new = (
+              '- **公開・更新**: 2026-09-02',
+              'maintain_order="left"',
+              '一部の暗黙的な型変換をより厳格にし',
+              '実際の改善幅は処理内容や実行環境によって変わります',
+              'ストリーミング処理による高速化・省メモリ化の恩恵',
+          )
+          if existing_current:
+              candidate = existing_current[-1]
+              if not all(token in candidate for token in required_new):
+                  raise SystemExit('a current Run223 manuscript exists but does not match the approved audited corrections')
+              rebuilt = candidate
+              print('RUN223_POLARS_ALREADY_CURRENT', True)
+          else:
+              if len(source_candidates) != 1:
+                  raise SystemExit(f'authoritative pre-Run223 Polars manuscript count must be 1, got {len(source_candidates)}')
+              rebuilt = source_candidates[0]
+
+              replacements = [
+                  ('- **公開・更新**: 2026-09-03', '- **公開・更新**: 2026-09-02'),
+                  ('一方、ストリーミングエンジンは、データを小さなカタマリに分け、水道のホースから水を流すように連続して処理していきます。著者の試算では、集計処理などで全体として5倍近く高速化し、メモリ使用量も大幅に抑えられるとしています。', '一方、ストリーミングエンジンは、データを小さなカタマリに分け、水道のホースから水を流すように連続して処理していきます。Polarsチームは、ストリーミングエンジンについて全体として5倍程度の高速化を期待していると説明しています。ただし、実際の改善幅は処理内容や実行環境によって変わります。'),
+                  ('普通にコードを書いているだけで、勝手に省メモリで速くなる。これだけでもアップデートの恩恵は非常に大きいと言えます。', '多くのLazyFrame処理では、これまでのコードを大きく書き換えなくても、省メモリ化や高速化の恩恵を受けやすくなります。'),
+                  ('もし「元の順番のまま出力されてほしい」という処理がある場合は、明示的に順序を維持する設定（`maintain_order=True`）を追加するか、従来通りメモリ上に一括展開して処理するエンジン（`engine="in-memory"`）を指定する必要があります。', 'もし「元の順番のまま出力されてほしい」という処理がある場合は、処理ごとに順序維持を明示します。たとえば `group_by(..., maintain_order=True)`、左側の行順を維持したいjoinなら `join(..., maintain_order="left")` を使えます。あるいは必要に応じて明示的にsortするか、従来のin-memoryエンジン（`engine="in-memory"`）を指定します。'),
+                  ('しかし、その「親切心」が原因で、数値の精度が落ちて巨大なユーザーIDが別のIDと勘違いされるような、静かなデータ破損のバグを生むことがありました。Polars 2.0ではこうした曖昧な型変換を禁止し、不整合があれば即座にエラーを出して止める仕様へシフトしています。', 'しかし、その「親切心」が原因で、意図しない変換や精度低下につながることがあります。Polars 2.0では、一部の暗黙的な型変換をより厳格にし、情報が失われる可能性のある変換などではエラーを出す方向へ進んでいます。'),
+                  ('この「曖昧さを排除して早く失敗させる」設計は、昨今増えているAIエージェントによるコード生成や自動データ処理の文脈でも強力に機能します。', 'この「曖昧さを減らして早い段階で不整合を見つける」方向性は、AIエージェントによるコード生成や自動データ処理でも扱いやすさにつながります。'),
+                  ('AIが作ったデータ処理の構造（スキーマ）に無理がないか、実データを流し込む前に検証するコマンド（`collect_schema()`）を実行した際、不整合があれば一瞬で弾いてくれるため、AIが20分間実行した挙動の後に初めてエラーで倒れるといった無駄を未然に防ぐことができます。', 'AIが作ったデータ処理の構造（スキーマ）に無理がないかを、`collect_schema()` などで実行前に確認しやすくなるため、長い処理を走らせてから型やスキーマの問題に気づくケースを減らせます。'),
+                  ('2. 暗黙の型変換に頼っていた部分でエラーが起きないか。', '2. 暗黙的な型変換に頼っていた部分で、2.0の厳格化によるエラーが起きないか。'),
+                  ('この2点さえ確認できれば、コードの安全性を高めつつ、ストリーミング処理によるな処理速度と省メモリ性能を手に入れる準備が整います。派手な機能追加に惑わされず、土台を強固にする今回の「静かな進化」は、データ基盤を預かる立場として非常に信頼できるアップデートと言えます。', 'この2点を確認できれば、ストリーミング処理による高速化・省メモリ化の恩恵を受けられるかを、自分たちの環境で安全に見極めやすくなります。派手な機能追加よりも、デフォルトとAPIの土台を整える今回の「静かな進化」は、まず小さく試す価値のあるアップデートです。'),
+              ]
+              for old, new in replacements:
+                  count = rebuilt.count(old)
+                  if count != 1:
+                      raise SystemExit(f'exact audited replacement precondition failed count={count}: {old[:80]}')
+                  rebuilt = rebuilt.replace(old, new, 1)
+
+              source_context = '''
+              In aggregate we expect the streaming engine to be easily 5x faster across workloads.
+              group_by(..., maintain_order=True)
+              join(..., maintain_order="left")
+              '''
+              failures = run223.technical_claim_failures(
+                  {'note_draft': rebuilt}, source_context,
+                  evidence_metadata={'primary_source_published_date': '2026-09-02'},
+              )
+              if failures:
+                  raise SystemExit(f'Run223 guards reject audited manuscript: {failures}')
+
+              forbidden = (
+                  '- **公開・更新**: 2026-09-03',
+                  '著者の試算では、集計処理などで全体として5倍近く高速化',
+                  '勝手に省メモリで速くなる',
+                  '曖昧な型変換を禁止',
+                  'AIが20分間実行した挙動',
+                  'ストリーミング処理によるな処理速度',
+              )
+              if any(token in rebuilt for token in forbidden):
+                  raise SystemExit('one or more audited overclaim/typo strings remain')
+              if not all(token in rebuilt for token in required_new):
+                  raise SystemExit('one or more approved audited replacements are missing')
+
+              segments = [rebuilt[i:i + LIMIT] for i in range(0, len(rebuilt), LIMIT)]
+              if ''.join(segments) != rebuilt:
+                  raise SystemExit('lossless Notion segmentation failed')
+              caption = pc.current_ready_caption(rebuilt)
+              payload = {'children': [{
+                  'object': 'block',
+                  'type': 'code',
+                  'code': {
+                      'rich_text': [{'type': 'text', 'text': {'content': segment}} for segment in segments],
+                      'language': 'markdown',
+                      'caption': [{'type': 'text', 'text': {'content': caption}}],
+                  },
+              }]}
+              write = req('PATCH', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children', json=payload).json()
+              created_ids = [str(x.get('id') or '') for x in (write.get('results') or []) if x.get('id')]
+              if not created_ids:
+                  raise SystemExit('Notion returned no created current Ready block')
+
+              verified = False
+              for block in blocks():
+                  if str(block.get('id') or '') not in created_ids:
+                      continue
+                  body = code_body(block)
+                  caption = code_caption(block)
+                  if body == rebuilt and pc.is_current_ready_block(body, caption):
+                      verified = True
+                      break
+              if not verified:
+                  raise SystemExit('Run223 Polars manuscript failed byte-exact Notion readback')
+
+          print('RUN223_POLARS_RESTAMP_VERIFIED', True)
+          print('CURRENT_POLICY_SHA256', pc.policy_sha256())
+          print('CURRENT_MANUSCRIPT_SHA256', pc.manuscript_sha256(rebuilt))
+          print('CURRENT_MANUSCRIPT_LENGTH', len(rebuilt))
+          print('ZERO_GEMINI_CALLS', True)
+          PY
+
+      - name: Reconcile note Ready metadata after current-policy restamp
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python note_ready_sync.py
+
+  start-cloud-vm:
+    needs: rebuild-current-manuscript
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing repository variable: ${name}"; exit 1; }
+          done
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  repair-existing-private-draft:
+    needs: [rebuild-current-manuscript, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install persistent Chrome dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Update the same private draft in place and verify audited content
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          xvfb-run -a python - <<'PY'
+          from __future__ import annotations
+          import os
+          from urllib.parse import urlencode
+          import requests
+          from playwright.sync_api import sync_playwright
+          import note_draft_automation as base
+          import publication_contract as pc
+          import run187_note_editor_readiness as run187
+          import run190_note_persistent_cloud as cloud
+          import run222_note_presentation_integrity as run222
+
+          PAGE_ID = '3d0479ffdca9811aad6fc525655c21ff'
+          DEST_PAGE_ID = '3d0479ffdca981cd9e4ad21d17bc166d'
+          DRAFT_URL = 'https://editor.note.com/notes/n2eca77886891/edit/'
+          NOTE_ID = 'n2eca77886891'
+          TITLE = 'Polars 2.0が目指す「静かな進化」は、なぜデータ開発の現場に大きな影響を与えるのか。'
+          headers = {
+              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
+              'Notion-Version': '2026-03-11',
+              'Content-Type': 'application/json',
+          }
+
+          def req(method, url, **kwargs):
+              r = requests.request(method, url, headers=headers, timeout=30, **kwargs)
+              r.raise_for_status()
+              return r
+
+          def blocks():
+              out, cursor = [], ''
+              while True:
+                  query = {'page_size': 100}
+                  if cursor:
+                      query['start_cursor'] = cursor
+                  data = req('GET', f'https://api.notion.com/v1/blocks/{PAGE_ID}/children?{urlencode(query)}').json()
+                  out.extend(data.get('results') or [])
+                  if not data.get('has_more'):
+                      return out
+                  cursor = str(data.get('next_cursor') or '')
+                  if not cursor:
+                      return out
+
+          current = []
+          for block in blocks():
+              if block.get('type') != 'code':
+                  continue
+              code = block.get('code') or {}
+              body = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('rich_text') or []))
+              caption = ''.join(str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '') for x in (code.get('caption') or []))
+              if body and pc.is_current_ready_block(body, caption):
+                  current.append(body)
+          if not current:
+              raise SystemExit('no byte-valid current Run223 Polars manuscript exists')
+          canonical = current[-1]
+          presentation = run222.prepare_note_editor_manuscript(canonical, TITLE)
+
+          must_have = (
+              '公開・更新: 2026-09-02',
+              'maintain_order="left"',
+              '一部の暗黙的な型変換をより厳格にし',
+              '5倍程度の高速化を期待している',
+              '実際の改善幅は処理内容や実行環境によって変わります',
+              'ストリーミング処理による高速化・省メモリ化の恩恵',
+              'Sources / Evidence',
+              '「自分はどうする？」まで判断したい方へ',
+          )
+          for token in must_have:
+              if token not in presentation:
+                  raise SystemExit(f'presentation missing approved token before browser write: {token}')
+
+          forbidden = (
+              '公開・更新: 2026-09-03',
+              '著者の試算では、集計処理などで全体として5倍近く高速化',
+              '勝手に省メモリで速くなる',
+              '曖昧な型変換を禁止',
+              'AIが20分間実行した挙動',
+              'ストリーミング処理によるな処理速度',
+          )
+          if any(token in presentation for token in forbidden):
+              raise SystemExit('presentation still contains an audited rejected phrase')
+
+          base.ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+          with sync_playwright() as playwright:
+              context = cloud._launch_persistent_context(playwright)
+              page = list(context.pages)[0] if context.pages else context.new_page()
+              page.set_default_timeout(30000)
+              try:
+                  page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                  page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      if not cloud._seed_note_state(context, page):
+                          raise base.NoteAuthenticationExpired('persistent note session is not authenticated')
+                      page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                      page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      raise base.NoteAuthenticationExpired('note login did not recover')
+                  if not run187._is_editor_url(str(page.url or '')) or NOTE_ID not in str(page.url or ''):
+                      raise base.NoteDraftError('browser did not open the expected existing Polars draft')
+
+                  title_field = base._find_title(page)
+                  if title_field is None:
+                      raise base.NoteDraftError('note title field not found')
+                  current_title = (title_field.input_value() if title_field.evaluate("el => ['INPUT','TEXTAREA'].includes(el.tagName)") else title_field.inner_text()).strip()
+                  if current_title != TITLE:
+                      raise base.NoteDraftError(f'existing draft title mismatch: {current_title!r}')
+
+                  body = base._find_body(page, title_field)
+                  base._paste_manuscript(page, body, presentation)
+                  body = base._find_body(page, title_field)
+                  base._verify_body_content(body, presentation)
+                  saved_url = base._save_draft_and_verify(page, TITLE, presentation, image_required=False)
+                  if NOTE_ID not in saved_url:
+                      raise base.NoteDraftError('save verification returned a different note ID')
+
+                  page.goto(DRAFT_URL, wait_until='domcontentloaded', timeout=60000)
+                  page.wait_for_timeout(1200)
+                  title_field = base._find_title(page)
+                  body = base._find_body(page, title_field)
+                  visible = body.inner_text().strip()
+                  if visible.startswith('#') or '\n# ' in visible:
+                      raise base.NoteDraftError('raw Markdown H1 remains visible')
+                  if TITLE in visible[:250]:
+                      raise base.NoteDraftError('duplicate title remains in note body')
+                  for token in must_have:
+                      if token not in visible:
+                          raise base.NoteDraftError(f'rendered note body missing audited token: {token}')
+                  if any(token in visible for token in forbidden):
+                      raise base.NoteDraftError('rendered note body contains an audited rejected phrase')
+
+                  source_heading = 'Sources / Evidence'
+                  disclaimer = '※本記事に含まれる見解・提案は筆者個人の意見'
+                  cta_heading = '「自分はどうする？」まで判断したい方へ'
+                  if not (visible.index(source_heading) < visible.index(disclaimer) < visible.index(cta_heading)):
+                      raise base.NoteDraftError('Sources/disclaimer/CTA order regressed')
+
+                  req('PATCH', f'https://api.notion.com/v1/pages/{DEST_PAGE_ID}', json={
+                      'properties': {
+                          '品質状態': {'select': {'name': 'Ready'}},
+                          '投稿状態': {'select': {'name': '投稿準備中'}},
+                      }
+                  })
+                  print('EXISTING_DRAFT_UPDATED_IN_PLACE', True)
+                  print('NOTE_ID', NOTE_ID)
+                  print('RUN223_AUDITED_CONTENT_VERIFIED', True)
+                  print('RENDERED_ORDER_VERIFIED', True)
+                  print('ZERO_GEMINI_CALLS', True)
+                  print('PUBLIC_RELEASE', False)
+              finally:
+                  context.close()
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [rebuild-current-manuscript, start-cloud-vm, repair-existing-private-draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+      - name: Stop persistent note Chrome VM
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
