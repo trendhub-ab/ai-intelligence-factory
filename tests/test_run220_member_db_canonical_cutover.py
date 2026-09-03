@@ -12,6 +12,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "member-presentation-sync.yml"
 
 CANONICAL_DB = "b2787ee0-5b58-4ca7-b4eb-774f60237f1f"
 CANONICAL_DS = "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404"
+CANONICAL_HOME = "3c5479ff-dca9-8103-bff0-f2d5f408d35f"
 OLD_DB = "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1"
 OLD_DS = "d1461b6f-0940-4bf9-803a-6686a37c4ba2"
 
@@ -34,6 +35,7 @@ class Run220MemberDbCanonicalCutoverTests(unittest.TestCase):
     def test_canonical_ids_are_pinned_in_code(self):
         self.assertEqual(provisioner.CANONICAL_DATABASE_ID, CANONICAL_DB)
         self.assertEqual(provisioner.CANONICAL_DATA_SOURCE_ID, CANONICAL_DS)
+        self.assertEqual(provisioner.PARENT_PAGE_ID, CANONICAL_HOME)
         self.assertFalse(provisioner.ALLOW_CREATE)
 
     def test_workflow_pins_same_destination_and_disables_create(self):
@@ -60,6 +62,7 @@ class Run220MemberDbCanonicalCutoverTests(unittest.TestCase):
 
             self.assertFalse(result["created"])
             self.assertTrue(result["canonical"])
+            self.assertFalse(result["auto_create_enabled"])
             self.assertEqual(result["database_id"], CANONICAL_DB)
             self.assertEqual(result["data_source_id"], CANONICAL_DS)
             self.assertEqual(get_mock.call_count, 1)
@@ -83,6 +86,25 @@ class Run220MemberDbCanonicalCutoverTests(unittest.TestCase):
              mock.patch.object(provisioner.requests, "get", return_value=_Response(200, payload)), \
              mock.patch.object(provisioner.requests, "post", side_effect=AssertionError("fallback search/create must not run")):
             with self.assertRaisesRegex(RuntimeError, "Canonical member presentation ID mismatch"):
+                provisioner.provision()
+
+    def test_missing_canonical_ids_do_not_fall_back_when_create_is_disabled(self):
+        with mock.patch.object(provisioner.decision_intelligence, "NOTION_DECISION_INTELLIGENCE_API_KEY", "test-key"), \
+             mock.patch.object(provisioner, "CANONICAL_DATABASE_ID", ""), \
+             mock.patch.object(provisioner, "CANONICAL_DATA_SOURCE_ID", ""), \
+             mock.patch.object(provisioner, "ALLOW_CREATE", False), \
+             mock.patch.object(provisioner.requests, "get", side_effect=AssertionError("no Notion read should run")), \
+             mock.patch.object(provisioner.requests, "post", side_effect=AssertionError("no search/create should run")):
+            with self.assertRaisesRegex(RuntimeError, "title search and DB creation are disabled"):
+                provisioner.provision()
+
+    def test_incomplete_canonical_pair_fails_before_network(self):
+        with mock.patch.object(provisioner.decision_intelligence, "NOTION_DECISION_INTELLIGENCE_API_KEY", "test-key"), \
+             mock.patch.object(provisioner, "CANONICAL_DATABASE_ID", CANONICAL_DB), \
+             mock.patch.object(provisioner, "CANONICAL_DATA_SOURCE_ID", ""), \
+             mock.patch.object(provisioner.requests, "get", side_effect=AssertionError("network must not run")), \
+             mock.patch.object(provisioner.requests, "post", side_effect=AssertionError("network must not run")):
+            with self.assertRaisesRegex(RuntimeError, "IDs are incomplete"):
                 provisioner.provision()
 
 
