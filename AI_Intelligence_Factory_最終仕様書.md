@@ -320,10 +320,12 @@ note投稿対象はContent Intelligence側のReadyだけでは不十分。
 - note Ready queueで投稿可能
 - current publication policy fingerprintに一致
 - manuscript caption SHAと本文bytesが一致
+- Notion `rich_text` 分割はtransport上の都合に限定し、全segmentを連結したbytesが生成時manuscriptと完全一致する
+- captionの`manuscript_sha256`は分割前だけでなく、読み戻した永続化本文でも一致しなければならない
 - 必須eyecatch assetが存在
 - historical paid-area control marker等を含まない
 
-古い契約、hash不一致、asset不足を無理に復活させない。
+古い契約、hash不一致、asset不足を無理に復活させない。Notion保存時に改行等が1文字でも欠落したReady本文も投稿対象にせずFail-Closedする。
 
 ## 7. note private-draft automation
 
