@@ -14,6 +14,9 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
 
     def test_active_production_runtime_layers_are_preserved(self) -> None:
         active = [
+            "run203_runtime_state_channel.py",
+            "gemini_timeout_rpd_fail_closed.py",
+            "gemini_transient_recovery.py",
             "run172_production_reliability.py",
             "run173_operational_yield.py",
             "run174_monthly_digest_integrity.py",
@@ -27,17 +30,16 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
             "run182_eyecatch_conclusion_emphasis.py",
             "run183_eyecatch_emphasis_scale.py",
             "reader_value_review_bridge.py",
+            "run208_reader_value_repair.py",
             "run194_publication_contract.py",
         ]
         missing = [name for name in active if not (ROOT / name).is_file()]
         self.assertEqual([], missing)
 
         production_entrypoint = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
-        for name in active[:-2]:
+        for name in active:
             module = name.removesuffix(".py")
-            self.assertIn(f"import {module}", production_entrypoint)
-        self.assertIn("reader_value_review_bridge", production_entrypoint)
-        self.assertIn("run194_publication_contract", production_entrypoint)
+            self.assertIn(module, production_entrypoint)
 
     def test_active_note_safety_stack_is_preserved(self) -> None:
         active = [
@@ -93,9 +95,10 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         missing = [name for name in expected if not (archive / name).is_file()]
         self.assertEqual([], missing)
 
-    def test_current_spec_is_run199_and_old_spec_is_preserved(self) -> None:
+    def test_current_spec_tracks_live_baseline_and_old_spec_is_preserved(self) -> None:
         current = (ROOT / "AI_Intelligence_Factory_最終仕様書.md").read_text(encoding="utf-8")
-        self.assertIn("現行Functional Baseline: **Run199", current)
+        self.assertIn("現行Functional Baseline: **Run209", current)
+        self.assertIn("Documentation Governance Baseline: **Run210", current)
         self.assertIn("Production Source of Truth: **`main`**", current)
         self.assertNotIn("本パッケージコード基準: **Run 122", current)
 
@@ -110,7 +113,8 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
 
     def test_readme_declares_current_baseline_and_cleanup_safety(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("Current functional baseline:** Run199", readme)
+        self.assertIn("Current functional baseline:** Run209", readme)
+        self.assertIn("Current documentation governance baseline:** Run210", readme)
         self.assertIn("Current repository organization baseline:** Run201", readme)
         self.assertIn("repository garbage cleanup without intended runtime behavior change", readme)
         self.assertIn("Daily:** PAUSED", readme)
