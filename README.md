@@ -10,6 +10,7 @@
 - **Current paid member navigation/UI baseline:** Run218 — PC-first member UX reconciliation
 - **Current paid member human-language UI baseline:** Run219 — non-engineer member presentation language
 - **Current paid member DB destination baseline:** Run220 — canonical member DB cutover / fail-closed destination
+- **Current paid member DB hosting baseline:** Run221 — API-host isolation / member-view separation
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -126,6 +127,7 @@ Run218 is the current customer-facing information-architecture contract.
 - High-priority practical candidates stay a shortlist rather than a 100+ row dump.
 - Major-change presentation can use authoritative history where `評価の変化 >= 20` or `<= -20` without rewriting `今月の重要変化`.
 - A primary member surface must not show an unexplained blank table.
+- Physical DB hosting is not part of Run218 navigation authority; Run221 governs that boundary.
 - Full contract: `docs/reference/RUN218_MEMBER_UX_RECONCILIATION.md`.
 
 ### Run219 — non-engineer human-language UI
@@ -152,14 +154,12 @@ Current canonical member product destination:
 
 - Database ID: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
 - Data Source ID: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
-- Parent: `AI Decision Intelligence｜会員ホーム`
 
-Pre-Run220 presentation database is now audit-only:
+Pre-Run220 presentation database is audit-only:
 
 - Database ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`
 - Data Source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`
 - Title: `⚠️ 旧版・使用禁止｜AI・技術一覧（Run219前）`
-- Parent: `【旧・統合済み】AI Intelligence｜会員ホーム`
 
 Production invariant:
 
@@ -171,7 +171,23 @@ Production invariant:
 - Run219 human-language presentation remains unchanged.
 - Gemini/model requests: **0**.
 
-Full contract: `docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md`.
+Full destination contract: `docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md`.
+
+### Run221 — API-host isolation / member-view separation
+
+Run221 protects the Notion permission boundary discovered during Run220 post-merge validation.
+
+- Customer-facing member home remains `AI Decision Intelligence｜会員ホーム` (`3c5479ff-dca9-8103-bff0-f2d5f408d35f`).
+- Canonical product data remains DB `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / Data Source `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`.
+- Physical API host is Page ID `3c5479ff-dca9-8178-867c-d9249a3ff5c8`.
+- The physical host is an implementation/access boundary, **not** a member onboarding destination.
+- Member navigation exposes the canonical data through member-facing views/links.
+- Moving the physical DB under the member home without first granting the GitHub Actions Notion integration access was observed to make canonical resolution return HTTP 404.
+- `provision_member_presentation_db.py` therefore verifies both the exact Run220 IDs and the Run221 physical host before writes.
+- Production pins `MEMBER_PRESENTATION_API_HOST_PAGE_ID=3c5479ff-dca9-8178-867c-d9249a3ff5c8` and keeps auto-create disabled.
+- Do not physically relocate the canonical DB merely for cosmetic breadcrumbs while that move would break automated synchronization.
+
+Full hosting contract: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`.
 
 ## note private-draft automation
 
@@ -253,14 +269,17 @@ Run210 makes documentation freshness a CI contract. Later member-product Runs ex
 - Run217 legacy DB quarantine and Digest fulfillment remain valid.
 - Run218 onboarding must point to `AI Decision Intelligence｜会員ホーム` (`3c5479ff-dca9-8103-bff0-f2d5f408d35f`) and preserve PC-first/mobile-secondary, live Top3 and source/presentation separation for important changes.
 - Run219 member-visible bodies must use non-engineer human-language labels and must not expose status codes in the body summary.
-- Run220 current Presentation DB must be exactly `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`; the pre-cutover `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` / `d1461b6f-0940-4bf9-803a-6686a37c4ba2` is `旧版・使用禁止`.
-- Normal Member Presentation Production must not auto-create or silently choose a different same-title DB.
+- Run220 current Presentation DB must be exactly `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`; the pre-cutover DB is `旧版・使用禁止`.
+- Run221 physical API host must be exactly `3c5479ff-dca9-8178-867c-d9249a3ff5c8`; member home and physical API host are deliberately different surfaces.
+- Normal Member Presentation Production must not auto-create, silently choose a different same-title DB, or accept a physical-host mismatch.
 - A Production behavior change that makes canonical documentation stale must fail CI until documentation is updated in the same change set.
 
 ## Change discipline
 
-1. Prove whether a file is referenced before moving it.
+Repository cleanup must be behavior-preserving by default:
+
+1. Prove whether a file is referenced by production entrypoints, workflows or tests before moving it.
 2. Keep ambiguous files until dependency status is proven.
-3. Archive history instead of deleting audit history.
+3. Move historical documentation and retired operational definitions to `docs/archive/` rather than deleting audit history.
 4. Preserve operational state and published assets.
-5. Run Repository-wide Falsification Guard, Documentation Freshness Guard and relevant regression checks before merging into `main`.
+5. Run repository-wide falsification, Documentation Freshness Guard, and relevant regression checks before merging into `main`.

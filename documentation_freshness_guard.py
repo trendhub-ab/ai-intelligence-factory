@@ -20,12 +20,14 @@ MEMBER_PRESENTATION_WORKFLOW_PATH = ".github/workflows/member-presentation-sync.
 RUN217_PATH = "docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md"
 RUN218_PATH = "docs/reference/RUN218_MEMBER_UX_RECONCILIATION.md"
 RUN220_PATH = "docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md"
+RUN221_PATH = "docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md"
 
 CANONICAL_MEMBER_HOME_ID = "3c5479ff-dca9-8103-bff0-f2d5f408d35f"
 CANONICAL_MEMBER_HOME_TITLE = "AI Decision Intelligence｜会員ホーム"
 SUPERSEDED_RUN217_HOME_ID = "3d0479ff-dca9-819e-9da0-c951225de6b3"
 CURRENT_MEMBER_DB_ID = "b2787ee0-5b58-4ca7-b4eb-774f60237f1f"
 CURRENT_MEMBER_DATA_SOURCE_ID = "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404"
+CURRENT_MEMBER_API_HOST_PAGE_ID = "3c5479ff-dca9-8178-867c-d9249a3ff5c8"
 PRE_RUN220_MEMBER_DB_ID = "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1"
 PRE_RUN220_MEMBER_DATA_SOURCE_ID = "d1461b6f-0940-4bf9-803a-6686a37c4ba2"
 LEGACY_MEMBER_DATA_SOURCE_ID = "ec2ac2b3-89b6-4242-89b9-e94060826fca"
@@ -65,14 +67,14 @@ def runtime_layer_errors(production_source: str, spec_text: str) -> list[str]:
 def baseline_errors(spec_text: str, readme_text: str) -> list[str]:
     errors: list[str] = []
     for marker in (
-        "Run209", "Run210", "Run211", "Run218", "Run219", "Run220",
+        "Run209", "Run210", "Run211", "Run218", "Run219", "Run220", "Run221",
         "Daily workflowはPAUSED", "Documentation Freshness Guard",
     ):
         if marker not in spec_text:
             errors.append(f"Canonical specification missing current marker: {marker}")
 
     for marker in (
-        "Run209", "Run210", "Run211", "Run218", "Run219", "Run220",
+        "Run209", "Run210", "Run211", "Run218", "Run219", "Run220", "Run221",
         "**Daily:** PAUSED", "Documentation Freshness Guard",
     ):
         if marker not in readme_text:
@@ -237,6 +239,31 @@ def member_destination_workflow_errors(member_presentation_text: str, spec_text:
     return errors
 
 
+def member_host_isolation_errors(member_presentation_text: str, spec_text: str, readme_text: str, run221_text: str) -> list[str]:
+    """Protect the API-readable physical host separately from customer navigation."""
+    errors: list[str] = []
+    if "Paid Member Database Hosting Baseline: **Run221" not in spec_text:
+        errors.append("Canonical specification no longer labels Run221 as the DB hosting baseline")
+    if "paid member DB hosting baseline:** Run221" not in readme_text:
+        errors.append("README no longer labels Run221 as the DB hosting baseline")
+    for marker in (CURRENT_MEMBER_DB_ID, CURRENT_MEMBER_DATA_SOURCE_ID, CANONICAL_MEMBER_HOME_ID, CURRENT_MEMBER_API_HOST_PAGE_ID):
+        for name, text in (("spec", spec_text), ("README", readme_text), ("Run221", run221_text)):
+            if marker not in text:
+                errors.append(f"{name} missing Run221 host-isolation marker: {marker}")
+    if f"MEMBER_PRESENTATION_API_HOST_PAGE_ID: '{CURRENT_MEMBER_API_HOST_PAGE_ID}'" not in member_presentation_text:
+        errors.append("Member Presentation workflow no longer pins the Run221 API host")
+    if "MEMBER_PRESENTATION_ALLOW_CREATE: 'false'" not in member_presentation_text:
+        errors.append("Run221 requires member DB automatic creation to remain disabled")
+    for marker in ("physical API host", "linked views", "HTTP 404", "created: False", "zero_gemini_calls=true"):
+        if marker not in run221_text:
+            errors.append(f"Run221 operator contract missing observed hosting evidence: {marker}")
+    if "must not be physically moved under the member home" not in run221_text:
+        errors.append("Run221 lost the do-not-move-under-member-home contract")
+    if CURRENT_MEMBER_API_HOST_PAGE_ID == CANONICAL_MEMBER_HOME_ID:
+        errors.append("Run221 API host and customer member home must remain distinct in the current permission model")
+    return errors
+
+
 def validate(root: str | Path = ".") -> list[str]:
     root_path = Path(root)
     spec_text = _read(root_path, SPEC_PATH)
@@ -252,6 +279,7 @@ def validate(root: str | Path = ".") -> list[str]:
     run217_text = _read(root_path, RUN217_PATH)
     run218_text = _read(root_path, RUN218_PATH)
     run220_text = _read(root_path, RUN220_PATH)
+    run221_text = _read(root_path, RUN221_PATH)
 
     errors: list[str] = []
     errors.extend(runtime_layer_errors(production_source, spec_text))
@@ -260,6 +288,7 @@ def validate(root: str | Path = ".") -> list[str]:
     errors.extend(member_product_sync_errors(inventory_text, subscriber_brief_text, member_presentation_text, spec_text, readme_text))
     errors.extend(member_navigation_ux_errors(spec_text, readme_text, run217_text, run218_text, run220_text))
     errors.extend(member_destination_workflow_errors(member_presentation_text, spec_text, readme_text, run220_text))
+    errors.extend(member_host_isolation_errors(member_presentation_text, spec_text, readme_text, run221_text))
     return errors
 
 

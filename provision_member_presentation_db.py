@@ -2,10 +2,15 @@
 """Resolve the one canonical paid-member presentation database.
 
 Run220 removes the old "search by title, then auto-create" ambiguity from the
-normal member sync path. Production must write only to the canonical database
-that the member home actually exposes. If that database is not readable through
-the Notion integration, the sync fails closed instead of creating or selecting
-a different copy.
+normal member sync path. Run221 additionally separates the customer-facing
+member home from the physical API host that must retain Notion-integration
+access. Production must write only to the canonical database and must verify
+that the database remains under the API-accessible host page.
+
+The member home exposes linked views of the canonical data source. Moving the
+physical database under the member home without explicitly sharing that parent
+with the GitHub Actions Notion integration can revoke API readability; therefore
+normal Production fails closed on a physical-host mismatch.
 
 A bootstrap search/create path remains available only when an operator
 explicitly clears both canonical IDs *and* sets MEMBER_PRESENTATION_ALLOW_CREATE
@@ -33,12 +38,16 @@ CANONICAL_DATA_SOURCE_ID = os.environ.get(
     "MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID",
     "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404",
 ).strip()
+API_HOST_PAGE_ID = os.environ.get(
+    "MEMBER_PRESENTATION_API_HOST_PAGE_ID",
+    "3c5479ff-dca9-8178-867c-d9249a3ff5c8",
+).strip()
 ALLOW_CREATE = os.environ.get("MEMBER_PRESENTATION_ALLOW_CREATE", "false").strip().lower() in {
     "1", "true", "yes", "on"
 }
 PARENT_PAGE_ID = os.environ.get(
     "MEMBER_PRESENTATION_PARENT_PAGE_ID",
-    "3c5479ff-dca9-8103-bff0-f2d5f408d35f",
+    API_HOST_PAGE_ID,
 ).strip()
 
 
@@ -124,8 +133,31 @@ def _candidate_ids(item: dict[str, Any]) -> tuple[str, str] | None:
     return (db_id, ds_id) if db_id else None
 
 
+def _verify_api_host() -> None:
+    if not API_HOST_PAGE_ID:
+        raise RuntimeError("MEMBER_PRESENTATION_API_HOST_PAGE_ID is required in normal operation")
+    detail = requests.get(
+        f"https://api.notion.com/v1/databases/{CANONICAL_DATABASE_ID}",
+        headers=_headers(),
+        timeout=20,
+    )
+    if detail.status_code != 200:
+        raise RuntimeError(
+            "Canonical member presentation database is not readable while verifying its API host "
+            f"(HTTP {detail.status_code})."
+        )
+    parent = detail.json().get("parent") or {}
+    actual_host = str(parent.get("page_id") or "").strip()
+    if actual_host != API_HOST_PAGE_ID:
+        raise RuntimeError(
+            "Canonical member presentation physical host mismatch: "
+            f"expected page={API_HOST_PAGE_ID!r}, actual page={actual_host!r}. "
+            "Keep the physical DB under the API-accessible host and expose it to members with linked views."
+        )
+
+
 def _resolve_canonical() -> tuple[str, str] | None:
-    """Return the pinned canonical DB only when both IDs verify exactly."""
+    """Return the pinned canonical DB only when IDs, title and API host verify."""
     if bool(CANONICAL_DATABASE_ID) != bool(CANONICAL_DATA_SOURCE_ID):
         raise RuntimeError(
             "Canonical member presentation IDs are incomplete; database and data source IDs must be set together."
@@ -155,6 +187,7 @@ def _resolve_canonical() -> tuple[str, str] | None:
         raise RuntimeError(
             f"Canonical member presentation title mismatch: expected {TITLE!r}, got {actual_title!r}."
         )
+    _verify_api_host()
     return CANONICAL_DATABASE_ID, CANONICAL_DATA_SOURCE_ID
 
 
@@ -270,6 +303,7 @@ def provision() -> dict[str, Any]:
         "database_id": db_id,
         "data_source_id": ds_id,
         "canonical": bool(canonical),
+        "api_host_page_id": API_HOST_PAGE_ID if canonical else PARENT_PAGE_ID,
         "auto_create_enabled": ALLOW_CREATE,
     }
 
