@@ -1,5 +1,6 @@
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import member_presentation_body_sync as body
 import run219_member_human_language_ui as run219
@@ -109,6 +110,17 @@ class Run219MemberHumanLanguageUiTests(unittest.TestCase):
                 _callout("手動メモ"), cache
             )
         )
+
+    def test_cached_callout_recognition_never_fetches_notion_children(self):
+        children = run219._build_children(self._state())
+        cache = {"callout-1": children}
+        with patch.object(body, "_children", side_effect=AssertionError("network access")) as fetch_children:
+            self.assertTrue(
+                run219._looks_like_generated_member_callout(
+                    _callout(run219.NEW_VISIBLE_CALLOUT_LABEL), cache
+                )
+            )
+        fetch_children.assert_not_called()
 
     def test_run219_has_no_model_or_provider_path(self):
         source = (ROOT / "run219_member_human_language_ui.py").read_text(encoding="utf-8")
