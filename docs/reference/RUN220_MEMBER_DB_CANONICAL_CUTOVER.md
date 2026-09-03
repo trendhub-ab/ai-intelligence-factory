@@ -1,7 +1,7 @@
 # Run220 — Canonical Member DB Cutover
 
 Date: 2026-09-03  
-Status: **current paid-member database destination contract**  
+Status: **current paid-member database destination contract; physical hosting clarified by Run221**  
 Gemini/model requests used for this run: **0**
 
 ## Why this run exists
@@ -10,6 +10,8 @@ Run219 correctly generated human-language member pages, but the production Membe
 
 Run220 removes that ambiguity. The paid member product has exactly one canonical presentation database, and the workflow must fail closed if it cannot write to it.
 
+Run221 later proved that the **customer-facing member home and the physical API host must remain separate under the current Notion sharing setup**. Run220 remains authoritative for the canonical Database/Data Source IDs; Run221 is authoritative for physical hosting.
+
 ## Canonical member destination
 
 - Member home: `AI Decision Intelligence｜会員ホーム`
@@ -17,10 +19,11 @@ Run220 removes that ambiguity. The paid member product has exactly one canonical
 - Canonical presentation Database ID: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
 - Canonical presentation Data Source ID: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
 - Canonical DB title: `AI・技術一覧｜判断DB`
+- Current physical API host Page ID: `3c5479ff-dca9-8178-867c-d9249a3ff5c8`
 
-The database was moved under the canonical member home, so normal item breadcrumbs are:
+The member home points to the canonical Run220 data through member-facing views/links. **Do not infer physical parentage from the member-navigation hierarchy.**
 
-`AI Decision Intelligence｜会員ホーム → AI・技術一覧｜判断DB → individual item`
+The canonical DB is physically hosted under the API-accessible host defined by Run221 so GitHub Actions can continue to read and update it. Moving the DB directly under the member home without first sharing that parent with the Actions Notion integration was observed to cause HTTP 404 and is therefore not the current contract.
 
 ## Old presentation database
 
@@ -44,8 +47,9 @@ Normal Production behavior:
 1. Verify the configured canonical Data Source is readable.
 2. Verify its parent Database ID matches the configured canonical Database ID.
 3. Verify the title is the expected member DB title.
-4. Export those exact IDs through `GITHUB_ENV`.
-5. Run Run219 presentation/body sync against those exact IDs.
+4. Verify the canonical Database remains under the Run221 API-accessible physical host.
+5. Export those exact IDs through `GITHUB_ENV`.
+6. Run Run219 presentation/body sync against those exact IDs.
 
 If any verification fails, **fail closed**.
 
@@ -54,6 +58,7 @@ The normal workflow must not:
 - create a new presentation database
 - silently switch destinations
 - write to the old Run219-pre-cutover DB
+- physically relocate the canonical DB as part of normal sync
 
 Automatic creation is disabled by default (`MEMBER_PRESENTATION_ALLOW_CREATE=false`). Creation remains code-level bootstrap capability only and is not the normal Production path.
 
@@ -61,7 +66,7 @@ Automatic creation is disabled by default (`MEMBER_PRESENTATION_ALLOW_CREATE=fal
 
 The canonical member home was switched from the old Data Source to `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`.
 
-Current user-facing views are rebuilt on the canonical DB, including:
+Current user-facing views include:
 - `まず見る3件`
 - `ほかのおすすめ`
 - `すべてから探す`
@@ -76,7 +81,7 @@ Current user-facing views are rebuilt on the canonical DB, including:
 - `前と判断が大きく変わったもの`
 - `スマホで見る`
 
-The home uses PC-first links to these views. Mobile remains secondary.
+The home uses PC-first links/views to the canonical Run220 Data Source. Mobile remains secondary.
 
 ## Run219 language contract preserved
 
@@ -93,9 +98,20 @@ Verified canonical Dify page uses:
 
 Body summary hides ADOPT/TEST/WATCH/AVOID codes and presents the Japanese action meaning instead.
 
+## Run221 hosting clarification
+
+Post-merge Run220 validation proved the hosting distinction directly:
+
+- moving canonical DB `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` beneath the member home made the Actions integration resolve it as HTTP 404;
+- Run220 failed closed and created no fallback DB;
+- moving the same DB back to API host `3c5479ff-dca9-8178-867c-d9249a3ff5c8` restored access;
+- rerunning the same main SHA succeeded with `created: False`, 206 unchanged records and `zero_gemini_calls=true`.
+
+Full hosting contract: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`.
+
 ## Safety / non-goals
 
-Run220 does not:
+Run220 / Run221 do not:
 - call Gemini/model APIs
 - change Decision scores or judgment values
 - change Evidence authority
