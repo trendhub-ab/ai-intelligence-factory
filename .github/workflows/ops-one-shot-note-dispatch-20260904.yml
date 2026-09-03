@@ -1,4 +1,4 @@
-name: Ops Inspect safe chunking 2026-09-04
+name: Ops Verify lost newline reconstruction 2026-09-04
 
 on:
   push:
@@ -11,19 +11,41 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           ref: main
-      - name: Show safe_chunk_text implementation and usages
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Verify persisted chunk boundary reconstruction
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
         run: |
-          set -euo pipefail
-          line=$(grep -n '^def safe_chunk_text' pipeline.py | head -1 | cut -d: -f1)
-          start=$((line-20)); [ "$start" -lt 1 ] && start=1
-          end=$((line+100))
-          echo "SAFE_CHUNK_LINE=$line"
-          sed -n "${start},${end}p" pipeline.py
-          echo '=== usages ==='
-          grep -R -n 'safe_chunk_text(' --exclude-dir=.git . | head -80
+          python - <<'PY'
+          import os, requests
+          import publication_contract as pc
+          page_id='3d0479ffdca9811aad6fc525655c21ff'
+          h={'Authorization':f"Bearer {os.environ['NOTION_API_KEY']}",'Notion-Version':'2026-03-11'}
+          r=requests.get(f'https://api.notion.com/v1/blocks/{page_id}/children?page_size=100',headers=h,timeout=30); r.raise_for_status()
+          for block in r.json().get('results',[]):
+              if block.get('type')!='code': continue
+              code=block.get('code') or {}
+              cap=''.join(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '' for x in code.get('caption') or [])
+              if not pc.is_ready_family_caption(cap): continue
+              parts=[x.get('plain_text') or ((x.get('text') or {}).get('content')) or '' for x in code.get('rich_text') or []]
+              stored=pc._caption_fields(cap).get('manuscript_sha256','')
+              concat=''.join(parts)
+              with_newlines='\n'.join(parts)
+              print('PART_COUNT',len(parts))
+              print('PART_LENGTHS',[len(x) for x in parts])
+              print('STORED_SHA',stored)
+              print('CONCAT_SHA',pc.manuscript_sha256(concat))
+              print('JOIN_NEWLINE_SHA',pc.manuscript_sha256(with_newlines))
+              print('JOIN_NEWLINE_MATCH',pc.manuscript_sha256(with_newlines)==stored)
+              for i,p in enumerate(parts[:-1]):
+                  print('BOUNDARY',i,'TAIL_REPR',repr(p[-80:]),'NEXT_HEAD_REPR',repr(parts[i+1][:80]))
+          PY
