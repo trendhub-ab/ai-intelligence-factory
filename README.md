@@ -5,7 +5,7 @@
 - **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
-- **Current paid member UX baseline:** Run213 — current-authority topic specificity
+- **Current paid member UX baseline:** Run214 — current-authority action specificity
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -81,8 +81,20 @@ Member-facing Notion data is derived in a fixed order rather than by parallel wr
 - Existing non-generic topics are never replaced.
 - Run170.4 keeps its existing role-separation pass, so a promoted topic does not leave `判断理由` duplicated; the reason is re-derived from current risk/decision context where necessary.
 - Known mechanical mixed-language artifacts `Safety 根拠` and `Transfer 根拠` are repaired narrowly in member-visible copy; product names, identifiers, URLs, scores, statuses, Evidence and categories are not rewritten.
-- Member Presentation workflow runs the Run213 wrapper for presentation and body entrypoints.
 - Run213 adds no historical decision authority, no new factual claim, and no Gemini/provider request path.
+
+### Paid member action specificity — Run214
+
+`run214_member_action_specificity.py` layers on Run213 and reduces repetitive `次にやること` copy using only current member-product context.
+
+- Only known deterministic Run170.4 action templates are eligible; explicit/source-specific actions are left untouched.
+- The existing action body, test counts, user counts, time windows and comparison metrics are preserved.
+- Current `向いている用途` (`best_for`) is the first context source.
+- If `向いている用途` is unavailable, only the current non-generic post-Run213 `今回の話題` may provide context.
+- Missing usable context fails safe and keeps the previous action unchanged.
+- Run214 does not change score, status, Evidence, risk, primary URL, category, Product Review or article-generation state.
+- Member Presentation workflow runs the Run214 wrapper for presentation and body entrypoints.
+- Run214 contains no Gemini/provider request path and keeps derived member sync zero-Gemini.
 
 ### note draft automation
 
@@ -162,7 +174,7 @@ Generated output directories are covered by `.gitignore`; if a test or workflow 
 
 ## Documentation freshness policy
 
-Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback without changing the Run209 functional baseline.
+Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback. Run214 adds current-context action specificity without changing the Run209 functional baseline.
 
 - Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
 - README / canonical spec baseline labels must remain aligned.
@@ -170,6 +182,7 @@ Run210 makes documentation freshness a CI contract rather than a manual reminder
 - Subscriber Decision Brief Sync must precede Member Presentation Sync; Inventory plan must not trigger downstream member writes.
 - Archived Product Review data must remain copy-only when reused by Run212 and must not become authoritative for current decision state.
 - Run213 topic fallback may use current `判断理由` only after Run212 leaves a deterministic generic topic; it must not source historical judgment fields or generate new facts.
+- Run214 action specificity may contextualize known deterministic templates only from current `向いている用途`, then current non-generic `今回の話題`; it must not rewrite explicit actions, test conditions or Decision/Evidence state.
 - A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
 
 ## Change discipline
