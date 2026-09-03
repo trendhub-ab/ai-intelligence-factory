@@ -327,6 +327,21 @@ note投稿対象はContent Intelligence側のReadyだけでは不十分。
 
 古い契約、hash不一致、asset不足を無理に復活させない。Notion保存時に改行等が1文字でも欠落したReady本文も投稿対象にせずFail-Closedする。
 
+### 6.1 note footer / presentation integrity — Run222
+
+初回の実note private-draft E2Eで、CTAがSources / Evidenceより前に置かれること、note title fieldと本文H1が重複すること、単一`#`が本文に生表示されることを確認した。Run222以降の公開表示契約は以下。
+
+1. 記事本文・結論の後に`Sources / Evidence`、権利/出典注記、免責を置く。
+2. `AI Decision Intelligence` CTAはそれら信頼情報の**後**、記事の最終Actionとして置く。
+3. note editorではstored Ready manuscriptをPublication Contractでbyte-exact検証した**後だけ**presentation transformを適用する。
+4. note title fieldと同一の先頭H1は本文から除去する。
+5. 残存する本文H1はcode fence外だけH2へ縮退し、raw Markdown `#`を表示しない。
+6. pre-Run222 policyでstampされた原稿は直接受理しない。現行policyでdeterministic rebuild/restampし、byte-exact readbackを通過してからnote editorへ送る。
+7. Evidence / Decision / score / source URL / article factは変更しない。
+8. Gemini/model call 0、public release action 0を維持する。
+
+詳細: `docs/reference/RUN222_NOTE_PRESENTATION_INTEGRITY.md`。
+
 ## 7. note private-draft automation
 
 現行note stack:
@@ -343,6 +358,7 @@ note投稿対象はContent Intelligence側のReadyだけでは不十分。
 - `run194_note_current_contract.py`
 - `run194_note_persistent_cloud.py`
 - `run199_note_vm_preflight.py`
+- `run222_note_presentation_integrity.py`
 
 `.github/workflows/note-create-draft.yml`はzero-browser / zero-Gemini preflight後、eligible candidateがある場合だけGCP Chrome VMを起動する。private draftのみ作成し、公開は人間が行う。
 
@@ -393,6 +409,8 @@ CIは少なくとも次を検証する。
 - Member Presentation normal Productionが別DBを自動作成・fallback選択しないこと。
 - Member Presentation normal Productionがphysical host mismatchを受理しないこと。
 - 会員向け主要画面を説明のない空表へ退行させないこと。
+
+- Run222ではSources/Evidence + 免責をCTAより前に維持し、note title重複H1/raw `#`生表示を再発させない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 

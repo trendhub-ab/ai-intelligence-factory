@@ -24,6 +24,7 @@ def install_runtime_layers(pipeline_module):
     import run183_eyecatch_emphasis_scale
     import reader_value_review_bridge
     import run208_reader_value_repair
+    import run222_note_presentation_integrity
     import run194_publication_contract
 
     runtime_state_channel.install(pipeline_module)
@@ -48,6 +49,9 @@ def install_runtime_layers(pipeline_module):
     # Reader-only dynamic repair is installed after the historical bridge so it can
     # selectively override only the bridge's reader_value_review_no_retry decision.
     run208_reader_value_repair.install(pipeline_module)
+    # Run222 is presentation-only but publication-material: it moves the subscription CTA
+    # after Sources/Evidence + disclaimer while leaving Evidence/Decision semantics unchanged.
+    run222_note_presentation_integrity.install_pipeline(pipeline_module)
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
 
