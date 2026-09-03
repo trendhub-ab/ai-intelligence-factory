@@ -10,6 +10,7 @@ Paid Member Navigation/UI Baseline: **Run218 — PC-first member UX reconciliati
 Paid Member Human-Language UI Baseline: **Run219 — non-engineer member presentation language**  
 Paid Member Database Destination Baseline: **Run220 — canonical member DB cutover / fail-closed destination**  
 Paid Member Database Hosting Baseline: **Run221 — API-host isolation / member-view separation**  
+Article Technical Claim Precision Baseline: **Run223 — operation/API scope, performance modality, first-party date and typo precision**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -105,6 +106,20 @@ AI Intelligence Factoryの事業構造:
 - 比喩・会話調は理解補助でありEvidenceではない
 - Reader Experience診断を理由に重大Fact/Evidence gateを緩めない
 
+### 4.1 Technical Claim Precision — Run223
+
+`run223_technical_claim_precision.py`は、初回note実機全文監査で露呈した技術Claimの狭い精度欠陥をzero-modelで防ぐ。
+
+- 同名パラメータでもメソッドごとに値・意味が異なる場合、1つの設定値へ丸めない。
+- 一部/特定/lossyなBreaking Changeを「全面禁止」「すべて廃止」へ一般化しない。
+- x倍・%改善・レイテンシ等が期待値/ベンチマーク/測定例なら、主体・モダリティ・条件を保持し、workload/環境依存の留保を落とさない。
+- 一次情報の`公開・更新`日はfirst-party本文/明示metadataだけを使い、収集日・分析日・発見元投稿日を代用しない。確認不能なら推測せず省略する。
+- `によるな処理`等の既知の明白な日本語助詞崩れをPublication前に局所blockする。
+- Evidence閾値、Decision Score、Gemini request budgetは変更しない。
+- Run223はPublication Contract fingerprint対象であり、policy変更後の旧Ready原稿は現行policyで再構築・再stampされるまでfail-closedとする。
+
+詳細: `docs/reference/RUN223_TECHNICAL_CLAIM_PRECISION.md`
+
 ## 5. Production runtime layer
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
@@ -116,6 +131,7 @@ AI Intelligence Factoryの事業構造:
 - `run173_operational_yield.py`
 - `run174_monthly_digest_integrity.py`
 - `run175_semantic_fact_precision.py`
+- `run223_technical_claim_precision.py`
 - `run176_scope_fidelity.py`
 - `run177_paid_funnel_alignment.py`
 - `run178_eyecatch_editorial_layout_optimizer.py`

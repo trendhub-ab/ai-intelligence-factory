@@ -32,14 +32,14 @@ _CONVERSION_QUALIFIER_RE = re.compile(r"(?:一部|特定|場合|情報[^。！�
 
 _MAINTAIN_TRUE_RE = re.compile(r"maintain_order\s*=\s*True", re.I)
 _MAINTAIN_LEFT_RE = re.compile(r"maintain_order\s*=\s*[\"']left[\"']", re.I)
-_JOIN_RE = re.compile(r"\bjoin\b", re.I)
-_GROUP_BY_RE = re.compile(r"\bgroup_by\b", re.I)
+_JOIN_RE = re.compile(r"join", re.I)
+_GROUP_BY_RE = re.compile(r"group_by", re.I)
 
 _MALFORMED_JA_PATTERNS = (
     re.compile(r"によるな(?:処理|性能|速度|効果|改善)", re.I),
 )
 
-_DATE_LINE_RE = re.compile(r"(?:公開・更新|公開日|一次情報(?:の)?公開日)\s*[:：]\s*(\d{4}-\d{2}-\d{2})")
+_DATE_LINE_RE = re.compile(r"(?:\*\*)?(?:公開・更新|公開日|一次情報(?:の)?公開日)(?:\*\*)?\s*[:：]\s*(\d{4}-\d{2}-\d{2})")
 _PRIMARY_DATE_KEYS = {
     "primary_source_published_at",
     "primary_source_published_date",
