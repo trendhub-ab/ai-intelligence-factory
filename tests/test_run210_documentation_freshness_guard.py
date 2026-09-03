@@ -106,6 +106,65 @@ def install_runtime_layers(pipeline_module):
         errors = guard.quota_contract_errors(one_shot, daily, pending, quota, spec)
         self.assertTrue(any("Daily workflow is no longer hard PAUSED" in error for error in errors))
 
+    def _member_contract_docs(self):
+        spec = (
+            "Run211 Inventory plan Subscriber Decision Brief Sync Member Presentation Sync\n"
+        )
+        readme = "Run211 Subscriber Decision Brief Sync Member Presentation Sync\n"
+        return spec, readme
+
+    def test_member_presentation_direct_source_race_is_rejected(self):
+        inventory = "run-name: Subscriber Inventory Bootstrap [${{ inputs.mode }}]\n"
+        subscriber = """
+workflow_run:
+  workflows:
+    - Daily Intelligence & Content Pipeline
+    - Daily Intelligence & Content Pipeline [ONE-SHOT]
+    - Subscriber Inventory Bootstrap
+  types: [completed]
+github.event.workflow_run.name != 'Subscriber Inventory Bootstrap'
+contains(github.event.workflow_run.display_title, '[apply]')
+group: member-derived-notion-writes
+"""
+        presentation = """
+workflow_run:
+  workflows:
+    - Subscriber Decision Brief Sync
+    - Daily Intelligence & Content Pipeline [ONE-SHOT]
+  types: [completed]
+group: member-derived-notion-writes
+"""
+        spec, readme = self._member_contract_docs()
+        errors = guard.member_product_sync_errors(
+            inventory, subscriber, presentation, spec, readme
+        )
+        self.assertTrue(any("racing its source" in error for error in errors))
+
+    def test_inventory_plan_write_fanout_is_rejected(self):
+        inventory = "run-name: Subscriber Inventory Bootstrap [${{ inputs.mode }}]\n"
+        subscriber = """
+workflow_run:
+  workflows:
+    - Daily Intelligence & Content Pipeline
+    - Daily Intelligence & Content Pipeline [ONE-SHOT]
+    - Subscriber Inventory Bootstrap
+  types: [completed]
+github.event.workflow_run.name != 'Subscriber Inventory Bootstrap'
+group: member-derived-notion-writes
+"""
+        presentation = """
+workflow_run:
+  workflows:
+    - Subscriber Decision Brief Sync
+  types: [completed]
+group: member-derived-notion-writes
+"""
+        spec, readme = self._member_contract_docs()
+        errors = guard.member_product_sync_errors(
+            inventory, subscriber, presentation, spec, readme
+        )
+        self.assertTrue(any("apply-only downstream filter" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
