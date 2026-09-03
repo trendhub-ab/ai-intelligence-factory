@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-03  
+最終更新: 2026-09-04  
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
@@ -9,6 +9,7 @@ Paid Member Commerce/Onboarding Baseline: **Run217 — zero-API monetization rea
 Paid Member Navigation/UI Baseline: **Run218 — PC-first member UX reconciliation**  
 Paid Member Human-Language UI Baseline: **Run219 — non-engineer member presentation language**  
 Paid Member Database Destination Baseline: **Run220 — canonical member DB cutover / fail-closed destination**  
+Paid Member Database Hosting Baseline: **Run221 — API-host isolation / member-view separation**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -40,6 +41,8 @@ AI Intelligence Factoryの事業構造:
 - Public releaseは人間の最終操作とし、note自動化はprivate draftまで。
 - Paid memberの正規入口は`AI Decision Intelligence｜会員ホーム`（Page ID `3c5479ff-dca9-8103-bff0-f2d5f408d35f`）。
 - 現行Member Presentation DBはRun220のDatabase ID `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`、Data Source ID `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`のみを正規商品とする。
+- 現行DBの物理APIホストはRun221のPage ID `3c5479ff-dca9-8178-867c-d9249a3ff5c8`。これは実装上のアクセス境界であり、会員入口ではない。
+- 会員ホームは正規Data Sourceを会員向けview/linkとして見せる。物理DB配置と会員ナビゲーションを同一視しない。
 - Run220前のDB `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` / `d1461b6f-0940-4bf9-803a-6686a37c4ba2` は`⚠️ 旧版・使用禁止｜AI・技術一覧（Run219前）`として監査用に隔離する。
 - 旧100件Data Source `ec2ac2b3-89b6-4242-89b9-e94060826fca`も`旧版・使用禁止`であり会員入口に使わない。
 - PCを会員利用の主画面とし、mobile/simple viewは補助導線として扱う。
@@ -221,7 +224,7 @@ Run218はPC中心のCurrent Navigation/UI Baselineである。
 - `今月の重要変化` source semanticsは維持する。
 - authoritative historyに`評価の変化 >= 20`または`<= -20`が存在する場合はpresentation-only fallbackとして表示できる。
 - 説明のない空表をprimary surfaceに置かない。
-- 正規DBとDigestは正規会員ホーム配下に置き、通常パンくずに内部`mlflow/mlflow`を出さない。
+- 会員ホームは正規Data Sourceへの会員向けview/linkを提供する。物理DBをホーム直下へ置くことはUX契約ではなく、物理配置はRun221に従う。
 
 ### 5.10 Paid member human-language UI — Run219
 
@@ -250,7 +253,7 @@ Current canonical destination:
 
 - Database ID: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
 - Data Source ID: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
-- Parent: `AI Decision Intelligence｜会員ホーム`
+- Physical API host Page ID: `3c5479ff-dca9-8178-867c-d9249a3ff5c8`（Run221 authority）
 
 Pre-cutover audit-only destination:
 
@@ -267,11 +270,46 @@ Production contract:
 5. 通常Productionで別の同名DBへfallbackしない。
 6. 通常Productionで新しいPresentation DBを自動作成しない。
 7. `.github/workflows/member-presentation-sync.yml`は`MEMBER_PRESENTATION_ALLOW_CREATE: 'false'`を固定する。
-8. workflowと会員ホームの参照先を同じcanonical IDsに固定する。
+8. workflowと会員ホームの参照Data Sourceを同じcanonical IDsに固定する。
 9. Run219 human-language UIを維持する。
 10. Gemini/model APIを使用しない。
 
 詳細: `docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md`。
+
+### 5.12 Member DB API host isolation — Run221
+
+Run220をmainへ反映後、正規DBを会員ホーム直下へ物理移動した状態ではGitHub ActionsのNotion Integrationからcanonical Data SourceがHTTP 404となった。Run220 Fail-Closedにより別DBは作成されなかった。同じDBを元のAPI-accessible hostへ戻した後、同じmain SHAの再実行が成功したため、物理親の変更によるIntegrationアクセス継承が原因と確定した。
+
+Current hosting contract:
+
+- Customer member home: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`
+- Canonical Database: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
+- Canonical Data Source: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
+- Physical API host: `3c5479ff-dca9-8178-867c-d9249a3ff5c8`
+
+Production invariant:
+
+1. 会員入口と物理APIホストを別概念として扱う。
+2. `provision_member_presentation_db.py`はcanonical DS/DBに加えてphysical API hostもverifyする。
+3. `.github/workflows/member-presentation-sync.yml`は`MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'`を固定する。
+4. physical host mismatch / unreadableはmember write前にFail-Closedする。
+5. 現行Integrationへ会員ホーム親のアクセスが明示付与・検証されるまでは、breadcrumb改善だけを目的にDBを会員ホーム直下へ物理移動しない。
+6. 会員ホームは正規Data Sourceの会員向けview/linkを表示し、内部物理ホストを会員向け案内に使わない。
+7. bootstrap parentもAPI hostを既定値とする。
+8. Run220のno-fallback / no-auto-createを維持する。
+
+Run220 post-merge再検証:
+
+- main SHA `a3eecf70f64ddea46525b2e0225e1d94ea822b09`
+- Member Presentation Sync Run `33771347577`
+- Attempt 1: canonical resolve HTTP 404、fallback/create 0
+- API hostへ戻したAttempt 2: SUCCESS
+- `created: False`
+- source records 206 / presentation unchanged 206
+- body total 206 / unchanged 206
+- `zero_gemini_calls=true`
+
+詳細: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`。
 
 ## 6. Publication Contract / note Ready契約
 
@@ -349,7 +387,9 @@ CIは少なくとも次を検証する。
 - Run219 non-engineer human-language bodyを維持し、body summaryへstatus codeを再露出させないこと。
 - Run220ではREADME / Canonical / Operator / workflowがcurrent DB `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`を指すこと。
 - Run220前DB `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` / `d1461b6f-0940-4bf9-803a-6686a37c4ba2`を`旧版・使用禁止`として扱うこと。
+- Run221ではREADME / Canonical / Operator / workflowがphysical API host `3c5479ff-dca9-8178-867c-d9249a3ff5c8`を指し、会員ホームと物理ホストを同一視しないこと。
 - Member Presentation normal Productionが別DBを自動作成・fallback選択しないこと。
+- Member Presentation normal Productionがphysical host mismatchを受理しないこと。
 - 会員向け主要画面を説明のない空表へ退行させないこと。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
