@@ -5,7 +5,7 @@
 - **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
-- **Current paid member UX baseline:** Run214 — current-authority action specificity
+- **Current paid member UX baseline:** Run215 — final current-authority action dedup
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -93,8 +93,20 @@ Member-facing Notion data is derived in a fixed order rather than by parallel wr
 - If `向いている用途` is unavailable, only the current non-generic post-Run213 `今回の話題` may provide context.
 - Missing usable context fails safe and keeps the previous action unchanged.
 - Run214 does not change score, status, Evidence, risk, primary URL, category, Product Review or article-generation state.
-- Member Presentation workflow runs the Run214 wrapper for presentation and body entrypoints.
 - Run214 contains no Gemini/provider request path and keeps derived member sync zero-Gemini.
+
+### Paid member final action dedup — Run215
+
+`run215_member_action_final_dedup.py` is a narrow presentation-only refinement on top of Run214.
+
+- Specific current `向いている用途` still has highest priority.
+- Two known deterministic broad `向いている用途` fallbacks are treated as generic context, not product-specific context.
+- When such generic `向いている用途` coexists with a current non-generic post-Run213 `今回の話題`, Run215 uses the current topic to contextualize the existing safe action template.
+- If no specific current topic exists, Run215 preserves Run214 behavior rather than deleting context or inventing a new action.
+- Explicit/source-specific actions remain untouched and the Run214 action body, test counts, user counts, time windows and metrics remain unchanged.
+- Run215 does not change score, status, Evidence, risk, primary URL, category, Product Review or article-generation state.
+- Member Presentation workflow runs the Run215 wrapper for presentation and body entrypoints.
+- Run215 contains no Gemini/provider request path and keeps derived member sync zero-Gemini.
 
 ### note draft automation
 
@@ -174,7 +186,7 @@ Generated output directories are covered by `.gitignore`; if a test or workflow 
 
 ## Documentation freshness policy
 
-Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback. Run214 adds current-context action specificity without changing the Run209 functional baseline.
+Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback. Run214 adds current-context action specificity. Run215 removes only the residual deterministic action duplicates caused by generic `向いている用途`, without changing the Run209 functional baseline.
 
 - Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
 - README / canonical spec baseline labels must remain aligned.
@@ -182,7 +194,8 @@ Run210 makes documentation freshness a CI contract rather than a manual reminder
 - Subscriber Decision Brief Sync must precede Member Presentation Sync; Inventory plan must not trigger downstream member writes.
 - Archived Product Review data must remain copy-only when reused by Run212 and must not become authoritative for current decision state.
 - Run213 topic fallback may use current `判断理由` only after Run212 leaves a deterministic generic topic; it must not source historical judgment fields or generate new facts.
-- Run214 action specificity may contextualize known deterministic templates only from current `向いている用途`, then current non-generic `今回の話題`; it must not rewrite explicit actions, test conditions or Decision/Evidence state.
+- Run214 action specificity may contextualize known deterministic templates only from current product fields and must not rewrite explicit actions, test conditions or Decision/Evidence state.
+- Run215 may bypass only known generic `向いている用途` fallbacks when a current specific topic exists; it must preserve specific best-for context and must not invent uniqueness for its own sake.
 - A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
 
 ## Change discipline
