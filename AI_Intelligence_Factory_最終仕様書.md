@@ -4,7 +4,7 @@
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
-Paid Member UX Baseline: **Run212 — current-authority reviewed-copy recovery**  
+Paid Member UX Baseline: **Run213 — current-authority topic specificity**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -172,8 +172,21 @@ AI Intelligence Factoryの事業構造は次で固定する。
 - score / status / Evidence / primary URL等のCurrent Decision Intelligence stateはRun212のarchive pathから変更しない。
 - `20xx年x月時点`、`現時点`、`最新`、更新継続性を断定する等の時間依存archive copyは再利用せずFail-Safeで捨てる。
 - 将来active `external_reviews/` が存在する場合はactive reviewをarchiveより優先し、既存Run170 behaviorを維持する。
-- Member Presentation workflowはPresentation/BodyともRun212 wrapperをentrypointとする。
 - Run212はGemini/provider request pathを持たず、派生会員同期はzero-Geminiを維持する。
+
+### 5.5 Paid member topic specificity — Run213
+
+`run213_member_topic_specificity.py` はRun212の安全境界を保持したまま、Run212後にも残るdeterministic generic topicだけを現在情報で補うPresentation層である。
+
+- Run212を先にinstallし、archiveのauthority境界を一切緩めない。
+- post-Run212 `今回の話題` がgenericな場合だけ、**現在の `判断理由`** をtopic fallbackとして利用できる。
+- 現在の `判断理由` が空・malformed・genericならFail-Safeで既存topicを維持する。
+- 既存の非generic topicは上書きしない。
+- topicへ現在判断理由を昇格した後はRun170.4の既存role separationを通し、`判断理由`がtopicと同文にならないよう現在のrisk/decision contextから分離する。
+- archive `short_rationale` や過去risk等をRun213が再び判断権威として利用することは禁止する。
+- `Safety 根拠` / `Transfer 根拠` のような既知の機械翻訳副作用だけを狭く修正し、product name / URL / score / status / Evidence / categoryを変更しない。
+- Member Presentation workflowはPresentation/BodyともRun213 wrapperをentrypointとする。
+- Run213はGemini/provider request pathを持たず、新しい事実・評価・判断を生成しない。
 
 ## 6. Publication Contract / note Ready契約
 
@@ -260,6 +273,7 @@ Run210以降、CIは少なくとも次を機械検証する。
 - Pending Retry fast laneの最大3 request / 1回Reader repair契約がCanonical docsから欠落していないこと。
 - Run211以降は、Inventory apply → Subscriber Decision Brief Sync → Member Presentation Syncの派生商品同期順序と、Inventory planのread-only境界も監視する。
 - Run212以降は、archive Product Reviewを再利用する場合でも読者向けcopy-onlyに限定し、現在Decision Intelligenceの判断・Evidence・risk等へ昇格させない。
+- Run213以降は、残存generic topicの最終fallbackがcurrent `判断理由`のみに限定され、archive判断や新しいFact生成へ広がっていないこと。
 
 将来RunでProduction runtime layer、quota安全契約、Pending Retry、Publication/note安全契約、会員商品同期契約を変更する場合、**コードだけをmainへ入れてはならない**。Canonical docsを同じPRで更新し、Documentation Freshness GuardをPASSさせる。
 
