@@ -132,7 +132,11 @@ def _looks_like_generated_member_callout(
     block_id = str(block.get("id") or "")
     if not block_id:
         return False
-    children = child_cache.setdefault(block_id, body._children(block_id))
+    if block_id in child_cache:
+        children = child_cache[block_id]
+    else:
+        children = body._children(block_id)
+        child_cache[block_id] = children
     headings = guard._heading_texts(children)
     has_decision = bool({"いま、どうする？", "いまの判断", "結論"} & headings)
     has_reason = bool({"そう判断した理由", "判断理由"} & headings)
