@@ -2,7 +2,7 @@
 
 ## Production baseline
 
-- **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
+- **Current functional baseline:** Run211 — paid member sync ordering
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
@@ -42,6 +42,20 @@ New development must start from `main`. Historical/archive branches are referenc
 - one Reader Value recompose at most, only for repairable reader-only failures
 - stop after first successful article
 - no public note release
+
+### Paid member product sync — Run211
+
+Member-facing Notion data is derived in a fixed order rather than by parallel writers:
+
+**source/product update → Subscriber Decision Brief Sync → Member Presentation Sync**
+
+- Daily and ONE-SHOT feed Subscriber Decision Brief first.
+- Subscriber Inventory Bootstrap **apply** also feeds Subscriber Decision Brief.
+- Inventory **plan** remains read-only and does not fan out into member writes.
+- Member Presentation Sync follows Subscriber Decision Brief Sync, rather than racing Daily/ONE-SHOT/Inventory directly.
+- Subscriber Decision Brief Sync and Member Presentation Sync share the `member-derived-notion-writes` lock.
+- These derived member workflows do not receive `GEMINI_API_KEY`.
+- `関連記事` is propagated only when the source already contains a verified URL; no URL is invented before human note publication.
 
 ### note draft automation
 
@@ -121,11 +135,12 @@ Generated output directories are covered by `.gitignore`; if a test or workflow 
 
 ## Documentation freshness policy
 
-Run210 makes documentation freshness a CI contract rather than a manual reminder.
+Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering.
 
 - Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
 - README / canonical spec baseline labels must remain aligned.
 - Gemini safety ceiling 18, timeout fail-closed behavior, Daily PAUSED, and Pending Retry fast-lane contracts must remain consistent with code/workflows.
+- Subscriber Decision Brief Sync must precede Member Presentation Sync; Inventory plan must not trigger downstream member writes.
 - A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
 
 ## Change discipline
