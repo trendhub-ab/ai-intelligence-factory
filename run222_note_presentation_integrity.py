@@ -42,11 +42,12 @@ def _preceding_divider(text: str, before: int, *, lower_bound: int = 0) -> int |
 
 
 def move_subscription_cta_after_evidence(markdown_text: str) -> str:
-    """Move the subscription CTA after Sources/Evidence + disclaimer, idempotently.
+    """Move the subscriber CTA after Sources/Evidence + disclaimer, idempotently.
 
-    Historical/current Ready manuscripts may have been produced before Run222.  This function is
-    therefore also used by the note editor presentation path so an old-but-valid manuscript can be
-    rendered in the corrected order without weakening its stored publication-contract validation.
+    The function can normalize a manuscript that still has the pre-Run222 footer order, but the
+    note browser path calls it only *after* the manuscript has satisfied the current Publication
+    Contract. A manuscript stamped under an older policy must first be deterministically rebuilt
+    and restamped under the current policy; stale provenance is never accepted or bypassed.
     """
     text = str(markdown_text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not text:
