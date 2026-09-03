@@ -50,8 +50,6 @@ jobs:
         run: python repository_falsification_guard.py
 
       - name: Run full zero-API unittest regression with failure tail
-        env:
-          SYNTHETIC_REGRESSION_MODE: '1'
         run: |
           set +e
           python -m unittest discover -s tests -v > /tmp/run223_full_unittest.log 2>&1
