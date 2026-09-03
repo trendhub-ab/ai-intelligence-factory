@@ -6,7 +6,8 @@
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
 - **Current paid member UX baseline:** Run215 — final current-authority action dedup
-- **Current paid member commerce/onboarding baseline:** Run217 — zero-API monetization readiness / member home
+- **Current paid member commerce/onboarding baseline:** Run217 — zero-API monetization readiness / product fulfillment
+- **Current paid member navigation/UI baseline:** Run218 — PC-first member UX reconciliation
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -111,17 +112,30 @@ Member-facing Notion data is derived in a fixed order rather than by parallel wr
 
 ### Paid member commerce / onboarding — Run217
 
-Run217 establishes the safe customer-facing entrypoint without changing Production decision logic.
+Run217 established zero-model product readiness, current inventory/Digest fulfillment, and the legacy-database quarantine. Its original member-home navigation conclusion was corrected by Run218.
 
-- Canonical member home: `AI Intelligence｜会員ホーム`
-- Page ID: `3d0479ff-dca9-819e-9da0-c951225de6b3`
 - Current member presentation DB: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`
 - Current member presentation data source: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`
-- The member home exposes `今すぐ見る3件`, `実務判断だけ`, and `すべての判断DB` linked views with member-relevant fields only.
-- The older 100-row duplicate data source `ec2ac2b3-89b6-4242-89b9-e94060826fca` is explicitly renamed `旧版・使用禁止`; it remains audit history and must not be used for onboarding.
-- `会員限定Digest｜2026年9月 初回版` is present under the member home and was built from current authoritative DB content with zero model calls.
-- New paid members must be invited to the member home, not to the internal `mlflow/mlflow` source page or legacy DB.
-- Full operator contract: `docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md`.
+- The older 100-row duplicate data source `ec2ac2b3-89b6-4242-89b9-e94060826fca` is explicitly `旧版・使用禁止`; it remains audit history and must not be used for onboarding.
+- `会員限定Digest｜2026年9月 初回版` was built from current authoritative DB content with zero model calls and remains part of the paid-product fulfillment contract.
+- The page created in Run217 (`3d0479ff-dca9-819e-9da0-c951225de6b3`) is now `【旧・統合済み】AI Intelligence｜会員ホーム` and is **not** the canonical onboarding destination.
+- Full historical/correction record: `docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md`.
+
+### Paid member navigation / UI — Run218
+
+Run218 is the current customer-facing navigation/UI contract.
+
+- Canonical member home: `AI Decision Intelligence｜会員ホーム`
+- Canonical Page ID: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`
+- Canonical URL: `https://app.notion.com/p/3c5479ffdca98103bff0f2d5f408d35f`
+- **PC-first:** PC is the primary experience; mobile/simple views are secondary fallback surfaces only.
+- The first home surface is a **live Top3** linked view driven by `注目順位 <= 3`; manual fixed product cards are not the authority.
+- High-priority practical candidates are deliberately separated from the full inventory so a shortlist does not degrade into a 100+ row dump.
+- `全件検索｜PC`, judgment/category views, the PC judgment board, rising-items view, and Deep Tech view use member-relevant fields rather than internal identifiers.
+- The former blank `今月の重要変化` primary surface is reconciled without changing source semantics: the PC home shows recent authoritative changes with `評価の変化 >= 20` or `<= -20`, while `今月の重要変化` itself is not rewritten merely to populate a view.
+- A primary member surface must not present an unexplained blank table when an already-authoritative presentation fallback exists; otherwise it must show an explicit empty-state explanation.
+- The current presentation DB and Digest are children of the canonical home, so normal customer breadcrumbs no longer pass through the internal `mlflow/mlflow` source record.
+- Full current contract: `docs/reference/RUN218_MEMBER_UX_RECONCILIATION.md`.
 
 ### note draft automation
 
@@ -201,7 +215,7 @@ Generated output directories are covered by `.gitignore`; if a test or workflow 
 
 ## Documentation freshness policy
 
-Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback. Run214 adds current-context action specificity. Run215 removes only the residual deterministic action duplicates caused by generic `向いている用途`, without changing the Run209 functional baseline. Run217 adds the customer-facing member-home/onboarding contract without changing the Run209 functional baseline.
+Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the archive-copy authority boundary. Run213 adds the current-authority final topic fallback. Run214 adds current-context action specificity. Run215 removes only the residual deterministic action duplicates caused by generic `向いている用途`, without changing the Run209 functional baseline. Run217 adds the paid-product fulfillment/commerce baseline. Run218 corrects the actual customer-facing member navigation and establishes the PC-first UI contract without changing the Run209 functional baseline.
 
 - Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
 - README / canonical spec baseline labels must remain aligned.
@@ -211,7 +225,9 @@ Run210 makes documentation freshness a CI contract rather than a manual reminder
 - Run213 topic fallback may use current `判断理由` only after Run212 leaves a deterministic generic topic; it must not source historical judgment fields or generate new facts.
 - Run214 action specificity may contextualize known deterministic templates only from current product fields and must not rewrite explicit actions, test conditions or Decision/Evidence state.
 - Run215 may bypass only known generic `向いている用途` fallbacks when a current specific topic exists; it must preserve specific best-for context and must not invent uniqueness for its own sake.
-- Run217 onboarding must point paid members to the canonical member home and must not regress to the legacy 100-row database.
+- Run217 legacy DB quarantine and Digest fulfillment remain valid, but its parallel home page is superseded.
+- Run218 onboarding must point paid members to `AI Decision Intelligence｜会員ホーム` (`3c5479ff-dca9-8103-bff0-f2d5f408d35f`), keep PC-first/mobile-secondary navigation, and must not regress to the superseded Run217 home or legacy 100-row DB.
+- Run218 must not rewrite `今月の重要変化` merely to avoid a blank view; presentation fallback and source semantics stay separate.
 - A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
 
 ## Change discipline
