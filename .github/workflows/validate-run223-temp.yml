@@ -45,15 +45,15 @@ jobs:
           SYNTHETIC_REGRESSION_MODE: '1'
         run: python -m unittest discover -s tests -p 'test_*.py'
 
-      - name: Commit canonical spec update
+      - name: Commit validated Run223 source and canonical spec update
         run: |
           set -euo pipefail
-          if git diff --quiet -- AI_Intelligence_Factory_最終仕様書.md; then
-            echo 'canonical spec already current'
+          if git diff --quiet -- run223_technical_claim_precision.py AI_Intelligence_Factory_最終仕様書.md; then
+            echo 'Run223 source and canonical spec already current'
             exit 0
           fi
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
-          git add AI_Intelligence_Factory_最終仕様書.md
-          git commit -m 'Run223: update canonical production specification'
+          git add run223_technical_claim_precision.py AI_Intelligence_Factory_最終仕様書.md
+          git commit -m 'Run223: finalize technical claim guards and canonical specification'
           git push origin HEAD:run223-technical-claim-precision
