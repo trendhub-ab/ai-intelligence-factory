@@ -5,6 +5,7 @@
 - **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
+- **Current paid member UX baseline:** Run212 — current-authority reviewed-copy recovery
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -57,6 +58,19 @@ Member-facing Notion data is derived in a fixed order rather than by parallel wr
 - Subscriber Decision Brief Sync and Member Presentation Sync share the `member-derived-notion-writes` lock.
 - These derived member workflows do not receive `GEMINI_API_KEY`.
 - `関連記事` is propagated only when the source already contains a verified URL; no URL is invented before human note publication.
+
+### Paid member reviewed-copy recovery — Run212
+
+`run212_member_review_copy.py` is a presentation-only compatibility layer for the paid member Decision Intelligence product.
+
+- Run201 archived historical external Product Review JSON remains non-authoritative history; it is not restored to the active `external_reviews/` runtime namespace.
+- Archived review data may supply only `plain_summary` and `topic_trigger`, and only where the current member copy is a deterministic fallback/generic topic.
+- Current non-fallback summaries remain authoritative.
+- Historical score, status, judgment reason, risk, best-for, avoid-for, Evidence and primary URL can never override current Decision Intelligence state through the archive path.
+- Explicitly time-sensitive archive copy such as dated “時点” claims, “現時点”, “最新”, and freshness/update claims is rejected instead of being mechanically rewritten.
+- If a future current `external_reviews/` source exists, active review copy outranks archive copy and keeps the existing Run170 behavior.
+- Member Presentation workflow runs the Run212 wrapper for both presentation and body entrypoints.
+- Run212 contains no Gemini/provider path and keeps derived member sync zero-Gemini.
 
 ### note draft automation
 
@@ -136,12 +150,13 @@ Generated output directories are covered by `.gitignore`; if a test or workflow 
 
 ## Documentation freshness policy
 
-Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering.
+Run210 makes documentation freshness a CI contract rather than a manual reminder. Run211 extends that contract to the paid member data-sync ordering. Run212 adds the paid member presentation-copy authority boundary without changing the Run209 functional baseline.
 
 - Active runtime layers in `production_pipeline.py` must be represented in the canonical specification.
 - README / canonical spec baseline labels must remain aligned.
 - Gemini safety ceiling 18, timeout fail-closed behavior, Daily PAUSED, and Pending Retry fast-lane contracts must remain consistent with code/workflows.
 - Subscriber Decision Brief Sync must precede Member Presentation Sync; Inventory plan must not trigger downstream member writes.
+- Archived Product Review data must remain copy-only when reused by Run212 and must not become authoritative for current decision state.
 - A Production behavior change that makes canonical documentation stale must fail CI until the documentation is updated in the same change set.
 
 ## Change discipline
