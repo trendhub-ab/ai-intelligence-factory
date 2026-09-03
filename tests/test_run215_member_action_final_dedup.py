@@ -1,5 +1,6 @@
 import importlib
 import unittest
+from pathlib import Path
 
 import member_human_language_ux as base
 import run214_member_action_specificity as run214
@@ -8,6 +9,7 @@ import run215_member_action_final_dedup as run215
 
 class Run215MemberActionFinalDedupTests(unittest.TestCase):
     def setUp(self):
+        # Keep each test independent without installing Production monkey-patches.
         importlib.reload(run214)
         importlib.reload(run215)
 
@@ -56,20 +58,40 @@ class Run215MemberActionFinalDedupTests(unittest.TestCase):
         }
         self.assertEqual(action, run214.contextualize_template_action(state, action))
 
-    def test_template_action_becomes_topic_specific_after_install(self):
-        run215.install()
+    def test_template_action_becomes_topic_specific_without_global_install(self):
         state = {
             "best_for": "論文の対象課題が自社ユースケースと一致し、既存手法との比較を小規模に再現できる研究・開発チーム。",
             "topic": "調査・リサーチAgentの根拠統合品質を改善したい用途で試験価値がある。",
         }
         action = "代表的な1つの処理だけを検証環境で動かし、導入前後の速度・費用・運用負荷を比較する。"
-        out = run214.contextualize_template_action(state, action)
+        original = run214._specific_context
+        try:
+            run214._specific_context = run215._specific_context
+            out = run214.contextualize_template_action(state, action)
+        finally:
+            run214._specific_context = original
         self.assertIn("調査・リサーチAgent", out)
         self.assertNotIn("論文の対象課題が自社ユースケース", out)
         self.assertTrue(out.endswith(action))
 
+    def test_workflow_uses_run215_as_top_wrapper_and_keeps_prior_layers(self):
+        workflow = Path(".github/workflows/member-presentation-sync.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("run213_member_topic_specificity.py", workflow)
+        self.assertIn("run214_member_action_specificity.py", workflow)
+        self.assertIn("run215_member_action_final_dedup.py", workflow)
+        self.assertIn("tests/test_run213_member_topic_specificity.py", workflow)
+        self.assertIn("tests/test_run214_member_action_specificity.py", workflow)
+        self.assertIn("tests/test_run215_member_action_final_dedup.py", workflow)
+        self.assertIn(
+            "run: python run215_member_action_final_dedup.py presentation", workflow
+        )
+        self.assertIn("run: python run215_member_action_final_dedup.py body", workflow)
+        self.assertNotIn("GEMINI_API_KEY", workflow)
+
     def test_no_provider_or_gemini_path(self):
-        source = open("run215_member_action_final_dedup.py", encoding="utf-8").read()
+        source = Path("run215_member_action_final_dedup.py").read_text(encoding="utf-8")
         forbidden = ["GEMINI_API_KEY", "google.genai", "generate_content(", "Client("]
         for token in forbidden:
             self.assertNotIn(token, source)
