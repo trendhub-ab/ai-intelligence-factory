@@ -261,6 +261,50 @@ group: member-derived-notion-writes
         errors = guard.member_destination_workflow_errors(workflow, spec, readme, run220)
         self.assertTrue(any("missing canonical destination" in error for error in errors))
 
+    def _run221_host_contract(self):
+        workflow = (
+            f"MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: '{guard.CURRENT_MEMBER_DB_ID}'\n"
+            f"MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '{guard.CURRENT_MEMBER_DATA_SOURCE_ID}'\n"
+            f"MEMBER_PRESENTATION_API_HOST_PAGE_ID: '{guard.CURRENT_MEMBER_API_HOST_PAGE_ID}'\n"
+            "MEMBER_PRESENTATION_ALLOW_CREATE: 'false'\n"
+        )
+        current = (
+            f"{guard.CANONICAL_MEMBER_HOME_ID}\n"
+            f"{guard.CURRENT_MEMBER_DB_ID}\n"
+            f"{guard.CURRENT_MEMBER_DATA_SOURCE_ID}\n"
+            f"{guard.CURRENT_MEMBER_API_HOST_PAGE_ID}\n"
+        )
+        spec = "Paid Member Database Hosting Baseline: **Run221\n" + current
+        readme = "paid member DB hosting baseline:** Run221\n" + current
+        run221 = (
+            current
+            + "physical API host\n"
+            + "linked views\n"
+            + "HTTP 404\n"
+            + "created: False\n"
+            + "zero_gemini_calls=true\n"
+            + "must not be physically moved under the member home\n"
+        )
+        return workflow, spec, readme, run221
+
+    def test_run221_host_isolation_contract_is_accepted(self):
+        self.assertEqual(guard.member_host_isolation_errors(*self._run221_host_contract()), [])
+
+    def test_run221_missing_api_host_pin_is_rejected(self):
+        workflow, spec, readme, run221 = self._run221_host_contract()
+        workflow = workflow.replace(
+            f"MEMBER_PRESENTATION_API_HOST_PAGE_ID: '{guard.CURRENT_MEMBER_API_HOST_PAGE_ID}'\n",
+            "",
+        )
+        errors = guard.member_host_isolation_errors(workflow, spec, readme, run221)
+        self.assertTrue(any("no longer pins the Run221 API host" in error for error in errors))
+
+    def test_run221_do_not_move_contract_cannot_be_removed(self):
+        workflow, spec, readme, run221 = self._run221_host_contract()
+        run221 = run221.replace("must not be physically moved under the member home", "may be moved for cleaner breadcrumbs")
+        errors = guard.member_host_isolation_errors(workflow, spec, readme, run221)
+        self.assertTrue(any("do-not-move-under-member-home" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
