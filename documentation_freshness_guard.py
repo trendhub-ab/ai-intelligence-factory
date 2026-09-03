@@ -17,6 +17,15 @@ PENDING_RETRY_PATH = "pending_retry_validation.py"
 INVENTORY_WORKFLOW_PATH = ".github/workflows/inventory-bootstrap.yml"
 SUBSCRIBER_BRIEF_WORKFLOW_PATH = ".github/workflows/subscriber-decision-brief.yml"
 MEMBER_PRESENTATION_WORKFLOW_PATH = ".github/workflows/member-presentation-sync.yml"
+RUN217_PATH = "docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md"
+RUN218_PATH = "docs/reference/RUN218_MEMBER_UX_RECONCILIATION.md"
+
+CANONICAL_MEMBER_HOME_ID = "3c5479ff-dca9-8103-bff0-f2d5f408d35f"
+CANONICAL_MEMBER_HOME_TITLE = "AI Decision Intelligence｜会員ホーム"
+SUPERSEDED_RUN217_HOME_ID = "3d0479ff-dca9-819e-9da0-c951225de6b3"
+CURRENT_MEMBER_DB_ID = "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1"
+CURRENT_MEMBER_DATA_SOURCE_ID = "d1461b6f-0940-4bf9-803a-6686a37c4ba2"
+LEGACY_MEMBER_DATA_SOURCE_ID = "ec2ac2b3-89b6-4242-89b9-e94060826fca"
 
 FLASH_BUDGET_VARS = (
     "GEMINI_36_FLASH_DAILY_BUDGET",
@@ -59,6 +68,7 @@ def baseline_errors(spec_text: str, readme_text: str) -> list[str]:
         "Run209",
         "Run210",
         "Run211",
+        "Run218",
         "Daily workflowはPAUSED",
         "Documentation Freshness Guard",
     ):
@@ -69,6 +79,7 @@ def baseline_errors(spec_text: str, readme_text: str) -> list[str]:
         "Run209",
         "Run210",
         "Run211",
+        "Run218",
         "**Daily:** PAUSED",
         "Documentation Freshness Guard",
     ):
@@ -211,6 +222,79 @@ def member_product_sync_errors(
     return errors
 
 
+def member_navigation_ux_errors(
+    spec_text: str,
+    readme_text: str,
+    run217_text: str,
+    run218_text: str,
+) -> list[str]:
+    """Protect the actual paid-member home, PC-first IA, and no-fake-change UX contract."""
+    errors: list[str] = []
+
+    current_docs = (spec_text, readme_text, run218_text)
+    for marker in (
+        CANONICAL_MEMBER_HOME_ID,
+        CANONICAL_MEMBER_HOME_TITLE,
+        CURRENT_MEMBER_DB_ID,
+        CURRENT_MEMBER_DATA_SOURCE_ID,
+    ):
+        for name, text in zip(("spec", "README", "Run218"), current_docs):
+            if marker not in text:
+                errors.append(f"{name} missing current member-navigation marker: {marker}")
+
+    if "Paid Member Navigation/UI Baseline: **Run218" not in spec_text:
+        errors.append("Canonical specification no longer labels Run218 as the Navigation/UI baseline")
+    if "paid member navigation/UI baseline:** Run218" not in readme_text:
+        errors.append("README no longer labels Run218 as the Navigation/UI baseline")
+
+    forbidden_current_phrase = "正規会員入口は`AI Intelligence｜会員ホーム`"
+    if forbidden_current_phrase in spec_text or forbidden_current_phrase in run218_text:
+        errors.append("Superseded Run217 home was promoted back to current canonical navigation")
+
+    if SUPERSEDED_RUN217_HOME_ID not in run217_text or SUPERSEDED_RUN217_HOME_ID not in run218_text:
+        errors.append("Run217 superseded home ID is no longer documented for regression safety")
+    if "superseded by Run218" not in run217_text:
+        errors.append("Run217 history no longer states that its member-home navigation was superseded")
+    if "【旧・統合済み】AI Intelligence｜会員ホーム" not in run217_text:
+        errors.append("Run217 superseded home is not visibly quarantined in operator history")
+
+    for marker in (
+        "PC-first",
+        "live Top3",
+    ):
+        if marker not in spec_text or marker not in readme_text:
+            errors.append(f"PC-first member UX contract missing from canonical docs: {marker}")
+    for marker in (
+        "PC is the primary member experience",
+        "Mobile/simple views are secondary fallback surfaces only",
+        "注目順位 <= 3",
+        "presentation-only fallback",
+        "does not modify the monthly checkbox",
+        "blank table",
+    ):
+        if marker not in run218_text:
+            errors.append(f"Run218 operator contract missing UX safety marker: {marker}")
+
+    if LEGACY_MEMBER_DATA_SOURCE_ID not in spec_text or LEGACY_MEMBER_DATA_SOURCE_ID not in readme_text:
+        errors.append("Legacy 100-row member data source is no longer explicitly quarantined")
+    if "旧版・使用禁止" not in spec_text or "旧版・使用禁止" not in readme_text:
+        errors.append("Legacy member database lost its visible do-not-use contract")
+
+    if "今月の重要変化" not in spec_text or "今月の重要変化" not in run218_text:
+        errors.append("Important-change source semantics are no longer documented")
+    if "評価の変化 >= 20" not in spec_text or "<= -20" not in spec_text:
+        errors.append("Canonical spec lost the Run218 recent-large-change presentation fallback")
+    if "評価の変化 >= 20" not in run218_text or "評価の変化 <= -20" not in run218_text:
+        errors.append("Run218 operator contract lost the authoritative large-change thresholds")
+
+    if "Gemini/model requests used for this run: **0**" not in run218_text:
+        errors.append("Run218 no longer explicitly records zero model requests")
+    if "GEMINI_API_KEY" in run218_text or "generate_content(" in run218_text:
+        errors.append("Run218 navigation/UI contract unexpectedly contains a model invocation path")
+
+    return errors
+
+
 def validate(root: str | Path = ".") -> list[str]:
     root_path = Path(root)
     spec_text = _read(root_path, SPEC_PATH)
@@ -223,6 +307,8 @@ def validate(root: str | Path = ".") -> list[str]:
     inventory_text = _read(root_path, INVENTORY_WORKFLOW_PATH)
     subscriber_brief_text = _read(root_path, SUBSCRIBER_BRIEF_WORKFLOW_PATH)
     member_presentation_text = _read(root_path, MEMBER_PRESENTATION_WORKFLOW_PATH)
+    run217_text = _read(root_path, RUN217_PATH)
+    run218_text = _read(root_path, RUN218_PATH)
 
     errors: list[str] = []
     errors.extend(runtime_layer_errors(production_source, spec_text))
@@ -245,6 +331,7 @@ def validate(root: str | Path = ".") -> list[str]:
             readme_text,
         )
     )
+    errors.extend(member_navigation_ux_errors(spec_text, readme_text, run217_text, run218_text))
     return errors
 
 
