@@ -1,4 +1,4 @@
-name: Ops Repair Polars Ready manuscript 2026-09-04
+name: Ops Dispatch note Ready Sync after repair 2026-09-04
 
 on:
   push:
@@ -9,176 +9,16 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 jobs:
-  repair:
+  dispatch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: main
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install requests
-      - name: Download authoritative Run 18 audit artifact
+      - name: Dispatch existing Note Ready Article Sync workflow on main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rm -rf artifact
-          mkdir artifact
-          gh run download 33777375734 --repo "$GITHUB_REPOSITORY" --name private-gate-review-18 --dir artifact
-          test -f artifact/article_audit/articles/ready/Pre-Release_of_Polars_2_0_5725b76680/final.md
-      - name: Re-persist exact Polars manuscript under current byte contract
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-        run: |
-          python - <<'PY'
-          from __future__ import annotations
-          import hashlib
-          import os
-          from pathlib import Path
-          import requests
-          import publication_contract as pc
-
-          PAGE_ID = '3d0479ffdca9811aad6fc525655c21ff'
-          AUDIT = Path('artifact/article_audit/articles/ready/Pre-Release_of_Polars_2_0_5725b76680/final.md')
-          EXPECTED_OLD_MANUSCRIPT_SHA = '7a8653b8b9855c36a5bd780d752109b387da8ced711046a8b42c2c9b7759937a'
-          EXPECTED_OLD_POLICY_SHA = 'a6b60628580faf9a65322aed3dfba66be2a1a4294dc1cee246be6f79170f88e8'
-          LIMIT = 1900
-
-          audit = AUDIT.read_text(encoding='utf-8')
-          marker = '## Article\n'
-          if marker not in audit:
-              raise SystemExit('authoritative audit artifact has no Article section')
-          manuscript = audit.split(marker, 1)[1].rstrip()
-          old_sha = hashlib.sha256(manuscript.encode('utf-8')).hexdigest()
-          if old_sha != EXPECTED_OLD_MANUSCRIPT_SHA:
-              raise SystemExit(f'audit artifact manuscript SHA mismatch: {old_sha}')
-          if len(manuscript) != 3665:
-              raise SystemExit(f'unexpected authoritative manuscript length: {len(manuscript)}')
-
-          headers = {
-              'Authorization': f"Bearer {os.environ['NOTION_API_KEY']}",
-              'Notion-Version': '2026-03-11',
-              'Content-Type': 'application/json',
-          }
-
-          page = requests.get(f'https://api.notion.com/v1/pages/{PAGE_ID}', headers=headers, timeout=30)
-          page.raise_for_status()
-          props = page.json().get('properties') or {}
-          ready_seen = False
-          for value in props.values():
-              if not isinstance(value, dict):
-                  continue
-              if ((value.get('select') or {}).get('name') == 'Ready' or
-                      (value.get('status') or {}).get('name') == 'Ready'):
-                  ready_seen = True
-                  break
-          if not ready_seen:
-              raise SystemExit('source page is no longer Ready; refusing repair')
-
-          def get_blocks():
-              rows = []
-              cursor = None
-              while True:
-                  url = f'https://api.notion.com/v1/blocks/{PAGE_ID}/children?page_size=100'
-                  if cursor:
-                      url += f'&start_cursor={cursor}'
-                  r = requests.get(url, headers=headers, timeout=30)
-                  r.raise_for_status()
-                  data = r.json()
-                  rows.extend(data.get('results') or [])
-                  if not data.get('has_more'):
-                      return rows
-                  cursor = data.get('next_cursor')
-
-          def caption_of(block):
-              code = block.get('code') or {}
-              return ''.join(
-                  str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '')
-                  for x in (code.get('caption') or [])
-              )
-
-          def body_of(block):
-              code = block.get('code') or {}
-              return ''.join(
-                  str(x.get('plain_text') or ((x.get('text') or {}).get('content')) or '')
-                  for x in (code.get('rich_text') or [])
-              )
-
-          blocks = get_blocks()
-          old_contract_seen = False
-          for block in blocks:
-              if block.get('type') != 'code':
-                  continue
-              cap = caption_of(block)
-              if (f'policy_sha256={EXPECTED_OLD_POLICY_SHA}' in cap and
-                      f'manuscript_sha256={EXPECTED_OLD_MANUSCRIPT_SHA}' in cap):
-                  old_contract_seen = True
-              if pc.is_current_ready_caption(cap):
-                  body = body_of(block)
-                  if not pc.is_current_ready_block(body, cap):
-                      continue
-                  if body == manuscript:
-                      print('REPAIR_ALREADY_CURRENT', True)
-                      print('CURRENT_POLICY_SHA256', pc.policy_sha256())
-                      raise SystemExit(0)
-                  raise SystemExit('a different valid current Ready manuscript already exists; refusing overwrite')
-          if not old_contract_seen:
-              raise SystemExit('expected pre-fix Ready contract not found on source page')
-
-          current_caption = pc.current_ready_caption(manuscript)
-          segments = [manuscript[i:i + LIMIT] for i in range(0, len(manuscript), LIMIT)]
-          if ''.join(segments) != manuscript:
-              raise SystemExit('lossless segmentation assertion failed before Notion write')
-
-          payload = {
-              'children': [{
-                  'object': 'block',
-                  'type': 'code',
-                  'code': {
-                      'rich_text': [
-                          {'type': 'text', 'text': {'content': segment}}
-                          for segment in segments
-                      ],
-                      'language': 'markdown',
-                      'caption': [{'type': 'text', 'text': {'content': current_caption}}],
-                  },
-              }],
-          }
-          write = requests.patch(
-              f'https://api.notion.com/v1/blocks/{PAGE_ID}/children',
-              headers=headers, json=payload, timeout=30,
-          )
-          write.raise_for_status()
-          created = [b.get('id') for b in (write.json().get('results') or []) if b.get('id')]
-          if not created:
-              raise SystemExit('Notion write returned no created block id')
-
-          try:
-              verified = False
-              for block in get_blocks():
-                  if block.get('id') not in created:
-                      continue
-                  body = body_of(block)
-                  cap = caption_of(block)
-                  if body == manuscript and pc.is_current_ready_block(body, cap):
-                      verified = True
-                      print('PERSISTED_LENGTH', len(body))
-                      print('PERSISTED_SHA256', hashlib.sha256(body.encode('utf-8')).hexdigest())
-                      print('CURRENT_POLICY_SHA256', pc.policy_sha256())
-                      print('BYTE_EXACT_READY_VERIFIED', True)
-                      break
-              if not verified:
-                  raise RuntimeError('readback did not satisfy exact current Ready contract')
-          except Exception:
-              for block_id in created:
-                  try:
-                      requests.delete(f'https://api.notion.com/v1/blocks/{block_id}', headers=headers, timeout=30)
-                  except Exception:
-                      pass
-              raise
-          PY
+          gh workflow run note-ready-sync.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo 'Dispatched note-ready-sync.yml on main after byte-exact repair.'
