@@ -165,6 +165,59 @@ group: member-derived-notion-writes
         )
         self.assertTrue(any("apply-only downstream filter" in error for error in errors))
 
+    def _run218_contract_docs(self):
+        common = (
+            f"{guard.CANONICAL_MEMBER_HOME_ID}\n"
+            f"{guard.CANONICAL_MEMBER_HOME_TITLE}\n"
+            f"{guard.CURRENT_MEMBER_DB_ID}\n"
+            f"{guard.CURRENT_MEMBER_DATA_SOURCE_ID}\n"
+            f"{guard.LEGACY_MEMBER_DATA_SOURCE_ID}\n"
+            "旧版・使用禁止\n"
+            "PC-first live Top3 今月の重要変化 評価の変化 >= 20 <= -20\n"
+        )
+        spec = "Paid Member Navigation/UI Baseline: **Run218\n" + common
+        readme = "paid member navigation/UI baseline:** Run218\n" + common
+        run217 = (
+            f"{guard.SUPERSEDED_RUN217_HOME_ID}\n"
+            "superseded by Run218\n"
+            "【旧・統合済み】AI Intelligence｜会員ホーム\n"
+        )
+        run218 = (
+            common
+            + f"{guard.SUPERSEDED_RUN217_HOME_ID}\n"
+            + "PC is the primary member experience\n"
+            + "Mobile/simple views are secondary fallback surfaces only\n"
+            + "注目順位 <= 3\n"
+            + "presentation-only fallback\n"
+            + "does not modify the monthly checkbox\n"
+            + "blank table\n"
+            + "評価の変化 >= 20 評価の変化 <= -20\n"
+            + "Gemini/model requests used for this run: **0**\n"
+        )
+        return spec, readme, run217, run218
+
+    def test_run218_canonical_navigation_contract_is_accepted(self):
+        docs = self._run218_contract_docs()
+        self.assertEqual(guard.member_navigation_ux_errors(*docs), [])
+
+    def test_old_run217_home_cannot_be_promoted_back_to_canonical(self):
+        spec, readme, run217, run218 = self._run218_contract_docs()
+        spec += "\n正規会員入口は`AI Intelligence｜会員ホーム`\n"
+        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218)
+        self.assertTrue(any("promoted back" in error for error in errors))
+
+    def test_pc_first_contract_cannot_be_silently_removed(self):
+        spec, readme, run217, run218 = self._run218_contract_docs()
+        run218 = run218.replace("PC is the primary member experience", "PC optional")
+        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218)
+        self.assertTrue(any("PC is the primary member experience" in error for error in errors))
+
+    def test_important_change_fallback_cannot_mutate_source_semantics(self):
+        spec, readme, run217, run218 = self._run218_contract_docs()
+        run218 = run218.replace("does not modify the monthly checkbox", "checkbox may be set for display")
+        errors = guard.member_navigation_ux_errors(spec, readme, run217, run218)
+        self.assertTrue(any("monthly checkbox" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
