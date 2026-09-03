@@ -87,20 +87,26 @@ class Run215MemberActionFinalDedupTests(unittest.TestCase):
         self.assertNotIn("論文の対象課題が自社ユースケース", out)
         self.assertTrue(out.endswith(action))
 
-    def test_workflow_uses_run215_as_top_wrapper_and_keeps_prior_layers(self):
+    def test_workflow_keeps_run215_layer_under_current_top_wrapper(self):
         workflow = Path(".github/workflows/member-presentation-sync.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("run213_member_topic_specificity.py", workflow)
         self.assertIn("run214_member_action_specificity.py", workflow)
         self.assertIn("run215_member_action_final_dedup.py", workflow)
+        self.assertIn("run219_member_human_language_ui.py", workflow)
         self.assertIn("tests/test_run213_member_topic_specificity.py", workflow)
         self.assertIn("tests/test_run214_member_action_specificity.py", workflow)
         self.assertIn("tests/test_run215_member_action_final_dedup.py", workflow)
+        self.assertIn("tests/test_run219_member_human_language_ui.py", workflow)
         self.assertIn(
+            "run: python run219_member_human_language_ui.py presentation", workflow
+        )
+        self.assertIn("run: python run219_member_human_language_ui.py body", workflow)
+        self.assertNotIn(
             "run: python run215_member_action_final_dedup.py presentation", workflow
         )
-        self.assertIn("run: python run215_member_action_final_dedup.py body", workflow)
+        self.assertNotIn("run: python run215_member_action_final_dedup.py body", workflow)
         self.assertNotIn("GEMINI_API_KEY", workflow)
 
     def test_no_provider_or_gemini_path(self):
