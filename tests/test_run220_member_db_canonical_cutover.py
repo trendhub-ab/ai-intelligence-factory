@@ -12,7 +12,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "member-presentation-sync.yml"
 
 CANONICAL_DB = "b2787ee0-5b58-4ca7-b4eb-774f60237f1f"
 CANONICAL_DS = "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404"
-CANONICAL_HOME = "3c5479ff-dca9-8103-bff0-f2d5f408d35f"
+API_HOST_PAGE = "3c5479ff-dca9-8178-867c-d9249a3ff5c8"
 OLD_DB = "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1"
 OLD_DS = "d1461b6f-0940-4bf9-803a-6686a37c4ba2"
 
@@ -31,31 +31,40 @@ class _Response:
             raise RuntimeError(f"HTTP {self.status_code}")
 
 
+def _canonical_get(url, **_kwargs):
+    if f"/data_sources/{CANONICAL_DS}" in url:
+        return _Response(200, {
+            "parent": {"database_id": CANONICAL_DB},
+            "title": [{"plain_text": "AI・技術一覧｜判断DB"}],
+        })
+    if f"/databases/{CANONICAL_DB}" in url:
+        return _Response(200, {"parent": {"type": "page_id", "page_id": API_HOST_PAGE}})
+    raise AssertionError(f"unexpected GET: {url}")
+
+
 class Run220MemberDbCanonicalCutoverTests(unittest.TestCase):
     def test_canonical_ids_are_pinned_in_code(self):
         self.assertEqual(provisioner.CANONICAL_DATABASE_ID, CANONICAL_DB)
         self.assertEqual(provisioner.CANONICAL_DATA_SOURCE_ID, CANONICAL_DS)
-        self.assertEqual(provisioner.PARENT_PAGE_ID, CANONICAL_HOME)
+        self.assertEqual(provisioner.API_HOST_PAGE_ID, API_HOST_PAGE)
+        self.assertEqual(provisioner.PARENT_PAGE_ID, API_HOST_PAGE)
         self.assertFalse(provisioner.ALLOW_CREATE)
 
     def test_workflow_pins_same_destination_and_disables_create(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(CANONICAL_DB, text)
         self.assertIn(CANONICAL_DS, text)
+        self.assertIn(API_HOST_PAGE, text)
         self.assertIn("MEMBER_PRESENTATION_ALLOW_CREATE: 'false'", text)
         self.assertIn("Resolve canonical member DB", text)
         self.assertNotIn(OLD_DB, text)
         self.assertNotIn(OLD_DS, text)
 
     def test_provision_uses_canonical_destination_without_search_or_create(self):
-        payload = {
-            "parent": {"database_id": CANONICAL_DB},
-            "title": [{"plain_text": "AI・技術一覧｜判断DB"}],
-        }
         with tempfile.TemporaryDirectory() as td:
             env_file = Path(td) / "github_env"
             with mock.patch.object(provisioner.decision_intelligence, "NOTION_DECISION_INTELLIGENCE_API_KEY", "test-key"), \
-                 mock.patch.object(provisioner.requests, "get", return_value=_Response(200, payload)) as get_mock, \
+                 mock.patch.object(provisioner.requests, "get", side_effect=_canonical_get) as get_mock, \
                  mock.patch.object(provisioner.requests, "post", side_effect=AssertionError("search/create must not run")), \
                  mock.patch.dict(os.environ, {"GITHUB_ENV": str(env_file)}, clear=False):
                 result = provisioner.provision()
@@ -65,7 +74,8 @@ class Run220MemberDbCanonicalCutoverTests(unittest.TestCase):
             self.assertFalse(result["auto_create_enabled"])
             self.assertEqual(result["database_id"], CANONICAL_DB)
             self.assertEqual(result["data_source_id"], CANONICAL_DS)
-            self.assertEqual(get_mock.call_count, 1)
+            self.assertEqual(result["api_host_page_id"], API_HOST_PAGE)
+            self.assertEqual(get_mock.call_count, 2)
             env_text = env_file.read_text(encoding="utf-8")
             self.assertIn(f"NOTION_MEMBER_PRESENTATION_DATABASE_ID={CANONICAL_DB}", env_text)
             self.assertIn(f"NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID={CANONICAL_DS}", env_text)
