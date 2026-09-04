@@ -14,6 +14,7 @@
 - **Current stock lifecycle baseline:** Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management
 - **Current free article editorial planning baseline:** Run226 — evidence-bounded human editorial planning / reader delight without template quotas
 - **Current article Japanese surface integrity baseline:** Run227 — zero-model high-confidence broken-Japanese fail-closed gate
+- **Current free article reader rhythm baseline:** Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -39,7 +40,8 @@ New development must start from `main`. Historical/archive branches are referenc
 - `run225_stock_lifecycle.py`, `stock_lifecycle_reconcile.py` — zero-model Screening Stock freshness lifecycle / source reconciliation
 - `run225_portfolio_lifecycle.py`, `run225_member_lifecycle_ui.py` — Archive exclusion from active review/member-home ranking without deletion
 - `run226_reader_delight_planning.py` — Evidence-bounded pre-draft Reader Tension / Discovery / Consequence / Explanation Bridge / Editorial Point of View planning using the existing article-generation request; no style-count Hard Gate and no new model call
-- `run227_japanese_surface_integrity.py` — zero-model high-confidence Japanese surface-integrity gate for malformed predicate/particle collisions; fail-closed without guessed rewrites
+- `run227_japanese_surface_integrity.py` — zero-model high-confidence Japanese surface-integrity gate for malformed predicate/particle/transitivity escapes; fail-closed without guessed rewrites
+- `run228_reader_rhythm_planning.py` — Evidence-preserving Reader Rhythm planning that converts dense Fact clusters into understanding/meaning/decision in the existing generation request; no style-count quota and no new model call
 - `context_first_enrichment.py` — Context-First Decision Intelligence enrichment
 - `subscription_attribution.py` — aggregate/privacy-safe subscription attribution
 
@@ -281,6 +283,7 @@ Run210 makes documentation freshness a CI contract. Later member-product Runs ex
 - Normal Member Presentation Production must not auto-create, silently choose a different same-title DB, or accept a physical-host mismatch.
 - Run226 free-article planning must remain SOURCE BOUNDARY-bounded and must not turn hook/analogy/question/paragraph/list counts into a new human-looking template or new Hard Gate.
 - Run227 Japanese surface integrity must stay zero-model and high-precision, fail closed instead of guessing missing words, and must not change Fact/Evidence/Decision or API budgets.
+- Run228 Reader Rhythm must preserve important Evidence while reducing report-only Fact stacking inside the existing generation request; it must not add style-count quotas, a fixed article template, or a new model call.
 - A Production behavior change that makes canonical documentation stale must fail CI until documentation is updated in the same change set.
 
 ## change discipline

@@ -20,6 +20,7 @@ def install_runtime_layers(pipeline_module):
     import run176_scope_fidelity
     import run177_paid_funnel_alignment
     import run226_reader_delight_planning
+    import run228_reader_rhythm_planning
     import run178_eyecatch_editorial_layout_optimizer
     import run179_eyecatch_font_refinement
     import run180_eyecatch_semantic_layout
@@ -58,6 +59,10 @@ def install_runtime_layers(pipeline_module):
     # to plan Reader Tension / Discovery / Consequence / Explanation Bridge / Point of View from
     # verified Evidence before drafting, without fixed style quotas or invented specificity.
     run226_reader_delight_planning.install(pipeline_module)
+    # Run228 keeps the same call and Evidence boundary, but asks the draft to convert dense Fact
+    # clusters into understanding/meaning/decision before stacking more implementation detail.
+    # It adds no style-count quota and no new model call.
+    run228_reader_rhythm_planning.install(pipeline_module)
     run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
     run179_eyecatch_font_refinement.install(pipeline_module)
     run180_eyecatch_semantic_layout.install(pipeline_module)

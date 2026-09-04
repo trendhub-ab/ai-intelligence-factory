@@ -45,6 +45,7 @@ PUBLICATION_POLICY_FILES = (
     "run176_scope_fidelity.py",
     "run177_paid_funnel_alignment.py",
     "run226_reader_delight_planning.py",
+    "run228_reader_rhythm_planning.py",
     "run178_eyecatch_editorial_layout_optimizer.py",
     "run179_eyecatch_font_refinement.py",
     "run180_eyecatch_semantic_layout.py",

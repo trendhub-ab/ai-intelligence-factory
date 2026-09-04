@@ -2,12 +2,13 @@
 
 A real Run226 FULL ONE-SHOT produced two manuscripts that passed every existing gate but still
 contained obvious broken Japanese (for example ``結果はでした。`` and ``計算はに速くなる``).
+The same audit also exposed a narrow lexical/grammar misuse (``FP4を過度に適応すると``).
 This zero-model layer blocks only narrow, high-confidence surface corruption before Ready.
 
-It does not rewrite prose deterministically because the missing predicate/adverb cannot be
-reconstructed safely without changing meaning.  Instead it adds a local Fact Gate failure and a
-retry instruction so the normal bounded generation/retry path can repair the sentence.  Fact,
-Evidence, Decision, score, source URLs and API budgets are unchanged.
+It does not rewrite prose deterministically because the missing predicate/adverb or intended
+lexeme cannot be reconstructed safely without changing meaning. Instead it adds a local Fact Gate
+failure and a retry instruction so the normal bounded generation/retry path can repair the
+sentence. Fact, Evidence, Decision, score, source URLs and API budgets are unchanged.
 """
 from __future__ import annotations
 
@@ -16,20 +17,29 @@ from typing import Any
 
 _INSTALLED_ATTR = "_run227_japanese_surface_integrity_installed"
 
-# Remove code before scanning.  Broken prose inside code examples/identifiers is not a publication
+# Remove code before scanning. Broken prose inside code examples/identifiers is not a publication
 # grammar defect and should not create false positives.
 _FENCED_CODE_RE = re.compile(r"```.*?```", re.S)
 _INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 
-# Predicate-less topic + copula.  These nouns cannot naturally terminate as 「Xはです/でした」.
+# Predicate-less topic + copula. These nouns cannot naturally terminate as 「Xはです/でした」.
 _EMPTY_PREDICATE_RE = re.compile(
     r"(?:結果|結論|答え|原因|理由|ポイント|要点)は(?:です|でした)(?=[。！？!?\s]|$)"
 )
 
-# High-confidence particle collision observed in Production.  Restrict the following stem to
+# High-confidence particle collision observed in Production. Restrict the following stem to
 # comparative/change vocabulary so ordinary strings such as 「Aは日本語で」 never match.
 _HA_NI_COLLISION_RE = re.compile(
     r"はに(?=(?:速|遅|高|低|大|小|強|弱|増|減|変|近|遠|広|狭|長|短|重|軽))"
+)
+
+# 「適応する」 is intransitive in this editorial context. Run #24 emitted
+# 「FP4を過度に適応すると」 where the intended operation was 適用. Keep the object vocabulary
+# deliberately technical/narrow and do not match the valid causative 「適応させる」 or
+# 「モデルが環境に適応する」.
+_TECH_OBJECT_ADAPT_RE = re.compile(
+    r"(?:FP4|FP8|BF16|量子化|精度|設定|方式|ルール|機能|API|パッチ|変更)を"
+    r"(?:過度に|そのまま|直接|全面的に)?適応(?=(?:する|した|して|すると))"
 )
 
 
@@ -43,6 +53,7 @@ def japanese_surface_failures(article: str) -> list[str]:
     for pattern, reason in (
         (_EMPTY_PREDICATE_RE, "predicate_missing"),
         (_HA_NI_COLLISION_RE, "particle_collision_ha_ni"),
+        (_TECH_OBJECT_ADAPT_RE, "transitivity_adapt_vs_apply"),
     ):
         match = pattern.search(prose)
         if match:
@@ -67,8 +78,8 @@ def install(pipeline_module: Any) -> Any:
             return prompt
         return prompt.rstrip() + (
             "\n\n【日本語Surface Integrity / Run227】\n"
-            "・最終稿を提出する前に、各文を日本語として読み直してください。『結果はでした。』のように述語が欠けた文や、"
-            "『〜はに速くなる』のような助詞衝突を残してはいけません。\n"
+            "・最終稿を提出する前に、各文を日本語として読み直してください。『結果はでした。』のように述語が欠けた文、"
+            "『〜はに速くなる』のような助詞衝突、技術を『〜を適応する』のように不自然な他動詞として扱う表現を残してはいけません。\n"
             "・意味を補うために新しいFact・数値・人物・因果を作らず、SOURCE BOUNDARY内の内容だけで自然な日本語へ整えてください。\n"
         )
 
@@ -106,7 +117,7 @@ def install(pipeline_module: Any) -> Any:
             return instruction, sections
         addition = (
             "・日本語Surface Integrity: 指摘された壊れた1文だけを、元のFact/Evidence/Decisionを変えず自然な日本語へ局所修正してください。"
-            "欠けた内容を推測して新しい数値・人物・因果を足してはいけません。"
+            "欠けた内容や意図語を推測して新しい数値・人物・因果を足してはいけません。"
         )
         return instruction.rstrip() + "\n" + addition + "\n", sections
 
