@@ -51,7 +51,7 @@ class Run183EyecatchEmphasisScaleTests(unittest.TestCase):
         self.assertNotIn("GEMINI_API_KEY", source)
 
     def test_production_order_is_run182_then_run183(self):
-        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         run182_pos = source.index("run182_eyecatch_conclusion_emphasis.install(pipeline_module)")
         run183_pos = source.index("run183_eyecatch_emphasis_scale.install(pipeline_module)")
         bridge_pos = source.index("reader_value_review_bridge.install(pipeline_module)")
