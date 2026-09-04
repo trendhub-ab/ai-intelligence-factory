@@ -159,7 +159,7 @@ jobs:
         shell: bash
         run: |
           git diff --check -- pipeline.py
-          changed="$(git diff --name-only | sort)"
+          changed="$(git -c core.quotePath=false diff --name-only | sort)"
           expected="$(printf '%s\n' 'AI_Intelligence_Factory_最終仕様書.md' 'pipeline.py' | sort)"
           test "$changed" = "$expected"
           python - <<'PY'
