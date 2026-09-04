@@ -5,21 +5,20 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/run231-stage2-surgical-migration.yml'
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   restore-direct-pipeline-compatibility:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'run231-stage2-pipeline-modularization'
+    if: github.head_ref == 'run231-stage2-pipeline-modularization'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.head_ref || 'run231-stage2-pipeline-modularization' }}
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v6
@@ -233,4 +232,4 @@ del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add pipeline.py legacy_eyecatch_renderer.py docs/reference/RUN231_PIPELINE_MODULARIZATION.md
           git commit -m 'Run231 Stage2B: restore eyecatch source compatibility'
-          git push origin HEAD:${{ github.head_ref || 'run231-stage2-pipeline-modularization' }}
+          git push origin HEAD:${{ github.head_ref }}
