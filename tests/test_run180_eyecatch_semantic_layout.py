@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import run180_eyecatch_semantic_layout as run180
+import run181_eyecatch_visual_balance as run181
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,49 +28,50 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
             "title_lines": ["AIは重要。", "でも追いきれない。"],
             "title_font_size": 60,
             "title_line_gap": 14,
-            "subheadline_lines": ["必要な変化だけを見る。"],
-            "subheadline_font_size": 24,
             "highlight_text": "でも追いきれない。",
         }
         self.assertEqual(plan, run180._parse_plan_response(_ParsedResponse(plan)))
 
     def test_schema_parser_keeps_text_compatibility(self):
-        text = '{"eyecatch_title":"AIは重要。","title_lines":["AIは重要。"],"title_font_size":60,"title_line_gap":12,"subheadline_lines":["必要な変化だけを見る。"],"subheadline_font_size":24,"highlight_text":""}'
+        text = '{"eyecatch_title":"AIは重要。","title_lines":["AIは重要。"],"title_font_size":60,"title_line_gap":12,"highlight_text":""}'
         parsed = run180._parse_plan_response(_TextResponse(text))
         self.assertEqual("AIは重要。", parsed["eyecatch_title"])
+
+    def test_schema_is_title_only(self):
+        properties = run180._LAYOUT_RESPONSE_SCHEMA["properties"]
+        required = run180._LAYOUT_RESPONSE_SCHEMA["required"]
+        self.assertNotIn("subheadline_lines", properties)
+        self.assertNotIn("subheadline_font_size", properties)
+        self.assertNotIn("subheadline_lines", required)
+        self.assertNotIn("subheadline_font_size", required)
 
     def test_validation_accepts_bounded_editorial_title_compression(self):
         source_title = "Polars 2.0が目指す「静かな進化」は、なぜデータ開発の現場に大きな影響を与えるのか。"
         eyecatch_title = "Polars 2.0の「静かな進化」がデータ開発を変える。"
-        subheadline = "高速データ処理の変化を、実務の視点から読み解く。"
         plan = {
             "eyecatch_title": eyecatch_title,
             "title_lines": ["Polars 2.0の", "「静かな進化」が", "データ開発を変える。"],
             "title_font_size": 64,
             "title_line_gap": 14,
-            "subheadline_lines": ["高速データ処理の変化を、", "実務の視点から読み解く。"],
-            "subheadline_font_size": 24,
             "highlight_text": "データ開発を変える。",
         }
-        validated = run180._validate_layout_plan(source_title, subheadline, plan)
+        validated = run180._validate_layout_plan(source_title, plan)
         self.assertIsNotNone(validated)
         self.assertEqual(eyecatch_title, validated["eyecatch_title"])
         self.assertEqual("データ開発を変える。", validated["highlight_text"])
         self.assertGreaterEqual(validated["title_font_size"], 52)
+        self.assertNotIn("subheadline_lines", validated)
 
     def test_validation_rejects_title_lines_that_rewrite_eyecatch_title(self):
         source_title = "AIは重要。でも正直、もう追いきれない。"
-        subheadline = "必要な変化だけを見る。"
         plan = {
             "eyecatch_title": "AIは重要。でも追いきれない。",
             "title_lines": ["AIは重要。", "でももう追いきれない。"],
             "title_font_size": 60,
             "title_line_gap": 12,
-            "subheadline_lines": [subheadline],
-            "subheadline_font_size": 24,
             "highlight_text": "追いきれない。",
         }
-        self.assertIsNone(run180._validate_layout_plan(source_title, subheadline, plan))
+        self.assertIsNone(run180._validate_layout_plan(source_title, plan))
 
     def test_validation_rejects_loss_of_product_or_version_identifier(self):
         source_title = "Polars 2.0の新しいデータ処理は何が変わるのか。"
@@ -78,11 +80,9 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
             "title_lines": ["データ処理の", "常識が変わる。"],
             "title_font_size": 66,
             "title_line_gap": 12,
-            "subheadline_lines": ["要約"],
-            "subheadline_font_size": 24,
             "highlight_text": "常識が変わる。",
         }
-        self.assertIsNone(run180._validate_layout_plan(source_title, "要約", plan))
+        self.assertIsNone(run180._validate_layout_plan(source_title, plan))
 
     def test_validation_rejects_title_over_hard_character_limit(self):
         source_title = "AIに関する長い記事タイトル"
@@ -92,11 +92,9 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
             "title_lines": [too_long[:27], too_long[27:]],
             "title_font_size": 52,
             "title_line_gap": 12,
-            "subheadline_lines": ["要約"],
-            "subheadline_font_size": 24,
             "highlight_text": "ああああ",
         }
-        self.assertIsNone(run180._validate_layout_plan(source_title, "要約", plan))
+        self.assertIsNone(run180._validate_layout_plan(source_title, plan))
 
     def test_request_is_one_call_minimal_thinking_and_not_deep_dive(self):
         source = inspect.getsource(run180._request_layout_plan)
@@ -113,19 +111,29 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertEqual(45, run180.EYECATCH_TITLE_TARGET_MAX_CHARS)
         self.assertEqual(52, run180.EYECATCH_TITLE_HARD_MAX_CHARS)
         prompt = run180._layout_prompt(
-            "生成AIの速さ競争が変わる。小さなモデルは実務で使えるのか", "要約"
+            "生成AIの速さ競争が変わる。小さなモデルは実務で使えるのか"
         )
         self.assertIn("理想15〜45文字", prompt)
         self.assertIn("SEO用の記事タイトルとアイキャッチ用タイトルは同一でなくてよい", prompt)
         self.assertIn("52〜76px", prompt)
+        self.assertIn("下部説明文、サブヘッド、リード文は生成しない", prompt)
         self.assertIn("画像、イラスト、背景、カテゴリ、日付、ロゴ、ビジュアル構造には一切触れない", prompt)
 
-    def test_subheadline_and_visual_fallback_paths_remain_existing_contract(self):
+    def test_no_subheadline_in_valid_renderer_or_fallback(self):
+        balanced_source = inspect.getsource(run181._render_balanced_plan)
+        fallback_source = inspect.getsource(run180._deterministic_title_only_fallback)
+        self.assertNotIn("subheadline_lines", balanced_source)
+        self.assertNotIn("subheadline_font_size", balanced_source)
+        self.assertNotIn("editorial_subheadline", fallback_source)
+        self.assertNotIn("sub_y", fallback_source)
+        self.assertIn("no lower lead/subheadline", balanced_source)
+
+    def test_fallback_remains_direct_and_zero_second_model_call(self):
         source = inspect.getsource(run180.install)
-        self.assertIn("editorial_subheadline(summary, existing_headline)", source)
-        self.assertIn("deterministic_fallback = ee.generate_note_editorial_eyecatch", source)
+        self.assertIn("deterministic_fallback = _deterministic_title_only_fallback", source)
         self.assertIn("return deterministic_fallback(", source)
         self.assertNotIn("return original(", source)
+        self.assertNotIn("editorial_subheadline", source)
 
     def test_production_entrypoint_installs_run180_after_run179(self):
         source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
