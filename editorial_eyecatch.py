@@ -292,7 +292,6 @@ def generate_note_editorial_eyecatch(title: str, summary: str, output_path: str,
     accent = _CATEGORY_ACCENTS.get(category, _CATEGORY_ACCENTS["AI & TECH"])
     date_label = date_label or datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
     headline = editorial_hook_from_title(title)
-    subheadline = editorial_subheadline(summary, headline)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     img = Image.new("RGB", (WIDTH, HEIGHT), (252, 253, 255))
@@ -310,13 +309,6 @@ def generate_note_editorial_eyecatch(title: str, summary: str, output_path: str,
         bbox = draw.textbbox((0, 0), line_text, font=headline_font)
         draw.text((48, y - bbox[1]), line_text, font=headline_font, fill=navy)
         y += (bbox[3] - bbox[1]) + line_gap
-
-    sub_y = min(535, max(485, y + 18))
-    draw.rectangle((48, sub_y + 2, 53, sub_y + 42), fill=accent)
-    sub_font = _jp_font(27, bold=True)
-    sub_lines = _wrap_chars(draw, subheadline, sub_font, 725, 2)
-    for index, line_text in enumerate(sub_lines):
-        draw.text((72, sub_y + index * 38), line_text, font=sub_font, fill=(18, 42, 79))
 
     img.save(output_path, "PNG", optimize=True)
     return output_path
