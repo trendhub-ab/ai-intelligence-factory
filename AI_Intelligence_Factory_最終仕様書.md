@@ -11,6 +11,7 @@ Paid Member Human-Language UI Baseline: **Run219 — non-engineer member present
 Paid Member Database Destination Baseline: **Run220 — canonical member DB cutover / fail-closed destination**  
 Paid Member Database Hosting Baseline: **Run221 — API-host isolation / member-view separation**  
 Article Technical Claim Precision Baseline: **Run223 — operation/API scope, performance modality, first-party date and typo precision**  
+Article Deterministic Rescue Baseline: **Run224 — zero-model performance multiplier scope rescue**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -120,6 +121,22 @@ AI Intelligence Factoryの事業構造:
 
 詳細: `docs/reference/RUN223_TECHNICAL_CLAIM_PRECISION.md`
 
+### 4.2 Performance Multiplier Deterministic Rescue — Run224
+
+`run224_multiplier_deterministic_rescue.py`は、Run223が`performance_multiplier_scope_lost`を検出した場合だけ発火するzero-model局所救済層である。
+
+- Run223が一次情報内の同じ倍率とbenchmark/expectation scopeを確認済みの場合に限る。
+- 対象の性能倍率・その他数値・Evidence・Decision・Score・URLは変更または削除しない。
+- 対象文の直後に、一次情報で示された特定条件下の目安であることと、実際の改善幅が処理内容・条件・実行環境によって変わる留保だけを追加する。
+- fenced codeとMarkdown headingは編集しない。
+- 同じqualifierを二重追記しない。
+- 既存subtractive rescueの変更を保持し、`_rescue_loss`を悪化させない。
+- Rescue後もFact / Editorial / Publication / Human Appeal Gateを通常どおり再評価し、残るHARD/REVIEWを迂回しない。
+- Gemini/model callは0。Public note releaseも行わない。
+- Run224はPublication Contract fingerprint対象であり、policy変更後の旧Ready原稿は現行policyで再構築・再stampされるまでfail-closedとする。
+
+詳細: `docs/reference/RUN224_MULTIPLIER_DETERMINISTIC_RESCUE.md`
+
 ## 5. Production runtime layer
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
@@ -132,6 +149,7 @@ AI Intelligence Factoryの事業構造:
 - `run174_monthly_digest_integrity.py`
 - `run175_semantic_fact_precision.py`
 - `run223_technical_claim_precision.py`
+- `run224_multiplier_deterministic_rescue.py`
 - `run176_scope_fidelity.py`
 - `run177_paid_funnel_alignment.py`
 - `run178_eyecatch_editorial_layout_optimizer.py`
@@ -425,8 +443,8 @@ CIは少なくとも次を検証する。
 - Member Presentation normal Productionが別DBを自動作成・fallback選択しないこと。
 - Member Presentation normal Productionがphysical host mismatchを受理しないこと。
 - 会員向け主要画面を説明のない空表へ退行させないこと。
-
 - Run222ではSources/Evidence + 免責をCTAより前に維持し、note title重複H1/raw `#`生表示を再発させない。
+- Run224ではRun223が確認した性能倍率scope lossだけをzero-modelで局所補完し、倍率・Evidence・Decision・Score・URLを変更せず、通常Gate再評価を迂回しない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 

@@ -15,6 +15,7 @@ def install_runtime_layers(pipeline_module):
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
     import run223_technical_claim_precision
+    import run224_multiplier_deterministic_rescue
     import run176_scope_fidelity
     import run177_paid_funnel_alignment
     import run178_eyecatch_editorial_layout_optimizer
@@ -41,6 +42,10 @@ def install_runtime_layers(pipeline_module):
     # Run223 extends semantic precision to method-specific parameters, scoped breaking changes,
     # benchmark/expectation multipliers, first-party dates and obvious Japanese particle damage.
     run223_technical_claim_precision.install(pipeline_module)
+    # Run224 closes the matching zero-API rescue gap: once Run223 has proven that a performance
+    # multiplier lost source scope, restore only a conservative attribution/condition/variability
+    # qualifier beside that sentence. Numeric values, Evidence and Decision remain untouched.
+    run224_multiplier_deterministic_rescue.install(pipeline_module)
     run176_scope_fidelity.install(pipeline_module)
     run177_paid_funnel_alignment.install(pipeline_module)
     run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
