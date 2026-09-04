@@ -1,9 +1,13 @@
 """Zero-API performance telemetry for the production pipeline.
 
-This module is intentionally observational.  It does not change arguments, return
+This module is intentionally observational. It does not change arguments, return
 values, exception behavior, quota accounting, retry rules, Evidence gates, quality
-gates, persistence conditions, or model-call counts.  It wraps only the final
+gates, persistence conditions, or model-call counts. It wraps only the final
 production functions *after* all historical runtime layers have been installed.
+
+Safety contract: telemetry is fail-open. Any telemetry or logging failure is swallowed
+so observability can never change a production success into a failure, mask an original
+production exception, or interfere with shutdown/control-flow exceptions.
 """
 from __future__ import annotations
 
@@ -17,7 +21,7 @@ ENABLED = os.environ.get("PIPELINE_PERFORMANCE_TELEMETRY", "true").strip().lower
     "1", "true", "yes", "on"
 }
 
-# High-level boundaries only.  Avoid profiling every Python call: the goal is useful
+# High-level boundaries only. Avoid profiling every Python call: the goal is useful
 # production attribution with effectively negligible runtime overhead.
 TARGETS = (
     ("initialize_runtime", "runtime.initialize"),
@@ -67,14 +71,36 @@ class PerformanceTelemetry:
             "total_seconds": None if total_elapsed is None else round(float(total_elapsed), 3),
             "stages": rows,
         }
+
+        # Logging is observability only. A broken/custom logger must never affect the
+        # production result or exception semantics.
         if self.logger is not None:
-            self.logger.info("[PERFORMANCE] total_seconds=%s", result["total_seconds"])
-            for row in rows:
-                self.logger.info(
-                    "[PERFORMANCE] %-30s %9.3fs calls=%d failures=%d",
-                    row["stage"], row["seconds"], row["calls"], row["failures"],
-                )
+            try:
+                self.logger.info("[PERFORMANCE] total_seconds=%s", result["total_seconds"])
+                for row in rows:
+                    self.logger.info(
+                        "[PERFORMANCE] %-30s %9.3fs calls=%d failures=%d",
+                        row["stage"], row["seconds"], row["calls"], row["failures"],
+                    )
+            except Exception:
+                pass
         return result
+
+
+def _safe_record(telemetry: PerformanceTelemetry, stage: str, elapsed: float, failed: bool) -> None:
+    """Record timing without ever participating in production control flow."""
+    try:
+        telemetry.record(stage, elapsed, failed=failed)
+    except Exception:
+        pass
+
+
+def _safe_report(telemetry: PerformanceTelemetry, total_elapsed: float) -> None:
+    """Emit a report without ever changing production control flow."""
+    try:
+        telemetry.report(total_elapsed)
+    except Exception:
+        pass
 
 
 def _wrap(telemetry: PerformanceTelemetry, original, stage: str):
@@ -87,11 +113,11 @@ def _wrap(telemetry: PerformanceTelemetry, original, stage: str):
         failed = False
         try:
             return original(*args, **kwargs)
-        except BaseException:
+        except Exception:
             failed = True
             raise
         finally:
-            telemetry.record(stage, perf_counter() - started, failed=failed)
+            _safe_record(telemetry, stage, perf_counter() - started, failed=failed)
 
     measured.__run231_performance_wrapped__ = True
     return measured
@@ -119,7 +145,7 @@ def install(pipeline_module):
             try:
                 return original_main(*args, **kwargs)
             finally:
-                telemetry.report(perf_counter() - started)
+                _safe_report(telemetry, perf_counter() - started)
         measured_main.__run231_performance_main_wrapped__ = True
         pipeline_module.main = measured_main
 
