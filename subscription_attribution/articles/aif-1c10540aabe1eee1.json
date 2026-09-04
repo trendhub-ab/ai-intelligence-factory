@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-1c10540aabe1eee1",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "HackerNews",
+  "source_url": "https://www.agentconnect.md/blog/grep-beat-lsp-harness/",
+  "note_title": "AIエージェントはなぜ、高度な解析ツールより「昔ながらのgrep」を好むのか？",
+  "ready_at": "2026-09-04T19:43:24.144749+09:00",
+  "notion_page_id": "3d1479ff-dca9-81fa-8cc4-e7bb97a93076",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-1c10540aabe1eee1&aif_article_id=aif-1c10540aabe1eee1",
+  "cta_enabled": true,
+  "decision_score": 77,
+  "screening_score": 85,
+  "commercial_value_score": 85,
+  "shelf_life_score": 65,
+  "shelf_life": "TREND",
+  "portfolio_topic": "AGENT",
+  "deep_dive_priority_score": 85.0,
+  "measurement_status": "awaiting_external_metrics"
+}
