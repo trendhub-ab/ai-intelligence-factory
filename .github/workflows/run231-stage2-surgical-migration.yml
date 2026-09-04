@@ -119,7 +119,10 @@ jobs:
         run: |
           git diff --check -- pipeline.py
           changed="$(git -c core.quotePath=false diff --name-only | sort)"
-          test "$changed" = 'pipeline.py'
+          if [ -n "$changed" ] && [ "$changed" != 'pipeline.py' ]; then
+            echo "Unexpected compatibility-repair diff: $changed" >&2
+            exit 1
+          fi
 
       - name: Commit compatibility repair to PR head
         shell: bash
