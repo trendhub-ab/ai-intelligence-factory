@@ -53,6 +53,16 @@ def _fake_runtime_modules(events):
     return modules
 
 
+class _QuietLogger:
+    def info(self, *args, **kwargs):
+        pass
+
+
+class _RaisingLogger:
+    def info(self, *args, **kwargs):
+        raise RuntimeError("telemetry logger failed")
+
+
 class Run231PipelineSlimTests(unittest.TestCase):
     def test_runtime_layer_order_contract_is_exact_and_executable(self):
         self.assertEqual(runtime_layers.RUNTIME_LAYER_ORDER, EXPECTED_RUNTIME_LAYER_ORDER)
@@ -69,12 +79,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
     def test_performance_wrapper_preserves_args_return_and_single_call(self):
         calls = []
         sentinel = object()
-
-        class Logger:
-            def info(self, *args, **kwargs):
-                pass
-
-        pipeline = types.SimpleNamespace(logger=Logger())
+        pipeline = types.SimpleNamespace(logger=_QuietLogger())
 
         def initialize_runtime(*args, **kwargs):
             calls.append((args, kwargs))
@@ -94,12 +99,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
 
     def test_performance_wrapper_propagates_same_exception(self):
         error = RuntimeError("unchanged")
-
-        class Logger:
-            def info(self, *args, **kwargs):
-                pass
-
-        pipeline = types.SimpleNamespace(logger=Logger())
+        pipeline = types.SimpleNamespace(logger=_QuietLogger())
 
         def initialize_runtime():
             raise error
@@ -117,12 +117,8 @@ class Run231PipelineSlimTests(unittest.TestCase):
         self.assertEqual(telemetry.failures["runtime.initialize"], 1)
 
     def test_performance_install_is_idempotent(self):
-        class Logger:
-            def info(self, *args, **kwargs):
-                pass
-
         calls = []
-        pipeline = types.SimpleNamespace(logger=Logger())
+        pipeline = types.SimpleNamespace(logger=_QuietLogger())
         pipeline.initialize_runtime = lambda: calls.append("called")
         pipeline.main = lambda: None
 
@@ -135,6 +131,61 @@ class Run231PipelineSlimTests(unittest.TestCase):
         self.assertIs(pipeline.initialize_runtime, wrapped_first)
         pipeline.initialize_runtime()
         self.assertEqual(calls, ["called"])
+
+    def test_broken_logger_cannot_change_successful_production_return(self):
+        sentinel = object()
+        pipeline = types.SimpleNamespace(logger=_RaisingLogger())
+        pipeline.initialize_runtime = lambda: sentinel
+        pipeline.main = lambda: "main-ok"
+
+        with patch.object(perf, "ENABLED", True):
+            perf.install(pipeline)
+            self.assertIs(pipeline.initialize_runtime(), sentinel)
+            self.assertEqual(pipeline.main(), "main-ok")
+
+    def test_broken_logger_cannot_mask_original_production_exception(self):
+        original = ValueError("original production failure")
+        pipeline = types.SimpleNamespace(logger=_RaisingLogger())
+        pipeline.main = lambda: (_ for _ in ()).throw(original)
+
+        with patch.object(perf, "ENABLED", True):
+            perf.install(pipeline)
+            with self.assertRaises(ValueError) as caught:
+                pipeline.main()
+
+        self.assertIs(caught.exception, original)
+
+    def test_record_failure_cannot_change_wrapped_return_or_exception(self):
+        success = object()
+        original = LookupError("original")
+        telemetry = perf.PerformanceTelemetry(_QuietLogger())
+
+        def broken_record(*args, **kwargs):
+            raise RuntimeError("telemetry record failed")
+
+        telemetry.record = broken_record
+        wrapped_success = perf._wrap(telemetry, lambda: success, "stage")
+        wrapped_failure = perf._wrap(
+            telemetry,
+            lambda: (_ for _ in ()).throw(original),
+            "stage",
+        )
+
+        self.assertIs(wrapped_success(), success)
+        with self.assertRaises(LookupError) as caught:
+            wrapped_failure()
+        self.assertIs(caught.exception, original)
+
+    def test_control_flow_exception_is_not_reclassified_or_swallowed(self):
+        pipeline = types.SimpleNamespace(logger=_QuietLogger())
+        pipeline.main = lambda: (_ for _ in ()).throw(SystemExit(7))
+
+        with patch.object(perf, "ENABLED", True):
+            perf.install(pipeline)
+            with self.assertRaises(SystemExit) as caught:
+                pipeline.main()
+
+        self.assertEqual(caught.exception.code, 7)
 
     def test_production_entrypoint_keeps_setup_before_observability(self):
         events = []
