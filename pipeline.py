@@ -13349,5 +13349,14 @@ def main():
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
 
 
+# Run231 Stage2B direct-import compatibility bridge
+# Keep the extracted implementation out of pipeline.py while preserving the historical
+# ``import pipeline`` API used by zero-API regressions and internal callers. The installer
+# is provider/persistence-free and idempotent; production_pipeline may safely call it again.
+from legacy_eyecatch_renderer import install as _install_legacy_eyecatch_renderer
+_install_legacy_eyecatch_renderer(sys.modules[__name__])
+del _install_legacy_eyecatch_renderer
+
+
 if __name__ == "__main__":
     main()
