@@ -2,10 +2,11 @@
 
 ## Purpose
 
-Run226 FULL ONE-SHOT #24 produced two otherwise-Ready manuscripts containing obvious broken Japanese:
+Run226 FULL ONE-SHOT #24 produced otherwise-Ready manuscripts containing obvious broken Japanese:
 
 - `結果はでした。`
 - `AIモデルの計算はに速くなる`
+- `FP4を過度に適応すると`
 
 Run227 closes that publication-surface gap without adding a model call or weakening any existing quality contract.
 
@@ -15,13 +16,14 @@ Run227 closes that publication-surface gap without adding a model call or weaken
 
 1. Predicate-less topic + copula patterns such as `結果はでした。`.
 2. A narrowly scoped `はに` particle collision before comparative/change stems such as `速`, `遅`, `高`, `低`, `大`, `小`, `増`, `減`, `変`.
-3. Fenced code and inline code are excluded from scanning.
+3. A narrow technical-object transitivity misuse such as `FP4を適応する`; valid `モデルが環境に適応する`, `方式を環境に適応させる`, and `FP4を適用する` remain accepted.
+4. Fenced code and inline code are excluded from scanning.
 
 A match is a fail-closed Fact Gate failure with reason prefix `malformed_japanese_surface:`.
 
 ## Repair policy
 
-Run227 does **not** deterministically rewrite the sentence. The missing predicate/adverb cannot be recovered safely without semantic guessing. The existing bounded retry path receives a local instruction to fix only the malformed sentence while preserving Fact/Evidence/Decision.
+Run227 does **not** deterministically rewrite the sentence. The missing predicate/adverb or intended lexeme cannot be recovered safely without semantic guessing. The existing bounded retry path receives a local instruction to fix only the malformed sentence while preserving Fact/Evidence/Decision.
 
 The repair must not invent:
 
@@ -44,10 +46,10 @@ The repair must not invent:
 
 ## Publication policy
 
-Run227 is part of `PUBLICATION_POLICY_FILES`. A Ready manuscript stamped before Run227 is not current-policy Ready and must be reconciled before it can remain in the note posting queue.
+Run227 is part of `PUBLICATION_POLICY_FILES`. A Ready manuscript stamped before the current Run227 implementation is not current-policy Ready and must be reconciled before it can remain in the note posting queue.
 
 `.github/workflows/note-ready-sync.yml` watches both the Run227 implementation and its regression test so policy changes reconcile the queue immediately on `main`.
 
 ## Regression evidence
 
-`tests/test_run227_japanese_surface_integrity.py` contains exact regressions for both Run #24 Production escapes, valid neighboring Japanese, code exclusion, idempotent installation and retry instruction behavior.
+`tests/test_run227_japanese_surface_integrity.py` contains exact regressions for all three Run #24 Production escapes, valid neighboring Japanese, code exclusion, idempotent installation and retry instruction behavior.
