@@ -1,7 +1,39 @@
 {
   "version": 1,
-  "updated_at": "2026-09-03T16:28:53.320568+00:00",
+  "updated_at": "2026-09-04T01:03:15.800786+00:00",
   "items": [
+    {
+      "key": "https://inference-docs.cerebras.ai/models/overview",
+      "deferred_at": "2026-09-04T01:03:15.800340+00:00",
+      "expires_at": "2026-09-18T01:03:15.800340+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
+        "originalTitle": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
+        "displayName": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
+        "sourceLanguage": "en",
+        "url": "https://inference-docs.cerebras.ai/models/overview",
+        "description": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
+        "stargazerCount": 439,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-03T18:32:13+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://inference-docs.cerebras.ai/models/overview",
+        "sourceDetails": {
+          "hn_id": 49554520,
+          "hn_url": "https://news.ycombinator.com/item?id=49554520",
+          "external_url": "https://inference-docs.cerebras.ai/models/overview"
+        }
+      },
+      "notion_page_id": "3d1479ff-dca9-8125-972e-c3ada187f068",
+      "score": 82,
+      "reason": "超高速推論インフラのコストと実用性が高いため",
+      "commercial_score": 85,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 83.05
+    },
     {
       "key": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
       "deferred_at": "2026-09-02T16:23:08.046113+00:00",
@@ -74,6 +106,38 @@
       "deep_dive_priority_score": 81.75
     },
     {
+      "key": "https://armature.tech/blog/which-tools-coding-agents-install",
+      "deferred_at": "2026-09-04T01:03:15.800490+00:00",
+      "expires_at": "2026-09-18T01:03:15.800490+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
+        "originalTitle": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
+        "displayName": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
+        "sourceLanguage": "en",
+        "url": "https://armature.tech/blog/which-tools-coding-agents-install",
+        "description": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
+        "stargazerCount": 80,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-03T21:20:34+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://armature.tech/blog/which-tools-coding-agents-install",
+        "sourceDetails": {
+          "hn_id": 49557206,
+          "hn_url": "https://news.ycombinator.com/item?id=49557206",
+          "external_url": "https://armature.tech/blog/which-tools-coding-agents-install"
+        }
+      },
+      "notion_page_id": "3d1479ff-dca9-817c-8c8f-d5d4312966e5",
+      "score": 79,
+      "reason": "主要AIコーディングツールのツール選択傾向データ",
+      "commercial_score": 82,
+      "shelf_life_score": 35,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 80.05
+    },
+    {
       "key": "https://arxiv.org/abs/2608.31142",
       "deferred_at": "2026-09-01T08:11:30.624074+00:00",
       "expires_at": "2026-10-31T08:11:30.624074+00:00",
@@ -109,6 +173,70 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 79.55
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49548600",
+      "deferred_at": "2026-09-04T01:03:15.800568+00:00",
+      "expires_at": "2026-09-18T01:03:15.800568+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Ask HN: Who is using MCP in production?",
+        "originalTitle": "Ask HN: Who is using MCP in production?",
+        "displayName": "Ask HN: Who is using MCP in production?",
+        "sourceLanguage": "en",
+        "url": "https://news.ycombinator.com/item?id=49548600",
+        "description": "Ask HN: Who is using MCP in production?",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-03T11:21:18+00:00",
+        "sourceContext": "I’ve been following MCP since it first came out. It got a lot of attention early on, but I haven’t come across many people using it in production. I may simply have missed them. If you’re using MCP in production, what are you using it for? What advantages have you found over a normal API or direct tool integration or just CLI?",
+        "primaryUrl": "https://news.ycombinator.com/item?id=49548600",
+        "sourceDetails": {
+          "hn_id": 49548600,
+          "hn_url": "https://news.ycombinator.com/item?id=49548600",
+          "external_url": ""
+        }
+      },
+      "notion_page_id": "3d1479ff-dca9-81f5-8b96-fd056aec9d38",
+      "score": 77,
+      "reason": "MCPの実運用における知見と需要が高いため",
+      "commercial_score": 80,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 78.05
+    },
+    {
+      "key": "https://www.producthunt.com/products/fillo-native-forms-without-the-backend",
+      "deferred_at": "2026-09-04T01:03:15.800633+00:00",
+      "expires_at": "2026-09-18T01:03:15.800633+00:00",
+      "repo": {
+        "source": "ProductHunt",
+        "nameWithOwner": "Fillo",
+        "originalTitle": "Fillo",
+        "displayName": "Fillo",
+        "sourceLanguage": "en",
+        "url": "https://www.producthunt.com/r/LGOXJJGMRUJD5Q?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
+        "description": "Build forms into your product with your coding agent",
+        "stargazerCount": 90,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-03T07:01:00Z",
+        "sourceContext": "Tagline: Build forms into your product with your coding agent\nDescription: Build forms into your product with your coding agent. Fillo handles the infrastructure behind them: validation, uploads, responses, versions, and delivery.",
+        "primaryUrl": "https://www.producthunt.com/r/LGOXJJGMRUJD5Q?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
+        "sourceDetails": {
+          "producthunt_url": "https://www.producthunt.com/products/fillo-native-forms-without-the-backend?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
+          "official_url": "",
+          "website": "https://www.producthunt.com/r/LGOXJJGMRUJD5Q?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29"
+        }
+      },
+      "notion_page_id": "3d1479ff-dca9-8114-933c-d24ea0c47df4",
+      "score": 76,
+      "reason": "コーディングエージェントのフォーム構築における実用性",
+      "commercial_score": 80,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 77.4
     },
     {
       "key": "https://arxiv.org/abs/2608.31017",
