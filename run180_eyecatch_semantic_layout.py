@@ -9,12 +9,13 @@ change the visual motif, or trigger a second provider request.
 Run230 removes the lower subheadline/lead from the public eyecatch entirely. The Gemini
 layout request is therefore title-only as well: no subheadline text is generated, planned,
 validated, or rendered. Provider, JSON, semantic-guard, kinsoku or geometry failure falls
-back directly to the approved deterministic renderer, which follows the same no-subheadline
-contract.
+back directly to a deterministic title-only renderer that preserves the current background,
+brand, category/date and visual motif.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
@@ -25,7 +26,7 @@ import run178_eyecatch_editorial_layout_optimizer as r178
 
 
 EYECATCH_LAYOUT_MODEL = "gemini-3.5-flash"
-EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = 1200
+EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = 1400
 TITLE_MIN_FONT = 52
 TITLE_MAX_FONT = 76
 TITLE_MAX_WIDTH = 760
@@ -230,6 +231,40 @@ def _validate_layout_plan(source_title: str, plan: Any) -> dict[str, Any] | None
     }
 
 
+def _deterministic_title_only_fallback(
+    title: str,
+    summary: str,
+    output_path: str,
+    category: str | None = None,
+    date_label: str | None = None,
+) -> str:
+    """Render the existing deterministic eyecatch without the Run230-removed lower lead."""
+    category = (category or ee.infer_editorial_category(title, summary)).strip() or "AI & TECH"
+    accent = ee._CATEGORY_ACCENTS.get(category, ee._CATEGORY_ACCENTS["AI & TECH"])
+    date_label = date_label or ee.datetime.now(ee.ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
+    headline = ee.editorial_hook_from_title(title)
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    img = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (252, 253, 255))
+    draw = ImageDraw.Draw(img)
+
+    ee._draw_network_illustration(draw, accent)
+    ee._draw_brand(draw, accent)
+    ee._draw_tags(draw, category, date_label, accent)
+
+    headline_font, headline_lines = ee._fit_headline(draw, headline, max_width=760, max_lines=3)
+    navy = (7, 30, 66)
+    y = 160
+    line_gap = 10
+    for line_text in headline_lines:
+        bbox = draw.textbbox((0, 0), line_text, font=headline_font)
+        draw.text((48, y - bbox[1]), line_text, font=headline_font, fill=navy)
+        y += (bbox[3] - bbox[1]) + line_gap
+
+    img.save(output_path, "PNG", optimize=True)
+    return output_path
+
+
 def _request_layout_plan(pipeline_module: Any, source_title: str) -> dict[str, Any] | None:
     if bool(getattr(pipeline_module, "SYNTHETIC_REGRESSION_MODE", False)):
         return None
@@ -262,7 +297,7 @@ def install(pipeline_module: Any) -> Any:
     if getattr(pipeline_module, "_RUN180_EYECATCH_SEMANTIC_LAYOUT_INSTALLED", False):
         return pipeline_module
 
-    deterministic_fallback = ee.generate_note_editorial_eyecatch
+    deterministic_fallback = _deterministic_title_only_fallback
 
     def semantic_generate(
         title: str,
@@ -293,8 +328,7 @@ def install(pipeline_module: Any) -> Any:
             if logger is not None:
                 logger.warning("[RUN180 EYECATCH LAYOUT FALLBACK] invalid semantic title plan")
 
-        # Safety invariant: no second model request. The deterministic fallback keeps the
-        # same brand/background/visual motif and the Run230 no-subheadline contract.
+        # Safety invariant: no second model request. Fallback also omits the lower lead.
         return deterministic_fallback(
             title,
             summary,
@@ -310,4 +344,5 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN180_EYECATCH_TITLE_MIN_FONT = TITLE_MIN_FONT
     pipeline_module.RUN180_EYECATCH_TITLE_TARGET_MAX_CHARS = EYECATCH_TITLE_TARGET_MAX_CHARS
     pipeline_module.RUN180_EYECATCH_TITLE_HARD_MAX_CHARS = EYECATCH_TITLE_HARD_MAX_CHARS
+    pipeline_module.RUN230_EYECATCH_SUBHEADLINE_ENABLED = False
     return pipeline_module
