@@ -1,4 +1,4 @@
-name: Ops Run225 Stock Lifecycle Plan
+name: Ops Run225 Stock Lifecycle Apply
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  plan:
+  apply-and-verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -27,9 +27,9 @@ jobs:
           python-version: '3.11'
       - name: Install minimal dependency
         run: python -m pip install requests
-      - name: Read-only lifecycle plan
-        run: python stock_lifecycle_reconcile.py
-        env:
+      - name: Apply validated lifecycle labels
+        run: python stock_lifecycle_reconcile.py --apply
+        env: &lifecycle_env
           TZ: 'Asia/Tokyo'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
@@ -39,5 +39,8 @@ jobs:
           STOCK_ARCHIVE_DAYS: '90'
           STOCK_LIFECYCLE_MAX_RECORDS: '5000'
           STOCK_LIFECYCLE_NOTION_PACING_SECONDS: '0.34'
+      - name: Read-back verification plan
+        run: python stock_lifecycle_reconcile.py
+        env: *lifecycle_env
       - name: Safety assertion
-        run: echo 'PLAN_ONLY=true ZERO_GEMINI_CALLS=true PUBLIC_RELEASE=false RECORD_DELETION=false'
+        run: echo 'ZERO_GEMINI_CALLS=true PUBLIC_RELEASE=false RECORD_DELETION=false ONLY_UPDATE_STATE_CHANGED=true'
