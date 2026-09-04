@@ -41,6 +41,7 @@ PUBLICATION_POLICY_FILES = (
     "run175_semantic_fact_precision.py",
     "run223_technical_claim_precision.py",
     "run224_multiplier_deterministic_rescue.py",
+    "run227_japanese_surface_integrity.py",
     "run176_scope_fidelity.py",
     "run177_paid_funnel_alignment.py",
     "run226_reader_delight_planning.py",
