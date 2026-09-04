@@ -12,6 +12,7 @@ Paid Member Database Destination Baseline: **Run220 — canonical member DB cuto
 Paid Member Database Hosting Baseline: **Run221 — API-host isolation / member-view separation**  
 Article Technical Claim Precision Baseline: **Run223 — operation/API scope, performance modality, first-party date and typo precision**  
 Article Deterministic Rescue Baseline: **Run224 — zero-model performance multiplier scope rescue**  
+Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -93,6 +94,27 @@ AI Intelligence Factoryの事業構造:
 - repairable Reader-only failureに限定する。
 - Fact/Evidence blocker、過剰主張、非Reader Hard/Review理由が混ざる場合は発火しない。
 - Evidenceを削ってReady化することは禁止。
+
+
+### 3.3 Screening Stock lifecycle — Run225
+
+Screening Stockは履歴資産として保持するが、無期限の現役候補キューにはしない。`run225_stock_lifecycle.py`はGeminiを使わず、一次情報の鮮度と限定的なdurable-source例外だけでActive Stockを管理する。
+
+- **Fresh**: 0〜30日。
+- **Aging**: 31〜90日。日付不明/不正もFreshへ推測せずAgingとして扱う。
+- **Evergreen**: 91日超でもGitHub/arXivのdurable assetで、明示的な一過性event/news signalがないもの。
+- **Archive**: 91日超でEvergreen条件を満たさないもの。
+- ArchiveはNotionから削除・trashしない。履歴として保持し、active review queueと会員ホームTop3候補からだけ外す。
+- Raw Screening Stockの鮮度は`公開日`を優先し、`分析日`はfallbackに限る。再取込だけでFreshへ戻さない。
+- current/human reviewが明示されるmember-product側では、そのreview時刻を最優先anchorとしてFreshへ再昇格できる。
+- Content Intelligence DBの`更新状態`は書込量削減のためblankをFreshのcanonical encodingとし、Aging / Evergreen / Archiveだけを必要時にmaterializeする。
+- `stock_lifecycle_reconcile.py`は`評価状態=Stocked`だけを対象に`更新状態`以外を変更しない。Score / Decision / Evidence / Article state / URL / source textは不変。
+- `run225_portfolio_lifecycle.py`はRun131の後にinstallし、Archiveを除外した後のranking/diversityは既存Run131へ完全委譲する。
+- `run225_member_lifecycle_ui.py`はRun170〜Run215のcurrent-copy authorityを置換せず、最終homepage ranking境界だけでFresh/Evergreen→Agingの順に優先しArchiveへrankを与えない。
+- `.github/workflows/stock-lifecycle-reconcile.yml`はmanual ONE-SHOTのみ。`plan`はread-only、`apply`は`RECONCILE_STOCK`確認必須。Daily PAUSEDとPublic release human-onlyを変更しない。
+- Gemini/model callは0、record deletionは0。
+
+詳細: `docs/reference/RUN225_STOCK_LIFECYCLE.md`
 
 ## 4. 品質・Evidence契約
 
@@ -445,6 +467,7 @@ CIは少なくとも次を検証する。
 - 会員向け主要画面を説明のない空表へ退行させないこと。
 - Run222ではSources/Evidence + 免責をCTAより前に維持し、note title重複H1/raw `#`生表示を再発させない。
 - Run224ではRun223が確認した性能倍率scope lossだけをzero-modelで局所補完し、倍率・Evidence・Decision・Score・URLを変更せず、通常Gate再評価を迂回しない。
+- Run225ではScreening Stockを削除せずFresh/Aging/Evergreen/Archiveでzero-model管理し、Archiveだけをactive review / member homepageから外す。Score・Decision・Evidence・Run131・Run170〜Run215 authorityを変更しない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 

@@ -11,6 +11,7 @@
 - **Current paid member human-language UI baseline:** Run219 — non-engineer member presentation language
 - **Current paid member DB destination baseline:** Run220 — canonical member DB cutover / fail-closed destination
 - **Current paid member DB hosting baseline:** Run221 — API-host isolation / member-view separation
+- **Current stock lifecycle baseline:** Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -33,6 +34,8 @@ New development must start from `main`. Historical/archive branches are referenc
 - `evidence_ledger.py`, `evidence_authority.py` — Evidence Ledger / authority / binding logic
 - `inventory_bootstrap.py`, `portfolio_inventory_bootstrap.py` — subscriber inventory bootstrap
 - `technology_portfolio_policy.py`, `daily_portfolio_review.py` — portfolio prioritization/review logic
+- `run225_stock_lifecycle.py`, `stock_lifecycle_reconcile.py` — zero-model Screening Stock freshness lifecycle / source reconciliation
+- `run225_portfolio_lifecycle.py`, `run225_member_lifecycle_ui.py` — Archive exclusion from active review/member-home ranking without deletion
 - `context_first_enrichment.py` — Context-First Decision Intelligence enrichment
 - `subscription_attribution.py` — aggregate/privacy-safe subscription attribution
 
