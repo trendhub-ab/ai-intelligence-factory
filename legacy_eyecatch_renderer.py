@@ -155,6 +155,7 @@ def centered_pair_boxes(
 
 
 def _make_generate(pipeline_module):
+    _draw_eyecatch_text_stack_centered = draw_text_stack_centered
     def generate_eyecatch_image(
         title_text: str,
         output_path: str = "eyecatch.png",
@@ -262,7 +263,7 @@ def _make_generate(pipeline_module):
         draw.rounded_rectangle(left_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
         draw.rounded_rectangle(right_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
 
-        draw_text_stack_centered(
+        _draw_eyecatch_text_stack_centered(
             draw,
             left_box,
             [
@@ -272,7 +273,7 @@ def _make_generate(pipeline_module):
             ],
             gaps=(8, 16),
         )
-        draw_text_stack_centered(
+        _draw_eyecatch_text_stack_centered(
             draw,
             right_box,
             [

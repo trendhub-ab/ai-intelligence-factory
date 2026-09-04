@@ -13350,12 +13350,40 @@ def main():
 
 
 # Run231 Stage2B direct-import compatibility bridge
-# Keep the extracted implementation out of pipeline.py while preserving the historical
-# ``import pipeline`` API used by zero-API regressions and internal callers. The installer
-# is provider/persistence-free and idempotent; production_pipeline may safely call it again.
-from legacy_eyecatch_renderer import install as _install_legacy_eyecatch_renderer
+# Keep the renderer implementation out of pipeline.py while preserving historical source/API
+# compatibility required by Run105/Run150/Run160 and direct ``import pipeline`` callers.
+from functools import wraps as _run231_wraps
+from legacy_eyecatch_renderer import (
+    _MIGRATION_MARKER as _run231_legacy_marker,
+    install as _install_legacy_eyecatch_renderer,
+)
 _install_legacy_eyecatch_renderer(sys.modules[__name__])
-del _install_legacy_eyecatch_renderer
+_run231_legacy_generate_eyecatch_image = generate_eyecatch_image
+
+# Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.
+# The publication path must use ``generate_note_editorial_eyecatch`` and never this wrapper.
+@_run231_wraps(_run231_legacy_generate_eyecatch_image)
+def generate_eyecatch_image(
+    title_text: str,
+    output_path: str = "eyecatch.png",
+    source: str = "GitHub",
+    decision_score: int | None = None,
+    technical_impact: int | None = None,
+    urgency: int | None = None,
+    article_ready: bool = True,
+) -> str | None:
+    return _run231_legacy_generate_eyecatch_image(
+        title_text,
+        output_path,
+        source,
+        decision_score=decision_score,
+        technical_impact=technical_impact,
+        urgency=urgency,
+        article_ready=article_ready,
+    )
+
+setattr(generate_eyecatch_image, _run231_legacy_marker, True)
+del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
 
 
 if __name__ == "__main__":

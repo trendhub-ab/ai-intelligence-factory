@@ -71,9 +71,10 @@ The first extraction target is the legacy/internal Decision Score card renderer 
 
 After Stage 2A parity was proven, the duplicate legacy/internal renderer implementation was surgically removed from `pipeline.py` by AST-validated migration.
 
-- Removed only seven legacy/internal renderer definitions and their immediately adjacent blank lines.
+- The heavy renderer implementation and six geometry/background helper definitions remain physically removed from `pipeline.py`.
+- Post-deletion reconciliation restores only a thin `generate_eyecatch_image` compatibility def because Run105/Run150/Run160 intentionally inspect the `pipeline.py` source. The wrapper delegates to the single canonical implementation in `legacy_eyecatch_renderer.py`; renderer logic is not duplicated.
 - Preserved `_sanitize_filename`, `upload_eyecatch_to_github`, and the live `generate_note_editorial_eyecatch` import.
-- `pipeline.py` changed from **13,649 lines to 13,353 lines**, a net reduction of **296 lines** for this surface.
+- `pipeline.py` changed from **13,649 lines to 13,390 lines**, a net reduction of **259 lines** for this surface while retaining the thin source-compatibility shim.
 - The deletion commit is `2dd1c2b255bbe00d054141ea958da62f29580e24` on the Stage 2 branch.
 - The pre-Stage2 main remains preserved on `backup/pre-run231-stage2-2026-09-05`.
 - Stage 2B is **not merge-eligible** until the post-deletion full unittest regression, Synthetic Production, Repository-wide Falsification, Notion Access Policy, article-quality reconciliation, and adjacent product/context checks are all green on a normal user-origin PR head.
