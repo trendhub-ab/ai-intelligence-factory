@@ -48,8 +48,9 @@ jobs:
           pipeline_source = pipeline_path.read_text(encoding='utf-8')
           legacy_source = legacy_path.read_text(encoding='utf-8')
 
-          # Run105 source compatibility must resolve to the same canonical implementation that
-          # Stage2 extracted. Keep the implementation single-source in legacy_eyecatch_renderer.py.
+          # Keep the canonical implementation in the extracted module, but preserve the exact
+          # Run105 source marker expected by inspect.getsource(). This is a source-only alias;
+          # rendering behavior is unchanged.
           make_marker = 'def _make_generate(pipeline_module):\n'
           alias_line = '    _draw_eyecatch_text_stack_centered = draw_text_stack_centered\n'
           if alias_line not in legacy_source:
@@ -71,8 +72,6 @@ jobs:
 
           legacy_path.write_text(legacy_source, encoding='utf-8')
 
-          # Keep only a tiny physical def in pipeline.py. Run150/Run160 intentionally inspect the
-          # raw file, while functools.wraps makes Run105 inspect the canonical extracted function.
           marker = '# Run231 Stage2B direct-import compatibility bridge'
           main_anchor = '\n\nif __name__ == "__main__":\n    main()'
           if pipeline_source.count(marker) != 1:
@@ -88,42 +87,45 @@ jobs:
 
           bridge_start = pipeline_source.index(marker)
           main_start = pipeline_source.index(main_anchor, bridge_start)
-          bridge = '''# Run231 Stage2B direct-import compatibility bridge
-# Keep the renderer implementation out of pipeline.py while preserving historical source/API
-# compatibility required by Run105/Run150/Run160 and direct ``import pipeline`` callers.
-from functools import wraps as _run231_wraps
-from legacy_eyecatch_renderer import (
-    _MIGRATION_MARKER as _run231_legacy_marker,
-    install as _install_legacy_eyecatch_renderer,
-)
-_install_legacy_eyecatch_renderer(sys.modules[__name__])
-_run231_legacy_generate_eyecatch_image = generate_eyecatch_image
-
-# Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.
-# The publication path must use ``generate_note_editorial_eyecatch`` and never this wrapper.
-@_run231_wraps(_run231_legacy_generate_eyecatch_image)
-def generate_eyecatch_image(
-    title_text: str,
-    output_path: str = "eyecatch.png",
-    source: str = "GitHub",
-    decision_score: int | None = None,
-    technical_impact: int | None = None,
-    urgency: int | None = None,
-    article_ready: bool = True,
-) -> str | None:
-    return _run231_legacy_generate_eyecatch_image(
-        title_text,
-        output_path,
-        source,
-        decision_score=decision_score,
-        technical_impact=technical_impact,
-        urgency=urgency,
-        article_ready=article_ready,
-    )
-
-setattr(generate_eyecatch_image, _run231_legacy_marker, True)
-del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
-'''
+          bridge_lines = [
+              '# Run231 Stage2B direct-import compatibility bridge',
+              '# Keep the renderer implementation out of pipeline.py while preserving historical source/API',
+              '# compatibility required by Run105/Run150/Run160 and direct ``import pipeline`` callers.',
+              'from functools import wraps as _run231_wraps',
+              'from legacy_eyecatch_renderer import (',
+              '    _MIGRATION_MARKER as _run231_legacy_marker,',
+              '    install as _install_legacy_eyecatch_renderer,',
+              ')',
+              '_install_legacy_eyecatch_renderer(sys.modules[__name__])',
+              '_run231_legacy_generate_eyecatch_image = generate_eyecatch_image',
+              '',
+              '# Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.',
+              '# The publication path must use ``generate_note_editorial_eyecatch`` and never this wrapper.',
+              '@_run231_wraps(_run231_legacy_generate_eyecatch_image)',
+              'def generate_eyecatch_image(',
+              '    title_text: str,',
+              '    output_path: str = "eyecatch.png",',
+              '    source: str = "GitHub",',
+              '    decision_score: int | None = None,',
+              '    technical_impact: int | None = None,',
+              '    urgency: int | None = None,',
+              '    article_ready: bool = True,',
+              ') -> str | None:',
+              '    return _run231_legacy_generate_eyecatch_image(',
+              '        title_text,',
+              '        output_path,',
+              '        source,',
+              '        decision_score=decision_score,',
+              '        technical_impact=technical_impact,',
+              '        urgency=urgency,',
+              '        article_ready=article_ready,',
+              '    )',
+              '',
+              'setattr(generate_eyecatch_image, _run231_legacy_marker, True)',
+              'del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps',
+              '',
+          ]
+          bridge = '\n'.join(bridge_lines)
           pipeline_source = pipeline_source[:bridge_start] + bridge + pipeline_source[main_start:]
           pipeline_path.write_text(pipeline_source, encoding='utf-8')
 
@@ -139,6 +141,7 @@ del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
           ]
           if top_defs.count('generate_eyecatch_image') != 1:
               raise SystemExit('Run231 fail-closed: thin compatibility def missing/duplicated')
+
           forbidden_helpers = {
               '_load_eyecatch_background',
               '_extract_eyecatch_score_components',
@@ -153,6 +156,7 @@ del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
                   'Run231 fail-closed: extracted helper implementation leaked back into pipeline.py: '
                   f'{leaked}'
               )
+
           for required in (
               'legacy/internal 1280x670 Decision Score card',
               'publication path must use ``generate_note_editorial_eyecatch``',
@@ -170,8 +174,6 @@ del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
           if '_draw_eyecatch_text_stack_centered(' not in canonical or 'content_shift_y' not in canonical:
               raise SystemExit('Run231 fail-closed: Run105 centering source contract missing')
 
-          # Keep the Run231 reference truthful: the heavy implementation remains extracted while a
-          # source-compatibility shim is intentionally retained.
           reference = reference_path.read_text(encoding='utf-8')
           old_bullet = (
               '- Removed only seven legacy/internal renderer definitions and their immediately adjacent blank lines.\n'
@@ -187,12 +189,14 @@ del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
 
           line_count = len(repaired.splitlines())
           reduction = 13649 - line_count
-          reference = re.sub(
+          reference, replacements = re.subn(
               r'- `pipeline\.py` changed from \*\*13,649 lines to 13,353 lines\*\*, a net reduction of \*\*296 lines\*\* for this surface\.',
               f'- `pipeline.py` changed from **13,649 lines to {line_count:,} lines**, a net reduction of **{reduction:,} lines** for this surface while retaining the thin source-compatibility shim.',
               reference,
               count=1,
           )
+          if replacements != 1 and f'13,649 lines to {line_count:,} lines' not in reference:
+              raise SystemExit('Run231 fail-closed: Stage2B line-count reference drifted unexpectedly')
           reference_path.write_text(reference, encoding='utf-8')
 
           print(
