@@ -1,0 +1,173 @@
+name: Run231 Stage2B Surgical Migration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/run231-stage2-surgical-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-exact-legacy-block:
+    if: github.head_ref == 'run231-stage2-pipeline-modularization'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Remove only validated legacy eyecatch definitions and update canonical spec
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          import pathlib
+          import py_compile
+
+          pipeline_path = pathlib.Path('pipeline.py')
+          source = pipeline_path.read_text(encoding='utf-8')
+          lines = source.splitlines(keepends=True)
+          tree = ast.parse(source)
+
+          targets = {
+              '_load_eyecatch_background',
+              '_extract_eyecatch_score_components',
+              '_eyecatch_score_color',
+              '_eyecatch_vertical_center_shift',
+              '_draw_eyecatch_text_stack_centered',
+              '_eyecatch_centered_pair_boxes',
+              'generate_eyecatch_image',
+          }
+          retained = {
+              '_sanitize_filename',
+              'upload_eyecatch_to_github',
+              'generate_note_editorial_eyecatch',
+          }
+
+          top_defs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+          by_name = {}
+          for node in top_defs:
+              by_name.setdefault(node.name, []).append(node)
+
+          missing = sorted(name for name in targets if len(by_name.get(name, [])) != 1)
+          if missing:
+              raise SystemExit(f'Run231 Stage2B fail-closed: target definitions missing/duplicated: {missing}')
+          missing_retained = sorted(name for name in retained if len(by_name.get(name, [])) != 1)
+          if missing_retained:
+              raise SystemExit(f'Run231 Stage2B fail-closed: retained definitions missing/duplicated: {missing_retained}')
+
+          remove = [False] * len(lines)
+          removed_ranges = []
+          for name in sorted(targets):
+              node = by_name[name][0]
+              if node.end_lineno is None:
+                  raise SystemExit(f'No end_lineno for {name}')
+              start = node.lineno - 1
+              end = node.end_lineno
+              # Remove only the exact function body plus immediately following blank lines.
+              while end < len(lines) and lines[end].strip() == '':
+                  end += 1
+              for idx in range(start, end):
+                  if remove[idx]:
+                      raise SystemExit(f'Overlapping deletion range at line {idx + 1}')
+                  remove[idx] = True
+              removed_ranges.append((name, start + 1, end))
+
+          new_lines = [line for idx, line in enumerate(lines) if not remove[idx]]
+          marker = 'def upload_eyecatch_to_github('
+          matches = [i for i, line in enumerate(new_lines) if line.startswith(marker)]
+          if len(matches) != 1:
+              raise SystemExit(f'Run231 Stage2B fail-closed: upload anchor count={len(matches)}')
+          insert_at = matches[0]
+          comment = [
+              '# Run231 Stage2B: legacy/internal Decision Score renderer was extracted to\n',
+              '# legacy_eyecatch_renderer.py. Production installs that zero-API compatibility\n',
+              '# surface after runtime/font setup; the live editorial renderer remains separate.\n',
+              '\n',
+          ]
+          new_lines[insert_at:insert_at] = comment
+          migrated = ''.join(new_lines)
+
+          new_tree = ast.parse(migrated)
+          new_defs = {
+              n.name
+              for n in new_tree.body
+              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+          }
+          leaked = sorted(targets & new_defs)
+          if leaked:
+              raise SystemExit(f'Run231 Stage2B fail-closed: target definitions remain: {leaked}')
+          lost = sorted(retained - new_defs)
+          if lost:
+              raise SystemExit(f'Run231 Stage2B fail-closed: retained definitions lost: {lost}')
+          if 'generate_note_editorial_eyecatch' not in migrated:
+              raise SystemExit('Run231 Stage2B fail-closed: live editorial renderer disappeared')
+
+          before_count = len(lines)
+          after_count = len(migrated.splitlines())
+          if after_count >= before_count:
+              raise SystemExit(f'Run231 Stage2B did not slim pipeline: {before_count} -> {after_count}')
+
+          pipeline_path.write_text(migrated, encoding='utf-8')
+          py_compile.compile(str(pipeline_path), doraise=True)
+
+          spec_path = pathlib.Path('AI_Intelligence_Factory_最終仕様書.md')
+          spec = spec_path.read_text(encoding='utf-8')
+          old_date = '最終更新: 2026-09-04  '
+          if old_date in spec:
+              spec = spec.replace(old_date, '最終更新: 2026-09-05  ', 1)
+          elif '最終更新: 2026-09-05  ' not in spec:
+              raise SystemExit('Run231 Stage2B fail-closed: canonical spec date anchor missing')
+
+          baseline = 'Pipeline Modularization Baseline: **Run231 — zero-quality-change runtime separation / performance telemetry / staged legacy renderer extraction**  '
+          if baseline not in spec:
+              anchor = 'Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  '
+              if anchor not in spec:
+                  raise SystemExit('Run231 Stage2B fail-closed: spec baseline anchor missing')
+              spec = spec.replace(anchor, anchor + '\n' + baseline, 1)
+
+          detail = 'Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`'
+          if detail not in spec:
+              anchor2 = '現行`pipeline.py` / `production_pipeline.py`の主要契約:\n'
+              if anchor2 not in spec:
+                  raise SystemExit('Run231 Stage2B fail-closed: Core Pipeline anchor missing')
+              spec = spec.replace(anchor2, anchor2 + '\n' + detail + '\n', 1)
+          spec_path.write_text(spec, encoding='utf-8')
+
+          print(f'Run231 Stage2B pipeline lines: {before_count} -> {after_count}')
+          for row in sorted(removed_ranges):
+              print('removed', row)
+          print('canonical spec updated')
+          PY
+
+      - name: Verify surgical diff only touches intended files
+        shell: bash
+        run: |
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' 'AI_Intelligence_Factory_最終仕様書.md' 'pipeline.py' | sort)"
+          test "$changed" = "$expected"
+          ! grep -Eq '^def (_load_eyecatch_background|_extract_eyecatch_score_components|_eyecatch_score_color|_eyecatch_vertical_center_shift|_draw_eyecatch_text_stack_centered|_eyecatch_centered_pair_boxes|generate_eyecatch_image)\(' pipeline.py
+          grep -F 'def _sanitize_filename(' pipeline.py
+          grep -F 'def upload_eyecatch_to_github(' pipeline.py
+          grep -F 'def generate_note_editorial_eyecatch(' pipeline.py
+
+      - name: Commit exact migration to PR head
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No migration changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pipeline.py 'AI_Intelligence_Factory_最終仕様書.md'
+          git commit -m 'Run231 Stage2B: physically extract legacy eyecatch block'
+          git push origin HEAD:${{ github.head_ref }}
