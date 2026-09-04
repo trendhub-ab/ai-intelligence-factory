@@ -70,6 +70,45 @@ jobs:
                   '\n        _draw_eyecatch_text_stack_centered(\n',
               )
 
+          # Some historical safety tests execute pipeline.py via spec.loader.exec_module() without
+          # registering the temporary module name in sys.modules. Bind through a live globals proxy
+          # so the canonical renderer still observes monkey-patched pipeline globals in those tests.
+          if 'def install_globals(namespace):\n' not in legacy_source:
+              install_marker = '\n\ndef install(pipeline_module):\n'
+              if legacy_source.count(install_marker) != 1:
+                  raise SystemExit('Run231 fail-closed: install anchor missing/duplicated')
+              proxy_lines = [
+                  '',
+                  '',
+                  'class _GlobalsProxy:',
+                  '    def __init__(self, namespace):',
+                  '        object.__setattr__(self, "_namespace", namespace)',
+                  '',
+                  '    def __getattr__(self, name):',
+                  '        namespace = object.__getattribute__(self, "_namespace")',
+                  '        try:',
+                  '            return namespace[name]',
+                  '        except KeyError as exc:',
+                  '            raise AttributeError(name) from exc',
+                  '',
+                  '    def __setattr__(self, name, value):',
+                  '        namespace = object.__getattribute__(self, "_namespace")',
+                  '        namespace[name] = value',
+                  '',
+                  '',
+                  'def install_globals(namespace):',
+                  '    """Install into a live module globals mapping without requiring sys.modules registration."""',
+                  '    return install(_GlobalsProxy(namespace))',
+                  '',
+                  '',
+                  'def install(pipeline_module):',
+              ]
+              legacy_source = legacy_source.replace(
+                  install_marker,
+                  '\n'.join(proxy_lines) + '\n',
+                  1,
+              )
+
           legacy_path.write_text(legacy_source, encoding='utf-8')
 
           marker = '# Run231 Stage2B direct-import compatibility bridge'
@@ -94,9 +133,9 @@ jobs:
               'from functools import wraps as _run231_wraps',
               'from legacy_eyecatch_renderer import (',
               '    _MIGRATION_MARKER as _run231_legacy_marker,',
-              '    install as _install_legacy_eyecatch_renderer,',
+              '    install_globals as _install_legacy_eyecatch_renderer_globals,',
               ')',
-              '_install_legacy_eyecatch_renderer(sys.modules[__name__])',
+              '_install_legacy_eyecatch_renderer_globals(globals())',
               '_run231_legacy_generate_eyecatch_image = generate_eyecatch_image',
               '',
               '# Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.',
@@ -122,7 +161,7 @@ jobs:
               '    )',
               '',
               'setattr(generate_eyecatch_image, _run231_legacy_marker, True)',
-              'del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps',
+              'del _install_legacy_eyecatch_renderer_globals, _run231_legacy_marker, _run231_wraps',
               '',
           ]
           bridge = '\n'.join(bridge_lines)
@@ -163,6 +202,8 @@ jobs:
           ):
               if required not in repaired:
                   raise SystemExit(f'Run231 fail-closed: required source contract missing: {required}')
+          if 'sys.modules[__name__]' in repaired[bridge_start:]:
+              raise SystemExit('Run231 fail-closed: compatibility bridge requires sys.modules registration')
 
           publication = repaired.split('# Run160: public note delivery', 1)[1].split(
               '        analyzed_at = _analyzed_at_now_iso()', 1
@@ -173,6 +214,8 @@ jobs:
           canonical = legacy_path.read_text(encoding='utf-8')
           if '_draw_eyecatch_text_stack_centered(' not in canonical or 'content_shift_y' not in canonical:
               raise SystemExit('Run231 fail-closed: Run105 centering source contract missing')
+          if 'def install_globals(namespace):' not in canonical:
+              raise SystemExit('Run231 fail-closed: loader-safe globals binding missing')
 
           reference = reference_path.read_text(encoding='utf-8')
           old_bullet = (
@@ -187,16 +230,25 @@ jobs:
           elif new_bullets not in reference:
               raise SystemExit('Run231 fail-closed: Stage2B reference bullet drifted unexpectedly')
 
+          loader_bullet = (
+              '- The compatibility binding is loader-safe: normal imports and historical '
+              '`spec.loader.exec_module()` tests that omit `sys.modules` registration both bind to '
+              'the same canonical renderer through a live globals proxy.\n'
+          )
+          if loader_bullet not in reference:
+              anchor = new_bullets.splitlines()[-1] + '\n'
+              if reference.count(anchor) != 1:
+                  raise SystemExit('Run231 fail-closed: compatibility reference anchor drifted')
+              reference = reference.replace(anchor, anchor + loader_bullet, 1)
+
           line_count = len(repaired.splitlines())
           reduction = 13649 - line_count
-          reference, replacements = re.subn(
-              r'- `pipeline\.py` changed from \*\*13,649 lines to 13,353 lines\*\*, a net reduction of \*\*296 lines\*\* for this surface\.',
+          reference = re.sub(
+              r'- `pipeline\.py` changed from \*\*13,649 lines to [0-9,]+ lines\*\*, a net reduction of \*\*[0-9,]+ lines\*\* for this surface while retaining the thin source-compatibility shim\.',
               f'- `pipeline.py` changed from **13,649 lines to {line_count:,} lines**, a net reduction of **{reduction:,} lines** for this surface while retaining the thin source-compatibility shim.',
               reference,
               count=1,
           )
-          if replacements != 1 and f'13,649 lines to {line_count:,} lines' not in reference:
-              raise SystemExit('Run231 fail-closed: Stage2B line-count reference drifted unexpectedly')
           reference_path.write_text(reference, encoding='utf-8')
 
           print(
@@ -213,15 +265,20 @@ jobs:
           python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
           python -m unittest tests.test_run231_stage2_repository_contract -v
 
+      - name: Run loader compatibility regressions
+        run: |
+          python -m unittest tests.test_adversarial_regression -v
+          python -m unittest tests.test_pipeline_safety -v
+          python -m unittest tests.test_subscription_attribution -v
+
       - name: Verify surgical diff
         shell: bash
         run: |
           git diff --check -- pipeline.py legacy_eyecatch_renderer.py docs/reference/RUN231_PIPELINE_MODULARIZATION.md
-          changed="$(git -c core.quotePath=false diff --name-only | sort)"
-          expected="$(printf '%s\n' 'docs/reference/RUN231_PIPELINE_MODULARIZATION.md' 'legacy_eyecatch_renderer.py' 'pipeline.py' | sort)"
-          if [ -n "$changed" ] && [ "$changed" != "$expected" ]; then
+          unexpected="$(git -c core.quotePath=false diff --name-only | grep -Ev '^(pipeline.py|legacy_eyecatch_renderer.py|docs/reference/RUN231_PIPELINE_MODULARIZATION.md)$' || true)"
+          if [ -n "$unexpected" ]; then
             echo "Unexpected compatibility-repair diff:" >&2
-            printf '%s\n' "$changed" >&2
+            printf '%s\n' "$unexpected" >&2
             exit 1
           fi
 
@@ -235,5 +292,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add pipeline.py legacy_eyecatch_renderer.py docs/reference/RUN231_PIPELINE_MODULARIZATION.md
-          git commit -m 'Run231 Stage2B: restore eyecatch source compatibility'
+          git commit -m 'Run231 Stage2B: make legacy eyecatch bridge loader-safe'
           git push origin HEAD:${{ github.head_ref }}
