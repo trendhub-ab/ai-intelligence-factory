@@ -1,7 +1,7 @@
 """Run224 — zero-model deterministic rescue for scoped performance multipliers.
 
 Run223 intentionally blocks performance multipliers when a source-side benchmark/expectation
-loses its attribution/condition scope or the article omits real-world variability.  Run224 closes
+loses its attribution/condition scope or the article omits real-world variability. Run224 closes
 the corresponding rescue gap without spending another Gemini request.
 
 Safety contract:
@@ -70,14 +70,15 @@ def add_multiplier_scope_qualifier(markdown_text: str) -> tuple[str, int]:
 
         parts = _SENTENCE_SPLIT_RE.split(line)
         rebuilt: list[str] = []
-        for part in parts:
+        for index, part in enumerate(parts):
             if not _is_performance_multiplier(part):
                 rebuilt.append(part)
                 continue
             # Run223 accepts local attribution/scope plus article-level variability. Preserve that
             # exact semantics here so a correctly scoped two-sentence passage is not over-edited.
             already_scoped = bool(_SCOPE_RE.search(part) and article_has_variability)
-            if already_scoped or _QUALIFIER in part:
+            qualifier_follows = index + 1 < len(parts) and _QUALIFIER in parts[index + 1]
+            if already_scoped or _QUALIFIER in part or qualifier_follows:
                 rebuilt.append(part)
                 continue
             rebuilt.append(part + _QUALIFIER)
