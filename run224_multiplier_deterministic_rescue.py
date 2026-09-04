@@ -37,11 +37,9 @@ def _has_multiplier_scope_failure(reason_rows: list[dict] | None) -> bool:
     return False
 
 
-def _needs_scope_qualifier(sentence: str) -> bool:
+def _is_performance_multiplier(sentence: str) -> bool:
     text = str(sentence or "")
-    if not _MULTIPLIER_RE.search(text) or not _SPEED_RE.search(text):
-        return False
-    return not (_SCOPE_RE.search(text) and _VARIABILITY_RE.search(text))
+    return bool(_MULTIPLIER_RE.search(text) and _SPEED_RE.search(text))
 
 
 def add_multiplier_scope_qualifier(markdown_text: str) -> tuple[str, int]:
@@ -49,15 +47,14 @@ def add_multiplier_scope_qualifier(markdown_text: str) -> tuple[str, int]:
 
     The function is deliberately source-agnostic because it is only called after Run223 has
     already proven that the same multiplier exists in source context and that the source wording
-    is benchmark/expectation scoped.  The added sentence therefore weakens/generalizes nothing;
-    it restores attribution/condition/variability that was lost during article generation.
+    is benchmark/expectation scoped. The added sentence restores only attribution/condition and
+    variability that were lost during article generation.
     """
     text = str(markdown_text or "")
-    if not text or _QUALIFIER in text and not any(
-        _needs_scope_qualifier(part) for part in _SENTENCE_SPLIT_RE.split(text)
-    ):
+    if not text:
         return text, 0
 
+    article_has_variability = bool(_VARIABILITY_RE.search(text))
     out: list[str] = []
     changed = 0
     in_fence = False
@@ -74,15 +71,18 @@ def add_multiplier_scope_qualifier(markdown_text: str) -> tuple[str, int]:
         parts = _SENTENCE_SPLIT_RE.split(line)
         rebuilt: list[str] = []
         for part in parts:
-            if _needs_scope_qualifier(part):
-                # Never duplicate the qualifier if it is already adjacent in the same sentence.
-                if _QUALIFIER not in part:
-                    rebuilt.append(part + _QUALIFIER)
-                    changed += 1
-                else:
-                    rebuilt.append(part)
-            else:
+            if not _is_performance_multiplier(part):
                 rebuilt.append(part)
+                continue
+            # Run223 accepts local attribution/scope plus article-level variability. Preserve that
+            # exact semantics here so a correctly scoped two-sentence passage is not over-edited.
+            already_scoped = bool(_SCOPE_RE.search(part) and article_has_variability)
+            if already_scoped or _QUALIFIER in part:
+                rebuilt.append(part)
+                continue
+            rebuilt.append(part + _QUALIFIER)
+            changed += 1
+            article_has_variability = True
         out.append("".join(rebuilt))
     return "\n".join(out), changed
 
