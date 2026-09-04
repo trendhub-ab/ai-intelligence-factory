@@ -114,22 +114,25 @@ class Run203RuntimeStateChannelTests(unittest.TestCase):
                 run203.preflight_runtime_state_channel()
 
     def test_production_entrypoint_installs_and_preflights_infra_before_pipeline(self):
-        text = Path("production_pipeline.py").read_text(encoding="utf-8")
-        self.assertIn("import run203_runtime_state_channel as runtime_state_channel", text)
-        self.assertIn("runtime_state_channel.install(pipeline_module)", text)
-        self.assertIn("runtime_state_channel.preflight_runtime_state_channel()", text)
+        entrypoint = Path("production_pipeline.py").read_text(encoding="utf-8")
+        runtime_contract = Path("runtime_layers.py").read_text(encoding="utf-8")
+
+        self.assertIn("from runtime_layers import install_runtime_layers", entrypoint)
+        self.assertIn("import run203_runtime_state_channel as runtime_state_channel", entrypoint)
+        self.assertIn("runtime_state_channel.install(pipeline_module)", runtime_contract)
+        self.assertIn("runtime_state_channel.preflight_runtime_state_channel()", entrypoint)
         self.assertLess(
-            text.index("runtime_state_channel.install(pipeline_module)"),
-            text.index("run172_production_reliability.install(pipeline_module)"),
+            runtime_contract.index("runtime_state_channel.install(pipeline_module)"),
+            runtime_contract.index("run172_production_reliability.install(pipeline_module)"),
         )
         self.assertLess(
-            text.index("runtime_state_channel.preflight_runtime_state_channel()"),
-            text.index("pipeline.main()"),
+            entrypoint.index("runtime_state_channel.preflight_runtime_state_channel()"),
+            entrypoint.index("pipeline.main()"),
         )
         # Runtime-state isolation is infrastructure, not article policy. Keeping the
         # alias prevents the publication-policy Run-layer detector from invalidating
         # Ready manuscripts for operational-only changes.
-        self.assertNotIn("run203_runtime_state_channel.install(pipeline_module)", text)
+        self.assertNotIn("run203_runtime_state_channel.install(pipeline_module)", runtime_contract)
 
     def test_inventory_apply_uses_same_state_preflight_but_plan_stays_read_only(self):
         text = Path("portfolio_inventory_bootstrap.py").read_text(encoding="utf-8")
