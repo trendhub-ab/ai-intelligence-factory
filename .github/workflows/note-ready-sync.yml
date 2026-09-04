@@ -80,6 +80,9 @@ jobs:
         run: pip install requests
 
       - name: Zero-API unit tests
+        # Keep this reconciliation workflow intentionally minimal. Run226's pipeline-heavy
+        # editorial tests run in repository Integration CI; Run197 below proves every current
+        # publication-policy file (including Run226) still triggers this queue reconciliation.
         run: |
           python -m unittest tests.test_note_ready_sync -v
           python -m unittest tests.test_run194_note_ready_workflow -v
@@ -87,7 +90,6 @@ jobs:
           python -m unittest tests.test_run222_note_presentation_integrity -v
           python -m unittest tests.test_run223_technical_claim_precision -v
           python -m unittest tests.test_run224_multiplier_deterministic_rescue -v
-          python -m unittest tests.test_run226_reader_delight_planning -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
