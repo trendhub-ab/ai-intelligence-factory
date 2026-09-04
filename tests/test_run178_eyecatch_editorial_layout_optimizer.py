@@ -177,7 +177,7 @@ class Run178EyecatchLayoutOptimizerTests(unittest.TestCase):
         self.assertIs(first, fake.generate_note_editorial_eyecatch)
 
     def test_production_entrypoint_installs_run178_after_run177(self):
-        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         self.assertIn("import run178_eyecatch_editorial_layout_optimizer", source)
         self.assertIn("run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)", source)
         self.assertLess(
