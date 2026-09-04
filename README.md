@@ -12,6 +12,7 @@
 - **Current paid member DB destination baseline:** Run220 — canonical member DB cutover / fail-closed destination
 - **Current paid member DB hosting baseline:** Run221 — API-host isolation / member-view separation
 - **Current stock lifecycle baseline:** Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management
+- **Current free article editorial planning baseline:** Run226 — evidence-bounded human editorial planning / reader delight without template quotas
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -36,6 +37,7 @@ New development must start from `main`. Historical/archive branches are referenc
 - `technology_portfolio_policy.py`, `daily_portfolio_review.py` — portfolio prioritization/review logic
 - `run225_stock_lifecycle.py`, `stock_lifecycle_reconcile.py` — zero-model Screening Stock freshness lifecycle / source reconciliation
 - `run225_portfolio_lifecycle.py`, `run225_member_lifecycle_ui.py` — Archive exclusion from active review/member-home ranking without deletion
+- `run226_reader_delight_planning.py` — Evidence-bounded pre-draft Reader Tension / Discovery / Consequence / Explanation Bridge / Editorial Point of View planning using the existing article-generation request; no style-count Hard Gate and no new model call
 - `context_first_enrichment.py` — Context-First Decision Intelligence enrichment
 - `subscription_attribution.py` — aggregate/privacy-safe subscription attribution
 
@@ -275,9 +277,10 @@ Run210 makes documentation freshness a CI contract. Later member-product Runs ex
 - Run220 current Presentation DB must be exactly `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`; the pre-cutover DB is `旧版・使用禁止`.
 - Run221 physical API host must be exactly `3c5479ff-dca9-8178-867c-d9249a3ff5c8`; member home and physical API host are deliberately different surfaces.
 - Normal Member Presentation Production must not auto-create, silently choose a different same-title DB, or accept a physical-host mismatch.
+- Run226 free-article planning must remain SOURCE BOUNDARY-bounded and must not turn hook/analogy/question/paragraph/list counts into a new human-looking template or new Hard Gate.
 - A Production behavior change that makes canonical documentation stale must fail CI until documentation is updated in the same change set.
 
-## Change discipline
+## change discipline
 
 Repository cleanup must be behavior-preserving by default:
 
