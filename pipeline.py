@@ -13351,13 +13351,13 @@ def main():
 
 # Run231 Stage2B direct-import compatibility bridge
 # Keep the renderer implementation out of pipeline.py while preserving historical source/API
-# compatibility required by Run105/Run150/Run160 and direct ``import pipeline`` callers.
+# compatibility required by Run99/Run105/Run150/Run160 and direct ``import pipeline`` callers.
 from functools import wraps as _run231_wraps
 from legacy_eyecatch_renderer import (
     _MIGRATION_MARKER as _run231_legacy_marker,
-    install as _install_legacy_eyecatch_renderer,
+    install_globals as _install_legacy_eyecatch_renderer_globals,
 )
-_install_legacy_eyecatch_renderer(sys.modules[__name__])
+_install_legacy_eyecatch_renderer_globals(globals())
 _run231_legacy_generate_eyecatch_image = generate_eyecatch_image
 
 # Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.
@@ -13383,7 +13383,7 @@ def generate_eyecatch_image(
     )
 
 setattr(generate_eyecatch_image, _run231_legacy_marker, True)
-del _install_legacy_eyecatch_renderer, _run231_legacy_marker, _run231_wraps
+del _install_legacy_eyecatch_renderer_globals, _run231_legacy_marker, _run231_wraps
 
 
 if __name__ == "__main__":

@@ -156,6 +156,7 @@ def centered_pair_boxes(
 
 def _make_generate(pipeline_module):
     _draw_eyecatch_text_stack_centered = draw_text_stack_centered
+    _eyecatch_centered_pair_boxes = centered_pair_boxes
     def generate_eyecatch_image(
         title_text: str,
         output_path: str = "eyecatch.png",
@@ -253,7 +254,7 @@ def _make_generate(pipeline_module):
         if progress_x > bx0:
             draw.rounded_rectangle((bx0, by0, progress_x, by1), radius=11, fill=accent)
 
-        left_box, right_box = centered_pair_boxes(
+        left_box, right_box = _eyecatch_centered_pair_boxes(
             card,
             395 + content_shift_y,
             548 + content_shift_y,
@@ -290,6 +291,27 @@ def _make_generate(pipeline_module):
 
     setattr(generate_eyecatch_image, _MIGRATION_MARKER, True)
     return generate_eyecatch_image
+
+
+class _GlobalsProxy:
+    def __init__(self, namespace):
+        object.__setattr__(self, "_namespace", namespace)
+
+    def __getattr__(self, name):
+        namespace = object.__getattribute__(self, "_namespace")
+        try:
+            return namespace[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __setattr__(self, name, value):
+        namespace = object.__getattribute__(self, "_namespace")
+        namespace[name] = value
+
+
+def install_globals(namespace):
+    """Install into a live module globals mapping without requiring sys.modules registration."""
+    return install(_GlobalsProxy(namespace))
 
 
 def install(pipeline_module):
