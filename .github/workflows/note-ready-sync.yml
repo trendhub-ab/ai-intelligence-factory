@@ -28,6 +28,7 @@ on:
       - 'run174_monthly_digest_integrity.py'
       - 'run175_semantic_fact_precision.py'
       - 'run223_technical_claim_precision.py'
+      - 'run224_multiplier_deterministic_rescue.py'
       - 'run176_scope_fidelity.py'
       - 'run177_paid_funnel_alignment.py'
       - 'run178_eyecatch_editorial_layout_optimizer.py'
@@ -45,6 +46,7 @@ on:
       - 'tests/test_run197_note_ready_policy_reconciliation.py'
       - 'tests/test_run222_note_presentation_integrity.py'
       - 'tests/test_run223_technical_claim_precision.py'
+      - 'tests/test_run224_multiplier_deterministic_rescue.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -82,6 +84,7 @@ jobs:
           python -m unittest tests.test_run197_note_ready_policy_reconciliation -v
           python -m unittest tests.test_run222_note_presentation_integrity -v
           python -m unittest tests.test_run223_technical_claim_precision -v
+          python -m unittest tests.test_run224_multiplier_deterministic_rescue -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
