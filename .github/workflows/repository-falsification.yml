@@ -42,7 +42,7 @@ jobs:
           python -m unittest tests.test_run204_gemini_transient_recovery -v
           python -m unittest tests.test_run206_pending_retry_fast_lane -v
           python -m unittest tests.test_run231_pipeline_slim -v
-          python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
+          python -m unittest tests.test_run231_stage2_repository_contract -v
 
       - name: Falsify Note Ready policy-change reconciliation contract
         run: |
