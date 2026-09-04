@@ -13,6 +13,7 @@ Paid Member Database Hosting Baseline: **Run221 — API-host isolation / member-
 Article Technical Claim Precision Baseline: **Run223 — operation/API scope, performance modality, first-party date and typo precision**  
 Article Deterministic Rescue Baseline: **Run224 — zero-model performance multiplier scope rescue**  
 Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management**  
+Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -95,7 +96,6 @@ AI Intelligence Factoryの事業構造:
 - Fact/Evidence blocker、過剰主張、非Reader Hard/Review理由が混ざる場合は発火しない。
 - Evidenceを削ってReady化することは禁止。
 
-
 ### 3.3 Screening Stock lifecycle — Run225
 
 Screening Stockは履歴資産として保持するが、無期限の現役候補キューにはしない。`run225_stock_lifecycle.py`はGeminiを使わず、一次情報の鮮度と限定的なdurable-source例外だけでActive Stockを管理する。
@@ -159,6 +159,31 @@ Screening Stockは履歴資産として保持するが、無期限の現役候�
 
 詳細: `docs/reference/RUN224_MULTIPLIER_DETERMINISTIC_RESCUE.md`
 
+### 4.3 Human Editorial Planning — Run226
+
+`run226_reader_delight_planning.py`は無料note記事の既存生成requestに、Evidence境界内の**生成前編集計画**だけを追加する。人間らしさを後付けの口語表現で作るのではなく、同じ既存model callの中で、記事を書く前に以下の5つの編集レンズを内部設計する。
+
+- **Reader Tension**: 非エンジニア読者が何を疑問・困りごととして受け取るか。
+- **Discovery**: 単なる発表要約ではない「そういうことだったのか」という記事固有の核心。
+- **Concrete Consequence**: Evidenceで直接支えられる範囲の仕事・選択・使い方・導入判断への意味。
+- **Explanation Bridge**: 専門知識がなくても技術的な芯へ到達できる説明順。比喩・問い・scene・会話調は任意であり必須ではない。
+- **Editorial Point of View**: Evidenceと既存Decisionから導く編集者の視点を記事全体へ自然に通す。
+
+Production契約:
+
+- 5レンズは内部planningであり、本文の5見出しや固定順序として出力しない。
+- Evidenceにない数値baseline、時間、金額、日付、人物、会話、引用、利用場面、普及/トレンド、競合roadmap、因果、多数派認識を「分かりやすさ」のために創作しない。
+- sourceの倍率・%改善を具体的な時間/金額/件数へ換算するのは、baselineと換算後の値の双方がSOURCE BOUNDARYで直接確認できる場合だけ。
+- Hook分類、比喩、問い、短文段落、箇条書き、会話マーカー等に回数ノルマ・均等配分を設定しない。style countだけを新しいHard Gateにしない。
+- 入口・見出し順・段落順・Decision Voice位置は記事固有のEvidence/Discoveryから決め、固定テンプレートにしない。
+- 既存Run126〜Run144 Reader Experience / Human Appeal診断を維持し、Fact / Evidence / Decision / Run223 / Run224 / Publication Contractを緩めない。
+- 既存`build_decision_prompt`の出力schemaとbase promptを保持し、その末尾へ契約をidempotentに追加する。
+- 新規Gemini/model call siteは0。既存記事生成requestだけを使う。
+- Run226はPublication Contract fingerprint対象であり、旧policyのReady稿を新policy Readyとして流用しない。
+- Daily PAUSED、Public note release human-onlyを変更しない。
+
+詳細: `docs/reference/RUN226_READER_DELIGHT_PLANNING.md`
+
 ## 5. Production runtime layer
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
@@ -174,6 +199,7 @@ Screening Stockは履歴資産として保持するが、無期限の現役候�
 - `run224_multiplier_deterministic_rescue.py`
 - `run176_scope_fidelity.py`
 - `run177_paid_funnel_alignment.py`
+- `run226_reader_delight_planning.py`
 - `run178_eyecatch_editorial_layout_optimizer.py`
 - `run179_eyecatch_font_refinement.py`
 - `run180_eyecatch_semantic_layout.py`
@@ -468,6 +494,7 @@ CIは少なくとも次を検証する。
 - Run222ではSources/Evidence + 免責をCTAより前に維持し、note title重複H1/raw `#`生表示を再発させない。
 - Run224ではRun223が確認した性能倍率scope lossだけをzero-modelで局所補完し、倍率・Evidence・Decision・Score・URLを変更せず、通常Gate再評価を迂回しない。
 - Run225ではScreening Stockを削除せずFresh/Aging/Evergreen/Archiveでzero-model管理し、Archiveだけをactive review / member homepageから外す。Score・Decision・Evidence・Run131・Run170〜Run215 authorityを変更しない。
+- Run226では無料記事のReader DelightをSOURCE BOUNDARY内のReader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of Viewとして生成前に設計し、固定Hook・比喩・問い・段落・箇条書き等の回数ノルマをHard Gate化しない。Evidence / Decision / 既存Gate / Gemini call数を変更しない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 
