@@ -65,7 +65,18 @@ The first extraction target is the legacy/internal Decision Score card renderer 
 - Production installs it only over legacy/internal symbols such as `generate_eyecatch_image` and its geometry helpers.
 - `generate_note_editorial_eyecatch` must remain the exact same callable across the compatibility install.
 - Run178–Run183 editorial eyecatch refinement layers continue to operate on the live editorial renderer; they are not replaced by this module.
-- Stage 2A does not remove the duplicate legacy block from `pipeline.py` until the full regression is green.
+- Stage 2A parity regression was green before duplicate-code deletion.
+
+### Stage 2B — physical removal after parity proof
+
+After Stage 2A parity was proven, the duplicate legacy/internal renderer implementation was surgically removed from `pipeline.py` by AST-validated migration.
+
+- Removed only seven legacy/internal renderer definitions and their immediately adjacent blank lines.
+- Preserved `_sanitize_filename`, `upload_eyecatch_to_github`, and the live `generate_note_editorial_eyecatch` import.
+- `pipeline.py` changed from **13,649 lines to 13,353 lines**, a net reduction of **296 lines** for this surface.
+- The deletion commit is `2dd1c2b255bbe00d054141ea958da62f29580e24` on the Stage 2 branch.
+- The pre-Stage2 main remains preserved on `backup/pre-run231-stage2-2026-09-05`.
+- Stage 2B is **not merge-eligible** until the post-deletion full unittest regression, Synthetic Production, Repository-wide Falsification, Notion Access Policy, article-quality reconciliation, and adjacent product/context checks are all green on a normal user-origin PR head.
 
 ## Performance policy
 
