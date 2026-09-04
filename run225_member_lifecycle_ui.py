@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Run225 member-surface overlay for active Stock lifecycle.
 
-The authoritative member sync remains Run219/Run215.  This zero-model overlay
+The authoritative member sync remains Run219/Run215. This zero-model overlay
 changes only recommendation eligibility/order:
 - Archive items remain searchable/history records but receive no homepage rank.
 - Fresh/Evergreen are ranked first.
 - Aging can fill remaining homepage slots after active-current choices.
+
+Important integration boundary: Run170-Run215 wrap ``member_presentation_sync``
+source-state generation to preserve current copy authority. Run225 therefore
+NEVER replaces ``_source_state``. It classifies the fully prepared state only at
+the existing homepage-ranking boundary, after all copy/authority layers have run.
 
 Current score, decision, Evidence, source copy and Notion records are untouched.
 """
@@ -20,14 +25,13 @@ import run219_member_human_language_ui as run219
 import run225_stock_lifecycle as lifecycle
 
 _INSTALLED = False
-_ORIGINAL_SOURCE_STATE = presentation._source_state
 _ORIGINAL_ASSIGN_HOME_RANKS = presentation.assign_home_ranks
 
 
-def _source_state_with_lifecycle(page: dict) -> dict[str, Any] | None:
-    state = _ORIGINAL_SOURCE_STATE(page)
-    if not state:
-        return None
+def _ensure_lifecycle(state: dict[str, Any]) -> str:
+    existing = str(state.get("stock_lifecycle") or "").strip()
+    if existing in {lifecycle.FRESH, lifecycle.AGING, lifecycle.EVERGREEN, lifecycle.ARCHIVE}:
+        return existing
     decision = lifecycle.classify_lifecycle(
         source=state.get("sources") or (),
         reviewed_at=state.get("last_reviewed"),
@@ -37,29 +41,26 @@ def _source_state_with_lifecycle(page: dict) -> dict[str, Any] | None:
     )
     state["stock_lifecycle"] = decision.label
     state["stock_lifecycle_reason"] = decision.reason
-    return state
+    return decision.label
 
 
 def assign_home_ranks_with_lifecycle(
     states: list[dict[str, Any]], *, limit: int = presentation.MEMBER_HOME_MAX
 ) -> list[dict[str, Any]]:
+    """Preserve the existing ranker inside lifecycle priority bands."""
     for state in states:
         state["rank"] = None
 
-    # Unknown lifecycle exists only for legacy/test callers and is treated as
-    # Fresh for backward compatibility. Actual source rows are classified above.
-    current = [
-        state
-        for state in states
-        if state.get("stock_lifecycle", lifecycle.FRESH)
-        in {lifecycle.FRESH, lifecycle.EVERGREEN}
-    ]
-    aging = [
-        state
-        for state in states
-        if state.get("stock_lifecycle") == lifecycle.AGING
-    ]
-    # Archive is intentionally absent from both lists.
+    current: list[dict[str, Any]] = []
+    aging: list[dict[str, Any]] = []
+    for state in states:
+        label = _ensure_lifecycle(state)
+        if label in {lifecycle.FRESH, lifecycle.EVERGREEN}:
+            current.append(state)
+        elif label == lifecycle.AGING:
+            aging.append(state)
+        # Archive is intentionally absent from active recommendation lists.
+
     selected = _ORIGINAL_ASSIGN_HOME_RANKS(current, limit=limit)
     slots = max(0, limit - len(selected))
     if slots:
@@ -75,7 +76,7 @@ def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
-    presentation._source_state = _source_state_with_lifecycle
+    # Do not patch _source_state: Run170-Run215 own that current-authority chain.
     presentation.assign_home_ranks = assign_home_ranks_with_lifecycle
     _INSTALLED = True
 
@@ -86,6 +87,7 @@ def run_presentation_sync() -> dict[str, Any]:
     result["run225_stock_lifecycle"] = {
         "archive_excluded_from_homepage": True,
         "fresh_evergreen_before_aging": True,
+        "source_state_authority_preserved": True,
         "records_deleted": 0,
     }
     result["zero_gemini_calls"] = True
