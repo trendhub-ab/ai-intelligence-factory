@@ -1,39 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-04T01:03:17.187546+00:00",
+  "updated_at": "2026-09-04T10:52:30.893201+00:00",
   "items": [
-    {
-      "key": "https://inference-docs.cerebras.ai/models/overview",
-      "deferred_at": "2026-09-04T01:03:15.800340+00:00",
-      "expires_at": "2026-09-18T01:03:15.800340+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
-        "originalTitle": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
-        "displayName": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
-        "sourceLanguage": "en",
-        "url": "https://inference-docs.cerebras.ai/models/overview",
-        "description": "Qwen 3.8 27B available on Cerebras at 1500 tokens/s",
-        "stargazerCount": 439,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-03T18:32:13+00:00",
-        "sourceContext": "",
-        "primaryUrl": "https://inference-docs.cerebras.ai/models/overview",
-        "sourceDetails": {
-          "hn_id": 49554520,
-          "hn_url": "https://news.ycombinator.com/item?id=49554520",
-          "external_url": "https://inference-docs.cerebras.ai/models/overview"
-        }
-      },
-      "notion_page_id": "3d1479ff-dca9-8125-972e-c3ada187f068",
-      "score": 82,
-      "reason": "超高速推論インフラのコストと実用性が高いため",
-      "commercial_score": 85,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 83.05
-    },
     {
       "key": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
       "deferred_at": "2026-09-02T16:23:08.046113+00:00",
