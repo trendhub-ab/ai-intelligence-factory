@@ -118,7 +118,18 @@ jobs:
           python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
       - name: Run full unittest regression
-        run: python -m unittest discover -s tests -v
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests -v > full-unittest.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo '--- full unittest failure tail ---'
+            tail -n 240 full-unittest.log
+            exit "$status"
+          fi
+          tail -n 30 full-unittest.log
       - name: Run synthetic smoke through current production stack
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
