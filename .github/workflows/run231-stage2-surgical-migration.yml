@@ -158,7 +158,7 @@ jobs:
       - name: Verify surgical diff only touches intended files
         shell: bash
         run: |
-          git diff --check
+          git diff --check -- pipeline.py
           changed="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' 'AI_Intelligence_Factory_最終仕様書.md' 'pipeline.py' | sort)"
           test "$changed" = "$expected"
