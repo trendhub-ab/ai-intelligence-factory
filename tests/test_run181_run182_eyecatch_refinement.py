@@ -22,7 +22,6 @@ class Run181Run182EyecatchRefinementTests(unittest.TestCase):
         with patch.object(run181.ee, "_jp_font", side_effect=lambda size, bold=True: size), patch.object(
             run181.ee, "_text_width", side_effect=lambda draw, text, font: len(text) * font
         ):
-            # 14 chars: 56px is 784px, 55px is 770px, 54px is 756px.
             self.assertEqual(54, run181._boost_title_size(["abcdefghijklmn"], 52))
 
     def test_run181_balance_constants_match_approved_visual_sample(self):
@@ -78,7 +77,7 @@ class Run181Run182EyecatchRefinementTests(unittest.TestCase):
         self.assertNotIn("_generate_via_chat", inspect.getsource(run182))
 
     def test_production_order_is_run180_then_181_then_182(self):
-        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         p180 = source.index("run180_eyecatch_semantic_layout.install(pipeline_module)")
         p181 = source.index("run181_eyecatch_visual_balance.install(pipeline_module)")
         p182 = source.index("run182_eyecatch_conclusion_emphasis.install(pipeline_module)")
