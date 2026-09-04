@@ -29,6 +29,7 @@ on:
       - 'run175_semantic_fact_precision.py'
       - 'run223_technical_claim_precision.py'
       - 'run224_multiplier_deterministic_rescue.py'
+      - 'run227_japanese_surface_integrity.py'
       - 'run176_scope_fidelity.py'
       - 'run177_paid_funnel_alignment.py'
       - 'run226_reader_delight_planning.py'
@@ -49,6 +50,7 @@ on:
       - 'tests/test_run223_technical_claim_precision.py'
       - 'tests/test_run224_multiplier_deterministic_rescue.py'
       - 'tests/test_run226_reader_delight_planning.py'
+      - 'tests/test_run227_japanese_surface_integrity.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -82,7 +84,8 @@ jobs:
       - name: Zero-API unit tests
         # Keep this reconciliation workflow intentionally minimal. Run226's pipeline-heavy
         # editorial tests run in repository Integration CI; Run197 below proves every current
-        # publication-policy file (including Run226) still triggers this queue reconciliation.
+        # publication-policy file still triggers this queue reconciliation. Run227 itself is a
+        # stdlib-only zero-model guard, so its narrow production-escape tests run here too.
         run: |
           python -m unittest tests.test_note_ready_sync -v
           python -m unittest tests.test_run194_note_ready_workflow -v
@@ -90,6 +93,7 @@ jobs:
           python -m unittest tests.test_run222_note_presentation_integrity -v
           python -m unittest tests.test_run223_technical_claim_precision -v
           python -m unittest tests.test_run224_multiplier_deterministic_rescue -v
+          python -m unittest tests.test_run227_japanese_surface_integrity -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py

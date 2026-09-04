@@ -14,6 +14,7 @@ Article Technical Claim Precision Baseline: **Run223 — operation/API scope, pe
 Article Deterministic Rescue Baseline: **Run224 — zero-model performance multiplier scope rescue**  
 Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management**  
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
+Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -184,6 +185,18 @@ Production契約:
 
 詳細: `docs/reference/RUN226_READER_DELIGHT_PLANNING.md`
 
+### 4.4 Japanese Surface Integrity — Run227
+
+Run226導入後の初回FULL ONE-SHOT実記事監査で、Fact/Evidence/Reader Gateを通過したReady稿に`結果はでした。`および`計算はに速くなる`という明白な日本語崩れが残った。`run227_japanese_surface_integrity.py`は、この種の**高信頼で機械判定できる表層破損だけ**をzero-modelでPublication前にFail-Closedする。
+
+- 述語欠落型の`結果はでした。`等と、比較・変化語彙直前の`はに`助詞衝突だけを狭く検出する。
+- code fence / inline codeは検査対象外とし、コード文字列によるfalse positiveを避ける。
+- deterministic自動書換えはしない。欠けた述語・副詞を推測すると意味を変えるため、通常のbounded retryへ局所修正指示だけを渡す。
+- retryでも新しいFact・数値・人物・因果を補ってはならない。
+- Fact / Evidence / Decision / score / source URL / Gemini request budgetを変更しない。
+- Run227はPublication Contract fingerprint対象であり、Run227前policyのReady稿は現行policyで再生成・再検証・再stampされるまでnote Ready queueで投稿可能扱いにしない。
+- Daily PAUSED、Public note release human-onlyを変更しない。
+
 ## 5. Production runtime layer
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
@@ -197,6 +210,7 @@ Production契約:
 - `run175_semantic_fact_precision.py`
 - `run223_technical_claim_precision.py`
 - `run224_multiplier_deterministic_rescue.py`
+- `run227_japanese_surface_integrity.py`
 - `run176_scope_fidelity.py`
 - `run177_paid_funnel_alignment.py`
 - `run226_reader_delight_planning.py`
@@ -495,6 +509,7 @@ CIは少なくとも次を検証する。
 - Run224ではRun223が確認した性能倍率scope lossだけをzero-modelで局所補完し、倍率・Evidence・Decision・Score・URLを変更せず、通常Gate再評価を迂回しない。
 - Run225ではScreening Stockを削除せずFresh/Aging/Evergreen/Archiveでzero-model管理し、Archiveだけをactive review / member homepageから外す。Score・Decision・Evidence・Run131・Run170〜Run215 authorityを変更しない。
 - Run226では無料記事のReader DelightをSOURCE BOUNDARY内のReader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of Viewとして生成前に設計し、固定Hook・比喩・問い・段落・箇条書き等の回数ノルマをHard Gate化しない。Evidence / Decision / 既存Gate / Gemini call数を変更しない。
+- Run227では実Productionで確認した高信頼の日本語表層破損をzero-modelでFail-Closedし、自動推測修正・Fact/Evidence/Decision変更・追加model callを行わない。Run227前Ready稿は現行policy fingerprintに一致するまでnote投稿対象にしない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 
