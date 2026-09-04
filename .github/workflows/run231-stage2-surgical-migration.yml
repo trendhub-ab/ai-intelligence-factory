@@ -162,10 +162,44 @@ jobs:
           changed="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' 'AI_Intelligence_Factory_最終仕様書.md' 'pipeline.py' | sort)"
           test "$changed" = "$expected"
-          ! grep -Eq '^def (_load_eyecatch_background|_extract_eyecatch_score_components|_eyecatch_score_color|_eyecatch_vertical_center_shift|_draw_eyecatch_text_stack_centered|_eyecatch_centered_pair_boxes|generate_eyecatch_image)\(' pipeline.py
-          grep -F 'def _sanitize_filename(' pipeline.py
-          grep -F 'def upload_eyecatch_to_github(' pipeline.py
-          grep -F 'from editorial_eyecatch import generate_note_editorial_eyecatch' pipeline.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          source = Path('pipeline.py').read_text(encoding='utf-8')
+          tree = ast.parse(source)
+          defs = {
+              n.name
+              for n in tree.body
+              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+          }
+          removed = {
+              '_load_eyecatch_background',
+              '_extract_eyecatch_score_components',
+              '_eyecatch_score_color',
+              '_eyecatch_vertical_center_shift',
+              '_draw_eyecatch_text_stack_centered',
+              '_eyecatch_centered_pair_boxes',
+              'generate_eyecatch_image',
+          }
+          leaked = sorted(removed & defs)
+          if leaked:
+              raise SystemExit(f'legacy definitions remain: {leaked}')
+          for name in ('_sanitize_filename', 'upload_eyecatch_to_github'):
+              if name not in defs:
+                  raise SystemExit(f'retained definition missing: {name}')
+          editorial_import = any(
+              isinstance(node, ast.ImportFrom)
+              and node.module == 'editorial_eyecatch'
+              and any(alias.name == 'generate_note_editorial_eyecatch' for alias in node.names)
+              for node in tree.body
+          )
+          if not editorial_import:
+              raise SystemExit('live editorial renderer import missing')
+          if len(source.splitlines()) != 13353:
+              raise SystemExit(f'unexpected pipeline line count after migration: {len(source.splitlines())}')
+          print('Run231 Stage2B AST verification PASS')
+          PY
 
       - name: Commit exact migration to PR head
         shell: bash
