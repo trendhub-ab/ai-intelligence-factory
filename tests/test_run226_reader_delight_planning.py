@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pipeline
 import publication_contract
-import production_pipeline
+import runtime_layers
 import run226_reader_delight_planning as run226
 
 
@@ -72,7 +72,7 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
         self.assertEqual(1, pipeline_src.count('genai.Client('))
 
     def test_production_runtime_installs_run226(self):
-        src = inspect.getsource(production_pipeline)
+        src = inspect.getsource(runtime_layers)
         self.assertIn('import run226_reader_delight_planning', src)
         self.assertIn('run226_reader_delight_planning.install(pipeline_module)', src)
 
