@@ -45,11 +45,18 @@ jobs:
               '_eyecatch_centered_pair_boxes',
               'generate_eyecatch_image',
           }
-          retained = {
+          retained_defs = {
               '_sanitize_filename',
               'upload_eyecatch_to_github',
-              'generate_note_editorial_eyecatch',
           }
+
+          def has_editorial_import(parsed: ast.AST) -> bool:
+              for node in getattr(parsed, 'body', []):
+                  if isinstance(node, ast.ImportFrom) and node.module == 'editorial_eyecatch':
+                      for alias in node.names:
+                          if alias.name == 'generate_note_editorial_eyecatch' and alias.asname in (None, 'generate_note_editorial_eyecatch'):
+                              return True
+              return False
 
           top_defs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
           by_name = {}
@@ -59,9 +66,11 @@ jobs:
           missing = sorted(name for name in targets if len(by_name.get(name, [])) != 1)
           if missing:
               raise SystemExit(f'Run231 Stage2B fail-closed: target definitions missing/duplicated: {missing}')
-          missing_retained = sorted(name for name in retained if len(by_name.get(name, [])) != 1)
+          missing_retained = sorted(name for name in retained_defs if len(by_name.get(name, [])) != 1)
           if missing_retained:
               raise SystemExit(f'Run231 Stage2B fail-closed: retained definitions missing/duplicated: {missing_retained}')
+          if not has_editorial_import(tree):
+              raise SystemExit('Run231 Stage2B fail-closed: live editorial renderer import missing before migration')
 
           remove = [False] * len(lines)
           removed_ranges = []
@@ -71,7 +80,6 @@ jobs:
                   raise SystemExit(f'No end_lineno for {name}')
               start = node.lineno - 1
               end = node.end_lineno
-              # Remove only the exact function body plus immediately following blank lines.
               while end < len(lines) and lines[end].strip() == '':
                   end += 1
               for idx in range(start, end):
@@ -104,11 +112,11 @@ jobs:
           leaked = sorted(targets & new_defs)
           if leaked:
               raise SystemExit(f'Run231 Stage2B fail-closed: target definitions remain: {leaked}')
-          lost = sorted(retained - new_defs)
+          lost = sorted(retained_defs - new_defs)
           if lost:
               raise SystemExit(f'Run231 Stage2B fail-closed: retained definitions lost: {lost}')
-          if 'generate_note_editorial_eyecatch' not in migrated:
-              raise SystemExit('Run231 Stage2B fail-closed: live editorial renderer disappeared')
+          if not has_editorial_import(new_tree):
+              raise SystemExit('Run231 Stage2B fail-closed: live editorial renderer import disappeared')
 
           before_count = len(lines)
           after_count = len(migrated.splitlines())
@@ -157,7 +165,7 @@ jobs:
           ! grep -Eq '^def (_load_eyecatch_background|_extract_eyecatch_score_components|_eyecatch_score_color|_eyecatch_vertical_center_shift|_draw_eyecatch_text_stack_centered|_eyecatch_centered_pair_boxes|generate_eyecatch_image)\(' pipeline.py
           grep -F 'def _sanitize_filename(' pipeline.py
           grep -F 'def upload_eyecatch_to_github(' pipeline.py
-          grep -F 'def generate_note_editorial_eyecatch(' pipeline.py
+          grep -F 'from editorial_eyecatch import generate_note_editorial_eyecatch' pipeline.py
 
       - name: Commit exact migration to PR head
         shell: bash
