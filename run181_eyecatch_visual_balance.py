@@ -200,14 +200,6 @@ def _render_balanced_plan(
         line_height = _draw_mixed_title_line(draw, 48, y, runs, normal_font, highlight_font)
         y += line_height + line_gap
 
-    base_sub_y = min(535, max(485, y + 18))
-    sub_y = min(551, base_sub_y + SUBTITLE_Y_SHIFT)
-    draw.rectangle((48, sub_y + 2, 53, sub_y + 42), fill=accent)
-    sub_font = ee._jp_font(int(validated["subheadline_font_size"]), bold=True)
-    sub_step = max(34, int(validated["subheadline_font_size"]) + 11)
-    for index, line_text in enumerate(validated["subheadline_lines"]):
-        draw.text((72, sub_y + index * sub_step), line_text, font=sub_font, fill=(18, 42, 79))
-
     img.save(output_path, "PNG", optimize=True)
     return output_path
 
