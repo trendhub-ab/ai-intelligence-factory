@@ -74,7 +74,7 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
     def test_production_runtime_installs_run226(self):
         src = inspect.getsource(production_pipeline)
         self.assertIn('import run226_reader_delight_planning', src)
-        self.assertIn('run226_reader_delight_planning.install(pipeline)', src)
+        self.assertIn('run226_reader_delight_planning.install(pipeline_module)', src)
 
     def test_publication_fingerprint_includes_run226(self):
         self.assertIn(
