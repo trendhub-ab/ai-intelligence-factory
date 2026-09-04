@@ -31,7 +31,9 @@ class Run224MultiplierDeterministicRescueTests(unittest.TestCase):
         self.assertIn("一次情報", fixed)
         self.assertIn("実際の改善幅", fixed)
         self.assertIn("処理内容・条件・実行環境によって変わります", fixed)
-        self.assertEqual(re.findall(r"\d+(?:\.\d+)?", fixed), ["1.9"])
+        numeric_re = r"(?<![\w.])\d+(?:\.\d+)?"
+        self.assertEqual(re.findall(numeric_re, fixed), re.findall(numeric_re, article))
+        self.assertEqual(re.findall(numeric_re, fixed), ["1.9"])
         self.assertEqual(changes, ["run224_multiplier_scope_qualifier:1"])
 
     def test_is_idempotent(self):
