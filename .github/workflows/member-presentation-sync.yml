@@ -108,7 +108,7 @@ jobs:
           MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
 
       - name: Sync clean member DB with lifecycle-aware human-language member UI
-        run: python run225_member_lifecycle_ui.py presentation
+        run: python run219_member_human_language_ui.py presentation
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -122,7 +122,7 @@ jobs:
           STOCK_ARCHIVE_DAYS: '90'
 
       - name: Sync readable member page bodies in plain Japanese
-        run: python run225_member_lifecycle_ui.py body
+        run: python run219_member_human_language_ui.py body
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
