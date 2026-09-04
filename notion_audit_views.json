@@ -38,11 +38,11 @@
       }
     },
     "member_presentation": {
-      "database_id": "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1",
-      "data_source_id": "d1461b6f-0940-4bf9-803a-6686a37c4ba2",
+      "database_id": "b2787ee0-5b58-4ca7-b4eb-774f60237f1f",
+      "data_source_id": "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404",
       "audit_mode": "view+public_api",
       "views": {
-        "required_missing": "view://3cc479ff-dca9-81a5-829f-000c6a277b33"
+        "required_missing": "view://3d1479ff-dca9-8149-8334-000c097549f5"
       }
     },
     "decision_monthly": {
