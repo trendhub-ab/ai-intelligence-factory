@@ -15,6 +15,7 @@ Article Deterministic Rescue Baseline: **Run224 — zero-model performance multi
 Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management**  
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
+Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -187,15 +188,37 @@ Production契約:
 
 ### 4.4 Japanese Surface Integrity — Run227
 
-Run226導入後の初回FULL ONE-SHOT実記事監査で、Fact/Evidence/Reader Gateを通過したReady稿に`結果はでした。`および`計算はに速くなる`という明白な日本語崩れが残った。`run227_japanese_surface_integrity.py`は、この種の**高信頼で機械判定できる表層破損だけ**をzero-modelでPublication前にFail-Closedする。
+Run226導入後の初回FULL ONE-SHOT実記事監査で、Fact/Evidence/Reader Gateを通過したReady稿に`結果はでした。`、`計算はに速くなる`、`FP4を過度に適応すると`という明白な日本語崩れが残った。`run227_japanese_surface_integrity.py`は、この種の**高信頼で機械判定できる表層破損だけ**をzero-modelでPublication前にFail-Closedする。
 
-- 述語欠落型の`結果はでした。`等と、比較・変化語彙直前の`はに`助詞衝突だけを狭く検出する。
+- 述語欠落型の`結果はでした。`、比較・変化語彙直前の`はに`助詞衝突、技術対象を不自然に`〜を適応する`とする狭い他動詞誤用を検出する。
+- `モデルが環境に適応する`、`方式を環境に適応させる`、`FP4を適用する`等の妥当な近接表現はblockしない。
 - code fence / inline codeは検査対象外とし、コード文字列によるfalse positiveを避ける。
-- deterministic自動書換えはしない。欠けた述語・副詞を推測すると意味を変えるため、通常のbounded retryへ局所修正指示だけを渡す。
+- deterministic自動書換えはしない。欠けた述語・副詞・意図語を推測すると意味を変えるため、通常のbounded retryへ局所修正指示だけを渡す。
 - retryでも新しいFact・数値・人物・因果を補ってはならない。
 - Fact / Evidence / Decision / score / source URL / Gemini request budgetを変更しない。
-- Run227はPublication Contract fingerprint対象であり、Run227前policyのReady稿は現行policyで再生成・再検証・再stampされるまでnote Ready queueで投稿可能扱いにしない。
+- Run227はPublication Contract fingerprint対象であり、旧policyのReady稿は現行policyで再生成・再検証・再stampされるまでnote Ready queueで投稿可能扱いにしない。
 - Daily PAUSED、Public note release human-onlyを変更しない。
+
+詳細: `docs/reference/RUN227_JAPANESE_SURFACE_INTEGRITY.md`
+
+### 4.5 Reader Rhythm Planning — Run228
+
+Run226初回FULL ONE-SHOTでは記事固有の切り口・Curiosity Pullは改善した一方、複数稿が`reader_value_review:dense_report_cluster`を残した。問題はEvidence不足ではなく、**Factが「理解→意味→判断」へ変換される前に次のFactが積み上がる報告書密度**である。`run228_reader_rhythm_planning.py`は既存生成requestの内部planningだけを追加し、この密度を下げる。
+
+- 技術Fact・ベンチマーク・実装詳細を連続列挙するだけで終わらず、必要な説明から読者の理解・意味・Decision consequenceへ前進してから次の詳細へ移る。
+- 記事には主要な説明軸を通し、核心理解・重要制約・Decisionのどれにも影響しない副次的実装列挙は無理に詰め込まない。
+- Evidence上重要な数値・条件・反証・制約は削除しない。読みやすさはEvidence削減ではなく、重複・汎用前置き・Decisionに不要な周辺列挙の整理で作る。
+- 専門語はその場で普通の言葉へ橋渡しし、辞書型の定義列挙を増やさない。
+- table/listが正確で短く理解できる場合は使ってよく、読み物化のためだけに散文へ崩さない。
+- scene、比喩、問い、短文、会話調、感情語を温度調整の装飾として義務化しない。
+- 文長・段落文数・問い・比喩・箇条書き・見出し数に回数ノルマを設けず、固定構成へ揃えない。
+- セキュリティや障害等、軽さが不適切なテーマでは明快さ・発見・判断可能性をReader Delightとして扱う。
+- 新しいFact、数字、人物、会話、利用実績、因果、競合情報をReader Rhythmのために創作しない。
+- 新規Gemini/model call siteは0。Fact / Evidence / Decision / Reader Value / Publication Gateは変更・迂回しない。
+- Run228はPublication Contract fingerprint対象であり、旧policy Ready稿を現行policy Readyとして流用しない。
+- Daily PAUSED、Public note release human-onlyを変更しない。
+
+詳細: `docs/reference/RUN228_READER_RHYTHM_PLANNING.md`
 
 ## 5. Production runtime layer
 
@@ -214,6 +237,7 @@ Run226導入後の初回FULL ONE-SHOT実記事監査で、Fact/Evidence/Reader G
 - `run176_scope_fidelity.py`
 - `run177_paid_funnel_alignment.py`
 - `run226_reader_delight_planning.py`
+- `run228_reader_rhythm_planning.py`
 - `run178_eyecatch_editorial_layout_optimizer.py`
 - `run179_eyecatch_font_refinement.py`
 - `run180_eyecatch_semantic_layout.py`
@@ -509,7 +533,8 @@ CIは少なくとも次を検証する。
 - Run224ではRun223が確認した性能倍率scope lossだけをzero-modelで局所補完し、倍率・Evidence・Decision・Score・URLを変更せず、通常Gate再評価を迂回しない。
 - Run225ではScreening Stockを削除せずFresh/Aging/Evergreen/Archiveでzero-model管理し、Archiveだけをactive review / member homepageから外す。Score・Decision・Evidence・Run131・Run170〜Run215 authorityを変更しない。
 - Run226では無料記事のReader DelightをSOURCE BOUNDARY内のReader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of Viewとして生成前に設計し、固定Hook・比喩・問い・段落・箇条書き等の回数ノルマをHard Gate化しない。Evidence / Decision / 既存Gate / Gemini call数を変更しない。
-- Run227では実Productionで確認した高信頼の日本語表層破損をzero-modelでFail-Closedし、自動推測修正・Fact/Evidence/Decision変更・追加model callを行わない。Run227前Ready稿は現行policy fingerprintに一致するまでnote投稿対象にしない。
+- Run227では実Productionで確認した高信頼の日本語表層破損をzero-modelでFail-Closedし、自動推測修正・Fact/Evidence/Decision変更・追加model callを行わない。旧Ready稿は現行policy fingerprintに一致するまでnote投稿対象にしない。
+- Run228ではdense-report clusterをEvidence削減で隠さず、既存生成request内でFactを理解・意味・判断へ変換するReader Rhythmを設計する。style countや固定構成を新しいHard Gateにせず、Fact/Evidence/Decision/Reader Value/Publication Gate/Gemini call数を変更しない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 
