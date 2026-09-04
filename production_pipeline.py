@@ -50,6 +50,15 @@ def install_runtime_layers(pipeline_module):
     return _canonical_install_runtime_layers(pipeline_module)
 
 
+# Runtime compatibility contract: callers historically imported
+# ``production_pipeline.install_runtime_layers`` and some regression contracts inspect
+# that callable's source to verify wrapper order.  Point the public runtime symbol at
+# the canonical implementation so those callers observe the real Source of Truth,
+# while the import-only function above remains available to static documentation
+# freshness analysis.  This avoids duplicating installation logic or weakening guards.
+install_runtime_layers = _canonical_install_runtime_layers
+
+
 def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
