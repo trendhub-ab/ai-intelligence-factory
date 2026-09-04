@@ -124,3 +124,9 @@ jobs:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
         run: python production_pipeline.py
+      - name: Export exact pipeline source for Stage2 surgical deletion
+        uses: actions/upload-artifact@v4
+        with:
+          name: run231-stage2-pipeline-source
+          path: pipeline.py
+          retention-days: 1
