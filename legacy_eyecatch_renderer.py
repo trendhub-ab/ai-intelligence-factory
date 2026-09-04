@@ -1,7 +1,7 @@
 """Isolated legacy/internal eyecatch renderer for Run231 Stage 2.
 
-This module is deliberately provider-free and persistence-free.  It contains only the
-historical Pillow renderer retained for internal/regression compatibility.  The live
+This module is deliberately provider-free and persistence-free. It contains only the
+historical Pillow renderer retained for internal/regression compatibility. The live
 note publication path continues to use ``editorial_eyecatch.generate_note_editorial_eyecatch``.
 
 Run231 Stage 2 uses a strangler migration: production installs this implementation over
@@ -10,7 +10,6 @@ the legacy symbols exported by ``pipeline`` first; the duplicate historical bloc
 """
 from __future__ import annotations
 
-from functools import wraps
 import os
 import re
 
@@ -156,9 +155,6 @@ def centered_pair_boxes(
 
 
 def _make_generate(pipeline_module):
-    original = getattr(pipeline_module, "generate_eyecatch_image", None)
-
-    @wraps(original) if callable(original) else (lambda fn: fn)
     def generate_eyecatch_image(
         title_text: str,
         output_path: str = "eyecatch.png",
