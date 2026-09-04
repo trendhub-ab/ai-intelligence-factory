@@ -16,6 +16,11 @@ class Run227JapaneseSurfaceIntegrityTests(unittest.TestCase):
         failures = run227.japanese_surface_failures(article)
         self.assertTrue(any("particle_collision_ha_ni" in row for row in failures))
 
+    def test_run24_adapt_apply_transitivity_escape_is_blocked(self):
+        article = "分散学習でFP4を過度に適応すると学習が失敗するため、慎重な検証が必要です。"
+        failures = run227.japanese_surface_failures(article)
+        self.assertTrue(any("transitivity_adapt_vs_apply" in row for row in failures))
+
     def test_valid_neighboring_japanese_passes(self):
         samples = (
             "結果は明確でした。",
@@ -23,13 +28,19 @@ class Run227JapaneseSurfaceIntegrityTests(unittest.TestCase):
             "AIモデルの計算はさらに速くなる可能性があります。",
             "Aは日本語で説明します。",
             "この結果には注意が必要です。",
+            "モデルが新しい環境に適応するまで時間が必要です。",
+            "方式を環境に適応させる必要があります。",
+            "FP4を適用すると精度条件が変わります。",
         )
         for article in samples:
             with self.subTest(article=article):
                 self.assertEqual(run227.japanese_surface_failures(article), [])
 
     def test_code_is_not_scanned(self):
-        article = "本文は自然です。\n\n```text\n結果はでした。\n計算はに速くなる\n```\n\n`結果はでした。`という文字列をテストします。"
+        article = (
+            "本文は自然です。\n\n```text\n結果はでした。\n計算はに速くなる\nFP4を適応する\n```\n\n"
+            "`結果はでした。`という文字列をテストします。"
+        )
         self.assertEqual(run227.japanese_surface_failures(article), [])
 
     def test_install_is_idempotent_and_blocks_before_ready(self):
