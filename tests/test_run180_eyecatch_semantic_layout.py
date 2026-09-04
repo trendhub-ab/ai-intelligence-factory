@@ -128,7 +128,7 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertNotIn("return original(", source)
 
     def test_production_entrypoint_installs_run180_after_run179(self):
-        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         run179_install = source.index("run179_eyecatch_font_refinement.install(pipeline_module)")
         run180_install = source.index("run180_eyecatch_semantic_layout.install(pipeline_module)")
         self.assertLess(run179_install, run180_install)
