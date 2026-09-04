@@ -112,7 +112,17 @@ jobs:
           python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
       - name: Run full unittest regression
-        run: python -m unittest discover -s tests -v
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -v 2>&1 | tee full-unittest.log
+      - name: Upload full unittest failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run231-full-unittest-failure
+          path: full-unittest.log
+          retention-days: 1
       - name: Run synthetic smoke through current production stack
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
