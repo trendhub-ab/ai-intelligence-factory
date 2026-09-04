@@ -1,4 +1,5 @@
 name: Integration Reconciliation CI
+# Run231 Stage2B: user-origin verification trigger after restoring the thin legacy eyecatch source contract.
 
 on:
   pull_request:
