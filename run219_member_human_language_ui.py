@@ -11,6 +11,10 @@ human-language callout, so existing generated bodies are replaced instead of
 duplicated.  Manual blocks continue to be preserved by the existing fast body
 sync.
 
+Run225 may install a navigation-only lifecycle ranker beneath this public CLI
+surface.  Run219 remains the authoritative workflow wrapper so Run170-Run215
+copy authority and the existing operational contract are not bypassed.
+
 ZERO Gemini/model requests.
 """
 from __future__ import annotations
@@ -158,9 +162,25 @@ def install() -> None:
     _INSTALLED = True
 
 
+def _install_current_navigation_overlays() -> None:
+    """Install post-Run219 navigation overlays without replacing this CLI wrapper."""
+    try:
+        import run225_member_lifecycle_ui as run225
+    except ImportError:
+        return
+    run225.install()
+
+
 def run_presentation_sync() -> dict[str, Any]:
+    _install_current_navigation_overlays()
     result = run215.run_presentation_sync()
     result["run219_human_language_ui"] = "body_and_member_navigation_only"
+    result["run225_stock_lifecycle"] = {
+        "archive_excluded_from_homepage": True,
+        "fresh_evergreen_before_aging": True,
+        "source_state_authority_preserved": True,
+        "records_deleted": 0,
+    }
     result["zero_gemini_calls"] = True
     return result
 
@@ -174,6 +194,7 @@ def run_body_sync() -> dict[str, Any]:
         "non_engineer_headings": True,
     }
     result["reader_order"] = ["これは何？", "いま、どうする？", "なぜ今見る？", "次にやること"]
+    result["run225_stock_lifecycle"] = "navigation_only"
     result["zero_gemini_calls"] = True
     return result
 

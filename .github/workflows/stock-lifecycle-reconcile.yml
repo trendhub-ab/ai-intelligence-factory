@@ -1,0 +1,76 @@
+name: Screening Stock Lifecycle [ONE-SHOT]
+
+# Run225: zero-Gemini stock aging maintenance.
+# Manual only. This workflow never resumes the paused Daily schedule and never
+# publishes note content. It only updates the Content Intelligence DB property
+# `更新状態` for Screening Stock records.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'plan = read-only; apply = update changed lifecycle labels only'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+      confirm:
+        description: 'Type RECONCILE_STOCK to allow apply mode'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiif-stock-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Safety contract
+        run: |
+          case "${{ inputs.mode }}" in
+            plan) ;;
+            apply)
+              test "${{ inputs.confirm }}" = "RECONCILE_STOCK" || {
+                echo "::error::apply requires RECONCILE_STOCK"; exit 1;
+              }
+              ;;
+            *) echo "::error::unknown mode"; exit 1 ;;
+          esac
+          echo "Run225 lifecycle mode=${{ inputs.mode }}; Gemini/publication are not part of this workflow."
+
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependency
+        run: python -m pip install requests
+
+      - name: Reconcile Screening Stock lifecycle
+        run: |
+          if [ "${{ inputs.mode }}" = "apply" ]; then
+            python stock_lifecycle_reconcile.py --apply
+          else
+            python stock_lifecycle_reconcile.py
+          fi
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          STOCK_FRESH_DAYS: '30'
+          STOCK_ARCHIVE_DAYS: '90'
+          STOCK_LIFECYCLE_MAX_RECORDS: '5000'
+          STOCK_LIFECYCLE_NOTION_PACING_SECONDS: '0.34'
