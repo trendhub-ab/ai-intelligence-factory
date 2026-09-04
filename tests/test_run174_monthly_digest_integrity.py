@@ -132,7 +132,6 @@ class Run174MonthlyDigestIntegrityTests(unittest.TestCase):
         original_query = p._query_notion_db_with_retry
 
         def boom(start, end):
-            # Prove the temporary complete cap is active inside the wrapped call.
             self.assertEqual(10_000, p.MONTHLY_DIGEST_MAX_ITEMS)
             raise RuntimeError("boom")
 
@@ -158,7 +157,7 @@ class Run174MonthlyDigestIntegrityTests(unittest.TestCase):
 
     def test_production_entrypoint_installs_run174_after_run173(self):
         root = Path(__file__).resolve().parents[1]
-        text = (root / "production_pipeline.py").read_text(encoding="utf-8")
+        text = (root / "runtime_layers.py").read_text(encoding="utf-8")
         self.assertIn("import run174_monthly_digest_integrity", text)
         pos173 = text.index("run173_operational_yield.install(pipeline_module)")
         pos174 = text.index("run174_monthly_digest_integrity.install(pipeline_module)")
