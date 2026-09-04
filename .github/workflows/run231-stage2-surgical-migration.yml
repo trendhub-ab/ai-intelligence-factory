@@ -48,15 +48,19 @@ jobs:
           pipeline_source = pipeline_path.read_text(encoding='utf-8')
           legacy_source = legacy_path.read_text(encoding='utf-8')
 
-          # Keep the canonical implementation in the extracted module, but preserve the exact
-          # Run105 source marker expected by inspect.getsource(). This is a source-only alias;
-          # rendering behavior is unchanged.
+          # Preserve historical inspect.getsource() markers while keeping implementation single-source.
           make_marker = 'def _make_generate(pipeline_module):\n'
-          alias_line = '    _draw_eyecatch_text_stack_centered = draw_text_stack_centered\n'
-          if alias_line not in legacy_source:
+          draw_alias_line = '    _draw_eyecatch_text_stack_centered = draw_text_stack_centered\n'
+          if draw_alias_line not in legacy_source:
               if legacy_source.count(make_marker) != 1:
                   raise SystemExit('Run231 fail-closed: _make_generate anchor missing/duplicated')
-              legacy_source = legacy_source.replace(make_marker, make_marker + alias_line, 1)
+              legacy_source = legacy_source.replace(make_marker, make_marker + draw_alias_line, 1)
+
+          pair_alias_line = '    _eyecatch_centered_pair_boxes = centered_pair_boxes\n'
+          if pair_alias_line not in legacy_source:
+              if legacy_source.count(draw_alias_line) != 1:
+                  raise SystemExit('Run231 fail-closed: draw alias anchor missing/duplicated')
+              legacy_source = legacy_source.replace(draw_alias_line, draw_alias_line + pair_alias_line, 1)
 
           old_draw_call = '\n        draw_text_stack_centered(\n'
           if old_draw_call in legacy_source:
@@ -68,6 +72,19 @@ jobs:
               legacy_source = legacy_source.replace(
                   old_draw_call,
                   '\n        _draw_eyecatch_text_stack_centered(\n',
+              )
+
+          old_pair_call = '        left_box, right_box = centered_pair_boxes(\n'
+          if old_pair_call in legacy_source:
+              if legacy_source.count(old_pair_call) != 1:
+                  raise SystemExit(
+                      'Run231 fail-closed: unexpected legacy pair-box call count='
+                      f'{legacy_source.count(old_pair_call)}'
+                  )
+              legacy_source = legacy_source.replace(
+                  old_pair_call,
+                  '        left_box, right_box = _eyecatch_centered_pair_boxes(\n',
+                  1,
               )
 
           # Some historical safety tests execute pipeline.py via spec.loader.exec_module() without
@@ -129,7 +146,7 @@ jobs:
           bridge_lines = [
               '# Run231 Stage2B direct-import compatibility bridge',
               '# Keep the renderer implementation out of pipeline.py while preserving historical source/API',
-              '# compatibility required by Run105/Run150/Run160 and direct ``import pipeline`` callers.',
+              '# compatibility required by Run99/Run105/Run150/Run160 and direct ``import pipeline`` callers.',
               'from functools import wraps as _run231_wraps',
               'from legacy_eyecatch_renderer import (',
               '    _MIGRATION_MARKER as _run231_legacy_marker,',
@@ -212,8 +229,15 @@ jobs:
               raise SystemExit('Run231 fail-closed: legacy renderer entered public note delivery')
 
           canonical = legacy_path.read_text(encoding='utf-8')
-          if '_draw_eyecatch_text_stack_centered(' not in canonical or 'content_shift_y' not in canonical:
-              raise SystemExit('Run231 fail-closed: Run105 centering source contract missing')
+          for source_marker in (
+              '_draw_eyecatch_text_stack_centered(',
+              '_eyecatch_centered_pair_boxes(',
+              'content_shift_y',
+          ):
+              if source_marker not in canonical:
+                  raise SystemExit(
+                      f'Run231 fail-closed: historical eyecatch source contract missing: {source_marker}'
+                  )
           if 'def install_globals(namespace):' not in canonical:
               raise SystemExit('Run231 fail-closed: loader-safe globals binding missing')
 
@@ -223,10 +247,16 @@ jobs:
           )
           new_bullets = (
               '- The heavy renderer implementation and six geometry/background helper definitions remain physically removed from `pipeline.py`.\n'
+              '- Post-deletion reconciliation restores only a thin `generate_eyecatch_image` compatibility def because Run99/Run105/Run150/Run160 intentionally inspect the `pipeline.py`/callable source. The wrapper delegates to the single canonical implementation in `legacy_eyecatch_renderer.py`; renderer logic is not duplicated.\n'
+          )
+          old_new_bullets = (
+              '- The heavy renderer implementation and six geometry/background helper definitions remain physically removed from `pipeline.py`.\n'
               '- Post-deletion reconciliation restores only a thin `generate_eyecatch_image` compatibility def because Run105/Run150/Run160 intentionally inspect the `pipeline.py` source. The wrapper delegates to the single canonical implementation in `legacy_eyecatch_renderer.py`; renderer logic is not duplicated.\n'
           )
           if old_bullet in reference:
               reference = reference.replace(old_bullet, new_bullets, 1)
+          elif old_new_bullets in reference:
+              reference = reference.replace(old_new_bullets, new_bullets, 1)
           elif new_bullets not in reference:
               raise SystemExit('Run231 fail-closed: Stage2B reference bullet drifted unexpectedly')
 
