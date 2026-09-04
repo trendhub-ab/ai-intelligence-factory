@@ -10,6 +10,7 @@ on:
       - 'decision_intelligence.py'
       - 'pipeline.py'
       - 'production_pipeline.py'
+      - 'runtime_layers.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
       - 'note_draft_automation.py'
@@ -52,6 +53,8 @@ jobs:
             decision_intelligence.py \
             pipeline.py \
             production_pipeline.py \
+            runtime_layers.py \
+            run231_performance_telemetry.py \
             publication_contract.py \
             note_ready_sync.py \
             run194_publication_contract.py \

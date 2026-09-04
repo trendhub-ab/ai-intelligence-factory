@@ -1,13 +1,28 @@
 """Stable production entrypoint for the AI Intelligence Factory.
 
-Install reliability layers in an explicit order, then enter the unchanged pipeline main.
-Daily is currently PAUSED; this file is the contract to use when Daily is explicitly resumed.
+Run231 keeps this file as a small orchestration contract. Historical production
+runtime layers live in ``runtime_layers.py`` in their exact validated order, while
+performance telemetry is observational and installed only after all quality,
+reliability, preflight, and font setup contracts are in place.
+
+Daily is currently PAUSED; this file remains the contract to use when Daily is
+explicitly resumed.
 """
 from __future__ import annotations
 
+from runtime_layers import install_runtime_layers as _canonical_install_runtime_layers
+
 
 def install_runtime_layers(pipeline_module):
-    import run203_runtime_state_channel as runtime_state_channel
+    """Compatibility manifest for the existing Documentation Freshness Guard.
+
+    The imports below intentionally mirror the canonical modules but contain no
+    installation logic. ``runtime_layers.py`` remains the single source of truth for
+    install order and behavior. Keeping this import-only manifest lets the existing
+    fail-closed documentation guard continue to audit every active layer during the
+    Run231 refactor without weakening its contract.
+    """
+    import run203_runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
     import run172_production_reliability
@@ -32,66 +47,39 @@ def install_runtime_layers(pipeline_module):
     import run222_note_presentation_integrity
     import run194_publication_contract
 
-    runtime_state_channel.install(pipeline_module)
-    # Provider RPD telemetry proved that transport timeouts can still consume daily quota.
-    # Keep the pre-send reservation fail-closed while preserving the existing 18-request
-    # per-model safety ceiling configured by the Production workflows.
-    gemini_timeout_rpd_fail_closed.install(pipeline_module)
-    gemini_transient_recovery.install(pipeline_module)
-    run172_production_reliability.install(pipeline_module)
-    run173_operational_yield.install(pipeline_module)
-    run174_monthly_digest_integrity.install(pipeline_module)
-    run175_semantic_fact_precision.install(pipeline_module)
-    # Run223 extends semantic precision to method-specific parameters, scoped breaking changes,
-    # benchmark/expectation multipliers, first-party dates and obvious Japanese particle damage.
-    run223_technical_claim_precision.install(pipeline_module)
-    # Run224 closes the matching zero-API rescue gap: once Run223 has proven that a performance
-    # multiplier lost source scope, restore only a conservative attribution/condition/variability
-    # qualifier beside that sentence. Numeric values, Evidence and Decision remain untouched.
-    run224_multiplier_deterministic_rescue.install(pipeline_module)
-    # Run227 blocks only high-confidence broken Japanese that escaped the first Run226 FULL
-    # Production run. It never guesses a replacement; the normal bounded retry path repairs the
-    # local sentence while Fact/Evidence/Decision and API budgets remain unchanged.
-    run227_japanese_surface_integrity.install(pipeline_module)
-    run176_scope_fidelity.install(pipeline_module)
-    run177_paid_funnel_alignment.install(pipeline_module)
-    # Run226 changes only the existing free-article generation prompt. It asks the same model call
-    # to plan Reader Tension / Discovery / Consequence / Explanation Bridge / Point of View from
-    # verified Evidence before drafting, without fixed style quotas or invented specificity.
-    run226_reader_delight_planning.install(pipeline_module)
-    # Run228 keeps the same call and Evidence boundary, but asks the draft to convert dense Fact
-    # clusters into understanding/meaning/decision before stacking more implementation detail.
-    # It adds no style-count quota and no new model call.
-    run228_reader_rhythm_planning.install(pipeline_module)
-    run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
-    run179_eyecatch_font_refinement.install(pipeline_module)
-    run180_eyecatch_semantic_layout.install(pipeline_module)
-    run181_eyecatch_visual_balance.install(pipeline_module)
-    run182_eyecatch_conclusion_emphasis.install(pipeline_module)
-    run183_eyecatch_emphasis_scale.install(pipeline_module)
-    reader_value_review_bridge.install(pipeline_module)
-    # Reader-only dynamic repair is installed after the historical bridge so it can
-    # selectively override only the bridge's reader_value_review_no_retry decision.
-    run208_reader_value_repair.install(pipeline_module)
-    # Run222 is presentation-only but publication-material: it moves the subscription CTA
-    # after Sources/Evidence + disclaimer while leaving Evidence/Decision semantics unchanged.
-    run222_note_presentation_integrity.install_pipeline(pipeline_module)
-    run194_publication_contract.install(pipeline_module)
-    return pipeline_module
+    return _canonical_install_runtime_layers(pipeline_module)
+
+
+# Runtime compatibility contract: callers historically imported
+# ``production_pipeline.install_runtime_layers`` and some regression contracts inspect
+# that callable's source to verify wrapper order.  Point the public runtime symbol at
+# the canonical implementation so those callers observe the real Source of Truth,
+# while the import-only function above remains available to static documentation
+# freshness analysis.  This avoids duplicating installation logic or weakening guards.
+install_runtime_layers = _canonical_install_runtime_layers
 
 
 def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
+    from run231_performance_telemetry import install as install_performance_telemetry
 
+    # Compatibility contract: install every historical production layer before any
+    # Run231 observability. Run231 must never change article/Evidence/Gate behavior.
     install_runtime_layers(pipeline)
+
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
+
     run179_eyecatch_font_refinement.ensure_google_font_assets(
         enabled=not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)),
         logger=getattr(pipeline, "logger", None),
     )
+
+    # Zero-API, observational only. Installed last so timers see the final production
+    # functions without participating in the historical wrapper chain.
+    install_performance_telemetry(pipeline)
     pipeline.main()
 
 

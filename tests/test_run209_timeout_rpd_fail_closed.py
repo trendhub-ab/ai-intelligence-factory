@@ -98,7 +98,7 @@ class Run209TimeoutRpdFailClosedTests(unittest.TestCase):
         self.assertEqual(counter.original_release_calls, [])
 
     def test_production_installs_run209_after_runtime_state_channel(self):
-        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         runtime_pos = source.index("runtime_state_channel.install(pipeline_module)")
         run209_pos = source.index("gemini_timeout_rpd_fail_closed.install(pipeline_module)")
         transient_pos = source.index("gemini_transient_recovery.install(pipeline_module)")

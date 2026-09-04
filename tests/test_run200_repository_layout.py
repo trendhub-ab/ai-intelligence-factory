@@ -21,8 +21,13 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
             "run173_operational_yield.py",
             "run174_monthly_digest_integrity.py",
             "run175_semantic_fact_precision.py",
+            "run223_technical_claim_precision.py",
+            "run224_multiplier_deterministic_rescue.py",
+            "run227_japanese_surface_integrity.py",
             "run176_scope_fidelity.py",
             "run177_paid_funnel_alignment.py",
+            "run226_reader_delight_planning.py",
+            "run228_reader_rhythm_planning.py",
             "run178_eyecatch_editorial_layout_optimizer.py",
             "run179_eyecatch_font_refinement.py",
             "run180_eyecatch_semantic_layout.py",
@@ -31,15 +36,21 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
             "run183_eyecatch_emphasis_scale.py",
             "reader_value_review_bridge.py",
             "run208_reader_value_repair.py",
+            "run222_note_presentation_integrity.py",
             "run194_publication_contract.py",
         ]
         missing = [name for name in active if not (ROOT / name).is_file()]
         self.assertEqual([], missing)
 
+        # Run231 deliberately makes production_pipeline.py a small orchestrator.  The
+        # canonical historical patch stack now lives in runtime_layers.py; guarding the
+        # canonical module is stricter than requiring duplicated import strings in two files.
+        runtime_contract = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         production_entrypoint = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        self.assertIn("from runtime_layers import install_runtime_layers", production_entrypoint)
         for name in active:
             module = name.removesuffix(".py")
-            self.assertIn(module, production_entrypoint)
+            self.assertIn(module, runtime_contract)
 
     def test_active_note_safety_stack_is_preserved(self) -> None:
         active = [

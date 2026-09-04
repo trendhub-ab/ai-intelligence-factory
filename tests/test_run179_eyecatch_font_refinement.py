@@ -101,12 +101,13 @@ class Run179EyecatchFontRefinementTests(unittest.TestCase):
             ee._latin_font = original_latin
 
     def test_production_entrypoint_installs_run179_after_run178(self):
-        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
-        run178_pos = source.index("run178_eyecatch_editorial_layout_optimizer.install")
-        run179_pos = source.index("run179_eyecatch_font_refinement.install")
+        runtime_source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
+        entrypoint_source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        run178_pos = runtime_source.index("run178_eyecatch_editorial_layout_optimizer.install")
+        run179_pos = runtime_source.index("run179_eyecatch_font_refinement.install")
         self.assertLess(run178_pos, run179_pos)
-        self.assertIn("ensure_google_font_assets(", source)
-        self.assertIn("SYNTHETIC_REGRESSION_MODE", source)
+        self.assertIn("ensure_google_font_assets(", entrypoint_source)
+        self.assertIn("SYNTHETIC_REGRESSION_MODE", entrypoint_source)
 
 
 if __name__ == "__main__":
