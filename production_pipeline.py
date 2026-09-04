@@ -16,6 +16,7 @@ def install_runtime_layers(pipeline_module):
     import run175_semantic_fact_precision
     import run223_technical_claim_precision
     import run224_multiplier_deterministic_rescue
+    import run227_japanese_surface_integrity
     import run176_scope_fidelity
     import run177_paid_funnel_alignment
     import run226_reader_delight_planning
@@ -47,6 +48,10 @@ def install_runtime_layers(pipeline_module):
     # multiplier lost source scope, restore only a conservative attribution/condition/variability
     # qualifier beside that sentence. Numeric values, Evidence and Decision remain untouched.
     run224_multiplier_deterministic_rescue.install(pipeline_module)
+    # Run227 blocks only high-confidence broken Japanese that escaped the first Run226 FULL
+    # Production run. It never guesses a replacement; the normal bounded retry path repairs the
+    # local sentence while Fact/Evidence/Decision and API budgets remain unchanged.
+    run227_japanese_surface_integrity.install(pipeline_module)
     run176_scope_fidelity.install(pipeline_module)
     run177_paid_funnel_alignment.install(pipeline_module)
     # Run226 changes only the existing free-article generation prompt. It asks the same model call
