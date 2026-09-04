@@ -28,6 +28,9 @@ _VARIABILITY_RE = re.compile(
 )
 _QUALIFIER = "この倍率は一次情報で示された特定条件下の目安であり、実際の改善幅は処理内容・条件・実行環境によって変わります。"
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?])")
+_NUMERIC_LEXEME_RE = re.compile(
+    r"[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?"
+)
 
 
 def _has_multiplier_scope_failure(reason_rows: list[dict] | None) -> bool:
@@ -40,6 +43,17 @@ def _has_multiplier_scope_failure(reason_rows: list[dict] | None) -> bool:
 def _is_performance_multiplier(sentence: str) -> bool:
     text = str(sentence or "")
     return bool(_MULTIPLIER_RE.search(text) and _SPEED_RE.search(text))
+
+
+def _numeric_lexemes(text: str) -> list[str]:
+    """Return numeric lexemes everywhere, including beside Japanese text or inside identifiers.
+
+    This intentionally avoids ``\w`` boundaries: in Python's Unicode regex semantics Japanese
+    letters are word characters, so a value such as ``性能が1.9倍`` would otherwise be invisible
+    to the preservation guard. Embedded digits (for example ``Mind2Web``) are also compared so a
+    future transform cannot silently mutate product/model identifiers.
+    """
+    return _NUMERIC_LEXEME_RE.findall(str(text or ""))
 
 
 def add_multiplier_scope_qualifier(markdown_text: str) -> tuple[str, int]:
@@ -94,13 +108,13 @@ def rescue_multiplier_scope(parsed: dict, reason_rows: list[dict] | None) -> tup
         return dict(parsed or {}), []
     rescued = dict(parsed or {})
     before = str(rescued.get("note_draft") or "")
-    before_numbers = re.findall(r"(?<![\w.])\d+(?:\.\d+)?", before)
+    before_numbers = _numeric_lexemes(before)
     after, count = add_multiplier_scope_qualifier(before)
     if not count or after == before:
         return rescued, []
-    after_numbers = re.findall(r"(?<![\w.])\d+(?:\.\d+)?", after)
+    after_numbers = _numeric_lexemes(after)
     if before_numbers != after_numbers:
-        # The qualifier contains no numbers; any numeric drift means an unexpected transform.
+        # Any numeric drift, including Japanese-adjacent values or identifier digits, fails closed.
         return dict(parsed or {}), []
     rescued["note_draft"] = after
     loss = dict(rescued.get("_rescue_loss") or {})

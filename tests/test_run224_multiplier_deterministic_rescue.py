@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
 import unittest
+from unittest.mock import patch
 
 import run223_technical_claim_precision as run223
 import run224_multiplier_deterministic_rescue as run224
@@ -25,16 +25,28 @@ class Run224MultiplierDeterministicRescueTests(unittest.TestCase):
     def test_adds_scope_and_variability_without_changing_multiplier(self):
         article = "Mind2Webでは性能が1.9倍に向上しました。"
         self.assertTrue(run223.multiplier_scope_failures(article, self.source))
+        before_numbers = run224._numeric_lexemes(article)
         rescued, changes = run224.rescue_multiplier_scope({"note_draft": article}, self.failure_rows)
         fixed = rescued["note_draft"]
         self.assertEqual(run223.multiplier_scope_failures(fixed, self.source), [])
         self.assertIn("一次情報", fixed)
         self.assertIn("実際の改善幅", fixed)
         self.assertIn("処理内容・条件・実行環境によって変わります", fixed)
-        numeric_re = r"(?<![\w.])\d+(?:\.\d+)?"
-        self.assertEqual(re.findall(numeric_re, fixed), re.findall(numeric_re, article))
-        self.assertEqual(re.findall(numeric_re, fixed), ["1.9"])
+        self.assertEqual(run224._numeric_lexemes(fixed), before_numbers)
+        self.assertIn("1.9倍", fixed)
         self.assertEqual(changes, ["run224_multiplier_scope_qualifier:1"])
+
+    def test_numeric_lexemes_cover_japanese_adjacent_and_identifier_digits(self):
+        text = "Mind2Webでは性能が1.9倍、最大2,000件、誤差-0.5です。"
+        self.assertEqual(run224._numeric_lexemes(text), ["2", "1.9", "2,000", "-0.5"])
+
+    def test_unexpected_numeric_drift_fails_closed_even_next_to_japanese(self):
+        article = "Mind2Webでは性能が1.9倍に向上しました。"
+        drifted = "Mind2Webでは性能が2.0倍に向上しました。" + run224._QUALIFIER
+        with patch.object(run224, "add_multiplier_scope_qualifier", return_value=(drifted, 1)):
+            rescued, changes = run224.rescue_multiplier_scope({"note_draft": article}, self.failure_rows)
+        self.assertEqual(rescued["note_draft"], article)
+        self.assertEqual(changes, [])
 
     def test_is_idempotent(self):
         article = "Mind2Webでは性能が1.9倍に向上しました。"
