@@ -133,3 +133,5 @@ jobs:
           git add pipeline.py
           git commit -m 'Run231 Stage2B: restore direct pipeline compatibility'
           git push origin HEAD:${{ github.head_ref }}
+
+# Run231 validation retrigger: the direct compatibility bridge is now installed.
