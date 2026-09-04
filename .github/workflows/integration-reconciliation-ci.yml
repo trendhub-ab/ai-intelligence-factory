@@ -10,6 +10,7 @@ on:
       - 'decision_intelligence.py'
       - 'pipeline.py'
       - 'production_pipeline.py'
+      - 'runtime_layers.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
       - 'note_draft_automation.py'
@@ -52,6 +53,8 @@ jobs:
             decision_intelligence.py \
             pipeline.py \
             production_pipeline.py \
+            runtime_layers.py \
+            run231_performance_telemetry.py \
             publication_contract.py \
             note_ready_sync.py \
             run194_publication_contract.py \
@@ -108,9 +111,24 @@ jobs:
           python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
           python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
-      - name: Run full unittest regression
-        run: python -m unittest discover -s tests -v
+      - name: Diagnose full regression Run1xx
+        run: python -m unittest discover -s tests -p 'test_run1*.py' -q
+      - name: Diagnose full regression Run2xx
+        if: always()
+        run: python -m unittest discover -s tests -p 'test_run2*.py' -q
+      - name: Diagnose full regression non-Run files
+        if: always()
+        run: |
+          set -e
+          status=0
+          for f in tests/test_*.py; do
+            b="$(basename "$f")"
+            case "$b" in test_run*) continue ;; esac
+            python -m unittest discover -s tests -p "$b" -q || status=1
+          done
+          exit "$status"
       - name: Run synthetic smoke through current production stack
+        if: always()
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
