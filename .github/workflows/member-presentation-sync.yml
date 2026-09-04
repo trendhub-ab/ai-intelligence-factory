@@ -23,6 +23,8 @@ on:
       - 'run214_member_action_specificity.py'
       - 'run215_member_action_final_dedup.py'
       - 'run219_member_human_language_ui.py'
+      - 'run225_stock_lifecycle.py'
+      - 'run225_member_lifecycle_ui.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
@@ -37,6 +39,8 @@ on:
       - 'tests/test_run219_member_human_language_ui.py'
       - 'tests/test_run220_member_db_canonical_cutover.py'
       - 'tests/test_run221_member_db_host_isolation.py'
+      - 'tests/test_run225_stock_lifecycle.py'
+      - 'tests/test_run225_member_lifecycle_ui.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -89,6 +93,8 @@ jobs:
           python -m unittest tests/test_run219_member_human_language_ui.py
           python -m unittest tests/test_run220_member_db_canonical_cutover.py
           python -m unittest tests/test_run221_member_db_host_isolation.py
+          python -m unittest tests/test_run225_stock_lifecycle.py
+          python -m unittest tests/test_run225_member_lifecycle_ui.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -101,8 +107,8 @@ jobs:
           MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'
           MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
 
-      - name: Sync clean member DB with human-language member UI
-        run: python run219_member_human_language_ui.py presentation
+      - name: Sync clean member DB with lifecycle-aware human-language member UI
+        run: python run225_member_lifecycle_ui.py presentation
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -112,9 +118,11 @@ jobs:
           DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
           MEMBER_HOME_MAX: '3'
           MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
+          STOCK_FRESH_DAYS: '30'
+          STOCK_ARCHIVE_DAYS: '90'
 
       - name: Sync readable member page bodies in plain Japanese
-        run: python run219_member_human_language_ui.py body
+        run: python run225_member_lifecycle_ui.py body
         env:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
