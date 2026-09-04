@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import sys
 import types
+import unittest
 from unittest.mock import patch
-
-import pytest
 
 import production_pipeline
 import run231_performance_telemetry as perf
@@ -54,135 +53,133 @@ def _fake_runtime_modules(events):
     return modules
 
 
-def test_runtime_layer_order_contract_is_exact_and_executable():
-    assert runtime_layers.RUNTIME_LAYER_ORDER == EXPECTED_RUNTIME_LAYER_ORDER
+class Run231PipelineSlimTests(unittest.TestCase):
+    def test_runtime_layer_order_contract_is_exact_and_executable(self):
+        self.assertEqual(runtime_layers.RUNTIME_LAYER_ORDER, EXPECTED_RUNTIME_LAYER_ORDER)
 
-    events = []
-    fake_modules = _fake_runtime_modules(events)
-    sentinel_pipeline = object()
-    with patch.dict(sys.modules, fake_modules, clear=False):
-        returned = runtime_layers.install_runtime_layers(sentinel_pipeline)
+        events = []
+        fake_modules = _fake_runtime_modules(events)
+        sentinel_pipeline = object()
+        with patch.dict(sys.modules, fake_modules, clear=False):
+            returned = runtime_layers.install_runtime_layers(sentinel_pipeline)
 
-    assert returned is sentinel_pipeline
-    assert tuple(events) == EXPECTED_RUNTIME_LAYER_ORDER
+        self.assertIs(returned, sentinel_pipeline)
+        self.assertEqual(tuple(events), EXPECTED_RUNTIME_LAYER_ORDER)
 
+    def test_performance_wrapper_preserves_args_return_and_single_call(self):
+        calls = []
+        sentinel = object()
 
-def test_performance_wrapper_preserves_args_return_and_single_call(monkeypatch):
-    monkeypatch.setattr(perf, "ENABLED", True)
-    calls = []
-    sentinel = object()
+        class Logger:
+            def info(self, *args, **kwargs):
+                pass
 
-    class Logger:
-        def info(self, *args, **kwargs):
-            pass
+        pipeline = types.SimpleNamespace(logger=Logger())
 
-    pipeline = types.SimpleNamespace(logger=Logger())
+        def initialize_runtime(*args, **kwargs):
+            calls.append((args, kwargs))
+            return sentinel
 
-    def initialize_runtime(*args, **kwargs):
-        calls.append((args, kwargs))
-        return sentinel
+        pipeline.initialize_runtime = initialize_runtime
+        pipeline.main = lambda: "main-result"
 
-    def main():
-        return "main-result"
+        with patch.object(perf, "ENABLED", True):
+            telemetry = perf.install(pipeline)
+            result = pipeline.initialize_runtime(1, 2, mode="safe")
 
-    pipeline.initialize_runtime = initialize_runtime
-    pipeline.main = main
+        self.assertIs(result, sentinel)
+        self.assertEqual(calls, [((1, 2), {"mode": "safe"})])
+        self.assertEqual(telemetry.calls["runtime.initialize"], 1)
+        self.assertEqual(pipeline.main(), "main-result")
 
-    telemetry = perf.install(pipeline)
-    result = pipeline.initialize_runtime(1, 2, mode="safe")
+    def test_performance_wrapper_propagates_same_exception(self):
+        error = RuntimeError("unchanged")
 
-    assert result is sentinel
-    assert calls == [((1, 2), {"mode": "safe"})]
-    assert telemetry.calls["runtime.initialize"] == 1
-    assert pipeline.main() == "main-result"
+        class Logger:
+            def info(self, *args, **kwargs):
+                pass
 
+        pipeline = types.SimpleNamespace(logger=Logger())
 
-def test_performance_wrapper_propagates_same_exception(monkeypatch):
-    monkeypatch.setattr(perf, "ENABLED", True)
-    error = RuntimeError("unchanged")
+        def initialize_runtime():
+            raise error
 
-    class Logger:
-        def info(self, *args, **kwargs):
-            pass
+        pipeline.initialize_runtime = initialize_runtime
+        pipeline.main = lambda: None
 
-    pipeline = types.SimpleNamespace(logger=Logger())
+        with patch.object(perf, "ENABLED", True):
+            telemetry = perf.install(pipeline)
+            with self.assertRaises(RuntimeError) as caught:
+                pipeline.initialize_runtime()
 
-    def initialize_runtime():
-        raise error
+        self.assertIs(caught.exception, error)
+        self.assertEqual(telemetry.calls["runtime.initialize"], 1)
+        self.assertEqual(telemetry.failures["runtime.initialize"], 1)
 
-    pipeline.initialize_runtime = initialize_runtime
-    pipeline.main = lambda: None
-    telemetry = perf.install(pipeline)
+    def test_performance_install_is_idempotent(self):
+        class Logger:
+            def info(self, *args, **kwargs):
+                pass
 
-    with pytest.raises(RuntimeError) as caught:
+        calls = []
+        pipeline = types.SimpleNamespace(logger=Logger())
+        pipeline.initialize_runtime = lambda: calls.append("called")
+        pipeline.main = lambda: None
+
+        with patch.object(perf, "ENABLED", True):
+            first = perf.install(pipeline)
+            wrapped_first = pipeline.initialize_runtime
+            second = perf.install(pipeline)
+
+        self.assertIs(first, second)
+        self.assertIs(pipeline.initialize_runtime, wrapped_first)
         pipeline.initialize_runtime()
+        self.assertEqual(calls, ["called"])
 
-    assert caught.value is error
-    assert telemetry.calls["runtime.initialize"] == 1
-    assert telemetry.failures["runtime.initialize"] == 1
+    def test_production_entrypoint_keeps_setup_before_observability(self):
+        events = []
+
+        fake_pipeline = types.ModuleType("pipeline")
+        fake_pipeline.SYNTHETIC_REGRESSION_MODE = False
+        fake_pipeline.logger = object()
+        fake_pipeline.main = lambda: events.append("pipeline.main")
+
+        runtime_state = types.ModuleType("run203_runtime_state_channel")
+        runtime_state.preflight_runtime_state_channel = lambda: events.append("preflight")
+
+        font = types.ModuleType("run179_eyecatch_font_refinement")
+        font.ensure_google_font_assets = lambda **kwargs: events.append(("font", kwargs["enabled"]))
+
+        telemetry = types.ModuleType("run231_performance_telemetry")
+        telemetry.install = lambda pipeline_module: events.append("telemetry")
+
+        with patch.object(
+            production_pipeline,
+            "install_runtime_layers",
+            lambda pipeline_module: events.append("runtime_layers") or pipeline_module,
+        ), patch.dict(
+            sys.modules,
+            {
+                "pipeline": fake_pipeline,
+                "run203_runtime_state_channel": runtime_state,
+                "run179_eyecatch_font_refinement": font,
+                "run231_performance_telemetry": telemetry,
+            },
+            clear=False,
+        ):
+            production_pipeline.main()
+
+        self.assertEqual(
+            events,
+            [
+                "runtime_layers",
+                "preflight",
+                ("font", True),
+                "telemetry",
+                "pipeline.main",
+            ],
+        )
 
 
-def test_performance_install_is_idempotent(monkeypatch):
-    monkeypatch.setattr(perf, "ENABLED", True)
-
-    class Logger:
-        def info(self, *args, **kwargs):
-            pass
-
-    calls = []
-    pipeline = types.SimpleNamespace(logger=Logger())
-    pipeline.initialize_runtime = lambda: calls.append("called")
-    pipeline.main = lambda: None
-
-    first = perf.install(pipeline)
-    wrapped_first = pipeline.initialize_runtime
-    second = perf.install(pipeline)
-
-    assert first is second
-    assert pipeline.initialize_runtime is wrapped_first
-    pipeline.initialize_runtime()
-    assert calls == ["called"]
-
-
-def test_production_entrypoint_keeps_setup_before_observability(monkeypatch):
-    events = []
-
-    fake_pipeline = types.ModuleType("pipeline")
-    fake_pipeline.SYNTHETIC_REGRESSION_MODE = False
-    fake_pipeline.logger = object()
-    fake_pipeline.main = lambda: events.append("pipeline.main")
-
-    runtime_state = types.ModuleType("run203_runtime_state_channel")
-    runtime_state.preflight_runtime_state_channel = lambda: events.append("preflight")
-
-    font = types.ModuleType("run179_eyecatch_font_refinement")
-    font.ensure_google_font_assets = lambda **kwargs: events.append(("font", kwargs["enabled"]))
-
-    telemetry = types.ModuleType("run231_performance_telemetry")
-    telemetry.install = lambda pipeline_module: events.append("telemetry")
-
-    monkeypatch.setattr(
-        production_pipeline,
-        "install_runtime_layers",
-        lambda pipeline_module: events.append("runtime_layers") or pipeline_module,
-    )
-
-    with patch.dict(
-        sys.modules,
-        {
-            "pipeline": fake_pipeline,
-            "run203_runtime_state_channel": runtime_state,
-            "run179_eyecatch_font_refinement": font,
-            "run231_performance_telemetry": telemetry,
-        },
-        clear=False,
-    ):
-        production_pipeline.main()
-
-    assert events == [
-        "runtime_layers",
-        "preflight",
-        ("font", True),
-        "telemetry",
-        "pipeline.main",
-    ]
+if __name__ == "__main__":
+    unittest.main()
