@@ -1,16 +1,14 @@
-"""Run180: production semantic typography for public note eyecatches.
+"""Run180: production semantic title direction for public note eyecatches.
 
-Run178 proved the architecture but real visual QA exposed three production issues:
-1. schema responses can live in ``response.parsed`` rather than ``response.text``;
-2. Gemini 3.5 Flash's default thinking can consume a small 700-token budget before
-   the tiny JSON layout body is emitted;
-3. pre-truncating headlines at 34 characters can destroy meaning before the layout
-   director sees the title.
+The public eyecatch keeps the existing deterministic illustration, brand, tags and
+subheadline renderer. Gemini 3.5 Flash is used exactly once as a title/typography director:
+it may compress the article title into a shorter eyecatch title, choose semantic line
+breaks, bounded font sizes and one exact emphasis phrase. It may not introduce new facts,
+render pixels, change the visual motif, or trigger a second provider request.
 
-This layer keeps the safety contract intact: exactly one layout-only Gemini request,
-no model retry/fallback, no copy rewrite, strict kinsoku/geometry validation, and a
-deterministic PIL fallback. Gemini chooses typography and one exact conclusion phrase;
-code remains the final gate.
+Provider, JSON, semantic-guard, kinsoku or geometry failure falls back directly to the
+already-approved deterministic renderer. This preserves the zero-image-generation and
+one-layout-call production contracts while making the title larger and more readable.
 """
 from __future__ import annotations
 
@@ -26,20 +24,34 @@ import run178_eyecatch_editorial_layout_optimizer as r178
 
 EYECATCH_LAYOUT_MODEL = "gemini-3.5-flash"
 EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = 1400
-TITLE_MIN_FONT = 42
+TITLE_MIN_FONT = 52
 TITLE_MAX_FONT = 76
 SUB_MIN_FONT = 22
 SUB_MAX_FONT = 28
 TITLE_MAX_WIDTH = 760
 SUB_MAX_WIDTH = 725
+EYECATCH_TITLE_TARGET_MIN_CHARS = 15
+EYECATCH_TITLE_TARGET_MAX_CHARS = 45
+EYECATCH_TITLE_HARD_MAX_CHARS = 52
+SOURCE_TITLE_MAX_CHARS = 96
 
 _LAYOUT_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
         **r178._LAYOUT_RESPONSE_SCHEMA["properties"],
+        "eyecatch_title": {"type": "string"},
         "highlight_text": {"type": "string"},
     },
-    "required": [*r178._LAYOUT_RESPONSE_SCHEMA["required"], "highlight_text"],
+    "required": [
+        *r178._LAYOUT_RESPONSE_SCHEMA["required"],
+        "eyecatch_title",
+        "highlight_text",
+    ],
+}
+
+_STOP_LATIN_TOKENS = {
+    "a", "an", "and", "are", "at", "by", "for", "from", "how", "in", "into", "is",
+    "new", "now", "of", "on", "or", "the", "to", "with", "what", "why", "introducing",
 }
 
 
@@ -70,32 +82,89 @@ def _parse_plan_response(response: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _layout_prompt(headline: str, subheadline: str) -> str:
-    payload = json.dumps({"headline": headline, "subheadline": subheadline}, ensure_ascii=False)
-    return f"""あなたは日本語エディトリアルデザインのタイポグラフィ担当です。
-1280x670のnoteアイキャッチ左側760pxの文字領域を、スマートフォンの縮小表示でも一瞬で読めるように組んでください。
+def _source_title_for_direction(title: str) -> str:
+    """Return clean public source copy without applying the old 34/48-char hook truncation."""
+    clean = ee._clean_public_copy(title)
+    clean = re.sub(r"^【[^】]{1,28}】\s*", "", clean).strip()
+    if not clean:
+        return "AIの変化を、わかりやすく。"
+    if len(clean) <= SOURCE_TITLE_MAX_CHARS:
+        return clean
+    return clean[:SOURCE_TITLE_MAX_CHARS].rstrip("、。！？!? ") + "…"
+
+
+def _layout_prompt(source_title: str, subheadline: str) -> str:
+    payload = json.dumps(
+        {"source_title": source_title, "subheadline": subheadline}, ensure_ascii=False
+    )
+    return f"""あなたは日本語テックメディアのエディトリアル・タイトル担当です。
+1280x670のnoteアイキャッチ左側760pxで、スマートフォン縮小時にも一瞬で読めるタイトルを設計してください。
 
 入力: {payload}
 
+目的:
+- 記事タイトルの事実と主題を維持したまま、アイキャッチ専用タイトルを短く、強く、読みやすくする。
+- SEO用の記事タイトルとアイキャッチ用タイトルは同一でなくてよい。
+- 説明を詰め込まず、「何の話か」と「なぜ気になるか」が一瞬で伝わる見出しにする。
+
 絶対条件:
-- 文言は1文字も追加・削除・補完・言い換えしない。入力文字列を改行で分割するだけ。
-- headlineは1〜3行。25文字以上の長いheadlineは原則3行を検討する。
-- Noto Sans JP Blackを使う。headlineは42〜76px。48pxでは全角約15文字、42pxでは全角約17文字を1行の安全な目安とする。
-- 760pxを超えそうな長い行を作らず、固有名詞・英単語・複合語（例: OpenAI、エージェント、生成AI、モデル）を途中で切らない。
-- subheadlineは1〜2行、22〜28px。1行あたり全角約27文字以内を目安にする。
+- eyecatch_titleはsource_titleの意味を圧縮するだけ。新しい事実、数値、性能、因果、評価、固有名詞を発明しない。
+- 製品名、モデル名、バージョン番号など記事識別に必要な固有情報は維持する。
+- eyecatch_titleは理想15〜45文字、最大52文字。元タイトルがすでに短く強ければ変更しなくてよい。
+- 「徹底解説」「完全ガイド」「まとめ」「最新情報」などSEOブログ的な煽り語を新規追加しない。
+- 疑問形・断定形・変化提示のいずれも可。ただしsource_title以上に強い断定へ変えない。
+- title_linesはeyecatch_titleを改行で分割したものだけ。文字の追加・削除・言い換えをtitle_lines側では行わない。
+- headline相当のtitle_linesは1〜3行。原則2〜3行を優先する。
+- Noto Sans JP Blackを使う。headlineは52〜76px。760pxを超えない範囲でできるだけ大きくする。
+- 固有名詞・英単語・複合語（例: OpenAI、Polars 2.0、エージェント、生成AI、モデル）を途中で切らない。
+- subheadline_linesは入力subheadlineを1文字も変更せず、1〜2行へ分割するだけ。22〜28px。
 - headline行間は8〜18px。
 - 文節、句読点、助詞のまとまりを優先する。行頭に句読点・閉じ括弧・小書き仮名を置かない。行末に開き括弧を置かない。
 - 短い1文字だけの行を作らない。
-- 行長を機械的に均等化するのではなく、意味のまとまりと視覚的な重心を両立する。
-- highlight_textにはheadline内で最も読者の目を止める「結論・問い・含意」の連続した1フレーズを、headlineから完全一致で抜き出す。言い換えない。
-- highlight_textは原則として後半の意味ブロックを選び、短すぎる単語だけやタイトル全体は選ばない。複数行にまたがってもよい。
-- 例: 「AIは重要。でも正直、もう追いきれない。」なら「もう追いきれない。」。
-- 例: 「生成AIの『速さ』競争が変わる。小さなモデルは実務でどこまで使えるのか。」なら「小さなモデルは実務でどこまで使えるのか。」。
+- 行長を機械的に均等化せず、意味のまとまりと視覚的重心を両立する。
+- highlight_textにはeyecatch_title内で最も読者の目を止める「結論・問い・含意」の連続した1フレーズを完全一致で抜き出す。言い換えない。
+- highlight_textは短すぎる単語だけ、製品名だけ、タイトル全体を避ける。原則として後半の意味ブロックを優先する。
+- 画像、イラスト、背景、カテゴリ、日付、ロゴ、ビジュアル構造には一切触れない。
 - JSON以外は返さない。
 """
 
 
-def _validate_highlight_text(headline: str, title_lines: list[str], value: Any) -> str:
+def _required_source_tokens(source_title: str) -> set[str]:
+    """Protect obvious Latin product/model/version identifiers during title compression."""
+    tokens = set()
+    for match in re.findall(r"[A-Za-z][A-Za-z0-9_.+\-/]*|\d+(?:\.\d+)+", source_title):
+        lowered = match.lower()
+        if lowered in _STOP_LATIN_TOKENS:
+            continue
+        if match.isalpha() and len(match) < 2:
+            continue
+        tokens.add(match)
+    return tokens
+
+
+def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    title = re.sub(r"\s+", " ", value).strip()
+    if not title or "\n" in value or "\r" in value:
+        return None
+    canonical = r178._canonical_partition_text(title)
+    if not canonical or len(canonical) > EYECATCH_TITLE_HARD_MAX_CHARS:
+        return None
+    if re.search(r"https?://|[#*_`>]", title):
+        return None
+
+    # Compression may remove English connective words, but obvious model/product/version
+    # identifiers from the source must survive. This catches the most damaging title rewrite
+    # failure deterministically without pretending to semantically judge Japanese prose.
+    folded_title = title.casefold()
+    for token in _required_source_tokens(source_title):
+        if token.casefold() not in folded_title:
+            return None
+    return title
+
+
+def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value: Any) -> str:
     """Allow one exact, restrained contiguous emphasis phrase; otherwise disable color only."""
     if not isinstance(value, str):
         return ""
@@ -107,24 +176,27 @@ def _validate_highlight_text(headline: str, title_lines: list[str], value: Any) 
         return ""
     if highlight not in joined or joined.count(highlight) != 1:
         return ""
-    if canonical not in r178._canonical_partition_text(headline):
+    if canonical not in r178._canonical_partition_text(eyecatch_title):
         return ""
-    # Keep orange as a focal accent rather than turning most of the title orange.
     if len(canonical) / len(total) > 0.70:
         return ""
     return highlight
 
 
-def _validate_layout_plan(headline: str, subheadline: str, plan: Any) -> dict[str, Any] | None:
-    """Fail closed: Gemini may partition text, never rewrite it or exceed geometry."""
+def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dict[str, Any] | None:
+    """Fail closed: title compression is bounded; line layout and geometry stay deterministic."""
     if not isinstance(plan, dict):
+        return None
+
+    eyecatch_title = _validate_eyecatch_title(source_title, plan.get("eyecatch_title"))
+    if eyecatch_title is None:
         return None
 
     title_lines = r178._coerce_lines(plan.get("title_lines"), 3)
     sub_lines = r178._coerce_lines(plan.get("subheadline_lines"), 2)
     if title_lines is None or sub_lines is None:
         return None
-    if r178._canonical_partition_text("".join(title_lines)) != r178._canonical_partition_text(headline):
+    if r178._canonical_partition_text("".join(title_lines)) != r178._canonical_partition_text(eyecatch_title):
         return None
     if r178._canonical_partition_text("".join(sub_lines)) != r178._canonical_partition_text(subheadline):
         return None
@@ -161,22 +233,27 @@ def _validate_layout_plan(headline: str, subheadline: str, plan: Any) -> dict[st
     title_size, _ = title_fit
     sub_size, _ = sub_fit
     return {
+        "eyecatch_title": eyecatch_title,
         "title_lines": title_lines,
         "title_font_size": title_size,
         "title_line_gap": line_gap,
         "subheadline_lines": sub_lines,
         "subheadline_font_size": sub_size,
-        "highlight_text": _validate_highlight_text(headline, title_lines, plan.get("highlight_text")),
+        "highlight_text": _validate_highlight_text(
+            eyecatch_title, title_lines, plan.get("highlight_text")
+        ),
     }
 
 
-def _request_layout_plan(pipeline_module: Any, headline: str, subheadline: str) -> dict[str, Any] | None:
+def _request_layout_plan(
+    pipeline_module: Any, source_title: str, subheadline: str
+) -> dict[str, Any] | None:
     if bool(getattr(pipeline_module, "SYNTHETIC_REGRESSION_MODE", False)):
         return None
     try:
         response = pipeline_module._generate_via_chat(
             EYECATCH_LAYOUT_MODEL,
-            _layout_prompt(headline, subheadline),
+            _layout_prompt(source_title, subheadline),
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": _LAYOUT_RESPONSE_SCHEMA,
@@ -185,7 +262,7 @@ def _request_layout_plan(pipeline_module: Any, headline: str, subheadline: str) 
             },
             request_kind="eyecatch_layout",
             reserve=0,
-            request_context="public_eyecatch_semantic_layout",
+            request_context="public_eyecatch_semantic_title_layout",
             count_as_deep_dive=False,
             request_origin="new",
         )
@@ -198,7 +275,7 @@ def _request_layout_plan(pipeline_module: Any, headline: str, subheadline: str) 
 
 
 def install(pipeline_module: Any) -> Any:
-    """Replace the public renderer alias with the validated one-call Run180 path."""
+    """Replace the public renderer alias with the validated one-call title direction path."""
     if getattr(pipeline_module, "_RUN180_EYECATCH_SEMANTIC_LAYOUT_INSTALLED", False):
         return pipeline_module
 
@@ -211,13 +288,12 @@ def install(pipeline_module: Any) -> Any:
         category: str | None = None,
         date_label: str | None = None,
     ) -> str:
-        # Keep the complete public title for normal note-length headlines. This
-        # avoids hallucinated completion of a pre-truncated ellipsis while still
-        # bounding pathological input before the layout request.
-        headline = ee.editorial_hook_from_title(title, max_chars=48)
-        subheadline = ee.editorial_subheadline(summary, headline)
-        raw_plan = _request_layout_plan(pipeline_module, headline, subheadline)
-        validated = _validate_layout_plan(headline, subheadline, raw_plan)
+        source_title = _source_title_for_direction(title)
+        # Subheadline generation is intentionally unchanged. Run229 scope is title only.
+        existing_headline = ee.editorial_hook_from_title(title, max_chars=48)
+        subheadline = ee.editorial_subheadline(summary, existing_headline)
+        raw_plan = _request_layout_plan(pipeline_module, source_title, subheadline)
+        validated = _validate_layout_plan(source_title, subheadline, raw_plan)
         if validated is not None:
             try:
                 return r178._render_with_validated_plan(
@@ -235,11 +311,10 @@ def install(pipeline_module: Any) -> Any:
         elif raw_plan is not None:
             logger = getattr(pipeline_module, "logger", None)
             if logger is not None:
-                logger.warning("[RUN180 EYECATCH LAYOUT FALLBACK] invalid semantic typography plan")
+                logger.warning("[RUN180 EYECATCH LAYOUT FALLBACK] invalid semantic title plan")
 
-        # Crucial safety invariant: never call Run178's wrapped renderer here,
-        # because that could spend a second Gemini request. Fallback is purely
-        # deterministic and still inherits Run179's Noto/Inter font policy.
+        # Safety invariant: no second model request. All existing visual elements and the
+        # deterministic fallback renderer remain unchanged.
         return deterministic_fallback(
             title,
             summary,
@@ -253,4 +328,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN180_EYECATCH_LAYOUT_MODEL = EYECATCH_LAYOUT_MODEL
     pipeline_module.RUN180_EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS
     pipeline_module.RUN180_EYECATCH_TITLE_MIN_FONT = TITLE_MIN_FONT
+    pipeline_module.RUN180_EYECATCH_TITLE_TARGET_MAX_CHARS = EYECATCH_TITLE_TARGET_MAX_CHARS
+    pipeline_module.RUN180_EYECATCH_TITLE_HARD_MAX_CHARS = EYECATCH_TITLE_HARD_MAX_CHARS
     return pipeline_module
