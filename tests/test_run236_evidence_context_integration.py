@@ -19,12 +19,14 @@ class Run236EvidenceContextIntegrationTests(unittest.TestCase):
         with patch.object(pipeline, "SOURCE_CONTEXT_MAX_CHARS", 13):
             self.assertEqual(pipeline._truncate_source_context(text), "abcdefghijklm")
 
-    def test_verification_wrapper_uses_live_pipeline_limit(self):
-        text = "abcdefghijklmnopqrstuvwxyz"
-        with patch.object(pipeline, "VERIFICATION_CONTEXT_MAX_CHARS", 9):
-            self.assertEqual(pipeline._truncate_verification_context(text), "abcdefghi")
-        with patch.object(pipeline, "VERIFICATION_CONTEXT_MAX_CHARS", 15):
-            self.assertEqual(pipeline._truncate_verification_context(text), "abcdefghijklmno")
+    def test_verification_wrapper_uses_live_pipeline_limit_and_excerpt_semantics(self):
+        text = "HEAD-" + ("a" * 180) + ("z" * 180) + "-TAIL"
+        for limit in (9, 64, 90, 120, 1000):
+            with patch.object(pipeline, "VERIFICATION_CONTEXT_MAX_CHARS", limit):
+                self.assertEqual(
+                    pipeline._truncate_verification_context(text),
+                    evidence_context.verification_excerpt(text, limit),
+                )
 
     def test_merge_wrapper_uses_live_pipeline_limit_and_preserves_behavior(self):
         old = "OLD-" + ("a" * 100)
