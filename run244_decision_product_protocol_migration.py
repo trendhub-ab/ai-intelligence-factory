@@ -13,14 +13,14 @@ EXPECTED_PREIMAGE_LINES = 10840
 TARGET_SIZES = {
     "assess_evidence_sufficiency": 116,
     "build_decision_prompt": 163,
-    "_product_review_prompt": 29,
+    "_product_review_prompt": 21,
     "_product_review_schema_error": 2,
     "_strict_schema_int": 8,
     "_validate_product_review_payload": 62,
     "_normalize_japanese_display_label": 20,
     "_decode_product_review_json": 20,
-    "_parse_product_review_response": 19,
-    "_parse_product_review_model_response": 13,
+    "_parse_product_review_response": 17,
+    "_parse_product_review_model_response": 10,
     "_technology_state_to_repo": 52,
 }
 
