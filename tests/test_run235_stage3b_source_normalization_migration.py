@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import subprocess
 import tempfile
 import unittest
 
@@ -9,6 +10,7 @@ import run235_stage3b_source_normalization_migration as migration
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+PATCH_PATH = ROOT / "patches" / "run235-stage3b-source-normalization.patch"
 
 
 class Run235Stage3BSourceNormalizationMigrationTests(unittest.TestCase):
@@ -53,6 +55,23 @@ class Run235Stage3BSourceNormalizationMigrationTests(unittest.TestCase):
             transformed = migration.transform_source(path.read_text(encoding="utf-8"))
             self.assertNotEqual(source, transformed)
             self.assertEqual(path.read_text(encoding="utf-8"), source)
+
+    def test_committed_patch_applies_to_exact_migration_output(self):
+        source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
+        transformed = migration.transform_source(source)
+        with tempfile.TemporaryDirectory() as td:
+            work = pathlib.Path(td)
+            path = work / "pipeline.py"
+            path.write_text(source, encoding="utf-8")
+            result = subprocess.run(
+                ["git", "apply", str(PATCH_PATH)],
+                cwd=work,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(path.read_text(encoding="utf-8"), transformed)
 
 
 if __name__ == "__main__":
