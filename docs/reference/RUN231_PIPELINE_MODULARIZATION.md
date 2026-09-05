@@ -103,25 +103,25 @@ Safety design:
 4. The extracted module imports only standard-library text utilities and must not contain provider, network, Gemini, Notion, quota, Fact, Evidence, Decision, or persistence logic.
 5. Dedicated Run235 regression compares the extracted and historical implementations independently before installation across Japanese, English, Chinese, Korean, Cyrillic, undefined-language, descriptor, summary, and full normalized-item cases.
 6. The existing multilingual-title regression remains an independent downstream persistence compatibility check.
-7. Physical deletion of the duplicate block from `pipeline.py` is deferred to a later Stage3B only after Stage3A parity and full Production regression are proven.
+7. Physical deletion of the duplicate block from `pipeline.py` is deferred to Stage3B only after Stage3A parity and full Production regression are proven.
 
-Stage3A merged to `main` as commit `c955e217959153843ab2b064a1207b33d2468d9b` after **1458 pytest passes**, Synthetic Production **30/30**, critical failures **0**, production write isolation **true**, and all required PR guards green.
-
-Run235 also retires `.github/workflows/run231-stage2-surgical-migration.yml`, because its Stage2 migration role ended when Run234 merged. The permanent Repository-wide Falsification Guard and required `zero-api-regression` now own the continuing modularization safety contract.
+Run235 Stage3A merged to `main` at `c955e217959153843ab2b064a1207b33d2468d9b` after protected reconciliation was green.
 
 ## Stage 3B / Run235 — deterministic duplicate-body deletion gate
 
-Stage3B is intentionally separated from Stage3A so the physical deletion is never mixed with the parity proof that justified it.
+Stage3B prepares physical removal of the six Stage3A duplicate definitions from `pipeline.py` without reintroducing self-mutating CI.
 
-- `run235_stage3b_source_normalization_migration.py` is a deterministic, standard-library-only migration utility.
-- It recognizes exactly the six Stage3A historical top-level definitions and fails closed if the surface or order differs.
-- It replaces only that validated contiguous span with direct imports from `source_normalization.py`.
-- The transform is idempotent after migration and compiles before any write is accepted.
-- It does **not** mutate the repository unless a human/operator explicitly supplies `--write`; CI only falsifies the transform and never self-commits or self-pushes.
-- Current validated transform changes `pipeline.py` from **13,423 lines to 13,335 lines**, a net reduction of **88 lines**, while leaving `_truncate_text_context` and all downstream Fact / Evidence / Decision logic untouched.
-- Stage3B is not merge-eligible until the physically transformed `pipeline.py` itself is present on the PR head and the full protected CI stack is green.
+- Canonical migration: `run235_stage3b_source_normalization_migration.py`
+- Canonical patch: `patches/run235-stage3b-source-normalization.patch`
+- Expected source transform: **13,423 → 13,335 lines (`-88`)**
+- Expected transformed `pipeline.py` SHA-256: `16f28de8b79b7e8e8225004dbbefc790d4f1d56229891bcc37f5c8eb152cdad1`
+- The migration is AST-validated, idempotent, fails closed on partial/unexpected surfaces, compiles its output, and preserves adjacent `_truncate_text_context`.
+- The committed patch is tested by applying it with Git and requiring byte-for-byte equality with the migration output.
+- The migration never writes unless `--write` is explicitly supplied.
+- Repository/Integration CI remain read-only (`contents: read`); Stage3B does **not** restore a bot commit/push or repair-CI architecture.
+- Latest pre-physical-delete gate at PR #108 HEAD `61971ae24a13586bbe10cfa2a8140eab30227044`: Stage3B **6/6**, full pytest **1465/1465**, Synthetic Production **30/30**, `critical_failures=0`, `production_write_isolation=true`, Repository-wide Falsification GREEN, Notion Access Policy GREEN, and `zero-api-regression` GREEN.
 
-This migration guard exists because reintroducing a self-mutating GitHub Actions workflow would recreate the Run233 CI design defect. Repository writes remain explicit and reviewable.
+The only unresolved Stage3B item is committing the physically transformed ~744 KiB `pipeline.py` itself. The current connected GitHub write surface does not provide a partial-patch write primitive; blob/contents writes require resending the whole file. This limitation must not be bypassed by restoring self-mutating CI merely to remove 88 lines. PR #108 therefore remains Draft and non-merge-eligible until the exact transformed source is committed and the protected CI stack is rerun on that exact HEAD.
 
 ## Performance policy
 
@@ -129,8 +129,8 @@ Modularization and runtime optimization are separate concerns.
 
 A smaller file does not justify removing useful gates or requests. Runtime optimization must follow measured Run231 telemetry. Candidate optimizations may include avoiding duplicate I/O, avoiding unchanged Notion writes, per-run Evidence reuse, safe source-fetch concurrency, and CI dependency caching, but only when measurement identifies them as material.
 
-Stage3A/3B are structural extraction steps. They do **not** claim a Production runtime improvement merely because logic moved into a smaller module.
+Stage3 is a structural extraction. It does **not** claim a Production runtime improvement merely because logic moved into a smaller module.
 
 ## Merge gate
 
-No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof and a reviewable physical source diff. Stage3B therefore remains Draft/unmerged until the transformed `pipeline.py` is committed and revalidated.
+No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof; Stage3B is not complete until the transformed `pipeline.py` itself is on the PR head and passes the same protected gates.
