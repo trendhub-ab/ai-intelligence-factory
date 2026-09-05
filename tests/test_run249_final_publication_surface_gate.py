@@ -115,7 +115,7 @@ class Run249FinalPublicationSurfaceGateTests(unittest.TestCase):
             repaired,
         )
 
-    def test_install_is_idempotent_and_adds_no_provider_call_surface(self):
+    def test_install_is_idempotent_and_adds_no_provider_or_image_dependency(self):
         pipeline = _pipeline()
         first = r249.install(pipeline)
         wrapped = pipeline.validate_human_appeal_gate
@@ -126,6 +126,8 @@ class Run249FinalPublicationSurfaceGateTests(unittest.TestCase):
         source = inspect.getsource(r249)
         self.assertNotIn('generateContent', source)
         self.assertNotIn('call_gemini', source)
+        self.assertNotIn('import run248_first_real_publish_quality_calibration', source)
+        self.assertNotIn('from PIL', source)
 
     def test_runtime_and_publication_contract_include_run249(self):
         self.assertIn(
