@@ -27,22 +27,29 @@ from typing import Any
 import requests
 
 import decision_intelligence
+from member_presentation_identity import (
+    ALLOW_CREATE_DEFAULT,
+    API_HOST_PAGE_ID as DEFAULT_API_HOST_PAGE_ID,
+    CANONICAL_DATABASE_ID as DEFAULT_CANONICAL_DATABASE_ID,
+    CANONICAL_DATA_SOURCE_ID as DEFAULT_CANONICAL_DATA_SOURCE_ID,
+    DEFAULT_TITLE,
+)
 
-TITLE = os.environ.get("MEMBER_PRESENTATION_DB_TITLE", "AI・技術一覧｜判断DB").strip()
+TITLE = os.environ.get("MEMBER_PRESENTATION_DB_TITLE", DEFAULT_TITLE).strip()
 DESCRIPTION = "会員向けの判断専用DB。内部Factory項目を分離し、日本語の判断情報だけを表示します。"
 CANONICAL_DATABASE_ID = os.environ.get(
     "MEMBER_PRESENTATION_CANONICAL_DATABASE_ID",
-    "b2787ee0-5b58-4ca7-b4eb-774f60237f1f",
+    DEFAULT_CANONICAL_DATABASE_ID,
 ).strip()
 CANONICAL_DATA_SOURCE_ID = os.environ.get(
     "MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID",
-    "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404",
+    DEFAULT_CANONICAL_DATA_SOURCE_ID,
 ).strip()
 API_HOST_PAGE_ID = os.environ.get(
     "MEMBER_PRESENTATION_API_HOST_PAGE_ID",
-    "3c5479ff-dca9-8178-867c-d9249a3ff5c8",
+    DEFAULT_API_HOST_PAGE_ID,
 ).strip()
-ALLOW_CREATE = os.environ.get("MEMBER_PRESENTATION_ALLOW_CREATE", "false").strip().lower() in {
+ALLOW_CREATE = os.environ.get("MEMBER_PRESENTATION_ALLOW_CREATE", ALLOW_CREATE_DEFAULT).strip().lower() in {
     "1", "true", "yes", "on"
 }
 PARENT_PAGE_ID = os.environ.get(
@@ -147,6 +154,12 @@ def _verify_api_host() -> None:
             f"(HTTP {detail.status_code})."
         )
     parent = detail.json().get("parent") or {}
+    parent_type = str(parent.get("type") or "").strip()
+    if parent_type != "page_id":
+        raise RuntimeError(
+            "Canonical member presentation database has unexpected parent type "
+            f"{parent_type!r} (expected 'page_id'); it may have been moved to workspace root or another database."
+        )
     actual_host = str(parent.get("page_id") or "").strip()
     if actual_host != API_HOST_PAGE_ID:
         raise RuntimeError(
@@ -183,7 +196,11 @@ def _resolve_canonical() -> tuple[str, str] | None:
             f"configured database={CANONICAL_DATABASE_ID!r} data_source_parent={parent_db!r}."
         )
     actual_title = _plain_title(obj)
-    if actual_title and actual_title != TITLE:
+    if not actual_title:
+        raise RuntimeError(
+            "Canonical member presentation title could not be read from the API response; refusing to treat this as a match."
+        )
+    if actual_title != TITLE:
         raise RuntimeError(
             f"Canonical member presentation title mismatch: expected {TITLE!r}, got {actual_title!r}."
         )

@@ -11,11 +11,16 @@ on:
       - 'evidence_ledger.py'
       - 'pipeline.py'
       - 'member_presentation_sync.py'
+      - 'member_presentation_identity.py'
       - 'provision_member_presentation_db.py'
+      - 'notion_access_policy_guard.py'
+      - 'notion_audit_views.json'
+      - 'documentation_freshness_guard.py'
       - 'tests/test_cross_db_contract_guard.py'
       - 'tests/test_content_db_contract_guard.py'
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
+      - 'tests/test_run232_notion_integration_reconciliation.py'
       - '.github/workflows/cross-db-contract-guard.yml'
   push:
     branches: [main]
@@ -27,11 +32,16 @@ on:
       - 'evidence_ledger.py'
       - 'pipeline.py'
       - 'member_presentation_sync.py'
+      - 'member_presentation_identity.py'
       - 'provision_member_presentation_db.py'
+      - 'notion_access_policy_guard.py'
+      - 'notion_audit_views.json'
+      - 'documentation_freshness_guard.py'
       - 'tests/test_cross_db_contract_guard.py'
       - 'tests/test_content_db_contract_guard.py'
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
+      - 'tests/test_run232_notion_integration_reconciliation.py'
       - '.github/workflows/cross-db-contract-guard.yml'
   workflow_run:
     workflows:
@@ -63,6 +73,7 @@ jobs:
           python -m unittest tests/test_content_db_contract_guard.py
           python -m unittest tests/test_evidence_db_contract_guard.py
           python -m unittest tests/test_member_presentation_resolution_guard.py
+          python -m unittest tests/test_run232_notion_integration_reconciliation.py
 
   live-schema-contract:
     if: >-
@@ -141,6 +152,10 @@ jobs:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
+          MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: 'b2787ee0-5b58-4ca7-b4eb-774f60237f1f'
+          MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'
+          MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
       - name: Validate clean member product completeness
         run: python cross_db_contract_guard.py member
         env:

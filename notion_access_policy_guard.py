@@ -16,6 +16,11 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
+from member_presentation_identity import (
+    CANONICAL_DATABASE_ID as MEMBER_PRESENTATION_CANONICAL_DATABASE_ID,
+    CANONICAL_DATA_SOURCE_ID as MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID,
+)
+
 
 FORBIDDEN_PATTERNS: dict[str, str] = {
     "query_data_sources": "Notion MCP query_data_sources symbol",
@@ -95,8 +100,35 @@ def load_audit_manifest(root: Path) -> dict[str, Any]:
     return data
 
 
+def _validate_member_presentation_identity(item: dict[str, Any]) -> list[dict[str, str]]:
+    failures: list[dict[str, str]] = []
+    actual_db = str(item.get("database_id") or "").strip()
+    actual_ds = str(item.get("data_source_id") or "").strip()
+    if actual_db != MEMBER_PRESENTATION_CANONICAL_DATABASE_ID:
+        failures.append(
+            {
+                "database": "member_presentation",
+                "reason": (
+                    "stale_canonical_id: field=database_id "
+                    f"expected={MEMBER_PRESENTATION_CANONICAL_DATABASE_ID} actual={actual_db}"
+                ),
+            }
+        )
+    if actual_ds != MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID:
+        failures.append(
+            {
+                "database": "member_presentation",
+                "reason": (
+                    "stale_canonical_id: field=data_source_id "
+                    f"expected={MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID} actual={actual_ds}"
+                ),
+            }
+        )
+    return failures
+
+
 def validate_audit_manifest(data: dict[str, Any]) -> list[dict[str, str]]:
-    """Ensure every production Notion DB has a SQL-free audit path."""
+    """Ensure every production Notion DB has a SQL-free, current audit path."""
     failures: list[dict[str, str]] = []
     databases = data.get("databases")
     if not isinstance(databases, dict):
@@ -140,6 +172,8 @@ def validate_audit_manifest(data: dict[str, Any]) -> list[dict[str, str]]:
             failures.append({"database": key, "reason": "database_id missing"})
         if not str(item.get("data_source_id") or "").strip():
             failures.append({"database": key, "reason": "data_source_id missing"})
+        if key == "member_presentation":
+            failures.extend(_validate_member_presentation_identity(item))
 
     return failures
 

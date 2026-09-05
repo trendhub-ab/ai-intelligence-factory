@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
+
+from member_presentation_identity import (
+    API_HOST_PAGE_ID as CURRENT_MEMBER_API_HOST_PAGE_ID,
+    CANONICAL_DATABASE_ID as CURRENT_MEMBER_DB_ID,
+    CANONICAL_DATA_SOURCE_ID as CURRENT_MEMBER_DATA_SOURCE_ID,
+    LEGACY_DATA_SOURCE_ID as LEGACY_MEMBER_DATA_SOURCE_ID,
+    PRE_RUN220_DATABASE_ID as PRE_RUN220_MEMBER_DB_ID,
+    PRE_RUN220_DATA_SOURCE_ID as PRE_RUN220_MEMBER_DATA_SOURCE_ID,
+)
 
 
 SPEC_PATH = "AI_Intelligence_Factory_最終仕様書.md"
@@ -17,6 +27,7 @@ PENDING_RETRY_PATH = "pending_retry_validation.py"
 INVENTORY_WORKFLOW_PATH = ".github/workflows/inventory-bootstrap.yml"
 SUBSCRIBER_BRIEF_WORKFLOW_PATH = ".github/workflows/subscriber-decision-brief.yml"
 MEMBER_PRESENTATION_WORKFLOW_PATH = ".github/workflows/member-presentation-sync.yml"
+AUDIT_MANIFEST_PATH = "notion_audit_views.json"
 RUN217_PATH = "docs/reference/RUN217_ZERO_API_MONETIZATION_READINESS.md"
 RUN218_PATH = "docs/reference/RUN218_MEMBER_UX_RECONCILIATION.md"
 RUN220_PATH = "docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md"
@@ -25,12 +36,6 @@ RUN221_PATH = "docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md"
 CANONICAL_MEMBER_HOME_ID = "3c5479ff-dca9-8103-bff0-f2d5f408d35f"
 CANONICAL_MEMBER_HOME_TITLE = "AI Decision Intelligence｜会員ホーム"
 SUPERSEDED_RUN217_HOME_ID = "3d0479ff-dca9-819e-9da0-c951225de6b3"
-CURRENT_MEMBER_DB_ID = "b2787ee0-5b58-4ca7-b4eb-774f60237f1f"
-CURRENT_MEMBER_DATA_SOURCE_ID = "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404"
-CURRENT_MEMBER_API_HOST_PAGE_ID = "3c5479ff-dca9-8178-867c-d9249a3ff5c8"
-PRE_RUN220_MEMBER_DB_ID = "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1"
-PRE_RUN220_MEMBER_DATA_SOURCE_ID = "d1461b6f-0940-4bf9-803a-6686a37c4ba2"
-LEGACY_MEMBER_DATA_SOURCE_ID = "ec2ac2b3-89b6-4242-89b9-e94060826fca"
 
 FLASH_BUDGET_VARS = (
     "GEMINI_36_FLASH_DAILY_BUDGET",
@@ -264,6 +269,46 @@ def member_host_isolation_errors(member_presentation_text: str, spec_text: str, 
     return errors
 
 
+def member_audit_manifest_errors(manifest_json_text: str) -> list[str]:
+    """Reject retired or non-canonical member DB identities in the active audit manifest."""
+    try:
+        data = json.loads(manifest_json_text)
+    except json.JSONDecodeError as exc:
+        return [f"Member audit manifest is invalid JSON: {exc}"]
+    if not isinstance(data, dict):
+        return ["Member audit manifest must be a JSON object"]
+    databases = data.get("databases")
+    if not isinstance(databases, dict):
+        return ["Member audit manifest missing databases map"]
+    item = databases.get("member_presentation")
+    if not isinstance(item, dict):
+        return ["Member audit manifest missing member_presentation entry"]
+
+    actual_db = str(item.get("database_id") or "").strip()
+    actual_ds = str(item.get("data_source_id") or "").strip()
+    errors: list[str] = []
+
+    if actual_db == PRE_RUN220_MEMBER_DB_ID:
+        errors.append(
+            f"Member audit manifest uses retired pre-Run220 database_id as current value: {actual_db}"
+        )
+    elif actual_db != CURRENT_MEMBER_DB_ID:
+        errors.append(
+            f"Member audit manifest database_id drift: expected {CURRENT_MEMBER_DB_ID}, got {actual_db!r}"
+        )
+
+    retired_data_sources = {PRE_RUN220_MEMBER_DATA_SOURCE_ID, LEGACY_MEMBER_DATA_SOURCE_ID}
+    if actual_ds in retired_data_sources:
+        errors.append(
+            f"Member audit manifest uses retired member data_source_id as current value: {actual_ds}"
+        )
+    elif actual_ds != CURRENT_MEMBER_DATA_SOURCE_ID:
+        errors.append(
+            f"Member audit manifest data_source_id drift: expected {CURRENT_MEMBER_DATA_SOURCE_ID}, got {actual_ds!r}"
+        )
+    return errors
+
+
 def validate(root: str | Path = ".") -> list[str]:
     root_path = Path(root)
     spec_text = _read(root_path, SPEC_PATH)
@@ -276,6 +321,7 @@ def validate(root: str | Path = ".") -> list[str]:
     inventory_text = _read(root_path, INVENTORY_WORKFLOW_PATH)
     subscriber_brief_text = _read(root_path, SUBSCRIBER_BRIEF_WORKFLOW_PATH)
     member_presentation_text = _read(root_path, MEMBER_PRESENTATION_WORKFLOW_PATH)
+    audit_manifest_text = _read(root_path, AUDIT_MANIFEST_PATH)
     run217_text = _read(root_path, RUN217_PATH)
     run218_text = _read(root_path, RUN218_PATH)
     run220_text = _read(root_path, RUN220_PATH)
@@ -289,6 +335,7 @@ def validate(root: str | Path = ".") -> list[str]:
     errors.extend(member_navigation_ux_errors(spec_text, readme_text, run217_text, run218_text, run220_text))
     errors.extend(member_destination_workflow_errors(member_presentation_text, spec_text, readme_text, run220_text))
     errors.extend(member_host_isolation_errors(member_presentation_text, spec_text, readme_text, run221_text))
+    errors.extend(member_audit_manifest_errors(audit_manifest_text))
     return errors
 
 
