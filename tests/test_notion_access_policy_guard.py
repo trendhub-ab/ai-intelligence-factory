@@ -61,6 +61,20 @@ class NotionAccessPolicyGuardTests(unittest.TestCase):
         self.assertIn("missing audit contract", reasons)
         self.assertIn("invalid view id", reasons)
 
+    def test_member_manifest_rejects_stale_pre_run220_canonical_ids(self):
+        root = Path(guard.__file__).resolve().parent
+        data = json.loads((root / guard.AUDIT_MANIFEST).read_text(encoding="utf-8"))
+        member = data["databases"]["member_presentation"]
+        member["database_id"] = "d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1"
+        member["data_source_id"] = "d1461b6f-0940-4bf9-803a-6686a37c4ba2"
+
+        failures = guard.validate_audit_manifest(data)
+        reasons = " | ".join(item["reason"] for item in failures)
+        self.assertIn("stale_canonical_id: field=database_id", reasons)
+        self.assertIn("stale_canonical_id: field=data_source_id", reasons)
+        self.assertIn(guard.MEMBER_PRESENTATION_CANONICAL_DATABASE_ID, reasons)
+        self.assertIn(guard.MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID, reasons)
+
 
 if __name__ == "__main__":
     unittest.main()
