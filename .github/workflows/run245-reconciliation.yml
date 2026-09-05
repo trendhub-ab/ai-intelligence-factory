@@ -47,11 +47,11 @@ jobs:
         run: python documentation_freshness_guard.py
       - name: Diff safety
         run: git diff --check
-      - name: Commit reconciliation
+      - name: Commit non-workflow reconciliation
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pipeline.py run245_fact_validation_migration.py README.md AI_Intelligence_Factory_最終仕様書.md .github/workflows/repository-falsification.yml .github/workflows/integration-reconciliation-ci.yml
+          git add pipeline.py run245_fact_validation_migration.py README.md AI_Intelligence_Factory_最終仕様書.md
           git diff --cached --quiet && exit 0
-          git commit -m 'Run245: repair binding and reconcile permanent contracts'
+          git commit -m 'Run245: repair binding and reconcile canonical documentation'
           git push origin HEAD:run245-fact-validation-modularization
