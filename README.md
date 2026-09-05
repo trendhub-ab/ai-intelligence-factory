@@ -16,7 +16,7 @@
 - **Current article Japanese surface integrity baseline:** Run227 — zero-model high-confidence broken-Japanese fail-closed gate
 - **Current free article reader rhythm baseline:** Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas
 - **Current pipeline modularization baseline:** Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior modularized domains
-- **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
+- **Current repository organization baseline:** Run246 — falsified repository hygiene cleanup with active/runtime asset protection
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
 - Canonical specification: `AI_Intelligence_Factory_最終仕様書.md`
