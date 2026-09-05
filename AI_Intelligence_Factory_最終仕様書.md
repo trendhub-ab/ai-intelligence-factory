@@ -16,7 +16,7 @@ Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive 
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
-Pipeline Modularization Baseline: **Run240 — source-normalization + evidence-context + paid-product maintenance + Deep Dive portfolio + reader-experience + editorial-naturalness diagnostics extraction / zero-quality-change strangler modularization**
+Pipeline Modularization Baseline: **Run241 — batched candidate-identity + note-manuscript + gate-reasoning + Screening-protocol + Source-ROI extraction layered on prior zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -77,11 +77,13 @@ Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
 - Run238でStock済みDeep Dive候補のprofit/portfolio並べ替え、topic diversity、EVERGREEN補助、publication reliability slotのzero-model決定論ロジックを`deep_dive_portfolio.py`へ抽出する。`pipeline.py`はlive閾値・normalizer・logger等を渡す薄いwrapperだけを残す。Eligibility、Decision/Evidence/Fact条件、既存toleranceは変更しない。
 - Run239で390行の`_reader_experience_signals()` zero-API診断実装を`reader_experience_signals.py`へ機械的に抽出する。`pipeline.py`にはliveな`_article_opening_excerpt`を束縛する薄いwrapperだけを残す。既存の正規表現、閾値、status、Reader Delight / information budget判定は変更せず、`soft_only=True`を維持する。
 - Run240でAI-style composite、human-editorial depth、cross-article fingerprint等のzero-API編集自然さ診断を`editorial_naturalness.py`へ抽出する。`pipeline.py`にはliveな`ARTICLE_DISPLAY_VARIANTS`、peer memory、opening helperを渡す薄いwrapperだけを残し、既存regex・score・thresholdを変更しない。
-- Run235/236/237/238/239/240はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
+- Run241では低リスクな5領域を一括で抽出し、`candidate_identity.py`、`note_manuscript.py`、`gate_reasoning.py`、`screening_protocol.py`、`source_roi_policy.py`を正本化する。Gate実行本体・Gemini実行本体・Notion書込本体・Quota/Pending Retryは移動対象に含めない。`pipeline.py`はlive設定・callbackを渡す薄いwrapperを保持し、12,461行から11,497行へ964行削減する。
+- Run235/236/237/238/239/240/241はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
 - Run237詳細: `docs/reference/RUN237_PRODUCT_DELIVERY_MAINTENANCE_MODULARIZATION.md`
 - Run238詳細: `docs/reference/RUN238_DEEP_DIVE_PORTFOLIO_MODULARIZATION.md`
 - Run239詳細: `docs/reference/RUN239_READER_EXPERIENCE_DIAGNOSTICS_MODULARIZATION.md`
 - Run240詳細: `docs/reference/RUN240_EDITORIAL_NATURALNESS_MODULARIZATION.md`
+- Run241詳細: `docs/reference/RUN241_BATCHED_PIPELINE_MODULARIZATION.md`
 
 - 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
 - Screening全体上限: 200候補
