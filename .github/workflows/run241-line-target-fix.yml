@@ -19,7 +19,6 @@ jobs:
         run: |
           sed -i 's/line_count != 11499/line_count != 11497/g; s/expected 11499-line postimage/expected 11497-line postimage/g' run241_batched_modularization_migration.py
           sed -i 's/LessEqual(len(src.splitlines()),11499)/LessEqual(len(src.splitlines()),11497)/g' tests/test_run241_batched_integration.py
-          sed -i 's/-eq 11499/-eq 11497/g' .github/workflows/run241-bootstrap.yml
       - name: Compile migration and check diff
         run: |
           python -m py_compile run241_batched_modularization_migration.py tests/test_run241_batched_integration.py
@@ -32,6 +31,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add run241_batched_modularization_migration.py tests/test_run241_batched_integration.py .github/workflows/run241-bootstrap.yml
+          git add run241_batched_modularization_migration.py tests/test_run241_batched_integration.py
           git commit -m 'Run241: reconcile exact batched postimage line target'
           git push origin HEAD:run241-batched-pipeline-modularization
