@@ -8,8 +8,8 @@ Run245 continues the low-risk `pipeline.py` strangler modularization from the me
 
 - Base: Run244 main `d261bc7803cd06a8b61d64efcd8c58ea01bb3ec2`
 - Run244 `pipeline.py`: 10,434 lines
-- Run245 `pipeline.py`: 9,978 lines
-- Physical reduction: 456 lines
+- Run245 final `pipeline.py`: 9,972 lines
+- Physical reduction: 462 lines
 
 This reduction is a maintainability result. It is not evidence that Production E2E runtime became faster; external I/O and model/provider latency remain separate performance concerns.
 
@@ -39,9 +39,11 @@ Short all-caps aliases remain token-matched so ordinary strings such as `storage
 
 ## Live runtime binding
 
-`pipeline.py` retains thin compatibility wrappers. Before delegation, wrappers bind the current live constants/helpers into the canonical module. This preserves runtime monkeypatch/config behavior instead of freezing mutable pipeline state at import time.
+`pipeline.py` retains thin compatibility wrappers. Before delegation, wrappers bind only the current live constants/external helpers required by the canonical module. This preserves runtime monkeypatch/config behavior instead of freezing mutable pipeline state at import time.
 
-Run245 dedicated tests explicitly falsify rebinding, numeric pattern changes, alias-group changes and Action-risk classifier changes.
+Run245 dedicated falsification found that an initial binder also re-injected moved internal functions. Because `bind_runtime()` updates module globals, that shape could replace canonical function objects with pipeline wrappers. The safe final design therefore **does not bind canonical functions back into their own module**. It binds only external/live dependencies. This preserves canonical ownership and prevents self-overwrite/recursive-wrapper hazards.
+
+Run245 dedicated tests explicitly falsify canonical ownership, rebinding, numeric pattern changes, alias-group changes and Action-risk classifier changes.
 
 ## Intentionally retained in `pipeline.py`
 
@@ -83,19 +85,21 @@ Run245 intentionally changes no:
 - exact historical target function sizes
 - exact import anchor
 
-Unexpected source shape aborts without rewriting. The postimage is idempotent.
+Unexpected source shape aborts without rewriting. The final postimage is idempotent and includes the safe binder ownership shape.
 
-## Initial guarded validation
+## Guarded validation history
 
-The guarded bootstrap run completed with:
+The first mechanical bootstrap produced:
 
 - migration: 10,434 → 9,978 lines
 - compile: PASS
-- full pytest: 1,598 passed
+- historical full pytest: 1,598 passed
 - Synthetic smoke: 30/30 passed
 - critical failures: 0
 - production write isolation: true
 - second migration: unchanged / idempotent
 - `git diff --check`: PASS
 
-Permanent Run245 module/integration tests and required PR CI are the merge gate; this bootstrap result alone does not authorize merge.
+New Run245 falsification then exposed the canonical self-overwrite hazard described above. The binder was narrowed without changing any historical validation algorithm, threshold, regex or gate disposition. That repair reduced another 6 lines, producing the final **9,972-line** postimage (**462 lines removed from Run244**).
+
+Permanent Run245 module/integration tests and required PR CI are the merge gate; bootstrap results alone do not authorize merge.
