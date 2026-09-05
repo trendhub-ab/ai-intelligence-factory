@@ -16,7 +16,7 @@ Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive 
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
-Pipeline Modularization Baseline: **Run242 — pure Notion-payload + source-document parsing + Deferred-queue policy extraction layered on prior zero-quality-change strangler modularization**
+Pipeline Modularization Baseline: **Run243 — deterministic content-generation protocol extraction layered on prior zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -79,13 +79,15 @@ Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
 - Run240でAI-style composite、human-editorial depth、cross-article fingerprint等のzero-API編集自然さ診断を`editorial_naturalness.py`へ抽出する。`pipeline.py`にはliveな`ARTICLE_DISPLAY_VARIANTS`、peer memory、opening helperを渡す薄いwrapperだけを残し、既存regex・score・thresholdを変更しない。
 - Run241では低リスクな5領域を一括で抽出し、`candidate_identity.py`、`note_manuscript.py`、`gate_reasoning.py`、`screening_protocol.py`、`source_roi_policy.py`を正本化する。Gate実行本体・Gemini実行本体・Notion書込本体・Quota/Pending Retryは移動対象に含めない。`pipeline.py`はlive設定・callbackを渡す薄いwrapperを保持し、12,461行から11,497行へ964行削減する。
 - Run242ではpureなNotion payload組立、source文書/URL/HTML解析、Deferred Deep Dive queue policyを`notion_payloads.py`、`source_document_parsing.py`、`deferred_queue_policy.py`へ抽出する。Notion API書込、network acquisition/SSRF境界、Pending Retry fail-safeは`pipeline.py`に残し、11,497行から11,172行へ325行削減する。
-- Run235/236/237/238/239/240/241/242はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
+- Run243ではSource別Fact Discipline、Human Editorial / Reader Experience規律、Gemini応答parser、保守的なplain-text見出し昇格、月次Digest Markdown整形を`content_generation_protocol.py`へ抽出する。`generate_intelligence_report()`、Gemini呼出、品質Gate実行、Notion永続化は`pipeline.py`側に残し、11,172行から10,840行へ332行削減する。parserとDigest builderはlive callback/定数をkeyword注入する薄いwrapperで既存runtime bindingを維持する。
+- Run235/236/237/238/239/240/241/242/243はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
 - Run237詳細: `docs/reference/RUN237_PRODUCT_DELIVERY_MAINTENANCE_MODULARIZATION.md`
 - Run238詳細: `docs/reference/RUN238_DEEP_DIVE_PORTFOLIO_MODULARIZATION.md`
 - Run239詳細: `docs/reference/RUN239_READER_EXPERIENCE_DIAGNOSTICS_MODULARIZATION.md`
 - Run240詳細: `docs/reference/RUN240_EDITORIAL_NATURALNESS_MODULARIZATION.md`
 - Run241詳細: `docs/reference/RUN241_BATCHED_PIPELINE_MODULARIZATION.md`
 - Run242詳細: `docs/reference/RUN242_NOTION_SOURCE_DEFERRED_MODULARIZATION.md`
+- Run243詳細: `docs/reference/RUN243_CONTENT_GENERATION_PROTOCOL_MODULARIZATION.md`
 
 - 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
 - Screening全体上限: 200候補
