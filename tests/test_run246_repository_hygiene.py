@@ -7,25 +7,12 @@ ARCHIVE = ROOT / "docs" / "archive" / "repository-cleanup-2026-09-05"
 
 class Run246RepositoryHygieneTests(unittest.TestCase):
     def test_verified_garbage_is_not_active(self):
-        retired = (
-            ROOT / ".github" / "workflows" / "run130-portfolio-test.yml",
-            ROOT / "migrate_decision_intelligence.py",
-            ROOT / "migrate_japanese_display_label.py",
-        )
-        for path in retired:
-            with self.subTest(path=path):
-                self.assertFalse(path.exists())
+        self.assertFalse((ROOT / ".github" / "workflows" / "run130-portfolio-test.yml").exists())
 
-    def test_retired_surfaces_are_preserved_in_archive(self):
-        archived = (
-            ARCHIVE / "retired-workflows" / "run130-portfolio-test.yml",
-            ARCHIVE / "retired-tools" / "migrate_decision_intelligence.py",
-            ARCHIVE / "retired-tools" / "migrate_japanese_display_label.py",
-        )
-        for path in archived:
-            with self.subTest(path=path):
-                self.assertTrue(path.is_file())
-                self.assertGreater(path.stat().st_size, 20)
+    def test_retired_workflow_is_preserved_in_archive(self):
+        path = ARCHIVE / "retired-workflows" / "run130-portfolio-test.yml"
+        self.assertTrue(path.is_file())
+        self.assertGreater(path.stat().st_size, 20)
 
     def test_portfolio_regression_coverage_survives_workflow_retirement(self):
         workflow = (ROOT / ".github" / "workflows" / "integration-reconciliation-ci.yml").read_text(encoding="utf-8")
@@ -35,11 +22,21 @@ class Run246RepositoryHygieneTests(unittest.TestCase):
         self.assertIn("Run full pytest regression", workflow)
         self.assertIn("Run synthetic smoke through current production stack", workflow)
 
+    def test_migration_tools_rejected_by_full_regression_remain_active(self):
+        self.assertTrue((ROOT / "migrate_decision_intelligence.py").is_file())
+        self.assertTrue((ROOT / "migrate_japanese_display_label.py").is_file())
+        decision_test = (ROOT / "tests" / "test_decision_intelligence.py").read_text(encoding="utf-8")
+        label_test = (ROOT / "tests" / "test_run120_japanese_display_label.py").read_text(encoding="utf-8")
+        self.assertIn("import migrate_decision_intelligence as migration", decision_test)
+        self.assertIn("migrate_japanese_display_label as migration", label_test)
+
     def test_current_policy_and_operator_surfaces_are_not_misclassified_as_garbage(self):
         protected = (
             "run156_decision_review_import.py",
             "run164_ai_relevance_calibration.py",
             "portfolio_inventory_bootstrap.py",
+            "migrate_decision_intelligence.py",
+            "migrate_japanese_display_label.py",
             ".github/workflows/inventory-bootstrap.yml",
             ".github/workflows/regression.yml",
             ".github/workflows/regression-test.yml",
