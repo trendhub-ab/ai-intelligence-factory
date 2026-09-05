@@ -37,6 +37,7 @@ jobs:
         run: |
           python -m unittest tests.test_run200_repository_layout -v
           python -m unittest tests.test_run201_repository_garbage_cleanup -v
+          python -m unittest tests.test_run246_repository_hygiene -v
           python -m unittest tests.test_run202_chatops_control -v
           python -m unittest tests.test_run203_runtime_state_channel -v
           python -m unittest tests.test_run204_gemini_transient_recovery -v
