@@ -121,6 +121,7 @@ jobs:
           python -m unittest tests.test_run235_source_normalization_module -v
           python -m unittest tests.test_run235_stage3b_source_normalization_migration -v
           python -m unittest tests.test_run236_evidence_context_module -v
+          python -m unittest tests.test_run236_evidence_context_integration -v
           python -m unittest tests.test_multilingual_title_normalization -v
       - name: Run Cross DB contract falsification
         run: |
