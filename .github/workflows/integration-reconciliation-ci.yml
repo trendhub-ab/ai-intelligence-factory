@@ -1,5 +1,5 @@
 name: Integration Reconciliation CI
-# Run239: protected zero-api-regression owns modularization and Cross DB PR contract coverage.
+# Run240: protected zero-api-regression owns modularization and Cross DB PR contract coverage.
 
 on:
   pull_request:
@@ -17,6 +17,7 @@ on:
       - 'product_delivery_maintenance.py'
       - 'deep_dive_portfolio.py'
       - 'reader_experience_signals.py'
+      - 'editorial_naturalness.py'
       - 'legacy_eyecatch_renderer.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
@@ -78,10 +79,12 @@ jobs:
             product_delivery_maintenance.py \
             deep_dive_portfolio.py \
             reader_experience_signals.py \
+            editorial_naturalness.py \
             run235_stage3b_source_normalization_migration.py \
             run237_product_delivery_maintenance_migration.py \
             run238_deep_dive_portfolio_migration.py \
             run239_reader_experience_migration.py \
+            run240_editorial_naturalness_migration.py \
             legacy_eyecatch_renderer.py \
             run231_performance_telemetry.py \
             publication_contract.py \
@@ -137,6 +140,8 @@ jobs:
           python -m unittest tests.test_run238_deep_dive_portfolio_integration -v
           python -m unittest tests.test_run239_reader_experience_module -v
           python -m unittest tests.test_run239_reader_experience_integration -v
+          python -m unittest tests.test_run240_editorial_naturalness_module -v
+          python -m unittest tests.test_run240_editorial_naturalness_integration -v
           python -m unittest tests.test_multilingual_title_normalization -v
       - name: Run Cross DB contract falsification
         run: |
@@ -201,4 +206,5 @@ jobs:
             product_delivery_maintenance.py
             deep_dive_portfolio.py
             reader_experience_signals.py
+            editorial_naturalness.py
           retention-days: 1
