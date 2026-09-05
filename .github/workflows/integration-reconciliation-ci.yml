@@ -1,4 +1,5 @@
 name: Integration Reconciliation CI
+# Run234: the already-required zero-api-regression job also owns Cross DB PR contract coverage.
 
 on:
   pull_request:
@@ -11,6 +12,7 @@ on:
       - 'pipeline.py'
       - 'production_pipeline.py'
       - 'runtime_layers.py'
+      - 'legacy_eyecatch_renderer.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
       - 'note_draft_automation.py'
@@ -18,6 +20,16 @@ on:
       - 'run*.py'
       - 'reader_value_review_bridge.py'
       - 'repository_falsification_guard.py'
+      - 'cross_db_contract_guard.py'
+      - 'content_db_contract_guard.py'
+      - 'evidence_db_contract_guard.py'
+      - 'evidence_ledger.py'
+      - 'member_presentation_sync.py'
+      - 'member_presentation_identity.py'
+      - 'provision_member_presentation_db.py'
+      - 'notion_access_policy_guard.py'
+      - 'notion_audit_views.json'
+      - 'documentation_freshness_guard.py'
       - '.github/workflows/daily.yml'
       - '.github/workflows/daily-one-shot.yml'
       - '.github/workflows/regression-test.yml'
@@ -25,6 +37,8 @@ on:
       - '.github/workflows/note-create-draft.yml'
       - '.github/workflows/member-presentation-sync.yml'
       - '.github/workflows/subscriber-decision-brief.yml'
+      - '.github/workflows/cross-db-contract-guard.yml'
+      - '.github/workflows/run231-stage2-surgical-migration.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
@@ -45,6 +59,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install 'pytest>=8,<9'
       - name: Compile reconciled production modules
         run: |
           python -m compileall -q \
@@ -54,6 +69,7 @@ jobs:
             pipeline.py \
             production_pipeline.py \
             runtime_layers.py \
+            legacy_eyecatch_renderer.py \
             run231_performance_telemetry.py \
             publication_contract.py \
             note_ready_sync.py \
@@ -63,7 +79,15 @@ jobs:
             daily_portfolio_review.py \
             run175_semantic_fact_precision.py \
             run176_scope_fidelity.py \
-            repository_falsification_guard.py
+            repository_falsification_guard.py \
+            cross_db_contract_guard.py \
+            content_db_contract_guard.py \
+            evidence_db_contract_guard.py \
+            member_presentation_sync.py \
+            member_presentation_identity.py \
+            provision_member_presentation_db.py \
+            notion_access_policy_guard.py \
+            documentation_freshness_guard.py
       - name: Run repository-wide falsification guard
         run: python repository_falsification_guard.py
       - name: Validate manual production workflow safety surface
@@ -84,6 +108,19 @@ jobs:
           grep -F 'contents: read' .github/workflows/regression-test.yml
           grep -F 'run: python production_pipeline.py' .github/workflows/regression-test.yml
           ! grep -F 'run: python reader_value_review_bridge.py' .github/workflows/regression-test.yml
+      - name: Run Run231 modularization falsification
+        run: |
+          python -m unittest tests.test_run231_pipeline_slim -v
+          python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
+          python -m unittest tests.test_run231_stage2_repository_contract -v
+          python -m unittest tests.test_run233_ci_collection_integrity -v
+      - name: Run Cross DB contract falsification
+        run: |
+          python -m unittest tests/test_cross_db_contract_guard.py
+          python -m unittest tests/test_content_db_contract_guard.py
+          python -m unittest tests/test_evidence_db_contract_guard.py
+          python -m unittest tests/test_member_presentation_resolution_guard.py
+          python -m unittest tests/test_run232_notion_integration_reconciliation.py
       - name: Run article quality reconciliation tests
         run: |
           python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
@@ -111,10 +148,27 @@ jobs:
           python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
           python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
-      - name: Run full unittest regression
-        run: python -m unittest discover -s tests -v
+      - name: Run full pytest regression
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests > full-pytest.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo '--- full pytest failure tail ---'
+            tail -n 240 full-pytest.log
+            exit "$status"
+          fi
+          tail -n 30 full-pytest.log
       - name: Run synthetic smoke through current production stack
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
         run: python production_pipeline.py
+      - name: Export exact pipeline source for Stage2 surgical inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: run231-stage2-pipeline-source
+          path: pipeline.py
+          retention-days: 1

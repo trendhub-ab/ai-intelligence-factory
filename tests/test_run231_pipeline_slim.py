@@ -187,7 +187,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.code, 7)
 
-    def test_production_entrypoint_keeps_setup_before_observability(self):
+    def test_production_entrypoint_keeps_setup_before_observability_without_legacy_reimport(self):
         events = []
 
         fake_pipeline = types.ModuleType("pipeline")

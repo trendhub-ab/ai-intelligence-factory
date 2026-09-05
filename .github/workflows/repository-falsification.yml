@@ -28,7 +28,7 @@ jobs:
           python-version: '3.11'
 
       - name: Compile guard and production infrastructure contracts
-        run: python -m py_compile repository_falsification_guard.py publication_contract.py run203_runtime_state_channel.py gemini_transient_recovery.py pending_retry_validation.py run202_chatops_control.py production_pipeline.py runtime_layers.py run231_performance_telemetry.py
+        run: python -m py_compile repository_falsification_guard.py publication_contract.py run203_runtime_state_channel.py gemini_transient_recovery.py pending_retry_validation.py run202_chatops_control.py production_pipeline.py runtime_layers.py legacy_eyecatch_renderer.py run231_performance_telemetry.py
 
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
@@ -42,6 +42,8 @@ jobs:
           python -m unittest tests.test_run204_gemini_transient_recovery -v
           python -m unittest tests.test_run206_pending_retry_fast_lane -v
           python -m unittest tests.test_run231_pipeline_slim -v
+          python -m unittest tests.test_run231_stage2_repository_contract -v
+          python -m unittest tests.test_run233_ci_collection_integrity -v
 
       - name: Falsify Note Ready policy-change reconciliation contract
         run: |

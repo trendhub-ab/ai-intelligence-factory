@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-04  
+最終更新: 2026-09-05  
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
@@ -16,6 +16,7 @@ Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive 
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
+Pipeline Modularization Baseline: **Run231 — zero-quality-change runtime separation / performance telemetry / staged legacy renderer extraction**  
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -67,6 +68,8 @@ AI Intelligence Factoryの事業構造:
 ## 3. Core Intelligence Pipeline
 
 現行`pipeline.py` / `production_pipeline.py`の主要契約:
+
+Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
 
 - 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
 - Screening全体上限: 200候補

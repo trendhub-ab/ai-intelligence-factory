@@ -3,7 +3,7 @@
 Run231 keeps this file as a small orchestration contract. Historical production
 runtime layers live in ``runtime_layers.py`` in their exact validated order, while
 performance telemetry is observational and installed only after all quality,
-reliability, preflight, and font setup contracts are in place.
+reliability, preflight, font, and compatibility contracts are in place.
 
 Daily is currently PAUSED; this file remains the contract to use when Daily is
 explicitly resumed.
@@ -76,6 +76,10 @@ def main() -> None:
         enabled=not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)),
         logger=getattr(pipeline, "logger", None),
     )
+
+    # The direct-import compatibility bridge in pipeline.py owns the legacy/internal
+    # renderer installation. Do not import legacy_eyecatch_renderer again here: the live
+    # publication renderer remains usable when that obsolete module itself is absent.
 
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.

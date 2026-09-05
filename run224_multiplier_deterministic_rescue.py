@@ -46,7 +46,7 @@ def _is_performance_multiplier(sentence: str) -> bool:
 
 
 def _numeric_lexemes(text: str) -> list[str]:
-    """Return numeric lexemes everywhere, including beside Japanese text or inside identifiers.
+    r"""Return numeric lexemes everywhere, including beside Japanese text or inside identifiers.
 
     This intentionally avoids ``\w`` boundaries: in Python's Unicode regex semantics Japanese
     letters are word characters, so a value such as ``性能が1.9倍`` would otherwise be invisible
