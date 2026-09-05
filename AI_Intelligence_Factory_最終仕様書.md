@@ -17,7 +17,7 @@ Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human ed
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
 Pipeline Modularization Baseline: **Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior zero-quality-change strangler modularization**
-Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
+Repository Organization Baseline: **Run246 — falsified repository hygiene cleanup with active/runtime asset protection**
 Production Source of Truth: **`main`**
 
 ## 0. この仕様書の位置づけ

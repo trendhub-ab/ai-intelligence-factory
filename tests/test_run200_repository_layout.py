@@ -126,8 +126,8 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Current functional baseline:** Run209", readme)
         self.assertIn("Current documentation governance baseline:** Run210", readme)
-        self.assertIn("Current repository organization baseline:** Run201", readme)
-        self.assertIn("repository garbage cleanup without intended runtime behavior change", readme)
+        self.assertIn("Current repository organization baseline:** Run246", readme)
+        self.assertIn("falsified repository hygiene cleanup with active/runtime asset protection", readme)
         self.assertIn("Daily:** PAUSED", readme)
         self.assertTrue(
             "Historical `RUN*.md`" in readme
