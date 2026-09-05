@@ -168,7 +168,7 @@ class Run236EvidenceContextModuleTests(unittest.TestCase):
         _assert_return_call(
             self,
             defs["_truncate_verification_context"],
-            "_truncate_text_context",
+            "_verification_excerpt",
             ["text", "VERIFICATION_CONTEXT_MAX_CHARS"],
         )
         _assert_return_call(
