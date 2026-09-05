@@ -1,0 +1,45 @@
+name: Run240 Bootstrap
+
+on:
+  push:
+    branches:
+      - run240-editorial-naturalness-modularization
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run240-editorial-naturalness-modularization
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply fail-closed Run240 migration
+        run: python run240_editorial_naturalness_migration.py --write
+      - name: Compile migrated ownership surface
+        run: python -m compileall -q pipeline.py editorial_naturalness.py run240_editorial_naturalness_migration.py
+      - name: Run Run240 ownership and live parity tests
+        run: |
+          python -m unittest tests.test_run240_editorial_naturalness_module -v
+          python -m unittest tests.test_run240_editorial_naturalness_integration -v
+      - name: Whitespace check
+        run: git diff --check
+      - name: Commit migrated pipeline when changed
+        run: |
+          if git diff --quiet -- pipeline.py; then
+            echo 'Run240 pipeline already migrated.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pipeline.py
+          git commit -m 'Run240: extract editorial naturalness diagnostics from pipeline'
+          git push origin HEAD:run240-editorial-naturalness-modularization
