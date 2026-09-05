@@ -1,16 +1,23 @@
-name: Run231 Stage2B Compatibility Repair
+name: Run231 Stage2B Compatibility Guard
 
 on:
   pull_request:
     branches: [main]
     paths:
+      - 'pipeline.py'
+      - 'legacy_eyecatch_renderer.py'
+      - 'docs/reference/RUN231_PIPELINE_MODULARIZATION.md'
+      - 'tests/test_run105_eyecatch_vertical_centering.py'
+      - 'tests/test_run150_dual_eyecatch.py'
+      - 'tests/test_run160_public_eyecatch_unification.py'
+      - 'tests/test_run231_stage2_*.py'
       - '.github/workflows/run231-stage2-surgical-migration.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  restore-direct-pipeline-compatibility:
+  verify-direct-pipeline-compatibility:
     if: github.head_ref == 'run231-stage2-pipeline-modularization'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -30,7 +37,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Reconcile extracted renderer with historical source contracts
+      - name: Verify extracted renderer source contracts without mutation
         shell: bash
         run: |
           python - <<'PY'
@@ -39,160 +46,18 @@ jobs:
           import ast
           import pathlib
           import py_compile
-          import re
 
           pipeline_path = pathlib.Path('pipeline.py')
           legacy_path = pathlib.Path('legacy_eyecatch_renderer.py')
-          reference_path = pathlib.Path('docs/reference/RUN231_PIPELINE_MODULARIZATION.md')
-
-          pipeline_source = pipeline_path.read_text(encoding='utf-8')
-          legacy_source = legacy_path.read_text(encoding='utf-8')
-
-          # Preserve historical inspect.getsource() markers while keeping implementation single-source.
-          make_marker = 'def _make_generate(pipeline_module):\n'
-          draw_alias_line = '    _draw_eyecatch_text_stack_centered = draw_text_stack_centered\n'
-          if draw_alias_line not in legacy_source:
-              if legacy_source.count(make_marker) != 1:
-                  raise SystemExit('Run231 fail-closed: _make_generate anchor missing/duplicated')
-              legacy_source = legacy_source.replace(make_marker, make_marker + draw_alias_line, 1)
-
-          pair_alias_line = '    _eyecatch_centered_pair_boxes = centered_pair_boxes\n'
-          if pair_alias_line not in legacy_source:
-              if legacy_source.count(draw_alias_line) != 1:
-                  raise SystemExit('Run231 fail-closed: draw alias anchor missing/duplicated')
-              legacy_source = legacy_source.replace(draw_alias_line, draw_alias_line + pair_alias_line, 1)
-
-          old_draw_call = '\n        draw_text_stack_centered(\n'
-          if old_draw_call in legacy_source:
-              if legacy_source.count(old_draw_call) != 2:
-                  raise SystemExit(
-                      'Run231 fail-closed: unexpected legacy metric-stack call count='
-                      f'{legacy_source.count(old_draw_call)}'
-                  )
-              legacy_source = legacy_source.replace(
-                  old_draw_call,
-                  '\n        _draw_eyecatch_text_stack_centered(\n',
-              )
-
-          old_pair_call = '        left_box, right_box = centered_pair_boxes(\n'
-          if old_pair_call in legacy_source:
-              if legacy_source.count(old_pair_call) != 1:
-                  raise SystemExit(
-                      'Run231 fail-closed: unexpected legacy pair-box call count='
-                      f'{legacy_source.count(old_pair_call)}'
-                  )
-              legacy_source = legacy_source.replace(
-                  old_pair_call,
-                  '        left_box, right_box = _eyecatch_centered_pair_boxes(\n',
-                  1,
-              )
-
-          # Some historical safety tests execute pipeline.py via spec.loader.exec_module() without
-          # registering the temporary module name in sys.modules. Bind through a live globals proxy
-          # so the canonical renderer still observes monkey-patched pipeline globals in those tests.
-          if 'def install_globals(namespace):\n' not in legacy_source:
-              install_marker = '\n\ndef install(pipeline_module):\n'
-              if legacy_source.count(install_marker) != 1:
-                  raise SystemExit('Run231 fail-closed: install anchor missing/duplicated')
-              proxy_lines = [
-                  '',
-                  '',
-                  'class _GlobalsProxy:',
-                  '    def __init__(self, namespace):',
-                  '        object.__setattr__(self, "_namespace", namespace)',
-                  '',
-                  '    def __getattr__(self, name):',
-                  '        namespace = object.__getattribute__(self, "_namespace")',
-                  '        try:',
-                  '            return namespace[name]',
-                  '        except KeyError as exc:',
-                  '            raise AttributeError(name) from exc',
-                  '',
-                  '    def __setattr__(self, name, value):',
-                  '        namespace = object.__getattribute__(self, "_namespace")',
-                  '        namespace[name] = value',
-                  '',
-                  '',
-                  'def install_globals(namespace):',
-                  '    """Install into a live module globals mapping without requiring sys.modules registration."""',
-                  '    return install(_GlobalsProxy(namespace))',
-                  '',
-                  '',
-                  'def install(pipeline_module):',
-              ]
-              legacy_source = legacy_source.replace(
-                  install_marker,
-                  '\n'.join(proxy_lines) + '\n',
-                  1,
-              )
-
-          legacy_path.write_text(legacy_source, encoding='utf-8')
-
-          marker = '# Run231 Stage2B direct-import compatibility bridge'
-          main_anchor = '\n\nif __name__ == "__main__":\n    main()'
-          if pipeline_source.count(marker) != 1:
-              raise SystemExit(
-                  'Run231 fail-closed: compatibility marker count='
-                  f'{pipeline_source.count(marker)}'
-              )
-          if pipeline_source.count(main_anchor) != 1:
-              raise SystemExit(
-                  'Run231 fail-closed: main guard anchor count='
-                  f'{pipeline_source.count(main_anchor)}'
-              )
-
-          bridge_start = pipeline_source.index(marker)
-          main_start = pipeline_source.index(main_anchor, bridge_start)
-          bridge_lines = [
-              '# Run231 Stage2B direct-import compatibility bridge',
-              '# Keep the renderer implementation out of pipeline.py while preserving historical source/API',
-              '# compatibility required by Run99/Run105/Run150/Run160 and direct ``import pipeline`` callers.',
-              'from functools import wraps as _run231_wraps',
-              'from legacy_eyecatch_renderer import (',
-              '    _MIGRATION_MARKER as _run231_legacy_marker,',
-              '    install_globals as _install_legacy_eyecatch_renderer_globals,',
-              ')',
-              '_install_legacy_eyecatch_renderer_globals(globals())',
-              '_run231_legacy_generate_eyecatch_image = generate_eyecatch_image',
-              '',
-              '# Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.',
-              '# The publication path must use ``generate_note_editorial_eyecatch`` and never this wrapper.',
-              '@_run231_wraps(_run231_legacy_generate_eyecatch_image)',
-              'def generate_eyecatch_image(',
-              '    title_text: str,',
-              '    output_path: str = "eyecatch.png",',
-              '    source: str = "GitHub",',
-              '    decision_score: int | None = None,',
-              '    technical_impact: int | None = None,',
-              '    urgency: int | None = None,',
-              '    article_ready: bool = True,',
-              ') -> str | None:',
-              '    return _run231_legacy_generate_eyecatch_image(',
-              '        title_text,',
-              '        output_path,',
-              '        source,',
-              '        decision_score=decision_score,',
-              '        technical_impact=technical_impact,',
-              '        urgency=urgency,',
-              '        article_ready=article_ready,',
-              '    )',
-              '',
-              'setattr(generate_eyecatch_image, _run231_legacy_marker, True)',
-              'del _install_legacy_eyecatch_renderer_globals, _run231_legacy_marker, _run231_wraps',
-              '',
-          ]
-          bridge = '\n'.join(bridge_lines)
-          pipeline_source = pipeline_source[:bridge_start] + bridge + pipeline_source[main_start:]
-          pipeline_path.write_text(pipeline_source, encoding='utf-8')
 
           py_compile.compile(str(legacy_path), doraise=True)
           py_compile.compile(str(pipeline_path), doraise=True)
 
-          repaired = pipeline_path.read_text(encoding='utf-8')
-          repaired_tree = ast.parse(repaired)
+          pipeline_source = pipeline_path.read_text(encoding='utf-8')
+          tree = ast.parse(pipeline_source)
           top_defs = [
               node.name
-              for node in repaired_tree.body
+              for node in tree.body
               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
           ]
           if top_defs.count('generate_eyecatch_image') != 1:
@@ -213,16 +78,22 @@ jobs:
                   f'{leaked}'
               )
 
+          marker = '# Run231 Stage2B direct-import compatibility bridge'
+          if pipeline_source.count(marker) != 1:
+              raise SystemExit('Run231 fail-closed: compatibility marker missing/duplicated')
+          bridge_start = pipeline_source.index(marker)
           for required in (
               'legacy/internal 1280x670 Decision Score card',
               'publication path must use ``generate_note_editorial_eyecatch``',
           ):
-              if required not in repaired:
+              if required not in pipeline_source[bridge_start:]:
                   raise SystemExit(f'Run231 fail-closed: required source contract missing: {required}')
-          if 'sys.modules[__name__]' in repaired[bridge_start:]:
+          if 'sys.modules[__name__]' in pipeline_source[bridge_start:]:
               raise SystemExit('Run231 fail-closed: compatibility bridge requires sys.modules registration')
 
-          publication = repaired.split('# Run160: public note delivery', 1)[1].split(
+          if '# Run160: public note delivery' not in pipeline_source:
+              raise SystemExit('Run231 fail-closed: public note delivery anchor missing')
+          publication = pipeline_source.split('# Run160: public note delivery', 1)[1].split(
               '        analyzed_at = _analyzed_at_now_iso()', 1
           )[0]
           if 'generate_eyecatch_image(' in publication:
@@ -233,58 +104,14 @@ jobs:
               '_draw_eyecatch_text_stack_centered(',
               '_eyecatch_centered_pair_boxes(',
               'content_shift_y',
+              'def install_globals(namespace):',
           ):
               if source_marker not in canonical:
                   raise SystemExit(
-                      f'Run231 fail-closed: historical eyecatch source contract missing: {source_marker}'
+                      f'Run231 fail-closed: canonical legacy contract missing: {source_marker}'
                   )
-          if 'def install_globals(namespace):' not in canonical:
-              raise SystemExit('Run231 fail-closed: loader-safe globals binding missing')
 
-          reference = reference_path.read_text(encoding='utf-8')
-          old_bullet = (
-              '- Removed only seven legacy/internal renderer definitions and their immediately adjacent blank lines.\n'
-          )
-          new_bullets = (
-              '- The heavy renderer implementation and six geometry/background helper definitions remain physically removed from `pipeline.py`.\n'
-              '- Post-deletion reconciliation restores only a thin `generate_eyecatch_image` compatibility def because Run99/Run105/Run150/Run160 intentionally inspect the `pipeline.py`/callable source. The wrapper delegates to the single canonical implementation in `legacy_eyecatch_renderer.py`; renderer logic is not duplicated.\n'
-          )
-          old_new_bullets = (
-              '- The heavy renderer implementation and six geometry/background helper definitions remain physically removed from `pipeline.py`.\n'
-              '- Post-deletion reconciliation restores only a thin `generate_eyecatch_image` compatibility def because Run105/Run150/Run160 intentionally inspect the `pipeline.py` source. The wrapper delegates to the single canonical implementation in `legacy_eyecatch_renderer.py`; renderer logic is not duplicated.\n'
-          )
-          if old_bullet in reference:
-              reference = reference.replace(old_bullet, new_bullets, 1)
-          elif old_new_bullets in reference:
-              reference = reference.replace(old_new_bullets, new_bullets, 1)
-          elif new_bullets not in reference:
-              raise SystemExit('Run231 fail-closed: Stage2B reference bullet drifted unexpectedly')
-
-          loader_bullet = (
-              '- The compatibility binding is loader-safe: normal imports and historical '
-              '`spec.loader.exec_module()` tests that omit `sys.modules` registration both bind to '
-              'the same canonical renderer through a live globals proxy.\n'
-          )
-          if loader_bullet not in reference:
-              anchor = new_bullets.splitlines()[-1] + '\n'
-              if reference.count(anchor) != 1:
-                  raise SystemExit('Run231 fail-closed: compatibility reference anchor drifted')
-              reference = reference.replace(anchor, anchor + loader_bullet, 1)
-
-          line_count = len(repaired.splitlines())
-          reduction = 13649 - line_count
-          reference = re.sub(
-              r'- `pipeline\.py` changed from \*\*13,649 lines to [0-9,]+ lines\*\*, a net reduction of \*\*[0-9,]+ lines\*\* for this surface while retaining the thin source-compatibility shim\.',
-              f'- `pipeline.py` changed from **13,649 lines to {line_count:,} lines**, a net reduction of **{reduction:,} lines** for this surface while retaining the thin source-compatibility shim.',
-              reference,
-              count=1,
-          )
-          reference_path.write_text(reference, encoding='utf-8')
-
-          print(
-              'Run231 Stage2B source contracts reconciled: '
-              f'pipeline.py={line_count} lines, heavy legacy implementation remains extracted'
-          )
+          print('Run231 Stage2B compatibility source contracts verified read-only.')
           PY
 
       - name: Run focused historical eyecatch contracts
@@ -301,26 +128,5 @@ jobs:
           python -m unittest tests.test_pipeline_safety -v
           python -m unittest tests.test_subscription_attribution -v
 
-      - name: Verify surgical diff
-        shell: bash
-        run: |
-          git diff --check -- pipeline.py legacy_eyecatch_renderer.py docs/reference/RUN231_PIPELINE_MODULARIZATION.md
-          unexpected="$(git -c core.quotePath=false diff --name-only | grep -Ev '^(pipeline.py|legacy_eyecatch_renderer.py|docs/reference/RUN231_PIPELINE_MODULARIZATION.md)$' || true)"
-          if [ -n "$unexpected" ]; then
-            echo "Unexpected compatibility-repair diff:" >&2
-            printf '%s\n' "$unexpected" >&2
-            exit 1
-          fi
-
-      - name: Commit compatibility repair to PR head
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'Compatibility source contract already reconciled.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add pipeline.py legacy_eyecatch_renderer.py docs/reference/RUN231_PIPELINE_MODULARIZATION.md
-          git commit -m 'Run231 Stage2B: make legacy eyecatch bridge loader-safe'
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Prove validation did not modify the checkout
+        run: git diff --exit-code
