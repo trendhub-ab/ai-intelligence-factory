@@ -35,6 +35,7 @@ RUNTIME_LAYER_ORDER = (
     "run208_reader_value_repair.install",
     "run222_note_presentation_integrity.install_pipeline",
     "run248_first_real_publish_quality_calibration.install",
+    "run249_final_publication_surface_gate.install",
     "run194_publication_contract.install",
 )
 
@@ -65,6 +66,7 @@ def install_runtime_layers(pipeline_module):
     import run208_reader_value_repair
     import run222_note_presentation_integrity
     import run248_first_real_publish_quality_calibration
+    import run249_final_publication_surface_gate
     import run194_publication_contract
 
     runtime_state_channel.install(pipeline_module)
@@ -111,8 +113,10 @@ def install_runtime_layers(pipeline_module):
     run222_note_presentation_integrity.install_pipeline(pipeline_module)
 
     # First-real-publish calibration is zero-provider-call and deliberately sits after all
-    # article/eyecatch/presentation layers.  It tightens only the final public surface and
-    # keeps the content-addressed Publication Contract as the last installed layer.
+    # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
+    # projection so late title/summary assembly cannot bypass Reader Value diagnostics.
+    # The content-addressed Publication Contract remains the last installed layer.
     run248_first_real_publish_quality_calibration.install(pipeline_module)
+    run249_final_publication_surface_gate.install(pipeline_module)
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
