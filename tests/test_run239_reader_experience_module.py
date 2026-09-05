@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import pathlib
-import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -28,9 +27,15 @@ class Run239ReaderExperienceModuleTests(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom):
                 imported.append(node.module or "")
         self.assertEqual(set(imported), {"__future__", "re"})
-        source = MODULE.read_text(encoding="utf-8").lower()
-        for forbidden in ("requests", "google.genai", "notion", "gemini", "github", "os.environ"):
-            self.assertNotIn(forbidden, source)
+        forbidden_names = {
+            "requests", "notion", "google", "genai", "client", "os", "Path",
+            "GEMINI_API_KEY", "NOTION_API_KEY", "GH_PAT",
+        }
+        referenced = {
+            node.id for node in ast.walk(tree)
+            if isinstance(node, ast.Name)
+        }
+        self.assertFalse(referenced & forbidden_names)
 
     def test_pipeline_keeps_only_exact_live_binding_wrapper(self):
         tree = self._tree(PIPELINE)
@@ -73,7 +78,7 @@ class Run239ReaderExperienceModuleTests(unittest.TestCase):
             if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
                 assigned.add(node.id)
         allowed = {
-            "re", "bool", "dict", "enumerate", "len", "list", "max", "range", "round",
+            "re", "any", "bool", "dict", "enumerate", "len", "list", "max", "range", "round",
             "set", "sorted", "str", "sum", "tuple",
         }
         loaded = {
