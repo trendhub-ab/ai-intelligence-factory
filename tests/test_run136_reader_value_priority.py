@@ -2,14 +2,20 @@ import inspect
 import unittest
 import pipeline
 import reader_experience_signals
+import content_generation_protocol
 
 
 class Run136ReaderValuePriorityTests(unittest.TestCase):
     def test_article_prompt_has_no_3200_soft_ceiling(self):
-        src = inspect.getsource(pipeline.build_decision_prompt)
+        # Run244 moved the canonical prompt body out of pipeline.py. Preserve the
+        # original Run136 semantic assertions against the canonical owner while
+        # keeping pipeline.build_decision_prompt as the live-binding wrapper.
+        src = inspect.getsource(content_generation_protocol.build_decision_prompt)
         self.assertNotIn("3,200字", src)
         self.assertNotIn("2,200〜3,000字", src)
         self.assertIn("文字数を品質目標にしない", src)
+        wrapper = inspect.getsource(pipeline.build_decision_prompt)
+        self.assertIn("_build_decision_prompt_impl", wrapper)
 
     def test_information_budget_is_not_character_count_gate(self):
         # Run239 moved the canonical implementation out of pipeline.py; preserve the
