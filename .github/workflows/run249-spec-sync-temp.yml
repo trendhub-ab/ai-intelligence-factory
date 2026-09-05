@@ -1,0 +1,85 @@
+name: Run249 Canonical Spec Sync TEMP
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  sync-spec:
+    if: >-
+      github.event.pull_request.number == 122 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'run249-final-publication-surface-gate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run249-final-publication-surface-gate
+          fetch-depth: 1
+
+      - name: Patch canonical specification fail-closed
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('AI_Intelligence_Factory_最終仕様書.md')
+          text = path.read_text(encoding='utf-8')
+          marker = '`run249_final_publication_surface_gate.py`'
+          if marker in text:
+              raise SystemExit(0)
+
+          baseline_anchor = 'First Real Publish Quality Baseline: **Run248 — real-note quality calibration / eyecatch fallback parity / publication-value fail-closed**\n'
+          baseline_insert = baseline_anchor + 'Final Publication Surface Baseline: **Run249 — post-assembly public-surface revalidation / malformed title-summary fail-closed**\n'
+          if baseline_anchor not in text:
+              raise SystemExit('Run249 spec sync failed closed: baseline anchor missing')
+          text = text.replace(baseline_anchor, baseline_insert, 1)
+
+          runtime_anchor = '- `run248_first_real_publish_quality_calibration.py`\n- `run194_publication_contract.py`'
+          runtime_insert = '- `run248_first_real_publish_quality_calibration.py`\n- `run249_final_publication_surface_gate.py`\n- `run194_publication_contract.py`'
+          if runtime_anchor not in text:
+              raise SystemExit('Run249 spec sync failed closed: runtime anchor missing')
+          text = text.replace(runtime_anchor, runtime_insert, 1)
+
+          section_anchor = '- Run248はPublication Contract fingerprint対象。policy変更前のReady原稿は現行Run248 policyで再構築・再検証・再stampされるまでnote投稿対象にしない。\n\n## 5. Production runtime layer'
+          section = '''- Run248はPublication Contract fingerprint対象。policy変更前のReady原稿は現行Run248 policyで再構築・再検証・再stampされるまでnote投稿対象にしない。
+
+### 4.7 Final Publication Surface Gate — Run249
+
+Run248後の実`article_validation`で、通常Gate通過後に組み立てる公開タイトルと「30秒でわかるこの記事」に括弧不整合・文途中の要約が残り、Reader Experienceの弱点が最終公開面で再発してもReadyへ到達できる境界を確認した。`run249_final_publication_surface_gate.py`はこの後段だけをzero-provider-callで再検査する。
+
+- Human Appeal評価時に、公開タイトル・30秒要約・本文から最終note公開面の決定論projectionを作り、既存Reader Experience診断を再利用する。
+- Final projectionでRun248のmulti-axis reader weakness / non-engineer access failureが成立する場合、`reader_value_review:`としてNeeds Editorial ReviewへFail-Closedする。Reader-only不良を直すための追加Gemini retryは増やさない。
+- 公開タイトルの`「」` / `『』`の孤立・不整合をhigh-confidence defectとして止める。
+- `何が出た？` / `なぜ重要？` / `結論は？`の単独回答が`、` / `，` / `,`で終わる明確な文途中fragmentを止める。広い日本語文法推測は行わない。
+- Run248のhigh-confidence Japanese surface failureもfinal projectionで再確認する。
+- 補助Evidence link直後に標準免責文が連結した場合は空行だけをdeterministicに補う。URL・Evidence・Decision・免責文本文は変更しない。
+- Gemini/provider追加callは0。Fact / Evidence / Decision / score / quota / eyecatch背景・右側イラスト / Public release human-onlyを変更しない。
+- Run249はPublication Contract fingerprint対象であり、旧policy Ready稿は現行policyで再生成・再検証・再stampされるまでnote投稿対象にしない。
+
+詳細: `docs/reference/RUN249_FINAL_PUBLICATION_SURFACE_GATE.md`
+
+## 5. Production runtime layer'''
+          if section_anchor not in text:
+              raise SystemExit('Run249 spec sync failed closed: Run248 section anchor missing')
+          text = text.replace(section_anchor, section, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit canonical specification only
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- AI_Intelligence_Factory_最終仕様書.md; then
+            echo 'Canonical spec already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AI_Intelligence_Factory_最終仕様書.md
+          git commit -m 'Run249: update canonical Production specification'
+          git push origin HEAD:run249-final-publication-surface-gate
