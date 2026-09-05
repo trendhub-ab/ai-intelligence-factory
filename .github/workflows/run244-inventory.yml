@@ -5,6 +5,7 @@ on:
       - run244-pipeline-modularization-next
     paths:
       - run244_decision_product_protocol_migration.py
+      - tests/test_run243_content_generation_protocol_module.py
       - tests/test_run244_decision_product_protocol_module.py
       - tests/test_run244_decision_product_protocol_integration.py
       - .github/workflows/run244-inventory.yml
