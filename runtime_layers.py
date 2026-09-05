@@ -34,6 +34,7 @@ RUNTIME_LAYER_ORDER = (
     "reader_value_review_bridge.install",
     "run208_reader_value_repair.install",
     "run222_note_presentation_integrity.install_pipeline",
+    "run248_first_real_publish_quality_calibration.install",
     "run194_publication_contract.install",
 )
 
@@ -63,6 +64,7 @@ def install_runtime_layers(pipeline_module):
     import reader_value_review_bridge
     import run208_reader_value_repair
     import run222_note_presentation_integrity
+    import run248_first_real_publish_quality_calibration
     import run194_publication_contract
 
     runtime_state_channel.install(pipeline_module)
@@ -107,5 +109,10 @@ def install_runtime_layers(pipeline_module):
     # Presentation-only but publication-material: keep CTA ordering after evidence and
     # disclaimer without changing Evidence/Decision semantics.
     run222_note_presentation_integrity.install_pipeline(pipeline_module)
+
+    # First-real-publish calibration is zero-provider-call and deliberately sits after all
+    # article/eyecatch/presentation layers.  It tightens only the final public surface and
+    # keeps the content-addressed Publication Contract as the last installed layer.
+    run248_first_real_publish_quality_calibration.install(pipeline_module)
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
