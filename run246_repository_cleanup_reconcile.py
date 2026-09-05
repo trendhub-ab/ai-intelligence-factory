@@ -6,7 +6,7 @@ REPLACEMENTS = {
         "- **Current repository organization baseline:** Run246 — falsified repository hygiene cleanup with active/runtime asset protection",
     ),
     Path("AI_Intelligence_Factory_最終仕様書.md"): (
-        "Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**",
+        "Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  ",
         "Repository Organization Baseline: **Run246 — falsified repository hygiene cleanup with active/runtime asset protection**",
     ),
     Path("tests/test_run200_repository_layout.py"): (
