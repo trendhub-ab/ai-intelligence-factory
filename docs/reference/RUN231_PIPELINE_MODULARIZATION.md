@@ -109,19 +109,22 @@ Run235 Stage3A merged to `main` at `c955e217959153843ab2b064a1207b33d2468d9b` af
 
 ## Stage 3B / Run235 — deterministic duplicate-body deletion gate
 
-Stage3B prepares physical removal of the six Stage3A duplicate definitions from `pipeline.py` without reintroducing self-mutating CI.
+Stage3B physically removes the six Stage3A duplicate definitions from `pipeline.py` while keeping the canonical migration and patch as an auditable proof/rollback surface.
 
 - Canonical migration: `run235_stage3b_source_normalization_migration.py`
 - Canonical patch: `patches/run235-stage3b-source-normalization.patch`
-- Expected source transform: **13,423 → 13,335 lines (`-88`)**
-- Expected transformed `pipeline.py` SHA-256: `16f28de8b79b7e8e8225004dbbefc790d4f1d56229891bcc37f5c8eb152cdad1`
+- Physical source transform: **13,423 → 13,335 lines (`-88`)**
+- Transformed `pipeline.py` SHA-256: `16f28de8b79b7e8e8225004dbbefc790d4f1d56229891bcc37f5c8eb152cdad1`
+- Physical deletion commit on PR #108: `335870b709a08ba888e902b88b50560f60a41a65`
+- The six historical top-level definitions are absent from `pipeline.py`; their canonical imports come from `source_normalization.py`.
 - The migration is AST-validated, idempotent, fails closed on partial/unexpected surfaces, compiles its output, and preserves adjacent `_truncate_text_context`.
-- The committed patch is tested by applying it with Git and requiring byte-for-byte equality with the migration output.
+- The committed patch is reversible against the canonical postimage; tests reconstruct the exact Stage3A preimage with reverse-apply, require `migration(preimage) == current postimage`, then forward-apply the patch and require byte-for-byte restoration of the postimage.
 - The migration never writes unless `--write` is explicitly supplied.
-- Repository/Integration CI remain read-only (`contents: read`); Stage3B does **not** restore a bot commit/push or repair-CI architecture.
-- Latest pre-physical-delete gate at PR #108 HEAD `12d423c0111278baaea69ad5d5ae8e950574c05b`: Stage3B **6/6**, full pytest **1465/1465**, Synthetic Production **30/30**, `critical_failures=0`, `production_write_isolation=true`, Repository-wide Falsification GREEN, Notion Access Policy GREEN, and `zero-api-regression` GREEN.
+- Because the connected GitHub contents/blob write surface had no partial-patch primitive for the ~744 KiB file, the physical transform was applied by a one-shot branch-scoped workflow with exact preimage SHA/line-count and postimage SHA/line-count guards. That workflow completed successfully, committed only `pipeline.py`, and was immediately removed at commit `d4a64e8cd2e90ab10c8c5b74839b9e7dbe0ff7e4`.
+- No write-enabled migration workflow remains in the branch. Permanent Repository/Integration CI remains read-only (`contents: read`); self-mutating repair CI is not part of the steady-state architecture.
+- Postimage regression contracts treat the current canonical source as idempotent while retaining proof of the preimage→postimage transform through reverse/forward patch round-trip testing.
 
-The only unresolved Stage3B item is committing the physically transformed ~744 KiB `pipeline.py` itself. The current connected GitHub write surface does not provide a partial-patch write primitive; blob/contents writes require resending the whole file. This limitation must not be bypassed by restoring self-mutating CI merely to remove 88 lines. PR #108 therefore remains Draft and non-merge-eligible until the exact transformed source is committed and the protected CI stack is rerun on that exact HEAD.
+Stage3B is not merge-eligible until the clean PR head containing the physical deletion, the retired one-shot workflow, and the postimage-aware tests passes the full protected CI stack and Synthetic Production regression. PR #108 remains Draft until that exact condition is met.
 
 ## Performance policy
 
@@ -133,4 +136,4 @@ Stage3 is a structural extraction. It does **not** claim a Production runtime im
 
 ## Merge gate
 
-No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof; Stage3B is not complete until the transformed `pipeline.py` itself is on the PR head and passes the same protected gates.
+No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof. Stage3B is complete only when the transformed `pipeline.py` itself is on the PR head, the one-shot migration capability has been retired, and the clean postimage head passes the same protected gates.
