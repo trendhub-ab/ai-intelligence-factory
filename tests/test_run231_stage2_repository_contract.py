@@ -29,15 +29,29 @@ class Run231Stage2RepositoryContractTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, source)
 
-    def test_production_installs_legacy_renderer_after_font_before_telemetry_and_main(self):
+    def test_production_does_not_reintroduce_legacy_renderer_hard_import(self):
         source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        self.assertNotIn("from legacy_eyecatch_renderer import", source)
+        self.assertNotIn("install_legacy_eyecatch_renderer(pipeline)", source)
+
         font = source.index("run179_eyecatch_font_refinement.ensure_google_font_assets(")
-        legacy = source.index("install_legacy_eyecatch_renderer(pipeline)")
+        marker = source.index("__run231_stage2_legacy_eyecatch__")
         telemetry = source.index("install_performance_telemetry(pipeline)")
         main = source.index("pipeline.main()")
-        self.assertLess(font, legacy)
-        self.assertLess(legacy, telemetry)
+        self.assertLess(font, marker)
+        self.assertLess(marker, telemetry)
         self.assertLess(telemetry, main)
+
+    def test_pipeline_bridge_tolerates_only_exact_missing_legacy_module(self):
+        source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
+        self.assertIn("except ModuleNotFoundError as _run231_legacy_import_error:", source)
+        self.assertIn(
+            'if _run231_legacy_import_error.name != "legacy_eyecatch_renderer":',
+            source,
+        )
+        self.assertIn("raise RuntimeError(", source)
+        self.assertIn("legacy eyecatch renderer is unavailable", source)
+        self.assertIn("the publication path must use generate_note_editorial_eyecatch", source)
 
     def test_run231_reference_declares_strangler_and_quality_invariants(self):
         reference = (ROOT / "docs/reference/RUN231_PIPELINE_MODULARIZATION.md").read_text(
