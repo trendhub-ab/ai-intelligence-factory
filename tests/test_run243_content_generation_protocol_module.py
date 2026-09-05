@@ -21,7 +21,8 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
                 imports.extend(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
                 imports.append(node.module or "")
-        self.assertEqual(set(imports), {"__future__", "re"})
+        # Run244 adds canonical build_decision_prompt ownership, which uses stdlib json only.
+        self.assertEqual(set(imports), {"__future__", "json", "re"})
         forbidden_calls = {"open", "urlopen", "get", "post", "put", "patch", "delete", "request"}
         calls = {
             node.func.id

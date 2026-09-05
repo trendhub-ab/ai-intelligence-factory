@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 # Run243: canonical deterministic article-generation / presentation protocol.
@@ -375,3 +376,39 @@ def _promote_plaintext_section_titles(article: str) -> tuple[str, list[str]]:
         lines[i] = f"### {label}"
         changed.append(label)
     return "\n".join(lines), changed
+
+
+def build_decision_prompt(name, url, stars, desc, quality_feedback: str='', source: str='GitHub', source_context: str='', grounding_status_hint: str=None, evidence_metadata: dict | None=None, freshness: dict | None=None, previous_article: str='', evidence_result: dict | None=None, *, engagement_labels, max_evidence_total_chars, truncate_source_context, source_fact_discipline, human_editorial_style_rules, article_display_variant, section_split_token, datetime_cls, jst):
+    """無料ARTICLEと記事公開に必要な最小MANAGEMENT DATAだけを生成する。
+
+    Adoption/Production Readiness等の会員向け評価はProduct Review経路へ完全分離し、
+    無料記事の生成負荷・Hallucination面積を増やさない。parserは旧出力互換を維持する。
+    """
+    metric_label = engagement_labels.get(source, 'Engagement')
+    metric_note = ''
+    if source == 'ArXiv':
+        metric_note = '※arXivにはStars/Votes相当の人気指標がないため、人気度を0とみなして価値判断しないこと。\n'
+    feedback = f'\n【前回出力への編集フィードバック】\n{quality_feedback}\n事実違反は該当箇所だけを直す。全文を保守的に均さず、根拠付きの判断・具体的な行動・タイトルの引力は残す。具体的Actionを『注視する』だけに置き換えない。\n' if quality_feedback else ''
+    previous = ''
+    if previous_article:
+        previous = '\n【局所修正の対象となる前回ARTICLE】\n以下の前回稿を基準に、編集フィードバックで指定された箇所だけを修正して、同じ出力形式の完全稿を返すこと。指定外の根拠付き判断・見出し・構成を一般論へ置換しない。\n' + previous_article[:max_evidence_total_chars] + '\n'
+    context = truncate_source_context(source_context)
+    fact_rules = source_fact_discipline(source)
+    style_rules = human_editorial_style_rules()
+    display = article_display_variant(name)
+    evidence_json = json.dumps(evidence_metadata or {}, ensure_ascii=False, indent=2)
+    freshness_context = (freshness or {}).get('context', '')
+    evidence_result = evidence_result or {}
+    evidence_guardrails = []
+    if evidence_result.get('limitations_disclosed'):
+        evidence_guardrails.append('一次資料で実運用上の制約は確認できないことをWhy NOTまたはCaveatに明記し、本番導入を強く推奨しない。')
+    if evidence_result.get('freshness_scope_limited'):
+        evidence_guardrails.append('現在仕様とは断定せず、『原資料公開時点では』『この研究で確認された範囲では』と時点を限定する。')
+    if not evidence_result.get('numeric_claims_allowed', True):
+        evidence_guardrails.append('条件を確認できない数値・性能値はARTICLEで使わない。')
+    if not evidence_result.get('actor_attribution_allowed', True):
+        evidence_guardrails.append('主体の帰属を確認できない固有名詞の断定はしない。')
+    if evidence_result.get('action_risk_tier', 'LOW') == 'LOW' and evidence_result.get('evidence_gap_disclosed'):
+        evidence_guardrails.append('Actionは『注視』だけで終わらせず、限定PoC、評価項目への追加、ログ可視化、比較テスト、見送りのいずれかを具体的に提案する。全面導入・本番移行は提案しない。')
+    evidence_guardrail_text = '\n'.join(('・' + item for item in evidence_guardrails)) or '・取得済み一次情報の範囲を超える断定をしない。'
+    return f"""\nあなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。\n以下の一次情報から、無料公開のnote記事として読者の判断を助ける記事と、記事公開に必要な最小管理データを作成してください。\n会員向けTechnology評価（Adoption Score / Adoption Status / Evidence Confidence / Production Readiness / Main Risk / Best For / Avoid For）は別工程で作るため、ここでは絶対に生成しないでください。\n\n【読者】主対象はCTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。ただし専門知識を前提にせず、非エンジニアや一般読者でも入口から理解でき、専門家には判断材料が残る二層構造で書く。\n【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。\n【出力を途中で切らないための優先順位】\n1. SECTION_SPLIT_TOKEN、記事タイトル、記事本文の最後の「最終判断」までを最優先で完走する。\n2. MANAGEMENT DATAは下記の8項目だけを簡潔に出す。記事本文を削って管理項目を増やさない。\n3. 無根拠な背景説明・一般論・競合列挙を追加しない。\n4. 不確かな比較・将来予測・導入コストを埋めるために推測しない。途中で省略記号を使わない。\n【事実優先順位】Source Native Context > Primary URL取得内容 > Google Search Grounding（有効時） > モデル内部知識。\n\n【SOURCE BOUNDARY — 最重要】\n・ARTICLEで「事実」として断定してよい技術仕様・対応状況・価格・数値・競合情報・固有名詞は、原則としてSource Native ContextまたはGroundingで確認できる内容だけ。\n・モデル内部知識から背景説明を補う場合は、製品固有の事実として書かず、「一般論として」「ここからは私の推論だが」など、読者が推論だと分かる形にする。\n・Source Contextにない企業向け管理製品、競合機能、API仕様、OS/ブラウザ管理方式などを、もっともらしい補足として追加しない。\n・ニュース公開時点の仕様と現在のStable仕様は同一視しない。現在仕様をGroundingで確認できなければ「元記事公開時点では」と限定する。\n・不明点は補完せず「一次情報からは確認できない」と書く。\n・「確認できない」「記載がない」「未公開」「不明」等の不在Claimは、Evidence Coverageが SEARCHED_NOT_FOUND または NOT_DISCLOSED の項目だけに限る。NOT_SEARCHEDまたはSource Depth不足では不在を断定しない。\nモデル内部知識だけで現在仕様、競合比較、数値、価格、対応状況を断定しない。\n\n【Evidence-to-Decisionの安全制約】\n{evidence_guardrail_text}\n\n{fact_rules}\n{style_rules}\n\n【対象】\n・出所: {source}\n・名前: {name}\n・Primary URL: {url}\n・{metric_label}: {stars}\n{metric_note}・概要: {desc}\n・事前Grounding: {grounding_status_hint}\n・Article generation date: {datetime_cls.now(jst).date().isoformat()}\n\n【Source Native Context】\n{context or '（source-native本文不足。Primary URLで確認できた範囲以外を現在事実として補完しないこと。）'}\n\n【Structured Evidence / Required Qualifiers — 最優先】\n{evidence_json}\n・required_qualifiers は自然な日本語に言い換えてよいが、ARTICLEから絶対に削除しない。\n・TOY_EXAMPLE相当の証拠は「原著の単純な例では」「著者が示したサンプルでは」等、例の範囲を必ず明示する。\n・「保証」「完全」「必ず」「安全」等の強い表現は、Structured EvidenceまたはSource Contextが同等以上の保証を明示する場合だけ使用できる。\n・一次情報に限界・未解決課題・"promising"・条件付きの性能値がある場合、ARTICLEにも必ず残す。性能値はデータセット、解像度、反復回数、ハードウェア等の条件を削らない。\n・Hacker News等は発見経路である。実験値・仕様の根拠となったPrimary URL/PDFは「参考情報」に出るため、HNだけを根拠として数値を説明しない。フォローアップに言及する場合はEvidenceにあるURLだけを使う。\n\n【Freshness Resolution】\n{freshness_context or '公式フォローアップは未検出。元資料の将来表現を現在完了の事実に書き換えない。'}\n・Follow-up Sourceがある場合、それより古い「今後予定」「これから議論」等の状態をARTICLEに残さない。\n{feedback}\n{previous}\n\n最初に必ず次の見出しをそのまま出す。\n=== MANAGEMENT DATA ===\nその下に以下の8項目だけを順序通り、各行「・ラベル: 値」で簡潔に出す。\n・Source Summary: 一次情報で確認できる事実を1〜2文。\n・What: 何が起きたかを2文以内。\n・Why Important: 実務への意味。未検証効果は推論と明示。\n・Decision: NOW / TRY / WATCH / WAIT / AVOID の1つ。\n・Decision Reason: 最大3理由を簡潔に。\n・Decision Score: Business Impact X/25; Technical Impact X/25; Urgency X/20; Market Impact X/15; Reliability X/15; 合計 X/100\n・Action: 次に検証する具体的行動。根拠のない日数・金額を作らない。\n・Article Value: 0〜100\n\n会員向け評価、競合比較、移行コスト、将来シナリオ、Who Should Use等をMANAGEMENT DATAへ追加しない。必要な実務上の対象読者・制約はARTICLE本文へ自然に書く。\n\n次に必ず専用行を出す。\n{section_split_token}\n\nその次の1行を記事タイトルにする。#は付けない。プロのコピーライターとして、技術の要点と読者の関心を結び、短く惹きつけるタイトルにすること。必ず「。」「？」のいずれかで終える。\n\n【ARTICLE】\n記事はすべて無料公開する。有料エリア、有料マーカー、無料部分／有料部分という区分を一切出力しない。\n\n今回は内部の編集ブリーフとして「{display['style']}」の角度、導入のヒント「{display['opening']}」、温度感「{display['tone']}」を使う。\nこれらは読者に見せるラベルでも見出しでもない。既成の見出し文や段落テンプレートを再現せず、記事固有の内容に合わせて自由に構成する。\n\nタイトル直後は、読者が「何の話か」「なぜ自分に関係するか」をつかめる自然なリードから始める。\nRoadmapやprotocolの話でも、冒頭を「〜とは」「主な変更点は」「今回のロードマップでは」の説明開始に固定しない。まず読者が引っかかる変化・困りごと・意外性を1つ置き、専門用語は理解が必要になった時点で名前を付ける。\nリードの段落数は固定しない。1〜3段落程度を目安に、必要な情報だけを書く。\n発見経路や「一次情報に基づく」という説明を義務的な定型文として毎回入れない。出典は公開稿の「元情報」で別途提示されるため、本文では話を理解するのに必要な場合だけ自然に触れる。\n\n本文の見出しは2〜6個程度を目安に、記事固有の内容から自分で作る。本文セクションの見出しは必ずMarkdownの `##` または `###` を付け、見出し文だけを裸の1行として置かない。以下は内部の意味役割であり、見出し名や順番を固定しない。\n・何が起きた／何が変わったのか\n・なぜ読者の判断に関係するのか\n・仕組みや条件のうち、判断に必要な部分\n・面白さと同時に見ておくべき制約\n・筆者なら次に何をするか\n\nすべての役割を毎回独立セクションにしない。内容が自然につながるなら統合する。\n一方で、記事の終盤には「読者が結局どう動けばよいか」が分かる判断セクションを必ず1つ置く。見出しは記事内容に合わせて自然な日本語で作り、管理用Decisionコードは書かない。\n\n【構成上の禁止】\n・Why → What → Key → Decision のような内部構造を、そのまま同じ順番・同じ粒度の見出しへ露出しない。\n・旧テンプレートの「先に判断を書くと。」「なぜ、この問題が残り続けるのか。」「今回の仕組みを見てみる。」「導入前に押さえたいポイント。」等をセットで再利用しない。\n・各セクションを同じ文字量にそろえない。\n・全セクションを同じ「説明→注意→結論」で閉じない。\n\n【ARTICLEの追加ルール】\n・NOW / TRY / WATCH / WAIT / AVOID は内部管理コードであり、ARTICLEには絶対に表示しない。括弧書き、英字併記、見出し内も禁止。\n・「私ならこう考える」では、管理用Decisionを読者向けの自然な判断文に翻訳する。目安は次の通り。\n  NOW → 「今すぐ動く価値がある」「今から着手してよい」\n  TRY → 「まずは小さく試す価値がある」「限定した環境で試したい」\n  WATCH → 「今は動かず、今後の動きを注視したい」「導入を急ぐ段階ではない」\n  WAIT → 「現時点では導入を急がない」「条件が整うまで待つのがよい」\n  AVOID → 「今は見送るのが妥当」「現時点では採用しない方がよい」\n・上の日本語は定型句として毎回そのまま使わず、記事の文脈に合わせて自然に言い換える。Decision ScoreやBusiness Impact等の内部採点もARTICLEへ一切出さない。採点はMANAGEMENT DATAだけに置く。\n・Adoption Score / Adoption Status / Evidence Confidence / Production Readiness も商品DB管理値であり、ARTICLEへラベルや点数をそのまま表示しない。\n・競合名を出す場合、Source Native Contextにその競合の比較根拠が存在する時だけ。なければ製品名を列挙しない。\n・Preview/Beta/Stableは必ず分離する。\n・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。\n・根拠のない%・倍数・金額・期間・性能値を作らない。\n・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。\n・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。\n・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。\n・根拠に照らして限定検証、比較テスト、導入見送り、次版待ちなどの判断が妥当なら、理由と対象範囲を添えて明確に書く。安全性のためにすべてを「可能性がある」「注視したい」へ弱めない。\n・記事本文の文字数を品質目標にしない。同じ事実の言い換え反復、Decisionに不要な実装列挙、長いコード例、説明の二重化は削る。一方で、Evidence・数値条件・制約・比較・反証・Decisionを文字数のために削らない。長くても読者が迷わず読み進められる情報順序と温度変化を優先する。\n"""
