@@ -1,0 +1,46 @@
+name: Run237 Guarded Migration Bootstrap
+
+on:
+  push:
+    branches:
+      - run237-product-delivery-maintenance-modularization
+    paths:
+      - .github/workflows/run237-migration-bootstrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Run237 branch
+        uses: actions/checkout@v4
+        with:
+          ref: run237-product-delivery-maintenance-modularization
+          fetch-depth: 0
+
+      - name: Apply fail-closed Run237 migration
+        run: python run237_product_delivery_maintenance_migration.py
+
+      - name: Compile migrated ownership surface
+        run: python -m py_compile pipeline.py product_delivery_maintenance.py run237_product_delivery_maintenance_migration.py
+
+      - name: Falsify dependency-free Run237 contract
+        run: python -m unittest tests.test_run237_product_delivery_maintenance_module -v
+
+      - name: Reject whitespace damage
+        run: git diff --check
+
+      - name: Commit migrated pipeline only
+        shell: bash
+        run: |
+          if git diff --quiet -- pipeline.py; then
+            echo "Expected pipeline.py migration produced no diff" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pipeline.py
+          git commit -m "Run237: extract product delivery maintenance from pipeline"
+          git push origin HEAD:run237-product-delivery-maintenance-modularization
