@@ -70,7 +70,7 @@ def main() -> None:
         "Pipeline Modularization Baseline: **Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior zero-quality-change strangler modularization**",
     )
     run244 = "- Run244ではEvidence-to-Decision sufficiencyを`evidence_sufficiency.py`へ、`build_decision_prompt()`を`content_generation_protocol.py`へ、Product Reviewのprompt/schema/parser/Technology-state rehydrateを`product_review_protocol.py`へ抽出する。Gemini/model呼出、`_call_product_review_pool()`、Product Review候補query、`run_product_reviews()`、source network/SSRF、Notion永続化、全Hard Gate実行は`pipeline.py`側に残し、10,840行から10,434行へ406行削減する。live定数/callbackは薄いwrapperから注入する。\n"
-    run245 = "- Run245では数値Claim/条件照合、hype否定判定、false-negative/competitor、entity relation等の決定論Fact/Evidence検証を`fact_validation_signals.py`へ、Evidence alias展開とunsupported named-fact Source Boundary検証を`source_boundary_validation.py`へ機械的に抽出する。Gemini/model呼出、HTTP/network/SSRF取得、Product Review source reconciliation、Notion永続化、`validate_fact_gate()`を含むHard Gate実行本体は`pipeline.py`に残し、10,434行から9,978行へ456行削減する。既存regex・判定条件・fail-closed semanticsは変更せず、live定数/helperを薄いwrapperから再束縛する。\n"
+    run245 = "- Run245では数値Claim/条件照合、hype否定判定、false-negative/competitor、entity relation等の決定論Fact/Evidence検証を`fact_validation_signals.py`へ、Evidence alias展開とunsupported named-fact Source Boundary検証を`source_boundary_validation.py`へ機械的に抽出する。Gemini/model呼出、HTTP/network/SSRF取得、Product Review source reconciliation、Notion永続化、`validate_fact_gate()`を含むHard Gate実行本体は`pipeline.py`に残し、10,434行から9,972行へ462行削減する。既存regex・判定条件・fail-closed semanticsは変更せず、live定数/helperはcanonical関数を上書きしない形で薄いwrapperから再束縛する。\n"
     replace_once(spec, run244, run244 + run245)
     replace_once(
         spec,
