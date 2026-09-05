@@ -16,7 +16,7 @@ Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive 
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
-Pipeline Modularization Baseline: **Run244 — deterministic Evidence sufficiency + Decision prompt + Product Review protocol extraction layered on prior zero-quality-change strangler modularization**
+Pipeline Modularization Baseline: **Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -81,7 +81,8 @@ Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
 - Run242ではpureなNotion payload組立、source文書/URL/HTML解析、Deferred Deep Dive queue policyを`notion_payloads.py`、`source_document_parsing.py`、`deferred_queue_policy.py`へ抽出する。Notion API書込、network acquisition/SSRF境界、Pending Retry fail-safeは`pipeline.py`に残し、11,497行から11,172行へ325行削減する。
 - Run243ではSource別Fact Discipline、Human Editorial / Reader Experience規律、Gemini応答parser、保守的なplain-text見出し昇格、月次Digest Markdown整形を`content_generation_protocol.py`へ抽出する。`generate_intelligence_report()`、Gemini呼出、品質Gate実行、Notion永続化は`pipeline.py`側に残し、11,172行から10,840行へ332行削減する。parserとDigest builderはlive callback/定数をkeyword注入する薄いwrapperで既存runtime bindingを維持する。
 - Run244ではEvidence-to-Decision sufficiencyを`evidence_sufficiency.py`へ、`build_decision_prompt()`を`content_generation_protocol.py`へ、Product Reviewのprompt/schema/parser/Technology-state rehydrateを`product_review_protocol.py`へ抽出する。Gemini/model呼出、`_call_product_review_pool()`、Product Review候補query、`run_product_reviews()`、source network/SSRF、Notion永続化、全Hard Gate実行は`pipeline.py`側に残し、10,840行から10,434行へ406行削減する。live定数/callbackは薄いwrapperから注入する。
-- Run235/236/237/238/239/240/241/242/243/244はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
+- Run245では数値Claim/条件照合、hype否定判定、false-negative/competitor、entity relation等の決定論Fact/Evidence検証を`fact_validation_signals.py`へ、Evidence alias展開とunsupported named-fact Source Boundary検証を`source_boundary_validation.py`へ機械的に抽出する。Gemini/model呼出、HTTP/network/SSRF取得、Product Review source reconciliation、Notion永続化、`validate_fact_gate()`を含むHard Gate実行本体は`pipeline.py`に残し、10,434行から9,972行へ462行削減する。既存regex・判定条件・fail-closed semanticsは変更せず、live定数/helperはcanonical関数を上書きしない形で薄いwrapperから再束縛する。
+- Run235/236/237/238/239/240/241/242/243/244/245はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
 - Run237詳細: `docs/reference/RUN237_PRODUCT_DELIVERY_MAINTENANCE_MODULARIZATION.md`
 - Run238詳細: `docs/reference/RUN238_DEEP_DIVE_PORTFOLIO_MODULARIZATION.md`
 - Run239詳細: `docs/reference/RUN239_READER_EXPERIENCE_DIAGNOSTICS_MODULARIZATION.md`
@@ -90,6 +91,7 @@ Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
 - Run242詳細: `docs/reference/RUN242_NOTION_SOURCE_DEFERRED_MODULARIZATION.md`
 - Run243詳細: `docs/reference/RUN243_CONTENT_GENERATION_PROTOCOL_MODULARIZATION.md`
 - Run244詳細: `docs/reference/RUN244_DECISION_PRODUCT_PROTOCOL_MODULARIZATION.md`
+- Run245詳細: `docs/reference/RUN245_FACT_VALIDATION_MODULARIZATION.md`
 
 - 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
 - Screening全体上限: 200候補

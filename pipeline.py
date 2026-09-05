@@ -202,18 +202,12 @@ def _bind_run245_fact_runtime() -> None:
         _SENSITIVE_NUMERIC_PATTERNS=_SENSITIVE_NUMERIC_PATTERNS, _VAGUE_QUANTIFIED_PATTERNS=_VAGUE_QUANTIFIED_PATTERNS,
         _HYPE_PATTERNS=_HYPE_PATTERNS, _RELATION_FAMILIES=_RELATION_FAMILIES,
         _normalized_evidence_text=_normalized_evidence_text, _normalized_named_fact=_normalized_named_fact,
-        _numeric_claim_condition_tags=_numeric_claim_condition_tags, _numeric_condition_compatible=_numeric_condition_compatible,
-        _is_protocol_cardinality_expression=_is_protocol_cardinality_expression, _claim_is_negated=_claim_is_negated,
-        _evidence_has_substantive_coverage=_evidence_has_substantive_coverage, _clean_relation_entity=_clean_relation_entity,
-        _looks_like_relation_entity=_looks_like_relation_entity, _relation_family_for_predicate=_relation_family_for_predicate,
-        _extract_explicit_relation_claim=_extract_explicit_relation_claim, _evidence_supports_relation=_evidence_supports_relation,
     )
 
 def _bind_run245_boundary_runtime() -> None:
     _source_boundary_validation_module.bind_runtime(
         _EVIDENCE_ALIAS_GROUPS=_EVIDENCE_ALIAS_GROUPS, _normalized_evidence_text=_normalized_evidence_text,
-        _normalized_named_fact=_normalized_named_fact, _expand_evidence_aliases=_expand_evidence_aliases,
-        classify_action_risk_tier=classify_action_risk_tier,
+        _normalized_named_fact=_normalized_named_fact, classify_action_risk_tier=classify_action_risk_tier,
     )
 
 

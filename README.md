@@ -15,7 +15,7 @@
 - **Current free article editorial planning baseline:** Run226 — evidence-bounded human editorial planning / reader delight without template quotas
 - **Current article Japanese surface integrity baseline:** Run227 — zero-model high-confidence broken-Japanese fail-closed gate
 - **Current free article reader rhythm baseline:** Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas
-- **Current pipeline modularization baseline:** Run244 — deterministic Evidence sufficiency + Decision prompt + Product Review protocol extraction layered on prior modularized domains
+- **Current pipeline modularization baseline:** Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior modularized domains
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -46,6 +46,8 @@ New development must start from `main`. Historical/archive branches are referenc
 - `content_generation_protocol.py` — canonical stdlib-only Fact Discipline / Human Editorial prompt rules, Gemini response parsing, conservative heading promotion and monthly Digest Markdown shaping; model invocation, quality-gate execution and persistence remain pipeline-owned
 - `evidence_sufficiency.py` — canonical deterministic Evidence-to-Decision sufficiency classification; live evidence URL normalization and existing sufficiency-state constants remain pipeline-bound
 - `product_review_protocol.py` — canonical provider-free Product Review prompt/schema/parser and Technology-state rehydration; model calls, candidate lookup, network acquisition and persistence remain pipeline-owned
+- `fact_validation_signals.py` — canonical deterministic numeric-condition, hype/negation, false-negative/competitor and entity-relation validation signals mechanically extracted from `pipeline.py`; live regex sets/helpers remain pipeline-bound
+- `source_boundary_validation.py` — canonical deterministic evidence-alias expansion and unsupported named-fact source-boundary validation; network acquisition/SSRF and boundary reconciliation remain pipeline-owned
 - `production_pipeline.py` — stable production entrypoint and runtime-layer installer
 - `run203_runtime_state_channel.py` — Production runtime-state continuity / writability preflight
 - `gemini_timeout_rpd_fail_closed.py` — Run209 timeout RPD fail-closed accounting; keeps the 18-request Flash safety ceiling
