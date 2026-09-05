@@ -54,6 +54,7 @@ PUBLICATION_POLICY_FILES = (
     "run183_eyecatch_emphasis_scale.py",
     "run222_note_presentation_integrity.py",
     "run248_first_real_publish_quality_calibration.py",
+    "run249_final_publication_surface_gate.py",
     "publication_contract.py",
     "run194_publication_contract.py",
 )
