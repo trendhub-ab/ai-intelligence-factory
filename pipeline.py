@@ -170,6 +170,19 @@ from content_generation_protocol import (
     _parse_gemini_response as _parse_gemini_response_impl,
     _promote_plaintext_section_titles as _promote_plaintext_section_titles_impl,
     build_monthly_digest_markdown as _build_monthly_digest_markdown_impl,
+    build_decision_prompt as _build_decision_prompt_impl,
+)
+from evidence_sufficiency import assess_evidence_sufficiency as _assess_evidence_sufficiency_impl
+from product_review_protocol import (
+    _product_review_prompt as _product_review_prompt_impl,
+    _product_review_schema_error as _product_review_schema_error_impl,
+    _strict_schema_int as _strict_schema_int_impl,
+    _validate_product_review_payload as _validate_product_review_payload_impl,
+    _normalize_japanese_display_label as _normalize_japanese_display_label_impl,
+    _decode_product_review_json as _decode_product_review_json_impl,
+    _parse_product_review_response as _parse_product_review_response_impl,
+    _parse_product_review_model_response as _parse_product_review_model_response_impl,
+    _technology_state_to_repo as _technology_state_to_repo_impl,
 )
 
 
@@ -3410,121 +3423,16 @@ def classify_action_risk_tier(action_text: str) -> str:
 
 
 def assess_evidence_sufficiency(source_info: dict) -> dict:
-    """Evidence-to-Decision Sufficiencyを判定する。
-
-    網羅性そのものではなく、取得済みの一次情報の範囲で結論とActionを安全な
-    強度に制約した記事を作れるかを判定する。制約・鮮度が未確認でも、低リスク
-    Actionと明示的な留保で安全に扱える研究紹介まで機械的に落とさない。
-    """
-    context = source_info.get("verification_context") or source_info.get("context", "") or ""
-    coverage = (source_info.get("evidence_metadata") or {}).get("coverage", {})
-    found = lambda key: coverage.get(key) == "FOUND"
-    numbers_present = bool(re.search(r"(?:\d+(?:\.\d+)?\s*(?:%|x|倍|ms|sec(?:ond)?s?|GB|MB|FPS))", context, re.I))
-    time_sensitive = bool(_FUTURE_SOURCE_PATTERN.search(context))
-    # `GA`は単語境界なしだとlegacy/organic等へ部分一致するため、英語の鮮度語は境界付きで判定。
-    current_state_claim = bool(re.search(
-        r"(?:価格|料金|現在|現行|提供中|法令|制度)|\b(?:availability|pricing|current|today|GA|generally available)\b",
-        context, re.I,
-    ))
-    research_scope = source_info.get("source") == "ArXiv" or bool(re.search(r"(?:paper|arxiv|benchmark|論文|研究|実験|提出時点)", context, re.I))
-    requested_tier = str(source_info.get("requested_action_risk_tier", "LOW")).upper()
-    action_risk_tier = requested_tier if requested_tier in {"LOW", "MEDIUM", "HIGH"} else "LOW"
-    checks = {
-        "primary_source_resolved": bool(source_info.get("primary_source_resolved")),
-        "technical_claims_available": found("method") or bool(re.search(r"\b(?:method|approach|architecture|algorithm|implementation)\b|モデル|手法|方式|実装", context, re.I)),
-        "limitations_or_constraints_available": found("limitations") or bool(re.search(r"\b(?:limitation|limitations|constraint|constraints|caveat)\b|not validated|制約|限界|課題|未検証", context, re.I)),
-        "conditions_for_numbers_available": (not numbers_present) or any(found(key) for key in ("hardware", "runtime", "benchmark", "dataset")),
-        "actor_attribution_available": bool(re.search(r"\b(?:author|authors|developer|developers|researcher|researchers)\b|著者|開発者|研究者", context, re.I)) or bool((source_info.get("source_details") or {}).get("authors")),
-        "action_support_available": False,
-        "comparison_support_available_if_comparison_is_needed": True,
-        "freshness_status_available_if_time_sensitive": (not (time_sensitive or current_state_claim)) or bool(source_info.get("freshness_status_available")),
-    }
-    # 一次情報にAction文言そのものがなくても、技術根拠から限定PoC・比較・見送り等の
-    # LOW RISK Actionは導ける。HIGH RISKは制約・鮮度・数値条件まで要求する。
-    low_risk_supported = checks["primary_source_resolved"] and checks["technical_claims_available"]
-    medium_risk_supported = low_risk_supported and checks["limitations_or_constraints_available"]
-    high_risk_supported = medium_risk_supported and checks["conditions_for_numbers_available"] and checks["freshness_status_available_if_time_sensitive"]
-    action_supported_requested_tier = {
-        "LOW": low_risk_supported,
-        "MEDIUM": medium_risk_supported,
-        "HIGH": high_risk_supported,
-    }[action_risk_tier]
-    checks["action_support_available"] = action_supported_requested_tier
-    comparison_needed = bool(re.search(r"(?:compare|comparison|versus|vs\.?|比較|従来方式|代替)", context, re.I))
-    if comparison_needed:
-        checks["comparison_support_available_if_comparison_is_needed"] = bool(re.search(r"(?:compare|comparison|versus|vs\.?|比較)", context, re.I))
-
-    hard_missing = [key for key in ("primary_source_resolved", "technical_claims_available") if not checks[key]]
-    # 数値・主体は、記事で明示的に使う場合だけHard Requirementにする。未確認なら
-    # プロンプト側で使わないよう制約し、モデル記憶で補完することを禁止する。
-    if source_info.get("numeric_claims_required") and not checks["conditions_for_numbers_available"]:
-        hard_missing.append("conditions_for_numbers_available")
-    if source_info.get("actor_attribution_required") and not checks["actor_attribution_available"]:
-        hard_missing.append("actor_attribution_available")
-    conditional_missing = [key for key in (
-        "limitations_or_constraints_available", "action_support_available",
-        "comparison_support_available_if_comparison_is_needed",
-        "freshness_status_available_if_time_sensitive",
-    ) if not checks[key]]
-    blocking_missing = list(hard_missing)
-    # Research evidence is scoped to the paper/version itself. A phrase such as "current" inside
-    # a paper must not force a live-product freshness lookup; the article/assessment must instead
-    # present it as paper-time evidence. Mutable product/web sources still require freshness.
-    if current_state_claim and not research_scope and not checks["freshness_status_available_if_time_sensitive"]:
-        blocking_missing.append("freshness_status_available_if_time_sensitive")
-    checked_evidence_keys = source_info.get("checked_urls", set())
-    candidates_available = any(
-        _evidence_trace_url_key(row.get("url", "")) not in checked_evidence_keys
-        for row in source_info.get("supplement_candidates", [])
-        if row.get("url")
+    """Bind canonical evidence sufficiency policy to live pipeline source helpers/constants."""
+    return _assess_evidence_sufficiency_impl(
+        source_info,
+        future_source_pattern=_FUTURE_SOURCE_PATTERN,
+        evidence_trace_url_key=_evidence_trace_url_key,
+        evidence_sufficient=EVIDENCE_SUFFICIENT,
+        evidence_supplement_required=EVIDENCE_SUPPLEMENT_REQUIRED,
+        evidence_insufficient=EVIDENCE_INSUFFICIENT,
     )
-    supplement_already_attempted = bool(source_info.get("evidence_supplement_attempted"))
-    action_risk_downgraded_from = ""
-    # MEDIUM/HIGHの根拠が不足しても、まず上限付き補強を試す。補強後も足りない
-    # 場合は、一次情報から導ける具体的なLOW RISK Actionへ縮退できるかを判定する。
-    if blocking_missing:
-        state = EVIDENCE_SUPPLEMENT_REQUIRED if candidates_available else EVIDENCE_INSUFFICIENT
-    elif action_risk_tier in {"MEDIUM", "HIGH"} and not action_supported_requested_tier:
-        if candidates_available and not supplement_already_attempted:
-            state = EVIDENCE_SUPPLEMENT_REQUIRED
-        elif low_risk_supported:
-            action_risk_downgraded_from = action_risk_tier
-            action_risk_tier = "LOW"
-            checks["action_support_available"] = True
-            state = EVIDENCE_SUFFICIENT
-        else:
-            blocking_missing.append("high_risk_action_unsupported" if requested_tier == "HIGH" else "medium_risk_action_unsupported")
-            state = EVIDENCE_INSUFFICIENT
-    elif conditional_missing and candidates_available and not supplement_already_attempted:
-        state = EVIDENCE_SUPPLEMENT_REQUIRED
-    else:
-        state = EVIDENCE_SUFFICIENT
-    limitations_disclosed = not checks["limitations_or_constraints_available"]
-    research_future_only = research_scope and bool(re.search(r"\bfuture\s+work\b|今後の研究|将来(?:の)?研究", context, re.I))
-    # Researchのfuture workは製品availabilityの鮮度要件ではないが、記事では論文時点の
-    # 将来課題として扱うことを監査メタデータに残す。
-    freshness_scope_limited = research_future_only or (research_scope and time_sensitive and not checks["freshness_status_available_if_time_sensitive"])
-    evidence_gap_disclosed = bool(conditional_missing)
-    decision_scope_safe = state == EVIDENCE_SUFFICIENT or (state == EVIDENCE_SUPPLEMENT_REQUIRED and not blocking_missing)
-    return {
-        "state": state,
-        "checks": checks,
-        "core_missing": hard_missing,
-        "optional_missing": conditional_missing,
-        "blocking_missing": blocking_missing,
-        "documents_checked": len(source_info.get("evidence_documents", [])),
-        "decision_scope_safe": decision_scope_safe,
-        "action_risk_tier": action_risk_tier,
-        "action_supported_at_current_tier": checks["action_support_available"],
-        "action_risk_downgraded_from": action_risk_downgraded_from,
-        "limitations_disclosed": limitations_disclosed,
-        "freshness_scope_limited": freshness_scope_limited,
-        "evidence_gap_disclosed": evidence_gap_disclosed,
-        "research_scope": research_scope,
-        "current_state_claim": current_state_claim,
-        "numeric_claims_allowed": checks["conditions_for_numbers_available"],
-        "actor_attribution_allowed": checks["actor_attribution_available"],
-    }
+
 
 
 def supplement_source_evidence(source_info: dict) -> dict:
@@ -4634,165 +4542,23 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
                           source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY,
                           evidence_metadata: dict | None = None, freshness: dict | None = None,
                           previous_article: str = "", evidence_result: dict | None = None):
-    """無料ARTICLEと記事公開に必要な最小MANAGEMENT DATAだけを生成する。
+    """Bind canonical decision prompt shaping to live pipeline editorial/evidence settings."""
+    return _build_decision_prompt_impl(
+        name, url, stars, desc,
+        quality_feedback=quality_feedback, source=source, source_context=source_context,
+        grounding_status_hint=grounding_status_hint, evidence_metadata=evidence_metadata,
+        freshness=freshness, previous_article=previous_article, evidence_result=evidence_result,
+        engagement_labels=ENGAGEMENT_LABELS,
+        max_evidence_total_chars=MAX_EVIDENCE_TOTAL_CHARS,
+        truncate_source_context=_truncate_source_context,
+        source_fact_discipline=_source_fact_discipline,
+        human_editorial_style_rules=_human_editorial_style_rules,
+        article_display_variant=_article_display_variant,
+        section_split_token=SECTION_SPLIT_TOKEN,
+        datetime_cls=datetime,
+        jst=JST,
+    )
 
-    Adoption/Production Readiness等の会員向け評価はProduct Review経路へ完全分離し、
-    無料記事の生成負荷・Hallucination面積を増やさない。parserは旧出力互換を維持する。
-    """
-    metric_label = ENGAGEMENT_LABELS.get(source, "Engagement")
-    metric_note = ""
-    if source == "ArXiv":
-        metric_note = "※arXivにはStars/Votes相当の人気指標がないため、人気度を0とみなして価値判断しないこと。\n"
-    feedback = f"\n【前回出力への編集フィードバック】\n{quality_feedback}\n事実違反は該当箇所だけを直す。全文を保守的に均さず、根拠付きの判断・具体的な行動・タイトルの引力は残す。具体的Actionを『注視する』だけに置き換えない。\n" if quality_feedback else ""
-    previous = ""
-    if previous_article:
-        previous = (
-            "\n【局所修正の対象となる前回ARTICLE】\n"
-            "以下の前回稿を基準に、編集フィードバックで指定された箇所だけを修正して、"
-            "同じ出力形式の完全稿を返すこと。指定外の根拠付き判断・見出し・構成を一般論へ置換しない。\n"
-            + previous_article[:MAX_EVIDENCE_TOTAL_CHARS] + "\n"
-        )
-    context = _truncate_source_context(source_context)
-    fact_rules = _source_fact_discipline(source)
-    style_rules = _human_editorial_style_rules()
-    display = _article_display_variant(name)
-    evidence_json = json.dumps(evidence_metadata or {}, ensure_ascii=False, indent=2)
-    freshness_context = (freshness or {}).get("context", "")
-    evidence_result = evidence_result or {}
-    evidence_guardrails = []
-    if evidence_result.get("limitations_disclosed"):
-        evidence_guardrails.append("一次資料で実運用上の制約は確認できないことをWhy NOTまたはCaveatに明記し、本番導入を強く推奨しない。")
-    if evidence_result.get("freshness_scope_limited"):
-        evidence_guardrails.append("現在仕様とは断定せず、『原資料公開時点では』『この研究で確認された範囲では』と時点を限定する。")
-    if not evidence_result.get("numeric_claims_allowed", True):
-        evidence_guardrails.append("条件を確認できない数値・性能値はARTICLEで使わない。")
-    if not evidence_result.get("actor_attribution_allowed", True):
-        evidence_guardrails.append("主体の帰属を確認できない固有名詞の断定はしない。")
-    if evidence_result.get("action_risk_tier", "LOW") == "LOW" and evidence_result.get("evidence_gap_disclosed"):
-        evidence_guardrails.append("Actionは『注視』だけで終わらせず、限定PoC、評価項目への追加、ログ可視化、比較テスト、見送りのいずれかを具体的に提案する。全面導入・本番移行は提案しない。")
-    evidence_guardrail_text = "\n".join("・" + item for item in evidence_guardrails) or "・取得済み一次情報の範囲を超える断定をしない。"
-
-    return f"""
-あなたはAI・ソフトウェア領域のシニアCTOアドバイザーであり、商業メディア経験のある日本語テック編集者です。
-以下の一次情報から、無料公開のnote記事として読者の判断を助ける記事と、記事公開に必要な最小管理データを作成してください。
-会員向けTechnology評価（Adoption Score / Adoption Status / Evidence Confidence / Production Readiness / Main Risk / Best For / Avoid For）は別工程で作るため、ここでは絶対に生成しないでください。
-
-【読者】主対象はCTO、テックリード、PM、AI/ソフトウェア導入の意思決定者。ただし専門知識を前提にせず、非エンジニアや一般読者でも入口から理解でき、専門家には判断材料が残る二層構造で書く。
-【最重要】ARTICLEは人が読む文章、MANAGEMENT DATAは機械が読む構造データ。両者を混ぜない。
-【出力を途中で切らないための優先順位】
-1. SECTION_SPLIT_TOKEN、記事タイトル、記事本文の最後の「最終判断」までを最優先で完走する。
-2. MANAGEMENT DATAは下記の8項目だけを簡潔に出す。記事本文を削って管理項目を増やさない。
-3. 無根拠な背景説明・一般論・競合列挙を追加しない。
-4. 不確かな比較・将来予測・導入コストを埋めるために推測しない。途中で省略記号を使わない。
-【事実優先順位】Source Native Context > Primary URL取得内容 > Google Search Grounding（有効時） > モデル内部知識。
-
-【SOURCE BOUNDARY — 最重要】
-・ARTICLEで「事実」として断定してよい技術仕様・対応状況・価格・数値・競合情報・固有名詞は、原則としてSource Native ContextまたはGroundingで確認できる内容だけ。
-・モデル内部知識から背景説明を補う場合は、製品固有の事実として書かず、「一般論として」「ここからは私の推論だが」など、読者が推論だと分かる形にする。
-・Source Contextにない企業向け管理製品、競合機能、API仕様、OS/ブラウザ管理方式などを、もっともらしい補足として追加しない。
-・ニュース公開時点の仕様と現在のStable仕様は同一視しない。現在仕様をGroundingで確認できなければ「元記事公開時点では」と限定する。
-・不明点は補完せず「一次情報からは確認できない」と書く。
-・「確認できない」「記載がない」「未公開」「不明」等の不在Claimは、Evidence Coverageが SEARCHED_NOT_FOUND または NOT_DISCLOSED の項目だけに限る。NOT_SEARCHEDまたはSource Depth不足では不在を断定しない。
-モデル内部知識だけで現在仕様、競合比較、数値、価格、対応状況を断定しない。
-
-【Evidence-to-Decisionの安全制約】
-{evidence_guardrail_text}
-
-{fact_rules}
-{style_rules}
-
-【対象】
-・出所: {source}
-・名前: {name}
-・Primary URL: {url}
-・{metric_label}: {stars}
-{metric_note}・概要: {desc}
-・事前Grounding: {grounding_status_hint}
-・Article generation date: {datetime.now(JST).date().isoformat()}
-
-【Source Native Context】
-{context or '（source-native本文不足。Primary URLで確認できた範囲以外を現在事実として補完しないこと。）'}
-
-【Structured Evidence / Required Qualifiers — 最優先】
-{evidence_json}
-・required_qualifiers は自然な日本語に言い換えてよいが、ARTICLEから絶対に削除しない。
-・TOY_EXAMPLE相当の証拠は「原著の単純な例では」「著者が示したサンプルでは」等、例の範囲を必ず明示する。
-・「保証」「完全」「必ず」「安全」等の強い表現は、Structured EvidenceまたはSource Contextが同等以上の保証を明示する場合だけ使用できる。
-・一次情報に限界・未解決課題・"promising"・条件付きの性能値がある場合、ARTICLEにも必ず残す。性能値はデータセット、解像度、反復回数、ハードウェア等の条件を削らない。
-・Hacker News等は発見経路である。実験値・仕様の根拠となったPrimary URL/PDFは「参考情報」に出るため、HNだけを根拠として数値を説明しない。フォローアップに言及する場合はEvidenceにあるURLだけを使う。
-
-【Freshness Resolution】
-{freshness_context or '公式フォローアップは未検出。元資料の将来表現を現在完了の事実に書き換えない。'}
-・Follow-up Sourceがある場合、それより古い「今後予定」「これから議論」等の状態をARTICLEに残さない。
-{feedback}
-{previous}
-
-最初に必ず次の見出しをそのまま出す。
-=== MANAGEMENT DATA ===
-その下に以下の8項目だけを順序通り、各行「・ラベル: 値」で簡潔に出す。
-・Source Summary: 一次情報で確認できる事実を1〜2文。
-・What: 何が起きたかを2文以内。
-・Why Important: 実務への意味。未検証効果は推論と明示。
-・Decision: NOW / TRY / WATCH / WAIT / AVOID の1つ。
-・Decision Reason: 最大3理由を簡潔に。
-・Decision Score: Business Impact X/25; Technical Impact X/25; Urgency X/20; Market Impact X/15; Reliability X/15; 合計 X/100
-・Action: 次に検証する具体的行動。根拠のない日数・金額を作らない。
-・Article Value: 0〜100
-
-会員向け評価、競合比較、移行コスト、将来シナリオ、Who Should Use等をMANAGEMENT DATAへ追加しない。必要な実務上の対象読者・制約はARTICLE本文へ自然に書く。
-
-次に必ず専用行を出す。
-{SECTION_SPLIT_TOKEN}
-
-その次の1行を記事タイトルにする。#は付けない。プロのコピーライターとして、技術の要点と読者の関心を結び、短く惹きつけるタイトルにすること。必ず「。」「？」のいずれかで終える。
-
-【ARTICLE】
-記事はすべて無料公開する。有料エリア、有料マーカー、無料部分／有料部分という区分を一切出力しない。
-
-今回は内部の編集ブリーフとして「{display['style']}」の角度、導入のヒント「{display['opening']}」、温度感「{display['tone']}」を使う。
-これらは読者に見せるラベルでも見出しでもない。既成の見出し文や段落テンプレートを再現せず、記事固有の内容に合わせて自由に構成する。
-
-タイトル直後は、読者が「何の話か」「なぜ自分に関係するか」をつかめる自然なリードから始める。
-Roadmapやprotocolの話でも、冒頭を「〜とは」「主な変更点は」「今回のロードマップでは」の説明開始に固定しない。まず読者が引っかかる変化・困りごと・意外性を1つ置き、専門用語は理解が必要になった時点で名前を付ける。
-リードの段落数は固定しない。1〜3段落程度を目安に、必要な情報だけを書く。
-発見経路や「一次情報に基づく」という説明を義務的な定型文として毎回入れない。出典は公開稿の「元情報」で別途提示されるため、本文では話を理解するのに必要な場合だけ自然に触れる。
-
-本文の見出しは2〜6個程度を目安に、記事固有の内容から自分で作る。本文セクションの見出しは必ずMarkdownの `##` または `###` を付け、見出し文だけを裸の1行として置かない。以下は内部の意味役割であり、見出し名や順番を固定しない。
-・何が起きた／何が変わったのか
-・なぜ読者の判断に関係するのか
-・仕組みや条件のうち、判断に必要な部分
-・面白さと同時に見ておくべき制約
-・筆者なら次に何をするか
-
-すべての役割を毎回独立セクションにしない。内容が自然につながるなら統合する。
-一方で、記事の終盤には「読者が結局どう動けばよいか」が分かる判断セクションを必ず1つ置く。見出しは記事内容に合わせて自然な日本語で作り、管理用Decisionコードは書かない。
-
-【構成上の禁止】
-・Why → What → Key → Decision のような内部構造を、そのまま同じ順番・同じ粒度の見出しへ露出しない。
-・旧テンプレートの「先に判断を書くと。」「なぜ、この問題が残り続けるのか。」「今回の仕組みを見てみる。」「導入前に押さえたいポイント。」等をセットで再利用しない。
-・各セクションを同じ文字量にそろえない。
-・全セクションを同じ「説明→注意→結論」で閉じない。
-
-【ARTICLEの追加ルール】
-・NOW / TRY / WATCH / WAIT / AVOID は内部管理コードであり、ARTICLEには絶対に表示しない。括弧書き、英字併記、見出し内も禁止。
-・「私ならこう考える」では、管理用Decisionを読者向けの自然な判断文に翻訳する。目安は次の通り。
-  NOW → 「今すぐ動く価値がある」「今から着手してよい」
-  TRY → 「まずは小さく試す価値がある」「限定した環境で試したい」
-  WATCH → 「今は動かず、今後の動きを注視したい」「導入を急ぐ段階ではない」
-  WAIT → 「現時点では導入を急がない」「条件が整うまで待つのがよい」
-  AVOID → 「今は見送るのが妥当」「現時点では採用しない方がよい」
-・上の日本語は定型句として毎回そのまま使わず、記事の文脈に合わせて自然に言い換える。Decision ScoreやBusiness Impact等の内部採点もARTICLEへ一切出さない。採点はMANAGEMENT DATAだけに置く。
-・Adoption Score / Adoption Status / Evidence Confidence / Production Readiness も商品DB管理値であり、ARTICLEへラベルや点数をそのまま表示しない。
-・競合名を出す場合、Source Native Contextにその競合の比較根拠が存在する時だけ。なければ製品名を列挙しない。
-・Preview/Beta/Stableは必ず分離する。
-・ニュース公開時点の仕様を現在仕様として断定しない。現在確認できない場合は「元記事公開時点では」と書く。
-・根拠のない%・倍数・金額・期間・性能値を作らない。
-・「唯一」「一択」「必須」「デファクト」「圧倒的」「劇的」「完全に解決」等は、一次情報だけで立証できない限り使わない。
-・記事全体を箇条書き帳票にしない。導入を含め、読者が技術の背景から判断まで自然に追える流れにする。
-・「結局、どうするべきか」の結論は管理用Decisionと意味的に一致させる。ただし内部コードは書かない。
-・根拠に照らして限定検証、比較テスト、導入見送り、次版待ちなどの判断が妥当なら、理由と対象範囲を添えて明確に書く。安全性のためにすべてを「可能性がある」「注視したい」へ弱めない。
-・記事本文の文字数を品質目標にしない。同じ事実の言い換え反復、Decisionに不要な実装列挙、長いコード例、説明の二重化は削る。一方で、Evidence・数値条件・制約・比較・反証・Decisionを文字数のために削らない。長くても読者が迷わず読み進められる情報順序と温度変化を優先する。
-"""
 
 def _extract_note_title(note_draft_raw: str) -> tuple[str, str]:
     """
@@ -9849,234 +9615,62 @@ def _call_product_review_pool(prompt: str, request_context: str, request_kind_ba
     raise NoAvailableModelError("Product Reviewに利用可能なGeminiモデルがありません") from last_error
 
 
-def _product_review_prompt(repo: dict, source_info: dict, current: dict) -> str:
-    context = (source_info.get("context") or "")[:50000]
-    # Run115: output shape/enums/ranges live in response_json_schema. Do not duplicate that
-    # contract in the prompt; Google's GenAI SDK documentation explicitly warns that repeating
-    # the schema in the prompt can reduce structured-output quality. Keep only decision semantics.
-    return (
-        "以下の一次情報だけを使い、会員向けTechnology Decision Intelligenceを評価せよ。記事は書かない。"
-        "入力外の市場シェア、価格、利用実績、競合優位性を推測しない。"
-        "categoryはSource種別や既存Categoryをコピーせず、一次情報で確認できる主用途・主機能から判断し、"
-        "複数カテゴリが同程度または根拠が弱い場合はOTHERを選ぶ。"
-        "adoption_scoreは Evidence Quality 25, Production Maturity 25, Use-case Utility / Fit 20, "
-        "Reliability / Security Risk 15, Integration / Migration Feasibility 10, Ecosystem / Support Durability 5 の合計100点とし、"
-        "componentsの合計と必ず一致させる。"
-        "ADOPTはEvidence ConfidenceがHIGHかつProduction ReadinessがHIGHの場合に限る。"
-        "main_risk / best_for / avoid_for / short_rationaleは、一次情報から判断できる範囲で具体的かつ空欄にしない。"
-        "japanese_display_labelは任意の表示専用フィールド。正式な製品名・プロジェクト名・論文名を改変せず、"
-        "『名称 — 日本語で何の技術か』の短い説明ラベルにする。推奨・評価・誇張・スコア・Adoption Statusを含めず、"
-        "一次情報だけから安全に説明できない場合は空文字にする。Identity判定には使われない。\n"
-        f"Technology: {repo.get('nameWithOwner')}\nURL: {repo.get('url')}\nCurrent: {json.dumps(current, ensure_ascii=False)}\n"
-        f"Verified source context:\n{context}"
-    )
+_product_review_prompt = _product_review_prompt_impl
 
 
-def _product_review_schema_error(message: str) -> ValueError:
-    return ValueError(f"Product Review schema_invalid: {message}")
+
+_product_review_schema_error = _product_review_schema_error_impl
 
 
-def _strict_schema_int(value: object, field: str, minimum: int, maximum: int) -> int:
-    # bool is a subclass of int in Python, but JSON Schema integer must not silently accept it
-    # for scoring/range decisions.
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise _product_review_schema_error(f"{field} must be integer")
-    if not minimum <= value <= maximum:
-        raise _product_review_schema_error(f"{field} out_of_range {value} not in {minimum}..{maximum}")
-    return value
+
+_strict_schema_int = _strict_schema_int_impl
+
 
 
 def _validate_product_review_payload(obj: dict) -> dict:
-    """Locally validate provider structured output before any semantic normalization.
-
-    Provider-side JSON Schema is a transport guard, not a trust boundary.  Run115 validates
-    required keys, additional keys, enums, component structure/ranges, score sum, text fields,
-    and review range again in application code.  Any violation is a structured-output failure
-    eligible for the single logical retry; no invalid enum is silently coerced to OTHER.
-    """
-    if not isinstance(obj, dict):
-        raise _product_review_schema_error("response_not_object")
-    required = set(_PRODUCT_REVIEW_RESPONSE_SCHEMA["required"])
-    allowed = set(_PRODUCT_REVIEW_RESPONSE_SCHEMA["properties"])
-    actual = set(obj)
-    missing = sorted(required - actual)
-    extra = sorted(actual - allowed)
-    if missing:
-        raise _product_review_schema_error("missing_fields=" + ",".join(missing))
-    if extra:
-        raise _product_review_schema_error("unexpected_fields=" + ",".join(extra))
-
-    category = obj.get("category")
-    if not isinstance(category, str) or category not in PORTFOLIO_TOPICS:
-        raise _product_review_schema_error(f"category invalid={category!r}")
-
-    score = _strict_schema_int(obj.get("adoption_score"), "adoption_score", 1, 100)
-    components = obj.get("components")
-    if not isinstance(components, dict):
-        raise _product_review_schema_error("components must be object")
-    expected_components = {label for label, _ in _ADOPTION_SCORE_COMPONENTS}
-    component_keys = set(components)
-    if component_keys != expected_components:
-        missing_components = sorted(expected_components - component_keys)
-        extra_components = sorted(component_keys - expected_components)
-        detail = []
-        if missing_components:
-            detail.append("missing=" + ",".join(missing_components))
-        if extra_components:
-            detail.append("extra=" + ",".join(extra_components))
-        raise _product_review_schema_error("components_keys " + " ".join(detail))
-    component_values: dict[str, int] = {}
-    for label, maximum in _ADOPTION_SCORE_COMPONENTS:
-        component_values[label] = _strict_schema_int(components.get(label), f"components.{label}", 0, maximum)
-    component_total = sum(component_values.values())
-    if component_total != score:
-        raise _product_review_schema_error(f"adoption_score_sum_mismatch components={component_total} score={score}")
-
-    for field, allowed in (
-        ("adoption_status", decision_intelligence.ADOPTION_STATUSES),
-        ("evidence_confidence", decision_intelligence.CONFIDENCE_LEVELS),
-        ("production_readiness", decision_intelligence.READINESS_LEVELS),
-    ):
-        value = obj.get(field)
-        if not isinstance(value, str) or value not in allowed:
-            raise _product_review_schema_error(f"{field} invalid={value!r}")
-
-    for field in ("main_risk", "best_for", "avoid_for", "short_rationale"):
-        value = obj.get(field)
-        if not isinstance(value, str) or not value.strip():
-            raise _product_review_schema_error(f"{field} must be non-empty string")
-
-    _strict_schema_int(obj.get("next_review_days"), "next_review_days", 7, 60)
-    return obj
-
-
-
-def _normalize_japanese_display_label(value: object) -> str:
-    """Soft-normalize the UI-only Japanese label without failing Product Review.
-
-    This field is deliberately excluded from assessment validity, retry triggers, entity identity,
-    evidence authority, History change detection, and launch readiness.
-    """
-    if not isinstance(value, str):
-        return ""
-    label = re.sub(r"\s+", " ", value).strip()
-    if not label or len(label) > 80 or "\n" in value or "\r" in value:
-        return ""
-    if not re.search(r"[\u3040-\u30ff\u3400-\u9fff]", label):
-        return ""
-    forbidden = re.compile(
-        r"(?:\b(?:WATCH|TEST|ADOPT|AVOID)\b|(?:Adoption|Decision)\s*Score|\d{1,3}\s*/\s*100|"
-        r"おすすめ|推奨|最強|最高|革命的|必須|今すぐ導入|採用すべき)", re.I,
+    return _validate_product_review_payload_impl(
+        obj,
+        product_review_response_schema=_PRODUCT_REVIEW_RESPONSE_SCHEMA,
+        portfolio_topics=PORTFOLIO_TOPICS,
+        adoption_score_components=_ADOPTION_SCORE_COMPONENTS,
+        decision_intelligence_module=decision_intelligence,
     )
-    if forbidden.search(label):
-        return ""
-    return label
 
 
-def _decode_product_review_json(text: str) -> dict:
-    """Parse provider JSON with deterministic, zero-API wrapper cleanup.
 
-    Structured output should already be valid JSON. This fallback only tolerates harmless code
-    fences / leading or trailing transport text; it never repairs missing fields or invents values.
-    """
-    raw = (text or "").strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.I)
-        raw = re.sub(r"\s*```$", "", raw)
-    try:
-        obj = json.loads(raw or "{}")
-    except json.JSONDecodeError:
-        start = raw.find("{")
-        if start < 0:
-            raise
-        obj, _ = json.JSONDecoder().raw_decode(raw[start:])
-    if not isinstance(obj, dict):
-        raise ValueError("Product Review response_not_object")
-    return obj
+
+_normalize_japanese_display_label = _normalize_japanese_display_label_impl
+
+
+
+_decode_product_review_json = _decode_product_review_json_impl
+
 
 
 def _parse_product_review_response(payload: object) -> dict:
-    obj = payload if isinstance(payload, dict) else _decode_product_review_json(str(payload or ""))
-    obj = _validate_product_review_payload(obj)
-    components = obj["components"]
-    breakdown = "\n".join(f"{label} {components[label]}/{maximum}" for label, maximum in _ADOPTION_SCORE_COMPONENTS)
-    return {
-        "category": obj["category"],
-        "adoption_score": obj["adoption_score"], "adoption_score_breakdown_text": breakdown,
-        "adoption_status": obj["adoption_status"],
-        "evidence_confidence": obj["evidence_confidence"],
-        "production_readiness": obj["production_readiness"],
-        "main_risk_text": obj["main_risk"], "best_for_text": obj["best_for"],
-        "avoid_for_text": obj["avoid_for"], "short_rationale_text": obj["short_rationale"],
-        "japanese_display_label": _normalize_japanese_display_label(obj.get("japanese_display_label")),
-        "source_summary_text": "Product Review from verified primary evidence",
-        "next_review_days": obj["next_review_days"],
-    }
+    return _parse_product_review_response_impl(
+        payload,
+        adoption_score_components=_ADOPTION_SCORE_COMPONENTS,
+        validate_product_review_payload=_validate_product_review_payload,
+        normalize_japanese_display_label=_normalize_japanese_display_label,
+    )
+
 
 
 def _parse_product_review_model_response(response: object) -> dict:
-    provider_parsed = getattr(response, "parsed", None)
-    if isinstance(provider_parsed, dict):
-        return _parse_product_review_response(provider_parsed)
-    model_dump = getattr(provider_parsed, "model_dump", None)
-    if callable(model_dump):
-        dumped = model_dump()
-        if isinstance(dumped, dict):
-            return _parse_product_review_response(dumped)
-    return _parse_product_review_response(getattr(response, "text", ""))
+    return _parse_product_review_model_response_impl(
+        response,
+        parse_product_review_response=_parse_product_review_response,
+    )
+
 
 def _technology_state_to_repo(state: dict) -> dict:
-    """Rehydrate the minimum source identity lost by the legacy Notion schema.
+    return _technology_state_to_repo_impl(
+        state,
+        effective_evidence_source=_effective_evidence_source,
+        github_repo_identity=_github_repo_identity,
+    )
 
-    Technology rows intentionally do not store sourceDetails JSON. Run113 reconstructs only
-    explicit facts already present in Primary URL / Canonical Entity ID / Evidence URLs / aliases;
-    it never guesses an official site from the technology name.
-    """
-    sources = [str(x) for x in (state.get("sources") or ["GitHub"]) if x]
-    discovery_source = sources[0] if sources else "GitHub"
-    primary_url = str(state.get("primary_url") or "")
-    entity_id = str(state.get("canonical_entity_id") or "")
-    name = str(state.get("technology_name") or "Technology")
-    temp = {
-        "source": discovery_source, "primaryUrl": primary_url, "url": primary_url,
-        "canonicalEntityId": entity_id, "nameWithOwner": name,
-    }
-    effective_source = _effective_evidence_source(temp)
-    if effective_source == "GitHub":
-        repo_identity = _github_repo_identity(temp)
-        if repo_identity:
-            name = repo_identity
-    details: dict[str, object] = {
-        "discovery_sources": sources,
-        "related_links": list(state.get("evidence_urls") or []),
-    }
-    aliases = [str(x) for x in (state.get("entity_aliases") or []) if x]
-    for alias in aliases:
-        host = (urlparse(alias).netloc or "").lower()
-        if "news.ycombinator.com" in host and not details.get("hn_url"):
-            details["hn_url"] = alias
-        if "producthunt.com" in host and not details.get("producthunt_url"):
-            details["producthunt_url"] = alias
-    if effective_source == "HackerNews" and primary_url and "news.ycombinator.com" not in (urlparse(primary_url).netloc or "").lower():
-        details["external_url"] = primary_url
-    if effective_source == "ProductHunt" and primary_url and "producthunt.com" not in (urlparse(primary_url).netloc or "").lower():
-        details["official_url"] = primary_url
-    return {
-        "source": effective_source,
-        "discoverySource": discovery_source,
-        "nameWithOwner": name,
-        "canonicalEntityId": entity_id,
-        "url": primary_url,
-        "primaryUrl": primary_url,
-        "description": state.get("source_summary") or state.get("short_rationale") or "",
-        # Legacy Source Summary is useful discovery context but is not silently promoted to
-        # verified primary evidence. Exact GitHub/arXiv/official sources are re-fetched first.
-        "sourceContext": state.get("source_summary") or "",
-        "sourceContextVerified": False,
-        "publishedAt": None,
-        "stargazerCount": 0,
-        "sourceDetails": details,
-    }
 
 
 def select_product_review_candidates() -> list[dict]:
