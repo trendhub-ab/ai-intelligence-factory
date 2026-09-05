@@ -1,26 +1,51 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import pathlib
+import re
 import types
+import unicodedata
 import unittest
 
-import pipeline
 import source_normalization as extracted
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
+def _load_historical_functions() -> dict[str, object]:
+    """Execute only the six historical pure defs, without importing the monolith.
+
+    Repository-wide Falsification intentionally runs without production dependencies.
+    AST extraction also makes parity independent: the legacy functions execute from
+    the pipeline.py source while the candidate functions execute from the new module.
+    """
+    source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    wanted = set(extracted._EXPORTED_NAMES)
+    nodes = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in wanted
+    ]
+    found = {node.name for node in nodes}
+    if found != wanted:
+        raise AssertionError(f"historical normalization surface drift: {sorted(wanted - found)}")
+    module = ast.Module(body=nodes, type_ignores=[])
+    ast.fix_missing_locations(module)
+    namespace = {
+        "re": re,
+        "unicodedata": unicodedata,
+    }
+    exec(compile(module, str(ROOT / "pipeline.py"), "exec"), namespace)
+    return {name: namespace[name] for name in extracted._EXPORTED_NAMES}
+
+
 class Run235SourceNormalizationModuleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Capture the historical pipeline functions before any install call so parity
-        # compares independent implementations rather than aliases of the same function.
-        cls.legacy = {
-            name: getattr(pipeline, name)
-            for name in extracted._EXPORTED_NAMES
-        }
+        cls.legacy = _load_historical_functions()
 
     def test_extracted_module_stays_pure_zero_api(self):
         source = inspect.getsource(extracted)
