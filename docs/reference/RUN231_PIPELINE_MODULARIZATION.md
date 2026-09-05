@@ -119,7 +119,7 @@ Stage3B prepares physical removal of the six Stage3A duplicate definitions from 
 - The committed patch is tested by applying it with Git and requiring byte-for-byte equality with the migration output.
 - The migration never writes unless `--write` is explicitly supplied.
 - Repository/Integration CI remain read-only (`contents: read`); Stage3B does **not** restore a bot commit/push or repair-CI architecture.
-- Latest pre-physical-delete gate at PR #108 HEAD `61971ae24a13586bbe10cfa2a8140eab30227044`: Stage3B **6/6**, full pytest **1465/1465**, Synthetic Production **30/30**, `critical_failures=0`, `production_write_isolation=true`, Repository-wide Falsification GREEN, Notion Access Policy GREEN, and `zero-api-regression` GREEN.
+- Latest pre-physical-delete gate at PR #108 HEAD `12d423c0111278baaea69ad5d5ae8e950574c05b`: Stage3B **6/6**, full pytest **1465/1465**, Synthetic Production **30/30**, `critical_failures=0`, `production_write_isolation=true`, Repository-wide Falsification GREEN, Notion Access Policy GREEN, and `zero-api-regression` GREEN.
 
 The only unresolved Stage3B item is committing the physically transformed ~744 KiB `pipeline.py` itself. The current connected GitHub write surface does not provide a partial-patch write primitive; blob/contents writes require resending the whole file. This limitation must not be bypassed by restoring self-mutating CI merely to remove 88 lines. PR #108 therefore remains Draft and non-merge-eligible until the exact transformed source is committed and the protected CI stack is rerun on that exact HEAD.
 
