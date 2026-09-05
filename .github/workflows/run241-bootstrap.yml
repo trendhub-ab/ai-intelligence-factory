@@ -38,7 +38,7 @@ jobs:
             screening_protocol.py source_roi_policy.py run241_batched_modularization_migration.py
       - name: Assert physical reduction
         run: |
-          test "$(wc -l < pipeline.py)" -eq 11499
+          test "$(wc -l < pipeline.py)" -eq 11497
           grep -F 'from candidate_identity import canonicalize_url as _canonicalize_url_impl' pipeline.py
           grep -F 'from source_roi_policy import (' pipeline.py
       - name: Run Run241 module and live-binding tests
