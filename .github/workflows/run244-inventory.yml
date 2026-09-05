@@ -1,0 +1,20 @@
+name: Run244 Pipeline Inventory
+on:
+  push:
+    branches:
+      - run244-pipeline-modularization-next
+    paths:
+      - run244_pipeline_inventory.py
+      - .github/workflows/run244-inventory.yml
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Inventory pipeline
+        run: python run244_pipeline_inventory.py
