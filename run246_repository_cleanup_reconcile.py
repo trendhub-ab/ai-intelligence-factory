@@ -9,6 +9,10 @@ REPLACEMENTS = {
         "Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**",
         "Repository Organization Baseline: **Run246 — falsified repository hygiene cleanup with active/runtime asset protection**",
     ),
+    Path("tests/test_run200_repository_layout.py"): (
+        "        self.assertIn(\"Current repository organization baseline:** Run201\", readme)\n        self.assertIn(\"repository garbage cleanup without intended runtime behavior change\", readme)",
+        "        self.assertIn(\"Current repository organization baseline:** Run246\", readme)\n        self.assertIn(\"falsified repository hygiene cleanup with active/runtime asset protection\", readme)",
+    ),
 }
 
 
@@ -20,9 +24,9 @@ def main() -> None:
         if old_count == 0 and new_count == 1:
             continue
         if old_count != 1 or new_count != 0:
-            raise RuntimeError(f"{path}: documentation preimage mismatch old={old_count} new={new_count}")
+            raise RuntimeError(f"{path}: reconciliation preimage mismatch old={old_count} new={new_count}")
         path.write_text(text.replace(old, new, 1), encoding="utf-8")
-    print("RUN246_DOCUMENTATION_RECONCILIATION=PASS")
+    print("RUN246_RECONCILIATION=PASS")
 
 
 if __name__ == "__main__":
