@@ -21,6 +21,7 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 import editorial_eyecatch as ee
+import eyecatch_badge_taxonomy as badge_taxonomy
 import run178_eyecatch_editorial_layout_optimizer as r178
 
 
@@ -172,17 +173,8 @@ def _pale(color: tuple[int, int, int], factor: float = 0.88) -> tuple[int, int, 
 
 
 def _editorial_badge(title: str, summary: str, category: str) -> str:
-    """Choose one short reader-purpose label without inventing article facts."""
-    text = f"{title}\n{summary}".lower()
-    if any(token in text for token in (" vs ", "vs.", "比較", "違い", "どちら")):
-        return "比較で理解"
-    if category == "SECURITY" or any(token in text for token in ("脆弱", "攻撃", "security", "安全性")):
-        return "安全性を確認"
-    if category == "RESEARCH":
-        return "論文をやさしく"
-    if any(token in text for token in ("導入", "採用", "使うべき", "実務", "運用")):
-        return "実務で判断"
-    return "初心者向け"
+    """Choose one deterministic reader-purpose label without inventing article facts."""
+    return badge_taxonomy.classify_badge(title, summary, category)
 
 
 def _editorial_hook(title: str, summary: str, category: str) -> str:
@@ -253,10 +245,10 @@ def _draw_badge(draw: ImageDraw.ImageDraw, label: str, accent: tuple[int, int, i
     font = ee._jp_font(22, bold=True)
     text_w = ee._text_width(draw, label, font)
     x0, y0 = IMPACT_LEFT, IMPACT_BADGE_TOP
-    x1, y1 = x0 + text_w + 56, y0 + 42
+    x1, y1 = x0 + text_w + 72, y0 + 42
     draw.rounded_rectangle((x0, y0, x1, y1), radius=21, fill=_pale(accent, 0.89))
-    draw.rounded_rectangle((x0 + 14, y0 + 14, x0 + 26, y0 + 28), radius=3, fill=accent)
-    draw.text((x0 + 36, y0 + 8), label, font=font, fill=TITLE_NAVY)
+    badge_taxonomy.draw_badge_icon(draw, label, x0 + 12, y0 + 8, accent, size=26)
+    draw.text((x0 + 50, y0 + 8), label, font=font, fill=TITLE_NAVY)
 
 
 def _draw_hook(draw: ImageDraw.ImageDraw, hook: str, accent: tuple[int, int, int]) -> None:
