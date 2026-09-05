@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-a0ace58e4084cddf",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "ArXiv",
+  "source_url": "https://arxiv.org/abs/2609.04177v1",
+  "note_title": "このAIは、なぜローン審査を落としたのか？」相関頼みのXAIを打ち破る「因果的説明」の新アプローチ。",
+  "ready_at": "2026-09-05T18:40:15.773547+09:00",
+  "notion_page_id": "3d2479ff-dca9-8195-bdf6-c54fe11e4a7a",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-a0ace58e4084cddf&aif_article_id=aif-a0ace58e4084cddf",
+  "cta_enabled": true,
+  "decision_score": 72,
+  "screening_score": 70,
+  "commercial_value_score": 55,
+  "shelf_life_score": 85,
+  "shelf_life": "EVERGREEN",
+  "portfolio_topic": "DATA",
+  "deep_dive_priority_score": 64.75,
+  "measurement_status": "awaiting_external_metrics"
+}
