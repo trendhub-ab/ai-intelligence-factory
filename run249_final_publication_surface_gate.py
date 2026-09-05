@@ -5,19 +5,19 @@ post-Run248 real article exposed a later boundary: the reader-first summary/titl
 surface is assembled only after the normal article gates.  A draft can therefore pass the
 article gate and still become a weak or malformed final note manuscript.
 
-This layer stays zero-provider-call.  It reuses the existing reader diagnostics against a
-projection of the *final public surface* during Human Appeal evaluation, so the existing
-Needs Editorial Review path remains authoritative.  It also repairs one deterministic
-presentation-only defect (the canonical disclaimer being glued to a supplemental Evidence
-link).  No Evidence, Decision, numerical claim, model call, eyecatch background, or public
-release behavior is changed.
+This layer stays zero-provider-call.  It reuses the same narrow reader/Japanese criteria as
+Run248 against a projection of the *final public surface* during Human Appeal evaluation, so
+the existing Needs Editorial Review path remains authoritative.  The criteria are kept local
+on purpose: the zero-API Note Ready reconciliation environment must not import Run248's
+Pillow-backed eyecatch implementation merely to evaluate text policy.  It also repairs one
+deterministic presentation-only defect (the canonical disclaimer being glued to a supplemental
+Evidence link).  No Evidence, Decision, numerical claim, model call, eyecatch background, or
+public release behavior is changed.
 """
 from __future__ import annotations
 
 import re
 from typing import Any
-
-import run248_first_real_publish_quality_calibration as run248
 
 _INSTALLED_ATTR = "_run249_final_publication_surface_gate_installed"
 READER_VALUE_MARKER = "reader_value_review:"
@@ -28,6 +28,65 @@ _SUMMARY_LABELS = (
     ("why", "なぜ重要？"),
     ("decision", "結論は？"),
 )
+
+# Run249 deliberately mirrors the *text-only* Run248 final-publish criteria rather than
+# importing the whole Run248 module. Run248 also owns deterministic eyecatch repair and thus
+# imports Pillow. Keeping these constants local preserves the minimal zero-API Note Ready
+# dependency surface while retaining the same publication policy.
+_CORE_READER_KEYS = (
+    "accessibility",
+    "curiosity_pull",
+    "reader_enjoyment",
+    "narrative_pull",
+    "jargon_translation",
+    "non_engineer_core_clarity",
+    "information_budget",
+    "reader_temperature_rhythm",
+)
+
+_SURFACE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"をに(?=(?:速|遅|高|低|大|小|強|弱|増|減|変|近|遠|広|狭|長|短|重|軽))"),
+        "particle_collision_wo_ni",
+    ),
+    (re.compile(r"主主要"), "duplicated_primary_modifier"),
+    (re.compile(r"眼砲"), "malformed_lexeme_ganpou"),
+)
+
+
+def _extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
+    """Run248-equivalent broad reader weakness, kept text-only and dependency-free."""
+    reviewed = [key for key in _CORE_READER_KEYS if signals.get(key) == "REVIEW"]
+    issues: list[str] = []
+    if len(reviewed) >= 4:
+        issues.append(
+            READER_VALUE_MARKER
+            + "multi_axis_reader_weakness ("
+            + "/".join(reviewed)
+            + ")"
+        )
+    if all(
+        signals.get(key) == "REVIEW"
+        for key in ("accessibility", "jargon_translation", "non_engineer_core_clarity")
+    ):
+        issues.append(
+            READER_VALUE_MARKER
+            + "non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+        )
+    return list(dict.fromkeys(issues))
+
+
+def _extra_japanese_surface_failures(article: str) -> list[str]:
+    """Run248-equivalent high-confidence Japanese surface defects, zero dependency."""
+    prose = re.sub(r"```.*?```|`[^`\n]+`", "", str(article or ""), flags=re.S)
+    failures: list[str] = []
+    for pattern, reason in _SURFACE_PATTERNS:
+        match = pattern.search(prose)
+        if match:
+            failures.append(
+                f"malformed_japanese_surface:{reason}: obvious broken Japanese remains ({match.group(0)})"
+            )
+    return failures[:5]
 
 
 def _unbalanced_japanese_quote_issue(title: str) -> str:
@@ -56,7 +115,7 @@ def _summary_fragment_issues(summary: dict[str, str] | None) -> list[str]:
         if not value:
             continue
         # In the compact 30-second answer, a trailing Japanese/ASCII comma is never a
-        # complete standalone answer.  This is the exact defect observed in the first
+        # complete standalone answer. This is the exact defect observed in the first
         # post-Run248 real Ready article ("...課題に対し、" / "...可能にし、").
         if re.search(r"[、，,]\s*$", value):
             issues.append(
@@ -84,7 +143,7 @@ def _final_surface_probe(
 ) -> str:
     """Build a deterministic close proxy of the later persisted note surface.
 
-    The real source/Evidence URLs are intentionally not invented here.  Reader Experience
+    The real source/Evidence URLs are intentionally not invented here. Reader Experience
     signals need the title, 30-second summary and article rhythm; a no-source preview is enough
     to detect the exact late-stage regression without moving persistence into the quality gate.
     """
@@ -108,7 +167,7 @@ def _final_surface_probe(
         )
     except Exception:
         # Final-surface QA must never become a new operational failure because an old
-        # compatibility stub has a narrower signature.  The fallback is still deterministic.
+        # compatibility stub has a narrower signature. The fallback is still deterministic.
         return _projection_from_parts(title, reader_summary, article)
 
 
@@ -137,10 +196,10 @@ def final_surface_issues(
     )
     if projection:
         signals = pipeline_module._reader_experience_signals(projection)
-        for issue in run248.extra_reader_value_issues(signals):
+        for issue in _extra_reader_value_issues(signals):
             suffix = str(issue).split(READER_VALUE_MARKER, 1)[-1]
             issues.append(READER_VALUE_MARKER + "final_surface_" + suffix)
-        for failure in run248.extra_japanese_surface_failures(projection):
+        for failure in _extra_japanese_surface_failures(projection):
             issues.append(READER_VALUE_MARKER + "final_surface_" + str(failure))
 
     return list(dict.fromkeys(issues)), summary, projection
@@ -150,7 +209,7 @@ def repair_final_public_manuscript(markdown_text: str) -> str:
     """Repair deterministic presentation-only defects after Run248 manuscript shaping."""
     text = str(markdown_text or "")
     # The real Run248 specimen showed the canonical disclaimer immediately attached to the
-    # second supplemental Evidence Markdown link.  This separator changes presentation only.
+    # second supplemental Evidence Markdown link. This separator changes presentation only.
     text = re.sub(
         r"(?<!\n)(?=※本記事に含まれる見解・提案は筆者個人の意見であり、)",
         "\n\n",
