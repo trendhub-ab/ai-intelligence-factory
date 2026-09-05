@@ -63,7 +63,13 @@ def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
+    from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
+
+    # Run235 Stage3A structural extraction. These functions are pure and zero-API.
+    # Install them before the historical runtime wrapper chain so every later layer sees
+    # the canonical source-normalization surface without changing wrapper order.
+    install_source_normalization(pipeline)
 
     # Compatibility contract: install every historical production layer before any
     # Run231 observability. Run231 must never change article/Evidence/Gate behavior.

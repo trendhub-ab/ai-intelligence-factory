@@ -1,5 +1,5 @@
 name: Integration Reconciliation CI
-# Run234: the already-required zero-api-regression job also owns Cross DB PR contract coverage.
+# Run235: protected zero-api-regression owns modularization and Cross DB PR contract coverage.
 
 on:
   pull_request:
@@ -12,6 +12,7 @@ on:
       - 'pipeline.py'
       - 'production_pipeline.py'
       - 'runtime_layers.py'
+      - 'source_normalization.py'
       - 'legacy_eyecatch_renderer.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
@@ -38,7 +39,6 @@ on:
       - '.github/workflows/member-presentation-sync.yml'
       - '.github/workflows/subscriber-decision-brief.yml'
       - '.github/workflows/cross-db-contract-guard.yml'
-      - '.github/workflows/run231-stage2-surgical-migration.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
@@ -69,6 +69,7 @@ jobs:
             pipeline.py \
             production_pipeline.py \
             runtime_layers.py \
+            source_normalization.py \
             legacy_eyecatch_renderer.py \
             run231_performance_telemetry.py \
             publication_contract.py \
@@ -108,12 +109,14 @@ jobs:
           grep -F 'contents: read' .github/workflows/regression-test.yml
           grep -F 'run: python production_pipeline.py' .github/workflows/regression-test.yml
           ! grep -F 'run: python reader_value_review_bridge.py' .github/workflows/regression-test.yml
-      - name: Run Run231 modularization falsification
+      - name: Run pipeline modularization falsification
         run: |
           python -m unittest tests.test_run231_pipeline_slim -v
           python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
           python -m unittest tests.test_run231_stage2_repository_contract -v
           python -m unittest tests.test_run233_ci_collection_integrity -v
+          python -m unittest tests.test_run235_source_normalization_module -v
+          python -m unittest tests.test_multilingual_title_normalization -v
       - name: Run Cross DB contract falsification
         run: |
           python -m unittest tests/test_cross_db_contract_guard.py
@@ -166,9 +169,11 @@ jobs:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
         run: python production_pipeline.py
-      - name: Export exact pipeline source for Stage2 surgical inspection
+      - name: Export exact pipeline source for modularization inspection
         uses: actions/upload-artifact@v4
         with:
-          name: run231-stage2-pipeline-source
-          path: pipeline.py
+          name: run231-pipeline-source
+          path: |
+            pipeline.py
+            source_normalization.py
           retention-days: 1

@@ -61,15 +61,10 @@ class Run233CICollectionIntegrityTests(unittest.TestCase):
             workflow,
         )
 
-    def test_stage2_compatibility_workflow_is_read_only(self):
-        workflow = (
-            ROOT / ".github/workflows/run231-stage2-surgical-migration.yml"
-        ).read_text(encoding="utf-8")
-        self.assertIn("permissions:\n  contents: read", workflow)
-        self.assertNotIn("contents: write", workflow)
-        self.assertNotIn("git commit", workflow)
-        self.assertNotIn("git push", workflow)
-        self.assertIn("git diff --exit-code", workflow)
+    def test_stage2_temporary_compatibility_workflow_stays_retired(self):
+        self.assertFalse(
+            (ROOT / ".github/workflows/run231-stage2-surgical-migration.yml").exists()
+        )
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 Status: **Production refactor contract**  
 Baseline date: 2026-09-05  
-Source of Truth: `main` + `production_pipeline.py` + `runtime_layers.py` + Run231 regression tests
+Source of Truth: `main` + `production_pipeline.py` + `runtime_layers.py` + Run231/Run235 regression tests
 
 ## Purpose
 
@@ -67,18 +67,45 @@ The first extraction target is the legacy/internal Decision Score card renderer 
 - Run178–Run183 editorial eyecatch refinement layers continue to operate on the live editorial renderer; they are not replaced by this module.
 - Stage 2A parity regression was green before duplicate-code deletion.
 
-### Stage 2B — physical removal after parity proof
+### Stage 2B / Run234 — physical removal and reconciliation
 
-After Stage 2A parity was proven, the duplicate legacy/internal renderer implementation was surgically removed from `pipeline.py` by AST-validated migration.
+After Stage 2A parity was proven, the duplicate legacy/internal renderer implementation was surgically removed from `pipeline.py` by AST-validated migration and the final reconciliation was merged to `main` as squash commit `b8746ae2bb33f4237edd5b32e298936a30633750`.
 
 - The heavy renderer implementation and six geometry/background helper definitions remain physically removed from `pipeline.py`.
-- Post-deletion reconciliation restores only a thin `generate_eyecatch_image` compatibility def because Run99/Run105/Run150/Run160 intentionally inspect the `pipeline.py`/callable source. The wrapper delegates to the single canonical implementation in `legacy_eyecatch_renderer.py`; renderer logic is not duplicated.
-- The compatibility binding is loader-safe: normal imports and historical `spec.loader.exec_module()` tests that omit `sys.modules` registration both bind to the same canonical renderer through a live globals proxy.
+- A thin `generate_eyecatch_image` compatibility def remains because Run99/Run105/Run150/Run160 intentionally inspect the `pipeline.py`/callable source.
+- The legacy module's exact absence no longer prevents the live publication path from importing; nested dependency errors, syntax errors, and implementation failures remain fail-closed.
+- `production_pipeline.py` no longer redundantly reimports/reinstalls the obsolete legacy renderer.
 - Preserved `_sanitize_filename`, `upload_eyecatch_to_github`, and the live `generate_note_editorial_eyecatch` import.
 - `pipeline.py` changed from **13,649 lines to 13,390 lines**, a net reduction of **259 lines** for this surface while retaining the thin source-compatibility shim.
-- The deletion commit is `2dd1c2b255bbe00d054141ea958da62f29580e24` on the Stage 2 branch.
-- The pre-Stage2 main remains preserved on `backup/pre-run231-stage2-2026-09-05`.
-- Stage 2B is **not merge-eligible** until the post-deletion full unittest regression, Synthetic Production, Repository-wide Falsification, Notion Access Policy, article-quality reconciliation, and adjacent product/context checks are all green on a normal user-origin PR head.
+- The temporary Stage2 compatibility workflow was read-only during reconciliation and is retired in Run235 after successful merge.
+- Final pre-merge validation reached **1450 pytest passes**, Synthetic Production **30/30**, critical failures **0**, and production write isolation **true**.
+
+## Stage 3A / Run235 — pure source normalization strangler
+
+The next extraction target is the source-normalization / multilingual-display surface because it is deterministic, provider-free, persistence-free, and shared by all source ingestion paths.
+
+Canonical extracted module: `source_normalization.py`
+
+The Stage3A surface contains only:
+
+- `_detect_title_language`
+- `_japanese_product_descriptor`
+- `_multilingual_display_name`
+- `_notion_display_name`
+- `_source_summary_with_original`
+- `normalize_item`
+
+Safety design:
+
+1. Historical definitions remain temporarily in `pipeline.py` during Stage3A. This is intentional strangler parity, not a second Production path.
+2. `production_pipeline.py` installs `source_normalization` onto the imported `pipeline` namespace **before** `install_runtime_layers(pipeline)`.
+3. Historical runtime-layer order remains unchanged; all later wrappers see the extracted canonical normalization functions.
+4. The extracted module imports only standard-library text utilities and must not contain provider, network, Gemini, Notion, quota, Fact, Evidence, Decision, or persistence logic.
+5. Dedicated Run235 regression compares the extracted and historical implementations independently before installation across Japanese, English, Chinese, Korean, Cyrillic, undefined-language, descriptor, summary, and full normalized-item cases.
+6. The existing multilingual-title regression remains an independent downstream persistence compatibility check.
+7. Physical deletion of the duplicate block from `pipeline.py` is deferred to a later Stage3B only after Stage3A parity and full Production regression are proven.
+
+Run235 also retires `.github/workflows/run231-stage2-surgical-migration.yml`, because its Stage2 migration role ended when Run234 merged. The permanent Repository-wide Falsification Guard and required `zero-api-regression` now own the continuing modularization safety contract.
 
 ## Performance policy
 
@@ -86,6 +113,8 @@ Modularization and runtime optimization are separate concerns.
 
 A smaller file does not justify removing useful gates or requests. Runtime optimization must follow measured Run231 telemetry. Candidate optimizations may include avoiding duplicate I/O, avoiding unchanged Notion writes, per-run Evidence reuse, safe source-fetch concurrency, and CI dependency caching, but only when measurement identifies them as material.
 
+Stage3A is a structural extraction. It does **not** claim a Production runtime improvement merely because logic moved into a smaller module.
+
 ## Merge gate
 
-No Run231 structural change is eligible for `main` unless all relevant checks are green, including the full unittest suite and Synthetic Production. A backup branch must exist before destructive deletion/refactoring of a validated production surface.
+No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof; the Stage3A duplicate normalization block therefore remains in `pipeline.py` until a later explicitly validated Stage3B.
