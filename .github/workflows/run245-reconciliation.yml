@@ -1,0 +1,41 @@
+name: Run245 Repository Reconciliation
+
+on:
+  push:
+    branches:
+      - run245-fact-validation-modularization
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run245-fact-validation-modularization
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Reconcile permanent CI and documentation
+        run: python run245_repository_reconciliation.py
+      - name: Compile permanent Run245 surfaces
+        run: python -m compileall -q pipeline.py fact_validation_signals.py source_boundary_validation.py run245_fact_validation_migration.py repository_falsification_guard.py documentation_freshness_guard.py
+      - name: Dedicated Run245 tests
+        run: |
+          python -m unittest tests.test_run245_fact_validation_modules -v
+          python -m unittest tests.test_run245_fact_validation_integration -v
+      - name: Documentation freshness
+        run: python documentation_freshness_guard.py
+      - name: Diff safety
+        run: git diff --check
+      - name: Commit reconciliation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md AI_Intelligence_Factory_最終仕様書.md .github/workflows/repository-falsification.yml .github/workflows/integration-reconciliation-ci.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'Run245: reconcile CI and canonical documentation'
+          git push origin HEAD:run245-fact-validation-modularization
