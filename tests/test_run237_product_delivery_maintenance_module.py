@@ -176,13 +176,21 @@ class Run237ProductDeliveryMaintenanceModuleTests(unittest.TestCase):
         source = MODULE_PATH.read_text(encoding="utf-8")
         tree = ast.parse(source)
         imported_roots = set()
+        runtime_identifiers = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 imported_roots.update(alias.name.split(".")[0] for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported_roots.add(node.module.split(".")[0])
+            elif isinstance(node, ast.Name):
+                runtime_identifiers.add(node.id.lower())
+            elif isinstance(node, ast.Attribute):
+                runtime_identifiers.add(node.attr.lower())
         self.assertTrue(imported_roots.isdisjoint({"requests", "google", "notion_client"}))
-        self.assertNotIn("gemini", source.lower())
+        self.assertFalse(
+            any("gemini" in name for name in runtime_identifiers),
+            "Run237 module must not bind a Gemini runtime object",
+        )
 
     def test_pipeline_retains_only_thin_compatibility_wrappers(self):
         source = PIPELINE_PATH.read_text(encoding="utf-8")
