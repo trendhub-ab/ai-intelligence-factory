@@ -11,7 +11,7 @@ white/network illustration:
 * compact category/date footer.
 
 The background, right-side network illustration, brand and top tags remain the existing
-``editorial_eyecatch`` deterministic functions.  No image-generation API or additional
+``editorial_eyecatch`` deterministic functions. No image-generation API or additional
 Gemini request is introduced.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ import editorial_eyecatch as ee
 import run178_eyecatch_editorial_layout_optimizer as r178
 
 
-# Historical Run181 compatibility constants.  Keep these stable for downstream contracts.
+# Historical Run181 compatibility constants. Keep these stable for downstream contracts.
 TITLE_FONT_BOOST = 4
 TITLE_MAX_FONT = 80
 TITLE_MAX_WIDTH = 760
@@ -36,7 +36,7 @@ HIGHLIGHT_FONT_SCALE = 1.0
 HIGHLIGHT_MAX_FONT = 96
 TITLE_SAFE_BOTTOM = 468
 
-# Adopted impact hierarchy.  These are deterministic presentation values only.
+# Adopted impact hierarchy. These are deterministic presentation values only.
 IMPACT_BADGE_TOP = 112
 IMPACT_HOOK_TOP = 174
 IMPACT_TITLE_TOP = 234
@@ -67,11 +67,8 @@ def _boost_title_size(lines: list[str], base_size: int) -> int:
 
 
 def _split_line_for_highlight(
-    lines: list[str],
-    line_index: int,
-    highlight_text: str | None,
+    lines: list[str], line_index: int, highlight_text: str | None
 ) -> list[tuple[str, bool]]:
-    """Split one title line into normal/highlight runs using global title indices."""
     if not highlight_text:
         return [(lines[line_index], False)]
     joined = "".join(lines)
@@ -119,22 +116,17 @@ def _mixed_line_metrics(
 
 
 def _fit_highlight_size(
-    lines: list[str],
-    normal_size: int,
-    line_gap: int,
-    highlight_text: str | None,
+    lines: list[str], normal_size: int, line_gap: int, highlight_text: str | None
 ) -> int:
     """Historical Run183 fitter retained as a stable helper."""
     if not highlight_text or HIGHLIGHT_FONT_SCALE <= 1.0:
         return int(normal_size)
-
     base = int(normal_size)
     target = min(HIGHLIGHT_MAX_FONT, max(base, int(round(base * HIGHLIGHT_FONT_SCALE))))
     probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
     draw = ImageDraw.Draw(probe)
     normal_font = ee._jp_font(base, bold=True)
-    all_runs = [_split_line_for_highlight(lines, index, highlight_text) for index in range(len(lines))]
-
+    all_runs = [_split_line_for_highlight(lines, i, highlight_text) for i in range(len(lines))]
     for candidate in range(target, base - 1, -1):
         highlight_font = ee._jp_font(candidate, bold=True)
         heights: list[int] = []
@@ -162,7 +154,6 @@ def _draw_mixed_title_line(
     normal_font: Any,
     highlight_font: Any,
 ) -> int:
-    """Bottom-align visible glyph boxes so mixed-size Japanese remains visually stable."""
     _width, line_height = _mixed_line_metrics(draw, runs, normal_font, highlight_font)
     cursor_x = x
     for text, emphasized in runs:
@@ -224,10 +215,7 @@ def _impact_title_size(lines: list[str], base_size: int, line_gap: int) -> int:
         widths = [ee._text_width(draw, line, font) for line in lines]
         heights = [_run_bbox_height(draw, line, font) for line in lines]
         block_height = sum(heights) + max(0, len(lines) - 1) * int(line_gap)
-        if (
-            all(width <= TITLE_MAX_WIDTH for width in widths)
-            and IMPACT_TITLE_TOP + block_height <= IMPACT_TITLE_SAFE_BOTTOM
-        ):
+        if all(width <= TITLE_MAX_WIDTH for width in widths) and IMPACT_TITLE_TOP + block_height <= IMPACT_TITLE_SAFE_BOTTOM:
             return candidate
     return min(base, IMPACT_TITLE_MAX_FONT)
 
@@ -238,15 +226,11 @@ def _fit_impact_highlight_size(
     if not highlight_text or HIGHLIGHT_FONT_SCALE <= 1.0:
         return int(normal_size)
     base = int(normal_size)
-    target = min(
-        IMPACT_HIGHLIGHT_MAX_FONT,
-        max(base, int(round(base * HIGHLIGHT_FONT_SCALE))),
-    )
+    target = min(IMPACT_HIGHLIGHT_MAX_FONT, max(base, int(round(base * HIGHLIGHT_FONT_SCALE))))
     probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
     draw = ImageDraw.Draw(probe)
     normal_font = ee._jp_font(base, bold=True)
-    all_runs = [_split_line_for_highlight(lines, index, highlight_text) for index in range(len(lines))]
-
+    all_runs = [_split_line_for_highlight(lines, i, highlight_text) for i in range(len(lines))]
     for candidate in range(target, base - 1, -1):
         highlight_font = ee._jp_font(candidate, bold=True)
         heights: list[int] = []
@@ -265,11 +249,7 @@ def _fit_impact_highlight_size(
     return base
 
 
-def _draw_badge(
-    draw: ImageDraw.ImageDraw,
-    label: str,
-    accent: tuple[int, int, int],
-) -> None:
+def _draw_badge(draw: ImageDraw.ImageDraw, label: str, accent: tuple[int, int, int]) -> None:
     font = ee._jp_font(22, bold=True)
     text_w = ee._text_width(draw, label, font)
     x0, y0 = IMPACT_LEFT, IMPACT_BADGE_TOP
@@ -279,11 +259,7 @@ def _draw_badge(
     draw.text((x0 + 36, y0 + 8), label, font=font, fill=TITLE_NAVY)
 
 
-def _draw_hook(
-    draw: ImageDraw.ImageDraw,
-    hook: str,
-    accent: tuple[int, int, int],
-) -> None:
+def _draw_hook(draw: ImageDraw.ImageDraw, hook: str, accent: tuple[int, int, int]) -> None:
     font = ee._jp_font(31, bold=True)
     bbox = draw.textbbox((0, 0), hook, font=font)
     text_w = max(0, bbox[2] - bbox[0])
@@ -310,7 +286,6 @@ def _subheadline_lines(
         except (TypeError, ValueError):
             size = 26
         return lines, max(22, min(29, size))
-
     eyecatch_title = str(validated.get("eyecatch_title") or title or "")
     text = ee.editorial_subheadline(summary, eyecatch_title)
     size = 26
@@ -318,12 +293,9 @@ def _subheadline_lines(
     return ee._wrap_chars(draw, text, font, 725, 2), size
 
 
-def _draw_footer(
-    draw: ImageDraw.ImageDraw,
-    category: str,
-    date_label: str,
-) -> None:
-    label_font = ee._latin_font(18, bold=True)
+def _draw_footer(draw: ImageDraw.ImageDraw, category: str, date_label: str) -> None:
+    # Use a Japanese-capable font because the footer intentionally includes 「解説」.
+    label_font = ee._jp_font(18, bold=True)
     date_font = ee._latin_font(18, bold=True)
     label = f"{category} / 解説"
     draw.text((IMPACT_LEFT, IMPACT_FOOTER_TOP), label, font=label_font, fill=(18, 42, 79))
