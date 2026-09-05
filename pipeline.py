@@ -72,6 +72,12 @@ else:
 import decision_intelligence as decision_intelligence
 import evidence_ledger
 from evidence_authority import classify_evidence, authority_rank
+from product_delivery_maintenance import (
+    current_month_id as _current_month_id_impl,
+    previous_month_id as _previous_month_id_impl,
+    run_evidence_health_maintenance as _run_evidence_health_maintenance_impl,
+    run_product_delivery_maintenance as _run_product_delivery_maintenance_impl,
+)
 
 # ==========================================
 # ログ設定
@@ -12770,103 +12776,43 @@ def seed_tracking_candidates(screened: list[dict]) -> dict:
 
 
 def _previous_month_id(today) -> str:
-    first = today.replace(day=1)
-    prev = first - timedelta(days=1)
-    return f"{prev.year:04d}-{prev.month:02d}"
+    """Compatibility wrapper bound to the canonical Run237 month helper."""
+    return _previous_month_id_impl(today)
 
 
 def _current_month_id(today) -> str:
-    return f"{today.year:04d}-{today.month:02d}"
+    """Compatibility wrapper bound to the canonical Run237 month helper."""
+    return _current_month_id_impl(today)
 
 
 def run_evidence_health_maintenance() -> dict:
-    """Zero-Gemini health checks. Material source changes only accelerate Next Review."""
-    result = {"enabled": evidence_ledger.ENABLE_EVIDENCE_LEDGER, "checked": 0, "material": 0, "missing": 0, "cosmetic": 0, "moved": 0, "errors": 0}
-    if not evidence_ledger.ENABLE_EVIDENCE_LEDGER:
-        return result
-    token = decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY
-    for state in evidence_ledger.query_health_candidates(token):
-        try:
-            def fetcher(url: str):
-                source_type = str(state.get("source_type") or "").lower()
-                if source_type == "github":
-                    repo_name = _github_repo_name_from_url(url)
-                    if repo_name:
-                        text = fetch_github_readme_context(repo_name)
-                        return (200 if text else 0), text, url
-                if source_type == "arxiv":
-                    arxiv_id = _extract_arxiv_id(url)
-                    if arxiv_id:
-                        text, details = fetch_arxiv_api_context(arxiv_id)
-                        final = details.get("arxiv_versioned_url") or url
-                        return (200 if text else 0), text, final
-                status, text, final = _http_get_health_limited(url, min(WEB_CONTEXT_MAX_BYTES, 1_500_000))
-                if status == 200 and ("<html" in text[:1200].lower() or "<!doctype html" in text[:1200].lower()):
-                    parser = _ReadableHTMLTextParser()
-                    try:
-                        parser.feed(text); text = parser.text()
-                    except Exception:
-                        pass
-                return status, text, final
-            health = evidence_ledger.check_health(state, fetcher)
-            result["checked"] += 1
-            h = health.get("health")
-            if h == "COSMETIC_CHANGE": result["cosmetic"] += 1
-            elif h == "MOVED": result["moved"] += 1
-            elif h == "MISSING": result["missing"] += 1
-            if health.get("material"):
-                result["material"] += 1
-                tech_page = state.get("tech_page_id")
-                if tech_page:
-                    now = datetime.now(timezone.utc).isoformat()
-                    patch = requests.patch(
-                        f"https://api.notion.com/v1/pages/{tech_page}",
-                        json={"properties": {decision_intelligence.TECH_PROP_NEXT_REVIEW: {"date": {"start": now}}}},
-                        headers=decision_intelligence._headers(), timeout=10,
-                    )
-                    if patch.status_code != 200:
-                        raise RuntimeError(f"Technology Next Review acceleration failed: {patch.status_code}")
-                evidence_ledger.update_health(state["page_id"], health, token, rereview_triggered=True)
-            else:
-                evidence_ledger.update_health(state["page_id"], health, token, rereview_triggered=False)
-        except Exception as exc:
-            result["errors"] += 1
-            logger.warning("[EVIDENCE HEALTH FAILED] %s: %s", state.get("url"), exc)
-    logger.info("[EVIDENCE HEALTH] %s", result)
-    return result
+    """Bind canonical zero-Gemini Evidence Health logic to live pipeline dependencies."""
+    return _run_evidence_health_maintenance_impl(
+        evidence_ledger=evidence_ledger,
+        decision_intelligence=decision_intelligence,
+        requests_module=requests,
+        logger=logger,
+        github_repo_name_from_url=_github_repo_name_from_url,
+        fetch_github_readme_context=fetch_github_readme_context,
+        extract_arxiv_id=_extract_arxiv_id,
+        fetch_arxiv_api_context=fetch_arxiv_api_context,
+        http_get_health_limited=_http_get_health_limited,
+        readable_html_text_parser=_ReadableHTMLTextParser,
+        web_context_max_bytes=WEB_CONTEXT_MAX_BYTES,
+        now_iso=lambda: datetime.now(timezone.utc).isoformat(),
+    )
 
 
 def run_product_delivery_maintenance(today=None) -> dict:
-    result = {"subscriber": None, "monthly": [], "evidence_health": None}
-    if not (ENABLE_REVENUE_PRODUCT_PHASE2 and decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB): return result
-    try:
-        result["evidence_health"] = run_evidence_health_maintenance()
-    except Exception as exc:
-        logger.error("[EVIDENCE HEALTH MAINTENANCE FAILED] %s", exc)
-    try:
-        result["subscriber"] = decision_intelligence.sync_subscriber_technology_db()
-        if result["subscriber"] and result["subscriber"].get("enabled"): logger.info("[SUBSCRIBER TECH SYNC] %s", result["subscriber"])
-    except Exception as exc:
-        logger.error("[SUBSCRIBER TECH SYNC FAILED] %s", exc)
-    if decision_intelligence.ENABLE_DECISION_MONTHLY_DIGEST:
-        local_today = today or datetime.now(ZoneInfo(NOTION_TIMEZONE)).date()
-        # Re-check the most recent three completed periods every run. Period ID idempotency makes
-        # this cheap and lets the paid monthly product recover even after a multi-week outage.
-        targets = []
-        cursor = local_today.replace(day=1)
-        for _ in range(3):
-            cursor = (cursor - timedelta(days=1)).replace(day=1)
-            targets.append(f"{cursor.year:04d}-{cursor.month:02d}")
-        tomorrow = local_today + timedelta(days=1)
-        if tomorrow.month != local_today.month:
-            targets.append(_current_month_id(local_today))
-        for period in dict.fromkeys(targets):
-            try:
-                row = decision_intelligence.create_history_monthly_digest(period); result["monthly"].append(row)
-                if row.get("created"): logger.info("[DECISION MONTHLY CREATED] %s events=%s", period, row.get("events"))
-            except Exception as exc:
-                logger.error("[DECISION MONTHLY FAILED] %s: %s", period, exc)
-    return result
+    """Bind canonical paid-product maintenance to live pipeline flags and timezone."""
+    return _run_product_delivery_maintenance_impl(
+        enabled=ENABLE_REVENUE_PRODUCT_PHASE2,
+        decision_intelligence=decision_intelligence,
+        logger=logger,
+        evidence_health_runner=run_evidence_health_maintenance,
+        today=today,
+        today_factory=lambda: datetime.now(ZoneInfo(NOTION_TIMEZONE)).date(),
+    )
 
 
 def process_article_backlog(pending_items: list[dict] | None, generated_count: int,
