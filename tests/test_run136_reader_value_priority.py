@@ -1,6 +1,7 @@
 import inspect
 import unittest
 import pipeline
+import reader_experience_signals
 
 
 class Run136ReaderValuePriorityTests(unittest.TestCase):
@@ -11,7 +12,9 @@ class Run136ReaderValuePriorityTests(unittest.TestCase):
         self.assertIn("文字数を品質目標にしない", src)
 
     def test_information_budget_is_not_character_count_gate(self):
-        src = inspect.getsource(pipeline._reader_experience_signals)
+        # Run239 moved the canonical implementation out of pipeline.py; preserve the
+        # original Run136 semantic assertions against the current canonical owner.
+        src = inspect.getsource(reader_experience_signals.reader_experience_signals)
         self.assertNotIn("article_char_count > 3200", src)
         self.assertIn("max_explanatory_run >= 4", src)
         self.assertIn("unique_implementation_identifiers", src)
