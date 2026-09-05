@@ -18,6 +18,7 @@ Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confid
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
 Pipeline Modularization Baseline: **Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run246 — falsified repository hygiene cleanup with active/runtime asset protection**
+First Real Publish Quality Baseline: **Run248 — real-note quality calibration / eyecatch fallback parity / publication-value fail-closed**
 Production Source of Truth: **`main`**
 
 ## 0. この仕様書の位置づけ
@@ -245,6 +246,23 @@ Run226初回FULL ONE-SHOTでは記事固有の切り口・Curiosity Pullは改�
 
 詳細: `docs/reference/RUN228_READER_RHYTHM_PLANNING.md`
 
+### 4.6 First Real Publish Quality Calibration — Run248
+
+初回の実Production → note private-draft E2Eは自動化経路そのものを実証した一方、**内部診断が複数のReader Experience弱点を検知しているのにReadyへ到達すること、Semantic Eyecatch 503 fallbackで現行デザイン契約が失われること、note表層のリンク/商品名称/日本語崩れが残ること**を実物で確認した。`run248_first_real_publish_quality_calibration.py`は、この実機差分だけをzero-provider-callで校正する最終公開品質層である。
+
+- アイキャッチの**背景・右側イラストは現行承認デザインを変更しない**。背景再設計や別テーマ画像への置換はRun248の対象外。
+- Semantic Eyecatch directorが503等でfallbackしても、前景コピーは現行契約を維持する。強調色は`#F28C28`、タイトルは従来fallbackより大きく、Run181の下方向30px調整を維持する。
+- `LLM`等の短いLatin/model tokenや短い括弧・引用内フレーズを行途中で分断しない。2/3行候補の中でまず可読フォントサイズを最大化し、その後に行数・自然な切れ目・バランスを評価する。
+- Semantic layoutが得られなかった場合も追加Gemini requestは行わず、既存の承認背景とRun181/183系rendererで前景だけをdeterministicに再描画する。
+- `補助Evidence`の裸URL bulletは公開manuscriptで明示Markdown linkへ変換し、note editorでクリック可能にする。URL自体、Evidence内容、一次情報authorityは変更しない。
+- 公開CTAの商品名称は**`月次ダイジェスト`**に統一し、会員価値を「採用・様子見・見送り」の判断に必要なEvidence / Actionを継続整理するものとして明示する。
+- Accessibility / Curiosity Pull / Reader Enjoyment / Narrative Pull / Jargon Translation / Non-Engineer Core Clarity / Information Budget / Reader Temperature Rhythmのうち**4軸以上が同時にREVIEW**なら、単独soft signal扱いのままReadyへ通さずHuman Appeal上のeditorial reviewへ昇格する。
+- Accessibility / Jargon Translation / Non-Engineer Core Clarityが3つ同時にREVIEWの場合も、非エンジニアへの核心到達失敗としてeditorial reviewへ昇格する。
+- 初回実稿で確認した`開発速度をに高める`型の狭い助詞衝突、`主主要`、`眼砲`をhigh-confidence Japanese surface failureとしてzero-modelでblockする。広い辞書推測や意味を変える自動修正はしない。
+- 既存記事生成requestの末尾に、スマホ可読性、専門語の平易な橋渡し、記事固有の発見/意味、日本語表層の最終読み直しを要求する。ただし新しいFact・数値・人物・引用・因果を追加してはならない。
+- Fact / Evidence / Decision / score / source URL / Gemini daily budgetを緩めない。追加model call siteは0。Public note releaseはhuman-onlyを維持する。
+- Run248はPublication Contract fingerprint対象。policy変更前のReady原稿は現行Run248 policyで再構築・再検証・再stampされるまでnote投稿対象にしない。
+
 ## 5. Production runtime layer
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
@@ -271,6 +289,8 @@ Run226初回FULL ONE-SHOTでは記事固有の切り口・Curiosity Pullは改�
 - `run183_eyecatch_emphasis_scale.py`
 - `reader_value_review_bridge.py`
 - `run208_reader_value_repair.py`
+- `run222_note_presentation_integrity.py`
+- `run248_first_real_publish_quality_calibration.py`
 - `run194_publication_contract.py`
 
 Run番号が古く見えても現役Production codeである。整理目的だけで削除・rename・統合してはならない。
@@ -504,6 +524,7 @@ note投稿対象はContent Intelligence側のReadyだけでは不十分。
 - `run194_note_persistent_cloud.py`
 - `run199_note_vm_preflight.py`
 - `run222_note_presentation_integrity.py`
+- `run248_first_real_publish_quality_calibration.py`
 
 `.github/workflows/note-create-draft.yml`はzero-browser / zero-Gemini preflight後、eligible candidateがある場合だけGCP Chrome VMを起動する。private draftのみ作成し、公開は人間が行う。
 
@@ -560,6 +581,7 @@ CIは少なくとも次を検証する。
 - Run226では無料記事のReader DelightをSOURCE BOUNDARY内のReader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of Viewとして生成前に設計し、固定Hook・比喩・問い・段落・箇条書き等の回数ノルマをHard Gate化しない。Evidence / Decision / 既存Gate / Gemini call数を変更しない。
 - Run227では実Productionで確認した高信頼の日本語表層破損をzero-modelでFail-Closedし、自動推測修正・Fact/Evidence/Decision変更・追加model callを行わない。旧Ready稿は現行policy fingerprintに一致するまでnote投稿対象にしない。
 - Run228ではdense-report clusterをEvidence削減で隠さず、既存生成request内でFactを理解・意味・判断へ変換するReader Rhythmを設計する。style countや固定構成を新しいHard Gateにせず、Fact/Evidence/Decision/Reader Value/Publication Gate/Gemini call数を変更しない。
+- Run248では初回実note draftで確認した多軸Reader弱点のReadyすり抜け、Semantic Eyecatch fallbackのデザイン契約喪失、補助Evidenceリンク、`月次ダイジェスト`名称、日本語表層破損をzero-provider-callで再発防止する。承認済み背景/イラストは変更せず、Fact/Evidence/Decision/Gemini call数/Public release境界を緩めない。
 
 Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
 
