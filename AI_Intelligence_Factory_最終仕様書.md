@@ -16,7 +16,7 @@ Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive 
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
-Pipeline Modularization Baseline: **Run236 — source-normalization + pure evidence-context extraction / zero-quality-change strangler modularization**
+Pipeline Modularization Baseline: **Run237 — source-normalization + evidence-context + paid-product maintenance extraction / zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -73,7 +73,9 @@ Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
 
 - Run235でsource normalizationの重複実装を`source_normalization.py`へ集約し、`pipeline.py`は単一正本を参照する。
 - Run236でEvidence本文のtruncate/excerpt/mergeロジックをprovider・DB非依存の`evidence_context.py`へ抽出する。`pipeline.py`には現行の動的文字数上限を束縛する薄いwrapperだけを残す。
-- Run235/236はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
+- Run237でEvidence Health、Subscriber Technology DB sync、月次Digest期間選択/生成の運用保守ロジックを`product_delivery_maintenance.py`へ抽出する。`pipeline.py`はlive runtime依存を渡す薄いwrapperだけを残し、Evidence Healthのzero-model契約と直近3完了月のDigest再確認順序を維持する。
+- Run235/236/237はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
+- Run237詳細: `docs/reference/RUN237_PRODUCT_DELIVERY_MAINTENANCE_MODULARIZATION.md`
 
 - 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
 - Screening全体上限: 200候補
