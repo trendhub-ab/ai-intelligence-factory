@@ -13,24 +13,26 @@ import run235_stage3b_source_normalization_migration as migration
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PATCH_PATH = ROOT / "patches" / "run235-stage3b-source-normalization.patch"
 MIGRATION_PATH = ROOT / "run235_stage3b_source_normalization_migration.py"
+PREIMAGE_FIXTURE_PATH = ROOT / "tests" / "fixtures" / "run235_stage3b_pipeline_preimage.py.txt"
+HISTORICAL_PATCH_RETURN_LINE = 3144
 
 
-def _reverse_patch_to_preimage(postimage: str) -> str:
-    """Reconstruct the exact Stage3A preimage from the committed Stage3B postimage."""
-    with tempfile.TemporaryDirectory() as td:
-        work = pathlib.Path(td)
-        path = work / "pipeline.py"
-        path.write_text(postimage, encoding="utf-8")
-        result = subprocess.run(
-            ["git", "apply", "--reverse", str(PATCH_PATH)],
-            cwd=work,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise AssertionError(result.stderr)
-        return path.read_text(encoding="utf-8")
+def _historical_preimage() -> str:
+    """Return the frozen Run235 Stage3A preimage at the patch's original line offset.
+
+    The fixture intentionally contains only the historical surgical neighborhood.  Padding
+    restores the original hunk line so the committed patch can be validated without making
+    any later pipeline.py layout part of Run235's contract.
+    """
+    fixture = PREIMAGE_FIXTURE_PATH.read_text(encoding="utf-8")
+    lines = fixture.splitlines(keepends=True)
+    return_index = next(
+        i for i, line in enumerate(lines, start=1)
+        if line == "    return datetime.now(JST).isoformat()\n"
+    )
+    if return_index > HISTORICAL_PATCH_RETURN_LINE:
+        raise AssertionError("Run235 fixture no longer fits its historical patch offset")
+    return ("\n" * (HISTORICAL_PATCH_RETURN_LINE - return_index)) + fixture
 
 
 class Run235Stage3BSourceNormalizationMigrationTests(unittest.TestCase):
@@ -60,20 +62,17 @@ class Run235Stage3BSourceNormalizationMigrationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             migration.transform_source(bad)
 
-    def test_output_compiles_and_preserves_adjacent_function(self):
-        source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
-        compile(source, "pipeline.py", "exec")
-        self.assertIn("def _truncate_text_context", source)
-
-        preimage = _reverse_patch_to_preimage(source)
+    def test_historical_fixture_compiles_and_preserves_adjacent_function(self):
+        preimage = _historical_preimage()
         transformed = migration.transform_source(preimage)
-        self.assertEqual(transformed, source)
-        compile(transformed, "pipeline.py", "exec")
+        compile(preimage, "run235_stage3a_preimage.py", "exec")
+        compile(transformed, "run235_stage3b_postimage.py", "exec")
+        self.assertIn("def _truncate_text_context", preimage)
         self.assertIn("def _truncate_text_context", transformed)
 
     def test_cli_never_writes_without_explicit_write_flag(self):
-        postimage = (ROOT / "pipeline.py").read_text(encoding="utf-8")
-        preimage = _reverse_patch_to_preimage(postimage)
+        preimage = _historical_preimage()
+        postimage = migration.transform_source(preimage)
         self.assertNotEqual(preimage, postimage)
 
         with tempfile.TemporaryDirectory() as td:
@@ -90,24 +89,34 @@ class Run235Stage3BSourceNormalizationMigrationTests(unittest.TestCase):
             self.assertIn("changed=true", result.stdout)
             self.assertEqual(path.read_text(encoding="utf-8"), preimage)
 
-    def test_committed_patch_round_trips_and_matches_exact_migration_output(self):
-        postimage = (ROOT / "pipeline.py").read_text(encoding="utf-8")
-        preimage = _reverse_patch_to_preimage(postimage)
-        self.assertEqual(migration.transform_source(preimage), postimage)
+    def test_committed_patch_round_trips_against_frozen_run235_fixture(self):
+        preimage = _historical_preimage()
+        postimage = migration.transform_source(preimage)
 
         with tempfile.TemporaryDirectory() as td:
             work = pathlib.Path(td)
             path = work / "pipeline.py"
             path.write_text(preimage, encoding="utf-8")
-            result = subprocess.run(
+
+            forward = subprocess.run(
                 ["git", "apply", str(PATCH_PATH)],
                 cwd=work,
                 text=True,
                 capture_output=True,
                 check=False,
             )
-            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(forward.returncode, 0, msg=forward.stderr)
             self.assertEqual(path.read_text(encoding="utf-8"), postimage)
+
+            reverse = subprocess.run(
+                ["git", "apply", "--reverse", str(PATCH_PATH)],
+                cwd=work,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(reverse.returncode, 0, msg=reverse.stderr)
+            self.assertEqual(path.read_text(encoding="utf-8"), preimage)
 
 
 if __name__ == "__main__":
