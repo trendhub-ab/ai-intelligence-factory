@@ -16,7 +16,7 @@ Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive 
 Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
 Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
 Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
-Pipeline Modularization Baseline: **Run231 — zero-quality-change runtime separation / performance telemetry / staged legacy renderer extraction**  
+Pipeline Modularization Baseline: **Run236 — source-normalization + pure evidence-context extraction / zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run201 — repository garbage cleanup without intended runtime behavior change**  
 Production Source of Truth: **`main`**
 
@@ -70,6 +70,10 @@ AI Intelligence Factoryの事業構造:
 現行`pipeline.py` / `production_pipeline.py`の主要契約:
 
 Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
+
+- Run235でsource normalizationの重複実装を`source_normalization.py`へ集約し、`pipeline.py`は単一正本を参照する。
+- Run236でEvidence本文のtruncate/excerpt/mergeロジックをprovider・DB非依存の`evidence_context.py`へ抽出する。`pipeline.py`には現行の動的文字数上限を束縛する薄いwrapperだけを残す。
+- Run235/236はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
 
 - 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
 - Screening全体上限: 200候補

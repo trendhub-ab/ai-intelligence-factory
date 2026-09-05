@@ -3155,63 +3155,26 @@ from source_normalization import (
 
 
 
-def _truncate_text_context(text: str, max_chars: int) -> str:
-    text = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
-    return text[:max(0, int(max_chars or 0))]
+from evidence_context import (
+    merge_verification_context as _merge_verification_context_impl,
+    truncate_text_context as _truncate_text_context,
+    verification_excerpt as _verification_excerpt,
+)
 
 
 def _truncate_source_context(text: str) -> str:
+    """Bind the pure helper to the current runtime source-context ceiling."""
     return _truncate_text_context(text, SOURCE_CONTEXT_MAX_CHARS)
 
 
-def _verification_excerpt(text: str, max_chars: int) -> str:
-    """長い一次資料の冒頭だけでなく末尾のLimitations/Appendixも残す。"""
-    normalized = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
-    limit = max(0, int(max_chars or 0))
-    if len(normalized) <= limit:
-        return normalized
-    if limit <= 64:
-        return normalized[:limit]
-    marker = "\n\n[...verification context omitted...]\n\n"
-    payload = max(0, limit - len(marker))
-    # Method/Abstractを厚めに残しつつ、末尾のLimitations/Appendixも必ず監査対象へ入れる。
-    head = int(payload * 0.68)
-    tail = payload - head
-    return normalized[:head] + marker + normalized[-tail:]
-
-
 def _truncate_verification_context(text: str) -> str:
-    """Fact/Evidence照合専用。Geminiへ送るprompt contextとは分離して広く保持する。"""
+    """Bind the pure excerpt helper to the current verification ceiling."""
     return _verification_excerpt(text, VERIFICATION_CONTEXT_MAX_CHARS)
 
 
 def _merge_verification_context(existing: str, new_evidence: str) -> str:
-    """既存Evidenceが長くても、後から取得したPDF/Docsをverificationから落とさない。
-
-    単純な `existing + new` の先頭truncateでは、Landing pageが上限を埋めた時に
-    後取得の論文PDFが丸ごと消える。新Evidenceへ最低限の監査枠を確保し、双方の
-    冒頭/末尾を残してFact Gateへ渡す。
-    """
-    old = re.sub(r"\n{3,}", "\n\n", (existing or "").strip())
-    new = re.sub(r"\n{3,}", "\n\n", (new_evidence or "").strip())
-    if not old:
-        return _truncate_verification_context(new)
-    if not new:
-        return _truncate_verification_context(old)
-    separator = "\n\n"
-    limit = VERIFICATION_CONTEXT_MAX_CHARS
-    if len(old) + len(separator) + len(new) <= limit:
-        return old + separator + new
-    payload = max(0, limit - len(separator))
-    # 後取得のPDF/Docsは一次根拠として重要なため60%まで優先。ただし短い場合は
-    # 余った枠を既存Landing/Abstractへ戻す。
-    new_budget = min(len(new), int(payload * 0.60))
-    old_budget = payload - new_budget
-    if len(old) < old_budget:
-        extra = old_budget - len(old)
-        old_budget = len(old)
-        new_budget = min(len(new), new_budget + extra)
-    return _verification_excerpt(old, old_budget) + separator + _verification_excerpt(new, new_budget)
+    """Bind the pure merge helper to the current verification ceiling."""
+    return _merge_verification_context_impl(existing, new_evidence, VERIFICATION_CONTEXT_MAX_CHARS)
 
 
 def fetch_github_readme_context(repo_name: str) -> str:
