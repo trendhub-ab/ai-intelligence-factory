@@ -119,8 +119,8 @@ assert anchor in s
 s=s.replace(anchor,anchor+IMPORT_BLOCK,1)
 ast.parse(s)
 line_count=len(s.splitlines())
-if line_count != 11499:
-    raise RuntimeError(f'Run241 expected 11499-line postimage, got {line_count}')
+if line_count != 11497:
+    raise RuntimeError(f'Run241 expected 11497-line postimage, got {line_count}')
 for forbidden in ('def canonicalize_url(url: str) -> str:\n    """URL Dedup専用の正規化', 'def _reason_code(message: str, gate: str) -> str:\n    """既存Gateの自由文', 'def _salvage_screening_json_rows(text: str) -> list[dict]:\n    """Recover complete JSON', 'def compute_source_roi_profile(state: dict | None) -> dict[str, dict]:\n    """Compute recency-weighted'):
     if forbidden in s:
         raise RuntimeError('Run241 heavy implementation remains in pipeline')

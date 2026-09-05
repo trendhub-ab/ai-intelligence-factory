@@ -14,7 +14,7 @@ import pipeline
 class Run241BatchedIntegrationTests(unittest.TestCase):
     def test_pipeline_is_physically_slimmed_and_heavy_bodies_left(self):
         src=inspect.getsource(pipeline)
-        self.assertLessEqual(len(src.splitlines()),11499)
+        self.assertLessEqual(len(src.splitlines()),11497)
         self.assertNotIn('"""URL Dedup専用の正規化。意味のあるpath/queryは変更しない。"""',src)
         self.assertNotIn('"""Compute recency-weighted Source ROI and learning readiness."""',src)
         self.assertNotIn('def _salvage_screening_json_rows(text: str) -> list[dict]:\n    """Recover complete JSON',src)
