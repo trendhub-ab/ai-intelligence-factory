@@ -41,6 +41,7 @@ on:
       - 'run182_eyecatch_conclusion_emphasis.py'
       - 'run183_eyecatch_emphasis_scale.py'
       - 'run222_note_presentation_integrity.py'
+      - 'run248_first_real_publish_quality_calibration.py'
       - 'publication_contract.py'
       - 'run194_publication_contract.py'
       - 'note_ready_sync.py'
@@ -53,6 +54,7 @@ on:
       - 'tests/test_run226_reader_delight_planning.py'
       - 'tests/test_run227_japanese_surface_integrity.py'
       - 'tests/test_run228_reader_rhythm_planning.py'
+      - 'tests/test_run248_first_real_publish_quality_calibration.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -84,10 +86,9 @@ jobs:
         run: pip install requests
 
       - name: Zero-API unit tests
-        # Keep this reconciliation workflow intentionally minimal. Run226's pipeline-heavy
-        # editorial tests run in repository Integration CI; Run197 below proves every current
-        # publication-policy file still triggers this queue reconciliation. Run227 and Run228 are
-        # stdlib-only zero-model layers, so their narrow regression tests run here too.
+        # Keep this reconciliation workflow intentionally minimal. Run248's visual regression
+        # is covered by Integration CI; Run197 below proves every current publication-policy
+        # file still triggers this queue reconciliation. The tests here never open note.com.
         run: |
           python -m unittest tests.test_note_ready_sync -v
           python -m unittest tests.test_run194_note_ready_workflow -v

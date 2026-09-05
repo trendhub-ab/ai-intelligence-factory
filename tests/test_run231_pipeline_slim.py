@@ -34,6 +34,7 @@ EXPECTED_RUNTIME_LAYER_ORDER = (
     "reader_value_review_bridge.install",
     "run208_reader_value_repair.install",
     "run222_note_presentation_integrity.install_pipeline",
+    "run248_first_real_publish_quality_calibration.install",
     "run194_publication_contract.install",
 )
 
