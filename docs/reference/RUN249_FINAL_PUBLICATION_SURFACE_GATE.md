@@ -27,7 +27,7 @@ Run249 fails closed on the following narrow defects:
 3. existing Run248 multi-axis Reader Experience weakness detected on the final public projection
 4. existing Run248 high-confidence broken-Japanese signals detected on the final projection
 
-The exact real specimen that escaped Run248 is locked into regression tests, including the orphan `」` title and incomplete `何が出た？` / `なぜ重要？` answers.
+The exact real specimen that escaped Run248 is locked into regression tests, including the orphan `」` title and incomplete `何が出た？` / `なぜ重要？` answers. This real-specimen regression is part of the normal zero-API test suite and must remain green before Run249 can enter `main`.
 
 ## Presentation-only deterministic repair
 
