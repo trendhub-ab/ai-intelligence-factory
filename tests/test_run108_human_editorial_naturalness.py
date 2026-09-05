@@ -27,17 +27,22 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 import pipeline
+import content_generation_protocol
 
 
 class Run108HumanEditorialNaturalnessTests(unittest.TestCase):
     def test_prompt_no_longer_exposes_fixed_heading_sequence_or_paragraph_roles(self):
-        src = inspect.getsource(pipeline.build_decision_prompt)
+        # Run244 moved the canonical prompt body out of pipeline.py. Preserve all
+        # original Run108 semantic assertions against the canonical owner and
+        # also prove the pipeline surface is only the live-binding wrapper.
+        src = inspect.getsource(content_generation_protocol.build_decision_prompt)
         self.assertNotIn("導入見出しは次を使う", src)
         self.assertNotIn("1段落目は", src)
         self.assertNotIn("2段落目は", src)
         self.assertNotIn("その後、以下の見出しをこの順番で出す", src)
         self.assertIn("記事固有の内容から自分で作る", src)
         self.assertIn("内部の意味役割", src)
+        self.assertIn("_build_decision_prompt_impl", inspect.getsource(pipeline.build_decision_prompt))
 
     def test_formulaic_ai_prose_triggers_high_composite(self):
         article = """## 現場の困りごとから
