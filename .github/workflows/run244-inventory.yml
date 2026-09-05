@@ -8,7 +8,7 @@ on:
       - run244_decision_product_protocol_migration.py
       - .github/workflows/run244-inventory.yml
 permissions:
-  contents: read
+  contents: write
 jobs:
   inventory:
     runs-on: ubuntu-latest
@@ -17,7 +17,35 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Freeze exact target sizes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('run244_decision_product_protocol_migration.py')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              '"_product_review_prompt": 29,': '"_product_review_prompt": 21,',
+              '"_parse_product_review_response": 19,': '"_parse_product_review_response": 17,',
+              '"_parse_product_review_model_response": 13,': '"_parse_product_review_model_response": 10,',
+          }
+          for old, new in replacements.items():
+              if old in s:
+                  s = s.replace(old, new, 1)
+              elif new not in s:
+                  raise SystemExit(f'unexpected target-size surface: {old}')
+          p.write_text(s, encoding='utf-8')
+          PY
       - name: Inventory pipeline
         run: python run244_pipeline_inventory.py
       - name: Dry-run guarded migration
         run: python run244_decision_product_protocol_migration.py
+      - name: Commit exact target-size guard
+        run: |
+          if git diff --quiet -- run244_decision_product_protocol_migration.py; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add run244_decision_product_protocol_migration.py
+          git commit -m 'Run244: freeze exact migration target sizes'
+          git push origin HEAD:run244-pipeline-modularization-next
