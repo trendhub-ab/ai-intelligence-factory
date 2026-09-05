@@ -50,11 +50,13 @@ def patch_spec() -> None:
     text = SPEC.read_text(encoding="utf-8")
     old = "Pipeline Modularization Baseline: **Run231 — zero-quality-change runtime separation / performance telemetry / staged legacy renderer extraction**"
     new = "Pipeline Modularization Baseline: **Run236 — source-normalization + pure evidence-context extraction / zero-quality-change strangler modularization**"
-    if old not in text:
-        if new in text:
+    old_line = old + "  \n"
+    new_line = new + "\n"
+    if old_line not in text:
+        if new_line in text:
             return
         raise SystemExit("Run236 guard failed: canonical modularization baseline anchor is missing")
-    text = text.replace(old, new, 1)
+    text = text.replace(old_line, new_line, 1)
     anchor = "Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`\n"
     addition = (
         anchor
