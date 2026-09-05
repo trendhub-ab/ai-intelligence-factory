@@ -1,5 +1,5 @@
 name: Integration Reconciliation CI
-# Run236: protected zero-api-regression owns modularization and Cross DB PR contract coverage.
+# Run237: protected zero-api-regression owns modularization and Cross DB PR contract coverage.
 
 on:
   pull_request:
@@ -14,6 +14,7 @@ on:
       - 'runtime_layers.py'
       - 'source_normalization.py'
       - 'evidence_context.py'
+      - 'product_delivery_maintenance.py'
       - 'legacy_eyecatch_renderer.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
@@ -72,7 +73,9 @@ jobs:
             runtime_layers.py \
             source_normalization.py \
             evidence_context.py \
+            product_delivery_maintenance.py \
             run235_stage3b_source_normalization_migration.py \
+            run237_product_delivery_maintenance_migration.py \
             legacy_eyecatch_renderer.py \
             run231_performance_telemetry.py \
             publication_contract.py \
@@ -122,6 +125,8 @@ jobs:
           python -m unittest tests.test_run235_stage3b_source_normalization_migration -v
           python -m unittest tests.test_run236_evidence_context_module -v
           python -m unittest tests.test_run236_evidence_context_integration -v
+          python -m unittest tests.test_run237_product_delivery_maintenance_module -v
+          python -m unittest tests.test_run237_product_delivery_maintenance_integration -v
           python -m unittest tests.test_multilingual_title_normalization -v
       - name: Run Cross DB contract falsification
         run: |
@@ -183,4 +188,5 @@ jobs:
             pipeline.py
             source_normalization.py
             evidence_context.py
+            product_delivery_maintenance.py
           retention-days: 1
