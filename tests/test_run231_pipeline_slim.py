@@ -187,7 +187,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.code, 7)
 
-    def test_production_entrypoint_keeps_setup_before_observability(self):
+    def test_production_entrypoint_keeps_setup_before_observability_without_legacy_reimport(self):
         events = []
 
         fake_pipeline = types.ModuleType("pipeline")
@@ -200,9 +200,6 @@ class Run231PipelineSlimTests(unittest.TestCase):
 
         font = types.ModuleType("run179_eyecatch_font_refinement")
         font.ensure_google_font_assets = lambda **kwargs: events.append(("font", kwargs["enabled"]))
-
-        legacy = types.ModuleType("legacy_eyecatch_renderer")
-        legacy.install = lambda pipeline_module: events.append("legacy_eyecatch")
 
         telemetry = types.ModuleType("run231_performance_telemetry")
         telemetry.install = lambda pipeline_module: events.append("telemetry")
@@ -217,7 +214,6 @@ class Run231PipelineSlimTests(unittest.TestCase):
                 "pipeline": fake_pipeline,
                 "run203_runtime_state_channel": runtime_state,
                 "run179_eyecatch_font_refinement": font,
-                "legacy_eyecatch_renderer": legacy,
                 "run231_performance_telemetry": telemetry,
             },
             clear=False,
@@ -230,7 +226,6 @@ class Run231PipelineSlimTests(unittest.TestCase):
                 "runtime_layers",
                 "preflight",
                 ("font", True),
-                "legacy_eyecatch",
                 "telemetry",
                 "pipeline.main",
             ],
