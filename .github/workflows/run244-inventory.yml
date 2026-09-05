@@ -1,51 +1,53 @@
-name: Run244 Pipeline Inventory
+name: Run244 Migration Bootstrap
 on:
   push:
     branches:
       - run244-pipeline-modularization-next
     paths:
-      - run244_pipeline_inventory.py
       - run244_decision_product_protocol_migration.py
+      - tests/test_run244_decision_product_protocol_module.py
+      - tests/test_run244_decision_product_protocol_integration.py
       - .github/workflows/run244-inventory.yml
 permissions:
   contents: write
 jobs:
-  inventory:
+  migrate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Freeze exact target sizes
+      - name: Install test dependencies
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('run244_decision_product_protocol_migration.py')
-          s = p.read_text(encoding='utf-8')
-          replacements = {
-              '"_product_review_prompt": 29,': '"_product_review_prompt": 21,',
-              '"_parse_product_review_response": 19,': '"_parse_product_review_response": 17,',
-              '"_parse_product_review_model_response": 13,': '"_parse_product_review_model_response": 10,',
-          }
-          for old, new in replacements.items():
-              if old in s:
-                  s = s.replace(old, new, 1)
-              elif new not in s:
-                  raise SystemExit(f'unexpected target-size surface: {old}')
-          p.write_text(s, encoding='utf-8')
-          PY
-      - name: Inventory pipeline
-        run: python run244_pipeline_inventory.py
-      - name: Dry-run guarded migration
-        run: python run244_decision_product_protocol_migration.py
-      - name: Commit exact target-size guard
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply exact fail-closed migration
+        run: python run244_decision_product_protocol_migration.py --write
+      - name: Compile migrated production surface
         run: |
-          if git diff --quiet -- run244_decision_product_protocol_migration.py; then
-            exit 0
-          fi
+          python -m py_compile pipeline.py content_generation_protocol.py evidence_sufficiency.py product_review_protocol.py run244_decision_product_protocol_migration.py
+          echo "PIPELINE_LINES=$(wc -l < pipeline.py)"
+      - name: Run Run244 dedicated falsification
+        run: |
+          python -m unittest tests.test_run244_decision_product_protocol_module -v
+          python -m unittest tests.test_run244_decision_product_protocol_integration -v
+      - name: Run protected adjacent regressions
+        run: |
+          python -m unittest tests.test_run243_content_generation_protocol_module -v
+          python -m unittest tests.test_run243_content_generation_protocol_integration -v
+          python -m unittest discover -s tests -p 'test_run134_monthly_decision_brief_reconciliation.py' -v
+          python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
+          python -m unittest discover -s tests -p 'test_revenue_product_phase2.py' -v
+      - name: Prove migration idempotency and clean diff shape
+        run: |
+          python run244_decision_product_protocol_migration.py
+          git diff --check
+      - name: Commit migrated production modules
+        run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add run244_decision_product_protocol_migration.py
-          git commit -m 'Run244: freeze exact migration target sizes'
+          git add pipeline.py content_generation_protocol.py evidence_sufficiency.py product_review_protocol.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Run244: extract decision and product review protocol'
           git push origin HEAD:run244-pipeline-modularization-next
