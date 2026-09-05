@@ -19,6 +19,7 @@ Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhy
 Pipeline Modularization Baseline: **Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior zero-quality-change strangler modularization**
 Repository Organization Baseline: **Run246 — falsified repository hygiene cleanup with active/runtime asset protection**
 First Real Publish Quality Baseline: **Run248 — real-note quality calibration / eyecatch fallback parity / publication-value fail-closed**
+Final Publication Surface Baseline: **Run249 — post-assembly public-surface revalidation / malformed title-summary fail-closed**
 Production Source of Truth: **`main`**
 
 ## 0. この仕様書の位置づけ
@@ -263,6 +264,21 @@ Run226初回FULL ONE-SHOTでは記事固有の切り口・Curiosity Pullは改�
 - Fact / Evidence / Decision / score / source URL / Gemini daily budgetを緩めない。追加model call siteは0。Public note releaseはhuman-onlyを維持する。
 - Run248はPublication Contract fingerprint対象。policy変更前のReady原稿は現行Run248 policyで再構築・再検証・再stampされるまでnote投稿対象にしない。
 
+### 4.7 Final Publication Surface Gate — Run249
+
+Run248後の実`article_validation`で、通常Gate通過後に組み立てる公開タイトルと「30秒でわかるこの記事」に括弧不整合・文途中の要約が残り、Reader Experienceの弱点が最終公開面で再発してもReadyへ到達できる境界を確認した。`run249_final_publication_surface_gate.py`はこの後段だけをzero-provider-callで再検査する。
+
+- Human Appeal評価時に、公開タイトル・30秒要約・本文から最終note公開面の決定論projectionを作り、既存Reader Experience診断を再利用する。
+- Final projectionでRun248のmulti-axis reader weakness / non-engineer access failureが成立する場合、`reader_value_review:`としてNeeds Editorial ReviewへFail-Closedする。Reader-only不良を直すための追加Gemini retryは増やさない。
+- 公開タイトルの`「」` / `『』`の孤立・不整合をhigh-confidence defectとして止める。
+- `何が出た？` / `なぜ重要？` / `結論は？`の単独回答が`、` / `，` / `,`で終わる明確な文途中fragmentを止める。広い日本語文法推測は行わない。
+- Run248のhigh-confidence Japanese surface failureもfinal projectionで再確認する。
+- 補助Evidence link直後に標準免責文が連結した場合は空行だけをdeterministicに補う。URL・Evidence・Decision・免責文本文は変更しない。
+- Gemini/provider追加callは0。Fact / Evidence / Decision / score / quota / eyecatch背景・右側イラスト / Public release human-onlyを変更しない。
+- Run249はPublication Contract fingerprint対象であり、旧policy Ready稿は現行policyで再生成・再検証・再stampされるまでnote投稿対象にしない。
+
+詳細: `docs/reference/RUN249_FINAL_PUBLICATION_SURFACE_GATE.md`
+
 ## 5. Production runtime layer
 
 `production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
@@ -291,6 +307,7 @@ Run226初回FULL ONE-SHOTでは記事固有の切り口・Curiosity Pullは改�
 - `run208_reader_value_repair.py`
 - `run222_note_presentation_integrity.py`
 - `run248_first_real_publish_quality_calibration.py`
+- `run249_final_publication_surface_gate.py`
 - `run194_publication_contract.py`
 
 Run番号が古く見えても現役Production codeである。整理目的だけで削除・rename・統合してはならない。
