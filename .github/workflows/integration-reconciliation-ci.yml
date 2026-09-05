@@ -1,5 +1,5 @@
 name: Integration Reconciliation CI
-# Run244: protected zero-api-regression owns decision/evidence/product protocol modularization and Cross DB PR contract coverage.
+# Run245: protected zero-api-regression owns deterministic fact/source-boundary modularization and Cross DB PR contract coverage.
 
 on:
   pull_request:
@@ -29,6 +29,8 @@ on:
       - 'content_generation_protocol.py'
       - 'evidence_sufficiency.py'
       - 'product_review_protocol.py'
+      - 'fact_validation_signals.py'
+      - 'source_boundary_validation.py'
       - 'legacy_eyecatch_renderer.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
@@ -102,6 +104,9 @@ jobs:
             content_generation_protocol.py \
             evidence_sufficiency.py \
             product_review_protocol.py \
+            fact_validation_signals.py \
+            source_boundary_validation.py \
+            run245_fact_validation_migration.py \
             run235_stage3b_source_normalization_migration.py \
             run237_product_delivery_maintenance_migration.py \
             run238_deep_dive_portfolio_migration.py \
@@ -176,6 +181,8 @@ jobs:
           python -m unittest tests.test_run243_content_generation_protocol_integration -v
           python -m unittest tests.test_run244_decision_product_protocol_module -v
           python -m unittest tests.test_run244_decision_product_protocol_integration -v
+          python -m unittest tests.test_run245_fact_validation_modules -v
+          python -m unittest tests.test_run245_fact_validation_integration -v
           python -m unittest tests.test_multilingual_title_normalization -v
       - name: Run Cross DB contract falsification
         run: |
@@ -252,4 +259,6 @@ jobs:
             content_generation_protocol.py
             evidence_sufficiency.py
             product_review_protocol.py
+            fact_validation_signals.py
+            source_boundary_validation.py
           retention-days: 1
