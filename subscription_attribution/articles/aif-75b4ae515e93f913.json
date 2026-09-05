@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-75b4ae515e93f913",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "ArXiv",
+  "source_url": "https://arxiv.org/abs/2608.27309v1",
+  "note_title": "AIでAIを採点する「LLMジャッジ」の落とし穴。統計手法が「存在しないバイアス」を作り出す仕組み。",
+  "ready_at": "2026-09-05T17:15:57.218951+09:00",
+  "notion_page_id": "3cc479ff-dca9-816b-b8e1-dbc5ce7b66f7",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-75b4ae515e93f913&aif_article_id=aif-75b4ae515e93f913",
+  "cta_enabled": true,
+  "decision_score": 70,
+  "screening_score": null,
+  "commercial_value_score": null,
+  "shelf_life_score": null,
+  "shelf_life": null,
+  "portfolio_topic": null,
+  "deep_dive_priority_score": null,
+  "measurement_status": "awaiting_external_metrics"
+}
