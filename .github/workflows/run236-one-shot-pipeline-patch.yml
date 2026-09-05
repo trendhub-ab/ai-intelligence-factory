@@ -6,6 +6,7 @@ on:
       - run236-evidence-context-modularization
     paths:
       - .github/workflows/run236-one-shot-pipeline-patch.yml
+      - tests/_run236_patch_pipeline.py
 
 permissions:
   contents: write
@@ -27,11 +28,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install production dependencies
+        run: pip install -r requirements.txt
+
       - name: Apply guarded migration
         run: python tests/_run236_patch_pipeline.py
 
       - name: Compile changed Python surfaces
         run: python -m py_compile pipeline.py evidence_context.py tests/test_run236_evidence_context_module.py
+
+      - name: Run Run236 behavioral contract
+        run: python -m unittest tests/test_run236_evidence_context_module.py -v
 
       - name: Verify patch shape
         run: git diff --check
