@@ -79,11 +79,7 @@ def main() -> None:
 
     # The direct-import compatibility bridge in pipeline.py owns the legacy/internal
     # renderer installation. Do not import legacy_eyecatch_renderer again here: the live
-    # publication renderer must remain usable when that obsolete module itself is absent.
-    # The marker check is dependency-free and fails closed if the bridge contract disappears.
-    legacy_surface = getattr(pipeline, "generate_eyecatch_image", None)
-    if not getattr(legacy_surface, "__run231_stage2_legacy_eyecatch__", False):
-        raise RuntimeError("Run231 legacy eyecatch compatibility bridge is not installed")
+    # publication renderer remains usable when that obsolete module itself is absent.
 
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.
