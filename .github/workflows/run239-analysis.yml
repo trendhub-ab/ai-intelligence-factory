@@ -1,0 +1,52 @@
+name: Run239 Pipeline Ownership Analysis
+
+on:
+  push:
+    branches:
+      - run239-pipeline-modularization-next
+    paths:
+      - .github/workflows/run239-analysis.yml
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Report large pipeline functions and dependency surface
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          src = Path('pipeline.py').read_text(encoding='utf-8')
+          tree = ast.parse(src)
+          rows=[]
+          for node in tree.body:
+              if not isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                  continue
+              end=getattr(node,'end_lineno',node.lineno)
+              lines=end-node.lineno+1
+              if lines < 20:
+                  continue
+              assigned=set()
+              for n in ast.walk(node):
+                  if isinstance(n,(ast.arg,)):
+                      assigned.add(n.arg)
+                  elif isinstance(n,ast.Name) and isinstance(n.ctx,(ast.Store,ast.Del)):
+                      assigned.add(n.id)
+              loaded=[]
+              for n in ast.walk(node):
+                  if isinstance(n,ast.Name) and isinstance(n.ctx,ast.Load) and n.id not in assigned:
+                      loaded.append(n.id)
+              globals_=sorted(set(loaded))
+              risky=[x for x in globals_ if any(k in x.upper() for k in ('GEMINI','NOTION','REQUEST','CLIENT','API','GITHUB','GH_PAT','TELEGRAM'))]
+              rows.append((lines,node.lineno,end,node.name,len(globals_),','.join(risky[:12]),','.join(globals_[:25])))
+          for r in sorted(rows, reverse=True):
+              print(f'{r[0]:4d} {r[1]:5d}-{r[2]:5d} {r[3]:55s} globals={r[4]:2d} risky=[{r[5]}] deps=[{r[6]}]')
+          PY
