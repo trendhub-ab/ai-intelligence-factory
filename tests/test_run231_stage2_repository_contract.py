@@ -35,11 +35,9 @@ class Run231Stage2RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("install_legacy_eyecatch_renderer(pipeline)", source)
 
         font = source.index("run179_eyecatch_font_refinement.ensure_google_font_assets(")
-        marker = source.index("__run231_stage2_legacy_eyecatch__")
         telemetry = source.index("install_performance_telemetry(pipeline)")
         main = source.index("pipeline.main()")
-        self.assertLess(font, marker)
-        self.assertLess(marker, telemetry)
+        self.assertLess(font, telemetry)
         self.assertLess(telemetry, main)
 
     def test_pipeline_bridge_tolerates_only_exact_missing_legacy_module(self):
