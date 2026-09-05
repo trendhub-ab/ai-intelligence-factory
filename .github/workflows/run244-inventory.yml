@@ -5,6 +5,7 @@ on:
       - run244-pipeline-modularization-next
     paths:
       - run244_pipeline_inventory.py
+      - run244_decision_product_protocol_migration.py
       - .github/workflows/run244-inventory.yml
 permissions:
   contents: read
@@ -18,3 +19,5 @@ jobs:
           python-version: '3.11'
       - name: Inventory pipeline
         run: python run244_pipeline_inventory.py
+      - name: Dry-run guarded migration
+        run: python run244_decision_product_protocol_migration.py
