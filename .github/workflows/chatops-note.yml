@@ -1,0 +1,86 @@
+name: AIIF ChatOps Note Bridge
+
+# Safe, zero-model bridge from the dedicated GitHub control issue to the
+# existing Note Ready sync and private note-draft workflows.
+# It never runs Production and never performs a public note release.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: read
+
+concurrency:
+  group: aiif-chatops-note-control
+  cancel-in-progress: false
+
+jobs:
+  authorize-and-dispatch:
+    # Fail closed: exact commands only, repository owner only, dedicated issue only.
+    # Manual reruns are blocked so one comment can dispatch at most once.
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      (github.event.comment.body == '/aiif note sync' ||
+       github.event.comment.body == '/aiif note draft')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Re-authorize exact command fail-closed
+        id: auth
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMAND" in
+            '/aiif note sync') action='sync' ;;
+            '/aiif note draft') action='draft' ;;
+            *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
+          esac
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch existing Note workflow exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ steps.auth.outputs.action }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            sync)
+              workflow='note-ready-sync.yml'
+              payload='{"ref":"main"}'
+              ;;
+            draft)
+              workflow='note-create-draft.yml'
+              payload='{"ref":"main","inputs":{"confirm":"CREATE_NOTE_DRAFT","sync_id":"","prepare_only":"false"}}'
+              ;;
+            *)
+              echo '::error::Refusing unknown action'
+              exit 1
+              ;;
+          esac
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/dispatches" \
+            --input -
+
+      - name: Record safe dispatch
+        env:
+          ACTION: ${{ steps.auth.outputs.action }}
+        run: |
+          {
+            echo '### AIIF ChatOps Note Bridge'
+            echo '- control issue: `#71`'
+            echo "- action: \`$ACTION\`"
+            echo '- target branch: `main`'
+            echo '- Gemini calls performed by bridge: `0`'
+            echo '- Production started: `false`'
+            echo '- public note release performed: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"
