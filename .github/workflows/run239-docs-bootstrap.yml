@@ -1,0 +1,47 @@
+name: Run239 Documentation Reconciliation Bootstrap
+
+on:
+  push:
+    branches:
+      - run239-pipeline-modularization-next
+    paths:
+      - .github/workflows/run239-docs-bootstrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run239-pipeline-modularization-next
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Reconcile canonical documentation
+        run: python run239_docs_reconcile.py
+      - name: Verify documentation freshness
+        run: python documentation_freshness_guard.py
+      - name: Verify Run239 reference exists and canonical markers moved
+        run: |
+          grep -F 'Pipeline Modularization Baseline: **Run239' AI_Intelligence_Factory_最終仕様書.md
+          grep -F 'RUN239_READER_EXPERIENCE_DIAGNOSTICS_MODULARIZATION.md' AI_Intelligence_Factory_最終仕様書.md
+          grep -F 'Current pipeline modularization baseline:** Run239' README.md
+          grep -F 'reader_experience_signals.py' README.md
+      - name: Reject whitespace damage
+        run: git diff --check
+      - name: Commit canonical docs only
+        shell: bash
+        run: |
+          if git diff --quiet -- AI_Intelligence_Factory_最終仕様書.md README.md; then
+            echo "Expected Run239 docs reconciliation produced no diff" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AI_Intelligence_Factory_最終仕様書.md README.md
+          git commit -m "Run239: reconcile canonical documentation"
+          git push origin HEAD:run239-pipeline-modularization-next
