@@ -71,7 +71,7 @@ class Run242IntegrationTests(unittest.TestCase):
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
         self.assertLessEqual(functions["build_notion_properties"].end_lineno - functions["build_notion_properties"].lineno + 1, 18)
-        self.assertLessEqual(functions["_build_evidence_metadata"].end_lineno - functions["_build_evidence_metadata"].lineno + 1, 1)
+        self.assertNotIn("_build_evidence_metadata", functions)
         self.assertNotIn("_ReadableHTMLTextParser", classes)
         self.assertNotIn("_ResearchLinkParser", classes)
         self.assertLess(len(source.splitlines()), 11200)
