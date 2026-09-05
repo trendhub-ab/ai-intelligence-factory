@@ -37,7 +37,7 @@ class Run245FactValidationIntegrationTests(unittest.TestCase):
         old_sensitive = pipeline._SENSITIVE_NUMERIC_PATTERNS
         old_vague = pipeline._VAGUE_QUANTIFIED_PATTERNS
         try:
-            pipeline._SENSITIVE_NUMERIC_PATTERNS = (r"\b999\b",)
+            pipeline._SENSITIVE_NUMERIC_PATTERNS = (r"999",)
             pipeline._VAGUE_QUANTIFIED_PATTERNS = ()
             failures = pipeline._find_unsupported_numeric_claims("処理値は999です。", "一次情報に値の記載はありません。")
             self.assertTrue(any("999" in item for item in failures), failures)
@@ -62,17 +62,12 @@ class Run245FactValidationIntegrationTests(unittest.TestCase):
         old_alias = pipeline._EVIDENCE_ALIAS_GROUPS
         try:
             pipeline._EVIDENCE_ALIAS_GROUPS = ()
+            sentence = "私なら提供された Cargo.lock を監査します。"
             pipeline.classify_action_risk_tier = lambda _text: "LOW"
-            low = pipeline._find_source_boundary_violations(
-                "私なら Cargo.lock を監査します。",
-                "Official project documentation.",
-            )
+            low = pipeline._find_source_boundary_violations(sentence, "Official project documentation.")
             self.assertEqual([], low)
             pipeline.classify_action_risk_tier = lambda _text: "HIGH"
-            high = pipeline._find_source_boundary_violations(
-                "私なら Cargo.lock を監査します。",
-                "Official project documentation.",
-            )
+            high = pipeline._find_source_boundary_violations(sentence, "Official project documentation.")
             self.assertTrue(any("Cargo.lock" in item for item in high), high)
         finally:
             pipeline.classify_action_risk_tier = old
