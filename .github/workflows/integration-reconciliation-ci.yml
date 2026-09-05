@@ -1,5 +1,5 @@
 name: Integration Reconciliation CI
-# Run233: collect the entire repository test surface with pytest so standalone test functions cannot false-green.
+# Run234: the already-required zero-api-regression job also owns Cross DB PR contract coverage.
 
 on:
   pull_request:
@@ -20,6 +20,16 @@ on:
       - 'run*.py'
       - 'reader_value_review_bridge.py'
       - 'repository_falsification_guard.py'
+      - 'cross_db_contract_guard.py'
+      - 'content_db_contract_guard.py'
+      - 'evidence_db_contract_guard.py'
+      - 'evidence_ledger.py'
+      - 'member_presentation_sync.py'
+      - 'member_presentation_identity.py'
+      - 'provision_member_presentation_db.py'
+      - 'notion_access_policy_guard.py'
+      - 'notion_audit_views.json'
+      - 'documentation_freshness_guard.py'
       - '.github/workflows/daily.yml'
       - '.github/workflows/daily-one-shot.yml'
       - '.github/workflows/regression-test.yml'
@@ -27,6 +37,7 @@ on:
       - '.github/workflows/note-create-draft.yml'
       - '.github/workflows/member-presentation-sync.yml'
       - '.github/workflows/subscriber-decision-brief.yml'
+      - '.github/workflows/cross-db-contract-guard.yml'
       - '.github/workflows/run231-stage2-surgical-migration.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
@@ -68,7 +79,15 @@ jobs:
             daily_portfolio_review.py \
             run175_semantic_fact_precision.py \
             run176_scope_fidelity.py \
-            repository_falsification_guard.py
+            repository_falsification_guard.py \
+            cross_db_contract_guard.py \
+            content_db_contract_guard.py \
+            evidence_db_contract_guard.py \
+            member_presentation_sync.py \
+            member_presentation_identity.py \
+            provision_member_presentation_db.py \
+            notion_access_policy_guard.py \
+            documentation_freshness_guard.py
       - name: Run repository-wide falsification guard
         run: python repository_falsification_guard.py
       - name: Validate manual production workflow safety surface
@@ -93,7 +112,15 @@ jobs:
         run: |
           python -m unittest tests.test_run231_pipeline_slim -v
           python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
+          python -m unittest tests.test_run231_stage2_repository_contract -v
           python -m unittest tests.test_run233_ci_collection_integrity -v
+      - name: Run Cross DB contract falsification
+        run: |
+          python -m unittest tests/test_cross_db_contract_guard.py
+          python -m unittest tests/test_content_db_contract_guard.py
+          python -m unittest tests/test_evidence_db_contract_guard.py
+          python -m unittest tests/test_member_presentation_resolution_guard.py
+          python -m unittest tests/test_run232_notion_integration_reconciliation.py
       - name: Run article quality reconciliation tests
         run: |
           python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
