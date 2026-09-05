@@ -105,7 +105,23 @@ Safety design:
 6. The existing multilingual-title regression remains an independent downstream persistence compatibility check.
 7. Physical deletion of the duplicate block from `pipeline.py` is deferred to a later Stage3B only after Stage3A parity and full Production regression are proven.
 
+Stage3A merged to `main` as commit `c955e217959153843ab2b064a1207b33d2468d9b` after **1458 pytest passes**, Synthetic Production **30/30**, critical failures **0**, production write isolation **true**, and all required PR guards green.
+
 Run235 also retires `.github/workflows/run231-stage2-surgical-migration.yml`, because its Stage2 migration role ended when Run234 merged. The permanent Repository-wide Falsification Guard and required `zero-api-regression` now own the continuing modularization safety contract.
+
+## Stage 3B / Run235 — deterministic duplicate-body deletion gate
+
+Stage3B is intentionally separated from Stage3A so the physical deletion is never mixed with the parity proof that justified it.
+
+- `run235_stage3b_source_normalization_migration.py` is a deterministic, standard-library-only migration utility.
+- It recognizes exactly the six Stage3A historical top-level definitions and fails closed if the surface or order differs.
+- It replaces only that validated contiguous span with direct imports from `source_normalization.py`.
+- The transform is idempotent after migration and compiles before any write is accepted.
+- It does **not** mutate the repository unless a human/operator explicitly supplies `--write`; CI only falsifies the transform and never self-commits or self-pushes.
+- Current validated transform changes `pipeline.py` from **13,423 lines to 13,335 lines**, a net reduction of **88 lines**, while leaving `_truncate_text_context` and all downstream Fact / Evidence / Decision logic untouched.
+- Stage3B is not merge-eligible until the physically transformed `pipeline.py` itself is present on the PR head and the full protected CI stack is green.
+
+This migration guard exists because reintroducing a self-mutating GitHub Actions workflow would recreate the Run233 CI design defect. Repository writes remain explicit and reviewable.
 
 ## Performance policy
 
@@ -113,8 +129,8 @@ Modularization and runtime optimization are separate concerns.
 
 A smaller file does not justify removing useful gates or requests. Runtime optimization must follow measured Run231 telemetry. Candidate optimizations may include avoiding duplicate I/O, avoiding unchanged Notion writes, per-run Evidence reuse, safe source-fetch concurrency, and CI dependency caching, but only when measurement identifies them as material.
 
-Stage3A is a structural extraction. It does **not** claim a Production runtime improvement merely because logic moved into a smaller module.
+Stage3A/3B are structural extraction steps. They do **not** claim a Production runtime improvement merely because logic moved into a smaller module.
 
 ## Merge gate
 
-No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof; the Stage3A duplicate normalization block therefore remains in `pipeline.py` until a later explicitly validated Stage3B.
+No Run231/Run235 structural change is eligible for `main` unless all relevant checks are green, including the full unittest/full pytest suite and Synthetic Production. Destructive deletion of a validated Production surface requires prior parity proof and a reviewable physical source diff. Stage3B therefore remains Draft/unmerged until the transformed `pipeline.py` is committed and revalidated.
