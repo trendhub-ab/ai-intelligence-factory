@@ -1,0 +1,51 @@
+name: Run238 Reconciliation Bootstrap
+
+on:
+  push:
+    branches:
+      - run238-deep-dive-portfolio-modularization
+    paths:
+      - .github/workflows/run238-reconciliation-bootstrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: run238-deep-dive-portfolio-modularization
+          fetch-depth: 0
+
+      - name: Reconcile permanent CI and canonical docs
+        run: python run238_reconciliation.py
+
+      - name: Verify documentation freshness
+        run: python documentation_freshness_guard.py
+
+      - name: Verify Run238 static contract after reconciliation
+        run: python -m unittest tests.test_run238_deep_dive_portfolio_module -v
+
+      - name: Verify permanent CI wiring markers
+        run: |
+          grep -F "deep_dive_portfolio.py" .github/workflows/integration-reconciliation-ci.yml
+          grep -F "tests.test_run238_deep_dive_portfolio_integration" .github/workflows/integration-reconciliation-ci.yml
+          grep -F "tests.test_run238_deep_dive_portfolio_module" .github/workflows/repository-falsification.yml
+
+      - name: Reject whitespace damage
+        run: git diff --check
+
+      - name: Commit reconciled CI and docs
+        shell: bash
+        run: |
+          if git diff --quiet -- .github/workflows/integration-reconciliation-ci.yml AI_Intelligence_Factory_最終仕様書.md README.md; then
+            echo "Expected Run238 reconciliation produced no diff" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/integration-reconciliation-ci.yml AI_Intelligence_Factory_最終仕様書.md README.md
+          git commit -m "Run238: reconcile permanent CI and canonical documentation"
+          git push origin HEAD:run238-deep-dive-portfolio-modularization
