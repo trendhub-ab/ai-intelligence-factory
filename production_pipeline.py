@@ -63,11 +63,10 @@ def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
-    from legacy_eyecatch_renderer import install as install_legacy_eyecatch_renderer
     from run231_performance_telemetry import install as install_performance_telemetry
 
     # Compatibility contract: install every historical production layer before any
-    # Run231 modularization or observability. Run231 must never change article/Evidence/Gate behavior.
+    # Run231 observability. Run231 must never change article/Evidence/Gate behavior.
     install_runtime_layers(pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
@@ -78,10 +77,13 @@ def main() -> None:
         logger=getattr(pipeline, "logger", None),
     )
 
-    # Stage 2 strangler migration.  This replaces only the legacy/internal renderer;
-    # generate_note_editorial_eyecatch (the live publication surface) is identity-checked
-    # by the installer and cannot be changed here.
-    install_legacy_eyecatch_renderer(pipeline)
+    # The direct-import compatibility bridge in pipeline.py owns the legacy/internal
+    # renderer installation. Do not import legacy_eyecatch_renderer again here: the live
+    # publication renderer must remain usable when that obsolete module itself is absent.
+    # The marker check is dependency-free and fails closed if the bridge contract disappears.
+    legacy_surface = getattr(pipeline, "generate_eyecatch_image", None)
+    if not getattr(legacy_surface, "__run231_stage2_legacy_eyecatch__", False):
+        raise RuntimeError("Run231 legacy eyecatch compatibility bridge is not installed")
 
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.
