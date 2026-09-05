@@ -145,6 +145,26 @@ from source_roi_policy import (
     allocate_source_fetch_limits as _allocate_source_fetch_limits_impl, build_source_roi_run_metrics as _build_source_roi_run_metrics_impl,
 )
 
+from notion_payloads import (
+    safe_chunk_text as _safe_chunk_text_impl, notion_date_property as _notion_date_property_impl,
+    build_notion_properties as _build_notion_properties_impl, build_notion_manuscript_children as _build_notion_manuscript_children_impl,
+    build_notion_payload as _build_notion_payload_impl, build_metadata_notion_properties as _build_metadata_notion_properties_impl,
+)
+from source_document_parsing import (
+    github_repo_name_from_url as _github_repo_name_from_url_impl, github_repo_identity as _github_repo_identity_impl,
+    is_github_global_navigation_url as _is_github_global_navigation_url_impl, extract_markdown_evidence_links as _extract_markdown_evidence_links_impl,
+    effective_evidence_source as _effective_evidence_source_impl, is_redundant_arxiv_doi as _is_redundant_arxiv_doi_impl,
+    ReadableHTMLTextParser as _ReadableHTMLTextParserImpl, is_low_value_arxiv_url as _is_low_value_arxiv_url_impl,
+    ResearchLinkParser as _ResearchLinkParserImpl, compress_evidence as _compress_evidence_impl,
+    build_evidence_metadata as _build_evidence_metadata_impl,
+)
+from deferred_queue_policy import (
+    deferred_ttl_days as _deferred_ttl_days_impl, deferred_key as _deferred_key_impl,
+    deferred_serializable as _deferred_serializable_impl, valid_deferred_items as _valid_deferred_items_impl,
+    build_deferred_payload as _build_deferred_payload_impl, merge_rank_deferred_candidates as _merge_rank_deferred_candidates_impl,
+    pop_deferred_candidates as _pop_deferred_candidates_impl,
+)
+
 # ==========================================
 # ログ設定
 # ==========================================
@@ -2217,65 +2237,11 @@ def upload_eyecatch_to_github(local_image_path: str, dest_filename: str) -> str 
 # 5. Notion 保存モジュール（note原稿流し込み対応）
 # ==========================================
 def safe_chunk_text(text: str, limit: int = NOTION_BLOCK_LIMIT) -> list[str]:
-    """
-    Notionのrich_text 1ブロックあたりの文字数上限に収まるよう、テキストを分割する。
-    単純な text[i:i+2000] のような文字数スライスは、文や単語の途中で強制的に
-    ブロックを分断してしまい、note貼り付け時の可読性・見た目を損なうため使わない。
-    優先順位: 1) 改行（段落）単位でまとめる → 2) 1行が上限を超える場合は文末
-    （。！？）単位で分割 → 3) それでも1文が上限を超える場合のみ最終手段として
-    文字数で分割する。
-    """
-    if not text:
-        return []
+    return _safe_chunk_text_impl(text, limit)
 
-    chunks: list[str] = []
-    current = ""
 
-    for line in text.split("\n"):
-        candidate = f"{current}\n{line}" if current else line
-        if len(candidate) <= limit:
-            current = candidate
-            continue
+_notion_date_property = _notion_date_property_impl
 
-        if current:
-            chunks.append(current)
-            current = ""
-
-        if len(line) <= limit:
-            current = line
-            continue
-
-        # 1行が上限を超える場合は文末記号（。！？）を優先して分割
-        sentences = re.findall(r"[^。！？]*[。！？]|[^。！？]+$", line)
-        buf = ""
-        for sentence in sentences:
-            cand = buf + sentence
-            if len(cand) <= limit:
-                buf = cand
-                continue
-            if buf:
-                chunks.append(buf)
-                buf = ""
-            if len(sentence) <= limit:
-                buf = sentence
-            else:
-                # 文末記号すら見つからない極端な長文のみ、最終手段として文字数で分割
-                for i in range(0, len(sentence), limit):
-                    chunks.append(sentence[i:i + limit])
-        current = buf
-
-    if current:
-        chunks.append(current)
-
-    return chunks
-
-def _notion_date_property(iso_datetime: str | None) -> dict:
-    """Published At / Analyzed At用のNotion date型プロパティ値を組み立てる。
-    値が取得できなかった場合（未実装ソース、パース失敗等）はNoneを渡すことで、
-    不正確な日付を捏造せず「未設定」のまま安全にNotionへ送る。"""
-    if not iso_datetime:
-        return {"date": None}
-    return {"date": {"start": iso_datetime}}
 
 
 def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, what_text,
@@ -2286,74 +2252,21 @@ def build_notion_properties(repo_name, repo_url, score, score_breakdown_text, wh
                              eyecatch_url: str = "", published_at: str | None = None,
                              analyzed_at: str | None = None, report_meta: dict | None = None,
                              screening_score: int | None = None, screening_reason: str = "") -> dict:
-    """Deep Dive用Notion properties。既存Statusの意味は維持し、新ライフサイクル列を併記。"""
-    meta = report_meta or {}
-    props = {
-        PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
-        PROP_URL: {"url": repo_url},
-        PROP_SOURCE: {"select": {"name": source}},
-        PROP_ENGAGEMENT: {"number": engagement},
-        PROP_SCORE: {"number": score},
-        PROP_STATUS: {"select": {"name": STATUS_DEEP_DIVE}},
-        PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_DEEP_DIVE}},
-        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_READY}},
-        # note本文の無料/有料区分と、会員向けNotion DBの可視性は別責務。
-        # Readyでも内部Notion資産はSubscriber Onlyを維持する。
-        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_SUBSCRIBER_ONLY}},
-        PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": score_breakdown_text[:2000]}}]},
-        PROP_WHAT: {"rich_text": [{"text": {"content": what_text[:2000]}}]},
-        PROP_WHY_IMPORTANT: {"rich_text": [{"text": {"content": why_important_text[:2000]}}]},
-        PROP_WHY_NOT_IMPORTANT: {"rich_text": [{"text": {"content": why_not_important_text[:2000]}}]},
-        PROP_WHO: {"rich_text": [{"text": {"content": "PM / テックリード / 開発チーム"}}]},
-        PROP_ACTION: {"rich_text": [{"text": {"content": action_text[:2000]}}]},
-        PROP_LICENSE: {"rich_text": [{"text": {"content": spdx_id}}]},
-        PROP_PARADIGM_SHIFT: {"rich_text": [{"text": {"content": paradigm_shift_text[:2000]}}]},
-        PROP_ALTERNATIVE_COMPARISON: {"rich_text": [{"text": {"content": alternative_comparison_text[:2000]}}]},
-        PROP_MIGRATION_COST: {"rich_text": [{"text": {"content": migration_cost_text[:2000]}}]},
-        PROP_TITLE: {"rich_text": [{"text": {"content": (title_text or "（タイトル抽出失敗）")[:2000]}}]},
-        PROP_EYECATCH: {
-            "files": ([{"type": "external", "name": f"{repo_name}.png", "external": {"url": eyecatch_url}}]
-                      if eyecatch_url else [])
-        },
-        PROP_PUBLISHED_AT: _notion_date_property(published_at),
-        PROP_ANALYZED_AT: _notion_date_property(analyzed_at),
-        PROP_SOURCE_SUMMARY: {"rich_text": [{"text": {"content": str(meta.get("source_summary_text", ""))[:2000]}}]},
-        PROP_DECISION: {"select": {"name": meta.get("decision_text", "WATCH") if meta.get("decision_text") in ALLOWED_DECISIONS else "WATCH"}},
-        PROP_DECISION_REASON: {"rich_text": [{"text": {"content": str(meta.get("decision_reason_text", ""))[:2000]}}]},
-        PROP_WHO_SHOULD_USE: {"rich_text": [{"text": {"content": str(meta.get("who_should_use_text", ""))[:2000]}}]},
-        PROP_WHO_SHOULD_NOT_USE: {"rich_text": [{"text": {"content": str(meta.get("who_should_not_use_text", ""))[:2000]}}]},
-        PROP_FUTURE_SCENARIO: {"rich_text": [{"text": {"content": str(meta.get("future_scenario_text", ""))[:2000]}}]},
-        PROP_ARTICLE_VALUE: {"number": int(meta.get("article_value", 0) or 0)},
-        PROP_GROUNDING_STATUS: {"select": {"name": meta.get("grounding_status", GROUNDING_METADATA_ONLY)}},
-        PROP_EVIDENCE_URLS: {"rich_text": [{"text": {"content": str(meta.get("evidence_urls_text", ""))[:2000]}}]},
-    }
-    # 既存ページPATCHでは省略すればStock時の値が保持される。新規Deep Diveページでは明示保存。
-    if screening_score is not None:
-        props[PROP_SCREENING_SCORE] = {"number": screening_score}
-    if screening_reason:
-        props[PROP_SCREENING_REASON] = {"rich_text": [{"text": {"content": screening_reason[:2000]}}]}
-    return props
+    return _build_notion_properties_impl(
+        repo_name, repo_url, score, score_breakdown_text, what_text, why_important_text, why_not_important_text,
+        action_text, spdx_id, paradigm_shift_text, alternative_comparison_text, migration_cost_text, source,
+        engagement, title_text, eyecatch_url, published_at, analyzed_at, report_meta, screening_score,
+        screening_reason, config=globals(),
+    )
+
 
 
 
 def build_notion_manuscript_children(clean_manuscript: str, caption: str = MANUSCRIPT_CAPTION_READY) -> list:
-    """Markdown原稿を1つのcodeブロックとして保存するchildrenを組み立てる。
+    return _build_notion_manuscript_children_impl(
+        clean_manuscript, caption, chunker=lambda text: safe_chunk_text(text),
+    )
 
-    captionでReady原稿とNeeds Editorial Review原稿を識別する。旧版でcaptionが
-    付いていないMarkdown codeブロックはReady互換として扱う。
-    """
-    chunks = safe_chunk_text(clean_manuscript)
-    return [
-        {
-            "object": "block",
-            "type": "code",
-            "code": {
-                "rich_text": [{"type": "text", "text": {"content": chunk}} for chunk in chunks],
-                "language": "markdown",
-                "caption": [{"type": "text", "text": {"content": caption}}],
-            },
-        }
-    ]
 
 
 def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_text,
@@ -2364,17 +2277,14 @@ def build_notion_payload(repo_name, repo_url, score, score_breakdown_text, what_
                           eyecatch_url: str = "", published_at: str | None = None,
                           analyzed_at: str | None = None, report_meta: dict | None = None,
                           screening_score: int | None = None, screening_reason: str = "") -> dict:
-    return {
-        "parent": _notion_parent(),
-        "properties": build_notion_properties(
-            repo_name, repo_url, score, score_breakdown_text, what_text,
-            why_important_text, why_not_important_text, action_text,
-            spdx_id, paradigm_shift_text, alternative_comparison_text,
-            migration_cost_text, source, engagement, title_text, eyecatch_url,
-            published_at, analyzed_at, report_meta, screening_score, screening_reason,
-        ),
-        "children": build_notion_manuscript_children(clean_manuscript),
-    }
+    return _build_notion_payload_impl(
+        repo_name, repo_url, score, score_breakdown_text, what_text, why_important_text, why_not_important_text,
+        action_text, spdx_id, clean_manuscript, paradigm_shift_text, alternative_comparison_text, migration_cost_text,
+        source, engagement, title_text, eyecatch_url, published_at, analyzed_at, report_meta, screening_score,
+        screening_reason, parent=_notion_parent(), build_properties=build_notion_properties,
+        build_children=build_notion_manuscript_children,
+    )
+
 
 
 def save_to_notion(repo_name, repo_url, score, score_breakdown_text, what_text,
@@ -2420,32 +2330,11 @@ def build_metadata_notion_properties(repo_name, repo_url, score, reason,
                                       analyzed_at: str | None = None,
                                       source_summary: str = "",
                                       spdx_id: str = "") -> dict:
-    """Screening通過時の購読者向けStock metadata。Step1評価を永久保存する。
+    return _build_metadata_notion_properties_impl(
+        repo_name, repo_url, score, reason, source, engagement, published_at, analyzed_at, source_summary, spdx_id,
+        config=globals(),
+    )
 
-    GitHub案件はspdx_idをPROP_LICENSEへ保存しておくことで、Pending Retry後の
-    normalize_item()復元時にlicenseInfoが失われ、既に安全確認済みのGitHub案件が
-    NO_LICENSE扱いへ変化することを防ぐ（Legal Safety Gate自体は変更しない）。"""
-    props = {
-        PROP_NAME: {"title": [{"text": {"content": repo_name}}]},
-        PROP_URL: {"url": repo_url},
-        PROP_SOURCE: {"select": {"name": source}},
-        PROP_ENGAGEMENT: {"number": engagement},
-        PROP_SCORE: {"number": score},
-        PROP_STATUS: {"select": {"name": STATUS_STOCKED}},
-        PROP_CONTENT_STATUS: {"select": {"name": CONTENT_STATUS_STOCKED}},
-        PROP_ARTICLE_STATUS: {"select": {"name": ARTICLE_STATUS_NOT_PLANNED}},
-        PROP_SUBSCRIPTION_VISIBILITY: {"select": {"name": VISIBILITY_SUBSCRIBER_ONLY}},
-        PROP_SCREENING_SCORE: {"number": score},
-        PROP_SCREENING_REASON: {"rich_text": [{"text": {"content": reason[:2000]}}]},
-        PROP_SOURCE_SUMMARY: {"rich_text": [{"text": {"content": (source_summary or "")[:2000]}}]},
-        PROP_GROUNDING_STATUS: {"select": {"name": GROUNDING_METADATA_ONLY}},
-        PROP_SCORE_BREAKDOWN: {"rich_text": [{"text": {"content": reason[:2000]}}]},
-        PROP_PUBLISHED_AT: _notion_date_property(published_at),
-        PROP_ANALYZED_AT: _notion_date_property(analyzed_at),
-    }
-    if spdx_id:
-        props[PROP_LICENSE] = {"rich_text": [{"text": {"content": spdx_id[:2000]}}]}
-    return props
 
 
 
@@ -2889,75 +2778,22 @@ def fetch_github_readme_context(repo_name: str) -> str:
     return ""
 
 
-def _github_repo_name_from_url(url: str) -> str:
-    """Return owner/repo only for a concrete GitHub repository URL."""
-    try:
-        parsed = urlparse(url or "")
-    except Exception:
-        return ""
-    host = (parsed.netloc or "").lower().split(":", 1)[0]
-    if host not in {"github.com", "www.github.com"}:
-        return ""
-    parts = [x for x in (parsed.path or "").split("/") if x]
-    if len(parts) < 2:
-        return ""
-    if parts[0].lower() in {"features", "enterprise", "pricing", "solutions", "marketplace", "topics", "collections", "sponsors", "login", "signup", "settings", "organizations"}:
-        return ""
-    return f"{parts[0]}/{parts[1]}"
+_github_repo_name_from_url = _github_repo_name_from_url_impl
+
 
 
 def _github_repo_identity(repo: dict) -> str:
-    entity_id = str(repo.get("canonicalEntityId") or repo.get("canonical_entity_id") or "")
-    if entity_id.lower().startswith("github:") and "/" in entity_id.split(":", 1)[1]:
-        return entity_id.split(":", 1)[1]
-    for value in (repo.get("primaryUrl"), repo.get("url")):
-        name = _github_repo_name_from_url(str(value or ""))
-        if name:
-            return name
-    name = str(repo.get("nameWithOwner") or "").strip()
-    return name if "/" in name and not name.startswith(("http://", "https://")) else ""
+    return _github_repo_identity_impl(repo, repo_name_from_url=_github_repo_name_from_url)
 
 
-def _is_github_global_navigation_url(url: str) -> bool:
-    """Reject GitHub site-wide navigation that can be mistaken for project evidence."""
-    try:
-        parsed = urlparse(url or "")
-    except Exception:
-        return False
-    host = (parsed.netloc or "").lower().split(":", 1)[0]
-    if host not in {"github.com", "www.github.com"}:
-        return False
-    path = (parsed.path or "/").lower()
-    blocked = (
-        "/features/", "/enterprise", "/pricing", "/solutions/", "/marketplace",
-        "/topics/", "/collections/", "/sponsors", "/login", "/signup", "/settings",
-        "/organizations/enterprise", "/customer-stories/",
-    )
-    return any(path == x.rstrip("/") or path.startswith(x) for x in blocked)
+
+_is_github_global_navigation_url = _is_github_global_navigation_url_impl
+
 
 
 def _extract_markdown_evidence_links(text: str) -> list[tuple[str, str]]:
-    """Extract only explicit docs/source links from README-like Markdown.
+    return _extract_markdown_evidence_links_impl(text, is_global_navigation_url=_is_github_global_navigation_url)
 
-    Badge destinations, social links and arbitrary dependency repositories are intentionally
-    ignored. This is a zero-API candidate list; retrieval still happens later under the
-    evidence-document caps.
-    """
-    if not text:
-        return []
-    keywords = re.compile(r"\b(?:docs?|documentation|guide|reference|api|website|homepage|source\s*code|repository|github)\b", re.I)
-    out: list[tuple[str, str]] = []
-    for m in re.finditer(r"(?<!!)\[([^\]]{1,120})\]\((https?://[^\s\)]+)", text):
-        label, url = m.group(1).strip(), urldefrag(m.group(2).strip())[0]
-        if not keywords.search(label) and not keywords.search(urlparse(url).path or ""):
-            continue
-        host = (urlparse(url).netloc or "").lower()
-        if any(x in host for x in ("shields.io", "badge", "twitter.com", "x.com", "discord.gg", "linkedin.com")):
-            continue
-        if _is_github_global_navigation_url(url):
-            continue
-        out.append((url, label))
-    return list(dict.fromkeys(out))[:12]
 
 
 def fetch_github_repository_metadata_context(repo_name: str) -> tuple[str, dict]:
@@ -3059,128 +2895,26 @@ def fetch_arxiv_api_context(arxiv_id: str) -> tuple[str, dict]:
 
 
 def _effective_evidence_source(repo: dict) -> str:
-    """Promote HN/legacy discovery rows to the durable primary-source type when explicit."""
-    entity_id = str(repo.get("canonicalEntityId") or repo.get("canonical_entity_id") or "").lower()
-    primary = str(repo.get("primaryUrl") or repo.get("url") or "")
-    if entity_id.startswith("github:") or _github_repo_name_from_url(primary):
-        return "GitHub"
-    if entity_id.startswith("arxiv:") or _extract_arxiv_id(primary):
-        return "ArXiv"
-    return str(repo.get("source") or "GitHub")
-
-
-def _is_redundant_arxiv_doi(url: str, arxiv_id: str) -> bool:
-    if not arxiv_id:
-        return False
-    parsed = urlparse(url or "")
-    if (parsed.netloc or "").lower() not in {"doi.org", "dx.doi.org"}:
-        return False
-    return f"arxiv.{arxiv_id}" in (parsed.path or "").lower()
-
-
-class _ReadableHTMLTextParser(HTMLParser):
-    """外部記事から本文候補を安全に抽出する標準ライブラリのみの軽量Parser。"""
-    _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "footer", "header", "form", "aside"}
-    _BREAK_TAGS = {"title", "h1", "h2", "h3", "h4", "p", "li", "blockquote", "pre", "article", "main", "br"}
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self._skip_depth = 0
-        self._parts: list[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        if tag in self._SKIP_TAGS:
-            self._skip_depth += 1
-            return
-        if self._skip_depth == 0 and tag in self._BREAK_TAGS:
-            self._parts.append("\n")
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in self._SKIP_TAGS:
-            if self._skip_depth > 0:
-                self._skip_depth -= 1
-            return
-        if self._skip_depth == 0 and tag in self._BREAK_TAGS:
-            self._parts.append("\n")
-
-    def handle_data(self, data):
-        if self._skip_depth == 0 and data:
-            self._parts.append(data)
-
-    def text(self) -> str:
-        raw = unescape(" ".join(self._parts))
-        lines = []
-        previous = None
-        for line in raw.splitlines():
-            line = re.sub(r"\s+", " ", line).strip()
-            if not line or line == previous:
-                continue
-            # ナビゲーション断片の大量混入を少し抑える。極端に短い断片は連続本文価値が低い。
-            if len(line) < 2:
-                continue
-            lines.append(line)
-            previous = line
-        return "\n".join(lines)
-
-
-def _is_low_value_arxiv_url(url: str) -> bool:
-    """arXivのナビゲーション/補助URLをEvidence・Freshness候補から除外する。"""
-    try:
-        parsed = urlparse(url or "")
-    except Exception:
-        return False
-    host = (parsed.netloc or "").lower().split(":", 1)[0]
-    if host not in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
-        return False
-    path = (parsed.path or "/").rstrip("/") or "/"
-    lowered = path.lower()
-    if lowered == "/":
-        return True
-    blocked_prefixes = (
-        "/prevnext", "/ignoreme", "/search", "/list", "/help",
-        "/login", "/format", "/catchup", "/multi", "/show-email",
+    return _effective_evidence_source_impl(
+        repo, repo_name_from_url=_github_repo_name_from_url, extract_arxiv_id=_extract_arxiv_id,
     )
-    return lowered.startswith(blocked_prefixes)
 
 
-class _ResearchLinkParser(HTMLParser):
-    """本文とは別に、研究ページの一次資料リンクだけを安全に収集する。"""
-    _KEYWORDS = re.compile(r"\b(pdf|paper|publication|full\s*paper|download|proceedings|doi|supplement|appendix|technical\s*report|docs?|documentation|github|gitlab|repository|source\s*code)\b", re.I)
 
-    def __init__(self, base_url: str):
-        super().__init__(convert_charrefs=True)
-        self.base_url = base_url
-        self.links: list[tuple[str, str]] = []
-        self._current_href = ""
-        self._current_text: list[str] = []
+_is_redundant_arxiv_doi = _is_redundant_arxiv_doi_impl
 
-    def handle_starttag(self, tag, attrs):
-        if tag.lower() == "a":
-            href = dict(attrs).get("href", "")
-            self._current_href = urljoin(self.base_url, href) if href else ""
-            self._current_text = []
 
-    def handle_data(self, data):
-        if self._current_href:
-            self._current_text.append(data)
 
-    def handle_endtag(self, tag):
-        if tag.lower() != "a" or not self._current_href:
-            return
-        href = urldefrag(self._current_href)[0]
-        label = " ".join(self._current_text).strip()
-        parsed = urlparse(href)
-        # host名の "arxiv" だけで全リンクを研究資料扱いしない。path/queryとラベルだけを見る。
-        href_signal = f"{parsed.path}?{parsed.query}"
-        if (
-            href.startswith(("http://", "https://"))
-            and not _is_low_value_arxiv_url(href)
-            and (self._KEYWORDS.search(label) or self._KEYWORDS.search(href_signal))
-        ):
-            self.links.append((href, label))
-        self._current_href, self._current_text = "", []
+_ReadableHTMLTextParser = _ReadableHTMLTextParserImpl
+
+
+
+_is_low_value_arxiv_url = _is_low_value_arxiv_url_impl
+
+
+
+_ResearchLinkParser = _ResearchLinkParserImpl
+
 
 
 def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int) -> tuple[bytes, str, str]:
@@ -3368,49 +3102,12 @@ def fetch_pdf_context(url: str) -> str:
 
 
 def _compress_evidence(text: str) -> str:
-    """論文末尾の表やLimitationsを落とさないよう、重要セクションを先頭優先でなく抽出する。"""
-    lines = [x.strip() for x in (text or "").splitlines() if x.strip()]
-    keywords = re.compile(r"abstract|method|experiment|table|hardware|gpu|runtime|second|sec\b|dataset|benchmark|limitation|appendix|code|availability|status|supplement", re.I)
-    selected = [line for line in lines if keywords.search(line)]
-    # 抽出された行だけで意味が切れないよう、冒頭の要約も少量残す。
-    merged = "\n".join((lines[:80] + selected)[:500])
-    return _truncate_source_context(merged)
+    return _compress_evidence_impl(text, truncate_source_context=_truncate_source_context)
 
 
-def _build_evidence_metadata(context: str, deep_scanned: bool) -> dict:
-    text = context or ""
-    def state(pattern: str) -> str:
-        return "FOUND" if re.search(pattern, text, re.I) else ("SEARCHED_NOT_FOUND" if deep_scanned else "NOT_SEARCHED")
-    qualifiers = []
-    for m in re.finditer(r"(?:in|at least in) (simple|obvious)[^.\n]{0,100}(?:case|cases)|(?:単純な|明確に判定できる)[^。\n]{0,80}(?:例|ケース)", text, re.I):
-        qualifiers.append(m.group(0).strip())
-    metadata = {
-        "coverage": {
-            "method": state(r"\b(?:method|approach)\b|stage\s*[12]|方法"), "dataset": state(r"\b(?:dataset|data set)\b|データセット"),
-            "hardware": state(r"\b(?:hardware|gpu|rtx|nvidia|cpu)\b|ハードウェア"), "runtime": state(r"\b(?:runtime|latency|sec|second|seconds)\b|処理時間"),
-            "benchmark": state(r"benchmark|evaluation|experiment|評価"), "limitations": state(r"limitation|limitat|constraint|制約|限界"),
-            "code_availability": state(r"source code|code availability|github|code release|公開コード"),
-        },
-        "required_qualifiers": list(dict.fromkeys(qualifiers))[:8],
-        "evidence_strength": "OFFICIAL_GUARANTEE" if re.search(r"guarantee[sd]?|保証", text, re.I) else "UNKNOWN",
-    }
-    # 公式リリースノートは研究用のMethod見出しを持たない。本文に実在する
-    # API / package / function / implementation 記述も技術根拠として拾う。
-    # 英単語は必ずword boundaryで判定する。`API`が`rapid/capital`に、`test`が`latest`に
-    # 部分一致してEvidenceを誤ってFOUND扱いするFalse Negativeを防ぐ。
-    metadata["coverage"]["method"] = state(r"\b(?:method|approach|implementation|architecture|algorithm|api|package|function|interface)\b|stage\s*[12]|方法|実装|関数|パッケージ")
-    metadata["coverage"]["benchmark"] = state(r"\b(?:benchmark|evaluation|experiment|test|release notes?)\b|評価|テスト|ベンチマーク")
-    metadata["coverage"]["limitations"] = state(r"\b(?:limitation|limitations|constraint|constraints|WIP|experimental|unsupported)\b|work in progress|not supported|not implemented|does not support|制約|限界")
-    # 抽出元は常に本文。存在しない固有名を補完する用途には使わない。
-    metadata["named_technical_entities"] = list(dict.fromkeys(re.findall(
-        r"(?<![A-Za-z0-9_])(?:[A-Z][A-Za-z0-9_]{2,}|[a-z][A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*)\b", text
-    )))[:80]
-    metadata["numeric_claims"] = list(dict.fromkeys(re.findall(
-        r"\b\d+(?:\.\d+)?(?:\s*(?:[-–—〜～]|to)\s*\d+(?:\.\d+)?)?\s*"
-        r"(?:%|percent|ms|s|sec(?:onds?)?|minutes?|hours?|days?|weeks?|months?|KB|MB|GB|TB|x|倍|時間|分|日|週|ヶ月|か月)\b",
-        text, re.I
-    )))[:120]
-    return metadata
+
+_build_evidence_metadata = _build_evidence_metadata_impl
+
 
 
 def fetch_webpage_context(url: str) -> str:
@@ -10289,31 +9986,23 @@ def _select_stocked_deep_dive_candidates(screened: list[dict]) -> list[dict]:
 
 
 def _deferred_ttl_days(shelf_life: str) -> int:
-    return {"FLASH": DEFERRED_FLASH_TTL_DAYS, "TREND": DEFERRED_TREND_TTL_DAYS, "EVERGREEN": DEFERRED_EVERGREEN_TTL_DAYS}.get(str(shelf_life or "TREND").upper(), DEFERRED_TREND_TTL_DAYS)
+    return _deferred_ttl_days_impl(
+        shelf_life, flash_ttl_days=DEFERRED_FLASH_TTL_DAYS, trend_ttl_days=DEFERRED_TREND_TTL_DAYS,
+        evergreen_ttl_days=DEFERRED_EVERGREEN_TTL_DAYS,
+    )
+
 
 
 def _deferred_key(candidate: dict) -> str:
-    repo = candidate.get("repo", {})
-    urls = candidate_identity_urls(repo)
-    if urls:
-        return sorted(urls)[0]
-    return f"{repo.get('source','')}:{_normalize_title_for_match(repo.get('nameWithOwner',''))}"
+    return _deferred_key_impl(
+        candidate, candidate_identity_urls=candidate_identity_urls, normalize_title_for_match=_normalize_title_for_match,
+    )
+
 
 
 def _deferred_serializable(candidate: dict) -> dict:
-    repo = candidate.get("repo", {})
-    now = datetime.now(timezone.utc)
-    ttl = _deferred_ttl_days(candidate.get("shelf_life"))
-    safe_repo = {k: v for k, v in repo.items() if isinstance(v, (str, int, float, bool, type(None), list, dict))}
-    return {
-        "key": _deferred_key(candidate), "deferred_at": now.isoformat(),
-        "expires_at": (now + timedelta(days=ttl)).isoformat(), "repo": safe_repo,
-        "notion_page_id": candidate.get("notion_page_id"), "score": candidate.get("score"),
-        "reason": candidate.get("reason", ""), "commercial_score": candidate.get("commercial_score"),
-        "shelf_life_score": candidate.get("shelf_life_score"), "shelf_life": candidate.get("shelf_life"),
-        "portfolio_topic": candidate.get("portfolio_topic", "OTHER"),
-        "deep_dive_priority_score": candidate.get("deep_dive_priority_score"),
-    }
+    return _deferred_serializable_impl(candidate, ttl_days=_deferred_ttl_days, key_for_candidate=_deferred_key)
+
 
 
 def load_deferred_deep_dive_queue() -> list[dict]:
@@ -10339,20 +10028,12 @@ def load_deferred_deep_dive_queue() -> list[dict]:
         except Exception as exc:
             logger.warning("[DEFERRED LOAD] local state corrupt; fail-closed empty queue: %s", exc)
             payload = {"version": 1, "items": []}
-    now = datetime.now(timezone.utc)
-    valid = []
-    for row in payload.get("items", []) if isinstance(payload, dict) else []:
-        try:
-            expiry = datetime.fromisoformat(str(row.get("expires_at", "")).replace("Z", "+00:00"))
-        except Exception:
-            continue
-        if expiry > now and row.get("key") and isinstance(row.get("repo"), dict):
-            valid.append(row)
-    return valid[:DEFERRED_DEEP_DIVE_MAX_QUEUE]
+    return _valid_deferred_items_impl(payload, max_queue=DEFERRED_DEEP_DIVE_MAX_QUEUE)
+
 
 
 def save_deferred_deep_dive_queue(items: list[dict]) -> bool:
-    payload = {"version": 1, "updated_at": datetime.now(timezone.utc).isoformat(), "items": items[:DEFERRED_DEEP_DIVE_MAX_QUEUE]}
+    payload = _build_deferred_payload_impl(items, max_queue=DEFERRED_DEEP_DIVE_MAX_QUEUE)
     try:
         directory = os.path.dirname(DEFERRED_DEEP_DIVE_STATE_PATH)
         if directory: os.makedirs(directory, exist_ok=True)
@@ -10362,7 +10043,6 @@ def save_deferred_deep_dive_queue(items: list[dict]) -> bool:
         logger.error("[DEFERRED SAVE] local write failed: %s", exc)
         return False
     if not (EYECATCH_GITHUB_REPO and GH_PAT):
-        # Local-only is acceptable outside GitHub Actions; in production repo/token are preflighted.
         return not os.environ.get("GITHUB_ACTIONS")
     dest_path = f"{DEFERRED_DEEP_DIVE_GITHUB_DIR}/deferred_queue.json"
     api_url = f"https://api.github.com/repos/{EYECATCH_GITHUB_REPO}/contents/{dest_path}"
@@ -10378,6 +10058,7 @@ def save_deferred_deep_dive_queue(items: list[dict]) -> bool:
         return True
     except Exception as exc:
         logger.error("[DEFERRED SAVE] GitHub exception: %s", exc); return False
+
 
 
 def _fallback_deferred_rows_to_notion(rows: list[dict], reason: str) -> int:
@@ -10399,28 +10080,22 @@ def _fallback_deferred_rows_to_notion(rows: list[dict], reason: str) -> int:
 
 def enqueue_deferred_candidates(candidates: list[dict]) -> int:
     if not candidates: return 0
-    queue = load_deferred_deep_dive_queue()
-    merged = {row.get("key"): row for row in queue if row.get("key")}
-    new_rows = []
-    for candidate in candidates:
-        row = _deferred_serializable(candidate); merged[row["key"]] = row; new_rows.append(row)
-    ranked = sorted(merged.values(), key=lambda r: (float(r.get("deep_dive_priority_score") or r.get("score") or 0), r.get("deferred_at", "")), reverse=True)
-    final = ranked[:DEFERRED_DEEP_DIVE_MAX_QUEUE]
-    evicted = ranked[DEFERRED_DEEP_DIVE_MAX_QUEUE:]
+    new_rows, final, evicted, ranked = _merge_rank_deferred_candidates_impl(
+        load_deferred_deep_dive_queue(), candidates, serialize_candidate=_deferred_serializable,
+        max_queue=DEFERRED_DEEP_DIVE_MAX_QUEUE,
+    )
     if save_deferred_deep_dive_queue(final):
         if evicted:
             _fallback_deferred_rows_to_notion(evicted, "Deferred queue capacity overflow")
         logger.info("[DEFERRED SAVED] queued=%s total=%s evicted_to_pending=%s", len(new_rows), len(final), len(evicted)); return len(new_rows)
-    # Persistence failure must not silently lose any queue candidate (old or new).
     _fallback_deferred_rows_to_notion(ranked, "Deferred queue persistence failed")
     return 0
 
 
+
 def pop_deferred_candidates(limit: int) -> tuple[list[dict], list[dict]]:
-    queue = load_deferred_deep_dive_queue()
-    selected = queue[:max(0, limit)]
-    remaining = queue[len(selected):]
-    return selected, remaining
+    return _pop_deferred_candidates_impl(load_deferred_deep_dive_queue(), limit)
+
 
 
 _PRODUCT_REVIEW_RESPONSE_SCHEMA = {
