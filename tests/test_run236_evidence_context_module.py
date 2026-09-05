@@ -25,8 +25,16 @@ def _assert_return_call(
     callee: str,
     arg_names: list[str],
 ) -> None:
-    testcase.assertEqual(len(fn.body), 1)
-    ret = fn.body[0]
+    body = list(fn.body)
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    testcase.assertEqual(len(body), 1)
+    ret = body[0]
     testcase.assertIsInstance(ret, ast.Return)
     call = ret.value
     testcase.assertIsInstance(call, ast.Call)
