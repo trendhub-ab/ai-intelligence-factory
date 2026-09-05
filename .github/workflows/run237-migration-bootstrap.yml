@@ -1,5 +1,6 @@
 name: Run237 Guarded Migration Bootstrap
 
+# Temporary one-shot migration runner. Removed after pipeline.py is committed.
 on:
   push:
     branches:
