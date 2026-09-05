@@ -47,17 +47,35 @@ Run236では以下を変更しない。
 - Daily PAUSED
 - Public note human-only release
 
+## Historical migration test isolation
+
+Run236で`_truncate_text_context`を`pipeline.py`から正当に物理削除した結果、Run235 Stage3Bのhistorical migration testが、Run235自身の責務ではない「現在の`pipeline.py`に`def _truncate_text_context`が存在すること」を要求していたため失敗した。
+
+これはProduction不具合ではなく、後続リファクタリングに耐えないstale historical test contractだった。
+
+Run236ではRun235の責務を次のように再固定する。
+
+- Run235が現在も保証するもの: source normalization 6関数の重複定義が`pipeline.py`へ復活していないこと、`source_normalization.py`がcanonical ownerであること、migrationがcurrent canonical postimageに対してidempotentであること。
+- Run235当時だけのsurgical proof: `tests/fixtures/run235_stage3b_pipeline_preimage.py.txt`を固定preimageとして使用し、migration outputとcommitted patchのforward/reverse round-tripを検証する。
+- Run235 testは、後続Runで変化し得る現在の`pipeline.py`隣接実装をhistorical preimage再構成の材料にしない。
+- `_truncate_text_context`の現在の所在はRun236の責務であり、Run235のcontractから除外する。
+
+この分離により、後続Runが`pipeline.py`の隣接領域を正当に抽出しても、過去Runのhistorical migration testが誤ってブロックしない。
+
 ## Falsification contract
 
 `tests/test_run236_evidence_context_module.py`で以下を検証する。
 
 1. 新moduleにprovider/Notion/GitHub network surfaceがない。
-2. truncateのexact parity。
-3. verification excerptのexact parity。
-4. pipeline側の動的`SOURCE_CONTEXT_MAX_CHARS`を維持。
-5. pipeline側の動的`VERIFICATION_CONTEXT_MAX_CHARS`を維持。
-6. mergeのhistorical behaviorを維持。
-7. 重いmerge/excerptロジックが`pipeline.py`から物理削除され、新moduleがcanonical ownerになる。
+2. `evidence_context.py`が3つのpure algorithmのcanonical ownerである。
+3. truncateのexact parity。
+4. verification excerptのexact parity。
+5. pipeline側の動的`SOURCE_CONTEXT_MAX_CHARS`を維持。
+6. pipeline側の動的`VERIFICATION_CONTEXT_MAX_CHARS`を維持。
+7. merge wrapperがlive `VERIFICATION_CONTEXT_MAX_CHARS`を参照しhistorical behaviorを維持。
+8. 重いmerge/excerptロジックが`pipeline.py`から物理削除され、pipelineには薄いlimit-bindingだけが残る。
+
+Run236専用testと`evidence_context.py` compileは、Repository-wide Falsification GuardとIntegration Reconciliation CIの双方で名指し実行する。Integration CIではfull pytestとSynthetic smokeも引き続き実行する。
 
 ## Rollback
 
