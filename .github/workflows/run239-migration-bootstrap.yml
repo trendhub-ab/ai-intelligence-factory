@@ -6,6 +6,8 @@ on:
       - run239-pipeline-modularization-next
     paths:
       - .github/workflows/run239-migration-bootstrap.yml
+      - run239_reader_experience_migration.py
+      - tests/test_run239_reader_experience_module.py
 
 permissions:
   contents: write
