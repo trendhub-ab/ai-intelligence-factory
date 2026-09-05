@@ -15,7 +15,7 @@
 - **Current free article editorial planning baseline:** Run226 — evidence-bounded human editorial planning / reader delight without template quotas
 - **Current article Japanese surface integrity baseline:** Run227 — zero-model high-confidence broken-Japanese fail-closed gate
 - **Current free article reader rhythm baseline:** Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas
-- **Current pipeline modularization baseline:** Run237 — source normalization, evidence context and paid-product maintenance ownership extraction
+- **Current pipeline modularization baseline:** Run238 — source normalization, evidence context, paid-product maintenance and Deep Dive portfolio ownership extraction
 - **Current repository organization baseline:** Run201 — repository garbage cleanup without intended runtime behavior change
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
@@ -32,6 +32,7 @@ New development must start from `main`. Historical/archive branches are referenc
 - `source_normalization.py` — canonical source/title/display normalization extracted from `pipeline.py`
 - `evidence_context.py` — canonical provider-free source/verification context shaping extracted from `pipeline.py`
 - `product_delivery_maintenance.py` — canonical Evidence Health / subscriber sync / monthly Digest maintenance orchestration extracted from `pipeline.py`
+- `deep_dive_portfolio.py` — canonical zero-model Stock eligibility ordering, topic diversity, EVERGREEN and publication-reliability portfolio shaping extracted from `pipeline.py`
 - `production_pipeline.py` — stable production entrypoint and runtime-layer installer
 - `run203_runtime_state_channel.py` — Production runtime-state continuity / writability preflight
 - `gemini_timeout_rpd_fail_closed.py` — Run209 timeout RPD fail-closed accounting; keeps the 18-request Flash safety ceiling

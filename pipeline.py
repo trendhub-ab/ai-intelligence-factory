@@ -78,6 +78,13 @@ from product_delivery_maintenance import (
     run_evidence_health_maintenance as _run_evidence_health_maintenance_impl,
     run_product_delivery_maintenance as _run_product_delivery_maintenance_impl,
 )
+from deep_dive_portfolio import (
+    apply_content_portfolio_balance as _apply_content_portfolio_balance_impl,
+    apply_publication_reliability_slot as _apply_publication_reliability_slot_impl,
+    publication_probability_score as _publication_probability_score_impl,
+    select_stocked_deep_dive_candidates as _select_stocked_deep_dive_candidates_impl,
+    topic_counts as _topic_counts_impl,
+)
 
 # ==========================================
 # ログ設定
@@ -11844,195 +11851,56 @@ def sync_public_approved_to_member_db() -> None:
                 logger.info("[PUBLIC SYNC ARCHIVED] %s", key)
 
 def _topic_counts(items: list[dict]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for item in items:
-        topic = normalize_portfolio_topic(item.get("portfolio_topic"))
-        if topic == "OTHER":
-            continue
-        counts[topic] = counts.get(topic, 0) + 1
-    return counts
+    """Bind canonical Run238 topic counting to the live topic normalizer."""
+    return _topic_counts_impl(items, normalize_portfolio_topic=normalize_portfolio_topic)
 
 
 def _apply_content_portfolio_balance(ordered: list[dict], visible_slots: int) -> list[dict]:
-    """Conservatively diversify visible Deep Dive slots without weakening quality/profit.
-
-    Only a candidate within PORTFOLIO_TOPIC_PRIORITY_TOLERANCE of the current cutoff can
-    displace a duplicate-topic candidate. OTHER is neutral and never forces a replacement.
-    The sole EVERGREEN slot is protected when EVERGREEN_PORTFOLIO_MIN is active.
-    """
-    if not ENABLE_PORTFOLIO_BALANCE or visible_slots <= 1 or len(ordered) <= 1:
-        return ordered
-    target = min(max(1, PORTFOLIO_MIN_DISTINCT_TOPICS), visible_slots)
-    if target <= 1:
-        return ordered
-    result = list(ordered)
-    current = result[:visible_slots]
-    current_topics = [normalize_portfolio_topic(item.get("portfolio_topic")) for item in current]
-    # Auxiliary topic metadata is intentionally non-blocking. If the visible set contains
-    # OTHER/unknown, do not infer a diversity deficit and reorder on incomplete metadata.
-    if any(topic == "OTHER" for topic in current_topics):
-        return result
-    counts = _topic_counts(current)
-    if len(counts) >= target:
-        return result
-    cutoff = float(current[-1].get("deep_dive_priority_score", current[-1].get("score", 0)))
-    evergreen_count = sum(1 for item in current if item.get("shelf_life") == "EVERGREEN")
-    protected_evergreen = min(max(0, EVERGREEN_PORTFOLIO_MIN), visible_slots) > 0 and evergreen_count <= 1
-
-    for candidate_idx in range(visible_slots, len(result)):
-        candidate = result[candidate_idx]
-        topic = normalize_portfolio_topic(candidate.get("portfolio_topic"))
-        if topic == "OTHER" or topic in counts:
-            continue
-        priority = float(candidate.get("deep_dive_priority_score", candidate.get("score", 0)))
-        if priority + max(0.0, PORTFOLIO_TOPIC_PRIORITY_TOLERANCE) < cutoff:
-            continue
-        replace_idx = None
-        current_counts = _topic_counts(result[:visible_slots])
-        for idx in range(visible_slots - 1, -1, -1):
-            existing = result[idx]
-            existing_topic = normalize_portfolio_topic(existing.get("portfolio_topic"))
-            if existing_topic == "OTHER" or current_counts.get(existing_topic, 0) > 1:
-                if protected_evergreen and existing.get("shelf_life") == "EVERGREEN":
-                    continue
-                replace_idx = idx
-                break
-        if replace_idx is None:
-            break
-        selected = result.pop(candidate_idx)
-        displaced = result.pop(replace_idx)
-        result.insert(replace_idx, selected)
-        result.insert(candidate_idx, displaced)
-        current = result[:visible_slots]
-        counts = _topic_counts(current)
-        if len(counts) >= target:
-            break
-    return result
-
+    """Bind canonical Run238 balance logic to live portfolio configuration."""
+    return _apply_content_portfolio_balance_impl(
+        ordered,
+        visible_slots,
+        enabled=ENABLE_PORTFOLIO_BALANCE,
+        min_distinct_topics=PORTFOLIO_MIN_DISTINCT_TOPICS,
+        priority_tolerance=PORTFOLIO_TOPIC_PRIORITY_TOLERANCE,
+        evergreen_portfolio_min=EVERGREEN_PORTFOLIO_MIN,
+        normalize_portfolio_topic=normalize_portfolio_topic,
+    )
 
 
 def publication_probability_score(item: dict) -> int:
-    """Rule-based probability proxy for reaching Ready, using metadata only and 0 Gemini calls.
-
-    This is not a quality score. It rewards direct primary-source surfaces and complete metadata so
-    TOP_N contains at least one candidate that is realistically finishable today.
-    """
-    repo = (item or {}).get("repo", {}) or {}
-    source = str(repo.get("source") or "GitHub")
-    url = str(repo.get("primaryUrl") or repo.get("url") or "")
-    host = (urlparse(url).hostname or "").lower()
-    desc = str(repo.get("description") or "").strip()
-    score = {"ArXiv": 78, "GitHub": 74, "HackerNews": 52, "ProductHunt": 50}.get(source, 48)
-    if source == "ArXiv" and "arxiv.org" in host:
-        score += 12
-    elif source == "GitHub" and host in {"github.com", "www.github.com"}:
-        score += 10
-    elif source == "HackerNews" and host and "ycombinator.com" not in host:
-        score += 18
-    elif source == "ProductHunt" and host and "producthunt.com" not in host:
-        score += 18
-    if len(desc) >= 160:
-        score += 8
-    elif len(desc) >= 60:
-        score += 5
-    elif desc:
-        score += 2
-    if repo.get("publishedAt"):
-        score += 3
-    if source == "GitHub":
-        spdx = str(((repo.get("licenseInfo") or {}).get("spdxId") or "")).upper()
-        if spdx and spdx not in {"NOASSERTION", "UNLICENSED", "UNLICENSE"}:
-            score += 3
-    return max(0, min(100, int(round(score))))
+    """Compatibility wrapper for the canonical Run238 metadata proxy."""
+    return _publication_probability_score_impl(item)
 
 
 def _apply_publication_reliability_slot(ordered: list[dict], visible_slots: int) -> list[dict]:
-    if not ENABLE_PUBLICATION_RELIABILITY_SLOT or PUBLICATION_RELIABILITY_SLOTS <= 0 or visible_slots <= 0:
-        return ordered
-    for item in ordered:
-        item["publication_probability_score"] = publication_probability_score(item)
-    qualified = [
-        (idx, item) for idx, item in enumerate(ordered)
-        if float(item.get("score") or 0) >= PUBLICATION_RELIABILITY_MIN_DECISION_SCORE
-    ]
-    if not qualified:
-        return ordered
-    # One slot is intentionally enough: the remaining visible slots stay optimized for business value.
-    best_idx, best = max(
-        qualified,
-        key=lambda pair: (pair[1].get("publication_probability_score", 0),
-                          pair[1].get("deep_dive_priority_score", 0), pair[1].get("score", 0)),
+    """Bind canonical Run238 reliability-slot logic to live configuration."""
+    return _apply_publication_reliability_slot_impl(
+        ordered,
+        visible_slots,
+        enabled=ENABLE_PUBLICATION_RELIABILITY_SLOT,
+        reliability_slots=PUBLICATION_RELIABILITY_SLOTS,
+        min_decision_score=PUBLICATION_RELIABILITY_MIN_DECISION_SCORE,
+        min_advantage=PUBLICATION_RELIABILITY_MIN_ADVANTAGE,
+        logger=logger,
     )
-    if best_idx < visible_slots:
-        return ordered
-    current = ordered[:visible_slots]
-    current_best_publishability = max((x.get("publication_probability_score", 0) for x in current), default=0)
-    if best.get("publication_probability_score", 0) < current_best_publishability + PUBLICATION_RELIABILITY_MIN_ADVANTAGE:
-        return ordered
-    selected = ordered.pop(best_idx)
-    ordered.insert(visible_slots - 1, selected)
-    logger.info(
-        "[PUBLICATION RELIABILITY SLOT] promoted=%s publishability=%s decision=%s",
-        selected.get("repo", {}).get("nameWithOwner"), selected.get("publication_probability_score"), selected.get("score"),
-    )
-    return ordered
 
 
 def _select_stocked_deep_dive_candidates(screened: list[dict]) -> list[dict]:
-    """Select only persisted Stock, then order it for profit without weakening quality.
-
-    Eligibility is unchanged: Decision Score >= stock threshold AND successful Notion persistence.
-    Commercial Value only reorders eligible Stock. Shelf life adds one conservative portfolio rule:
-    if the visible TOP_N contains no EVERGREEN, an EVERGREEN can enter only when its priority is
-    within EVERGREEN_PRIORITY_TOLERANCE points of the current cutoff.
-    """
-    eligible = [
-        item for item in screened
-        if item.get("score", 0) >= NOTION_SAVE_THRESHOLD_SCORE and item.get("notion_page_id")
-    ]
-    for item in eligible:
-        _attach_profit_metadata(item, item.get("commercial_score"), item.get("shelf_life_score"))
-        _attach_portfolio_topic(item, item.get("portfolio_topic"), item.get("raw_portfolio_topic"))
-
-    if not ENABLE_PROFIT_PRIORITY:
-        return sorted(
-            eligible,
-            key=lambda item: (item.get("score", 0), item.get("repo", {}).get("stargazerCount", 0)),
-            reverse=True,
-        )
-
-    ordered = sorted(
-        eligible,
-        key=lambda item: (
-            item.get("deep_dive_priority_score", 0), item.get("score", 0),
-            item.get("commercial_score", PROFIT_SCORE_NEUTRAL),
-            item.get("repo", {}).get("stargazerCount", 0),
-        ),
-        reverse=True,
+    """Bind canonical Run238 Stock ordering to live pipeline policies."""
+    return _select_stocked_deep_dive_candidates_impl(
+        screened,
+        notion_save_threshold_score=NOTION_SAVE_THRESHOLD_SCORE,
+        attach_profit_metadata=_attach_profit_metadata,
+        attach_portfolio_topic=_attach_portfolio_topic,
+        enable_profit_priority=ENABLE_PROFIT_PRIORITY,
+        profit_score_neutral=PROFIT_SCORE_NEUTRAL,
+        top_n_for_deep_dive=TOP_N_FOR_DEEP_DIVE,
+        evergreen_portfolio_min=EVERGREEN_PORTFOLIO_MIN,
+        evergreen_priority_tolerance=EVERGREEN_PRIORITY_TOLERANCE,
+        apply_content_portfolio_balance_fn=_apply_content_portfolio_balance,
+        apply_publication_reliability_slot_fn=_apply_publication_reliability_slot,
     )
-    visible_slots = min(TOP_N_FOR_DEEP_DIVE, len(ordered))
-    evergreen_needed = min(max(0, EVERGREEN_PORTFOLIO_MIN), visible_slots)
-    if evergreen_needed and visible_slots:
-        current = ordered[:visible_slots]
-        evergreen_count = sum(1 for item in current if item.get("shelf_life") == "EVERGREEN")
-        if evergreen_count < evergreen_needed:
-            cutoff = float(current[-1].get("deep_dive_priority_score", 0))
-            for idx in range(visible_slots, len(ordered)):
-                candidate = ordered[idx]
-                if candidate.get("shelf_life") != "EVERGREEN":
-                    continue
-                priority = float(candidate.get("deep_dive_priority_score", 0))
-                if priority + max(0.0, EVERGREEN_PRIORITY_TOLERANCE) < cutoff:
-                    continue
-                selected = ordered.pop(idx)
-                ordered.insert(visible_slots - 1, selected)
-                evergreen_count += 1
-                if evergreen_count >= evergreen_needed:
-                    break
-    ordered = _apply_content_portfolio_balance(ordered, visible_slots)
-    ordered = _apply_publication_reliability_slot(ordered, visible_slots)
-    return ordered
-
 
 
 def _deferred_ttl_days(shelf_life: str) -> int:
