@@ -1,39 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-04T10:52:30.893201+00:00",
+  "updated_at": "2026-09-05T08:14:51.572940+00:00",
   "items": [
-    {
-      "key": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
-      "deferred_at": "2026-09-02T16:23:08.046113+00:00",
-      "expires_at": "2026-11-01T16:23:08.046113+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Mistral now trains on user input by default, except on enterprise tier",
-        "originalTitle": "Mistral now trains on user input by default, except on enterprise tier",
-        "displayName": "Mistral now trains on user input by default, except on enterprise tier",
-        "sourceLanguage": "en",
-        "url": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
-        "description": "Mistral now trains on user input by default, except on enterprise tier",
-        "stargazerCount": 167,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-02T12:30:39+00:00",
-        "sourceContext": "",
-        "primaryUrl": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
-        "sourceDetails": {
-          "hn_id": 49535284,
-          "hn_url": "https://news.ycombinator.com/item?id=49535284",
-          "external_url": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training"
-        }
-      },
-      "notion_page_id": "3cf479ff-dca9-816f-951b-cf8ffe9274ed",
-      "score": 80,
-      "reason": "データプライバシー規約の変更は企業導入で重要。",
-      "commercial_score": 85,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 81.75
-    },
     {
       "key": "https://arxiv.org/abs/2608.30963",
       "deferred_at": "2026-09-01T08:11:30.623956+00:00",
