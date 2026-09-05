@@ -98,6 +98,53 @@ from editorial_naturalness import (
     style_sequence as _style_sequence_impl,
 )
 
+from candidate_identity import canonicalize_url as _canonicalize_url_impl, candidate_identity_urls as _candidate_identity_urls_impl
+from note_manuscript import (
+    _compact_reader_summary as _compact_reader_summary_impl, _find_reader_intro_fact_sentence as _find_reader_intro_fact_sentence_impl,
+    _fix_bold_boundary_brackets as _fix_bold_boundary_brackets_impl, _normalize_note_title as _normalize_note_title_impl,
+    _pick_reader_summary_candidate as _pick_reader_summary_candidate_impl, _prepare_reader_first_body as _note_prepare_reader_first_body_impl,
+    _reader_decision_fallback as _reader_decision_fallback_impl, _reader_plain_text as _reader_plain_text_impl,
+    _reader_published_date as _reader_published_date_impl, _reader_summary_complexity as _reader_summary_complexity_impl,
+    _remove_markdown_sections as _remove_markdown_sections_impl, _remove_reader_redundant_provenance as _remove_reader_redundant_provenance_impl,
+    _strip_internal_note_control_lines as _strip_internal_note_control_lines_impl, build_article_attribution_id as _build_article_attribution_id_impl,
+    build_clean_note_manuscript as _build_clean_note_manuscript_impl, build_reader_first_header as _build_reader_first_header_impl,
+    build_reader_first_summary as _build_reader_first_summary_impl, build_subscription_cta as _build_subscription_cta_impl,
+    build_subscription_tracking_url as _build_subscription_tracking_url_impl, normalize_markdown_for_note as _normalize_markdown_for_note_impl,
+)
+from gate_reasoning import (
+    GATE_STATUS_NOT_RUN, GATE_STATUS_PASS, GATE_STATUS_FAIL, GATE_STATUS_WARNING, GATE_STATUS_REVIEW,
+    GATE_SEVERITY_HARD, GATE_SEVERITY_REVIEW, GATE_SEVERITY_SOFT, GATE_SEVERITY_OPERATIONAL,
+    GATE_DISPOSITION_PASS, GATE_DISPOSITION_PASS_WITH_WARNINGS, GATE_DISPOSITION_REVIEW, GATE_DISPOSITION_BLOCK,
+    REASON_CODE_MAX_TOKENS, REASON_CODE_STRUCTURE_MISSING, REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT, REASON_CODE_PRIMARY_SOURCE_UNRESOLVED,
+    REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT, REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT, REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED,
+    REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED, REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED, REASON_CODE_FACT_UNSUPPORTED_CLAIM,
+    REASON_CODE_FACT_NUMERICAL_MISMATCH, REASON_CODE_FACT_ACTOR_MISMATCH, REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT,
+    REASON_CODE_FACT_CONDITIONALITY_LOSS, REASON_CODE_EDITORIAL_STRUCTURE_ERROR, REASON_CODE_PUB_HEADLINE_OVERCLAIM,
+    REASON_CODE_PUB_INTRO_OVERCLAIM, REASON_CODE_PUB_UNSUPPORTED_CONCLUSION, REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH,
+    REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH, REASON_CODE_PUB_SOURCE_SUFFICIENCY, REASON_CODE_PUB_NEGATIVE_EVIDENCE_OMISSION,
+    REASON_CODE_APPEAL_OVER_HEDGING, REASON_CODE_APPEAL_ACTION_COLLAPSE, REASON_CODE_APPEAL_TITLE_FLATTENING,
+    REASON_CODE_APPEAL_DECISION_VOICE_LOSS, REASON_CODE_APPEAL_FABRICATED_EXPERIENCE, REASON_CODE_APPEAL_AI_STYLE_COMPOSITE,
+    REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT, REASON_CODE_PENDING_RETRY, REASON_CODE_MODEL_UNAVAILABLE,
+    REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, REASON_CODE_NOTION_PERSISTENCE_FAILED, reason_code as _reason_code_impl,
+    classify_gate_reason_severity as _classify_gate_reason_severity_impl, map_gate_reasons as _map_gate_reasons_impl,
+    infer_gate_from_reason_code as _infer_gate_from_reason_code_impl, normalize_gate_reason_rows as _normalize_gate_reason_rows_impl,
+    gate_reason_disposition as _gate_reason_disposition_impl, reason_rows_by_severity as _reason_rows_by_severity_impl,
+    quality_warning_messages as _quality_warning_messages_impl, build_candidate_gate_record as _build_candidate_gate_record_impl,
+    build_internal_article_record as _build_internal_article_record_impl,
+)
+from screening_protocol import (
+    round_robin_candidates as _round_robin_candidates_impl, bounded_optional_score as _bounded_optional_score_impl,
+    shelf_life_label as _shelf_life_label_impl, deep_dive_priority_score as _deep_dive_priority_score_impl,
+    attach_profit_metadata as _attach_profit_metadata_impl, normalize_portfolio_topic as _normalize_portfolio_topic_impl,
+    attach_portfolio_topic as _attach_portfolio_topic_impl, build_screening_prompt as _build_screening_prompt_impl,
+    salvage_screening_json_rows as _salvage_screening_json_rows_impl, parse_batch_screening_response as _parse_batch_screening_response_impl,
+    batch_screening_prompt as _batch_screening_prompt_impl, calibration_prompt as _calibration_prompt_impl,
+)
+from source_roi_policy import (
+    source_roi_smoothed_rate as _source_roi_smoothed_rate_impl, compute_source_roi_profile as _compute_source_roi_profile_impl,
+    allocate_source_fetch_limits as _allocate_source_fetch_limits_impl, build_source_roi_run_metrics as _build_source_roi_run_metrics_impl,
+)
+
 # ==========================================
 # ログ設定
 # ==========================================
@@ -588,60 +635,14 @@ ARTICLE_AUDIT_DIR = os.environ.get("ARTICLE_AUDIT_DIR", "article_audit")
 # is reset before each production run; it is never persisted to Notion or used as evidence.
 _RUN_ARTICLE_STYLE_MEMORY: list[dict] = []
 
-GATE_STATUS_NOT_RUN = "NOT_RUN"
-GATE_STATUS_PASS = "PASS"
-GATE_STATUS_FAIL = "FAIL"
-GATE_STATUS_WARNING = "WARNING"
-GATE_STATUS_REVIEW = "REVIEW"
 
 # Run 102: Gate名・既存statusは互換維持しつつ、公開停止強度を別軸で明示する。
 # HARD_BLOCK = 読者信頼/Fact/Evidence/Decision整合を壊すため公開不可。
 # REVIEW = 事実安全性ではなく「で、どうするか」という商品価値が欠け、1回の修正価値がある。
 # SOFT_QUALITY = 読める記事の美観・引力・文体改善。観測するが原則公開を止めない。
-GATE_SEVERITY_HARD = "HARD_BLOCK"
-GATE_SEVERITY_REVIEW = "REVIEW"
-GATE_SEVERITY_SOFT = "SOFT_QUALITY"
-GATE_SEVERITY_OPERATIONAL = "OPERATIONAL"
-GATE_DISPOSITION_PASS = "PASS"
-GATE_DISPOSITION_PASS_WITH_WARNINGS = "PASS_WITH_WARNINGS"
-GATE_DISPOSITION_REVIEW = "REVIEW"
-GATE_DISPOSITION_BLOCK = "BLOCK"
 
-REASON_CODE_MAX_TOKENS = "MAX_TOKENS"
-REASON_CODE_STRUCTURE_MISSING = "STRUCTURE_MISSING"
-REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT = "PRIMARY_EVIDENCE_INSUFFICIENT"
-REASON_CODE_PRIMARY_SOURCE_UNRESOLVED = "PRIMARY_SOURCE_UNRESOLVED"
-REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT = "TECHNICAL_CLAIMS_INSUFFICIENT"
-REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT = "NUMERIC_CONDITIONS_INSUFFICIENT"
-REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED = "FRESHNESS_REQUIRED_BUT_UNRESOLVED"
-REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED = "HIGH_RISK_ACTION_UNSUPPORTED"
-REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED = "EVIDENCE_GAP_DISCLOSURE_REQUIRED"
-REASON_CODE_FACT_UNSUPPORTED_CLAIM = "FACT_UNSUPPORTED_CLAIM"
-REASON_CODE_FACT_NUMERICAL_MISMATCH = "FACT_NUMERICAL_MISMATCH"
-REASON_CODE_FACT_ACTOR_MISMATCH = "FACT_ACTOR_MISMATCH"
-REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT = "FACT_UNSUPPORTED_NAMED_FACT"
-REASON_CODE_FACT_CONDITIONALITY_LOSS = "FACT_CONDITIONALITY_LOSS"
-REASON_CODE_EDITORIAL_STRUCTURE_ERROR = "EDITORIAL_STRUCTURE_ERROR"
-REASON_CODE_PUB_HEADLINE_OVERCLAIM = "PUB_HEADLINE_OVERCLAIM"
-REASON_CODE_PUB_INTRO_OVERCLAIM = "PUB_INTRO_OVERCLAIM"
-REASON_CODE_PUB_UNSUPPORTED_CONCLUSION = "PUB_UNSUPPORTED_CONCLUSION"
-REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH = "PUB_ACTION_EVIDENCE_MISMATCH"
-REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH = "PUB_SCORE_NARRATIVE_MISMATCH"
-REASON_CODE_PUB_SOURCE_SUFFICIENCY = "PUB_SOURCE_SUFFICIENCY"
-REASON_CODE_PUB_NEGATIVE_EVIDENCE_OMISSION = "PUB_NEGATIVE_EVIDENCE_OMISSION"
-REASON_CODE_APPEAL_OVER_HEDGING = "APPEAL_OVER_HEDGING"
-REASON_CODE_APPEAL_ACTION_COLLAPSE = "APPEAL_ACTION_COLLAPSE"
-REASON_CODE_APPEAL_TITLE_FLATTENING = "APPEAL_TITLE_FLATTENING"
-REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
-REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
-REASON_CODE_APPEAL_AI_STYLE_COMPOSITE = "APPEAL_AI_STYLE_COMPOSITE"
-REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT = "APPEAL_CROSS_ARTICLE_FINGERPRINT"
-REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
-REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
-REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED = "DEEP_DIVE_RUN_BUDGET_EXHAUSTED"
 # Quality Gateは通過したが、Notion永続化層（ページ作成/アップグレード）が失敗した場合の理由コード。
 # 記事品質の問題ではなく永続保存層の障害であるため、Quality Failedとは明確に区別する。
-REASON_CODE_NOTION_PERSISTENCE_FAILED = "NOTION_PERSISTENCE_FAILED"
 
 
 def _notion_headers() -> dict:
@@ -690,7 +691,6 @@ PAID_AREA_PATTERN = re.compile(
 # note.comのMarkdownペースト対応により太字（**）がそのまま強調表示される。
 NOTE_PAYWALL_LABEL = "\n\n**▼▼▼ ここから先は有料エリアです ▼▼▼**\n\n"
 # note.com公式Markdown（--- で区切り線）としてそのまま反映される水平線
-DIVIDER_LINE = "\n\n---\n\n"
 
 # Notionのrich_text 1ブロックあたりの上限(2000文字)に対し、安全マージンを持たせた実運用上限
 NOTION_BLOCK_LIMIT = 1900
@@ -1793,63 +1793,17 @@ def call_gemini_with_smart_retry(prompt: str, max_retries: int = 1, request_kind
 # プロンプト側でもこのパターンを避けるよう明示的に指示しているが、
 # 生成AIの出力ゆれに対する保険として、太字が括弧付きの語を丸ごと囲んで
 # いるだけの単純なケースに限り、括弧を太字の外側へ機械的に移動させる。
-_BOLD_BOUNDARY_BRACKET_FIXES = [
-    (re.compile(r"\*\*「([^「」]+)」\*\*"), r"「**\1**」"),
-    (re.compile(r"\*\*『([^『』]+)』\*\*"), r"『**\1**』"),
-    (re.compile(r"\*\*（([^（）]+)）\*\*"), r"（**\1**）"),
-    (re.compile(r'\*\*"([^"]+)"\*\*'), r'"**\1**"'),
-    (re.compile(r"\*\*'([^']+)'\*\*"), r"'**\1**'"),
-]
 
-def _fix_bold_boundary_brackets(text: str) -> str:
-    """
-    太字（**）が括弧・引用符付きの語を丸ごと囲んでいる場合、
-    note.com側で太字として認識されるよう、括弧を太字の外側へ移動する。
-    括弧が太字全体の先頭と末尾を完全に囲んでいる単純なケースのみを対象とし、
-    太字の一部だけに括弧が掛かっている複雑なケースは誤変換を避けるため対象外とする。
-    """
-    for pattern, repl in _BOLD_BOUNDARY_BRACKET_FIXES:
-        text = pattern.sub(repl, text)
-    return text
+_fix_bold_boundary_brackets = _fix_bold_boundary_brackets_impl
 
 
 
-def _strip_internal_note_control_lines(text: str) -> tuple[str, int]:
-    """Remove exact transport-control lines before quality gates.
 
-    These markers are generation protocol, not article content. Exact standalone markers are
-    deterministically removable; marker-like prose remains untouched and can still be flagged.
-    """
-    cleaned, count = re.subn(r"(?mi)^\s*={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}\s*$\n?", "", text or "")
-    return cleaned.strip(), count
+_strip_internal_note_control_lines = _strip_internal_note_control_lines_impl
 
-def normalize_markdown_for_note(text: str) -> str:
-    """
-    note.comのMarkdownペースト機能にそのまま乗せられる形へ軽く正規化する。
-    Markdown記法（見出し・太字・箇条書き・区切り線）は一切除去せず保持する。
-    """
-    if not text:
-        return ""
 
-    stripped = text.strip()
-    # 生成プロトコル用の制御文字がnote本文に残る事故を防ぐ。
-    stripped, _ = _strip_internal_note_control_lines(stripped)
-    # Geminiが応答全体を1個の```（コードフェンス）で誤って包んでしまう
-    # ケースのみ、外側のフェンスだけを安全に剥がす（中身のMarkdownは保持）。
-    fence_match = re.match(r"^```[a-zA-Z0-9]*\n(.*)\n```$", stripped, re.DOTALL)
-    if fence_match:
-        stripped = fence_match.group(1)
+normalize_markdown_for_note = _normalize_markdown_for_note_impl
 
-    # 万一Geminiが箇条書きに全角中黒「・」を使ってしまった場合の保険として、
-    # note.comが公式対応する「- ＋半角スペース」記法に変換する。
-    stripped = re.sub(r"^\s*・\s*", "- ", stripped, flags=re.MULTILINE)
-
-    # 太字の内側先頭・末尾が括弧記号のケースを補正（note.com側の太字認識対策）。
-    stripped = _fix_bold_boundary_brackets(stripped)
-
-    # 連続する空行を1つに圧縮（Markdownの段落区切りとしては空行1つで十分なため）
-    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
-    return stripped.strip()
 
 def split_free_paid(note_draft: str, repo_name: str = ""):
     """
@@ -1879,34 +1833,11 @@ def split_free_paid(note_draft: str, repo_name: str = ""):
 # 各ソースの性質に即した権利表記のみを行う。これにより、note記事の出典元
 # ブロックがソースによって行数が変わる不自然さ（読者から見た「記載漏れ疑惑」）を防ぎ、
 # かつ内容としても正確な表記を維持する。
-SOURCE_RIGHTS_NOTE = {
-    "HackerNews": (
-        "- **出典について**: 本文の技術的な事実・数値は、上記の公式リンクおよび参考情報で確認できる範囲を独自に分析・要約したものです。"
-        "リンク先記事本文の著作権は原著作者に帰属します。\n"
-    ),
-    "ArXiv": (
-        "- **出典について**: 本記事はarXivで公開されている論文の要旨・情報を基に"
-        "独自に分析・要約したものです。論文本文の著作権は著者に帰属します。\n"
-    ),
-    "ProductHunt": (
-        "- **出典について**: 本記事はProduct Huntで公開されているプロダクト情報を基に"
-        "独自に分析・要約したものです。製品名・商標等は各権利者に帰属します。\n"
-    ),
-}
 
-def _normalize_note_title(title: str) -> str:
-    """noteのタイトル欄・本文先頭で共用する、短い完結タイトルに整える。"""
-    title = re.sub(r"\s+", " ", (title or "").strip().lstrip("#").strip())
-    title = title.strip('「」『』"')
-    if title and not re.search(r"[。？]$", title):
-        title += "。"
-    return title
+_normalize_note_title = _normalize_note_title_impl
 
 
-ARTICLE_DISCLAIMER = (
-    "※本記事に含まれる見解・提案は筆者個人の意見であり、特定の効果・成果を保証するものではありません。"
-    "導入・利用にあたっては、一次情報と自社の条件を確認してください。\n"
-)
+
 
 # 旧稿との後方互換・section fallback用の見出しalias。Run108以降は生成プロンプトの可視テンプレートとしては使わない。
 # 名前から安定して選ぶため、Quality Retryで同じ記事の構成が無意味に揺れない。
@@ -2025,70 +1956,21 @@ def _collect_final_evidence_urls(source_info: dict, grounding: dict | None = Non
     return out
 
 
-def build_article_attribution_id(source: str, repo_url: str) -> str:
-    """Create a stable, non-PII article identifier from source + canonical primary URL.
+build_article_attribution_id = _build_article_attribution_id_impl
 
-    Tracking/query differences in the source URL must not create a new attribution identity.
-    The identifier is intentionally opaque so it can be placed in CTA query parameters without
-    exposing internal scores or subscriber information.
-    """
-    raw_url = (repo_url or "").strip()
-    try:
-        identity_url = canonicalize_url(raw_url) or raw_url
-    except Exception:
-        identity_url = raw_url
-    # Primary URL is the stable business identity. Discovery source must not split attribution
-    # when the same underlying item is found through HN/Product Hunt/GitHub on a later run.
-    identity = identity_url or f"source:{(source or 'Unknown').strip().lower()}"
-    return "aif-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 
 def build_subscription_tracking_url(article_id: str, landing_url: str | None = None) -> str:
-    """Build a public CTA URL carrying only aggregate attribution identifiers.
+    return _build_subscription_tracking_url_impl(
+        article_id, landing_url, enabled=ENABLE_SUBSCRIPTION_ATTRIBUTION,
+        default_landing_url=SUBSCRIPTION_LANDING_URL, campaign_id=SUBSCRIPTION_CAMPAIGN_ID,
+    )
 
-    Existing non-attribution query parameters are preserved. Existing UTM/aif keys are replaced
-    deterministically to avoid duplicate parameters. Invalid/non-http(s) URLs fail closed to an
-    empty string so a broken or unsafe CTA is never inserted into a public article.
-    """
-    if not ENABLE_SUBSCRIPTION_ATTRIBUTION:
-        return ""
-    base = (landing_url if landing_url is not None else SUBSCRIPTION_LANDING_URL).strip()
-    if not base or not article_id:
-        return ""
-    try:
-        parsed = urlparse(base)
-    except Exception:
-        return ""
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-        return ""
-    reserved = {"utm_source", "utm_medium", "utm_campaign", "utm_content", "aif_article_id"}
-    query = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() not in reserved]
-    query.extend([
-        ("utm_source", "note"),
-        ("utm_medium", "free_article"),
-        ("utm_campaign", SUBSCRIPTION_CAMPAIGN_ID),
-        ("utm_content", article_id),
-        ("aif_article_id", article_id),
-    ])
-    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query, doseq=True), parsed.fragment))
 
 
 def build_subscription_cta(article_id: str, tracking_url: str = "") -> str:
-    """Return the free-article CTA for the subscriber DB + monthly summary offer.
+    return _build_subscription_cta_impl(article_id, tracking_url or build_subscription_tracking_url(article_id))
 
-    If no configured landing URL is available, return an empty string rather than publishing a
-    placeholder/broken link. The article remains fully free either way.
-    """
-    url = tracking_url or build_subscription_tracking_url(article_id)
-    if not url:
-        return ""
-    return (
-        f"{DIVIDER_LINE}"
-        "### 調査と判断の時間を減らしたい方へ\n\n"
-        "無料記事では重要テーマを最後まで公開しています。会員向けには、"
-        "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
-        f"[会員向け意思決定DB＋月次サマリーを見る]({url})\n"
-    )
 
 
 def _upload_subscription_attribution_to_github(local_path: str, article_id: str) -> str | None:
@@ -2177,289 +2059,74 @@ def save_subscription_attribution_record(repo: dict, parsed: dict, analyzed_at: 
         return None
 
 
-_READER_SOURCE_LABELS = {
-    "GitHub": "GitHub",
-    "HackerNews": "Hacker News",
-    "ArXiv": "arXiv",
-    "ProductHunt": "Product Hunt",
-}
 
 
-def _reader_plain_text(text: str) -> str:
-    """Gate通過済みテキストから冒頭サマリー用のプレーン文だけを安全に取り出す。"""
-    value = normalize_markdown_for_note(str(text or ""))
-    if not value:
-        return ""
-    value = re.sub(r"!\[([^]]*)\]\([^)]*\)", r"\1", value)
-    value = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", value)
-    value = re.sub(r"(?m)^#{1,6}\s*", "", value)
-    value = re.sub(r"(?m)^\s*[-*+]\s+", "", value)
-    value = value.replace("**", "").replace("__", "").replace("`", "")
-    value = re.sub(r"https?://\S+", "", value)
-    return re.sub(r"\s+", " ", value).strip()
+_reader_plain_text = _reader_plain_text_impl
 
 
-def _compact_reader_summary(text: str, max_chars: int = 110) -> str:
-    """冒頭で一目で読める長さへ縮める。新しい事実は生成せず、完結文を優先する。"""
-    value = _reader_plain_text(text)
-    if not value:
-        return ""
-    sentences = [m.group(0).strip() for m in re.finditer(r"[^。！？!?]+[。！？!?]?", value) if m.group(0).strip()]
-    if sentences:
-        first = sentences[0]
-        if len(first) <= max_chars:
-            return first
-    if len(value) <= max_chars:
-        return value
-    cut = value[:max_chars]
-    # Reader-first要約では、専門語の長い列挙を途中で切って見せない。
-    # 完全文が収まらない場合は、意味が壊れにくい句読点まで戻す。
-    for sep in ("。", "；", ";", "、", "，", ","):
-        pos = cut.rfind(sep)
-        if pos >= max_chars // 2:
-            candidate = cut[:pos + 1].strip()
-            if candidate.endswith(("され、", "して、", "おり、", "ため、", "ので、")):
-                continue
-            return candidate
-    return cut.rstrip("、，, ") + "…"
+
+_compact_reader_summary = _compact_reader_summary_impl
 
 
-def _reader_summary_complexity(text: str) -> tuple[int, int]:
-    """同じGate通過情報の候補から、冒頭向けに専門語密度の低い文を選ぶための順位。"""
-    value = _reader_plain_text(text)
-    if not value:
-        return (10_000, 10_000)
-    technical_ids = len(re.findall(r"\b(?:SEP|RFC|CVE)-?\d+\b|`[^`]+`|/[a-z][a-z0-9_-]+", value, re.I))
-    # AI/LLM/API/MCP/OSS/GitHubは本媒体の読者に許容する基本語。それ以外の英字列挙を重くする。
-    ascii_terms = [
-        token for token in re.findall(r"\b[A-Za-z][A-Za-z0-9.-]{2,}\b", value)
-        if token.upper() not in {"AI", "LLM", "API", "MCP", "OSS", "GITHUB"}
-    ]
-    list_density = max(0, value.count("、") - 2)
-    paren_density = len(re.findall(r"[（(][^）)]{8,}[）)]", value))
-    return (technical_ids * 8 + len(ascii_terms) * 2 + list_density * 2 + paren_density, len(value))
+
+_reader_summary_complexity = _reader_summary_complexity_impl
 
 
-def _pick_reader_summary_candidate(candidates: list[str]) -> str:
-    """追加生成せず、既存のGate通過候補から最も読みやすい完結文を選ぶ。"""
-    usable = []
-    for candidate in candidates:
-        compact = _compact_reader_summary(candidate)
-        if compact:
-            usable.append(compact)
-    if not usable:
-        return ""
-    return min(usable, key=_reader_summary_complexity)
+
+_pick_reader_summary_candidate = _pick_reader_summary_candidate_impl
 
 
-def _find_reader_intro_fact_sentence(intro: str) -> str:
-    """導入から『何が出たか』を示す文だけを候補化する。事実の言い換えは行わない。"""
-    value = _reader_plain_text(intro)
-    if not value:
-        return ""
-    for m in re.finditer(r"[^。！？!?]+[。！？!?]?", value):
-        sentence = m.group(0).strip()
-        if re.search(r"公開|発表|公表|リリース|登場|策定|提示|示され", sentence):
-            return sentence
-    return ""
+
+_find_reader_intro_fact_sentence = _find_reader_intro_fact_sentence_impl
 
 
-def _reader_decision_fallback(decision_text: str) -> str:
-    """内部Decision codeを公開せず、最小限の読者向け判断へ変換する。"""
-    return {
-        "NOW": "現時点で、具体的な導入・検証判断を進める価値があります。",
-        "TRY": "まずは限定した環境で小さく試し、条件を確かめる価値があります。",
-        "WATCH": "今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。",
-        "WAIT": "現時点では導入を急がず、条件とEvidenceが整うまで待つのが妥当です。",
-        "AVOID": "現時点では採用を見送り、代替手段を優先するのが妥当です。",
-    }.get((decision_text or "").strip().upper(), "")
+
+_reader_decision_fallback = _reader_decision_fallback_impl
+
 
 
 def build_reader_first_summary(parsed: dict) -> dict[str, str]:
-    """追加Gemini呼び出しなしで、Gate通過済みARTICLE/MANAGEMENT DATAから30秒要約を作る。"""
-    parsed = parsed or {}
-    draft = str(parsed.get("note_draft") or "")
-    intro = _extract_any_markdown_section(draft, _display_heading_aliases("intro"))
-    conclusion = _extract_any_markdown_section(draft, _display_heading_aliases("conclusion"))
-    final = _extract_any_markdown_section(draft, _display_heading_aliases("final"))
-
-    # Reader-firstの冒頭は「網羅性」より「理解速度」を優先する。
-    # what_textが仕様IDや認証方式の列挙になった場合でも、新規生成はせず、
-    # source_summary / 導入中の公開事実 / what_textの中から最も読みやすい既存文を選ぶ。
-    what = _pick_reader_summary_candidate([
-        parsed.get("source_summary_text", ""),
-        _find_reader_intro_fact_sentence(intro),
-        parsed.get("what_text", ""),
-    ])
-    why = _compact_reader_summary(parsed.get("why_important_text") or conclusion)
-    decision = _compact_reader_summary(
-        final or parsed.get("action_text") or parsed.get("decision_reason_text")
+    return _build_reader_first_summary_impl(
+        parsed, extract_section=_extract_any_markdown_section, display_heading_aliases=_display_heading_aliases,
+        replace_public_decision_code_leaks=_replace_public_decision_code_leaks,
     )
-    if not decision:
-        decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
-
-    # Quality Retry等で内部コードが混入しても、公開ヘッダーには露出させない。
-    decision_code_phrases = {
-        "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",
-        "WAIT": "条件が整うまで待つ", "AVOID": "現時点では採用を見送る",
-    }
-    if decision:
-        decision, _ = _replace_public_decision_code_leaks(decision, decision_code_phrases)
-        # 30秒要約は管理データと隣接するため、本文Gateより厳格に standalone code も全置換する。
-        # 通常英単語の小文字/Title Caseは対象にせず、内部管理値と同じ大文字コードだけを扱う。
-        for code, phrase in decision_code_phrases.items():
-            decision = re.sub(rf"\b{code}\b", phrase, decision)
-        decision = re.sub(r"\s{2,}", " ", decision).strip()
-
-    return {"what": what, "why": why, "decision": decision}
 
 
-def _reader_published_date(value: str | None) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    try:
-        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(JST)
-        return dt.date().isoformat()
-    except ValueError:
-        m = re.match(r"(\d{4}-\d{2}-\d{2})", raw)
-        return m.group(1) if m else ""
+
+_reader_published_date = _reader_published_date_impl
 
 
-def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_url: str,
-                              source: str = "GitHub", published_at: str | None = None) -> str:
-    """タイトル直下へ置くReader-first header。詳細Evidence/権利表記は末尾に残す。"""
-    summary = reader_summary or {}
-    rows = [
-        ("何が出た？", _compact_reader_summary(summary.get("what", ""))),
-        ("なぜ重要？", _compact_reader_summary(summary.get("why", ""))),
-        ("結論は？", _compact_reader_summary(summary.get("decision", ""))),
-    ]
-    rows = [(label, value) for label, value in rows if value]
-    if not rows and not repo_url:
-        return ""
 
-    lines: list[str] = []
-    if rows:
-        lines.extend(["## 30秒でわかるこの記事", ""])
-        for idx, (label, value) in enumerate(rows):
-            if idx:
-                lines.append("")
-            lines.extend([f"**{label}**  ", value])
-
-    if repo_url:
-        if lines:
-            lines.append("")
-        lines.extend(["### 元情報", f"- **主一次情報**: [{repo_name}]({repo_url})"])
-        lines.append(f"- **発見経路**: {_READER_SOURCE_LABELS.get(source, source)}")
-        published = _reader_published_date(published_at)
-        if published:
-            lines.append(f"- **公開・更新**: {published}")
-    return "\n".join(lines).strip()
+build_reader_first_header = _build_reader_first_header_impl
 
 
-def _remove_markdown_sections(markdown_text: str, headings: list[str]) -> str:
-    """Reader-firstヘッダーと役割が重なる本文セクションだけを公開稿から除く。"""
-    if not markdown_text or not headings:
-        return markdown_text or ""
-    alternatives = "|".join(re.escape(h) for h in sorted(set(headings), key=len, reverse=True))
-    pattern = re.compile(
-        rf"(?ms)^#{{2,6}}\s*(?:{alternatives})\s*$\n?.*?(?=^#{{2,6}}\s+|\Z)"
-    )
-    return pattern.sub("", markdown_text).strip()
+
+_remove_markdown_sections = _remove_markdown_sections_impl
 
 
-def _remove_reader_redundant_provenance(markdown_text: str) -> str:
-    """冒頭の元情報カードと重複する『本記事は一次情報に基づく』だけを削る。"""
-    if not markdown_text:
-        return ""
-    pattern = re.compile(
-        r"(?m)^[ \t]*(?:本記事|本稿|この記事)は、?[^\n。！？]{0,220}"
-        r"(?:一次情報|公開情報|公式(?:ブログ|資料|ドキュメント|リポジトリ|情報))[^\n。！？]{0,160}"
-        r"(?:基づいて|基づき|もとに)[^\n。！？]*[。！？][ \t]*$"
-    )
-    cleaned = pattern.sub("", markdown_text)
-    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+_remove_reader_redundant_provenance = _remove_reader_redundant_provenance_impl
+
 
 
 def _prepare_reader_first_body(markdown_text: str, reader_summary: dict | None) -> str:
-    """30秒ヘッダー導入時だけ、二重の出典説明と二重結論を公開本文から除く。"""
-    body = markdown_text or ""
-    if not reader_summary:
-        return body
-    body = _remove_reader_redundant_provenance(body)
-    # 「先に判断」は30秒欄の『結論は？』と役割が完全に重なる。
-    # 最終結論・Actionは残すため、情報価値を落とさず冒頭の反復だけを削る。
-    body = _remove_markdown_sections(body, _display_heading_aliases("conclusion"))
-    return body.strip()
+    return _note_prepare_reader_first_body_impl(
+        markdown_text, reader_summary, display_heading_aliases=_display_heading_aliases,
+    )
+
 
 
 def build_clean_note_manuscript(note_draft: str, repo_name: str, repo_url: str,
-                                 spdx_id: str, source: str = "GitHub",
-                                 evidence_urls: list[str] | None = None,
-                                 title_text: str = "", discovery_url: str = "",
-                                 reader_summary: dict | None = None,
+                                 spdx_id: str, source: str = "GitHub", evidence_urls: list[str] | None = None,
+                                 title_text: str = "", discovery_url: str = "", reader_summary: dict | None = None,
                                  published_at: str | None = None) -> str:
-    """note投稿用MarkdownをReader-first構造にし、詳細Evidenceは末尾へ二層化する。"""
-    free_part, paid_part = split_free_paid(note_draft, repo_name)
-    free_clean = normalize_markdown_for_note(free_part)
-    paid_clean = normalize_markdown_for_note(paid_part)
-    free_clean = _prepare_reader_first_body(free_clean, reader_summary)
-    paid_clean = _prepare_reader_first_body(paid_clean, reader_summary)
-
-    display_title = _normalize_note_title(title_text)
-    manuscript_parts: list[str] = []
-    if display_title:
-        manuscript_parts.append(f"# {display_title}")
-    reader_header = build_reader_first_header(reader_summary, repo_name, repo_url, source, published_at)
-    if reader_header:
-        manuscript_parts.append(reader_header)
-    if free_clean:
-        manuscript_parts.append(free_clean)
-    if paid_clean:
-        manuscript_parts.append(paid_clean)
-    manuscript = "\n\n".join(manuscript_parts)
-
-    if source == "GitHub":
-        rights_line = (
-            f"- **ライセンス**: {spdx_id}\n\n"
-            f"※本記事はライセンスが公開・再利用可能な条件（MIT / Apache-2.0 / BSD / CC-BY-4.0等）"
-            f"であることを確認した上で分析・要約しています。\n"
-        )
-    else:
-        rights_line = SOURCE_RIGHTS_NOTE.get(source, "")
-
-    source_label = _READER_SOURCE_LABELS.get(source, source)
-    source_block = (
-        f"{DIVIDER_LINE}"
-        f"### Sources / Evidence\n"
-        f"- **発見経路**: {source_label}\n"
-        f"- **主一次情報**: [{repo_name}]({repo_url})\n"
-        f"{rights_line}"
+    return _build_clean_note_manuscript_impl(
+        note_draft, repo_name, repo_url, spdx_id, source, evidence_urls, title_text, discovery_url, reader_summary,
+        published_at, split_free_paid=split_free_paid, display_heading_aliases=_display_heading_aliases,
+        subscription_enabled=ENABLE_SUBSCRIPTION_ATTRIBUTION, subscription_landing_url=SUBSCRIPTION_LANDING_URL,
+        subscription_campaign_id=SUBSCRIPTION_CAMPAIGN_ID,
     )
 
-    unique_evidence = []
-    for item in evidence_urls or []:
-        if not item or item == repo_url or item in unique_evidence:
-            continue
-        if item.startswith(("http://", "https://")):
-            unique_evidence.append(item)
-        if len(unique_evidence) >= 3:
-            break
-    if unique_evidence:
-        source_block += "\n### 補助Evidence\n" + "\n".join(f"- {u}" for u in unique_evidence) + "\n"
-    if discovery_url and discovery_url != repo_url:
-        source_block += f"- **関連情報**: 発見元の[{source}投稿]({discovery_url})\n"
-
-    article_id = build_article_attribution_id(source, repo_url)
-    tracking_url = build_subscription_tracking_url(article_id)
-    subscription_cta = build_subscription_cta(article_id, tracking_url)
-    if subscription_cta:
-        manuscript += "\n\n" + subscription_cta
-    manuscript += source_block + "\n" + ARTICLE_DISCLAIMER
-    return manuscript.strip()
 
 
 # ==========================================
@@ -4621,76 +4288,15 @@ def fetch_producthunt_trending(limit: int = PRODUCTHUNT_FETCH_LIMIT):
 
 # URL Dedupで無視するトラッキング用クエリパラメータ。意味のあるquery
 # parameter（id, page等）は絶対に含めないこと。
-_DEDUP_IGNORED_QUERY_PREFIXES = ("utm_",)
-_DEDUP_IGNORED_QUERY_KEYS = {"fbclid", "gclid", "ref", "source"}
 
 
-def canonicalize_url(url: str) -> str:
-    """URL Dedup専用の正規化。新規candidate側・Notion既存URL側の両方で
-    必ずこの関数を通すことで、表記差（trailing slash / fragment / トラッキング
-    パラメータ）による誤重複判定・誤非重複判定を防ぐ。
+canonicalize_url = _canonicalize_url_impl
 
-    正規化対象: 末尾スラッシュ、fragment、utm_*・fbclid・gclid・ref・source。
-    URL pathやid等の意味のあるquery parameterは一切変更しない。"""
-    if not url:
-        return ""
-    parsed = urlparse(url.strip())
-    scheme = (parsed.scheme or "").lower()
-    netloc = (parsed.netloc or "").lower()
-    # URLのscheme/hostはcase-insensitive。既定port差も同一URLとして扱う。
-    if scheme == "https" and netloc.endswith(":443"):
-        netloc = netloc[:-4]
-    elif scheme == "http" and netloc.endswith(":80"):
-        netloc = netloc[:-3]
-    path = parsed.path.rstrip("/")
-    # arXivのv1/v2は同一論文資産として扱い、バージョン更新でStockを重複作成しない。
-    if netloc in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
-        match = re.fullmatch(r"/(abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?", path, re.I)
-        if match:
-            path = f"/abs/{match.group(2)}"
-            netloc = "arxiv.org"
-            scheme = "https"
-    filtered_query = sorted(
-        (k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True)
-        if not k.lower().startswith(_DEDUP_IGNORED_QUERY_PREFIXES)
-        and k.lower() not in _DEDUP_IGNORED_QUERY_KEYS
-    )
-    return urlunparse((
-        scheme, netloc, path, "",
-        urlencode(filtered_query, doseq=True), "",
-    ))
 
 
 def candidate_identity_urls(repo: dict) -> set[str]:
-    """Cross-source dedupe用の保守的な同一性URL集合。
+    return _candidate_identity_urls_impl(repo, canonicalizer=canonicalize_url)
 
-    タイトル類似度のような推測的semantic matchingは使わず、収集時点で既に
-    候補自身が保持している一次URL/公式URLだけを同一性根拠にする。これにより
-    HN→GitHub、Product Hunt→公式サイト等の別Discovery Sourceが同じ一次URLを
-    指すケースを重複排除できる一方、似た題名の別案件を誤って消さない。
-    """
-    raw_urls: list[str] = []
-    for value in (repo.get("url"), repo.get("primaryUrl")):
-        if isinstance(value, str) and value.strip():
-            raw_urls.append(value.strip())
-    details = repo.get("sourceDetails") or {}
-    for key in (
-        "external_url", "official_url", "officialUrl", "website", "website_url",
-        "homepage", "project_url", "docs_url", "documentation_url",
-        # Historical/migration alias: older Stock rows may have stored the discovery URL
-        # before official URL resolution was introduced. These are explicit source URLs,
-        # not title-similarity guesses, so using them as aliases is conservative.
-        "hn_url", "producthunt_url",
-    ):
-        value = details.get(key)
-        if isinstance(value, str) and value.strip():
-            raw_urls.append(value.strip())
-    # 収集済みの明示リンクだけを利用する。ここで新規HTTP取得はしない。
-    for key in ("official_external_links", "links", "related_links"):
-        values = details.get(key) or []
-        if isinstance(values, (list, tuple, set)):
-            raw_urls.extend(v.strip() for v in values if isinstance(v, str) and v.strip())
-    return {canonicalize_url(u) for u in raw_urls if canonicalize_url(u)}
 
 
 def legal_safety_gate(repo):
@@ -7883,188 +7489,36 @@ validate_human_appeal = validate_human_appeal_gate
 # ==========================================
 # Gate Funnel / Reason Code / 内部レビュー保存
 # ==========================================
-def _reason_code(message: str, gate: str) -> str:
-    """既存Gateの自由文を、観測用の安定したReason Codeに写像する。
-
-    判定条件や閾値は変えない。未知のメッセージも捨てず、既存Gateの分類内で
-    最も保守的なコードを付与し、元メッセージは履歴にそのまま保存する。
-    """
-    text = (message or "").lower()
-    if "high_risk_action_unsupported" in text:
-        return REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED
-    if "output_truncated" in text or "max_tokens" in text or "token_limit" in text:
-        return REASON_CODE_MAX_TOKENS
-    if "article_structure_incomplete" in text or "required heading missing" in text or "structure" in text:
-        return REASON_CODE_STRUCTURE_MISSING
-    if "primary_source_authority_insufficient" in text or "primary source" in text and "authority" in text:
-        return REASON_CODE_PRIMARY_SOURCE_UNRESOLVED
-    if "source_depth_insufficient" in text or "primary_evidence_insufficient" in text or "grounding failed" in text:
-        return REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT
-    if gate == "fact":
-        if any(token in text for token in ("numeric", "number", "数値", "unit", "%")):
-            return REASON_CODE_FACT_NUMERICAL_MISMATCH
-        if any(token in text for token in ("actor", "author", "attribution", "publisher", "発表主体", "帰属", "entity relation")):
-            return REASON_CODE_FACT_ACTOR_MISMATCH
-        if "named fact" in text or "unsupported named" in text or "固有名" in text:
-            return REASON_CODE_FACT_UNSUPPORTED_NAMED_FACT
-        if any(token in text for token in ("limitation", "qualifier", "scope", "fresh", "final wording", "conditional")):
-            return REASON_CODE_FACT_CONDITIONALITY_LOSS
-        return REASON_CODE_FACT_UNSUPPORTED_CLAIM
-    if gate == "editorial":
-        if "unsupported personal experience" in text:
-            return REASON_CODE_APPEAL_FABRICATED_EXPERIENCE
-        return REASON_CODE_EDITORIAL_STRUCTURE_ERROR
-    if gate == "publication":
-        mapping = {
-            "headline_overclaim": REASON_CODE_PUB_HEADLINE_OVERCLAIM,
-            "intro_overclaim": REASON_CODE_PUB_INTRO_OVERCLAIM,
-            "research_to_production_leap": REASON_CODE_PUB_UNSUPPORTED_CONCLUSION,
-            "score_narrative_mismatch": REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH,
-            "marketing_claim_adoption": REASON_CODE_PUB_UNSUPPORTED_CONCLUSION,
-            "negative_evidence_omission": REASON_CODE_PUB_NEGATIVE_EVIDENCE_OMISSION,
-            "primary_evidence_insufficient": REASON_CODE_PUB_SOURCE_SUFFICIENCY,
-            "article_structure_needs_edit": REASON_CODE_STRUCTURE_MISSING,
-        }
-        return mapping.get(message, REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH)
-    if gate == "human_appeal":
-        mapping = {
-            "over_hedging_without_decision": REASON_CODE_APPEAL_OVER_HEDGING,
-            "action_collapsed_to_generic_monitoring": REASON_CODE_APPEAL_ACTION_COLLAPSE,
-            "headline_flattened": REASON_CODE_APPEAL_TITLE_FLATTENING,
-            "decision_voice_missing": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
-            "fabricated_personal_experience": REASON_CODE_APPEAL_FABRICATED_EXPERIENCE,
-            "ai_style_composite_high": REASON_CODE_APPEAL_AI_STYLE_COMPOSITE,
-            "cross_article_fingerprint_high": REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT,
-            "human_appeal_materially_degraded_after_reedit": REASON_CODE_APPEAL_DECISION_VOICE_LOSS,
-        }
-        return mapping.get(message, REASON_CODE_APPEAL_DECISION_VOICE_LOSS)
-    return REASON_CODE_FACT_UNSUPPORTED_CLAIM
+_reason_code = _reason_code_impl
 
 
-def classify_gate_reason_severity(gate: str, message: str, reason_code: str = "") -> str:
-    """Run 102のHARD / REVIEW / SOFT分類。
 
-    Gateを緩めるためではなく、公開停止と改善提案を分離するための分類。
-    Fact/Evidence/Decision矛盾は守り、文章美観だけのためのGemini Retryを止める。
-    """
-    text = (message or "").lower()
-    code = reason_code or _reason_code(message, gate)
-    if gate in {"fact", "evidence"}:
-        return GATE_SEVERITY_HARD
-    if gate == "publication":
-        # headline/intro overclaimも読者誤認につながるため、修正されるまで公開しない。
-        return GATE_SEVERITY_HARD
-    if gate == "editorial":
-        if "unsupported personal experience" in text:
-            return GATE_SEVERITY_HARD
-        # 本文の過半が箇条書きの状態は「美観」ではなく読解性・商品価値の問題。
-        if "article too list-like" in text:
-            return GATE_SEVERITY_REVIEW
-        known_soft = (
-            "mechanical ordinal structure", "repetitive ai-like sentence endings",
-            "too many article headings", "repetitive fixed introduction",
-            "missing observation or reservation", "mechanical three-reasons phrasing",
-            "too many reader questions", "monotonous sentence endings", "japanese_polish:",
-        )
-        if any(token in text for token in known_soft):
-            return GATE_SEVERITY_SOFT
-        # 将来Editorial ruleが追加された時に、未知の重大欠陥を自動Soft化しないFail-safe。
-        return GATE_SEVERITY_REVIEW
-    if gate == "human_appeal":
-        if code == REASON_CODE_APPEAL_FABRICATED_EXPERIENCE or "fabricated_personal_experience" in text:
-            return GATE_SEVERITY_HARD
-        if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
-            return GATE_SEVERITY_SOFT
-        if message in {"ai_style_composite_high", "cross_article_fingerprint_high"} or code in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT}:
-            return GATE_SEVERITY_REVIEW
-        if message in {
-            "action_collapsed_to_generic_monitoring",
-            "decision_voice_missing",
-            "no_editorial_observation",
-            "over_hedging_without_decision",
-            "human_appeal_materially_degraded_after_reedit",
-        } or code == REASON_CODE_APPEAL_DECISION_VOICE_LOSS:
-            # 「何をすべきか」が消えた記事は獲得商品として弱い。Soft扱いして量産しない。
-            return GATE_SEVERITY_REVIEW
-        # 未知のHuman Appeal defectもまずReview。新ルール追加時の過剰通過を防ぐ。
-        return GATE_SEVERITY_REVIEW
-    return GATE_SEVERITY_HARD
+classify_gate_reason_severity = _classify_gate_reason_severity_impl
 
 
-def map_gate_reasons(gate: str, messages: list[str] | None) -> list[dict]:
-    rows: list[dict] = []
-    for message in (messages or []):
-        code = _reason_code(message, gate)
-        rows.append({
-            "reason_code": code,
-            "message": message,
-            "gate": gate,
-            "severity": classify_gate_reason_severity(gate, message, code),
-        })
-    return rows
+
+map_gate_reasons = _map_gate_reasons_impl
 
 
-def _infer_gate_from_reason_code(reason_code: str) -> str:
-    code = reason_code or ""
-    if code.startswith("FACT_") or code in {REASON_CODE_MAX_TOKENS, REASON_CODE_STRUCTURE_MISSING}:
-        return "fact"
-    if code in {
-        REASON_CODE_PRIMARY_EVIDENCE_INSUFFICIENT, REASON_CODE_PRIMARY_SOURCE_UNRESOLVED,
-        REASON_CODE_TECHNICAL_CLAIMS_INSUFFICIENT, REASON_CODE_NUMERIC_CONDITIONS_INSUFFICIENT,
-        REASON_CODE_FRESHNESS_REQUIRED_BUT_UNRESOLVED, REASON_CODE_HIGH_RISK_ACTION_UNSUPPORTED,
-        REASON_CODE_EVIDENCE_GAP_DISCLOSURE_REQUIRED,
-    }:
-        return "evidence"
-    if code.startswith("PUB_"):
-        return "publication"
-    if code == REASON_CODE_EDITORIAL_STRUCTURE_ERROR:
-        return "editorial"
-    if code.startswith("APPEAL_"):
-        return "human_appeal"
-    if code in {
-        REASON_CODE_PENDING_RETRY, REASON_CODE_MODEL_UNAVAILABLE,
-        REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, REASON_CODE_NOTION_PERSISTENCE_FAILED,
-    }:
-        return "operational"
-    return "fact"
+
+_infer_gate_from_reason_code = _infer_gate_from_reason_code_impl
 
 
-def normalize_gate_reason_rows(reason_rows: list[dict] | None) -> list[dict]:
-    normalized: list[dict] = []
-    for original in (reason_rows or []):
-        row = dict(original)
-        code = str(row.get("reason_code") or "")
-        gate = str(row.get("gate") or _infer_gate_from_reason_code(code))
-        row["gate"] = gate
-        if not row.get("severity"):
-            if gate == "operational":
-                row["severity"] = GATE_SEVERITY_OPERATIONAL
-            else:
-                row["severity"] = classify_gate_reason_severity(gate, str(row.get("message") or ""), code)
-        normalized.append(row)
-    return normalized
+
+normalize_gate_reason_rows = _normalize_gate_reason_rows_impl
 
 
-def gate_reason_disposition(reason_rows: list[dict] | None) -> str:
-    rows = normalize_gate_reason_rows(reason_rows)
-    severities = {row.get("severity") for row in rows}
-    if GATE_SEVERITY_HARD in severities:
-        return GATE_DISPOSITION_BLOCK
-    if GATE_SEVERITY_REVIEW in severities:
-        return GATE_DISPOSITION_REVIEW
-    if GATE_SEVERITY_SOFT in severities:
-        return GATE_DISPOSITION_PASS_WITH_WARNINGS
-    return GATE_DISPOSITION_PASS
+
+gate_reason_disposition = _gate_reason_disposition_impl
 
 
-def _reason_rows_by_severity(reason_rows: list[dict] | None, *severities: str) -> list[dict]:
-    allowed = set(severities)
-    return [row for row in normalize_gate_reason_rows(reason_rows) if row.get("severity") in allowed]
+
+_reason_rows_by_severity = _reason_rows_by_severity_impl
 
 
-def _quality_warning_messages(reason_rows: list[dict] | None) -> list[str]:
-    return [str(row.get("message", "")) for row in normalize_gate_reason_rows(reason_rows)
-            if row.get("severity") == GATE_SEVERITY_SOFT and row.get("message")]
+
+_quality_warning_messages = _quality_warning_messages_impl
+
 
 
 def finalize_retry_diagnostics(retry_diagnostics: dict | None, final_reason_codes: list[dict],
@@ -8533,62 +7987,20 @@ def _active_gate_funnel(persist_results: bool) -> DeepDiveGateFunnel | None:
     return DEEP_DIVE_GATE_FUNNEL if persist_results else None
 
 
-def build_candidate_gate_record(candidate_rank: int, repo_name: str, source_url: str,
-                                decision_score: int | None, generation_status: str,
-                                fact_gate: str = GATE_STATUS_NOT_RUN,
-                                editorial_gate: str = GATE_STATUS_NOT_RUN,
-                                publication_readiness_gate: str = GATE_STATUS_NOT_RUN,
-                                human_appeal_gate: str = GATE_STATUS_NOT_RUN,
-                                reason_codes: list[dict] | None = None,
-                                final_status: str = "", article_saved: bool = False,
-                                evidence_result: dict | None = None,
-                                deep_dive_generation_called: bool = False,
-                                retry_diagnostics: dict | None = None,
-                                candidate_origin: str = "new",
-                                source: str = "Unknown", generation_request_count: int = 0) -> dict:
-    reasons = normalize_gate_reason_rows(reason_codes)
-    first = reasons[0] if reasons else {}
-    return {
-        "candidate_rank": candidate_rank,
-        "name": repo_name,
-        "url": source_url,
-        "source": source,
-        "generation_request_count": max(0, int(generation_request_count or 0)),
-        "decision_score": decision_score,
-        "generation_status": generation_status,
-        "fact_gate": fact_gate,
-        "editorial_gate": editorial_gate,
-        "publication_readiness_gate": publication_readiness_gate,
-        "human_appeal_gate": human_appeal_gate,
-        "final_status": final_status,
-        "reason_code": first.get("reason_code", ""),
-        "reason": first.get("message", ""),
-        "reason_codes": reasons,
-        "gate_disposition": gate_reason_disposition(reasons),
-        "hard_reason_count": sum(1 for row in reasons if row.get("severity") == GATE_SEVERITY_HARD),
-        "review_reason_count": sum(1 for row in reasons if row.get("severity") == GATE_SEVERITY_REVIEW),
-        "soft_warning_count": sum(1 for row in reasons if row.get("severity") == GATE_SEVERITY_SOFT),
-        "article_saved": article_saved,
-        "evidence_sufficiency": (evidence_result or {}).get("state", ""),
-        "evidence_initial_sufficiency": (evidence_result or {}).get("initial_state", (evidence_result or {}).get("state", "")),
-        "evidence_supplement_attempted": bool((evidence_result or {}).get("supplement_attempted")),
-        "evidence_supplement_success": bool((evidence_result or {}).get("supplement_success")),
-        "evidence_documents_checked": (evidence_result or {}).get("documents_checked", 0),
-        "evidence_checks": (evidence_result or {}).get("checks", {}),
-        "decision_scope_safe": (evidence_result or {}).get("decision_scope_safe"),
-        "action_risk_tier": (evidence_result or {}).get("action_risk_tier", ""),
-        "action_supported_at_current_tier": (evidence_result or {}).get("action_supported_at_current_tier"),
-        "limitations_disclosed": (evidence_result or {}).get("limitations_disclosed"),
-        "freshness_scope_limited": (evidence_result or {}).get("freshness_scope_limited"),
-        "evidence_gap_disclosed": (evidence_result or {}).get("evidence_gap_disclosed"),
-        "deep_dive_generation_called": deep_dive_generation_called,
-        "retry_diagnostics": retry_diagnostics or {},
-        "retry_attempted": bool((retry_diagnostics or {}).get("retry_attempted")),
-        "retry_succeeded": bool((retry_diagnostics or {}).get("retry_succeeded")),
-        "dynamic_retry_reason_codes": (retry_diagnostics or {}).get("trigger_reason_codes", []),
-        "candidate_origin": candidate_origin,
-        "recorded_at": _analyzed_at_now_iso(),
-    }
+def build_candidate_gate_record(candidate_rank: int, repo_name: str, source_url: str, decision_score: int | None,
+                                generation_status: str, fact_gate: str = GATE_STATUS_NOT_RUN,
+                                editorial_gate: str = GATE_STATUS_NOT_RUN, publication_readiness_gate: str = GATE_STATUS_NOT_RUN,
+                                human_appeal_gate: str = GATE_STATUS_NOT_RUN, reason_codes: list[dict] | None = None,
+                                final_status: str = "", article_saved: bool = False, evidence_result: dict | None = None,
+                                deep_dive_generation_called: bool = False, retry_diagnostics: dict | None = None,
+                                candidate_origin: str = "new", source: str = "Unknown", generation_request_count: int = 0) -> dict:
+    return _build_candidate_gate_record_impl(
+        candidate_rank, repo_name, source_url, decision_score, generation_status, fact_gate, editorial_gate,
+        publication_readiness_gate, human_appeal_gate, reason_codes, final_status, article_saved, evidence_result,
+        deep_dive_generation_called, retry_diagnostics, candidate_origin, source, generation_request_count,
+        analyzed_at_now_iso=_analyzed_at_now_iso,
+    )
+
 
 
 def _internal_article_path(directory: str, repo_name: str, source_url: str) -> str:
@@ -8614,34 +8026,11 @@ def _save_json_private(directory: str, repo_name: str, source_url: str, payload:
 
 def build_internal_article_record(repo: dict, parsed: dict | None, gate_record: dict,
                                   source_info: dict | None, failure_reason: str) -> dict:
-    parsed = parsed or {}
-    article = parsed.get("note_draft", "")
-    return {
-        "pipeline_status": gate_record.get("final_status"),
-        "failed_gate": next((name for name, state in (
-            ("Fact", gate_record.get("fact_gate")),
-            ("Publication Readiness", gate_record.get("publication_readiness_gate")),
-            ("Human Appeal", gate_record.get("human_appeal_gate")),
-        ) if state in {GATE_STATUS_FAIL, GATE_STATUS_REVIEW}), ""),
-        "gate_history": gate_record,
-        "failure_reason": failure_reason,
-        "article": article,
-        "title": parsed.get("title_text", ""),
-        "introduction": _extract_any_markdown_section(article, _display_heading_aliases("intro")),
-        "conclusion": _extract_any_markdown_section(article, _display_heading_aliases("conclusion")),
-        "action": parsed.get("action_text", ""),
-        "decision_score": parsed.get("score"),
-        "why_not": parsed.get("why_not_important_text", ""),
-        "primary_evidence": {
-            "primary_url": (source_info or {}).get("primary_url", repo.get("url")),
-            "evidence_urls": (source_info or {}).get("evidence_urls", []),
-            "metadata": (source_info or {}).get("evidence_metadata", {}),
-            "verification_context_length": (source_info or {}).get("verification_context_length", 0),
-        },
-        "candidate_rank": gate_record.get("candidate_rank"),
-        "source_url": repo.get("url"),
-        "generated_at": _analyzed_at_now_iso(),
-    }
+    return _build_internal_article_record_impl(
+        repo, parsed, gate_record, source_info, failure_reason, analyzed_at_now_iso=_analyzed_at_now_iso,
+        extract_section=_extract_any_markdown_section, display_heading_aliases=_display_heading_aliases,
+    )
+
 
 
 def save_needs_editorial_review_article(repo: dict, parsed: dict, gate_record: dict,
@@ -10045,33 +9434,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
 # Step 1: 軽量スクリーニング
 # ==========================================
 def build_screening_prompt(name, desc, stars, source: str = "GitHub") -> str:
-    # 出力を極小に抑えるため、フォーマットを1行に固定する。
-    # ここでMarkdown記号や長文説明を許すと出力トークンが無駄に膨らむため厳禁。
-    metric_label = ENGAGEMENT_LABELS.get(source, "Stars")
-    metric_note = (
-        "※このソースには人気指標が存在しないため無視し、内容のみで判断せよ。\n"
-        if source == "ArXiv" else ""
-    )
-    return f"""
-以下の{source}発の一次情報について、CTO/PM向け無料noteで読者を獲得し、
-会員向け意思決定DBへ蓄積する題材としての価値を0〜100点で採点せよ。
-判断基準: 技術的な新規性・実務への即効性・意思決定への影響・話題性。
-COMMERCIALは品質スコアとは独立して、読者需要の見込み・会員DB転換可能性・継続的な実務需要を0〜100で保守的に推定する。
-SHELFは情報価値の持続性を0〜100で推定し、0-34=FLASH、35-69=TREND、70-100=EVERGREENを目安とする。
-TOPICは内容の主テーマを MODEL / AGENT / DEVTOOLS / INFRA / DATA / SECURITY / MULTIMODAL / PRODUCT / OTHER のいずれか1つで返す。
-Source種別ではなく内容で分類し、論文だからRESEARCHのような分類はしない。
-入力にないアクセス数・検索量・売上は捏造しない。
-出所が異なる案件同士でも公平に比較できるよう、指標の絶対値ではなく
-内容の質・インパクトを軸に採点すること。
+    return _build_screening_prompt_impl(name, desc, stars, source, engagement_labels=ENGAGEMENT_LABELS)
 
-・出所: {source}
-・名前: {name}
-・{metric_label}: {stars}
-{metric_note}・概要: {desc}
-
-出力は必ず次の1行形式のみ。説明文・Markdown・前置きは一切不要。
-SCORE=<0-100> COMMERCIAL=<0-100> SHELF=<0-100> TOPIC=<上記9分類> REASON=<20文字以内の一言理由>
-"""
 
 def _parse_screening_response(text: str) -> dict:
     score_match = re.search(r"SCORE\s*=\s*(\d+)", text)
@@ -10173,157 +9537,38 @@ def load_source_roi_state(path: str | None = None) -> dict:
         return _empty_source_roi_state()
 
 
-def _source_roi_smoothed_rate(success: float, total: float, prior_rate: float, prior_weight: float) -> float:
-    total = max(0.0, float(total or 0.0))
-    success = max(0.0, float(success or 0.0))
-    return max(0.0, min(1.0, (success + prior_rate * prior_weight) / (total + prior_weight)))
+_source_roi_smoothed_rate = _source_roi_smoothed_rate_impl
+
 
 
 def compute_source_roi_profile(state: dict | None) -> dict[str, dict]:
-    """Compute recency-weighted, Bayesian-smoothed source yield without touching quality scores."""
-    runs = list((state or {}).get("runs", []))[-max(1, SOURCE_ROI_HISTORY_RUNS):]
-    aggregate = {
-        src: {"screened": 0.0, "stock_saved": 0.0, "deep_dive_attempted": 0.0,
-              "generation_requests": 0.0, "ready": 0.0, "review": 0.0}
-        for src in SOURCE_ROI_SOURCES
-    }
-    decay = max(0.0, min(1.0, SOURCE_ROI_RECENCY_DECAY))
-    for age, run in enumerate(reversed(runs)):
-        weight = decay ** age
-        metrics = run.get("sources", {}) if isinstance(run, dict) else {}
-        for src in SOURCE_ROI_SOURCES:
-            row = metrics.get(src, {}) if isinstance(metrics, dict) else {}
-            for key in aggregate[src]:
-                try:
-                    aggregate[src][key] += max(0.0, float(row.get(key, 0) or 0)) * weight
-                except (TypeError, ValueError):
-                    pass
+    return _compute_source_roi_profile_impl(
+        state, sources=SOURCE_ROI_SOURCES, history_runs=SOURCE_ROI_HISTORY_RUNS, recency_decay=SOURCE_ROI_RECENCY_DECAY,
+        stock_weight=SOURCE_ROI_STOCK_WEIGHT, ready_weight=SOURCE_ROI_READY_WEIGHT, efficiency_weight=SOURCE_ROI_EFFICIENCY_WEIGHT,
+        min_screened=SOURCE_ROI_MIN_SCREENED, min_deep_dive_attempts=SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS,
+        exploration_weight=SOURCE_ROI_EXPLORATION_WEIGHT, enable_learning=ENABLE_SOURCE_ROI_LEARNING,
+        min_mature_sources=SOURCE_ROI_MIN_MATURE_SOURCES, smoothed_rate=_source_roi_smoothed_rate,
+    )
 
-    result: dict[str, dict] = {}
-    mature_count = 0
-    for src, row in aggregate.items():
-        stock_rate = _source_roi_smoothed_rate(row["stock_saved"], row["screened"], 0.35, 20.0)
-        ready_rate = _source_roi_smoothed_rate(row["ready"], row["deep_dive_attempted"], 0.25, 6.0)
-        efficiency_rate = _source_roi_smoothed_rate(row["ready"], row["generation_requests"], 0.18, 6.0)
-        total_weight = max(1e-9, SOURCE_ROI_STOCK_WEIGHT + SOURCE_ROI_READY_WEIGHT + SOURCE_ROI_EFFICIENCY_WEIGHT)
-        score = 100.0 * (
-            stock_rate * SOURCE_ROI_STOCK_WEIGHT
-            + ready_rate * SOURCE_ROI_READY_WEIGHT
-            + efficiency_rate * SOURCE_ROI_EFFICIENCY_WEIGHT
-        ) / total_weight
-        mature = (
-            row["screened"] >= max(1, SOURCE_ROI_MIN_SCREENED)
-            and row["deep_dive_attempted"] >= max(1, SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS)
-        )
-        if mature:
-            mature_count += 1
-        # Exploration bonus is deliberately small; mandatory floors are the main anti-starvation guard.
-        exploration = min(1.0, 1.0 / ((1.0 + row["screened"] / max(1, SOURCE_ROI_MIN_SCREENED)) ** 0.5))
-        allocation_weight = max(
-            0.05,
-            (1.0 - max(0.0, min(0.5, SOURCE_ROI_EXPLORATION_WEIGHT))) * (score / 100.0)
-            + max(0.0, min(0.5, SOURCE_ROI_EXPLORATION_WEIGHT)) * exploration,
-        )
-        result[src] = {
-            **row, "stock_yield": round(stock_rate, 4), "ready_yield": round(ready_rate, 4),
-            "generation_efficiency": round(efficiency_rate, 4), "roi_score": round(score, 2),
-            "allocation_weight": round(allocation_weight, 6), "mature": mature,
-        }
-    learning_active = ENABLE_SOURCE_ROI_LEARNING and mature_count >= max(1, SOURCE_ROI_MIN_MATURE_SOURCES)
-    for row in result.values():
-        row["learning_active"] = learning_active
-    return result
 
 
 def allocate_source_fetch_limits(profile: dict[str, dict] | None, total_limit: int | None = None) -> dict[str, int]:
-    """Allocate collection/screening slots while guaranteeing each mandatory Source a floor."""
-    base = _source_base_fetch_limits()
-    if not ENABLE_SOURCE_ROI_LEARNING or not profile or not any(row.get("learning_active") for row in profile.values()):
-        return base
+    return _allocate_source_fetch_limits_impl(
+        profile, total_limit, base=_source_base_fetch_limits(), enable_learning=ENABLE_SOURCE_ROI_LEARNING,
+        max_screening_candidates=MAX_SCREENING_CANDIDATES, max_fetch_by_source=SOURCE_ROI_MAX_FETCH_BY_SOURCE,
+        sources=SOURCE_ROI_SOURCES, min_fetch_per_source=SOURCE_ROI_MIN_FETCH_PER_SOURCE,
+    )
 
-    total = max(0, int(MAX_SCREENING_CANDIDATES if total_limit is None else total_limit))
-    caps = {
-        src: max(base.get(src, 0), max(0, int(SOURCE_ROI_MAX_FETCH_BY_SOURCE.get(src, base.get(src, 0)))))
-        for src in SOURCE_ROI_SOURCES
-    }
-    floors = {src: min(caps[src], max(0, SOURCE_ROI_MIN_FETCH_PER_SOURCE)) for src in SOURCE_ROI_SOURCES}
-    if sum(floors.values()) > total:
-        # An unusually small global cap must preserve round-robin fairness rather than inventing source priority.
-        return {src: min(base[src], max(0, total // len(SOURCE_ROI_SOURCES))) for src in SOURCE_ROI_SOURCES}
-
-    allocation = dict(floors)
-    remaining = min(total, sum(caps.values())) - sum(allocation.values())
-    while remaining > 0:
-        available = [src for src in SOURCE_ROI_SOURCES if allocation[src] < caps[src]]
-        if not available:
-            break
-        weight_sum = sum(max(0.0001, float((profile.get(src) or {}).get("allocation_weight", 0.5))) for src in available)
-        proposed = {}
-        fractions = []
-        for src in available:
-            weight = max(0.0001, float((profile.get(src) or {}).get("allocation_weight", 0.5)))
-            exact = remaining * weight / weight_sum
-            room = caps[src] - allocation[src]
-            add = min(room, int(exact))
-            proposed[src] = add
-            fractions.append((exact - int(exact), weight, src))
-        used = sum(proposed.values())
-        for src, add in proposed.items():
-            allocation[src] += add
-        remaining -= used
-        if remaining <= 0:
-            break
-        # Largest-remainder allocation, still respecting caps.
-        progressed = False
-        for _frac, _weight, src in sorted(fractions, reverse=True):
-            if remaining <= 0:
-                break
-            if allocation[src] < caps[src]:
-                allocation[src] += 1
-                remaining -= 1
-                progressed = True
-        if not progressed and used == 0:
-            break
-    return allocation
 
 
 def build_source_roi_run_metrics(screened: list[dict] | None, funnel: "DeepDiveGateFunnel | None") -> dict:
-    metrics = {
-        src: {"screened": 0, "stock_saved": 0, "deep_dive_attempted": 0,
-              "generation_requests": 0, "ready": 0, "review": 0,
-              "quality_failed": 0, "pending_retry": 0}
-        for src in SOURCE_ROI_SOURCES
-    }
-    for item in screened or []:
-        src = item.get("repo", {}).get("source")
-        if src not in metrics or item.get("screening_status") != "completed":
-            continue
-        metrics[src]["screened"] += 1
-        if item.get("notion_page_id"):
-            metrics[src]["stock_saved"] += 1
-    for record in (funnel.records if funnel else []):
-        src = record.get("source")
-        if src not in metrics:
-            continue
-        reason_codes = {row.get("reason_code") for row in record.get("reason_codes", []) if isinstance(row, dict)}
-        provider_or_budget_failure = bool(reason_codes & {
-            REASON_CODE_MODEL_UNAVAILABLE, REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED
-        }) or record.get("error_category") in {"provider_unavailable", "quota", "timeout", "budget"}
-        # Source ROI learns editorial/source yield, not Gemini availability. Provider/quota/budget failures
-        # are excluded from attempt/request denominators so a 503 cannot reduce future source collection.
-        if not provider_or_budget_failure:
-            metrics[src]["deep_dive_attempted"] += 1
-            metrics[src]["generation_requests"] += max(0, int(record.get("generation_request_count", 0) or 0))
-        status = record.get("final_status")
-        if status == ARTICLE_STATUS_READY:
-            metrics[src]["ready"] += 1
-        elif status == ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW:
-            metrics[src]["review"] += 1
-        elif status == CONTENT_STATUS_QUALITY_FAILED:
-            metrics[src]["quality_failed"] += 1
-        elif status == CONTENT_STATUS_PENDING_RETRY:
-            metrics[src]["pending_retry"] += 1
-    return metrics
+    return _build_source_roi_run_metrics_impl(
+        screened, funnel, sources=SOURCE_ROI_SOURCES, reason_code_model_unavailable=REASON_CODE_MODEL_UNAVAILABLE,
+        reason_code_budget_exhausted=REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, article_status_ready=ARTICLE_STATUS_READY,
+        article_status_needs_editorial_review=ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW,
+        content_status_quality_failed=CONTENT_STATUS_QUALITY_FAILED, content_status_pending_retry=CONTENT_STATUS_PENDING_RETRY,
+    )
+
 
 
 def _upload_source_roi_state_to_github(local_path: str) -> str | None:
@@ -10392,216 +9637,55 @@ def log_source_roi_profile(profile: dict[str, dict], fetch_limits: dict[str, int
         )
 
 
-def round_robin_candidates(source_groups: dict[str, list[dict]], limit: int) -> list[dict]:
-    """Avoid source-order starvation when a cross-source cap is applied."""
-    result: list[dict] = []
-    queues = {source: list(items) for source, items in source_groups.items()}
-    while len(result) < limit and any(queues.values()):
-        for source in source_groups:
-            if len(result) >= limit:
-                break
-            if queues[source]:
-                result.append(queues[source].pop(0))
-    return result
+round_robin_candidates = _round_robin_candidates_impl
 
 
-def _bounded_optional_score(value, candidate_id: str, field: str, invalid: list[str]) -> int | None:
-    """Parse an optional 0-100 profit metadata score without invalidating the core row."""
-    if value is None:
-        invalid.append(f"missing_{field}:{candidate_id}")
-        return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        invalid.append(f"invalid_{field}:{candidate_id}")
-        return None
-    if not 0 <= parsed <= 100:
-        invalid.append(f"{field}_out_of_range:{candidate_id}")
-        return None
-    return parsed
+
+_bounded_optional_score = _bounded_optional_score_impl
+
 
 
 def shelf_life_label(score: int | float | None) -> str:
-    """Map a numeric shelf-life estimate into FLASH / TREND / EVERGREEN."""
-    try:
-        value = max(0, min(100, int(score)))
-    except (TypeError, ValueError):
-        value = PROFIT_SCORE_NEUTRAL
-    if value <= 34:
-        return "FLASH"
-    if value <= 69:
-        return "TREND"
-    return "EVERGREEN"
+    return _shelf_life_label_impl(score, neutral_score=PROFIT_SCORE_NEUTRAL)
+
 
 
 def deep_dive_priority_score(decision_score: int | float | None, commercial_score: int | float | None) -> float:
-    """Profit-aware priority; it never changes Stock eligibility or Quality Gate outcomes."""
-    try:
-        decision = max(0.0, min(100.0, float(decision_score or 0)))
-    except (TypeError, ValueError):
-        decision = 0.0
-    try:
-        commercial = max(0.0, min(100.0, float(commercial_score)))
-    except (TypeError, ValueError):
-        commercial = float(PROFIT_SCORE_NEUTRAL)
-    decision_weight = max(0.0, DEEP_DIVE_DECISION_WEIGHT)
-    commercial_weight = max(0.0, DEEP_DIVE_COMMERCIAL_WEIGHT)
-    total_weight = decision_weight + commercial_weight
-    if total_weight <= 0:
-        return round(decision, 2)
-    return round((decision * decision_weight + commercial * commercial_weight) / total_weight, 2)
+    return _deep_dive_priority_score_impl(
+        decision_score, commercial_score, neutral_score=PROFIT_SCORE_NEUTRAL,
+        decision_weight=DEEP_DIVE_DECISION_WEIGHT, commercial_weight=DEEP_DIVE_COMMERCIAL_WEIGHT,
+    )
+
 
 
 def _attach_profit_metadata(item: dict, commercial_score: int | None, shelf_life_score: int | None) -> dict:
-    try:
-        commercial = PROFIT_SCORE_NEUTRAL if commercial_score is None else max(0, min(100, int(commercial_score)))
-    except (TypeError, ValueError):
-        commercial = PROFIT_SCORE_NEUTRAL
-    try:
-        shelf = PROFIT_SCORE_NEUTRAL if shelf_life_score is None else max(0, min(100, int(shelf_life_score)))
-    except (TypeError, ValueError):
-        shelf = PROFIT_SCORE_NEUTRAL
-    item["commercial_score"] = commercial
-    item["shelf_life_score"] = shelf
-    item["shelf_life"] = shelf_life_label(shelf)
-    item["deep_dive_priority_score"] = deep_dive_priority_score(item.get("score"), commercial)
-    return item
+    return _attach_profit_metadata_impl(
+        item, commercial_score, shelf_life_score, neutral_score=PROFIT_SCORE_NEUTRAL,
+        decision_weight=DEEP_DIVE_DECISION_WEIGHT, commercial_weight=DEEP_DIVE_COMMERCIAL_WEIGHT,
+    )
+
 
 
 def normalize_portfolio_topic(value) -> str:
-    """Normalize topic metadata without making missing auxiliary data fatal."""
-    topic = str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "MODELS": "MODEL", "AI_MODEL": "MODEL", "AI_MODELS": "MODEL",
-        "AGENTS": "AGENT", "AUTOMATION": "AGENT",
-        "DEVTOOL": "DEVTOOLS", "DEVELOPER_TOOLS": "DEVTOOLS",
-        "INFRASTRUCTURE": "INFRA", "PLATFORM": "INFRA", "MLOPS": "INFRA",
-        "RETRIEVAL": "DATA", "RAG": "DATA", "DATA_RETRIEVAL": "DATA",
-        "SAFETY": "SECURITY", "PRIVACY": "SECURITY", "GOVERNANCE": "SECURITY",
-        "VISION": "MULTIMODAL", "AUDIO": "MULTIMODAL", "ROBOTICS": "MULTIMODAL",
-        "BUSINESS": "PRODUCT", "SAAS": "PRODUCT",
-        "RESEARCH": "OTHER", "UNKNOWN": "OTHER", "": "OTHER",
-    }
-    topic = aliases.get(topic, topic)
-    return topic if topic in PORTFOLIO_TOPICS else "OTHER"
+    return _normalize_portfolio_topic_impl(value, portfolio_topics=PORTFOLIO_TOPICS)
+
 
 
 def _attach_portfolio_topic(item: dict, topic=None, raw_topic=None) -> dict:
-    normalized = normalize_portfolio_topic(topic if topic is not None else item.get("portfolio_topic"))
-    item["portfolio_topic"] = normalized
-    if raw_topic is not None and "raw_portfolio_topic" not in item:
-        item["raw_portfolio_topic"] = normalize_portfolio_topic(raw_topic)
-    return item
+    return _attach_portfolio_topic_impl(item, topic, raw_topic, portfolio_topics=PORTFOLIO_TOPICS)
 
 
-def _salvage_screening_json_rows(text: str) -> list[dict]:
-    """Recover complete JSON objects from a truncated/partially malformed JSON array.
 
-    Gemini may return HTTP 200 yet cut the tail of a long array.  We never guess or repair a
-    partial object; only individually valid, balanced JSON objects are accepted.  Missing IDs are
-    then handled by the existing smaller recovery batches.
-    """
-    rows: list[dict] = []
-    src = text or ""
-    depth = 0
-    start = None
-    in_string = False
-    escaped = False
-    for i, ch in enumerate(src):
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-            continue
-        if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}" and depth:
-            depth -= 1
-            if depth == 0 and start is not None:
-                try:
-                    row = json.loads(src[start:i + 1])
-                    if isinstance(row, dict):
-                        rows.append(row)
-                except json.JSONDecodeError:
-                    pass
-                start = None
-    return rows
+_salvage_screening_json_rows = _salvage_screening_json_rows_impl
+
 
 
 def _parse_batch_screening_response(text: str, expected_ids: set[str], include_diagnostic: bool = False):
-    diagnostic_parts: list[str] = []
-    try:
-        payload = json.loads(text or "[]")
-    except json.JSONDecodeError as exc:
-        payload = _salvage_screening_json_rows(text or "")
-        diagnostic_parts.append(f"json_decode_error:{exc.msg}")
-        diagnostic_parts.append(f"salvaged={len(payload)}")
+    return _parse_batch_screening_response_impl(
+        text, expected_ids, include_diagnostic, tracking_eligibility_min_score=TRACKING_ELIGIBILITY_MIN_SCORE,
+        portfolio_topics=PORTFOLIO_TOPICS,
+    )
 
-    parsed: dict[str, dict] = {}
-    if not isinstance(payload, list):
-        diagnostic_parts.append("response_not_list")
-        payload = []
-
-    invalid: list[str] = []
-    for row in payload:
-        if not isinstance(row, dict):
-            invalid.append("row_not_object")
-            continue
-        candidate_id = str(row.get("id", ""))
-        if candidate_id not in expected_ids:
-            invalid.append(f"unknown_id:{candidate_id}")
-            continue
-        if candidate_id in parsed:
-            invalid.append(f"duplicate_id:{candidate_id}")
-            continue
-        try:
-            score = int(row.get("score"))
-        except (TypeError, ValueError):
-            invalid.append(f"invalid_score:{candidate_id}")
-            continue
-        if not 0 <= score <= 100:
-            invalid.append(f"score_out_of_range:{candidate_id}")
-            continue
-        reason = str(row.get("reason", "取得失敗")).strip()[:120] or "取得失敗"
-        commercial_score = _bounded_optional_score(row.get("commercial_score"), candidate_id, "commercial_score", invalid)
-        shelf_life_score = _bounded_optional_score(row.get("shelf_life_score"), candidate_id, "shelf_life_score", invalid)
-        tracking_raw = row.get("tracking_eligible")
-        if isinstance(tracking_raw, bool):
-            tracking_eligible = tracking_raw
-        elif isinstance(tracking_raw, str) and tracking_raw.strip().lower() in {"true", "false"}:
-            tracking_eligible = tracking_raw.strip().lower() == "true"
-        else:
-            tracking_eligible = score >= TRACKING_ELIGIBILITY_MIN_SCORE
-            invalid.append(f"missing_tracking_eligible:{candidate_id}")
-        tracking_reason = str(row.get("tracking_reason", "")).strip()[:160]
-        raw_topic = row.get("topic")
-        normalized_topic = normalize_portfolio_topic(raw_topic)
-        topic_valid = raw_topic is not None
-        if raw_topic is None:
-            invalid.append(f"missing_topic:{candidate_id}")
-            topic_valid = False
-        elif normalized_topic == "OTHER" and str(raw_topic).strip().upper() not in {"OTHER", "RESEARCH", "UNKNOWN"}:
-            invalid.append(f"invalid_topic:{candidate_id}")
-            topic_valid = False
-        parsed[candidate_id] = {
-            "score": score, "reason": reason,
-            "commercial_score": commercial_score, "shelf_life_score": shelf_life_score,
-            "tracking_eligible": tracking_eligible, "tracking_reason": tracking_reason,
-            "portfolio_topic": normalized_topic, "topic_valid": topic_valid,
-        }
-    if invalid:
-        diagnostic_parts.extend(invalid)
-    missing = sorted(expected_ids - set(parsed))
-    diagnostic = ";".join(diagnostic_parts)
-    return (parsed, missing, diagnostic) if include_diagnostic else (parsed, missing)
 
 
 def call_screening_provider(prompt: str, kind: str = "screening_batch", request_context: str = ""):
@@ -10615,60 +9699,12 @@ def call_screening_provider(prompt: str, kind: str = "screening_batch", request_
     return response
 
 
-def _batch_screening_prompt(batch: list[dict]) -> str:
-    rows = []
-    for item in batch:
-        repo = item["repo"]
-        rows.append({"id": item["screening_id"], "source": repo.get("source", "GitHub"),
-                     "name": repo.get("nameWithOwner", ""), "description": repo.get("description", ""),
-                     "engagement": repo.get("stargazerCount", 0), "published_at": repo.get("publishedAt"),
-                     "url": repo.get("url", "")})
-    return (
-        "以下の候補を、CTO/PM向け無料noteで読者を獲得し、会員向け意思決定DBへ蓄積する題材として評価せよ。"
-        "scoreは従来の品質・意思決定価値スコア（0〜100）で、技術的新規性、実務インパクト、"
-        "導入・意思決定への影響、緊急性、市場波及性、情報源の信頼性を総合評価する。"
-        "commercial_scoreは独立した商業価値スコア（0〜100）で、読者需要の見込み、意思決定の緊急性、"
-        "会員DB転換可能性、継続的な実務需要、商業隣接性をmetadataだけから保守的に推定する。"
-        "実アクセス数・検索量・売上など入力にない数値を捏造してはならない。"
-        "shelf_life_scoreは0〜100で情報価値の持続性を推定する。"
-        "0-34=FLASH(主に1-7日)、35-69=TREND(主に1-4週)、70-100=EVERGREEN(数か月以上)を目安とする。"
-        "topicはSource種別ではなく内容の主テーマを MODEL, AGENT, DEVTOOLS, INFRA, DATA, SECURITY, MULTIMODAL, PRODUCT, OTHER のいずれか1つで返す。"
-        "tracking_eligibleは記事化価値とは独立し、今後の導入判断・回避判断・成熟度変化を追う価値があるTechnologyならtrueとする。"
-        "単に面白い記事という理由ではtrueにせず、逆に記事scoreが低くてもAVOID判断や将来の成熟監視に価値があればtrueにできる。"
-        "tracking_reasonはその理由を40字以内で返す。"
-        "Sourceが異なる候補間でEngagementの絶対値を直接比較してはならない。"
-        "この段階ではURL本文・README・論文全文を推測して使わない。"
-        "出力は必ずJSON配列だけ。各要素は id, score, commercial_score, shelf_life_score, topic, tracking_eligible(boolean), tracking_reason（40字以内）, reason（40字以内）とする。\n"
-        + json.dumps(rows, ensure_ascii=False)
-    )
+_batch_screening_prompt = _batch_screening_prompt_impl
 
 
-def _calibration_prompt(batch: list[dict]) -> str:
-    rows = []
-    for item in batch:
-        repo = item["repo"]
-        rows.append({"id": item["screening_id"], "source": repo.get("source", ""),
-                     "name": repo.get("nameWithOwner", ""), "description": repo.get("description", ""),
-                     "raw_score": item.get("raw_score"), "raw_commercial_score": item.get("raw_commercial_score", item.get("commercial_score")),
-                     "raw_shelf_life_score": item.get("raw_shelf_life_score", item.get("shelf_life_score")),
-                     "raw_topic": item.get("raw_portfolio_topic", item.get("portfolio_topic", "OTHER")),
-                     "tracking_eligible": item.get("tracking_eligible", False),
-                     "tracking_reason": item.get("tracking_reason", ""),
-                     "engagement": repo.get("stargazerCount", 0),
-                     "published_at": repo.get("publishedAt"), "url": repo.get("url", "")})
-    return (
-        "以下は一次Batch審査で55点以上だった候補である。候補群を横断比較し、"
-        "Notion Stock候補としての一貫した最終Decision Scoreを返せ。"
-        "scoreは技術的新規性、実務インパクト、意思決定への影響、緊急性、情報源の信頼性を評価する。"
-        "commercial_scoreは品質スコアと独立して、読者需要の見込み、意思決定の緊急性、会員DB転換可能性、"
-        "継続的な実務需要、商業隣接性をmetadataだけから保守的に再評価する。"
-        "shelf_life_scoreは情報価値の持続性を0〜100で再評価する。入力にないアクセス数や売上を捏造しない。"
-        "topicは主テーマを MODEL, AGENT, DEVTOOLS, INFRA, DATA, SECURITY, MULTIMODAL, PRODUCT, OTHER のいずれか1つで再判定する。"
-        "tracking_eligibleは記事価値と独立したTechnology追跡価値で再判定し、tracking_reasonを40字以内で返す。"
-        "異Source間でEngagementの絶対値を直接比較してはならない。"
-        "出力はJSON配列のみ。各要素は id, score, commercial_score, shelf_life_score, topic, tracking_eligible, tracking_reason, reason（40字以内）。\n"
-        + json.dumps(rows, ensure_ascii=False)
-    )
+
+_calibration_prompt = _calibration_prompt_impl
+
 
 
 def screen_batch(batch: list[dict], *_args, recovery: bool = False, **_kwargs):
