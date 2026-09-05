@@ -42,6 +42,7 @@ on:
       - 'run183_eyecatch_emphasis_scale.py'
       - 'run222_note_presentation_integrity.py'
       - 'run248_first_real_publish_quality_calibration.py'
+      - 'run249_final_publication_surface_gate.py'
       - 'publication_contract.py'
       - 'run194_publication_contract.py'
       - 'note_ready_sync.py'
@@ -55,6 +56,7 @@ on:
       - 'tests/test_run227_japanese_surface_integrity.py'
       - 'tests/test_run228_reader_rhythm_planning.py'
       - 'tests/test_run248_first_real_publish_quality_calibration.py'
+      - 'tests/test_run249_final_publication_surface_gate.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -86,9 +88,9 @@ jobs:
         run: pip install requests
 
       - name: Zero-API unit tests
-        # Keep this reconciliation workflow intentionally minimal. Run248's visual regression
-        # is covered by Integration CI; Run197 below proves every current publication-policy
-        # file still triggers this queue reconciliation. The tests here never open note.com.
+        # Keep this reconciliation workflow intentionally minimal. Visual regression is
+        # covered by Integration CI; Run197 proves every publication-policy file triggers
+        # queue reconciliation. These tests never open note.com or call Gemini.
         run: |
           python -m unittest tests.test_note_ready_sync -v
           python -m unittest tests.test_run194_note_ready_workflow -v
@@ -98,6 +100,7 @@ jobs:
           python -m unittest tests.test_run224_multiplier_deterministic_rescue -v
           python -m unittest tests.test_run227_japanese_surface_integrity -v
           python -m unittest tests.test_run228_reader_rhythm_planning -v
+          python -m unittest tests.test_run249_final_publication_surface_gate -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
