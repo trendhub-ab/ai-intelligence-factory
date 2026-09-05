@@ -109,7 +109,7 @@ from note_manuscript import (
     _strip_internal_note_control_lines as _strip_internal_note_control_lines_impl, build_article_attribution_id as _build_article_attribution_id_impl,
     build_clean_note_manuscript as _build_clean_note_manuscript_impl, build_reader_first_header as _build_reader_first_header_impl,
     build_reader_first_summary as _build_reader_first_summary_impl, build_subscription_cta as _build_subscription_cta_impl,
-    build_subscription_tracking_url as _build_subscription_tracking_url_impl, normalize_markdown_for_note as _normalize_markdown_for_note_impl,
+    SOURCE_RIGHTS_NOTE, build_subscription_tracking_url as _build_subscription_tracking_url_impl, normalize_markdown_for_note as _normalize_markdown_for_note_impl,
 )
 from gate_reasoning import (
     GATE_STATUS_NOT_RUN, GATE_STATUS_PASS, GATE_STATUS_FAIL, GATE_STATUS_WARNING, GATE_STATUS_REVIEW,
