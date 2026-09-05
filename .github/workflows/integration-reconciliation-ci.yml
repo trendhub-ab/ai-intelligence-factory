@@ -1,4 +1,5 @@
 name: Integration Reconciliation CI
+# Run233: collect the entire repository test surface with pytest so standalone test functions cannot false-green.
 
 on:
   pull_request:
@@ -11,6 +12,7 @@ on:
       - 'pipeline.py'
       - 'production_pipeline.py'
       - 'runtime_layers.py'
+      - 'legacy_eyecatch_renderer.py'
       - 'publication_contract.py'
       - 'note_ready_sync.py'
       - 'note_draft_automation.py'
@@ -25,6 +27,7 @@ on:
       - '.github/workflows/note-create-draft.yml'
       - '.github/workflows/member-presentation-sync.yml'
       - '.github/workflows/subscriber-decision-brief.yml'
+      - '.github/workflows/run231-stage2-surgical-migration.yml'
       - 'tests/**'
       - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
@@ -45,6 +48,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install 'pytest>=8,<9'
       - name: Compile reconciled production modules
         run: |
           python -m compileall -q \
@@ -54,6 +58,7 @@ jobs:
             pipeline.py \
             production_pipeline.py \
             runtime_layers.py \
+            legacy_eyecatch_renderer.py \
             run231_performance_telemetry.py \
             publication_contract.py \
             note_ready_sync.py \
@@ -84,6 +89,11 @@ jobs:
           grep -F 'contents: read' .github/workflows/regression-test.yml
           grep -F 'run: python production_pipeline.py' .github/workflows/regression-test.yml
           ! grep -F 'run: python reader_value_review_bridge.py' .github/workflows/regression-test.yml
+      - name: Run Run231 modularization falsification
+        run: |
+          python -m unittest tests.test_run231_pipeline_slim -v
+          python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
+          python -m unittest tests.test_run233_ci_collection_integrity -v
       - name: Run article quality reconciliation tests
         run: |
           python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
@@ -111,10 +121,27 @@ jobs:
           python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
           python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
           python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
-      - name: Run full unittest regression
-        run: python -m unittest discover -s tests -v
+      - name: Run full pytest regression
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests > full-pytest.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo '--- full pytest failure tail ---'
+            tail -n 240 full-pytest.log
+            exit "$status"
+          fi
+          tail -n 30 full-pytest.log
       - name: Run synthetic smoke through current production stack
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
         run: python production_pipeline.py
+      - name: Export exact pipeline source for Stage2 surgical inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: run231-stage2-pipeline-source
+          path: pipeline.py
+          retention-days: 1

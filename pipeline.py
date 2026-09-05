@@ -2451,305 +2451,9 @@ def _sanitize_filename(name: str) -> str:
     return safe.strip("_")[:100] or "untitled"
 
 
-def _load_eyecatch_background(source: str, width: int, height: int) -> Image.Image:
-    """
-    ソース別の背景画像を読み込み、指定サイズにcover方式（アスペクト比維持で
-    はみ出た部分をトリミング）でリサイズして返す。
-
-    画像が見つからない場合（未配置・ファイル名不一致等）はdefault.pngに
-    フォールバックし、それも無ければNoneを返す（呼び出し側で従来の
-    グラデーション生成にフォールバックする）。
-    """
-    filename = SOURCE_BACKGROUND_IMAGE.get(source, EYECATCH_BACKGROUND_DEFAULT)
-    candidate_paths = [
-        os.path.join(EYECATCH_BACKGROUND_DIR, filename),
-        os.path.join(EYECATCH_BACKGROUND_DIR, EYECATCH_BACKGROUND_DEFAULT),
-    ]
-    for path in candidate_paths:
-        if os.path.exists(path):
-            try:
-                bg = Image.open(path).convert("RGB")
-                src_w, src_h = bg.size
-                target_ratio = width / height
-                src_ratio = src_w / src_h
-                if src_ratio > target_ratio:
-                    # 元画像の方が横長 -> 高さを合わせてから左右をトリミング
-                    new_h = height
-                    new_w = int(src_ratio * new_h)
-                else:
-                    # 元画像の方が縦長 -> 幅を合わせてから上下をトリミング
-                    new_w = width
-                    new_h = int(new_w / src_ratio)
-                bg = bg.resize((new_w, new_h))
-                left = (new_w - width) // 2
-                top = (new_h - height) // 2
-                bg = bg.crop((left, top, left + width, top + height))
-                return bg
-            except Exception as e:
-                logger.warning(f"[EYECATCH BG] {path} の読み込みに失敗しました: {e}")
-                continue
-    return None
-
-
-def _extract_eyecatch_score_components(score_breakdown_text: str) -> tuple[int | None, int | None]:
-    """Extract the two approved eyecatch sub-scores from MANAGEMENT DATA.
-
-    The Deep Dive rubric is the source of truth:
-      Technical Impact X/25; Urgency X/20
-    No extra model call or score recomputation is allowed. Missing/malformed values return None.
-    """
-    text = str(score_breakdown_text or "")
-    tech = re.search(r"Technical\s*Impact\s*[:：]?\s*(\d{1,2})\s*/\s*25", text, re.IGNORECASE)
-    urgency = re.search(r"Urgency\s*[:：]?\s*(\d{1,2})\s*/\s*20", text, re.IGNORECASE)
-    tech_value = int(tech.group(1)) if tech else None
-    urgency_value = int(urgency.group(1)) if urgency else None
-    if tech_value is not None and not 0 <= tech_value <= 25:
-        tech_value = None
-    if urgency_value is not None and not 0 <= urgency_value <= 20:
-        urgency_value = None
-    return tech_value, urgency_value
-
-
-def _eyecatch_score_color(score: int | float | None) -> tuple[int, int, int]:
-    """Return the approved Decision Score band color (RGB).
-
-    Color is a visual intensity cue, not Adoption Status semantics. Red is
-    intentionally reserved for future AVOID / warning communication.
-    """
-    try:
-        value = max(0, min(100, int(score or 0)))
-    except (TypeError, ValueError):
-        value = 0
-    if value <= 59:
-        return (100, 116, 139)  # Slate Gray #64748B
-    if value <= 69:
-        return (34, 211, 238)   # Cyan       #22D3EE
-    if value <= 79:
-        return (59, 130, 246)   # Blue       #3B82F6
-    if value <= 89:
-        return (139, 92, 246)   # Purple     #8B5CF6
-    return (245, 185, 66)       # Gold       #F5B942
-
-
-def _eyecatch_vertical_center_shift(container_bounds: tuple[int, int],
-                                    content_bounds: tuple[int, int]) -> int:
-    """Return the integer Y shift that optically centers content in a container.
-
-    Bounds are visual top/bottom coordinates, not font baselines.  This keeps
-    eyecatch placement stable across CJK/Lato font metric differences.
-    """
-    container_top, container_bottom = container_bounds
-    content_top, content_bottom = content_bounds
-    container_center = (float(container_top) + float(container_bottom)) / 2.0
-    content_center = (float(content_top) + float(content_bottom)) / 2.0
-    return int(round(container_center - content_center))
-
-
-def _draw_eyecatch_text_stack_centered(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
-                                        rows: list[tuple[str, object, tuple[int, int, int, int]]],
-                                        gaps: tuple[int, ...]) -> tuple[int, int, int, int]:
-    """Draw a multi-line text group centered by its *visible* glyph bounds.
-
-    Pillow's text origin is a font baseline/anchor reference and differs between
-    Noto CJK and Lato.  Centering each line by its origin therefore makes the
-    lower score cards look vertically low.  This helper measures each line with
-    ``textbbox`` first, then centers the complete visible stack inside ``box``.
-    """
-    if len(gaps) != max(0, len(rows) - 1):
-        raise ValueError("gaps must contain exactly len(rows)-1 values")
-    if not rows:
-        return box
-
-    metrics = []
-    for text, font, fill in rows:
-        bbox = draw.textbbox((0, 0), text, font=font)
-        metrics.append((text, font, fill, bbox, bbox[2] - bbox[0], bbox[3] - bbox[1]))
-
-    total_height = sum(item[5] for item in metrics) + sum(gaps)
-    box_center_y = (box[1] + box[3]) / 2.0
-    cursor_top = box_center_y - total_height / 2.0
-    box_center_x = (box[0] + box[2]) / 2.0
-
-    visible_bounds = []
-    for index, (text, font, fill, bbox, width, height) in enumerate(metrics):
-        x = int(round(box_center_x - (bbox[0] + bbox[2]) / 2.0))
-        y = int(round(cursor_top - bbox[1]))
-        draw.text((x, y), text, font=font, fill=fill)
-        visible_bounds.append((x + bbox[0], y + bbox[1], x + bbox[2], y + bbox[3]))
-        cursor_top += height
-        if index < len(gaps):
-            cursor_top += gaps[index]
-
-    return (
-        min(b[0] for b in visible_bounds),
-        min(b[1] for b in visible_bounds),
-        max(b[2] for b in visible_bounds),
-        max(b[3] for b in visible_bounds),
-    )
-
-
-def _eyecatch_centered_pair_boxes(container: tuple[int, int, int, int],
-                                  top: int, bottom: int, box_width: int, gap: int) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
-    """Return two equal-width lower metric boxes centered as a pair inside ``container``.
-
-    The previous implementation hard-coded x coordinates, which left the pair
-    6px right of the card center.  This helper derives both boxes from the
-    container center so the left/right margins are always equal.
-    """
-    container_center_x = (container[0] + container[2]) / 2.0
-    group_width = box_width * 2 + gap
-    left_x0 = int(round(container_center_x - group_width / 2.0))
-    left_x1 = left_x0 + box_width
-    right_x0 = left_x1 + gap
-    right_x1 = right_x0 + box_width
-    return (left_x0, top, left_x1, bottom), (right_x0, top, right_x1, bottom)
-
-
-def generate_eyecatch_image(title_text: str, output_path: str = "eyecatch.png",
-                             source: str = "GitHub", decision_score: int | None = None,
-                             technical_impact: int | None = None, urgency: int | None = None,
-                             article_ready: bool = True) -> str | None:
-    """Generate the legacy/internal 1280x670 Decision Score card over the source background.
-
-    Run160: this renderer is retained for internal/regression compatibility only.  The production
-    publication path must use ``generate_note_editorial_eyecatch`` instead.
-
-    Final visual contract (2026-08-22):
-    - article title is intentionally NOT rendered; note already shows it separately
-    - main KPI: 意思決定スコア (Decision Score) X/100
-    - lower cards: 技術的破壊力 (Technical Impact) X/25 and 緊急度 (Urgency) X/20
-    - all numeric scores use Google Font Lato Bold (fonts-lato installed in GitHub Actions)
-    - outer content group is centered from actual visible glyph bounds, not font baselines
-    - lower metric text stacks are vertically centered inside each frame by measured textbbox bounds
-    - progress color follows five Decision Score bands (gray/cyan/blue/purple/gold)
-    - eligibility is Article Ready, never a score threshold
-    """
-    if not article_ready:
-        logger.info("[EYECATCH SKIP] article is not Ready")
-        return None
-    WIDTH, HEIGHT = 1280, 670
-
-    img = _load_eyecatch_background(source, WIDTH, HEIGHT)
-    if img is None:
-        img = Image.new("RGB", (WIDTH, HEIGHT), color=(10, 15, 28))
-        draw_bg = ImageDraw.Draw(img)
-        for y in range(HEIGHT):
-            r = int(10 + (y / HEIGHT) * 15)
-            g = int(15 + (y / HEIGHT) * 25)
-            b = int(28 + (y / HEIGHT) * 45)
-            draw_bg.line([(0, y), (WIDTH, y)], fill=(r, g, b))
-
-    score = max(0, min(100, int(decision_score or 0)))
-    tech = None if technical_impact is None else max(0, min(25, int(technical_impact)))
-    urg = None if urgency is None else max(0, min(20, int(urgency)))
-
-    overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-
-    # Larger card and wider breathing room than the first implementation.
-    # The content block below is vertically balanced around the card's optical center.
-    card = (60, 78, 770, 592)
-    draw.rounded_rectangle(card, radius=27, fill=(3, 13, 28, 205), outline=(205, 220, 239, 225), width=2)
-
-    japanese_font_paths = [
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ]
-    lato_bold_paths = [
-        "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",
-        "/usr/share/fonts/truetype/lato/Lato-Heavy.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ]
-
-    def text_font(size: int):
-        for path in japanese_font_paths:
-            try:
-                return ImageFont.truetype(path, size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
-
-    def number_font(size: int):
-        for path in lato_bold_paths:
-            try:
-                return ImageFont.truetype(path, size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
-
-    white = (250, 252, 255, 255)
-    soft = (235, 241, 250, 255)
-    border = (190, 207, 229, 225)
-    accent = (*_eyecatch_score_color(score), 255)
-    bar_bg = (56, 70, 91, 235)
-
-    def centered(text: str, cx: int, y: int, fnt, fill=white):
-        b = draw.textbbox((0, 0), text, font=fnt)
-        # Account for non-zero left bearing so the *visible* glyphs are centered.
-        draw.text((cx - (b[0] + b[2]) / 2, y), text, font=fnt, fill=fill)
-
-    # Build the original composition, then calculate the shift from the actual
-    # visible title top to the lower-card bottom.  Noto CJK's top bearing makes
-    # the previous baseline-based layout appear about 10px too low.
-    title_label = "意思決定スコア  (Decision Score)"
-    title_fnt = text_font(35)
-    title_bbox = draw.textbbox((0, 0), title_label, font=title_fnt)
-    nominal_title_y = 132
-    nominal_lower_box_bottom = 548
-    content_shift_y = _eyecatch_vertical_center_shift(
-        (card[1], card[3]),
-        (nominal_title_y + title_bbox[1], nominal_lower_box_bottom),
-    )
-
-    centered(title_label, 415, nominal_title_y + content_shift_y, title_fnt)
-
-    score_text = f"{score}/100"
-    centered(score_text, 415, 204 + content_shift_y, number_font(88))
-
-    # Progress bar with generous vertical separation from the main number.
-    bx0, by0, bx1, by1 = 108, 318 + content_shift_y, 722, 360 + content_shift_y
-    draw.rounded_rectangle((bx0, by0, bx1, by1), radius=11, fill=bar_bg)
-    progress_x = bx0 + int((bx1 - bx0) * score / 100)
-    if progress_x > bx0:
-        draw.rounded_rectangle((bx0, by0, progress_x, by1), radius=11, fill=accent)
-
-    # Lower metric cards move with the outer content group.  Their text is not
-    # placed at fixed baselines: each three-line stack is measured and centered
-    # by visible glyph bounds inside its own card.
-    left_box, right_box = _eyecatch_centered_pair_boxes(
-        card,
-        395 + content_shift_y,
-        548 + content_shift_y,
-        box_width=314,
-        gap=18,
-    )
-    draw.rounded_rectangle(left_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
-    draw.rounded_rectangle(right_box, radius=18, fill=(2, 13, 29, 126), outline=border, width=2)
-
-    _draw_eyecatch_text_stack_centered(
-        draw, left_box,
-        [
-            ("技術的破壊力", text_font(29), white),
-            ("(Technical Impact)", text_font(19), soft),
-            (f"{tech if tech is not None else '—'}/25", number_font(50), white),
-        ],
-        gaps=(8, 16),
-    )
-    _draw_eyecatch_text_stack_centered(
-        draw, right_box,
-        [
-            ("緊急度", text_font(29), white),
-            ("(Urgency)", text_font(19), soft),
-            (f"{urg if urg is not None else '—'}/20", number_font(50), white),
-        ],
-        gaps=(8, 16),
-    )
-
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-    img.save(output_path, "PNG")
-    return output_path
-
+# Run231 Stage2B: legacy/internal Decision Score renderer was extracted to
+# legacy_eyecatch_renderer.py. Production installs that zero-API compatibility
+# surface after runtime/font setup; the live editorial renderer remains separate.
 
 def upload_eyecatch_to_github(local_image_path: str, dest_filename: str) -> str | None:
     """
@@ -13643,6 +13347,43 @@ def main():
     logger.info(PRODUCT_REVIEW_REQUEST_BUDGET.summary())
     logger.info(GEMINI_USAGE_AUDIT.summary(include_contexts=True))
     logger.info(PERSISTENT_GEMINI_COUNTER.summary())
+
+
+# Run231 Stage2B direct-import compatibility bridge
+# Keep the renderer implementation out of pipeline.py while preserving historical source/API
+# compatibility required by Run99/Run105/Run150/Run160 and direct ``import pipeline`` callers.
+from functools import wraps as _run231_wraps
+from legacy_eyecatch_renderer import (
+    _MIGRATION_MARKER as _run231_legacy_marker,
+    install_globals as _install_legacy_eyecatch_renderer_globals,
+)
+_install_legacy_eyecatch_renderer_globals(globals())
+_run231_legacy_generate_eyecatch_image = generate_eyecatch_image
+
+# Retain this thin def only for the legacy/internal 1280x670 Decision Score card source contract.
+# The publication path must use ``generate_note_editorial_eyecatch`` and never this wrapper.
+@_run231_wraps(_run231_legacy_generate_eyecatch_image)
+def generate_eyecatch_image(
+    title_text: str,
+    output_path: str = "eyecatch.png",
+    source: str = "GitHub",
+    decision_score: int | None = None,
+    technical_impact: int | None = None,
+    urgency: int | None = None,
+    article_ready: bool = True,
+) -> str | None:
+    return _run231_legacy_generate_eyecatch_image(
+        title_text,
+        output_path,
+        source,
+        decision_score=decision_score,
+        technical_impact=technical_impact,
+        urgency=urgency,
+        article_ready=article_ready,
+    )
+
+setattr(generate_eyecatch_image, _run231_legacy_marker, True)
+del _install_legacy_eyecatch_renderer_globals, _run231_legacy_marker, _run231_wraps
 
 
 if __name__ == "__main__":

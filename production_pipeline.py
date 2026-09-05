@@ -3,7 +3,7 @@
 Run231 keeps this file as a small orchestration contract. Historical production
 runtime layers live in ``runtime_layers.py`` in their exact validated order, while
 performance telemetry is observational and installed only after all quality,
-reliability, preflight, and font setup contracts are in place.
+reliability, preflight, font, and compatibility contracts are in place.
 
 Daily is currently PAUSED; this file remains the contract to use when Daily is
 explicitly resumed.
@@ -63,10 +63,11 @@ def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
+    from legacy_eyecatch_renderer import install as install_legacy_eyecatch_renderer
     from run231_performance_telemetry import install as install_performance_telemetry
 
     # Compatibility contract: install every historical production layer before any
-    # Run231 observability. Run231 must never change article/Evidence/Gate behavior.
+    # Run231 modularization or observability. Run231 must never change article/Evidence/Gate behavior.
     install_runtime_layers(pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
@@ -76,6 +77,11 @@ def main() -> None:
         enabled=not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)),
         logger=getattr(pipeline, "logger", None),
     )
+
+    # Stage 2 strangler migration.  This replaces only the legacy/internal renderer;
+    # generate_note_editorial_eyecatch (the live publication surface) is identity-checked
+    # by the installer and cannot be changed here.
+    install_legacy_eyecatch_renderer(pipeline)
 
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.
