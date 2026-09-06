@@ -1,39 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-06T10:18:30.537223+00:00",
+  "updated_at": "2026-09-06T12:10:13.424962+00:00",
   "items": [
-    {
-      "key": "https://armature.tech/blog/which-tools-coding-agents-install",
-      "deferred_at": "2026-09-04T01:03:15.800490+00:00",
-      "expires_at": "2026-09-18T01:03:15.800490+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
-        "originalTitle": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
-        "displayName": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
-        "sourceLanguage": "en",
-        "url": "https://armature.tech/blog/which-tools-coding-agents-install",
-        "description": "Which tools do Claude, Codex and Cursor choose? We measured 17k runs to find out",
-        "stargazerCount": 80,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-03T21:20:34+00:00",
-        "sourceContext": "",
-        "primaryUrl": "https://armature.tech/blog/which-tools-coding-agents-install",
-        "sourceDetails": {
-          "hn_id": 49557206,
-          "hn_url": "https://news.ycombinator.com/item?id=49557206",
-          "external_url": "https://armature.tech/blog/which-tools-coding-agents-install"
-        }
-      },
-      "notion_page_id": "3d1479ff-dca9-817c-8c8f-d5d4312966e5",
-      "score": 79,
-      "reason": "主要AIコーディングツールのツール選択傾向データ",
-      "commercial_score": 82,
-      "shelf_life_score": 35,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 80.05
-    },
     {
       "key": "https://arxiv.org/abs/2608.31142",
       "deferred_at": "2026-09-01T08:11:30.624074+00:00",
