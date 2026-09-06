@@ -55,10 +55,10 @@ def install_runtime_layers(pipeline_module):
 
 # Runtime compatibility contract: callers historically imported
 # ``production_pipeline.install_runtime_layers`` and some regression contracts inspect
-# that callable's source to verify wrapper order.  Point the public runtime symbol at
+# that callable's source to verify wrapper order. Point the public runtime symbol at
 # the canonical implementation so those callers observe the real Source of Truth,
 # while the import-only function above remains available to static documentation
-# freshness analysis.  This avoids duplicating installation logic or weakening guards.
+# freshness analysis. This avoids duplicating installation logic or weakening guards.
 install_runtime_layers = _canonical_install_runtime_layers
 
 
@@ -69,6 +69,7 @@ def main() -> None:
     from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
     from run268_business_source_strategy import install as install_run268_business_source_strategy
+    from run269_business_source_precision import install as install_run269_business_source_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
     # Install them before the historical runtime wrapper chain so every later layer sees
@@ -80,10 +81,14 @@ def main() -> None:
     # change when source acquisition strategy changes.
     install_runtime_layers(pipeline)
 
-    # Run268 is the current acquisition/business overlay. It replaces the active
-    # Product Hunt transport with OfficialVendor and narrows HN to AI reaction while
-    # preserving historical runtime order and provider budgets.
+    # Run268 is the source/business architecture authority: four active sources,
+    # OfficialVendor replacing Product Hunt, and Proposal-First product semantics.
     install_run268_business_source_strategy(pipeline)
+
+    # Run269 is precision-only. It keeps Run268's architecture and tightens the two
+    # live network acquisition surfaces after real smoke testing exposed vendor-nav and
+    # HN typo false positives. No provider/model/Notion path is introduced here.
+    install_run269_business_source_precision(pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
