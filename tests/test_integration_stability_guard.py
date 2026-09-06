@@ -37,6 +37,21 @@ class IntegrationStabilityGuardTests(unittest.TestCase):
         errors = guard.runtime_manifest_test_errors(broken)
         self.assertTrue(any("duplicated" in error for error in errors))
 
+    def test_ci_collection_assert_not_in_old_range_is_accepted(self):
+        text = (ROOT / guard.CI_COLLECTION_TEST).read_text(encoding="utf-8")
+        errors = guard.ci_collection_test_errors(text)
+        self.assertEqual([], errors)
+
+    def test_ci_collection_positive_old_range_is_rejected(self):
+        text = (ROOT / guard.CI_COLLECTION_TEST).read_text(encoding="utf-8")
+        broken = text.replace(
+            "self.assertNotIn(\"pip install 'pytest>=8,<9'\", workflow)",
+            "self.assertIn(\"pip install 'pytest>=8,<9'\", workflow)",
+        )
+        errors = guard.ci_collection_test_errors(broken)
+        self.assertTrue(any("positively requires" in error for error in errors))
+        self.assertTrue(any("must explicitly reject" in error for error in errors))
+
     def test_network_guard_is_required(self):
         text = (ROOT / guard.NETWORK_GUARD).read_text(encoding="utf-8")
         broken = text.replace("@pytest.fixture(autouse=True)", "@pytest.fixture")
