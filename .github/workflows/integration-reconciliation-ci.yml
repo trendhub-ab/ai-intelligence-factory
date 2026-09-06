@@ -1,5 +1,6 @@
 name: Integration Reconciliation CI
-# Run245: protected zero-api-regression owns deterministic fact/source-boundary modularization and Cross DB PR contract coverage.
+# Run263: deterministic, hermetic integration signal. Full pytest is the single regression authority;
+# structural guards run before it, and Synthetic smoke validates the assembled current Production stack.
 
 on:
   pull_request:
@@ -39,6 +40,7 @@ on:
       - 'run*.py'
       - 'reader_value_review_bridge.py'
       - 'repository_falsification_guard.py'
+      - 'integration_stability_guard.py'
       - 'cross_db_contract_guard.py'
       - 'content_db_contract_guard.py'
       - 'evidence_db_contract_guard.py'
@@ -49,6 +51,8 @@ on:
       - 'notion_access_policy_guard.py'
       - 'notion_audit_views.json'
       - 'documentation_freshness_guard.py'
+      - 'requirements.txt'
+      - 'requirements-ci-constraints.txt'
       - '.github/workflows/daily.yml'
       - '.github/workflows/daily-one-shot.yml'
       - '.github/workflows/regression-test.yml'
@@ -66,201 +70,38 @@ permissions:
 
 jobs:
   zero-api-regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
+    env:
+      # Integration must never consult the repository-backed Production Gemini counter.
+      GEMINI_PERSISTENT_DAILY_COUNTER: 'false'
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: '3.11'
-      - name: Install test dependencies
+          python-version: '3.11.16'
+
+      - name: Install locked test environment
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install 'pytest>=8,<9'
-      - name: Compile reconciled production modules
-        run: |
-          python -m compileall -q \
-            subscription_attribution.py \
-            inventory_bootstrap.py \
-            decision_intelligence.py \
-            pipeline.py \
-            production_pipeline.py \
-            runtime_layers.py \
-            run260_gemini_model_routing.py \
-            source_normalization.py \
-            evidence_context.py \
-            product_delivery_maintenance.py \
-            deep_dive_portfolio.py \
-            reader_experience_signals.py \
-            editorial_naturalness.py \
-            candidate_identity.py \
-            note_manuscript.py \
-            gate_reasoning.py \
-            screening_protocol.py \
-            source_roi_policy.py \
-            notion_payloads.py \
-            source_document_parsing.py \
-            deferred_queue_policy.py \
-            content_generation_protocol.py \
-            evidence_sufficiency.py \
-            product_review_protocol.py \
-            fact_validation_signals.py \
-            source_boundary_validation.py \
-            run245_fact_validation_migration.py \
-            run235_stage3b_source_normalization_migration.py \
-            run237_product_delivery_maintenance_migration.py \
-            run238_deep_dive_portfolio_migration.py \
-            run239_reader_experience_migration.py \
-            run240_editorial_naturalness_migration.py \
-            run241_batched_modularization_migration.py \
-            run242_notional_source_deferred_migration.py \
-            run243_content_generation_protocol_migration.py \
-            run244_decision_product_protocol_migration.py \
-            legacy_eyecatch_renderer.py \
-            run231_performance_telemetry.py \
-            publication_contract.py \
-            note_ready_sync.py \
-            run194_publication_contract.py \
-            run194_note_current_contract.py \
-            reader_value_review_bridge.py \
-            daily_portfolio_review.py \
-            run175_semantic_fact_precision.py \
-            run176_scope_fidelity.py \
-            repository_falsification_guard.py \
-            cross_db_contract_guard.py \
-            content_db_contract_guard.py \
-            evidence_db_contract_guard.py \
-            member_presentation_sync.py \
-            member_presentation_identity.py \
-            provision_member_presentation_db.py \
-            notion_access_policy_guard.py \
-            documentation_freshness_guard.py
+          python -m pip install 'pip==26.2.1'
+          pip install -r requirements.txt -c requirements-ci-constraints.txt
+          pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt
+          python -m pip check
+
+      - name: Compile current Python surfaces
+        run: python -m compileall -q *.py tests
+
+      - name: Enforce Integration hermeticity and stability contract
+        run: python integration_stability_guard.py
+
       - name: Run repository-wide falsification guard
         run: python repository_falsification_guard.py
-      - name: Validate manual production workflow safety surface
-        run: |
-          grep -F 'workflow_dispatch:' .github/workflows/daily-one-shot.yml
-          grep -F "inputs.confirm == 'RUN_ONCE'" .github/workflows/daily-one-shot.yml
-          grep -F -- '- article_validation' .github/workflows/daily-one-shot.yml
-          grep -F "inputs.mode == 'full'" .github/workflows/daily-one-shot.yml
-          grep -F 'ref: main' .github/workflows/daily-one-shot.yml
-          ! grep -Eq '^[[:space:]]+(push|schedule):' .github/workflows/daily-one-shot.yml
-          grep -F 'if: $' .github/workflows/daily.yml | grep -F '{{ false }}'
-          ! grep -Eq '^[[:space:]]+schedule:' .github/workflows/daily.yml
-      - name: Validate current-stack real regression workflow
-        run: |
-          grep -F 'article_set:' .github/workflows/regression-test.yml
-          grep -F -- '- fresh' .github/workflows/regression-test.yml
-          grep -F 'permissions:' .github/workflows/regression-test.yml
-          grep -F 'contents: read' .github/workflows/regression-test.yml
-          grep -F 'run: python production_pipeline.py' .github/workflows/regression-test.yml
-          ! grep -F 'run: python reader_value_review_bridge.py' .github/workflows/regression-test.yml
-      - name: Run pipeline modularization falsification
-        run: |
-          python -m unittest tests.test_run260_gemini_model_routing -v
-          python -m unittest tests.test_run231_pipeline_slim -v
-          python -m unittest tests.test_run231_stage2_legacy_eyecatch_module -v
-          python -m unittest tests.test_run231_stage2_repository_contract -v
-          python -m unittest tests.test_run233_ci_collection_integrity -v
-          python -m unittest tests.test_run235_source_normalization_module -v
-          python -m unittest tests.test_run235_stage3b_source_normalization_migration -v
-          python -m unittest tests.test_run236_evidence_context_module -v
-          python -m unittest tests.test_run236_evidence_context_integration -v
-          python -m unittest tests.test_run237_product_delivery_maintenance_module -v
-          python -m unittest tests.test_run237_product_delivery_maintenance_integration -v
-          python -m unittest tests.test_run238_deep_dive_portfolio_module -v
-          python -m unittest tests.test_run238_deep_dive_portfolio_integration -v
-          python -m unittest tests.test_run239_reader_experience_module -v
-          python -m unittest tests.test_run239_reader_experience_integration -v
-          python -m unittest tests.test_run240_editorial_naturalness_module -v
-          python -m unittest tests.test_run240_editorial_naturalness_integration -v
-          python -m unittest tests.test_run241_batched_modules -v
-          python -m unittest tests.test_run241_batched_integration -v
-          python -m unittest tests.test_run242_notional_source_deferred_modules -v
-          python -m unittest tests.test_run242_notional_source_deferred_integration -v
-          python -m unittest tests.test_run243_content_generation_protocol_module -v
-          python -m unittest tests.test_run243_content_generation_protocol_integration -v
-          python -m unittest tests.test_run244_decision_product_protocol_module -v
-          python -m unittest tests.test_run244_decision_product_protocol_integration -v
-          python -m unittest tests.test_run245_fact_validation_modules -v
-          python -m unittest tests.test_run245_fact_validation_integration -v
-          python -m unittest tests.test_multilingual_title_normalization -v
-      - name: Run Cross DB contract falsification
-        run: |
-          python -m unittest tests/test_cross_db_contract_guard.py
-          python -m unittest tests/test_content_db_contract_guard.py
-          python -m unittest tests/test_evidence_db_contract_guard.py
-          python -m unittest tests/test_member_presentation_resolution_guard.py
-          python -m unittest tests/test_run232_notion_integration_reconciliation.py
-      - name: Run article quality reconciliation tests
-        run: |
-          python -m unittest discover -s tests -p 'test_run130_fresh_article_regression_reconciliation.py' -v
-          python -m unittest discover -s tests -p 'test_run131_reader_proximity_information_budget.py' -v
-          python -m unittest discover -s tests -p 'test_run132_warm_rewrite_budget.py' -v
-          python -m unittest discover -s tests -p 'test_run133_reader_first_editorial_compression.py' -v
-          python -m unittest discover -s tests -p 'test_run136_reader_value_priority.py' -v
-          python -m unittest discover -s tests -p 'test_run137_human_voice.py' -v
-          python -m unittest discover -s tests -p 'test_run138_source_note_direction.py' -v
-          python -m unittest discover -s tests -p 'test_run140_reader_delight_priority.py' -v
-          python -m unittest discover -s tests -p 'test_run142_narrative_understanding.py' -v
-          python -m unittest discover -s tests -p 'test_run144_reader_delight_balance.py' -v
-          python -m unittest discover -s tests -p 'test_run145_real_article_closure.py' -v
-          python -m unittest discover -s tests -p 'test_run147_rescue_loss_precision.py' -v
-          python -m unittest discover -s tests -p 'test_run169_reader_value_review_bridge.py' -v
-      - name: Run Run134 reconciliation tests
-        run: |
-          python -m unittest discover -s tests -p 'test_run134_revenue_product_value.py' -v
-          python -m unittest discover -s tests -p 'test_run134_paid_product_value_reconciliation.py' -v
-          python -m unittest discover -s tests -p 'test_run134_monthly_decision_brief_reconciliation.py' -v
-      - name: Run adjacent product and context regressions
-        run: |
-          python -m unittest discover -s tests -p 'test_revenue_product_phase2.py' -v
-          python -m unittest discover -s tests -p 'test_inventory_bootstrap.py' -v
-          python -m unittest discover -s tests -p 'test_run131_profit_aligned_portfolio.py' -v
-          python -m unittest discover -s tests -p 'test_run132_context_first_decision_intelligence.py' -v
-          python -m unittest discover -s tests -p 'test_decision_intelligence.py' -v
-      - name: Run full pytest regression
-        shell: bash
-        run: |
-          set +e
-          python -m pytest -q tests > full-pytest.log 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo '--- full pytest failure tail ---'
-            tail -n 240 full-pytest.log
-            exit "$status"
-          fi
-          tail -n 30 full-pytest.log
-      - name: Run synthetic smoke through current production stack
+
+      - name: Run full deterministic regression once
+        run: python -m pytest -q tests
+
+      - name: Run synthetic smoke through current Production stack
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
         run: python production_pipeline.py
-      - name: Export exact pipeline source for modularization inspection
-        uses: actions/upload-artifact@v4
-        with:
-          name: run231-pipeline-source
-          path: |
-            pipeline.py
-            source_normalization.py
-            evidence_context.py
-            product_delivery_maintenance.py
-            deep_dive_portfolio.py
-            reader_experience_signals.py
-            editorial_naturalness.py
-            candidate_identity.py
-            note_manuscript.py
-            gate_reasoning.py
-            screening_protocol.py
-            source_roi_policy.py
-            notion_payloads.py
-            source_document_parsing.py
-            deferred_queue_policy.py
-            content_generation_protocol.py
-            evidence_sufficiency.py
-            product_review_protocol.py
-            fact_validation_signals.py
-            source_boundary_validation.py
-          retention-days: 1
