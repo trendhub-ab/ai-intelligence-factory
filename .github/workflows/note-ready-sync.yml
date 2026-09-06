@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows:
-      - Daily Intelligence & Content Pipeline
+      # Scheduled Daily is hard-PAUSED and must not fan out through its disabled stub.
+      # When Daily is explicitly resumed, add the then-current real workflow name here.
       - Daily Intelligence & Content Pipeline [ONE-SHOT]
     types:
       - completed
