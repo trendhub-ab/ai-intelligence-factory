@@ -18,6 +18,7 @@ on:
       - 'member_ux_body_fast.py'
       - 'member_human_language_ux.py'
       - 'member_human_language_ux_v2.py'
+      - 'member_client_action_alignment.py'
       - 'run212_member_review_copy.py'
       - 'run213_member_topic_specificity.py'
       - 'run214_member_action_specificity.py'
@@ -25,6 +26,7 @@ on:
       - 'run219_member_human_language_ui.py'
       - 'run225_stock_lifecycle.py'
       - 'run225_member_lifecycle_ui.py'
+      - 'run250_member_client_action_product.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
@@ -41,6 +43,7 @@ on:
       - 'tests/test_run221_member_db_host_isolation.py'
       - 'tests/test_run225_stock_lifecycle.py'
       - 'tests/test_run225_member_lifecycle_ui.py'
+      - 'tests/test_run250_member_client_action_product.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -95,6 +98,7 @@ jobs:
           python -m unittest tests/test_run221_member_db_host_isolation.py
           python -m unittest tests/test_run225_stock_lifecycle.py
           python -m unittest tests/test_run225_member_lifecycle_ui.py
+          python -m unittest tests/test_run250_member_client_action_product.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -107,7 +111,7 @@ jobs:
           MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'
           MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
 
-      - name: Sync clean member DB with lifecycle-aware human-language member UI
+      - name: Sync clean member DB with lifecycle-aware client-action UI
         run: python run219_member_human_language_ui.py presentation
         env:
           TZ: 'Asia/Tokyo'
@@ -121,7 +125,7 @@ jobs:
           STOCK_FRESH_DAYS: '30'
           STOCK_ARCHIVE_DAYS: '90'
 
-      - name: Sync readable member page bodies in plain Japanese
+      - name: Sync readable member page bodies for client decisions
         run: python run219_member_human_language_ui.py body
         env:
           TZ: 'Asia/Tokyo'
