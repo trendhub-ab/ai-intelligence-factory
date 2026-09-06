@@ -19,17 +19,9 @@ SPEC = "AI_Intelligence_Factory_最終仕様書.md"
 REFERENCE = "docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md"
 
 REQUIRED_VENDORS = (
-    "OpenAI",
-    "Anthropic",
-    "Google Gemini",
-    "Alibaba Qwen",
-    "DeepSeek",
-    "ByteDance Doubao/Seed",
-    "Moonshot AI Kimi",
-    "Zhipu AI GLM",
-    "MiniMax",
-    "Baidu ERNIE",
-    "Tencent Hunyuan",
+    "OpenAI", "Anthropic", "Google Gemini", "Alibaba Qwen", "DeepSeek",
+    "ByteDance Doubao/Seed", "Moonshot AI Kimi", "Zhipu AI GLM", "MiniMax",
+    "Baidu ERNIE", "Tencent Hunyuan",
 )
 
 
@@ -94,13 +86,7 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     if "hacker-news.firebaseio.com/v0/topstories.json" in precision:
         errors.append("run269_hn_must_not_use_firebase_topstories")
 
-    # Run268 remains the registry architecture authority. Run269 intentionally inherits
-    # unchanged vendors by index and only overrides the surfaces proven imprecise by
-    # live smoke. Validate the effective contract across base + overlay, not by forcing
-    # all eleven vendor names to be duplicated in the precision module.
-    effective_registry_contract = (
-        texts[BASE_ACQUISITION] + "\n" + precision + "\n" + texts[CURRENT_STATE]
-    )
+    effective_registry_contract = texts[BASE_ACQUISITION] + "\n" + precision + "\n" + texts[CURRENT_STATE]
     for vendor in REQUIRED_VENDORS:
         if vendor not in effective_registry_contract:
             errors.append(f"run269_vendor_missing:{vendor}")
@@ -111,6 +97,7 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         (
             'row["vendor"] == "ByteDance Doubao/Seed"',
             "1799865?lang=zh",
+            "1330310",
             '"current_state_page": True',
             '"structured_current_state"',
             "リリースイベントではなく",
@@ -121,9 +108,15 @@ def collect_errors(root: Path = ROOT) -> list[str]:
             "def _normalize_existing_current_state",
             'details["current_state_timestamp_observed"]',
             'details["current_state_model_markers_observed"]',
+            'details["current_state_transport"]',
             '"published_at": updated_at',
             "Never fabricate a date",
             "redirected outside vendor allowlist",
+            '_VOLCENGINE_DOC_FETCH_API = "https://docs-api.cn-beijing.volces.com/api/v1/doc/fetch"',
+            "def _fetch_official_doc_content",
+            'json={"Url": _clean_official_doc_url(source_url)}',
+            'transport="official_doc_api"',
+            "http_post=None",
         ),
         "current_state",
     )
@@ -137,6 +130,7 @@ def collect_errors(root: Path = ROOT) -> list[str]:
             'p.fetch_producthunt_trending = fetch_official_vendor_run269',
             'p._RUN269_BUSINESS_SOURCE_PRECISION_INSTALLED = True',
             'required = ("normalize_item", "requests")',
+            'http_post=getattr(p.requests, "post", None)',
         ),
         "layer",
     )
@@ -168,6 +162,8 @@ def collect_errors(root: Path = ROOT) -> list[str]:
             "--require-all-vendors",
             'kind == "page_fallback"',
             'startswith("structured_")',
+            "http_post=requests.post",
+            '"sample_transport"',
         ),
         "smoke",
     )
