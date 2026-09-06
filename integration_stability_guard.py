@@ -2,6 +2,7 @@
 """Fail closed when Integration CI regains known nondeterministic failure modes."""
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -84,12 +85,47 @@ def runtime_manifest_test_errors(text: str) -> list[str]:
     return errors
 
 
+def _string_membership_assertions(text: str) -> tuple[set[str], set[str]]:
+    """Return literal strings protected by unittest assertIn/assertNotIn calls."""
+    included: set[str] = set()
+    excluded: set[str] = set()
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return included, excluded
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in {"assertIn", "assertNotIn"} or not node.args:
+            continue
+        first = node.args[0]
+        if not isinstance(first, ast.Constant) or not isinstance(first.value, str):
+            continue
+        if node.func.attr == "assertIn":
+            included.add(first.value)
+        else:
+            excluded.add(first.value)
+    return included, excluded
+
+
 def ci_collection_test_errors(text: str) -> list[str]:
     errors: list[str] = []
-    if "pip install 'pytest>=8,<9'" in text:
-        errors.append("CI collection integrity test still requires the obsolete broad pytest range")
-    if "requirements-ci-constraints.txt" not in text:
-        errors.append("CI collection integrity test does not protect the deterministic CI constraint lock")
+    broad = "pip install 'pytest>=8,<9'"
+    required_positive = (
+        "requirements-ci-constraints.txt",
+        "pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt",
+        "python -m pip check",
+        "python -m pytest -q tests",
+    )
+    included, excluded = _string_membership_assertions(text)
+
+    if broad in included:
+        errors.append("CI collection integrity test positively requires the obsolete broad pytest range")
+    if broad not in excluded:
+        errors.append("CI collection integrity test must explicitly reject the obsolete broad pytest range")
+    for marker in required_positive:
+        if marker not in included:
+            errors.append(f"CI collection integrity test missing deterministic assertion: {marker}")
     return errors
 
 
