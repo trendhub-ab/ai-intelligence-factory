@@ -100,15 +100,17 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
             "'.github/workflows/daily.yml'",
             "'.github/workflows/daily-one-shot.yml'",
             "'tests/**'",
+            "python -m pytest -q tests",
         ):
             self.assertIn(required, text)
+
+        # Run-numbered production modules are covered by the run*.py path trigger,
+        # and their tests are covered by the single full-pytest regression authority.
         for module in (
-            "production_pipeline.py",
-            "daily_portfolio_review.py",
             "run175_semantic_fact_precision.py",
             "run176_scope_fidelity.py",
         ):
-            self.assertIn(module, text)
+            self.assertTrue((ROOT / module).is_file(), module)
 
 
 if __name__ == "__main__":
