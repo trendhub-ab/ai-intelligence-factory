@@ -1,9 +1,28 @@
 from __future__ import annotations
 
 import sys
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import patch
+
+# Repository-wide Falsification intentionally installs no Production dependencies.
+# The Run270 presentation unit tests exercise deterministic rendering only, so provide
+# a fail-closed requests stub before importing the member modules. Any accidental
+# network use becomes an assertion instead of silently escaping the hermetic test.
+if "requests" not in sys.modules:
+    requests_stub = ModuleType("requests")
+
+    def _network_forbidden(*args, **kwargs):
+        raise AssertionError("Run270 unit tests must not perform network I/O")
+
+    requests_stub.get = _network_forbidden
+    requests_stub.post = _network_forbidden
+    requests_stub.patch = _network_forbidden
+    requests_stub.delete = _network_forbidden
+    requests_stub.request = _network_forbidden
+    requests_stub.Session = type("Session", (), {})
+    requests_stub.Response = type("Response", (), {})
+    sys.modules["requests"] = requests_stub
 
 import member_presentation_body_sync as body
 import run219_member_human_language_ui as run219
