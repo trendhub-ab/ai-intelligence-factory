@@ -12,7 +12,7 @@ Paid Member Navigation/UI Baseline: **Run218**
 Paid Member Presentation Baseline: **Run219**  
 Paid Member Database Destination Baseline: **Run220**  
 Paid Member Database Hosting Baseline: **Run221**  
-Paid Product Baseline: **Run256 — Work-First / Natural Neutral-Subject / Concrete Decision Update**  
+Paid Product Baseline: **Run268 — Proposal-First Decision Intelligence / Four-Source Intelligence**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
 Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**  
@@ -25,7 +25,8 @@ ONE-SHOT Downstream Fan-out Baseline: **Run261 — Explicit GH_PAT Post-Run Disp
 Integration Determinism Baseline: **Run263 — Hermetic / Locked / Zero-Provider Integration CI**  
 Standalone Synthetic Baseline: **Run264 — Hermetic Synthetic Regression**  
 Dependency Compatibility Baseline: **Run266 — Pillow 12.1+ Production Floor / <13 Upper Bound**  
-Required PR Check Governance Baseline: **Run267 — Required contexts must be emitted for every PR to main**
+Required PR Check Governance Baseline: **Run267 — Required contexts must be emitted for every PR to main**  
+Business / Source Strategy Baseline: **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West Coverage**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -50,26 +51,44 @@ AI Intelligence Factoryは **note事業そのものではない**。noteは低�
 
 ### 初期ICP
 
-**Web制作・マーケティング・業務改善・クリエイティブなどでAIを仕事に活用する1〜3名規模の事業者で、ツールを選び、試し、導入判断をする人。**
+**AI・Web・業務システム等を顧客へ提案・開発する、1〜3名規模のフリーランス／小規模開発事業者。**
 
-- AI専業である必要はない。
-- 「顧客からAI相談を受けること」は必須条件ではない。
-- 顧客への提案・説明は副次価値であり、商品目的へ昇格させない。
+- Primary Jobは、顧客から「このAI・技術を使うべきか」と聞かれたとき、Evidence・比較・リスク・利用条件・小規模検証条件を短時間で整理し、判断・提案メモへ落とすこと。
+- 自己学習・技術力向上はSecondary Valueとする。Primaryと同格にしない。
+- AI専業である必要はないが、技術選定・提案・実装判断が売上や案件品質に影響する人を優先する。
 - 「AIに興味がある個人全般」「非エンジニア全般」「法人全般」は初期ICPにしない。
 - 法人は将来の高単価市場として保持するが、PMF前に請求書・複数席・SSO・管理者機能を作り込まない。
 
 ### 中心価値
 
-> **AIを全部追わなくても、仕事に使えるものがわかる。**
+> **「このAI、使える？」に、根拠付きで早く答えられる。**
 
-有料価値は「情報量」ではなく、**知る → 理解する → 仕事に使えるか判断する → 必要なら小さく試す**を短時間で進められること。
+有料価値は「情報量」ではなく、**変化を知る → Evidenceを確認する → 使う/試す/待つ/避けるを判断する → リスクと条件を整理する → 判断・提案メモへ落とす**工程を短時間で進められること。DB件数やニュース量を購入理由の中心にしない。
+
+### Intelligence Source Contract — Run268
+
+Productionで同格に巡回するactive Sourceは次の4系統とする。
+
+1. **GitHub = 実装動向** — OSSの実装進展、更新、成熟度、保守状態、導入可能性を観測する。
+2. **ArXiv = 技術の先行動向** — 研究・技術的ブレークスルー・将来の実装候補を観測する。論文であること自体を実用性と同一視しない。
+3. **HackerNews = 市場・エンジニア反応** — HN全体Top StoriesではなくAI関連のbounded queryから、実務者・開発者の反応、論点、熱量を観測する。
+4. **OfficialVendor = 商用利用に直結する一次情報** — モデル/API更新、価格、制限、context/token、SDK、互換性、deprecated/retire/migration等を公式ページから取得する。
+
+OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadataの `vendor` / `vendor_region` で識別する。ベンダーをSource枠へ分裂させない。
+
+- 欧米主要: OpenAI / Anthropic / Google Gemini
+- 中国主要: Alibaba Qwen / DeepSeek / ByteDance Doubao・Seed / Moonshot AI Kimi / Zhipu AI GLM / MiniMax / Baidu ERNIE / Tencent Hunyuan
+
+中国系Vendorを補助扱いにしない。一方で出身地域だけで加点・減点せず、一次情報・実務影響・Evidence/Decision契約で同じように評価する。
+
+**Product HuntはRun268からProductionのactive Sourceではない。** 過去の関数名・ROI履歴・画像資産等が互換/監査目的で残っていても、Production取得・active Source ROI・Round Robinの正本には含めない。Run268の互換層が旧 `fetch_producthunt_trending` 呼出しスロットをOfficialVendor取得へ差し替え、Product Hunt GraphQL/tokenは使用しない。
 
 ### 商品4層
 
 1. **無料note** — 知る・面白く理解する。無料品質を意図的に落とさない。
-2. **Decision Brief** — 今月、仕事で知っておく価値がある3〜7件を先に読む。
+2. **Decision Brief** — 今月、顧客案件・技術選定で知っておく価値がある3〜7件を先に読む。
 3. **Decision Intelligence** — 必要時に全体DBで比較・根拠・リスク・履歴を確認する。
-4. **Work Action Asset** — 利用条件、判断シート、小規模検証条件、比較観点等へ落とす。大量テンプレート市場へピボットしない。
+4. **Decision / Proposal Action Asset** — 利用条件、判断・提案メモ、小規模検証条件、比較観点等へ落とす。大量テンプレート市場へピボットしない。
 
 内部の Intelligence Engine は上記より広く、Deep Techを含む。内部追跡対象と会員トップ表示を同一視しない。
 
@@ -118,7 +137,6 @@ AI Intelligence Factoryは **note事業そのものではない**。noteは低�
 AI活用判断シート Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 
 ### 2.4 Member同期・Commerce互換契約
-
 **Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
 
 Scheduled Dailyは現在 **`Daily Intelligence & Content Pipeline [PAUSED]`** としてhard-PAUSEDである。Run261以降、成功したONE-SHOTの直接fan-outは受動的なONE-SHOT `workflow_run` に依存しない。`.github/workflows/daily-one-shot.yml` が `${{ secrets.GH_PAT }}` で `note-ready-sync.yml`、`subscriber-decision-brief.yml`、`cross-db-contract-guard.yml` を `workflow_dispatch` する。これら3本は直接ONE-SHOTをpassive subscribeせず、将来GitHub側の挙動が変化しても同じONE-SHOTから二重writeしない契約とする。
@@ -157,6 +175,8 @@ Decision Updateは Changed / New / Unchanged-important を扱えるが、個別W
 ## 4. Core Intelligence Pipeline
 
 Production pipelineは、候補収集 → Screening → Deep Dive / Evidence → Decision → Stock / Member DB → 無料記事候補という既存契約を維持する。
+
+Run268以降、Production入口 `production_pipeline.py` は歴史的runtime layerを維持したまま `run268_business_source_strategy.install` を後段適用する。Source取得戦略の変更で記事品質・Evidence・Gemini budgetのwrapper順序を変更しない。OfficialVendor取得とHN絞り込みは追加Gemini/model callを使わず、公開HTTPをboundedに利用する。Vendor単位の取得失敗はfault-isolatedとし、他Sourceを停止しない。
 
 重要な非交渉事項:
 
@@ -238,7 +258,6 @@ Run261 article model routing:
 - Run261のlive-path wrapperは既存`_call_model_pool`へ1回だけ委譲し、新規retry loop・Gate緩和・追加のDeep Dive枠を作らない。
 - `gemini-3.8-flash`のrepository-local安全上限は最大18 requests/day。`GEMINI_38_FLASH_DAILY_BUDGET`は18以下へ下げるためだけに使う。
 - Deep Dive全体のper-run 12 requests上限は維持する。
-
 詳細は `GEMINI_QUOTA_SETUP.md`、`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
 
 ---
@@ -358,7 +377,6 @@ Run263以降、`Integration Reconciliation CI` はProduction不具合とCI自身
 - Integrationはstructural guards → **full pytestを1回** → current Production stackのSynthetic smokeという順を維持する。
 - Run264以降、standalone `Synthetic Regression Suite` も同じhermetic/locked/pytest契約を使い、旧 `unittest discover` 全件実行へ戻さない。
 - これらの回帰はGemini/Notion等のProduction call・Production writeを行わない。
-
 詳細は `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md`、`docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md`、`integration_stability_guard.py` を正本とする。
 
 ### 8.2 Dependency compatibility契約 — Run265 / Run266
@@ -404,6 +422,7 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - Documentation Freshness Guard
 - Run262 Documentation Contract Guard
 - Run267 Documentation Contract Guard
+- Run268 Business / Source Strategy Guard
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -485,11 +504,12 @@ PMF前にやらないこと:
 - Run262はcanonical仕様がRun260/Run259の旧mechanismへ戻らないよう `run262_documentation_contract_guard.py` で必須CIからFail-Closedする。
 - Run263のIntegration hermeticity / deterministic CIは `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md` と `integration_stability_guard.py` を正本とする。
 - Run264のstandalone Synthetic hermeticityは `docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md` と `integration_stability_guard.py` を正本とする。
-- Run265/266のPillow compatibility結果とRun267のrequired-check/canonical同期は `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md` に現行要約を保持する。
+- Run265/266のPillow compatibility結果とRun267のrequired-check/canonical同期は `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md`
+- `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行要約を保持する。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。両方をRepository-wide Falsification Guard内で実行する。
 
-**現在のPaid Product正本はRun256。**  
+**現在のPaid Product正本はRun268。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  
@@ -498,3 +518,13 @@ PMF前にやらないこと:
 **現在のStandalone Synthetic Hermeticity正本はRun264。**  
 **現在のDependency Compatibility正本はRun266。**  
 **現在のDocumentation Contract Freshness正本はRun267。**
+
+### Run268 — Proposal-First / Four-Source Intelligence
+
+- Primary ICPを顧客へAI・Web・業務システムを提案・開発する1〜3名規模のフリーランス/小規模開発事業者へ再定義。
+- 自己学習はSecondary Valueへ降ろし、判断・提案メモを有料価値の中心Artifactへ格上げ。
+- active Sourceを GitHub / HackerNews / ArXiv / OfficialVendor の4系統へ再編。
+- Product Hunt Production取得を退役し、OfficialVendorへ置換。新しいAPIキー・有料APIは追加しない。
+- HNはFirebase Top Stories全巡回からbounded Algolia AI queryへ変更し、取得段階で市場・エンジニア反応へ絞る。
+- OfficialVendorは米国3 + 中国主要8を1 Source内のvendor-level round robinで公平化する。
+- Run268 guardはProduction入口、active source tuple、Vendor registry、Product contract、本仕様書、CI組込みをzero-networkでfail closed検証する。
