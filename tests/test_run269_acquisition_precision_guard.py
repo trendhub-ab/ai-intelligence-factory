@@ -80,6 +80,17 @@ class Run269AcquisitionPrecisionGuardTests(unittest.TestCase):
             errors = guard.collect_errors(root)
             self.assertTrue(any(e.startswith("current_state_missing:") for e in errors))
 
+    def test_guard_rejects_model_marker_fallback_removal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            current_state = root / guard.CURRENT_STATE
+            text = current_state.read_text(encoding="utf-8")
+            text = text.replace("def _has_model_list_current_state", "def _removed_model_list_current_state", 1)
+            current_state.write_text(text, encoding="utf-8")
+            errors = guard.collect_errors(root)
+            self.assertIn("current_state_missing:def _has_model_list_current_state", errors)
+
 
 if __name__ == "__main__":
     unittest.main()
