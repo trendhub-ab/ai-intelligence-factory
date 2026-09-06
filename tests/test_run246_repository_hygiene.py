@@ -16,11 +16,17 @@ class Run246RepositoryHygieneTests(unittest.TestCase):
 
     def test_portfolio_regression_coverage_survives_workflow_retirement(self):
         workflow = (ROOT / ".github" / "workflows" / "integration-reconciliation-ci.yml").read_text(encoding="utf-8")
-        self.assertIn("test_run131_profit_aligned_portfolio.py", workflow)
-        self.assertIn("test_run132_context_first_decision_intelligence.py", workflow)
-        self.assertIn("test_inventory_bootstrap.py", workflow)
-        self.assertIn("Run full pytest regression", workflow)
-        self.assertIn("Run synthetic smoke through current production stack", workflow)
+        self.assertIn("python -m pytest -q tests", workflow)
+        self.assertIn("- 'tests/**'", workflow)
+        self.assertIn("SYNTHETIC_REGRESSION_MODE: 'true'", workflow)
+        self.assertIn("run: python production_pipeline.py", workflow)
+
+        for relative in (
+            "tests/test_run131_profit_aligned_portfolio.py",
+            "tests/test_run132_context_first_decision_intelligence.py",
+            "tests/test_inventory_bootstrap.py",
+        ):
+            self.assertTrue((ROOT / relative).is_file(), relative)
 
     def test_migration_tools_rejected_by_full_regression_remain_active(self):
         self.assertTrue((ROOT / "migrate_decision_intelligence.py").is_file())
