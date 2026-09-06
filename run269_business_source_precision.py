@@ -6,7 +6,7 @@ proved needed stricter precision.
 """
 from __future__ import annotations
 
-from run269_acquisition_precision import (
+from run269_vendor_current_state import (
     HN_AI_QUERIES,
     HN_LOOKBACK_DAYS,
     OFFICIAL_VENDOR_REGISTRY,
