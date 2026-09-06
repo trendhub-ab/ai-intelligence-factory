@@ -27,6 +27,7 @@ on:
       - 'run225_stock_lifecycle.py'
       - 'run225_member_lifecycle_ui.py'
       - 'run250_member_client_action_product.py'
+      - 'run270_proposal_first_member_surface.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
@@ -44,6 +45,7 @@ on:
       - 'tests/test_run225_stock_lifecycle.py'
       - 'tests/test_run225_member_lifecycle_ui.py'
       - 'tests/test_run250_member_client_action_product.py'
+      - 'tests/test_run270_proposal_first_member_surface.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -99,6 +101,7 @@ jobs:
           python -m unittest tests/test_run225_stock_lifecycle.py
           python -m unittest tests/test_run225_member_lifecycle_ui.py
           python -m unittest tests/test_run250_member_client_action_product.py
+          python -m unittest tests/test_run270_proposal_first_member_surface.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -111,7 +114,7 @@ jobs:
           MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'
           MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
 
-      - name: Sync clean member DB with lifecycle-aware client-action UI
+      - name: Sync clean member DB with lifecycle-aware Proposal-First UI
         run: python run219_member_human_language_ui.py presentation
         env:
           TZ: 'Asia/Tokyo'
