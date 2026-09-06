@@ -2,6 +2,8 @@ name: AIIF ChatOps ONE-SHOT Bridge
 
 # Safe bridge from the dedicated GitHub control issue to the existing manual ONE-SHOT.
 # This workflow never runs Production directly, never resumes Daily, and never opens note.com.
+# The dispatch intentionally uses GH_PAT instead of github.token so completion of the
+# dispatched ONE-SHOT can emit downstream workflow_run fan-out events.
 on:
   issue_comment:
     types: [created]
@@ -61,10 +63,17 @@ jobs:
 
       - name: Dispatch existing ONE-SHOT exactly once
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Do not fall back to github.token here. A workflow dispatched with the repository
+          # GITHUB_TOKEN can run itself, but its completion does not reliably fan out through
+          # workflow_run when the dispatch originated from another workflow run.
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           MODE: ${{ steps.auth.outputs.mode }}
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_PAT is required for ChatOps ONE-SHOT dispatch so downstream workflow_run fan-out remains chainable."
+            exit 1
+          fi
           case "$MODE" in
             article_validation)
               payload='{"ref":"main","inputs":{"mode":"article_validation","confirm":"RUN_ONCE"}}'
@@ -96,6 +105,7 @@ jobs:
             echo "- requested mode: \`$MODE\`"
             echo '- target: `daily-one-shot.yml` on `main`'
             echo '- confirmation injected: `RUN_ONCE`'
+            echo '- dispatch auth: `GH_PAT` (required for downstream workflow_run fan-out)'
             echo '- Daily schedule changed: `false`'
             echo '- public note release performed: `false`'
           } >> "$GITHUB_STEP_SUMMARY"
