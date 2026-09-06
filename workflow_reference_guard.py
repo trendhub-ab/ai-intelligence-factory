@@ -20,9 +20,9 @@ import shlex
 WORKFLOW_DIR = Path(".github/workflows")
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 
-_RUN_RE = re.compile(r"^(?P<indent>\s*)run:\s*(?P<rest>.*)$")
+_RUN_RE = re.compile(r"^(?P<indent>\s*)(?:-\s*)?run:\s*(?P<rest>.*)$")
 _NAME_RE = re.compile(r"^name:\s*(?P<value>.+?)\s*$")
-_LOCAL_USES_RE = re.compile(r"^\s*uses:\s*['\"]?(?P<path>\./[^\s#'\"]+)", re.MULTILINE)
+_LOCAL_USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?(?P<path>\./[^\s#'\"]+)", re.MULTILINE)
 _REPO_FILE_RE = re.compile(
     r"(?<![/\w.-])((?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.(?:py|sh))\b"
 )
@@ -54,7 +54,7 @@ def _workflow_name(text: str) -> str | None:
 
 
 def _run_blocks(text: str) -> list[str]:
-    """Extract shell bodies from `run:` without requiring a YAML dependency."""
+    """Extract shell bodies from `run:` and `- run:` without a YAML dependency."""
     lines = text.splitlines()
     blocks: list[str] = []
     index = 0
