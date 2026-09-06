@@ -2,7 +2,7 @@
 
 最終更新: 2026-09-06  
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
-Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
+Documentation Governance Baseline: **Run262 — Run261 Canonical Contract Freshness Guard**  
 Production Source of Truth: **`main`**  
 Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member Presentation Sync**  
 Paid Member UX Baseline: **Run215**  
@@ -14,12 +14,13 @@ Paid Member Database Hosting Baseline: **Run221**
 Paid Product Baseline: **Run256 — Work-First / Natural Neutral-Subject / Concrete Decision Update**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
-Article Model Routing Baseline: **Run260 — Gemini 3.7 Primary / 3.8 Quality Rescue**  
+Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**  
 Eyecatch Baseline: **Run181 current**  
 Pipeline Modularization Baseline: **Run245**  
 Repository Organization Baseline: **Run246**  
 Workflow Reference Integrity Baseline: **Run257 — Workflow Reference Guard**  
-ChatOps Fan-out Baseline: **Run259 — Chainable ONE-SHOT Dispatch Token**
+ChatOps Dispatch Baseline: **Run259 — GH_PAT ONE-SHOT Dispatch Token**  
+ONE-SHOT Downstream Fan-out Baseline: **Run261 — Explicit GH_PAT Post-Run Dispatch**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -115,9 +116,11 @@ AI活用判断シート Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 
 **Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
 
-Scheduled Dailyは現在 **`Daily Intelligence & Content Pipeline [PAUSED]`** としてhard-PAUSEDである。この間、`Subscriber Decision Brief Sync` の実在するworkflow_run上流は **`Daily Intelligence & Content Pipeline [ONE-SHOT]` + `Subscriber Inventory Bootstrap`** のみとし、Inventoryは`[apply]`だけをwrite fan-out対象にする。`Note Ready Article Sync` はONE-SHOTのみを上流にする。PAUSED stubや存在しない将来aliasをlive triggerとして残さない。Scheduled Dailyを明示的に再開する場合、その時点の実在するworkflow名を同一のreviewed changeで戻す。
+Scheduled Dailyは現在 **`Daily Intelligence & Content Pipeline [PAUSED]`** としてhard-PAUSEDである。Run261以降、成功したONE-SHOTの直接fan-outは受動的なONE-SHOT `workflow_run` に依存しない。`.github/workflows/daily-one-shot.yml` が `${{ secrets.GH_PAT }}` で `note-ready-sync.yml`、`subscriber-decision-brief.yml`、`cross-db-contract-guard.yml` を `workflow_dispatch` する。これら3本は直接ONE-SHOTをpassive subscribeせず、将来GitHub側の挙動が変化しても同じONE-SHOTから二重writeしない契約とする。
 
-ChatOps control issueからONE-SHOTをdispatchする場合は、**Run259** の契約として `${{ secrets.GH_PAT }}` を必須のdispatch credentialにする。`${{ github.token }}` / repository `GITHUB_TOKEN` へ黙ってフォールバックしない。PATが未設定・無効ならProduction本体を起動せずfail closedとし、ONE-SHOT完了後の `workflow_run` fan-out（Note Ready / Subscriber Decision Brief）が欠落する「部分成功」を作らない。
+`Subscriber Decision Brief Sync` の `workflow_run` は独立した `Subscriber Inventory Bootstrap` 完了経路だけを保持し、`[apply]` のみwrite対象とする。`Member Presentation Sync` は `Subscriber Decision Brief Sync` の完了後に動き、同一の `member-derived-notion-writes` lockで直列化する。PAUSED stubや存在しない将来aliasをlive triggerとして残さない。Scheduled Dailyを明示的に再開する場合、その時点の実在するworkflowとfan-out方式を同一のreviewed changeで再設計する。
+
+ChatOps control issueからONE-SHOTをdispatchする場合は、**Run259** の契約として `${{ secrets.GH_PAT }}` を必須のdispatch credentialにする。`${{ github.token }}` / repository `GITHUB_TOKEN` へ黙ってフォールバックしない。さらに**Run261**では、ONE-SHOT成功後の直接fan-outにも同じくGH_PATを必須とし、PAT未設定・dispatch失敗はfail closedとする。Production本体だけ成功し会員向け派生同期が欠落する「部分成功」を正常扱いしない。
 
 **Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。自動生成停止を「Digest提供停止」と読み替えない。
 
@@ -218,7 +221,7 @@ Run209 quota / retry保護:
 - **1回目のHTTP 503** を観測した場合は既存cooldown契約に従う。
 - `Reader Value repair` の追加消費を既存budget外へ拡張しない。
 
-Run260 article model routing:
+Run261 article model routing:
 
 - Fresh Deep Diveは **`gemini-3.7-flash`** をPrimaryとする。
 - Fresh Deep Dive fallbackは **`gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-3.5-flash`**。
@@ -226,11 +229,12 @@ Run260 article model routing:
 - 3.8が使えない場合は **3.6 → 3.5 → 3.7** の順でbounded fallbackする。
 - Screeningは既存Flash-Lite poolを変更しない。
 - deterministic zero-API rescueは3.8 callへ置換しない。
-- Run260は既存`_call_model_pool`のroutingだけを変更し、新規retry loop・Gate緩和・追加のDeep Dive枠を作らない。
+- Run260の`_call_model_pool` routingはdefense-in-depthとして保持し、**Run261は実Production入口 `_call_deep_dive_pool` でもquality repair順を強制する**。
+- Run261のlive-path wrapperは既存`_call_model_pool`へ1回だけ委譲し、新規retry loop・Gate緩和・追加のDeep Dive枠を作らない。
 - `gemini-3.8-flash`のrepository-local安全上限は最大18 requests/day。`GEMINI_38_FLASH_DAILY_BUDGET`は18以下へ下げるためだけに使う。
 - Deep Dive全体のper-run 12 requests上限は維持する。
 
-詳細は `GEMINI_QUOTA_SETUP.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
+詳細は `GEMINI_QUOTA_SETUP.md`、`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
 
 ---
 
@@ -255,7 +259,7 @@ Article production surface:
 
 - Run248: real-note quality calibration
 - Run249: final assembled public-surface revalidation
-- Run260: Gemini 3.7 primary / Gemini 3.8 bounded quality repair routing
+- Run261: Gemini 3.7 primary / Gemini 3.8 bounded quality repair at the live Deep Dive entrypoint
 - Public releaseは**human-only**。自動化はprivate draftまで。
 
 ### Eyecatch
@@ -324,7 +328,9 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - **Daily workflowはPAUSED。**
 - Production実行は明示的なONE-SHOT / workflow_dispatchを基本とする。
 - PAUSED中の派生workflowは、存在しない通常Daily aliasやPAUSED stubを`workflow_run`上流に持たない。Run257 `Workflow Reference Guard` が静的参照をFail-Closedで検査する。
-- ChatOpsからONE-SHOTを起動する場合、Run259として `GH_PAT` を必須にし、下流 `workflow_run` fan-outまでを1つの運用契約として扱う。PAT不備時はfail closedとする。
+- ChatOpsからONE-SHOTを起動する場合、Run259として `GH_PAT` を必須にする。
+- ONE-SHOT成功後の直接fan-outはRun261として `GH_PAT` による明示 `workflow_dispatch` を必須とし、Note Ready / Subscriber Decision Brief / Cross DBをdispatchする。直接対象3本はONE-SHOTのpassive `workflow_run`を併設しない。
+- GH_PAT未設定またはdownstream dispatch失敗はfail closedとし、部分成功を正常扱いしない。
 - Public note公開はhuman-only。
 - 外部サービス状態を推測で補完しない。
 - 成功していない処理を成功扱いしない。
@@ -344,6 +350,7 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - Notion Access Policy Guard
 - Cross DB Contract Guard（該当時）
 - Documentation Freshness Guard
+- Run262 Documentation Contract Guard
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -361,6 +368,7 @@ Gemini model routing変更では、さらに次を反証する。
 - Screening Flash-Lite poolを意図せず変更していないか
 - Fresh Deep DiveのPrimaryが3.7になっているか
 - model-based quality repairだけが3.8先頭になるか
+- 実Production入口 `_call_deep_dive_pool` でもquality repairが3.8先頭になるか
 - 3.8追加でDeep Dive per-run 12、Pending Retry、persistent safety capを迂回していないか
 - deterministic zero-API rescueを不要なprovider callへ置換していないか
 - Gate閾値をReady件数目的で緩めていないか
@@ -374,6 +382,8 @@ Workflow変更では、さらに次を反証する。
 - static `gh workflow run` targetが実在するか
 - duplicate workflow nameによる曖昧性がないか
 - workflow内workflow dispatchが必要なfan-outを持つ場合、repository `GITHUB_TOKEN` による連鎖抑制を踏んでいないか
+- ONE-SHOTの直接fan-out targetが `workflow_dispatch` を受け付けるか
+- 同じdirect targetにONE-SHOT passive `workflow_run`を残して二重write経路を作っていないか
 
 ---
 
@@ -413,10 +423,14 @@ PMF前にやらないこと:
 - current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の整合を保つ。
 - Documentation Freshness Guardが要求するmarkerは、テストを通すための文字列ではなく、現在Productionが依存するoperational contractとして扱う。
 - Run257のWorkflow参照修整・反証記録は `docs/reference/RUN257_WORKFLOW_REFERENCE_INTEGRITY.md` を正本とする。
-- Run259のChatOps fan-out修整・反証記録は `docs/reference/RUN259_CHATOPS_FANOUT_TOKEN.md` を正本とする。
-- Run260のGemini article routing・quota保護契約は `docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md` を正本とする。
+- Run259のChatOps dispatch修整・反証記録は `docs/reference/RUN259_CHATOPS_FANOUT_TOKEN.md` を正本とする。
+- Run260のGemini routing導入契約は `docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md` を履歴/基礎契約として保持する。
+- Run261の実Production入口Gemini routingとONE-SHOT explicit fan-out契約は `docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md` を現行正本とする。
+- Run262はcanonical仕様がRun260/Run259の旧mechanismへ戻らないよう `run262_documentation_contract_guard.py` で必須CIからFail-Closedする。
 
 **現在のPaid Product正本はRun256。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
-**現在のChatOps Fan-out正本はRun259。**  
-**現在のArticle Model Routing正本はRun260。**
+**現在のChatOps Dispatch正本はRun259。**  
+**現在のArticle Model Routing正本はRun261。**  
+**現在のONE-SHOT Downstream Fan-out正本はRun261。**  
+**現在のDocumentation Contract Freshness正本はRun262。**
