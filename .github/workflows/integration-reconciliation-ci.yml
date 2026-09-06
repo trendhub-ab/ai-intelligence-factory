@@ -1,70 +1,12 @@
 name: Integration Reconciliation CI
-# Run264: deterministic, hermetic integration signal. Full pytest is the single regression authority;
+# Run267: required zero-api-regression must produce a status context for every PR to main.
+# Run264 hermeticity remains unchanged: full pytest is the single regression authority,
 # structural guards run before it, and Synthetic smoke validates the assembled current Production stack.
-# Standalone regression workflow changes also trigger this required check so hermeticity cannot drift silently.
 
 on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'subscription_attribution.py'
-      - 'inventory_bootstrap.py'
-      - 'decision_intelligence.py'
-      - 'pipeline.py'
-      - 'production_pipeline.py'
-      - 'runtime_layers.py'
-      - 'source_normalization.py'
-      - 'evidence_context.py'
-      - 'product_delivery_maintenance.py'
-      - 'deep_dive_portfolio.py'
-      - 'reader_experience_signals.py'
-      - 'editorial_naturalness.py'
-      - 'candidate_identity.py'
-      - 'note_manuscript.py'
-      - 'gate_reasoning.py'
-      - 'screening_protocol.py'
-      - 'source_roi_policy.py'
-      - 'notion_payloads.py'
-      - 'source_document_parsing.py'
-      - 'deferred_queue_policy.py'
-      - 'content_generation_protocol.py'
-      - 'evidence_sufficiency.py'
-      - 'product_review_protocol.py'
-      - 'fact_validation_signals.py'
-      - 'source_boundary_validation.py'
-      - 'legacy_eyecatch_renderer.py'
-      - 'publication_contract.py'
-      - 'note_ready_sync.py'
-      - 'note_draft_automation.py'
-      - 'daily_portfolio_review.py'
-      - 'run*.py'
-      - 'reader_value_review_bridge.py'
-      - 'repository_falsification_guard.py'
-      - 'integration_stability_guard.py'
-      - 'cross_db_contract_guard.py'
-      - 'content_db_contract_guard.py'
-      - 'evidence_db_contract_guard.py'
-      - 'evidence_ledger.py'
-      - 'member_presentation_sync.py'
-      - 'member_presentation_identity.py'
-      - 'provision_member_presentation_db.py'
-      - 'notion_access_policy_guard.py'
-      - 'notion_audit_views.json'
-      - 'documentation_freshness_guard.py'
-      - 'requirements.txt'
-      - 'requirements-ci-constraints.txt'
-      - '.github/workflows/daily.yml'
-      - '.github/workflows/daily-one-shot.yml'
-      - '.github/workflows/regression.yml'
-      - '.github/workflows/regression-test.yml'
-      - '.github/workflows/note-ready-sync.yml'
-      - '.github/workflows/note-create-draft.yml'
-      - '.github/workflows/member-presentation-sync.yml'
-      - '.github/workflows/subscriber-decision-brief.yml'
-      - '.github/workflows/cross-db-contract-guard.yml'
-      - 'tests/**'
-      - '.github/workflows/integration-reconciliation-ci.yml'
   workflow_dispatch:
 
 permissions:
