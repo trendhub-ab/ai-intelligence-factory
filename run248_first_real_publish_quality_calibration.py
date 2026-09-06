@@ -200,7 +200,7 @@ def _has_orange_emphasis(path: str) -> bool:
         with Image.open(path) as image:
             rgb = image.convert("RGB")
             hit = 0
-            for pixel in rgb.getdata():
+            for pixel in rgb.get_flattened_data():
                 if all(abs(int(pixel[i]) - HIGHLIGHT_ORANGE[i]) <= 3 for i in range(3)):
                     hit += 1
                     if hit >= 20:

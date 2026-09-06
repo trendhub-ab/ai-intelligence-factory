@@ -43,7 +43,7 @@ class Run181BadgeTaxonomyIconTests(unittest.TestCase):
             image = Image.new("RGB", (40, 40), (255, 255, 255))
             draw = ImageDraw.Draw(image)
             taxonomy.draw_badge_icon(draw, label, 7, 7, accent, size=26)
-            pixels = tuple(image.getdata())
+            pixels = image.get_flattened_data()
             self.assertTrue(any(pixel != (255, 255, 255) for pixel in pixels), label)
             icon_fingerprints.add(hash(pixels))
         self.assertGreaterEqual(len(icon_fingerprints), 9)
