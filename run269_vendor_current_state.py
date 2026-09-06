@@ -1,24 +1,27 @@
 """Run269 explicit current-state adapter for official vendor pages.
 
 Some vendors expose a changelog/release feed. ByteDance/Volcengine's most reliable
-server-readable commercial primary source is its official model list. Treat that as
+commercial primary source is its official model list. Treat that as
 ``structured_current_state`` rather than pretending it is a release event.
 
-Volcengine's edge/rendering shape is not stable: some HTTP responses expose the
-``最近更新时间`` timestamp, while others expose only concrete model-list/navigation
-content. A current-state row therefore requires either the explicit timestamp OR a
-model-list-specific marker combination. Mere reachability never qualifies.
+Volcengine's rendered HTML is edge-dependent and can degrade to a JavaScript shell.
+When that happens, Run269 may use Volcengine's own public docs fetch endpoint (the
+same endpoint documented in ByteDance's official AgentKit samples) to retrieve the
+same official document content. Mere reachability never qualifies as evidence.
 """
 from __future__ import annotations
 
 from html import unescape
 import re
+from urllib.parse import urlparse, urlunparse
 
 import business_source_acquisition as run268
 import run269_acquisition_precision as precision
 
 
 _BYTEDANCE_MODEL_LIST_URL = "https://www.volcengine.com/docs/82379/1799865?lang=zh"
+_BYTEDANCE_MODEL_LIST_CANONICAL_URL = "https://www.volcengine.com/docs/82379/1330310"
+_VOLCENGINE_DOC_FETCH_API = "https://docs-api.cn-beijing.volces.com/api/v1/doc/fetch"
 
 OFFICIAL_VENDOR_REGISTRY = tuple(
     (
@@ -27,6 +30,7 @@ OFFICIAL_VENDOR_REGISTRY = tuple(
             "release_url": _BYTEDANCE_MODEL_LIST_URL,
             "current_state_page": True,
             "current_state_label": "火山方舟 公式モデル一覧",
+            "current_state_fetch_url": _BYTEDANCE_MODEL_LIST_CANONICAL_URL,
         }
         if row["vendor"] == "ByteDance Doubao/Seed"
         else row
@@ -87,7 +91,38 @@ def _has_model_list_current_state(html: str) -> bool:
     )
 
 
-def _current_state_item(vendor: dict, html: str, normalize_item):
+def _clean_official_doc_url(url: str) -> str:
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+
+
+def _fetch_official_doc_content(vendor: dict, http_post) -> str:
+    """Fetch the same Volcengine official doc through its public structured endpoint."""
+    if not callable(http_post):
+        return ""
+    source_url = str(vendor.get("current_state_fetch_url") or vendor["release_url"])
+    if not precision._host_allowed(source_url, tuple(vendor["allowed_domains"])):
+        raise ValueError(f"official doc URL outside vendor allowlist: {source_url}")
+    response = http_post(
+        _VOLCENGINE_DOC_FETCH_API,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "AI-Intelligence-Factory/Run269-current-state",
+        },
+        json={"Url": _clean_official_doc_url(source_url)},
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    result = payload.get("Result") if isinstance(payload, dict) else None
+    if not isinstance(result, dict):
+        return ""
+    title = str(result.get("Title") or "").strip()
+    content = str(result.get("Content") or "").strip()
+    return "\n".join(part for part in (title, content) if part)
+
+
+def _current_state_item(vendor: dict, html: str, normalize_item, *, transport: str):
     updated_at = _extract_recent_update(html)
     has_model_state = _has_model_list_current_state(html)
     if not updated_at and not has_model_state:
@@ -98,7 +133,7 @@ def _current_state_item(vendor: dict, html: str, normalize_item):
     else:
         observation = (
             "公式モデル一覧とSeed/Doubao系の現在モデル情報を確認。"
-            "更新日時は今回のHTTP取得形では解決できない。"
+            "更新日時は今回の公式取得形では解決できない。"
         )
 
     record = {
@@ -108,7 +143,7 @@ def _current_state_item(vendor: dict, html: str, normalize_item):
             "これはリリースイベントではなく、現在のモデル選定・利用可否を確認する一次情報として扱う。"
         ),
         "url": vendor["release_url"],
-        # Never fabricate a date when the response variant does not expose one.
+        # Never fabricate a date when the official response does not expose one.
         "published_at": updated_at,
     }
     item = run268._vendor_candidate_from_record(vendor, record, normalize_item)
@@ -118,6 +153,7 @@ def _current_state_item(vendor: dict, html: str, normalize_item):
     details["current_state_page"] = True
     details["current_state_timestamp_observed"] = bool(updated_at)
     details["current_state_model_markers_observed"] = bool(has_model_state)
+    details["current_state_transport"] = transport
     item["sourceDetails"] = details
     return item
 
@@ -131,12 +167,13 @@ def _normalize_existing_current_state(item: dict) -> dict:
     details["current_state_page"] = True
     details["current_state_timestamp_observed"] = bool(item.get("publishedAt"))
     details["current_state_model_markers_observed"] = True
+    details["current_state_transport"] = "official_page_html"
     normalized["sourceDetails"] = details
     return normalized
 
 
-def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logger=None,
-                                  registry=OFFICIAL_VENDOR_REGISTRY) -> list[dict]:
+def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, http_post=None,
+                                  logger=None, registry=OFFICIAL_VENDOR_REGISTRY) -> list[dict]:
     """Use precision extraction, with an explicit current-state path where declared."""
     rows = precision.fetch_official_vendor_updates(
         limit,
@@ -166,9 +203,16 @@ def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logge
         if vendor_name in replaced:
             continue
 
-        # The precision fallback already carries bounded visible text. Reuse it first;
-        # this avoids depending on a second request returning the same edge/render shape.
-        current = _current_state_item(vendor, item.get("sourceContext") or "", normalize_item)
+        # Reuse the bounded visible text first; it may already contain enough evidence.
+        current = _current_state_item(
+            vendor,
+            item.get("sourceContext") or "",
+            normalize_item,
+            transport="official_page_fallback_text",
+        )
+
+        # A second GET can land on a richer edge/rendering variant. Keep it bounded and
+        # enforce the vendor-domain redirect allowlist.
         if current is None:
             try:
                 response = http_get(
@@ -180,17 +224,41 @@ def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logge
                 if not precision._host_allowed(final_url, tuple(vendor["allowed_domains"])):
                     raise ValueError(f"redirected outside vendor allowlist: {final_url}")
                 html = _response_text(response)
-                current = _current_state_item(vendor, html, normalize_item)
+                current = _current_state_item(
+                    vendor,
+                    html,
+                    normalize_item,
+                    transport="official_page_html_retry",
+                )
             except Exception as exc:
                 current = None
                 if logger:
-                    logger.warning(f"[RUN269 CURRENT STATE SKIP] {vendor_name}: {exc}")
+                    logger.warning(f"[RUN269 CURRENT STATE HTML SKIP] {vendor_name}: {exc}")
+
+        # Final bounded fallback: Volcengine's own public structured-doc endpoint.
+        # It fetches the same official document; no API key, model call, or third-party
+        # evidence is introduced. The returned content must still pass strict model-list
+        # evidence checks before it can become structured_current_state.
+        if current is None and callable(http_post):
+            try:
+                official_text = _fetch_official_doc_content(vendor, http_post)
+                current = _current_state_item(
+                    vendor,
+                    official_text,
+                    normalize_item,
+                    transport="official_doc_api",
+                )
+            except Exception as exc:
+                current = None
+                if logger:
+                    logger.warning(f"[RUN269 CURRENT STATE DOC API SKIP] {vendor_name}: {exc}")
 
         if current:
             output.append(current)
             replaced.add(vendor_name)
             if logger:
-                logger.info(f"[RUN269 CURRENT STATE] {vendor_name}: structured_current_state")
+                transport = (current.get("sourceDetails") or {}).get("current_state_transport")
+                logger.info(f"[RUN269 CURRENT STATE] {vendor_name}: structured_current_state via {transport}")
         else:
             output.append(item)
 
