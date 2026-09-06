@@ -13,6 +13,7 @@ Paid Member Presentation Baseline: **Run219**
 Paid Member Database Destination Baseline: **Run220**  
 Paid Member Database Hosting Baseline: **Run221**  
 Paid Product Baseline: **Run268 — Proposal-First Decision Intelligence / Four-Source Intelligence**  
+Member Surface Baseline: **Run270 — Proposal-First Member Surface / Run250 compatibility overlay**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
 Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**  
@@ -135,7 +136,7 @@ OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadat
 - 表示都合でsourceのmonthly checkboxやcanonical Decision/Evidenceを書き換えない。
 
 2026年9月 Decision Brief Page ID: `3d0479ff-dca9-81de-b614-fef528d2f32c`  
-AI活用判断シート Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
+AI導入 判断・提案メモ Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 
 ### 2.4 Member同期・Commerce互換契約
 **Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
@@ -148,16 +149,35 @@ ChatOps control issueからONE-SHOTをdispatchする場合は、**Run259** の�
 
 **Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。自動生成停止を「Digest提供停止」と読み替えない。
 
+### 2.5 Proposal-First Member Surface — Run270
+
+Run268でPrimary ICPとPaid ProductをProposal-Firstへ変更した後も、Run250由来のWork-First bodyが最終可視面として残っていた。Run270はRun250を歴史的互換層として保持しつつ、`run219_member_human_language_ui.py` の実workflow入口で**Run250の後**に `run270_proposal_first_member_surface` を適用する。
+
+Member Presentation DBのgenerated detail bodyは、既存canonical値だけを使って原則次の順に表示する。
+
+- `これは何？`
+- `顧客にどう答える？`
+- `提案できる場面`
+- `なぜ今見る？`
+- `提案前に確認すること`
+- `提案・検証の次の一手`
+- material changeがある場合 `Decision Update｜提案を変える必要がある？`
+- `確認に使った公式・一次情報`
+
+Home / Decision Brief / AI導入 判断・提案メモの静的Notion面も同じProposal-First契約へ揃える。顧客提案を「副次利用」と表現しない。社内利用・自己学習はSecondary Valueとして残す。
+
+Run270はSource score / Decision / Evidence / Deep Tech / Notion schemaを変更せず、表示のためのGemini/model callを追加しない。詳細と実ページIDは `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
+
 ---
 
-## 3. Decision Brief / Decision Update 契約 — Run256
+## 3. Decision Brief / Decision Update 契約 — Run256 / Run270
 
 Decision Briefは静的な「今月のおすすめ一覧」だけにしない。
 
 - 今月の主要候補を3〜7件へ絞る。
 - `使う / 試す / 待つ / 避ける` の判断を出す。
-- 仕事への意味、確認事項、次の一手を短く示す。
-- **仕事上の判断を変えるmaterial changeが存在する場合、少なくとも1件は具体例をBrief本文へ出す。** 一覧リンクだけで代替しない。
+- 顧客案件・技術選定への意味、確認事項、次の一手を短く示す。
+- **技術選定・提案判断を変えるmaterial changeが存在する場合、少なくとも1件は具体例をBrief本文へ出す。** 一覧リンクだけで代替しない。
 - material changeがない月は、無理に変化を作らず **「重要な判断変更なし」** を価値として示す。
 - 生の `82 → 91` を継続課金価値の中心にしない。何が変わり、判断を変える必要があるかへ翻訳する。
 - 既存のStatus変更・Decision Score差分・INITIAL判定を壊さない。
@@ -321,7 +341,7 @@ Run183 current stackを基準とする。Run181 → Run182 → Run183の順序�
 - CI greenだけで本番反映完了としない。実Notionの見出し、順位、copy、source preservationを直接監査する。
 - Physical API hostとlinked viewsの役割を分離し、Run221のhosting boundaryを維持する。
 
-Run250–256で確立したproduct presentation:
+Run250–256で確立したproduct presentation履歴:
 
 - Run250: initial paid-product presentation overlay
 - Run251: legacy fixed shortlist retirement
@@ -331,21 +351,22 @@ Run250–256で確立したproduct presentation:
 - Run255: context-safe / natural neutralization
 - Run256: concrete Decision Update + documentation reconciliation
 
-### Member表示順
+Run270は上記を削除せず、Run250の後段で現行Proposal-First visible surfaceを適用する。
+
+### Member表示順 — Run270
 
 会員向け詳細は既存canonical値を使い、原則として次を表示する。
 
 - `これは何？`
-- `いま、どうする？`
-- `仕事で使える場面`
-- `仕事への意味（Business Impact）`
+- `顧客にどう答える？`
+- `提案できる場面`
 - `なぜ今見る？`
-- `使う前に確認すること`
-- `試すときの次の一手`
-- material changeがある場合 `Decision Update｜判断を変える必要がある？`
+- `提案前に確認すること`
+- `提案・検証の次の一手`
+- material changeがある場合 `Decision Update｜提案を変える必要がある？`
 - 公式・一次情報
 
-Source score / Decision / Evidence / Deep Tech分類を顧客適合のために改変しない。ICP relevanceはNavigation-only。
+Source score / Decision / Evidence / Deep Tech分類を顧客適合のために改変しない。ICP relevanceはNavigation-only。Run270ではRun250のproven navigation rankerを維持し、表示AuthorityだけをProposal-Firstへ更新する。
 
 ### 日本語表現
 
@@ -433,6 +454,7 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - Run267 Documentation Contract Guard
 - Run268 Business / Source Strategy Guard
 - Run269 Acquisition Precision Guard
+- Run270 Proposal-First Member Surface Guard
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -440,10 +462,12 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 特に表示ロジックでは、テストが緑でも次を反証する。
 
 - 実行中moduleとimport moduleのAuthorityずれ
+- Run270より後にRun250が再適用されていないか
 - stale bodyをcurrentと誤認
 - 文字列置換による不自然な日本語
 - old fixed shortlistの復活
 - Source score / Evidence / Deep Techの意図しない変異
+- 顧客提案が再びSecondary扱いになっていないか
 
 Gemini model routing変更では、さらに次を反証する。
 
@@ -483,7 +507,7 @@ Workflow / CI変更では、さらに次を反証する。
 1. Paid Product / LP / Offerの整合
 2. 実有料顧客10人の獲得
 3. 初月利用・継続理由の観測
-4. Decision Update / Work Actionの価値検証
+4. Decision Update / Proposal Actionの価値検証
 5. 集客チャネル拡張
 6. 法人版は実需要が見えてから
 
@@ -517,11 +541,14 @@ PMF前にやらないこと:
 - Run265/266のPillow compatibility結果とRun267のrequired-check/canonical同期は `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md`
 - `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行Source architecture / paid-product要約を保持する。
 - Run269のLive Acquisition Precision / 11-Vendor structured smoke / HN exact-match契約は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md` を正本とする。
+- Run270のProposal-First Member Surface / static Notion surface契約は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
-- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269 GuardをRepository-wide Falsification Guard内で実行する。
+- Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
+- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269/270 GuardをRepository-wide Falsification Guard内で実行する。
 
-**現在のPaid Product正本はRun268。**  
+**現在のPaid Product Strategy正本はRun268。**  
+**現在のMember Surface正本はRun270。**  
 **現在のSource Architecture正本はRun268。**  
 **現在のAcquisition Precision正本はRun269。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
@@ -553,3 +580,14 @@ PMF前にやらないこと:
 - 実ネットワーク最終SmokeでOfficialVendor 11/11 structured成功、US 3/3、CN 8/8、fallback-only 0、HN 20 candidates / 11 queries / 30日を確認した。
 - Live SmokeはGemini/model 0、Notion write 0、Production DB write 0、publication 0を維持する。
 - Run269 GuardはProduction install順、HN precision、Vendor registry/current-state、Live Smoke safety、canonical仕様、CI組込みをzero-networkでfail closed検証する。
+
+### Run270 — Proposal-First Member Surface
+
+- Run268のPrimary ICPとPaid Product contractを実会員表示へ反映する。
+- Run250 Work-First rendererは歴史的互換層として残し、Run270をその後段に適用して最終可視AuthorityをProposal-Firstへ切り替える。
+- Member detail bodyは `顧客にどう答える？` / `提案できる場面` / `提案前に確認すること` / `提案・検証の次の一手` を中心にする。
+- Home / Decision Brief / AI導入 判断・提案メモも同じPrimary Jobへ同期する。
+- Evidence / Decision Score / canonical status / Source / Deep Tech / Notion schemaは変更しない。
+- Run250 navigation rankerはRun270では維持し、未検証の大きなranking再設計を同時導入しない。
+- ZERO Gemini/model calls。
+- Run270 GuardはRun250→Run270 install順、Proposal-First contract、member workflow test、static Notion page IDs、canonical仕様、required Falsification組込みをzero-networkでfail closed検証する。
