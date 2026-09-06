@@ -12,8 +12,10 @@ duplicated.  Manual blocks continue to be preserved by the existing fast body
 sync.
 
 Run225 may install a navigation-only lifecycle ranker beneath this public CLI
-surface.  Run219 remains the authoritative workflow wrapper so Run170-Run215
-copy authority and the existing operational contract are not bypassed.
+surface. Run250 may then install the client-action paid-product overlay after
+Run225 so lifecycle and source authority remain intact. Run219 remains the
+authoritative workflow wrapper so Run170-Run215 copy authority and the existing
+operational contract are not bypassed.
 
 ZERO Gemini/model requests.
 """
@@ -127,7 +129,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 def _looks_like_generated_member_callout(
     block: dict[str, Any], child_cache: dict[str, list[dict[str, Any]]]
 ) -> bool:
-    """Recognize both pre-Run219 and Run219 generated member callouts."""
+    """Recognize pre-Run219, Run219 and Run250 generated member callouts."""
     if block.get("type") != "callout":
         return False
     label = body._block_text(block)
@@ -143,8 +145,11 @@ def _looks_like_generated_member_callout(
         child_cache[block_id] = children
     headings = guard._heading_texts(children)
     has_decision = bool({"いま、どうする？", "いまの判断", "結論"} & headings)
-    has_reason = bool({"そう判断した理由", "判断理由"} & headings)
-    return has_decision and "次にやること" in headings and has_reason
+    has_reason = bool(
+        {"そう判断した理由", "判断理由", "案件への意味（Business Impact）"} & headings
+    )
+    has_action = bool({"次にやること", "提案時の次の一手"} & headings)
+    return has_decision and has_action and has_reason
 
 
 def _install_body_builder() -> None:
@@ -169,6 +174,12 @@ def _install_current_navigation_overlays() -> None:
     except ImportError:
         return
     run225.install()
+    try:
+        import run250_member_client_action_product as run250
+    except ImportError:
+        return
+    # Run250 must be installed after Run225 so Archive/lifecycle rules stay authoritative.
+    run250.install_navigation()
 
 
 def run_presentation_sync() -> dict[str, Any]:
@@ -181,11 +192,23 @@ def run_presentation_sync() -> dict[str, Any]:
         "source_state_authority_preserved": True,
         "records_deleted": 0,
     }
+    try:
+        import run250_member_client_action_product as run250
+    except ImportError:
+        run250 = None
+    if run250 is not None:
+        result["run250_client_action_product"] = run250.contract()
     result["zero_gemini_calls"] = True
     return result
 
 
 def run_body_sync() -> dict[str, Any]:
+    try:
+        import run250_member_client_action_product as run250
+    except ImportError:
+        run250 = None
+    if run250 is not None:
+        run250.install_body()
     install()
     result = run215.run_body_sync()
     result["run219_human_language_ui"] = {
@@ -193,7 +216,18 @@ def run_body_sync() -> dict[str, Any]:
         "status_codes_hidden_from_body_summary": True,
         "non_engineer_headings": True,
     }
-    result["reader_order"] = ["これは何？", "いま、どうする？", "なぜ今見る？", "次にやること"]
+    if run250 is not None:
+        result["run250_client_action_product"] = run250.contract()
+        result["reader_order"] = [
+            "これは何？",
+            "いま、どうする？",
+            "案件で使える場面",
+            "案件への意味（Business Impact）",
+            "提案前に確認すること",
+            "提案時の次の一手",
+        ]
+    else:
+        result["reader_order"] = ["これは何？", "いま、どうする？", "なぜ今見る？", "次にやること"]
     result["run225_stock_lifecycle"] = "navigation_only"
     result["zero_gemini_calls"] = True
     return result
