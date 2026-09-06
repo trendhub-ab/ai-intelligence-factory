@@ -14,6 +14,7 @@ EXPECTED_RUNTIME_LAYER_ORDER = (
     "run203_runtime_state_channel.install",
     "gemini_timeout_rpd_fail_closed.install",
     "gemini_transient_recovery.install",
+    "run260_gemini_model_routing.install",
     "run172_production_reliability.install",
     "run173_operational_yield.install",
     "run174_monthly_digest_integrity.install",

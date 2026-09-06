@@ -14,6 +14,7 @@ Paid Member Database Hosting Baseline: **Run221**
 Paid Product Baseline: **Run256 — Work-First / Natural Neutral-Subject / Concrete Decision Update**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
+Article Model Routing Baseline: **Run260 — Gemini 3.7 Primary / 3.8 Quality Rescue**  
 Eyecatch Baseline: **Run181 current**  
 Pipeline Modularization Baseline: **Run245**  
 Repository Organization Baseline: **Run246**  
@@ -170,6 +171,7 @@ Pipeline modularizationの現行境界はRun245を基準とし、巨大な単一
 - `run203_runtime_state_channel.py`
 - `gemini_timeout_rpd_fail_closed.py`
 - `gemini_transient_recovery.py`
+- `run260_gemini_model_routing.py`
 - `run172_production_reliability.py`
 - `run173_operational_yield.py`
 - `run174_monthly_digest_integrity.py`
@@ -216,7 +218,19 @@ Run209 quota / retry保護:
 - **1回目のHTTP 503** を観測した場合は既存cooldown契約に従う。
 - `Reader Value repair` の追加消費を既存budget外へ拡張しない。
 
-詳細は `GEMINI_QUOTA_SETUP.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
+Run260 article model routing:
+
+- Fresh Deep Diveは **`gemini-3.7-flash`** をPrimaryとする。
+- Fresh Deep Dive fallbackは **`gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-3.5-flash`**。
+- 既存のmodel-based `quality_retry`は **`gemini-3.8-flash`** を先頭にする。
+- 3.8が使えない場合は **3.6 → 3.5 → 3.7** の順でbounded fallbackする。
+- Screeningは既存Flash-Lite poolを変更しない。
+- deterministic zero-API rescueは3.8 callへ置換しない。
+- Run260は既存`_call_model_pool`のroutingだけを変更し、新規retry loop・Gate緩和・追加のDeep Dive枠を作らない。
+- `gemini-3.8-flash`のrepository-local安全上限は最大18 requests/day。`GEMINI_38_FLASH_DAILY_BUDGET`は18以下へ下げるためだけに使う。
+- Deep Dive全体のper-run 12 requests上限は維持する。
+
+詳細は `GEMINI_QUOTA_SETUP.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
 
 ---
 
@@ -241,6 +255,7 @@ Article production surface:
 
 - Run248: real-note quality calibration
 - Run249: final assembled public-surface revalidation
+- Run260: Gemini 3.7 primary / Gemini 3.8 bounded quality repair routing
 - Public releaseは**human-only**。自動化はprivate draftまで。
 
 ### Eyecatch
@@ -341,6 +356,15 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - old fixed shortlistの復活
 - Source score / Evidence / Deep Techの意図しない変異
 
+Gemini model routing変更では、さらに次を反証する。
+
+- Screening Flash-Lite poolを意図せず変更していないか
+- Fresh Deep DiveのPrimaryが3.7になっているか
+- model-based quality repairだけが3.8先頭になるか
+- 3.8追加でDeep Dive per-run 12、Pending Retry、persistent safety capを迂回していないか
+- deterministic zero-API rescueを不要なprovider callへ置換していないか
+- Gate閾値をReady件数目的で緩めていないか
+
 Workflow変更では、さらに次を反証する。
 
 - `run:` / `- run:` が削除済みrepository-local scriptを指していないか
@@ -390,7 +414,9 @@ PMF前にやらないこと:
 - Documentation Freshness Guardが要求するmarkerは、テストを通すための文字列ではなく、現在Productionが依存するoperational contractとして扱う。
 - Run257のWorkflow参照修整・反証記録は `docs/reference/RUN257_WORKFLOW_REFERENCE_INTEGRITY.md` を正本とする。
 - Run259のChatOps fan-out修整・反証記録は `docs/reference/RUN259_CHATOPS_FANOUT_TOKEN.md` を正本とする。
+- Run260のGemini article routing・quota保護契約は `docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md` を正本とする。
 
 **現在のPaid Product正本はRun256。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
-**現在のChatOps Fan-out正本はRun259。**
+**現在のChatOps Fan-out正本はRun259。**  
+**現在のArticle Model Routing正本はRun260。**

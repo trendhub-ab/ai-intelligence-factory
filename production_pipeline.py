@@ -25,6 +25,7 @@ def install_runtime_layers(pipeline_module):
     import run203_runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
+    import run260_gemini_model_routing
     import run172_production_reliability
     import run173_operational_yield
     import run174_monthly_digest_integrity
