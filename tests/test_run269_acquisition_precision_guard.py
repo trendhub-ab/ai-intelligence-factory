@@ -11,6 +11,7 @@ import run269_acquisition_precision_guard as guard
 class Run269AcquisitionPrecisionGuardTests(unittest.TestCase):
     def _copy_contract(self, root: Path) -> None:
         required = (
+            guard.BASE_ACQUISITION,
             guard.PRECISION,
             guard.CURRENT_STATE,
             guard.LAYER,
