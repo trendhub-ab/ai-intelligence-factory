@@ -1,16 +1,18 @@
-"""Run253 work-first paid-product alignment.
+"""Run254 neutral-subject work-first paid-product alignment.
 
 This is a deterministic presentation policy. It does not change source Evidence,
 scores, decisions, or canonical records. It answers a narrower product question:
 which already-qualified technologies are most relevant to a small operator who
-wants to understand what is worth using in their own work?
+wants to understand what is worth using at work?
 
 Initial ICP:
 - 1–3 person operators in web, marketing, business improvement, creative work, etc.
-- actively want to use AI in their own work
-- choose/test/adopt tools themselves
+- actively want to use AI at work
+- choose/test/adopt tools directly
 - client proposals are a secondary reuse case, not the core product purpose
 
+Run254 keeps Work-First semantics but removes unnecessary Japanese first-person
+phrasing such as 「自分の仕事」 where 「仕事」 already conveys the meaning.
 The broad Intelligence Engine remains intact. This module only determines what
 should be surfaced first and how existing authoritative fields should be framed.
 ZERO model/provider calls.
@@ -22,7 +24,7 @@ from typing import Any
 
 ICP_LABEL = (
     "Web制作・マーケティング・業務改善・クリエイティブなどでAIを仕事に活用する"
-    "1〜3名規模の事業者で、自分でツールを選び、試し、導入判断をする人"
+    "1〜3名規模の事業者で、ツールを選び、試し、導入判断をする人"
 )
 
 CATEGORY_BASE = {
@@ -115,9 +117,28 @@ WORK_READY_SIGNALS: tuple[str, ...] = (
 # Backward-compatible alias for older tests/imports.
 CLIENT_READY_SIGNALS = WORK_READY_SIGNALS
 
+NEUTRAL_SUBJECT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("自分やチームの仕事", "仕事やチーム業務"),
+    ("自分の仕事", "仕事"),
+    ("自分の業務", "業務"),
+    ("自分の作業", "作業"),
+    ("自分の利用条件", "利用条件"),
+    ("自分の環境", "利用環境"),
+    ("自分の制作", "制作"),
+    ("自分の開発", "開発"),
+)
+
 
 def _clean(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def neutral_subject_text(value: Any) -> str:
+    """Remove redundant first-person possessives from member-facing Japanese only."""
+    text = _clean(value)
+    for old, new in NEUTRAL_SUBJECT_REPLACEMENTS:
+        text = text.replace(old, new)
+    return text
 
 
 def _blob(state: dict[str, Any]) -> str:
@@ -189,7 +210,7 @@ STATUS_PLAIN = {
 def business_impact_text(state: dict[str, Any]) -> str:
     """Frame the authoritative decision as work impact without inventing ROI."""
     status = _clean(state.get("status")).upper()
-    reason = _clean(state.get("judgment_reason"))
+    reason = neutral_subject_text(state.get("judgment_reason"))
     lead = STATUS_PLAIN.get(status, "利用条件を確認してから判断する")
     if reason:
         return f"{lead}。{reason}"
@@ -198,8 +219,8 @@ def business_impact_text(state: dict[str, Any]) -> str:
 
 def work_case_text(state: dict[str, Any]) -> str:
     """Use the canonical best-for field as the work-use case."""
-    best = _clean(state.get("best_for"))
-    return best or _clean(state.get("plain_summary"))
+    best = neutral_subject_text(state.get("best_for"))
+    return best or neutral_subject_text(state.get("plain_summary"))
 
 
 def _sentence(value: str) -> str:
@@ -211,22 +232,22 @@ def _sentence(value: str) -> str:
 
 def work_check_text(state: dict[str, Any]) -> str:
     """Use risk/avoid boundaries as pre-use checks; no new facts are created."""
-    risk = _clean(state.get("main_risk"))
-    avoid = _clean(state.get("avoid_for"))
+    risk = neutral_subject_text(state.get("main_risk"))
+    avoid = neutral_subject_text(state.get("avoid_for"))
     if risk and avoid and avoid not in risk:
         return f"{_sentence(risk)} 向かない条件：{_sentence(avoid)}"
     return risk or avoid
 
 
 def work_action_text(state: dict[str, Any]) -> str:
-    """Return existing next action with work-first, audience-neutral wording."""
+    """Return existing next action with neutral, work-first audience wording."""
     action = _clean(state.get("next_action"))
     replacements = (
         ("自社要件", "利用条件"),
-        ("自社案件", "自分の仕事"),
-        ("自社の", "自分の"),
-        ("自社で", "自分の環境で"),
-        ("自社", "自分の環境"),
+        ("自社案件", "対象業務"),
+        ("自社の", "利用時の"),
+        ("自社で", "利用環境で"),
+        ("自社", "利用環境"),
         ("案件要件", "利用条件"),
         ("対象案件", "対象業務"),
         ("案件の", "対象業務の"),
@@ -234,7 +255,7 @@ def work_action_text(state: dict[str, Any]) -> str:
     )
     for old, new in replacements:
         action = action.replace(old, new)
-    return action
+    return neutral_subject_text(action)
 
 
 # Backward-compatible names retained so older wrappers/imports keep working.
@@ -251,8 +272,8 @@ def proposal_action_text(state: dict[str, Any]) -> str:
 
 
 def decision_update_text(state: dict[str, Any]) -> str:
-    """Translate a recorded change into whether the user's work judgment should move."""
-    reason = _clean(state.get("change_reason"))
+    """Translate a recorded change into whether the work-use judgment should move."""
+    reason = neutral_subject_text(state.get("change_reason"))
     delta = state.get("delta")
     if not reason or not isinstance(delta, (int, float)) or isinstance(delta, bool):
         return ""

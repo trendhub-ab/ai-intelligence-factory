@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Run250/253: align the paid member surface to the initial work-use ICP.
+"""Run250–254: align the paid member surface to the initial work-use ICP.
 
 Run250 remains presentation-only. The Intelligence Engine, source facts, Evidence,
 canonical score/status, Deep Tech inventory and Notion schema remain unchanged.
 
-Run253 corrects the product centre of gravity: the primary job is not "answer a
-client's AI question". It is "understand what is worth using in my own work".
-Client proposal reuse remains available as a secondary outcome.
+Run253 corrected the product centre of gravity: the primary job is not answering
+a client's AI question. It is understanding what is worth using at work. Client
+proposal reuse remains available as a secondary outcome.
+
+Run254 refines the Japanese surface: avoid unnecessary first-person possessives
+such as 「自分の仕事」 when 「仕事」 is already clear. This prevents the product
+from sounding narrowly personal while preserving Work-First semantics.
 
 The paid surface therefore does two things:
 1. Homepage ranking uses work relevance for navigation while preserving the source
@@ -14,22 +18,8 @@ The paid surface therefore does two things:
 2. Member detail bodies translate authoritative fields into work-use language:
    work use case -> business impact -> checks -> next step.
 
-Run251 hardening note:
-Run170.4 contained a legacy fixed three-item editorial shortlist for the older
-broad/corporate member product. That installer executes *inside* the lower
-presentation stack, after Run250 is initially installed, so it can otherwise
-silently regain final authority. Run250 explicitly retires that old fixed
-shortlist before the lower stack runs. The lower editorial wrapper remains in
-place as a fallback but delegates selection to the current relevance ranker.
-
-Run252 hardening note:
-The production workflow executes ``run219_member_human_language_ui.py`` as a
-script. In that mode the active wrapper is ``__main__`` while importing Run250
-also imports a second canonical ``run219_member_human_language_ui`` module.
-Patching only that canonical copy leaves the active CLI wrapper on the old body
-builder. ``install_body`` therefore accepts the active wrapper module explicitly
-and always binds the current builder to both that wrapper and the shared body
-renderer before lower layers run.
+Run251 retired the legacy fixed shortlist. Run252 binds the body builder to the
+actual ``__main__`` wrapper used by production. Those hardening contracts remain.
 
 ZERO model/provider calls.
 """
@@ -47,6 +37,16 @@ _NAV_INSTALLED = False
 _BODY_INSTALLED = False
 _BASE_ASSIGN_HOME_RANKS: Callable[..., list[dict[str, Any]]] | None = None
 _BASE_BODY_MATCHES: Callable[..., bool] | None = None
+
+_REDUNDANT_FIRST_PERSON_MARKERS = (
+    "自分の仕事",
+    "自分の業務",
+    "自分の作業",
+    "自分の利用条件",
+    "自分の環境",
+    "自分の制作",
+    "自分の開発",
+)
 
 
 def _key(state: dict[str, Any]) -> str:
@@ -116,7 +116,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Work-first body using existing authoritative values only."""
     children: list[dict[str, Any]] = []
 
-    summary = run219._clean(state.get("plain_summary"))
+    summary = alignment.neutral_subject_text(state.get("plain_summary"))
     if summary:
         children.append(body._heading("これは何？"))
         children.append(body._paragraph(summary))
@@ -134,7 +134,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._heading("仕事への意味（Business Impact）"))
         children.append(body._paragraph(impact))
 
-    topic = run219._clean(state.get("topic"))
+    topic = alignment.neutral_subject_text(state.get("topic"))
     if topic:
         children.append(body._heading("なぜ今見る？"))
         children.append(body._paragraph(topic))
@@ -187,10 +187,14 @@ def _heading_texts(blocks: list[dict[str, Any]]) -> set[str]:
     return texts
 
 
+def _visible_text(blocks: list[dict[str, Any]]) -> str:
+    return " ".join(body._block_text(block) for block in blocks if body._block_text(block))
+
+
 def _body_matches_client_action(
     children: list[dict[str, Any]], state: dict[str, Any]
 ) -> bool:
-    """Require current work-first product semantics, not only source-state equality."""
+    """Require current Work-First + neutral-subject product semantics."""
     if _BASE_BODY_MATCHES is None or not _BASE_BODY_MATCHES(children, state):
         return False
     headings = _heading_texts(children)
@@ -201,7 +205,13 @@ def _body_matches_client_action(
         required.add("試すときの次の一手")
     if alignment.work_check_text(state):
         required.add("使う前に確認すること")
-    return required.issubset(headings)
+    if not required.issubset(headings):
+        return False
+
+    # Run254 migration guard: a Run253 body can have the right headings while
+    # still carrying avoidable first-person possessives. Force one rewrite.
+    visible = _visible_text(children)
+    return not any(marker in visible for marker in _REDUNDANT_FIRST_PERSON_MARKERS)
 
 
 def install_navigation() -> None:
@@ -216,7 +226,7 @@ def install_navigation() -> None:
 
 
 def install_body(target_run219_module: Any | None = None) -> None:
-    """Bind work-first body semantics to the active wrapper and shared renderer."""
+    """Bind current body semantics to the active wrapper and shared renderer."""
     global _BODY_INSTALLED, _BASE_BODY_MATCHES
     target = target_run219_module if target_run219_module is not None else run219
 
@@ -234,6 +244,7 @@ def contract() -> dict[str, Any]:
     return {
         "initial_icp": alignment.ICP_LABEL,
         "product_purpose": "work_first_decision_intelligence",
+        "subject_style": "implicit_neutral_subject",
         "client_proposal_secondary": True,
         "intelligence_engine_preserved": True,
         "deep_tech_preserved": True,
@@ -243,6 +254,7 @@ def contract() -> dict[str, Any]:
         "legacy_fixed_shortlist_retired": True,
         "client_action_body_migration_required": True,
         "work_first_body_migration_required": True,
+        "neutral_subject_body_migration_required": True,
         "script_entrypoint_body_authority": True,
         "paid_surface": [
             "仕事で使える場面",

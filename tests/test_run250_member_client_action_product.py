@@ -31,9 +31,10 @@ class Run250ClientActionProductTests(unittest.TestCase):
             "rank": None,
         }
 
-    def test_run253_icp_is_work_first_not_client_question_first(self):
+    def test_run254_icp_is_work_first_without_redundant_first_person(self):
         self.assertIn("AIを仕事に活用", alignment.ICP_LABEL)
-        self.assertIn("自分でツールを選び", alignment.ICP_LABEL)
+        self.assertIn("ツールを選び", alignment.ICP_LABEL)
+        self.assertNotIn("自分の", alignment.ICP_LABEL)
         self.assertNotIn("顧客からAI活用を相談", alignment.ICP_LABEL)
 
     def test_icp_relevance_favors_direct_work_use_over_deep_infra(self):
@@ -99,6 +100,11 @@ class Run250ClientActionProductTests(unittest.TestCase):
         finally:
             ux2.EDITORIAL_HOME_SYNC_IDS = original
 
+    def test_neutral_subject_text_removes_only_redundant_product_phrasing(self):
+        self.assertEqual(alignment.neutral_subject_text("自分の仕事に使う"), "仕事に使う")
+        self.assertEqual(alignment.neutral_subject_text("自分の利用条件を確認"), "利用条件を確認")
+        self.assertEqual(alignment.neutral_subject_text("自分だけで使う"), "自分だけで使う")
+
     def test_work_action_layer_uses_existing_authoritative_fields(self):
         state = self._state(
             "work-tool",
@@ -111,7 +117,8 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertIn(state["main_risk"], alignment.work_check_text(state))
         self.assertIn("向かない条件：", alignment.work_check_text(state))
         self.assertNotIn("自社", alignment.work_action_text(state))
-        self.assertIn("自分の仕事", alignment.work_action_text(state))
+        self.assertNotIn("自分の", alignment.work_action_text(state))
+        self.assertIn("対象業務", alignment.work_action_text(state))
         # Legacy callable names remain aliases only for compatibility.
         self.assertEqual(alignment.client_case_text(state), alignment.work_case_text(state))
         self.assertEqual(alignment.client_check_text(state), alignment.work_check_text(state))
@@ -152,6 +159,16 @@ class Run250ClientActionProductTests(unittest.TestCase):
             self.assertFalse(run250._body_matches_client_action(old_client_children, state))
             self.assertTrue(run250._body_matches_client_action(run250._build_children(state), state))
 
+    def test_run254_rewrites_work_first_body_with_redundant_first_person(self):
+        state = self._state("tool", "製品・サービス", 82, "FAQ業務を小さく試す。")
+        stale = run250._build_children(state)
+        stale.append(body._paragraph("自分の仕事に使える候補です。"))
+        with patch.object(run250, "_BASE_BODY_MATCHES", lambda _children, _state: True):
+            self.assertFalse(run250._body_matches_client_action(stale, state))
+            fresh = run250._build_children({**state, "topic": "自分の仕事で確認する。"})
+            self.assertTrue(run250._body_matches_client_action(fresh, state))
+            self.assertNotIn("自分の仕事", run250._visible_text(fresh))
+
     def test_run252_installer_binds_active_wrapper_even_after_shared_install(self):
         fake_active = SimpleNamespace(_build_children=lambda _state: [])
         original_body_builder = body._build_children
@@ -185,9 +202,10 @@ class Run250ClientActionProductTests(unittest.TestCase):
             ],
         )
 
-    def test_contract_declares_work_first_and_preserves_authority(self):
+    def test_contract_declares_work_first_neutral_subject_and_preserves_authority(self):
         contract = run250.contract()
         self.assertEqual(contract["product_purpose"], "work_first_decision_intelligence")
+        self.assertEqual(contract["subject_style"], "implicit_neutral_subject")
         self.assertTrue(contract["client_proposal_secondary"])
         self.assertTrue(contract["zero_gemini_calls"])
         self.assertTrue(contract["intelligence_engine_preserved"])
@@ -197,6 +215,7 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertFalse(contract["notion_schema_changed"])
         self.assertTrue(contract["legacy_fixed_shortlist_retired"])
         self.assertTrue(contract["work_first_body_migration_required"])
+        self.assertTrue(contract["neutral_subject_body_migration_required"])
         self.assertTrue(contract["script_entrypoint_body_authority"])
 
 
