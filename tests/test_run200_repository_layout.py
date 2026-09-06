@@ -109,7 +109,9 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
     def test_current_spec_tracks_live_baseline_and_old_spec_is_preserved(self) -> None:
         current = (ROOT / "AI_Intelligence_Factory_最終仕様書.md").read_text(encoding="utf-8")
         self.assertIn("現行Functional Baseline: **Run209", current)
-        self.assertIn("Documentation Governance Baseline: **Run210", current)
+        self.assertIn("Documentation Governance Baseline: **Run262", current)
+        self.assertIn("Article Model Routing Baseline: **Run261", current)
+        self.assertIn("ONE-SHOT Downstream Fan-out Baseline: **Run261", current)
         self.assertIn("Production Source of Truth: **`main`**", current)
         self.assertNotIn("本パッケージコード基準: **Run 122", current)
 
@@ -125,6 +127,9 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
     def test_readme_declares_current_baseline_and_cleanup_safety(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Current functional baseline:** Run209", readme)
+        # README remains a compact operator index. Run210 is the broad documentation
+        # governance origin; the canonical specification carries the narrower Run262
+        # current-mechanism freshness authority.
         self.assertIn("Current documentation governance baseline:** Run210", readme)
         self.assertIn("Current repository organization baseline:** Run246", readme)
         self.assertIn("falsified repository hygiene cleanup with active/runtime asset protection", readme)
