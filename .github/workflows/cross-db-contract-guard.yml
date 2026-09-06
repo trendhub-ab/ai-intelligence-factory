@@ -43,9 +43,10 @@ on:
       - 'tests/test_member_presentation_resolution_guard.py'
       - 'tests/test_run232_notion_integration_reconciliation.py'
       - '.github/workflows/cross-db-contract-guard.yml'
+  # ONE-SHOT fan-out is explicit via GH_PAT from daily-one-shot.yml. Keep only the
+  # independent member-presentation completion trigger here.
   workflow_run:
     workflows:
-      - Daily Intelligence & Content Pipeline [ONE-SHOT]
       - Member Presentation Sync
     types: [completed]
 
@@ -78,11 +79,7 @@ jobs:
   live-schema-contract:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.name == 'Daily Intelligence & Content Pipeline [ONE-SHOT]' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+      github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
