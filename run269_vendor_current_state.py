@@ -1,9 +1,13 @@
 """Run269 explicit current-state adapter for official vendor pages.
 
 Some vendors expose a changelog/release feed. ByteDance/Volcengine's most reliable
-server-readable commercial primary source is its official model list, whose page
-carries an explicit recent-update timestamp. Treat that as ``structured_current_state``
-rather than pretending it is a release event.
+server-readable commercial primary source is its official model list. Treat that as
+``structured_current_state`` rather than pretending it is a release event.
+
+Volcengine's edge/rendering shape is not stable: some HTTP responses expose the
+``最近更新时间`` timestamp, while others expose only concrete model-list/navigation
+content. A current-state row therefore requires either the explicit timestamp OR a
+model-list-specific marker combination. Mere reachability never qualifies.
 """
 from __future__ import annotations
 
@@ -38,6 +42,15 @@ _RECENT_UPDATE_RE = re.compile(
     r"最近更新(?:时间|時間)?\s*[：:]?\s*(20\d{2}[./-]\d{1,2}[./-]\d{1,2})",
     re.I,
 )
+_MODEL_LIST_MARKERS = ("模型列表", "model list")
+_MODEL_STATE_MARKERS = (
+    "最新模型",
+    "seed-evolving",
+    "seedance",
+    "seedream",
+    "doubao",
+    "豆包",
+)
 
 
 def _response_text(response) -> str:
@@ -51,27 +64,51 @@ def _response_text(response) -> str:
     return str(content or "")
 
 
-def _extract_recent_update(html: str) -> str | None:
+def _decoded_visible_text(html: str) -> str:
     decoded = unescape(html or "")
     decoded = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), decoded)
     decoded = decoded.replace("\\n", "\n").replace("\\t", " ").replace('\\"', '"')
     decoded = re.sub(r"<[^>]+>", " ", decoded)
-    decoded = re.sub(r"\s+", " ", decoded)
+    return re.sub(r"\s+", " ", decoded).strip()
+
+
+def _extract_recent_update(html: str) -> str | None:
+    decoded = _decoded_visible_text(html)
     match = _RECENT_UPDATE_RE.search(decoded)
     return match.group(1) if match else None
 
 
+def _has_model_list_current_state(html: str) -> bool:
+    """Require page-specific model evidence, never mere HTTP reachability."""
+    low = _decoded_visible_text(html).casefold()
+    return (
+        any(marker in low for marker in _MODEL_LIST_MARKERS)
+        and any(marker in low for marker in _MODEL_STATE_MARKERS)
+    )
+
+
 def _current_state_item(vendor: dict, html: str, normalize_item):
     updated_at = _extract_recent_update(html)
-    if not updated_at:
+    has_model_state = _has_model_list_current_state(html)
+    if not updated_at and not has_model_state:
         return None
+
+    if updated_at:
+        observation = f"最近更新时间 {updated_at}。"
+    else:
+        observation = (
+            "公式モデル一覧とSeed/Doubao系の現在モデル情報を確認。"
+            "更新日時は今回のHTTP取得形では解決できない。"
+        )
+
     record = {
         "title": f"{vendor.get('current_state_label') or '公式モデル一覧'} — current official state",
         "description": (
-            f"公式モデル一覧の現在状態。最近更新时间 {updated_at}。"
+            f"公式モデル一覧の現在状態。{observation}"
             "これはリリースイベントではなく、現在のモデル選定・利用可否を確認する一次情報として扱う。"
         ),
         "url": vendor["release_url"],
+        # Never fabricate a date when the response variant does not expose one.
         "published_at": updated_at,
     }
     item = run268._vendor_candidate_from_record(vendor, record, normalize_item)
@@ -79,6 +116,8 @@ def _current_state_item(vendor: dict, html: str, normalize_item):
     details["vendor_record_kind"] = "structured_current_state"
     details["run269_precision"] = True
     details["current_state_page"] = True
+    details["current_state_timestamp_observed"] = bool(updated_at)
+    details["current_state_model_markers_observed"] = bool(has_model_state)
     item["sourceDetails"] = details
     return item
 
@@ -110,18 +149,27 @@ def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logge
             continue
         if vendor_name in replaced:
             continue
-        try:
-            response = http_get(
-                vendor["release_url"],
-                timeout=12,
-                headers={"User-Agent": "AI-Intelligence-Factory/Run269-current-state"},
-            )
-            html = _response_text(response)
-            current = _current_state_item(vendor, html, normalize_item)
-        except Exception as exc:
-            current = None
-            if logger:
-                logger.warning(f"[RUN269 CURRENT STATE SKIP] {vendor_name}: {exc}")
+
+        # The precision fallback already carries bounded visible text. Reuse it first;
+        # this avoids depending on a second request returning the same edge/render shape.
+        current = _current_state_item(vendor, item.get("sourceContext") or "", normalize_item)
+        if current is None:
+            try:
+                response = http_get(
+                    vendor["release_url"],
+                    timeout=12,
+                    headers={"User-Agent": "AI-Intelligence-Factory/Run269-current-state"},
+                )
+                final_url = str(getattr(response, "url", "") or vendor["release_url"])
+                if not precision._host_allowed(final_url, tuple(vendor["allowed_domains"])):
+                    raise ValueError(f"redirected outside vendor allowlist: {final_url}")
+                html = _response_text(response)
+                current = _current_state_item(vendor, html, normalize_item)
+            except Exception as exc:
+                current = None
+                if logger:
+                    logger.warning(f"[RUN269 CURRENT STATE SKIP] {vendor_name}: {exc}")
+
         if current:
             output.append(current)
             replaced.add(vendor_name)
