@@ -1,6 +1,7 @@
 name: Integration Reconciliation CI
-# Run263: deterministic, hermetic integration signal. Full pytest is the single regression authority;
+# Run264: deterministic, hermetic integration signal. Full pytest is the single regression authority;
 # structural guards run before it, and Synthetic smoke validates the assembled current Production stack.
+# Standalone regression workflow changes also trigger this required check so hermeticity cannot drift silently.
 
 on:
   pull_request:
@@ -55,6 +56,7 @@ on:
       - 'requirements-ci-constraints.txt'
       - '.github/workflows/daily.yml'
       - '.github/workflows/daily-one-shot.yml'
+      - '.github/workflows/regression.yml'
       - '.github/workflows/regression-test.yml'
       - '.github/workflows/note-ready-sync.yml'
       - '.github/workflows/note-create-draft.yml'
