@@ -91,6 +91,14 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("run194_note_persistent_cloud.py", text)
         self.assertNotIn("playwright", text)
 
+    def test_dispatch_uses_chainable_pat_and_fails_closed_without_it(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", text)
+        self.assertNotIn("GH_TOKEN: ${{ github.token }}", text)
+        self.assertIn('if [ -z "${GH_TOKEN:-}" ]; then', text)
+        self.assertIn("GH_PAT is required for ChatOps ONE-SHOT dispatch", text)
+        self.assertIn("downstream workflow_run fan-out", text)
+
 
 if __name__ == "__main__":
     unittest.main()
