@@ -26,6 +26,9 @@ _LOCAL_USES_RE = re.compile(r"^\s*uses:\s*['\"]?(?P<path>\./[^\s#'\"]+)", re.MUL
 _REPO_FILE_RE = re.compile(
     r"(?<![/\w.-])((?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.(?:py|sh))\b"
 )
+_UNITTEST_DISCOVER_PATTERN_RE = re.compile(
+    r"(?P<flag>(?:-p|--pattern)\s+)(?P<quote>['\"]?)(?P<pattern>[^\s'\"\n]+\.py)(?P=quote)"
+)
 _UNITTEST_RE = re.compile(
     r"(?:^|[;&|]\s*)python(?:3(?:\.\d+)?)?\s+-m\s+unittest\s+(?P<args>[^\n;&|]+)",
     re.MULTILINE,
@@ -170,6 +173,15 @@ def _resolve_local(root: Path, token: str) -> Path:
     return root / normalized
 
 
+def _without_unittest_discover_patterns(run_block: str) -> str:
+    """Remove `unittest discover -p test_x.py` selectors from file-reference scanning.
+
+    The pattern is a selector under the start directory, not an executable file path
+    relative to repository root. Explicit unittest modules are validated separately.
+    """
+    return _UNITTEST_DISCOVER_PATTERN_RE.sub(lambda match: match.group("flag") + "<pattern>", run_block)
+
+
 def validate(root: str | Path = ".") -> list[str]:
     root_path = Path(root)
     workflow_dir = root_path / WORKFLOW_DIR
@@ -208,7 +220,8 @@ def validate(root: str | Path = ".") -> list[str]:
                 errors.append(f"{rel}: workflow_run references unknown workflow name: {upstream}")
 
         for block in _run_blocks(text):
-            for token in _REPO_FILE_RE.findall(block):
+            file_scan_block = _without_unittest_discover_patterns(block)
+            for token in _REPO_FILE_RE.findall(file_scan_block):
                 target = _resolve_local(root_path, token)
                 if not target.exists():
                     errors.append(f"{rel}: run block references missing repository file: {token}")
