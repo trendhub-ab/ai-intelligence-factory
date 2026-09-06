@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
+BASE_ACQUISITION = "business_source_acquisition.py"
 PRECISION = "run269_acquisition_precision.py"
 CURRENT_STATE = "run269_vendor_current_state.py"
 LAYER = "run269_business_source_precision.py"
@@ -42,6 +43,7 @@ def _require(text: str, markers: tuple[str, ...], prefix: str) -> list[str]:
 
 def collect_errors(root: Path = ROOT) -> list[str]:
     texts = {
+        BASE_ACQUISITION: _read(root, BASE_ACQUISITION),
         PRECISION: _read(root, PRECISION),
         CURRENT_STATE: _read(root, CURRENT_STATE),
         LAYER: _read(root, LAYER),
@@ -64,40 +66,51 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     errors += _require(
         precision,
         (
-            'HN_LOOKBACK_DAYS = 30',
+            "import business_source_acquisition as run268",
+            "SOURCE_ROLE_CONTRACT = run268.SOURCE_ROLE_CONTRACT",
+            "*run268.OFFICIAL_VENDOR_REGISTRY[:5]",
+            "run268.OFFICIAL_VENDOR_REGISTRY[6]",
+            "run268.OFFICIAL_VENDOR_REGISTRY[7]",
+            "run268.OFFICIAL_VENDOR_REGISTRY[9]",
+            '"vendor": "ByteDance Doubao/Seed"',
+            '"vendor": "MiniMax"',
+            '"vendor": "Tencent Hunyuan"',
+            "HN_LOOKBACK_DAYS = 30",
             'restrictSearchableAttributes": "title"',
             '"numericFilters": f"created_at_i>{cutoff}"',
             "def _query_matches_title",
             "not _query_matches_title(title, query)",
             '"Qwen"',
             '"DeepSeek"',
-            '"Moonshot AI Kimi"',
-            '"MiniMax"',
-            '"Tencent Hunyuan"',
             '"structured_html"',
             '"structured_embedded"',
             '"page_fallback"',
         ),
         "precision",
     )
-    # Raw AI must not be a standalone query in the precision tuple.
     query_block = precision.split("HN_AI_QUERIES = (", 1)[1].split(")", 1)[0] if "HN_AI_QUERIES = (" in precision else ""
     if '\n    "AI",' in "\n" + query_block:
         errors.append("hn_raw_ai_query_reintroduced")
     if "hacker-news.firebaseio.com/v0/topstories.json" in precision:
         errors.append("run269_hn_must_not_use_firebase_topstories")
 
+    # Run268 remains the registry architecture authority. Run269 intentionally inherits
+    # unchanged vendors by index and only overrides the surfaces proven imprecise by
+    # live smoke. Validate the effective contract across base + overlay, not by forcing
+    # all eleven vendor names to be duplicated in the precision module.
+    effective_registry_contract = (
+        texts[BASE_ACQUISITION] + "\n" + precision + "\n" + texts[CURRENT_STATE]
+    )
     for vendor in REQUIRED_VENDORS:
-        combined = precision + texts[CURRENT_STATE]
-        if vendor not in combined:
+        if vendor not in effective_registry_contract:
             errors.append(f"run269_vendor_missing:{vendor}")
 
     current_state = texts[CURRENT_STATE]
     errors += _require(
         current_state,
         (
-            '"vendor": "ByteDance Doubao/Seed"',
-            '1799865?lang=zh',
+            'row["vendor"] == "ByteDance Doubao/Seed"',
+            "1799865?lang=zh",
             '"current_state_page": True',
             '"structured_current_state"',
             "リリースイベントではなく",
@@ -168,8 +181,6 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         "live_workflow",
     )
     for forbidden in ("GEMINI_API_KEY", "NOTION_TOKEN", "GH_PAT", "production_pipeline.py"):
-        # production_pipeline.py may legitimately appear only in the path trigger list;
-        # never permit it in a run command.
         if forbidden == "production_pipeline.py":
             run_lines = "\n".join(line for line in live_workflow.splitlines() if line.lstrip().startswith("run:") or "python " in line)
             if forbidden in run_lines:
