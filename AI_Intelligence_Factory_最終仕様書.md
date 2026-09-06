@@ -1,8 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
 最終更新: 2026-09-06  
+現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
+Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
 Production Source of Truth: **`main`**  
-Paid Product Baseline: **Run255 — Work-First / Natural Neutral-Subject Decision Intelligence**  
+Paid Product Baseline: **Run256 — Work-First / Natural Neutral-Subject / Concrete Decision Update**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
 Eyecatch Baseline: **Run181 current**  
@@ -208,13 +210,14 @@ Run181 currentを基準とする。
 - Notion write先はfail-closedで解決する。
 - CI greenだけで本番反映完了としない。実Notionの見出し、順位、copy、source preservationを直接監査する。
 
-Run250–255で確立したproduct presentation:
+Run250–256で確立したproduct presentation:
 - Run250: initial paid-product presentation overlay
 - Run251: legacy fixed shortlist retirement
 - Run252: `__main__` production script-entrypoint authority
 - Run253: Work-First correction
 - Run254: unnecessary first-person removal
 - Run255: context-safe / natural neutralization
+- Run256: concrete Decision Update + documentation reconciliation
 
 ---
 
@@ -285,4 +288,4 @@ PMF前にやらないこと:
 - 過去仕様を本ファイルへ積み増して肥大化させない。
 - 古い説明と矛盾した場合は、current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の順で解消する。
 
-**現在のPaid Product正本はRun255。Decision Briefの具体化ルールはRun256 documentation reconciliationで追加。**
+**現在のPaid Product正本はRun256。**
