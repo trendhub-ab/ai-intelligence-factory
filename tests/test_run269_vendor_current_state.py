@@ -81,7 +81,9 @@ class Run269VendorCurrentStateTests(unittest.TestCase):
         self.assertFalse(details["current_state_timestamp_observed"])
         self.assertTrue(details["current_state_model_markers_observed"])
         self.assertIsNone(rows[0]["publishedAt"])
-        self.assertIn("更新日時は今回のHTTP取得形では解決できない", rows[0]["sourceContext"])
+        # Preserve the concrete official evidence instead of replacing it with a
+        # synthetic explanation when precision extraction already found the model row.
+        self.assertIn("Seed-Evolving", rows[0]["sourceContext"])
 
     def test_generic_reachable_page_without_model_state_remains_fallback(self):
         vendor = self._vendor()
