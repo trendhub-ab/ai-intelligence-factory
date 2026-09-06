@@ -15,11 +15,16 @@ class Run246RepositoryHygieneTests(unittest.TestCase):
         self.assertGreater(path.stat().st_size, 20)
 
     def test_portfolio_regression_coverage_survives_workflow_retirement(self):
-        workflow = (ROOT / ".github" / "workflows" / "integration-reconciliation-ci.yml").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text(encoding="utf-8")
         self.assertIn("python -m pytest -q tests", workflow)
-        self.assertIn("- 'tests/**'", workflow)
         self.assertIn("SYNTHETIC_REGRESSION_MODE: 'true'", workflow)
         self.assertIn("run: python production_pipeline.py", workflow)
+        # Run267: zero-api-regression is a required main-branch status context, so
+        # pull_request path filters are forbidden. Full pytest itself is the coverage
+        # authority; a hand-maintained tests/** trigger list is no longer required.
+        pull_request_section = workflow.split("  workflow_dispatch:", 1)[0]
+        self.assertNotIn("    paths:\n", pull_request_section)
+        self.assertNotIn("    paths-ignore:\n", pull_request_section)
 
         for relative in (
             "tests/test_run131_profit_aligned_portfolio.py",
