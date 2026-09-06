@@ -17,7 +17,8 @@ Article Production Baseline: **Run249 + current article-quality stack**
 Eyecatch Baseline: **Run181 current**  
 Pipeline Modularization Baseline: **Run245**  
 Repository Organization Baseline: **Run246**  
-Workflow Reference Integrity Baseline: **Run257 — Workflow Reference Guard**
+Workflow Reference Integrity Baseline: **Run257 — Workflow Reference Guard**  
+ChatOps Fan-out Baseline: **Run259 — Chainable ONE-SHOT Dispatch Token**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -114,6 +115,8 @@ AI活用判断シート Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 **Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
 
 Scheduled Dailyは現在 **`Daily Intelligence & Content Pipeline [PAUSED]`** としてhard-PAUSEDである。この間、`Subscriber Decision Brief Sync` の実在するworkflow_run上流は **`Daily Intelligence & Content Pipeline [ONE-SHOT]` + `Subscriber Inventory Bootstrap`** のみとし、Inventoryは`[apply]`だけをwrite fan-out対象にする。`Note Ready Article Sync` はONE-SHOTのみを上流にする。PAUSED stubや存在しない将来aliasをlive triggerとして残さない。Scheduled Dailyを明示的に再開する場合、その時点の実在するworkflow名を同一のreviewed changeで戻す。
+
+ChatOps control issueからONE-SHOTをdispatchする場合は、**Run259** の契約として `${{ secrets.GH_PAT }}` を必須のdispatch credentialにする。`${{ github.token }}` / repository `GITHUB_TOKEN` へ黙ってフォールバックしない。PATが未設定・無効ならProduction本体を起動せずfail closedとし、ONE-SHOT完了後の `workflow_run` fan-out（Note Ready / Subscriber Decision Brief）が欠落する「部分成功」を作らない。
 
 **Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。自動生成停止を「Digest提供停止」と読み替えない。
 
@@ -306,6 +309,7 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - **Daily workflowはPAUSED。**
 - Production実行は明示的なONE-SHOT / workflow_dispatchを基本とする。
 - PAUSED中の派生workflowは、存在しない通常Daily aliasやPAUSED stubを`workflow_run`上流に持たない。Run257 `Workflow Reference Guard` が静的参照をFail-Closedで検査する。
+- ChatOpsからONE-SHOTを起動する場合、Run259として `GH_PAT` を必須にし、下流 `workflow_run` fan-outまでを1つの運用契約として扱う。PAT不備時はfail closedとする。
 - Public note公開はhuman-only。
 - 外部サービス状態を推測で補完しない。
 - 成功していない処理を成功扱いしない。
@@ -345,6 +349,7 @@ Workflow変更では、さらに次を反証する。
 - `workflow_run.workflows` が実在するtop-level workflow nameか
 - static `gh workflow run` targetが実在するか
 - duplicate workflow nameによる曖昧性がないか
+- workflow内workflow dispatchが必要なfan-outを持つ場合、repository `GITHUB_TOKEN` による連鎖抑制を踏んでいないか
 
 ---
 
@@ -384,6 +389,8 @@ PMF前にやらないこと:
 - current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の整合を保つ。
 - Documentation Freshness Guardが要求するmarkerは、テストを通すための文字列ではなく、現在Productionが依存するoperational contractとして扱う。
 - Run257のWorkflow参照修整・反証記録は `docs/reference/RUN257_WORKFLOW_REFERENCE_INTEGRITY.md` を正本とする。
+- Run259のChatOps fan-out修整・反証記録は `docs/reference/RUN259_CHATOPS_FANOUT_TOKEN.md` を正本とする。
 
 **現在のPaid Product正本はRun256。**  
-**現在のWorkflow Reference Integrity正本はRun257。**
+**現在のWorkflow Reference Integrity正本はRun257。**  
+**現在のChatOps Fan-out正本はRun259。**
