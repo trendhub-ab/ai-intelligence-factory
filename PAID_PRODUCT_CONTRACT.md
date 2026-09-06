@@ -1,38 +1,55 @@
 # AI Intelligence Factory — Paid Product Contract
 
-更新日: 2026-09-06
-状態: **Run252 current product contract**
+更新日: 2026-09-06  
+状態: **Run253 current product contract — Work-First Decision Intelligence**
 
-この文書は、有料会員商品に関する現行のSource of Truthです。`REVENUE_PRODUCT_PHASE2_SETUP.md`等の旧商品説明と矛盾する場合、有料商品のターゲット・見せ方・継続価値については本書を優先します。Evidence / Decision History / Provider budget / Notion access safety等の既存技術契約は変更しません。
+この文書は、有料会員商品に関する現行のSource of Truthです。旧商品説明と矛盾する場合、有料商品のターゲット・見せ方・継続価値については本書を優先します。Evidence / Decision History / Provider budget / Notion access safety等の既存技術契約は変更しません。
 
 ## 1. 初期ICP
 
-**Web制作・マーケティング・業務改善などを受託する1〜3名規模の事業者で、顧客からAI活用を相談されるようになったが、AI専業ではない人。**
+**Web制作・マーケティング・業務改善・クリエイティブなどでAIを仕事に活用する1〜3名規模の事業者で、自分でツールを選び、試し、導入判断をする人。**
 
-「AIに興味がある個人全般」「非エンジニア全般」「法人全般」を初期ICPにしない。
+中心条件は「顧客からAI相談を受けること」ではない。
 
-法人は将来の高単価市場として維持するが、初期PMF検証では請求書・稟議・セキュリティ審査等の販売摩擦を持ち込まない。
+初期ICPが抱える本筋は、以下。
+
+- AI・ITの変化は知りたい。
+- 自分の仕事に何が使えるのか知りたい。
+- 何ができるのか、今試す価値があるのか、注意点は何かを理解したい。
+- ただし、毎日すべてのニュース・GitHub・公式Docsを追う時間はない。
+- AI専業ではないため、Deep Techの全件を日常的に読む必要もない。
+
+顧客への提案・説明は、この判断を必要に応じて仕事へ転用する**副次価値**とする。商品目的そのものへ昇格させない。
+
+「AIに興味がある個人全般」「非エンジニア全般」「法人全般」は初期ICPにしない。法人は将来の高単価市場として維持する。
 
 ## 2. 販売する価値
 
-旧: `AIを調べるためのNotion DB`
+旧1: `AIを調べるためのNotion DB`  
+旧2: `顧客からAIの相談をされたときに答えるための商品`
 
-現行: **クライアントにAIを提案・判断するときに使える実務インテリジェンス**
+現行: **自分の仕事に関係するAIを理解し、使う・試す・待つ・避けるを判断するためのWork-First Decision Intelligence**
 
 中心メッセージ:
 
-> **AIの相談をされたとき、答えに困らない。**
+> **AIを全部追わなくても、自分の仕事に使えるものがわかる。**
 
-会員が得るものはDB件数そのものではない。顧客案件について、根拠を持って **使う / 試す / 待つ / 避ける** を判断し、次の一手まで説明できることを価値とする。
+会員が得るものはDB件数そのものではない。
+
+**知る → 理解する → 自分の仕事に使えるか判断する → 必要なら実際に小さく試す**
+
+までを短時間で進められることを価値とする。
+
+顧客へ説明・提案できることは、この判断能力から派生する応用価値である。
 
 ## 3. 商品4層
 
-1. **無料note** — 知る・理解する。品質を意図的に落としてPaywallを作らない。
-2. **Decision Brief** — 今月、初期ICPが先に見るべき3〜7件だけを短時間で確認する。
+1. **無料note** — 知る・面白く理解する。品質を意図的に落としてPaywallを作らない。
+2. **Decision Brief** — 今月、自分の仕事で知っておく価値がある3〜7件だけを短時間で確認する。
 3. **Decision Intelligence** — 必要なときに全体DBで比較・根拠・リスク・履歴を確認する。
-4. **Client Action Asset** — 顧客への質問、導入判断シート、検証条件、提案前チェック等へ落とす。
+4. **Work Action Asset** — 使う前の確認、AI活用判断シート、小規模検証条件、比較観点等へ落とす。顧客提案への転用は任意の副次用途。
 
-内部の **Intelligence Engine** は上記より広く、Deep Techを含む。内部追跡対象を顧客トップ画面の表示対象と同一視しない。
+内部の **Intelligence Engine** は上記より広く、Deep Techを含む。内部追跡対象を会員トップ画面の表示対象と同一視しない。
 
 ## 4. DBの位置づけ
 
@@ -40,26 +57,29 @@
 - DBは商品そのものではなく、商品を支える検索・Evidence・Decision Historyエンジンとする。
 - 206件等の件数は信頼の裏付けにはなるが、購入理由として前面に出さない。
 - トップ推薦は単純な判断スコア順にしない。
-- `実務判断`かつADOPT/TEST等の既存品質条件を満たした中で、初期ICPへの業務関連性をNavigation-onlyで評価する。
+- `実務判断`かつ既存品質条件を満たした中で、初期ICPへの**自分の仕事での利用関連性**をNavigation-onlyで評価する。
+- `顧客` / `クライアント`という語が入っているだけで上位化しない。顧客文脈は補助シグナルにとどめる。
 - Source score / Decision / EvidenceをICP都合で改変しない。
 
-## 5. Client Action表示契約
+## 5. Work-First表示契約
 
 会員向け詳細では、既存の権威あるフィールドを以下へ翻訳して表示する。
 
-- **案件で使える場面** — canonical `向いている用途`を基礎とする。
-- **案件への意味（Business Impact）** — canonical判断と判断理由を案件文脈へ翻訳する。根拠のないROI・売上・工数削減率を創作しない。
-- **提案前に確認すること** — canonical `主なリスク` / `向いていない用途`を使う。
-- **提案時の次の一手** — canonical `次にやること`を案件向け表現へ置き換える。
-- **Decision Update** — 記録済みのmaterial changeが、案件判断を上げる/下げる必要につながるかを示す。
+- **仕事で使える場面** — canonical `向いている用途`を基礎とする。
+- **仕事への意味（Business Impact）** — canonical判断と判断理由を実務文脈へ翻訳する。根拠のないROI・売上・工数削減率を創作しない。
+- **使う前に確認すること** — canonical `主なリスク` / `向いていない用途`を使う。
+- **試すときの次の一手** — canonical `次にやること`を自分の利用文脈へ置き換える。
+- **Decision Update** — 記録済みmaterial changeが、自分の仕事での判断を上げる/下げる必要につながるかを示す。
 
 ### Production表示の必須条件
 
-本番Notionの自動生成本文は、少なくとも **`いま、どうする？` / `案件への意味（Business Impact）`** を含み、値が存在する場合は **`案件で使える場面` / `提案前に確認すること` / `提案時の次の一手`** も含むこと。
+本番Notionの自動生成本文は、少なくとも **`いま、どうする？` / `仕事への意味（Business Impact）`** を含み、値が存在する場合は **`仕事で使える場面` / `使う前に確認すること` / `試すときの次の一手`** も含むこと。
 
-旧Run219本文がSource値の一致だけで「現行」と判定されることを禁止する。本文一致判定はClient Action見出しまで検証する。
+Run253前の `案件で使える場面 / 案件への意味 / 提案前に確認すること / 提案時の次の一手` が残っている本文を「現行」と判定してはならない。
 
-さらに、GitHub Actionsが `python run219_member_human_language_ui.py body` としてCLIファイルを直接実行する本番条件を正式な契約対象とする。Python上で実行中モジュールが `__main__` になっても、Run250/252のClient Action body builderが**実際に実行中のwrapper module**へ結合されなければならない。canonical import側だけを書き換えて成功扱いにしない。
+本文一致判定はWork-First見出しまで検証する。
+
+GitHub Actionsが `python run219_member_human_language_ui.py body` としてCLIファイルを直接実行する本番条件も契約対象とする。Python上で実行中モジュールが `__main__` になっても、Run250–253のcurrent body builderが**実際に実行中のwrapper module**へ結合されなければならない。canonical import側だけを書き換えて成功扱いにしない。
 
 ## 6. Decision Update
 
@@ -68,24 +88,26 @@
 会員には以下を重視して示す。
 
 - 何が変わったか
-- その変化で案件候補として再検討すべきか
+- その変化で自分の仕事に使う候補として再検討すべきか
 - 慎重になるべきか
 - 変化がなく、現在判断を維持してよいか
 
-価格・セキュリティ・保守終了・後継移行・利用条件・実務可能性など、**仕事・費用・提案内容に影響する変化**を優先する。
+価格・セキュリティ・保守終了・後継移行・利用条件・実務可能性など、**自分の仕事・費用・使い方の判断に影響する変化**を優先する。
 
-## 7. Action Assetの境界
+## 7. Work Action Assetの境界
 
 プロンプト集・Makeテンプレート集等を大量配布する「AI素材屋」へピボットしない。
 
 重要な候補についてのみ、必要に応じて以下を付ける。
 
-- 顧客への確認項目
+- 利用目的・条件の確認項目
 - 小規模検証の条件
-- 提案前チェックリスト
+- 使う前チェックリスト
 - 比較観点
-- 説明用1枚シート
+- 判断メモ1枚
 - 再利用可能な最小ワークフロー例
+
+顧客案件へ使う場合は、これらを提案前確認・説明資料へ転用できる。ただし商品を「クライアント提案テンプレートサービス」として定義しない。
 
 テンプレート保守が商品原価を押し上げないよう、Evidenceに基づき重要なものへ限定する。
 
@@ -93,12 +115,14 @@
 
 会員ホームの役割:
 
-- 3分でDecision Briefへ到達
-- 顧客の相談内容から候補を見る
-- ADOPT / TEST / WATCH / AVOIDを理解する
-- 必要時のみ全DBへ降りる
-- Decision Updateで判断変更要否を見る
-- Deep Techは補助導線へ下げる
+- **「AIを全部追わなくても、自分の仕事に使えるものがわかる」**を最初に伝える。
+- 3分でDecision Briefへ到達する。
+- **自分の仕事で何をしたいか**から候補を見る。
+- ADOPT / TEST / WATCH / AVOIDを理解する。
+- 必要時のみ全DBへ降りる。
+- Decision Updateで自分の判断変更要否を見る。
+- Deep Techは補助導線へ下げる。
+- AI活用判断シートは自分の利用判断を主用途にし、顧客提案は副次用途とする。
 
 2026年9月Decision Briefの初期構成:
 
@@ -108,9 +132,9 @@
 4. ComfyUI
 5. Cline
 
-これらは固定allowlistではない。将来の候補は同じICP関連性契約で自動評価する。
+これらは固定allowlistではない。将来の候補は同じWork-First ICP関連性契約で自動評価する。
 
-本番ホームの「注目順位」は旧固定3件を優先しない。Run251以降、Navigation-only ICP relevance + 既存quality/lifecycle contractが最終選定権限を持つ。
+本番ホームの「注目順位」は旧固定3件を優先しない。Navigation-only relevance + 既存quality/lifecycle contractが最終選定権限を持つ。
 
 ## 9. 価格と商業検証
 
@@ -133,17 +157,18 @@ noteは市場そのものではなく、低コストの集客・SEO・信頼形�
 - Source scoreを顧客適合度スコアへ置き換えない。
 - ICP relevanceは**Navigation-only**。
 - 新しい有料APIを追加しない。
-- Gemini/model呼出しをRun250/252表示ロジックに追加しない。
+- Gemini/model呼出しを表示ロジックに追加しない。
 - Public note公開は人間承認のまま。
-- Notion schemaはRun250/252では変更しない。
+- Notion schemaはRun253では変更しない。
 - 個別ユーザーWatchlist/パーソナライズはPMF前に実装しない。
 - CI greenだけを商品改定の完了証明にしない。本番Notion実物の見出し・順位・Source preservationを監査する。
+- 「顧客に答えられる」を商品中心へ戻さない。それは副次価値である。
 
-## 12. Run250–252実装契約
+## 12. Run250–253実装契約
 
-- `member_client_action_alignment.py` — ICP関連性とAction表示のpure deterministic policy
-- `run250_member_client_action_product.py` — Run225後のnavigation overlay + Run219 body overlay。Run251で旧固定shortlistをretireし、Run252でscript-entrypoint body authorityを追加。
-- `run219_member_human_language_ui.py` — 既存CLI/authorityを維持した統合入口。body実行時は `sys.modules[__name__]` をRun250へ渡し、`__main__` 実行でもactive wrapperへClient Action builderを結合する。
-- `tests/test_run250_member_client_action_product.py` — Source score/Evidence/Deep Tech/schema preservation、旧shortlist、stale body、script-entrypoint authorityの反証契約。
+- `member_client_action_alignment.py` — ファイル名は後方互換のため維持するが、Run253以降の正本はWork-First ICP関連性とAction表示policy。
+- `run250_member_client_action_product.py` — Run225後のnavigation overlay + Run219 body overlay。Run251で旧固定shortlistをretire、Run252でscript-entrypoint body authority、Run253でWork-First semanticsへ修正。
+- `run219_member_human_language_ui.py` — 既存CLI/authorityを維持した統合入口。旧Client Action本文も認識してWork-First本文へmigrationする。
+- `tests/test_run250_member_client_action_product.py` — Source score/Evidence/Deep Tech/schema preservation、旧shortlist、旧Client Action body migration、script-entrypoint authority、Work-First relevanceの反証契約。
 
 **ZERO model/provider calls.**

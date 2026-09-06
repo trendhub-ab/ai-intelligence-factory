@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Run219: make paid-member detail pages read like ordinary Japanese.
 
-This is a presentation-only layer on top of Run215.  It changes headings,
-status wording and the visible generated-callout label only.  Current score,
+This is a presentation-only layer on top of Run215. It changes headings,
+status wording and the visible generated-callout label only. Current score,
 status, Evidence, risk, source copy, next action, article state and source data
 remain authoritative and unchanged.
 
-The migration recognizes both the previous clean member callout and the new
-human-language callout, so existing generated bodies are replaced instead of
-duplicated.  Manual blocks continue to be preserved by the existing fast body
-sync.
+The migration recognizes previous member-callout variants plus the current
+work-first paid-product surface, so existing generated bodies are replaced
+instead of duplicated. Manual blocks continue to be preserved by the existing
+fast body sync.
 
 Run225 may install a navigation-only lifecycle ranker beneath this public CLI
-surface. Run250 may then install the client-action paid-product overlay after
-Run225 so lifecycle and source authority remain intact. Run219 remains the
+surface. Run250/253 may then install the current work-first paid-product overlay
+after Run225 so lifecycle and source authority remain intact. Run219 remains the
 authoritative workflow wrapper so Run170-Run215 copy authority and the existing
 operational contract are not bypassed.
 
@@ -129,7 +129,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 def _looks_like_generated_member_callout(
     block: dict[str, Any], child_cache: dict[str, list[dict[str, Any]]]
 ) -> bool:
-    """Recognize pre-Run219, Run219 and Run250 generated member callouts."""
+    """Recognize pre-Run219, client-action and work-first generated callouts."""
     if block.get("type") != "callout":
         return False
     label = body._block_text(block)
@@ -146,9 +146,17 @@ def _looks_like_generated_member_callout(
     headings = guard._heading_texts(children)
     has_decision = bool({"いま、どうする？", "いまの判断", "結論"} & headings)
     has_reason = bool(
-        {"そう判断した理由", "判断理由", "案件への意味（Business Impact）"} & headings
+        {
+            "そう判断した理由",
+            "判断理由",
+            "案件への意味（Business Impact）",
+            "仕事への意味（Business Impact）",
+        }
+        & headings
     )
-    has_action = bool({"次にやること", "提案時の次の一手"} & headings)
+    has_action = bool(
+        {"次にやること", "提案時の次の一手", "試すときの次の一手"} & headings
+    )
     return has_decision and has_action and has_reason
 
 
@@ -178,7 +186,6 @@ def _install_current_navigation_overlays() -> None:
         import run250_member_client_action_product as run250
     except ImportError:
         return
-    # Run250 must be installed after Run225 so Archive/lifecycle rules stay authoritative.
     run250.install_navigation()
 
 
@@ -209,8 +216,8 @@ def run_body_sync() -> dict[str, Any]:
         run250 = None
     if run250 is not None:
         # Under ``python run219_member_human_language_ui.py body`` this module is
-        # ``__main__``. Pass the active wrapper explicitly so Run250 cannot patch
-        # only a second canonical import of this same file.
+        # ``__main__``. Pass the active wrapper explicitly so the current overlay
+        # cannot patch only a second canonical import of this same file.
         run250.install_body(sys.modules[__name__])
     install()
     result = run215.run_body_sync()
@@ -224,10 +231,10 @@ def run_body_sync() -> dict[str, Any]:
         result["reader_order"] = [
             "これは何？",
             "いま、どうする？",
-            "案件で使える場面",
-            "案件への意味（Business Impact）",
-            "提案前に確認すること",
-            "提案時の次の一手",
+            "仕事で使える場面",
+            "仕事への意味（Business Impact）",
+            "使う前に確認すること",
+            "試すときの次の一手",
         ]
     else:
         result["reader_order"] = ["これは何？", "いま、どうする？", "なぜ今見る？", "次にやること"]

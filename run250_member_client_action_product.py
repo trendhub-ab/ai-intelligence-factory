@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
-"""Run250: align the paid member surface to the initial client-service ICP.
+"""Run250/253: align the paid member surface to the initial work-use ICP.
 
-Run250 is presentation-only. The Intelligence Engine, source facts, Evidence,
+Run250 remains presentation-only. The Intelligence Engine, source facts, Evidence,
 canonical score/status, Deep Tech inventory and Notion schema remain unchanged.
 
-It changes two paid-surface behaviors:
-1. Homepage ranking uses ICP relevance for navigation while preserving the source
+Run253 corrects the product centre of gravity: the primary job is not "answer a
+client's AI question". It is "understand what is worth using in my own work".
+Client proposal reuse remains available as a secondary outcome.
+
+The paid surface therefore does two things:
+1. Homepage ranking uses work relevance for navigation while preserving the source
    score in the actual record.
-2. Member detail bodies translate authoritative fields into client-work language:
-   client use case -> business impact -> checks -> proposal next step.
+2. Member detail bodies translate authoritative fields into work-use language:
+   work use case -> business impact -> checks -> next step.
 
 Run251 hardening note:
 Run170.4 contained a legacy fixed three-item editorial shortlist for the older
 broad/corporate member product. That installer executes *inside* the lower
 presentation stack, after Run250 is initially installed, so it can otherwise
-silently regain final authority. Run250 now explicitly retires that old fixed
+silently regain final authority. Run250 explicitly retires that old fixed
 shortlist before the lower stack runs. The lower editorial wrapper remains in
-place as a fallback but delegates selection to the Run250 relevance ranker.
+place as a fallback but delegates selection to the current relevance ranker.
 
 Run252 hardening note:
 The production workflow executes ``run219_member_human_language_ui.py`` as a
@@ -24,8 +28,8 @@ script. In that mode the active wrapper is ``__main__`` while importing Run250
 also imports a second canonical ``run219_member_human_language_ui`` module.
 Patching only that canonical copy leaves the active CLI wrapper on the old body
 builder. ``install_body`` therefore accepts the active wrapper module explicitly
-and always binds the client-action builder to both that wrapper and the shared
-body renderer before lower layers run.
+and always binds the current builder to both that wrapper and the shared body
+renderer before lower layers run.
 
 ZERO model/provider calls.
 """
@@ -50,13 +54,7 @@ def _key(state: dict[str, Any]) -> str:
 
 
 def retire_legacy_editorial_shortlist() -> tuple[str, ...]:
-    """Disable the pre-ICP fixed shortlist while preserving its copy overrides.
-
-    Run170.4's fixed Dify/AnythingLLM/NeMo list was valid for the previous product
-    but is no longer the paid-product selection authority. Copy overrides are
-    intentionally retained because they are evidence-reviewed source-facing copy;
-    only the fixed homepage *selection* is retired.
-    """
+    """Disable the pre-ICP fixed shortlist while preserving copy overrides."""
     previous = tuple(ux2.EDITORIAL_HOME_SYNC_IDS)
     ux2.EDITORIAL_HOME_SYNC_IDS = ()
     return previous
@@ -94,7 +92,6 @@ def rank_states_for_client_action(
         if original is None:
             continue
         original["rank"] = proxy.get("rank")
-        # Lifecycle is navigation metadata, not a source fact; preserve it if Run225 set it.
         if proxy.get("stock_lifecycle"):
             original["stock_lifecycle"] = proxy.get("stock_lifecycle")
         if proxy.get("stock_lifecycle_reason"):
@@ -116,7 +113,7 @@ def assign_home_ranks_for_client_action(
 
 
 def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Client-action body using existing authoritative values only."""
+    """Work-first body using existing authoritative values only."""
     children: list[dict[str, Any]] = []
 
     summary = run219._clean(state.get("plain_summary"))
@@ -127,14 +124,14 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     children.append(body._heading("いま、どうする？"))
     children.append(body._paragraph(run219._status_summary(state)))
 
-    client_case = alignment.client_case_text(state)
-    if client_case:
-        children.append(body._heading("案件で使える場面"))
-        children.append(body._paragraph(client_case))
+    work_case = alignment.work_case_text(state)
+    if work_case:
+        children.append(body._heading("仕事で使える場面"))
+        children.append(body._paragraph(work_case))
 
     impact = alignment.business_impact_text(state)
     if impact:
-        children.append(body._heading("案件への意味（Business Impact）"))
+        children.append(body._heading("仕事への意味（Business Impact）"))
         children.append(body._paragraph(impact))
 
     topic = run219._clean(state.get("topic"))
@@ -142,14 +139,14 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._heading("なぜ今見る？"))
         children.append(body._paragraph(topic))
 
-    checks = alignment.client_check_text(state)
+    checks = alignment.work_check_text(state)
     if checks:
-        children.append(body._heading("提案前に確認すること"))
+        children.append(body._heading("使う前に確認すること"))
         children.append(body._paragraph(checks))
 
-    action = alignment.proposal_action_text(state)
+    action = alignment.work_action_text(state)
     if action:
-        children.append(body._heading("提案時の次の一手"))
+        children.append(body._heading("試すときの次の一手"))
         children.append(body._paragraph(action))
 
     update = alignment.decision_update_text(state)
@@ -193,22 +190,17 @@ def _heading_texts(blocks: list[dict[str, Any]]) -> set[str]:
 def _body_matches_client_action(
     children: list[dict[str, Any]], state: dict[str, Any]
 ) -> bool:
-    """Require the new product semantics, not only the old state signature.
-
-    This closes a migration hole where a body could be considered current merely
-    because its source fields were unchanged even though its product framing was
-    still the old broad-member framing.
-    """
+    """Require current work-first product semantics, not only source-state equality."""
     if _BASE_BODY_MATCHES is None or not _BASE_BODY_MATCHES(children, state):
         return False
     headings = _heading_texts(children)
-    required = {"いま、どうする？", "案件への意味（Business Impact）"}
-    if alignment.client_case_text(state):
-        required.add("案件で使える場面")
-    if alignment.proposal_action_text(state):
-        required.add("提案時の次の一手")
-    if alignment.client_check_text(state):
-        required.add("提案前に確認すること")
+    required = {"いま、どうする？", "仕事への意味（Business Impact）"}
+    if alignment.work_case_text(state):
+        required.add("仕事で使える場面")
+    if alignment.work_action_text(state):
+        required.add("試すときの次の一手")
+    if alignment.work_check_text(state):
+        required.add("使う前に確認すること")
     return required.issubset(headings)
 
 
@@ -224,18 +216,10 @@ def install_navigation() -> None:
 
 
 def install_body(target_run219_module: Any | None = None) -> None:
-    """Bind client-action body semantics to the active wrapper and shared renderer.
-
-    ``python run219_member_human_language_ui.py body`` executes the wrapper as
-    ``__main__``. Run250 itself imports the same file by canonical module name,
-    creating a second module object. The active module is therefore passed in by
-    Run219 so its global ``_build_children`` is replaced as well.
-    """
+    """Bind work-first body semantics to the active wrapper and shared renderer."""
     global _BODY_INSTALLED, _BASE_BODY_MATCHES
     target = target_run219_module if target_run219_module is not None else run219
 
-    # Always bind the target first. This must happen even if the shared matcher
-    # was already installed earlier in this process.
     target._build_children = _build_children
     body._build_children = _build_children
 
@@ -249,6 +233,8 @@ def install_body(target_run219_module: Any | None = None) -> None:
 def contract() -> dict[str, Any]:
     return {
         "initial_icp": alignment.ICP_LABEL,
+        "product_purpose": "work_first_decision_intelligence",
+        "client_proposal_secondary": True,
         "intelligence_engine_preserved": True,
         "deep_tech_preserved": True,
         "source_scores_preserved": True,
@@ -256,12 +242,13 @@ def contract() -> dict[str, Any]:
         "notion_schema_changed": False,
         "legacy_fixed_shortlist_retired": True,
         "client_action_body_migration_required": True,
+        "work_first_body_migration_required": True,
         "script_entrypoint_body_authority": True,
         "paid_surface": [
-            "案件で使える場面",
-            "案件への意味（Business Impact）",
-            "提案前に確認すること",
-            "提案時の次の一手",
+            "仕事で使える場面",
+            "仕事への意味（Business Impact）",
+            "使う前に確認すること",
+            "試すときの次の一手",
             "Decision Update",
         ],
         "zero_gemini_calls": True,
