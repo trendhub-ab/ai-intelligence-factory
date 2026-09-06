@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run250–254: align the paid member surface to the initial work-use ICP.
+"""Run250–256: align the paid member surface to the current work-use ICP.
 
 Run250 remains presentation-only. The Intelligence Engine, source facts, Evidence,
 canonical score/status, Deep Tech inventory and Notion schema remain unchanged.
@@ -11,6 +11,11 @@ proposal reuse remains available as a secondary outcome.
 Run254 refines the Japanese surface: avoid unnecessary first-person possessives
 such as 「自分の仕事」 when 「仕事」 is already clear. This prevents the product
 from sounding narrowly personal while preserving Work-First semantics.
+
+Run255 makes neutralization context-safe and natural. Run256 does not alter this
+renderer; it records the paid-product contract that a material Decision Update,
+when one exists, must be surfaced concretely in the monthly Brief rather than
+represented only by a generic database link.
 
 The paid surface therefore does two things:
 1. Homepage ranking uses work relevance for navigation while preserving the source
@@ -208,8 +213,6 @@ def _body_matches_client_action(
     if not required.issubset(headings):
         return False
 
-    # Run254 migration guard: a Run253 body can have the right headings while
-    # still carrying avoidable first-person possessives. Force one rewrite.
     visible = _visible_text(children)
     return not any(marker in visible for marker in _REDUNDANT_FIRST_PERSON_MARKERS)
 
@@ -246,6 +249,7 @@ def contract() -> dict[str, Any]:
         "product_purpose": "work_first_decision_intelligence",
         "subject_style": "implicit_neutral_subject",
         "client_proposal_secondary": True,
+        "decision_brief_concrete_update_required_when_material": True,
         "intelligence_engine_preserved": True,
         "deep_tech_preserved": True,
         "source_scores_preserved": True,

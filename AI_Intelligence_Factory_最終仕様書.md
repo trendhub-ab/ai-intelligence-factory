@@ -1,304 +1,165 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-05  
+最終更新: 2026-09-06  
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run210 — Documentation Freshness Guard**  
-Paid Member Sync Baseline: **Run211 — paid member sync ordering**  
-Paid Member UX Baseline: **Run215 — final current-authority action dedup**  
-Paid Member Commerce/Onboarding Baseline: **Run217 — zero-API monetization readiness / product fulfillment**  
-Paid Member Navigation/UI Baseline: **Run218 — PC-first member UX reconciliation**  
-Paid Member Human-Language UI Baseline: **Run219 — non-engineer member presentation language**  
-Paid Member Database Destination Baseline: **Run220 — canonical member DB cutover / fail-closed destination**  
-Paid Member Database Hosting Baseline: **Run221 — API-host isolation / member-view separation**  
-Article Technical Claim Precision Baseline: **Run223 — operation/API scope, performance modality, first-party date and typo precision**  
-Article Deterministic Rescue Baseline: **Run224 — zero-model performance multiplier scope rescue**  
-Stock Lifecycle Baseline: **Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management**  
-Free Article Editorial Planning Baseline: **Run226 — evidence-bounded human editorial planning / reader delight without template quotas**  
-Article Japanese Surface Integrity Baseline: **Run227 — zero-model high-confidence broken-Japanese fail-closed gate**  
-Free Article Reader Rhythm Baseline: **Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas**  
-Pipeline Modularization Baseline: **Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior zero-quality-change strangler modularization**
-Repository Organization Baseline: **Run246 — falsified repository hygiene cleanup with active/runtime asset protection**
-First Real Publish Quality Baseline: **Run248 — real-note quality calibration / eyecatch fallback parity / publication-value fail-closed**
-Final Publication Surface Baseline: **Run249 — post-assembly public-surface revalidation / malformed title-summary fail-closed**
-Eyecatch Impact Baseline: **Run181 current — diversified reader-purpose badges / fixed vector-style icons / approved background preserved**
-Production Source of Truth: **`main`**
+Production Source of Truth: **`main`**  
+Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member Presentation Sync**  
+Paid Member UX Baseline: **Run215**  
+Paid Member Commerce/Onboarding Baseline: **Run217**  
+Paid Member Navigation/UI Baseline: **Run218**  
+Paid Member Presentation Baseline: **Run219**  
+Paid Member Database Destination Baseline: **Run220**  
+Paid Member Database Hosting Baseline: **Run221**  
+Paid Product Baseline: **Run256 — Work-First / Natural Neutral-Subject / Concrete Decision Update**  
+Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
+Article Production Baseline: **Run249 + current article-quality stack**  
+Eyecatch Baseline: **Run181 current**  
+Pipeline Modularization Baseline: **Run245**  
+Repository Organization Baseline: **Run246**
 
-## 0. この仕様書の位置づけ
+> 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
-このファイルは「現在のProductionで何を守るか」を明示する現行契約である。
+---
 
-参照優先順位:
+## 0. 参照優先順位
 
-1. `main` の実行コード、テスト、GitHub Actions workflow
-2. 本ファイルの現行Production契約
-3. `README.md` の運用・リポジトリ構造
-4. `GEMINI_QUOTA_SETUP.md` 等の領域別Operator仕様
+1. `main` の実行コード・テスト・GitHub Actions
+2. 本ファイル
+3. `PAID_PRODUCT_CONTRACT.md`
+4. `README.md` / `NOTION_ACCESS_POLICY.md` / `GEMINI_QUOTA_SETUP.md` 等の領域別Operator契約
 5. `docs/reference/` の現行領域別仕様
-6. `docs/archive/` の過去Run仕様・検証記録
+6. `docs/archive/` とGit履歴
 
-旧仕様は監査用であり、現在挙動をarchive文書から推測してはならない。
+Productionコード・テスト・Fail-Closed Guardを、文書整理の都合で弱めたり旧仕様扱いしたりしない。
+
+---
 
 ## 1. 事業・商品契約
 
-AI Intelligence Factoryの事業構造:
+AI Intelligence Factoryは **note事業そのものではない**。noteは低コストの集客・SEO・信頼形成チャネルの一つであり、将来はGoogle検索、X、YouTube、LinkedIn、Zenn/Qiita、コミュニティ、紹介等から同じ有料商品へ送客できる構造を維持する。
 
-**無料note記事 → 会員募集LP → noteメンバーシップ → 会員限定Notion Decision Intelligence + Digest**
+### 初期ICP
 
-- 無料note記事はAcquisitionチャネル。
-- 有料価値は高密度な意思決定DBと会員向けDigest。
-- 記事単体を有料note商品へ戻すことを前提にしない。
-- subscriber PIIをGitHubの集計・attribution artifactへ持ち込まない。
-- Public releaseは人間の最終操作とし、note自動化はprivate draftまで。
-- Paid memberの正規入口は`AI Decision Intelligence｜会員ホーム`（Page ID `3c5479ff-dca9-8103-bff0-f2d5f408d35f`）。
-- 現行Member Presentation DBはRun220のDatabase ID `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`、Data Source ID `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`のみを正規商品とする。
-- 現行DBの物理APIホストはRun221のPage ID `3c5479ff-dca9-8178-867c-d9249a3ff5c8`。これは実装上のアクセス境界であり、会員入口ではない。
-- 会員ホームは正規Data Sourceを会員向けview/linkとして見せる。物理DB配置と会員ナビゲーションを同一視しない。
-- Run220前のDB `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` / `d1461b6f-0940-4bf9-803a-6686a37c4ba2` は`⚠️ 旧版・使用禁止｜AI・技術一覧（Run219前）`として監査用に隔離する。
-- 旧100件Data Source `ec2ac2b3-89b6-4242-89b9-e94060826fca`も`旧版・使用禁止`であり会員入口に使わない。
-- PCを会員利用の主画面とし、mobile/simple viewは補助導線として扱う。
-- LPでDigestを提供物として掲げる限り、**Digest自動生成が停止中でも**各月の提供サイクルを無提供にしてはならない。必要に応じ現在DBだけを使うhuman/zero-model Digestで履行する。
+**Web制作・マーケティング・業務改善・クリエイティブなどでAIを仕事に活用する1〜3名規模の事業者で、ツールを選び、試し、導入判断をする人。**
 
-## 2. 運用契約
+- AI専業である必要はない。
+- 「顧客からAI相談を受けること」は必須条件ではない。
+- 顧客への提案・説明は副次価値であり、商品目的へ昇格させない。
+- 「AIに興味がある個人全般」「非エンジニア全般」「法人全般」は初期ICPにしない。
+- 法人は将来の高単価市場として保持するが、PMF前に請求書・複数席・SSO・管理者機能を作り込まない。
 
-- **Daily workflowはPAUSED。**
-- Production実行は明示的なONE-SHOT / workflow_dispatchを基本とする。
-- ChatOps ONE-SHOT BridgeはIssue #71の許可済みコマンドからのみ安全にdispatchする。
-- API・外部サービス障害時はFail-Closedまたは局所的Fail-Safeとし、成功していない処理を成功扱いしない。
-- Gemini、Notion、note、GCP等の外部状態を推測で補完しない。
-- Productionの品質条件を「処理を通すため」に緩和しない。
-- Public note releaseは引き続きhuman-only。
+### 中心価値
 
-## 3. Core Intelligence Pipeline
+> **AIを全部追わなくても、仕事に使えるものがわかる。**
 
-現行`pipeline.py` / `production_pipeline.py`の主要契約:
+有料価値は「情報量」ではなく、**知る → 理解する → 仕事に使えるか判断する → 必要なら小さく試す**を短時間で進められること。
 
-Run231詳細: `docs/reference/RUN231_PIPELINE_MODULARIZATION.md`
+### 商品4層
 
-- Run235でsource normalizationの重複実装を`source_normalization.py`へ集約し、`pipeline.py`は単一正本を参照する。
-- Run236でEvidence本文のtruncate/excerpt/mergeロジックをprovider・DB非依存の`evidence_context.py`へ抽出する。`pipeline.py`には現行の動的文字数上限を束縛する薄いwrapperだけを残す。
-- Run237でEvidence Health、Subscriber Technology DB sync、月次Digest期間選択/生成の運用保守ロジックを`product_delivery_maintenance.py`へ抽出する。`pipeline.py`はlive runtime依存を渡す薄いwrapperだけを残し、Evidence Healthのzero-model契約と直近3完了月のDigest再確認順序を維持する。
-- Run238でStock済みDeep Dive候補のprofit/portfolio並べ替え、topic diversity、EVERGREEN補助、publication reliability slotのzero-model決定論ロジックを`deep_dive_portfolio.py`へ抽出する。`pipeline.py`はlive閾値・normalizer・logger等を渡す薄いwrapperだけを残す。Eligibility、Decision/Evidence/Fact条件、既存toleranceは変更しない。
-- Run239で390行の`_reader_experience_signals()` zero-API診断実装を`reader_experience_signals.py`へ機械的に抽出する。`pipeline.py`にはliveな`_article_opening_excerpt`を束縛する薄いwrapperだけを残す。既存の正規表現、閾値、status、Reader Delight / information budget判定は変更せず、`soft_only=True`を維持する。
-- Run240でAI-style composite、human-editorial depth、cross-article fingerprint等のzero-API編集自然さ診断を`editorial_naturalness.py`へ抽出する。`pipeline.py`にはliveな`ARTICLE_DISPLAY_VARIANTS`、peer memory、opening helperを渡す薄いwrapperだけを残し、既存regex・score・thresholdを変更しない。
-- Run241では低リスクな5領域を一括で抽出し、`candidate_identity.py`、`note_manuscript.py`、`gate_reasoning.py`、`screening_protocol.py`、`source_roi_policy.py`を正本化する。Gate実行本体・Gemini実行本体・Notion書込本体・Quota/Pending Retryは移動対象に含めない。`pipeline.py`はlive設定・callbackを渡す薄いwrapperを保持し、12,461行から11,497行へ964行削減する。
-- Run242ではpureなNotion payload組立、source文書/URL/HTML解析、Deferred Deep Dive queue policyを`notion_payloads.py`、`source_document_parsing.py`、`deferred_queue_policy.py`へ抽出する。Notion API書込、network acquisition/SSRF境界、Pending Retry fail-safeは`pipeline.py`に残し、11,497行から11,172行へ325行削減する。
-- Run243ではSource別Fact Discipline、Human Editorial / Reader Experience規律、Gemini応答parser、保守的なplain-text見出し昇格、月次Digest Markdown整形を`content_generation_protocol.py`へ抽出する。`generate_intelligence_report()`、Gemini呼出、品質Gate実行、Notion永続化は`pipeline.py`側に残し、11,172行から10,840行へ332行削減する。parserとDigest builderはlive callback/定数をkeyword注入する薄いwrapperで既存runtime bindingを維持する。
-- Run244ではEvidence-to-Decision sufficiencyを`evidence_sufficiency.py`へ、`build_decision_prompt()`を`content_generation_protocol.py`へ、Product Reviewのprompt/schema/parser/Technology-state rehydrateを`product_review_protocol.py`へ抽出する。Gemini/model呼出、`_call_product_review_pool()`、Product Review候補query、`run_product_reviews()`、source network/SSRF、Notion永続化、全Hard Gate実行は`pipeline.py`側に残し、10,840行から10,434行へ406行削減する。live定数/callbackは薄いwrapperから注入する。
-- Run245では数値Claim/条件照合、hype否定判定、false-negative/competitor、entity relation等の決定論Fact/Evidence検証を`fact_validation_signals.py`へ、Evidence alias展開とunsupported named-fact Source Boundary検証を`source_boundary_validation.py`へ機械的に抽出する。Gemini/model呼出、HTTP/network/SSRF取得、Product Review source reconciliation、Notion永続化、`validate_fact_gate()`を含むHard Gate実行本体は`pipeline.py`に残し、10,434行から9,972行へ462行削減する。既存regex・判定条件・fail-closed semanticsは変更せず、live定数/helperはcanonical関数を上書きしない形で薄いwrapperから再束縛する。
-- Run235/236/237/238/239/240/241/242/243/244/245はいずれもGemini model、RPD/RPM/TPM、Fact/Evidence/Decision閾値、Daily PAUSED、Public release human-onlyを変更しない。
-- Run237詳細: `docs/reference/RUN237_PRODUCT_DELIVERY_MAINTENANCE_MODULARIZATION.md`
-- Run238詳細: `docs/reference/RUN238_DEEP_DIVE_PORTFOLIO_MODULARIZATION.md`
-- Run239詳細: `docs/reference/RUN239_READER_EXPERIENCE_DIAGNOSTICS_MODULARIZATION.md`
-- Run240詳細: `docs/reference/RUN240_EDITORIAL_NATURALNESS_MODULARIZATION.md`
-- Run241詳細: `docs/reference/RUN241_BATCHED_PIPELINE_MODULARIZATION.md`
-- Run242詳細: `docs/reference/RUN242_NOTION_SOURCE_DEFERRED_MODULARIZATION.md`
-- Run243詳細: `docs/reference/RUN243_CONTENT_GENERATION_PROTOCOL_MODULARIZATION.md`
-- Run244詳細: `docs/reference/RUN244_DECISION_PRODUCT_PROTOCOL_MODULARIZATION.md`
-- Run245詳細: `docs/reference/RUN245_FACT_VALIDATION_MODULARIZATION.md`
+1. **無料note** — 知る・面白く理解する。無料品質を意図的に落とさない。
+2. **Decision Brief** — 今月、仕事で知っておく価値がある3〜7件を先に読む。
+3. **Decision Intelligence** — 必要時に全体DBで比較・根拠・リスク・履歴を確認する。
+4. **Work Action Asset** — 利用条件、判断シート、小規模検証条件、比較観点等へ落とす。大量テンプレート市場へピボットしない。
 
-- 必須観測Source: GitHub / Hacker News / arXiv / Product Hunt
-- Screening全体上限: 200候補
-- Screening batch: 25件
-- Raw Decision Score 55以上をGlobal Calibration対象とする
-- Final Decision Score 60以上をStock保存対象とする
-- Deep Diveは上位最大3件を基本とし、失敗時は次点Backfillを許容する
-- Decision品質とCommercial Valueを混同しない
-- Profit/Portfolio最適化は品質閾値・Evidence・Fact条件を迂回しない
-- Observed履歴、Source ROI、deferred state等のProduction continuity dataを保持する
+内部の Intelligence Engine は上記より広く、Deep Techを含む。内部追跡対象と会員トップ表示を同一視しない。
 
-### 3.1 Pending Retry fast lane — Run206 / Run207
+### 価格・初期商業検証
 
-`pending_retry_validation.py`はScreening済みの高価値Pending Retryだけを再処理する低コストRecovery entrypointである。
+- 標準価格: **月額1,980円**を維持して検証する。
+- 初期主要マイルストーン: **知らない実顧客10人が実際に支払うこと**。
+- 100人獲得や広告投下は、その後。
+- 決済事業者・entitlement方式は実装済みProduction事実だけを本書へ昇格させる。未検証のStripe/note checkout案をProduction完了扱いしない。
 
-- fresh collection / screeningを行わない。
-- Screening Score降順で処理する。
-- 1記事成功で即停止する。
-- 専用Gemini request budgetは**最大3 requests**。
-- fast laneでは**1回目のHTTP 503**で当該modelをそのrun中cooldownする。
-- Persistent counter、global budget、Evidence/Fact/Reader/Publication gateは迂回しない。
-- Public note releaseは行わない。
+---
 
-### 3.2 Reader Value repair — Run208
+## 2. Paid Member Production Surface
 
-`run208_reader_value_repair.py`はPending Retry fast laneに限り**Reader Value repair**を1回だけ許可する。
+### 2.1 正規会員入口とDB
 
-- repairable Reader-only failureに限定する。
-- Fact/Evidence blocker、過剰主張、非Reader Hard/Review理由が混ざる場合は発火しない。
-- Evidenceを削ってReady化することは禁止。
+正規会員入口は **AI Decision Intelligence｜会員ホーム**。
 
-### 3.3 Screening Stock lifecycle — Run225
+- Home Page ID: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`
+- 正規Member Presentation Database ID: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
+- 正規Member Presentation Data Source ID: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
+- 物理API Host Page ID: `3c5479ff-dca9-8178-867c-d9249a3ff5c8`
+- `MEMBER_PRESENTATION_ALLOW_CREATE: 'false'`
 
-Screening Stockは履歴資産として保持するが、無期限の現役候補キューにはしない。`run225_stock_lifecycle.py`はGeminiを使わず、一次情報の鮮度と限定的なdurable-source例外だけでActive Stockを管理する。
+**Run218** がNavigation/UI Authority、**Run220** がDB destination Authority、**Run221** がphysical API host separation Authorityである。物理APIホストと会員ナビゲーションを同一視しない。
 
-- **Fresh**: 0〜30日。
-- **Aging**: 31〜90日。日付不明/不正もFreshへ推測せずAgingとして扱う。
-- **Evergreen**: 91日超でもGitHub/arXivのdurable assetで、明示的な一過性event/news signalがないもの。
-- **Archive**: 91日超でEvergreen条件を満たさないもの。
-- ArchiveはNotionから削除・trashしない。履歴として保持し、active review queueと会員ホームTop3候補からだけ外す。
-- Raw Screening Stockの鮮度は`公開日`を優先し、`分析日`はfallbackに限る。再取込だけでFreshへ戻さない。
-- current/human reviewが明示されるmember-product側では、そのreview時刻を最優先anchorとしてFreshへ再昇格できる。
-- Content Intelligence DBの`更新状態`は書込量削減のためblankをFreshのcanonical encodingとし、Aging / Evergreen / Archiveだけを必要時にmaterializeする。
-- `stock_lifecycle_reconcile.py`は`評価状態=Stocked`だけを対象に`更新状態`以外を変更しない。Score / Decision / Evidence / Article state / URL / source textは不変。
-- `run225_portfolio_lifecycle.py`はRun131の後にinstallし、Archiveを除外した後のranking/diversityは既存Run131へ完全委譲する。
-- `run225_member_lifecycle_ui.py`はRun170〜Run215のcurrent-copy authorityを置換せず、最終homepage ranking境界だけでFresh/Evergreen→Agingの順に優先しArchiveへrankを与えない。
-- `.github/workflows/stock-lifecycle-reconcile.yml`はmanual ONE-SHOTのみ。`plan`はread-only、`apply`は`RECONCILE_STOCK`確認必須。Daily PAUSEDとPublic release human-onlyを変更しない。
-- Gemini/model callは0、record deletionは0。
+### 2.2 旧DBの隔離
 
-詳細: `docs/reference/RUN225_STOCK_LIFECYCLE.md`
+以下は履歴・回帰監査のため残すが、現行destinationとして使用しない。
 
-## 4. 品質・Evidence契約
+- Pre-Run220 Database ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` — **旧版・使用禁止**
+- Pre-Run220 Data Source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2` — **旧版・使用禁止**
+- Legacy Data Source ID: `ec2ac2b3-89b6-4242-89b9-e94060826fca` — **旧版・使用禁止**
 
-維持すべき不変条件:
+旧100-row Member DB系を新しいcanonical destinationへ戻さない。DB自動生成はfail closedで、勝手に別DBへ切り替えない。
 
-- Fact / Evidence / Decisionの整合性
-- Primary Sourceを優先するEvidence authority
-- Publication readinessのFail-Closed
-- Human Appeal / reader-first編集品質
-- 非エンジニアでも核心が理解できる平易さ
-- Evidenceを削って「読みやすさ」を作らない
-- 比喩・会話調は理解補助でありEvidenceではない
-- Reader Experience診断を理由に重大Fact/Evidence gateを緩めない
+### 2.3 Member UX契約
 
-### 4.1 Technical Claim Precision — Run223
+- **PC-first**。PCを主要会員体験とし、モバイル/simple viewはsecondary fallback。
+- 会員トップの **live Top3** は実データから生成し、手書き固定カードへ戻さない。
+- `今月の重要変化` はsource semanticsを改変しない。
+- Presentation-only fallbackでは `評価の変化 >= 20` または `評価の変化 <= -20` を大きな変化の補助条件として扱う。
+- 表示都合でsourceのmonthly checkboxやcanonical Decision/Evidenceを書き換えない。
 
-`run223_technical_claim_precision.py`は、初回note実機全文監査で露呈した技術Claimの狭い精度欠陥をzero-modelで防ぐ。
+2026年9月 Decision Brief Page ID: `3d0479ff-dca9-81de-b614-fef528d2f32c`  
+AI活用判断シート Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 
-- 同名パラメータでもメソッドごとに値・意味が異なる場合、1つの設定値へ丸めない。
-- 一部/特定/lossyなBreaking Changeを「全面禁止」「すべて廃止」へ一般化しない。
-- x倍・%改善・レイテンシ等が期待値/ベンチマーク/測定例なら、主体・モダリティ・条件を保持し、workload/環境依存の留保を落とさない。
-- 一次情報の`公開・更新`日はfirst-party本文/明示metadataだけを使い、収集日・分析日・発見元投稿日を代用しない。確認不能なら推測せず省略する。
-- `によるな処理`等の既知の明白な日本語助詞崩れをPublication前に局所blockする。
-- Evidence閾値、Decision Score、Gemini request budgetは変更しない。
-- Run223はPublication Contract fingerprint対象であり、policy変更後の旧Ready原稿は現行policyで再構築・再stampされるまでfail-closedとする。
+### 2.4 Member同期・Commerce互換契約
 
-詳細: `docs/reference/RUN223_TECHNICAL_CLAIM_PRECISION.md`
+**Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
 
-### 4.2 Performance Multiplier Deterministic Rescue — Run224
+**Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。自動生成停止を「Digest提供停止」と読み替えない。
 
-`run224_multiplier_deterministic_rescue.py`は、Run223が`performance_multiplier_scope_lost`を検出した場合だけ発火するzero-model局所救済層である。
+---
 
-- Run223が一次情報内の同じ倍率とbenchmark/expectation scopeを確認済みの場合に限る。
-- 対象の性能倍率・その他数値・Evidence・Decision・Score・URLは変更または削除しない。
-- 対象文の直後に、一次情報で示された特定条件下の目安であることと、実際の改善幅が処理内容・条件・実行環境によって変わる留保だけを追加する。
-- fenced codeとMarkdown headingは編集しない。
-- 同じqualifierを二重追記しない。
-- 既存subtractive rescueの変更を保持し、`_rescue_loss`を悪化させない。
-- Rescue後もFact / Editorial / Publication / Human Appeal Gateを通常どおり再評価し、残るHARD/REVIEWを迂回しない。
-- Gemini/model callは0。Public note releaseも行わない。
-- Run224はPublication Contract fingerprint対象であり、policy変更後の旧Ready原稿は現行policyで再構築・再stampされるまでfail-closedとする。
+## 3. Decision Brief / Decision Update 契約 — Run256
 
-詳細: `docs/reference/RUN224_MULTIPLIER_DETERMINISTIC_RESCUE.md`
+Decision Briefは静的な「今月のおすすめ一覧」だけにしない。
 
-### 4.3 Human Editorial Planning — Run226
+- 今月の主要候補を3〜7件へ絞る。
+- `使う / 試す / 待つ / 避ける` の判断を出す。
+- 仕事への意味、確認事項、次の一手を短く示す。
+- **仕事上の判断を変えるmaterial changeが存在する場合、少なくとも1件は具体例をBrief本文へ出す。** 一覧リンクだけで代替しない。
+- material changeがない月は、無理に変化を作らず **「重要な判断変更なし」** を価値として示す。
+- 生の `82 → 91` を継続課金価値の中心にしない。何が変わり、判断を変える必要があるかへ翻訳する。
+- 既存のStatus変更・Decision Score差分・INITIAL判定を壊さない。
+- 表示ロジックのためにNotion schemaを増やさない。
+- 表示ロジックのためにGemini/model APIを追加しない。
 
-`run226_reader_delight_planning.py`は無料note記事の既存生成requestに、Evidence境界内の**生成前編集計画**だけを追加する。人間らしさを後付けの口語表現で作るのではなく、同じ既存model callの中で、記事を書く前に以下の5つの編集レンズを内部設計する。
+material change表示は、既存履歴から可能な範囲で **変更 / 現在の判断 / 理由 / 根拠 / 次のAction** を明示する。Evidenceが記録されていない場合は捏造せず、その事実を明示する。
 
-- **Reader Tension**: 非エンジニア読者が何を疑問・困りごととして受け取るか。
-- **Discovery**: 単なる発表要約ではない「そういうことだったのか」という記事固有の核心。
-- **Concrete Consequence**: Evidenceで直接支えられる範囲の仕事・選択・使い方・導入判断への意味。
-- **Explanation Bridge**: 専門知識がなくても技術的な芯へ到達できる説明順。比喩・問い・scene・会話調は任意であり必須ではない。
-- **Editorial Point of View**: Evidenceと既存Decisionから導く編集者の視点を記事全体へ自然に通す。
+Decision Updateは Changed / New / Unchanged-important を扱えるが、個別Watchlistや通知パーソナライズはPMF前に実装しない。
 
-Production契約:
+2026年9月の編集上の確認例:
+- `FlowiseAI/Flowise` — 公式GitHub Archivedを根拠に、新規AIワークフロー基盤としてはAVOID、既存構成の保守・移行判断に限定する例。runtimeへこの固有例をhard-codeしない。
 
-- 5レンズは内部planningであり、本文の5見出しや固定順序として出力しない。
-- Evidenceにない数値baseline、時間、金額、日付、人物、会話、引用、利用場面、普及/トレンド、競合roadmap、因果、多数派認識を「分かりやすさ」のために創作しない。
-- sourceの倍率・%改善を具体的な時間/金額/件数へ換算するのは、baselineと換算後の値の双方がSOURCE BOUNDARYで直接確認できる場合だけ。
-- Hook分類、比喩、問い、短文段落、箇条書き、会話マーカー等に回数ノルマ・均等配分を設定しない。style countだけを新しいHard Gateにしない。
-- 入口・見出し順・段落順・Decision Voice位置は記事固有のEvidence/Discoveryから決め、固定テンプレートにしない。
-- 既存Run126〜Run144 Reader Experience / Human Appeal診断を維持し、Fact / Evidence / Decision / Run223 / Run224 / Publication Contractを緩めない。
-- 既存`build_decision_prompt`の出力schemaとbase promptを保持し、その末尾へ契約をidempotentに追加する。
-- 新規Gemini/model call siteは0。既存記事生成requestだけを使う。
-- Run226はPublication Contract fingerprint対象であり、旧policyのReady稿を新policy Readyとして流用しない。
-- Daily PAUSED、Public note release human-onlyを変更しない。
+---
 
-詳細: `docs/reference/RUN226_READER_DELIGHT_PLANNING.md`
+## 4. Core Intelligence Pipeline
 
-### 4.4 Japanese Surface Integrity — Run227
+Production pipelineは、候補収集 → Screening → Deep Dive / Evidence → Decision → Stock / Member DB → 無料記事候補という既存契約を維持する。
 
-Run226導入後の初回FULL ONE-SHOT実記事監査で、Fact/Evidence/Reader Gateを通過したReady稿に`結果はでした。`、`計算はに速くなる`、`FP4を過度に適応すると`という明白な日本語崩れが残った。`run227_japanese_surface_integrity.py`は、この種の**高信頼で機械判定できる表層破損だけ**をzero-modelでPublication前にFail-Closedする。
+重要な非交渉事項:
 
-- 述語欠落型の`結果はでした。`、比較・変化語彙直前の`はに`助詞衝突、技術対象を不自然に`〜を適応する`とする狭い他動詞誤用を検出する。
-- `モデルが環境に適応する`、`方式を環境に適応させる`、`FP4を適用する`等の妥当な近接表現はblockしない。
-- code fence / inline codeは検査対象外とし、コード文字列によるfalse positiveを避ける。
-- deterministic自動書換えはしない。欠けた述語・副詞・意図語を推測すると意味を変えるため、通常のbounded retryへ局所修正指示だけを渡す。
-- retryでも新しいFact・数値・人物・因果を補ってはならない。
-- Fact / Evidence / Decision / score / source URL / Gemini request budgetを変更しない。
-- Run227はPublication Contract fingerprint対象であり、旧policyのReady稿は現行policyで再生成・再検証・再stampされるまでnote Ready queueで投稿可能扱いにしない。
-- Daily PAUSED、Public note release human-onlyを変更しない。
+- Fact / Evidence / DecisionのHARD BLOCKを商品都合で弱めない。
+- 一次情報・Evidence境界を保持する。
+- Source scoreを顧客適合度へ置換しない。
+- Deep Techを削除しない。
+- canonical DBと会員表示層を分離する。
+- 429 / 404 / 503等はFail-Closedまたは既存Retry Budgetに従う。
+- Google Search GroundingはOFF。
+- 新しい有料APIを追加しない。
+- Gemini/model呼出しを表示専用ロジックへ追加しない。
 
-詳細: `docs/reference/RUN227_JAPANESE_SURFACE_INTEGRITY.md`
+Pipeline modularizationの現行境界はRun245を基準とし、巨大な単一ファイルへ機能を戻さない。
 
-### 4.5 Reader Rhythm Planning — Run228
+### 4.1 Active runtime manifest — Documentation Freshness Guard対象
 
-Run226初回FULL ONE-SHOTでは記事固有の切り口・Curiosity Pullは改善した一方、複数稿が`reader_value_review:dense_report_cluster`を残した。問題はEvidence不足ではなく、**Factが「理解→意味→判断」へ変換される前に次のFactが積み上がる報告書密度**である。`run228_reader_rhythm_planning.py`は既存生成requestの内部planningだけを追加し、この密度を下げる。
-
-- 技術Fact・ベンチマーク・実装詳細を連続列挙するだけで終わらず、必要な説明から読者の理解・意味・Decision consequenceへ前進してから次の詳細へ移る。
-- 記事には主要な説明軸を通し、核心理解・重要制約・Decisionのどれにも影響しない副次的実装列挙は無理に詰め込まない。
-- Evidence上重要な数値・条件・反証・制約は削除しない。読みやすさはEvidence削減ではなく、重複・汎用前置き・Decisionに不要な周辺列挙の整理で作る。
-- 専門語はその場で普通の言葉へ橋渡しし、辞書型の定義列挙を増やさない。
-- table/listが正確で短く理解できる場合は使ってよく、読み物化のためだけに散文へ崩さない。
-- scene、比喩、問い、短文、会話調、感情語を温度調整の装飾として義務化しない。
-- 文長・段落文数・問い・比喩・箇条書き・見出し数に回数ノルマを設けず、固定構成へ揃えない。
-- セキュリティや障害等、軽さが不適切なテーマでは明快さ・発見・判断可能性をReader Delightとして扱う。
-- 新しいFact、数字、人物、会話、利用実績、因果、競合情報をReader Rhythmのために創作しない。
-- 新規Gemini/model call siteは0。Fact / Evidence / Decision / Reader Value / Publication Gateは変更・迂回しない。
-- Run228はPublication Contract fingerprint対象であり、旧policy Ready稿を現行policy Readyとして流用しない。
-- Daily PAUSED、Public note release human-onlyを変更しない。
-
-詳細: `docs/reference/RUN228_READER_RHYTHM_PLANNING.md`
-
-### 4.6 First Real Publish Quality Calibration — Run248
-
-初回の実Production → note private-draft E2Eは自動化経路そのものを実証した一方、**内部診断が複数のReader Experience弱点を検知しているのにReadyへ到達すること、Semantic Eyecatch 503 fallbackで現行デザイン契約が失われること、note表層のリンク/商品名称/日本語崩れが残ること**を実物で確認した。`run248_first_real_publish_quality_calibration.py`は、この実機差分だけをzero-provider-callで校正する最終公開品質層である。
-
-- アイキャッチの**背景・右側イラストは現行承認デザインを変更しない**。背景再設計や別テーマ画像への置換はRun248の対象外。
-- Semantic Eyecatch directorが503等でfallbackしても、前景コピーは現行契約を維持する。強調色は`#F28C28`、タイトルは従来fallbackより大きく、Run181の下方向30px調整を維持する。
-- `LLM`等の短いLatin/model tokenや短い括弧・引用内フレーズを行途中で分断しない。2/3行候補の中でまず可読フォントサイズを最大化し、その後に行数・自然な切れ目・バランスを評価する。
-- Semantic layoutが得られなかった場合も追加Gemini requestは行わず、既存の承認背景とRun181/183系rendererで前景だけをdeterministicに再描画する。
-- `補助Evidence`の裸URL bulletは公開manuscriptで明示Markdown linkへ変換し、note editorでクリック可能にする。URL自体、Evidence内容、一次情報authorityは変更しない。
-- 公開CTAの商品名称は**`月次ダイジェスト`**に統一し、会員価値を「採用・様子見・見送り」の判断に必要なEvidence / Actionを継続整理するものとして明示する。
-- Accessibility / Curiosity Pull / Reader Enjoyment / Narrative Pull / Jargon Translation / Non-Engineer Core Clarity / Information Budget / Reader Temperature Rhythmのうち**4軸以上が同時にREVIEW**なら、単独soft signal扱いのままReadyへ通さずHuman Appeal上のeditorial reviewへ昇格する。
-- Accessibility / Jargon Translation / Non-Engineer Core Clarityが3つ同時にREVIEWの場合も、非エンジニアへの核心到達失敗としてeditorial reviewへ昇格する。
-- 初回実稿で確認した`開発速度をに高める`型の狭い助詞衝突、`主主要`、`眼砲`をhigh-confidence Japanese surface failureとしてzero-modelでblockする。広い辞書推測や意味を変える自動修正はしない。
-- 既存記事生成requestの末尾に、スマホ可読性、専門語の平易な橋渡し、記事固有の発見/意味、日本語表層の最終読み直しを要求する。ただし新しいFact・数値・人物・引用・因果を追加してはならない。
-- Fact / Evidence / Decision / score / source URL / Gemini daily budgetを緩めない。追加model call siteは0。Public note releaseはhuman-onlyを維持する。
-- Run248はPublication Contract fingerprint対象。policy変更前のReady原稿は現行Run248 policyで再構築・再検証・再stampされるまでnote投稿対象にしない。
-
-### 4.7 Final Publication Surface Gate — Run249
-
-Run248後の実`article_validation`で、通常Gate通過後に組み立てる公開タイトルと「30秒でわかるこの記事」に括弧不整合・文途中の要約が残り、Reader Experienceの弱点が最終公開面で再発してもReadyへ到達できる境界を確認した。`run249_final_publication_surface_gate.py`はこの後段だけをzero-provider-callで再検査する。
-
-- Human Appeal評価時に、公開タイトル・30秒要約・本文から最終note公開面の決定論projectionを作り、既存Reader Experience診断を再利用する。
-- Final projectionでRun248のmulti-axis reader weakness / non-engineer access failureが成立する場合、`reader_value_review:`としてNeeds Editorial ReviewへFail-Closedする。Reader-only不良を直すための追加Gemini retryは増やさない。
-- 公開タイトルの`「」` / `『』`の孤立・不整合をhigh-confidence defectとして止める。
-- `何が出た？` / `なぜ重要？` / `結論は？`の単独回答が`、` / `，` / `,`で終わる明確な文途中fragmentを止める。広い日本語文法推測は行わない。
-- Run248のhigh-confidence Japanese surface failureもfinal projectionで再確認する。
-- 補助Evidence link直後に標準免責文が連結した場合は空行だけをdeterministicに補う。URL・Evidence・Decision・免責文本文は変更しない。
-- Gemini/provider追加callは0。Fact / Evidence / Decision / score / quota / eyecatch背景・右側イラスト / Public release human-onlyを変更しない。
-- Run249はPublication Contract fingerprint対象であり、旧policy Ready稿は現行policyで再生成・再検証・再stampされるまでnote投稿対象にしない。
-
-詳細: `docs/reference/RUN249_FINAL_PUBLICATION_SURFACE_GATE.md`
-
-### 4.8 Eyecatch Impact Hierarchy — Run181 current
-
-現行`run181_eyecatch_visual_balance.py`は、承認済みの白背景・右側network illustrationを維持したまま、note一覧での視認性を高めるcopy-led前景階層を担当する。今回のbadge改善は新しいRunを追加せず、既存Run181の責務として実装する。
-
-- `初心者向け`を汎用fallbackにしない。明示的な初心者・入門cueがある記事だけに使用する。
-- reader-purpose badgeは`初心者向け` / `比較で理解` / `安全性を確認` / `論文をやさしく` / `実務で判断` / `最新動向を理解` / `仕組みを理解` / `開発で使う` / `データを理解` / `要点を理解`から決定論で選ぶ。汎用fallbackは`要点を理解`とする。
-- badge分類は表示メタデータだけであり、Fact / Evidence / Decision / score / article body / publication eligibilityを変更しない。
-- 各badgeにはPillow primitiveだけで描く固定vector-style iconを割り当てる。外部SVG、画像生成API、icon生成API、追加Gemini requestは使わない。
-- フォントauthorityはRun179を維持する。主タイトルはNoto Sans JP Black 900、日本語support copyはNoto Sans JP Medium 500、Latin UIはInter Bold 700を基本とし、既存system Noto/Lato fallbackを保持する。
-- 主タイトルのlarge/lower hierarchy、Run182/183のorange `#F28C28` emphasis、source-bounded subheadline、category/date footerを維持する。
-- 背景・右側illustration・brand・top tagsは既存`editorial_eyecatch` drawing functionを使い、`x >= 820`のapproved surfaceを変更しない。
-- Run248 fallbackも同じ現行Run181 rendererへ戻るため、Semantic layout失敗時にも旧badge/旧foregroundへ逆戻りしない。
-- Public releaseはhuman-only。追加provider/model callは0。
-
-詳細: `docs/reference/RUN181_EYECATCH_IMPACT_HIERARCHY.md`
-
-## 5. Production runtime layer
-
-`production_pipeline.py`は現行Production entrypointであり、以下を明示順でinstallする。
+`production_pipeline.py` が現在保護するactive runtime layerは以下。Documentation Freshness Guardは、これらがcanonical仕様から無言で消えた場合Fail-Closedする。
 
 - `run203_runtime_state_channel.py`
 - `gemini_timeout_rpd_fail_closed.py`
@@ -327,303 +188,186 @@ Run248後の実`article_validation`で、通常Gate通過後に組み立てる�
 - `run249_final_publication_surface_gate.py`
 - `run194_publication_contract.py`
 
-Run番号が古く見えても現役Production codeである。整理目的だけで削除・rename・統合してはならない。
+この一覧は「古いRun番号だから削除してよい」という意味ではない。現在のruntime manifestから外す場合は、実装・回帰・仕様・Guardを同時に意図的更新する。
 
-### 5.1 Runtime state — Run203
+---
 
-`run203_runtime_state_channel.py`はGemini Persistent Counter等をProduction continuity stateとして扱う。
+## 5. Gemini / Provider契約
 
-- reservation前にwritability/state preflightを行う。
-- `.runtime/`は生成ゴミではなく保護対象。
+- 基本はGemini Free Tier運用。
+- ONE-SHOTのFlash安全上限は現行Guardに従う。
+- RPD/RPM/TPM、Retry Budget、安全弁を超えて無理に実行しない。
+- API枯渇・quota不明時は推測で実行しない。
+- Geminiは記事生成等の限定された生成担当であり、主要な設計判断・コード判断のAuthorityにしない。
+- Geminiの生成結果はEvidence / tests / 別ロジックで検証する。
+- ZERO-provider-callで可能な表示・監査・移行はZERO-provider-callを優先する。
 
-### 5.2 Gemini timeout RPD — Run209
+Run209 quota / retry保護:
 
-`gemini_timeout_rpd_fail_closed.py`はtransport/watchdog timeoutでもprovider側RPDが消費され得る実測に合わせ、**pre-send reservationを巻き戻さない**。
+- pre-send reservationを巻き戻さない。
+- timeout後に「未使用だった」と推測してquotaを返却しない。
+- Pending Retry fast laneは **最大3 requests**。
+- **1回目のHTTP 503** を観測した場合は既存cooldown契約に従う。
+- `Reader Value repair` の追加消費を既存budget外へ拡張しない。
 
-- 3.5 / 3.6 / 3.7 FlashのFactory daily safety ceilingは18。
-- Provider上限20まで使い切る方向へ変更しない。
-- timeoutでProduction RPD残量を増やさない。
-- Google AI Studio Rate Limitsを最終的な外部実態として優先する。
+詳細は `GEMINI_QUOTA_SETUP.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
 
-詳細は`GEMINI_QUOTA_SETUP.md`を参照する。
+---
 
-### 5.3 Paid member product sync — Run211
+## 6. 無料note記事契約
 
-会員向けNotion商品は次の順序で派生更新する。
+無料noteはAcquisitionであり、品質を下げてPaywall gapを作らない。
 
-**Source/Product Review更新 → Subscriber Decision Brief Sync → Member Presentation Sync**
+読者体験:
 
-- Daily / ONE-SHOT完了後はまずSubscriber Decision Brief Sync。
-- Member Presentation Syncはその成功後に実行し、Source workflowと並列に走らせない。
-- Subscriber Inventory Bootstrapは**apply**のみ同期チェーンへ接続する。
-- **Inventory plan**は0-API/read-only契約を維持する。
-- 両member writerは`member-derived-notion-writes`で直列化する。
-- 派生同期はGemini APIを使用しない。
-- `主なリスク` / `向いている用途` / `向いていない用途`等はSource値を同期し生成し直さない。
-- `関連記事`は確定URLがある場合だけ伝播する。
+- 中学生〜非エンジニアでも核心を理解できる。
+- 専門性・Evidence・Decision価値は維持する。
+- 読み物として面白く、再訪したくなることを重視する。
+- 身近な例・比喩・語り口は理解補助として使うが、事実を捏造しない。
+- 固定テンプレート感、AI glue、短文連打、機械的列挙を避ける。
+- Reader Experience / Human Appeal / Editorial Naturalnessを独立監査する。
 
-### 5.4 Paid member presentation copy authority — Run212
+### Run226 Reader Delight Planning
 
-`run212_member_review_copy.py`はarchive Product Reviewを現在判断として復活させず、読者向けcopyだけを限定利用する。
+**Run226** / `run226_reader_delight_planning.py` は、Evidence境界を保持したまま記事設計に人間的な編集視点を入れるactive layerである。Reader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of Viewを編集レンズとして使うが、**回数ノルマ**や固定Hook配分へ変換しない。比喩・問い・scene・会話調は、理解を自然に助ける場合だけ使う。
 
-- archiveで利用できるのは`plain_summary`と`topic_trigger`のみ。
-- historical score/status/reason/risk/best-for/avoid-for/Evidence/URLは現在stateを上書きしない。
-- stale/time-sensitive archive copyは捨てる。
-- zero-Geminiを維持する。
+Article production surface:
 
-### 5.5 Paid member topic specificity — Run213
+- Run248: real-note quality calibration
+- Run249: final assembled public-surface revalidation
+- Public releaseは**human-only**。自動化はprivate draftまで。
 
-`run213_member_topic_specificity.py`はRun212後にも残るdeterministic generic topicだけを現在情報で補う。
+### Eyecatch
 
-- post-Run212 `今回の話題` がgenericな場合だけ**現在の `判断理由`**を利用できる。
-- 非generic topicは上書きしない。
-- role separationを維持する。
-- `Safety 根拠` / `Transfer 根拠`等の既知artifactだけ狭く修正する。
-- 新しいFact/判断を生成しない。
+Run181 currentを基準とする。
 
-### 5.6 Paid member action specificity — Run214
+- 1280×670
+- approved background/right illustrationを保持
+- title 2行推奨、最大3行許容
+- オレンジ強調 `#F28C28`
+- reader-purpose badge / category/date / source-bounded subcopy
+- Productionでapproved background/illustrationを勝手に置換しない
 
-`run214_member_action_specificity.py`は既知deterministic action templateだけを現在文脈で具体化する。
+---
 
-- 元action本文、件数、人数、期間、比較指標を保持する。
-- current `向いている用途`を最優先し、なければcurrent non-generic `今回の話題`を使う。
-- explicit/source-specific actionは上書きしない。
-- Decision/Evidence stateを変更しない。
+## 7. Notion / Member Data契約
 
-### 5.7 Paid member final action dedup — Run215
+- Member Presentation DBは会員向け読みやすさを担う表示層。
+- canonical Decision / EvidenceをPresentation都合で壊さない。
+- schema変更は必要性が明確な場合のみ。
+- PIIをGitHub artifactへ持ち込まない。
+- Notion write先はfail-closedで解決する。
+- CI greenだけで本番反映完了としない。実Notionの見出し、順位、copy、source preservationを直接監査する。
+- Physical API hostとlinked viewsの役割を分離し、Run221のhosting boundaryを維持する。
 
-`run215_member_action_final_dedup.py`は残存action重複だけを解消する。
+Run250–256で確立したproduct presentation:
 
-- specific current `向いている用途`を引き続き最優先する。
-- 既知generic best-for fallbackだけをcurrent non-generic topicへ退避できる。
-- current topicがgeneric/空欄なら重複解消だけを目的に文章を捏造しない。
-- explicit actionや既存検証条件を変更しない。
-- Decision/Evidence stateを変更しない。
+- Run250: initial paid-product presentation overlay
+- Run251: legacy fixed shortlist retirement
+- Run252: `__main__` production script-entrypoint authority
+- Run253: Work-First correction
+- Run254: unnecessary first-person removal
+- Run255: context-safe / natural neutralization
+- Run256: concrete Decision Update + documentation reconciliation
 
-### 5.8 Paid member commerce / onboarding — Run217
+### Member表示順
 
-Run217は商品履行・Digest・legacy隔離の履歴Baselineである。NavigationはRun218、DB destinationはRun220がcurrent authority。
+会員向け詳細は既存canonical値を使い、原則として次を表示する。
 
-- Run217当時の206件DB `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` / `d1461b6f-0940-4bf9-803a-6686a37c4ba2` は現在`⚠️ 旧版・使用禁止｜AI・技術一覧（Run219前）`。
-- 旧100件Data Source `ec2ac2b3-89b6-4242-89b9-e94060826fca`も使用禁止。
-- Run217ホーム`3d0479ff-dca9-819e-9da0-c951225de6b3`は`【旧・統合済み】`で新規会員入口に使わない。
-- `会員限定Digest｜2026年9月 初回版`はzero-modelで作成された。
-- `今月の重要変化`とPriorityは意味を分離し、表示目的でフラグを偽装しない。
-
-### 5.9 Paid member navigation / UI — Run218
-
-Run218はPC中心のCurrent Navigation/UI Baselineである。
-
-- 正規会員入口: `AI Decision Intelligence｜会員ホーム`
-- Page ID: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`
-- **PC-first**、mobile/simple viewは補助。
-- Top3は`注目順位 <= 3`へ追随する**live Top3**。
-- Shortlistを100件超の広域リストへ戻さない。
-- 主要viewは会員向け列を優先しinternal sync identifierを通常表示しない。
-- `今月の重要変化` source semanticsは維持する。
-- authoritative historyに`評価の変化 >= 20`または`<= -20`が存在する場合はpresentation-only fallbackとして表示できる。
-- 説明のない空表をprimary surfaceに置かない。
-- 会員ホームは正規Data Sourceへの会員向けview/linkを提供する。物理DBをホーム直下へ置くことはUX契約ではなく、物理配置はRun221に従う。
-
-### 5.10 Paid member human-language UI — Run219
-
-`run219_member_human_language_ui.py`は非エンジニアが抵抗なく読める会員本文を生成するPresentation層である。
-
-会員本文の主要ラベル:
-
-- `このAI・技術をどう見る？`
+- `これは何？`
 - `いま、どうする？`
-- `そう判断した理由`
-- `気をつけたいこと`
-- `こんな使い方に向いています`
-- `こんな使い方には向きません`
-- `確認に使った公式・一次情報`
+- `仕事で使える場面`
+- `仕事への意味（Business Impact）`
+- `なぜ今見る？`
+- `使う前に確認すること`
+- `試すときの次の一手`
+- material changeがある場合 `Decision Update｜判断を変える必要がある？`
+- 公式・一次情報
 
-- body summaryではADOPT / TEST / WATCH / AVOIDコードを前面表示せず日本語の行動意味を示す。
-- DBの判断値・score・Evidence・Factを変更しない。
-- cached/no-op pageは不要なNotion通信を行わない。
-- Gemini/provider pathを持たない。
+Source score / Decision / Evidence / Deep Tech分類を顧客適合のために改変しない。ICP relevanceはNavigation-only。
 
-### 5.11 Canonical member DB cutover — Run220
+### 日本語表現
 
-Run219本番検証で、workflowの同期先と会員ホームの参照DBが別になっているsplit-brainを発見した。Run220以降、会員商品DBは1つに固定する。
+主語省略を基本とする。
 
-Current canonical destination:
+- `自分の仕事に使える` → `仕事に使える`
+- `自分の利用条件` → `利用条件`
+- `自分の作業時間` → `作業時間`
 
-- Database ID: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
-- Data Source ID: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
-- Physical API host Page ID: `3c5479ff-dca9-8178-867c-d9249a3ff5c8`（Run221 authority）
+ただし `自分だけ / 少人数 / チーム` のように主体差が意味を持つ場合は残す。中立化より自然で意味が保たれる日本語を優先し、`自社`を機械的に一律置換しない。
 
-Pre-cutover audit-only destination:
+---
 
-- Database ID: `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1`
-- Data Source ID: `d1461b6f-0940-4bf9-803a-6686a37c4ba2`
-- Title: `⚠️ 旧版・使用禁止｜AI・技術一覧（Run219前）`
+## 8. 運用契約
 
-Production contract:
+- **Daily workflowはPAUSED。**
+- Production実行は明示的なONE-SHOT / workflow_dispatchを基本とする。
+- Public note公開はhuman-only。
+- 外部サービス状態を推測で補完しない。
+- 成功していない処理を成功扱いしない。
+- CI greenは必要条件であり、Production実物監査の代替ではない。
+- 本番変更は小さく、回帰可能にし、Source/Evidence/Decisionを保護する。
 
-1. `provision_member_presentation_db.py`は上記canonical Data Sourceを直接verifyする。
-2. parent Database IDがcanonical Database IDと一致することをverifyする。
-3. titleが`AI・技術一覧｜判断DB`と一致することをverifyする。
-4. 不一致・読取不能なら**Fail-Closed**する。
-5. 通常Productionで別の同名DBへfallbackしない。
-6. 通常Productionで新しいPresentation DBを自動作成しない。
-7. `.github/workflows/member-presentation-sync.yml`は`MEMBER_PRESENTATION_ALLOW_CREATE: 'false'`を固定する。
-8. workflowと会員ホームの参照Data Sourceを同じcanonical IDsに固定する。
-9. Run219 human-language UIを維持する。
-10. Gemini/model APIを使用しない。
+---
 
-詳細: `docs/reference/RUN220_MEMBER_DB_CANONICAL_CUTOVER.md`。
+## 9. 回帰・反証契約
 
-### 5.12 Member DB API host isolation — Run221
+最低限、変更領域に応じ以下を通す。
 
-Run220をmainへ反映後、正規DBを会員ホーム直下へ物理移動した状態ではGitHub ActionsのNotion Integrationからcanonical Data SourceがHTTP 404となった。Run220 Fail-Closedにより別DBは作成されなかった。同じDBを元のAPI-accessible hostへ戻した後、同じmain SHAの再実行が成功したため、物理親の変更によるIntegrationアクセス継承が原因と確定した。
+- Repository-wide Falsification Guard
+- Integration Reconciliation CI
+- Synthetic Regression
+- Notion Access Policy Guard
+- Cross DB Contract Guard（該当時）
+- Documentation Freshness Guard
+- 関連unit tests / full pytest
+- Production Notion direct audit（Member UI変更時）
+- Public surface direct audit（note/article変更時）
 
-Current hosting contract:
+特に表示ロジックでは、テストが緑でも次を反証する。
 
-- Customer member home: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`
-- Canonical Database: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`
-- Canonical Data Source: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`
-- Physical API host: `3c5479ff-dca9-8178-867c-d9249a3ff5c8`
+- 実行中moduleとimport moduleのAuthorityずれ
+- stale bodyをcurrentと誤認
+- 文字列置換による不自然な日本語
+- old fixed shortlistの復活
+- Source score / Evidence / Deep Techの意図しない変異
 
-Production invariant:
+---
 
-1. 会員入口と物理APIホストを別概念として扱う。
-2. `provision_member_presentation_db.py`はcanonical DS/DBに加えてphysical API hostもverifyする。
-3. `.github/workflows/member-presentation-sync.yml`は`MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'`を固定する。
-4. physical host mismatch / unreadableはmember write前にFail-Closedする。
-5. 現行Integrationへ会員ホーム親のアクセスが明示付与・検証されるまでは、breadcrumb改善だけを目的にDBを会員ホーム直下へ物理移動しない。
-6. 会員ホームは正規Data Sourceの会員向けview/linkを表示し、内部物理ホストを会員向け案内に使わない。
-7. bootstrap parentもAPI hostを既定値とする。
-8. Run220のno-fallback / no-auto-createを維持する。
+## 10. 現在の商業優先順位
 
-Run220 post-merge再検証:
+利益に近い順に判断する。
 
-- main SHA `a3eecf70f64ddea46525b2e0225e1d94ea822b09`
-- Member Presentation Sync Run `33771347577`
-- Attempt 1: canonical resolve HTTP 404、fallback/create 0
-- API hostへ戻したAttempt 2: SUCCESS
-- `created: False`
-- source records 206 / presentation unchanged 206
-- body total 206 / unchanged 206
-- `zero_gemini_calls=true`
+**顧客需要 → 売れるか → 継続するか → 粗利 → 自動化 → 技術的完成度**
 
-詳細: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`。
+現在の優先順位:
 
-## 6. Publication Contract / note Ready契約
+1. Paid Product / LP / Offerの整合
+2. 実有料顧客10人の獲得
+3. 初月利用・継続理由の観測
+4. Decision Update / Work Actionの価値検証
+5. 集客チャネル拡張
+6. 法人版は実需要が見えてから
 
-note投稿対象はContent Intelligence側のReadyだけでは不十分。
+PMF前にやらないこと:
 
-少なくとも:
+- 広告費の大規模投入
+- 大規模SNS自動化
+- 個別Watchlist/通知の作り込み
+- 法人向け請求書・席管理・SSO・管理画面
+- 大量テンプレート販売へのピボット
+- 技術的な美しさだけを目的にした大改修
 
-- note Ready queueで投稿可能
-- current publication policy fingerprintに一致
-- manuscript caption SHAと本文bytesが一致
-- Notion `rich_text` 分割はtransport上の都合に限定し、全segmentを連結したbytesが生成時manuscriptと完全一致する
-- captionの`manuscript_sha256`は分割前だけでなく、読み戻した永続化本文でも一致しなければならない
-- 必須eyecatch assetが存在
-- historical paid-area control marker等を含まない
+---
 
-古い契約、hash不一致、asset不足を無理に復活させない。Notion保存時に改行等が1文字でも欠落したReady本文も投稿対象にせずFail-Closedする。
+## 11. Documentation Governance
 
-### 6.1 note footer / presentation integrity — Run222
+本ファイルは、商品・Production契約が変わったRunで更新する。
 
-初回の実note private-draft E2Eで、CTAがSources / Evidenceより前に置かれること、note title fieldと本文H1が重複すること、単一`#`が本文に生表示されることを確認した。Run222以降の公開表示契約は以下。
+- 現行仕様は読みやすく保つが、active runtime / Fail-Closed / customer destination / quota safetyの保護契約を「古いから」という理由で削らない。
+- 詳細な変更理由・反証記録は `docs/reference/RUNxxx_*.md` へ置く。
+- 純粋な履歴説明は `docs/archive/` とGit履歴へ置く。
+- current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の整合を保つ。
+- Documentation Freshness Guardが要求するmarkerは、テストを通すための文字列ではなく、現在Productionが依存するoperational contractとして扱う。
 
-1. 記事本文・結論の後に`Sources / Evidence`、権利/出典注記、免責を置く。
-2. `AI Decision Intelligence` CTAはそれら信頼情報の**後**、記事の最終Actionとして置く。
-3. note editorではstored Ready manuscriptをPublication Contractでbyte-exact検証した**後だけ**presentation transformを適用する。
-4. note title fieldと同一の先頭H1は本文から除去する。
-5. 残存する本文H1はcode fence外だけH2へ縮退し、raw Markdown `#`を表示しない。
-6. pre-Run222 policyでstampされた原稿は直接受理しない。現行policyでdeterministic rebuild/restampし、byte-exact readbackを通過してからnote editorへ送る。
-7. Evidence / Decision / score / source URL / article factは変更しない。
-8. Gemini/model call 0、public release action 0を維持する。
-
-詳細: `docs/reference/RUN222_NOTE_PRESENTATION_INTEGRITY.md`。
-
-## 7. note private-draft automation
-
-現行note stack:
-
-- `note_draft_automation.py`
-- `run185_note_ready_legacy_skip.py`
-- `run186_note_header_image_resilience.py`
-- `run187_note_editor_readiness.py`
-- `run188_note_header_upload_fallback.py`
-- `run189_note_editor_route_gate.py`
-- `run190_note_persistent_cloud.py`
-- `run191_note_crop_dialog_resilience.py`
-- `run193_note_official_header_upload.py`
-- `run194_note_current_contract.py`
-- `run194_note_persistent_cloud.py`
-- `run199_note_vm_preflight.py`
-- `run222_note_presentation_integrity.py`
-- `run248_first_real_publish_quality_calibration.py`
-
-`.github/workflows/note-create-draft.yml`はzero-browser / zero-Gemini preflight後、eligible candidateがある場合だけGCP Chrome VMを起動する。private draftのみ作成し、公開は人間が行う。
-
-## 8. GCP / browser cost contract
-
-- publish-safe candidateが0件ならGCP note Chrome VMを起動しない。
-- 実draft時のみpersistent Chrome VMをon-demand使用する。
-- workflow後にVM停止確認を行う。
-
-## 9. 保護対象データ
-
-通常cleanupで削除・移動しない:
-
-- `.runtime/`
-- `observed_history/`
-- `source_roi_history/`
-- `deferred_deep_dive/`
-- `eyecatch_images/`
-- `assets/`
-
-## 10. テスト・変更管理
-
-- Run番号付きtestは古い名前だけを理由に削除しない。
-- Production code semantic refactorはcleanupと分離する。
-- main反映前にRepository-wide Falsification Guard、zero-API regression、Synthetic smoke、関連CIを通す。
-
-### 10.1 Documentation Freshness Guard — Run210
-
-Canonical documentationを「後で更新する」運用は禁止する。Production変更と仕様更新を同一変更セットで扱う。
-
-CIは少なくとも次を検証する。
-
-- `production_pipeline.py` active runtime layerが本仕様書に記載されること。
-- Functional / Documentation / member-product baselineがREADMEと整合すること。
-- Gemini Flash safety ceiling 18、Daily PAUSED、AI Studio external truthが矛盾しないこと。
-- Pending Retry最大3 requests / 1回Reader repair契約が欠落しないこと。
-- Run211 member sync順序とInventory plan read-only境界を維持すること。
-- Run212 archive copy-only authorityを維持すること。
-- Run213 current `判断理由` topic fallback境界を維持すること。
-- Run214 current-context action specificity境界を維持すること。
-- Run215 specific best-for優先とgeneric fallback境界を維持すること。
-- Run217 legacy quarantine / Digest履行を維持すること。
-- Run218 PC-first / mobile-secondary、live Top3、重要変化source/presentation分離を維持すること。
-- Run219 non-engineer human-language bodyを維持し、body summaryへstatus codeを再露出させないこと。
-- Run220ではREADME / Canonical / Operator / workflowがcurrent DB `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`を指すこと。
-- Run220前DB `d6ca3c1f-cb2c-4686-b442-d9ba3923e5f1` / `d1461b6f-0940-4bf9-803a-6686a37c4ba2`を`旧版・使用禁止`として扱うこと。
-- Run221ではREADME / Canonical / Operator / workflowがphysical API host `3c5479ff-dca9-8178-867c-d9249a3ff5c8`を指し、会員ホームと物理ホストを同一視しないこと。
-- Member Presentation normal Productionが別DBを自動作成・fallback選択しないこと。
-- Member Presentation normal Productionがphysical host mismatchを受理しないこと。
-- 会員向け主要画面を説明のない空表へ退行させないこと。
-- Run222ではSources/Evidence + 免責をCTAより前に維持し、note title重複H1/raw `#`生表示を再発させない。
-- Run224ではRun223が確認した性能倍率scope lossだけをzero-modelで局所補完し、倍率・Evidence・Decision・Score・URLを変更せず、通常Gate再評価を迂回しない。
-- Run225ではScreening Stockを削除せずFresh/Aging/Evergreen/Archiveでzero-model管理し、Archiveだけをactive review / member homepageから外す。Score・Decision・Evidence・Run131・Run170〜Run215 authorityを変更しない。
-- Run226では無料記事のReader DelightをSOURCE BOUNDARY内のReader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of Viewとして生成前に設計し、固定Hook・比喩・問い・段落・箇条書き等の回数ノルマをHard Gate化しない。Evidence / Decision / 既存Gate / Gemini call数を変更しない。
-- Run227では実Productionで確認した高信頼の日本語表層破損をzero-modelでFail-Closedし、自動推測修正・Fact/Evidence/Decision変更・追加model callを行わない。旧Ready稿は現行policy fingerprintに一致するまでnote投稿対象にしない。
-- Run228ではdense-report clusterをEvidence削減で隠さず、既存生成request内でFactを理解・意味・判断へ変換するReader Rhythmを設計する。style countや固定構成を新しいHard Gateにせず、Fact/Evidence/Decision/Reader Value/Publication Gate/Gemini call数を変更しない。
-- Run248では初回実note draftで確認した多軸Reader弱点のReadyすり抜け、Semantic Eyecatch fallbackのデザイン契約喪失、補助Evidenceリンク、`月次ダイジェスト`名称、日本語表層破損をzero-provider-callで再発防止する。承認済み背景/イラストは変更せず、Fact/Evidence/Decision/Gemini call数/Public release境界を緩めない。
-
-Production behavior changeでCanonical docsがstaleになる場合、コードだけをmainへ入れてはならない。
-
-## 11. Repository organization
-
-rootは現在のoperator/canonical documentsと実行entrypointを優先し、過去Run説明は`docs/archive/`へ置く。Production continuity stateと公開参照資産は保護する。
-
-
-### Run181 title-line publication policy (2026-09-06)
-
-Eyecatch main-title line count is a yield-aware presentation contract: **2 lines are preferred; up to 3 lines are valid production output**. Three lines are used when preserving semantic chunks, protected product/model names, or readable typography needs extra vertical room. Three-line mode is not a reason to withhold an otherwise publishable article. Run181 applies a compact three-line geometry profile while retaining the approved right-side illustration/background, Noto Sans JP / Inter font contract, restrained #F28C28 emphasis, and zero additional provider/image-generation calls.
+**現在のPaid Product正本はRun256。**
