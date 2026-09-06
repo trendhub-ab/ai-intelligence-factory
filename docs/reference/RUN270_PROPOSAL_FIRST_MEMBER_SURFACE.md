@@ -87,6 +87,56 @@ Nine-field memo:
 
 Do not claim that this is automatically a complete ADR or a complete client proposal. It is a decision/proposal memo that can be reused in those workflows.
 
+## Live Notion audit — 2026-09-07 JST
+
+After the static-surface edits, all three live Notion pages were re-fetched directly and audited before merge.
+
+### Member Home audit
+
+Observed page: `3c5479ff-dca9-8103-bff0-f2d5f408d35f`
+
+PASS:
+
+- opening is Proposal-First: `顧客に「このAI・技術を使うべきか？」と聞かれたとき、根拠付きで早く答えられる。`
+- the primary purpose is customer-project technology selection, comparison, explanation, and proposal;
+- navigation is framed as `提案シーンから見る`;
+- Decision Update asks whether customer proposal / technology-selection judgment should change;
+- the judgment memo link resolves to the renamed `AI導入 判断・提案メモ｜使う・試す・待つ・避ける` page;
+- existing Decision Brief link, Member DB views, Deep Tech link, five recommended technologies, and child-page structure remain present.
+
+### September Decision Brief audit
+
+Observed page: `3d0479ff-dca9-81de-b614-fef528d2f32c`
+
+PASS:
+
+- opening is Proposal-First and explicitly addresses the customer question `このAI・技術を使うべきか？`;
+- the five existing candidates remain Dify / AnythingLLM / browser-use / ComfyUI / Cline;
+- existing decisions and scores remain Dify ADOPT 91, AnythingLLM TEST 82, browser-use TEST 81, ComfyUI TEST 86, Cline TEST 84;
+- each item uses `提案できる場面`, `顧客案件への意味`, `提案前に確認すること`, and `提案・検証の次の一手`;
+- existing DB links and official GitHub links remain present;
+- Flowise remains the concrete material-change example and is still framed as new-adoption avoidance based on the archived official GitHub state.
+
+### AI導入 判断・提案メモ audit
+
+Observed page: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
+
+PASS:
+
+- title is `AI導入 判断・提案メモ｜使う・試す・待つ・避ける`;
+- opening makes customer-project proposal judgment the primary use;
+- ADOPT / TEST / WATCH / AVOID remain unchanged;
+- the nine-field memo is present with the Run270 field names;
+- `最小検証` is customer-project-like and bounded rather than full rollout;
+- internal use and ADR reuse are explicitly secondary/reuse cases, not the product center;
+- no Notion schema change was introduced by this static-page edit.
+
+### Audit conclusion
+
+`LIVE_NOTION_STATIC_SURFACES=PASS`
+
+The static Notion product surface now matches the Run268 paid-product strategy and the Run270 member-visible Proposal-First authority without changing canonical Evidence, Decision Score/status, source data, Deep Tech inventory, or Member Presentation DB schema.
+
 ## Regression contract
 
 Run270 must fail closed if:
