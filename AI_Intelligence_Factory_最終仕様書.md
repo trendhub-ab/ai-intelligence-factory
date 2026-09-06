@@ -26,7 +26,8 @@ Integration Determinism Baseline: **Run263 — Hermetic / Locked / Zero-Provider
 Standalone Synthetic Baseline: **Run264 — Hermetic Synthetic Regression**  
 Dependency Compatibility Baseline: **Run266 — Pillow 12.1+ Production Floor / <13 Upper Bound**  
 Required PR Check Governance Baseline: **Run267 — Required contexts must be emitted for every PR to main**  
-Business / Source Strategy Baseline: **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West Coverage**
+Business / Source Strategy Baseline: **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West Coverage**  
+Acquisition Precision Baseline: **Run269 — Live Acquisition Precision / 11-Vendor Structured Smoke**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -177,6 +178,14 @@ Decision Updateは Changed / New / Unchanged-important を扱えるが、個別W
 Production pipelineは、候補収集 → Screening → Deep Dive / Evidence → Decision → Stock / Member DB → 無料記事候補という既存契約を維持する。
 
 Run268以降、Production入口 `production_pipeline.py` は歴史的runtime layerを維持したまま `run268_business_source_strategy.install` を後段適用する。Source取得戦略の変更で記事品質・Evidence・Gemini budgetのwrapper順序を変更しない。OfficialVendor取得とHN絞り込みは追加Gemini/model callを使わず、公開HTTPをboundedに利用する。Vendor単位の取得失敗はfault-isolatedとし、他Sourceを停止しない。
+
+### HackerNews Precision — Run269
+
+Run269はRun268のfour-source architectureを変更せず、実ネットワークで発見した取得精度だけを後段overlayで補正する。HNはAlgolia `search_by_date` を使い、`tags=story`、title限定、直近**30日**に絞る。raw query `AI`は使わず、結果を `_query_matches_title` で再検査し、**exact token / exact phrase** 一致のみ採用する。これにより `Qwen -> jQuery` のようなtypo tolerance由来のfalse matchをProduction候補へ入れない。
+
+OfficialVendorは `structured_html` / `structured_embedded` / `structured_current_state` / `page_fallback` を区別する。`page_fallback` は「到達できたが更新一次情報を構造化できていない」状態であり、Strict Live Smokeでは合格とみなさない。ByteDance/Volcengineの公式モデル一覧のように商用選定上の現在状態が正本となる面は、架空のrelease eventへ変換せず `structured_current_state` として扱う。
+
+Run269は `production_pipeline.py` でRun268 install後に適用し、Source architecture、Evidence/Decision、Gemini budget、Notion write経路を変更しない。Live Acquisition Smokeは11 Vendorを個別fault isolationし、Gemini/model 0、Notion write 0、Production DB write 0、公開処理0で実ネットワークだけを検査する。2026-09-07の最終Live SmokeではOfficialVendor **11/11 structured成功（US 3/3、CN 8/8、fallback-only 0）**、HN 20候補/11 query/30日を確認した。詳細は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md` を正本とする。
 
 重要な非交渉事項:
 
@@ -423,6 +432,7 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - Run262 Documentation Contract Guard
 - Run267 Documentation Contract Guard
 - Run268 Business / Source Strategy Guard
+- Run269 Acquisition Precision Guard
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -505,11 +515,15 @@ PMF前にやらないこと:
 - Run263のIntegration hermeticity / deterministic CIは `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md` と `integration_stability_guard.py` を正本とする。
 - Run264のstandalone Synthetic hermeticityは `docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md` と `integration_stability_guard.py` を正本とする。
 - Run265/266のPillow compatibility結果とRun267のrequired-check/canonical同期は `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md`
-- `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行要約を保持する。
+- `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行Source architecture / paid-product要約を保持する。
+- Run269のLive Acquisition Precision / 11-Vendor structured smoke / HN exact-match契約は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
-- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。両方をRepository-wide Falsification Guard内で実行する。
+- Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
+- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269 GuardをRepository-wide Falsification Guard内で実行する。
 
 **現在のPaid Product正本はRun268。**  
+**現在のSource Architecture正本はRun268。**  
+**現在のAcquisition Precision正本はRun269。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  
@@ -528,3 +542,14 @@ PMF前にやらないこと:
 - HNはFirebase Top Stories全巡回からbounded Algolia AI queryへ変更し、取得段階で市場・エンジニア反応へ絞る。
 - OfficialVendorは米国3 + 中国主要8を1 Source内のvendor-level round robinで公平化する。
 - Run268 guardはProduction入口、active source tuple、Vendor registry、Product contract、本仕様書、CI組込みをzero-networkでfail closed検証する。
+
+### Run269 — Live Acquisition Precision / Structured Vendor Evidence
+
+- Run268のfour-source architecture・ICP・Product contractは変更しない。
+- HN Algoliaをtitle限定・30日・exact token / exact phrase再検証へ強化し、typo toleranceのfalse matchを除外する。
+- OfficialVendorのナビゲーション文言を更新候補へ昇格させず、`structured_html` / `structured_embedded` / `structured_current_state` / `page_fallback` を区別する。
+- `page_fallback`だけではStrict Live Smokeを合格させない。
+- ByteDance/Volcengineの公式モデル一覧は架空のreleaseではなくcurrent-state一次情報として扱う。
+- 実ネットワーク最終SmokeでOfficialVendor 11/11 structured成功、US 3/3、CN 8/8、fallback-only 0、HN 20 candidates / 11 queries / 30日を確認した。
+- Live SmokeはGemini/model 0、Notion write 0、Production DB write 0、publication 0を維持する。
+- Run269 GuardはProduction install順、HN precision、Vendor registry/current-state、Live Smoke safety、canonical仕様、CI組込みをzero-networkでfail closed検証する。
