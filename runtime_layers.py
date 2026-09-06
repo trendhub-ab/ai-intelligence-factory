@@ -14,6 +14,7 @@ RUNTIME_LAYER_ORDER = (
     "run203_runtime_state_channel.install",
     "gemini_timeout_rpd_fail_closed.install",
     "gemini_transient_recovery.install",
+    "run260_gemini_model_routing.install",
     "run172_production_reliability.install",
     "run173_operational_yield.install",
     "run174_monthly_digest_integrity.install",
@@ -45,6 +46,7 @@ def install_runtime_layers(pipeline_module):
     import run203_runtime_state_channel as runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
+    import run260_gemini_model_routing
     import run172_production_reliability
     import run173_operational_yield
     import run174_monthly_digest_integrity
@@ -76,6 +78,9 @@ def install_runtime_layers(pipeline_module):
     # safety ceilings configured by Production workflows.
     gemini_timeout_rpd_fail_closed.install(pipeline_module)
     gemini_transient_recovery.install(pipeline_module)
+    # Run260 changes routing only: 3.7 is fresh Deep Dive primary, 3.8 is preferred for
+    # model-based quality repair, and existing request/gate budgets remain authoritative.
+    run260_gemini_model_routing.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
