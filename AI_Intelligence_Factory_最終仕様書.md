@@ -3,6 +3,7 @@
 最終更新: 2026-09-06  
 現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run262 — Run261 Canonical Contract Freshness Guard**  
+Documentation Freshness Foundation: **Run210 — Documentation Freshness Guard**  
 Production Source of Truth: **`main`**  
 Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member Presentation Sync**  
 Paid Member UX Baseline: **Run215**  
