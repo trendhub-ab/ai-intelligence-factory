@@ -1,16 +1,20 @@
-"""Run268 business-first source acquisition primitives.
+"""Run268/269 business-first source acquisition primitives.
 
-The paid product is not a generic news feed.  Each active source has one explicit
+The paid product is not a generic news feed. Each active source has one explicit
 job in the decision product:
 
-* GitHub        -> implementation momentum / OSS maturity
-* ArXiv         -> frontier research / technical leading indicators
-* HackerNews    -> market and engineer reaction
-* OfficialVendor-> commercial primary-source changes
+* GitHub         -> implementation momentum / OSS maturity
+* ArXiv          -> frontier research / technical leading indicators
+* HackerNews     -> market and engineer reaction
+* OfficialVendor -> commercial primary-source changes
+
+Run269 hardens the live acquisition surface after the first real-network smoke:
+- vendor navigation labels must not masquerade as release candidates;
+- vendor candidates prefer structured post-heading update content over page fallback;
+- HN is title-scoped, freshness-bounded, and no longer uses the over-broad ``AI`` query.
 
 This module intentionally contains no Gemini/model, Notion, or paid-API calls.
-HTTP is injected by callers/tests so CI can remain hermetic and fail closed on
-accidental network access.
+HTTP is injected by callers/tests so deterministic CI can remain hermetic.
 """
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ SOURCE_ROLE_CONTRACT = {
     "OfficialVendor": "commercial_primary_source",
 }
 
-# One round-robin Source, vendor metadata underneath it.  Keeping vendors inside one
+# One round-robin Source, vendor metadata underneath it. Keeping vendors inside one
 # source prevents a fast-moving vendor/region from taking eleven source slots.
 OFFICIAL_VENDOR_REGISTRY = (
     {
@@ -66,12 +70,17 @@ OFFICIAL_VENDOR_REGISTRY = (
     {
         "vendor": "ByteDance Doubao/Seed",
         "region": "CN",
-        "release_url": "https://www.volcengine.com/docs/82379/1541594?lang=zh",
+        # The previous announcement index was reachable but JS-heavy and produced only
+        # a page fallback in the first live smoke. The official "latest model" page is
+        # server-readable and changes when the commercially current Seed model changes.
+        "release_url": "https://www.volcengine.com/docs/82379/2549861?lang=zh",
         "allowed_domains": ("volcengine.com",),
     },
     {
         "vendor": "Moonshot AI Kimi",
         "region": "CN",
+        # Model list is also the official retirement/migration surface (for example,
+        # retired kimi-k2/kimi-latest notices), so it is commercially decision-relevant.
         "release_url": "https://platform.kimi.com/docs/models",
         "allowed_domains": ("platform.kimi.com", "kimi.com", "moonshot.cn"),
     },
@@ -84,7 +93,9 @@ OFFICIAL_VENDOR_REGISTRY = (
     {
         "vendor": "MiniMax",
         "region": "CN",
-        "release_url": "https://platform.minimaxi.com/docs/release-notes/apis",
+        # Run269 switched from the stale API-function log (latest 2025 in the live
+        # surface) to the current official model-release page with 2026 releases.
+        "release_url": "https://platform.minimaxi.com/docs/release-notes/models",
         "allowed_domains": ("platform.minimaxi.com", "minimaxi.com"),
     },
     {
@@ -96,33 +107,69 @@ OFFICIAL_VENDOR_REGISTRY = (
     {
         "vendor": "Tencent Hunyuan",
         "region": "CN",
-        "release_url": "https://cloud.tencent.com/document/product/1729/132069",
+        # Product dynamics contains model launch/retirement/migration events with dates;
+        # it is more useful for selection decisions than the generic announcement index.
+        "release_url": "https://cloud.tencent.com/document/product/1729/97765",
         "allowed_domains": ("cloud.tencent.com", "tencent.com"),
     },
 )
 
-# Bounded query set: market/engineer reaction, not the entire HN top-stories firehose.
+# High-precision bounded query set. The first live smoke proved that raw ``AI`` was
+# too broad (e.g. unrelated titles were returned). Algolia is additionally restricted
+# to title matching below, so HN measures explicit engineer/community reaction to AI.
 HN_AI_QUERIES = (
-    "AI",
+    '"artificial intelligence"',
+    '"large language model"',
     "LLM",
-    "AI agent",
+    '"AI agent"',
+    '"coding agent"',
     "OpenAI",
     "Anthropic",
+    "Claude",
     "Gemini",
     "DeepSeek",
     "Qwen",
 )
 HN_ALGOLIA_ENDPOINT = "https://hn.algolia.com/api/v1/search_by_date"
+HN_LOOKBACK_DAYS = 30
 
-_UPDATE_KEYWORDS = (
-    "model", "api", "release", "released", "update", "updated", "changelog",
-    "deprecat", "sunset", "retire", "migration", "pricing", "billing", "price",
-    "token", "context", "rate limit", "sdk", "openai-compatible", "openai compatible",
-    "launch", "preview", "general availability", "ga", "模型", "发布", "上线", "更新",
-    "升级", "下线", "退役", "价格", "降价", "计费", "接口", "公告", "迁移", "兼容",
+# Strong change language. Generic navigation words such as "model", "API", "pricing",
+# and "token" are intentionally NOT sufficient on their own.
+_UPDATE_ACTION_KEYWORDS = (
+    "release", "released", "releasing", "update", "updated", "upgrade", "upgraded",
+    "change", "changed", "changelog", "deprecat", "sunset", "retire", "retired",
+    "migration", "migrate", "price reduction", "price increase", "price adjustment",
+    "pricing change", "rate limit", "launch", "launched", "general availability",
+    "discontinued", "shut down", "removed", "added", "introducing", "can now",
+    "now supports", "latest model", "new model",
+    "发布", "上线", "上新", "更新", "升级", "下线", "退役", "降价", "涨价",
+    "价格调整", "价格变更", "新增", "停止", "停用", "废弃", "迁移", "变更",
+    "最新模型", "新品", "重磅推出", "正式发布",
 )
+_VENDOR_SUBJECT_KEYWORDS = (
+    "model", "api", "sdk", "agent", "token", "context", "inference", "tool",
+    "webhook", "pricing", "price", "billing", "rate limit", "compatib",
+    "模型", "接口", "智能体", "上下文", "推理", "工具", "价格", "计费", "调用",
+    "服务", "兼容", "编码", "coding",
+)
+_GENERIC_PAGE_HEADINGS = {
+    "release notes",
+    "change log",
+    "changelog",
+    "model release notes",
+    "新品发布",
+    "功能更新",
+    "模型发布",
+    "模型列表",
+    "模型更新记录",
+    "产品动态",
+    "产品公告",
+    "产品更新公告",
+    "模型发布公告",
+}
 _DATE_PATTERN = re.compile(
-    r"(?:20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}(?:日)?|"
+    r"(?:20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|"
+    r"20\d{2}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|"
     r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+20\d{2})",
     re.I,
 )
@@ -150,12 +197,7 @@ def _host_allowed(url: str, allowed_domains: tuple[str, ...]) -> bool:
 
 
 def _append_revision_identity(url: str, revision: str) -> str:
-    """Create an internal candidate identity without changing the evidence URL.
-
-    Vendor changelog pages often update in place.  ``primaryUrl`` remains the exact
-    official page; only the candidate ``url`` gets ``aif_revision`` so a material page
-    revision is not permanently hidden by URL dedupe.
-    """
+    """Create an internal candidate identity without changing the evidence URL."""
     parsed = urlparse(url)
     query = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "aif_revision"]
     query.append(("aif_revision", revision[:16]))
@@ -163,38 +205,66 @@ def _append_revision_identity(url: str, revision: str) -> str:
 
 
 class _ReleaseHTMLParser(HTMLParser):
+    """Capture useful text blocks while preserving nested parent text (e.g. table rows)."""
+
+    _SUPPORTED = {"a", "h1", "h2", "h3", "h4", "li", "time", "p", "blockquote", "tr", "td", "th", "button"}
+
     def __init__(self, base_url: str):
         super().__init__(convert_charrefs=True)
         self.base_url = base_url
-        self._capture_tag = ""
-        self._href = ""
-        self._buf: list[str] = []
+        self._captures: list[dict] = []
         self.records: list[tuple[str, str, str]] = []
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        if tag not in {"a", "h1", "h2", "h3", "h4", "li", "time"}:
+        if tag not in self._SUPPORTED:
             return
-        self._capture_tag = tag
-        self._buf = []
         attrs_dict = dict(attrs)
-        self._href = attrs_dict.get("href", "") if tag == "a" else ""
+        href = urljoin(self.base_url, attrs_dict.get("href", "")) if tag == "a" and attrs_dict.get("href") else ""
+        self._captures.append({"tag": tag, "href": href, "buf": []})
 
     def handle_data(self, data):
-        if self._capture_tag:
-            self._buf.append(data)
+        for capture in self._captures:
+            capture["buf"].append(data)
 
     def handle_endtag(self, tag):
         tag = tag.lower()
-        if tag != self._capture_tag:
+        if not self._captures:
             return
-        text = re.sub(r"\s+", " ", unescape(" ".join(self._buf))).strip()
-        href = urljoin(self.base_url, self._href) if self._href else ""
+        # Close only the nearest matching supported capture. Malformed HTML is common;
+        # unmatched wrappers are left for HTMLParser to continue rather than raising.
+        index = None
+        for i in range(len(self._captures) - 1, -1, -1):
+            if self._captures[i]["tag"] == tag:
+                index = i
+                break
+        if index is None:
+            return
+        capture = self._captures.pop(index)
+        text = re.sub(r"\s+", " ", unescape(" ".join(capture["buf"]))).strip()
         if text:
-            self.records.append((tag, text, href))
-        self._capture_tag = ""
-        self._href = ""
-        self._buf = []
+            self.records.append((tag, text, capture["href"]))
+
+
+def _normalized_heading(text: str) -> str:
+    return re.sub(r"[^\w\u3040-\u30ff\u3400-\u9fff]+", " ", (text or "").casefold()).strip()
+
+
+def _is_generic_page_heading(text: str) -> bool:
+    return _normalized_heading(text) in {_normalized_heading(value) for value in _GENERIC_PAGE_HEADINGS}
+
+
+def _looks_like_vendor_update(tag: str, compact: str, current_date: str | None) -> bool:
+    lower = compact.casefold()
+    strong_change = any(keyword in lower for keyword in _UPDATE_ACTION_KEYWORDS)
+    subject = any(keyword in lower for keyword in _VENDOR_SUBJECT_KEYWORDS)
+    if strong_change and len(compact) >= 10:
+        return True
+    # Dated list/table prose can describe a change without an explicit verb (common on
+    # Anthropic/Baidu/Tencent). Require both meaningful length and a technical subject.
+    if current_date and tag in {"li", "p", "blockquote", "tr", "td"} and len(compact) >= 24 and subject:
+        return True
+    return False
 
 
 def _extract_vendor_records(html: str, release_url: str, allowed_domains: tuple[str, ...], max_items: int) -> list[dict]:
@@ -207,26 +277,50 @@ def _extract_vendor_records(html: str, release_url: str, allowed_domains: tuple[
 
     records: list[dict] = []
     seen: set[tuple[str, str]] = set()
+    has_h1 = any(tag == "h1" for tag, _, _ in parser.records)
+    content_started = not has_h1
+    current_date: str | None = None
+
     for tag, text, href in parser.records:
         compact = re.sub(r"\s+", " ", text).strip()
-        if len(compact) < 5 or len(compact) > 500:
+        if len(compact) < 5 or len(compact) > 900:
             continue
-        lower = compact.casefold()
-        if not any(keyword in lower for keyword in _UPDATE_KEYWORDS):
+
+        if tag == "h1":
+            content_started = True
+            # Generic page titles are navigation/context, not update candidates. A
+            # specific H1 such as "最新模型：Seed 2.1" may itself be decision-relevant.
+            if _is_generic_page_heading(compact):
+                continue
+        elif not content_started:
+            # First live smoke exposed nav items such as "Models & pricing" and
+            # "Get API key" before the actual H1. Never turn pre-content nav into data.
             continue
+
+        date_match = _DATE_PATTERN.search(compact)
+        if date_match:
+            current_date = date_match.group(0)
+            # A date-only heading establishes context for following bullets/rows.
+            residue = _DATE_PATTERN.sub("", compact).strip(" -–—:：|[]()")
+            if not residue:
+                continue
+
+        if not _looks_like_vendor_update(tag, compact, current_date):
+            continue
+
         candidate_url = href if href and _host_allowed(href, allowed_domains) else release_url
         key = (candidate_url, compact.casefold())
         if key in seen:
             continue
         seen.add(key)
-        date_match = _DATE_PATTERN.search(compact)
         records.append(
             {
                 "title": compact[:220],
-                "description": compact[:500],
+                "description": compact[:700],
                 "url": candidate_url,
-                "published_at": date_match.group(0) if date_match else None,
+                "published_at": date_match.group(0) if date_match else current_date,
                 "html_tag": tag,
+                "record_kind": "structured",
             }
         )
         if len(records) >= max_items:
@@ -242,11 +336,11 @@ def _vendor_candidate_from_record(vendor: dict, record: dict, normalize_item) ->
     )
     revision = sha256(identity_material.encode("utf-8")).hexdigest()
     # Fragment-only/page-level notes collapse under canonical URL dedupe, so attach an
-    # internal revision identity.  Evidence resolution still uses exact primaryUrl.
+    # internal revision identity. Evidence resolution still uses exact primaryUrl.
     url = record_url
     if record_url.rstrip("/") == release_url.rstrip("/") or urlparse(record_url)._replace(fragment="").geturl() == urlparse(release_url)._replace(fragment="").geturl():
         url = _append_revision_identity(release_url, revision)
-    item = normalize_item(
+    return normalize_item(
         source="OfficialVendor",
         name=f"{vendor['vendor']} — {record.get('title') or 'Official update'}",
         url=url,
@@ -261,14 +355,14 @@ def _vendor_candidate_from_record(vendor: dict, record: dict, normalize_item) ->
             "source_role": SOURCE_ROLE_CONTRACT["OfficialVendor"],
             "official_release_url": release_url,
             "candidate_revision": revision[:16],
+            "vendor_record_kind": record.get("record_kind") or "structured",
         },
     )
-    return item
 
 
 def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logger=None,
                                   registry=OFFICIAL_VENDOR_REGISTRY) -> list[dict]:
-    """Fetch bounded official release-note candidates with per-vendor fault isolation."""
+    """Fetch bounded official release candidates with per-vendor fault isolation."""
     limit = max(0, int(limit or 0))
     if limit <= 0:
         return []
@@ -277,7 +371,7 @@ def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logge
 
     for vendor in registry:
         try:
-            response = http_get(vendor["release_url"], timeout=12, headers={"User-Agent": "AI-Intelligence-Factory/Run268"})
+            response = http_get(vendor["release_url"], timeout=12, headers={"User-Agent": "AI-Intelligence-Factory/Run269"})
             final_url = str(getattr(response, "url", "") or vendor["release_url"])
             if not _host_allowed(final_url, tuple(vendor["allowed_domains"])):
                 raise ValueError(f"redirected outside vendor allowlist: {final_url}")
@@ -289,21 +383,25 @@ def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logge
                 per_vendor_cap,
             )
             if not records:
-                # Page-level fallback is useful once and whenever its visible text changes.
+                # Keep a revision-aware fallback for fault isolation, but mark it so the
+                # live smoke and downstream diagnostics can distinguish reachability from
+                # structured update quality. It must never masquerade as a parsed update.
                 visible = re.sub(r"<[^>]+>", " ", html)
-                visible = re.sub(r"\s+", " ", unescape(visible)).strip()[:500]
+                visible = re.sub(r"\s+", " ", unescape(visible)).strip()[:700]
                 if visible:
                     records = [{
-                        "title": "Official release notes / model updates",
+                        "title": "Official page changed (structured update not resolved)",
                         "description": visible,
                         "url": vendor["release_url"],
                         "published_at": None,
+                        "record_kind": "page_fallback",
                     }]
             buckets[vendor["vendor"]] = deque(
                 _vendor_candidate_from_record(vendor, record, normalize_item) for record in records
             )
             if logger:
-                logger.info(f"[OFFICIAL VENDOR] {vendor['vendor']}: {len(buckets[vendor['vendor']])} candidates")
+                kinds = [((row.get("sourceDetails") or {}).get("vendor_record_kind") or "") for row in buckets[vendor["vendor"]]]
+                logger.info(f"[OFFICIAL VENDOR] {vendor['vendor']}: {len(kinds)} candidates kinds={kinds}")
         except Exception as exc:
             buckets[vendor["vendor"]] = deque()
             if logger:
@@ -332,20 +430,27 @@ def _hn_timestamp(created_at: str | None, created_at_i) -> str | None:
 
 def fetch_hackernews_ai_reactions(limit: int, *, normalize_item, http_get, logger=None,
                                   queries=HN_AI_QUERIES) -> list[dict]:
-    """Use bounded Algolia queries to collect AI-related engineer/market reaction."""
+    """Collect fresh title-explicit AI stories as engineer/community reaction."""
     limit = max(0, int(limit or 0))
     if limit <= 0:
         return []
     per_query = max(5, min(30, (limit * 2 + len(queries) - 1) // max(1, len(queries))))
     merged: dict[str, dict] = {}
+    cutoff = int(datetime.now(timezone.utc).timestamp()) - HN_LOOKBACK_DAYS * 86400
 
     for query in queries:
         try:
             response = http_get(
                 HN_ALGOLIA_ENDPOINT,
-                params={"query": query, "tags": "story", "hitsPerPage": per_query},
+                params={
+                    "query": query,
+                    "tags": "story",
+                    "hitsPerPage": per_query,
+                    "restrictSearchableAttributes": "title",
+                    "numericFilters": f"created_at_i>{cutoff}",
+                },
                 timeout=10,
-                headers={"User-Agent": "AI-Intelligence-Factory/Run268"},
+                headers={"User-Agent": "AI-Intelligence-Factory/Run269"},
             )
             payload = _response_json(response)
             for hit in payload.get("hits", []) if isinstance(payload, dict) else []:
@@ -374,7 +479,7 @@ def fetch_hackernews_ai_reactions(limit: int, *, normalize_item, http_get, logge
 
     ranked = sorted(
         merged.values(),
-        key=lambda row: (row["points"] + row["comments"], row["points"], row.get("created_at_i") or 0),
+        key=lambda row: (row["points"] + row["comments"], row["comments"], row["points"], row.get("created_at_i") or 0),
         reverse=True,
     )[:limit]
     items: list[dict] = []
@@ -398,9 +503,10 @@ def fetch_hackernews_ai_reactions(limit: int, *, normalize_item, http_get, logge
                     "comments": row["comments"],
                     "matched_query": row["query"],
                     "source_role": SOURCE_ROLE_CONTRACT["HackerNews"],
+                    "lookback_days": HN_LOOKBACK_DAYS,
                 },
             )
         )
     if logger:
-        logger.info(f"   -> Hacker News AI reaction {len(items)} candidates from {len(queries)} bounded queries.")
+        logger.info(f"   -> Hacker News AI reaction {len(items)} candidates from {len(queries)} title-scoped queries / {HN_LOOKBACK_DAYS}d.")
     return items
