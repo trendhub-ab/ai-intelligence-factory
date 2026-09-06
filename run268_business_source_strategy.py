@@ -110,7 +110,7 @@ def install(pipeline_module):
     p.fetch_producthunt_trending = fetch_official_vendor_run268
 
     def round_robin_candidates_run268(source_groups, limit):
-        # Mutate the local dict owned by pipeline.main()/regen path so all subsequent
+        # Mutate the local dict owned by the legacy main/regen path so all subsequent
         # dedupe, screening and source attribution see OfficialVendor, not ProductHunt.
         if isinstance(source_groups, dict) and "ProductHunt" in source_groups:
             legacy_items = source_groups.pop("ProductHunt") or []
