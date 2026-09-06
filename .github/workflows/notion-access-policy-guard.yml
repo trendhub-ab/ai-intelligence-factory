@@ -3,12 +3,6 @@ name: Notion Access Policy Guard
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - '**/*.py'
-      - '**/*.yml'
-      - '**/*.yaml'
-      - 'NOTION_ACCESS_POLICY.md'
-      - 'notion_audit_views.json'
   push:
     branches: [main]
     paths:
