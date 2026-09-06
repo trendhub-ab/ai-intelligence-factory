@@ -583,3 +583,46 @@ PMF前にやらないこと:
 **現在のIntegration Determinism正本はRun263。**  
 **現在のStandalone Synthetic Hermeticity正本はRun264。**  
 **現在のDependency Compatibility正本はRun266。**  
+**現在のDocumentation Contract Freshness正本はRun267。**
+
+### Run268 — Proposal-First / Four-Source Intelligence
+
+- Primary ICPを顧客へAI・Web・業務システムを提案・開発する1〜3名規模のフリーランス/小規模開発事業者へ再定義。
+- 自己学習はSecondary Valueへ降ろし、判断・提案メモを有料価値の中心Artifactへ格上げ。
+- active Sourceを GitHub / HackerNews / ArXiv / OfficialVendor の4系統へ再編。
+- Product Hunt Production取得を退役し、OfficialVendorへ置換。新しいAPIキー・有料APIは追加しない。
+- HNはFirebase Top Stories全巡回からbounded Algolia AI queryへ変更し、取得段階で市場・エンジニア反応へ絞る。
+- OfficialVendorは米国3 + 中国主要8を1 Source内のvendor-level round robinで公平化する。
+- Run268 guardはProduction入口、active source tuple、Vendor registry、Product contract、本仕様書、CI組込みをzero-networkでfail closed検証する。
+
+### Run269 — Live Acquisition Precision / Structured Vendor Evidence
+
+- Run268のfour-source architecture・ICP・Product contractは変更しない。
+- HN Algoliaをtitle限定・30日・exact token / exact phrase再検証へ強化し、typo toleranceのfalse matchを除外する。
+- OfficialVendorのナビゲーション文言を更新候補へ昇格させず、`structured_html` / `structured_embedded` / `structured_current_state` / `page_fallback` を区別する。
+- `page_fallback`だけではStrict Live Smokeを合格させない。
+- ByteDance/Volcengineの公式モデル一覧は架空のreleaseではなくcurrent-state一次情報として扱う。
+- 実ネットワーク最終SmokeでOfficialVendor 11/11 structured成功、US 3/3、CN 8/8、fallback-only 0、HN 20 candidates / 11 queries / 30日を確認した。
+- Live SmokeはGemini/model 0、Notion write 0、Production DB write 0、publication 0を維持する。
+- Run269 GuardはProduction install順、HN precision、Vendor registry/current-state、Live Smoke safety、canonical仕様、CI組込みをzero-networkでfail closed検証する。
+
+### Run270 — Proposal-First Member Surface
+
+- Run268のPrimary ICPとPaid Product contractを実会員表示へ反映する。
+- Run250 Work-First rendererは歴史的互換層として残し、Run270をその後段に適用して最終可視AuthorityをProposal-Firstへ切り替える。
+- Member detail bodyは `顧客にどう答える？` / `提案できる場面` / `提案前に確認すること` / `提案・検証の次の一手` を中心にする。
+- Home / Decision Brief / AI導入 判断・提案メモも同じPrimary Jobへ同期する。
+- Evidence / Decision Score / canonical status / Source / Deep Tech / Notion schemaは変更しない。
+- Run250 navigation rankerはRun270では維持し、未検証の大きなranking再設計を同時導入しない。
+- ZERO Gemini/model calls。
+- Run270 GuardはRun250→Run270 install順、Proposal-First contract、member workflow test、static Notion page IDs、canonical仕様、required Falsification組込みをzero-networkでfail closed検証する。
+
+### Run271 — Member Body Delta Sync
+
+- Run270のvisible body contractは変更せず、steady-stateの本文同期I/Oだけをdelta化する。
+- `MEMBER_BODY_CHANGED_SINCE`以降に編集されたMember pagesだけを通常のblock GET/write対象にする。
+- delta runではsentinel 1件をcurrent body contractと照合し、不一致なら全件scan/migrationへfallbackする。
+- push / rerun / explicit `force_full_body_sync` はfull modeを選べるため、本文契約変更とrecoveryをdelta最適化で取りこぼさない。
+- manual Notion blocks、Evidence / Decision / Source / Deep Tech / schema、ZERO Gemini/model call契約を保持する。
+- Production速度改善はmerge後の実workflowで計測してから確定する。
+- Run271 Guardはdelta cutoff / sentinel / full fallback / workflow recovery / canonical仕様 / required Falsification組込みをzero-networkでfail closed検証する。
