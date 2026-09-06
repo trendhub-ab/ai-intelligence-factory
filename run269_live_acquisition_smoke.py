@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Run269 live acquisition smoke for the Run268 source contract.
+"""Run269 live acquisition smoke for the Run268/269 source contract.
 
-This diagnostic intentionally exercises only public network acquisition primitives.
-It does NOT import ``pipeline``, call Gemini/model providers, access Notion, mutate
-runtime state, publish content, or write any production database.
+This diagnostic exercises only public network acquisition primitives. It does NOT
+import ``pipeline``, call Gemini/model providers, access Notion, mutate runtime state,
+publish content, or write any production database.
 
-The report is written before any fail-closed exit so an operator can see exactly
-which vendor/network surface failed on the GitHub-hosted runner.
+Run269 distinguishes transport reachability from candidate quality: a vendor passes
+only when at least one structured update candidate is extracted. Page-level fallback
+is reported but cannot silently satisfy the strict live smoke.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import requests
 
 from business_source_acquisition import (
     HN_AI_QUERIES,
+    HN_LOOKBACK_DAYS,
     OFFICIAL_VENDOR_REGISTRY,
     fetch_hackernews_ai_reactions,
     fetch_official_vendor_updates,
@@ -42,22 +44,33 @@ class _CaptureLogger:
 def _probe_vendor(vendor: dict[str, Any]) -> dict[str, Any]:
     logger = _CaptureLogger()
     rows = fetch_official_vendor_updates(
-        2,
+        3,
         normalize_item=normalize_item,
         http_get=requests.get,
         logger=logger,
         registry=(vendor,),
     )
-    sample = rows[0] if rows else {}
+    kinds = [str(((row.get("sourceDetails") or {}).get("vendor_record_kind") or "")) for row in rows]
+    structured_count = sum(1 for kind in kinds if kind == "structured")
+    fallback_count = sum(1 for kind in kinds if kind == "page_fallback")
+    sample = next(
+        (row for row in rows if ((row.get("sourceDetails") or {}).get("vendor_record_kind") == "structured")),
+        rows[0] if rows else {},
+    )
     details = sample.get("sourceDetails") or {}
     return {
         "vendor": vendor["vendor"],
         "region": vendor["region"],
         "release_url": vendor["release_url"],
-        "ok": bool(rows),
+        "transport_ok": bool(rows),
+        "ok": structured_count > 0,
         "candidate_count": len(rows),
+        "structured_count": structured_count,
+        "fallback_count": fallback_count,
+        "sample_kind": details.get("vendor_record_kind") or "",
         "sample_title": sample.get("nameWithOwner") or "",
         "sample_primary_url": sample.get("primaryUrl") or "",
+        "sample_published_at": sample.get("publishedAt"),
         "sample_revision": details.get("candidate_revision") or "",
         "warnings": logger.warning_messages,
     }
@@ -73,21 +86,28 @@ def _probe_hackernews(limit: int) -> dict[str, Any]:
         queries=HN_AI_QUERIES,
     )
     samples = []
+    missing_match_metadata = 0
     for row in rows[:10]:
         details = row.get("sourceDetails") or {}
+        matched_query = details.get("matched_query") or ""
+        if not matched_query:
+            missing_match_metadata += 1
         samples.append(
             {
                 "title": row.get("nameWithOwner") or "",
                 "primary_url": row.get("primaryUrl") or "",
+                "published_at": row.get("publishedAt"),
                 "points": row.get("stargazerCount") or 0,
                 "comments": details.get("comments") or 0,
-                "query": details.get("query") or "",
+                "matched_query": matched_query,
             }
         )
     return {
-        "ok": len(rows) >= 5,
+        "ok": len(rows) >= 5 and missing_match_metadata == 0,
         "candidate_count": len(rows),
         "query_count": len(HN_AI_QUERIES),
+        "lookback_days": HN_LOOKBACK_DAYS,
+        "missing_match_metadata": missing_match_metadata,
         "samples": samples,
         "warnings": logger.warning_messages,
     }
@@ -112,10 +132,11 @@ def build_live_report(hn_limit: int = 20) -> dict[str, Any]:
         },
         "vendor_summary": {
             "configured": len(vendors),
-            "successful": len(successful),
-            "failed": len(failed),
-            "us_success": us_success,
-            "cn_success": cn_success,
+            "structured_successful": len(successful),
+            "structured_failed": len(failed),
+            "us_structured_success": us_success,
+            "cn_structured_success": cn_success,
+            "fallback_only": sum(1 for row in vendors if row["transport_ok"] and not row["ok"]),
         },
         "vendors": vendors,
         "hackernews": hn,
@@ -126,25 +147,31 @@ def _print_human_summary(report: dict[str, Any]) -> None:
     summary = report["vendor_summary"]
     print(
         "RUN269_VENDOR_SUMMARY "
-        f"configured={summary['configured']} successful={summary['successful']} "
-        f"failed={summary['failed']} us_success={summary['us_success']} "
-        f"cn_success={summary['cn_success']}"
+        f"configured={summary['configured']} structured_successful={summary['structured_successful']} "
+        f"structured_failed={summary['structured_failed']} us={summary['us_structured_success']} "
+        f"cn={summary['cn_structured_success']} fallback_only={summary['fallback_only']}"
     )
     for row in report["vendors"]:
         state = "PASS" if row["ok"] else "FAIL"
         print(
             f"RUN269_VENDOR_{state} vendor={row['vendor']} region={row['region']} "
-            f"candidates={row['candidate_count']} url={row['release_url']}"
+            f"structured={row['structured_count']} fallback={row['fallback_count']} "
+            f"sample_kind={row['sample_kind']} url={row['release_url']}"
         )
+        if row["sample_title"]:
+            print(f"  sample={row['sample_title'][:180]}")
         for warning in row["warnings"]:
             print(f"  warning={warning}")
     hn = report["hackernews"]
     print(
-        f"RUN269_HN_{'PASS' if hn['ok'] else 'FAIL'} "
-        f"candidates={hn['candidate_count']} queries={hn['query_count']}"
+        f"RUN269_HN_{'PASS' if hn['ok'] else 'FAIL'} candidates={hn['candidate_count']} "
+        f"queries={hn['query_count']} lookback_days={hn['lookback_days']}"
     )
-    for sample in hn["samples"][:5]:
-        print(f"  HN_SAMPLE points={sample['points']} comments={sample['comments']} title={sample['title'][:120]}")
+    for sample in hn["samples"][:8]:
+        print(
+            f"  HN_SAMPLE points={sample['points']} comments={sample['comments']} "
+            f"query={sample['matched_query']} title={sample['title'][:120]}"
+        )
 
 
 def main() -> int:
@@ -154,7 +181,7 @@ def main() -> int:
     parser.add_argument(
         "--require-all-vendors",
         action="store_true",
-        help="Fail if any configured official vendor produces zero candidates.",
+        help="Fail if any configured vendor lacks a structured update candidate.",
     )
     args = parser.parse_args()
 
@@ -165,17 +192,17 @@ def main() -> int:
 
     failures: list[str] = []
     if not report["hackernews"]["ok"]:
-        failures.append("HackerNews returned fewer than 5 AI reaction candidates")
+        failures.append("HackerNews returned insufficient or untraceable title-scoped AI reaction candidates")
     summary = report["vendor_summary"]
-    if summary["successful"] < 6:
-        failures.append("OfficialVendor coverage below 6/11")
-    if summary["us_success"] < 2:
-        failures.append("OfficialVendor US coverage below 2/3")
-    if summary["cn_success"] < 4:
-        failures.append("OfficialVendor CN coverage below 4/8")
-    if args.require_all_vendors and summary["failed"]:
+    if summary["structured_successful"] < 6:
+        failures.append("OfficialVendor structured coverage below 6/11")
+    if summary["us_structured_success"] < 2:
+        failures.append("OfficialVendor structured US coverage below 2/3")
+    if summary["cn_structured_success"] < 4:
+        failures.append("OfficialVendor structured CN coverage below 4/8")
+    if args.require_all_vendors and summary["structured_failed"]:
         failed_names = [row["vendor"] for row in report["vendors"] if not row["ok"]]
-        failures.append("Configured vendors with zero candidates: " + ", ".join(failed_names))
+        failures.append("Configured vendors without structured candidates: " + ", ".join(failed_names))
 
     if failures:
         print("RUN269_LIVE_ACQUISITION_SMOKE=FAIL")
