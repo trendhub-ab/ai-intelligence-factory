@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed when Integration CI regains known nondeterministic failure modes."""
+"""Fail closed when deterministic CI regains known nondeterministic failure modes."""
 from __future__ import annotations
 
 import ast
@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 INTEGRATION_WORKFLOW = ".github/workflows/integration-reconciliation-ci.yml"
+STANDALONE_REGRESSION_WORKFLOW = ".github/workflows/regression.yml"
 RUN130_TEST = "tests/test_run130_fresh_article_regression_reconciliation.py"
 RUNTIME_MANIFEST_TEST = "tests/test_run231_pipeline_slim.py"
 CI_COLLECTION_TEST = "tests/test_run233_ci_collection_integrity.py"
@@ -37,6 +38,7 @@ def workflow_errors(text: str) -> list[str]:
         "python -m pip check",
         "python integration_stability_guard.py",
         "python -m pytest -q tests",
+        "- '.github/workflows/regression.yml'",
     )
     for marker in required:
         if marker not in text:
@@ -56,6 +58,39 @@ def workflow_errors(text: str) -> list[str]:
         errors.append("Integration workflow must install production requirements through the CI constraint lock")
     if "pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt" not in text:
         errors.append("Integration workflow must install the known-green pytest version through the CI constraint lock")
+    return errors
+
+
+def standalone_regression_errors(text: str) -> list[str]:
+    """Keep the push/dispatch Synthetic workflow on the same hermetic test contract."""
+    errors: list[str] = []
+    required = (
+        "runs-on: ubuntu-24.04",
+        "python-version: '3.11.16'",
+        "GEMINI_PERSISTENT_DAILY_COUNTER: 'false'",
+        "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+        "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+        "pip install -r requirements.txt -c requirements-ci-constraints.txt",
+        "pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt",
+        "python -m pip check",
+        "python integration_stability_guard.py",
+        "python -m pytest -q tests",
+        "python regression_suite.py --self-test",
+        "python regression_suite.py --bootstrap --${{ github.event.inputs.suite || 'smoke' }}",
+    )
+    for marker in required:
+        if marker not in text:
+            errors.append(f"Standalone Synthetic workflow missing hermetic contract: {marker}")
+
+    forbidden = (
+        "python -m unittest discover -s tests -v",
+        "uses: actions/checkout@v6",
+        "uses: actions/setup-python@v6",
+        "pip install 'pytest>=8,<9'",
+    )
+    for marker in forbidden:
+        if marker in text:
+            errors.append(f"Standalone Synthetic workflow reintroduced nondeterministic contract: {marker}")
     return errors
 
 
@@ -160,6 +195,7 @@ def collect_errors(root: Path) -> list[str]:
     errors: list[str] = []
     checks = (
         (INTEGRATION_WORKFLOW, workflow_errors),
+        (STANDALONE_REGRESSION_WORKFLOW, standalone_regression_errors),
         (RUN130_TEST, run130_errors),
         (RUNTIME_MANIFEST_TEST, runtime_manifest_test_errors),
         (CI_COLLECTION_TEST, ci_collection_test_errors),
