@@ -3,7 +3,10 @@ name: Subscriber Decision Brief Sync
 on:
   workflow_run:
     workflows:
-      - Daily Intelligence & Content Pipeline
+      # Scheduled Daily is hard-PAUSED and its current workflow name is
+      # `Daily Intelligence & Content Pipeline [PAUSED]`. Do not subscribe to the
+      # paused stub or a nonexistent future alias. When Daily is explicitly resumed,
+      # add the then-current real workflow name here in the same reviewed change.
       - Daily Intelligence & Content Pipeline [ONE-SHOT]
       - Subscriber Inventory Bootstrap
     types: [completed]
