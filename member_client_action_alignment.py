@@ -1,4 +1,4 @@
-"""Run254 neutral-subject work-first paid-product alignment.
+"""Run255 natural neutral-subject work-first paid-product alignment.
 
 This is a deterministic presentation policy. It does not change source Evidence,
 scores, decisions, or canonical records. It answers a narrower product question:
@@ -11,8 +11,9 @@ Initial ICP:
 - choose/test/adopt tools directly
 - client proposals are a secondary reuse case, not the core product purpose
 
-Run254 keeps Work-First semantics but removes unnecessary Japanese first-person
-phrasing such as 「自分の仕事」 where 「仕事」 already conveys the meaning.
+Run254 removed unnecessary Japanese first-person phrasing such as 「自分の仕事」.
+Run255 hardens that policy: neutralization must stay natural and must not perform
+broad mechanical replacements that create phrases such as 「利用環境AI」.
 The broad Intelligence Engine remains intact. This module only determines what
 should be surfaced first and how existing authoritative fields should be framed.
 ZERO model/provider calls.
@@ -39,9 +40,6 @@ CATEGORY_BASE = {
     "その他": 46.0,
 }
 
-# Generic work-use signals, not product-name allowlists. New products can rank
-# without a code change. Client-facing terms remain small positive signals because
-# they can matter to the ICP, but they are no longer the ranking centre.
 POSITIVE_SIGNALS: tuple[tuple[str, float], ...] = (
     ("web制作", 10),
     ("制作", 8),
@@ -114,7 +112,6 @@ WORK_READY_SIGNALS: tuple[str, ...] = (
     "データ",
     "リスク",
 )
-# Backward-compatible alias for older tests/imports.
 CLIENT_READY_SIGNALS = WORK_READY_SIGNALS
 
 NEUTRAL_SUBJECT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
@@ -126,6 +123,20 @@ NEUTRAL_SUBJECT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("自分の環境", "利用環境"),
     ("自分の制作", "制作"),
     ("自分の開発", "開発"),
+)
+
+# Only context-safe substitutions are allowed here. Broad replacements such as
+# `自社` -> `利用環境` are forbidden because they can corrupt compound nouns.
+WORK_ACTION_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("自社要件", "利用条件"),
+    ("自社案件", "対象業務"),
+    ("自社AI", "利用中のAI"),
+    ("自社コード", "独自コード"),
+    ("自社環境", "利用環境"),
+    ("案件要件", "利用条件"),
+    ("対象案件", "対象業務"),
+    ("案件の", "対象業務の"),
+    ("案件で", "対象業務で"),
 )
 
 
@@ -175,7 +186,6 @@ def icp_relevance_score(state: dict[str, Any]) -> float:
         if signal.casefold() in blob:
             score += weight
 
-    # Reversible/small-test language makes an item easier to try in real work.
     ready_hits = sum(1 for signal in WORK_READY_SIGNALS if signal.casefold() in blob)
     score += min(ready_hits, 4) * 2.0
 
@@ -240,20 +250,9 @@ def work_check_text(state: dict[str, Any]) -> str:
 
 
 def work_action_text(state: dict[str, Any]) -> str:
-    """Return existing next action with neutral, work-first audience wording."""
+    """Return existing next action with natural, neutral work-first wording."""
     action = _clean(state.get("next_action"))
-    replacements = (
-        ("自社要件", "利用条件"),
-        ("自社案件", "対象業務"),
-        ("自社の", "利用時の"),
-        ("自社で", "利用環境で"),
-        ("自社", "利用環境"),
-        ("案件要件", "利用条件"),
-        ("対象案件", "対象業務"),
-        ("案件の", "対象業務の"),
-        ("案件で", "対象業務で"),
-    )
-    for old, new in replacements:
+    for old, new in WORK_ACTION_REPLACEMENTS:
         action = action.replace(old, new)
     return neutral_subject_text(action)
 
