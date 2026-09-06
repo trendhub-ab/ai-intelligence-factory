@@ -68,6 +68,7 @@ def main() -> None:
     import run203_runtime_state_channel as runtime_state_channel
     from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
+    from run268_business_source_strategy import install as install_run268_business_source_strategy
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
     # Install them before the historical runtime wrapper chain so every later layer sees
@@ -75,8 +76,14 @@ def main() -> None:
     install_source_normalization(pipeline)
 
     # Compatibility contract: install every historical production layer before any
-    # Run231 observability. Run231 must never change article/Evidence/Gate behavior.
+    # current strategy overlay. Historical quality/reliability wrapper order must not
+    # change when source acquisition strategy changes.
     install_runtime_layers(pipeline)
+
+    # Run268 is the current acquisition/business overlay. It replaces the active
+    # Product Hunt transport with OfficialVendor and narrows HN to AI reaction while
+    # preserving historical runtime order and provider budgets.
+    install_run268_business_source_strategy(pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
