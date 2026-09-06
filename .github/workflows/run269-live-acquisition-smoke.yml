@@ -7,10 +7,12 @@ on:
       - 'business_source_acquisition.py'
       - 'source_normalization.py'
       - 'run269_acquisition_precision.py'
+      - 'run269_vendor_current_state.py'
       - 'run269_business_source_precision.py'
       - 'run269_live_acquisition_smoke.py'
       - 'production_pipeline.py'
       - 'tests/test_run269_acquisition_precision.py'
+      - 'tests/test_run269_vendor_current_state.py'
       - '.github/workflows/run269-live-acquisition-smoke.yml'
   workflow_dispatch:
 
@@ -45,11 +47,14 @@ jobs:
             business_source_acquisition.py \
             source_normalization.py \
             run269_acquisition_precision.py \
+            run269_vendor_current_state.py \
             run269_business_source_precision.py \
             run269_live_acquisition_smoke.py
 
       - name: Run precision unit tests before network
-        run: python -m unittest tests.test_run269_acquisition_precision -v
+        run: |
+          python -m unittest tests.test_run269_acquisition_precision -v
+          python -m unittest tests.test_run269_vendor_current_state -v
 
       - name: Run live acquisition smoke
         run: |
