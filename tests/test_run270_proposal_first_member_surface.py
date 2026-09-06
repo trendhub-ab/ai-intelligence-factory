@@ -145,19 +145,22 @@ class Run270ProposalFirstMemberSurfaceTests(unittest.TestCase):
         self.assertTrue(result["run270_proposal_first_member_surface"]["client_proposal_primary"])
 
     def test_generated_callout_recognizer_accepts_proposal_first_shape(self):
-        fake_block = {"type": "callout", "id": "block-1", "callout": {}}
+        fake_block = {
+            "type": "callout",
+            "id": "block-1",
+            "callout": {"rich_text": body._rich_text(run219.NEW_VISIBLE_CALLOUT_LABEL)},
+        }
         proposal_children = [
             body._heading("顧客にどう答える？"),
             body._heading("提案できる場面"),
             body._heading("提案・検証の次の一手"),
         ]
-        with patch.object(body, "_block_text", return_value=run219.NEW_VISIBLE_CALLOUT_LABEL):
-            self.assertTrue(
-                run219._looks_like_generated_member_callout(
-                    fake_block,
-                    {"block-1": proposal_children},
-                )
+        self.assertTrue(
+            run219._looks_like_generated_member_callout(
+                fake_block,
+                {"block-1": proposal_children},
             )
+        )
 
 
 if __name__ == "__main__":
