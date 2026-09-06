@@ -10,6 +10,14 @@ It changes two paid-surface behaviors:
 2. Member detail bodies translate authoritative fields into client-work language:
    client use case -> business impact -> checks -> proposal next step.
 
+Run251 hardening note:
+Run170.4 contained a legacy fixed three-item editorial shortlist for the older
+broad/corporate member product. That installer executes *inside* the lower
+presentation stack, after Run250 is initially installed, so it can otherwise
+silently regain final authority. Run250 now explicitly retires that old fixed
+shortlist before the lower stack runs. The lower editorial wrapper remains in
+place as a fallback but delegates selection to the Run250 relevance ranker.
+
 ZERO model/provider calls.
 """
 from __future__ import annotations
@@ -17,6 +25,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 import member_client_action_alignment as alignment
+import member_human_language_ux_v2 as ux2
 import member_presentation_body_sync as body
 import member_presentation_sync as presentation
 import run219_member_human_language_ui as run219
@@ -24,10 +33,24 @@ import run219_member_human_language_ui as run219
 _NAV_INSTALLED = False
 _BODY_INSTALLED = False
 _BASE_ASSIGN_HOME_RANKS: Callable[..., list[dict[str, Any]]] | None = None
+_BASE_BODY_MATCHES: Callable[..., bool] | None = None
 
 
 def _key(state: dict[str, Any]) -> str:
     return str(state.get("sync_id") or state.get("name") or id(state))
+
+
+def retire_legacy_editorial_shortlist() -> tuple[str, ...]:
+    """Disable the pre-ICP fixed shortlist while preserving its copy overrides.
+
+    Run170.4's fixed Dify/AnythingLLM/NeMo list was valid for the previous product
+    but is no longer the paid-product selection authority. Copy overrides are
+    intentionally retained because they are evidence-reviewed source-facing copy;
+    only the fixed homepage *selection* is retired.
+    """
+    previous = tuple(ux2.EDITORIAL_HOME_SYNC_IDS)
+    ux2.EDITORIAL_HOME_SYNC_IDS = ()
+    return previous
 
 
 def rank_states_for_client_action(
@@ -139,22 +162,66 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     return children
 
 
+def _heading_texts(blocks: list[dict[str, Any]]) -> set[str]:
+    texts: set[str] = set()
+    for block in blocks:
+        if block.get("type") != "heading_3":
+            continue
+        payload = block.get("heading_3") or {}
+        parts: list[str] = []
+        for item in payload.get("rich_text") or []:
+            text = item.get("plain_text")
+            if not text:
+                text = ((item.get("text") or {}).get("content"))
+            if text:
+                parts.append(str(text))
+        joined = "".join(parts).strip()
+        if joined:
+            texts.add(joined)
+    return texts
+
+
+def _body_matches_client_action(
+    children: list[dict[str, Any]], state: dict[str, Any]
+) -> bool:
+    """Require the new product semantics, not only the old state signature.
+
+    This closes a migration hole where a body could be considered current merely
+    because its source fields were unchanged even though its product framing was
+    still the old broad-member framing.
+    """
+    if _BASE_BODY_MATCHES is None or not _BASE_BODY_MATCHES(children, state):
+        return False
+    headings = _heading_texts(children)
+    required = {"いま、どうする？", "案件への意味（Business Impact）"}
+    if alignment.client_case_text(state):
+        required.add("案件で使える場面")
+    if alignment.proposal_action_text(state):
+        required.add("提案時の次の一手")
+    if alignment.client_check_text(state):
+        required.add("提案前に確認すること")
+    return required.issubset(headings)
+
+
 def install_navigation() -> None:
-    """Install after Run225 so lifecycle constraints remain the outer source policy."""
+    """Install after Run225 and retire the older fixed shortlist."""
     global _NAV_INSTALLED, _BASE_ASSIGN_HOME_RANKS
     if _NAV_INSTALLED:
         return
+    retire_legacy_editorial_shortlist()
     _BASE_ASSIGN_HOME_RANKS = presentation.assign_home_ranks
     presentation.assign_home_ranks = assign_home_ranks_for_client_action
     _NAV_INSTALLED = True
 
 
 def install_body() -> None:
-    """Replace only Run219's presentation builder; source state stays authoritative."""
-    global _BODY_INSTALLED
+    """Install client-action body semantics and force migration from old bodies."""
+    global _BODY_INSTALLED, _BASE_BODY_MATCHES
     if _BODY_INSTALLED:
         return
     run219._build_children = _build_children
+    _BASE_BODY_MATCHES = body._body_matches
+    body._body_matches = _body_matches_client_action
     _BODY_INSTALLED = True
 
 
@@ -166,6 +233,8 @@ def contract() -> dict[str, Any]:
         "source_scores_preserved": True,
         "evidence_preserved": True,
         "notion_schema_changed": False,
+        "legacy_fixed_shortlist_retired": True,
+        "client_action_body_migration_required": True,
         "paid_surface": [
             "案件で使える場面",
             "案件への意味（Business Impact）",
