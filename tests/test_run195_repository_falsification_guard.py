@@ -28,11 +28,20 @@ class Run195RepositoryFalsificationGuardTests(unittest.TestCase):
         self.assertIn("run: python production_pipeline.py", source)
         self.assertNotIn("run: python reader_value_review_bridge.py", source)
 
-    def test_all_daily_derived_views_follow_one_shot(self) -> None:
-        for name in guard.DERIVED_DAILY_WORKFLOWS:
+    def test_all_direct_one_shot_fanout_targets_are_explicit_and_not_passive(self) -> None:
+        one_shot = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
+        self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", one_shot)
+        self.assertIn("if: ${{ success() }}", one_shot)
+
+        for name in guard.DIRECT_ONE_SHOT_FANOUT_TARGETS:
             source = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
-            self.assertIn("Daily Intelligence & Content Pipeline [ONE-SHOT]", source, name)
-            self.assertIn("github.event.workflow_run.head_branch == 'main'", source, name)
+            self.assertIn(name, one_shot, name)
+            self.assertIn("workflow_dispatch:", source, name)
+            self.assertNotIn(
+                "Daily Intelligence & Content Pipeline [ONE-SHOT]",
+                guard._workflow_run_block(source),
+                name,
+            )
             self.assertIn("cancel-in-progress: false", source, name)
 
 
