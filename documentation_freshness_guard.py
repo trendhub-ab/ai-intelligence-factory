@@ -40,6 +40,7 @@ SUPERSEDED_RUN217_HOME_ID = "3d0479ff-dca9-819e-9da0-c951225de6b3"
 FLASH_BUDGET_VARS = (
     "GEMINI_36_FLASH_DAILY_BUDGET",
     "GEMINI_37_FLASH_DAILY_BUDGET",
+    "GEMINI_38_FLASH_DAILY_BUDGET",
     "GEMINI_35_FLASH_DAILY_BUDGET",
 )
 
@@ -130,17 +131,37 @@ def _workflow_run_block(text: str) -> str:
     return tail.split("types: [completed]", 1)[0]
 
 
-def member_product_sync_errors(inventory_text: str, subscriber_brief_text: str, member_presentation_text: str, spec_text: str, readme_text: str) -> list[str]:
+def member_product_sync_errors(
+    inventory_text: str,
+    subscriber_brief_text: str,
+    member_presentation_text: str,
+    one_shot_text: str,
+    spec_text: str,
+    readme_text: str,
+) -> list[str]:
     errors: list[str] = []
     if "run-name: Subscriber Inventory Bootstrap [${{ inputs.mode }}]" not in inventory_text:
         errors.append("Inventory workflow must expose plan/apply in run-name for safe downstream filtering")
 
     subscriber_block = _workflow_run_block(subscriber_brief_text)
-    for upstream in ("Daily Intelligence & Content Pipeline", "Daily Intelligence & Content Pipeline [ONE-SHOT]", "Subscriber Inventory Bootstrap"):
-        if upstream not in subscriber_block:
-            errors.append(f"Subscriber Decision Brief missing upstream workflow_run source: {upstream}")
-    if "github.event.workflow_run.name != 'Subscriber Inventory Bootstrap'" not in subscriber_brief_text:
-        errors.append("Subscriber Decision Brief no longer distinguishes Inventory Bootstrap from other upstream runs")
+    if "Subscriber Inventory Bootstrap" not in subscriber_block:
+        errors.append("Subscriber Decision Brief missing Inventory Bootstrap workflow_run source")
+    for forbidden in (
+        "Daily Intelligence & Content Pipeline [ONE-SHOT]",
+        "Daily Intelligence & Content Pipeline [PAUSED]",
+    ):
+        if forbidden in subscriber_block:
+            errors.append(f"Subscriber Decision Brief still passively subscribes to ONE-SHOT/Daily: {forbidden}")
+
+    if "workflow_dispatch:" not in subscriber_brief_text:
+        errors.append("Subscriber Decision Brief must remain directly dispatchable from ONE-SHOT")
+    if "GH_TOKEN: ${{ secrets.GH_PAT }}" not in one_shot_text:
+        errors.append("ONE-SHOT explicit member fan-out lost GH_PAT authentication")
+    if "subscriber-decision-brief.yml" not in one_shot_text:
+        errors.append("ONE-SHOT explicit fan-out no longer dispatches Subscriber Decision Brief")
+
+    if "github.event.workflow_run.name == 'Subscriber Inventory Bootstrap'" not in subscriber_brief_text:
+        errors.append("Subscriber Decision Brief no longer restricts workflow_run writes to Inventory Bootstrap")
     if "contains(github.event.workflow_run.display_title, '[apply]')" not in subscriber_brief_text:
         errors.append("Inventory plan could fan out into writes; apply-only downstream filter is missing")
 
@@ -331,7 +352,16 @@ def validate(root: str | Path = ".") -> list[str]:
     errors.extend(runtime_layer_errors(production_source, spec_text))
     errors.extend(baseline_errors(spec_text, readme_text))
     errors.extend(quota_contract_errors(one_shot_text, daily_text, pending_retry_text, quota_text, spec_text))
-    errors.extend(member_product_sync_errors(inventory_text, subscriber_brief_text, member_presentation_text, spec_text, readme_text))
+    errors.extend(
+        member_product_sync_errors(
+            inventory_text,
+            subscriber_brief_text,
+            member_presentation_text,
+            one_shot_text,
+            spec_text,
+            readme_text,
+        )
+    )
     errors.extend(member_navigation_ux_errors(spec_text, readme_text, run217_text, run218_text, run220_text))
     errors.extend(member_destination_workflow_errors(member_presentation_text, spec_text, readme_text, run220_text))
     errors.extend(member_host_isolation_errors(member_presentation_text, spec_text, readme_text, run221_text))
