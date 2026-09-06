@@ -14,10 +14,10 @@
           "budget": 450,
           "by_kind": {
             "screening_batch": 3,
-            "screening_recovery": 1
+            "screening_recovery": 2
           },
           "exhausted": false,
-          "used": 4
+          "used": 5
         }
       }
     }
@@ -26,5 +26,5 @@
   "quota_date": "2026-09-06",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-06T10:08:06.752101+00:00"
+  "updated_at": "2026-09-06T10:08:20.669836+00:00"
 }
