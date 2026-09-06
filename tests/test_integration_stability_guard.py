@@ -22,11 +22,20 @@ class IntegrationStabilityGuardTests(unittest.TestCase):
         errors = guard.workflow_errors(broken)
         self.assertTrue(any("pytest" in error for error in errors))
 
-    def test_integration_must_trigger_when_standalone_regression_changes(self):
+    def test_required_integration_check_must_not_use_pull_request_path_filters(self):
         text = (ROOT / guard.INTEGRATION_WORKFLOW).read_text(encoding="utf-8")
-        broken = text.replace("      - '.github/workflows/regression.yml'\n", "")
+        broken = text.replace(
+            "    branches:\n      - main\n",
+            "    branches:\n      - main\n    paths:\n      - 'pipeline.py'\n",
+        )
         errors = guard.workflow_errors(broken)
-        self.assertTrue(any("regression.yml" in error for error in errors))
+        self.assertTrue(any("path filters" in error for error in errors))
+
+    def test_required_integration_check_must_cover_main(self):
+        text = (ROOT / guard.INTEGRATION_WORKFLOW).read_text(encoding="utf-8")
+        broken = text.replace("      - main\n", "      - staging\n", 1)
+        errors = guard.workflow_errors(broken)
+        self.assertTrue(any("pull requests to main" in error for error in errors))
 
     def test_standalone_regression_must_use_pytest_not_unittest_discovery(self):
         text = (ROOT / guard.STANDALONE_REGRESSION_WORKFLOW).read_text(encoding="utf-8")

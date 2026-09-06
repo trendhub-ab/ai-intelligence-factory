@@ -93,20 +93,23 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
 
     def test_integration_ci_watches_production_contract_surface(self):
         text = _read(INTEGRATION_CI)
-        for required in (
-            "'production_pipeline.py'",
-            "'daily_portfolio_review.py'",
-            "'run*.py'",
-            "'.github/workflows/daily.yml'",
-            "'.github/workflows/daily-one-shot.yml'",
-            "'tests/**'",
-            "python -m pytest -q tests",
-        ):
-            self.assertIn(required, text)
+        self.assertIn("  pull_request:\n", text)
+        self.assertIn("      - main\n", text)
+        self.assertIn("  zero-api-regression:", text)
+        self.assertIn("python -m pytest -q tests", text)
+        self.assertIn("SYNTHETIC_REGRESSION_MODE: 'true'", text)
+        self.assertIn("run: python production_pipeline.py", text)
 
-        # Run-numbered production modules are covered by the run*.py path trigger,
-        # and their tests are covered by the single full-pytest regression authority.
+        # Run267: zero-api-regression is required on main, so file-level path filters
+        # would let some PRs bypass the workflow entirely and leave the required context
+        # stuck at Expected. Full pytest is the production-contract coverage authority.
+        pull_request_section = text.split("  workflow_dispatch:", 1)[0]
+        self.assertNotIn("    paths:\n", pull_request_section)
+        self.assertNotIn("    paths-ignore:\n", pull_request_section)
+
         for module in (
+            "production_pipeline.py",
+            "daily_portfolio_review.py",
             "run175_semantic_fact_precision.py",
             "run176_scope_fidelity.py",
         ):

@@ -43,6 +43,11 @@ jobs:
           python run262_documentation_contract_guard.py
           python -m unittest tests.test_run262_documentation_contract_guard -v
 
+      - name: Enforce Run267 current canonical documentation contract
+        run: |
+          python run267_documentation_contract_guard.py
+          python -m unittest tests.test_run267_documentation_contract_guard -v
+
       - name: Enforce Run263 Integration hermeticity and stability
         run: |
           python integration_stability_guard.py

@@ -1,8 +1,8 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-06  
-現行Functional Baseline: **Run209 — Gemini timeout RPD fail-closed**  
-Documentation Governance Baseline: **Run262 — Run261 Canonical Contract Freshness Guard**  
+最終更新: 2026-09-07  
+Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
+Documentation Governance Baseline: **Run267 — Current Canonical Contract Sync / Required-Check Governance**  
 Documentation Freshness Foundation: **Run210 — Documentation Freshness Guard**  
 Production Source of Truth: **`main`**  
 Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member Presentation Sync**  
@@ -16,12 +16,16 @@ Paid Product Baseline: **Run256 — Work-First / Natural Neutral-Subject / Concr
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
 Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**  
-Eyecatch Baseline: **Run181 current**  
+Eyecatch Baseline: **Run183 — Run181 Visual Balance / Run182 Conclusion Emphasis / Run183 Emphasis Scale**  
 Pipeline Modularization Baseline: **Run245**  
 Repository Organization Baseline: **Run246**  
 Workflow Reference Integrity Baseline: **Run257 — Workflow Reference Guard**  
 ChatOps Dispatch Baseline: **Run259 — GH_PAT ONE-SHOT Dispatch Token**  
-ONE-SHOT Downstream Fan-out Baseline: **Run261 — Explicit GH_PAT Post-Run Dispatch**
+ONE-SHOT Downstream Fan-out Baseline: **Run261 — Explicit GH_PAT Post-Run Dispatch**  
+Integration Determinism Baseline: **Run263 — Hermetic / Locked / Zero-Provider Integration CI**  
+Standalone Synthetic Baseline: **Run264 — Hermetic Synthetic Regression**  
+Dependency Compatibility Baseline: **Run266 — Pillow 12.1+ Production Floor / <13 Upper Bound**  
+Required PR Check Governance Baseline: **Run267 — Required contexts must be emitted for every PR to main**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -265,8 +269,11 @@ Article production surface:
 
 ### Eyecatch
 
-Run181 currentを基準とする。
+Run183 current stackを基準とする。Run181 → Run182 → Run183の順序はactive runtime contractである。
 
+- Run181: visual balance / mixed-size geometryの現行基礎
+- Run182: 結論強調に使うexact highlight substringの選択・検証
+- Run183: approved emphasis scaleを適用し、`HIGHLIGHT_FONT_SCALE = 1.20`、`HIGHLIGHT_MAX_FONT = 96`
 - 1280×670
 - approved background/right illustrationを保持
 - title 2行推奨、最大3行許容
@@ -338,6 +345,50 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - CI greenは必要条件であり、Production実物監査の代替ではない。
 - 本番変更は小さく、回帰可能にし、Source/Evidence/Decisionを保護する。
 
+### 8.1 Deterministic CI / zero-provider回帰契約 — Run263 / Run264
+
+Run263以降、`Integration Reconciliation CI` はProduction不具合とCI自身の揺らぎを分離するため、hermetic / locked / zero-providerをcurrent contractとする。
+
+- runnerは `ubuntu-24.04`、Pythonは `3.11.16`。
+- checkout / setup-python actionはknown-good SHAへ固定する。
+- Production dependency rangeは `requirements.txt`、CI再現性は `requirements-ci-constraints.txt` をAuthorityとする。
+- pytestはknown-green `8.4.2` をconstraint経由で使い、`python -m pip check` を通す。
+- `GEMINI_PERSISTENT_DAILY_COUNTER='false'` とし、deterministic CIがrepository-backed Production counterへ触れない。
+- pytestのautouse network guardを維持し、予期しないexternal network accessをFail-Closedする。
+- Integrationはstructural guards → **full pytestを1回** → current Production stackのSynthetic smokeという順を維持する。
+- Run264以降、standalone `Synthetic Regression Suite` も同じhermetic/locked/pytest契約を使い、旧 `unittest discover` 全件実行へ戻さない。
+- これらの回帰はGemini/Notion等のProduction call・Production writeを行わない。
+
+詳細は `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md`、`docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md`、`integration_stability_guard.py` を正本とする。
+
+### 8.2 Dependency compatibility契約 — Run265 / Run266
+
+- Production dependency rangeのAuthorityは `requirements.txt`。
+- CI known-green exact graphのAuthorityは `requirements-ci-constraints.txt`。
+- Run265でPillow deprecated API `Image.getdata()` のdirect使用を排除し、`get_flattened_data()`へ移行した。
+- そのAPI契約に合わせ、Run266以降のProduction Pillow rangeは **`Pillow>=12.1.0,<13.0.0`**。
+- 現行CI known-green pinは **`Pillow==12.3.0`**。
+- `<13.0.0` の上限は現在も有効であり、Pillow 13/14をProduction対応済みとは扱わない。上限を広げる場合は別途compatibility auditと回帰を行う。
+- warning suppressionでdeprecated APIを隠す方式へ戻さない。
+
+### 8.3 main required status check governance — Run267
+
+2026-09-07のGitHub Ruleset `Protect main production` 直接監査で、default branchに対するrequired status contextは次の3つ。
+
+- `zero-api-regression`
+- `falsify-all-tracked-surfaces`
+- `notion-access-policy`
+
+**required status checkに指定されたWorkflowは、対象PRで必ずcheck contextを生成できなければならない。** required contextを出すWorkflowの`pull_request`に変更ファイル依存の **pull_requestのpath filterを置かない**。path filterでWorkflow自体がskipされると、required contextが`Expected`のままになり正常なPRをmerge不能にできるためである。
+
+- `zero-api-regression`: `Integration Reconciliation CI`。main向け全PRで起動し、`paths` / `paths-ignore`を置かない。
+- `falsify-all-tracked-surfaces`: `Repository-wide Falsification Guard`。main向け全PRで起動する。
+- `notion-access-policy`: `Notion Access Policy Guard`。全PRで起動し、Run266以降path filterを置かない。
+- required job/context名を無断で変更しない。変更する場合はGitHub RulesetとWorkflowを同一reviewed changeで更新し、direct ruleset auditを行う。
+- GitHub Rulesetはrepository外部状態なので、zero-network CIだけでRuleset自体の変更を検知したとは主張しない。外部設定変更時は直接監査する。
+
+Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR triggerがpath-filteredへ戻らないこと、job context名、Pillow契約、Run183 Eyecatch baseline、Run263/264 current CI contractをFail-Closedで保護する。
+
 ---
 
 ## 9. 回帰・反証契約
@@ -352,6 +403,7 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - Cross DB Contract Guard（該当時）
 - Documentation Freshness Guard
 - Run262 Documentation Contract Guard
+- Run267 Documentation Contract Guard
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -374,7 +426,7 @@ Gemini model routing変更では、さらに次を反証する。
 - deterministic zero-API rescueを不要なprovider callへ置換していないか
 - Gate閾値をReady件数目的で緩めていないか
 
-Workflow変更では、さらに次を反証する。
+Workflow / CI変更では、さらに次を反証する。
 
 - `run:` / `- run:` が削除済みrepository-local scriptを指していないか
 - `python -m unittest tests.*` が実在するmoduleか
@@ -385,6 +437,9 @@ Workflow変更では、さらに次を反証する。
 - workflow内workflow dispatchが必要なfan-outを持つ場合、repository `GITHUB_TOKEN` による連鎖抑制を踏んでいないか
 - ONE-SHOTの直接fan-out targetが `workflow_dispatch` を受け付けるか
 - 同じdirect targetにONE-SHOT passive `workflow_run`を残して二重write経路を作っていないか
+- required status contextを出すWorkflowへ`pull_request.paths` / `paths-ignore`を追加していないか
+- required job/context名とGitHub Rulesetの対応を無断で変えていないか
+- Integration / standalone Syntheticがlocked dependency、pytest network isolation、persistent counter OFFのhermetic contractから外れていないか
 
 ---
 
@@ -418,7 +473,7 @@ PMF前にやらないこと:
 
 本ファイルは、商品・Production契約が変わったRunで更新する。
 
-- 現行仕様は読みやすく保つが、active runtime / Fail-Closed / customer destination / quota safetyの保護契約を「古いから」という理由で削らない。
+- 現行仕様は読みやすく保つが、active runtime / Fail-Closed / customer destination / quota safety / deterministic CI / dependency compatibility / required-check governanceの保護契約を「古いから」という理由で削らない。
 - 詳細な変更理由・反証記録は `docs/reference/RUNxxx_*.md` へ置く。
 - 純粋な履歴説明は `docs/archive/` とGit履歴へ置く。
 - current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の整合を保つ。
@@ -428,10 +483,18 @@ PMF前にやらないこと:
 - Run260のGemini routing導入契約は `docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md` を履歴/基礎契約として保持する。
 - Run261の実Production入口Gemini routingとONE-SHOT explicit fan-out契約は `docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md` を現行正本とする。
 - Run262はcanonical仕様がRun260/Run259の旧mechanismへ戻らないよう `run262_documentation_contract_guard.py` で必須CIからFail-Closedする。
+- Run263のIntegration hermeticity / deterministic CIは `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md` と `integration_stability_guard.py` を正本とする。
+- Run264のstandalone Synthetic hermeticityは `docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md` と `integration_stability_guard.py` を正本とする。
+- Run265/266のPillow compatibility結果とRun267のrequired-check/canonical同期は `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md` に現行要約を保持する。
+- Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
+- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。両方をRepository-wide Falsification Guard内で実行する。
 
 **現在のPaid Product正本はRun256。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  
 **現在のONE-SHOT Downstream Fan-out正本はRun261。**  
-**現在のDocumentation Contract Freshness正本はRun262。**
+**現在のIntegration Determinism正本はRun263。**  
+**現在のStandalone Synthetic Hermeticity正本はRun264。**  
+**現在のDependency Compatibility正本はRun266。**  
+**現在のDocumentation Contract Freshness正本はRun267。**

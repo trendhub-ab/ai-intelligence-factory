@@ -71,16 +71,24 @@ class Run234LegacyDependencyIsolationTests(unittest.TestCase):
 
 
 class Run234RequiredCrossDbContractTests(unittest.TestCase):
-    def test_required_zero_api_job_contains_cross_db_contract_suite(self):
-        workflow = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text(
+    def _integration_workflow(self) -> str:
+        return (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text(
             encoding="utf-8"
         )
+
+    def test_required_zero_api_job_contains_cross_db_contract_suite(self):
+        workflow = self._integration_workflow()
         self.assertIn("  zero-api-regression:", workflow)
         self.assertIn("python -m pytest -q tests", workflow)
-        self.assertIn("- 'tests/**'", workflow)
 
-        # The full pytest authority must collect every Cross DB contract file.
-        # Keep existence assertions here so deleting one cannot silently shrink coverage.
+        # Run267: full pytest is the Cross DB coverage authority and the required
+        # zero-api-regression must run for every PR to main. A tests/** path filter is
+        # therefore not just unnecessary; it would make the required context skippable.
+        pull_request_section = workflow.split("  workflow_dispatch:", 1)[0]
+        self.assertIn("      - main\n", pull_request_section)
+        self.assertNotIn("    paths:\n", pull_request_section)
+        self.assertNotIn("    paths-ignore:\n", pull_request_section)
+
         for relative in (
             "tests/test_cross_db_contract_guard.py",
             "tests/test_content_db_contract_guard.py",
@@ -91,9 +99,16 @@ class Run234RequiredCrossDbContractTests(unittest.TestCase):
             self.assertTrue((ROOT / relative).is_file(), relative)
 
     def test_cross_db_sensitive_paths_cannot_bypass_required_zero_api_job(self):
-        workflow = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = self._integration_workflow()
+        pull_request_section = workflow.split("  workflow_dispatch:", 1)[0]
+        self.assertIn("  pull_request:\n", pull_request_section)
+        self.assertIn("      - main\n", pull_request_section)
+        self.assertNotIn("    paths:\n", pull_request_section)
+        self.assertNotIn("    paths-ignore:\n", pull_request_section)
+        self.assertIn("python -m pytest -q tests", workflow)
+
+        # Sensitive surfaces remain present and are collected/validated by the full
+        # repository regression rather than a hand-maintained PR path allowlist.
         for path in (
             "cross_db_contract_guard.py",
             "content_db_contract_guard.py",
@@ -107,7 +122,7 @@ class Run234RequiredCrossDbContractTests(unittest.TestCase):
             "documentation_freshness_guard.py",
             ".github/workflows/cross-db-contract-guard.yml",
         ):
-            self.assertIn(f"- '{path}'", workflow)
+            self.assertTrue((ROOT / path).is_file(), path)
 
 
 if __name__ == "__main__":

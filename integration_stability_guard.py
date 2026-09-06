@@ -28,6 +28,16 @@ def _read(root: Path, relative: str) -> str:
     return (root / relative).read_text(encoding="utf-8")
 
 
+def _pull_request_block(text: str) -> tuple[bool, str]:
+    match = re.search(
+        r"(?ms)^[ ]{2}pull_request:\s*\n(?P<body>.*?)(?=^[ ]{2}[A-Za-z_][A-Za-z0-9_-]*:\s*$|^permissions:|^concurrency:|^jobs:|\Z)",
+        text,
+    )
+    if not match:
+        return False, ""
+    return True, match.group("body")
+
+
 def workflow_errors(text: str) -> list[str]:
     errors: list[str] = []
     required = (
@@ -38,11 +48,19 @@ def workflow_errors(text: str) -> list[str]:
         "python -m pip check",
         "python integration_stability_guard.py",
         "python -m pytest -q tests",
-        "- '.github/workflows/regression.yml'",
     )
     for marker in required:
         if marker not in text:
             errors.append(f"Integration workflow missing deterministic contract: {marker}")
+
+    present, pull_request = _pull_request_block(text)
+    if not present:
+        errors.append("Integration required check must have a pull_request trigger")
+    else:
+        if "main" not in pull_request:
+            errors.append("Integration required check must cover pull requests to main")
+        if re.search(r"(?m)^[ ]+(?:paths|paths-ignore):\s*$", pull_request):
+            errors.append("Integration required check must not use pull_request path filters")
 
     forbidden = (
         "pip install 'pytest>=8,<9'",
