@@ -1,4 +1,5 @@
 name: Synthetic Regression Suite
+# Run264: keep the standalone regression signal on the same hermetic, locked test contract as Integration CI.
 
 on:
   push:
@@ -33,25 +34,36 @@ concurrency:
 jobs:
   regression:
     name: Synthetic Regression (${{ github.event.inputs.suite || 'smoke' }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Standalone regression is deterministic/zero-provider and must not consult the repository-backed counter.
+      GEMINI_PERSISTENT_DAILY_COUNTER: 'false'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.11"
+          python-version: '3.11.16'
 
-      - name: Install production dependencies
+      - name: Install locked test environment
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install 'pip==26.2.1'
+          pip install -r requirements.txt -c requirements-ci-constraints.txt
+          pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt
+          python -m pip check
 
-      - name: Run production safety tests
-        run: python -m unittest discover -s tests -v
+      - name: Compile current Python surfaces
+        run: python -m compileall -q *.py tests
+
+      - name: Enforce hermeticity and stability contract
+        run: python integration_stability_guard.py
+
+      - name: Run production safety tests hermetically
+        run: python -m pytest -q tests
 
       - name: Run harness self-test
         run: python regression_suite.py --self-test

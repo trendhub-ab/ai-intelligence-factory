@@ -22,6 +22,36 @@ class IntegrationStabilityGuardTests(unittest.TestCase):
         errors = guard.workflow_errors(broken)
         self.assertTrue(any("pytest" in error for error in errors))
 
+    def test_integration_must_trigger_when_standalone_regression_changes(self):
+        text = (ROOT / guard.INTEGRATION_WORKFLOW).read_text(encoding="utf-8")
+        broken = text.replace("      - '.github/workflows/regression.yml'\n", "")
+        errors = guard.workflow_errors(broken)
+        self.assertTrue(any("regression.yml" in error for error in errors))
+
+    def test_standalone_regression_must_use_pytest_not_unittest_discovery(self):
+        text = (ROOT / guard.STANDALONE_REGRESSION_WORKFLOW).read_text(encoding="utf-8")
+        broken = text.replace(
+            "python -m pytest -q tests",
+            "python -m unittest discover -s tests -v",
+        )
+        errors = guard.standalone_regression_errors(broken)
+        self.assertTrue(any("pytest" in error or "unittest discover" in error for error in errors))
+
+    def test_standalone_regression_must_disable_persistent_remote_counter(self):
+        text = (ROOT / guard.STANDALONE_REGRESSION_WORKFLOW).read_text(encoding="utf-8")
+        broken = text.replace("      GEMINI_PERSISTENT_DAILY_COUNTER: 'false'\n", "")
+        errors = guard.standalone_regression_errors(broken)
+        self.assertTrue(any("GEMINI_PERSISTENT_DAILY_COUNTER" in error for error in errors))
+
+    def test_standalone_regression_must_keep_pinned_runtime(self):
+        text = (ROOT / guard.STANDALONE_REGRESSION_WORKFLOW).read_text(encoding="utf-8")
+        broken = text.replace(
+            "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+            "actions/setup-python@v6",
+        )
+        errors = guard.standalone_regression_errors(broken)
+        self.assertTrue(any("setup-python" in error for error in errors))
+
     def test_run130_remote_counter_must_be_disabled_before_pipeline_import(self):
         text = (ROOT / guard.RUN130_TEST).read_text(encoding="utf-8")
         broken = text.replace(
