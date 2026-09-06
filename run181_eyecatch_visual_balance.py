@@ -50,6 +50,18 @@ IMPACT_FOOTER_TOP = 625
 IMPACT_LEFT = 48
 IMPACT_TEXT_RIGHT = 808
 
+# Title-line publication policy: two lines are the visual ideal; three lines are a normal
+# fallback when preserving meaning/readability needs more vertical room. Three lines alone
+# must never block publication.
+IMPACT_TITLE_PREFERRED_LINES = 2
+IMPACT_TITLE_MAX_LINES = 3
+IMPACT_THREE_LINE_GAP_MAX = 10
+IMPACT_THREE_LINE_TITLE_TOP = 226
+IMPACT_THREE_LINE_SAFE_BOTTOM = 520
+IMPACT_THREE_LINE_SUBTITLE_MIN_TOP = 526
+IMPACT_THREE_LINE_TITLE_MAX_FONT = 80
+IMPACT_THREE_LINE_SUBTITLE_MAX_FONT = 24
+
 
 def _boost_title_size(lines: list[str], base_size: int) -> int:
     """Historical Run181 fitter retained for compatibility tests and callers."""
@@ -193,23 +205,61 @@ def _editorial_hook(title: str, summary: str, category: str) -> str:
     return "結局、何が重要なのか？"
 
 
+def _impact_layout_profile(lines: list[str], requested_gap: int) -> dict[str, int | bool]:
+    """Return deterministic geometry for the preferred 2-line or normal 3-line title."""
+    line_count = max(1, min(len(lines) or 1, IMPACT_TITLE_MAX_LINES))
+    try:
+        gap = int(requested_gap)
+    except (TypeError, ValueError):
+        gap = 12
+    gap = max(8, min(18, gap))
+    if line_count >= 3:
+        return {
+            "line_count": 3,
+            "is_three_line": True,
+            "title_top": IMPACT_THREE_LINE_TITLE_TOP,
+            "title_safe_bottom": IMPACT_THREE_LINE_SAFE_BOTTOM,
+            "title_max_font": IMPACT_THREE_LINE_TITLE_MAX_FONT,
+            "line_gap": min(gap, IMPACT_THREE_LINE_GAP_MAX),
+            "subtitle_min_top": IMPACT_THREE_LINE_SUBTITLE_MIN_TOP,
+            "subtitle_max_font": IMPACT_THREE_LINE_SUBTITLE_MAX_FONT,
+        }
+    return {
+        "line_count": line_count,
+        "is_three_line": False,
+        "title_top": IMPACT_TITLE_TOP,
+        "title_safe_bottom": IMPACT_TITLE_SAFE_BOTTOM,
+        "title_max_font": IMPACT_TITLE_MAX_FONT,
+        "line_gap": gap,
+        "subtitle_min_top": IMPACT_SUBTITLE_MIN_TOP,
+        "subtitle_max_font": 29,
+    }
+
+
 def _impact_title_size(lines: list[str], base_size: int, line_gap: int) -> int:
-    """Make the main copy as large as geometry allows, including vertical fit."""
+    """Make main copy as large as its 2-line/3-line geometry safely allows."""
     try:
         base = max(48, int(base_size))
     except (TypeError, ValueError):
         base = 60
-    target = min(IMPACT_TITLE_MAX_FONT, base + IMPACT_TITLE_FONT_BOOST)
+    profile = _impact_layout_profile(lines, line_gap)
+    target = min(int(profile["title_max_font"]), base + IMPACT_TITLE_FONT_BOOST)
+    effective_gap = int(profile["line_gap"])
     probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
     draw = ImageDraw.Draw(probe)
     for candidate in range(target, 47, -1):
         font = ee._jp_font(candidate, bold=True)
         widths = [ee._text_width(draw, line, font) for line in lines]
         heights = [_run_bbox_height(draw, line, font) for line in lines]
-        block_height = sum(heights) + max(0, len(lines) - 1) * int(line_gap)
-        if all(width <= TITLE_MAX_WIDTH for width in widths) and IMPACT_TITLE_TOP + block_height <= IMPACT_TITLE_SAFE_BOTTOM:
+        block_height = sum(heights) + max(0, len(lines) - 1) * effective_gap
+        if (
+            all(width <= TITLE_MAX_WIDTH for width in widths)
+            and int(profile["title_top"]) + block_height <= int(profile["title_safe_bottom"])
+        ):
             return candidate
-    return min(base, IMPACT_TITLE_MAX_FONT)
+    # Preserve publication yield for already-validated legacy plans. Run180 geometry normally
+    # guarantees a fit; this compatibility return avoids turning line count into a hard block.
+    return min(base, int(profile["title_max_font"]))
 
 
 def _fit_impact_highlight_size(
@@ -218,7 +268,10 @@ def _fit_impact_highlight_size(
     if not highlight_text or HIGHLIGHT_FONT_SCALE <= 1.0:
         return int(normal_size)
     base = int(normal_size)
-    target = min(IMPACT_HIGHLIGHT_MAX_FONT, max(base, int(round(base * HIGHLIGHT_FONT_SCALE))))
+    profile = _impact_layout_profile(lines, line_gap)
+    max_highlight = min(IMPACT_HIGHLIGHT_MAX_FONT, int(profile["title_max_font"]) + 16)
+    target = min(max_highlight, max(base, int(round(base * HIGHLIGHT_FONT_SCALE))))
+    effective_gap = int(profile["line_gap"])
     probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
     draw = ImageDraw.Draw(probe)
     normal_font = ee._jp_font(base, bold=True)
@@ -235,8 +288,8 @@ def _fit_impact_highlight_size(
             heights.append(height)
         if not fits:
             continue
-        block_height = sum(heights) + max(0, len(heights) - 1) * int(line_gap)
-        if IMPACT_TITLE_TOP + block_height <= IMPACT_TITLE_SAFE_BOTTOM:
+        block_height = sum(heights) + max(0, len(heights) - 1) * effective_gap
+        if int(profile["title_top"]) + block_height <= int(profile["title_safe_bottom"]):
             return candidate
     return base
 
@@ -330,13 +383,15 @@ def _render_balanced_plan(
     if not title_lines:
         fallback = ee.editorial_hook_from_title(title, max_chars=48)
         _font, title_lines = ee._fit_headline(draw, fallback, max_width=TITLE_MAX_WIDTH, max_lines=3)
-    line_gap = max(8, min(18, int(validated.get("title_line_gap", 12))))
+    requested_gap = max(8, min(18, int(validated.get("title_line_gap", 12))))
+    profile = _impact_layout_profile(title_lines, requested_gap)
+    line_gap = int(profile["line_gap"])
     title_size = _impact_title_size(title_lines, int(validated.get("title_font_size", 60)), line_gap)
     normal_font = ee._jp_font(title_size, bold=True)
     highlight_size = _fit_impact_highlight_size(title_lines, title_size, line_gap, highlight_text)
     highlight_font = ee._jp_font(highlight_size, bold=True)
 
-    y = IMPACT_TITLE_TOP
+    y = int(profile["title_top"])
     for index, _line_text in enumerate(title_lines):
         runs = _split_line_for_highlight(title_lines, index, highlight_text)
         line_height = _draw_mixed_title_line(draw, IMPACT_LEFT, y, runs, normal_font, highlight_font)
@@ -344,9 +399,14 @@ def _render_balanced_plan(
     title_bottom = y - line_gap
 
     sub_lines, sub_size = _subheadline_lines(draw, title, summary, validated)
-    sub_top = max(IMPACT_SUBTITLE_MIN_TOP, title_bottom + 18)
+    is_three_line = bool(profile["is_three_line"])
+    sub_size = min(sub_size, int(profile["subtitle_max_font"]))
+    sub_top = max(
+        int(profile["subtitle_min_top"]),
+        title_bottom + (14 if is_three_line else 18),
+    )
     sub_font = ee._jp_font(sub_size, bold=True)
-    sub_step = max(34, sub_size + 10)
+    sub_step = max(32 if is_three_line else 34, sub_size + (8 if is_three_line else 10))
     for index, line_text in enumerate(sub_lines[:2]):
         bbox = draw.textbbox((0, 0), line_text, font=sub_font)
         draw.text(

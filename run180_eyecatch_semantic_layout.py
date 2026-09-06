@@ -114,7 +114,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - 「徹底解説」「完全ガイド」「まとめ」「最新情報」などSEOブログ的な煽り語を新規追加しない。
 - 疑問形・断定形・変化提示のいずれも可。ただしsource_title以上に強い断定へ変えない。
 - title_linesはeyecatch_titleを改行で分割したものだけ。文字の追加・削除・言い換えをtitle_lines側では行わない。
-- headline相当のtitle_linesは1〜3行。原則2〜3行を優先する。
+- headline相当のtitle_linesは1〜3行。2行を第一選択とし、2行では固有名詞・意味のまとまり・十分な文字サイズを守れない場合のみ3行を使う。必要な場合のみ3行とし、3行は正常なfallbackであり公開不可理由にしない。
 - Noto Sans JP Blackを使う。headlineは52〜76px。760pxを超えない範囲でできるだけ大きくする。
 - 固有名詞・英単語・複合語（例: OpenAI、Polars 2.0、エージェント、生成AI、モデル）を途中で切らない。
 - subheadline_linesは入力subheadlineを1文字も変更せず、1〜2行へ分割するだけ。22〜28px。
