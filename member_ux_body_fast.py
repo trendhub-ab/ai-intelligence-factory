@@ -1,29 +1,96 @@
 #!/usr/bin/env python3
-"""Run169.1: efficient migration of member-visible Decision Brief bodies.
+"""Run169.1 + Run271: efficient member-visible Decision Brief body sync.
 
-The original body sync rewrites every child block when a generated callout label
-changes. For a catalog-sized migration that turns one cosmetic change into
-thousands of Notion API requests. This wrapper keeps the same customer contract
-while applying the smallest safe mutation:
+Run169.1 removed per-child deletion for generated-only pages. Run271 removes the
+larger steady-state cost: reading every generated body on every sync even when
+only a handful of presentation rows changed.
 
-1. Body already matches -> rename only the generated callout label.
-2. Body differs and the page contains only generated callouts -> archive the
-   generated parent block(s) and recreate one clean block (children disappear
-   with the parent; no per-child delete loop).
-3. Manual blocks coexist -> retain the conservative fine-grained replacement so
-   manual ordering/content is preserved.
-4. Partial/interrupted generated bodies are treated as mismatches and rebuilt.
+Run271 contract:
+1. The workflow records a UTC cutoff immediately before Presentation Sync.
+2. In normal operation, only destination pages whose ``last_edited_time`` is at
+   or after that cutoff are eligible for body reads/writes.
+3. One deterministic sentinel body is checked every delta run. If the sentinel
+   does not match the currently installed body contract, the run fails open to a
+   full body scan/migration so presentation-contract changes cannot be skipped.
+4. Push-triggered body-contract migrations and explicit recovery runs may force a
+   full scan through ``MEMBER_BODY_FORCE_FULL``.
+5. If no cutoff is supplied, legacy full-scan behavior is preserved.
 
-ZERO Gemini/model requests.
+Manual blocks remain protected by the existing conservative replacement path.
+ZERO Gemini/model requests and no Notion schema change.
 """
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 from typing import Any
 
 import member_presentation_body_sync as body
 import member_presentation_sync as mps
 import member_ux_guard as guard
+
+
+CHANGED_SINCE_ENV = "MEMBER_BODY_CHANGED_SINCE"
+FORCE_FULL_ENV = "MEMBER_BODY_FORCE_FULL"
+
+
+def _truthy(value: Any) -> bool:
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _page_last_edited(page: dict[str, Any]) -> datetime | None:
+    return _parse_utc(page.get("last_edited_time"))
+
+
+def _select_delta_pages(
+    pages: list[dict[str, Any]],
+    *,
+    changed_since: str | None = None,
+    force_full: bool | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Return the pages that need body inspection plus auditable scope metadata."""
+    if force_full is None:
+        force_full = _truthy(os.environ.get(FORCE_FULL_ENV))
+    cutoff_raw = changed_since if changed_since is not None else os.environ.get(CHANGED_SINCE_ENV)
+    cutoff = _parse_utc(cutoff_raw)
+
+    if force_full:
+        return list(pages), {
+            "mode": "full_forced",
+            "cutoff": str(cutoff_raw or ""),
+            "force_full": True,
+        }
+    if cutoff is None:
+        return list(pages), {
+            "mode": "full_no_cutoff",
+            "cutoff": str(cutoff_raw or ""),
+            "force_full": False,
+        }
+
+    selected = [
+        page
+        for page in pages
+        if (edited := _page_last_edited(page)) is not None and edited >= cutoff
+    ]
+    return selected, {
+        "mode": "delta",
+        "cutoff": cutoff.isoformat().replace("+00:00", "Z"),
+        "force_full": False,
+    }
 
 
 def _rename_generated_callout(block: dict[str, Any], state: dict[str, Any]) -> None:
@@ -56,6 +123,32 @@ def _rebuild_generated_only_page(
     return max(0, removed - 1)
 
 
+def _sentinel_requires_full(page: dict[str, Any]) -> bool:
+    """Detect a global body-contract migration without scanning the whole DB."""
+    state = mps._destination_state(page)
+    page_id = str(state.get("page_id") or page.get("id") or "").strip()
+    if not page_id or not state.get("sync_id"):
+        return True
+
+    root_blocks = body._children(page_id)
+    child_cache: dict[str, list[dict[str, Any]]] = {}
+    generated_blocks = guard._generated_blocks(root_blocks, child_cache)
+    if len(generated_blocks) != 1:
+        return True
+
+    first = generated_blocks[0]
+    first_id = str(first.get("id") or "").strip()
+    if not first_id:
+        return True
+    first_children = child_cache.get(first_id)
+    if first_children is None:
+        first_children = body._children(first_id)
+
+    label_is_clean = body._block_text(first) == guard.VISIBLE_CALLOUT_LABEL
+    body_matches = body._body_matches(first_children or [], state)
+    return not (label_is_clean and body_matches)
+
+
 def sync_member_page_bodies_fast() -> dict[str, Any]:
     if not body.decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY:
         raise ValueError("NOTION_DECISION_INTELLIGENCE_API_KEY is required")
@@ -70,10 +163,33 @@ def sync_member_page_bodies_fast() -> dict[str, Any]:
     pages = body.decision_intelligence._query_external_db(
         data_source_id, database_id, max_records=5000
     )
+    target_pages, scope = _select_delta_pages(pages)
+    sentinel_checked = 0
+    delta_fallback_full = False
+
+    # A code-level body contract change can leave every destination property
+    # unchanged. Sample one canonical generated body before trusting the cutoff.
+    if scope["mode"] == "delta" and pages:
+        sentinel = next(
+            (
+                page
+                for page in pages
+                if str((mps._destination_state(page) or {}).get("sync_id") or "").strip()
+            ),
+            None,
+        )
+        if sentinel is not None:
+            sentinel_checked = 1
+            if _sentinel_requires_full(sentinel):
+                target_pages = list(pages)
+                delta_fallback_full = True
+                scope = dict(scope)
+                scope["mode"] = "full_contract_mismatch"
+
     unchanged = label_only = parent_rebuilt = fine_grained = created = 0
     duplicates_removed = manual_pages = 0
 
-    for page in pages:
+    for page in target_pages:
         state = mps._destination_state(page)
         page_id = str(state.get("page_id") or page.get("id") or "").strip()
         if not page_id or not state.get("sync_id"):
@@ -143,6 +259,11 @@ def sync_member_page_bodies_fast() -> dict[str, Any]:
         "enabled": True,
         "zero_gemini_calls": True,
         "total": len(pages),
+        "scanned_body_pages": len(target_pages),
+        "skipped_by_delta": max(0, len(pages) - len(target_pages)),
+        "delta_scope": scope,
+        "sentinel_checked": sentinel_checked,
+        "delta_fallback_full": delta_fallback_full,
         "unchanged": unchanged,
         "label_only": label_only,
         "parent_rebuilt": parent_rebuilt,
