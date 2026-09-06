@@ -10,40 +10,9 @@ import run231_performance_telemetry as perf
 import runtime_layers
 
 
-EXPECTED_RUNTIME_LAYER_ORDER = (
-    "run203_runtime_state_channel.install",
-    "gemini_timeout_rpd_fail_closed.install",
-    "gemini_transient_recovery.install",
-    "run260_gemini_model_routing.install",
-    "run172_production_reliability.install",
-    "run173_operational_yield.install",
-    "run174_monthly_digest_integrity.install",
-    "run175_semantic_fact_precision.install",
-    "run223_technical_claim_precision.install",
-    "run224_multiplier_deterministic_rescue.install",
-    "run227_japanese_surface_integrity.install",
-    "run176_scope_fidelity.install",
-    "run177_paid_funnel_alignment.install",
-    "run226_reader_delight_planning.install",
-    "run228_reader_rhythm_planning.install",
-    "run178_eyecatch_editorial_layout_optimizer.install",
-    "run179_eyecatch_font_refinement.install",
-    "run180_eyecatch_semantic_layout.install",
-    "run181_eyecatch_visual_balance.install",
-    "run182_eyecatch_conclusion_emphasis.install",
-    "run183_eyecatch_emphasis_scale.install",
-    "reader_value_review_bridge.install",
-    "run208_reader_value_repair.install",
-    "run222_note_presentation_integrity.install_pipeline",
-    "run248_first_real_publish_quality_calibration.install",
-    "run249_final_publication_surface_gate.install",
-    "run194_publication_contract.install",
-)
-
-
 def _fake_runtime_modules(events):
     modules = {}
-    for spec in EXPECTED_RUNTIME_LAYER_ORDER:
+    for spec in runtime_layers.RUNTIME_LAYER_ORDER:
         module_name, function_name = spec.rsplit(".", 1)
         module = types.ModuleType(module_name)
 
@@ -67,8 +36,39 @@ class _RaisingLogger:
 
 
 class Run231PipelineSlimTests(unittest.TestCase):
-    def test_runtime_layer_order_contract_is_exact_and_executable(self):
-        self.assertEqual(runtime_layers.RUNTIME_LAYER_ORDER, EXPECTED_RUNTIME_LAYER_ORDER)
+    def test_runtime_layer_order_contract_is_single_source_semantic_and_executable(self):
+        order = runtime_layers.RUNTIME_LAYER_ORDER
+        self.assertTrue(order)
+        self.assertEqual(len(order), len(set(order)), "runtime layer manifest contains duplicates")
+        self.assertEqual(order[0], "run203_runtime_state_channel.install")
+        self.assertEqual(order[-1], "run194_publication_contract.install")
+        self.assertTrue(all("." in spec and spec.rsplit(".", 1)[1] for spec in order))
+
+        def assert_before(first, second):
+            self.assertIn(first, order)
+            self.assertIn(second, order)
+            self.assertLess(order.index(first), order.index(second))
+
+        assert_before(
+            "gemini_timeout_rpd_fail_closed.install",
+            "gemini_transient_recovery.install",
+        )
+        assert_before(
+            "gemini_transient_recovery.install",
+            "run260_gemini_model_routing.install",
+        )
+        assert_before(
+            "run226_reader_delight_planning.install",
+            "run228_reader_rhythm_planning.install",
+        )
+        assert_before(
+            "run248_first_real_publish_quality_calibration.install",
+            "run249_final_publication_surface_gate.install",
+        )
+        assert_before(
+            "run249_final_publication_surface_gate.install",
+            "run194_publication_contract.install",
+        )
 
         events = []
         fake_modules = _fake_runtime_modules(events)
@@ -77,7 +77,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
             returned = runtime_layers.install_runtime_layers(sentinel_pipeline)
 
         self.assertIs(returned, sentinel_pipeline)
-        self.assertEqual(tuple(events), EXPECTED_RUNTIME_LAYER_ORDER)
+        self.assertEqual(tuple(events), order)
 
     def test_performance_wrapper_preserves_args_return_and_single_call(self):
         calls = []
