@@ -1,7 +1,7 @@
 # AI Intelligence Factory — Paid Product Contract
 
 更新日: 2026-09-07  
-状態: **Run268 current product contract — Proposal-First Decision Intelligence / Four-Source Intelligence**
+状態: **Run270 current product contract — Proposal-First Decision Intelligence / Four-Source Intelligence**
 
 この文書は有料会員商品のSource of Truthです。Evidence / Decision History / Provider budget / Notion access safety等の技術契約は変更しません。
 
@@ -97,15 +97,18 @@ OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadat
 
 会員向け詳細ではcanonical値を次へ翻訳して表示する。
 
-- **顧客に提案できる場面 / 仕事で使える場面** — `向いている用途`
-- **判断への意味（Business Impact）** — canonical判断 + 判断理由
-- **提案前に確認すること** — `主なリスク` + `向いていない用途`
-- **小さく試す条件 / 次の一手** — `次にやること`
-- **Decision Update** — material changeが技術選定・提案判断を変える必要につながるか
+- **顧客にどう答える？** — canonical判断 + 判断理由を、顧客への技術選定回答として表現する。
+- **提案できる場面** — `向いている用途`。顧客利用を裏付けるEvidenceがない場合、適合を断定しない。
+- **提案前に確認すること** — `主なリスク` + `向いていない用途`。
+- **提案・検証の次の一手** — `次にやること`。既存の検証Actionを使い、架空の工数・ROIを追加しない。
+- **Decision Update** — material changeが技術選定・提案判断を変える必要につながるか。
+- **確認に使った公式・一次情報** — Evidence / primary URLを保持する。
 
 根拠のないROI、売上、工数削減率を創作しない。顧客向けに見栄えを良くするためにEvidenceを弱めない。
 
-本番本文は少なくとも `いま、どうする？` / `仕事への意味（Business Impact）` を含み、値がある場合は `仕事で使える場面` / `使う前に確認すること` / `試すときの次の一手` も含む。既存表示契約は壊さず、判断・提案メモ側でProposal-Firstへ強める。
+**Run270以降の最終可視本文はProposal-Firstを正本とする。** Run250のWork-First本文は歴史的互換層として残すが、最終表示Authorityではない。値がある場合の基本順序は `これは何？` → `顧客にどう答える？` → `提案できる場面` → `なぜ今見る？` → `提案前に確認すること` → `提案・検証の次の一手` → `Decision Update` → `公式・一次情報` とする。
+
+社内利用・自己学習への転用はSecondary Valueとして残す。ただし、会員トップ・詳細本文・Decision Brief・判断メモで「顧客提案は副次利用」と表現しない。
 
 ## 7. 日本語表現契約
 
@@ -184,7 +187,7 @@ Member DB:
 Decision Brief 2026-09:
 `3d0479ff-dca9-81de-b614-fef528d2f32c`
 
-AI活用判断シート:
+AI導入 判断・提案メモ:
 `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 
 2026年9月の主要候補:
@@ -226,7 +229,7 @@ AI活用判断シート:
 - material changeがあるのにDecision Briefを抽象論だけで終わらせない。
 - UI/内部命名の美化を、販売検証・提案Artifact・Source品質より優先しない。
 
-## 13. Run250–268
+## 13. Run250–270
 
 - Run250 — paid presentation overlay
 - Run251 — legacy fixed shortlist retirement
@@ -235,6 +238,8 @@ AI活用判断シート:
 - Run254 — unnecessary first-person removal
 - Run255 — natural/context-safe neutralization
 - Run256 — concrete Decision Update + documentation reconciliation
-- **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West coverage**
+- Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West coverage
+- Run269 — live acquisition precision / strict vendor evidence
+- **Run270 — Proposal-First member visible surface / static Notion surface alignment**
 
-Run268のSource/商品契約変更は**新規Gemini/provider callを追加しない**。OfficialVendorは公開公式ページのbounded HTTP取得、HNはbounded Algolia queryで取得する。
+Run268–270のSource/商品契約変更は**新規Gemini/provider callを追加しない**。OfficialVendorは公開公式ページのbounded HTTP取得、HNはbounded Algolia queryで取得し、Run270は既存canonical値の表示変換だけを行う。

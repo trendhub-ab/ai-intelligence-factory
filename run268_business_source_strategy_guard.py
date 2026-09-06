@@ -116,10 +116,14 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         if entrypoint.index("install_runtime_layers(pipeline)") > entrypoint.index("install_run268_business_source_strategy(pipeline)"):
             errors.append("run268_must_install_after_historical_runtime_layers")
 
+    # Run268 is the business/source strategy authority. The paid-product document can
+    # legitimately receive a newer revision label when a later Run changes only the
+    # member presentation surface. Protect the Run268 strategy invariants themselves,
+    # not an obsolete "current document revision" phrase.
     errors += _require(
         product,
         (
-            "Run268 current product contract",
+            "Run268 — Proposal-First ICP / Four-Source Intelligence",
             "Proposal-First Decision Intelligence",
             "1〜3名規模のフリーランス／小規模開発事業者",
             "GitHub — 実装動向",

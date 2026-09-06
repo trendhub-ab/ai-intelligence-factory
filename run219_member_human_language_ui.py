@@ -7,15 +7,14 @@ status, Evidence, risk, source copy, next action, article state and source data
 remain authoritative and unchanged.
 
 The migration recognizes previous member-callout variants plus the current
-work-first paid-product surface, so existing generated bodies are replaced
+Proposal-First paid-product surface, so existing generated bodies are replaced
 instead of duplicated. Manual blocks continue to be preserved by the existing
 fast body sync.
 
-Run225 may install a navigation-only lifecycle ranker beneath this public CLI
-surface. Run250/253 may then install the current work-first paid-product overlay
-after Run225 so lifecycle and source authority remain intact. Run219 remains the
-authoritative workflow wrapper so Run170-Run215 copy authority and the existing
-operational contract are not bypassed.
+Run225 installs lifecycle navigation, Run250 remains the historical Work-First
+compatibility layer, and Run270 installs after Run250 as the current Proposal-First
+presentation authority. Run219 remains the authoritative workflow wrapper so
+Run170-Run215 copy authority and the existing operational contract are not bypassed.
 
 ZERO Gemini/model requests.
 """
@@ -129,7 +128,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 def _looks_like_generated_member_callout(
     block: dict[str, Any], child_cache: dict[str, list[dict[str, Any]]]
 ) -> bool:
-    """Recognize pre-Run219, client-action and work-first generated callouts."""
+    """Recognize historical, Work-First and current Proposal-First generated callouts."""
     if block.get("type") != "callout":
         return False
     label = body._block_text(block)
@@ -144,18 +143,28 @@ def _looks_like_generated_member_callout(
         children = body._children(block_id)
         child_cache[block_id] = children
     headings = guard._heading_texts(children)
-    has_decision = bool({"いま、どうする？", "いまの判断", "結論"} & headings)
+    has_decision = bool(
+        {"いま、どうする？", "いまの判断", "結論", "顧客にどう答える？"} & headings
+    )
     has_reason = bool(
         {
             "そう判断した理由",
             "判断理由",
             "案件への意味（Business Impact）",
             "仕事への意味（Business Impact）",
+            "提案できる場面",
+            "提案前に確認すること",
         }
         & headings
     )
     has_action = bool(
-        {"次にやること", "提案時の次の一手", "試すときの次の一手"} & headings
+        {
+            "次にやること",
+            "提案時の次の一手",
+            "試すときの次の一手",
+            "提案・検証の次の一手",
+        }
+        & headings
     )
     return has_decision and has_action and has_reason
 
@@ -167,7 +176,7 @@ def _install_body_builder() -> None:
 
 
 def install() -> None:
-    """Make Run170/170.4's body-install hook resolve to the Run219 builder."""
+    """Make Run170/170.4's body-install hook resolve to the active Run219 builder."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -176,7 +185,7 @@ def install() -> None:
 
 
 def _install_current_navigation_overlays() -> None:
-    """Install post-Run219 navigation overlays without replacing this CLI wrapper."""
+    """Install lifecycle -> historical Work-First -> current Proposal-First overlays."""
     try:
         import run225_member_lifecycle_ui as run225
     except ImportError:
@@ -187,6 +196,11 @@ def _install_current_navigation_overlays() -> None:
     except ImportError:
         return
     run250.install_navigation()
+    try:
+        import run270_proposal_first_member_surface as run270
+    except ImportError:
+        return
+    run270.install_navigation()
 
 
 def run_presentation_sync() -> dict[str, Any]:
@@ -205,6 +219,12 @@ def run_presentation_sync() -> dict[str, Any]:
         run250 = None
     if run250 is not None:
         result["run250_client_action_product"] = run250.contract()
+    try:
+        import run270_proposal_first_member_surface as run270
+    except ImportError:
+        run270 = None
+    if run270 is not None:
+        result["run270_proposal_first_member_surface"] = run270.contract()
     result["zero_gemini_calls"] = True
     return result
 
@@ -216,9 +236,18 @@ def run_body_sync() -> dict[str, Any]:
         run250 = None
     if run250 is not None:
         # Under ``python run219_member_human_language_ui.py body`` this module is
-        # ``__main__``. Pass the active wrapper explicitly so the current overlay
+        # ``__main__``. Pass the active wrapper explicitly so the compatibility layer
         # cannot patch only a second canonical import of this same file.
         run250.install_body(sys.modules[__name__])
+
+    try:
+        import run270_proposal_first_member_surface as run270
+    except ImportError:
+        run270 = None
+    if run270 is not None:
+        # Run270 is the current presentation authority and must install after Run250.
+        run270.install_body(sys.modules[__name__])
+
     install()
     result = run215.run_body_sync()
     result["run219_human_language_ui"] = {
@@ -228,6 +257,17 @@ def run_body_sync() -> dict[str, Any]:
     }
     if run250 is not None:
         result["run250_client_action_product"] = run250.contract()
+    if run270 is not None:
+        result["run270_proposal_first_member_surface"] = run270.contract()
+        result["reader_order"] = [
+            "これは何？",
+            "顧客にどう答える？",
+            "提案できる場面",
+            "なぜ今見る？",
+            "提案前に確認すること",
+            "提案・検証の次の一手",
+        ]
+    elif run250 is not None:
         result["reader_order"] = [
             "これは何？",
             "いま、どうする？",
