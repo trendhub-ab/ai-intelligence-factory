@@ -105,6 +105,20 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertEqual(alignment.neutral_subject_text("自分の利用条件を確認"), "利用条件を確認")
         self.assertEqual(alignment.neutral_subject_text("自分だけで使う"), "自分だけで使う")
 
+    def test_run255_company_term_neutralization_is_context_safe(self):
+        guardrail = self._state("guardrail", "セキュリティ", 80, "AI安全対策。")
+        guardrail["next_action"] = "自社AIで禁止質問を10個挙げ、小規模テストする。"
+        self.assertEqual(
+            alignment.work_action_text(guardrail),
+            "利用中のAIで禁止質問を10個挙げ、小規模テストする。",
+        )
+        self.assertNotIn("利用環境AI", alignment.work_action_text(guardrail))
+
+        code = self._state("code", "開発ツール", 80, "開発ツール。")
+        code["next_action"] = "すべてを自社コードで管理したい場合は比較する。"
+        self.assertIn("独自コード", alignment.work_action_text(code))
+        self.assertNotIn("利用環境コード", alignment.work_action_text(code))
+
     def test_work_action_layer_uses_existing_authoritative_fields(self):
         state = self._state(
             "work-tool",
@@ -119,7 +133,6 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertNotIn("自社", alignment.work_action_text(state))
         self.assertNotIn("自分の", alignment.work_action_text(state))
         self.assertIn("対象業務", alignment.work_action_text(state))
-        # Legacy callable names remain aliases only for compatibility.
         self.assertEqual(alignment.client_case_text(state), alignment.work_case_text(state))
         self.assertEqual(alignment.client_check_text(state), alignment.work_check_text(state))
         self.assertEqual(alignment.proposal_action_text(state), alignment.work_action_text(state))

@@ -1,7 +1,7 @@
 # AI Intelligence Factory — Paid Product Contract
 
 更新日: 2026-09-06  
-状態: **Run254 current product contract — Work-First / Neutral-Subject Decision Intelligence**
+状態: **Run255 current product contract — Work-First / Natural Neutral-Subject Decision Intelligence**
 
 この文書は、有料会員商品に関する現行のSource of Truthです。旧商品説明と矛盾する場合、有料商品のターゲット・見せ方・継続価値については本書を優先します。Evidence / Decision History / Provider budget / Notion access safety等の既存技術契約は変更しません。
 
@@ -42,7 +42,7 @@
 
 顧客へ説明・提案できることは、この判断能力から派生する応用価値である。
 
-## 3. 日本語表現契約 — Run254
+## 3. 日本語表現契約 — Run254–255
 
 会員向けコピーは**主語省略を基本**とする。
 
@@ -53,6 +53,18 @@
 - `自分の環境` より、文脈に応じ **`利用環境`** を優先する。
 
 `自分` を全面禁止にはしない。`自分だけ / 少人数 / チーム`のように、利用主体の違い自体が意味を持つ場合は残す。
+
+Run255では、**中立化そのものより日本語として自然で意味が保たれることを優先**する。`自社`を機械的に一律置換してはならない。特に `自社AI → 利用環境AI` のような不自然な複合語生成を禁止する。
+
+安全な置換例:
+
+- `自社案件` → `対象業務`
+- `自社要件` → `利用条件`
+- `自社AI` → `利用中のAI`
+- `自社コード` → `独自コード`
+- `自社環境` → `利用環境`
+
+文脈上、安全に意味を保持できない場合はcanonical表現を無理に変えない。
 
 目的は個人向け感を弱めることではなく、**日本語として不要な主語を削り、個人・小規模事業・将来の法人利用にも自然に読める表現へ整えること**である。
 
@@ -92,6 +104,8 @@
 Run253前の `案件で使える場面 / 案件への意味 / 提案前に確認すること / 提案時の次の一手` が残っている本文を「現行」と判定してはならない。
 
 Run254以降は、見出しがWork-Firstでも `自分の仕事 / 自分の業務 / 自分の作業 / 自分の利用条件 / 自分の環境` 等の不要な一人称所有表現が残る旧本文を現行扱いしない。表示専用の意味保持置換で一度再構築する。
+
+Run255以降は、neutralization後の本文が**自然な日本語であることもProduction監査対象**とする。文字列置換によって不自然な複合語を作った場合、CI greenでも完了扱いにしない。
 
 GitHub Actionsが `python run219_member_human_language_ui.py body` としてCLIファイルを直接実行する本番条件も契約対象とする。Python上で実行中モジュールが `__main__` になっても、current body builderが**実際に実行中のwrapper module**へ結合されなければならない。canonical import側だけを書き換えて成功扱いにしない。
 
@@ -168,17 +182,18 @@ noteは市場そのものではなく、低コストの集客・SEO・信頼形�
 - 新しい有料APIを追加しない。
 - Gemini/model呼出しを表示ロジックに追加しない。
 - Public note公開は人間承認のまま。
-- Notion schemaはRun254では変更しない。
+- Notion schemaはRun255では変更しない。
 - 個別ユーザーWatchlist/パーソナライズはPMF前に実装しない。
-- CI greenだけを商品改定の完了証明にしない。本番Notion実物の見出し・順位・Source preservationを監査する。
+- CI greenだけを商品改定の完了証明にしない。本番Notion実物の見出し・順位・Source preservation・日本語自然性を監査する。
 - 「顧客に答えられる」を商品中心へ戻さない。それは副次価値である。
 - 不要な `自分の` を商品コピーへ再導入しない。意味上必要な場合だけ使う。
+- `自社` 等を一律文字列置換し、意味や日本語を壊さない。
 
-## 13. Run250–254実装契約
+## 13. Run250–255実装契約
 
-- `member_client_action_alignment.py` — 後方互換のファイル名を維持。Run254ではWork-First relevanceに加え、不要な一人称所有表現を表示専用で中立化する。
+- `member_client_action_alignment.py` — 後方互換のファイル名を維持。Run254で不要な一人称所有表現を中立化し、Run255で文脈安全な置換だけに限定する。
 - `run250_member_client_action_product.py` — Run225後のnavigation overlay + Run219 body overlay。Run251固定shortlist退役、Run252 script-entrypoint authority、Run253 Work-First、Run254 neutral-subject migrationを担当。
 - `run219_member_human_language_ui.py` — 既存CLI/authorityを維持した統合入口。
-- `tests/test_run250_member_client_action_product.py` — Source score/Evidence/Deep Tech/schema preservation、旧Client Action migration、Work-First relevance、neutral-subject migrationを反証する。
+- `tests/test_run250_member_client_action_product.py` — Source score/Evidence/Deep Tech/schema preservation、旧Client Action migration、Work-First relevance、neutral-subject migration、自然な置換を反証する。
 
 **ZERO model/provider calls.**
