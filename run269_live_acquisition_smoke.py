@@ -6,8 +6,8 @@ import ``pipeline``, call Gemini/model providers, access Notion, mutate runtime 
 publish content, or write any production database.
 
 Run269 distinguishes transport reachability from candidate quality: a vendor passes
-only when at least one structured update candidate is extracted. Page-level fallback
-is reported but cannot silently satisfy the strict live smoke.
+only when at least one structured update/current-state candidate is extracted.
+Page-level fallback is reported but cannot silently satisfy the strict live smoke.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from typing import Any
 
 import requests
 
-from run269_acquisition_precision import (
+from run269_vendor_current_state import (
     HN_AI_QUERIES,
     HN_LOOKBACK_DAYS,
     OFFICIAL_VENDOR_REGISTRY,
@@ -188,7 +188,7 @@ def main() -> int:
     parser.add_argument(
         "--require-all-vendors",
         action="store_true",
-        help="Fail if any configured vendor lacks a structured update candidate.",
+        help="Fail if any configured vendor lacks structured update/current-state evidence.",
     )
     args = parser.parse_args()
 
@@ -209,7 +209,7 @@ def main() -> int:
         failures.append("OfficialVendor structured CN coverage below 4/8")
     if args.require_all_vendors and summary["structured_failed"]:
         failed_names = [row["vendor"] for row in report["vendors"] if not row["ok"]]
-        failures.append("Configured vendors without structured candidates: " + ", ".join(failed_names))
+        failures.append("Configured vendors without structured evidence: " + ", ".join(failed_names))
 
     if failures:
         print("RUN269_LIVE_ACQUISITION_SMOKE=FAIL")
