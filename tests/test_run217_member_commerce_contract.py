@@ -28,11 +28,14 @@ class Run217MemberCommerceContractTests(unittest.TestCase):
         cls.run218 = RUN218.read_text(encoding="utf-8")
         cls.run220 = RUN220.read_text(encoding="utf-8")
 
-    def test_functional_and_member_copy_baselines_are_not_relabelled(self):
+    def test_reliability_and_member_copy_baselines_remain_explicit(self):
         self.assertIn("Current functional baseline:** Run209", self.readme)
         self.assertIn("Current paid member UX baseline:** Run215", self.readme)
-        self.assertIn("現行Functional Baseline: **Run209", self.spec)
+        # Run267 clarifies that Run209 is the still-active core reliability contract,
+        # not the overall newest functional state of the repository.
+        self.assertIn("Core Reliability Baseline: **Run209", self.spec)
         self.assertIn("Paid Member UX Baseline: **Run215", self.spec)
+        self.assertNotIn("現行Functional Baseline: **Run209", self.spec)
 
     def test_run217_remains_commerce_history_but_later_authorities_are_explicit(self):
         self.assertIn("paid member commerce/onboarding baseline:** Run217", self.readme)
