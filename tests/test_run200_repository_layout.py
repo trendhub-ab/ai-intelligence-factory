@@ -108,11 +108,19 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
 
     def test_current_spec_tracks_live_baseline_and_old_spec_is_preserved(self) -> None:
         current = (ROOT / "AI_Intelligence_Factory_最終仕様書.md").read_text(encoding="utf-8")
-        self.assertIn("現行Functional Baseline: **Run209", current)
-        self.assertIn("Documentation Governance Baseline: **Run262", current)
+        self.assertIn("Core Reliability Baseline: **Run209", current)
+        self.assertIn("Documentation Governance Baseline: **Run267", current)
         self.assertIn("Article Model Routing Baseline: **Run261", current)
         self.assertIn("ONE-SHOT Downstream Fan-out Baseline: **Run261", current)
+        self.assertIn("Integration Determinism Baseline: **Run263", current)
+        self.assertIn("Standalone Synthetic Baseline: **Run264", current)
+        self.assertIn("Dependency Compatibility Baseline: **Run266", current)
+        self.assertIn("Required PR Check Governance Baseline: **Run267", current)
+        self.assertIn("Eyecatch Baseline: **Run183", current)
         self.assertIn("Production Source of Truth: **`main`**", current)
+        self.assertNotIn("現行Functional Baseline: **Run209", current)
+        self.assertNotIn("Documentation Governance Baseline: **Run262", current)
+        self.assertNotIn("Eyecatch Baseline: **Run181 current**", current)
         self.assertNotIn("本パッケージコード基準: **Run 122", current)
 
         historical_path = (
@@ -128,8 +136,8 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Current functional baseline:** Run209", readme)
         # README remains a compact operator index. Run210 is the broad documentation
-        # governance origin; the canonical specification carries the narrower Run262
-        # current-mechanism freshness authority.
+        # governance origin; the canonical specification carries the narrower Run267
+        # current-contract freshness authority.
         self.assertIn("Current documentation governance baseline:** Run210", readme)
         self.assertIn("Current repository organization baseline:** Run246", readme)
         self.assertIn("falsified repository hygiene cleanup with active/runtime asset protection", readme)
