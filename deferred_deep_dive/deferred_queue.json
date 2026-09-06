@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-05T09:44:50.624707+00:00",
+  "updated_at": "2026-09-06T10:18:29.084909+00:00",
   "items": [
     {
       "key": "https://armature.tech/blog/which-tools-coding-agents-install",
@@ -341,6 +341,38 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 71.75
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49548852",
+      "deferred_at": "2026-09-06T10:18:29.084743+00:00",
+      "expires_at": "2026-11-05T10:18:29.084743+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "How Swiss tables work in Go built-in map",
+        "originalTitle": "How Swiss tables work in Go built-in map",
+        "displayName": "How Swiss tables work in Go built-in map",
+        "sourceLanguage": "en",
+        "url": "https://victoriametrics.com/blog/go-swiss-table-map/index.html",
+        "description": "How Swiss tables work in Go built-in map",
+        "stargazerCount": 79,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-03T11:59:17+00:00",
+        "sourceContext": "",
+        "primaryUrl": "https://victoriametrics.com/blog/go-swiss-table-map/index.html",
+        "sourceDetails": {
+          "hn_id": 49548852,
+          "hn_url": "https://news.ycombinator.com/item?id=49548852",
+          "external_url": "https://victoriametrics.com/blog/go-swiss-table-map/index.html"
+        }
+      },
+      "notion_page_id": "3d3479ff-dca9-8111-a8fe-d58c365da763",
+      "score": 70,
+      "reason": "GoのビルトインマップにおけるSwiss tables実装解説",
+      "commercial_score": 50,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 63.0
     }
   ]
 }
