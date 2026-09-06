@@ -9,6 +9,7 @@ Run268の初回Live Acquisition Smokeでは、11 OfficialVendorすべてへ到�
 1. OfficialVendorのナビゲーション文言（例: Models & pricing / Get API key）が更新候補として混入し得る。
 2. Hacker News Algoliaのtypo toleranceにより、`Qwen`検索へ`jQuery`記事が混入し得る。
 3. 中国Vendorの一部はHTML本文・埋込JSON・モデル一覧など公開面の形が異なり、単一HTML抽出方式では「接続成功」と「更新情報取得成功」を区別できない。
+4. ByteDance / VolcengineはGitHub-hosted runnerから通常ドキュメントHTMLを取得した際、同じURLでもモデル一覧本文ではなくJavaScript shellだけが返る場合がある。
 
 Run269はこれらをFail-Closed寄りに補正し、**接続できたことではなく、意思決定に使える一次情報を構造化取得できたこと**をLive Smokeの合格条件にする。
 
@@ -60,11 +61,18 @@ Run269はVendorページを次の状態へ分ける。
 
 ByteDanceは公式の火山方舟モデル一覧を、商用選定に直結するcurrent-state primary sourceとして使用する。
 
-- URL: `https://www.volcengine.com/docs/82379/1799865?lang=zh`
+- 通常取得URL: `https://www.volcengine.com/docs/82379/1799865?lang=zh`
+- canonical model-list URL: `https://www.volcengine.com/docs/82379/1330310`
 - リリースイベントと偽装しない
-- 公式ページの`最近更新时间`を取得できる場合、`structured_current_state`として扱う
+- 公式ページの`最近更新时间`を取得できる場合はtimestampを保持する
+- timestampがHTTP返却形に含まれない場合、`模型列表`とSeed / Doubao系の具体的モデルmarkerの両方が確認できた場合だけcurrent-stateとして扱い、日付は捏造しない
+- 通常HTMLがJavaScript shellのみの場合、ByteDance公式`bytedance/agentkit-samples`でも使用されているVolcengine公式文書fetch endpoint `https://docs-api.cn-beijing.volces.com/api/v1/doc/fetch`を最終bounded fallbackとして使用する
+- このofficial docs APIはAPI key不要で、同じVolcengine公式文書のTitle / Contentを取得するだけである。第三者Evidenceやmodel APIへ切り替えない
+- docs APIが返した内容も`模型列表` + Seed / Doubao等のcurrent-state markerまたは明示的な`最近更新时间`を満たさなければ`structured_current_state`へ昇格させない
+- generic文書内容や単なるHTTP成功は`page_fallback`のままでStrict Live Smokeを失敗させる
+- 取得transportは`current_state_transport`へ保存し、HTML成功か`official_doc_api`かを観測可能にする
 
-### 中国主要Vendor
+## 中国主要Vendor
 
 Run269でも中国Vendorを補助扱いにしない。
 
@@ -104,9 +112,10 @@ Strict modeは11/11 Vendorが`structured_*` evidenceを返すことを要求す�
 - US: **3/3**
 - CN: **8/8**
 - fallback-only: **0**
+- ByteDance: **`structured_current_state` / `transport=official_doc_api`**
 - HN: **20 candidates / 11 queries / 30-day lookback**
 - Run269 precision unit tests: **9/9 PASS**
-- current-state unit tests: **3/3 PASS**
+- current-state unit tests: **8/8 PASS**
 - `Qwen -> jQuery`誤一致は再現テストで拒否
 
 Live SmokeはProduction記事生成・Gemini quota・Notion DBを一切消費しない。
@@ -119,6 +128,8 @@ Live SmokeはProduction記事生成・Gemini quota・Notion DBを一切消費し
 - Algolia typo matchingを最終Authorityにしない
 - Vendor page reachabilityをstructured evidence成功と同一視しない
 - current-state pageを架空のrelease eventへ変換しない
+- official docs APIのgeneric返却をcurrent-state Evidenceへ昇格させない
+- current-state timestampを観測できない場合に日付を捏造しない
 - 新しい有料API/API key/Gemini callを追加しない
 - Daily PAUSEDを解除しない
 - Public note human-onlyを変更しない
