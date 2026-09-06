@@ -208,7 +208,10 @@ def run_body_sync() -> dict[str, Any]:
     except ImportError:
         run250 = None
     if run250 is not None:
-        run250.install_body()
+        # Under ``python run219_member_human_language_ui.py body`` this module is
+        # ``__main__``. Pass the active wrapper explicitly so Run250 cannot patch
+        # only a second canonical import of this same file.
+        run250.install_body(sys.modules[__name__])
     install()
     result = run215.run_body_sync()
     result["run219_human_language_ui"] = {

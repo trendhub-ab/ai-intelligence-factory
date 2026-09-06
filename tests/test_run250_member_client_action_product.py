@@ -1,9 +1,12 @@
+import sys
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 import member_client_action_alignment as alignment
 import member_human_language_ux_v2 as ux2
 import member_presentation_body_sync as body
+import run219_member_human_language_ui as run219
 import run250_member_client_action_product as run250
 
 
@@ -131,6 +134,28 @@ class Run250ClientActionProductTests(unittest.TestCase):
             self.assertFalse(run250._body_matches_client_action(old_children, state))
             self.assertTrue(run250._body_matches_client_action(run250._build_children(state), state))
 
+    def test_run252_installer_binds_active_wrapper_even_after_shared_install(self):
+        fake_active = SimpleNamespace(_build_children=lambda _state: [])
+        original_body_builder = body._build_children
+        try:
+            with patch.object(run250, "_BODY_INSTALLED", True):
+                run250.install_body(fake_active)
+            self.assertIs(fake_active._build_children, run250._build_children)
+            self.assertIs(body._build_children, run250._build_children)
+        finally:
+            body._build_children = original_body_builder
+
+    def test_run219_passes_current_module_object_to_run250_body_installer(self):
+        with (
+            patch.object(run250, "install_body") as install_body,
+            patch.object(run219, "install") as install_run219,
+            patch.object(run219.run215, "run_body_sync", return_value={}),
+        ):
+            result = run219.run_body_sync()
+        install_body.assert_called_once_with(sys.modules[run219.__name__])
+        install_run219.assert_called_once_with()
+        self.assertTrue(result["run250_client_action_product"]["script_entrypoint_body_authority"])
+
     def test_contract_declares_zero_provider_calls_and_schema_preservation(self):
         contract = run250.contract()
         self.assertTrue(contract["zero_gemini_calls"])
@@ -141,6 +166,7 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertFalse(contract["notion_schema_changed"])
         self.assertTrue(contract["legacy_fixed_shortlist_retired"])
         self.assertTrue(contract["client_action_body_migration_required"])
+        self.assertTrue(contract["script_entrypoint_body_authority"])
 
 
 if __name__ == "__main__":

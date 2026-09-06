@@ -1,7 +1,7 @@
 # AI Intelligence Factory — Paid Product Contract
 
 更新日: 2026-09-06
-状態: **Run250 current product contract**
+状態: **Run252 current product contract**
 
 この文書は、有料会員商品に関する現行のSource of Truthです。`REVENUE_PRODUCT_PHASE2_SETUP.md`等の旧商品説明と矛盾する場合、有料商品のターゲット・見せ方・継続価値については本書を優先します。Evidence / Decision History / Provider budget / Notion access safety等の既存技術契約は変更しません。
 
@@ -53,6 +53,14 @@
 - **提案時の次の一手** — canonical `次にやること`を案件向け表現へ置き換える。
 - **Decision Update** — 記録済みのmaterial changeが、案件判断を上げる/下げる必要につながるかを示す。
 
+### Production表示の必須条件
+
+本番Notionの自動生成本文は、少なくとも **`いま、どうする？` / `案件への意味（Business Impact）`** を含み、値が存在する場合は **`案件で使える場面` / `提案前に確認すること` / `提案時の次の一手`** も含むこと。
+
+旧Run219本文がSource値の一致だけで「現行」と判定されることを禁止する。本文一致判定はClient Action見出しまで検証する。
+
+さらに、GitHub Actionsが `python run219_member_human_language_ui.py body` としてCLIファイルを直接実行する本番条件を正式な契約対象とする。Python上で実行中モジュールが `__main__` になっても、Run250/252のClient Action body builderが**実際に実行中のwrapper module**へ結合されなければならない。canonical import側だけを書き換えて成功扱いにしない。
+
 ## 6. Decision Update
 
 生の `82 → 91` を継続課金価値の中心にしない。
@@ -102,6 +110,8 @@
 
 これらは固定allowlistではない。将来の候補は同じICP関連性契約で自動評価する。
 
+本番ホームの「注目順位」は旧固定3件を優先しない。Run251以降、Navigation-only ICP relevance + 既存quality/lifecycle contractが最終選定権限を持つ。
+
 ## 9. 価格と商業検証
 
 - 標準価格: **月額1,980円**を維持して検証する。
@@ -123,16 +133,17 @@ noteは市場そのものではなく、低コストの集客・SEO・信頼形�
 - Source scoreを顧客適合度スコアへ置き換えない。
 - ICP relevanceは**Navigation-only**。
 - 新しい有料APIを追加しない。
-- Gemini/model呼出しをRun250表示ロジックに追加しない。
+- Gemini/model呼出しをRun250/252表示ロジックに追加しない。
 - Public note公開は人間承認のまま。
-- Notion schemaはRun250では変更しない。
+- Notion schemaはRun250/252では変更しない。
 - 個別ユーザーWatchlist/パーソナライズはPMF前に実装しない。
+- CI greenだけを商品改定の完了証明にしない。本番Notion実物の見出し・順位・Source preservationを監査する。
 
-## 12. Run250実装契約
+## 12. Run250–252実装契約
 
 - `member_client_action_alignment.py` — ICP関連性とAction表示のpure deterministic policy
-- `run250_member_client_action_product.py` — Run225後のnavigation overlay + Run219 body overlay
-- `run219_member_human_language_ui.py` — 既存CLI/authorityを維持した統合入口
-- `tests/test_run250_member_client_action_product.py` — Source score/Evidence/Deep Tech/schema preservation contract
+- `run250_member_client_action_product.py` — Run225後のnavigation overlay + Run219 body overlay。Run251で旧固定shortlistをretireし、Run252でscript-entrypoint body authorityを追加。
+- `run219_member_human_language_ui.py` — 既存CLI/authorityを維持した統合入口。body実行時は `sys.modules[__name__]` をRun250へ渡し、`__main__` 実行でもactive wrapperへClient Action builderを結合する。
+- `tests/test_run250_member_client_action_product.py` — Source score/Evidence/Deep Tech/schema preservation、旧shortlist、stale body、script-entrypoint authorityの反証契約。
 
 **ZERO model/provider calls.**

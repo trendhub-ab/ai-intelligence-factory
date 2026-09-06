@@ -18,6 +18,15 @@ silently regain final authority. Run250 now explicitly retires that old fixed
 shortlist before the lower stack runs. The lower editorial wrapper remains in
 place as a fallback but delegates selection to the Run250 relevance ranker.
 
+Run252 hardening note:
+The production workflow executes ``run219_member_human_language_ui.py`` as a
+script. In that mode the active wrapper is ``__main__`` while importing Run250
+also imports a second canonical ``run219_member_human_language_ui`` module.
+Patching only that canonical copy leaves the active CLI wrapper on the old body
+builder. ``install_body`` therefore accepts the active wrapper module explicitly
+and always binds the client-action builder to both that wrapper and the shared
+body renderer before lower layers run.
+
 ZERO model/provider calls.
 """
 from __future__ import annotations
@@ -214,12 +223,24 @@ def install_navigation() -> None:
     _NAV_INSTALLED = True
 
 
-def install_body() -> None:
-    """Install client-action body semantics and force migration from old bodies."""
+def install_body(target_run219_module: Any | None = None) -> None:
+    """Bind client-action body semantics to the active wrapper and shared renderer.
+
+    ``python run219_member_human_language_ui.py body`` executes the wrapper as
+    ``__main__``. Run250 itself imports the same file by canonical module name,
+    creating a second module object. The active module is therefore passed in by
+    Run219 so its global ``_build_children`` is replaced as well.
+    """
     global _BODY_INSTALLED, _BASE_BODY_MATCHES
+    target = target_run219_module if target_run219_module is not None else run219
+
+    # Always bind the target first. This must happen even if the shared matcher
+    # was already installed earlier in this process.
+    target._build_children = _build_children
+    body._build_children = _build_children
+
     if _BODY_INSTALLED:
         return
-    run219._build_children = _build_children
     _BASE_BODY_MATCHES = body._body_matches
     body._body_matches = _body_matches_client_action
     _BODY_INSTALLED = True
@@ -235,6 +256,7 @@ def contract() -> dict[str, Any]:
         "notion_schema_changed": False,
         "legacy_fixed_shortlist_retired": True,
         "client_action_body_migration_required": True,
+        "script_entrypoint_body_authority": True,
         "paid_surface": [
             "案件で使える場面",
             "案件への意味（Business Impact）",
