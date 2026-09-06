@@ -122,6 +122,19 @@ def _current_state_item(vendor: dict, html: str, normalize_item):
     return item
 
 
+def _normalize_existing_current_state(item: dict) -> dict:
+    """A structured row from a declared model-list page is state, not a release."""
+    normalized = dict(item)
+    details = dict(item.get("sourceDetails") or {})
+    details["vendor_record_kind"] = "structured_current_state"
+    details["run269_precision"] = True
+    details["current_state_page"] = True
+    details["current_state_timestamp_observed"] = bool(item.get("publishedAt"))
+    details["current_state_model_markers_observed"] = True
+    normalized["sourceDetails"] = details
+    return normalized
+
+
 def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logger=None,
                                   registry=OFFICIAL_VENDOR_REGISTRY) -> list[dict]:
     """Use precision extraction, with an explicit current-state path where declared."""
@@ -144,6 +157,9 @@ def fetch_official_vendor_updates(limit: int, *, normalize_item, http_get, logge
             output.append(item)
             continue
         kind = details.get("vendor_record_kind") or ""
+        if kind.startswith("structured_"):
+            output.append(_normalize_existing_current_state(item))
+            continue
         if kind != "page_fallback":
             output.append(item)
             continue
