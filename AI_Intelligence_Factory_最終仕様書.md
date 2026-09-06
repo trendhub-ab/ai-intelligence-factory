@@ -16,7 +16,8 @@ Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**
 Article Production Baseline: **Run249 + current article-quality stack**  
 Eyecatch Baseline: **Run181 current**  
 Pipeline Modularization Baseline: **Run245**  
-Repository Organization Baseline: **Run246**
+Repository Organization Baseline: **Run246**  
+Workflow Reference Integrity Baseline: **Run257 — Workflow Reference Guard**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -111,6 +112,8 @@ AI活用判断シート Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 ### 2.4 Member同期・Commerce互換契約
 
 **Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
+
+Scheduled Dailyは現在 **`Daily Intelligence & Content Pipeline [PAUSED]`** としてhard-PAUSEDである。この間、`Subscriber Decision Brief Sync` の実在するworkflow_run上流は **`Daily Intelligence & Content Pipeline [ONE-SHOT]` + `Subscriber Inventory Bootstrap`** のみとし、Inventoryは`[apply]`だけをwrite fan-out対象にする。`Note Ready Article Sync` はONE-SHOTのみを上流にする。PAUSED stubや存在しない将来aliasをlive triggerとして残さない。Scheduled Dailyを明示的に再開する場合、その時点の実在するworkflow名を同一のreviewed changeで戻す。
 
 **Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。自動生成停止を「Digest提供停止」と読み替えない。
 
@@ -302,6 +305,7 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 
 - **Daily workflowはPAUSED。**
 - Production実行は明示的なONE-SHOT / workflow_dispatchを基本とする。
+- PAUSED中の派生workflowは、存在しない通常Daily aliasやPAUSED stubを`workflow_run`上流に持たない。Run257 `Workflow Reference Guard` が静的参照をFail-Closedで検査する。
 - Public note公開はhuman-only。
 - 外部サービス状態を推測で補完しない。
 - 成功していない処理を成功扱いしない。
@@ -315,6 +319,7 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 最低限、変更領域に応じ以下を通す。
 
 - Repository-wide Falsification Guard
+- Workflow Reference Guard
 - Integration Reconciliation CI
 - Synthetic Regression
 - Notion Access Policy Guard
@@ -331,6 +336,15 @@ Source score / Decision / Evidence / Deep Tech分類を顧客適合のために�
 - 文字列置換による不自然な日本語
 - old fixed shortlistの復活
 - Source score / Evidence / Deep Techの意図しない変異
+
+Workflow変更では、さらに次を反証する。
+
+- `run:` / `- run:` が削除済みrepository-local scriptを指していないか
+- `python -m unittest tests.*` が実在するmoduleか
+- `uses: ./...` / `- uses: ./...` のlocal actionが実在するか
+- `workflow_run.workflows` が実在するtop-level workflow nameか
+- static `gh workflow run` targetが実在するか
+- duplicate workflow nameによる曖昧性がないか
 
 ---
 
@@ -369,5 +383,7 @@ PMF前にやらないこと:
 - 純粋な履歴説明は `docs/archive/` とGit履歴へ置く。
 - current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の整合を保つ。
 - Documentation Freshness Guardが要求するmarkerは、テストを通すための文字列ではなく、現在Productionが依存するoperational contractとして扱う。
+- Run257のWorkflow参照修整・反証記録は `docs/reference/RUN257_WORKFLOW_REFERENCE_INTEGRITY.md` を正本とする。
 
-**現在のPaid Product正本はRun256。**
+**現在のPaid Product正本はRun256。**  
+**現在のWorkflow Reference Integrity正本はRun257。**

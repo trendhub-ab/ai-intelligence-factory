@@ -3,7 +3,10 @@ name: Subscriber Decision Brief Sync
 on:
   workflow_run:
     workflows:
-      - Daily Intelligence & Content Pipeline
+      # Scheduled Daily is hard-PAUSED and its current workflow name is
+      # `Daily Intelligence & Content Pipeline [PAUSED]`. Do not subscribe to the
+      # paused stub or a nonexistent future alias. When Daily is explicitly resumed,
+      # add the then-current real workflow name here in the same reviewed change.
       - Daily Intelligence & Content Pipeline [ONE-SHOT]
       - Subscriber Inventory Bootstrap
     types: [completed]
@@ -34,7 +37,8 @@ permissions:
 jobs:
   sync:
     # Inventory plan is contractually read-only. Only an explicitly labelled apply run
-    # may fan out into subscriber/member writes. Daily and ONE-SHOT retain the existing path.
+    # may fan out into subscriber/member writes. ONE-SHOT retains the live Daily path
+    # while the scheduled Daily workflow remains hard-PAUSED.
     if: >-
       github.event_name != 'workflow_run' ||
       (

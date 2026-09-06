@@ -18,11 +18,15 @@ class Run211MemberSyncOrderingTests(unittest.TestCase):
         self.assertIn('description: "plan=0 API/read-only, apply=Product Review only"', text)
         self.assertIn('if [ "${{ inputs.mode }}" = "plan" ]', text)
 
-    def test_subscriber_brief_follows_all_authoritative_source_mutators(self) -> None:
+    def test_subscriber_brief_follows_only_current_authoritative_source_mutators(self) -> None:
         text = self._text("subscriber-decision-brief.yml")
-        self.assertIn("- Daily Intelligence & Content Pipeline", text)
-        self.assertIn("- Daily Intelligence & Content Pipeline [ONE-SHOT]", text)
-        self.assertIn("- Subscriber Inventory Bootstrap", text)
+        daily = self._text("daily.yml")
+        self.assertIn("name: Daily Intelligence & Content Pipeline [PAUSED]", daily)
+        workflow_run = text.split("workflow_run:", 1)[1].split("types: [completed]", 1)[0]
+        self.assertIn("- Daily Intelligence & Content Pipeline [ONE-SHOT]", workflow_run)
+        self.assertIn("- Subscriber Inventory Bootstrap", workflow_run)
+        self.assertNotIn("- Daily Intelligence & Content Pipeline\n", workflow_run)
+        self.assertNotIn("- Daily Intelligence & Content Pipeline [PAUSED]\n", workflow_run)
 
     def test_inventory_plan_cannot_fan_out_into_member_writes(self) -> None:
         text = self._text("subscriber-decision-brief.yml")
