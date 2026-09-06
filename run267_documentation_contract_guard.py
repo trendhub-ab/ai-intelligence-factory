@@ -49,7 +49,7 @@ REQUIRED_SPEC_MARKERS = (
     "`Pillow>=12.1.0,<13.0.0`",
     "`Pillow==12.3.0`",
     "`requirements-ci-constraints.txt`",
-    "required status checkに指定されたWorkflowは、対象PRで必ずcheck contextを生成",
+    "required status checkに指定されたWorkflowは、対象PRで必ずcheck contextを生成できなければならない",
     "pull_requestのpath filterを置かない",
     "docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md",
     "docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md",
@@ -71,7 +71,7 @@ def _read(root: Path, relative: str) -> str:
 
 def _pull_request_block(text: str) -> tuple[bool, str]:
     match = re.search(
-        r"(?ms)^\s{2}pull_request:\s*\n(?P<body>.*?)(?=^\s{2}[A-Za-z_][A-Za-z0-9_-]*:\s*$|^permissions:|^concurrency:|^jobs:|\Z)",
+        r"(?ms)^[ ]{2}pull_request:\s*\n(?P<body>.*?)(?=^[ ]{2}[A-Za-z_][A-Za-z0-9_-]*:\s*$|^permissions:|^concurrency:|^jobs:|\Z)",
         text,
     )
     if not match:
@@ -113,9 +113,9 @@ def required_check_errors(workflows: dict[str, tuple[str, str]]) -> list[str]:
         if not present:
             errors.append(f"required_check_missing_pull_request_trigger:{name}:{context}")
             continue
-        if re.search(r"(?m)^\s+(?:paths|paths-ignore):\s*$", block):
+        if re.search(r"(?m)^[ ]+(?:paths|paths-ignore):\s*$", block):
             errors.append(f"required_check_has_pull_request_path_filter:{name}:{context}")
-        if re.search(rf"(?m)^\s{{2}}{re.escape(context)}:\s*$", text) is None:
+        if re.search(rf"(?m)^[ ]{{2}}{re.escape(context)}:\s*$", text) is None:
             errors.append(f"required_check_job_context_missing:{name}:{context}")
     return errors
 
