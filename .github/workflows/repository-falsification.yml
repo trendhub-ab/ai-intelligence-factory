@@ -10,8 +10,10 @@ on:
 permissions:
   contents: read
 
+# Read-only required checks must not let a stale run for an older commit hold the
+# current PR head in Expected/pending forever. Scope the lock to the exact commit.
 concurrency:
-  group: repository-falsification-${{ github.ref }}
+  group: repository-falsification-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
