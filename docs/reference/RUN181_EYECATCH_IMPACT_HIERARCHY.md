@@ -77,3 +77,13 @@ Tests must prove:
 - orange emphasis remains visible;
 - the entire approved right-side surface is pixel-identical to the existing background/illustration/tag draw path;
 - no `_generate_via_chat`, `call_gemini`, `generateContent`, network download, or image-generation call site is added by the badge/icon helper.
+
+
+## Title line publication policy (2026-09-06)
+
+- Main title is **2 lines preferred**, not 2 lines mandatory.
+- **3 lines are a normal fallback** when two lines would damage semantic grouping, protected product/model names, or readable type size.
+- A three-line title alone is never a publication-blocking condition.
+- Three-line mode uses a compact deterministic profile: slightly smaller maximum title size, tighter line gap, modestly earlier title top, extra safe-bottom room, and a capped subheadline size.
+- Right-side illustration/background, orange emphasis, font contract and footer remain unchanged.
+- No additional Gemini/provider/image-generation request is introduced.

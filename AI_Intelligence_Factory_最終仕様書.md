@@ -622,3 +622,8 @@ Production behavior changeでCanonical docsがstaleになる場合、コード�
 ## 11. Repository organization
 
 rootは現在のoperator/canonical documentsと実行entrypointを優先し、過去Run説明は`docs/archive/`へ置く。Production continuity stateと公開参照資産は保護する。
+
+
+### Run181 title-line publication policy (2026-09-06)
+
+Eyecatch main-title line count is a yield-aware presentation contract: **2 lines are preferred; up to 3 lines are valid production output**. Three lines are used when preserving semantic chunks, protected product/model names, or readable typography needs extra vertical room. Three-line mode is not a reason to withhold an otherwise publishable article. Run181 applies a compact three-line geometry profile while retaining the approved right-side illustration/background, Noto Sans JP / Inter font contract, restrained #F28C28 emphasis, and zero additional provider/image-generation calls.
