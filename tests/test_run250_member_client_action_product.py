@@ -193,7 +193,7 @@ class Run250ClientActionProductTests(unittest.TestCase):
         finally:
             body._build_children = original_body_builder
 
-    def test_run219_passes_current_module_object_and_reports_work_first_order(self):
+    def test_run219_still_installs_run250_compatibility_on_active_module(self):
         with (
             patch.object(run250, "install_body") as install_body,
             patch.object(run219, "install") as install_run219,
@@ -202,17 +202,12 @@ class Run250ClientActionProductTests(unittest.TestCase):
             result = run219.run_body_sync()
         install_body.assert_called_once_with(sys.modules[run219.__name__])
         install_run219.assert_called_once_with()
+        # Run250 remains a historical compatibility authority. Run270 owns the final
+        # visible reader order, so this regression must not assert Work-First output.
         self.assertTrue(result["run250_client_action_product"]["script_entrypoint_body_authority"])
         self.assertEqual(
-            result["reader_order"][:6],
-            [
-                "これは何？",
-                "いま、どうする？",
-                "仕事で使える場面",
-                "仕事への意味（Business Impact）",
-                "使う前に確認すること",
-                "試すときの次の一手",
-            ],
+            result["run250_client_action_product"]["product_purpose"],
+            "work_first_decision_intelligence",
         )
 
     def test_contract_declares_work_first_neutral_subject_and_preserves_authority(self):
