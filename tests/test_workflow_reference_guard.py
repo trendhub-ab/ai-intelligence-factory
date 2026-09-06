@@ -164,6 +164,12 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
     def test_current_repository_has_no_dangling_static_workflow_references(self):
         self.assertEqual([], guard.validate(ROOT))
 
+    def test_required_repository_falsification_executes_reference_guard(self):
+        workflow = (ROOT / ".github" / "workflows" / "repository-falsification.yml").read_text(encoding="utf-8")
+        self.assertIn("falsify-all-tracked-surfaces:", workflow)
+        self.assertIn("python workflow_reference_guard.py", workflow)
+        self.assertIn("python -m unittest tests.test_workflow_reference_guard -v", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
