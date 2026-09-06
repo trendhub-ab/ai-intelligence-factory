@@ -6,7 +6,11 @@ on:
     paths:
       - 'business_source_acquisition.py'
       - 'source_normalization.py'
+      - 'run269_acquisition_precision.py'
+      - 'run269_business_source_precision.py'
       - 'run269_live_acquisition_smoke.py'
+      - 'production_pipeline.py'
+      - 'tests/test_run269_acquisition_precision.py'
       - '.github/workflows/run269-live-acquisition-smoke.yml'
   workflow_dispatch:
 
@@ -36,7 +40,16 @@ jobs:
           python -m pip install 'requests>=2.32.4,<3.0.0'
 
       - name: Compile live smoke surface
-        run: python -m py_compile business_source_acquisition.py source_normalization.py run269_live_acquisition_smoke.py
+        run: |
+          python -m py_compile \
+            business_source_acquisition.py \
+            source_normalization.py \
+            run269_acquisition_precision.py \
+            run269_business_source_precision.py \
+            run269_live_acquisition_smoke.py
+
+      - name: Run precision unit tests before network
+        run: python -m unittest tests.test_run269_acquisition_precision -v
 
       - name: Run live acquisition smoke
         run: |
