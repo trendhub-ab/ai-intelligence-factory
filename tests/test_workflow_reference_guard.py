@@ -61,6 +61,24 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
             )
             self.assertEqual([], guard.validate(root))
 
+    def test_unittest_discover_pattern_is_selector_not_root_file_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._base_repo(root)
+            self._write(
+                root,
+                ".github/workflows/discover.yml",
+                """
+                name: Discover Tests
+                jobs:
+                  check:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: python -m unittest discover -s tests -p 'test_ok.py' -v
+                """,
+            )
+            self.assertEqual([], guard.validate(root))
+
     def test_missing_script_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
