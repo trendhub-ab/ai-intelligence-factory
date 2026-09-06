@@ -2,7 +2,7 @@
 
 最終更新: 2026-09-06  
 現行Quota Safety Baseline: **Run209 — timeout RPD fail-closed**  
-現行Article Model Routing Baseline: **Run260 — Gemini 3.7 Primary / 3.8 Quality Rescue**
+現行Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**
 
 ## 結論
 
@@ -29,7 +29,7 @@ AI Studio側で20 RPDが表示されている場合でも、Factoryは**18/20で
 
 Flash Lite等の別モデルはworkflowに設定された各daily budgetを正とします。値を推測せず、`.github/workflows/daily-one-shot.yml`の現行値を確認してください。
 
-### Run260 Article Model Routing
+### Run261 Article Model Routing
 
 記事側Productionのモデル優先順位は次のとおりです。
 
@@ -38,7 +38,9 @@ Flash Lite等の別モデルはworkflowに設定された各daily budgetを正�
 - Screening: 既存Flash-Lite poolを変更しない。
 - deterministic rescue: 既存zero-API経路を変更せず、不要な3.8 callへ置換しない。
 
-Run260は既存の`_call_model_pool`を並べ替えるだけで、新しいretry loopやprovider call pathを追加しません。Deep Dive全体の1-run上限12、Pending Retry budget、503 cooldown、各Gateは従来どおりです。
+Run260は既存の`_call_model_pool`を並べ替えるrouting layerとして導入しました。Run261はONE-SHOT #28の実測で、Productionが`_call_deep_dive_pool`を経由する際にquality retryの先頭が3.7になり得ることを確認したため、実Production入口にも同じquality-first契約を追加しました。Run261のlive-path wrapperは既存`_call_model_pool`へ**1回だけ**委譲し、新しいretry loopやprovider call pathを追加しません。
+
+`.github/workflows/daily-one-shot.yml`のProduction/Pending Retry環境もRun261でcanonical poolを明示します。Deep Dive全体の1-run上限12、Pending Retry budget、503 cooldown、各Gateは従来どおりです。別系統のProduct Review routingは意図的に変更しません。
 
 ## 2. Run209 — timeout時のRPDはFail-Closed
 
@@ -52,7 +54,7 @@ Google AI Studioの実測により、transport timeout / watchdog timeoutでク�
 - 新しいtimeoutは1 request消費したものとして安全側に保持する。
 - 18回安全上限はそのまま維持する。
 
-実装は`gemini_timeout_rpd_fail_closed.py`を`run203_runtime_state_channel.py`の後、`gemini_transient_recovery.py`の前にinstallします。Run260のrouting layerはその後にinstallし、既存のquota/timeout recoveryを迂回しません。
+実装は`gemini_timeout_rpd_fail_closed.py`を`run203_runtime_state_channel.py`の後、`gemini_transient_recovery.py`の前にinstallします。Run260/261のrouting layerはその後にinstallし、既存のquota/timeout recoveryを迂回しません。
 
 ## 3. Project ID / Counter scope
 
@@ -82,7 +84,7 @@ Run203のruntime-state contractにより、ProductionではGemini reservation前
 
 Factory counterとAI Studioが異なる場合、**AI Studioの使用量が多い側を安全上の正**として扱います。差異を理由に安全余白を削らないでください。
 
-## 6. Pending Retry専用枠 — Run206 / Run207 / Run208 / Run260
+## 6. Pending Retry専用枠 — Run206 / Run207 / Run208 / Run261
 
 通常Production側にはPending Retry用の独立budgetがあり、Fresh Deep Dive枠の無制限消費を防ぎます。
 
@@ -97,7 +99,7 @@ fast lane固有契約:
 - 1記事成功で停止。
 - fresh collection / screeningは行わない。
 - Run208のReader Value repairは最大1回、Reader-only failureに限定。
-- Run260によりmodel-based quality repairは3.8を先頭にするが、request上限は増やさない。
+- Run261によりmodel-based quality repairは実Production入口でも3.8を先頭にするが、request上限は増やさない。
 - Fact/Evidence/Publication gateは緩和しない。
 
 通常ProductionのRun205 transient-recovery policyやglobal daily counterは変更しません。
@@ -118,11 +120,12 @@ Run終了時にmodel / request kind / success-error / token usageを集計し、
 - Scheduled Dailyは現在 **PAUSED**。
 - Production API実行は明示的なONE-SHOTを基本とする。
 - Daily PAUSED stubの環境変数をProduction完全設定として推測しない。
-- 実際のProduction quota値は`daily-one-shot.yml`、Run260 runtime routing、および実行コードを優先する。
+- 実際のProduction quota値は`daily-one-shot.yml`、Run260/261 runtime routing、および実行コードを優先する。
+- ONE-SHOT成功後の直接fan-outはRun261以降、受動`workflow_run`ではなくONE-SHOTから`GH_PAT`で明示dispatchする。
 - quota確認・回帰検証のためだけにGemini APIを消費しない。可能な検証はzero-API testで行う。
 
 ## 9. Documentation Freshness
 
 Quota安全仕様を変更する場合は、コード/workflowと同じPRで本ファイルを更新します。Run210 Documentation Freshness Guardにより、Flash 18回安全上限、Daily PAUSED、timeout fail-closed、Pending Retry fast lane等のCanonical契約が実装と矛盾した場合はCIを失敗させます。
 
-Run260のArticle Model Routing authorityは`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`と`run260_gemini_model_routing.py`です。
+Run261のArticle Model Routing authorityは`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、`run260_gemini_model_routing.py`です。
