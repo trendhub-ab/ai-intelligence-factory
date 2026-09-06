@@ -1,6 +1,9 @@
 import unittest
+from unittest.mock import patch
 
 import member_client_action_alignment as alignment
+import member_human_language_ux_v2 as ux2
+import member_presentation_body_sync as body
 import run250_member_client_action_product as run250
 
 
@@ -66,6 +69,23 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertEqual(selected[0]["name"], "client-tool")
         self.assertEqual({x["name"]: x["score"] for x in states}, scores_before)
 
+    def test_run251_retires_pre_icp_fixed_editorial_shortlist(self):
+        old = (
+            "github:langgenius/dify",
+            "github:mintplex-labs/anything-llm",
+            "github:nvidia-nemo/guardrails",
+        )
+        original = ux2.EDITORIAL_HOME_SYNC_IDS
+        try:
+            ux2.EDITORIAL_HOME_SYNC_IDS = old
+            retired = run250.retire_legacy_editorial_shortlist()
+            self.assertEqual(retired, old)
+            self.assertEqual(ux2.EDITORIAL_HOME_SYNC_IDS, ())
+            # Evidence-reviewed copy remains available; only forced selection is retired.
+            self.assertIn("github:nvidia-nemo/guardrails", ux2.EDITORIAL_COPY_OVERRIDES)
+        finally:
+            ux2.EDITORIAL_HOME_SYNC_IDS = original
+
     def test_action_layer_uses_existing_authoritative_fields(self):
         state = self._state(
             "client-tool",
@@ -91,16 +111,25 @@ class Run250ClientActionProductTests(unittest.TestCase):
     def test_body_contract_is_client_action_first(self):
         state = self._state("tool", "製品・サービス", 82, "顧客FAQを小さく試す。")
         children = run250._build_children(state)
-        headings = []
-        for child in children:
-            if child.get("type") != "heading_3":
-                continue
-            rich = (child.get("heading_3") or {}).get("rich_text") or []
-            headings.append("".join((x.get("text") or {}).get("content") or "" for x in rich))
+        headings = run250._heading_texts(children)
         self.assertIn("案件で使える場面", headings)
         self.assertIn("案件への意味（Business Impact）", headings)
         self.assertIn("提案前に確認すること", headings)
         self.assertIn("提案時の次の一手", headings)
+
+    def test_old_member_body_cannot_false_match_new_product_contract(self):
+        state = self._state("tool", "製品・サービス", 82, "顧客FAQを小さく試す。")
+        old_children = [
+            body._heading("これは何？"),
+            body._heading("いま、どうする？"),
+            body._heading("なぜ今見る？"),
+            body._heading("次にやること"),
+            body._heading("そう判断した理由"),
+            body._heading("気をつけたいこと"),
+        ]
+        with patch.object(run250, "_BASE_BODY_MATCHES", lambda _children, _state: True):
+            self.assertFalse(run250._body_matches_client_action(old_children, state))
+            self.assertTrue(run250._body_matches_client_action(run250._build_children(state), state))
 
     def test_contract_declares_zero_provider_calls_and_schema_preservation(self):
         contract = run250.contract()
@@ -110,6 +139,8 @@ class Run250ClientActionProductTests(unittest.TestCase):
         self.assertTrue(contract["source_scores_preserved"])
         self.assertTrue(contract["evidence_preserved"])
         self.assertFalse(contract["notion_schema_changed"])
+        self.assertTrue(contract["legacy_fixed_shortlist_retired"])
+        self.assertTrue(contract["client_action_body_migration_required"])
 
 
 if __name__ == "__main__":
