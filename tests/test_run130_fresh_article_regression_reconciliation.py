@@ -8,6 +8,7 @@ from unittest.mock import patch
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ.setdefault("GH_PAT", "test-token")
 os.environ.setdefault("GEMINI_QUOTA_PROJECT_ID", "test-project")
+os.environ.setdefault("GEMINI_PERSISTENT_DAILY_COUNTER", "false")
 try:
     from google import genai  # noqa: F401
 except ImportError:
@@ -124,6 +125,9 @@ class Run130FreshArticleRegressionReconciliationTests(unittest.TestCase):
                 pipeline.run_regen_test_mode()
         fresh.assert_not_called()
         fixed.assert_not_called()
+
+    def test_zero_api_regression_disables_persistent_remote_counter(self):
+        self.assertFalse(pipeline.PERSISTENT_GEMINI_COUNTER.enabled)
 
     def test_no_new_gemini_call_site_or_client(self):
         py = Path(pipeline.__file__).read_text(encoding="utf-8")

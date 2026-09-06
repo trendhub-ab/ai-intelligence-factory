@@ -76,14 +76,19 @@ class Run234RequiredCrossDbContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("  zero-api-regression:", workflow)
-        for command in (
-            "python -m unittest tests/test_cross_db_contract_guard.py",
-            "python -m unittest tests/test_content_db_contract_guard.py",
-            "python -m unittest tests/test_evidence_db_contract_guard.py",
-            "python -m unittest tests/test_member_presentation_resolution_guard.py",
-            "python -m unittest tests/test_run232_notion_integration_reconciliation.py",
+        self.assertIn("python -m pytest -q tests", workflow)
+        self.assertIn("- 'tests/**'", workflow)
+
+        # The full pytest authority must collect every Cross DB contract file.
+        # Keep existence assertions here so deleting one cannot silently shrink coverage.
+        for relative in (
+            "tests/test_cross_db_contract_guard.py",
+            "tests/test_content_db_contract_guard.py",
+            "tests/test_evidence_db_contract_guard.py",
+            "tests/test_member_presentation_resolution_guard.py",
+            "tests/test_run232_notion_integration_reconciliation.py",
         ):
-            self.assertIn(command, workflow)
+            self.assertTrue((ROOT / relative).is_file(), relative)
 
     def test_cross_db_sensitive_paths_cannot_bypass_required_zero_api_job(self):
         workflow = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text(

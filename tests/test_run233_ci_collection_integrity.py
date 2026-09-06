@@ -50,12 +50,18 @@ class Run233CICollectionIntegrityTests(unittest.TestCase):
         for relative in (*RETIRED_TIMING_ARTIFACTS, *RETIRED_TIMING_TESTS):
             self.assertFalse((ROOT / relative).exists(), relative)
 
-    def test_full_integration_regression_uses_pytest_collection(self):
+    def test_full_integration_regression_uses_locked_pytest_collection(self):
         workflow = (
             ROOT / ".github/workflows/integration-reconciliation-ci.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("pip install 'pytest>=8,<9'", workflow)
+        self.assertIn("requirements-ci-constraints.txt", workflow)
+        self.assertIn(
+            "pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt",
+            workflow,
+        )
+        self.assertIn("python -m pip check", workflow)
         self.assertIn("python -m pytest -q tests", workflow)
+        self.assertNotIn("pip install 'pytest>=8,<9'", workflow)
         self.assertNotIn(
             "python -m unittest discover -s tests -v > full-unittest.log",
             workflow,
