@@ -1,0 +1,32 @@
+name: Workflow Reference Guard
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'workflow_reference_guard.py'
+      - 'tests/test_workflow_reference_guard.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'workflow_reference_guard.py'
+      - 'tests/test_workflow_reference_guard.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Validate static workflow references
+        run: python workflow_reference_guard.py
+      - name: Run guard regressions
+        run: python -m unittest tests.test_workflow_reference_guard -v
