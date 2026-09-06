@@ -14,6 +14,7 @@ EXPECTED_RUNTIME_LAYER_ORDER = (
     "run203_runtime_state_channel.install",
     "gemini_timeout_rpd_fail_closed.install",
     "gemini_transient_recovery.install",
+    "run260_gemini_model_routing.install",
     "run172_production_reliability.install",
     "run173_operational_yield.install",
     "run174_monthly_digest_integrity.install",
@@ -125,11 +126,11 @@ class Run231PipelineSlimTests(unittest.TestCase):
         pipeline.main = lambda: None
 
         with patch.object(perf, "ENABLED", True):
-            first = perf.install(pipeline)
+            telemetry = perf.install(pipeline)
             wrapped_first = pipeline.initialize_runtime
             second = perf.install(pipeline)
 
-        self.assertIs(first, second)
+        self.assertIs(first := telemetry, second)
         self.assertIs(pipeline.initialize_runtime, wrapped_first)
         pipeline.initialize_runtime()
         self.assertEqual(calls, ["called"])
