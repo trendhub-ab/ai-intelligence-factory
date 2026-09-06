@@ -18,6 +18,13 @@ from business_source_acquisition import (
 
 
 ACTIVE_SOURCE_ORDER = ("GitHub", "HackerNews", "ArXiv", "OfficialVendor")
+_REQUIRED_RUNTIME_CAPABILITIES = (
+    "initialize_runtime",
+    "round_robin_candidates",
+    "allocate_source_fetch_limits",
+    "normalize_item",
+    "requests",
+)
 
 
 def _positive_int(value, default: int) -> int:
@@ -27,10 +34,24 @@ def _positive_int(value, default: int) -> int:
         return max(0, int(default))
 
 
+def _has_required_runtime_capabilities(pipeline_module) -> bool:
+    """Return True only for the real/compatible pipeline runtime surface.
+
+    Historical regression tests intentionally construct a minimal ``pipeline`` module to
+    verify entrypoint ordering.  Run268 must be observationally invisible to those
+    partial doubles rather than forcing them to implement unrelated source-acquisition
+    capabilities.  Production has all required attributes; if a future real runtime
+    removes one, the Run268 contract guard/full regression must catch that drift.
+    """
+    return all(hasattr(pipeline_module, name) for name in _REQUIRED_RUNTIME_CAPABILITIES)
+
+
 def install(pipeline_module):
-    """Install Run268 after historical runtime layers and before Production main()."""
+    """Install Run268 after historical runtime layers and before the Production body."""
     p = pipeline_module
     if bool(getattr(p, "_RUN268_BUSINESS_SOURCE_STRATEGY_INSTALLED", False)):
+        return p
+    if not _has_required_runtime_capabilities(p):
         return p
 
     legacy_producthunt_limit = _positive_int(getattr(p, "PRODUCTHUNT_FETCH_LIMIT", 50), 50)
