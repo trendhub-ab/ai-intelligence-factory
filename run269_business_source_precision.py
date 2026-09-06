@@ -46,6 +46,7 @@ def install(pipeline_module):
             chosen,
             normalize_item=p.normalize_item,
             http_get=p.requests.get,
+            http_post=getattr(p.requests, "post", None),
             logger=getattr(p, "logger", None),
         )
 
