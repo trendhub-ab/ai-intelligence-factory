@@ -508,8 +508,8 @@
       }
     },
     {
-      "run_id": "20260906T101833Z",
-      "recorded_at": "2026-09-06T10:18:33.221837+00:00",
+      "run_id": "20260906T121202Z",
+      "recorded_at": "2026-09-06T12:12:02.889013+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -522,14 +522,14 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 40,
-          "stock_saved": 14,
+          "screened": 28,
+          "stock_saved": 3,
           "deep_dive_attempted": 4,
-          "generation_requests": 6,
+          "generation_requests": 7,
           "ready": 0,
-          "review": 2,
-          "quality_failed": 2,
-          "pending_retry": 2
+          "review": 1,
+          "quality_failed": 3,
+          "pending_retry": 1
         },
         "ArXiv": {
           "screened": 3,
@@ -543,8 +543,8 @@
         },
         "ProductHunt": {
           "screened": 20,
-          "stock_saved": 0,
-          "deep_dive_attempted": 0,
+          "stock_saved": 1,
+          "deep_dive_attempted": 1,
           "generation_requests": 0,
           "ready": 0,
           "review": 0,
@@ -571,17 +571,17 @@
       "learning_active": true
     },
     "HackerNews": {
-      "screened": 313.4692405267573,
-      "stock_saved": 99.05130904468533,
+      "screened": 301.4692405267573,
+      "stock_saved": 88.05130904468533,
       "deep_dive_attempted": 36.10453788691957,
-      "generation_requests": 47.2879993370837,
+      "generation_requests": 48.2879993370837,
       "ready": 6.889716991659642,
-      "review": 6.0070355527490005,
-      "stock_yield": 0.318,
+      "review": 5.0070355527490005,
+      "stock_yield": 0.2957,
       "ready_yield": 0.1993,
-      "generation_efficiency": 0.1496,
-      "roi_score": 23.09,
-      "allocation_weight": 0.251888,
+      "generation_efficiency": 0.1468,
+      "roi_score": 22.25,
+      "allocation_weight": 0.245714,
       "mature": true,
       "learning_active": true
     },
@@ -602,16 +602,16 @@
     },
     "ProductHunt": {
       "screened": 162.6173976494546,
-      "stock_saved": 9.233388353996503,
-      "deep_dive_attempted": 3.3449484269603516,
+      "stock_saved": 10.233388353996506,
+      "deep_dive_attempted": 4.344948426960352,
       "generation_requests": 0.45010354567674293,
       "ready": 0.45010354567674293,
       "review": 0.0,
-      "stock_yield": 0.0889,
-      "ready_yield": 0.2087,
+      "stock_yield": 0.0944,
+      "ready_yield": 0.1885,
       "generation_efficiency": 0.2372,
-      "roi_score": 17.25,
-      "allocation_weight": 0.219334,
+      "roi_score": 16.53,
+      "allocation_weight": 0.213247,
       "mature": true,
       "learning_active": true
     }
