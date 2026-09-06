@@ -18,19 +18,20 @@ class Run211MemberSyncOrderingTests(unittest.TestCase):
         self.assertIn('description: "plan=0 API/read-only, apply=Product Review only"', text)
         self.assertIn('if [ "${{ inputs.mode }}" = "plan" ]', text)
 
-    def test_subscriber_brief_follows_only_current_authoritative_source_mutators(self) -> None:
+    def test_subscriber_brief_keeps_inventory_trigger_and_explicit_one_shot_dispatch(self) -> None:
         text = self._text("subscriber-decision-brief.yml")
+        one_shot = self._text("daily-one-shot.yml")
         daily = self._text("daily.yml")
         self.assertIn("name: Daily Intelligence & Content Pipeline [PAUSED]", daily)
         workflow_run = text.split("workflow_run:", 1)[1].split("types: [completed]", 1)[0]
-        self.assertIn("- Daily Intelligence & Content Pipeline [ONE-SHOT]", workflow_run)
+        self.assertNotIn("- Daily Intelligence & Content Pipeline [ONE-SHOT]", workflow_run)
         self.assertIn("- Subscriber Inventory Bootstrap", workflow_run)
-        self.assertNotIn("- Daily Intelligence & Content Pipeline\n", workflow_run)
-        self.assertNotIn("- Daily Intelligence & Content Pipeline [PAUSED]\n", workflow_run)
+        self.assertIn("subscriber-decision-brief.yml", one_shot)
+        self.assertIn('GH_TOKEN: ${{ secrets.GH_PAT }}', one_shot)
 
     def test_inventory_plan_cannot_fan_out_into_member_writes(self) -> None:
         text = self._text("subscriber-decision-brief.yml")
-        self.assertIn("github.event.workflow_run.name != 'Subscriber Inventory Bootstrap'", text)
+        self.assertIn("github.event.workflow_run.name == 'Subscriber Inventory Bootstrap'", text)
         self.assertIn("contains(github.event.workflow_run.display_title, '[apply]')", text)
 
     def test_presentation_is_downstream_of_subscriber_brief_not_parallel_with_source(self) -> None:

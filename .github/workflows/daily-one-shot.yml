@@ -10,6 +10,7 @@ name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 # - full/article_validation keep the authoritative production_pipeline.py entrypoint explicit.
 # - the same Gemini-budget concurrency group as production prevents overlap.
 # - this workflow does NOT resume or schedule the normal Daily workflow.
+# - successful ONE-SHOT completion explicitly fans out zero-model downstream workflows with GH_PAT.
 on:
   workflow_dispatch:
     inputs:
@@ -183,9 +184,10 @@ jobs:
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_36_FLASH_DAILY_BUDGET: "18"
           GEMINI_37_FLASH_DAILY_BUDGET: "18"
+          GEMINI_38_FLASH_DAILY_BUDGET: "18"
           GEMINI_35_FLASH_DAILY_BUDGET: "18"
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: "2"
@@ -307,9 +309,10 @@ jobs:
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_36_FLASH_DAILY_BUDGET: "18"
           GEMINI_37_FLASH_DAILY_BUDGET: "18"
+          GEMINI_38_FLASH_DAILY_BUDGET: "18"
           GEMINI_35_FLASH_DAILY_BUDGET: "18"
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: "2"
@@ -388,3 +391,29 @@ jobs:
             article_audit/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Explicit post-run fan-out with GH_PAT
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -u
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_PAT is required for authoritative ONE-SHOT downstream fan-out"
+            exit 1
+          fi
+          failed=0
+          for target in note-ready-sync.yml subscriber-decision-brief.yml cross-db-contract-guard.yml; do
+            echo "Dispatching ${target} from successful ONE-SHOT via GH_PAT"
+            if ! gh workflow run "${target}" --ref main; then
+              echo "::error::Failed to dispatch ${target}"
+              failed=1
+            fi
+          done
+          {
+            echo "### Run261 post-run fan-out"
+            echo "- auth: GH_PAT"
+            echo "- source: Daily Intelligence & Content Pipeline [ONE-SHOT]"
+            echo "- targets: note-ready-sync.yml, subscriber-decision-brief.yml, cross-db-contract-guard.yml"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$failed"

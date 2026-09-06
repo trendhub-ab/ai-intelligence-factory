@@ -20,10 +20,10 @@ ROOT = Path(__file__).resolve().parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 SELF = Path(__file__).resolve()
 
-DERIVED_DAILY_WORKFLOWS = {
+DIRECT_ONE_SHOT_FANOUT_TARGETS = {
     "note-ready-sync.yml",
-    "member-presentation-sync.yml",
     "subscriber-decision-brief.yml",
+    "cross-db-contract-guard.yml",
 }
 
 OLD_WORKFLOW_RUN_PATTERNS = (
@@ -70,6 +70,14 @@ def _has_trigger(text: str, trigger: str) -> bool:
     return bool(re.search(rf"^\s+{re.escape(trigger)}:\s*$", text, re.MULTILINE))
 
 
+def _workflow_run_block(text: str) -> str:
+    match = re.search(
+        r"(?ms)^\s{2}workflow_run:\s*\n(?P<body>.*?)(?=^\s{2}[A-Za-z_][A-Za-z0-9_-]*:\s*$|^permissions:|^concurrency:|^jobs:|\Z)",
+        text,
+    )
+    return match.group("body") if match else ""
+
+
 def audit() -> list[str]:
     failures: list[str] = []
     all_text = list(_text_files())
@@ -103,21 +111,33 @@ def audit() -> list[str]:
         if has_gemini_env and "group: ai-intelligence-gemini-budget" not in text:
             failures.append(f"gemini_without_shared_budget_lock:{name}")
 
-        # A derived view listening to Daily must also follow the operational ONE-SHOT.
-        if "Daily Intelligence & Content Pipeline" in text and "workflow_run:" in text:
-            if "Daily Intelligence & Content Pipeline [ONE-SHOT]" not in text:
+        # If a workflow_run block itself subscribes to Daily, it must name the operational
+        # ONE-SHOT exactly. Comments elsewhere must not be mistaken for an active trigger.
+        workflow_run = _workflow_run_block(text)
+        if "Daily Intelligence & Content Pipeline" in workflow_run:
+            if "Daily Intelligence & Content Pipeline [ONE-SHOT]" not in workflow_run:
                 failures.append(f"daily_listener_missing_one_shot:{name}")
 
-    # 3. Explicit contracts for the three production-derived Notion views.
-    for name in DERIVED_DAILY_WORKFLOWS:
+    # 3. Run261: successful ONE-SHOT direct fan-out is explicit and GH_PAT-authenticated.
+    one_shot = _workflow_text("daily-one-shot.yml")
+    if "GH_TOKEN: ${{ secrets.GH_PAT }}" not in one_shot:
+        failures.append("one_shot_fanout_missing_gh_pat")
+    if "GH_PAT is required for authoritative ONE-SHOT downstream fan-out" not in one_shot:
+        failures.append("one_shot_fanout_not_fail_closed")
+    if "if: ${{ success() }}" not in one_shot:
+        failures.append("one_shot_fanout_not_success_gated")
+
+    for name in DIRECT_ONE_SHOT_FANOUT_TARGETS:
         text = _workflow_text(name)
         if not text:
             failures.append(f"missing_derived_workflow:{name}")
             continue
-        if "Daily Intelligence & Content Pipeline [ONE-SHOT]" not in text:
-            failures.append(f"derived_workflow_missing_one_shot:{name}")
-        if "github.event.workflow_run.head_branch == 'main'" not in text:
-            failures.append(f"derived_workflow_missing_main_guard:{name}")
+        if not _has_trigger(text, "workflow_dispatch"):
+            failures.append(f"one_shot_fanout_target_not_dispatchable:{name}")
+        if name not in one_shot:
+            failures.append(f"one_shot_fanout_target_missing:{name}")
+        if "Daily Intelligence & Content Pipeline [ONE-SHOT]" in _workflow_run_block(text):
+            failures.append(f"one_shot_passive_duplicate_trigger:{name}")
         if "cancel-in-progress: false" not in text:
             failures.append(f"derived_workflow_not_serialized_safely:{name}")
 
@@ -126,8 +146,8 @@ def audit() -> list[str]:
         failures.append("note_ready_sync_missing_single_writer_lock")
 
     # Member Presentation and Decision Brief share the same Decision Intelligence integration
-    # and write the same member product family. A ONE-SHOT/push fan-out must never run both
-    # writers concurrently; Run195 live validation reproduced 76 Notion 429 failures without it.
+    # and write the same member product family. Explicit ONE-SHOT/push fan-out must never run
+    # both writers concurrently; Run195 live validation reproduced 76 Notion 429 failures without it.
     shared_member_notion_group = "group: member-derived-notion-writes"
     for name in ("member-presentation-sync.yml", "subscriber-decision-brief.yml"):
         text = _workflow_text(name)
@@ -167,7 +187,6 @@ def audit() -> list[str]:
         if "python production_pipeline.py" not in daily:
             failures.append("paused_daily_missing_current_entrypoint_contract")
 
-    one_shot = _workflow_text("daily-one-shot.yml")
     if not one_shot:
         failures.append("one_shot_workflow_missing")
     else:

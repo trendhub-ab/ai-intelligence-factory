@@ -1,4 +1,4 @@
-"""Run260: bounded Gemini 3.7 primary / 3.8 quality-repair routing.
+"""Run260/261: bounded Gemini 3.7 primary / 3.8 quality-repair routing.
 
 Business goal
 -------------
@@ -8,8 +8,11 @@ uses Gemini 3.7 first. Dynamic model-based quality repair uses Gemini 3.8 first.
 Gemini 3.6 and 3.5 remain fallbacks. Existing deterministic zero-API rescue remains
 untouched.
 
-This is a routing-only runtime layer. It does not create a new provider call path,
-change retry counts, change Deep Dive/Pending Retry budgets, or publish anything.
+Run261 production evidence proved that wrapping only ``_call_model_pool`` was not a
+strong enough contract: the live quality-retry path is entered through
+``_call_deep_dive_pool``.  Therefore this layer now enforces the same bounded routing
+at that actual production entrypoint as well.  It still creates no new provider call
+path, retry loop, budget, gate change, or publication action.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ from typing import Any, Iterable
 
 _INSTALLED_ATTR = "_run260_gemini_model_routing_installed"
 _ORIGINAL_CALL_ATTR = "_run260_original_call_model_pool"
+_ORIGINAL_DEEP_DIVE_ATTR = "_run261_original_call_deep_dive_pool"
 
 PRIMARY_MODEL = "gemini-3.7-flash"
 QUALITY_MODEL = "gemini-3.8-flash"
@@ -93,13 +97,16 @@ def _request_pool(args: tuple, kwargs: dict, fallback: list[str]) -> list[str]:
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install Run260 routing without changing any existing request/gate budget."""
+    """Install Run260/261 routing without changing any existing request/gate budget."""
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
         return pipeline_module
 
     original = getattr(pipeline_module, "_call_model_pool", None)
+    original_deep_dive = getattr(pipeline_module, "_call_deep_dive_pool", None)
     if not callable(original):
         raise RuntimeError("pipeline._call_model_pool is required for Run260")
+    if not callable(original_deep_dive):
+        raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
     production_pool = _configured_deep_dive_pool(pipeline_module)
     # Run260's production contract requires the new primary/quality models. If an old
@@ -126,6 +133,7 @@ def install(pipeline_module: Any) -> Any:
         persistent.model_budgets[QUALITY_MODEL] = quality_budget
 
     setattr(pipeline_module, _ORIGINAL_CALL_ATTR, original)
+    setattr(pipeline_module, _ORIGINAL_DEEP_DIVE_ATTR, original_deep_dive)
 
     def call_model_pool_run260(*args, **kwargs):
         kind = _request_kind(args, kwargs)
@@ -136,5 +144,40 @@ def install(pipeline_module: Any) -> Any:
         return original(*args, **kwargs)
 
     pipeline_module._call_model_pool = call_model_pool_run260
+
+    def call_deep_dive_pool_run261(
+        prompt: str,
+        config: dict | None = None,
+        kind: str = "deep_dive",
+        request_context: str = "",
+        request_origin: str = "new",
+    ):
+        """Enforce quality-first routing at the production Deep Dive entrypoint.
+
+        This delegates exactly once to the existing model-pool caller. Its existing
+        retry/fallback logic and the authoritative Deep Dive request counter remain the
+        only mechanisms that can create provider attempts.
+        """
+        if not _is_quality_repair_kind(kind):
+            return original_deep_dive(
+                prompt,
+                config,
+                kind,
+                request_context=request_context,
+                request_origin=request_origin,
+            )
+        quality_pool = _quality_first_pool(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool))
+        return pipeline_module._call_model_pool(
+            prompt,
+            config,
+            kind,
+            0,
+            quality_pool,
+            deep_dive=True,
+            request_context=request_context,
+            request_origin=request_origin,
+        )
+
+    pipeline_module._call_deep_dive_pool = call_deep_dive_pool_run261
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module

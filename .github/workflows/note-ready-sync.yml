@@ -2,13 +2,6 @@ name: Note Ready Article Sync
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      # Scheduled Daily is hard-PAUSED and must not fan out through its disabled stub.
-      # When Daily is explicitly resumed, add the then-current real workflow name here.
-      - Daily Intelligence & Content Pipeline [ONE-SHOT]
-    types:
-      - completed
   # Publication-policy changes invalidate previously queued manuscript fingerprints.
   # Reconcile the human-facing queue immediately on main instead of waiting for a
   # later production run. This workflow is zero-model and never opens note.com.
@@ -69,10 +62,6 @@ concurrency:
 
 jobs:
   sync-note-ready:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

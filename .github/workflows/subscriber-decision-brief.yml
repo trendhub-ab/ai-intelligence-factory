@@ -1,13 +1,10 @@
 name: Subscriber Decision Brief Sync
 
 on:
+  # ONE-SHOT fan-out is explicit via GH_PAT from daily-one-shot.yml. Keep only the
+  # independent Inventory Bootstrap completion path here to avoid duplicate writes.
   workflow_run:
     workflows:
-      # Scheduled Daily is hard-PAUSED and its current workflow name is
-      # `Daily Intelligence & Content Pipeline [PAUSED]`. Do not subscribe to the
-      # paused stub or a nonexistent future alias. When Daily is explicitly resumed,
-      # add the then-current real workflow name here in the same reviewed change.
-      - Daily Intelligence & Content Pipeline [ONE-SHOT]
       - Subscriber Inventory Bootstrap
     types: [completed]
   push:
@@ -26,7 +23,7 @@ on:
   workflow_dispatch:
 
 # Member Presentation uses the same Notion integration and member-facing database family.
-# Serialize both workflows across ONE-SHOT/push fan-out; do not cancel a writer mid-commit.
+# Serialize both workflows across explicit ONE-SHOT/push fan-out; do not cancel a writer mid-commit.
 concurrency:
   group: member-derived-notion-writes
   cancel-in-progress: false
@@ -37,17 +34,15 @@ permissions:
 jobs:
   sync:
     # Inventory plan is contractually read-only. Only an explicitly labelled apply run
-    # may fan out into subscriber/member writes. ONE-SHOT retains the live Daily path
-    # while the scheduled Daily workflow remains hard-PAUSED.
+    # may fan out into subscriber/member writes. Explicit workflow_dispatch is the live
+    # ONE-SHOT path while scheduled Daily remains hard-PAUSED.
     if: >-
       github.event_name != 'workflow_run' ||
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
-        (
-          github.event.workflow_run.name != 'Subscriber Inventory Bootstrap' ||
-          contains(github.event.workflow_run.display_title, '[apply]')
-        )
+        github.event.workflow_run.name == 'Subscriber Inventory Bootstrap' &&
+        contains(github.event.workflow_run.display_title, '[apply]')
       )
     runs-on: ubuntu-latest
     # A valid Notion Retry-After can be tens of seconds. Allow bounded recovery across the

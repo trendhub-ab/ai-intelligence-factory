@@ -29,9 +29,9 @@ def destination(page_id: str, sync_id: str, posting: str, quality: str = "Ready"
 class Run197NoteReadyPolicyReconciliationTests(unittest.TestCase):
     def test_every_publication_policy_file_triggers_main_queue_reconciliation(self) -> None:
         source = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:\n", source)
         self.assertIn("push:\n", source)
         self.assertIn("branches: [main]", source)
-        self.assertIn("github.event_name == 'push'", source)
         for relative in contract.PUBLICATION_POLICY_FILES:
             self.assertIn(
                 f"- '{relative}'",
