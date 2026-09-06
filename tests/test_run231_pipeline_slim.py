@@ -126,11 +126,11 @@ class Run231PipelineSlimTests(unittest.TestCase):
         pipeline.main = lambda: None
 
         with patch.object(perf, "ENABLED", True):
-            telemetry = perf.install(pipeline)
+            first = perf.install(pipeline)
             wrapped_first = pipeline.initialize_runtime
             second = perf.install(pipeline)
 
-        self.assertIs(first := telemetry, second)
+        self.assertIs(first, second)
         self.assertIs(pipeline.initialize_runtime, wrapped_first)
         pipeline.initialize_runtime()
         self.assertEqual(calls, ["called"])
