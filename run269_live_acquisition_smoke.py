@@ -51,6 +51,7 @@ def _probe_vendor(vendor: dict[str, Any]) -> dict[str, Any]:
         3,
         normalize_item=normalize_item,
         http_get=requests.get,
+        http_post=requests.post,
         logger=logger,
         registry=(vendor,),
     )
@@ -75,6 +76,7 @@ def _probe_vendor(vendor: dict[str, Any]) -> dict[str, Any]:
         "structured_count": structured_count,
         "fallback_count": fallback_count,
         "sample_kind": details.get("vendor_record_kind") or "",
+        "sample_transport": details.get("current_state_transport") or "",
         "sample_title": sample.get("nameWithOwner") or "",
         "sample_primary_url": sample.get("primaryUrl") or "",
         "sample_published_at": sample.get("publishedAt"),
@@ -163,7 +165,8 @@ def _print_human_summary(report: dict[str, Any]) -> None:
         print(
             f"RUN269_VENDOR_{state} vendor={row['vendor']} region={row['region']} "
             f"structured={row['structured_count']} fallback={row['fallback_count']} "
-            f"sample_kind={row['sample_kind']} url={row['release_url']}"
+            f"sample_kind={row['sample_kind']} transport={row['sample_transport'] or '-'} "
+            f"url={row['release_url']}"
         )
         if row["sample_title"]:
             print(f"  sample={row['sample_title'][:180]}")
