@@ -19,7 +19,7 @@ from typing import Any
 
 import requests
 
-from business_source_acquisition import (
+from run269_acquisition_precision import (
     HN_AI_QUERIES,
     HN_LOOKBACK_DAYS,
     OFFICIAL_VENDOR_REGISTRY,
@@ -41,6 +41,10 @@ class _CaptureLogger:
         self.warning_messages.append(str(message))
 
 
+def _is_structured_kind(kind: str) -> bool:
+    return str(kind or "").startswith("structured_")
+
+
 def _probe_vendor(vendor: dict[str, Any]) -> dict[str, Any]:
     logger = _CaptureLogger()
     rows = fetch_official_vendor_updates(
@@ -51,10 +55,13 @@ def _probe_vendor(vendor: dict[str, Any]) -> dict[str, Any]:
         registry=(vendor,),
     )
     kinds = [str(((row.get("sourceDetails") or {}).get("vendor_record_kind") or "")) for row in rows]
-    structured_count = sum(1 for kind in kinds if kind == "structured")
+    structured_count = sum(1 for kind in kinds if _is_structured_kind(kind))
     fallback_count = sum(1 for kind in kinds if kind == "page_fallback")
     sample = next(
-        (row for row in rows if ((row.get("sourceDetails") or {}).get("vendor_record_kind") == "structured")),
+        (
+            row for row in rows
+            if _is_structured_kind((row.get("sourceDetails") or {}).get("vendor_record_kind") or "")
+        ),
         rows[0] if rows else {},
     )
     details = sample.get("sourceDetails") or {}
@@ -192,7 +199,7 @@ def main() -> int:
 
     failures: list[str] = []
     if not report["hackernews"]["ok"]:
-        failures.append("HackerNews returned insufficient or untraceable title-scoped AI reaction candidates")
+        failures.append("HackerNews returned insufficient or untraceable exact-title AI reaction candidates")
     summary = report["vendor_summary"]
     if summary["structured_successful"] < 6:
         failures.append("OfficialVendor structured coverage below 6/11")
