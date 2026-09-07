@@ -37,6 +37,7 @@ def install_runtime_layers(pipeline_module):
     import run177_paid_funnel_alignment
     import run226_reader_delight_planning
     import run228_reader_rhythm_planning
+    import run274_zero_api_evidence_backfill
     import run178_eyecatch_editorial_layout_optimizer
     import run179_eyecatch_font_refinement
     import run180_eyecatch_semantic_layout
