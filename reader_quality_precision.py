@@ -63,11 +63,15 @@ def _opening_has_strong_reader_bridge(article: str) -> bool:
 def _token_explained_anywhere(token: str, article: str) -> bool:
     value = str(article or "")
     escaped = re.escape(token)
+    # Python's Unicode \b treats Japanese particles as word characters. Use ASCII-only
+    # boundaries so forms such as ``CLIを`` and ``CLI（...）`` are recognized correctly
+    # without weakening matching inside longer ASCII identifiers.
+    ascii_token = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
     patterns = (
-        rf"\b{escaped}\b\s*[（(][^）)\n]{{2,90}}[）)]",
-        rf"[（(][^）)\n]{{2,90}}[）)]\s*\b{escaped}\b",
+        rf"{ascii_token}\s*[（(][^）)\n]{{2,90}}[）)]",
+        rf"[（(][^）)\n]{{2,90}}[）)]\s*{ascii_token}",
         rf"[^。！？\n]{{3,90}}[（(]{escaped}[）)]",
-        rf"\b{escaped}\b(?:とは|は、|は)[^。！？\n]{{4,110}}(?:仕組み|方式|規格|標準|ツール|モデル|プロトコル|ルール|方法|役割)",
+        rf"{ascii_token}(?:とは|は、|は)[^。！？\n]{{4,110}}(?:仕組み|方式|規格|標準|ツール|モデル|プロトコル|ルール|方法|役割)",
     )
     return any(re.search(pattern, value, re.I) for pattern in patterns)
 
@@ -86,7 +90,9 @@ def _token_is_stable_compound_label(token: str, article: str) -> bool:
     followers: list[str] = []
     for match in matches:
         tail = str(article or "")[match.end():match.end() + 40]
-        follower = re.match(r"\s+([A-Z][a-z][A-Za-z0-9.+-]{1,24})\b", tail)
+        # Same Unicode-boundary rule as above: ``Codeを`` / ``Studio側`` are valid
+        # Japanese continuations of an ASCII entity label and must not fail on \b.
+        follower = re.match(r"\s+([A-Z][a-z][A-Za-z0-9.+-]{1,24})(?![A-Za-z0-9])", tail)
         if not follower:
             return False
         followers.append(follower.group(1))
