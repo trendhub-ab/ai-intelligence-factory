@@ -8,10 +8,6 @@ on:
         required: true
         default: true
         type: boolean
-  # Publication-policy changes invalidate previously queued manuscript fingerprints.
-  # Reconcile the human-facing queue immediately on main instead of waiting for a
-  # later production run. Push reconciliation remains zero-model and never opens note.com.
-  # Only explicit workflow_dispatch may chain to the separate private-draft workflow.
   push:
     branches: [main]
     paths:
@@ -41,6 +37,7 @@ on:
       - 'run268_business_source_strategy.py'
       - 'run269_business_source_precision.py'
       - 'editorial_eyecatch.py'
+      - 'eyecatch_badge_taxonomy.py'
       - 'decision_intelligence.py'
       - 'evidence_authority.py'
       - 'evidence_ledger.py'
