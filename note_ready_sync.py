@@ -26,6 +26,7 @@ import requests
 
 import publication_contract
 from publication_source_contract import ACTIVE_PUBLIC_SOURCES
+from run285_operational_accounting import classify_note_ready_source_row
 
 NOTION_API_KEY = (
     os.environ.get("NOTION_NOTE_READY_API_KEY", "").strip()
@@ -362,14 +363,18 @@ def sync_note_ready_db() -> dict[str, Any]:
     stale_contract = 0
     incomplete_assets = 0
     unsupported_source = 0
+    invalid_source_state = 0
     for page in source_pages:
         raw_source = _select((page.get("properties") or {}).get("情報源"))
-        if raw_source not in ALLOWED_SOURCES:
+        state = _source_state(page)
+        classification = classify_note_ready_source_row(raw_source, state, ALLOWED_SOURCES)
+        if classification == "unsupported_source":
             unsupported_source += 1
             continue
-        state = _source_state(page)
-        if state is None:
+        if classification == "invalid_source_state":
+            invalid_source_state += 1
             continue
+        assert state is not None
         if not _source_current_ready_manuscript(state["sync_id"]):
             stale_contract += 1
             continue
@@ -456,6 +461,7 @@ def sync_note_ready_db() -> dict[str, Any]:
         "stale_publication_contract": stale_contract,
         "incomplete_publication_assets": incomplete_assets,
         "unsupported_source": unsupported_source,
+        "invalid_source_state": invalid_source_state,
         "destination_rows": len(dest_pages),
         "created": created,
         "updated": updated,
