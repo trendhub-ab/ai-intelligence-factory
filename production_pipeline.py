@@ -34,6 +34,7 @@ def install_runtime_layers(pipeline_module):
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
     import run223_technical_claim_precision
+    import run283_numeric_evidence_equivalence
     import run224_multiplier_deterministic_rescue
     import run227_japanese_surface_integrity
     import run176_scope_fidelity
