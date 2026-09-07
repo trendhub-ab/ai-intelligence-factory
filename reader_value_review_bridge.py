@@ -80,7 +80,12 @@ def _row_is_reader_value(row: dict) -> bool:
 
 
 def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> str:
-    """Return local repair guidance only for failure classes actually present."""
+    """Return local repair guidance only for failure classes actually present.
+
+    Reader-value guidance here never authorizes a new retry. It only rides along when the
+    existing quality policy has already decided to spend a retry for another repairable
+    blocking issue, so Reader-first quality improves without increasing model-call count.
+    """
     rows = list(reason_rows or [])
     codes = {str(row.get("reason_code") or "") for row in rows}
     messages = "\n".join(str(row.get("message") or row.get("reason") or "") for row in rows)
@@ -106,6 +111,12 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
         additions.append(
             "Dense report修正では、Evidence・数値・制約を削らず、重複説明・汎用前置き・Decisionに不要な実装列挙だけを"
             "削除または平易な1文へ置換してください。記事全体の再構成や新事実の追加はしないでください。"
+        )
+    if "multi_axis_reader_weakness" in messages or "non_engineer_access_failure" in messages:
+        additions.append(
+            "Reader Value修正では、既存Evidence・Decision・数値・制約を変えず、非専門読者が核心へ到達できない箇所だけを"
+            "平易化してください。専門語を連続させず、必要なら同じ事実の身近な言い換えを1回だけ置き、報告書調の前置き・"
+            "重複説明・判断に不要な実装細部を削ってください。新しい比喩事実・使用経験・因果・数値は追加しないでください。"
         )
     if not additions:
         return ""
@@ -176,7 +187,7 @@ def install(pipeline_module: Any) -> Any:
 
 def main() -> None:
     # Historical direct execution used to install only Run172 + this bridge and therefore
-    # silently bypassed later production layers.  There is now exactly one production stack.
+    # silently bypassed later production layers. There is now exactly one production stack.
     import production_pipeline
 
     production_pipeline.main()

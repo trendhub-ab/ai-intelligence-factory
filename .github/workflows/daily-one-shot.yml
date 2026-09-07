@@ -360,9 +360,10 @@ jobs:
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_36_FLASH_DAILY_BUDGET: "18"
           GEMINI_37_FLASH_DAILY_BUDGET: "18"
+          GEMINI_38_FLASH_DAILY_BUDGET: "18"
           GEMINI_35_FLASH_DAILY_BUDGET: "18"
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash"
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3.5-flash"
 
       - name: API-saving mode guard
         if: ${{ inputs.mode != 'full' }}
