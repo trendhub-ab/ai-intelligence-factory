@@ -36,11 +36,48 @@ The push-triggered workflow forces full mode because a code change may intention
 
 Using the current run's immediate pre-presentation time is faster but can miss a generated-body edit made between runs. Using the previous successful run's **start** rather than completion provides a safe overlap window: edits made while the previous run itself was still executing are included on the next run. This can rescan a small changed set once, but it avoids trading correctness for speed.
 
+## Production measurement — 2026-09-07
+
+Run271.1 was measured through the existing Production workflow chain after merge. The measurement is a single no-change steady-state observation, not an SLA.
+
+### Safety full validation
+
+The merge-triggered `Member Presentation Sync` ran in the intended push safety mode with `MEMBER_BODY_FORCE_FULL=true`.
+
+- checkpoint: found
+- body mode: `full_forced`
+- Member pages: 206
+- `scanned_body_pages`: 206
+- `skipped_by_delta`: 0
+- `sentinel_checked`: 0
+- unchanged: 206
+- body-step elapsed time: approximately **130.78 seconds**
+
+This confirms that code/body-contract changes still preserve the full migration path instead of forcing delta optimization.
+
+### Normal steady-state delta
+
+A successful `Subscriber Decision Brief Sync` then triggered `Member Presentation Sync` through the existing `workflow_run` path, where force-full was false. The checkpoint resolved to the previous successful main Member Presentation Sync start time (`2026-09-07T01:19:15Z`).
+
+The body step ran from `2026-09-07T01:34:07.9053835Z` to `2026-09-07T01:34:10.2438306Z`, or approximately **2.34 seconds**.
+
+- body mode: `delta`
+- `force_full`: false
+- Member pages: 206
+- `scanned_body_pages`: 0
+- `skipped_by_delta`: 206
+- `sentinel_checked`: 1
+- `delta_fallback_full`: false
+- Gemini/model calls: 0
+- Notion schema changes: 0
+
+Compared with the Run270 body phase of approximately 13 minutes 23 seconds, this observation is approximately **343.4x faster** and **99.71% shorter**. Compared with the Run271.1 safety full validation above, it is approximately **55.9x faster** and **98.21% shorter**.
+
+These ratios describe this specific no-change Production observation. A future run with changed pages will perform body I/O for that changed subset, so elapsed time is expected to scale with the number of changed pages and external Notion latency.
+
 ## Expected performance effect
 
-The expensive work is now proportional to the number of Member pages changed since the previous successful member sync, rather than the full catalog size. A no-change steady-state run should perform the Member DB query plus one sentinel body validation, instead of reading all 206 generated bodies.
-
-Run271 does not claim a production timing improvement until the post-merge workflow is measured directly.
+The expensive work is now proportional to the number of Member pages changed since the previous successful member sync, rather than the full catalog size. A no-change steady-state run performs the Member DB query plus one sentinel body validation instead of reading all 206 generated bodies. The 2026-09-07 Production observation above confirms that this steady-state path is active in the real workflow.
 
 ## Regression requirements
 
