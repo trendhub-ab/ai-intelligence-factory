@@ -25,12 +25,14 @@ class Run194NoteReadyWorkflowTests(unittest.TestCase):
         self.assertIn("note-ready-sync.yml", one_shot)
         self.assertIn("if: ${{ success() }}", one_shot)
 
-    def test_sync_remains_zero_model_and_has_no_note_publish_action(self) -> None:
+    def test_sync_remains_zero_model_and_private_draft_requires_explicit_dispatch(self) -> None:
         source = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("run: python note_ready_sync.py", source)
         self.assertNotIn("GEMINI_API_KEY", source)
-        self.assertNotIn("note-create-draft", source)
-        self.assertNotIn("公開", source)
+        self.assertIn("github.event_name == 'workflow_dispatch'", source)
+        self.assertIn("note-create-draft.yml", source)
+        self.assertIn("confirm=CREATE_NOTE_DRAFT", source)
+        self.assertNotIn("workflow_run:", source)
 
 
 if __name__ == "__main__":
