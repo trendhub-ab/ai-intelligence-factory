@@ -58,6 +58,11 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "legacy_eyecatch_renderer.py": "obsolete compatibility bridge; current editorial renderer is separately fingerprinted",
 }
 
+# Backward-compatible names retained for the Run280 adversarial fixture API. Run281 no longer
+# limits scanning to these lists; validate_repository audits every policy module instead.
+CLASSIFICATION_SURFACES: tuple[str, ...] = ()
+TRANSITIVE_MATERIAL_SURFACES: tuple[str, ...] = ()
+
 
 def _read_ast(path: Path) -> ast.AST:
     try:
