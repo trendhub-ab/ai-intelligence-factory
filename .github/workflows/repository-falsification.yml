@@ -32,6 +32,11 @@ jobs:
       - name: Compile tracked Python contracts
         run: python -m compileall -q *.py tests
 
+      - name: Enforce Run279 canonical runtime layer source of truth
+        run: |
+          python run279_runtime_layer_guard.py
+          python -m unittest tests.test_run279_runtime_layer_guard -v
+
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
 
