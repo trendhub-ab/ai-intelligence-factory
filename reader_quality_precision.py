@@ -202,26 +202,33 @@ def _malformed_surface_issue(article: str) -> str:
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install after historical reader/final-surface layers; zero API and idempotent."""
+    """Install after historical reader/final-surface layers; zero API and idempotent.
+
+    Run231 regression doubles deliberately expose only a minimal Production entrypoint. Run275
+    must therefore be optional on those doubles while remaining active when the real reader
+    surfaces exist.
+    """
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
         return pipeline_module
 
-    original_signals = pipeline_module._reader_experience_signals
-    original_human_appeal = pipeline_module.validate_human_appeal_gate
+    original_signals = getattr(pipeline_module, "_reader_experience_signals", None)
+    original_human_appeal = getattr(pipeline_module, "validate_human_appeal_gate", None)
 
-    def corrected_signals(article: str) -> dict[str, Any]:
-        return correct_reader_signals(article, original_signals(article))
+    if callable(original_signals):
+        def corrected_signals(article: str) -> dict[str, Any]:
+            return correct_reader_signals(article, original_signals(article))
+        pipeline_module._reader_experience_signals = corrected_signals
 
-    def validate_with_surface_precision(parsed: dict, peer_articles=None):
-        state, issues = original_human_appeal(parsed, peer_articles)
-        merged = list(issues or [])
-        issue = _malformed_surface_issue(str((parsed or {}).get("note_draft") or ""))
-        if issue and issue not in merged:
-            merged.append(issue)
-            state = "WEAK"
-        return state, merged
+    if callable(original_human_appeal):
+        def validate_with_surface_precision(parsed: dict, peer_articles=None):
+            state, issues = original_human_appeal(parsed, peer_articles)
+            merged = list(issues or [])
+            issue = _malformed_surface_issue(str((parsed or {}).get("note_draft") or ""))
+            if issue and issue not in merged:
+                merged.append(issue)
+                state = "WEAK"
+            return state, merged
+        pipeline_module.validate_human_appeal_gate = validate_with_surface_precision
 
-    pipeline_module._reader_experience_signals = corrected_signals
-    pipeline_module.validate_human_appeal_gate = validate_with_surface_precision
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module
