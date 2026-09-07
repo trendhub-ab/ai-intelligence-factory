@@ -41,6 +41,7 @@ jobs:
           python -m unittest tests.test_run280_publication_dependency_guard -v
           python -m unittest tests.test_run281_publication_causality_source_contract -v
           python -m unittest tests.test_run283_numeric_evidence_equivalence -v
+          python -m unittest tests.test_run284_reader_recovery_precision -v
 
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
