@@ -89,9 +89,8 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 reader_summary={"what": "発表がありました。", "why": "実務判断に関係します。", "decision": "まず確認します。"},
                 discovery_url="https://news.ycombinator.com/item?id=1",
             )
-        self.assertEqual(2, manuscript.count("発見経路"))  # 上部の元情報 + 末尾Evidenceの各1回
+        self.assertEqual(2, manuscript.count("発見経路"))
         self.assertIn("発見元の[HackerNews投稿]", manuscript)
-
 
     def test_reader_summary_prefers_plain_source_summary_over_jargon_list(self):
         parsed = self._parsed()
@@ -138,10 +137,11 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
     def test_reader_first_header_omits_unknown_date_instead_of_guessing(self):
         header = pipeline.build_reader_first_header(
             {"what": "発表です。", "why": "重要です。", "decision": "確認します。"},
-            "Item", "https://example.com/item", "ProductHunt", "unknown",
+            "Item", "https://example.com/item", "OfficialVendor", "unknown",
         )
         self.assertNotIn("公開・更新", header)
-        self.assertIn("**発見経路**: Product Hunt", header)
+        self.assertIn("**発見経路**: 公式ベンダー", header)
+        self.assertNotIn("Product Hunt", header)
 
 
 if __name__ == "__main__":
