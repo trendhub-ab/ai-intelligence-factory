@@ -5,11 +5,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import reader_value_review_bridge as bridge
+import source_normalization
 
 
 ROOT = Path(__file__).resolve().parents[1]
 READY_WORKFLOW = ROOT / ".github" / "workflows" / "note-ready-sync.yml"
 DRAFT_WORKFLOW = ROOT / ".github" / "workflows" / "note-create-draft.yml"
+ONE_SHOT_WORKFLOW = ROOT / ".github" / "workflows" / "daily-one-shot.yml"
 
 
 class Run273ReaderRetryTests(unittest.TestCase):
@@ -99,6 +101,34 @@ class Run273PrivateDraftAutoflowTests(unittest.TestCase):
         self.assertIn("Create one private note draft", source)
         self.assertIn("NOTE_DRAFT_CONFIRM", source)
         self.assertNotIn("public release", source.lower().replace("no public release", ""))
+
+
+class Run273ProductionFindingRegressionTests(unittest.TestCase):
+    def test_multilingual_display_wrapper_is_idempotent(self) -> None:
+        title = "海外技術情報「Zhipu AI GLM — 模型与产品发布记录」"
+        display, language = source_normalization._multilingual_display_name(title)
+        self.assertEqual(display, title)
+        self.assertEqual(language, "zh-CN")
+
+    def test_multilingual_double_wrapper_collapses_to_one(self) -> None:
+        title = "海外技術情報「海外技術情報「Zhipu AI GLM — 模型与产品发布记录」」"
+        display, language = source_normalization._multilingual_display_name(title)
+        self.assertEqual(display, "海外技術情報「Zhipu AI GLM — 模型与产品发布记录」")
+        self.assertEqual(language, "zh-CN")
+
+    def test_raw_foreign_title_still_gets_one_wrapper(self) -> None:
+        display, language = source_normalization._multilingual_display_name("模型与产品发布记录")
+        self.assertEqual(display, "海外技術情報「模型与产品发布记录」")
+        self.assertEqual(language, "zh-CN")
+
+    def test_product_review_keeps_38_flash_free_fallback(self) -> None:
+        source = ONE_SHOT_WORKFLOW.read_text(encoding="utf-8")
+        start = source.index("- name: Portfolio-aware Product Review")
+        end = source.index("- name: API-saving mode guard", start)
+        block = source[start:end]
+        self.assertIn('GEMINI_38_FLASH_DAILY_BUDGET: "18"', block)
+        self.assertIn("gemini-3.8-flash", block)
+        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', block)
 
 
 if __name__ == "__main__":
