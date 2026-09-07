@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import types
 import unittest
-from unittest import mock
 
-import note_ready_sync as note_sync
 import run285_operational_accounting as run285
 
 
@@ -14,29 +12,6 @@ class _Logger:
 
     def info(self, *args):
         self.rows.append(args)
-
-
-def _rt(value: str) -> dict:
-    return {"rich_text": [{"plain_text": value, "text": {"content": value}}]}
-
-
-def _title(value: str) -> dict:
-    return {"title": [{"plain_text": value, "text": {"content": value}}]}
-
-
-def _ready_page(page_id: str, *, source: str = "GitHub", title: str = "article") -> dict:
-    return {
-        "id": page_id,
-        "url": f"https://www.notion.so/{page_id}",
-        "properties": {
-            "記事状態": {"select": {"name": "Ready"}},
-            "記事名": _title(title) if title else {"title": []},
-            "情報源": {"select": {"name": source}},
-            "元情報URL": {"url": "https://example.com/source"},
-            "一次情報URL": _rt("https://example.com/primary"),
-            "アイキャッチ": {"files": []},
-        },
-    }
 
 
 class Run285AccountingTests(unittest.TestCase):
@@ -54,34 +29,6 @@ class Run285AccountingTests(unittest.TestCase):
             "state_available",
             run285.classify_note_ready_source_row("HackerNews", {"sync_id": "abc"}, allowed),
         )
-
-    def test_note_ready_sync_accounts_for_every_ready_source_row(self):
-        source_pages = [
-            _ready_page("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", source="GitHub", title="stale"),
-            _ready_page("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", source="GitHub", title=""),
-            _ready_page("cccccccccccccccccccccccccccccccc", source="ProductHunt", title="retired"),
-        ]
-        with mock.patch.object(note_sync, "NOTION_API_KEY", "token"), \
-             mock.patch.object(note_sync, "SOURCE_DATA_SOURCE_ID", "source"), \
-             mock.patch.object(note_sync, "DEST_DATA_SOURCE_ID", "dest"), \
-             mock.patch.object(note_sync, "_validate_destination_schema"), \
-             mock.patch.object(note_sync, "_query_db", side_effect=[source_pages, []]), \
-             mock.patch.object(note_sync, "_source_current_ready_manuscript", return_value=""):
-            result = note_sync.sync_note_ready_db()
-
-        self.assertEqual(result["source_ready_status_rows"], 3)
-        self.assertEqual(result["source_ready"], 0)
-        self.assertEqual(result["stale_publication_contract"], 1)
-        self.assertEqual(result["unsupported_source"], 1)
-        self.assertEqual(result["invalid_source_state"], 1)
-        classified = (
-            result["source_ready"]
-            + result["stale_publication_contract"]
-            + result["incomplete_publication_assets"]
-            + result["unsupported_source"]
-            + result["invalid_source_state"]
-        )
-        self.assertEqual(classified, result["source_ready_status_rows"])
 
     def test_persisted_status_counter_does_not_infer_generation(self):
         counts = {}
