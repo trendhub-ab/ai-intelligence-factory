@@ -9,8 +9,8 @@ Two deliberately different contracts live here:
   after fresh + Deferred + Pending Retry have had first access to article capacity.
 
 Quality Failed is intentionally not auto-recovered because it can represent Fact/Evidence
-HARD BLOCKs.  Repeatedly retrying those rows would spend the free API budget without a
-new source/evidence event.  Pending Retry keeps its dedicated operational lane.
+HARD BLOCKs. Repeatedly retrying those rows would spend the free API budget without a
+new source/evidence event. Pending Retry keeps its dedicated operational lane.
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def select_revalidation_items(
     """Return existing non-Ready Deep Dive rows, independent of acquisition dedup.
 
     ``get_regen_test_items`` already reconstructs the source/candidate payload from
-    Notion without screening or Stock writes.  We deliberately scan a larger bounded
+    Notion without screening or Stock writes. We deliberately scan a larger bounded
     window, then verify the *current* page lifecycle before selecting anything.
     """
     limit = max(0, int(limit))
@@ -204,7 +204,7 @@ def run_existing_editorial_recovery(
     """Use leftover full-run capacity to recover one existing Editorial Review row.
 
     This is a business-write lane: the same existing Notion page id is supplied and
-    ``persist_results=True`` is explicit.  No Stock row is created, no acquisition dedup
+    ``persist_results=True`` is explicit. No Stock row is created, no acquisition dedup
     is weakened, and no separate Gemini budget exists.
     """
     target = int(getattr(pipeline, "TOP_N_FOR_DEEP_DIVE", 0) or 0)
@@ -265,10 +265,22 @@ def run_existing_editorial_recovery(
 
 
 def install_full_recovery(pipeline):
-    """Install the leftover Editorial Review lane around the canonical backlog helper."""
+    """Install the leftover Editorial Review lane around the canonical backlog helper.
+
+    Production must fail closed if the canonical backlog surface disappears. A handful
+    of long-lived orchestration tests intentionally use a file-less ``ModuleType``
+    double exposing only ``main``; those doubles are compatibility-only and receive a
+    no-op instead of pretending the recovery layer was installed.
+    """
     if getattr(pipeline, _INSTALLED_ATTR, False):
         return pipeline
-    original = pipeline.process_article_backlog
+    original = getattr(pipeline, "process_article_backlog", None)
+    if not callable(original):
+        if getattr(pipeline, "__file__", None):
+            raise RuntimeError(
+                "Run277 recovery requires canonical pipeline.process_article_backlog"
+            )
+        return pipeline
 
     def process_article_backlog_with_existing_editorial(pending_items, generated_count, next_candidate_rank):
         # Preserve the validated order first: fresh acquisition already ran before this helper,
