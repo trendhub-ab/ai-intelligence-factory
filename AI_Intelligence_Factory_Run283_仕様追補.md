@@ -15,11 +15,13 @@ Run283の目的はFact Gateを緩和することではなく、**数学的・時
 
 `run283_numeric_evidence_equivalence.py`
 
-Production install order:
+Run283は歴史的な`runtime_layers.py::RUNTIME_LAYER_ORDER`へ追加しない。Run231で固定された互換runtime chainを変更せず、`production_pipeline.py`で**現行precision overlay**として次の順にinstallする。
 
-1. `run223_technical_claim_precision`
-2. `run283_numeric_evidence_equivalence`
-3. `run224_multiplier_deterministic_rescue`
+1. 既存の`install_runtime_layers(pipeline)`を完了
+2. `install_run283_numeric_evidence_equivalence(pipeline)`
+3. Run268 / Run269等の現行strategy・precision overlay
+
+これはRun268/269やReader precisionと同じ考え方で、Run282のProduction実測から追加された局所Fact precisionを、歴史的compatibility chainへ混在させないためである。
 
 Run283は既存の`_find_unsupported_numeric_claims`だけをwrapする。Evidence閾値、Fact Gate全体、Reader Value、Publication Readiness、Decision Score、Retry回数、API budgetは変更しない。
 
@@ -71,6 +73,8 @@ Run283は既存の`_find_unsupported_numeric_claims`だけをwrapする。Eviden
 
 `.github/workflows/note-ready-sync.yml`のpush pathにもRun283を含め、main反映時にzero-modelでNote Readyを再照合する。
 
+Run283をhistorical runtime chainへ追加しないことはPublication provenanceを弱めない。`production_pipeline.py`自体とRun283 moduleの両方がPublication fingerprintの対象である。
+
 ## CI / regression
 
 `tests/test_run283_numeric_evidence_equivalence.py`で以下を必須反証する。
@@ -80,10 +84,11 @@ Run283は既存の`_find_unsupported_numeric_claims`だけをwrapする。Eviden
 - pricingとperformanceの同値誤用を拒否
 - cache expiryとruntimeの同値誤用を拒否
 - wrong quantityを拒否
--既存condition mismatchを絶対に救済しない
+- 既存condition mismatchを絶対に救済しない
 - install idempotency
 - stdlib-only / zero-provider-call
-- Production install order
+- historical runtime chainを変更しない
+- current precision overlayとしてのProduction install順
 - Publication fingerprint / Note Ready reconciliationへの包含
 
 required repository falsificationでもRun283テストを直接実行する。
