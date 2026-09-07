@@ -140,7 +140,9 @@ def install(pipeline_module: Any) -> Any:
 
     original_generate = pipeline_module._generate_via_chat
     original_rescue = pipeline_module._apply_deterministic_publication_rescue
-    original_report = pipeline_module.generate_intelligence_report
+    # Historical Run173 unit fakes intentionally omit the article-report surface. Preserve
+    # that compatibility and install Run274's backfill wrapper only when the live surface exists.
+    original_report = getattr(pipeline_module, "generate_intelligence_report", None)
     streaks: dict[str, int] = getattr(pipeline_module, _TIMEOUT_STREAK_ATTR, {}) or {}
     setattr(pipeline_module, _TIMEOUT_STREAK_ATTR, streaks)
     threshold = _timeout_threshold()
@@ -233,6 +235,7 @@ def install(pipeline_module: Any) -> Any:
 
     pipeline_module._generate_via_chat = generate_with_timeout_circuit
     pipeline_module._apply_deterministic_publication_rescue = rescue_with_vague_quantity_micro_patch
-    pipeline_module.generate_intelligence_report = report_with_zero_api_evidence_backfill
+    if callable(original_report):
+        pipeline_module.generate_intelligence_report = report_with_zero_api_evidence_backfill
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
