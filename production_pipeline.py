@@ -92,6 +92,7 @@ def main() -> None:
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
     from article_revalidation import install_full_recovery, run_article_revalidation
+    from current_policy_ready_recovery import run_current_policy_ready_recovery
     from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
     from run268_business_source_strategy import install as install_run268_business_source_strategy
@@ -139,11 +140,20 @@ def main() -> None:
     # functions without participating in the historical wrapper chain.
     install_performance_telemetry(pipeline)
 
+    mode = _workflow_dispatch_mode()
+
+    # Run282: current-policy Ready recovery is an explicit, bounded business-write lane.
+    # It never enters fresh acquisition/screening/Product Review and regenerates at most
+    # one historical Ready row on its original Notion page. The canonical quality stack
+    # still owns the manuscript bytes, status, and fail-closed outcome.
+    if mode == "current_policy_ready_recovery":
+        run_current_policy_ready_recovery(pipeline)
+        return
+
     # Run277: article_validation must validate an *existing non-Ready* candidate.
     # Fresh acquisition would be defeated by the authoritative Notion dedupe and would
     # silently change the validation target after every Gate fix.  The dedicated lane is
     # read-only (persist_results=False) and bounded.
-    mode = _workflow_dispatch_mode()
     if mode == "article_validation":
         run_article_revalidation(pipeline)
         return

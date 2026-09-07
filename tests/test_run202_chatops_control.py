@@ -31,6 +31,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "pending_retry_validation")
 
+    def test_current_policy_ready_recovery_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run current_policy_ready_recovery"))
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "current_policy_ready_recovery")
+
     def test_full_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run full"))
         self.assertTrue(result["authorized"])
@@ -53,8 +58,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
             "/aiif run article_validation please",
             "/aiif run pending_retry_validation ",
             "/aiif run pending_retry",
+            "/aiif run current_policy_ready_recovery ",
+            "/aiif run current_policy_ready",
             "/aiif run FULL",
             "RUN_ONCE",
+            "RECOVER_ONE_READY",
         ):
             with self.subTest(body=body):
                 self.assertFalse(chatops.authorize_event(event(body=body))["authorized"])
@@ -66,7 +74,7 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
 
 
 class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
-    def test_workflow_is_narrow_and_dispatches_only_existing_one_shot(self):
+    def test_workflow_is_narrow_and_dispatches_only_reviewed_manual_workflows(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("issue_comment:", text)
         self.assertIn("types: [created]", text)
@@ -81,15 +89,25 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("github.actor == 'trendhub-ab'", text)
         self.assertIn("/aiif run article_validation", text)
         self.assertIn("/aiif run pending_retry_validation", text)
+        self.assertIn("/aiif run current_policy_ready_recovery", text)
         self.assertIn("/aiif run full", text)
-        self.assertIn("daily-one-shot.yml/dispatches", text)
+        self.assertIn("daily-one-shot.yml", text)
+        self.assertIn("current-policy-ready-recovery.yml", text)
         self.assertIn('"ref":"main"', text)
         self.assertIn('"confirm":"RUN_ONCE"', text)
+        self.assertIn('"confirm":"RECOVER_ONE_READY"', text)
         self.assertNotIn("production_pipeline.py", text)
         self.assertNotIn("pending_retry_validation.py", text)
         self.assertNotIn("note-create-draft.yml", text)
         self.assertNotIn("run194_note_persistent_cloud.py", text)
         self.assertNotIn("playwright", text)
+
+    def test_recovery_route_has_zero_vm_target_and_normal_routes_keep_daily_one_shot(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("current_policy_ready_recovery)", text)
+        self.assertIn("target='current-policy-ready-recovery.yml'", text)
+        self.assertIn("private note draft / VM: `disabled`", text)
+        self.assertIn("target='daily-one-shot.yml'", text)
 
     def test_dispatch_uses_chainable_pat_and_fails_closed_without_it(self):
         text = WORKFLOW.read_text(encoding="utf-8")
@@ -97,7 +115,6 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("GH_TOKEN: ${{ github.token }}", text)
         self.assertIn('if [ -z "${GH_TOKEN:-}" ]; then', text)
         self.assertIn("GH_PAT is required for ChatOps ONE-SHOT dispatch", text)
-        self.assertIn("downstream workflow_run fan-out", text)
 
 
 if __name__ == "__main__":
