@@ -9,7 +9,7 @@ import source_normalization
 
 
 class DateNormalizationTests(unittest.TestCase):
-    def test_known_vendor_dates_become_iso_dates(self):
+    def test_known_vendor_dates_become_iso_dates_at_external_boundary(self):
         cases = {
             "Sep 3, 2026": "2026-09-03",
             "September 2, 2026": "2026-09-02",
@@ -20,6 +20,7 @@ class DateNormalizationTests(unittest.TestCase):
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
                 self.assertEqual(source_normalization.canonicalize_published_at(raw), expected)
+                self.assertEqual(notion_payloads.notion_date_property(raw), {"date": {"start": expected}})
 
     def test_valid_iso_is_preserved_and_invalid_fails_closed(self):
         iso = "2026-09-07T02:03:50+00:00"
@@ -27,12 +28,13 @@ class DateNormalizationTests(unittest.TestCase):
         self.assertIsNone(source_normalization.canonicalize_published_at("September 99, 2026"))
         self.assertEqual(notion_payloads.notion_date_property("September 99, 2026"), {"date": None})
 
-    def test_normalize_item_canonicalizes_before_notion_boundary(self):
+    def test_normalize_item_preserves_raw_publication_evidence(self):
         item = source_normalization.normalize_item(
             "OfficialVendor", "Example", "https://example.com", "desc", 0,
-            published_at="Sep 3, 2026",
+            published_at="2026.07.20",
         )
-        self.assertEqual(item["publishedAt"], "2026-09-03")
+        self.assertEqual(item["publishedAt"], "2026.07.20")
+        self.assertEqual(notion_payloads.notion_date_property(item["publishedAt"]), {"date": {"start": "2026-07-20"}})
 
 
 class EvidenceHealthCircuitTests(unittest.TestCase):
