@@ -79,3 +79,46 @@ Run273ではprivate draft fan-out条件を `github.event_name == 'workflow_dispa
 5. 公開は人間が最終判断する。
 
 この順序により、顧客満足度・記事品質・無料枠維持・運用自動化を同時に守る。
+
+## 6. 多言語表示名の冪等性契約
+
+Run272後のProduction監査で、Factory自身が生成した多言語表示ラッパーを再入力した場合に、同じ日本語カテゴリが二重に包まれる余地を確認した。Run273では `source_normalization.py` の表示正規化を冪等化する。
+
+- 生の中国語・韓国語・Cyrillic等の原題には、従来どおり日本語カテゴリ + 原題の表示ラッパーを1回だけ付与する。
+- Factory生成済みの `海外技術情報「…」` 等は再ラップしない。
+- 同一カテゴリが二重にネストしている既存値は1段へ正規化する。
+- 原題そのものを翻訳・改変してEntityを推測しない。
+- 表示正規化はEvidence、URL、Decision、Source identityを変更しない。
+
+これにより、再同期・再取得を繰り返しても表示名が肥大化せず、DB一覧の可読性とEntity安定性を維持する。
+
+## 7. Product Review Gemini 3.8 fallback復元契約
+
+Run272実Productionでは、Portfolio-aware Product Reviewが実行対象を持ちながら、当該stepの環境変数から `gemini-3.8-flash` が欠落していたため、他のFlash候補が利用不能な局面で既存の3.8 fallbackを利用できない経路を確認した。
+
+Run273では `daily-one-shot.yml` のPortfolio-aware Product Review stepに以下を復元する。
+
+- `GEMINI_38_FLASH_DAILY_BUDGET: "18"`
+- `GEMINI_DEEP_DIVE_MODEL_CANDIDATES` に `gemini-3.8-flash` を含める
+- `DAILY_PORTFOLIO_REQUEST_BUDGET: "3"` の既存run上限は維持する
+
+安全境界:
+
+- 有料APIへの切替は行わない。
+- 3.8のper-model上限18は既存Free Tier管理と同じFail-Closed予算契約に従う。
+- Product Reviewのために無制限retryを追加しない。
+- Run272で導入した600秒のProduct Review時間上限を維持する。
+- 3.8 fallback復元は記事Fact / Evidence / Publication Gateを緩めない。
+
+## 8. Run273反証テスト契約
+
+Run273の完了条件は、実装が動くことだけではなく、以下の反証を同時に満たすこととする。
+
+- Reader-only failureが追加Gemini retryを発生させない。
+- 既存Quality retryが走る時だけReader Value局所修復が相乗りする。
+- pushによるNote Ready reconciliationからprivate draftへ進まない。
+- explicit workflow_dispatchだけがprivate draft workflowをdispatchできる。
+- private draft側のzero-VM preflightとhuman-only公開境界を維持する。
+- 多言語表示ラッパーが再入力・二重入力でも冪等である。
+- Product Review stepが3.8 Free fallbackとrun budget上限を同時に保持する。
+- Repository-wide Falsification / Integration Reconciliation / Notion Access Policy / Workflow Reference / Live Acquisition Smokeをすべて通過する。
