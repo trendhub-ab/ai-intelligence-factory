@@ -24,6 +24,8 @@ on:
 
 # Member Presentation uses the same Notion integration and member-facing database family.
 # Serialize both workflows across explicit ONE-SHOT/push fan-out; do not cancel a writer mid-commit.
+# A successful main Subscriber Decision Brief Sync is also the normal downstream trigger for
+# Member Presentation Sync; Run271.1 then uses its previous-success checkpoint for delta body I/O.
 concurrency:
   group: member-derived-notion-writes
   cancel-in-progress: false
