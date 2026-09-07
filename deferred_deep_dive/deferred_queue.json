@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-06T12:10:13.424962+00:00",
+  "updated_at": "2026-09-07T02:19:53.309609+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2608.31142",
@@ -206,6 +206,80 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 75.9
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49443122",
+      "deferred_at": "2026-09-07T02:19:53.309306+00:00",
+      "expires_at": "2026-11-06T02:19:53.309306+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Joint Optimization of Tool Creation and Use for Large Language Model Agents",
+        "originalTitle": "Joint Optimization of Tool Creation and Use for Large Language Model Agents",
+        "displayName": "Joint Optimization of Tool Creation and Use for Large Language Model Agents",
+        "sourceLanguage": "en",
+        "url": "https://tool-use-smith.github.io/",
+        "description": "Joint Optimization of Tool Creation and Use for Large Language Model Agents",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-08-26T01:36:48Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=\"large language model\"",
+        "primaryUrl": "https://tool-use-smith.github.io/",
+        "sourceDetails": {
+          "hn_id": "49443122",
+          "hn_url": "https://news.ycombinator.com/item?id=49443122",
+          "external_url": "https://tool-use-smith.github.io/",
+          "comments": 0,
+          "matched_query": "\"large language model\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-81fc-a5db-fe7b0532d6a7",
+      "score": 75,
+      "reason": "LLMエージェントによるツール生成・利用の最適化研究。",
+      "commercial_score": 75,
+      "shelf_life_score": 90,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 75.0
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49583675",
+      "deferred_at": "2026-09-07T02:19:53.309463+00:00",
+      "expires_at": "2026-09-21T02:19:53.309463+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic IPO launch shifts toward mid-October",
+        "originalTitle": "Anthropic IPO launch shifts toward mid-October",
+        "displayName": "Anthropic IPO launch shifts toward mid-October",
+        "sourceLanguage": "en",
+        "url": "https://www.cnbc.com/2026/09/05/anthropic-ipo-launch-shifts-toward-mid-october-reuters.html",
+        "description": "Anthropic IPO launch shifts toward mid-October",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-06T05:45:31Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Anthropic",
+        "primaryUrl": "https://www.cnbc.com/2026/09/05/anthropic-ipo-launch-shifts-toward-mid-october-reuters.html",
+        "sourceDetails": {
+          "hn_id": "49583675",
+          "hn_url": "https://news.ycombinator.com/item?id=49583675",
+          "external_url": "https://www.cnbc.com/2026/09/05/anthropic-ipo-launch-shifts-toward-mid-october-reuters.html",
+          "comments": 0,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-8122-8f22-f63310490001",
+      "score": 70,
+      "reason": "AnthropicのIPOスケジュールに関する報道。",
+      "commercial_score": 80,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "OTHER",
+      "deep_dive_priority_score": 73.5
     },
     {
       "key": "https://hausresearch.com/reports/perplexity-citation-audit",
