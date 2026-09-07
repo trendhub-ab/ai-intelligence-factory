@@ -1,7 +1,155 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T02:19:55.157556+00:00",
+  "updated_at": "2026-09-07T04:00:39.861417+00:00",
   "items": [
+    {
+      "key": "https://arxiv.org/abs/2609.05295",
+      "deferred_at": "2026-09-07T04:00:39.861220+00:00",
+      "expires_at": "2026-11-06T04:00:39.861220+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "RISE: Recursive Improvement via Self-Extrapolating Policy Distillation",
+        "originalTitle": "RISE: Recursive Improvement via Self-Extrapolating Policy Distillation",
+        "displayName": "RISE: Recursive Improvement via Self-Extrapolating Policy Distillation",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.05295v1",
+        "description": "On-policy distillation (OPD) provides dense, per-token supervision for language model post-training, but its effectiveness is bottlenecked by teacher quality: external teachers suffer from distribution mismatch, while self-distillation with privileged conditioning is limited by in-context learning capacity. We propose \\textbf{RISE} (\\textbf{R}ecursive \\textbf{I}mprovement via \\textbf{S}elf-\\textbf{E}xtrapolating Policy Distillation), which constructs a synthetic teacher directly from the model's",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-04T15:47:51Z",
+        "sourceContext": "On-policy distillation (OPD) provides dense, per-token supervision for language model post-training, but its effectiveness is bottlenecked by teacher quality: external teachers suffer from distribution mismatch, while self-distillation with privileged conditioning is limited by in-context learning capacity. We propose \\textbf{RISE} (\\textbf{R}ecursive \\textbf{I}mprovement via \\textbf{S}elf-\\textbf{E}xtrapolating Policy Distillation), which constructs a synthetic teacher directly from the model's own RLVR training trajectory. By extrapolating the displacement between the current checkpoint and a trailing anchor---in parameter space or output logit space---RISE converts a sparse outcome-induced parameter update into a dense token-level target, without any external model or privileged conditioning. RISE combines RLVR and OPD in a complementary loop: outcome rewards ground the extrapolation toward correct reasoning, while the extrapolated teacher refines token-level decisions. Moreover, since the teacher is refreshed every iteration as the student improves, distillation becomes a recursive improvement mechanism rather than a one-shot compression step. Experiments spanning mathematical reasoning, multi-domain STEM, code generation, and multi-turn agentic tasks show that RISE outperforms RLVR-only training and on-policy self-distillation across all settings.",
+        "primaryUrl": "https://arxiv.org/abs/2609.05295v1",
+        "sourceDetails": {
+          "authors": [
+            "Yang Li",
+            "Semih Yavuz",
+            "Shafiq Joty"
+          ],
+          "categories": [
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-81a0-b3c1-f2a47388c9f3",
+      "score": 85,
+      "reason": "LLMの学習効率・質を根本から向上させる技術として注目。",
+      "commercial_score": 80,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 83.25
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.05339",
+      "deferred_at": "2026-09-07T04:00:39.860911+00:00",
+      "expires_at": "2026-11-06T04:00:39.860911+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability",
+        "originalTitle": "Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability",
+        "displayName": "Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.05339v1",
+        "description": "Model upgrades are routine; memory migrations are not. An agent can keep the same memory store and still forget: a new model may interpret old notes differently, mixed embedding versions may break retrieval, and repair may fail without the original evidence. We compare memory as the same history is preserved verbatim for long-context reading (LC-RAW), divided into chunks for retrieval-augmented generation (RAG), compressed by a model into natural-language notes (NOTES), or normalized into a fixe",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-04T16:44:17Z",
+        "sourceContext": "Model upgrades are routine; memory migrations are not. An agent can keep the same memory store and still forget: a new model may interpret old notes differently, mixed embedding versions may break retrieval, and repair may fail without the original evidence. We compare memory as the same history is preserved verbatim for long-context reading (LC-RAW), divided into chunks for retrieval-augmented generation (RAG), compressed by a model into natural-language notes (NOTES), or normalized into a fixed-schema knowledge graph (KG-fixed). The study uses 48 synthetic histories with randomized answer codes, exact scoring, and two open-weight models with sub 10 billion parameters. Our measurements show that fixed-schema structures transfer reliably, with KG-fixed accuracy changing by only $+0.0004 \\pm 0.0020$ following a writer swap. Conversely, compressed NOTES exhibit high model coupling, with accuracy shifting asymmetrically by $+9.91$ or $-13.28$ percentage points depending on the specific migration direction. In RAG systems, partial embedding migrations using a 50/50 mixed index capture only a 4.96-point accuracy improvement, forfeiting the majority of the 11.90-point gain achieved through full re-embedding. Diagnostic decomposition attributes 80% ($0.467 \\pm 0.014$) of the NOTES accuracy deficit to information lost during initial construction, whereas retrieval failures drive 81% ($0.364 \\pm 0.012$) of the RAG deficit. Finally, store-only repair of NOTES fails to reach a 90% performance recovery target in all 48 test cases, whereas retaining the raw source history enables successful recovery in 34 of 48 cases for one tested direction. These findings highlight the necessity of direction-specific migration testing, strict embedding space isolation, and the retention of source histories for memory repair.",
+        "primaryUrl": "https://arxiv.org/abs/2609.05339v1",
+        "sourceDetails": {
+          "authors": [
+            "Ankit Goyal",
+            "Jaideep Ray"
+          ],
+          "categories": [
+            "cs.AI",
+            "cs.CL",
+            "cs.IR"
+          ]
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-819c-bdde-f093f0c3784c",
+      "score": 85,
+      "reason": "実運用エージェントの継続性に関わる極めて重要な研究。",
+      "commercial_score": 80,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 83.25
+    },
+    {
+      "key": "https://ai.google.dev/gemini-api/docs/latest-model",
+      "deferred_at": "2026-09-07T04:00:39.861307+00:00",
+      "expires_at": "2026-09-21T04:00:39.861307+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Google Gemini — Latest model guide",
+        "originalTitle": "Google Gemini — Latest model guide",
+        "displayName": "Google Gemini — Latest model guide",
+        "sourceLanguage": "en",
+        "url": "https://ai.google.dev/gemini-api/docs/latest-model",
+        "description": "Latest model guide",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "September 2, 2026",
+        "sourceContext": "Latest model guide",
+        "primaryUrl": "https://ai.google.dev/gemini-api/docs/latest-model",
+        "sourceDetails": {
+          "vendor": "Google Gemini",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
+          "candidate_revision": "f0adf6743a419264",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-8194-8d05-cfd54779961d",
+      "score": 75,
+      "reason": "Google API利用の判断において必須の参照情報。",
+      "commercial_score": 90,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 80.25
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.05269",
+      "deferred_at": "2026-09-07T04:00:39.861354+00:00",
+      "expires_at": "2026-11-06T04:00:39.861354+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "CONTINUITY: Security-Context Contracts for Composable LLM Agent Controls",
+        "originalTitle": "CONTINUITY: Security-Context Contracts for Composable LLM Agent Controls",
+        "displayName": "CONTINUITY: Security-Context Contracts for Composable LLM Agent Controls",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.05269v1",
+        "description": "LLM agent systems increasingly combine provenance tracking, authorization, policy enforcement, protocol adapters, and execution controls. However, individually correct security mechanisms do not necessarily compose into an end-to-end secure system: security-critical context may be dropped, widened, rebound, or reinterpreted as actions cross component boundaries. We identify this failure mode as security-context discontinuity and introduce CONTINUITY, a framework for verifiable composition of age",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-04T15:26:35Z",
+        "sourceContext": "LLM agent systems increasingly combine provenance tracking, authorization, policy enforcement, protocol adapters, and execution controls. However, individually correct security mechanisms do not necessarily compose into an end-to-end secure system: security-critical context may be dropped, widened, rebound, or reinterpreted as actions cross component boundaries. We identify this failure mode as security-context discontinuity and introduce CONTINUITY, a framework for verifiable composition of agent security controls. CONTINUITY models each component with an assume-guarantee contract and carries authenticated security context across transitions using signed root grants, provenance commitments, role-bound transition receipts, bounded typed releases, transformation witnesses, and effect-bound execution permits. We formalize end-to-end consequence integrity, requiring every realized external effect to be backed by a valid and current authorization witness linking the principal, task, provenance, delegation, policy state, canonical action, and finality boundary. We implement a reference verifier and deterministic cross-layer fault-injection suite covering 32 fault classes across four application domains. In 2,560 parameterized attack instances spanning 128 fault-domain classes, the full CONTINUITY configuration commits no harmful external effect, while completing all 700 benign tasks and escalating all 200 ambiguous cases. These results show that secure agent execution requires not only sound individual controls, but explicit contracts that preserve their guarantees across the complete instruction-to-effect path.",
+        "primaryUrl": "https://arxiv.org/abs/2609.05269v1",
+        "sourceDetails": {
+          "authors": [
+            "Chris Zheng",
+            "Geng Yang"
+          ],
+          "categories": [
+            "cs.CR",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-8164-965e-f2540bf3af67",
+      "score": 80,
+      "reason": "エージェント構築時のセキュリティ契約・管理の必須手法。",
+      "commercial_score": 80,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 80.0
+    },
     {
       "key": "https://news.ycombinator.com/item?id=49548600",
       "deferred_at": "2026-09-04T01:03:15.800568+00:00",
