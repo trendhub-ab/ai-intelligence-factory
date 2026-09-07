@@ -10,8 +10,6 @@ on:
 permissions:
   contents: read
 
-# Read-only required checks must not let a stale run for an older commit hold the
-# current PR head in Expected/pending forever. Scope the lock to the exact commit.
 concurrency:
   group: repository-falsification-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -37,10 +35,11 @@ jobs:
           python run279_runtime_layer_guard.py
           python -m unittest tests.test_run279_runtime_layer_guard -v
 
-      - name: Enforce Run280 publication dependency completeness
+      - name: Enforce Run280/281 publication dependency completeness
         run: |
           python run280_publication_dependency_guard.py
           python -m unittest tests.test_run280_publication_dependency_guard -v
+          python -m unittest tests.test_run281_publication_causality_source_contract -v
 
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
@@ -80,9 +79,6 @@ jobs:
           python -m unittest tests.test_run270_proposal_first_member_surface -v
 
       - name: Enforce Run271 member body delta sync contract
-        # Keep this required guard zero-dependency. The main behavior test imports
-        # the Notion transport stack and runs in locked Integration + Member UX CI;
-        # the Run271.1 checkpoint selector itself is stdlib-only and runs here too.
         run: |
           python run271_member_body_delta_sync_guard.py
           python -m unittest tests.test_run271_1_member_body_checkpoint -v
