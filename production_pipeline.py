@@ -10,6 +10,9 @@ explicitly resumed.
 """
 from __future__ import annotations
 
+import json
+import os
+
 from runtime_layers import install_runtime_layers as _canonical_install_runtime_layers
 
 
@@ -62,10 +65,33 @@ def install_runtime_layers(pipeline_module):
 install_runtime_layers = _canonical_install_runtime_layers
 
 
+def _workflow_dispatch_mode() -> str:
+    """Return the ONE-SHOT workflow mode without changing normal/local execution.
+
+    GitHub Actions exposes workflow_dispatch inputs through ``GITHUB_EVENT_PATH``.
+    An explicit ``AIIF_ONE_SHOT_MODE`` is accepted for hermetic tests and controlled
+    local validation. Unknown/missing values deliberately fall back to the normal
+    production path; the workflow itself still owns the allowlist/fail-closed check.
+    """
+    explicit = os.environ.get("AIIF_ONE_SHOT_MODE", "").strip()
+    if explicit:
+        return explicit
+    event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+    if not event_path:
+        return ""
+    try:
+        with open(event_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return str((payload.get("inputs") or {}).get("mode") or "").strip()
+    except (OSError, ValueError, TypeError):
+        return ""
+
+
 def main() -> None:
     import pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
+    from article_revalidation import run_article_revalidation
     from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
     from run268_business_source_strategy import install as install_run268_business_source_strategy
@@ -112,6 +138,15 @@ def main() -> None:
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.
     install_performance_telemetry(pipeline)
+
+    # Run277: article_validation must validate an *existing non-Ready* candidate.
+    # Fresh acquisition would be defeated by the authoritative Notion dedupe and would
+    # silently change the validation target after every Gate fix.  The dedicated lane is
+    # read-only (persist_results=False) and bounded; full/local runs retain pipeline.main().
+    if _workflow_dispatch_mode() == "article_validation":
+        run_article_revalidation(pipeline)
+        return
+
     pipeline.main()
 
 
