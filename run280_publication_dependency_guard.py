@@ -5,8 +5,9 @@ active code surface capable of changing a persisted public article is represente
 content-addressed Publication Contract, and that every policy file triggers Note Ready queue
 reconciliation on main.
 
-Selection-only, member-only, recovery-only, quota/retry, and observational modules are
-explicitly exempt so operational changes do not invalidate all Ready manuscripts.
+Selection-only, member-only, recovery-only, quota/retry, synthetic, obsolete compatibility,
+and observational modules are explicitly exempt so operational changes do not invalidate all
+Ready manuscripts.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ ROOT = Path(__file__).resolve().parent
 REQUIRED_PUBLICATION_DEPENDENCIES = (
     "runtime_layers.py",
     "source_normalization.py",
+    "evidence_context.py",
     "reader_experience_signals.py",
     "editorial_naturalness.py",
     "note_manuscript.py",
@@ -41,8 +43,8 @@ REQUIRED_PUBLICATION_DEPENDENCIES = (
 )
 
 # These are intentionally outside the policy fingerprint. Reasons are narrow and auditable:
-# they can change which work runs, when it runs, or what member/telemetry surface is updated,
-# but they do not define the persisted public manuscript/eyecatch bytes or publication gates.
+# they can change which work runs, when it runs, or what member/telemetry/synthetic surface is
+# updated, but they do not define the persisted public manuscript/eyecatch bytes or gates.
 EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "product_delivery_maintenance.py": "member/product maintenance only",
     "deep_dive_portfolio.py": "candidate selection only",
@@ -55,6 +57,8 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "run203_runtime_state_channel.py": "operational runtime-state channel only",
     "gemini_timeout_rpd_fail_closed.py": "quota reservation/timeout safety only",
     "gemini_transient_recovery.py": "transport retry/failover safety only",
+    "regression_suite.py": "synthetic regression entrypoint only",
+    "legacy_eyecatch_renderer.py": "obsolete compatibility bridge; current editorial renderer is separately fingerprinted",
 }
 
 CLASSIFICATION_SURFACES = (
@@ -155,9 +159,6 @@ def validate_repository(root: Path = ROOT) -> list[str]:
         if relative not in policy_set:
             failures.append(f"publication-material dependency missing from policy fingerprint: {relative}")
 
-    # Any new local dependency added directly to a Production/publication surface must be either
-    # fingerprinted or explicitly classified operational. This makes future modularization fail
-    # closed instead of silently escaping provenance.
     classified = policy_set | set(EXPLICIT_NON_PUBLICATION_DEPENDENCIES)
     for surface in (*CLASSIFICATION_SURFACES, *TRANSITIVE_MATERIAL_SURFACES):
         try:
