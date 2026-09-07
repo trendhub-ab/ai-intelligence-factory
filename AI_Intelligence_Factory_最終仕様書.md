@@ -187,7 +187,7 @@ Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前�
 - manual `workflow_dispatch` は `force_full_body_sync` で明示full migrationできる。
 - manual Notion block保護、Run270見出し、Evidence / Decision / source / Deep Tech、Notion schema、ZERO Gemini/model call契約は変更しない。
 
-詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。通常deltaの速度改善値はRun271.1 merge後の実workflowで測定してから確定する。
+詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。2026-09-07の通常delta Production観測では、206件中 `scanned_body_pages=0` / `skipped_by_delta=206` / `sentinel_checked=1` / `delta_fallback_full=false`、本文stepは約**2.34秒**だった。Run270の約13分23秒比で約**343.4倍高速・99.71%短縮**、Run271.1 push安全fullの約130.78秒比で約**55.9倍高速・98.21%短縮**。これは単一のno-change Production観測値でありSLAではない。
 
 ---
 
@@ -628,5 +628,5 @@ PMF前にやらないこと:
 - checkpoint取得失敗 / push / rerun / explicit `force_full_body_sync` はfull modeを選ぶため、手動編集・本文契約変更・recoveryをdelta最適化で取りこぼさない。
 - workflow履歴取得は `actions: read` のみを使い、新規secret・GH_PAT・有料APIは追加しない。
 - manual Notion blocks、Evidence / Decision / Source / Deep Tech / schema、ZERO Gemini/model call契約を保持する。
-- 通常deltaのProduction速度改善はRun271.1 merge後の実workflowで計測してから確定する。
+- 2026-09-07の通常delta Production観測では本文step約**2.34秒**、`scanned_body_pages=0`、`skipped_by_delta=206`、`sentinel_checked=1`、`delta_fallback_full=false`。Run270約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
 - Run271 Guardはprevious-success checkpoint / delta cutoff / sentinel / full fallback / workflow recovery / canonical仕様 / required Falsification組込みをzero-networkでfail closed検証する。
