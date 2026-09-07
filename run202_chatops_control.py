@@ -3,8 +3,8 @@
 
 The normal ChatGPT chat can post an exact command to one dedicated GitHub Issue.
 This module never runs Production itself. It only validates the GitHub event and
-returns the one allowed ONE-SHOT mode to the workflow, which then dispatches the
-existing daily-one-shot.yml with RUN_ONCE on main.
+returns the one allowed ONE-SHOT mode to the workflow, which then dispatches an
+existing reviewed manual workflow on main.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ ALLOWED_LOGIN = "trendhub-ab"
 COMMAND_TO_MODE = {
     "/aiif run article_validation": "article_validation",
     "/aiif run pending_retry_validation": "pending_retry_validation",
+    "/aiif run current_policy_ready_recovery": "current_policy_ready_recovery",
     "/aiif run full": "full",
 }
 
