@@ -113,7 +113,7 @@ class Run283NumericEquivalenceTests(unittest.TestCase):
         self.assertEqual(["numeric condition mismatch: 9ms"], result)
         self.assertEqual(1, len(calls))
 
-    def test_module_is_stdlib_only_and_runtime_order_is_narrow(self):
+    def test_module_is_stdlib_only_and_current_overlay_preserves_historical_runtime_chain(self):
         tree = ast.parse((ROOT / "run283_numeric_evidence_equivalence.py").read_text(encoding="utf-8"))
         imported = set()
         for node in ast.walk(tree):
@@ -124,14 +124,20 @@ class Run283NumericEquivalenceTests(unittest.TestCase):
         self.assertTrue(imported <= {"__future__", "decimal", "re", "typing"}, imported)
 
         runtime = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
-        self.assertLess(
-            runtime.index('"run223_technical_claim_precision.install"'),
-            runtime.index('"run283_numeric_evidence_equivalence.install"'),
+        self.assertNotIn("run283_numeric_evidence_equivalence", runtime)
+
+        production = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        compatibility = production.split("install_runtime_layers = _canonical_install_runtime_layers", 1)[0]
+        self.assertNotIn("import run283_numeric_evidence_equivalence", compatibility)
+        self.assertIn(
+            "from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence",
+            production,
         )
-        self.assertLess(
-            runtime.index('"run283_numeric_evidence_equivalence.install"'),
-            runtime.index('"run224_multiplier_deterministic_rescue.install"'),
-        )
+        historical = production.index("    install_runtime_layers(pipeline)\n")
+        current = production.index("    install_run283_numeric_evidence_equivalence(pipeline)\n")
+        source_strategy = production.index("    install_run268_business_source_strategy(pipeline)\n")
+        self.assertLess(historical, current)
+        self.assertLess(current, source_strategy)
 
     def test_publication_provenance_and_reconciliation_track_run283(self):
         contract = (ROOT / "publication_contract.py").read_text(encoding="utf-8")
