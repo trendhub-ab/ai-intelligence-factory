@@ -29,7 +29,8 @@ Standalone Synthetic Baseline: **Run264 — Hermetic Synthetic Regression**
 Dependency Compatibility Baseline: **Run266 — Pillow 12.1+ Production Floor / <13 Upper Bound**  
 Required PR Check Governance Baseline: **Run267 — Required contexts must be emitted for every PR to main**  
 Business / Source Strategy Baseline: **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West Coverage**  
-Acquisition Precision Baseline: **Run269 — Live Acquisition Precision / 11-Vendor Structured Smoke**
+Acquisition Precision Baseline: **Run269 — Live Acquisition Precision / 11-Vendor Structured Smoke**  
+Operational Reliability Baseline: **Run272 — Bounded Daily Failure Tails / Notion Date Boundary / arXiv Run-Local Circuit / Product Review 600s Bound**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -359,6 +360,7 @@ Run183 current stackを基準とする。Run181 → Run182 → Run183の順序�
 - schema変更は必要性が明確な場合のみ。
 - PIIをGitHub artifactへ持ち込まない。
 - Notion write先はfail-closedで解決する。
+- Sourceが返した日付文字列はEvidence/current-state契約として取得層で保持し、Notion `date.start` へ入れる直前にだけRun272のdate boundaryで検証・正規化する。既知形式はISOへ変換し、解釈不能な値は推測せず空欄へfail closedする。
 - CI greenだけで本番反映完了としない。実Notionの見出し、順位、copy、source preservationを直接監査する。
 - Physical API hostとlinked viewsの役割を分離し、Run221のhosting boundaryを維持する。
 
@@ -458,6 +460,20 @@ Run263以降、`Integration Reconciliation CI` はProduction不具合とCI自身
 
 Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR triggerがpath-filteredへ戻らないこと、job context名、Pillow契約、Run183 Eyecatch baseline、Run263/264 current CI contractをFail-Closedで保護する。
 
+### 8.4 Daily failure-tail hardening — Run272
+
+Run272は、Run `34075019008` の45分cancelを「Workflow全体が遅い」と一括処理せず、外部障害と後段処理のfailure tailを分解して有界化したoperational reliability契約である。
+
+- Production本体の完了と、後段Product Reviewのtimeoutを区別する。Global Daily timeoutは**45分のまま**で、延長して問題を隠さない。
+- `notion_payloads.py` はNotion `date.start` へ渡す直前だけ既知の日付形式をISOへ正規化する。取得層のraw `publishedAt` は保持し、Run269のEvidence/current-state契約を変えない。解釈不能な日付は捏造せず空欄へfail closedする。
+- `product_delivery_maintenance.py` のEvidence Healthは、arXivで最初の `FETCH_ERROR` を観測したらそのrunだけarXiv circuitを開く。残りarXiv候補はdeferし、non-arXiv候補は継続する。
+- provider unavailableを `MISSING` / `MATERIAL_CHANGE` と誤認せず、deferred arXiv候補のEvidence Ledger healthを障害だけを理由に書き換えない。
+- `daily_portfolio_review.py` はProduct Review child `pipeline.py` を既定**600秒**へ有界化する。timeout時もpartial outputへunsafe-activity detectorを適用し、安全なら `bounded_child_timeout` としてdeferする。
+- Gemini request budget / retry budget / RPD safety ceiling、Run268 four-source architecture、Fact/Evidence/Decision gate、Public release契約は変更しない。
+- 反証過程で、取得層の日付正規化と `source_normalization.install()` 公開面拡張は既存契約を壊すため撤回された。Run272はpersistence/maintenance/deadline境界に限定する。
+
+詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
+
 ---
 
 ## 9. 回帰・反証契約
@@ -477,6 +493,7 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - Run269 Acquisition Precision Guard
 - Run270 Proposal-First Member Surface Guard
 - Run271 Member Body Delta Sync Guard
+- Run272 Daily Failure Tail zero-API regression tests
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -493,6 +510,17 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - old fixed shortlistの復活
 - Source score / Evidence / Deep Techの意図しない変異
 - 顧客提案が再びSecondary扱いになっていないか
+
+Run272の運用信頼性変更では、さらに次を反証する。
+
+- OfficialVendor等のraw source dateを取得層で勝手にISOへ書き換えていないか
+- 既知の日付だけがNotion境界でISO化され、不正値がHTTP 400を起こすpayloadとして残っていないか
+- arXiv最初のFETCH_ERROR後に同一runで残りarXivへ再試行連鎖していないか
+- arXiv provider failureをMISSING/MATERIAL_CHANGEへ誤分類・永続化していないか
+- arXiv circuit open後もGitHub等non-arXiv health checkが継続するか
+- Product Review child timeout時にもpartial outputのunsafe検査を飛ばしていないか
+- Product Review timeoutがDaily全体の成功を偽装せずstructured deferredとして観測できるか
+- global Daily 45分上限やGemini budgetを安易に拡張していないか
 
 Gemini model routing変更では、さらに次を反証する。
 
@@ -551,7 +579,7 @@ PMF前にやらないこと:
 
 本ファイルは、商品・Production契約が変わったRunで更新する。
 
-- 現行仕様は読みやすく保つが、active runtime / Fail-Closed / customer destination / quota safety / deterministic CI / dependency compatibility / required-check governanceの保護契約を「古いから」という理由で削らない。
+- 現行仕様は読みやすく保つが、active runtime / Fail-Closed / customer destination / quota safety / deterministic CI / dependency compatibility / required-check governance / operational failure-tail boundingの保護契約を「古いから」という理由で削らない。
 - 詳細な変更理由・反証記録は `docs/reference/RUNxxx_*.md` へ置く。
 - 純粋な履歴説明は `docs/archive/` とGit履歴へ置く。
 - current code/tests + 本書 + `PAID_PRODUCT_CONTRACT.md` の整合を保つ。
@@ -568,10 +596,12 @@ PMF前にやらないこと:
 - Run269のLive Acquisition Precision / 11-Vendor structured smoke / HN exact-match契約は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md` を正本とする。
 - Run270のProposal-First Member Surface / static Notion surface契約は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
 - Run271/271.1のdelta-scoped Member body sync / previous-success checkpoint / sentinel fallback契約は `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。
+- Run272のNotion date boundary / arXiv run-local Evidence Health circuit / bounded Product Review child契約は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
 - Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
 - Run271.1は通常本文同期を前回成功run以降のchanged pagesへ限定しつつ、checkpoint取得失敗 / sentinel mismatch / explicit force / recovery時のfull fallbackを `run271_member_body_delta_sync_guard.py` でFail-Closedする。
+- Run272は専用zero-API regression `tests/test_run272_daily_failure_tails.py` と既存Repository-wide / Integration / Run269契約の組合せで、修正がSource Evidence・Notion・Product Review safetyを横断破壊していないことを反証する。
 - Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269/270/271 GuardをRepository-wide Falsification Guard内で実行する。
 
 **現在のPaid Product Strategy正本はRun268。**  
@@ -579,6 +609,7 @@ PMF前にやらないこと:
 **現在のMember Body Sync正本はRun271.1。**  
 **現在のSource Architecture正本はRun268。**  
 **現在のAcquisition Precision正本はRun269。**  
+**現在のOperational Reliability正本はRun272。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  
@@ -630,3 +661,14 @@ PMF前にやらないこと:
 - manual Notion blocks、Evidence / Decision / Source / Deep Tech / schema、ZERO Gemini/model call契約を保持する。
 - 2026-09-07の通常delta Production観測では本文step約**2.34秒**、`scanned_body_pages=0`、`skipped_by_delta=206`、`sentinel_checked=1`、`delta_fallback_full=false`。Run270約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
 - Run271 Guardはprevious-success checkpoint / delta cutoff / sentinel / full fallback / workflow recovery / canonical仕様 / required Falsification組込みをzero-networkでfail closed検証する。
+
+### Run272 — Daily Failure-Tail Hardening
+
+- Run34075019008の45分cancelを、Production本体・Evidence Health・Product Reviewへ分解して根因を反証した。
+- Notion dateはsource raw valueを保持したまま、persistence boundaryだけでISO化し、不正値は空欄へfail closedする。
+- arXiv Evidence Healthは最初のFETCH_ERRORでrun-local circuitを開き、残りarXiv checkをdeferする。non-arXiv checkは継続し、provider unavailableをEvidence消失へ変換しない。
+- Product Review childは既定600秒へbounded化し、timeout partial outputでもunsafe detectorを実行する。安全ならstructured deferredとして返す。
+- Global Daily timeout 45分、Gemini budget/retry、Run268 Source architecture、Fact/Evidence/Decision gateは変更しない。
+- 初期案の取得層date normalizationとsource normalization公開面拡張は既存契約を壊したためCI反証で撤回し、最終修正を境界層へ限定した。
+- 実装merge前にfull pytest **1795 passed**、Repository-wide Falsification、Integration/Synthetic Production Smoke、Notion Access Policy、Run269 Live Acquisition SmokeをPASSした。
+- 詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
