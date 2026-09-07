@@ -8,8 +8,8 @@ Design:
 - The latest persisted Ready manuscript must carry the current automatic policy fingerprint
   and its caption manuscript SHA must match the actual body bytes.
 - A source eyecatch is mandatory before a row can enter/remain in the note posting queue.
-- Historical, corrupted, or incomplete Ready inventory is excluded; existing non-published
-  destination rows are revoked on the next sync.
+- Historical, corrupted, incomplete, or retired-source Ready inventory is excluded; existing
+  non-published destination rows are revoked on the next sync.
 - Human workflow fields (投稿状態, note公開URL, 投稿予定日, 投稿日) are never overwritten
   during normal Ready updates. Published rows remain 投稿済み for auditability.
 """
@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 import requests
 
 import publication_contract
+from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 
 NOTION_API_KEY = (
     os.environ.get("NOTION_NOTE_READY_API_KEY", "").strip()
@@ -58,7 +59,7 @@ DEST_SCHEMA = {
     "同期ID": "rich_text",
     "最終同期日": "date",
 }
-ALLOWED_SOURCES = {"GitHub", "HackerNews", "ArXiv", "ProductHunt"}
+ALLOWED_SOURCES = set(ACTIVE_PUBLIC_SOURCES)
 ALLOWED_DECISIONS = {"NOW", "TRY", "WATCH", "WAIT", "AVOID"}
 
 
@@ -191,6 +192,8 @@ def _source_state(page: dict) -> dict[str, Any] | None:
     original_url = _url(p.get("元情報URL"))
     primary_url = _first_url(_text(p.get("一次情報URL"))) or original_url
     source = _select(p.get("情報源"))
+    if source not in ALLOWED_SOURCES:
+        return None
     decision = _select(p.get("判断"))
     return {
         "sync_id": sync_id,
@@ -198,7 +201,7 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         "decision": decision if decision in ALLOWED_DECISIONS else "",
         "decision_score": _number(p.get("判断スコア")),
         "article_value": _number(p.get("記事価値")),
-        "source": source if source in ALLOWED_SOURCES else "",
+        "source": source,
         "original_url": original_url,
         "primary_url": primary_url,
         "content_page_url": str(page.get("url") or "").strip(),
@@ -358,7 +361,12 @@ def sync_note_ready_db() -> dict[str, Any]:
     states: list[dict[str, Any]] = []
     stale_contract = 0
     incomplete_assets = 0
+    unsupported_source = 0
     for page in source_pages:
+        raw_source = _select((page.get("properties") or {}).get("情報源"))
+        if raw_source not in ALLOWED_SOURCES:
+            unsupported_source += 1
+            continue
         state = _source_state(page)
         if state is None:
             continue
@@ -447,6 +455,7 @@ def sync_note_ready_db() -> dict[str, Any]:
         "source_ready": len(source_by_id),
         "stale_publication_contract": stale_contract,
         "incomplete_publication_assets": incomplete_assets,
+        "unsupported_source": unsupported_source,
         "destination_rows": len(dest_pages),
         "created": created,
         "updated": updated,
