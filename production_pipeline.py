@@ -98,6 +98,7 @@ def main() -> None:
     from run268_business_source_strategy import install as install_run268_business_source_strategy
     from run269_business_source_precision import install as install_run269_business_source_precision
     from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence
+    from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -129,6 +130,12 @@ def main() -> None:
     # bridge, visible heading rhythm, later acronym explanation) and one malformed
     # Japanese particle collision. Genuine dense-reader failures remain REVIEW.
     install_reader_quality_precision(pipeline)
+
+    # Run284 is derived from two real current-policy recovery attempts. It removes one
+    # deterministic Japanese corruption rule for every Production article, and authorizes
+    # one existing Reader Value quality-repair call only inside the explicit Run282 recovery
+    # lane when Evidence is already SUFFICIENT and all blockers are reader-only.
+    install_run284_reader_recovery_precision(pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
