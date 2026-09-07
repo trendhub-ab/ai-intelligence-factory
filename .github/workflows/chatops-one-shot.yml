@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::GH_PAT is required for ChatOps dispatch so reviewed workflow causality remains explicit."
+            echo "::error::GH_PAT is required for ChatOps ONE-SHOT dispatch so downstream workflow_run fan-out is not suppressed"
             exit 1
           fi
           case "$MODE" in
