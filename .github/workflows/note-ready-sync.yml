@@ -2,9 +2,16 @@ name: Note Ready Article Sync
 
 on:
   workflow_dispatch:
+    inputs:
+      create_private_draft:
+        description: 'After Ready sync, dispatch private note draft flow (preflight prevents VM start when no eligible article exists)'
+        required: true
+        default: true
+        type: boolean
   # Publication-policy changes invalidate previously queued manuscript fingerprints.
   # Reconcile the human-facing queue immediately on main instead of waiting for a
-  # later production run. This workflow is zero-model and never opens note.com.
+  # later production run. Push reconciliation remains zero-model and never opens note.com.
+  # Only explicit workflow_dispatch may chain to the separate private-draft workflow.
   push:
     branches: [main]
     paths:
@@ -78,9 +85,9 @@ jobs:
         run: pip install requests
 
       - name: Zero-API unit tests
-        # Keep this reconciliation workflow intentionally minimal. Visual regression is
-        # covered by Integration CI; Run197 proves every publication-policy file triggers
-        # queue reconciliation. These tests never open note.com or call Gemini.
+        # Keep reconciliation itself intentionally minimal. Visual regression is covered by
+        # Integration CI; Run197 proves every publication-policy file triggers queue reconciliation.
+        # These tests never open note.com or call Gemini.
         run: |
           python -m unittest tests.test_note_ready_sync -v
           python -m unittest tests.test_run194_note_ready_workflow -v
@@ -91,6 +98,7 @@ jobs:
           python -m unittest tests.test_run227_japanese_surface_integrity -v
           python -m unittest tests.test_run228_reader_rhythm_planning -v
           python -m unittest tests.test_run249_final_publication_surface_gate -v
+          python -m unittest tests.test_run273_reader_draft_autoflow -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
@@ -102,3 +110,24 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+
+      - name: Dispatch private note draft flow after explicit Ready sync
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_private_draft == true }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_PAT is required to dispatch the private note draft workflow"
+            exit 1
+          fi
+          gh workflow run note-create-draft.yml --ref main \
+            -f confirm=CREATE_NOTE_DRAFT \
+            -f prepare_only=false
+          {
+            echo "### Run273 private draft fan-out"
+            echo "- source: explicit Note Ready workflow_dispatch (ONE-SHOT uses this route)"
+            echo "- target: Create note Draft"
+            echo "- publication: private draft only; public release remains human-only"
+            echo "- cost guard: target performs zero-VM preflight before any cloud Chrome start"
+          } >> "$GITHUB_STEP_SUMMARY"
