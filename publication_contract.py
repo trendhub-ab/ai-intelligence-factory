@@ -30,6 +30,7 @@ PUBLICATION_POLICY_FILES = (
     "production_pipeline.py",
     "runtime_layers.py",
     "source_normalization.py",
+    "evidence_context.py",
     "reader_experience_signals.py",
     "editorial_naturalness.py",
     "note_manuscript.py",
