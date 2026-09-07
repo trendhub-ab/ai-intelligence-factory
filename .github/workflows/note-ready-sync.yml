@@ -50,6 +50,7 @@ on:
       - 'run175_semantic_fact_precision.py'
       - 'run223_technical_claim_precision.py'
       - 'run283_numeric_evidence_equivalence.py'
+      - 'run284_reader_recovery_precision.py'
       - 'run224_multiplier_deterministic_rescue.py'
       - 'run227_japanese_surface_integrity.py'
       - 'run176_scope_fidelity.py'
@@ -76,6 +77,7 @@ on:
       - 'tests/test_run222_note_presentation_integrity.py'
       - 'tests/test_run223_technical_claim_precision.py'
       - 'tests/test_run283_numeric_evidence_equivalence.py'
+      - 'tests/test_run284_reader_recovery_precision.py'
       - 'tests/test_run224_multiplier_deterministic_rescue.py'
       - 'tests/test_run226_reader_delight_planning.py'
       - 'tests/test_run227_japanese_surface_integrity.py'
@@ -118,6 +120,7 @@ jobs:
           python -m unittest tests.test_run222_note_presentation_integrity -v
           python -m unittest tests.test_run223_technical_claim_precision -v
           python -m unittest tests.test_run283_numeric_evidence_equivalence -v
+          python -m unittest tests.test_run284_reader_recovery_precision -v
           python -m unittest tests.test_run224_multiplier_deterministic_rescue -v
           python -m unittest tests.test_run227_japanese_surface_integrity -v
           python -m unittest tests.test_run228_reader_rhythm_planning -v
