@@ -1,18 +1,22 @@
-"""Run260/261: bounded Gemini 3.7 primary / 3.8 quality-repair routing.
+"""Run260/261/278: bounded Gemini primary / quality-repair routing.
 
 Business goal
 -------------
 Improve Ready yield without weakening Fact/Evidence/Publication/Reader gates and
 without increasing the existing Deep Dive request ceiling. Fresh article Deep Dive
 uses Gemini 3.7 first. Dynamic model-based quality repair uses Gemini 3.8 first.
-Gemini 3.6 and 3.5 remain fallbacks. Existing deterministic zero-API rescue remains
-untouched.
+Gemini 3.6 and 3.5 remain fallbacks.
 
 Run261 production evidence proved that wrapping only ``_call_model_pool`` was not a
 strong enough contract: the live quality-retry path is entered through
-``_call_deep_dive_pool``.  Therefore this layer now enforces the same bounded routing
-at that actual production entrypoint as well.  It still creates no new provider call
-path, retry loop, budget, gate change, or publication action.
+``_call_deep_dive_pool``. Therefore this layer enforces the same routing there.
+
+Run278 production falsification found a different failure tail: a *single logical*
+quality repair could fan out across all four Flash models and consume 4/12 Deep Dive
+requests while a usable draft already existed. Quality repair is therefore bounded to
+the preferred model plus one distinct fallback (2 provider-visible model attempts).
+Fresh Deep Dive keeps the full pool. Existing global/per-model/run budgets, Run172
+503 fail-fast behavior, Run204 cooldown, and every publication gate stay authoritative.
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ FALLBACK_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = (QUALITY_MODEL, *FALLBACK_MODELS, PRIMARY_MODEL)
 DEFAULT_FLASH_SAFETY_BUDGET = 18
+QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
 
 
 def _dedupe(models: Iterable[str]) -> list[str]:
@@ -57,6 +62,15 @@ def _quality_first_pool(pool: Iterable[str]) -> list[str]:
     return _dedupe([m for m in preferred if m in existing] + existing)
 
 
+def _bounded_quality_pool(pool: Iterable[str]) -> list[str]:
+    """Keep one preferred repair model plus one distinct fallback.
+
+    This is a *routing* bound, not a request budget. Provider-visible failures remain
+    counted by the existing counters and Run172 still decides transport retry/failover.
+    """
+    return _quality_first_pool(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+
+
 def _is_quality_repair_kind(kind: str) -> bool:
     value = str(kind or "").strip().lower()
     # Current dynamic recomposition uses quality_retry. Keep narrow forward-compatible
@@ -76,7 +90,6 @@ def _replace_pool_argument(args: tuple, kwargs: dict, new_pool: list[str]) -> tu
         values = list(args)
         values[4] = new_pool
         return tuple(values), kwargs
-    # Defensive path for a future keyword-only call shape.
     updated = dict(kwargs)
     updated["pool"] = new_pool
     return args, updated
@@ -97,7 +110,7 @@ def _request_pool(args: tuple, kwargs: dict, fallback: list[str]) -> list[str]:
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install Run260/261 routing without changing any existing request/gate budget."""
+    """Install bounded routing without changing any existing request/gate budget."""
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
         return pipeline_module
 
@@ -109,16 +122,12 @@ def install(pipeline_module: Any) -> Any:
         raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
     production_pool = _configured_deep_dive_pool(pipeline_module)
-    # Run260's production contract requires the new primary/quality models. If an old
-    # workflow supplies the historical pool, upgrade it deterministically while keeping
-    # 3.6/3.5 as fallbacks. Explicit extra models remain after the canonical four.
     production_pool = _dedupe(list(DEFAULT_DEEP_DIVE_POOL) + production_pool)
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
     # Gemini 3.8 has a Free Tier, but project-visible limits remain authoritative.
-    # Keep the Factory's existing conservative 18-request Flash ceiling unless the
-    # operator explicitly lowers it. Never raise above the established Flash safety cap.
+    # Operator input may lower, never raise, the established Flash safety ceiling.
     try:
         requested_budget = int(os.environ.get("GEMINI_38_FLASH_DAILY_BUDGET", str(DEFAULT_FLASH_SAFETY_BUDGET)))
     except (TypeError, ValueError):
@@ -139,7 +148,7 @@ def install(pipeline_module: Any) -> Any:
         kind = _request_kind(args, kwargs)
         current_pool = _request_pool(args, kwargs, production_pool)
         if _is_quality_repair_kind(kind):
-            args2, kwargs2 = _replace_pool_argument(args, kwargs, _quality_first_pool(current_pool))
+            args2, kwargs2 = _replace_pool_argument(args, kwargs, _bounded_quality_pool(current_pool))
             return original(*args2, **kwargs2)
         return original(*args, **kwargs)
 
@@ -152,12 +161,7 @@ def install(pipeline_module: Any) -> Any:
         request_context: str = "",
         request_origin: str = "new",
     ):
-        """Enforce quality-first routing at the production Deep Dive entrypoint.
-
-        This delegates exactly once to the existing model-pool caller. Its existing
-        retry/fallback logic and the authoritative Deep Dive request counter remain the
-        only mechanisms that can create provider attempts.
-        """
+        """Enforce bounded quality-first routing at the production Deep Dive entrypoint."""
         if not _is_quality_repair_kind(kind):
             return original_deep_dive(
                 prompt,
@@ -166,7 +170,9 @@ def install(pipeline_module: Any) -> Any:
                 request_context=request_context,
                 request_origin=request_origin,
             )
-        quality_pool = _quality_first_pool(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool))
+        quality_pool = _bounded_quality_pool(
+            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool)
+        )
         return pipeline_module._call_model_pool(
             prompt,
             config,
@@ -179,5 +185,6 @@ def install(pipeline_module: Any) -> Any:
         )
 
     pipeline_module._call_deep_dive_pool = call_deep_dive_pool_run261
+    pipeline_module.QUALITY_RETRY_MAX_DISTINCT_MODELS = QUALITY_RETRY_MAX_DISTINCT_MODELS
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module

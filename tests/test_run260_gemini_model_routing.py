@@ -58,7 +58,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             ],
         )
 
-    def test_quality_retry_prefers_38_without_creating_new_call_path(self):
+    def test_quality_retry_prefers_38_and_is_bounded_to_one_fallback(self):
         module, calls, _ = self._fake_pipeline()
         run260.install(module)
         result = module._call_model_pool(
@@ -69,16 +69,12 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         routed_pool = calls[0][0][4]
         self.assertEqual(
-            routed_pool[:4],
-            [
-                "gemini-3.8-flash",
-                "gemini-3.6-flash",
-                "gemini-3.5-flash",
-                "gemini-3.7-flash",
-            ],
+            routed_pool,
+            ["gemini-3.8-flash", "gemini-3.6-flash"],
         )
+        self.assertEqual(len(routed_pool), run260.QUALITY_RETRY_MAX_DISTINCT_MODELS)
 
-    def test_live_deep_dive_quality_retry_path_prefers_38_and_calls_pool_once(self):
+    def test_live_deep_dive_quality_retry_path_is_bounded_to_two_models(self):
         module, calls, deep_dive_calls = self._fake_pipeline()
         run260.install(module)
         result = module._call_deep_dive_pool(
@@ -92,27 +88,39 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(len(deep_dive_calls), 0, "quality retry must use Run261 live-path guard")
         self.assertEqual(
-            calls[0][0][4][:4],
-            [
-                "gemini-3.8-flash",
-                "gemini-3.6-flash",
-                "gemini-3.5-flash",
-                "gemini-3.7-flash",
-            ],
+            calls[0][0][4],
+            ["gemini-3.8-flash", "gemini-3.6-flash"],
         )
         self.assertTrue(calls[0][1]["deep_dive"])
         self.assertEqual(calls[0][1]["request_context"], "live-path")
         self.assertEqual(calls[0][1]["request_origin"], "new")
 
-    def test_live_deep_dive_fresh_path_keeps_37_primary(self):
+    def test_quality_retry_preserves_a_second_distinct_model_for_rescue(self):
+        module, calls, _ = self._fake_pipeline()
+        run260.install(module)
+        module._call_deep_dive_pool("prompt", None, "quality_retry")
+        self.assertEqual(len(calls[0][0][4]), 2)
+        self.assertNotEqual(calls[0][0][4][0], calls[0][0][4][1])
+
+    def test_live_deep_dive_fresh_path_keeps_full_four_model_pool_and_37_primary(self):
         module, calls, deep_dive_calls = self._fake_pipeline()
         run260.install(module)
         module._call_deep_dive_pool("prompt", None, "deep_dive", request_context="fresh")
         self.assertEqual(len(deep_dive_calls), 1)
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][0][4][0], "gemini-3.7-flash")
+        routed_pool = calls[0][0][4]
+        self.assertEqual(routed_pool[0], "gemini-3.7-flash")
+        self.assertEqual(
+            routed_pool[:4],
+            [
+                "gemini-3.7-flash",
+                "gemini-3.8-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+            ],
+        )
 
-    def test_normal_deep_dive_does_not_get_quality_retry_reordering(self):
+    def test_normal_deep_dive_does_not_get_quality_retry_bound(self):
         module, calls, _ = self._fake_pipeline()
         run260.install(module)
         module._call_model_pool(
@@ -120,6 +128,15 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             deep_dive=True,
         )
         self.assertEqual(calls[0][0][4][0], "gemini-3.7-flash")
+        self.assertGreaterEqual(len(calls[0][0][4]), 4)
+
+    def test_quality_repair_aliases_get_same_two_model_bound(self):
+        for kind in ("quality_repair", "quality_rescue", "recompose", "reader_repair"):
+            with self.subTest(kind=kind):
+                module, calls, _ = self._fake_pipeline()
+                run260.install(module)
+                module._call_model_pool("prompt", None, kind, 0, module.DEEP_DIVE_MODEL_POOL, deep_dive=True)
+                self.assertEqual(len(calls[0][0][4]), 2)
 
     def test_38_budget_is_explicit_and_cannot_exceed_18(self):
         module, _, _ = self._fake_pipeline()
