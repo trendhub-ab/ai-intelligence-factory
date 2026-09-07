@@ -7,9 +7,9 @@ import types
 import unittest
 from unittest.mock import patch
 
+import run173_operational_yield as run173
 import run226_reader_delight_planning as run226
 import run228_reader_rhythm_planning as run228
-import run274_zero_api_evidence_backfill as run274
 import runtime_layers
 
 
@@ -20,10 +20,10 @@ class _Funnel:
 
 class Run274ReadyYieldReaderValueTests(unittest.TestCase):
     def _dummy_pipeline(self):
-        state = {"model_calls": 0}
+        state = {"model_calls": 0, "unavailable": []}
         funnel = _Funnel()
 
-        def generate(repo, notion_page_id=None, screening_score=None, screening_reason="", persist_results=True, **kwargs):
+        def generate_report(repo, notion_page_id=None, screening_score=None, screening_reason="", persist_results=True, **kwargs):
             if repo.get("evidence_fail"):
                 funnel.counters["deep_dive_calls_avoided"] += 1
                 return None
@@ -31,7 +31,11 @@ class Run274ReadyYieldReaderValueTests(unittest.TestCase):
             return "READY" if repo.get("ready") else None
 
         pipe = types.SimpleNamespace(
-            generate_intelligence_report=generate,
+            _generate_via_chat=lambda model_name, *args, **kwargs: object(),
+            _apply_deterministic_publication_rescue=lambda parsed, rows: (parsed, []),
+            _is_gemini_transport_timeout=lambda exc: False,
+            _mark_model_unavailable=lambda model, reason: state["unavailable"].append((model, reason)),
+            generate_intelligence_report=generate_report,
             MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS=7,
             _active_gate_funnel=lambda persist=True: funnel,
             logger=logging.getLogger("run274-test"),
@@ -40,16 +44,16 @@ class Run274ReadyYieldReaderValueTests(unittest.TestCase):
 
     def test_zero_api_evidence_reject_returns_attempt_headroom_without_model_call(self):
         pipe, _, state = self._dummy_pipeline()
-        run274.install(pipe)
+        run173.install(pipe)
         result = pipe.generate_intelligence_report({"evidence_fail": True})
         self.assertIsNone(result)
         self.assertEqual(state["model_calls"], 0)
         self.assertEqual(pipe.MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS, 8)
-        self.assertEqual(getattr(pipe, run274._COMPENSATIONS_ATTR), 1)
+        self.assertEqual(getattr(pipe, run173._RUN274_COMPENSATIONS_ATTR), 1)
 
     def test_model_bearing_candidate_does_not_increase_attempt_cap(self):
         pipe, _, state = self._dummy_pipeline()
-        run274.install(pipe)
+        run173.install(pipe)
         pipe.generate_intelligence_report({"evidence_fail": True})
         pipe.generate_intelligence_report({"ready": False})
         self.assertEqual(state["model_calls"], 1)
@@ -57,47 +61,48 @@ class Run274ReadyYieldReaderValueTests(unittest.TestCase):
 
     def test_headroom_is_bounded_and_does_not_change_base_model_attempt_cap(self):
         pipe, _, state = self._dummy_pipeline()
-        with patch.dict(os.environ, {run274.HEADROOM_ENV: "3"}):
-            run274.install(pipe)
+        with patch.dict(os.environ, {run173.RUN274_HEADROOM_ENV: "3"}):
+            run173.install(pipe)
             for _ in range(10):
                 pipe.generate_intelligence_report({"evidence_fail": True})
         self.assertEqual(state["model_calls"], 0)
         self.assertEqual(pipe.MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS, 10)
-        self.assertEqual(getattr(pipe, run274._BASE_CAP_ATTR), 7)
-        self.assertEqual(getattr(pipe, run274._COMPENSATIONS_ATTR), 3)
+        self.assertEqual(getattr(pipe, run173._RUN274_BASE_CAP_ATTR), 7)
+        self.assertEqual(getattr(pipe, run173._RUN274_COMPENSATIONS_ATTR), 3)
 
     def test_nonpersistent_regen_cannot_mutate_production_headroom(self):
         pipe, _, _ = self._dummy_pipeline()
-        run274.install(pipe)
+        run173.install(pipe)
         pipe.generate_intelligence_report({"evidence_fail": True}, persist_results=False)
         self.assertEqual(pipe.MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS, 7)
-        self.assertEqual(getattr(pipe, run274._COMPENSATIONS_ATTR), 0)
+        self.assertEqual(getattr(pipe, run173._RUN274_COMPENSATIONS_ATTR), 0)
 
     def test_new_funnel_resets_run_local_headroom(self):
         pipe, funnel, _ = self._dummy_pipeline()
         current = {"funnel": funnel}
         pipe._active_gate_funnel = lambda persist=True: current["funnel"]
-        run274.install(pipe)
+        run173.install(pipe)
         pipe.generate_intelligence_report({"evidence_fail": True})
         self.assertEqual(pipe.MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS, 8)
         current["funnel"] = _Funnel()
         pipe.generate_intelligence_report({"ready": False})
         self.assertEqual(pipe.MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS, 7)
-        self.assertEqual(getattr(pipe, run274._COMPENSATIONS_ATTR), 0)
+        self.assertEqual(getattr(pipe, run173._RUN274_COMPENSATIONS_ATTR), 0)
 
-    def test_run274_adds_no_provider_or_model_call_site(self):
-        src = inspect.getsource(run274)
-        self.assertNotIn("_generate_via_chat(", src)
-        self.assertNotIn("genai.Client(", src)
+    def test_run274_backfill_adds_no_network_or_provider_client_surface(self):
+        src = inspect.getsource(run173)
         self.assertNotIn("requests.get(", src)
         self.assertNotIn("requests.post(", src)
+        self.assertNotIn("genai.Client(", src)
+        self.assertIn("RUN274 ZERO-API BACKFILL", src)
 
-    def test_runtime_installs_run274_after_reader_planning(self):
+    def test_runtime_manifest_remains_stable_and_uses_existing_operational_yield_layer(self):
         order = runtime_layers.RUNTIME_LAYER_ORDER
-        self.assertIn("run274_zero_api_evidence_backfill.install", order)
-        self.assertGreater(
-            order.index("run274_zero_api_evidence_backfill.install"),
-            order.index("run228_reader_rhythm_planning.install"),
+        self.assertIn("run173_operational_yield.install", order)
+        self.assertNotIn("run274_zero_api_evidence_backfill.install", order)
+        self.assertLess(
+            order.index("run173_operational_yield.install"),
+            order.index("run226_reader_delight_planning.install"),
         )
 
     def test_real_production_reader_failure_fingerprint_is_addressed_without_gate_relaxation(self):
