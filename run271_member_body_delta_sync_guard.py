@@ -76,7 +76,10 @@ def main() -> int:
             "last_edited_time",
             "previous successful",
             "sentinel",
-            "Run271 does not claim a production timing improvement",
+            "Production measurement — 2026-09-07",
+            "2.34 seconds",
+            "scanned_body_pages",
+            "343.4x faster",
         ),
     )
     print("Run271 member body delta sync guard: OK")
