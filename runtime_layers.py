@@ -20,7 +20,6 @@ RUNTIME_LAYER_ORDER = (
     "run174_monthly_digest_integrity.install",
     "run175_semantic_fact_precision.install",
     "run223_technical_claim_precision.install",
-    "run283_numeric_evidence_equivalence.install",
     "run224_multiplier_deterministic_rescue.install",
     "run227_japanese_surface_integrity.install",
     "run176_scope_fidelity.install",
@@ -53,7 +52,6 @@ def install_runtime_layers(pipeline_module):
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
     import run223_technical_claim_precision
-    import run283_numeric_evidence_equivalence
     import run224_multiplier_deterministic_rescue
     import run227_japanese_surface_integrity
     import run176_scope_fidelity
@@ -88,12 +86,10 @@ def install_runtime_layers(pipeline_module):
     run174_monthly_digest_integrity.install(pipeline_module)
     run175_semantic_fact_precision.install(pipeline_module)
 
-    # Technical/factual precision stack. Run283 removes only proven cross-language numeric
-    # false positives before the later rescue layers decide whether a dynamic retry is needed.
-    # Run224 is a zero-API deterministic rescue for the narrow multiplier-scope failure
-    # detected by Run223; Run227 blocks only high-confidence broken Japanese.
+    # Technical/factual precision stack.  Run224 is a zero-API deterministic rescue for
+    # the narrow multiplier-scope failure detected by Run223; Run227 blocks only
+    # high-confidence broken Japanese and delegates repair to the existing bounded path.
     run223_technical_claim_precision.install(pipeline_module)
-    run283_numeric_evidence_equivalence.install(pipeline_module)
     run224_multiplier_deterministic_rescue.install(pipeline_module)
     run227_japanese_surface_integrity.install(pipeline_module)
     run176_scope_fidelity.install(pipeline_module)
