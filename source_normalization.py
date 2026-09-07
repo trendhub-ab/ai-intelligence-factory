@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 
 def _detect_title_language(title: str) -> str:
@@ -70,6 +72,46 @@ def _multilingual_display_name(original_title: str, description: str = "", sourc
     return f"{descriptor}「{original}」", lang
 
 
+def canonicalize_published_at(value: str | None) -> str | None:
+    """Return a Notion-safe ISO date/datetime without inventing missing precision.
+
+    Valid ISO values are preserved byte-for-byte. Known vendor date-only formats are
+    converted to YYYY-MM-DD. Unknown or impossible values fail closed to ``None`` so
+    callers never send malformed ``date.start`` values to Notion.
+    """
+    text = unicodedata.normalize("NFKC", str(value or "")).strip()
+    if not text:
+        return None
+
+    try:
+        datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return text
+    except ValueError:
+        pass
+
+    numeric = re.fullmatch(r"(\d{4})\s*(?:年|[./-])\s*(\d{1,2})\s*(?:月|[./-])\s*(\d{1,2})\s*日?", text)
+    if numeric:
+        try:
+            year, month, day = (int(part) for part in numeric.groups())
+            return datetime(year, month, day).date().isoformat()
+        except ValueError:
+            return None
+
+    for fmt in ("%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(text, fmt).date().isoformat()
+        except ValueError:
+            continue
+
+    try:
+        parsed = parsedate_to_datetime(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed is None:
+        return None
+    return parsed.isoformat() if any(token in text for token in (":", "+", " GMT", " UTC")) else parsed.date().isoformat()
+
+
 def _notion_display_name(repo: dict) -> str:
     return (repo.get("displayName") or repo.get("nameWithOwner") or "無題").strip() or "無題"
 
@@ -92,7 +134,8 @@ def normalize_item(source: str, name: str, url: str, description: str,
     """各ソースを既存互換キーへ正規化し、Deep Dive用一次コンテキストも保持する。
 
     nameWithOwnerは原題のまま保持し、Entity Resolution/Dedupの正本とする。
-    displayNameだけをNotion等の人間向け表示に利用する。
+    displayNameだけをNotion等の人間向け表示に利用する。publishedAtも取得層では
+    原文を保持し、外部API境界でだけ必要な形式変換を行う。
     """
     original = unicodedata.normalize("NFKC", (name or "無題").strip()) or "無題"
     desc = (description or "説明なし").strip() or "説明なし"
