@@ -207,6 +207,9 @@ class Run231PipelineSlimTests(unittest.TestCase):
         telemetry = types.ModuleType("run231_performance_telemetry")
         telemetry.install = lambda pipeline_module: events.append("telemetry")
 
+        numeric_precision = types.ModuleType("run283_numeric_evidence_equivalence")
+        numeric_precision.install = lambda pipeline_module: events.append("run283") or pipeline_module
+
         with patch.object(
             production_pipeline,
             "install_runtime_layers",
@@ -218,6 +221,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
                 "run203_runtime_state_channel": runtime_state,
                 "run179_eyecatch_font_refinement": font,
                 "run231_performance_telemetry": telemetry,
+                "run283_numeric_evidence_equivalence": numeric_precision,
             },
             clear=False,
         ):
@@ -227,6 +231,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
             events,
             [
                 "runtime_layers",
+                "run283",
                 "preflight",
                 ("font", True),
                 "telemetry",

@@ -97,6 +97,7 @@ def main() -> None:
     from run231_performance_telemetry import install as install_performance_telemetry
     from run268_business_source_strategy import install as install_run268_business_source_strategy
     from run269_business_source_precision import install as install_run269_business_source_precision
+    from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -108,6 +109,11 @@ def main() -> None:
     # current strategy overlay. Historical quality/reliability wrapper order must not
     # change when source acquisition strategy changes.
     install_runtime_layers(pipeline)
+
+    # Run283 is a current zero-API Fact precision overlay, not a historical runtime-layer
+    # mutation. It filters only proven cross-language numeric false positives and remains
+    # separately fingerprinted by Publication Contract.
+    install_run283_numeric_evidence_equivalence(pipeline)
 
     # Run268 is the source/business architecture authority: four active sources,
     # OfficialVendor replacing Product Hunt, and Proposal-First product semantics.
@@ -152,13 +158,13 @@ def main() -> None:
 
     # Run277: article_validation must validate an *existing non-Ready* candidate.
     # Fresh acquisition would be defeated by the authoritative Notion dedupe and would
-    # silently change the validation target after every Gate fix.  The dedicated lane is
+    # silently change the validation target after every Gate fix. The dedicated lane is
     # read-only (persist_results=False) and bounded.
     if mode == "article_validation":
         run_article_revalidation(pipeline)
         return
 
-    # Normal/full Production keeps authoritative fresh URL dedupe.  A bounded wrapper
+    # Normal/full Production keeps authoritative fresh URL dedupe. A bounded wrapper
     # uses only leftover article capacity after fresh -> Deferred -> Pending Retry to
     # recover at most one existing Needs Editorial Review row on its original Notion page.
     # Synthetic regression keeps its historical pipeline.main surface; the recovery
