@@ -6,11 +6,11 @@ Production finding from Run282:
 - The same source says prompt cache expires after ``an hour`` on a subscription, while the
   article rendered that as ``1時間``.
 
-The base numeric validator intentionally does not perform semantic conversion.  This overlay
-removes only those *unsupported numeric claim* failures when the exact mathematical/time
-quantity can be proven in the primary-source text and nearby claim/evidence conditions remain
-compatible.  It does not weaken condition mismatches, inferred numbers, vague quantities,
-actor checks, hype checks, or any other Fact Gate.
+The base numeric validator intentionally does not perform semantic conversion. This overlay
+removes only ``unsupported numeric claim`` failures when exact quantity equivalence is proven
+in primary-source text *and* the local semantic context matches. It does not weaken numeric
+condition mismatches, inferred numbers, vague quantities, actor checks, hype checks, or any
+other Fact Gate.
 """
 from __future__ import annotations
 
@@ -21,6 +21,36 @@ from typing import Any
 _INSTALLED_ATTR = "_run283_numeric_evidence_equivalence_installed"
 _UNSUPPORTED_PREFIX = "unsupported numeric claim: "
 
+_DOMAIN_PATTERNS = {
+    "pricing": re.compile(
+        r"(?:価格|料金|費用|コスト|課金|billing|billed|price|pricing|cost|input\s+token)",
+        re.I,
+    ),
+    "performance": re.compile(
+        r"(?:性能|速度|高速|レイテンシ|処理速度|performance|faster|speed(?:up)?|latency|throughput)",
+        re.I,
+    ),
+}
+_TIME_PURPOSE_PATTERNS = {
+    "cache_expiry": re.compile(
+        r"(?:キャッシュ|cache).{0,100}(?:失効|期限|ttl|expire|expires|expiration|duration)|"
+        r"(?:失効|期限|ttl|expire|expires|expiration|duration).{0,100}(?:キャッシュ|cache)",
+        re.I | re.S,
+    ),
+    "runtime": re.compile(
+        r"(?:実行時間|処理時間|所要時間|runtime|execution\s+time|processing\s+time)",
+        re.I,
+    ),
+    "timeout": re.compile(r"(?:タイムアウト|timeout)", re.I),
+    "session": re.compile(r"(?:セッション|session)", re.I),
+    "retention": re.compile(r"(?:保持期間|保存期間|retention)", re.I),
+}
+_TOPIC_PATTERNS = {
+    "cache": re.compile(r"(?:プロンプトキャッシュ|キャッシュ|prompt\s+cache|cache)", re.I),
+    "subscription": re.compile(r"(?:サブスクリプション|subscription)", re.I),
+    "api": re.compile(r"(?:APIキー|API\s*key|api)", re.I),
+}
+
 
 def _window(text: str, start: int, end: int, left: int = 140, right: int = 180) -> str:
     body = text or ""
@@ -30,7 +60,10 @@ def _window(text: str, start: int, end: int, left: int = 140, right: int = 180) 
 def _claim_windows(draft: str, token: str) -> list[str]:
     if not token:
         return []
-    return [_window(draft, match.start(), match.end()) for match in re.finditer(re.escape(token), draft or "", re.I)]
+    return [
+        _window(draft, match.start(), match.end())
+        for match in re.finditer(re.escape(token), draft or "", re.I)
+    ]
 
 
 def _ratio_value_from_japanese_fraction(token: str) -> Decimal | None:
@@ -71,7 +104,6 @@ def _one_unit_evidence_windows(source_context: str, token: str) -> list[str]:
     match = re.fullmatch(r"\s*1\s*(時間|分|日|週間|週|ヶ月|か月)\s*", token or "")
     if not match:
         return []
-    unit = match.group(1)
     english = {
         "時間": r"hours?",
         "分": r"minutes?",
@@ -80,12 +112,40 @@ def _one_unit_evidence_windows(source_context: str, token: str) -> list[str]:
         "週": r"weeks?",
         "ヶ月": r"months?",
         "か月": r"months?",
-    }[unit]
-    pattern = rf"\b(?:1|one|an?|a)\s+{english}\b"
+    }[match.group(1)]
+    pattern = rf"\b(?:1|one|an|a)(?:\s+|-){english}\b"
     return [
-        _window(source_context, match.start(), match.end(), 220, 260)
-        for match in re.finditer(pattern, source_context or "", re.I)
+        _window(source_context, evidence_match.start(), evidence_match.end(), 220, 260)
+        for evidence_match in re.finditer(pattern, source_context or "", re.I)
     ]
+
+
+def _tags(text: str, patterns: dict[str, re.Pattern]) -> set[str]:
+    return {name for name, pattern in patterns.items() if pattern.search(text or "")}
+
+
+def _semantic_context_compatible(token: str, claim_window: str, evidence_window: str) -> bool:
+    """Require quantity equivalence to refer to the same local semantic purpose.
+
+    A source may legitimately contain several ``0.1x`` or ``one hour`` values. Quantity alone
+    must never allow a pricing value to legalize a speed claim, or a cache TTL to legalize a
+    runtime claim. Specific domains/purposes therefore take precedence over broad topic tags.
+    """
+    if _ratio_value_from_japanese_fraction(token) is not None:
+        claim_domains = _tags(claim_window, _DOMAIN_PATTERNS)
+        evidence_domains = _tags(evidence_window, _DOMAIN_PATTERNS)
+        if claim_domains or evidence_domains:
+            return bool(claim_domains & evidence_domains)
+        return bool(_tags(claim_window, _TOPIC_PATTERNS) & _tags(evidence_window, _TOPIC_PATTERNS))
+
+    if re.fullmatch(r"\s*1\s*(時間|分|日|週間|週|ヶ月|か月)\s*", token or ""):
+        claim_purposes = _tags(claim_window, _TIME_PURPOSE_PATTERNS)
+        evidence_purposes = _tags(evidence_window, _TIME_PURPOSE_PATTERNS)
+        if claim_purposes or evidence_purposes:
+            return bool(claim_purposes & evidence_purposes)
+        return bool(_tags(claim_window, _TOPIC_PATTERNS) & _tags(evidence_window, _TOPIC_PATTERNS))
+
+    return False
 
 
 def _equivalent_numeric_claim_supported(
@@ -106,11 +166,9 @@ def _equivalent_numeric_claim_supported(
     if not evidence_windows:
         return False
 
-    # Require at least one claim occurrence to be compatible with at least one exact
-    # primary-source occurrence.  This preserves the base validator's fail-closed
-    # hardware/dataset/metric condition protection.
     return any(
         condition_compatible(claim_window, evidence_window)
+        and _semantic_context_compatible(token, claim_window, evidence_window)
         for claim_window in claim_windows
         for evidence_window in evidence_windows
     )
@@ -130,7 +188,12 @@ def filter_numeric_false_positives(
             filtered.append(failure)
             continue
         token = text[len(_UNSUPPORTED_PREFIX):].strip()
-        if _equivalent_numeric_claim_supported(token, draft, source_context, condition_compatible):
+        if _equivalent_numeric_claim_supported(
+            token,
+            draft,
+            source_context,
+            condition_compatible,
+        ):
             continue
         filtered.append(failure)
     return filtered
