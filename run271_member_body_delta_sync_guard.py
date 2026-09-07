@@ -54,6 +54,13 @@ def main() -> int:
         ),
     )
     _require(
+        ".github/workflows/repository-falsification.yml",
+        (
+            "python run271_member_body_delta_sync_guard.py",
+            "python -m unittest tests.test_run271_1_member_body_checkpoint -v",
+        ),
+    )
+    _require(
         "AI_Intelligence_Factory_最終仕様書.md",
         (
             "Run271 — Member Body Delta Sync",
