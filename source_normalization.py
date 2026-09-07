@@ -58,13 +58,51 @@ def _japanese_product_descriptor(description: str, source: str) -> str:
     return "海外プロダクト" if source == "ProductHunt" else "海外技術情報"
 
 
+_DISPLAY_WRAPPER_DESCRIPTORS = (
+    "EC商品画像生成ツール",
+    "AI画像生成ツール",
+    "AI動画生成ツール",
+    "AIエージェントツール",
+    "開発支援ツール",
+    "データ分析ツール",
+    "音声AIツール",
+    "海外プロダクト",
+    "海外技術情報",
+)
+_DISPLAY_WRAPPER_RE = re.compile(
+    rf"^(?P<descriptor>{'|'.join(re.escape(label) for label in _DISPLAY_WRAPPER_DESCRIPTORS)})「(?P<inner>.+)」$"
+)
+
+
+def _canonical_existing_display_wrapper(title: str) -> tuple[str, str] | None:
+    """Factory生成済みの表示ラベルを冪等に保ち、同一ラベルの二重包みだけを除去する。"""
+    match = _DISPLAY_WRAPPER_RE.fullmatch(title)
+    if not match:
+        return None
+
+    descriptor = match.group("descriptor")
+    inner = match.group("inner").strip()
+    while True:
+        nested = _DISPLAY_WRAPPER_RE.fullmatch(inner)
+        if not nested or nested.group("descriptor") != descriptor:
+            break
+        inner = nested.group("inner").strip()
+
+    return f"{descriptor}「{inner}」", _detect_title_language(inner)
+
+
 def _multilingual_display_name(original_title: str, description: str = "", source: str = "") -> tuple[str, str]:
     """原題を壊さず、人間がDB一覧で判別しやすい表示名を返す。
 
     英語・日本語タイトルは従来表示を維持する。中国語/韓国語/Cyrillic等だけ、
     日本語カテゴリ + 原題の形にするため、誤訳によるEntity誤マージを防ぐ。
+    Factory生成済み表示名は再ラップせず、同一ラベルの二重包みを1段へ正規化する。
     """
     original = unicodedata.normalize("NFKC", (original_title or "無題").strip()) or "無題"
+    existing = _canonical_existing_display_wrapper(original)
+    if existing is not None:
+        return existing
+
     lang = _detect_title_language(original)
     if lang in {"ja", "en"} or lang == "und":
         return original, lang
