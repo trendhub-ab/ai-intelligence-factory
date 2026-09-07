@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T06:59:24.333462+00:00",
+  "updated_at": "2026-09-07T09:52:34.057433+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.05295",
@@ -457,6 +457,42 @@
       "deep_dive_priority_score": 73.25
     },
     {
+      "key": "https://docs.bigmodel.cn/cn/update/new-releases",
+      "deferred_at": "2026-09-07T09:52:34.057187+00:00",
+      "expires_at": "2026-09-21T09:52:34.057187+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Zhipu AI GLM — Agentic Coding 能力升级,支持以任务为中心的端到端开发",
+        "originalTitle": "Zhipu AI GLM — Agentic Coding 能力升级,支持以任务为中心的端到端开发",
+        "displayName": "AIエージェントツール「Zhipu AI GLM — Agentic Coding 能力升级,支持以任务为中心的端到端开发」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://docs.bigmodel.cn/cn/update/new-releases?aif_revision=dbf16764031d52ec",
+        "description": "Agentic Coding 能力升级，支持以任务为中心的端到端开发",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "Agentic Coding 能力升级，支持以任务为中心的端到端开发",
+        "primaryUrl": "https://docs.bigmodel.cn/cn/update/new-releases",
+        "sourceDetails": {
+          "vendor": "Zhipu AI GLM",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "candidate_revision": "dbf16764031d52ec",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-81de-8eae-f7b3de56e22e",
+      "score": 72,
+      "reason": "エージェント駆動型コーディング機能のアップデート。",
+      "commercial_score": 75,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 73.05
+    },
+    {
       "key": "https://arxiv.org/abs/2608.31016",
       "deferred_at": "2026-09-01T08:11:30.624270+00:00",
       "expires_at": "2026-10-31T08:11:30.624270+00:00",
@@ -496,40 +532,76 @@
       "deep_dive_priority_score": 71.75
     },
     {
-      "key": "https://docs.bigmodel.cn/cn/update/new-releases",
-      "deferred_at": "2026-09-07T06:59:22.394155+00:00",
-      "expires_at": "2026-09-21T06:59:22.394155+00:00",
+      "key": "https://platform.claude.com/docs/en/models/fable-5-1/whats-new-fable-5-1",
+      "deferred_at": "2026-09-07T09:52:34.057308+00:00",
+      "expires_at": "2026-09-21T09:52:34.057308+00:00",
       "repo": {
         "source": "OfficialVendor",
-        "nameWithOwner": "Zhipu AI GLM — 多模态工具链进一步扩展,在文本工具基础上新增支持画框、截图、读网页(含图片识别)等多模态 Tools",
-        "originalTitle": "Zhipu AI GLM — 多模态工具链进一步扩展,在文本工具基础上新增支持画框、截图、读网页(含图片识别)等多模态 Tools",
-        "displayName": "海外技術情報「Zhipu AI GLM — 多模态工具链进一步扩展,在文本工具基础上新增支持画框、截图、读网页(含图片识别)等多模态 Tools」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://docs.bigmodel.cn/cn/update/new-releases?aif_revision=a3b1502bbf9b6473",
-        "description": "多模态工具链进一步扩展，在文本工具基础上新增支持画框、截图、读网页（含图片识别）等多模态 Tools",
+        "nameWithOwner": "Anthropic — What's new in Claude Fable 5.1",
+        "originalTitle": "Anthropic — What's new in Claude Fable 5.1",
+        "displayName": "Anthropic — What's new in Claude Fable 5.1",
+        "sourceLanguage": "en",
+        "url": "https://platform.claude.com/docs/en/models/fable-5-1/whats-new-fable-5-1",
+        "description": "What's new in Claude Fable 5.1",
         "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "多模态工具链进一步扩展，在文本工具基础上新增支持画框、截图、读网页（含图片识别）等多模态 Tools",
-        "primaryUrl": "https://docs.bigmodel.cn/cn/update/new-releases",
+        "publishedAt": "September 1, 2026",
+        "sourceContext": "What's new in Claude Fable 5.1",
+        "primaryUrl": "https://platform.claude.com/docs/en/models/fable-5-1/whats-new-fable-5-1",
         "sourceDetails": {
-          "vendor": "Zhipu AI GLM",
-          "vendor_region": "CN",
+          "vendor": "Anthropic",
+          "vendor_region": "US",
           "source_role": "commercial_primary_source",
-          "official_release_url": "https://docs.bigmodel.cn/cn/update/new-releases",
-          "candidate_revision": "a3b1502bbf9b6473",
+          "official_release_url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "candidate_revision": "bbbbbecc9bad02e2",
           "vendor_record_kind": "structured_html",
           "run269_precision": true
         }
       },
-      "notion_page_id": "3d4479ff-dca9-81ec-8ec1-d8a6e03f7456",
-      "score": 68,
-      "reason": "マルチモーダルツールチェーンの拡張と実用性向上。",
-      "commercial_score": 62,
-      "shelf_life_score": 60,
+      "notion_page_id": "3d4479ff-dca9-81cc-9bcd-ef1a33208eb0",
+      "score": 70,
+      "reason": "主要ベンダーの新モデル公式リリース情報。",
+      "commercial_score": 68,
+      "shelf_life_score": 45,
       "shelf_life": "TREND",
-      "portfolio_topic": "MULTIMODAL",
-      "deep_dive_priority_score": 65.9
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 69.3
+    },
+    {
+      "key": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
+      "deferred_at": "2026-09-07T09:52:34.057357+00:00",
+      "expires_at": "2026-09-21T09:52:34.057357+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Alibaba Qwen — GLM-5.2 Fast mode price reduction notice",
+        "originalTitle": "Alibaba Qwen — GLM-5.2 Fast mode price reduction notice",
+        "displayName": "Alibaba Qwen — GLM-5.2 Fast mode price reduction notice",
+        "sourceLanguage": "en",
+        "url": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes?aif_revision=dc1f5cdf70b5c338",
+        "description": "GLM-5.2 Fast mode price reduction notice",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "GLM-5.2 Fast mode price reduction notice",
+        "primaryUrl": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
+        "sourceDetails": {
+          "vendor": "Alibaba Qwen",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
+          "candidate_revision": "dc1f5cdf70b5c338",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-8129-a929-d80351093928",
+      "score": 65,
+      "reason": "主要モデルの価格改定に関する公式通知。",
+      "commercial_score": 70,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 66.75
     },
     {
       "key": "https://news.ycombinator.com/item?id=49548852",
@@ -635,46 +707,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MULTIMODAL",
       "deep_dive_priority_score": 60.6
-    },
-    {
-      "key": "https://arxiv.org/abs/2609.05309",
-      "deferred_at": "2026-09-07T06:59:22.394450+00:00",
-      "expires_at": "2026-11-06T06:59:22.394450+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "How Does mHC Use Its Residual Streams? Selective Routing and Near-Identity Mixing",
-        "originalTitle": "How Does mHC Use Its Residual Streams? Selective Routing and Near-Identity Mixing",
-        "displayName": "How Does mHC Use Its Residual Streams? Selective Routing and Near-Identity Mixing",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.05309v1",
-        "description": "Hyper-Connections and their manifold-constrained variant mHC widen a residual pathway from one stream to n, yet how trained models use this capacity remains unclear: how broadly blocks read and write, how strongly the residual pathway mixes streams, and whether the streams carry distinct representations. We examine these properties in the four-stream residual pathway of DeepSeek-V4-Flash using effective stream counts, cross-stream residual weights, and inter-stream cosine similarity. Read/write",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-04T16:02:20Z",
-        "sourceContext": "Hyper-Connections and their manifold-constrained variant mHC widen a residual pathway from one stream to n, yet how trained models use this capacity remains unclear: how broadly blocks read and write, how strongly the residual pathway mixes streams, and whether the streams carry distinct representations. We examine these properties in the four-stream residual pathway of DeepSeek-V4-Flash using effective stream counts, cross-stream residual weights, and inter-stream cosine similarity. Read/write routing is concentrated but varies across depth: a typical attention or FFN site effectively uses about two streams, while the dominant stream changes across layers and the representations remain directionally distinct. Residual mixing is modest and occurs primarily in early layers; in layers 22-42, the pathway mostly carries each stream forward separately. Targeted interventions establish the functional significance of these patterns. Replacing the late mixers by identity increases C4 perplexity by only 1.9% and preserves the six-task average score, whereas replacing the early mixers increases perplexity by 41%. Fixing each early mixer to its C4 diagnostic mean increases perplexity by only 0.2% and reduces the average score by 0.25 percentage points, showing that its site-specific structure matters more than its token-wise variation on the evaluated metrics. Likewise, retaining the three largest routing weights per token at every site increases perplexity by at most 2.7% and changes the average score by at most 0.4 points. Thus, the studied model realizes only part of the flexibility afforded by four-stream mHC: individual blocks rarely require all four streams, and late residual mixing provides little measured benefit.",
-        "primaryUrl": "https://arxiv.org/abs/2609.05309v1",
-        "sourceDetails": {
-          "authors": [
-            "Pengxiang Zhao",
-            "Xing Li",
-            "Xianzhi Yu",
-            "Wei Guo",
-            "Zhenhua Dong"
-          ],
-          "categories": [
-            "cs.LG",
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-8137-b444-c07e2e162675",
-      "score": 62,
-      "reason": "大規模モデルの残差ストリームとルーティングの分析。",
-      "commercial_score": 45,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 56.05
     }
   ]
 }
