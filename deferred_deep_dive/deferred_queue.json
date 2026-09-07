@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T09:52:36.845982+00:00",
+  "updated_at": "2026-09-07T10:40:04.074044+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.05295",
@@ -604,6 +604,42 @@
       "deep_dive_priority_score": 66.75
     },
     {
+      "key": "https://ai.google.dev/gemini-api/docs/changelog",
+      "deferred_at": "2026-09-07T10:40:04.073612+00:00",
+      "expires_at": "2026-09-21T10:40:04.073612+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Google Gemini — The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
+        "originalTitle": "Google Gemini — The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
+        "displayName": "Google Gemini — The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
+        "sourceLanguage": "en",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=4b8a104bcdd58a00",
+        "description": "The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "September 3, 2026",
+        "sourceContext": "The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
+        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
+        "sourceDetails": {
+          "vendor": "Google Gemini",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
+          "candidate_revision": "4b8a104bcdd58a00",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-8149-ba3f-fb157622df71",
+      "score": 65,
+      "reason": "API選定における機能要件比較として重要",
+      "commercial_score": 65,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MULTIMODAL",
+      "deep_dive_priority_score": 65.0
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49548852",
       "deferred_at": "2026-09-06T10:18:29.084743+00:00",
       "expires_at": "2026-11-05T10:18:29.084743+00:00",
@@ -636,77 +672,40 @@
       "deep_dive_priority_score": 63.0
     },
     {
-      "key": "https://github.com/trailofbits/coop",
-      "deferred_at": "2026-09-07T06:59:22.394310+00:00",
-      "expires_at": "2026-09-21T06:59:22.394310+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Coop – Isolated VM Environments for Running Claude Code and Codex",
-        "originalTitle": "Coop – Isolated VM Environments for Running Claude Code and Codex",
-        "displayName": "Coop – Isolated VM Environments for Running Claude Code and Codex",
-        "sourceLanguage": "en",
-        "url": "https://github.com/trailofbits/coop",
-        "description": "Coop – Isolated VM Environments for Running Claude Code and Codex",
-        "stargazerCount": 7,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-07T04:18:28Z",
-        "sourceContext": "HN points=7 comments=2 matched_query=Claude",
-        "primaryUrl": "https://github.com/trailofbits/coop",
-        "sourceDetails": {
-          "hn_id": "49593842",
-          "hn_url": "https://news.ycombinator.com/item?id=49593842",
-          "external_url": "https://github.com/trailofbits/coop",
-          "comments": 2,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-81cf-a3e8-d165d6cb8a06",
-      "score": 60,
-      "reason": "Claude Code等の安全な実行を担保するVM環境。",
-      "commercial_score": 65,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 61.75
-    },
-    {
-      "key": "https://ai.google.dev/gemini-api/docs/changelog",
-      "deferred_at": "2026-09-07T06:59:22.394395+00:00",
-      "expires_at": "2026-09-21T06:59:22.394395+00:00",
+      "key": "https://cloud.baidu.com/doc/qianfan/s/rmse4vxp8",
+      "deferred_at": "2026-09-07T10:40:04.073766+00:00",
+      "expires_at": "2026-11-06T10:40:04.073766+00:00",
       "repo": {
         "source": "OfficialVendor",
-        "nameWithOwner": "Google Gemini — Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
-        "originalTitle": "Google Gemini — Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
-        "displayName": "Google Gemini — Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
-        "sourceLanguage": "en",
-        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=9fa81e094d8c00d7",
-        "description": "Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
+        "nameWithOwner": "Baidu ERNIE — 模型服务 V1 接口下线及迁移说明",
+        "originalTitle": "Baidu ERNIE — 模型服务 V1 接口下线及迁移说明",
+        "displayName": "海外技術情報「Baidu ERNIE — 模型服务 V1 接口下线及迁移说明」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://cloud.baidu.com/doc/qianfan/s/rmse4vxp8",
+        "description": "模型服务 V1 接口下线及迁移说明",
         "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": "September 3, 2026",
-        "sourceContext": "Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
-        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
+        "publishedAt": null,
+        "sourceContext": "模型服务 V1 接口下线及迁移说明",
+        "primaryUrl": "https://cloud.baidu.com/doc/qianfan/s/rmse4vxp8",
         "sourceDetails": {
-          "vendor": "Google Gemini",
-          "vendor_region": "US",
+          "vendor": "Baidu ERNIE",
+          "vendor_region": "CN",
           "source_role": "commercial_primary_source",
-          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
-          "candidate_revision": "9fa81e094d8c00d7",
+          "official_release_url": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp",
+          "candidate_revision": "f22bcf0d6bf8af1d",
           "vendor_record_kind": "structured_html",
           "run269_precision": true
         }
       },
-      "notion_page_id": "3d4479ff-dca9-819b-9919-e89c8810e76e",
-      "score": 62,
-      "reason": "音楽生成モデルのプレビュー版公開で技術的進展を確認できる。",
-      "commercial_score": 58,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MULTIMODAL",
-      "deep_dive_priority_score": 60.6
+      "notion_page_id": "3d4479ff-dca9-8187-bf16-d2335f014306",
+      "score": 60,
+      "reason": "V1インターフェース下線に伴う移行実務に直結するため。",
+      "commercial_score": 65,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 61.75
     }
   ]
 }
