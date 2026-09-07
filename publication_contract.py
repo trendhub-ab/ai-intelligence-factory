@@ -1,13 +1,13 @@
 """Fail-closed provenance contract for public-note Ready manuscripts.
 
 `Ready` is a historical workflow state, not proof that persisted bytes were produced by the
-current production policy.  The publication contract therefore derives provenance from the
+current production policy. The publication contract therefore derives provenance from the
 actual code that can affect public article text, evidence interpretation, CTA, persistence,
-and eyecatch output.  No manual Run-number bump is required: changing any manifest file changes
-the policy SHA automatically.
+publication gates, source attribution, and eyecatch output. No manual Run-number bump is
+required: changing any manifest file changes the policy SHA automatically.
 
-Each Ready code block also carries the SHA-256 of its own manuscript.  Consumers accept a block
-only when both the current policy SHA and the body SHA match.  This prevents a current property
+Each Ready code block also carries the SHA-256 of its own manuscript. Consumers accept a block
+only when both the current policy SHA and the body SHA match. This prevents a current property
 set or eyecatch from being paired with an older body after a regeneration/retry.
 """
 from __future__ import annotations
@@ -21,10 +21,9 @@ LEGACY_READY_CAPTION = "AIIF_MANUSCRIPT:READY"
 READY_CAPTION_PREFIX = "AIIF_MANUSCRIPT:READY|"
 ROOT = Path(__file__).resolve().parent
 
-# Keep this list deliberately limited to code that can materially change a persisted public
-# article or its public eyecatch. Operational/member-only changes must not invalidate every
-# publishable article. Run280's repository-wide guard fail-closes when an active publication
-# dependency is omitted or when Note Ready reconciliation stops tracking a policy file.
+# Only code that can materially change persisted public bytes, public-source attribution, or
+# publication acceptance belongs here. Run280/281 repository guards recursively audit local
+# imports of every file in this manifest so a split module cannot silently escape provenance.
 PUBLICATION_POLICY_FILES = (
     "pipeline.py",
     "production_pipeline.py",
@@ -33,7 +32,9 @@ PUBLICATION_POLICY_FILES = (
     "evidence_context.py",
     "reader_experience_signals.py",
     "editorial_naturalness.py",
+    "candidate_identity.py",
     "note_manuscript.py",
+    "publication_source_contract.py",
     "gate_reasoning.py",
     "screening_protocol.py",
     "notion_payloads.py",
