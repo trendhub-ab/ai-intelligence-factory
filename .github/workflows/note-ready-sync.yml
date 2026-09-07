@@ -17,6 +17,26 @@ on:
     paths:
       - 'pipeline.py'
       - 'production_pipeline.py'
+      - 'runtime_layers.py'
+      - 'source_normalization.py'
+      - 'reader_experience_signals.py'
+      - 'editorial_naturalness.py'
+      - 'note_manuscript.py'
+      - 'gate_reasoning.py'
+      - 'screening_protocol.py'
+      - 'notion_payloads.py'
+      - 'source_document_parsing.py'
+      - 'content_generation_protocol.py'
+      - 'evidence_sufficiency.py'
+      - 'fact_validation_signals.py'
+      - 'source_boundary_validation.py'
+      - 'business_source_acquisition.py'
+      - 'run269_acquisition_precision.py'
+      - 'run269_vendor_current_state.py'
+      - 'reader_quality_precision.py'
+      - 'run260_gemini_model_routing.py'
+      - 'run268_business_source_strategy.py'
+      - 'run269_business_source_precision.py'
       - 'editorial_eyecatch.py'
       - 'decision_intelligence.py'
       - 'evidence_authority.py'
@@ -46,6 +66,7 @@ on:
       - 'run249_final_publication_surface_gate.py'
       - 'publication_contract.py'
       - 'run194_publication_contract.py'
+      - 'run280_publication_dependency_guard.py'
       - 'note_ready_sync.py'
       - 'tests/test_note_ready_sync.py'
       - 'tests/test_run194_note_ready_workflow.py'
@@ -58,6 +79,7 @@ on:
       - 'tests/test_run228_reader_rhythm_planning.py'
       - 'tests/test_run248_first_real_publish_quality_calibration.py'
       - 'tests/test_run249_final_publication_surface_gate.py'
+      - 'tests/test_run280_publication_dependency_guard.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -99,6 +121,7 @@ jobs:
           python -m unittest tests.test_run228_reader_rhythm_planning -v
           python -m unittest tests.test_run249_final_publication_surface_gate -v
           python -m unittest tests.test_run273_reader_draft_autoflow -v
+          python -m unittest tests.test_run280_publication_dependency_guard -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py
