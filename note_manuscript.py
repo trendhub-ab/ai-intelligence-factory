@@ -10,32 +10,13 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from candidate_identity import canonicalize_url
+from publication_source_contract import READER_SOURCE_LABELS as _READER_SOURCE_LABELS, SOURCE_RIGHTS_NOTE
 
 DIVIDER_LINE = "\n\n---\n\n"
-SOURCE_RIGHTS_NOTE = {
-    "HackerNews": (
-        "- **出典について**: 本文の技術的な事実・数値は、上記の公式リンクおよび参考情報で確認できる範囲を独自に分析・要約したものです。"
-        "リンク先記事本文の著作権は原著作者に帰属します。\n"
-    ),
-    "ArXiv": (
-        "- **出典について**: 本記事はarXivで公開されている論文の要旨・情報を基に"
-        "独自に分析・要約したものです。論文本文の著作権は著者に帰属します。\n"
-    ),
-    "ProductHunt": (
-        "- **出典について**: 本記事はProduct Huntで公開されているプロダクト情報を基に"
-        "独自に分析・要約したものです。製品名・商標等は各権利者に帰属します。\n"
-    ),
-}
 ARTICLE_DISCLAIMER = (
     "※本記事に含まれる見解・提案は筆者個人の意見であり、特定の効果・成果を保証するものではありません。"
     "導入・利用にあたっては、一次情報と自社の条件を確認してください。\n"
 )
-_READER_SOURCE_LABELS = {
-    "GitHub": "GitHub",
-    "HackerNews": "Hacker News",
-    "ArXiv": "arXiv",
-    "ProductHunt": "Product Hunt",
-}
 _JST = timezone(timedelta(hours=9))
 _BOLD_BOUNDARY_BRACKET_FIXES = [
     (re.compile(r"\*\*「([^「」]+)」\*\*"), r"「**\1**」"),

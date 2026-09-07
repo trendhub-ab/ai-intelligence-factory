@@ -1,13 +1,11 @@
-"""Run280 fail-closed guard for Publication Contract dependency completeness.
+"""Fail-closed guard for Publication Contract dependency completeness.
 
-Stage4 made ``runtime_layers.py`` the runtime-order authority. Stage5 ensures that every
-active code surface capable of changing a persisted public article is represented in the
-content-addressed Publication Contract, and that every policy file triggers Note Ready queue
-reconciliation on main.
+Run280 introduced dependency classification. Run281 strengthens it from selected-surface
+checking to full recursive closure: every local import of every fingerprinted policy module
+must itself be fingerprinted or carry a narrow documented non-publication exemption.
 
-Selection-only, member-only, recovery-only, quota/retry, synthetic, obsolete compatibility,
-and observational modules are explicitly exempt so operational changes do not invalidate all
-Ready manuscripts.
+This prevents later module extraction from silently changing public bytes or publication gates
+without invalidating historical Ready manuscripts.
 """
 from __future__ import annotations
 
@@ -24,7 +22,9 @@ REQUIRED_PUBLICATION_DEPENDENCIES = (
     "evidence_context.py",
     "reader_experience_signals.py",
     "editorial_naturalness.py",
+    "candidate_identity.py",
     "note_manuscript.py",
+    "publication_source_contract.py",
     "gate_reasoning.py",
     "screening_protocol.py",
     "notion_payloads.py",
@@ -42,13 +42,10 @@ REQUIRED_PUBLICATION_DEPENDENCIES = (
     "run269_business_source_precision.py",
 )
 
-# These are intentionally outside the policy fingerprint. Reasons are narrow and auditable:
-# they can change which work runs, when it runs, or what member/telemetry/synthetic surface is
-# updated, but they do not define the persisted public manuscript/eyecatch bytes or gates.
+# Narrow exemptions only. Any newly imported local module is untrusted by default.
 EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "product_delivery_maintenance.py": "member/product maintenance only",
     "deep_dive_portfolio.py": "candidate selection only",
-    "candidate_identity.py": "dedupe/entity selection only",
     "source_roi_policy.py": "source allocation/learning only",
     "deferred_queue_policy.py": "queue scheduling only",
     "product_review_protocol.py": "paid decision-product review only",
@@ -61,20 +58,10 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "legacy_eyecatch_renderer.py": "obsolete compatibility bridge; current editorial renderer is separately fingerprinted",
 }
 
-CLASSIFICATION_SURFACES = (
-    "pipeline.py",
-    "production_pipeline.py",
-    "runtime_layers.py",
-)
-
-# Current source overlays delegate real acquisition logic to these files. Their local imports
-# must also be policy-covered; otherwise changing a helper could bypass the policy SHA.
-TRANSITIVE_MATERIAL_SURFACES = (
-    "run268_business_source_strategy.py",
-    "run269_business_source_precision.py",
-    "run269_vendor_current_state.py",
-    "run269_acquisition_precision.py",
-)
+# Backward-compatible names retained for the Run280 adversarial fixture API. Run281 no longer
+# limits scanning to these lists; validate_repository audits every policy module instead.
+CLASSIFICATION_SURFACES: tuple[str, ...] = ()
+TRANSITIVE_MATERIAL_SURFACES: tuple[str, ...] = ()
 
 
 def _read_ast(path: Path) -> ast.AST:
@@ -105,8 +92,7 @@ def _literal_string_sequence(root: Path, path: str, name: str) -> tuple[str, ...
 
 
 def _local_import_files(root: Path, relative: str) -> set[str]:
-    path = root / relative
-    tree = _read_ast(path)
+    tree = _read_ast(root / relative)
     modules: set[str] = set()
     for node in ast.walk(tree):
         names: list[str] = []
@@ -130,15 +116,9 @@ def _workflow_tracked_paths(root: Path) -> set[str]:
 
 def validate_repository(root: Path = ROOT) -> list[str]:
     failures: list[str] = []
-    required_files = {
-        "publication_contract.py",
-        ".github/workflows/note-ready-sync.yml",
-        *CLASSIFICATION_SURFACES,
-        *TRANSITIVE_MATERIAL_SURFACES,
-    }
-    for relative in sorted(required_files):
+    for relative in ("publication_contract.py", ".github/workflows/note-ready-sync.yml"):
         if not (root / relative).is_file():
-            failures.append(f"required Stage5 surface missing: {relative}")
+            failures.append(f"required publication surface missing: {relative}")
     if failures:
         return failures
 
@@ -160,7 +140,9 @@ def validate_repository(root: Path = ROOT) -> list[str]:
             failures.append(f"publication-material dependency missing from policy fingerprint: {relative}")
 
     classified = policy_set | set(EXPLICIT_NON_PUBLICATION_DEPENDENCIES)
-    for surface in (*CLASSIFICATION_SURFACES, *TRANSITIVE_MATERIAL_SURFACES):
+    for surface in policy:
+        if not (root / surface).is_file():
+            continue
         try:
             dependencies = _local_import_files(root, surface)
         except RuntimeError as exc:
@@ -172,7 +154,7 @@ def validate_repository(root: Path = ROOT) -> list[str]:
             if dependency not in classified:
                 failures.append(
                     f"unclassified local dependency from {surface}: {dependency}; "
-                    "add it to PUBLICATION_POLICY_FILES or document a narrow operational exemption"
+                    "fingerprint it or document a narrow non-publication exemption"
                 )
 
     try:
@@ -190,13 +172,13 @@ def validate_repository(root: Path = ROOT) -> list[str]:
 def main() -> int:
     failures = validate_repository(ROOT)
     if failures:
-        print("Run280 Publication Dependency Completeness: FAIL")
+        print("Publication Dependency Completeness: FAIL")
         for failure in failures:
             print(f"- {failure}")
         return 1
-    print("Run280 Publication Dependency Completeness: PASS")
-    print(f"- required publication dependencies: {len(REQUIRED_PUBLICATION_DEPENDENCIES)}")
-    print("- active local dependencies: policy-covered or explicitly operational")
+    print("Publication Dependency Completeness: PASS")
+    print(f"- fingerprinted policy files: {len(_literal_string_sequence(ROOT, 'publication_contract.py', 'PUBLICATION_POLICY_FILES'))}")
+    print("- every fingerprinted module local import: classified")
     print("- Note Ready reconciliation paths: synchronized")
     return 0
 
