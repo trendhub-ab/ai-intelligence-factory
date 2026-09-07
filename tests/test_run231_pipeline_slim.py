@@ -1,169 +1,180 @@
-import importlib.util
-import os
+from __future__ import annotations
+
 import sys
 import types
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 import production_pipeline
 import run231_performance_telemetry as perf
+import runtime_layers
 
 
-ROOT = Path(__file__).resolve().parents[1]
+def _fake_runtime_modules(events):
+    modules = {}
+    for spec in runtime_layers.RUNTIME_LAYER_ORDER:
+        module_name, function_name = spec.rsplit(".", 1)
+        module = types.ModuleType(module_name)
+
+        def installer(pipeline_module, _spec=spec):
+            events.append(_spec)
+            return pipeline_module
+
+        setattr(module, function_name, installer)
+        modules[module_name] = module
+    return modules
 
 
 class _QuietLogger:
     def info(self, *args, **kwargs):
-        return None
+        pass
 
-    def warning(self, *args, **kwargs):
-        return None
 
-    def error(self, *args, **kwargs):
-        return None
+class _RaisingLogger:
+    def info(self, *args, **kwargs):
+        raise RuntimeError("telemetry logger failed")
 
 
 class Run231PipelineSlimTests(unittest.TestCase):
     def test_runtime_layer_order_contract_is_single_source_semantic_and_executable(self):
-        import runtime_layers
+        order = runtime_layers.RUNTIME_LAYER_ORDER
+        self.assertTrue(order)
+        self.assertEqual(len(order), len(set(order)), "runtime layer manifest contains duplicates")
+        self.assertEqual(order[0], "run203_runtime_state_channel.install")
+        self.assertEqual(order[-1], "run194_publication_contract.install")
+        self.assertTrue(all("." in spec and spec.rsplit(".", 1)[1] for spec in order))
 
-        declared = tuple(runtime_layers.RUNTIME_LAYER_ORDER)
-        self.assertTrue(declared)
-        self.assertEqual(len(declared), len(set(declared)))
-        self.assertEqual(declared[-1], "run194_publication_contract.install")
+        def assert_before(first, second):
+            self.assertIn(first, order)
+            self.assertIn(second, order)
+            self.assertLess(order.index(first), order.index(second))
 
-        source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
-        self.assertIn("def install_runtime_layers(pipeline_module):", source)
-        self.assertIn("RUNTIME_LAYER_ORDER = (", source)
-        self.assertNotIn("eval(", source)
-        self.assertNotIn("exec(", source)
+        assert_before(
+            "gemini_timeout_rpd_fail_closed.install",
+            "gemini_transient_recovery.install",
+        )
+        assert_before(
+            "gemini_transient_recovery.install",
+            "run260_gemini_model_routing.install",
+        )
+        assert_before(
+            "run226_reader_delight_planning.install",
+            "run228_reader_rhythm_planning.install",
+        )
+        assert_before(
+            "run248_first_real_publish_quality_calibration.install",
+            "run249_final_publication_surface_gate.install",
+        )
+        assert_before(
+            "run249_final_publication_surface_gate.install",
+            "run194_publication_contract.install",
+        )
 
-        production = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
-        self.assertIn("from runtime_layers import install_runtime_layers as _canonical_install_runtime_layers", production)
-        self.assertIn("install_runtime_layers = _canonical_install_runtime_layers", production)
+        events = []
+        fake_modules = _fake_runtime_modules(events)
+        sentinel_pipeline = object()
+        with patch.dict(sys.modules, fake_modules, clear=False):
+            returned = runtime_layers.install_runtime_layers(sentinel_pipeline)
 
-    def test_performance_install_is_idempotent(self):
-        pipeline = types.SimpleNamespace(logger=_QuietLogger())
-        pipeline.main = lambda: "ok"
-        pipeline.generate_intelligence_report = lambda *a, **k: {"ok": True}
-        pipeline.screen_candidates = lambda *a, **k: []
-        pipeline.fetch_all_candidates = lambda *a, **k: []
-
-        with patch.object(perf, "ENABLED", True):
-            perf.install(pipeline)
-            first_main = pipeline.main
-            perf.install(pipeline)
-            self.assertIs(first_main, pipeline.main)
+        self.assertIs(returned, sentinel_pipeline)
+        self.assertEqual(tuple(events), order)
 
     def test_performance_wrapper_preserves_args_return_and_single_call(self):
         calls = []
+        sentinel = object()
         pipeline = types.SimpleNamespace(logger=_QuietLogger())
 
-        def fn(*args, **kwargs):
+        def initialize_runtime(*args, **kwargs):
             calls.append((args, kwargs))
-            return {"sentinel": object()}
+            return sentinel
 
-        pipeline.main = fn
-        pipeline.generate_intelligence_report = lambda *a, **k: None
-        pipeline.screen_candidates = lambda *a, **k: None
-        pipeline.fetch_all_candidates = lambda *a, **k: None
+        pipeline.initialize_runtime = initialize_runtime
+        pipeline.main = lambda: "main-result"
 
         with patch.object(perf, "ENABLED", True):
-            perf.install(pipeline)
-            result = pipeline.main(1, two=2)
+            telemetry = perf.install(pipeline)
+            result = pipeline.initialize_runtime(1, 2, mode="safe")
 
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0], ((1,), {"two": 2}))
-        self.assertIsInstance(result, dict)
-        self.assertIn("sentinel", result)
+        self.assertIs(result, sentinel)
+        self.assertEqual(calls, [((1, 2), {"mode": "safe"})])
+        self.assertEqual(telemetry.calls["runtime.initialize"], 1)
+        self.assertEqual(pipeline.main(), "main-result")
 
     def test_performance_wrapper_propagates_same_exception(self):
-        original = RuntimeError("boom")
+        error = RuntimeError("unchanged")
         pipeline = types.SimpleNamespace(logger=_QuietLogger())
 
-        def fn():
-            raise original
+        def initialize_runtime():
+            raise error
 
-        pipeline.main = fn
-        pipeline.generate_intelligence_report = lambda *a, **k: None
-        pipeline.screen_candidates = lambda *a, **k: None
-        pipeline.fetch_all_candidates = lambda *a, **k: None
+        pipeline.initialize_runtime = initialize_runtime
+        pipeline.main = lambda: None
 
         with patch.object(perf, "ENABLED", True):
-            perf.install(pipeline)
+            telemetry = perf.install(pipeline)
             with self.assertRaises(RuntimeError) as caught:
-                pipeline.main()
-        self.assertIs(caught.exception, original)
+                pipeline.initialize_runtime()
+
+        self.assertIs(caught.exception, error)
+        self.assertEqual(telemetry.calls["runtime.initialize"], 1)
+        self.assertEqual(telemetry.failures["runtime.initialize"], 1)
+
+    def test_performance_install_is_idempotent(self):
+        calls = []
+        pipeline = types.SimpleNamespace(logger=_QuietLogger())
+        pipeline.initialize_runtime = lambda: calls.append("called")
+        pipeline.main = lambda: None
+
+        with patch.object(perf, "ENABLED", True):
+            first = perf.install(pipeline)
+            wrapped_first = pipeline.initialize_runtime
+            second = perf.install(pipeline)
+
+        self.assertIs(first, second)
+        self.assertIs(pipeline.initialize_runtime, wrapped_first)
+        pipeline.initialize_runtime()
+        self.assertEqual(calls, ["called"])
 
     def test_broken_logger_cannot_change_successful_production_return(self):
         sentinel = object()
-
-        class BrokenLogger:
-            def info(self, *args, **kwargs):
-                raise RuntimeError("logger down")
-
-            warning = error = info
-
-        pipeline = types.SimpleNamespace(logger=BrokenLogger())
-        pipeline.main = lambda: sentinel
-        pipeline.generate_intelligence_report = lambda *a, **k: None
-        pipeline.screen_candidates = lambda *a, **k: None
-        pipeline.fetch_all_candidates = lambda *a, **k: None
+        pipeline = types.SimpleNamespace(logger=_RaisingLogger())
+        pipeline.initialize_runtime = lambda: sentinel
+        pipeline.main = lambda: "main-ok"
 
         with patch.object(perf, "ENABLED", True):
             perf.install(pipeline)
-            self.assertIs(pipeline.main(), sentinel)
+            self.assertIs(pipeline.initialize_runtime(), sentinel)
+            self.assertEqual(pipeline.main(), "main-ok")
 
     def test_broken_logger_cannot_mask_original_production_exception(self):
-        original = ValueError("production")
-
-        class BrokenLogger:
-            def info(self, *args, **kwargs):
-                raise RuntimeError("logger down")
-
-            warning = error = info
-
-        pipeline = types.SimpleNamespace(logger=BrokenLogger())
-
-        def fail():
-            raise original
-
-        pipeline.main = fail
-        pipeline.generate_intelligence_report = lambda *a, **k: None
-        pipeline.screen_candidates = lambda *a, **k: None
-        pipeline.fetch_all_candidates = lambda *a, **k: None
+        original = ValueError("original production failure")
+        pipeline = types.SimpleNamespace(logger=_RaisingLogger())
+        pipeline.main = lambda: (_ for _ in ()).throw(original)
 
         with patch.object(perf, "ENABLED", True):
             perf.install(pipeline)
             with self.assertRaises(ValueError) as caught:
                 pipeline.main()
+
         self.assertIs(caught.exception, original)
 
     def test_record_failure_cannot_change_wrapped_return_or_exception(self):
-        sentinel = object()
+        success = object()
         original = LookupError("original")
-        pipeline = types.SimpleNamespace(logger=_QuietLogger())
-        pipeline.main = lambda: None
-        pipeline.generate_intelligence_report = lambda *a, **k: None
-        pipeline.screen_candidates = lambda *a, **k: None
-        pipeline.fetch_all_candidates = lambda *a, **k: None
+        telemetry = perf.PerformanceTelemetry(_QuietLogger())
 
-        with patch.object(perf, "ENABLED", True), patch.object(
-            perf, "_record", side_effect=RuntimeError("record failure")
-        ):
-            perf.install(pipeline)
+        def broken_record(*args, **kwargs):
+            raise RuntimeError("telemetry record failed")
 
-            def successful():
-                return sentinel
+        telemetry.record = broken_record
+        wrapped_success = perf._wrap(telemetry, lambda: success, "stage")
+        wrapped_failure = perf._wrap(
+            telemetry,
+            lambda: (_ for _ in ()).throw(original),
+            "stage",
+        )
 
-            def failing():
-                raise original
-
-            wrapped_success = perf._wrap("successful", successful, pipeline.logger)
-            wrapped_failure = perf._wrap("failing", failing, pipeline.logger)
-
-        self.assertIs(wrapped_success(), sentinel)
+        self.assertIs(wrapped_success(), success)
         with self.assertRaises(LookupError) as caught:
             wrapped_failure()
         self.assertIs(caught.exception, original)
