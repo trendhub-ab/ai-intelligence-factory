@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T04:00:41.554946+00:00",
+  "updated_at": "2026-09-07T06:59:22.394539+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.05295",
@@ -496,6 +496,42 @@
       "deep_dive_priority_score": 71.75
     },
     {
+      "key": "https://docs.bigmodel.cn/cn/update/new-releases",
+      "deferred_at": "2026-09-07T06:59:22.394155+00:00",
+      "expires_at": "2026-09-21T06:59:22.394155+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Zhipu AI GLM — 多模态工具链进一步扩展,在文本工具基础上新增支持画框、截图、读网页(含图片识别)等多模态 Tools",
+        "originalTitle": "Zhipu AI GLM — 多模态工具链进一步扩展,在文本工具基础上新增支持画框、截图、读网页(含图片识别)等多模态 Tools",
+        "displayName": "海外技術情報「Zhipu AI GLM — 多模态工具链进一步扩展,在文本工具基础上新增支持画框、截图、读网页(含图片识别)等多模态 Tools」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://docs.bigmodel.cn/cn/update/new-releases?aif_revision=a3b1502bbf9b6473",
+        "description": "多模态工具链进一步扩展，在文本工具基础上新增支持画框、截图、读网页（含图片识别）等多模态 Tools",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "多模态工具链进一步扩展，在文本工具基础上新增支持画框、截图、读网页（含图片识别）等多模态 Tools",
+        "primaryUrl": "https://docs.bigmodel.cn/cn/update/new-releases",
+        "sourceDetails": {
+          "vendor": "Zhipu AI GLM",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://docs.bigmodel.cn/cn/update/new-releases",
+          "candidate_revision": "a3b1502bbf9b6473",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-81ec-8ec1-d8a6e03f7456",
+      "score": 68,
+      "reason": "マルチモーダルツールチェーンの拡張と実用性向上。",
+      "commercial_score": 62,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MULTIMODAL",
+      "deep_dive_priority_score": 65.9
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49548852",
       "deferred_at": "2026-09-06T10:18:29.084743+00:00",
       "expires_at": "2026-11-05T10:18:29.084743+00:00",
@@ -526,6 +562,119 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 63.0
+    },
+    {
+      "key": "https://github.com/trailofbits/coop",
+      "deferred_at": "2026-09-07T06:59:22.394310+00:00",
+      "expires_at": "2026-09-21T06:59:22.394310+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Coop – Isolated VM Environments for Running Claude Code and Codex",
+        "originalTitle": "Coop – Isolated VM Environments for Running Claude Code and Codex",
+        "displayName": "Coop – Isolated VM Environments for Running Claude Code and Codex",
+        "sourceLanguage": "en",
+        "url": "https://github.com/trailofbits/coop",
+        "description": "Coop – Isolated VM Environments for Running Claude Code and Codex",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-07T04:18:28Z",
+        "sourceContext": "HN points=7 comments=2 matched_query=Claude",
+        "primaryUrl": "https://github.com/trailofbits/coop",
+        "sourceDetails": {
+          "hn_id": "49593842",
+          "hn_url": "https://news.ycombinator.com/item?id=49593842",
+          "external_url": "https://github.com/trailofbits/coop",
+          "comments": 2,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-81cf-a3e8-d165d6cb8a06",
+      "score": 60,
+      "reason": "Claude Code等の安全な実行を担保するVM環境。",
+      "commercial_score": 65,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 61.75
+    },
+    {
+      "key": "https://ai.google.dev/gemini-api/docs/changelog",
+      "deferred_at": "2026-09-07T06:59:22.394395+00:00",
+      "expires_at": "2026-09-21T06:59:22.394395+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Google Gemini — Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
+        "originalTitle": "Google Gemini — Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
+        "displayName": "Google Gemini — Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
+        "sourceLanguage": "en",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=9fa81e094d8c00d7",
+        "description": "Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "September 3, 2026",
+        "sourceContext": "Lyria 3.5 in public preview : Released the next generation of Google's music generation model:",
+        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
+        "sourceDetails": {
+          "vendor": "Google Gemini",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
+          "candidate_revision": "9fa81e094d8c00d7",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-819b-9919-e89c8810e76e",
+      "score": 62,
+      "reason": "音楽生成モデルのプレビュー版公開で技術的進展を確認できる。",
+      "commercial_score": 58,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MULTIMODAL",
+      "deep_dive_priority_score": 60.6
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.05309",
+      "deferred_at": "2026-09-07T06:59:22.394450+00:00",
+      "expires_at": "2026-11-06T06:59:22.394450+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "How Does mHC Use Its Residual Streams? Selective Routing and Near-Identity Mixing",
+        "originalTitle": "How Does mHC Use Its Residual Streams? Selective Routing and Near-Identity Mixing",
+        "displayName": "How Does mHC Use Its Residual Streams? Selective Routing and Near-Identity Mixing",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.05309v1",
+        "description": "Hyper-Connections and their manifold-constrained variant mHC widen a residual pathway from one stream to n, yet how trained models use this capacity remains unclear: how broadly blocks read and write, how strongly the residual pathway mixes streams, and whether the streams carry distinct representations. We examine these properties in the four-stream residual pathway of DeepSeek-V4-Flash using effective stream counts, cross-stream residual weights, and inter-stream cosine similarity. Read/write",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-04T16:02:20Z",
+        "sourceContext": "Hyper-Connections and their manifold-constrained variant mHC widen a residual pathway from one stream to n, yet how trained models use this capacity remains unclear: how broadly blocks read and write, how strongly the residual pathway mixes streams, and whether the streams carry distinct representations. We examine these properties in the four-stream residual pathway of DeepSeek-V4-Flash using effective stream counts, cross-stream residual weights, and inter-stream cosine similarity. Read/write routing is concentrated but varies across depth: a typical attention or FFN site effectively uses about two streams, while the dominant stream changes across layers and the representations remain directionally distinct. Residual mixing is modest and occurs primarily in early layers; in layers 22-42, the pathway mostly carries each stream forward separately. Targeted interventions establish the functional significance of these patterns. Replacing the late mixers by identity increases C4 perplexity by only 1.9% and preserves the six-task average score, whereas replacing the early mixers increases perplexity by 41%. Fixing each early mixer to its C4 diagnostic mean increases perplexity by only 0.2% and reduces the average score by 0.25 percentage points, showing that its site-specific structure matters more than its token-wise variation on the evaluated metrics. Likewise, retaining the three largest routing weights per token at every site increases perplexity by at most 2.7% and changes the average score by at most 0.4 points. Thus, the studied model realizes only part of the flexibility afforded by four-stream mHC: individual blocks rarely require all four streams, and late residual mixing provides little measured benefit.",
+        "primaryUrl": "https://arxiv.org/abs/2609.05309v1",
+        "sourceDetails": {
+          "authors": [
+            "Pengxiang Zhao",
+            "Xing Li",
+            "Xianzhi Yu",
+            "Wei Guo",
+            "Zhenhua Dong"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3d4479ff-dca9-8137-b444-c07e2e162675",
+      "score": 62,
+      "reason": "大規模モデルの残差ストリームとルーティングの分析。",
+      "commercial_score": 45,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 56.05
     }
   ]
 }
