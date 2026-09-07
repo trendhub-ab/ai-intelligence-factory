@@ -161,7 +161,6 @@ _EXPORTED_NAMES = (
     "_detect_title_language",
     "_japanese_product_descriptor",
     "_multilingual_display_name",
-    "canonicalize_published_at",
     "_notion_display_name",
     "_source_summary_with_original",
     "normalize_item",
