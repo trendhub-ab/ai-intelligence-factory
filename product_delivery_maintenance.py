@@ -61,11 +61,14 @@ def run_evidence_health_maintenance(
     web_context_max_bytes: int,
     now_iso: Callable[[], str],
 ) -> dict:
-    """Run zero-Gemini evidence health checks with historical behavior intact.
+    """Run zero-Gemini evidence health checks with bounded provider failure tails.
 
     A material change only accelerates Technology ``Next Review`` and records the
     health result.  It never performs model work and never changes publication or
-    quality gates.
+    quality gates.  If arXiv returns a fetch-level failure, the remaining arXiv
+    checks are deferred for this run instead of repeating the same provider outage.
+    Deferred/FETCH_ERROR rows are deliberately not written back to the Evidence
+    Ledger, so an upstream outage can never masquerade as evidence degradation.
     """
     result = {
         "enabled": evidence_ledger.ENABLE_EVIDENCE_LEDGER,
@@ -75,15 +78,22 @@ def run_evidence_health_maintenance(
         "cosmetic": 0,
         "moved": 0,
         "errors": 0,
+        "fetch_errors": 0,
+        "deferred": 0,
+        "arxiv_circuit_open": False,
     }
     if not evidence_ledger.ENABLE_EVIDENCE_LEDGER:
         return result
 
     token = decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY
+    arxiv_circuit_open = False
     for state in evidence_ledger.query_health_candidates(token):
+        source_type = str(state.get("source_type") or "").lower()
+        if source_type == "arxiv" and arxiv_circuit_open:
+            result["deferred"] += 1
+            continue
         try:
             def fetcher(url: str):
-                source_type = str(state.get("source_type") or "").lower()
                 if source_type == "github":
                     repo_name = github_repo_name_from_url(url)
                     if repo_name:
@@ -114,6 +124,21 @@ def run_evidence_health_maintenance(
             health = evidence_ledger.check_health(state, fetcher)
             result["checked"] += 1
             health_state = health.get("health")
+
+            if health_state == "FETCH_ERROR":
+                result["fetch_errors"] += 1
+                result["deferred"] += 1
+                if source_type == "arxiv":
+                    arxiv_circuit_open = True
+                    result["arxiv_circuit_open"] = True
+                    logger.warning(
+                        "[EVIDENCE HEALTH ARXIV CIRCUIT OPEN] provider fetch failed; "
+                        "remaining arXiv checks deferred for this run"
+                    )
+                # Never persist provider failure as source health. A later run can
+                # verify the evidence once the upstream service recovers.
+                continue
+
             if health_state == "COSMETIC_CHANGE":
                 result["cosmetic"] += 1
             elif health_state == "MOVED":
