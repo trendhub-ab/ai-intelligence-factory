@@ -114,7 +114,7 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", text)
         self.assertNotIn("GH_TOKEN: ${{ github.token }}", text)
         self.assertIn('if [ -z "${GH_TOKEN:-}" ]; then', text)
-        self.assertIn("GH_PAT is required for ChatOps dispatch", text)
+        self.assertIn("GH_PAT is required for ChatOps ONE-SHOT dispatch", text)
 
 
 if __name__ == "__main__":
