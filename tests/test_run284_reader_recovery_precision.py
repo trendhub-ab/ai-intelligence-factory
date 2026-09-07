@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import types
 import unittest
 
 import run284_reader_recovery_precision as run284
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class Run284JapanesePolishTests(unittest.TestCase):
@@ -159,6 +162,32 @@ class Run284ReaderRepairTests(unittest.TestCase):
         run284.install(pipeline)
         self.assertIs(wrapped, pipeline.should_attempt_dynamic_retry)
         self.assertEqual(remaining_fixes, pipeline._JAPANESE_SAFE_FIXES)
+
+
+class Run284RepositoryContractTests(unittest.TestCase):
+    def test_production_install_and_publication_provenance_track_run284(self):
+        production = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        contract = (ROOT / "publication_contract.py").read_text(encoding="utf-8")
+        ready = (ROOT / ".github/workflows/note-ready-sync.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision",
+            production,
+        )
+        self.assertIn("install_run284_reader_recovery_precision(pipeline)", production)
+        self.assertIn('"run284_reader_recovery_precision.py"', contract)
+        self.assertIn("- 'run284_reader_recovery_precision.py'", ready)
+        self.assertIn("python -m unittest tests.test_run284_reader_recovery_precision -v", ready)
+
+    def test_recovery_runs_run284_zero_api_tests_before_any_production_model_path(self):
+        workflow = (ROOT / ".github/workflows/current-policy-ready-recovery.yml").read_text(encoding="utf-8")
+        test_command = "python -m unittest tests.test_run284_reader_recovery_precision -v"
+        production_command = "run: python production_pipeline.py"
+        self.assertIn(test_command, workflow)
+        self.assertIn(production_command, workflow)
+        self.assertLess(workflow.index(test_command), workflow.index(production_command))
+        self.assertIn("CURRENT_POLICY_READY_RECOVERY_REQUEST_BUDGET: '4'", workflow)
+        self.assertNotIn("note-create-draft.yml", workflow)
 
 
 if __name__ == "__main__":
