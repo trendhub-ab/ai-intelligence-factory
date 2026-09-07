@@ -51,6 +51,7 @@ PUBLICATION_POLICY_FILES = (
     "run268_business_source_strategy.py",
     "run269_business_source_precision.py",
     "editorial_eyecatch.py",
+    "eyecatch_badge_taxonomy.py",
     "decision_intelligence.py",
     "evidence_authority.py",
     "evidence_ledger.py",
