@@ -1,11 +1,13 @@
-"""Run275 zero-API reader-quality precision overlay.
+"""Run275/276 zero-API reader-quality precision overlay.
 
 Real ONE-SHOT Run31 produced three evidence-sufficient manuscripts but Ready=0. Artifact
 falsification showed two different causes mixed together: genuine dense technical prose and
 narrow reader diagnostics that could misclassify valid reader bridges, visible heading breaks,
-or later acronym explanations. This overlay corrects only those reproducible false positives.
-It does not relax Fact/Evidence/Publication gates, create model/provider calls, or turn genuinely
-dense prose into GOOD.
+or later acronym explanations. Run32 then exposed one more precision defect: the historical
+7-character repetition detector could classify recurring topic nouns (for example the Japanese
+equivalents of "the agent" / "all data") as repeated *insight*. This overlay corrects only
+those reproducible false positives. It does not relax Fact/Evidence/Publication gates, create
+model/provider calls, or turn genuinely dense/repetitive prose into GOOD.
 """
 from __future__ import annotations
 
@@ -27,6 +29,14 @@ _STRONG_OPENING_BRIDGE_RE = re.compile(
 _GA_NI_COLLISION_RE = re.compile(
     r"がに(?=(?:減少|増加|向上|低下|改善|悪化|変化)(?:し|する|した|します|しました))"
 )
+# A repeated insight should contain repeated meaning/action, not merely the recurring subject of
+# the article. A genuinely repeated Japanese sentence produces several overlapping 7-char
+# fragments containing predicates, whereas topic anchors such as 「エージェントの」 do not.
+_REPETITION_PREDICATE_RE = re.compile(
+    r"(?:です|ます|した|して|する|され|でき|ない|なる|なり|ある|あり|いる|"
+    r"べき|必要|重要|可能|難し|高止まり|減衰|収縮|改善|悪化|増加|減少|変化|"
+    r"超え|引き継|選ぶ|選択|試す|検証|導入|見送|待つ|推奨|勧め|価値)"
+)
 
 
 def _heading_aware_max_explanatory_run(article: str) -> int:
@@ -39,8 +49,6 @@ def _heading_aware_max_explanatory_run(article: str) -> int:
             continue
         if re.match(r"^#{1,6}\s+", value):
             current = 0
-            # A heading can share a block with prose in malformed Markdown. Only inspect the
-            # remaining text; the visible heading still breaks the previous explanatory run.
             value = re.sub(r"^#{1,6}\s+[^\n]*(?:\n|$)", "", value, count=1).strip()
             if not value:
                 continue
@@ -64,8 +72,7 @@ def _token_explained_anywhere(token: str, article: str) -> bool:
     value = str(article or "")
     escaped = re.escape(token)
     # Python's Unicode \b treats Japanese particles as word characters. Use ASCII-only
-    # boundaries so forms such as ``CLIを`` and ``CLI（...）`` are recognized correctly
-    # without weakening matching inside longer ASCII identifiers.
+    # boundaries so forms such as ``CLIを`` and ``CLI（...）`` are recognized correctly.
     ascii_token = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
     patterns = (
         rf"{ascii_token}\s*[（(][^）)\n]{{2,90}}[）)]",
@@ -77,11 +84,7 @@ def _token_explained_anywhere(token: str, article: str) -> bool:
 
 
 def _token_is_stable_compound_label(token: str, article: str) -> bool:
-    """Ignore a two-letter token only when every occurrence belongs to one stable label.
-
-    This is deliberately narrower than a global acronym allowlist. It covers entity labels such
-    as ``VT Code`` or ``LM Studio`` while keeping standalone technical acronyms such as VRAM/MCP.
-    """
+    """Ignore a two-letter token only when every occurrence belongs to one stable label."""
     if len(token) != 2 or not token.isupper():
         return False
     matches = list(re.finditer(rf"(?<![A-Za-z0-9]){re.escape(token)}(?![A-Za-z0-9])", str(article or "")))
@@ -90,8 +93,6 @@ def _token_is_stable_compound_label(token: str, article: str) -> bool:
     followers: list[str] = []
     for match in matches:
         tail = str(article or "")[match.end():match.end() + 40]
-        # Same Unicode-boundary rule as above: ``Codeを`` / ``Studio側`` are valid
-        # Japanese continuations of an ASCII entity label and must not fail on \b.
         follower = re.match(r"\s+([A-Z][a-z][A-Za-z0-9.+-]{1,24})(?![A-Za-z0-9])", tail)
         if not follower:
             return False
@@ -113,8 +114,45 @@ def _correct_unexplained_jargon(base: dict[str, Any], article: str) -> list[str]
     return corrected[:8]
 
 
+def _repeated_cross_paragraph_fragments(article: str) -> list[str]:
+    """Reproduce the canonical 7-char repetition evidence without treating it as semantics."""
+    prose = re.sub(r"^#{1,6}\s+.*$", "", str(article or ""), flags=re.MULTILINE)
+    paragraphs = [x.strip() for x in re.split(r"\n\s*\n", prose) if x.strip()]
+    counts: dict[str, int] = {}
+    for para in paragraphs:
+        compact = re.sub(
+            r"https?://\S+|`[^`]+`|[A-Za-z0-9_.:/+-]+|[\s。、！？!?「」『』（）()【】#*_>・:：;；,，.\-]+",
+            "",
+            para,
+        )
+        seen: set[str] = set()
+        for idx in range(max(0, len(compact) - 6)):
+            piece = compact[idx:idx + 7]
+            if len(piece) == 7:
+                seen.add(piece)
+        for piece in seen:
+            counts[piece] = counts.get(piece, 0) + 1
+    return sorted(piece for piece, count in counts.items() if count >= 3)
+
+
+def _has_semantic_repetitive_insight(article: str) -> bool:
+    """Require repeated predicate-bearing meaning, not only repeated topic nouns.
+
+    The legacy detector fires when at least three 7-character fragments recur across three
+    paragraphs. A genuinely repeated sentence creates multiple overlapping predicate-bearing
+    fragments. Run32's false positive had exactly three fragments and all were nominal anchors.
+    Requiring at least two semantic fragments preserves the real repetition case while removing
+    that noun-only threshold accident.
+    """
+    semantic = [
+        piece for piece in _repeated_cross_paragraph_fragments(article)
+        if _REPETITION_PREDICATE_RE.search(piece)
+    ]
+    return len(semantic) >= 2
+
+
 def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, Any]:
-    """Apply only deterministic Run31-derived precision corrections to an existing signal set."""
+    """Apply deterministic Run31/Run32-derived precision corrections to an existing signal set."""
     signals = dict(original or {})
     if not signals:
         return signals
@@ -176,16 +214,19 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
     signals["accessibility_issues"] = list(dict.fromkeys(issues))
     signals["accessibility"] = "GOOD" if not signals["accessibility_issues"] else "REVIEW"
 
-    enjoyment = [
-        str(item)
-        for item in list(signals.get("enjoyment_issues") or [])
-        if not (str(item) == "explanation_run_long" and heading_run < 4)
-    ]
+    semantic_repetition = _has_semantic_repetitive_insight(article)
+    enjoyment = []
+    for item in list(signals.get("enjoyment_issues") or []):
+        value = str(item)
+        if value == "explanation_run_long" and heading_run < 4:
+            continue
+        if value == "repetitive_insight" and not semantic_repetition:
+            continue
+        enjoyment.append(value)
     signals["enjoyment_issues"] = list(dict.fromkeys(enjoyment))
     signals["reader_enjoyment"] = "GOOD" if not signals["enjoyment_issues"] else "REVIEW"
 
-    # Only upgrade Information Budget when every known trigger is absent after the heading-aware
-    # correction. A genuinely jargon-dense manuscript therefore remains REVIEW.
+    # Only upgrade Information Budget when every known trigger is absent after correction.
     if signals.get("information_budget") == "REVIEW":
         no_known_budget_trigger = (
             dense_paragraphs < 3
@@ -197,6 +238,7 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
             signals["information_budget"] = "GOOD"
 
     signals["run275_precision_overlay"] = True
+    signals["run276_semantic_repetition_precision"] = True
     return signals
 
 
@@ -208,12 +250,7 @@ def _malformed_surface_issue(article: str) -> str:
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install after historical reader/final-surface layers; zero API and idempotent.
-
-    Run231 regression doubles deliberately expose only a minimal Production entrypoint. Run275
-    must therefore be optional on those doubles while remaining active when the real reader
-    surfaces exist.
-    """
+    """Install after historical reader/final-surface layers; zero API and idempotent."""
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
         return pipeline_module
 
