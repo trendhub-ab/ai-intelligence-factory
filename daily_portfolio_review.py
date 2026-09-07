@@ -37,6 +37,7 @@ from technology_portfolio_policy import rank_portfolio_records
 DEFAULT_MAX_REVIEWS = max(0, int(os.environ.get("DAILY_PORTFOLIO_REVIEW_MAX", "2")))
 DEFAULT_REQUEST_BUDGET = max(0, int(os.environ.get("DAILY_PORTFOLIO_REQUEST_BUDGET", "3")))
 DEFAULT_SCAN_LIMIT = max(1, int(os.environ.get("DAILY_PORTFOLIO_SCAN_LIMIT", "12")))
+DEFAULT_CHILD_TIMEOUT_SECONDS = min(1200, max(60, int(os.environ.get("DAILY_PORTFOLIO_TIMEOUT_SECONDS", "600"))))
 TRACKING_REVIEW_DAYS = max(1, int(os.environ.get("TRACKING_REVIEW_DAYS", "14")))
 REVIEW_TIER_HIGH_DAYS = max(1, int(os.environ.get("REVIEW_TIER_HIGH_DAYS", str(TRACKING_REVIEW_DAYS))))
 REVIEW_TIER_NORMAL_DAYS = max(REVIEW_TIER_HIGH_DAYS, int(os.environ.get("REVIEW_TIER_NORMAL_DAYS", "30")))
@@ -266,16 +267,56 @@ def plan_daily_review_allowlist(
     return ordered[: max(0, scan_limit)]
 
 
-def _run_product_only(allowlist: list[str], max_reviews: int, request_budget: int, timeout: int = 1800) -> dict[str, Any]:
+def _timeout_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _run_product_only(
+    allowlist: list[str],
+    max_reviews: int,
+    request_budget: int,
+    timeout: int | None = None,
+) -> dict[str, Any]:
     if not allowlist or max_reviews <= 0 or request_budget <= 0:
         return {"skipped": True, "reason": "no_due_candidates_or_budget", "allowlist_count": len(allowlist)}
 
+    effective_timeout = DEFAULT_CHILD_TIMEOUT_SECONDS if timeout is None else min(1200, max(1, int(timeout)))
     env = os.environ.copy()
     env.update(ib.product_only_environment(max_reviews, request_budget))
     env["INVENTORY_BOOTSTRAP_ENTITY_IDS"] = ",".join(allowlist)
-    proc = subprocess.run(
-        [sys.executable, "pipeline.py"], env=env, capture_output=True, text=True, timeout=timeout
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "pipeline.py"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=effective_timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _timeout_text(exc.stdout)
+        stderr = _timeout_text(exc.stderr)
+        combined = stdout + "\n" + stderr
+        if stdout:
+            print(stdout, end="" if stdout.endswith("\n") else "\n")
+        if stderr:
+            print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
+        unsafe = ib.detect_unsafe_pipeline_activity(combined)
+        if unsafe:
+            raise RuntimeError(f"Daily portfolio Product Review safety violation before timeout: {unsafe}")
+        return {
+            "skipped": True,
+            "timed_out": True,
+            "reason": "bounded_child_timeout",
+            "timeout_seconds": effective_timeout,
+            "allowlist_count": len(allowlist),
+            "max_reviews": max_reviews,
+            "request_budget": request_budget,
+        }
+
     combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.stdout:
         print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n")
@@ -295,6 +336,7 @@ def _run_product_only(allowlist: list[str], max_reviews: int, request_budget: in
         "allowlist_count": len(allowlist),
         "max_reviews": max_reviews,
         "request_budget": request_budget,
+        "timeout_seconds": effective_timeout,
     }
 
 
@@ -327,6 +369,7 @@ def main() -> int:
         "low_days": REVIEW_TIER_LOW_DAYS,
         "max_reviews": DEFAULT_MAX_REVIEWS,
         "request_budget": DEFAULT_REQUEST_BUDGET,
+        "child_timeout_seconds": DEFAULT_CHILD_TIMEOUT_SECONDS,
     }
 
     result["context_first"] = context_first_enrichment.enrich_context_first(previous_reviewed)
