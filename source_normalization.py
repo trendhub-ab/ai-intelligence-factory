@@ -134,7 +134,8 @@ def normalize_item(source: str, name: str, url: str, description: str,
     """各ソースを既存互換キーへ正規化し、Deep Dive用一次コンテキストも保持する。
 
     nameWithOwnerは原題のまま保持し、Entity Resolution/Dedupの正本とする。
-    displayNameだけをNotion等の人間向け表示に利用する。
+    displayNameだけをNotion等の人間向け表示に利用する。publishedAtも取得層では
+    原文を保持し、外部API境界でだけ必要な形式変換を行う。
     """
     original = unicodedata.normalize("NFKC", (name or "無題").strip()) or "無題"
     desc = (description or "説明なし").strip() or "説明なし"
@@ -149,7 +150,7 @@ def normalize_item(source: str, name: str, url: str, description: str,
         "description": desc,
         "stargazerCount": engagement or 0,
         "licenseInfo": license_info,
-        "publishedAt": canonicalize_published_at(published_at),
+        "publishedAt": published_at,
         "sourceContext": (source_context or "").strip(),
         "primaryUrl": (primary_url or url or "").strip(),
         "sourceDetails": source_details or {},
