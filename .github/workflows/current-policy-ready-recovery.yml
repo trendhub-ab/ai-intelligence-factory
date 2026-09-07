@@ -121,8 +121,33 @@ jobs:
           MAX_EVIDENCE_DOCUMENTS: '3'
           VERIFICATION_CONTEXT_MAX_CHARS: '180000'
 
-      - name: Reconcile Note Ready only — no private draft fan-out
-        run: python note_ready_sync.py
+      - name: Reconcile and verify current-policy Ready — no private draft fan-out
+        run: |
+          set -euo pipefail
+          python note_ready_sync.py | tee /tmp/run282-note-ready.txt
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          lines = [line.strip() for line in Path('/tmp/run282-note-ready.txt').read_text(encoding='utf-8').splitlines() if line.strip()]
+          payload = None
+          for line in reversed(lines):
+              if not line.startswith('{'):
+                  continue
+              try:
+                  candidate = ast.literal_eval(line)
+              except (SyntaxError, ValueError):
+                  continue
+              if isinstance(candidate, dict) and 'source_ready' in candidate:
+                  payload = candidate
+                  break
+          if payload is None:
+              raise SystemExit('Run282 verification failed: Note Ready result payload was not found')
+          current_ready = int(payload.get('source_ready') or 0)
+          if current_ready < 1:
+              raise SystemExit('Run282 verification failed: current-policy source_ready stayed 0')
+          print(f'RUN282_CURRENT_POLICY_READY_VERIFIED={current_ready}')
+          PY
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -154,6 +179,7 @@ jobs:
             echo '- deep-dive/model request hard cap: `4`'
             echo '- fresh acquisition / screening / Product Review: `false`'
             echo '- Note Ready reconciliation: `true`'
+            echo '- successful workflow requires current-policy `source_ready >= 1`'
             echo '- private note draft / VM / browser: `false`'
             echo '- public note publication: `false` (human-only)'
             echo '- Daily schedule changed: `false`'
