@@ -17,6 +17,7 @@
 - **Current free article reader rhythm baseline:** Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas
 - **Current pipeline modularization baseline:** Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior modularized domains
 - **Current repository organization baseline:** Run246 — falsified repository hygiene cleanup with active/runtime asset protection
+- **Current operational reliability baseline:** Run272 — bounded Daily failure tails / Notion date-boundary hardening / arXiv run-local circuit / bounded Product Review child
 - **Daily:** PAUSED
 - **Production execution:** manual ONE-SHOT / explicitly dispatched operational workflows only
 - Canonical specification: `AI_Intelligence_Factory_最終仕様書.md`
@@ -31,7 +32,7 @@ New development must start from `main`. Historical/archive branches are referenc
 - `pipeline.py` — acquisition, screening, Deep Dive, article quality, Notion persistence and top-level orchestration; extracted domains remain compatibility wrappers only
 - `source_normalization.py` — canonical source/title/display normalization extracted from `pipeline.py`
 - `evidence_context.py` — canonical provider-free source/verification context shaping extracted from `pipeline.py`
-- `product_delivery_maintenance.py` — canonical Evidence Health / subscriber sync / monthly Digest maintenance orchestration extracted from `pipeline.py`
+- `product_delivery_maintenance.py` — canonical Evidence Health / subscriber sync / monthly Digest maintenance orchestration extracted from `pipeline.py`; Run272 adds run-local arXiv failure-tail bounding without mutating Evidence on provider fetch errors
 - `deep_dive_portfolio.py` — canonical zero-model Stock eligibility ordering, topic diversity, EVERGREEN and publication-reliability portfolio shaping extracted from `pipeline.py`
 - `reader_experience_signals.py` — canonical zero-API reader accessibility, proximity, delight and information-budget diagnostics mechanically extracted from `pipeline.py`; the pipeline keeps only the live opening-excerpt binding
 - `editorial_naturalness.py` — canonical zero-API AI-style, human-editorial depth and cross-article naturalness diagnostics extracted from `pipeline.py`; live display variants, peer memory and opening behavior remain pipeline-bound
@@ -40,7 +41,7 @@ New development must start from `main`. Historical/archive branches are referenc
 - `gate_reasoning.py` — canonical reason-code/severity/disposition and audit-record shaping for already-produced gate outcomes; it does not execute quality gates
 - `screening_protocol.py` — canonical zero-I/O Screening metadata protocol, prompt/parser, topic and commercial/shelf helpers; model invocation remains outside this module
 - `source_roi_policy.py` — canonical zero-model Source ROI smoothing, profile, allocation and run-metric shaping with provider-failure exclusion preserved
-- `notion_payloads.py` — canonical pure Notion property/page/manuscript payload shaping; Notion API calls and canonical destination resolution remain pipeline-owned
+- `notion_payloads.py` — canonical pure Notion property/page/manuscript payload shaping; Run272 canonicalizes known date formats only at the Notion boundary and fails closed to an empty date for malformed values
 - `source_document_parsing.py` — canonical stdlib-only GitHub/arXiv/source-link/HTML parsing and evidence-metadata shaping; network acquisition and SSRF boundaries remain pipeline-owned
 - `deferred_queue_policy.py` — canonical pure Deferred Deep Dive TTL, identity, serialization, expiry, ranking and capacity policy; persistence and Pending Retry fail-safe remain pipeline-owned
 - `content_generation_protocol.py` — canonical stdlib-only Fact Discipline / Human Editorial prompt rules, Gemini response parsing, conservative heading promotion and monthly Digest Markdown shaping; model invocation, quality-gate execution and persistence remain pipeline-owned
@@ -56,10 +57,10 @@ New development must start from `main`. Historical/archive branches are referenc
 - `editorial_eyecatch.py` — deterministic note Editorial Eyecatch renderer
 - `evidence_ledger.py`, `evidence_authority.py` — Evidence Ledger / authority / binding logic
 - `inventory_bootstrap.py`, `portfolio_inventory_bootstrap.py` — subscriber inventory bootstrap
-- `technology_portfolio_policy.py`, `daily_portfolio_review.py` — portfolio prioritization/review logic
+- `technology_portfolio_policy.py`, `daily_portfolio_review.py` — portfolio prioritization/review logic; Run272 bounds the Product Review child process to 600 seconds by default and defers cleanly on timeout
 - `run225_stock_lifecycle.py`, `stock_lifecycle_reconcile.py` — zero-model Screening Stock freshness lifecycle / source reconciliation
 - `run225_portfolio_lifecycle.py`, `run225_member_lifecycle_ui.py` — Archive exclusion from active review/member-home ranking without deletion
-- `run226_reader_delight_planning.py` — Evidence-bounded pre-draft Reader Tension / Discovery / Consequence / Explanation Bridge / Editorial Point of View planning using the existing article-generation request; no style-count Hard Gate and no new model call
+- `run226_reader_delight_planning.py` — Evidence-bounded pre-draft Reader Tension / Discovery / Concrete Consequence / Explanation Bridge / Editorial Point of View planning using the existing article-generation request; no style-count Hard Gate and no new model call
 - `run227_japanese_surface_integrity.py` — zero-model high-confidence Japanese surface-integrity gate for malformed predicate/particle/transitivity escapes; fail-closed without guessed rewrites
 - `run228_reader_rhythm_planning.py` — Evidence-preserving Reader Rhythm planning that converts dense Fact clusters into understanding/meaning/decision in the existing generation request; no style-count quota and no new model call
 - `context_first_enrichment.py` — Context-First Decision Intelligence enrichment
@@ -249,6 +250,19 @@ The repository-local Persistent Counter is a safety control, not the Google quot
 
 See `GEMINI_QUOTA_SETUP.md` for the full contract.
 
+### Run272 — Daily failure-tail hardening
+
+Run272 is an operational reliability layer. It does **not** increase Gemini budgets, change Source architecture, weaken Evidence/Decision gates, or extend the global Daily timeout.
+
+- OfficialVendor and other source dates remain raw Evidence at acquisition/normalization time. Known date-only formats are canonicalized only when constructing Notion `date.start`; malformed/unknown dates fail closed to an empty date rather than causing deterministic Notion HTTP 400.
+- Evidence Health treats provider transport failures as `FETCH_ERROR`, not as missing or materially changed Evidence. After the first arXiv `FETCH_ERROR` in a run, a run-local arXiv circuit opens, remaining arXiv checks are deferred, and non-arXiv health checks continue.
+- Deferred arXiv checks do not mutate Evidence Ledger health merely because the provider was unavailable.
+- Daily Product Review keeps the existing request budget but bounds the child `pipeline.py` process to **600 seconds by default**. A clean timeout returns structured deferred state instead of consuming the whole Daily deadline; partial output still passes the unsafe-activity detector.
+- The global Daily timeout remains **45 minutes**. Run272 fixes internal failure tails rather than hiding them by extending the workflow deadline.
+- Zero-API regression for the change passed **1795 tests**, Repository-wide Falsification Guard, Integration Reconciliation synthetic Production smoke, Notion Access Policy Guard, and Run269 Live Acquisition Smoke before merge.
+
+Full contract: `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md`.
+
 ## Repository map
 
 - `tests/` — production regression, adversarial and contract tests
@@ -304,6 +318,7 @@ Run210 makes documentation freshness a CI contract. Later member-product Runs ex
 - Run226 free-article planning must remain SOURCE BOUNDARY-bounded and must not turn hook/analogy/question/paragraph/list counts into a new human-looking template or new Hard Gate.
 - Run227 Japanese surface integrity must stay zero-model and high-precision, fail closed instead of guessing missing words, and must not change Fact/Evidence/Decision or API budgets.
 - Run228 Reader Rhythm must preserve important Evidence while reducing report-only Fact stacking inside the existing generation request; it must not add style-count quotas, a fixed article template, or a new model call.
+- Run272 must keep acquisition/source dates raw until persistence, canonicalize only at the Notion date boundary, defer arXiv health checks after a run-local fetch-error circuit opens without mutating Evidence, and keep Product Review child runtime bounded without extending the global Daily timeout or Gemini budgets.
 - A Production behavior change that makes canonical documentation stale must fail CI until documentation is updated in the same change set.
 
 ## change discipline
