@@ -14,6 +14,7 @@ Paid Member Database Destination Baseline: **Run220**
 Paid Member Database Hosting Baseline: **Run221**  
 Paid Product Baseline: **Run268 — Proposal-First Decision Intelligence / Four-Source Intelligence**  
 Member Surface Baseline: **Run270 — Proposal-First Member Surface / Run250 compatibility overlay**  
+Member Body Sync Baseline: **Run271 — Member Body Delta Sync / sentinel full-fallback**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
 Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**  
@@ -167,6 +168,24 @@ Member Presentation DBのgenerated detail bodyは、既存canonical値だけを�
 Home / Decision Brief / AI導入 判断・提案メモの静的Notion面も同じProposal-First契約へ揃える。顧客提案を「副次利用」と表現しない。社内利用・自己学習はSecondary Valueとして残す。
 
 Run270はSource score / Decision / Evidence / Deep Tech / Notion schemaを変更せず、表示のためのGemini/model callを追加しない。詳細と実ページIDは `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
+
+### 2.6 Run271 — Member Body Delta Sync
+
+Run270本番反映ではMember Presentation DB **206件**の本文移行に約13分23秒を要した。Run169.1でgenerated-only pageの親callout再構築は既に導入済みだったため、Run271はsteady-stateの主因である**全206ページのblock GET / body一致判定**を通常運用から外す。
+
+`Member Presentation Sync` はproperty-level presentation同期の直前に `MEMBER_BODY_CHANGED_SINCE` を記録する。body phaseはNotion DB一覧を取得した後、原則として `last_edited_time >= MEMBER_BODY_CHANGED_SINCE` のページだけをblock GET / write対象にする。
+
+ただし高速化でmigration safetyを弱めない。
+
+- delta runごとにgenerated bodyを**sentinel 1件**だけcurrent body contractと照合する。
+- sentinelが一致すればchanged pagesだけ本文I/Oする。
+- sentinel不一致、`MEMBER_BODY_FORCE_FULL=true`、cutoff欠落時は**full scanへ自動fallback**する。
+- push-triggered member presentation workflowはbody contract変更の可能性を考慮してfull modeとする。
+- workflow rerun（`github.run_attempt > 1`）もrecoveryのためfull modeとする。
+- manual `workflow_dispatch` は `force_full_body_sync` で明示full migrationできる。
+- manual Notion block保護、Run270見出し、Evidence / Decision / source / Deep Tech、Notion schema、ZERO Gemini/model call契約は変更しない。
+
+詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。Productionで実測するまでは速度改善値を確定値として記載しない。
 
 ---
 
@@ -455,6 +474,7 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - Run268 Business / Source Strategy Guard
 - Run269 Acquisition Precision Guard
 - Run270 Proposal-First Member Surface Guard
+- Run271 Member Body Delta Sync Guard
 - 関連unit tests / full pytest
 - Production Notion direct audit（Member UI変更時）
 - Public surface direct audit（note/article変更時）
@@ -464,6 +484,8 @@ Run267 `run267_documentation_contract_guard.py` は、上記3WorkflowのPR trigg
 - 実行中moduleとimport moduleのAuthorityずれ
 - Run270より後にRun250が再適用されていないか
 - stale bodyをcurrentと誤認
+- Run271 delta scopeがchanged pages以外へ不要なblock GETを広げていないか
+- Run271 sentinel不一致時にfull fallbackできるか
 - 文字列置換による不自然な日本語
 - old fixed shortlistの復活
 - Source score / Evidence / Deep Techの意図しない変異
@@ -542,13 +564,16 @@ PMF前にやらないこと:
 - `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行Source architecture / paid-product要約を保持する。
 - Run269のLive Acquisition Precision / 11-Vendor structured smoke / HN exact-match契約は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md` を正本とする。
 - Run270のProposal-First Member Surface / static Notion surface契約は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
+- Run271のdelta-scoped Member body sync / sentinel fallback契約は `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
 - Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
-- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269/270 GuardをRepository-wide Falsification Guard内で実行する。
+- Run271は通常本文同期をchanged pagesへ限定しつつ、sentinel mismatch / explicit force / recovery時のfull fallbackを `run271_member_body_delta_sync_guard.py` でFail-Closedする。
+- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269/270/271 GuardをRepository-wide Falsification Guard内で実行する。
 
 **現在のPaid Product Strategy正本はRun268。**  
 **現在のMember Surface正本はRun270。**  
+**現在のMember Body Sync正本はRun271。**  
 **現在のSource Architecture正本はRun268。**  
 **現在のAcquisition Precision正本はRun269。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
@@ -591,3 +616,13 @@ PMF前にやらないこと:
 - Run250 navigation rankerはRun270では維持し、未検証の大きなranking再設計を同時導入しない。
 - ZERO Gemini/model calls。
 - Run270 GuardはRun250→Run270 install順、Proposal-First contract、member workflow test、static Notion page IDs、canonical仕様、required Falsification組込みをzero-networkでfail closed検証する。
+
+### Run271 — Member Body Delta Sync
+
+- Run270のvisible body contractは変更せず、steady-stateの本文同期I/Oだけをdelta化する。
+- `MEMBER_BODY_CHANGED_SINCE`以降に編集されたMember pagesだけを通常のblock GET/write対象にする。
+- delta runではsentinel 1件をcurrent body contractと照合し、不一致なら全件scan/migrationへfallbackする。
+- push / rerun / explicit `force_full_body_sync` はfull modeを選べるため、本文契約変更とrecoveryをdelta最適化で取りこぼさない。
+- manual Notion blocks、Evidence / Decision / Source / Deep Tech / schema、ZERO Gemini/model call契約を保持する。
+- Production速度改善はmerge後の実workflowで計測してから確定する。
+- Run271 Guardはdelta cutoff / sentinel / full fallback / workflow recovery / canonical仕様 / required Falsification組込みをzero-networkでfail closed検証する。

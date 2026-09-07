@@ -2,6 +2,12 @@ name: Member Presentation Sync
 
 on:
   workflow_dispatch:
+    inputs:
+      force_full_body_sync:
+        description: 'Force a full Member DB body scan/migration'
+        required: false
+        default: false
+        type: boolean
   workflow_run:
     # The presentation DB is derived from the Subscriber Technology/Decision Brief bridge.
     # Run only after that bridge has finished so we never race a source update.
@@ -28,6 +34,7 @@ on:
       - 'run225_member_lifecycle_ui.py'
       - 'run250_member_client_action_product.py'
       - 'run270_proposal_first_member_surface.py'
+      - 'run271_member_body_delta_sync_guard.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
       - 'tests/test_run169_member_ux_guard.py'
@@ -46,6 +53,7 @@ on:
       - 'tests/test_run225_member_lifecycle_ui.py'
       - 'tests/test_run250_member_client_action_product.py'
       - 'tests/test_run270_proposal_first_member_surface.py'
+      - 'tests/test_run271_member_body_delta_sync.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -102,6 +110,7 @@ jobs:
           python -m unittest tests/test_run225_member_lifecycle_ui.py
           python -m unittest tests/test_run250_member_client_action_product.py
           python -m unittest tests/test_run270_proposal_first_member_surface.py
+          python -m unittest tests/test_run271_member_body_delta_sync.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -113,6 +122,10 @@ jobs:
           MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
           MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'
           MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
+
+      - name: Capture member body delta cutoff
+        run: |
+          echo "MEMBER_BODY_CHANGED_SINCE=$(date -u -d '5 seconds ago' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
 
       - name: Sync clean member DB with lifecycle-aware Proposal-First UI
         run: python run219_member_human_language_ui.py presentation
@@ -134,3 +147,5 @@ jobs:
           TZ: 'Asia/Tokyo'
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
+          MEMBER_BODY_CHANGED_SINCE: ${{ env.MEMBER_BODY_CHANGED_SINCE }}
+          MEMBER_BODY_FORCE_FULL: ${{ github.event_name == 'push' || github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
