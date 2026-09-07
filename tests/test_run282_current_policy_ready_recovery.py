@@ -208,7 +208,7 @@ class Run282ExecutionTests(unittest.TestCase):
 
 
 class Run282WorkflowTests(unittest.TestCase):
-    def test_dedicated_workflow_is_manual_bounded_and_zero_vm(self):
+    def test_dedicated_workflow_is_manual_bounded_zero_vm_and_fail_closed_on_zero_ready(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", text)
         self.assertNotIn("schedule:", text)
@@ -219,6 +219,8 @@ class Run282WorkflowTests(unittest.TestCase):
         self.assertIn("CURRENT_POLICY_READY_RECOVERY_REQUEST_BUDGET: '4'", text)
         self.assertIn("GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'", text)
         self.assertIn("python note_ready_sync.py", text)
+        self.assertIn("current-policy source_ready stayed 0", text)
+        self.assertIn("RUN282_CURRENT_POLICY_READY_VERIFIED", text)
         self.assertNotIn("note-create-draft.yml", text)
         self.assertNotIn("playwright", text.lower())
         self.assertNotIn("note.com", text.lower())
