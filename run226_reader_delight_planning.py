@@ -2,8 +2,9 @@
 
 Run274 consolidates the original planning contract after real Production showed that
 correct but overlapping reader instructions can still push the model toward a dense
-technical report. This layer remains prompt-only: no provider/API call and no gate
-relaxation.
+technical report. Run275 sharpens the same compact contract for weak-model fallback:
+reader stakes and plain language come before optional formal names. This layer remains
+prompt-only: no provider/API call and no gate relaxation.
 """
 
 from __future__ import annotations
@@ -21,15 +22,15 @@ def editorial_planning_contract() -> str:
 [{RUN226_MARKER} — 無料note記事 / HUMAN EDITORIAL PLAN]
 本文を書く前に、取得済みSOURCE BOUNDARY / Evidenceだけで次を内部決定する。これは思考用メモであり本文の固定見出しにしない。
 
-1. Reader Tension — 非エンジニアが最初に知りたい疑問・自分との関係を1つ選ぶ。
+1. Reader Tension — 非エンジニアが最初に知りたい疑問・自分との関係を1つ選ぶ。冒頭は「読者の困りごと・迷い・選択」→普通の言葉で何が変わるか→必要な場合だけ正式な技術名、の順で入る。最初の段落を製品名・略語・実装名の説明から始めない。
 2. Discovery — 読後に「そういうことだったのか」と残る記事固有の核心を1つ選ぶ。発表要約だけを核心にしない。
 3. Concrete Consequence — その核心が読者の選択・使い方・導入判断に何を意味するかをEvidenceの範囲で示す。
-4. Explanation Bridge — 核心を理解するのに本当に必要な専門概念だけを、普通の言葉から説明する。比喩・問い・scene・会話調は自然に理解を助ける場合だけ任意で使う。
+4. Explanation Bridge — 核心を理解するのに本当に必要な専門概念だけを、普通の言葉から説明する。正式名称・略語・実装名は、それ自体がDiscovery・制約・Decisionに必要な時だけ出し、最初の1回で役割を平易に示す。比喩・問い・scene・会話調は自然に理解を助ける場合だけ任意で使う。
 5. Editorial Point of View — EvidenceとDecisionから編集者としてどこを重要と見るかを1本の視点として通す。
 
 最終優先順位:
 - Fact / Evidence / Decision / required qualifier / 重要な制約は絶対に落とさない。
-- そのうえで、DiscoveryまたはDecisionを理解するために不要な周辺仕様・実装列挙・重複説明はARTICLEへ詰め込まない。
+- そのうえで、DiscoveryまたはDecisionを理解するために不要な周辺仕様・実装列挙・重複説明・名称紹介はARTICLEへ詰め込まない。
 - 分かりやすさは新情報の足し算ではなく、選択・順序・削除・言い換えで作る。
 
 安全境界:
@@ -39,7 +40,7 @@ def editorial_planning_contract() -> str:
 - 「ですよね」「実は」「つまり」、問い、短文、箇条書き、比喩に回数ノルマを設けない。固定Hook分類を均等配分しない。5項目を本文の固定順序にしない。style countだけを新しいHard Gateにしない。
 - 既存の出力schema、SOURCE BOUNDARY、Evidence-to-Decision、Decision Score、URL、Publication Contractを変更しない。
 
-目標は、正確な技術レポートを親しみ語で飾ることではない。読者が疑問からDiscoveryへ進み、核心を理解できた快感と自分の判断を持って読み終える記事にする。
+目標は、正確な技術レポートを親しみ語で飾ることではない。読者が自分の疑問からDiscoveryへ進み、核心を理解できた快感と自分の判断を持って読み終える記事にする。
 """.strip()
 
 
