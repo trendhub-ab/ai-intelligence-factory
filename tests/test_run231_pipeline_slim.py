@@ -210,6 +210,9 @@ class Run231PipelineSlimTests(unittest.TestCase):
         numeric_precision = types.ModuleType("run283_numeric_evidence_equivalence")
         numeric_precision.install = lambda pipeline_module: events.append("run283") or pipeline_module
 
+        reader_recovery_precision = types.ModuleType("run284_reader_recovery_precision")
+        reader_recovery_precision.install = lambda pipeline_module: events.append("run284") or pipeline_module
+
         with patch.object(
             production_pipeline,
             "install_runtime_layers",
@@ -222,6 +225,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
                 "run179_eyecatch_font_refinement": font,
                 "run231_performance_telemetry": telemetry,
                 "run283_numeric_evidence_equivalence": numeric_precision,
+                "run284_reader_recovery_precision": reader_recovery_precision,
             },
             clear=False,
         ):
@@ -232,6 +236,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
             [
                 "runtime_layers",
                 "run283",
+                "run284",
                 "preflight",
                 ("font", True),
                 "telemetry",
