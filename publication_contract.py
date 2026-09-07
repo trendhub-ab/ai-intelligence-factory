@@ -22,12 +22,33 @@ READY_CAPTION_PREFIX = "AIIF_MANUSCRIPT:READY|"
 ROOT = Path(__file__).resolve().parent
 
 # Keep this list deliberately limited to code that can materially change a persisted public
-# article or its public eyecatch.  Operational/member-only changes must not invalidate every
-# publishable article.  The repository-wide guard verifies that this manifest remains aligned
-# with production_pipeline.py's installed layers.
+# article or its public eyecatch. Operational/member-only changes must not invalidate every
+# publishable article. Run280's repository-wide guard fail-closes when an active publication
+# dependency is omitted or when Note Ready reconciliation stops tracking a policy file.
 PUBLICATION_POLICY_FILES = (
     "pipeline.py",
     "production_pipeline.py",
+    "runtime_layers.py",
+    "source_normalization.py",
+    "evidence_context.py",
+    "reader_experience_signals.py",
+    "editorial_naturalness.py",
+    "note_manuscript.py",
+    "gate_reasoning.py",
+    "screening_protocol.py",
+    "notion_payloads.py",
+    "source_document_parsing.py",
+    "content_generation_protocol.py",
+    "evidence_sufficiency.py",
+    "fact_validation_signals.py",
+    "source_boundary_validation.py",
+    "business_source_acquisition.py",
+    "run269_acquisition_precision.py",
+    "run269_vendor_current_state.py",
+    "reader_quality_precision.py",
+    "run260_gemini_model_routing.py",
+    "run268_business_source_strategy.py",
+    "run269_business_source_precision.py",
     "editorial_eyecatch.py",
     "decision_intelligence.py",
     "evidence_authority.py",

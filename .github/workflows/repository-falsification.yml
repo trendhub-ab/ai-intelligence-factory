@@ -37,6 +37,11 @@ jobs:
           python run279_runtime_layer_guard.py
           python -m unittest tests.test_run279_runtime_layer_guard -v
 
+      - name: Enforce Run280 publication dependency completeness
+        run: |
+          python run280_publication_dependency_guard.py
+          python -m unittest tests.test_run280_publication_dependency_guard -v
+
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
 
