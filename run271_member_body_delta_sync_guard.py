@@ -29,14 +29,35 @@ def main() -> int:
         ),
     )
     _require(
+        "member_body_delta_checkpoint.py",
+        (
+            "select_previous_successful_start",
+            "fetch_previous_successful_start",
+            '"fallback_if_missing": "full_scan"',
+            "run_started_at",
+            "conclusion",
+            'head_branch") or "") != "main"',
+        ),
+    )
+    _require(
         ".github/workflows/member-presentation-sync.yml",
         (
             "force_full_body_sync",
-            "Capture member body delta cutoff",
+            "actions: read",
+            "Resolve previous successful member sync checkpoint",
+            "member_body_delta_checkpoint.py",
             "MEMBER_BODY_CHANGED_SINCE",
             "MEMBER_BODY_FORCE_FULL",
             "github.run_attempt > 1",
             "tests/test_run271_member_body_delta_sync.py",
+            "tests/test_run271_1_member_body_checkpoint.py",
+        ),
+    )
+    _require(
+        ".github/workflows/repository-falsification.yml",
+        (
+            "python run271_member_body_delta_sync_guard.py",
+            "python -m unittest tests.test_run271_1_member_body_checkpoint -v",
         ),
     )
     _require(
@@ -44,6 +65,7 @@ def main() -> int:
         (
             "Run271 — Member Body Delta Sync",
             "MEMBER_BODY_CHANGED_SINCE",
+            "前回成功",
             "sentinel",
         ),
     )
@@ -52,6 +74,7 @@ def main() -> int:
         (
             "Run271 — Member Body Delta Sync",
             "last_edited_time",
+            "previous successful",
             "sentinel",
             "Run271 does not claim a production timing improvement",
         ),

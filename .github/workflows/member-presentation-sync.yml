@@ -20,6 +20,7 @@ on:
       - 'provision_member_presentation_db.py'
       - 'member_presentation_sync.py'
       - 'member_presentation_body_sync.py'
+      - 'member_body_delta_checkpoint.py'
       - 'member_ux_guard.py'
       - 'member_ux_body_fast.py'
       - 'member_human_language_ux.py'
@@ -54,6 +55,7 @@ on:
       - 'tests/test_run250_member_client_action_product.py'
       - 'tests/test_run270_proposal_first_member_surface.py'
       - 'tests/test_run271_member_body_delta_sync.py'
+      - 'tests/test_run271_1_member_body_checkpoint.py'
       - '.github/workflows/member-presentation-sync.yml'
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -68,6 +70,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   sync:
@@ -111,6 +114,7 @@ jobs:
           python -m unittest tests/test_run250_member_client_action_product.py
           python -m unittest tests/test_run270_proposal_first_member_surface.py
           python -m unittest tests/test_run271_member_body_delta_sync.py
+          python -m unittest tests/test_run271_1_member_body_checkpoint.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -123,9 +127,10 @@ jobs:
           MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8178-867c-d9249a3ff5c8'
           MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
 
-      - name: Capture member body delta cutoff
-        run: |
-          echo "MEMBER_BODY_CHANGED_SINCE=$(date -u -d '5 seconds ago' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+      - name: Resolve previous successful member sync checkpoint
+        run: python member_body_delta_checkpoint.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Sync clean member DB with lifecycle-aware Proposal-First UI
         run: python run219_member_human_language_ui.py presentation

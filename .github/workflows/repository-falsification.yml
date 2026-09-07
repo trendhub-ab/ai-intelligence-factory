@@ -70,9 +70,12 @@ jobs:
           python -m unittest tests.test_run270_proposal_first_member_surface -v
 
       - name: Enforce Run271 member body delta sync contract
-        # Keep this required guard zero-dependency. The behavior test imports the
-        # Notion transport stack and runs in locked Integration + Member UX CI.
-        run: python run271_member_body_delta_sync_guard.py
+        # Keep this required guard zero-dependency. The main behavior test imports
+        # the Notion transport stack and runs in locked Integration + Member UX CI;
+        # the Run271.1 checkpoint selector itself is stdlib-only and runs here too.
+        run: |
+          python run271_member_body_delta_sync_guard.py
+          python -m unittest tests.test_run271_1_member_body_checkpoint -v
 
       - name: Enforce Run263 Integration hermeticity and stability
         run: |
