@@ -70,6 +70,7 @@ def main() -> None:
     from run231_performance_telemetry import install as install_performance_telemetry
     from run268_business_source_strategy import install as install_run268_business_source_strategy
     from run269_business_source_precision import install as install_run269_business_source_precision
+    from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
     # Install them before the historical runtime wrapper chain so every later layer sees
@@ -89,6 +90,12 @@ def main() -> None:
     # live network acquisition surfaces after real smoke testing exposed vendor-nav and
     # HN typo false positives. No provider/model/Notion path is introduced here.
     install_run269_business_source_precision(pipeline)
+
+    # Run275 is a zero-API publication-quality precision overlay derived from real Run31
+    # artifacts. It corrects only reproducible Reader signal false positives (opening
+    # bridge, visible heading rhythm, later acronym explanation) and one malformed
+    # Japanese particle collision. Genuine dense-reader failures remain REVIEW.
+    install_reader_quality_precision(pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
