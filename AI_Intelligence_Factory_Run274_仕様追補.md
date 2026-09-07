@@ -45,7 +45,7 @@ Run226 / Run228は追加レイヤーを増やすのではなく、既存指示�
 
 従来は、Evidence preflightでGeminiを1回も使わず脱落した候補も `MAX_DEEP_DIVE_CANDIDATE_ATTEMPTS` を1件消費していた。その結果、モデル予算を温存できていてもEvidence-ready候補へ到達する前に探索が止まる可能性があった。
 
-Run274では `run274_zero_api_evidence_backfill.py` を導入する。
+Run274では新しいruntime layerを追加せず、既存のOperational Yield authorityである `run173_operational_yield.py` にbounded zero-API Evidence Backfillを統合する。
 
 - 既存Funnelの `deep_dive_calls_avoided` が増えた場合だけ、ゼロモデル脱落と確定する。
 - その場合だけcandidate attempt headroomを1件返す。
@@ -55,8 +55,9 @@ Run274では `run274_zero_api_evidence_backfill.py` を導入する。
 - Evidence Gate、Source Authority、Fact Gateを変更しない。
 - regen/nonpersistent経路ではheadroomを変更しない。
 - 新しいProduction funnelではheadroomをリセットする。
+- `runtime_layers.py` / `production_pipeline.py` の既存runtime manifestは増やさない。
 
-この方式により「Geminiを使わなかった失敗だけ探索枠を返す」ため、無料枠を増やさずBackfill到達確率だけを上げる。
+この方式により「Geminiを使わなかった失敗だけ探索枠を返す」ため、無料枠を増やさずBackfill到達確率だけを上げる。また既存Operational Yield層へ統合することで、同種の歩留まり制御を別wrapperへ分散させない。
 
 ## 4. 反証テスト契約
 
@@ -68,8 +69,9 @@ Run274は少なくとも以下を検証する。
 - base model-attempt cap 7は変わらない。
 - nonpersistent/regenではProduction headroomを変えない。
 - 新しいrun/funnelで補償状態をリセットする。
-- Run274層自身にprovider/model/network call siteを追加しない。
-- Run29実ProductionのReader Value failure fingerprintを既存Reader promptが直接扱う。
+- Run173内のRun274補償経路に新しいprovider/model/network call siteを追加しない。
+- runtime manifestへ新規Run274 layerを追加しない。
+- 実ProductionのReader Value failure fingerprintを既存Reader promptが直接扱う。
 - Fact / Evidence / Decision / Source Boundaryを維持する。
 - repository-wide regression / falsification / workflow safetyをすべて通す。
 
@@ -82,6 +84,7 @@ Run274の技術的完了と事業的完了を分離する。
 - deterministic CI / repository falsificationがgreen
 - existing model budgets unchanged
 - Gate relaxationなし
+- runtime manifestの不要な肥大化なし
 
 ### 事業的完了
 
