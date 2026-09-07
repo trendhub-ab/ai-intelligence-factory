@@ -140,18 +140,24 @@ class Run282SelectionTests(unittest.TestCase):
 
 
 class Run282ExecutionTests(unittest.TestCase):
-    def _pipeline(self, generated_status="accepted"):
+    def _pipeline(self, generated_status="accepted", generated_value="body"):
         calls = []
 
         class DailyQuotaExhaustedError(Exception):
             pass
+
+        def generate(repo, **kwargs):
+            calls.append((repo, kwargs))
+            if generated_value is None:
+                return None
+            return (generated_value, generated_status)
 
         pipeline = SimpleNamespace(
             logger=_Logger(),
             DEEP_DIVE_MODEL_BUDGET=SimpleNamespace(budget=12),
             ARTICLE_STATUS_READY="Ready",
             DailyQuotaExhaustedError=DailyQuotaExhaustedError,
-            generate_intelligence_report=lambda repo, **kwargs: calls.append((repo, kwargs)) or ("body", generated_status),
+            generate_intelligence_report=generate,
         )
         return pipeline, calls
 
@@ -174,6 +180,8 @@ class Run282ExecutionTests(unittest.TestCase):
              }, clear=False):
             result = recovery.run_current_policy_ready_recovery(pipeline)
 
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["persisted_status_counts"], {"Ready": 1})
         self.assertEqual(result["recovered"], 1)
         self.assertEqual(pipeline.DEEP_DIVE_MODEL_BUDGET.budget, 4)
         self.assertEqual(len(calls), 1)
@@ -194,12 +202,37 @@ class Run282ExecutionTests(unittest.TestCase):
             "repo": {"nameWithOwner": "repo/two", "source": "GitHub"},
         }
         with mock.patch.object(recovery, "select_stale_ready_items", return_value=[item]), \
-             mock.patch.object(recovery, "_read_article_status") as status_read, \
+             mock.patch.object(recovery, "_read_article_status", return_value="Needs Editorial Review") as status_read, \
              mock.patch.object(recovery, "_has_current_ready_manuscript") as current_read:
             result = recovery.run_current_policy_ready_recovery(pipeline, limit=1)
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["persisted_status_counts"], {"Needs Editorial Review": 1})
         self.assertEqual(result["rejected"], 1)
         self.assertEqual(result["recovered"], 0)
-        status_read.assert_not_called()
+        status_read.assert_called_once_with(pipeline, "page-2")
+        current_read.assert_not_called()
+
+    def test_falsy_generation_reports_persisted_pending_retry_without_claiming_generated(self):
+        pipeline, calls = self._pipeline(generated_value=None)
+        item = {
+            "notion_page_id": "page-firefox",
+            "screening_score": 85,
+            "screening_reason": "candidate",
+            "article_value": 90,
+            "decision_score": 85,
+            "repo": {"nameWithOwner": "Firefox candidate", "source": "HackerNews"},
+        }
+        with mock.patch.object(recovery, "select_stale_ready_items", return_value=[item]), \
+             mock.patch.object(recovery, "_read_article_status", return_value="Pending Retry"), \
+             mock.patch.object(recovery, "_has_current_ready_manuscript") as current_read:
+            result = recovery.run_current_policy_ready_recovery(pipeline, limit=1)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["selected"], 1)
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["generated"], 0)
+        self.assertEqual(result["persisted_status_counts"], {"Pending Retry": 1})
+        self.assertEqual(result["recovered"], 0)
         current_read.assert_not_called()
 
     def test_dispatch_mode_can_select_recovery_without_daily(self):
