@@ -26,7 +26,6 @@ RUNTIME_LAYER_ORDER = (
     "run177_paid_funnel_alignment.install",
     "run226_reader_delight_planning.install",
     "run228_reader_rhythm_planning.install",
-    "run274_zero_api_evidence_backfill.install",
     "run178_eyecatch_editorial_layout_optimizer.install",
     "run179_eyecatch_font_refinement.install",
     "run180_eyecatch_semantic_layout.install",
@@ -59,7 +58,6 @@ def install_runtime_layers(pipeline_module):
     import run177_paid_funnel_alignment
     import run226_reader_delight_planning
     import run228_reader_rhythm_planning
-    import run274_zero_api_evidence_backfill
     import run178_eyecatch_editorial_layout_optimizer
     import run179_eyecatch_font_refinement
     import run180_eyecatch_semantic_layout
@@ -101,10 +99,6 @@ def install_runtime_layers(pipeline_module):
     # model call and must remain in this order so Run228 refines the Run226 plan.
     run226_reader_delight_planning.install(pipeline_module)
     run228_reader_rhythm_planning.install(pipeline_module)
-
-    # Run274 does not alter the prompt or any gate. It only returns bounded candidate
-    # headroom when the existing Evidence preflight proves that Gemini was not called.
-    run274_zero_api_evidence_backfill.install(pipeline_module)
 
     # Eyecatch layers are deliberately ordered refinements of the same renderer.
     run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
