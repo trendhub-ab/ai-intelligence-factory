@@ -1,18 +1,21 @@
-"""Run249: final publication-surface revalidation before Ready.
+"""Run249/276: final publication-surface revalidation before Ready.
 
 Run248 proved that reader-value diagnostics can stop weak generated drafts, but the first
 post-Run248 real article exposed a later boundary: the reader-first summary/title/presentation
-surface is assembled only after the normal article gates.  A draft can therefore pass the
+surface is assembled only after the normal article gates. A draft can therefore pass the
 article gate and still become a weak or malformed final note manuscript.
 
-This layer stays zero-provider-call.  It reuses the same narrow reader/Japanese criteria as
-Run248 against a projection of the *final public surface* during Human Appeal evaluation, so
-the existing Needs Editorial Review path remains authoritative.  The criteria are kept local
-on purpose: the zero-API Note Ready reconciliation environment must not import Run248's
-Pillow-backed eyecatch implementation merely to evaluate text policy.  It also repairs one
-deterministic presentation-only defect (the canonical disclaimer being glued to a supplemental
-Evidence link).  No Evidence, Decision, numerical claim, model call, eyecatch background, or
-public release behavior is changed.
+Run32 exposed an important category boundary. The final projection prepends three intentionally
+compact 30-second summary answers to the article. Feeding that combined surface back through the
+full long-form article density/rhythm diagnostics can manufacture Jargon/Information-Budget
+reviews even when the article body itself is healthy: two 70-110 character summary rows are
+enough to look like two dense "article paragraphs". Run276 keeps final-surface protection but
+uses the article body as authority for article-wide Reader axes and applies narrow, high-confidence
+summary checks to the compact header itself.
+
+This layer stays zero-provider-call. It also repairs one deterministic presentation-only defect
+(the canonical disclaimer being glued to a supplemental Evidence link). No Evidence, Decision,
+numerical claim, model call, eyecatch background, or public release behavior is changed.
 """
 from __future__ import annotations
 
@@ -22,6 +25,7 @@ from typing import Any
 _INSTALLED_ATTR = "_run249_final_publication_surface_gate_installed"
 READER_VALUE_MARKER = "reader_value_review:"
 RUN249_ZERO_PROVIDER_CALLS = True
+RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
 
 _SUMMARY_LABELS = (
     ("what", "何が出た？"),
@@ -29,10 +33,8 @@ _SUMMARY_LABELS = (
     ("decision", "結論は？"),
 )
 
-# Run249 deliberately mirrors the *text-only* Run248 final-publish criteria rather than
-# importing the whole Run248 module. Run248 also owns deterministic eyecatch repair and thus
-# imports Pillow. Keeping these constants local preserves the minimal zero-API Note Ready
-# dependency surface while retaining the same publication policy.
+# Article-wide Reader dimensions. These belong to the long-form body; Run276 does not let the
+# compact 30-second header redefine them merely because it is prepended to the final surface.
 _CORE_READER_KEYS = (
     "accessibility",
     "curiosity_pull",
@@ -53,9 +55,17 @@ _SURFACE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"眼砲"), "malformed_lexeme_ganpou"),
 )
 
+_SUMMARY_COMMON_ACRONYMS = {
+    "AI", "API", "LLM", "OSS", "URL", "UI", "UX", "DB", "CPU", "GPU", "ID", "PC",
+}
+_SUMMARY_PLAIN_BRIDGE_RE = re.compile(
+    r"(?:簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|"
+    r"言葉を変えると|たとえば|例えば|ようなもの|という意味|を指します|のことです)"
+)
+
 
 def _extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
-    """Run248-equivalent broad reader weakness, kept text-only and dependency-free."""
+    """Broad long-form reader weakness over the article body."""
     reviewed = [key for key in _CORE_READER_KEYS if signals.get(key) == "REVIEW"]
     issues: list[str] = []
     if len(reviewed) >= 4:
@@ -77,7 +87,7 @@ def _extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
 
 
 def _extra_japanese_surface_failures(article: str) -> list[str]:
-    """Run248-equivalent high-confidence Japanese surface defects, zero dependency."""
+    """High-confidence Japanese surface defects, zero dependency."""
     prose = re.sub(r"```.*?```|`[^`\n]+`", "", str(article or ""), flags=re.S)
     failures: list[str] = []
     for pattern, reason in _SURFACE_PATTERNS:
@@ -114,14 +124,48 @@ def _summary_fragment_issues(summary: dict[str, str] | None) -> list[str]:
         value = str(summary.get(key) or "").strip()
         if not value:
             continue
-        # In the compact 30-second answer, a trailing Japanese/ASCII comma is never a
-        # complete standalone answer. This is the exact defect observed in the first
-        # post-Run248 real Ready article ("...課題に対し、" / "...可能にし、").
         if re.search(r"[、，,]\s*$", value):
             issues.append(
                 f"{READER_VALUE_MARKER}final_surface_summary_fragment:{label}"
             )
     return issues
+
+
+def _summary_row_is_jargon_dense(value: str) -> bool:
+    """High-confidence compact-summary jargon signal, not a long-form paragraph metric."""
+    text = re.sub(r"\[([^]]+)\]\([^)]*\)|[*_`#]", r"\1", str(value or ""))
+    compact = re.sub(r"\s+", "", text)
+    if len(compact) < 45 or _SUMMARY_PLAIN_BRIDGE_RE.search(text):
+        return False
+
+    acronyms = {
+        token for token in re.findall(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9-]{1,8})(?![A-Za-z0-9])", text)
+        if token not in _SUMMARY_COMMON_ACRONYMS
+    }
+    technical = {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", text)
+    }
+    # This threshold is intentionally much narrower than the article diagnostic. A compact
+    # answer is allowed to be information-dense; we block only a cluster with multiple uncommon
+    # acronyms or many distinct technical terms and no plain-language bridge.
+    return len(acronyms) >= 2 or len(technical) >= 5
+
+
+def _summary_reader_value_issues(summary: dict[str, str] | None) -> list[str]:
+    summary = summary or {}
+    dense_labels = [
+        label for key, label in _SUMMARY_LABELS
+        if _summary_row_is_jargon_dense(str(summary.get(key) or ""))
+    ]
+    if len(dense_labels) >= 2:
+        return [
+            READER_VALUE_MARKER
+            + "final_surface_summary_jargon_cluster ("
+            + "/".join(dense_labels)
+            + ")"
+        ]
+    return []
 
 
 def _projection_from_parts(title: str, summary: dict[str, str], article: str) -> str:
@@ -141,12 +185,7 @@ def _final_surface_probe(
     parsed: dict,
     reader_summary: dict[str, str],
 ) -> str:
-    """Build a deterministic close proxy of the later persisted note surface.
-
-    The real source/Evidence URLs are intentionally not invented here. Reader Experience
-    signals need the title, 30-second summary and article rhythm; a no-source preview is enough
-    to detect the exact late-stage regression without moving persistence into the quality gate.
-    """
+    """Build a deterministic close proxy of the later persisted note surface."""
     title = str((parsed or {}).get("title_text") or "")
     article = str((parsed or {}).get("note_draft") or "")
     try:
@@ -166,8 +205,6 @@ def _final_surface_probe(
             or ""
         )
     except Exception:
-        # Final-surface QA must never become a new operational failure because an old
-        # compatibility stub has a narrower signature. The fallback is still deterministic.
         return _projection_from_parts(title, reader_summary, article)
 
 
@@ -177,7 +214,14 @@ def final_surface_issues(
     original_build_summary,
     parsed: dict,
 ) -> tuple[list[str], dict[str, str], str]:
-    """Return material issues for the final public projection, zero API."""
+    """Return material issues for the final public projection, zero API.
+
+    Run276 separates two domains:
+    - article-wide Reader axes are evaluated on the actual article body;
+    - late title/summary/presentation defects are evaluated with surface-specific checks.
+    The final projection is still scanned for malformed Japanese, so presentation assembly cannot
+    hide a broken public sentence.
+    """
     parsed = parsed or {}
     issues: list[str] = []
 
@@ -190,15 +234,20 @@ def final_surface_issues(
     except Exception:
         summary = {}
     issues.extend(_summary_fragment_issues(summary))
+    issues.extend(_summary_reader_value_issues(summary))
 
     projection = _final_surface_probe(
         pipeline_module, original_build_manuscript, parsed, summary
     )
-    if projection:
-        signals = pipeline_module._reader_experience_signals(projection)
+
+    article = str(parsed.get("note_draft") or "")
+    if article:
+        signals = pipeline_module._reader_experience_signals(article)
         for issue in _extra_reader_value_issues(signals):
             suffix = str(issue).split(READER_VALUE_MARKER, 1)[-1]
             issues.append(READER_VALUE_MARKER + "final_surface_" + suffix)
+
+    if projection:
         for failure in _extra_japanese_surface_failures(projection):
             issues.append(READER_VALUE_MARKER + "final_surface_" + str(failure))
 
@@ -208,8 +257,6 @@ def final_surface_issues(
 def repair_final_public_manuscript(markdown_text: str) -> str:
     """Repair deterministic presentation-only defects after Run248 manuscript shaping."""
     text = str(markdown_text or "")
-    # The real Run248 specimen showed the canonical disclaimer immediately attached to the
-    # second supplemental Evidence Markdown link. This separator changes presentation only.
     text = re.sub(
         r"(?<!\n)(?=※本記事に含まれる見解・提案は筆者個人の意見であり、)",
         "\n\n",
@@ -255,5 +302,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.build_clean_note_manuscript = build_clean_note_manuscript_with_final_presentation_repair
     pipeline_module.RUN249_ZERO_PROVIDER_CALLS = True
     pipeline_module.RUN249_FINAL_SURFACE_REVALIDATION = True
+    pipeline_module.RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
