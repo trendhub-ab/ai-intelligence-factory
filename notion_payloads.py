@@ -8,6 +8,8 @@ import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from source_normalization import canonicalize_published_at
+
 
 def _cfg(config: Mapping[str, Any], name: str) -> Any:
     try:
@@ -56,9 +58,10 @@ def safe_chunk_text(text: str, limit: int) -> list[str]:
 
 
 def notion_date_property(iso_datetime: str | None) -> dict:
-    if not iso_datetime:
+    canonical = canonicalize_published_at(iso_datetime)
+    if not canonical:
         return {"date": None}
-    return {"date": {"start": iso_datetime}}
+    return {"date": {"start": canonical}}
 
 
 def build_notion_properties(
