@@ -22,7 +22,8 @@ import time
 from typing import Any
 
 _INSTALL_FLAG = "_aiif_provider_resilience_installed"
-_MAX_503_CONFIRM_DELAY_SECONDS = 5
+_DEFAULT_503_CONFIRM_DELAY_SECONDS = 10
+_MAX_503_CONFIRM_DELAY_SECONDS = 20
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
@@ -47,9 +48,9 @@ def _clear_legacy_503_state(pipeline_module: Any, model_name: str) -> None:
 
 def _confirmation_delay(pipeline_module: Any, exc: BaseException) -> int:
     try:
-        raw = int(pipeline_module._extract_retry_delay(exc, 2))
+        raw = int(pipeline_module._extract_retry_delay(exc, _DEFAULT_503_CONFIRM_DELAY_SECONDS))
     except Exception:
-        raw = 2
+        raw = _DEFAULT_503_CONFIRM_DELAY_SECONDS
     return max(1, min(_MAX_503_CONFIRM_DELAY_SECONDS, raw))
 
 
