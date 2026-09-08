@@ -38,12 +38,13 @@ jobs:
       - name: Install zero-browser dependency
         run: pip install requests
 
-      - name: Run291/292/293/294 zero-VM contract tests
+      - name: Run291/292/293/294/295 zero-VM contract tests
         run: |
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
           python -m unittest tests.test_run294_note_eyecatch_persistence_diagnostics -v
+          python -m unittest tests.test_run295_note_eyecatch_persistence -v
 
       - name: Validate exact existing private draft state before VM start
         env:
@@ -156,19 +157,20 @@ jobs:
             exit 1
           }
 
-      - name: Run291/292/293/294 read-only regression tests
+      - name: Run291/292/293/294/295 read-only regression tests
         run: |
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
           python -m unittest tests.test_run294_note_eyecatch_persistence_diagnostics -v
+          python -m unittest tests.test_run295_note_eyecatch_persistence -v
 
       - name: Audit exact existing private draft without mutation
         env:
           NOTE_AUDIT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
           NOTE_AUDIT_PREPARE_ONLY: 'false'
-          NOTE_AUDIT_RESULT_FILE: ${{ runner.temp }}/run294-result.json
+          NOTE_AUDIT_RESULT_FILE: ${{ runner.temp }}/run295-result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
@@ -179,12 +181,12 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: xvfb-run -a python run294_note_eyecatch_persistence_diagnostics.py
+        run: xvfb-run -a python run295_note_private_draft_audit.py
 
       - name: Summarize non-content audit metrics only
         if: ${{ always() }}
         env:
-          RESULT_FILE: ${{ runner.temp }}/run294-result.json
+          RESULT_FILE: ${{ runner.temp }}/run295-result.json
         run: |
           python - <<'PY'
           import json, os
@@ -192,7 +194,7 @@ jobs:
           path = Path(os.environ['RESULT_FILE'])
           if not path.exists():
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-                  fh.write('### Run294 private note draft read-only audit\n')
+                  fh.write('### Run295 private note draft read-only audit\n')
                   fh.write('- result: `FAIL-CLOSED`\n')
                   fh.write('- safe diagnostic result file: `missing`\n')
                   fh.write('- unpublished content / draft URL / image URL exposed: `false`\n')
@@ -201,7 +203,8 @@ jobs:
           passed = result.get('status') == 'audit_passed'
           safe_keys = [
               'diagnostic_code', 'expectation_mode',
-              'title_match', 'eyecatch_present', 'body_h1_count', 'heading_count',
+              'title_match', 'eyecatch_present', 'eyecatch_proof_mode',
+              'body_h1_count', 'heading_count',
               'paragraph_count', 'list_item_count', 'link_count', 'blockquote_count',
               'body_visible_chars', 'expected_visible_chars', 'legacy_expected_visible_chars',
               'renderer_delta_chars', 'renderer_delta_ratio', 'visible_length_ratio',
@@ -221,7 +224,7 @@ jobs:
               'viewport_width', 'viewport_height'
           ]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run294 private note draft read-only audit\n')
+              fh.write('### Run295 private note draft read-only audit\n')
               fh.write(f'- result: `{"PASS" if passed else "FAIL-CLOSED"}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
               fh.write(f'- draft mutation: `{result.get("draft_mutation") is True}`\n')
