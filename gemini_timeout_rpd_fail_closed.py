@@ -11,23 +11,39 @@ Run209 deliberately changes only that accounting behavior:
 - 429/503 and all other provider-visible errors were already counted and remain unchanged;
 - model selection, retry budgets, quality gates, publication policy, and Daily PAUSED are untouched.
 
-This is installed as infrastructure by ``production_pipeline.install_runtime_layers`` after the
-runtime-state channel is installed, so both normal Production and the Pending Retry fast lane use
-the same conservative accounting contract.
+Run303 also corrects an observability inconsistency: pipeline._generate_via_chat still emits a
+legacy "released unobserved timeout reservation" message after calling release_unobserved. Once
+Run209 replaces that method with a no-op, the message is false. A narrow logger filter rewrites
+only that stale message so operational logs reflect the actual fail-closed counter state.
 """
 from __future__ import annotations
 
 from typing import Any
 
 
-def install(pipeline_module: Any):
-    """Replace timeout reservation release with a fail-closed no-op on the live counter.
+_STALE_RELEASE_PREFIX = "[GEMINI PERSISTENT RECONCILE] released unobserved timeout reservation"
 
-    ``pipeline._generate_via_chat`` calls ``PERSISTENT_GEMINI_COUNTER.release_unobserved`` only
-    for transport/watchdog timeout families. Keeping the reservation here therefore makes the
-    repository-local RPD counter conservative without changing the underlying counter schema or
-    the configured daily budget.
-    """
+
+class _Run209TimeoutLogConsistencyFilter:
+    """Rewrite only the legacy timeout-release message after Run209 suppresses release."""
+
+    def filter(self, record) -> bool:
+        try:
+            rendered = record.getMessage()
+        except Exception:
+            return True
+        if rendered.startswith(_STALE_RELEASE_PREFIX):
+            record.msg = rendered.replace(
+                "released unobserved timeout reservation",
+                "release suppressed by Run209; timeout reservation kept",
+                1,
+            )
+            record.args = ()
+        return True
+
+
+def install(pipeline_module: Any):
+    """Replace timeout reservation release with a fail-closed no-op on the live counter."""
     counter = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if counter is None:
         raise RuntimeError("Run209 requires PERSISTENT_GEMINI_COUNTER")
@@ -53,6 +69,12 @@ def install(pipeline_module: Any):
         return None
 
     counter.release_unobserved = keep_timeout_reservation
+
+    logger = getattr(pipeline_module, "logger", None)
+    if logger is not None and not bool(getattr(logger, "_run303_timeout_log_filter_installed", False)):
+        logger.addFilter(_Run209TimeoutLogConsistencyFilter())
+        setattr(logger, "_run303_timeout_log_filter_installed", True)
+
     setattr(counter, "_run209_timeout_rpd_fail_closed_installed", True)
     setattr(pipeline_module, "RUN209_TIMEOUT_RPD_FAIL_CLOSED", True)
     return pipeline_module
