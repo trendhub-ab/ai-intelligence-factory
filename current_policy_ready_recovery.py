@@ -22,6 +22,10 @@ from urllib.parse import urlencode
 
 import publication_contract
 from publication_source_contract import ACTIVE_PUBLIC_SOURCES
+from run285_operational_accounting import (
+    increment_status_count,
+    install_recovery_evidence_audit,
+)
 
 HARD_MAX_RECOVERY_LIMIT = 1
 HARD_MAX_REQUEST_BUDGET = 4
@@ -268,6 +272,18 @@ def _cap_recovery_budget(pipeline) -> int:
     return requested
 
 
+def _empty_recovery_result(selected: int = 0) -> dict[str, Any]:
+    return {
+        "selected": int(selected),
+        "processed": 0,
+        "generated": 0,
+        "accepted": 0,
+        "recovered": 0,
+        "rejected": 0,
+        "persisted_status_counts": {},
+    }
+
+
 def run_current_policy_ready_recovery(pipeline, limit: int | None = None) -> dict[str, Any]:
     """Persist exactly one high-value stale Ready candidate under today's policy."""
     requested_limit = int(limit or os.environ.get("CURRENT_POLICY_READY_RECOVERY_LIMIT", "1"))
@@ -279,13 +295,17 @@ def run_current_policy_ready_recovery(pipeline, limit: int | None = None) -> dic
         request_budget,
     )
 
+    # Observability only: this wraps the source-context function that the generator already calls.
+    # It adds no fetch/provider call and never changes the returned evidence mapping.
+    install_recovery_evidence_audit(pipeline)
+
     items = select_stale_ready_items(pipeline, selected_limit, DEFAULT_SCAN_LIMIT)
     if items is None:
         raise RuntimeError("Current-policy Ready recovery candidate read failed")
     if not items:
-        return {"selected": 0, "generated": 0, "accepted": 0, "recovered": 0, "rejected": 0}
+        return _empty_recovery_result(0)
 
-    result = {"selected": len(items), "generated": 0, "accepted": 0, "recovered": 0, "rejected": 0}
+    result = _empty_recovery_result(len(items))
     for rank, item in enumerate(items, start=1):
         repo = item.get("repo") or {}
         name = str(repo.get("nameWithOwner") or "unknown")
@@ -312,6 +332,14 @@ def run_current_policy_ready_recovery(pipeline, limit: int | None = None) -> dic
         except pipeline.DailyQuotaExhaustedError:
             pipeline.logger.error("[CURRENT POLICY RECOVERY STOP] Gemini daily quota exhausted")
             break
+
+        # ``generated`` intentionally remains the historical in-memory success counter.  A falsy
+        # return may still have persisted Pending Retry / Editorial Review / Quality Failed, so
+        # account for that separately from the authoritative Notion page after the call returns.
+        result["processed"] += 1
+        article_status = _read_article_status(pipeline, page_id)
+        increment_status_count(result["persisted_status_counts"], article_status)
+
         if not generated:
             continue
 
@@ -325,7 +353,6 @@ def run_current_policy_ready_recovery(pipeline, limit: int | None = None) -> dic
         # Trust the persisted artifact, not the in-memory return value.  The candidate is
         # recovered only when the original page is still Ready and contains a current-policy
         # byte-valid manuscript after the write.
-        article_status = _read_article_status(pipeline, page_id)
         current = _has_current_ready_manuscript(pipeline, page_id)
         if article_status == pipeline.ARTICLE_STATUS_READY and current is True:
             result["recovered"] += 1

@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${{ inputs.confirm }}" = "RECOVER_ONE_READY"
-          echo 'Run282/284 recovery confirmed: max candidates=1, max deep-dive requests=4, max reader-only repair=1, draft/VM=false.'
+          echo 'Run282/284/285 recovery confirmed: max candidates=1, max deep-dive requests=4, max reader-only repair=1, draft/VM=false.'
 
       - name: Checkout main
         uses: actions/checkout@v6
@@ -50,10 +50,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Zero-API Run282/284 recovery contract tests
+      - name: Zero-API Run282/284/285 recovery contract tests
         run: |
           python -m unittest tests.test_run282_current_policy_ready_recovery -v
           python -m unittest tests.test_run284_reader_recovery_precision -v
+          python -m unittest tests.test_run285_operational_accounting -v
           python run280_publication_dependency_guard.py
 
       - name: Recover one stale Ready on its original Notion page
@@ -175,10 +176,11 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run282/284 Current-policy Ready Recovery'
+            echo '### Run282/284/285 Current-policy Ready Recovery'
             echo '- stale Ready candidates regenerated: at most `1`'
             echo '- deep-dive/model request hard cap: `4`'
             echo '- reader-only model repair: at most `1`, only with Evidence SUFFICIENT + safe decision scope'
+            echo '- Run285 evidence/accounting audit: observational, adds `0` model/fetch calls'
             echo '- fresh acquisition / screening / Product Review: `false`'
             echo '- Note Ready reconciliation: `true`'
             echo '- successful workflow requires current-policy `source_ready >= 1`'

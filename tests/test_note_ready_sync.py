@@ -23,6 +23,21 @@ def code_block(body, caption):
     }
 
 
+def ready_page(page_id, *, source="GitHub", article_title="article"):
+    return {
+        "id": page_id,
+        "url": f"https://www.notion.so/{page_id}",
+        "properties": {
+            "記事状態": {"select": {"name": "Ready"}},
+            "記事名": title(article_title) if article_title else {"title": []},
+            "情報源": {"select": {"name": source}},
+            "元情報URL": {"url": "https://example.com/source"},
+            "一次情報URL": rt("https://example.com/primary"),
+            "アイキャッチ": {"files": []},
+        },
+    }
+
+
 class NoteReadySyncTests(unittest.TestCase):
     def test_source_state_accepts_only_ready_uses_first_primary_url_and_reads_eyecatch(self):
         page = {
@@ -112,6 +127,34 @@ class NoteReadySyncTests(unittest.TestCase):
         current = sync._destination_state(page)
         self.assertEqual(current["posting_status"], "投稿済み")
         self.assertEqual(current["quality_status"], "Ready")
+
+    def test_sync_metrics_account_for_every_ready_source_row(self):
+        source_pages = [
+            ready_page("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", source="GitHub", article_title="stale"),
+            ready_page("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", source="GitHub", article_title=""),
+            ready_page("cccccccccccccccccccccccccccccccc", source="ProductHunt", article_title="retired"),
+        ]
+        with patch.object(sync, "NOTION_API_KEY", "token"), \
+             patch.object(sync, "SOURCE_DATA_SOURCE_ID", "source"), \
+             patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_validate_destination_schema"), \
+             patch.object(sync, "_query_db", side_effect=[source_pages, []]), \
+             patch.object(sync, "_source_current_ready_manuscript", return_value=""):
+            result = sync.sync_note_ready_db()
+
+        self.assertEqual(result["source_ready_status_rows"], 3)
+        self.assertEqual(result["source_ready"], 0)
+        self.assertEqual(result["stale_publication_contract"], 1)
+        self.assertEqual(result["unsupported_source"], 1)
+        self.assertEqual(result["invalid_source_state"], 1)
+        classified = (
+            result["source_ready"]
+            + result["stale_publication_contract"]
+            + result["incomplete_publication_assets"]
+            + result["unsupported_source"]
+            + result["invalid_source_state"]
+        )
+        self.assertEqual(classified, result["source_ready_status_rows"])
 
 
 if __name__ == "__main__":
