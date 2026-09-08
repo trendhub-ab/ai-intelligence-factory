@@ -51,17 +51,6 @@ def _product_review_runtime_requested() -> bool:
     return os.environ.get("AIIF_PRODUCT_REVIEW_RUNTIME", "").strip().lower() == "true"
 
 
-def _run_product_review_runtime() -> None:
-    """Run product-only pipeline through the narrow Run305 provider runtime."""
-    import pipeline
-    import run203_runtime_state_channel as runtime_state_channel
-
-    install_product_review_provider_runtime(pipeline)
-    if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
-        runtime_state_channel.preflight_runtime_state_channel()
-    pipeline.main()
-
-
 def install_runtime_layers(pipeline_module):
     """Compatibility manifest for the existing Documentation Freshness Guard.
 
@@ -244,6 +233,17 @@ def main() -> None:
     if mode == "full":
         install_full_recovery(pipeline)
 
+    pipeline.main()
+
+
+def _run_product_review_runtime() -> None:
+    """Run product-only pipeline through the narrow Run305 provider runtime."""
+    import pipeline
+    import run203_runtime_state_channel as runtime_state_channel
+
+    install_product_review_provider_runtime(pipeline)
+    if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
+        runtime_state_channel.preflight_runtime_state_channel()
     pipeline.main()
 
 
