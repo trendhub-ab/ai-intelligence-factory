@@ -129,12 +129,38 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install browser dependencies
+      - name: Install browser and image dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests playwright
+          pip install requests playwright Pillow
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
+
+      - name: Require exact 1280x670 source eyecatch before any note mutation
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          from PIL import Image
+          import note_draft_automation as note_base
+          import run298_genrec_inplace_refresh as r298
+
+          _article, eyecatch_url = r298._expected_current_article()
+          image_path = note_base._download_eyecatch(eyecatch_url, r298.TARGET_SYNC_ID)
+          with Image.open(image_path) as image:
+              size = tuple(image.size)
+              image.verify()
+          if size != (1280, 670):
+              raise SystemExit(f'Run298 refuses eyecatch dimensions {size}; exact 1280x670 required')
+          print('RUN298_EYECATCH_SOURCE_SIZE=1280x670')
+          PY
+
       - name: Re-run exact final safety tests on VM
         run: |
           python -m unittest tests.test_run297_298_genrec_refresh -v
@@ -188,6 +214,7 @@ jobs:
           path = Path(os.environ['RESULT_FILE'])
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
               fh.write('### Run298 — final existing GenRec private draft refresh\n')
+              fh.write('- source eyecatch dimensions: `1280x670` (hard-gated before mutation)\n')
               if not path.exists():
                   fh.write('- result: `FAIL-CLOSED`\n')
                   raise SystemExit(0)
