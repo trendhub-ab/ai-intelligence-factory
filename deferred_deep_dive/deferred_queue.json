@@ -1,45 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08T14:59:06.837571+00:00",
+  "updated_at": "2026-09-08T15:16:07.797865+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2609.05339",
-      "deferred_at": "2026-09-07T04:00:39.860911+00:00",
-      "expires_at": "2026-11-06T04:00:39.860911+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability",
-        "originalTitle": "Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability",
-        "displayName": "Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.05339v1",
-        "description": "Model upgrades are routine; memory migrations are not. An agent can keep the same memory store and still forget: a new model may interpret old notes differently, mixed embedding versions may break retrieval, and repair may fail without the original evidence. We compare memory as the same history is preserved verbatim for long-context reading (LC-RAW), divided into chunks for retrieval-augmented generation (RAG), compressed by a model into natural-language notes (NOTES), or normalized into a fixe",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-04T16:44:17Z",
-        "sourceContext": "Model upgrades are routine; memory migrations are not. An agent can keep the same memory store and still forget: a new model may interpret old notes differently, mixed embedding versions may break retrieval, and repair may fail without the original evidence. We compare memory as the same history is preserved verbatim for long-context reading (LC-RAW), divided into chunks for retrieval-augmented generation (RAG), compressed by a model into natural-language notes (NOTES), or normalized into a fixed-schema knowledge graph (KG-fixed). The study uses 48 synthetic histories with randomized answer codes, exact scoring, and two open-weight models with sub 10 billion parameters. Our measurements show that fixed-schema structures transfer reliably, with KG-fixed accuracy changing by only $+0.0004 \\pm 0.0020$ following a writer swap. Conversely, compressed NOTES exhibit high model coupling, with accuracy shifting asymmetrically by $+9.91$ or $-13.28$ percentage points depending on the specific migration direction. In RAG systems, partial embedding migrations using a 50/50 mixed index capture only a 4.96-point accuracy improvement, forfeiting the majority of the 11.90-point gain achieved through full re-embedding. Diagnostic decomposition attributes 80% ($0.467 \\pm 0.014$) of the NOTES accuracy deficit to information lost during initial construction, whereas retrieval failures drive 81% ($0.364 \\pm 0.012$) of the RAG deficit. Finally, store-only repair of NOTES fails to reach a 90% performance recovery target in all 48 test cases, whereas retaining the raw source history enables successful recovery in 34 of 48 cases for one tested direction. These findings highlight the necessity of direction-specific migration testing, strict embedding space isolation, and the retention of source histories for memory repair.",
-        "primaryUrl": "https://arxiv.org/abs/2609.05339v1",
-        "sourceDetails": {
-          "authors": [
-            "Ankit Goyal",
-            "Jaideep Ray"
-          ],
-          "categories": [
-            "cs.AI",
-            "cs.CL",
-            "cs.IR"
-          ]
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-819c-bdde-f093f0c3784c",
-      "score": 85,
-      "reason": "実運用エージェントの継続性に関わる極めて重要な研究。",
-      "commercial_score": 80,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 83.25
-    },
     {
       "key": "https://ai.google.dev/gemini-api/docs/latest-model",
       "deferred_at": "2026-09-07T04:00:39.861307+00:00",
