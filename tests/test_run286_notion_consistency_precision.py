@@ -96,7 +96,7 @@ class Run286RepositoryContractTests(unittest.TestCase):
         test_at = text.index("tests.test_run286_notion_consistency_precision")
         model_at = text.index("run: python production_pipeline.py")
         self.assertLess(test_at, model_at)
-        self.assertIn("sleep 2", text)
+        self.assertIn("time.sleep(2)", text)
         self.assertIn("RUN286_NOTION_CONSISTENCY_PROBE", text)
         self.assertIn("python note_ready_sync.py | tee /tmp/run282-note-ready.txt", text)
         self.assertNotIn("note-create-draft.yml", text)
