@@ -88,6 +88,7 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
+    import note_manuscript
     import pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
@@ -99,6 +100,7 @@ def main() -> None:
     from run269_business_source_precision import install as install_run269_business_source_precision
     from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence
     from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
+    from run287_publication_date_provenance import install as install_run287_publication_date_provenance
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -136,6 +138,11 @@ def main() -> None:
     # one existing Reader Value quality-repair call only inside the explicit Run282 recovery
     # lane when Evidence is already SUFFICIENT and all blockers are reader-only.
     install_run284_reader_recovery_precision(pipeline)
+
+    # Run287 keeps discovery timestamps honest on the public manuscript. Hacker News
+    # item time is labeled as the HN post date and can never masquerade as the external
+    # primary source's publication/update date. This is deterministic and zero-provider.
+    install_run287_publication_date_provenance(note_manuscript, pipeline)
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
