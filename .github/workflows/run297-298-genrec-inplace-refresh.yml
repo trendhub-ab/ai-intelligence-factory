@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   run297-rebase-and-resync:
-    if: contains(github.event.head_commit.message, 'Run297/298: execute exact GenRec in-place refresh')
+    if: contains(github.event.head_commit.message, 'execute exact GenRec in-place refresh')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
