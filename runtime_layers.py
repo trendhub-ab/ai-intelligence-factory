@@ -35,6 +35,7 @@ RUNTIME_LAYER_ORDER = (
     "reader_value_review_bridge.install",
     "run208_reader_value_repair.install",
     "run222_note_presentation_integrity.install_pipeline",
+    "run296_editorial_format_v2.install",
     "run248_first_real_publish_quality_calibration.install",
     "run249_final_publication_surface_gate.install",
     "run194_publication_contract.install",
@@ -67,6 +68,7 @@ def install_runtime_layers(pipeline_module):
     import reader_value_review_bridge
     import run208_reader_value_repair
     import run222_note_presentation_integrity
+    import run296_editorial_format_v2
     import run248_first_real_publish_quality_calibration
     import run249_final_publication_surface_gate
     import run194_publication_contract
@@ -116,6 +118,12 @@ def install_runtime_layers(pipeline_module):
     # Presentation-only but publication-material: keep CTA ordering after evidence and
     # disclaimer without changing Evidence/Decision semantics.
     run222_note_presentation_integrity.install_pipeline(pipeline_module)
+
+    # First real-draft visual review policy. Run296 deliberately sits after Run222 so it
+    # can normalize the final reader header/CTA surface while retaining Sources-before-CTA,
+    # and after Run183 so it can tighten the existing single-call eyecatch direction without
+    # adding another provider request.
+    run296_editorial_format_v2.install(pipeline_module)
 
     # First-real-publish calibration is zero-provider-call and deliberately sits after all
     # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
