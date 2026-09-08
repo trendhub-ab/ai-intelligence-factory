@@ -1,0 +1,25 @@
+name: Daily ONE-SHOT Duplicate Queue Superseder [SAFETY]
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/daily-one-shot-queue-superseder.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  no_api_noop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Supersede duplicate pending Daily only
+        run: |
+          echo 'SAFETY_NOOP=true'
+          echo 'No Gemini, Notion, publication, or pipeline execution.'
