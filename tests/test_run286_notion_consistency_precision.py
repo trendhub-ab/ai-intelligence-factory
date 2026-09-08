@@ -7,9 +7,8 @@ from pathlib import Path
 import run286_notion_consistency_precision as run286
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION = ROOT / "production_pipeline.py"
+CURRENT_RECOVERY = ROOT / "current_policy_ready_recovery.py"
 RECOVERY_WORKFLOW = ROOT / ".github" / "workflows" / "current-policy-ready-recovery.yml"
-RUN280 = ROOT / "run280_publication_dependency_guard.py"
 
 
 class _Logger:
@@ -78,24 +77,33 @@ class Run286LiveStatusGuardTests(unittest.TestCase):
         recovery.select_stale_ready_items(pipeline)
         self.assertEqual(calls, {"select": 1, "status": 1})
 
+    def test_pure_filter_performs_no_io_beyond_supplied_status_reader(self):
+        calls = []
+        pipeline = types.SimpleNamespace(ARTICLE_STATUS_READY="Ready", logger=_Logger())
+        items = [{"notion_page_id": "page-1"}]
+        result = run286.filter_live_ready_items(
+            pipeline,
+            items,
+            lambda page_id: calls.append(page_id) or "Ready",
+        )
+        self.assertEqual(result, items)
+        self.assertEqual(calls, ["page-1"])
+
 
 class Run286RepositoryContractTests(unittest.TestCase):
-    def test_production_installs_guard_before_recovery_controller_call(self):
-        text = PRODUCTION.read_text(encoding="utf-8")
-        install_at = text.index("install_run286_recovery_live_status_guard")
-        recovery_at = text.index("run_current_policy_ready_recovery(pipeline)")
-        self.assertLess(install_at, recovery_at)
-
-    def test_run280_classifies_run286_as_non_publication_operational_dependency(self):
-        text = RUN280.read_text(encoding="utf-8")
-        self.assertIn('"run286_notion_consistency_precision.py"', text)
-        self.assertIn("operational", text)
+    def test_recovery_controller_filters_live_status_before_generator(self):
+        text = CURRENT_RECOVERY.read_text(encoding="utf-8")
+        self.assertIn("ENABLE_RUN286_NOTION_LIVE_STATUS_GUARD", text)
+        guard_at = text.index("items = filter_live_ready_items")
+        model_at = text.index("generated = pipeline.generate_intelligence_report")
+        self.assertLess(guard_at, model_at)
 
     def test_recovery_workflow_tests_run286_before_model_path_and_stabilizes_notion_read(self):
         text = RECOVERY_WORKFLOW.read_text(encoding="utf-8")
         test_at = text.index("tests.test_run286_notion_consistency_precision")
         model_at = text.index("run: python production_pipeline.py")
         self.assertLess(test_at, model_at)
+        self.assertIn("ENABLE_RUN286_NOTION_LIVE_STATUS_GUARD: 'true'", text)
         self.assertIn("time.sleep(2)", text)
         self.assertIn("RUN286_NOTION_CONSISTENCY_PROBE", text)
         self.assertIn("python note_ready_sync.py | tee /tmp/run282-note-ready.txt", text)
