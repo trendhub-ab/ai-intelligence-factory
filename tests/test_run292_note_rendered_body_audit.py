@@ -74,11 +74,15 @@ class Run292RenderedExpectationTests(unittest.TestCase):
             audit._body_text_metrics("非公開タイトル " + rendered, manuscript, "非公開タイトル")
         self.assertEqual(duplicate.exception.code, "duplicate_title_prefix")
 
+        long_manuscript = ("十分に長い前置きです。" * 20) + "\n\n" + manuscript
+        long_rendered = audit._rendered_visible_text(long_manuscript)
         source = "Sources / Evidence"
         cta = "調査と判断の時間を減らしたい方へ"
-        cta_before_source = rendered.replace(source, f"{cta} PRE {source}", 1)
+        source_index = long_rendered.find(source)
+        self.assertGreater(source_index, 64)
+        cta_before_source = long_rendered[:source_index] + f"{cta} PRE " + long_rendered[source_index:]
         with self.assertRaises(audit.Run292AuditDiagnosticError) as footer:
-            audit._body_text_metrics(cta_before_source, manuscript, "別タイトル")
+            audit._body_text_metrics(cta_before_source, long_manuscript, "別タイトル")
         self.assertEqual(footer.exception.code, "footer_order_mismatch")
 
 
