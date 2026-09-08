@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-08  
+最終更新: 2026-09-09  
 Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Provider Resilience Baseline: **Run303 — Verified HTTP 503 confirmation / consecutive-only run-local circuit**  
 Documentation Governance Baseline: **Run267 — Current Canonical Contract Sync / Required-Check Governance**  
