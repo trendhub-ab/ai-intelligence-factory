@@ -126,3 +126,8 @@ jobs:
             tests.test_run197_note_ready_policy_reconciliation.Run197NoteReadyPolicyReconciliationTests.test_policy_change_reconciliation_remains_zero_model_and_never_opens_note_browser \
             -v
           python -m unittest tests.test_run290_quality_workflow_separation -v
+
+      - name: Falsify Run292 private-draft audit fidelity and read-only workflow boundary
+        run: |
+          python -m unittest tests.test_run292_note_rendered_body_audit -v
+          python -m unittest tests.test_run292_note_audit_workflow -v
