@@ -49,6 +49,7 @@ def install_runtime_layers(pipeline_module):
     import reader_value_review_bridge
     import run208_reader_value_repair
     import run222_note_presentation_integrity
+    import run296_editorial_format_v2
     import run248_first_real_publish_quality_calibration
     import run249_final_publication_surface_gate
     import run194_publication_contract
@@ -178,12 +179,15 @@ def main() -> None:
         run_article_revalidation(pipeline)
         return
 
-    # Normal/full Production keeps authoritative fresh URL dedupe. A bounded wrapper
-    # uses only leftover article capacity after fresh -> Deferred -> Pending Retry to
-    # recover at most one existing Needs Editorial Review row on its original Notion page.
-    # Synthetic regression keeps its historical pipeline.main surface; the recovery
-    # wrapper has dedicated zero-API adversarial tests instead of fake Notion network I/O.
-    if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
+    # Run276: pending_retry_validation must consume a real persisted pending-retry
+    # candidate rather than a fresh candidate. One item max, persist_results=False.
+    if mode == "pending_retry_validation":
+        run_article_revalidation(pipeline, pending_only=True)
+        return
+
+    # Run277 production repair lane. Outside this explicit mode the historical runtime
+    # policy remains unchanged.
+    if mode == "full":
         install_full_recovery(pipeline)
 
     pipeline.main()
