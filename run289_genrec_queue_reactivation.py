@@ -3,17 +3,17 @@
 
 Root cause:
 `note_ready_sync` correctly invalidated stale publication-contract material, but its
-revocation path also wrote the human workflow field 投稿状態=取下げ.  Run288 later
+revocation path also wrote the human workflow field 投稿状態=取下げ. Run288 later
 restored the exact GenRec manuscript to current-policy Ready and `note_ready_sync`
-restored 品質状態=Ready, while deliberately preserving human workflow fields.  The
+restored 品質状態=Ready, while deliberately preserving human workflow fields. The
 system-induced 取下げ therefore survived and made the zero-VM draft preflight see no
 投稿待ち candidate.
 
-This migration is deliberately one-shot and specimen-bound.  It restores only the exact
+This migration is deliberately one-shot and specimen-bound. It restores only the exact
 GenRec row whose automated revocation is independently established by the Run287/288
-GitHub audit trail.  Ongoing `note_ready_sync` is separately changed to stop mutating
-投稿状態 during future system revocations, so this migration does not become a generic
-human-state override.
+GitHub audit trail. It is not a generic rule for changing human queue state. The broader
+revocation-state design is intentionally left outside this migration so the immediate
+repair cannot silently change unrelated rows.
 
 No Gemini/provider, browser, VM, note mutation, or public release exists here.
 """
