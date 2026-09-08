@@ -2,6 +2,14 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
+        "gemini-3.1-flash-lite": {
+          "budget": 450,
+          "by_kind": {
+            "screening_batch": 1
+          },
+          "exhausted": false,
+          "used": 1
+        },
         "gemini-3.5-flash": {
           "budget": 18,
           "by_kind": {
@@ -52,5 +60,5 @@
   "quota_date": "2026-09-08",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-08T15:05:24.351953+00:00"
+  "updated_at": "2026-09-08T15:06:24.343443+00:00"
 }
