@@ -1,0 +1,104 @@
+name: Current Ready Metadata Rebase [ONE-SHOT]
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Exact confirmation token'
+        required: true
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: current-ready-metadata-rebase
+  cancel-in-progress: false
+
+jobs:
+  rebase-genrec-ready:
+    if: ${{ github.event.inputs.confirm == 'REBASE_GENREC_READY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependency
+        run: pip install requests
+
+      - name: Zero-API Run288 contract tests
+        run: |
+          python -m unittest tests.test_run288_zero_api_ready_rebase -v
+          python -m unittest tests.test_run202_chatops_control -v
+
+      - name: Rebase exact GenRec Ready manuscript metadata
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+        run: python run288_zero_api_ready_rebase.py
+
+      - name: Reconcile Note Ready and require one current-policy source
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          set -euo pipefail
+          python note_ready_sync.py | tee /tmp/run288-note-ready.txt
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          payload = None
+          for line in reversed(Path('/tmp/run288-note-ready.txt').read_text(encoding='utf-8').splitlines()):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  candidate = ast.literal_eval(line)
+              except (SyntaxError, ValueError):
+                  continue
+              if isinstance(candidate, dict) and 'source_ready' in candidate:
+                  payload = candidate
+                  break
+          if payload is None:
+              raise SystemExit('Run288 verification failed: Note Ready payload missing')
+          if int(payload.get('source_ready') or 0) < 1:
+              raise SystemExit('Run288 verification failed: current-policy source_ready stayed 0')
+          if not bool(payload.get('zero_gemini_calls')):
+              raise SystemExit('Run288 verification failed: Note Ready sync lost zero-model contract')
+          print(f"RUN288_CURRENT_POLICY_READY_VERIFIED={payload.get('source_ready')}")
+          PY
+
+      - name: Record publication boundary
+        if: always()
+        run: |
+          {
+            echo '### Run288 Zero-API Ready Metadata Rebase'
+            echo '- target: exact Netflix GenRec stale Ready only'
+            echo '- allowed manuscript change: exactly one provenance-label line'
+            echo '- old policy SHA pinned: `7417b204254b07547d319b145e3b6e9b2d0d5023f6e1b1d2fa7219b81b372e9d`'
+            echo '- Gemini/provider calls: `0`'
+            echo '- fresh acquisition / screening: `false`'
+            echo '- eyecatch regeneration: `false`'
+            echo '- private note draft / VM / browser: `false`'
+            echo '- public note publication: `false`'
+            echo '- Daily schedule changed: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"
