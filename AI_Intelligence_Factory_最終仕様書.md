@@ -1,7 +1,8 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-08  
+最終更新: 2026-09-09  
 Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
+Provider Resilience Baseline: **Run303 — Verified HTTP 503 confirmation / consecutive-only run-local circuit**  
 Documentation Governance Baseline: **Run267 — Current Canonical Contract Sync / Required-Check Governance**  
 Documentation Freshness Foundation: **Run210 — Documentation Freshness Guard**  
 Production Source of Truth: **`main`**  
@@ -251,6 +252,7 @@ Pipeline modularizationの現行境界はRun245を基準とし、巨大な単一
 - `run203_runtime_state_channel.py`
 - `gemini_timeout_rpd_fail_closed.py`
 - `gemini_transient_recovery.py`
+- `gemini_provider_resilience.py`
 - `run260_gemini_model_routing.py`
 - `run172_production_reliability.py`
 - `run173_operational_yield.py`
@@ -296,7 +298,11 @@ Run209 quota / retry保護:
 - pre-send reservationを巻き戻さない。
 - timeout後に「未使用だった」と推測してquotaを返却しない。
 - Pending Retry fast laneは **最大3 requests**。
-- **1回目のHTTP 503** を観測した場合は既存cooldown契約に従う。
+- **1回目のHTTP 503** は、Run303で構造化されたprovider status code=503を確認した場合に限り、同一モデルで1回だけ確認再試行する。
+- 2回連続のverified HTTP 503で初めて、そのmodelのrun-local circuitを開く。
+- 200成功、transport timeout、429、404、その他non-503結果は503連続系列を切り、過去の503累積でmodelをcooldownしない。
+- transport timeoutはHTTP 503と別障害として記録し、Run209のRPD fail-closed reservation保持を維持する。
+- Run303の確認再試行は既存per-run / persistent daily / Pending Retry / Product Review budgetの内側でのみ動作し、Gateやrequest ceilingを拡張しない。
 - `Reader Value repair` の追加消費を既存budget外へ拡張しない。
 
 Run261 article model routing:
@@ -612,6 +618,7 @@ PMF前にやらないこと:
 - Run270のProposal-First Member Surface / static Notion surface契約は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
 - Run271/271.1のdelta-scoped Member body sync / previous-success checkpoint / sentinel fallback契約は `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。
 - Run272のNotion date boundary / arXiv run-local Evidence Health circuit / bounded Product Review child契約は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
+- Run303のverified HTTP 503 / consecutive-only circuit / timeout分離契約は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
 - Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
@@ -625,6 +632,7 @@ PMF前にやらないこと:
 **現在のSource Architecture正本はRun268。**  
 **現在のAcquisition Precision正本はRun269。**  
 **現在のOperational Reliability正本はRun272。**  
+**現在のProvider Resilience正本はRun303。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  

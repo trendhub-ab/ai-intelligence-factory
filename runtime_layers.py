@@ -16,6 +16,7 @@ RUNTIME_LAYER_ORDER = (
     "gemini_transient_recovery.install",
     "run260_gemini_model_routing.install",
     "run172_production_reliability.install",
+    "gemini_provider_resilience.install",
     "run173_operational_yield.install",
     "run174_monthly_digest_integrity.install",
     "run175_semantic_fact_precision.install",
@@ -49,6 +50,7 @@ def install_runtime_layers(pipeline_module):
     import gemini_transient_recovery
     import run260_gemini_model_routing
     import run172_production_reliability
+    import gemini_provider_resilience
     import run173_operational_yield
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
@@ -84,6 +86,10 @@ def install_runtime_layers(pipeline_module):
     # model-based quality repair, and existing request/gate budgets remain authoritative.
     run260_gemini_model_routing.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
+    # Run303 supersedes only Run172's provider-transport fail-fast behavior. A single
+    # structured HTTP 503 now receives one bounded same-model confirmation retry; only
+    # two consecutive verified 503s open the run-local model circuit. No gate changes.
+    gemini_provider_resilience.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
     run175_semantic_fact_precision.install(pipeline_module)

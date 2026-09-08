@@ -55,6 +55,7 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "run203_runtime_state_channel.py": "operational runtime-state channel only",
     "gemini_timeout_rpd_fail_closed.py": "quota reservation/timeout safety only",
     "gemini_transient_recovery.py": "transport retry/failover safety only",
+    "gemini_provider_resilience.py": "provider transport classification/retry/circuit safety only; no public-byte or gate policy",
     "regression_suite.py": "synthetic regression entrypoint only",
     "legacy_eyecatch_renderer.py": "obsolete compatibility bridge; current editorial renderer is separately fingerprinted",
 }

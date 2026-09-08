@@ -1,7 +1,8 @@
 # Gemini Quota Safety Counter 設定
 
-最終更新: 2026-09-06  
+最終更新: 2026-09-09  
 現行Quota Safety Baseline: **Run209 — timeout RPD fail-closed**  
+現行Provider Resilience Baseline: **Run303 — verified 503 confirmation / consecutive-only circuit**  
 現行Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**
 
 ## 結論
@@ -56,6 +57,21 @@ Google AI Studioの実測により、transport timeout / watchdog timeoutでク�
 
 実装は`gemini_timeout_rpd_fail_closed.py`を`run203_runtime_state_channel.py`の後、`gemini_transient_recovery.py`の前にinstallします。Run260/261のrouting layerはその後にinstallし、既存のquota/timeout recoveryを迂回しません。
 
+
+## 2.1 Run303 — provider HTTP 503の確認再試行
+
+Run35/Run36の実Production反復で、SDK下の実HTTP 503と、同一modelの後続HTTP 200成功が同じrun内に共存することを確認しました。したがってRun303では、一時的な503を即座にrun-wide model failureへ昇格させません。
+
+- HTTP 503は例外本文の文字列ではなく、構造化されたnumeric provider status code=503でのみ認定します。
+- 1回目のverified 503では同一modelを1回だけ確認再試行します。既定待機10秒、上限20秒で、providerのretry delayが得られる場合はその範囲で尊重します。
+- 2回連続のverified 503で初めてrun-local circuitを開きます。
+- 200成功、timeout、429、404、その他non-503結果で503系列をリセットします。成功を挟んだ過去503を累積してcooldownしません。
+- transport timeoutは503とは別障害です。Run209のtimeout reservation fail-closed契約は変更しません。
+- 確認再試行は既存Deep Dive 12 requests、Pending Retry、Product Review、各model persistent daily safety capの内側でのみ動作します。
+- Fact / Evidence / Publication / Human Appeal Gateは変更しません。Ready件数を増やす目的でGateを緩和しません。
+
+実装正本は `gemini_provider_resilience.py`、詳細反証は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` です。
+
 ## 3. Project ID / Counter scope
 
 Workflowは次の順でProject IDを任意取得します。
@@ -95,7 +111,8 @@ Factory counterとAI Studioが異なる場合、**AI Studioの使用量が多い
 fast lane固有契約:
 
 - 最大3 requests。
-- 1回目のHTTP 503でそのmodelを当該fast-lane run中cooldown。
+- 1回目のverified HTTP 503は同一modelで1回だけ確認再試行し、単発503ではcooldownしない。
+- 2回連続のverified HTTP 503で当該modelのrun-local circuitを開く。
 - 1記事成功で停止。
 - fresh collection / screeningは行わない。
 - Run208のReader Value repairは最大1回、Reader-only failureに限定。
