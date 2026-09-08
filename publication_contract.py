@@ -65,6 +65,7 @@ PUBLICATION_POLICY_FILES = (
     "run223_technical_claim_precision.py",
     "run283_numeric_evidence_equivalence.py",
     "run284_reader_recovery_precision.py",
+    "run287_publication_date_provenance.py",
     "run224_multiplier_deterministic_rescue.py",
     "run227_japanese_surface_integrity.py",
     "run176_scope_fidelity.py",
