@@ -79,12 +79,14 @@ Run37で、Product Review childが親Productionの`runtime-state` counterでは�
 
 Run38ではRun304の修正が実証され、Product Review childは親の非ゼロcounterを読み、`gemini-3.6-flash`を5/18から8/18へ正しく更新しました。一方、その実測でchildがraw `pipeline.py`を直接起動していたためRun209/Run303等のprovider/quota runtime layerをinstallしていない別の不整合を確認しました。
 
-Run305以降、`daily_portfolio_review.py`はProduct Review childとして`product_review_runtime.py`を起動します。専用entrypointは次の4層だけを順番にinstallしてから既存product-only `pipeline.main()`を実行します。
+Run305以降、`daily_portfolio_review.py`は `AIIF_PRODUCT_REVIEW_RUNTIME=true` を付けて、唯一のroot Production entrypointである`production_pipeline.py`を起動します。`production_pipeline.py`はarticle/publication stackをinstallする前にこのmodeへ分岐し、次の4層だけを順番にinstallします。
 
 1. `run203_runtime_state_channel.install`
 2. `gemini_timeout_rpd_fail_closed.install`
 3. `gemini_transient_recovery.install`
 4. `gemini_provider_resilience.install`
+
+その後、Run203 runtime-state preflightを行い、既存product-only `pipeline.main()`を実行します。`production_pipeline.py`以外のroot Python executableから`pipeline.main()`を直接呼ばないRepository Falsification契約は維持します。
 
 重要な境界:
 
@@ -95,7 +97,7 @@ Run305以降、`daily_portfolio_review.py`はProduct Review childとして`produ
 - Run303の503確認再試行もProduct Review request budget内でのみ動く。
 - Scheduled DailyはPAUSED、Public note releaseはhuman-onlyのまま。
 
-実装正本は `product_review_runtime.py` / `daily_portfolio_review.py`、詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を参照してください。
+実装正本は `production_pipeline.py` / `daily_portfolio_review.py`、詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を参照してください。
 
 ## 3. Project ID / Counter scope
 
@@ -170,4 +172,4 @@ Run終了時にmodel / request kind / success-error / token usageを集計し、
 
 Quota安全仕様を変更する場合は、コード/workflowと同じPRで本ファイルを更新します。Run210 Documentation Freshness Guardにより、Flash 18回安全上限、Daily PAUSED、timeout fail-closed、Pending Retry fast lane等のCanonical契約が実装と矛盾した場合はCIを失敗させます。
 
-Run261のArticle Model Routing authorityは`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、`run260_gemini_model_routing.py`です。Run305のProduct Review provider-runtime authorityは`docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md`と`product_review_runtime.py`です。
+Run261のArticle Model Routing authorityは`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、`run260_gemini_model_routing.py`です。Run305のProduct Review provider-runtime authorityは`docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md`と`production_pipeline.py`です。
