@@ -9,9 +9,9 @@ Design:
   and its caption manuscript SHA must match the actual body bytes.
 - A source eyecatch is mandatory before a row can enter/remain in the note posting queue.
 - Historical, corrupted, incomplete, or retired-source Ready inventory is excluded; existing
-  non-published destination rows are revoked on the next sync.
+  destination rows are quality-revoked on the next sync.
 - Human workflow fields (投稿状態, note公開URL, 投稿予定日, 投稿日) are never overwritten
-  during normal Ready updates. Published rows remain 投稿済み for auditability.
+  during normal Ready updates or automatic quality revocation.
 """
 from __future__ import annotations
 
@@ -310,6 +310,14 @@ def _system_props(state: dict[str, Any], *, today: str | None = None) -> dict[st
     }
 
 
+def _quality_revocation_props(*, today: str) -> dict[str, dict]:
+    """Revoke automated publication quality without mutating human posting workflow."""
+    return {
+        "品質状態": _sel("Ready取消"),
+        "最終同期日": {"date": {"start": today}},
+    }
+
+
 def _validate_destination_schema() -> None:
     res = _request("GET", _schema_url(DEST_DATA_SOURCE_ID, DEST_DATABASE_ID))
     if res.status_code != 200:
@@ -435,12 +443,7 @@ def sync_note_ready_db() -> dict[str, Any]:
     for sid, current in dest_by_id.items():
         if sid in source_by_id or current.get("quality_status") == "Ready取消":
             continue
-        props: dict[str, dict] = {
-            "品質状態": _sel("Ready取消"),
-            "最終同期日": {"date": {"start": today}},
-        }
-        if current.get("posting_status") != "投稿済み":
-            props["投稿状態"] = _sel("取下げ")
+        props = _quality_revocation_props(today=today)
         res = _request(
             "PATCH",
             f"https://api.notion.com/v1/pages/{current['page_id']}",

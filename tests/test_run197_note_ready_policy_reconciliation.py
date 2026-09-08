@@ -56,7 +56,7 @@ class Run197NoteReadyPolicyReconciliationTests(unittest.TestCase):
         self.assertNotIn("google-chrome", source.lower())
         self.assertIn("run: python note_ready_sync.py", source)
 
-    def test_reconciliation_revokes_unmatched_waiting_rows_but_preserves_posted_state(self) -> None:
+    def test_reconciliation_quality_revokes_unmatched_rows_without_mutating_posting_state(self) -> None:
         # Import the live sync module only inside the integration-capable test. The repository-wide
         # static guard intentionally runs without third-party dependencies such as requests.
         import note_ready_sync as sync
@@ -104,7 +104,7 @@ class Run197NoteReadyPolicyReconciliationTests(unittest.TestCase):
         posted_props = by_url["https://api.notion.com/v1/pages/posted-page"]
 
         self.assertEqual(waiting_props["品質状態"]["select"]["name"], "Ready取消")
-        self.assertEqual(waiting_props["投稿状態"]["select"]["name"], "取下げ")
+        self.assertNotIn("投稿状態", waiting_props)
         self.assertEqual(posted_props["品質状態"]["select"]["name"], "Ready取消")
         self.assertNotIn("投稿状態", posted_props)
 
