@@ -63,6 +63,7 @@ jobs:
         env:
           TZ: 'Asia/Tokyo'
           AIIF_ONE_SHOT_MODE: 'current_policy_ready_recovery'
+          ENABLE_RUN286_NOTION_LIVE_STATUS_GUARD: 'true'
           CURRENT_POLICY_READY_RECOVERY_LIMIT: '1'
           CURRENT_POLICY_READY_RECOVERY_REQUEST_BUDGET: '4'
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
