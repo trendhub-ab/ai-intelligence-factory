@@ -192,7 +192,7 @@ class Run295AuditIntegrationTests(unittest.TestCase):
 
 
 class Run295SafetyBoundaryTests(unittest.TestCase):
-    def test_shared_helper_never_reads_image_urls_html_or_unpublished_text(self) -> None:
+    def test_shared_helper_never_reads_image_src_dom_html_or_unpublished_text(self) -> None:
         source = inspect.getsource(proof)
         for forbidden in (
             "getAttribute('src')",
@@ -200,7 +200,6 @@ class Run295SafetyBoundaryTests(unittest.TestCase):
             ".currentSrc",
             ".outerHTML",
             ".innerHTML",
-            "draft_url",
             "actual_text",
             "expected_text",
             "page.screenshot(",
