@@ -16,7 +16,16 @@ class Run292NoteAuditWorkflowTests(unittest.TestCase):
     def test_live_audit_uses_renderer_faithful_run292_entrypoint(self) -> None:
         self.assertIn("xvfb-run -a python run292_note_rendered_body_audit.py", self.source)
         self.assertIn("tests.test_run292_note_rendered_body_audit", self.source)
+        self.assertIn("tests.test_run293_private_draft_guard_diagnostics", self.source)
         self.assertIn("NOTE_AUDIT_PREPARE_ONLY: 'false'", self.source)
+
+    def test_run293_diagnostic_contract_runs_before_live_browser_audit(self) -> None:
+        live = self.source.split("  audit-private-draft:", 1)[1].split("\n  stop-cloud-vm:", 1)[0]
+        test_pos = live.find("python -m unittest tests.test_run293_private_draft_guard_diagnostics -v")
+        audit_pos = live.find("xvfb-run -a python run292_note_rendered_body_audit.py")
+        self.assertGreaterEqual(test_pos, 0)
+        self.assertGreater(audit_pos, test_pos)
+        self.assertIn("Run291/292/293 read-only regression tests", live)
 
     def test_safe_summary_runs_even_when_live_audit_fails_closed(self) -> None:
         marker = "- name: Summarize non-content audit metrics only"
@@ -25,6 +34,7 @@ class Run292NoteAuditWorkflowTests(unittest.TestCase):
         self.assertIn("diagnostic_code", section)
         self.assertIn("legacy_expected_visible_chars", section)
         self.assertIn("common_prefix_ratio", section)
+        self.assertIn("Run293 private note draft read-only audit", section)
         self.assertIn("unpublished content / draft URL exposed: `false`", section)
 
     def test_vm_stop_remains_mandatory_after_successful_start_even_on_audit_failure(self) -> None:
