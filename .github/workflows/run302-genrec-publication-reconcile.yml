@@ -1,0 +1,195 @@
+name: Run302 GenRec Publication Reconcile [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/run302-genrec-publication-reconcile.yml'
+      - 'run302_genrec_publication_reconcile.py'
+      - 'tests/test_run302_genrec_publication_reconcile.py'
+      - 'AI_Intelligence_Factory_Run302_仕様追補.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run302-genrec-publication-reconcile
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: contains(github.event.head_commit.message, 'Run302 reconcile published GenRec')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.prep.outputs.should_start_vm }}
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install deterministic dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run Run302 falsification tests
+        run: python -m unittest tests.test_run302_genrec_publication_reconcile -v
+      - name: Require exact Ready preparing row before public audit
+        id: prep
+        env:
+          RUN302_PREPARE_ONLY: 'true'
+          RUN302_RESULT_FILE: ${{ runner.temp }}/run302-preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python run302_genrec_publication_reconcile.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RUN302_RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') == 'already_reconciled':
+              should = 'false'
+          elif r.get('status') == 'ready_for_public_audit' and r.get('should_start_vm') is True:
+              should = 'true'
+          else:
+              raise SystemExit('Run302 preflight contract failed')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'should_start_vm={should}\n')
+          print('RUN302_PREFLIGHT=PASS')
+          PY
+
+  start_vm:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  reconcile_and_audit:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: [preflight, start_vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Re-run Run302 safety tests on VM
+        run: python -m unittest tests.test_run302_genrec_publication_reconcile -v
+      - name: Audit live public page and reconcile Note Ready
+        env:
+          RUN302_RESULT_FILE: ${{ runner.temp }}/run302-result.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: xvfb-run -a python run302_genrec_publication_reconcile.py
+      - name: Require complete post-publication contract
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run302-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          required_true = [
+              'posting_state_published','public_url_present','quality_state_ready',
+              'public_note_id_match','public_title_match','summary_order_valid',
+              'what_label_absent','sources_before_cta','cta_present',
+              'public_og_image_present'
+          ]
+          failed = [k for k in required_true if r.get(k) is not True]
+          if r.get('summary_count') != 1: failed.append('summary_count')
+          if int(r.get('public_large_eyecatch_count', 0)) < 1: failed.append('public_large_eyecatch_count')
+          if r.get('duplicate_public_url') is not False: failed.append('duplicate_public_url')
+          if r.get('duplicate_draft_created') is not False: failed.append('duplicate_draft_created')
+          if r.get('public_release_performed') is not False: failed.append('public_release_performed')
+          if r.get('daily_restarted') is not False: failed.append('daily_restarted')
+          if r.get('zero_gemini_calls') is not True: failed.append('zero_gemini_calls')
+          if not str(r.get('public_url') or '').startswith('https://note.com/'): failed.append('public_url')
+          if not str(r.get('posted_date') or ''): failed.append('posted_date')
+          if failed:
+              raise SystemExit('Run302 final contract failed: ' + ','.join(failed))
+          print('RUN302_PUBLIC_PAGE_AUDIT=PASS')
+          print('RUN302_NOTE_READY_POSTING_STATE=投稿済み')
+          print('RUN302_PUBLIC_RELEASE_PERFORMED=false')
+          print('RUN302_DAILY_RESTARTED=false')
+          PY
+
+  stop_vm:
+    if: ${{ always() && needs.start_vm.result == 'success' }}
+    needs: [preflight, start_vm, reconcile_and_audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
