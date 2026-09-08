@@ -30,8 +30,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install deterministic preflight dependency
-        run: pip install requests
+      - name: Install deterministic preflight dependencies
+        run: pip install requests Pillow
       - name: Falsify exact Run300 repair boundary
         run: |
           python -m unittest tests.test_run300_genrec_final_body_repair -v
