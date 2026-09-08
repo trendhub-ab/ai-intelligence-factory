@@ -3,6 +3,7 @@
 最終更新: 2026-09-09  
 Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Provider Resilience Baseline: **Run303 — Verified HTTP 503 confirmation / consecutive-only run-local circuit**  
+Product Review Provider Runtime Baseline: **Run305 — Run304 counter authority / Run203 + Run209 + transient recovery + Run303 via sole `production_pipeline.py` entrypoint**  
 Documentation Governance Baseline: **Run267 — Current Canonical Contract Sync / Required-Check Governance**  
 Documentation Freshness Foundation: **Run210 — Documentation Freshness Guard**  
 Production Source of Truth: **`main`**  
@@ -97,7 +98,6 @@ OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadat
 4. **Decision / Proposal Action Asset** — 利用条件、判断・提案メモ、小規模検証条件、比較観点等へ落とす。大量テンプレート市場へピボットしない。
 
 内部の Intelligence Engine は上記より広く、Deep Techを含む。内部追跡対象と会員トップ表示を同一視しない。
-
 ### 価格・初期商業検証
 
 - 標準価格: **月額1,980円**を維持して検証する。
@@ -197,7 +197,6 @@ Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前�
 ## 3. Decision Brief / Decision Update 契約 — Run256 / Run270
 
 Decision Briefは静的な「今月のおすすめ一覧」だけにしない。
-
 - 今月の主要候補を3〜7件へ絞る。
 - `使う / 試す / 待つ / 避ける` の判断を出す。
 - 顧客案件・技術選定への意味、確認事項、次の一手を短く示す。
@@ -489,11 +488,26 @@ Run272は、Run `34075019008` の45分cancelを「Workflow全体が遅い」と�
 - `notion_payloads.py` はNotion `date.start` へ渡す直前だけ既知の日付形式をISOへ正規化する。取得層のraw `publishedAt` は保持し、Run269のEvidence/current-state契約を変えない。解釈不能な日付は捏造せず空欄へfail closedする。
 - `product_delivery_maintenance.py` のEvidence Healthは、arXivで最初の `FETCH_ERROR` を観測したらそのrunだけarXiv circuitを開く。残りarXiv候補はdeferし、non-arXiv候補は継続する。
 - provider unavailableを `MISSING` / `MATERIAL_CHANGE` と誤認せず、deferred arXiv候補のEvidence Ledger healthを障害だけを理由に書き換えない。
-- `daily_portfolio_review.py` はProduct Review child `pipeline.py` を既定**600秒**へ有界化する。timeout時もpartial outputへunsafe-activity detectorを適用し、安全なら `bounded_child_timeout` としてdeferする。
+- `daily_portfolio_review.py` はProduct Review childを既定**600秒**へ有界化する。Run305以降、childはraw `pipeline.py`を直接起動せず、`AIIF_PRODUCT_REVIEW_RUNTIME=true` を付けた唯一のroot authority `production_pipeline.py` を起動する。timeout時もpartial outputへunsafe-activity detectorを適用し、安全なら `bounded_child_timeout` としてdeferする。
 - Gemini request budget / retry budget / RPD safety ceiling、Run268 four-source architecture、Fact/Evidence/Decision gate、Public release契約は変更しない。
 - 反証過程で、取得層の日付正規化と `source_normalization.install()` 公開面拡張は既存契約を壊すため撤回された。Run272はpersistence/maintenance/deadline境界に限定する。
 
 詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
+
+### 8.5 Product Review provider runtime — Run304 / Run305
+
+Run37でProduct Review childがlegacy `main` counterを読み `Persistent Gemini Daily Counter: 0` と誤認する不具合を確認し、Run304で親Productionの `AIIF_RUNTIME_STATE_BRANCH` をchildの `GEMINI_COUNTER_BRANCH` へ継承した。Run38で非ゼロcounterの継承と3.6の5/18→8/18更新を実環境確認した。
+
+Run38は同時に、raw `pipeline.py` childがRun209/Run303 provider/quota runtimeをinstallしていない別の経路欠落も示した。Run305以降は `production_pipeline.py` を唯一のroot entrypointとして維持し、`AIIF_PRODUCT_REVIEW_RUNTIME=true` のときarticle/publication stackより前に次の4層だけを適用する。
+
+1. `run203_runtime_state_channel.install`
+2. `gemini_timeout_rpd_fail_closed.install`
+3. `gemini_transient_recovery.install`
+4. `gemini_provider_resilience.install`
+
+その後Run203 runtime-state preflightを実行してから既存product-only coreへ進む。Product Reviewのモデル順 `3.6 → 3.7 → 3.8 → 3.5`、max reviews 2、local request budget 3、persistent daily safety capは変更しない。Run260 Article Model Routing、Run172 article/evidence overlay、article/publication/Reader Value/eyecatch layerはProduct Review専用runtimeへ導入しない。Run303の1回目verified 503同一model確認再試行も既存Product Review budget内に限定する。
+
+詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` と `GEMINI_QUOTA_SETUP.md` を正本とする。
 
 ---
 
@@ -619,6 +633,7 @@ PMF前にやらないこと:
 - Run271/271.1のdelta-scoped Member body sync / previous-success checkpoint / sentinel fallback契約は `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。
 - Run272のNotion date boundary / arXiv run-local Evidence Health circuit / bounded Product Review child契約は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
 - Run303のverified HTTP 503 / consecutive-only circuit / timeout分離契約は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` を正本とする。
+- Run305のProduct Review counter authority / provider-quota runtime / sole production entrypoint契約は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
 - Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
@@ -633,6 +648,7 @@ PMF前にやらないこと:
 **現在のAcquisition Precision正本はRun269。**  
 **現在のOperational Reliability正本はRun272。**  
 **現在のProvider Resilience正本はRun303。**  
+**現在のProduct Review Provider Runtime正本はRun305。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  
@@ -690,8 +706,18 @@ PMF前にやらないこと:
 - Run34075019008の45分cancelを、Production本体・Evidence Health・Product Reviewへ分解して根因を反証した。
 - Notion dateはsource raw valueを保持したまま、persistence boundaryだけでISO化し、不正値は空欄へfail closedする。
 - arXiv Evidence Healthは最初のFETCH_ERRORでrun-local circuitを開き、残りarXiv checkをdeferする。non-arXiv checkは継続し、provider unavailableをEvidence消失へ変換しない。
-- Product Review childは既定600秒へbounded化し、timeout partial outputでもunsafe detectorを実行する。安全ならstructured deferredとして返す。
+- Product Review childは既定600秒へbounded化し、timeout partial outputでもunsafe detectorを実行する。安全ならstructured deferredとして返す。Run305以降はraw `pipeline.py`を直接起動せず、`AIIF_PRODUCT_REVIEW_RUNTIME=true` 付き `production_pipeline.py` を唯一のroot authorityとして使う。
 - Global Daily timeout 45分、Gemini budget/retry、Run268 Source architecture、Fact/Evidence/Decision gateは変更しない。
 - 初期案の取得層date normalizationとsource normalization公開面拡張は既存契約を壊したためCI反証で撤回し、最終修正を境界層へ限定した。
 - 実装merge前にfull pytest **1795 passed**、Repository-wide Falsification、Integration/Synthetic Production Smoke、Notion Access Policy、Run269 Live Acquisition SmokeをPASSした。
 - 詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
+
+### Run305 — Product Review Provider Runtime
+
+- Run304でProduct Review childのpersistent counter authorityを `runtime-state` に統一し、Run38で非ゼロcounter継承を実環境確認した。
+- Run38でraw childがRun209/Run303をinstallしていないことを反証し、Run305で唯一のroot Production entrypoint `production_pipeline.py` にProduct Review専用modeを追加した。
+- `AIIF_PRODUCT_REVIEW_RUNTIME=true` のとき、Run203 → Run209 → transient recovery → Run303だけを適用し、runtime-state preflight後にproduct-only coreへ進む。
+- Product Reviewモデル順、max reviews 2、request budget 3、persistent daily capsは変更しない。
+- Run260/Run172/article/publication/Reader Value/eyecatch layerはProduct Review専用runtimeへ導入しない。
+- Repository-wide direct core-pipeline bypass guard、Run203/Run231通常Production source ordering、Daily PAUSED、public note human-onlyを維持する。
+- 詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を正本とする。
