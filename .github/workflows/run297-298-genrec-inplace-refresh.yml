@@ -66,7 +66,7 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-        run: python run297_genrec_run296_rebase.py
+        run: GITHUB_REF_NAME=run297-assets python run297_genrec_run296_rebase.py
 
       - name: Re-sync Note Ready without touching human posting state
         env:
