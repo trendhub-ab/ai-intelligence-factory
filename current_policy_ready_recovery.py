@@ -26,6 +26,7 @@ from run285_operational_accounting import (
     increment_status_count,
     install_recovery_evidence_audit,
 )
+from run286_notion_consistency_precision import filter_live_ready_items
 
 HARD_MAX_RECOVERY_LIMIT = 1
 HARD_MAX_REQUEST_BUDGET = 4
@@ -300,6 +301,12 @@ def run_current_policy_ready_recovery(pipeline, limit: int | None = None) -> dic
     install_recovery_evidence_audit(pipeline)
 
     items = select_stale_ready_items(pipeline, selected_limit, DEFAULT_SCAN_LIMIT)
+    if str(os.environ.get("ENABLE_RUN286_NOTION_LIVE_STATUS_GUARD", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        items = filter_live_ready_items(
+            pipeline,
+            items,
+            lambda page_id: _read_article_status(pipeline, page_id),
+        )
     if items is None:
         raise RuntimeError("Current-policy Ready recovery candidate read failed")
     if not items:
