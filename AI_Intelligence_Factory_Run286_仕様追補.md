@@ -52,7 +52,7 @@ probeはsource DB read-onlyであり、destination writeやmodel requestは行�
 - Draft / VM / browser / public publication boundary
 - Daily PAUSED
 
-Run286は`run280_publication_dependency_guard.py`で明示的なnon-publication operational dependencyとして分類する。
+Run286は既にnon-publication controllerとして分類済みの`current_policy_ready_recovery.py`内部だけから利用する。`production_pipeline.py`のbytesは変更せず、Publication Contract fingerprintを不要に変化させない。
 
 ## コスト判断
 
