@@ -29,6 +29,7 @@ jobs:
       (github.event.comment.body == '/aiif run article_validation' ||
        github.event.comment.body == '/aiif run pending_retry_validation' ||
        github.event.comment.body == '/aiif run current_policy_ready_recovery' ||
+       github.event.comment.body == '/aiif run ready_metadata_rebase' ||
        github.event.comment.body == '/aiif run full')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -57,7 +58,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|pending_retry_validation|current_policy_ready_recovery|full) ;;
+            article_validation|pending_retry_validation|current_policy_ready_recovery|ready_metadata_rebase|full) ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -83,6 +84,10 @@ jobs:
             current_policy_ready_recovery)
               target='current-policy-ready-recovery.yml'
               payload='{"ref":"main","inputs":{"confirm":"RECOVER_ONE_READY"}}'
+              ;;
+            ready_metadata_rebase)
+              target='current-ready-metadata-rebase.yml'
+              payload='{"ref":"main","inputs":{"confirm":"REBASE_GENREC_READY"}}'
               ;;
             full)
               target='daily-one-shot.yml'
@@ -111,6 +116,12 @@ jobs:
               echo '- target: `current-policy-ready-recovery.yml` on `main`'
               echo '- confirmation injected: `RECOVER_ONE_READY`'
               echo '- Ready recovery hard limit: `1`'
+              echo '- private note draft / VM: `disabled`'
+            elif [ "$MODE" = 'ready_metadata_rebase' ]; then
+              echo '- target: `current-ready-metadata-rebase.yml` on `main`'
+              echo '- confirmation injected: `REBASE_GENREC_READY`'
+              echo '- Gemini/provider calls: `0`'
+              echo '- target: exact GenRec stale Ready only'
               echo '- private note draft / VM: `disabled`'
             else
               echo '- target: `daily-one-shot.yml` on `main`'
