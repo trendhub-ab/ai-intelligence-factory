@@ -12,8 +12,9 @@ transport policy:
 - the first 503 gets exactly one same-model confirmation retry;
 - only a second consecutive 503 opens the run-local circuit for that model;
 - success, timeout, 429, 404, or another non-503 result breaks the 503 sequence;
-- all existing request, persistent-daily, quality-repair and publication budgets
-  remain authoritative; no new Gemini request lane is created.
+- local request budgets remain terminal before pacing/fallback;
+- all existing persistent-daily, quality-repair and publication budgets remain
+  authoritative; no new Gemini request lane is created.
 """
 from __future__ import annotations
 
@@ -53,9 +54,21 @@ def _confirmation_delay(pipeline_module: Any, exc: BaseException) -> int:
 
 
 def _mark_confirmed_503(pipeline_module: Any, model_name: str) -> None:
-    # Use a non-legacy reason so gemini_transient_recovery cannot reinterpret the
-    # already-confirmed pair as merely the first occurrence.
     pipeline_module._mark_model_unavailable(model_name, "provider_503_confirmed_pair")
+
+
+def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_origin: str) -> None:
+    if not pipeline_module.DEEP_DIVE_MODEL_BUDGET.can_request():
+        raise pipeline_module.DeepDiveRunBudgetExceededError(
+            f"Deep Dive run budget exhausted: used={pipeline_module.DEEP_DIVE_MODEL_BUDGET.used}, "
+            f"budget={pipeline_module.DEEP_DIVE_MODEL_BUDGET.budget}, kind={kind}"
+        )
+    if request_origin == "pending_retry" and not pipeline_module.PENDING_RETRY_REQUEST_BUDGET.can_request():
+        raise pipeline_module.PendingRetryBudgetExceededError(
+            "Pending Retry Gemini request budget exhausted: "
+            f"used={pipeline_module.PENDING_RETRY_REQUEST_BUDGET.used}, "
+            f"budget={pipeline_module.PENDING_RETRY_REQUEST_BUDGET.budget}"
+        )
 
 
 def install(pipeline_module: Any) -> Any:
@@ -64,8 +77,8 @@ def install(pipeline_module: Any) -> Any:
         return pipeline_module
 
     required = (
-        "_generate_via_chat", "_mark_model_unavailable", "_extract_retry_delay",
-        "_is_gemini_transport_timeout", "APIError",
+        "_generate_via_chat", "_mark_model_unavailable", "_mark_model_exhausted",
+        "_extract_retry_delay", "_is_gemini_transport_timeout", "APIError",
     )
     missing = [name for name in required if not hasattr(pipeline_module, name)]
     if missing:
@@ -88,10 +101,10 @@ def install(pipeline_module: Any) -> Any:
 
             for attempt in range(2):
                 try:
-                    # Keep the historical long pacing only on the initial attempt.
-                    # A confirmation retry uses the short capped delay below instead.
-                    if deep_dive and attempt == 0:
-                        time.sleep(max(0, pipeline_module.GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
+                    if deep_dive:
+                        _check_deep_dive_local_budgets(pipeline_module, kind, request_origin)
+                        if attempt == 0:
+                            time.sleep(max(0, pipeline_module.GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
 
                     timeout_seconds = (
                         pipeline_module.GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS
@@ -136,7 +149,6 @@ def install(pipeline_module: Any) -> Any:
                         _mark_confirmed_503(pipeline_module, model_name)
                         break
 
-                    # A non-503 result breaks any stale historical 503 sequence.
                     _clear_legacy_503_state(pipeline_module, model_name)
                     if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
                         pipeline_module._mark_model_exhausted(model_name, quota_type)
@@ -149,14 +161,23 @@ def install(pipeline_module: Any) -> Any:
                         continue
                     break
 
-                except (pipeline_module.GeminiBudgetExceededError, pipeline_module.GeminiCallTimeoutError) as exc:
+                except (pipeline_module.PendingRetryBudgetExceededError, pipeline_module.DeepDiveRunBudgetExceededError):
+                    raise
+
+                except pipeline_module.GeminiBudgetExceededError as exc:
                     last_error = exc
                     _clear_legacy_503_state(pipeline_module, model_name)
-                    if isinstance(exc, pipeline_module.GeminiCallTimeoutError):
-                        pipeline_module.logger.warning(
-                            "[GEMINI TRANSIENT TIMEOUT] model=%s kind=%s error=%s; distinct_from_http_503=true; falling back",
-                            model_name, kind, exc,
-                        )
+                    if "Persistent Gemini model budget exhausted" in str(exc):
+                        pipeline_module._mark_model_exhausted(model_name, "persistent safety cap")
+                    break
+
+                except pipeline_module.GeminiCallTimeoutError as exc:
+                    last_error = exc
+                    _clear_legacy_503_state(pipeline_module, model_name)
+                    pipeline_module.logger.warning(
+                        "[GEMINI TRANSIENT TIMEOUT] model=%s kind=%s error=%s; distinct_from_http_503=true; falling back",
+                        model_name, kind, exc,
+                    )
                     break
 
                 except Exception as exc:
@@ -248,7 +269,13 @@ def install(pipeline_module: Any) -> Any:
                         continue
                     break
 
-                except (pipeline_module.GeminiBudgetExceededError, pipeline_module.GeminiCallTimeoutError) as exc:
+                except pipeline_module.GeminiBudgetExceededError as exc:
+                    last_error = exc
+                    _clear_legacy_503_state(pipeline_module, model_name)
+                    if "Persistent Gemini model budget exhausted" in str(exc):
+                        pipeline_module._mark_model_exhausted(model_name, "persistent safety cap")
+                    break
+                except pipeline_module.GeminiCallTimeoutError as exc:
                     last_error = exc
                     _clear_legacy_503_state(pipeline_module, model_name)
                     break
