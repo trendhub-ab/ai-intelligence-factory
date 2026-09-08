@@ -213,7 +213,7 @@ def _render_reviewed_eyecatch(output_path: Path, summary: str) -> str:
 
 def _github_asset_url(image_path: Path) -> tuple[str, str]:
     repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    token = (os.environ.get("GH_PAT", "").strip() or os.environ.get("GITHUB_TOKEN", "").strip())
     branch = os.environ.get("GITHUB_REF_NAME", "").strip() or "main"
     if not repo or not token:
         raise Run297Error("github_asset_credentials_missing")
