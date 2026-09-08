@@ -6,6 +6,7 @@ Safety boundary:
 - requires Note Ready = Ready / 投稿準備中 and no public-post evidence;
 - discovers only existing /notes/<id>/edit routes from the persistent Chrome History DB;
 - requires exactly one matching existing draft and never navigates to /new;
+- unreadable/stale editor-history candidates are ignored before any mutation;
 - replaces body + header eyecatch in the same editor route, then reloads and audits it;
 - exposes only non-content booleans/counts/hashes;
 - ZERO Gemini/model calls and no public-release action.
@@ -58,6 +59,20 @@ def _safe_title(page: Any) -> str:
         return audit_base._title_value(page)
     except Exception as exc:
         raise Run298Error("draft_title_read_failed") from exc
+
+
+def _candidate_title(page: Any) -> str | None:
+    """Read a history candidate title without turning a stale route into a fatal match failure.
+
+    This helper is discovery-only. A selected exact-match route is read again with ``_safe_title``
+    immediately before mutation, so an unreadable or changed selected route still fails closed.
+    """
+    try:
+        return _safe_title(page)
+    except Run298Error as exc:
+        if str(exc) == "draft_title_read_failed":
+            return None
+        raise
 
 
 def _expected_current_article() -> tuple[dict[str, Any], str]:
@@ -124,7 +139,10 @@ def _find_one_existing_route(context: Any, page: Any, title: str) -> tuple[str, 
                 continue
             if not audit_base.run187._is_editor_url(str(page.url or "")):
                 continue
-            if _safe_title(page) == title.strip():
+            candidate_title = _candidate_title(page)
+            if candidate_title is None:
+                continue
+            if candidate_title == title.strip():
                 matches.append((candidate, rank))
         except Run298Error:
             raise
