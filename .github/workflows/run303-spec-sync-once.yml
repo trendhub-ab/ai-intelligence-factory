@@ -1,0 +1,105 @@
+name: Run303 Canonical Spec Sync Once
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sync-run303-spec:
+    if: github.head_ref == 'run303-provider-503-resilience'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: run303-provider-503-resilience
+          token: ${{ secrets.GH_PAT }}
+      - name: Patch canonical docs and self-delete
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          spec_path = Path('AI_Intelligence_Factory_最終仕様書.md')
+          spec = spec_path.read_text(encoding='utf-8')
+
+          baseline = 'Provider Resilience Baseline: **Run303 — Verified HTTP 503 confirmation / consecutive-only run-local circuit**  \n'
+          if baseline not in spec:
+              anchor = 'Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  \n'
+              if anchor not in spec:
+                  raise SystemExit('missing Core Reliability anchor')
+              spec = spec.replace(anchor, anchor + baseline, 1)
+
+          manifest_line = '- `gemini_provider_resilience.py`\n'
+          if manifest_line not in spec:
+              anchor = '- `gemini_transient_recovery.py`\n'
+              if anchor not in spec:
+                  raise SystemExit('missing runtime manifest anchor')
+              spec = spec.replace(anchor, anchor + manifest_line, 1)
+
+          old_503 = '- **1回目のHTTP 503** を観測した場合は既存cooldown契約に従う。\n'
+          new_503 = (
+              '- **1回目のHTTP 503** は、Run303で構造化されたprovider status code=503を確認した場合に限り、同一モデルで1回だけ確認再試行する。\n'
+              '- 2回連続のverified HTTP 503で初めて、そのmodelのrun-local circuitを開く。\n'
+              '- 200成功、transport timeout、429、404、その他non-503結果は503連続系列を切り、過去の503累積でmodelをcooldownしない。\n'
+              '- transport timeoutはHTTP 503と別障害として記録し、Run209のRPD fail-closed reservation保持を維持する。\n'
+              '- Run303の確認再試行は既存per-run / persistent daily / Pending Retry / Product Review budgetの内側でのみ動作し、Gateやrequest ceilingを拡張しない。\n'
+          )
+          if old_503 in spec:
+              spec = spec.replace(old_503, new_503, 1)
+          elif '2回連続のverified HTTP 503' not in spec:
+              raise SystemExit('missing legacy 503 contract anchor')
+
+          gov_line = '- Run303のverified HTTP 503 / consecutive-only circuit / timeout分離契約は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` を正本とする。\n'
+          if gov_line not in spec:
+              anchor = '- Run272のNotion date boundary / arXiv run-local Evidence Health circuit / bounded Product Review child契約は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。\n'
+              if anchor not in spec:
+                  raise SystemExit('missing documentation governance anchor')
+              spec = spec.replace(anchor, anchor + gov_line, 1)
+
+          current_line = '**現在のProvider Resilience正本はRun303。**  \n'
+          if current_line not in spec:
+              anchor = '**現在のOperational Reliability正本はRun272。**  \n'
+              if anchor not in spec:
+                  raise SystemExit('missing current authority anchor')
+              spec = spec.replace(anchor, anchor + current_line, 1)
+
+          spec_path.write_text(spec, encoding='utf-8')
+
+          quota_path = Path('GEMINI_QUOTA_SETUP.md')
+          quota = quota_path.read_text(encoding='utf-8')
+          quota = quota.replace('最終更新: 2026-09-06', '最終更新: 2026-09-09', 1)
+          provider_baseline = '現行Provider Resilience Baseline: **Run303 — verified 503 confirmation / consecutive-only circuit**  \n'
+          if provider_baseline not in quota:
+              anchor = '現行Quota Safety Baseline: **Run209 — timeout RPD fail-closed**  \n'
+              if anchor not in quota:
+                  raise SystemExit('missing quota baseline anchor')
+              quota = quota.replace(anchor, anchor + provider_baseline, 1)
+
+          old_fast = '- 1回目のHTTP 503でそのmodelを当該fast-lane run中cooldown。\n'
+          new_fast = (
+              '- 1回目のverified HTTP 503は同一modelで1回だけ確認再試行し、単発503ではcooldownしない。\n'
+              '- 2回連続のverified HTTP 503で当該modelのrun-local circuitを開く。\n'
+          )
+          if old_fast in quota:
+              quota = quota.replace(old_fast, new_fast, 1)
+
+          section = '''\n## 2.1 Run303 — provider HTTP 503の確認再試行\n\nRun35/Run36の実Production反復で、SDK下の実HTTP 503と、同一modelの後続HTTP 200成功が同じrun内に共存することを確認しました。したがってRun303では、一時的な503を即座にrun-wide model failureへ昇格させません。\n\n- HTTP 503は例外本文の文字列ではなく、構造化されたnumeric provider status code=503でのみ認定します。\n- 1回目のverified 503では同一modelを1回だけ確認再試行します。既定待機10秒、上限20秒で、providerのretry delayが得られる場合はその範囲で尊重します。\n- 2回連続のverified 503で初めてrun-local circuitを開きます。\n- 200成功、timeout、429、404、その他non-503結果で503系列をリセットします。成功を挟んだ過去503を累積してcooldownしません。\n- transport timeoutは503とは別障害です。Run209のtimeout reservation fail-closed契約は変更しません。\n- 確認再試行は既存Deep Dive 12 requests、Pending Retry、Product Review、各model persistent daily safety capの内側でのみ動作します。\n- Fact / Evidence / Publication / Human Appeal Gateは変更しません。Ready件数を増やす目的でGateを緩和しません。\n\n実装正本は `gemini_provider_resilience.py`、詳細反証は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` です。\n'''
+          if '## 2.1 Run303 — provider HTTP 503の確認再試行' not in quota:
+              anchor = '## 3. Project ID / Counter scope\n'
+              if anchor not in quota:
+                  raise SystemExit('missing quota section anchor')
+              quota = quota.replace(anchor, section + '\n' + anchor, 1)
+          quota_path.write_text(quota, encoding='utf-8')
+
+          Path('.github/workflows/run303-spec-sync-once.yml').unlink()
+          PY
+
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add AI_Intelligence_Factory_最終仕様書.md GEMINI_QUOTA_SETUP.md .github/workflows/run303-spec-sync-once.yml
+          git diff --cached --check
+          git commit -m 'Run303: sync canonical provider resilience documentation'
+          git push origin HEAD:run303-provider-503-resilience
