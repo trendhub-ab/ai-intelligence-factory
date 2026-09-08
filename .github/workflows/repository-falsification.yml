@@ -127,8 +127,9 @@ jobs:
             -v
           python -m unittest tests.test_run290_quality_workflow_separation -v
 
-      - name: Falsify Run292/293 private-draft audit fidelity and safe diagnostic boundary
+      - name: Falsify Run292/293/294 private-draft audit fidelity and safe diagnostic boundary
         run: |
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
+          python -m unittest tests.test_run294_note_eyecatch_persistence_diagnostics -v
           python -m unittest tests.test_run292_note_audit_workflow -v
