@@ -17,6 +17,14 @@ Run162 scaling contract:
 - HISTORY_PENDING integrity recovery remains first;
 - existing daily max-review and request-budget hard caps remain authoritative;
 - no new Notion properties and no Gemini calls are introduced by this planner.
+
+Run304 counter-state contract:
+- when Production exposes ``AIIF_RUNTIME_STATE_BRANCH``, the product-only child
+  must read the Gemini persistent counter from that same authoritative branch;
+- the child executes ``pipeline.py`` directly and therefore cannot rely on
+  ``production_pipeline.py`` to install the runtime-state overlay for it;
+- if no runtime-state overlay exists, an explicit operator-supplied
+  ``GEMINI_COUNTER_BRANCH`` is preserved unchanged.
 """
 from __future__ import annotations
 
@@ -287,6 +295,9 @@ def _run_product_only(
     effective_timeout = DEFAULT_CHILD_TIMEOUT_SECONDS if timeout is None else min(1200, max(1, int(timeout)))
     env = os.environ.copy()
     env.update(ib.product_only_environment(max_reviews, request_budget))
+    runtime_state_branch = str(os.environ.get("AIIF_RUNTIME_STATE_BRANCH") or "").strip()
+    if runtime_state_branch:
+        env["GEMINI_COUNTER_BRANCH"] = runtime_state_branch
     env["INVENTORY_BOOTSTRAP_ENTITY_IDS"] = ",".join(allowlist)
     try:
         proc = subprocess.run(
