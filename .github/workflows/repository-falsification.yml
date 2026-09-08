@@ -43,6 +43,7 @@ jobs:
           python -m unittest tests.test_run283_numeric_evidence_equivalence -v
           python -m unittest tests.test_run284_reader_recovery_precision -v
           python -m unittest tests.test_run285_operational_accounting -v
+          python -m unittest tests.test_run286_notion_consistency_precision -v
 
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
