@@ -1,5 +1,15 @@
+import sys
+import types
 import unittest
 from unittest.mock import Mock, patch
+
+try:
+    import requests  # noqa: F401
+except ModuleNotFoundError:
+    requests_stub = types.ModuleType("requests")
+    requests_stub.Response = object
+    requests_stub.request = lambda *args, **kwargs: None
+    sys.modules["requests"] = requests_stub
 
 import note_ready_sync as sync
 
