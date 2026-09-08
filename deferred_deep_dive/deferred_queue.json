@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-07T13:40:14.856521+00:00",
+  "updated_at": "2026-09-08T14:59:04.214523+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.05339",
@@ -531,6 +531,80 @@
       "deep_dive_priority_score": 69.3
     },
     {
+      "key": "https://news.ycombinator.com/item?id=49587647",
+      "deferred_at": "2026-09-08T14:59:04.214253+00:00",
+      "expires_at": "2026-11-07T14:59:04.214253+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
+        "originalTitle": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
+        "displayName": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
+        "sourceLanguage": "en",
+        "url": "https://qwen.ai/blog?id=qwen-scope",
+        "description": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-06T15:45:23Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Qwen",
+        "primaryUrl": "https://qwen.ai/blog?id=qwen-scope",
+        "sourceDetails": {
+          "hn_id": "49587647",
+          "hn_url": "https://news.ycombinator.com/item?id=49587647",
+          "external_url": "https://qwen.ai/blog?id=qwen-scope",
+          "comments": 0,
+          "matched_query": "Qwen",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d5479ff-dca9-8132-b521-fe03b354abd8",
+      "score": 70,
+      "reason": "モデル内部の解釈性向上に関する有用な情報。",
+      "commercial_score": 65,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 68.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49597354",
+      "deferred_at": "2026-09-08T14:59:04.214431+00:00",
+      "expires_at": "2026-09-22T14:59:04.214431+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
+        "originalTitle": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
+        "displayName": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
+        "sourceLanguage": "en",
+        "url": "https://www.theregister.com/columnists/2026/09/07/openais-rebel-agent-swarm-died-young-but-its-chilling-logs-live-on/5294446",
+        "description": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-07T12:07:08Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=OpenAI",
+        "primaryUrl": "https://www.theregister.com/columnists/2026/09/07/openais-rebel-agent-swarm-died-young-but-its-chilling-logs-live-on/5294446",
+        "sourceDetails": {
+          "hn_id": "49597354",
+          "hn_url": "https://news.ycombinator.com/item?id=49597354",
+          "external_url": "https://www.theregister.com/columnists/2026/09/07/openais-rebel-agent-swarm-died-young-but-its-chilling-logs-live-on/5294446",
+          "comments": 0,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d5479ff-dca9-81bf-82c8-fda62edb1699",
+      "score": 68,
+      "reason": "エージェント暴走のログから安全性課題を学べる。",
+      "commercial_score": 65,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 66.95
+    },
+    {
       "key": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
       "deferred_at": "2026-09-07T09:52:34.057357+00:00",
       "expires_at": "2026-09-21T09:52:34.057357+00:00",
@@ -633,42 +707,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 63.0
-    },
-    {
-      "key": "https://cloud.baidu.com/doc/qianfan/s/rmse4vxp8",
-      "deferred_at": "2026-09-07T10:40:04.073766+00:00",
-      "expires_at": "2026-11-06T10:40:04.073766+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Baidu ERNIE — 模型服务 V1 接口下线及迁移说明",
-        "originalTitle": "Baidu ERNIE — 模型服务 V1 接口下线及迁移说明",
-        "displayName": "海外技術情報「Baidu ERNIE — 模型服务 V1 接口下线及迁移说明」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://cloud.baidu.com/doc/qianfan/s/rmse4vxp8",
-        "description": "模型服务 V1 接口下线及迁移说明",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "模型服务 V1 接口下线及迁移说明",
-        "primaryUrl": "https://cloud.baidu.com/doc/qianfan/s/rmse4vxp8",
-        "sourceDetails": {
-          "vendor": "Baidu ERNIE",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp",
-          "candidate_revision": "f22bcf0d6bf8af1d",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-8187-bf16-d2335f014306",
-      "score": 60,
-      "reason": "V1インターフェース下線に伴う移行実務に直結するため。",
-      "commercial_score": 65,
-      "shelf_life_score": 80,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 61.75
     }
   ]
 }
