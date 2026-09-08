@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08T15:16:07.797865+00:00",
+  "updated_at": "2026-09-08T21:02:44.808687+00:00",
   "items": [
     {
       "key": "https://ai.google.dev/gemini-api/docs/latest-model",
@@ -491,6 +491,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 69.3
+    },
+    {
+      "key": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
+      "deferred_at": "2026-09-08T21:02:44.808525+00:00",
+      "expires_at": "2026-09-22T21:02:44.808525+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "How I Extend Claude Code",
+        "originalTitle": "How I Extend Claude Code",
+        "displayName": "How I Extend Claude Code",
+        "sourceLanguage": "en",
+        "url": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
+        "description": "How I Extend Claude Code",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-08T17:19:32Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Claude",
+        "primaryUrl": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
+        "sourceDetails": {
+          "hn_id": "49613348",
+          "hn_url": "https://news.ycombinator.com/item?id=49613348",
+          "external_url": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
+          "comments": 0,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d5479ff-dca9-81bd-88cb-e6fa1b7f2064",
+      "score": 70,
+      "reason": "開発ツールの拡張に関する実用知見",
+      "commercial_score": 65,
+      "shelf_life_score": 35,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 68.25
     },
     {
       "key": "https://news.ycombinator.com/item?id=49587647",
