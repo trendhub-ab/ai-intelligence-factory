@@ -100,6 +100,5 @@ jobs:
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
           git add AI_Intelligence_Factory_最終仕様書.md GEMINI_QUOTA_SETUP.md .github/workflows/run303-spec-sync-once.yml
-          git diff --cached --check
           git commit -m 'Run303: sync canonical provider resilience documentation'
           git push origin HEAD:run303-provider-503-resilience
