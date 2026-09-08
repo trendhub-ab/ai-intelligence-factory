@@ -1,0 +1,266 @@
+name: Run298 Existing GenRec Draft Route Retry [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/run298-existing-draft-route-retry.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run298-existing-genrec-draft-route-retry
+  cancel-in-progress: false
+
+jobs:
+  preflight-current-run297-state:
+    if: contains(github.event.head_commit.message, 'execute exact GenRec route retry')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.ready.outputs.should_start_vm }}
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install deterministic preflight dependency
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Falsify Run296/297/298 route boundaries
+        run: |
+          python -m unittest tests.test_run296_editorial_format_v2 -v
+          python -m unittest tests.test_run297_298_genrec_refresh -v
+
+      - name: Require exact current Run297 state before VM
+        id: ready
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          import os
+          import publication_contract as contract
+          import run298_genrec_inplace_refresh as r298
+
+          expected_policy = 'ba997928381a755d5a04bdcee7ea75f45e7cd336a430f16a412a9878a41dc96f'
+          if contract.policy_sha256() != expected_policy:
+              raise SystemExit('Run298 retry refuses Publication Contract drift')
+          r298._ensure_private_queue_state()
+          article, _ = r298._expected_current_article()
+          if article.get('sync_id') != r298.TARGET_SYNC_ID:
+              raise SystemExit('Run298 retry target drift')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write('should_start_vm=true\n')
+          print('RUN297_CURRENT_STATE_EXACT=true')
+          print('RUN298_RETRY_PUBLIC_RELEASE=false')
+          print('RUN298_RETRY_NEW_DRAFT=false')
+          print('RUN298_RETRY_MODEL_CALLS=0')
+          PY
+
+  start-cloud-vm:
+    if: ${{ needs.preflight-current-run297-state.outputs.should_start_vm == 'true' }}
+    needs: preflight-current-run297-state
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM is running for exact Run298 retry.'
+
+  run298-inplace-refresh:
+    if: ${{ needs.preflight-current-run297-state.outputs.should_start_vm == 'true' }}
+    needs: [preflight-current-run297-state, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
+            echo '::error::Google Chrome is not installed on the persistent note VM.'
+            exit 1
+          }
+          command -v xvfb-run >/dev/null 2>&1 || {
+            echo '::error::xvfb-run is not installed on the persistent note VM.'
+            exit 1
+          }
+
+      - name: Re-run exact route-selection safety tests on VM
+        run: python -m unittest tests.test_run297_298_genrec_refresh -v
+
+      - name: Run298 overwrite same existing private draft and re-audit
+        env:
+          RUN298_RESULT_FILE: ${{ runner.temp }}/run298-result.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: xvfb-run -a python run298_genrec_inplace_refresh.py
+
+      - name: Require all requested actual-note checks
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run298-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          required_true = [
+              'same_private_draft_route', 'title_match', 'new_intro_present',
+              'old_intro_absent', 'what_row_absent', 'new_cta_heading_present',
+              'new_cta_body_present', 'cta_link_label_present', 'sources_before_cta',
+              'eyecatch_present', 'quality_state_ready', 'posting_state_preparing',
+              'zero_gemini_calls',
+          ]
+          failed = [key for key in required_true if result.get(key) is not True]
+          if result.get('duplicate_title_prefix') is not False:
+              failed.append('duplicate_title_prefix')
+          if result.get('duplicate_draft_created') is not False:
+              failed.append('duplicate_draft_created')
+          if result.get('public_release') is not False:
+              failed.append('public_release')
+          if result.get('daily_restarted') is not False:
+              failed.append('daily_restarted')
+          if int(result.get('body_h1_count', -1)) != 0:
+              failed.append('body_h1_count')
+          if failed:
+              raise SystemExit('Run298 retry final audit failed: ' + ','.join(failed))
+          print('RUN298_ACTUAL_NOTE_AUDIT=PASS')
+          PY
+
+      - name: Summarize non-content proof only
+        if: always()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run298-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RESULT_FILE'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run298 — exact existing draft route retry\n')
+              if not path.exists():
+                  fh.write('- result: `FAIL-CLOSED`\n')
+                  raise SystemExit(0)
+              r = json.loads(path.read_text(encoding='utf-8'))
+              for key in [
+                  'status', 'same_private_draft_route', 'editor_route_hash',
+                  'history_candidate_count', 'matched_history_rank', 'prior_surface',
+                  'new_intro_present', 'old_intro_absent', 'what_row_absent',
+                  'new_cta_heading_present', 'new_cta_body_present', 'cta_link_label_present',
+                  'sources_before_cta', 'duplicate_title_prefix', 'title_match',
+                  'eyecatch_present', 'eyecatch_proof_mode', 'header_media_changed',
+                  'body_h1_count', 'quality_state_ready', 'posting_state_preparing',
+                  'zero_gemini_calls', 'duplicate_draft_created', 'public_release', 'daily_restarted'
+              ]:
+                  if key in r:
+                      fh.write(f'- {key}: `{r[key]}`\n')
+              fh.write('- private draft URL / unpublished body / image URL exposed: `false`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight-current-run297-state, start-cloud-vm, run298-inplace-refresh]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Stop persistent note Chrome VM
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
