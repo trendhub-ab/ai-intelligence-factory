@@ -10,7 +10,7 @@ explicitly resumed.
 
 Run305 also makes this file the sole root entrypoint for the bounded Product Review
 child. An explicit environment flag selects a narrow provider/quota-only runtime;
-raw root-level ``pipeline.main()`` bypasses remain prohibited.
+direct core-pipeline bypasses from other root executables remain prohibited.
 """
 from __future__ import annotations
 
