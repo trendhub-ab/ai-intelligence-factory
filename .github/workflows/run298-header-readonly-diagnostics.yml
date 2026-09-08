@@ -1,0 +1,204 @@
+name: Run298 GenRec Header Read-Only Diagnostics [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/run298-header-readonly-diagnostics.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run298-genrec-header-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: contains(github.event.head_commit.message, 'execute exact header read-only diagnostic')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.ready.outputs.should_start_vm }}
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install preflight dependency
+        run: pip install requests
+
+      - name: Falsify read-only diagnostic boundary
+        run: |
+          python -m unittest tests.test_run298_header_readonly_diagnostics -v
+          python -m unittest tests.test_run297_298_genrec_refresh -v
+
+      - name: Require exact current target state
+        id: ready
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          import os
+          import publication_contract as contract
+          import run298_genrec_inplace_refresh as r298
+          expected = 'ba997928381a755d5a04bdcee7ea75f45e7cd336a430f16a412a9878a41dc96f'
+          if contract.policy_sha256() != expected:
+              raise SystemExit('diagnostic refuses Publication Contract drift')
+          r298._ensure_private_queue_state()
+          article, _ = r298._expected_current_article()
+          if article.get('sync_id') != r298.TARGET_SYNC_ID:
+              raise SystemExit('diagnostic target drift')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write('should_start_vm=true\n')
+          print('RUN298_HEADER_DIAGNOSTIC_PREFLIGHT=PASS')
+          PY
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then echo "::error::Missing repository variable: ${name}"; exit 1; fi
+          done
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  diagnose:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Re-run read-only safety tests on VM
+        run: python -m unittest tests.test_run298_header_readonly_diagnostics -v
+      - name: Collect exact private draft header metrics without mutation
+        env:
+          RUN298_HEADER_DIAGNOSTIC_RESULT: ${{ runner.temp }}/run298-header-diagnostic.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: xvfb-run -a python run298_header_readonly_diagnostics.py
+      - name: Summarize safe numeric/categorical metrics
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run298-header-diagnostic.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'diagnostic_complete' or r.get('read_only') is not True or r.get('draft_mutation') is not False:
+              raise SystemExit('read-only header diagnostic contract failed')
+          keys = [
+              'same_private_draft_route','editor_route_hash','history_candidate_count','matched_history_rank',
+              'eyecatch_proof_mode','eyecatch_persistence_confirmed','safe_header_file_input_available',
+              'safe_image_input_count','official_add_control_available','header_fingerprint_available',
+              'header_fingerprint_count','eyecatch_exact_control_count','eyecatch_exact_control_visible_count',
+              'image_labeled_control_count','image_labeled_control_visible_count','image_add_control_count',
+              'image_add_control_visible_count','file_input_count','title_geometry_available','visible_img_count',
+              'large_top_img_count','large_top_background_count','visible_picture_count','max_top_media_width',
+              'max_top_media_height','large_media_candidate_count','large_media_clickable_ancestor_count',
+              'large_media_pointer_ancestor_count'
+          ]
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run298 header read-only diagnostics\n')
+              for key in keys:
+                  if key in r: fh.write(f'- {key}: `{r[key]}`\n')
+              fh.write('- draft/body/image URL exposed: `false`\n')
+              fh.write('- mutation/public release/model calls: `false`\n')
+          print(json.dumps({key:r.get(key) for key in keys if key in r}, ensure_ascii=False))
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, diagnose]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
