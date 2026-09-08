@@ -30,6 +30,7 @@ def install_runtime_layers(pipeline_module):
     import gemini_transient_recovery
     import run260_gemini_model_routing
     import run172_production_reliability
+    import gemini_provider_resilience
     import run173_operational_yield
     import run174_monthly_digest_integrity
     import run175_semantic_fact_precision
