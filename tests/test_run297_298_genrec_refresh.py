@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import unittest
+from unittest.mock import patch
 
 import run297_genrec_run296_rebase as r297
 import run298_genrec_inplace_refresh as r298
@@ -68,6 +69,17 @@ Netflixの推薦基盤に関する技術記事です。
         self.assertNotIn("client.models", source)
 
 
+class _FakePage:
+    def __init__(self):
+        self.url = ""
+
+    def goto(self, url, **_kwargs):
+        self.url = url
+
+    def wait_for_timeout(self, _ms):
+        return None
+
+
 class Run298InPlaceTests(unittest.TestCase):
     def test_only_existing_editor_routes_are_accepted(self):
         self.assertEqual(
@@ -86,6 +98,45 @@ class Run298InPlaceTests(unittest.TestCase):
         self.assertNotIn("https://note.com/new", source)
         self.assertNotIn("generate_content", source)
         self.assertNotIn("client.models", source)
+
+    def test_unreadable_stale_history_candidate_is_skipped_before_exact_match(self):
+        stale = "https://editor.note.com/notes/stale123/edit"
+        target = "https://editor.note.com/notes/target456/edit"
+        page = _FakePage()
+        with (
+            patch.object(r298.audit_base, "_recent_private_edit_urls", return_value=[stale, target]),
+            patch.object(r298.audit_base, "_is_note_edit_url", return_value=True),
+            patch.object(r298.audit_base.run187, "_is_editor_url", return_value=True),
+            patch.object(r298.note_base, "_looks_logged_out", return_value=False),
+            patch.object(r298, "_seed_if_needed", return_value=False),
+            patch.object(r298, "_candidate_title", side_effect=[None, "Exact Target"]),
+        ):
+            url, rank, count = r298._find_one_existing_route(object(), page, "Exact Target")
+        self.assertEqual(url, target)
+        self.assertEqual(rank, 2)
+        self.assertEqual(count, 2)
+
+    def test_selected_route_is_still_rechecked_with_fatal_safe_title(self):
+        with patch.object(r298, "_safe_title", side_effect=r298.Run298Error("draft_title_read_failed")):
+            self.assertIsNone(r298._candidate_title(object()))
+        with patch.object(r298, "_safe_title", side_effect=r298.Run298Error("other_guard")):
+            with self.assertRaisesRegex(r298.Run298Error, "other_guard"):
+                r298._candidate_title(object())
+
+    def test_multiple_exact_history_matches_remain_fail_closed(self):
+        first = "https://editor.note.com/notes/a123/edit"
+        second = "https://editor.note.com/notes/b456/edit"
+        page = _FakePage()
+        with (
+            patch.object(r298.audit_base, "_recent_private_edit_urls", return_value=[first, second]),
+            patch.object(r298.audit_base, "_is_note_edit_url", return_value=True),
+            patch.object(r298.audit_base.run187, "_is_editor_url", return_value=True),
+            patch.object(r298.note_base, "_looks_logged_out", return_value=False),
+            patch.object(r298, "_seed_if_needed", return_value=False),
+            patch.object(r298, "_candidate_title", side_effect=["Exact Target", "Exact Target"]),
+        ):
+            with self.assertRaisesRegex(r298.Run298Error, "existing_target_draft_not_unique:2"):
+                r298._find_one_existing_route(object(), page, "Exact Target")
 
     def test_surface_markers_encode_requested_final_audit(self):
         actual = (
