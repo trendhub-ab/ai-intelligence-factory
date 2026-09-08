@@ -1,7 +1,7 @@
 """Run287: publication-date provenance precision.
 
 Hacker News acquisition timestamps describe the HN post/discovery event, not the
-publication/update date of an external primary source.  Keep that useful date visible,
+publication/update date of an external primary source. Keep that useful date visible,
 but label it honestly so a discovery timestamp can never masquerade as primary-source
 publication metadata.
 
@@ -12,8 +12,10 @@ from __future__ import annotations
 from typing import Any
 
 
-def install(note_manuscript_module: Any) -> None:
+def install(note_manuscript_module: Any, pipeline_module: Any | None = None) -> None:
     if bool(getattr(note_manuscript_module, "_run287_publication_date_provenance_installed", False)):
+        if pipeline_module is not None:
+            pipeline_module.build_reader_first_header = note_manuscript_module.build_reader_first_header
         return
 
     original = getattr(note_manuscript_module, "build_reader_first_header", None)
@@ -32,7 +34,7 @@ def install(note_manuscript_module: Any) -> None:
         if source_name != "HackerNews":
             return original(reader_summary, repo_name, repo_url, source, published_at)
 
-        # HN `published_at` comes from the Hacker News item timestamp.  It is not
+        # HN `published_at` comes from the Hacker News item timestamp. It is not
         # evidence for when an external primary article itself was published/updated.
         header = original(reader_summary, repo_name, repo_url, source, None)
         hn_date = date_parser(published_at)
@@ -43,3 +45,5 @@ def install(note_manuscript_module: Any) -> None:
     note_manuscript_module.build_reader_first_header = build_reader_first_header
     setattr(note_manuscript_module, "_run287_publication_date_provenance_installed", True)
     setattr(note_manuscript_module, "_run287_original_build_reader_first_header", original)
+    if pipeline_module is not None:
+        pipeline_module.build_reader_first_header = build_reader_first_header
