@@ -3,6 +3,7 @@
 最終更新: 2026-09-09  
 現行Quota Safety Baseline: **Run209 — timeout RPD fail-closed**  
 現行Provider Resilience Baseline: **Run303 — verified 503 confirmation / consecutive-only circuit**  
+現行Product Review Provider Runtime Baseline: **Run305 — runtime-state + Run209 + transient recovery + Run303**  
 現行Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**
 
 ## 結論
@@ -71,6 +72,32 @@ Run35/Run36の実Production反復で、SDK下の実HTTP 503と、同一modelの�
 - Fact / Evidence / Publication / Human Appeal Gateは変更しません。Ready件数を増やす目的でGateを緩和しません。
 
 実装正本は `gemini_provider_resilience.py`、詳細反証は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` です。
+
+## 2.2 Run304 / Run305 — Product Review counter authority と provider runtime
+
+Run37で、Product Review childが親Productionの`runtime-state` counterではなくlegacy `main`を参照し、`Persistent Gemini Daily Counter: 0`と誤認する不具合を確認しました。Run304は、親が公開した`AIIF_RUNTIME_STATE_BRANCH`をProduct Review childの`GEMINI_COUNTER_BRANCH`へ明示継承させます。
+
+Run38ではRun304の修正が実証され、Product Review childは親の非ゼロcounterを読み、`gemini-3.6-flash`を5/18から8/18へ正しく更新しました。一方、その実測でchildがraw `pipeline.py`を直接起動していたためRun209/Run303等のprovider/quota runtime layerをinstallしていない別の不整合を確認しました。
+
+Run305以降、`daily_portfolio_review.py`は `AIIF_PRODUCT_REVIEW_RUNTIME=true` を付けて、唯一のroot Production entrypointである`production_pipeline.py`を起動します。`production_pipeline.py`はarticle/publication stackをinstallする前にこのmodeへ分岐し、次の4層だけを順番にinstallします。
+
+1. `run203_runtime_state_channel.install`
+2. `gemini_timeout_rpd_fail_closed.install`
+3. `gemini_transient_recovery.install`
+4. `gemini_provider_resilience.install`
+
+その後、Run203 runtime-state preflightを行い、既存product-only `pipeline.main()`を実行します。`production_pipeline.py`以外のroot Python executableから`pipeline.main()`を直接呼ばないRepository Falsification契約は維持します。
+
+重要な境界:
+
+- Product Reviewのモデル順は `gemini-3.6-flash -> gemini-3.7-flash -> gemini-3.8-flash -> gemini-3.5-flash` のまま維持する。
+- Run260 Article Model RoutingはProduct Review専用runtimeへinstallしない。
+- Run172やarticle/publication/Reader Value/eyecatch layerもProduct Review専用runtimeへ持ち込まない。
+- `DAILY_PORTFOLIO_REVIEW_MAX=2`、`DAILY_PORTFOLIO_REQUEST_BUDGET=3`、各model persistent daily safety capを変更しない。
+- Run303の503確認再試行もProduct Review request budget内でのみ動く。
+- Scheduled DailyはPAUSED、Public note releaseはhuman-onlyのまま。
+
+実装正本は `production_pipeline.py` / `daily_portfolio_review.py`、詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を参照してください。
 
 ## 3. Project ID / Counter scope
 
@@ -145,4 +172,4 @@ Run終了時にmodel / request kind / success-error / token usageを集計し、
 
 Quota安全仕様を変更する場合は、コード/workflowと同じPRで本ファイルを更新します。Run210 Documentation Freshness Guardにより、Flash 18回安全上限、Daily PAUSED、timeout fail-closed、Pending Retry fast lane等のCanonical契約が実装と矛盾した場合はCIを失敗させます。
 
-Run261のArticle Model Routing authorityは`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、`run260_gemini_model_routing.py`です。
+Run261のArticle Model Routing authorityは`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、`run260_gemini_model_routing.py`です。Run305のProduct Review provider-runtime authorityは`docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md`と`production_pipeline.py`です。

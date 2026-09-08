@@ -7,6 +7,10 @@ reliability, preflight, font, and compatibility contracts are in place.
 
 Daily is currently PAUSED; this file remains the contract to use when Daily is
 explicitly resumed.
+
+Run305 also makes this file the sole root entrypoint for the bounded Product Review
+child. An explicit environment flag selects a narrow provider/quota-only runtime;
+direct core-pipeline bypasses from other root executables remain prohibited.
 """
 from __future__ import annotations
 
@@ -14,6 +18,37 @@ import json
 import os
 
 from runtime_layers import install_runtime_layers as _canonical_install_runtime_layers
+
+
+PRODUCT_REVIEW_PROVIDER_LAYER_ORDER = (
+    "run203_runtime_state_channel.install",
+    "gemini_timeout_rpd_fail_closed.install",
+    "gemini_transient_recovery.install",
+    "gemini_provider_resilience.install",
+)
+
+
+def install_product_review_provider_runtime(pipeline_module):
+    """Install only provider/quota safety required by the product-only child.
+
+    Run260 is intentionally excluded so Product Review keeps its explicit
+    3.6 -> 3.7 -> 3.8 -> 3.5 model order rather than inheriting article routing.
+    Article/publication/Reader Value/eyecatch layers are also deliberately absent.
+    """
+    import run203_runtime_state_channel as runtime_state_channel
+    import gemini_timeout_rpd_fail_closed
+    import gemini_transient_recovery
+    import gemini_provider_resilience
+
+    runtime_state_channel.install(pipeline_module)
+    gemini_timeout_rpd_fail_closed.install(pipeline_module)
+    gemini_transient_recovery.install(pipeline_module)
+    gemini_provider_resilience.install(pipeline_module)
+    return pipeline_module
+
+
+def _product_review_runtime_requested() -> bool:
+    return os.environ.get("AIIF_PRODUCT_REVIEW_RUNTIME", "").strip().lower() == "true"
 
 
 def install_runtime_layers(pipeline_module):
@@ -90,6 +125,13 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
+    # Run305: Product Review is still a child process, but every root executable must
+    # enter through this sole production authority. Branch before article imports so
+    # product-only execution does not install or initialize article/publication layers.
+    if _product_review_runtime_requested():
+        _run_product_review_runtime()
+        return
+
     import note_manuscript
     import pipeline
     import run179_eyecatch_font_refinement
@@ -191,6 +233,17 @@ def main() -> None:
     if mode == "full":
         install_full_recovery(pipeline)
 
+    pipeline.main()
+
+
+def _run_product_review_runtime() -> None:
+    """Run product-only pipeline through the narrow Run305 provider runtime."""
+    import pipeline
+    import run203_runtime_state_channel as runtime_state_channel
+
+    install_product_review_provider_runtime(pipeline)
+    if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
+        runtime_state_channel.preflight_runtime_state_channel()
     pipeline.main()
 
 

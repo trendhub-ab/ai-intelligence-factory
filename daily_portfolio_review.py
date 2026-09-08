@@ -21,10 +21,15 @@ Run162 scaling contract:
 Run304 counter-state contract:
 - when Production exposes ``AIIF_RUNTIME_STATE_BRANCH``, the product-only child
   must read the Gemini persistent counter from that same authoritative branch;
-- the child executes ``pipeline.py`` directly and therefore cannot rely on
-  ``production_pipeline.py`` to install the runtime-state overlay for it;
 - if no runtime-state overlay exists, an explicit operator-supplied
   ``GEMINI_COUNTER_BRANCH`` is preserved unchanged.
+
+Run305 provider-runtime contract:
+- the child still enters through the sole approved ``production_pipeline.py`` root
+  entrypoint, with ``AIIF_PRODUCT_REVIEW_RUNTIME=true`` selecting a narrow provider-
+  and quota-only runtime before the existing product-only pipeline executes;
+- Product Review's explicit model order and existing max-review/request budgets are
+  preserved; article/publication/model-routing layers are not added to this child.
 """
 from __future__ import annotations
 
@@ -298,10 +303,11 @@ def _run_product_only(
     runtime_state_branch = str(os.environ.get("AIIF_RUNTIME_STATE_BRANCH") or "").strip()
     if runtime_state_branch:
         env["GEMINI_COUNTER_BRANCH"] = runtime_state_branch
+    env["AIIF_PRODUCT_REVIEW_RUNTIME"] = "true"
     env["INVENTORY_BOOTSTRAP_ENTITY_IDS"] = ",".join(allowlist)
     try:
         proc = subprocess.run(
-            [sys.executable, "pipeline.py"],
+            [sys.executable, "production_pipeline.py"],
             env=env,
             capture_output=True,
             text=True,
