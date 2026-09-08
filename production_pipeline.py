@@ -35,12 +35,12 @@ def install_product_review_provider_runtime(pipeline_module):
     3.6 -> 3.7 -> 3.8 -> 3.5 model order rather than inheriting article routing.
     Article/publication/Reader Value/eyecatch layers are also deliberately absent.
     """
-    import run203_runtime_state_channel
+    import run203_runtime_state_channel as runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
     import gemini_provider_resilience
 
-    run203_runtime_state_channel.install(pipeline_module)
+    runtime_state_channel.install(pipeline_module)
     gemini_timeout_rpd_fail_closed.install(pipeline_module)
     gemini_transient_recovery.install(pipeline_module)
     gemini_provider_resilience.install(pipeline_module)
