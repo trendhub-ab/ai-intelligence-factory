@@ -25,8 +25,9 @@ Run304 counter-state contract:
   ``GEMINI_COUNTER_BRANCH`` is preserved unchanged.
 
 Run305 provider-runtime contract:
-- the product-only child launches ``product_review_runtime.py`` rather than raw
-  ``pipeline.py`` so Run203/Run209/transient recovery/Run303 are installed;
+- the child still enters through the sole approved ``production_pipeline.py`` root
+  entrypoint, with ``AIIF_PRODUCT_REVIEW_RUNTIME=true`` selecting a narrow provider-
+  and quota-only runtime before the existing product-only pipeline executes;
 - Product Review's explicit model order and existing max-review/request budgets are
   preserved; article/publication/model-routing layers are not added to this child.
 """
@@ -302,10 +303,11 @@ def _run_product_only(
     runtime_state_branch = str(os.environ.get("AIIF_RUNTIME_STATE_BRANCH") or "").strip()
     if runtime_state_branch:
         env["GEMINI_COUNTER_BRANCH"] = runtime_state_branch
+    env["AIIF_PRODUCT_REVIEW_RUNTIME"] = "true"
     env["INVENTORY_BOOTSTRAP_ENTITY_IDS"] = ",".join(allowlist)
     try:
         proc = subprocess.run(
-            [sys.executable, "product_review_runtime.py"],
+            [sys.executable, "production_pipeline.py"],
             env=env,
             capture_output=True,
             text=True,
