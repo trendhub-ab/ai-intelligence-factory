@@ -1,7 +1,7 @@
 name: AIIF ChatOps Note Bridge
 
 # Safe, zero-model bridge from the dedicated GitHub control issue to the
-# existing Note Ready sync and private note-draft workflows.
+# existing Note Ready sync, private note-draft, and read-only private-draft audit workflows.
 # It never runs Production and never performs a public note release.
 on:
   issue_comment:
@@ -27,7 +27,8 @@ jobs:
       github.event.comment.user.login == 'trendhub-ab' &&
       github.actor == 'trendhub-ab' &&
       (github.event.comment.body == '/aiif note sync' ||
-       github.event.comment.body == '/aiif note draft')
+       github.event.comment.body == '/aiif note draft' ||
+       github.event.comment.body == '/aiif note audit')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -41,6 +42,7 @@ jobs:
           case "$COMMAND" in
             '/aiif note sync') action='sync' ;;
             '/aiif note draft') action='draft' ;;
+            '/aiif note audit') action='audit' ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
           echo "action=$action" >> "$GITHUB_OUTPUT"
@@ -59,6 +61,10 @@ jobs:
             draft)
               workflow='note-create-draft.yml'
               payload='{"ref":"main","inputs":{"confirm":"CREATE_NOTE_DRAFT","sync_id":"","prepare_only":"false"}}'
+              ;;
+            audit)
+              workflow='note-private-draft-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3bd479ffdca9817f926aeaffbb779c4b"}}'
               ;;
             *)
               echo '::error::Refusing unknown action'
