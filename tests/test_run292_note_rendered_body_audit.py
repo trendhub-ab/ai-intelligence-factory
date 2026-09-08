@@ -74,15 +74,25 @@ class Run292RenderedExpectationTests(unittest.TestCase):
             audit._body_text_metrics("非公開タイトル " + rendered, manuscript, "非公開タイトル")
         self.assertEqual(duplicate.exception.code, "duplicate_title_prefix")
 
-        long_manuscript = ("十分に長い前置きです。" * 20) + "\n\n" + manuscript
-        long_rendered = audit._rendered_visible_text(long_manuscript)
+        # Make both boundary windows independent of the footer mutation. This proves
+        # that Sources/CTA ordering itself remains fail-closed rather than merely
+        # tripping the stronger prefix/suffix presentation boundary first.
+        footer_manuscript = (
+            ("十分に長い前置きです。" * 20)
+            + "\n\n"
+            + manuscript
+            + "\n\n"
+            + ("末尾の境界を安定させる確認文です。" * 20)
+        )
+        footer_rendered = audit._rendered_visible_text(footer_manuscript)
         source = "Sources / Evidence"
         cta = "調査と判断の時間を減らしたい方へ"
-        source_index = long_rendered.find(source)
+        source_index = footer_rendered.find(source)
         self.assertGreater(source_index, 64)
-        cta_before_source = long_rendered[:source_index] + f"{cta} PRE " + long_rendered[source_index:]
+        self.assertGreater(len(footer_rendered) - source_index, 64)
+        cta_before_source = footer_rendered[:source_index] + f"{cta} PRE " + footer_rendered[source_index:]
         with self.assertRaises(audit.Run292AuditDiagnosticError) as footer:
-            audit._body_text_metrics(cta_before_source, long_manuscript, "別タイトル")
+            audit._body_text_metrics(cta_before_source, footer_manuscript, "別タイトル")
         self.assertEqual(footer.exception.code, "footer_order_mismatch")
 
 
