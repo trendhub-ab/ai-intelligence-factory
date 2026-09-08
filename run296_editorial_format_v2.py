@@ -12,15 +12,15 @@ This zero-extra-provider policy layer applies the first real-draft visual review
 The layer does not publish, mutate note, or add a model request. Future non-specimen eyecatches
 continue to use Run180's existing single bounded layout call; this layer only tightens its prompt
 and validation plus the deterministic renderer presentation.
+
+Image-rendering modules are imported lazily inside the production installer so the pure text and
+policy helpers remain testable in the zero-Pillow required repository guard.
 """
 from __future__ import annotations
 
 import re
 from typing import Any
 
-import editorial_eyecatch as ee
-import run180_eyecatch_semantic_layout as r180
-import run181_eyecatch_visual_balance as r181
 import run222_note_presentation_integrity as r222
 
 INTRO_HEADING_OLD = "30秒でわかるこの記事"
@@ -159,6 +159,10 @@ def genrec_validated_plan() -> dict[str, Any]:
 
 
 def _install_eyecatch_policy(pipeline_module: Any) -> None:
+    # Keep Pillow-dependent renderer modules off the pure import path used by required guards.
+    import run180_eyecatch_semantic_layout as r180
+    import run181_eyecatch_visual_balance as r181
+
     # Tighten the existing single-call Run180 direction prompt; do not add another request.
     original_prompt = r180._layout_prompt
 
