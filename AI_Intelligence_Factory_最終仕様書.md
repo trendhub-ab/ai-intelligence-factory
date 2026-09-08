@@ -21,6 +21,7 @@ Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**
 Article Production Baseline: **Run249 + current article-quality stack**  
 Article Model Routing Baseline: **Run261 — Run260 Live-Path Hardening / Gemini 3.7 Primary / 3.8 Quality Rescue**  
 Eyecatch Baseline: **Run183 — Run181 Visual Balance / Run182 Conclusion Emphasis / Run183 Emphasis Scale**  
+Eyecatch Adaptive Typography Baseline: **Run306 — measured text-volume sizing / 72px reviewed ceiling / shared Y=370 visual center**  
 Pipeline Modularization Baseline: **Run245**  
 Repository Organization Baseline: **Run246**  
 Workflow Reference Integrity Baseline: **Run257 — Workflow Reference Guard**  
@@ -98,6 +99,7 @@ OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadat
 4. **Decision / Proposal Action Asset** — 利用条件、判断・提案メモ、小規模検証条件、比較観点等へ落とす。大量テンプレート市場へピボットしない。
 
 内部の Intelligence Engine は上記より広く、Deep Techを含む。内部追跡対象と会員トップ表示を同一視しない。
+
 ### 価格・初期商業検証
 
 - 標準価格: **月額1,980円**を維持して検証する。
@@ -355,21 +357,26 @@ Article production surface:
 - highlightは意味の完結したフレーズを使い、Netflix GenRecでは `舵を切った理由` 全体を強調する。
 - アイキャッチ下部説明文/subheadlineは描画しない。
 - Netflix GenRecのreviewed specimenは `Netflix推薦の舞台裏` / `LLMネイティブへ` / `舵を切った理由` の3行をdeterministicに使う。
+- Run306以降、最終フォントサイズはモデル提示値ではなく実測文字量で決め、reviewed Netflix通常文字72pxを上限とする。
 - Public releaseは引き続きhuman-only。既存private draft更新は別のspecimen-bound workflowでin-place実施し、read-only監査を再実行する。
 
 ### Eyecatch
 
-Run183 current stackを基準とする。Run181 → Run182 → Run183の順序はactive runtime contractである。
+Run183 current stackを基準とする。Run181 → Run182 → Run183の順序はactive runtime contractであり、Run306はRun296最終presentation layerからその描画geometryだけを決定論的にrefineする。
 
 - Run181: visual balance / mixed-size geometryの現行基礎
 - Run182: 結論強調に使うexact highlight substringの選択・検証
 - Run183: approved emphasis scaleを適用し、`HIGHLIGHT_FONT_SCALE = 1.20`、`HIGHLIGHT_MAX_FONT = 96`
+- Run306: 通常タイトル最大 **72px**。72pxから実際のglyph幅・高さを測って必要な分だけ縮小し、モデル提示`title_font_size`を最終描画authorityにしない。
+- Run306: orange impact highlightは既存Run183の20%強調を維持しつつ、reviewed specimenを超えない **86px** を最終上限とする。
+- Run306: 2行/3行とも実測title blockを共通視覚中心 **Y=370** へ配置し、旧2行Y=234 / 3行Y=226は最小safe topとしてのみ扱う。
 - 1280×670
 - approved background/right illustrationを保持
 - title 2行推奨、最大3行許容
 - オレンジ強調 `#F28C28`
-- reader-purpose badge / category/date / source-bounded subcopy
+- reader-purpose badge / category/dateを保持し、Run296以降lower explanatory subcopyは描画しない
 - Productionでapproved background/illustrationを勝手に置換しない
+- Run306追加Gemini/model requestは **0**
 
 ---
 
@@ -634,6 +641,7 @@ PMF前にやらないこと:
 - Run272のNotion date boundary / arXiv run-local Evidence Health circuit / bounded Product Review child契約は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
 - Run303のverified HTTP 503 / consecutive-only circuit / timeout分離契約は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` を正本とする。
 - Run305のProduct Review counter authority / provider-quota runtime / sole production entrypoint契約は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を正本とする。
+- Run306のtext-volume adaptive eyecatch typography / reviewed 72px ceiling / Y=370 shared visual center契約は `docs/reference/RUN306_EYECATCH_ADAPTIVE_TYPOGRAPHY.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
 - Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
@@ -649,6 +657,7 @@ PMF前にやらないこと:
 **現在のOperational Reliability正本はRun272。**  
 **現在のProvider Resilience正本はRun303。**  
 **現在のProduct Review Provider Runtime正本はRun305。**  
+**現在のEyecatch Typography正本はRun306。**  
 **現在のWorkflow Reference Integrity正本はRun257。**  
 **現在のChatOps Dispatch正本はRun259。**  
 **現在のArticle Model Routing正本はRun261。**  
@@ -721,3 +730,14 @@ PMF前にやらないこと:
 - Run260/Run172/article/publication/Reader Value/eyecatch layerはProduct Review専用runtimeへ導入しない。
 - Repository-wide direct core-pipeline bypass guard、Run203/Run231通常Production source ordering、Daily PAUSED、public note human-onlyを維持する。
 - 詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を正本とする。
+
+### Run306 — Eyecatch Adaptive Typography
+
+- 人間レビューで確認した上寄り問題を、固定オフセットではなく実測geometryで修正する。
+- 通常タイトルはNetflix GenRec reviewed specimenの**72px**を最大値とし、文字量が増えた場合だけ1px単位で縮小する。
+- Gemini/Run180の`title_font_size`は互換値として保持するが、最終描画サイズのauthorityにはしない。
+- orange conclusion emphasisはRun183の20%強調を維持し、reviewed visual scaleの**86px**を上限とする。
+- 2行と3行は共通視覚中心**Y=370**へ実測blockを配置する。旧2行Y=234 / 3行Y=226はsafe topとしてのみ残す。
+- Run180 semantic 2〜3行、Run182 highlight phrase、Run183 emphasis、Run296複合語保護、approved background/right illustrationを維持する。
+- Gemini/model request追加0、Evidence/Decision Gate変更0、note公開変更0、DailyはPAUSEDのまま。
+- 詳細は `docs/reference/RUN306_EYECATCH_ADAPTIVE_TYPOGRAPHY.md` を正本とする。
