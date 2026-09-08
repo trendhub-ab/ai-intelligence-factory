@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import sys
 import types
 import unittest
@@ -55,17 +56,16 @@ class Run293NonBodyDiagnosticMappingTests(unittest.TestCase):
         self.assertNotIn(secret, serialized)
         self.assertNotIn("private-secret", serialized)
 
-    def test_mapping_has_no_unpublished_content_values_or_urls(self) -> None:
+    def test_mapping_uses_non_content_categorical_codes_and_no_routes(self) -> None:
+        code_pattern = re.compile(r"^[a-z0-9_]{1,64}$")
         for message, code in audit._NON_BODY_GUARD_CODES.items():
             with self.subTest(code=code):
-                self.assertTrue(code)
+                self.assertRegex(code, code_pattern)
                 self.assertNotIn("http://", code)
                 self.assertNotIn("https://", code)
-                self.assertNotIn("/notes/", code)
-                self.assertNotIn("manuscript", code)
-                self.assertNotIn("actual_text", code)
-                self.assertNotIn("expected_text", code)
-                # Fixed error strings may describe a guard, but must never carry a route.
+                self.assertNotIn("/", code)
+                self.assertNotIn("\\", code)
+                # Fixed error strings may describe a guard, but must never carry a private route.
                 self.assertNotIn("/notes/", message)
 
     def test_run293_diagnostics_do_not_add_mutation_screenshot_or_model_surface(self) -> None:
