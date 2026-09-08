@@ -9,6 +9,11 @@ This zero-extra-provider policy layer applies the first real-draft visual review
 - the reviewed Netflix GenRec specimen uses the exact approved three-line copy and complete
   orange phrase ``舵を切った理由``.
 
+Run306 further refines the same deterministic eyecatch renderer without adding a provider call:
+- headline size is derived from measured text geometry instead of the model-suggested size;
+- the reviewed Netflix specimen scale is the normal-title maximum;
+- two-line and three-line title blocks share one visual center instead of fixed top anchors.
+
 The layer does not publish, mutate note, or add a model request. Future non-specimen eyecatches
 continue to use Run180's existing single bounded layout call; this layer only tightens its prompt
 and validation plus the deterministic renderer presentation.
@@ -47,6 +52,14 @@ GENREC_EYECATCH_LINES = (
     "舵を切った理由",
 )
 GENREC_HIGHLIGHT = "舵を切った理由"
+
+# Run306 visual reference: the human-reviewed Netflix eyecatch renders its normal title at 72px
+# and the existing Run183 20% conclusion emphasis at approximately 86px. Shorter copy may use
+# this full scale; longer copy shrinks from this ceiling according to measured glyph geometry.
+RUN306_TITLE_MAX_FONT = 72
+RUN306_HIGHLIGHT_MAX_FONT = 86
+RUN306_TITLE_MIN_FONT = 48
+RUN306_VISUAL_CENTER_Y = 370
 
 # These are high-confidence lexical units where an arbitrary character-width break is visibly
 # worse than falling back to another plan. The list stays deliberately small and conservative.
@@ -105,6 +118,99 @@ def eyecatch_copy_is_distinct(source_title: str, eyecatch_title: str) -> bool:
     return len(source) <= 24 or source != eyecatch
 
 
+def adaptive_title_top(
+    block_height: int,
+    min_top: int,
+    safe_bottom: int,
+    *,
+    visual_center_y: int = RUN306_VISUAL_CENTER_Y,
+) -> int:
+    """Center a measured title block while respecting the historical safe region.
+
+    The old renderer fixed the three-line top at 226px (even above the two-line 234px anchor),
+    which made dense copy look top-heavy. Run306 keeps those values only as minimum safe tops and
+    places the measured block around one shared visual axis.
+    """
+    block = max(0, int(block_height))
+    lower = int(min_top)
+    upper = max(lower, int(safe_bottom) - block)
+    preferred = int(round(int(visual_center_y) - block / 2.0))
+    return max(lower, min(preferred, upper))
+
+
+def _install_run306_adaptive_typography(r181_module: Any) -> None:
+    """Patch Run181 geometry in-place after Run183, using zero additional model requests."""
+    if getattr(r181_module, "_RUN306_ADAPTIVE_TYPOGRAPHY_INSTALLED", False):
+        return
+
+    # Keep Pillow on the lazy production path, matching the existing Run296 import contract.
+    from PIL import Image, ImageDraw
+
+    import editorial_eyecatch as ee
+
+    original_profile = r181_module._impact_layout_profile
+
+    # The attached/reviewed Netflix specimen is the ceiling, not a minimum. The orange conclusion
+    # remains at the already-approved Run183 20% emphasis scale, capped at its current visual size.
+    r181_module.IMPACT_TITLE_MAX_FONT = RUN306_TITLE_MAX_FONT
+    r181_module.IMPACT_THREE_LINE_TITLE_MAX_FONT = RUN306_TITLE_MAX_FONT
+    r181_module.IMPACT_HIGHLIGHT_MAX_FONT = RUN306_HIGHLIGHT_MAX_FONT
+
+    def adaptive_title_size(lines: list[str], base_size: int, line_gap: int) -> int:
+        """Choose the largest safe font from the reference ceiling downward.
+
+        ``base_size`` remains in the signature for compatibility, but no longer controls the
+        headline scale. The rendered text itself is the authority: short copy reaches the reviewed
+        ceiling and long copy shrinks only as much as width/height require.
+        """
+        profile = original_profile(lines, line_gap)
+        target = min(RUN306_TITLE_MAX_FONT, int(profile["title_max_font"]))
+        effective_gap = int(profile["line_gap"])
+        available_height = max(
+            0,
+            int(profile["title_safe_bottom"]) - int(profile["title_top"]),
+        )
+        probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
+        draw = ImageDraw.Draw(probe)
+        clean_lines = [str(line) for line in lines if str(line).strip()]
+        if not clean_lines:
+            return RUN306_TITLE_MIN_FONT
+        for candidate in range(target, RUN306_TITLE_MIN_FONT - 1, -1):
+            font = ee._jp_font(candidate, bold=True)
+            widths = [ee._text_width(draw, line, font) for line in clean_lines]
+            heights = [r181_module._run_bbox_height(draw, line, font) for line in clean_lines]
+            block_height = sum(heights) + max(0, len(clean_lines) - 1) * effective_gap
+            if all(width <= r181_module.TITLE_MAX_WIDTH for width in widths) and block_height <= available_height:
+                return candidate
+        # Run180 validation normally guarantees a fit. If an old validated plan still cannot fit,
+        # use the smallest permitted size rather than enlarging it from a stale model hint.
+        return RUN306_TITLE_MIN_FONT
+
+    def adaptive_profile(lines: list[str], requested_gap: int) -> dict[str, int | bool]:
+        profile = dict(original_profile(lines, requested_gap))
+        effective_gap = int(profile["line_gap"])
+        size = adaptive_title_size(lines, RUN306_TITLE_MAX_FONT, effective_gap)
+        probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
+        draw = ImageDraw.Draw(probe)
+        font = ee._jp_font(size, bold=True)
+        clean_lines = [str(line) for line in lines if str(line).strip()]
+        heights = [r181_module._run_bbox_height(draw, line, font) for line in clean_lines]
+        block_height = sum(heights) + max(0, len(clean_lines) - 1) * effective_gap
+        profile["title_top"] = adaptive_title_top(
+            block_height,
+            int(profile["title_top"]),
+            int(profile["title_safe_bottom"]),
+        )
+        return profile
+
+    r181_module._impact_title_size = adaptive_title_size
+    r181_module._impact_layout_profile = adaptive_profile
+    r181_module._RUN306_ADAPTIVE_TYPOGRAPHY_INSTALLED = True
+    r181_module.RUN306_TITLE_MAX_FONT = RUN306_TITLE_MAX_FONT
+    r181_module.RUN306_HIGHLIGHT_MAX_FONT = RUN306_HIGHLIGHT_MAX_FONT
+    r181_module.RUN306_VISUAL_CENTER_Y = RUN306_VISUAL_CENTER_Y
+
+
 def _remove_what_row(text: str) -> str:
     """Remove only the redundant label line and preserve the summary body below it."""
     pattern = re.compile(r"(?m)^\*\*何が出た？\*\*[ \t]*(?:\n|$)")
@@ -161,6 +267,10 @@ def _install_eyecatch_policy(pipeline_module: Any) -> None:
     # Keep Pillow-dependent renderer modules off the pure import path used by required guards.
     import run180_eyecatch_semantic_layout as r180
     import run181_eyecatch_visual_balance as r181
+
+    # Run306 is a deterministic refinement of the already-approved renderer. It is installed here
+    # because Run296 is already the final production eyecatch presentation layer after Run183.
+    _install_run306_adaptive_typography(r181)
 
     # Tighten the existing single-call Run180 direction prompt; do not add another request.
     original_prompt = r180._layout_prompt
@@ -248,4 +358,7 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN296_INTRO_HEADING = INTRO_HEADING_NEW
     pipeline_module.RUN296_CTA_HEADING = CTA_HEADING
     pipeline_module.RUN296_EYECATCH_BOTTOM_DESCRIPTION = False
+    pipeline_module.RUN306_EYECATCH_ADAPTIVE_TYPOGRAPHY = True
+    pipeline_module.RUN306_EYECATCH_TITLE_MAX_FONT = RUN306_TITLE_MAX_FONT
+    pipeline_module.RUN306_EYECATCH_VISUAL_CENTER_Y = RUN306_VISUAL_CENTER_Y
     return pipeline_module
