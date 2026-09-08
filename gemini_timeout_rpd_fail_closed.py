@@ -14,7 +14,8 @@ Run209 deliberately changes only that accounting behavior:
 Run303 also corrects an observability inconsistency: pipeline._generate_via_chat still emits a
 legacy "released unobserved timeout reservation" message after calling release_unobserved. Once
 Run209 replaces that method with a no-op, the message is false. A narrow logger filter rewrites
-only that stale message so operational logs reflect the actual fail-closed counter state.
+only that stale message when the logger supports standard logging filters; lightweight test
+loggers remain compatible and the accounting behavior itself is unchanged.
 """
 from __future__ import annotations
 
@@ -71,9 +72,13 @@ def install(pipeline_module: Any):
     counter.release_unobserved = keep_timeout_reservation
 
     logger = getattr(pipeline_module, "logger", None)
-    if logger is not None and not bool(getattr(logger, "_run303_timeout_log_filter_installed", False)):
-        logger.addFilter(_Run209TimeoutLogConsistencyFilter())
-        setattr(logger, "_run303_timeout_log_filter_installed", True)
+    add_filter = getattr(logger, "addFilter", None) if logger is not None else None
+    if callable(add_filter) and not bool(getattr(logger, "_run303_timeout_log_filter_installed", False)):
+        add_filter(_Run209TimeoutLogConsistencyFilter())
+        try:
+            setattr(logger, "_run303_timeout_log_filter_installed", True)
+        except Exception:
+            pass
 
     setattr(counter, "_run209_timeout_rpd_fail_closed_installed", True)
     setattr(pipeline_module, "RUN209_TIMEOUT_RPD_FAIL_CLOSED", True)
