@@ -61,10 +61,10 @@ class Run293NonBodyDiagnosticMappingTests(unittest.TestCase):
             ".click(", ".fill(", "keyboard.press", "keyboard.insert_text",
             "page.screenshot(", "requests.post(", "requests.patch(",
             "_paste_manuscript(", "_save_draft_and_verify(", "_mark_draft_created(",
-            "gemini", "generate_content", "publish_note",
+            "generate_content", "google.generativeai", "publish_note",
         ):
             with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, source.lower() if forbidden == "gemini" else source)
+                self.assertNotIn(forbidden, source)
 
 
 if __name__ == "__main__":
