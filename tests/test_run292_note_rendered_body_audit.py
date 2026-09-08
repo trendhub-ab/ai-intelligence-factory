@@ -74,12 +74,11 @@ class Run292RenderedExpectationTests(unittest.TestCase):
             audit._body_text_metrics("非公開タイトル " + rendered, manuscript, "非公開タイトル")
         self.assertEqual(duplicate.exception.code, "duplicate_title_prefix")
 
-        reversed_footer = rendered.replace(
-            "Sources / Evidence source A 調査と判断の時間を減らしたい方へ CTAです。",
-            "調査と判断の時間を減らしたい方へ CTAです。 Sources / Evidence source A",
-        )
+        source = "Sources / Evidence"
+        cta = "調査と判断の時間を減らしたい方へ"
+        cta_before_source = rendered.replace(source, f"{cta} PRE {source}", 1)
         with self.assertRaises(audit.Run292AuditDiagnosticError) as footer:
-            audit._body_text_metrics(reversed_footer, manuscript, "別タイトル")
+            audit._body_text_metrics(cta_before_source, manuscript, "別タイトル")
         self.assertEqual(footer.exception.code, "footer_order_mismatch")
 
 
