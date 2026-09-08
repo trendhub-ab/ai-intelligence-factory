@@ -42,7 +42,7 @@ Netflixが推薦基盤の新しい方向性を公開しました。
         self.assertIn("## どんな内容？", out)
         self.assertNotIn("30秒でわかるこの記事", out)
         self.assertNotIn("何が出た？", out)
-        self.assertNotIn("Netflixが推薦基盤の新しい方向性を公開しました。", out)
+        self.assertIn("Netflixが推薦基盤の新しい方向性を公開しました。", out)
         self.assertIn("**なぜ重要？**", out)
         self.assertIn("**結論は？**", out)
         self.assertIn("### 有料サブスクのご案内", out)
@@ -51,6 +51,18 @@ Netflixが推薦基盤の新しい方向性を公開しました。
         self.assertNotIn("調査と判断の時間を減らしたい方へ", out)
         self.assertNotIn("会員向け意思決定DB＋月次ダイジェストを見る", out)
         self.assertNotIn("EvidenceとActionを継続的に整理", out)
+
+    def test_summary_text_stays_between_intro_heading_and_why(self):
+        summary = "Netflixがユーザー行動や文脈をテキスト化し、vLLMのprefill-onlyモードでスコアリングを行う推薦アーキテクチャGenRecを公開した。"
+        old = self._legacy_manuscript().replace(
+            "Netflixが推薦基盤の新しい方向性を公開しました。",
+            summary,
+        )
+        out = r296.normalize_article_format_v2(old)
+        self.assertEqual(out.count(summary), 1)
+        self.assertNotIn("**何が出た？**", out)
+        self.assertLess(out.index("## どんな内容？"), out.index(summary))
+        self.assertLess(out.index(summary), out.index("**なぜ重要？**"))
 
     def test_sources_remain_before_cta(self):
         out = r296.normalize_article_format_v2(self._legacy_manuscript())

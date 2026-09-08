@@ -1,7 +1,7 @@
 """Run296: reader-approved note editorial format v2.
 
 This zero-extra-provider policy layer applies the first real-draft visual review findings:
-- the note intro heading becomes ``どんな内容？`` and the redundant ``何が出た？`` row is removed;
+- the note intro heading becomes ``どんな内容？`` and the redundant ``何が出た？`` label is removed while its summary text is preserved;
 - the subscriber CTA uses the reader-approved plain Japanese copy;
 - eyecatches omit the lower explanatory subheadline;
 - long article titles may not be reused verbatim as eyecatch copy;
@@ -106,9 +106,8 @@ def eyecatch_copy_is_distinct(source_title: str, eyecatch_title: str) -> bool:
 
 
 def _remove_what_row(text: str) -> str:
-    pattern = re.compile(
-        r"(?ms)^\*\*何が出た？\*\*\s{2,}\n.*?(?=^\*\*(?:なぜ重要？|結論は？)\*\*|^###\s+元情報\s*$|^##\s+|\Z)"
-    )
+    """Remove only the redundant label line and preserve the summary body below it."""
+    pattern = re.compile(r"(?m)^\*\*何が出た？\*\*[ \t]*(?:\n|$)")
     return pattern.sub("", text, count=1)
 
 
