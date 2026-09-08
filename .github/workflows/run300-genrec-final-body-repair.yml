@@ -1,0 +1,240 @@
+name: Run300 GenRec Final Body Repair [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/run300-genrec-final-body-repair.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run300-genrec-final-body-repair
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: contains(github.event.head_commit.message, 'execute exact GenRec final body repair')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.ready.outputs.should_start_vm }}
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install deterministic preflight dependency
+        run: pip install requests
+      - name: Falsify exact Run300 repair boundary
+        run: |
+          python -m unittest tests.test_run300_genrec_final_body_repair -v
+          python -m unittest tests.test_run297_298_genrec_refresh -v
+      - name: Require exact current source and private queue state
+        id: ready
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          import os
+          import publication_contract as contract
+          import run298_genrec_inplace_refresh as r298
+          expected = 'ba997928381a755d5a04bdcee7ea75f45e7cd336a430f16a412a9878a41dc96f'
+          if contract.policy_sha256() != expected:
+              raise SystemExit('Run300 refuses Publication Contract drift')
+          r298._ensure_private_queue_state()
+          article, _ = r298._expected_current_article()
+          if article.get('sync_id') != r298.TARGET_SYNC_ID:
+              raise SystemExit('Run300 target drift')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write('should_start_vm=true\n')
+          print('RUN300_PREFLIGHT_CURRENT_CONTRACT=PASS')
+          print('RUN300_NEW_DRAFT=false')
+          print('RUN300_PUBLIC_RELEASE=false')
+          print('RUN300_DAILY_RESTART=false')
+          print('RUN300_MODEL_CALLS=0')
+          PY
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  repair-and-audit:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install exact browser and image dependencies
+        run: |
+          pip install requests playwright Pillow
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Re-run exact repair safety tests on VM
+        run: |
+          python -m unittest tests.test_run300_genrec_final_body_repair -v
+          python -m unittest tests.test_run297_298_genrec_refresh -v
+      - name: Repair duplicated body only and perform actual-note final audit
+        env:
+          RUN300_RESULT_FILE: ${{ runner.temp }}/run300-result.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: xvfb-run -a python run300_genrec_final_body_repair.py
+      - name: Require complete final contract
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run300-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          required_true = [
+              'same_private_draft_route','header_untouched_during_run300','header_persistent',
+              'title_match','new_intro_present','old_intro_absent','what_row_absent',
+              'new_cta_heading_present','new_cta_body_present','cta_link_label_present',
+              'sources_before_cta','eyecatch_present','quality_state_ready',
+              'posting_state_preparing','zero_gemini_calls'
+          ]
+          failed = [k for k in required_true if r.get(k) is not True]
+          exact_values = {
+              'source_eyecatch_width': 1280,
+              'source_eyecatch_height': 670,
+              'new_intro_count': 1,
+              'old_intro_count': 0,
+              'removed_summary_label_count': 0,
+              'cta_heading_count': 1,
+              'cta_link_label_count': 1,
+              'sources_heading_count': 1,
+              'body_h1_count': 0,
+          }
+          for key, expected in exact_values.items():
+              if r.get(key) != expected: failed.append(key)
+          if r.get('duplicate_title_prefix') is not False: failed.append('duplicate_title_prefix')
+          if r.get('duplicate_draft_created') is not False: failed.append('duplicate_draft_created')
+          if r.get('public_release') is not False: failed.append('public_release')
+          if r.get('daily_restarted') is not False: failed.append('daily_restarted')
+          ratio = float(r.get('visible_length_ratio', 0.0))
+          if not 0.82 <= ratio <= 1.15: failed.append('visible_length_ratio')
+          if failed:
+              raise SystemExit('Run300 final contract failed: ' + ','.join(failed))
+          print('RUN300_FINAL_ACTUAL_NOTE_AUDIT=PASS')
+          print('RUN300_SOURCE_EYECATCH=1280x670')
+          print('RUN300_PUBLIC_RELEASE=false')
+          PY
+      - name: Summarize non-content final proof only
+        if: always()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run300-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RESULT_FILE'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run300 — Netflix GenRec final private-draft repair\n')
+              if not path.exists():
+                  fh.write('- result: `FAIL-CLOSED`\n')
+                  raise SystemExit(0)
+              r = json.loads(path.read_text(encoding='utf-8'))
+              for key in [
+                  'status','same_private_draft_route','editor_route_hash','initial_body_state',
+                  'source_eyecatch_width','source_eyecatch_height','header_untouched_during_run300',
+                  'header_persistent','selection_coverage','pre_save_visible_length_ratio',
+                  'visible_length_ratio','title_match','new_intro_present','old_intro_absent',
+                  'what_row_absent','new_cta_heading_present','new_cta_body_present',
+                  'cta_link_label_present','sources_before_cta','duplicate_title_prefix',
+                  'new_intro_count','old_intro_count','removed_summary_label_count',
+                  'cta_heading_count','cta_link_label_count','sources_heading_count','body_h1_count',
+                  'eyecatch_present','eyecatch_proof_mode','quality_state_ready','posting_state_preparing',
+                  'zero_gemini_calls','duplicate_draft_created','public_release','daily_restarted'
+              ]:
+                  if key in r: fh.write(f'- {key}: `{r[key]}`\n')
+              fh.write('- unpublished body / draft URL / image URL exposed: `false`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, repair-and-audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
