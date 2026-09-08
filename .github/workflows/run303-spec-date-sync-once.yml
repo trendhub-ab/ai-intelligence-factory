@@ -1,0 +1,39 @@
+name: Run303 Spec Date Sync Once
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sync-run303-spec-date:
+    if: github.head_ref == 'run303-provider-503-resilience'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: run303-provider-503-resilience
+          token: ${{ secrets.GH_PAT }}
+      - name: Update canonical spec date and self-delete
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('AI_Intelligence_Factory_最終仕様書.md')
+          s = p.read_text(encoding='utf-8')
+          old = '最終更新: 2026-09-08'
+          new = '最終更新: 2026-09-09'
+          if new not in s:
+              if old not in s:
+                  raise SystemExit('canonical spec date anchor missing')
+              s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          Path('.github/workflows/run303-spec-date-sync-once.yml').unlink()
+          PY
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add AI_Intelligence_Factory_最終仕様書.md .github/workflows/run303-spec-date-sync-once.yml
+          git commit -m 'Run303: update canonical specification date'
+          git push origin HEAD:run303-provider-503-resilience
