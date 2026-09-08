@@ -1,4 +1,5 @@
 name: Run304 Product Review Counter State Sync Once
+# PR #200 exists; this synchronization commit intentionally triggers the one-shot patcher.
 
 on:
   pull_request:
@@ -22,7 +23,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          # 1) Child Product Review must consume the same runtime-state counter branch as its parent.
           p = Path('daily_portfolio_review.py')
           s = p.read_text(encoding='utf-8')
           old = '''    env = os.environ.copy()\n    env.update(ib.product_only_environment(max_reviews, request_budget))\n    env["INVENTORY_BOOTSTRAP_ENTITY_IDS"] = ",".join(allowlist)\n'''
@@ -32,7 +32,6 @@ jobs:
           s = s.replace(old, new, 1)
           p.write_text(s, encoding='utf-8')
 
-          # 2) Make the ONE-SHOT contract explicit at the Product Review step as defense in depth.
           w = Path('.github/workflows/daily-one-shot.yml')
           y = w.read_text(encoding='utf-8')
           marker = "      - name: Portfolio-aware Product Review\n"
@@ -47,7 +46,6 @@ jobs:
           y = before + marker + step + "\n      - name: API-saving mode guard" + tail
           w.write_text(y, encoding='utf-8')
 
-          # 3) Regression test: dynamic child env and static ONE-SHOT surface.
           test = r'''from __future__ import annotations
 
 import os
@@ -58,50 +56,28 @@ from unittest import mock
 
 import daily_portfolio_review as dpr
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_product_only_child_prefers_authoritative_runtime_state_branch():
     captured = {}
-
     def fake_run(*args, **kwargs):
         captured["env"] = dict(kwargs["env"])
-        return SimpleNamespace(
-            returncode=0,
-            stdout="[PRODUCT REVIEW] observed\n",
-            stderr="",
-        )
-
-    with mock.patch.dict(
-        os.environ,
-        {
-            "AIIF_RUNTIME_STATE_BRANCH": "runtime-state",
-            "GEMINI_COUNTER_BRANCH": "main",
-        },
-        clear=False,
-    ), mock.patch.object(subprocess, "run", side_effect=fake_run):
+        return SimpleNamespace(returncode=0, stdout="[PRODUCT REVIEW] observed\n", stderr="")
+    with mock.patch.dict(os.environ, {"AIIF_RUNTIME_STATE_BRANCH": "runtime-state", "GEMINI_COUNTER_BRANCH": "main"}, clear=False), mock.patch.object(subprocess, "run", side_effect=fake_run):
         result = dpr._run_product_only(["entity:test"], 1, 1, timeout=1)
-
     assert result["returncode"] == 0
     assert captured["env"]["GEMINI_COUNTER_BRANCH"] == "runtime-state"
 
 
 def test_product_only_child_preserves_explicit_counter_branch_without_runtime_overlay():
     captured = {}
-
     def fake_run(*args, **kwargs):
         captured["env"] = dict(kwargs["env"])
         return SimpleNamespace(returncode=0, stdout="[PRODUCT REVIEW] observed\n", stderr="")
-
-    with mock.patch.dict(
-        os.environ,
-        {"GEMINI_COUNTER_BRANCH": "operator-branch"},
-        clear=False,
-    ), mock.patch.object(subprocess, "run", side_effect=fake_run):
+    with mock.patch.dict(os.environ, {"GEMINI_COUNTER_BRANCH": "operator-branch"}, clear=False), mock.patch.object(subprocess, "run", side_effect=fake_run):
         os.environ.pop("AIIF_RUNTIME_STATE_BRANCH", None)
         dpr._run_product_only(["entity:test"], 1, 1, timeout=1)
-
     assert captured["env"]["GEMINI_COUNTER_BRANCH"] == "operator-branch"
 
 
@@ -115,11 +91,9 @@ def test_one_shot_product_review_pins_runtime_state_counter_branch():
 '''
           Path('tests/test_run304_product_review_counter_state.py').write_text(test, encoding='utf-8')
 
-          # 4) Reference record.
-          doc = '''# Run304 — Product Review Runtime-State Counter Handoff\n\nDate: 2026-09-09\n\n## Observed failure\n\nRun37 proved Run303 provider-503 recovery in live Production, but the separate Portfolio-aware Product Review child printed `Persistent Gemini Daily Counter(scope=3fc8d874): 0` while the immediately preceding Production process printed non-zero current counts. The ONE-SHOT Product Review step explicitly passed `GEMINI_COUNTER_BRANCH=main`; the authoritative counter had been persisted on `runtime-state`. Because the child executes `pipeline.py` directly, it does not install `production_pipeline.py` runtime-state overlays.\n\n## Fix\n\n- `daily_portfolio_review._run_product_only` now hands `AIIF_RUNTIME_STATE_BRANCH` to the child as `GEMINI_COUNTER_BRANCH` when the runtime-state overlay is present.\n- `.github/workflows/daily-one-shot.yml` pins the Product Review step to `GEMINI_COUNTER_BRANCH=runtime-state` as defense in depth.\n- If no `AIIF_RUNTIME_STATE_BRANCH` exists, an operator-supplied `GEMINI_COUNTER_BRANCH` is preserved.\n- No quota ceiling, review budget, Evidence/Fact gate, publication policy, or scheduled-Daily state is changed.\n\n## Regression contract\n\n`tests/test_run304_product_review_counter_state.py` verifies dynamic child environment handoff, preservation of explicit non-overlay operation, and the static ONE-SHOT Product Review branch contract.\n'''
+          doc = '''# Run304 — Product Review Runtime-State Counter Handoff\n\nDate: 2026-09-09\n\n## Observed failure\n\nRun37 proved Run303 provider-503 recovery in live Production, but the separate Portfolio-aware Product Review child printed `Persistent Gemini Daily Counter(scope=3fc8d874): 0` while the immediately preceding Production process printed non-zero current counts. The ONE-SHOT Product Review step explicitly passed `GEMINI_COUNTER_BRANCH=main`; the authoritative counter had been persisted on `runtime-state`. Because the child executes `pipeline.py` directly, it does not install `production_pipeline.py` runtime-state overlays.\n\n## Fix\n\n- `daily_portfolio_review._run_product_only` hands `AIIF_RUNTIME_STATE_BRANCH` to the child as `GEMINI_COUNTER_BRANCH` when the runtime-state overlay is present.\n- `.github/workflows/daily-one-shot.yml` pins the Product Review step to `GEMINI_COUNTER_BRANCH=runtime-state` as defense in depth.\n- If no `AIIF_RUNTIME_STATE_BRANCH` exists, an operator-supplied `GEMINI_COUNTER_BRANCH` is preserved.\n- No quota ceiling, review budget, Evidence/Fact gate, publication policy, or scheduled-Daily state is changed.\n\n## Regression contract\n\n`tests/test_run304_product_review_counter_state.py` verifies dynamic child environment handoff, preservation of explicit non-overlay operation, and the static ONE-SHOT Product Review branch contract.\n'''
           Path('docs/reference/RUN304_PRODUCT_REVIEW_COUNTER_STATE.md').write_text(doc, encoding='utf-8')
 
-          # 5) Canonical spec freshness.
           sp = Path('AI_Intelligence_Factory_最終仕様書.md')
           spec = sp.read_text(encoding='utf-8')
           baseline = 'Product Review Counter State Baseline: **Run304 — runtime-state handoff to product-only child**  \n'
