@@ -3,7 +3,7 @@
 
 The diagnostic opens only the already-matched private `/edit` route, verifies the exact title,
 and emits non-content counts/booleans needed to choose a safe existing-header replacement path.
-It does not click, fill, paste, upload, save, screenshot, publish, or expose draft/image URLs.
+It does not perform browser mutation, image capture, publication, or expose draft/image URLs.
 """
 from __future__ import annotations
 
