@@ -19,16 +19,18 @@ This was an installation-path defect, not a defect in the Run303 algorithm. `tes
 
 ## Fix
 
-Run305 adds `product_review_runtime.py` and routes `daily_portfolio_review.py` through it instead of launching raw `pipeline.py`.
+Run305 keeps `production_pipeline.py` as the **sole approved root pipeline entrypoint**. `daily_portfolio_review.py` launches that existing entrypoint with `AIIF_PRODUCT_REVIEW_RUNTIME=true` instead of launching raw `pipeline.py` or introducing a second root executor.
 
-The Product Review child installs only the provider/quota reliability layers required for safe provider access, in this order:
+`production_pipeline.py` branches before article/publication imports when this explicit mode is present. The Product Review child installs only the provider/quota reliability layers required for safe provider access, in this order:
 
 1. `run203_runtime_state_channel.install`
 2. `gemini_timeout_rpd_fail_closed.install`
 3. `gemini_transient_recovery.install`
 4. `gemini_provider_resilience.install`
 
-It then calls `pipeline.main()` in the existing product-only environment.
+It performs the Run203 runtime-state preflight and then calls the existing product-only `pipeline.main()` under the sole production entrypoint authority.
+
+This design preserves the repository-wide rule that other root Python executables must never invoke `pipeline.main()` directly.
 
 ## Deliberately not installed
 
@@ -38,7 +40,7 @@ Run305 does **not** install `run260_gemini_model_routing` in the Product Review 
 
 That order protects article-generation capacity and must not be silently rewritten to the article Deep Dive order.
 
-Run305 also does not install article/publication/Reader Value/eyecatch layers. Product Review remains a bounded paid-product maintenance path, not an article-generation path.
+Run305 also does not install Run172 article/evidence overlays or article/publication/Reader Value/eyecatch layers. Product Review remains a bounded paid-product maintenance path, not an article-generation path.
 
 ## Preserved safety and business contracts
 
@@ -49,6 +51,7 @@ Run305 also does not install article/publication/Reader Value/eyecatch layers. P
 - A first structured HTTP 503 gets at most one same-model confirmation retry, inside the existing Product Review budget.
 - A second consecutive structured HTTP 503 opens the run-local circuit for that model.
 - Timeout reservations remain fail-closed under Run209.
+- Runtime-state writability is re-preflighted before the Product Review child consumes Gemini.
 - No Fact/Evidence/Decision/Publication gate is weakened.
 - Scheduled Daily remains PAUSED.
 - Public note release remains human-only.
@@ -57,10 +60,12 @@ Run305 also does not install article/publication/Reader Value/eyecatch layers. P
 
 `tests/test_run305_product_review_provider_runtime.py` verifies that:
 
-- `daily_portfolio_review.py` spawns `product_review_runtime.py` rather than raw `pipeline.py`;
+- `daily_portfolio_review.py` spawns `production_pipeline.py`, not raw `pipeline.py`;
+- `AIIF_PRODUCT_REVIEW_RUNTIME=true` selects the narrow child mode;
 - the child still receives the authoritative runtime-state counter branch;
 - only the four provider/quota layers are installed, in the intended order;
 - Run260/Run172 are not introduced into the Product Review-specific runtime;
-- provider layers are installed before `pipeline.main()`.
+- runtime-state preflight occurs before the product-only pipeline executes;
+- Product Review mode is selected before the article stack is imported/installed.
 
 The existing Run303 Product Review regression remains authoritative for the actual structured-503 same-model retry semantics.
