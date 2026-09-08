@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   preflight:
-    if: contains(github.event.head_commit.message, 'execute exact header read-only diagnostic')
+    if: contains(github.event.head_commit.message, 'execute exact GenRec header read-only diagnostics')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
