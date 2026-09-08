@@ -36,6 +36,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "current_policy_ready_recovery")
 
+    def test_ready_metadata_rebase_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run ready_metadata_rebase"))
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "ready_metadata_rebase")
+
     def test_full_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run full"))
         self.assertTrue(result["authorized"])
@@ -60,9 +65,12 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
             "/aiif run pending_retry",
             "/aiif run current_policy_ready_recovery ",
             "/aiif run current_policy_ready",
+            "/aiif run ready_metadata_rebase ",
+            "/aiif run ready_metadata",
             "/aiif run FULL",
             "RUN_ONCE",
             "RECOVER_ONE_READY",
+            "REBASE_GENREC_READY",
         ):
             with self.subTest(body=body):
                 self.assertFalse(chatops.authorize_event(event(body=body))["authorized"])
@@ -90,22 +98,28 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("/aiif run article_validation", text)
         self.assertIn("/aiif run pending_retry_validation", text)
         self.assertIn("/aiif run current_policy_ready_recovery", text)
+        self.assertIn("/aiif run ready_metadata_rebase", text)
         self.assertIn("/aiif run full", text)
         self.assertIn("daily-one-shot.yml", text)
         self.assertIn("current-policy-ready-recovery.yml", text)
+        self.assertIn("current-ready-metadata-rebase.yml", text)
         self.assertIn('"ref":"main"', text)
         self.assertIn('"confirm":"RUN_ONCE"', text)
         self.assertIn('"confirm":"RECOVER_ONE_READY"', text)
+        self.assertIn('"confirm":"REBASE_GENREC_READY"', text)
         self.assertNotIn("production_pipeline.py", text)
         self.assertNotIn("pending_retry_validation.py", text)
         self.assertNotIn("note-create-draft.yml", text)
         self.assertNotIn("run194_note_persistent_cloud.py", text)
         self.assertNotIn("playwright", text)
 
-    def test_recovery_route_has_zero_vm_target_and_normal_routes_keep_daily_one_shot(self):
+    def test_recovery_and_rebase_routes_are_zero_vm(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("current_policy_ready_recovery)", text)
         self.assertIn("target='current-policy-ready-recovery.yml'", text)
+        self.assertIn("ready_metadata_rebase)", text)
+        self.assertIn("target='current-ready-metadata-rebase.yml'", text)
+        self.assertIn("Gemini/provider calls: `0`", text)
         self.assertIn("private note draft / VM: `disabled`", text)
         self.assertIn("target='daily-one-shot.yml'", text)
 
