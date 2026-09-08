@@ -99,9 +99,6 @@ def main() -> None:
     from run269_business_source_precision import install as install_run269_business_source_precision
     from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence
     from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
-    from run286_notion_consistency_precision import (
-        install_recovery_live_status_guard as install_run286_recovery_live_status_guard,
-    )
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -159,13 +156,10 @@ def main() -> None:
     mode = _workflow_dispatch_mode()
 
     # Run282: current-policy Ready recovery is an explicit, bounded business-write lane.
-    # Run286 adds one fail-closed direct page-status confirmation after the historical
-    # selector. An eventually-consistent DB query can therefore never spend a model call
-    # on a row whose live Article Status has already moved away from Ready.
+    # It never enters fresh acquisition/screening/Product Review and regenerates at most
+    # one historical Ready row on its original Notion page. The canonical quality stack
+    # still owns the manuscript bytes, status, and fail-closed outcome.
     if mode == "current_policy_ready_recovery":
-        import current_policy_ready_recovery as current_policy_ready_recovery_module
-
-        install_run286_recovery_live_status_guard(current_policy_ready_recovery_module)
         run_current_policy_ready_recovery(pipeline)
         return
 
