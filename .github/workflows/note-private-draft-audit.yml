@@ -38,11 +38,12 @@ jobs:
       - name: Install zero-browser dependency
         run: pip install requests
 
-      - name: Run291/292/293 zero-VM contract tests
+      - name: Run291/292/293/294 zero-VM contract tests
         run: |
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
+          python -m unittest tests.test_run294_note_eyecatch_persistence_diagnostics -v
 
       - name: Validate exact existing private draft state before VM start
         env:
@@ -155,18 +156,19 @@ jobs:
             exit 1
           }
 
-      - name: Run291/292/293 read-only regression tests
+      - name: Run291/292/293/294 read-only regression tests
         run: |
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
+          python -m unittest tests.test_run294_note_eyecatch_persistence_diagnostics -v
 
       - name: Audit exact existing private draft without mutation
         env:
           NOTE_AUDIT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
           NOTE_AUDIT_PREPARE_ONLY: 'false'
-          NOTE_AUDIT_RESULT_FILE: ${{ runner.temp }}/run292-result.json
+          NOTE_AUDIT_RESULT_FILE: ${{ runner.temp }}/run294-result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
@@ -177,12 +179,12 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: xvfb-run -a python run292_note_rendered_body_audit.py
+        run: xvfb-run -a python run294_note_eyecatch_persistence_diagnostics.py
 
       - name: Summarize non-content audit metrics only
         if: ${{ always() }}
         env:
-          RESULT_FILE: ${{ runner.temp }}/run292-result.json
+          RESULT_FILE: ${{ runner.temp }}/run294-result.json
         run: |
           python - <<'PY'
           import json, os
@@ -190,10 +192,10 @@ jobs:
           path = Path(os.environ['RESULT_FILE'])
           if not path.exists():
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-                  fh.write('### Run293 private note draft read-only audit\n')
+                  fh.write('### Run294 private note draft read-only audit\n')
                   fh.write('- result: `FAIL-CLOSED`\n')
                   fh.write('- safe diagnostic result file: `missing`\n')
-                  fh.write('- unpublished content / draft URL exposed: `false`\n')
+                  fh.write('- unpublished content / draft URL / image URL exposed: `false`\n')
               raise SystemExit(0)
           result = json.loads(path.read_text(encoding='utf-8'))
           passed = result.get('status') == 'audit_passed'
@@ -209,15 +211,22 @@ jobs:
               'sources_present', 'cta_present', 'sources_before_cta',
               'duplicate_title_prefix', 'code_fence_marker_count',
               'title_box', 'body_box', 'history_candidate_count',
-              'matched_history_rank', 'editor_route_hash'
+              'matched_history_rank', 'editor_route_hash',
+              'eyecatch_exact_control_count', 'eyecatch_exact_control_visible_count',
+              'image_labeled_control_count', 'image_labeled_control_visible_count',
+              'image_add_control_count', 'image_add_control_visible_count',
+              'file_input_count', 'title_geometry_available',
+              'visible_img_count', 'large_top_img_count', 'large_top_background_count',
+              'visible_picture_count', 'max_top_media_width', 'max_top_media_height',
+              'viewport_width', 'viewport_height'
           ]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run293 private note draft read-only audit\n')
+              fh.write('### Run294 private note draft read-only audit\n')
               fh.write(f'- result: `{"PASS" if passed else "FAIL-CLOSED"}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
               fh.write(f'- draft mutation: `{result.get("draft_mutation") is True}`\n')
               fh.write(f'- public release: `{result.get("public_release") is True}`\n')
-              fh.write('- unpublished content / draft URL exposed: `false`\n')
+              fh.write('- unpublished content / draft URL / image URL exposed: `false`\n')
               for key in safe_keys:
                   if key in result:
                       fh.write(f'- {key}: `{result.get(key)}`\n')
