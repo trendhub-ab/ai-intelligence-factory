@@ -66,6 +66,7 @@ on:
       - 'run182_eyecatch_conclusion_emphasis.py'
       - 'run183_eyecatch_emphasis_scale.py'
       - 'run222_note_presentation_integrity.py'
+      - 'run296_editorial_format_v2.py'
       - 'run248_first_real_publish_quality_calibration.py'
       - 'run249_final_publication_surface_gate.py'
       - 'publication_contract.py'
@@ -90,6 +91,7 @@ on:
       - 'tests/test_run249_final_publication_surface_gate.py'
       - 'tests/test_run280_publication_dependency_guard.py'
       - 'tests/test_run281_publication_causality_source_contract.py'
+      - 'tests/test_run296_editorial_format_v2.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -134,6 +136,7 @@ jobs:
           python -m unittest tests.test_run273_reader_draft_autoflow -v
           python -m unittest tests.test_run280_publication_dependency_guard -v
           python -m unittest tests.test_run281_publication_causality_source_contract -v
+          python -m unittest tests.test_run296_editorial_format_v2 -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py

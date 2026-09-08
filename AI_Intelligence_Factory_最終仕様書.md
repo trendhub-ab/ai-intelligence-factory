@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-07  
+最終更新: 2026-09-08  
 Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Documentation Governance Baseline: **Run267 — Current Canonical Contract Sync / Required-Check Governance**  
 Documentation Freshness Foundation: **Run210 — Documentation Freshness Guard**  
@@ -31,6 +31,7 @@ Required PR Check Governance Baseline: **Run267 — Required contexts must be em
 Business / Source Strategy Baseline: **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West Coverage**  
 Acquisition Precision Baseline: **Run269 — Live Acquisition Precision / 11-Vendor Structured Smoke**  
 Operational Reliability Baseline: **Run272 — Bounded Daily Failure Tails / Notion Date Boundary / arXiv Run-Local Circuit / Product Review 600s Bound**
+Note Editorial Format Baseline: **Run296 — Reader-approved Note Editorial Format v2**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
 
@@ -271,6 +272,7 @@ Pipeline modularizationの現行境界はRun245を基準とし、巨大な単一
 - `reader_value_review_bridge.py`
 - `run208_reader_value_repair.py`
 - `run222_note_presentation_integrity.py`
+- `run296_editorial_format_v2.py`
 - `run248_first_real_publish_quality_calibration.py`
 - `run249_final_publication_surface_gate.py`
 - `run194_publication_contract.py`
@@ -336,6 +338,19 @@ Article production surface:
 - Run249: final assembled public-surface revalidation
 - Run261: Gemini 3.7 primary / Gemini 3.8 bounded quality repair at the live Deep Dive entrypoint
 - Public releaseは**human-only**。自動化はprivate draftまで。
+
+### Run296 Reader-approved Note Editorial Format v2
+
+最初の実note Private Draftの人間レビューをProduction標準へ反映する。`run296_editorial_format_v2.py` はRun222後段のreader-facing surfaceを正規化し、追加Gemini/model requestを作らない。
+
+- 記事冒頭は `どんな内容？` とし、`30秒でわかるこの記事` と `何が出た？` を廃止する。
+- 有料CTAは `有料サブスクのご案内`、指定本文、`詳しくはこちら` をcanonical copyとし、既存tracking URLは保持する。
+- 長い記事タイトルをアイキャッチへそのまま複製せず、意味を保った短いvisual copyへ圧縮する。
+- `舞台裏` 等の保護対象複合語を行境界で分割しない。
+- highlightは意味の完結したフレーズを使い、Netflix GenRecでは `舵を切った理由` 全体を強調する。
+- アイキャッチ下部説明文/subheadlineは描画しない。
+- Netflix GenRecのreviewed specimenは `Netflix推薦の舞台裏` / `LLMネイティブへ` / `舵を切った理由` の3行をdeterministicに使う。
+- Public releaseは引き続きhuman-only。既存private draft更新は別のspecimen-bound workflowでin-place実施し、read-only監査を再実行する。
 
 ### Eyecatch
 
