@@ -82,6 +82,7 @@ class Run289ExecutionTests(unittest.TestCase):
         with patch.object(run289.sync, "NOTION_API_KEY", "token"), \
              patch.object(run289.sync, "SOURCE_DATA_SOURCE_ID", "source"), \
              patch.object(run289.sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(run289.contract, "policy_sha256", return_value=run289.TARGET_POLICY_SHA256), \
              patch.object(run289, "_source_page", return_value=({}, state, manuscript)), \
              patch.object(run289, "_exact_destination_page", return_value=before), \
              patch.object(run289.sync, "_request", side_effect=request):
@@ -106,6 +107,7 @@ class Run289ExecutionTests(unittest.TestCase):
         with patch.object(run289.sync, "NOTION_API_KEY", "token"), \
              patch.object(run289.sync, "SOURCE_DATA_SOURCE_ID", "source"), \
              patch.object(run289.sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(run289.contract, "policy_sha256", return_value=run289.TARGET_POLICY_SHA256), \
              patch.object(run289, "_source_page", return_value=({}, state, manuscript)), \
              patch.object(run289, "_exact_destination_page", return_value=destination(posting="投稿待ち")), \
              patch.object(run289.sync, "_request") as request:
@@ -126,6 +128,7 @@ class Run289ExecutionTests(unittest.TestCase):
                 with patch.object(run289.sync, "NOTION_API_KEY", "token"), \
                      patch.object(run289.sync, "SOURCE_DATA_SOURCE_ID", "source"), \
                      patch.object(run289.sync, "DEST_DATA_SOURCE_ID", "dest"), \
+                     patch.object(run289.contract, "policy_sha256", return_value=run289.TARGET_POLICY_SHA256), \
                      patch.object(run289, "_source_page", return_value=({}, state, manuscript)), \
                      patch.object(run289, "_exact_destination_page", return_value=row), \
                      patch.object(run289.sync, "_request") as request:
