@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-c81353905109f68e",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "HackerNews",
+  "source_url": "https://netflixtechblog.com/genrec-towards-llm-native-recommendation-at-netflix-f20be6f643e3",
+  "note_title": "Netflixが推薦の舞台裏をLLMネイティブへ舵を切った理由。",
+  "ready_at": "2026-09-08T10:51:17.931600+09:00",
+  "notion_page_id": "3bd479ff-dca9-817f-926a-eaffbb779c4b",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-c81353905109f68e&aif_article_id=aif-c81353905109f68e",
+  "cta_enabled": true,
+  "decision_score": 82,
+  "screening_score": null,
+  "commercial_value_score": null,
+  "shelf_life_score": null,
+  "shelf_life": null,
+  "portfolio_topic": null,
+  "deep_dive_priority_score": null,
+  "measurement_status": "awaiting_external_metrics"
+}
