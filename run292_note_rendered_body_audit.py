@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Run292: renderer-faithful, read-only audit for an existing private note draft.
+"""Run292/293: renderer-faithful, read-only audit for an existing private note draft.
 
 Run291 compared note's rendered body against a coarse Markdown-to-plain-text helper that is
 intentionally suitable only for insertion smoke checks. In particular, that helper removes fenced
 code content even though the note paste path renders code visibly. Run292 keeps every Run291
 read-only/privacy boundary, but derives the expected visible body from the exact safe HTML renderer
 used by draft creation.
+
+Run293 preserves the same gates and adds categorical diagnostics for fixed, non-body audit failures.
+Only allow-listed codes are emitted; exception text is never copied into the result.
 
 Failure diagnostics contain only booleans, counts, ratios and categorical codes. They never contain
 unpublished title/body text, a draft URL, screenshots, browser storage state, or mutation surfaces.
@@ -142,6 +145,43 @@ def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, 
         base._body_text_metrics = original
 
 
+_NON_BODY_GUARD_CODES: dict[str, str] = {
+    "Run291 requires an exact 32-hex sync_id": "target_sync_id_invalid",
+    "Run291 expected exactly one destination row for the requested sync_id": "destination_row_not_unique",
+    "Requested row is not current Ready / 投稿準備中": "destination_state_invalid",
+    "Requested row already has public-post evidence; private-draft audit refuses it": "public_evidence_present",
+    "Destination row has no title": "destination_title_missing",
+    "Content Intelligence source page could not be read": "source_page_read_failed",
+    "Content Intelligence source is not an active Ready source": "source_not_active_ready",
+    "Source and destination titles do not match": "source_destination_title_mismatch",
+    "No byte-valid current Publication Contract manuscript exists": "current_contract_manuscript_missing",
+    "Current Ready source has no eyecatch": "current_ready_eyecatch_missing",
+    "Prepared note presentation is unexpectedly short": "prepared_presentation_too_short",
+    "Could not read the private draft title": "title_read_failed",
+    "note authentication is not active": "note_auth_inactive",
+    "Matched page is not a confirmed note editor route": "editor_route_invalid",
+    "Private draft title does not match the requested article": "draft_title_mismatch",
+    "Could not read private draft body": "body_read_failed",
+    "Could not inspect private draft semantic structure": "semantic_structure_read_failed",
+    "Private draft contains a body-level H1": "body_h1_present",
+    "Private draft lost its expected heading structure": "heading_structure_lost",
+    "Private draft eyecatch persistence could not be confirmed": "eyecatch_persistence_unconfirmed",
+    "Private draft editor geometry is unavailable": "editor_geometry_unavailable",
+    "Private draft editor content width is unexpectedly narrow": "editor_width_narrow",
+    "Playwright is required for Run291": "playwright_missing",
+    "No private note edit route is present in persistent Chrome history": "chrome_history_no_routes",
+    "The requested private draft could not be matched safely from local Chrome history": "draft_not_matched_from_history",
+}
+
+
+def _safe_non_body_guard_code(exc: base.PrivateDraftAuditError) -> str:
+    """Map only fixed, allow-listed Run291 errors to non-content diagnostic codes."""
+    message = str(exc)
+    if message == f"Confirmation must equal {base.CONFIRM_TOKEN}":
+        return "confirmation_invalid"
+    return _NON_BODY_GUARD_CODES.get(message, "non_body_guard_failed")
+
+
 def _safe_failure_result(sync_id: str, code: str, metrics: dict[str, Any] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {
         "success": False,
@@ -185,8 +225,8 @@ def main() -> None:
     except Run292AuditDiagnosticError as exc:
         result = _safe_failure_result(args.sync_id, exc.code, exc.safe_metrics)
         exit_code = 2
-    except base.PrivateDraftAuditError:
-        result = _safe_failure_result(args.sync_id, "non_body_guard_failed")
+    except base.PrivateDraftAuditError as exc:
+        result = _safe_failure_result(args.sync_id, _safe_non_body_guard_code(exc))
         exit_code = 2
 
     _write_result(args.result_file, result)

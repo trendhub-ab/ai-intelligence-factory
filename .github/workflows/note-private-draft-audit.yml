@@ -38,10 +38,11 @@ jobs:
       - name: Install zero-browser dependency
         run: pip install requests
 
-      - name: Run291/292 zero-VM contract tests
+      - name: Run291/292/293 zero-VM contract tests
         run: |
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
+          python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
 
       - name: Validate exact existing private draft state before VM start
         env:
@@ -154,10 +155,11 @@ jobs:
             exit 1
           }
 
-      - name: Run291/292 read-only regression tests
+      - name: Run291/292/293 read-only regression tests
         run: |
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
+          python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
 
       - name: Audit exact existing private draft without mutation
         env:
@@ -188,7 +190,7 @@ jobs:
           path = Path(os.environ['RESULT_FILE'])
           if not path.exists():
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-                  fh.write('### Run292 private note draft read-only audit\n')
+                  fh.write('### Run293 private note draft read-only audit\n')
                   fh.write('- result: `FAIL-CLOSED`\n')
                   fh.write('- safe diagnostic result file: `missing`\n')
                   fh.write('- unpublished content / draft URL exposed: `false`\n')
@@ -210,7 +212,7 @@ jobs:
               'matched_history_rank', 'editor_route_hash'
           ]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run292 private note draft read-only audit\n')
+              fh.write('### Run293 private note draft read-only audit\n')
               fh.write(f'- result: `{"PASS" if passed else "FAIL-CLOSED"}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
               fh.write(f'- draft mutation: `{result.get("draft_mutation") is True}`\n')
