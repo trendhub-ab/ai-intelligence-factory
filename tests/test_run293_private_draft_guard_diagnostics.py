@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 import inspect
+import sys
+import types
 import unittest
+
+try:
+    import requests  # noqa: F401
+except ModuleNotFoundError:
+    requests_stub = types.ModuleType("requests")
+    requests_stub.Response = object
+    requests_stub.RequestException = Exception
+    requests_stub.request = lambda *args, **kwargs: None
+    requests_stub.get = lambda *args, **kwargs: None
+    requests_stub.post = lambda *args, **kwargs: None
+    sys.modules["requests"] = requests_stub
 
 import run292_note_rendered_body_audit as audit
 
