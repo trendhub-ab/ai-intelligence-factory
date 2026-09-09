@@ -24,11 +24,24 @@ Run309で実noteをzero-mutation監査した。
 
 したがってRun310は推測selectorではなく、**`公開に進む` → `更新する`** の実測導線だけを使用する。
 
-### First live update falsification
+## Live falsification findings
 
-2026-09-09の初回Run310 live updateは、本文・タイトルをeditorへ入れた後、最終`更新する`を押す前にfail-closedで停止した。原因は、DOM上のhidden duplicateまで含むrole locatorの`count()==1`を要求していたためで、Run309で実測した「画面上の見える`更新する`は1個」という事実とselector contractが一致していなかった。
+### Hidden duplicate control
 
-修正後は `button:visible` に限定し、可視ボタンのexact textだけを解決する。hidden duplicateは候補数に含めない。公開ページを再確認した結果、初回失敗後も旧タイトルのままであり、最終更新は発生していないことを確認済み。
+初回Run310は、本文・タイトルをeditorへ入れた後、最終`更新する`を押す前にfail-closedで停止した。DOM上のhidden duplicateまで含むrole locatorを数えていたことが原因だった。修正後は`button:visible`かつexact textだけを対象とする。
+
+### Editor autosave is not publication state
+
+2回目Run310で、noteは最終`更新する`前でも編集内容をeditor側へautosaveすることが判明した。editorでは新タイトルになっていた一方、公開URLは旧タイトルのままだった。
+
+したがって **editor title == current title を `already_current` の根拠にはしない**。current titleがeditorに存在する場合は、
+
+1. editor本文がRun308正本と一致することを再検証
+2. 別pageでpublic URLを確認し、editor画面を破壊しない
+3. publicもcurrentなら`already_current`
+4. publicが旧タイトルなら「staged editor / legacy public」と判定し、その正本一致済みstaged contentを`公開に進む`→`更新する`へ進める
+
+public側で新タイトルはあるが他markerが欠ける等の部分的不整合は自動補正せずfail-closedとする。
 
 ## Content authority
 
@@ -46,38 +59,22 @@ CTAはMarkdown linkで `https://note.com/trendhub_biz/membership` へ明示的�
 
 ## Fail-closed update sequence
 
-1. Exact tokenを検証
-2. Exact note ID/editor URLへ移動
-3. current titleが旧正本 `AIはとっても重要。でも正直、もう追いきれない。` と一致することを確認
-4. 想定外タイトルなら無変更で停止
-5. タイトルをcurrentへ置換
-6. Run308本文を挿入し、editor内で本文一致を検証
-7. 画面上でvisibleな`公開に進む`がexactly oneであることを確認してクリック
+1. Exact token / ID / editor URLを検証
+2. editorが旧タイトルならRun308 title/bodyを投入し本文一致を検証
+3. editorがcurrent titleなら、staged本文がRun308と完全に整合することを検証
+4. staged caseでは別pageでpublic stateを検証
+5. publicもcurrentなら変更せず`already_current`
+6. publicが旧版ならstaged editorを保持したまま続行
+7. visible exact `公開に進む`を1回クリック
 8. exact `/notes/ned673e381ef8/publish/` を確認
-9. タグ・マガジン・メンバーシップ設定へ触れず、画面上でvisibleな`更新する`がexactly oneであることを確認してクリック
-10. public URLを再読込
-11. 新タイトル・主要marker・membership clickable link・旧タイトル消失を確認
+9. タグ・マガジン・メンバーシップ設定へ触れず、visible exact `更新する`を1回クリック
+10. public URLを再読込し、新タイトル・主要marker・membership clickable link・旧タイトル消失を確認
 
 更新後検証に失敗した場合も成功扱いにしない。
 
-## Idempotency
+## Non-goals / Cost
 
-既にcurrent titleの場合は再編集せずpublic verificationだけを実行し、`already_current`として終了する。
-
-## Non-goals
-
-- 通常記事の自動公開
-- 新規記事の公開
-- タグ自動変更
-- マガジン変更
-- membership publication setting変更
-- アイキャッチ変更
-- note private API利用
-- Gemini/model call
-- Notion schema変更
-
-## Cost / safety
-
+- 通常記事の自動公開、新規記事公開、タグ/マガジン/アイキャッチ変更は対象外
 - Gemini/model calls: **0**
 - paid provider calls: **0**
 - Production ONE-SHOT: **0**
