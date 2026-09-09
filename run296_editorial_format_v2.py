@@ -14,6 +14,11 @@ Run306 further refines the same deterministic eyecatch renderer without adding a
 - the reviewed Netflix specimen scale is the normal-title maximum;
 - two-line and three-line title blocks share one visual center instead of fixed top anchors.
 
+Run307 updates only the paid-funnel wording. The paid product is no longer framed primarily as a
+client-proposal service: it helps a solo developer / freelancer / small operator decide
+``「このAI、使える！」`` for their own development, work use, or a proposal. No additional
+provider request is introduced.
+
 The layer does not publish, mutate note, or add a model request. Future non-specimen eyecatches
 continue to use Run180's existing single bounded layout call; this layer only tightens its prompt
 and validation plus the deterministic renderer presentation.
@@ -33,10 +38,12 @@ INTRO_HEADING_NEW = "どんな内容？"
 REMOVE_SUMMARY_LABEL = "何が出た？"
 CTA_HEADING = "有料サブスクのご案内"
 CTA_BODY = (
-    "有料サブスクでは、意思決定DBと月次ダイジェストを公開しています。"
-    "AI情報の変化を追い、採用・様子見・見送りの判断を助けます。"
+    "有料サブスクでは、重要な変化を絞ったDecision Brief、根拠を確認できる意思決定DB、"
+    "試す・導入する前の判断メモを提供しています。"
+    "新しいAIや技術を見つけたとき、『このAI、使える！』と判断するための情報を、"
+    "一次情報とEvidence付きで短時間に整理できます。"
 )
-CTA_LINK_LABEL = "詳しくはこちら"
+CTA_LINK_LABEL = "月額1,980円の内容を見る"
 
 _LEGACY_CTA_HEADINGS = {
     "「自分はどうする？」まで判断したい方へ",

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run268 zero-network fail-closed business/source strategy guard."""
+"""Run268 zero-network fail-closed source-strategy guard.
+
+Run268 remains the authority for the four-source acquisition architecture. Later runs may
+change paid-product framing without weakening the Run268 source invariants.
+"""
 from __future__ import annotations
 
 import ast
@@ -55,7 +59,6 @@ def collect_errors(root: Path = ROOT) -> list[str]:
 
     errors: list[str] = []
 
-    # Syntax is part of the contract and costs zero I/O/provider calls.
     for name, text in ((ACQUISITION, acquisition), (LAYER, layer)):
         try:
             ast.parse(text, filename=name)
@@ -116,38 +119,29 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         if entrypoint.index("install_runtime_layers(pipeline)") > entrypoint.index("install_run268_business_source_strategy(pipeline)"):
             errors.append("run268_must_install_after_historical_runtime_layers")
 
-    # Run268 is the business/source strategy authority. The paid-product document can
-    # legitimately receive a newer revision label when a later Run changes only the
-    # member presentation surface. Protect the Run268 strategy invariants themselves,
-    # not an obsolete "current document revision" phrase.
+    # Run268 remains the source-architecture authority. Run307 intentionally supersedes the
+    # Proposal-First product framing while preserving the same acquisition architecture.
     errors += _require(
         product,
         (
-            "Run268 — Proposal-First ICP / Four-Source Intelligence",
-            "Proposal-First Decision Intelligence",
-            "1〜3名規模のフリーランス／小規模開発事業者",
+            "Run307 current product contract",
+            "Generic Use-Decision Intelligence",
             "GitHub — 実装動向",
             "ArXiv — 技術の先行動向",
             "HackerNews — 市場・エンジニア反応",
             "OfficialVendor — 商用利用に直結する一次情報",
             "Product HuntはRun268からProductionのactive Sourceではない",
             "中国主要",
-            "判断・提案メモは有料価値の中心Artifactへ格上げ",
+            "Run268 — Proposal-First ICP / Four-Source Intelligence",
         ),
         "paid_product_contract",
     )
-    for stale in (
-        "顧客への提案・説明は副次価値。商品中心へ戻さない。",
-        "「顧客に答えられる」を商品中心へ戻さない。",
-    ):
-        if stale in product:
-            errors.append(f"paid_product_retains_pre_run268_strategy:{stale}")
 
     errors += _require(
         spec,
         (
             "Business / Source Strategy Baseline: **Run268",
-            "Paid Product Baseline: **Run268",
+            "Paid Product Messaging Baseline: **Run307",
             "GitHub = 実装動向",
             "ArXiv = 技術の先行動向",
             "HackerNews = 市場・エンジニア反応",

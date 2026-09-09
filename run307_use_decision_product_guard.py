@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Run270 zero-network fail-closed historical Proposal-First compatibility guard.
-
-Run307 supersedes Run270 as the current visible member-product framing. This guard keeps the
-Run270 compatibility layer intact and verifies that Run307 installs after it rather than deleting
-or silently bypassing the historical migration surface.
-"""
+"""Run307 zero-network fail-closed generic use-decision product guard."""
 from __future__ import annotations
 
 import ast
@@ -12,12 +7,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-MODULE = "run270_proposal_first_member_surface.py"
+MODULE = "run307_use_decision_member_surface.py"
 WRAPPER = "run219_member_human_language_ui.py"
 WORKFLOW = ".github/workflows/member-presentation-sync.yml"
 FALSIFICATION = ".github/workflows/repository-falsification.yml"
+NOTE_FORMAT = "run296_editorial_format_v2.py"
 PAID_CONTRACT = "PAID_PRODUCT_CONTRACT.md"
-REFERENCE = "docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md"
+REFERENCE = "docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md"
 SPEC = "AI_Intelligence_Factory_最終仕様書.md"
 
 
@@ -35,13 +31,14 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         WRAPPER: _read(root, WRAPPER),
         WORKFLOW: _read(root, WORKFLOW),
         FALSIFICATION: _read(root, FALSIFICATION),
+        NOTE_FORMAT: _read(root, NOTE_FORMAT),
         PAID_CONTRACT: _read(root, PAID_CONTRACT),
         REFERENCE: _read(root, REFERENCE),
         SPEC: _read(root, SPEC),
     }
     errors: list[str] = []
 
-    for filename in (MODULE, WRAPPER):
+    for filename in (MODULE, WRAPPER, NOTE_FORMAT):
         try:
             ast.parse(texts[filename], filename=filename)
         except SyntaxError as exc:
@@ -51,22 +48,26 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     errors += _require(
         module,
         (
-            '"product_purpose": "proposal_first_decision_intelligence"',
-            '"client_proposal_primary": True',
-            '"internal_work_use_secondary": True',
+            '"product_purpose": "use_decision_intelligence"',
+            '"self_development_supported": True',
+            '"internal_work_use_supported": True',
+            '"client_proposal_supported": True',
+            '"client_proposal_primary": False',
             '"source_scores_preserved": True',
             '"decision_status_preserved": True',
             '"evidence_preserved": True',
             '"notion_schema_changed": False',
             '"zero_gemini_calls": True',
-            'body._body_matches = _body_matches_proposal_first',
+            'body._body_matches = _body_matches_use_decision',
             'target._build_children = _build_children',
-            '"顧客にどう答える？"',
-            '"提案できる場面"',
-            '"提案前に確認すること"',
-            '"提案・検証の次の一手"',
+            '"いま、使える？"',
+            '"使える場面"',
+            '"使う前に確認すること"',
+            '"試す・導入する次の一手"',
+            '"Decision Update｜判断を変える必要がある？"',
+            '「このAI、使える！」を、根拠付きで判断できる。',
         ),
-        "run270_module",
+        "run307_module",
     )
     for forbidden in (
         "import requests",
@@ -75,45 +76,53 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         "NOTION_DECISION_INTELLIGENCE_API_KEY",
     ):
         if forbidden in module:
-            errors.append(f"run270_forbidden_surface:{forbidden}")
+            errors.append(f"run307_forbidden_surface:{forbidden}")
 
     wrapper = texts[WRAPPER]
     errors += _require(
         wrapper,
         (
-            "import run250_member_client_action_product as run250",
             "import run270_proposal_first_member_surface as run270",
             "import run307_use_decision_member_surface as run307",
-            "run250.install_navigation()",
             "run270.install_navigation()",
             "run307.install_navigation()",
-            "run250.install_body(sys.modules[__name__])",
             "run270.install_body(sys.modules[__name__])",
             "run307.install_body(sys.modules[__name__])",
-            'result["run270_proposal_first_member_surface"] = run270.contract()',
+            'result["run307_use_decision_member_surface"] = run307.contract()',
+            '"いま、使える？"',
+            '"試す・導入する次の一手"',
         ),
         "run219_wrapper",
     )
     for before, after, label in (
-        ("run250.install_navigation()", "run270.install_navigation()", "navigation_after_run250"),
-        ("run270.install_navigation()", "run307.install_navigation()", "navigation_before_run307"),
-        ("run250.install_body(sys.modules[__name__])", "run270.install_body(sys.modules[__name__])", "body_after_run250"),
-        ("run270.install_body(sys.modules[__name__])", "run307.install_body(sys.modules[__name__])", "body_before_run307"),
+        ("run270.install_navigation()", "run307.install_navigation()", "navigation"),
+        ("run270.install_body(sys.modules[__name__])", "run307.install_body(sys.modules[__name__])", "body"),
     ):
         if before in wrapper and after in wrapper and wrapper.index(before) > wrapper.index(after):
-            errors.append(f"run270_compatibility_order_drifted:{label}")
+            errors.append(f"run307_must_install_after_run270:{label}")
 
     workflow = texts[WORKFLOW]
     errors += _require(
         workflow,
         (
-            "run270_proposal_first_member_surface.py",
-            "tests/test_run270_proposal_first_member_surface.py",
-            "python -m unittest tests/test_run270_proposal_first_member_surface.py",
             "run307_use_decision_member_surface.py",
+            "tests/test_run307_use_decision_member_surface.py",
+            "python -m unittest tests/test_run307_use_decision_member_surface.py",
             "Use-Decision UI",
+            "general use decisions",
         ),
         "member_workflow",
+    )
+
+    note_format = texts[NOTE_FORMAT]
+    errors += _require(
+        note_format,
+        (
+            "このAI、使える！",
+            "Decision Brief",
+            'CTA_LINK_LABEL = "月額1,980円の内容を見る"',
+        ),
+        "note_paid_funnel",
     )
 
     paid = texts[PAID_CONTRACT]
@@ -121,8 +130,13 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         paid,
         (
             "Run307 current product contract",
+            "「このAI、使える！」を、根拠付きで判断できる",
+            "フリーランス／個人事業主／1〜3名規模の小規模事業者",
+            "自分の開発",
+            "業務利用",
+            "顧客提案は利用場面の一つ",
+            "Run307以降の最終可視本文はUse-Decisionを正本とする",
             "Run270のProposal-First本文は歴史的互換層",
-            "Run270 — Proposal-First member visible surface / static Notion surface alignment（歴史的互換層）",
         ),
         "paid_contract",
     )
@@ -131,15 +145,14 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     errors += _require(
         reference,
         (
-            "# Run270 — Proposal-First Member Surface",
-            "3c5479ff-dca9-8103-bff0-f2d5f408d35f",
-            "3d0479ff-dca9-81de-b614-fef528d2f32c",
-            "3d3479ff-dca9-8119-b0d8-c014b068fe82",
-            "顧客課題 / 提案シーン",
-            "次の判断 / 提案更新日",
+            "# Run307 — Generic Use-Decision Product",
+            "「このAI、使える！」を、根拠付きで判断できる",
+            "個人事業主",
+            "月額1,980円",
+            "無料note → 固定LP → noteメンバーシップ",
             "ZERO Gemini/model calls",
         ),
-        "run270_reference",
+        "run307_reference",
     )
 
     spec = texts[SPEC]
@@ -147,10 +160,10 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         spec,
         (
             "Member Surface Baseline: **Run307",
-            "Run270",
-            "Proposal-First Member Surface",
-            "docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md",
+            "Paid Product Messaging Baseline: **Run307",
+            "「このAI、使える！」を、根拠付きで判断できる",
             "docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md",
+            "現在のMember Surface正本はRun307",
         ),
         "canonical_spec",
     )
@@ -159,10 +172,10 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     errors += _require(
         falsification,
         (
-            "Enforce Run270 Proposal-First member surface contract",
-            "python run270_proposal_first_member_surface_guard.py",
-            "tests.test_run270_proposal_first_member_surface_guard",
-            "tests.test_run270_proposal_first_member_surface",
+            "Enforce Run307 generic use-decision product contract",
+            "python run307_use_decision_product_guard.py",
+            "tests.test_run307_use_decision_product_guard",
+            "tests.test_run307_use_decision_member_surface",
         ),
         "repository_falsification",
     )
@@ -173,11 +186,11 @@ def collect_errors(root: Path = ROOT) -> list[str]:
 def main() -> int:
     errors = collect_errors(ROOT)
     if errors:
-        print("RUN270_PROPOSAL_FIRST_MEMBER_SURFACE_GUARD=FAIL")
+        print("RUN307_USE_DECISION_PRODUCT_GUARD=FAIL")
         for error in errors:
             print(f"- {error}")
         return 1
-    print("RUN270_PROPOSAL_FIRST_MEMBER_SURFACE_GUARD=PASS")
+    print("RUN307_USE_DECISION_PRODUCT_GUARD=PASS")
     return 0
 
 

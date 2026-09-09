@@ -35,6 +35,7 @@ on:
       - 'run225_member_lifecycle_ui.py'
       - 'run250_member_client_action_product.py'
       - 'run270_proposal_first_member_surface.py'
+      - 'run307_use_decision_member_surface.py'
       - 'run271_member_body_delta_sync_guard.py'
       - 'tests/test_run158_member_presentation_sync.py'
       - 'tests/test_run166_member_page_body.py'
@@ -54,6 +55,7 @@ on:
       - 'tests/test_run225_member_lifecycle_ui.py'
       - 'tests/test_run250_member_client_action_product.py'
       - 'tests/test_run270_proposal_first_member_surface.py'
+      - 'tests/test_run307_use_decision_member_surface.py'
       - 'tests/test_run271_member_body_delta_sync.py'
       - 'tests/test_run271_1_member_body_checkpoint.py'
       - '.github/workflows/member-presentation-sync.yml'
@@ -113,6 +115,7 @@ jobs:
           python -m unittest tests/test_run225_member_lifecycle_ui.py
           python -m unittest tests/test_run250_member_client_action_product.py
           python -m unittest tests/test_run270_proposal_first_member_surface.py
+          python -m unittest tests/test_run307_use_decision_member_surface.py
           python -m unittest tests/test_run271_member_body_delta_sync.py
           python -m unittest tests/test_run271_1_member_body_checkpoint.py
 
@@ -132,7 +135,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Sync clean member DB with lifecycle-aware Proposal-First UI
+      - name: Sync clean member DB with lifecycle-aware Use-Decision UI
         run: python run219_member_human_language_ui.py presentation
         env:
           TZ: 'Asia/Tokyo'
@@ -146,7 +149,7 @@ jobs:
           STOCK_FRESH_DAYS: '30'
           STOCK_ARCHIVE_DAYS: '90'
 
-      - name: Sync readable member page bodies for client decisions
+      - name: Sync readable member page bodies for general use decisions
         run: python run219_member_human_language_ui.py body
         env:
           TZ: 'Asia/Tokyo'

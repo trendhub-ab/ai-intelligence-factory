@@ -39,7 +39,7 @@ Netflixの推薦基盤に関する技術記事です。
 [意思決定DBを見る](https://note.com/trendhub_biz/n/example?utm_source=note)
 """
 
-    def test_transform_is_only_run296_reader_surface(self):
+    def test_transform_is_only_current_reader_surface(self):
         old = self.specimen()
         new = r297.transform_genrec_manuscript(old)
         self.assertIn("## どんな内容？", new)
@@ -47,7 +47,12 @@ Netflixの推薦基盤に関する技術記事です。
         self.assertNotIn("何が出た？", new)
         self.assertIn("監査済みの本文は変更しません。", new)
         self.assertIn("### 有料サブスクのご案内", new)
-        self.assertIn("[詳しくはこちら](https://note.com/trendhub_biz/n/example?utm_source=note)", new)
+        self.assertIn(r296.CTA_BODY, new)
+        self.assertIn("このAI、使える！", new)
+        self.assertIn(
+            f"[{r296.CTA_LINK_LABEL}](https://note.com/trendhub_biz/n/example?utm_source=note)",
+            new,
+        )
         self.assertLess(new.index("### Sources / Evidence"), new.index("### 有料サブスクのご案内"))
 
     def test_exact_specimen_and_policy_are_pinned(self):
