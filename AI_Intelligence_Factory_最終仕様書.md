@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-09  
+最終更新: 2026-09-10  
 Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Provider Resilience Baseline: **Run303 — Verified HTTP 503 confirmation / consecutive-only run-local circuit**  
 Product Review Provider Runtime Baseline: **Run305 — Run304 counter authority / Run203 + Run209 + transient recovery + Run303 via sole `production_pipeline.py` entrypoint**  
@@ -10,6 +10,7 @@ Production Source of Truth: **`main`**
 Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member Presentation Sync**  
 Paid Member UX Baseline: **Run215**  
 Paid Member Commerce/Onboarding Baseline: **Run217**  
+Paid Member note Onboarding Baseline: **Run326b — Run325 exact latest-draft finalization / Run326b logged-out members-only verification**  
 Paid Member Navigation/UI Baseline: **Run218**  
 Paid Member Presentation Baseline: **Run219**  
 Paid Member Database Destination Baseline: **Run220**  
@@ -209,6 +210,39 @@ Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前�
 - manual Notion block保護、current Run307見出し、Evidence / Decision / source / Deep Tech、Notion schema、ZERO Gemini/model call契約は変更しない。
 
 詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。2026-09-07の通常delta Production観測では、206件中 `scanned_body_pages=0` / `skipped_by_delta=206` / `sentinel_checked=1` / `delta_fallback_full=false`、本文stepは約**2.34秒**だった。Run270移行時の約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
+
+
+### 2.8 note Member Onboarding Publication / Public Verification — Run325 / Run326b
+
+Paid-member onboarding note `n284e428c80f4` is governed by a three-layer proof: exact manuscript state, existing-article public finalization, and logged-out entitlement verification.
+
+Current public title:
+
+`【最初にお読みください】「このAI、使える！」を判断するための使い方`
+
+Exact finalized body SHA256:
+
+`aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
+
+**Run325 maintenance contract**:
+
+- existing article → edit → latest draft → `公開に進む` → `試し読みエリアを設定` → **trial-read lineを選択しない** → `更新する`を1回だけ;
+- title/body SHAがexact current stateでなければfail closed;
+- `AI Decision Intelligence`への特典紐付けを維持し、`すべてのプラン（全員に公開）`は追加しない;
+- 既に収束済みならpublic updateを再クリックしないidempotent no-op;
+- old Run315 DOM-range route is historical regression coverage only and is not the dispatched Production live route.
+
+**Run326b customer-facing verification contract**:
+
+- fresh browserはnavigation前cookie `[]`; storage/cookieをseedしない;
+- noteが匿名visitorへ発行する `_note_session_v5` はseeded authenticationとは扱わない一方、明示的auth/token/login/user-id cookieはfail closed;
+- public URLはHTTP 200、新タイトル一致、legacy titleなし、`この記事は現在販売されていません`なし;
+- `メンバーシップ` / `メンバー限定` gateを確認し、保護された本文深部markerはlogged-out DOMに露出しない;
+- clicks 0、content/settings/membership/public mutation 0;
+- Gemini/model call 0、Notion write 0.
+
+Production evidence: Run325 workflow `34388876334`; Run326b workflow `34416681984`.  
+Full contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
 
 ---
 
