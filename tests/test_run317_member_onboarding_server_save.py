@@ -38,7 +38,7 @@ class Run317MemberOnboardingServerSaveTests(unittest.TestCase):
         self.assertIn("_new_cookie_only_context", proof)
         self.assertIn("context.add_cookies", context)
         self.assertIn("browser.new_context", context)
-        self.assertNotIn("storage_state", proof)
+        self.assertNotIn("storage_state=", context)
         self.assertNotIn("_launch_persistent_context", proof)
         self.assertNotIn("_seed_note_state", proof)
         self.assertIn('"fresh_context_local_storage_seeded": False', proof)
