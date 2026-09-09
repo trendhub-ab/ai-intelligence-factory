@@ -55,9 +55,9 @@ A synthetic paste event by itself is not treated as deletion. Run315 must prove 
 
 ## Membership publication repair
 
-Current note help confirms that a free article becomes a member-benefit article when it is added to a membership. If a previously attached free benefit loses its plan association, other users can see a not-for-sale state.
+Run315 keeps `記事タイプ=無料` and selects the exact `AI Intelligence Factory` membership via the observed `追加` control. An all-members scope is chosen only when an exact visible scope option is presented.
 
-Run315 therefore keeps `記事タイプ=無料`, selects the exact `AI Intelligence Factory` membership via the observed `追加` control, chooses an all-members scope only when an exact visible scope option is presented, then uses the normal `更新する` confirmation.
+The final publish-settings commit control is NOT assumed by name. The previously inherited `更新する` assumption was falsified against the current live UI on 2026-09-09: after membership selection, no visible button with exact text `更新する` existed. Run316 is therefore used to inventory the exact post-membership actionable DOM without clicking a final commit. Run315 may only be updated to click a final control after Run316 observes an exact, uniquely identifiable current control.
 
 ## Fail-closed safety
 
@@ -70,7 +70,7 @@ Run315 therefore keeps `記事タイプ=無料`, selects the exact `AI Intellige
 - never changes tags, magazine, eyecatch, AI translation, AI compensation, comments, or profile;
 - post-update public verification must remove the not-for-sale message and expose the new title.
 
-## Live rollback verification after first DOM-Range attempt
+## Live verification after first DOM-Range attempt
 
 The first Run315 DOM-Range attempt proved that the editor selection covered the exact body but also proved that a synthetic paste event alone did not delete the selected legacy blocks; the forbidden marker `会員向けDigest` remained and Run315 stopped before entering membership mutation.
 
@@ -78,9 +78,24 @@ A subsequent read-only Run314 audit confirmed that note restored the exact audit
 
 - title: `【最初にお読みください】AI Decision Intelligenceの利用方法`
 - body SHA-256: `4826aabc101f5f5319e2ea441e0e929ce2e7ee382be10a5fd0a976583c49c9f4`
-- membership surface: `AI Intelligence Factory` still shows `追加`
+- membership surface: `AI Intelligence Factory` still showed `追加`
 
 No partially rewritten body or membership change remained.
+
+## Live verification after delete-before-paste attempt
+
+The second Run315 live attempt proved that exact Range deletion plus empty-body verification fixed the populated-editor replacement problem. The new title/body passed all Run315 editor checks and execution advanced through membership selection. It then stopped because the inherited final exact `更新する` selector did not exist in the current publish-settings UI.
+
+A subsequent read-only audit on 2026-09-09 established the persisted state:
+
+- title: `【最初にお読みください】「このAI、使える！」を判断するための使い方`
+- visible body characters: `1524`
+- staged body SHA-256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
+- all four authorized links remained present
+- membership surface still showed `AI Intelligence Factory` + `追加`
+- article type remained `無料`
+
+Therefore the content rewrite is safely staged/autosaved, while the membership repair is still uncommitted. Future Run315 execution must accept this exact staged body via its existing `NEW_TITLE` verification path and must not rewrite the body again.
 
 ## Cost
 
