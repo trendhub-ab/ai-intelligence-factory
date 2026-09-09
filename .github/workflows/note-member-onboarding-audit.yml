@@ -1,0 +1,140 @@
+name: Audit exact member onboarding note
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type AUDIT_MEMBER_ONBOARDING_N284E428C80F4'
+        required: true
+        type: string
+      stage:
+        description: 'Read-only stage'
+        required: false
+        default: 'publish_settings'
+        type: choice
+        options:
+          - editor
+          - publish_settings
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-member-onboarding-audit
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Exact target read-only regression
+        run: python -m unittest tests.test_run314_member_onboarding_audit -v
+      - name: Validate exact authorization
+        id: auth
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = 'AUDIT_MEMBER_ONBOARDING_N284E428C80F4' ] || exit 1
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  audit:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v xvfb-run >/dev/null 2>&1
+      - run: python -m unittest tests.test_run314_member_onboarding_audit -v
+      - name: Audit exact member onboarding note read-only
+        env:
+          NOTE_MEMBER_ONBOARDING_AUDIT_CONFIRM: ${{ inputs.confirm }}
+          NOTE_MEMBER_ONBOARDING_AUDIT_STAGE: ${{ inputs.stage }}
+          NOTE_MEMBER_ONBOARDING_AUDIT_RESULT_FILE: ${{ runner.temp }}/run314-member-onboarding-audit.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run314_member_onboarding_audit.py
+      - name: Summarize result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run314-member-onboarding-audit.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'audit_passed' or r.get('read_only') is not True:
+              raise SystemExit('Run314 audit failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run314 member onboarding audit\n')
+              fh.write(f'- title: `{r.get("current_title", "")}`\n')
+              fh.write(f'- body chars: `{r.get("body_visible_chars", 0)}`\n')
+              fh.write(f'- body sha: `{r.get("body_sha256", "")}`\n')
+              fh.write(f'- post-stage URL: `{r.get("post_stage_url", "")}`\n')
+              fh.write('- zero Gemini calls: `true`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
