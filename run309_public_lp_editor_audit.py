@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Run309: read-only audit of the exact published fixed note editor.
+"""Run309/312: read-only audit of the exact published fixed note editor.
 
-This zero-model browser probe targets one explicitly authorized public note. The default stage only
-observes the editor. The optional ``publish_settings`` stage clicks the unique ``公開に進む``
-control without changing title/body, then observes the confirmation/settings controls. It never
-clicks save/update/publish confirmation controls and never opens a generic article target.
+Run312 extends the existing exact-target Run309 audit with a read-only content snapshot so the
+operator can reconcile a hand-edited public LP against the current product contract without
+mutating note. The optional ``publish_settings`` stage still clicks only ``公開に進む`` and never
+clicks save/update/publish confirmation controls.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,6 +59,28 @@ def _visible_button_texts(page: Any) -> list[str]:
     return values[:80]
 
 
+def _body_links(body: Any) -> list[dict[str, str]]:
+    values: list[dict[str, str]] = []
+    try:
+        anchors = body.locator("a[href]")
+        count = min(anchors.count(), 80)
+    except Exception:
+        return values
+    for idx in range(count):
+        anchor = anchors.nth(idx)
+        try:
+            href = str(anchor.get_attribute("href") or "").strip()
+            text = " ".join(str(anchor.inner_text() or "").split()).strip()
+        except Exception:
+            continue
+        if not href:
+            continue
+        item = {"text": text[:160], "href": href[:1000]}
+        if item not in values:
+            values.append(item)
+    return values
+
+
 def _is_exact_editor_url(value: str) -> bool:
     text = str(value or "")
     return text.startswith("https://editor.note.com/") and TARGET_NOTE_ID in text and "/edit" in text
@@ -105,6 +128,7 @@ def audit() -> dict[str, Any]:
             body = base._find_body(page, title_field)
             title = _field_text(title_field)
             body_text = _field_text(body)
+            body_links = _body_links(body)
             editor_buttons = _visible_button_texts(page)
 
             if stage == "publish_settings":
@@ -120,6 +144,9 @@ def audit() -> dict[str, Any]:
                 "audit_stage": stage,
                 "current_title": title,
                 "body_visible_chars": len(body_text),
+                "body_sha256": hashlib.sha256(body_text.encode("utf-8")).hexdigest(),
+                "body_text": body_text,
+                "body_links": body_links,
                 "editor_button_texts": editor_buttons,
                 "visible_button_texts": _visible_button_texts(page),
                 "post_stage_url": str(page.url or ""),
