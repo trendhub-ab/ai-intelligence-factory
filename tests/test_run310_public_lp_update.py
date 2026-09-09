@@ -66,7 +66,7 @@ class Run310PublicLpUpdateTests(unittest.TestCase):
         self.assertIn("REQUIRED_PUBLIC_MARKERS", source)
         self.assertIn("PUBLIC_TITLE_MISSING", source)
 
-    def test_workflow_is_exact_and_manual_only(self) -> None:
+    def test_workflow_is_exact_manual_and_accepts_all_verified_terminal_states(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-public-lp-update.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("UPDATE_PUBLIC_LP_NED673E381EF8", workflow)
@@ -74,6 +74,12 @@ class Run310PublicLpUpdateTests(unittest.TestCase):
         self.assertNotIn("schedule:", workflow)
         self.assertNotIn("push:", workflow)
         self.assertIn("ned673e381ef8", workflow)
+        for status in (
+            "updated_and_verified",
+            "staged_editor_published_and_verified",
+            "already_current",
+        ):
+            self.assertIn(status, workflow)
 
 
 if __name__ == "__main__":
