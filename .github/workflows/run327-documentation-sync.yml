@@ -1,0 +1,73 @@
+name: Run327 one-time canonical documentation sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Exact Run327 documentation-sync token'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run327-documentation-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-to-review-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Validate exact one-time authorization
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = 'SYNC_RUN327_NOTE_ONBOARDING_CANONICAL_DOCS' ] || exit 1
+      - name: Falsify deterministic sync before writing
+        run: |
+          python -m unittest tests.test_run327_documentation_sync -v
+          python run327_documentation_sync.py
+      - name: Apply canonical documentation sync locally
+        run: python run327_documentation_sync.py --write
+      - name: Verify only expected documentation changed before cleanup
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only | sort)"
+          expected=$'AI_Intelligence_Factory_最終仕様書.md\nREADME.md'
+          [ "$changed" = "$expected" ] || { echo "Unexpected changed files:"; printf '%s\n' "$changed"; exit 1; }
+          grep -F 'Current paid member note onboarding baseline:' README.md >/dev/null
+          grep -F 'Paid Member note Onboarding Baseline:' 'AI_Intelligence_Factory_最終仕様書.md' >/dev/null
+          grep -F 'RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md' README.md >/dev/null
+          grep -F 'RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md' 'AI_Intelligence_Factory_最終仕様書.md' >/dev/null
+      - name: Create review branch and remove one-time sync machinery
+        env:
+          BRANCH: run327-doc-sync-output
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$BRANCH"
+          rm -f run327_documentation_sync.py tests/test_run327_documentation_sync.py .github/workflows/run327-documentation-sync.yml
+          git add README.md 'AI_Intelligence_Factory_最終仕様書.md' run327_documentation_sync.py tests/test_run327_documentation_sync.py .github/workflows/run327-documentation-sync.yml
+          git commit -m 'Run327: sync canonical onboarding documentation'
+          git push origin "HEAD:refs/heads/$BRANCH"
+      - name: Summary
+        run: |
+          {
+            echo '### Run327 documentation sync'
+            echo '- README canonical baseline: updated'
+            echo '- final specification: updated to 2026-09-10'
+            echo '- review branch: `run327-doc-sync-output`'
+            echo '- one-time sync machinery removed on output branch: `true`'
+            echo '- model calls: `0`'
+            echo '- Notion writes: `0`'
+          } >> "$GITHUB_STEP_SUMMARY"
