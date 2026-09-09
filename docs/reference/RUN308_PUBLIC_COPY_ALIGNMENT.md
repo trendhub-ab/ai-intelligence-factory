@@ -23,7 +23,9 @@ Product HuntはRun268以降active Sourceではないため、current public copy
 
 ## 手動反映用・固定note LP
 
-公開中の固定noteは自動編集しない。以下を人間がnote編集画面で反映するためのcurrent handoffとする。
+公開中の固定noteは自動編集しない。人間がnote編集画面で反映するための**完全差し替え本文・タイトル・プロフィール・最終確認項目**は、次をcurrent handoff正本とする。
+
+- `docs/reference/RUN308_PUBLIC_NOTE_READY_TO_PASTE.md`
 
 ### 推奨タイトル
 
@@ -89,5 +91,9 @@ Guard対象:
 - `run296_editorial_format_v2.py` のcurrent article CTA
 - `PAID_PRODUCT_CONTRACT.md` のnote有料導線
 - 本Run308 handoff
+
+Human-only公開作業の完全差し替え正本:
+
+- `docs/reference/RUN308_PUBLIC_NOTE_READY_TO_PASTE.md`
 
 Run308はzero-network / zero-provider。Gemini API、Notion schema、Evidence、Decision Score、Source Scoreを変更しない。
