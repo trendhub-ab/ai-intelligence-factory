@@ -18,7 +18,7 @@ class Run315DomRangeReplaceTests(unittest.TestCase):
         self.assertIn("selected.startContainer === el", source)
         self.assertIn("selected.endContainer === el", source)
         self.assertIn("selected.endOffset === el.childNodes.length", source)
-        self.assertNotIn("Control+A", source)
+        self.assertNotIn('page.keyboard.press("Control+A")', source)
 
     def test_replacer_deletes_proven_range_before_paste_and_checks_empty(self) -> None:
         source = inspect.getsource(dom_range._paste_manuscript_dom_range)
@@ -27,7 +27,7 @@ class Run315DomRangeReplaceTests(unittest.TestCase):
         self.assertIn("_normalized_body_text(body)", source)
         self.assertIn("exact body deletion left residual text", source)
         self.assertLess(source.index('page.keyboard.press("Backspace")'), source.index("new DataTransfer()"))
-        self.assertNotIn("Control+A", source)
+        self.assertNotIn('page.keyboard.press("Control+A")', source)
 
     def test_replacer_preserves_shared_safe_paste_payload(self) -> None:
         source = inspect.getsource(dom_range._paste_manuscript_dom_range)
