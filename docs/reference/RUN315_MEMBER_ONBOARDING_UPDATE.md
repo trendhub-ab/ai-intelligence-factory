@@ -86,16 +86,20 @@ No partially rewritten body or membership change remained.
 
 The second Run315 live attempt proved that exact Range deletion plus empty-body verification fixed the populated-editor replacement problem. The new title/body passed all Run315 editor checks and execution advanced through membership selection. It then stopped because the inherited final exact `更新する` selector did not exist in the current publish-settings UI.
 
-A subsequent read-only audit on 2026-09-09 established the persisted state:
+The persistent automation Chrome profile subsequently continued to show:
 
 - title: `【最初にお読みください】「このAI、使える！」を判断するための使い方`
 - visible body characters: `1524`
-- staged body SHA-256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
-- all four authorized links remained present
-- membership surface still showed `AI Intelligence Factory` + `追加`
-- article type remained `無料`
+- body SHA-256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
+- all four authorized links present
+- membership surface still showing `AI Intelligence Factory` + `追加`
+- article type still `無料`
 
-Therefore the content rewrite is safely staged/autosaved, while the membership repair is still uncommitted. Future Run315 execution must accept this exact staged body via its existing `NEW_TITLE` verification path and must not rewrite the body again.
+This was initially interpreted as a persisted/autosaved server state. That interpretation was falsified by direct user verification on 2026-09-09: the same exact editor URL opened in the user's normal browser still returned the legacy title/body, and the public page also remained legacy.
+
+Therefore same-profile re-open is **not** accepted as server persistence evidence for this article. The most likely explanation is that the persistent Chrome user-data directory retained local editor state after Run315 failed before a real save/commit. Run314/316 audits reused that profile and consequently observed the same local state.
+
+Run317 now owns the persistence repair. It must use the persistent profile only as an authentication-cookie source, perform the exact rewrite in a clean cookie-only browser, click the exact visible `一時保存`, fully close that browser, and prove the exact new title/body in a second fresh cookie-only browser with no localStorage or persistent user-data directory. Publication and membership repair remain blocked until Run317 succeeds.
 
 ## Cost
 
