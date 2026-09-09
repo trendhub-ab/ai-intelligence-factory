@@ -3,12 +3,15 @@ from __future__ import annotations
 import inspect
 import unittest
 
+import run296_editorial_format_v2 as r296
 import run299_genrec_body_structure_diagnostic as diag
 
 
 class Run299BodyStructureDiagnosticTests(unittest.TestCase):
     def test_marker_counts_are_numeric_only(self):
-        result = diag._counts("どんな内容？ Sources / Evidence 有料サブスクのご案内 詳しくはこちら")
+        result = diag._counts(
+            f"どんな内容？ Sources / Evidence 有料サブスクのご案内 {r296.CTA_LINK_LABEL}"
+        )
         self.assertEqual(result["new_intro_count"], 1)
         self.assertEqual(result["sources_heading_count"], 1)
         self.assertEqual(result["cta_heading_count"], 1)
