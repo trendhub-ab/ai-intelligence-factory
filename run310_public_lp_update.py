@@ -9,7 +9,8 @@ maintenance operation.
 Safety:
 - ZERO Gemini/model calls.
 - exact note ID + exact confirmation token.
-- refuses an unexpected current title before mutation.
+- refuses unexpected editor content before publication.
+- distinguishes note's autosaved editor state from the actually published state.
 - does not change tags, magazine, membership publication settings, eyecatch, or other notes.
 - uses the observed current note UI: ``公開に進む`` -> ``更新する``.
 - verifies the public URL after update and fails closed on mismatch.
@@ -34,6 +35,7 @@ HANDOFF_PATH = Path("docs/reference/RUN308_PUBLIC_NOTE_READY_TO_PASTE.md")
 RESULT_ENV = "NOTE_PUBLIC_LP_UPDATE_RESULT_FILE"
 LEGACY_TITLE = "AIはとっても重要。でも正直、もう追いきれない。"
 EXPECTED_TITLE = "「このAI、使える！」を根拠付きで判断する｜Decision Brief + AI意思決定DB"
+PUBLIC_TITLE_MISSING = "Run310 public verification could not find the new title"
 REQUIRED_PUBLIC_MARKERS = (
     "このAI、使える！",
     "Decision Brief",
@@ -126,18 +128,16 @@ def _unique_button(page: Any, name: str) -> Any:
         controls.first.wait_for(state="visible", timeout=10000)
     except Exception as exc:
         raise base.NoteDraftError(f"Run310 could not observe visible {name} control") from exc
-    if controls.count() != 1:
-        visible_texts = [
-            _canon(raw)
-            for raw in page.locator("button:visible").all_text_contents()
-            if _canon(raw)
-        ]
-        matches = [text for text in visible_texts if text == name]
-        if len(matches) != 1:
-            raise base.NoteDraftError(
-                f"Run310 expected exactly one visible {name} control; visible exact matches={len(matches)}"
-            )
-        controls = page.locator("button:visible").filter(has_text=pattern)
+    visible_texts = [
+        _canon(raw)
+        for raw in page.locator("button:visible").all_text_contents()
+        if _canon(raw)
+    ]
+    matches = [text for text in visible_texts if text == name]
+    if len(matches) != 1:
+        raise base.NoteDraftError(
+            f"Run310 expected exactly one visible {name} control; visible exact matches={len(matches)}"
+        )
     return controls.first
 
 
@@ -158,7 +158,7 @@ def _verify_public(page: Any, title: str) -> dict[str, Any]:
     if title not in public_text:
         full_text = _canon(str(page.locator("body").inner_text(timeout=10000) or ""))
         if title not in full_text:
-            raise base.NoteDraftError("Run310 public verification could not find the new title")
+            raise base.NoteDraftError(PUBLIC_TITLE_MISSING)
     for marker in REQUIRED_PUBLIC_MARKERS:
         if marker not in public_text:
             raise base.NoteDraftError(f"Run310 public verification missing marker: {marker}")
@@ -172,6 +172,22 @@ def _verify_public(page: Any, title: str) -> dict[str, Any]:
         "public_markers_verified": list(REQUIRED_PUBLIC_MARKERS),
         "membership_link_verified": True,
     }
+
+
+def _public_state_from_separate_page(context: Any, title: str) -> tuple[str, dict[str, Any] | None]:
+    """Return published/current vs editor-staged without navigating away from the editor."""
+    verification_page = context.new_page()
+    verification_page.set_default_timeout(30000)
+    try:
+        try:
+            verification = _verify_public(verification_page, title)
+        except base.NoteDraftError as exc:
+            if str(exc) == PUBLIC_TITLE_MISSING:
+                return "legacy_public", None
+            raise
+        return "current_public", verification
+    finally:
+        verification_page.close()
 
 
 def update_public_lp() -> dict[str, Any]:
@@ -193,29 +209,37 @@ def update_public_lp() -> dict[str, Any]:
             _open_exact_editor(context, page)
             existing_title_field = base._find_title(page)
             current_title = _field_text(existing_title_field)
+            staged_editor = False
 
             if current_title == title:
-                verification = _verify_public(page, title)
-                return {
-                    "status": "already_current",
-                    "target_note_id": TARGET_NOTE_ID,
-                    "public_mutation": False,
-                    "zero_gemini_calls": True,
-                    "title": title,
-                    **verification,
-                }
-            if current_title != LEGACY_TITLE:
+                # note autosaves editor changes even when the public `更新する` confirmation was never clicked.
+                # Therefore editor-title equality is not publication equality. First prove the staged body is exact,
+                # then inspect the public page independently without navigating the editor away.
+                staged_body = base._find_body(page, existing_title_field)
+                base._verify_body_content(staged_body, manuscript)
+                public_state, verification = _public_state_from_separate_page(context, title)
+                if public_state == "current_public" and verification is not None:
+                    return {
+                        "status": "already_current",
+                        "target_note_id": TARGET_NOTE_ID,
+                        "public_mutation": False,
+                        "zero_gemini_calls": True,
+                        "title": title,
+                        **verification,
+                    }
+                staged_editor = True
+            elif current_title == LEGACY_TITLE:
+                title_field = base._set_title(page, title)
+                if _field_text(title_field) != title:
+                    raise base.NoteDraftError("Run310 title did not persist in the editor field")
+                body = base._find_body(page, title_field)
+                base._paste_manuscript(page, body, manuscript)
+                base._verify_body_content(body, manuscript)
+                page.wait_for_timeout(1200)
+            else:
                 raise base.NoteDraftError(
                     f"Run310 refuses unexpected current title: {current_title!r}"
                 )
-
-            title_field = base._set_title(page, title)
-            if _field_text(title_field) != title:
-                raise base.NoteDraftError("Run310 title did not persist in the editor field")
-            body = base._find_body(page, title_field)
-            base._paste_manuscript(page, body, manuscript)
-            base._verify_body_content(body, manuscript)
-            page.wait_for_timeout(1200)
 
             _unique_button(page, "公開に進む").click()
             try:
@@ -231,7 +255,7 @@ def update_public_lp() -> dict[str, Any]:
 
             verification = _verify_public(page, title)
             return {
-                "status": "updated_and_verified",
+                "status": "staged_editor_published_and_verified" if staged_editor else "updated_and_verified",
                 "target_note_id": TARGET_NOTE_ID,
                 "public_mutation": True,
                 "zero_gemini_calls": True,
