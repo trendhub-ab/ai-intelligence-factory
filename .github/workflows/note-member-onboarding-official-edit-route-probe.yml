@@ -27,8 +27,10 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify exact official edit-route probe
-        run: python -m unittest tests.test_run321_member_onboarding_official_edit_route_probe -v
+      - name: Falsify exact official edit-route probe and diagnostic
+        run: |
+          python -m unittest tests.test_run321_member_onboarding_official_edit_route_probe -v
+          python -m unittest tests.test_run321b_member_onboarding_edit_route_diagnostic -v
       - name: Validate exact probe authorization
         id: auth
         env:
@@ -79,34 +81,38 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run exact official edit-route regression
-        run: python -m unittest tests.test_run321_member_onboarding_official_edit_route_probe -v
-      - name: Probe official edit route without public mutation
+      - name: Re-run exact official edit-route diagnostic regression
+        run: python -m unittest tests.test_run321b_member_onboarding_edit_route_diagnostic -v
+      - name: Diagnose UI after exact 編集 without mutation
         env:
-          NOTE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_PROBE_CONFIRM: ${{ inputs.confirm }}
-          NOTE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_PROBE_RESULT_FILE: ${{ runner.temp }}/run321-result.json
+          NOTE_MEMBER_ONBOARDING_EDIT_ROUTE_DIAGNOSTIC_CONFIRM: ${{ inputs.confirm }}
+          NOTE_MEMBER_ONBOARDING_EDIT_ROUTE_DIAGNOSTIC_RESULT_FILE: ${{ runner.temp }}/run321b-result.json
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run321_member_onboarding_official_edit_route_probe.py
-      - name: Summarize probe
+        run: xvfb-run -a python run321b_member_onboarding_edit_route_diagnostic.py
+      - name: Summarize diagnostic
         env:
-          RESULT_FILE: ${{ runner.temp }}/run321-result.json
+          RESULT_FILE: ${{ runner.temp }}/run321b-result.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          if r.get('status') != 'probe_complete_no_public_mutation':
-              raise SystemExit('Run321 probe did not complete')
+          if r.get('status') != 'diagnostic_complete_no_mutation':
+              raise SystemExit('Run321b diagnostic did not complete')
           if r.get('final_commit_clicked') is not False or r.get('public_mutation') is not False:
-              raise SystemExit('Run321 mutation contract failed')
+              raise SystemExit('Run321b mutation contract failed')
+          after = r.get('after_edit') or {}
+          labels = r.get('exact_labels_after_edit') or {}
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run321 official edit-route probe\n')
+              fh.write('### Run321b edit-route diagnostic\n')
               fh.write(f'- target: `{r.get("target_note_id")}`\n')
-              fh.write(f'- routed title: `{r.get("routed_title")}`\n')
-              fh.write(f'- routed body sha: `{r.get("routed_body_sha256")}`\n')
+              fh.write(f'- source title: `{r.get("source_title")}`\n')
+              fh.write(f'- source body sha: `{r.get("source_body_sha256")}`\n')
+              fh.write(f'- after edit URL: `{after.get("url")}`\n')
+              fh.write(f'- editor route reached: `{bool(r.get("editor_route_reached"))}`\n')
+              fh.write(f'- exact labels after edit: `{json.dumps(labels, ensure_ascii=False)}`\n')
               fh.write(f'- version prompt: `{bool(r.get("version_choice", {}).get("prompt_present"))}`\n')
-              fh.write(f'- commit candidates: `{len(r.get("candidate_commit_controls") or [])}`\n')
               fh.write('- final commit clicked: `false`\n')
               fh.write('- public mutation: `false`\n')
               fh.write('- zero model calls: `true`\n')
