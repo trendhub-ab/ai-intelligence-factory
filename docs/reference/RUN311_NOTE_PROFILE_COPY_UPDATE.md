@@ -18,6 +18,14 @@ note公式ヘルプのPC手順は、クリエイターページで `設定` を�
 
 Run311はこの2つのvisible exact controlだけを使う。入力欄は既存文中の `Product Hunt` またはcurrent文中の `Decision Brief` を含むvisible fieldだけを対象とする。
 
+### First live UI falsification
+
+2026-09-09の初回Run311 live executionは、公開プロフィールで旧文を確認し、visible exact `設定` のクリックまでは成功したが、保存・入力変更の前にfail-closedで停止した。旧resolverが `textarea` / `input[type=text]` / `contenteditable="true"` の3形態だけを想定しており、noteの現在UIのプロフィール入力実装を取得できなかったためである。公開プロフィールへのmutationは発生していない。
+
+修正後は、mutation対象を広げるのではなく**候補の観測範囲だけ**を広げる。`textarea:visible`、`input[type=text]:visible`、`[contenteditable]:visible`、`[role="textbox"]:visible` を観測するが、実際に編集対象として採用する条件は従来どおり、既存値に `Product Hunt` または `Decision Brief` が含まれること。markerが見つからなければ保存せず停止し、visible entryのtag/role/contenteditable/name/placeholder/aria-label/valueの短い診断とdialog textをログへ残す。
+
+これにより、note UIの実装差を観測しながら、別の入力欄を誤編集するリスクは増やさない。
+
 ## Fail-closed contract
 
 1. exact token `UPDATE_NOTE_PROFILE_TRENDHUB_BIZ`
@@ -25,11 +33,12 @@ Run311はこの2つのvisible exact controlだけを使う。入力欄は既存�
 3. current文なら無変更で終了
 4. old public stateにProduct Huntがない別状態なら停止
 5. visible exact `設定` を1つだけ解決
-6. legacy/current markerを含むプロフィール入力欄だけを解決
-7. legacy本文が既知の旧正本と一致しなければ停止
-8. current copyへ置換
-9. visible exact `保存` を1つだけ解決し保存
-10. public profileを再読込しcurrent copy存在・Product Hunt消失を確認
+6. visible textbox候補を観測し、legacy/current markerを含むプロフィール入力欄だけを解決
+7. markerが見つからない場合はread-only diagnosticsを残して無変更停止
+8. legacy本文が既知の旧正本と一致しなければ停止
+9. current copyへ置換
+10. visible exact `保存` を1つだけ解決し保存
+11. public profileを再読込しcurrent copy存在・Product Hunt消失を確認
 
 ## Cost / scope
 

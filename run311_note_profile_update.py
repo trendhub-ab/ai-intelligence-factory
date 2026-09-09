@@ -69,20 +69,69 @@ def _field_value(locator: Any) -> str:
     try:
         return str(locator.inner_text() or "")
     except Exception:
-        return ""
+        try:
+            return str(locator.text_content() or "")
+        except Exception:
+            return ""
+
+
+def _profile_field_diagnostics(page: Any) -> str:
+    """Return a short sanitized description of visible text-entry candidates for live UI falsification."""
+    diagnostics: list[str] = []
+    selectors = (
+        "textarea:visible",
+        'input:visible[type="text"]',
+        '[contenteditable]:visible',
+        '[role="textbox"]:visible',
+    )
+    seen: set[str] = set()
+    for selector in selectors:
+        locators = page.locator(selector)
+        for idx in range(min(locators.count(), 12)):
+            candidate = locators.nth(idx)
+            try:
+                signature = str(candidate.evaluate(
+                    "el => [el.tagName, el.getAttribute('role'), el.getAttribute('contenteditable'), "
+                    "el.getAttribute('name'), el.getAttribute('placeholder'), el.getAttribute('aria-label')].join('|')"
+                ))
+            except Exception:
+                signature = f"{selector}:{idx}"
+            value = _canon(_field_value(candidate))[:180]
+            key = f"{signature}|{value}"
+            if key in seen:
+                continue
+            seen.add(key)
+            diagnostics.append(f"{signature} value={value!r}")
+    try:
+        dialog_text = _canon(str(page.locator('[role="dialog"]:visible').first.inner_text(timeout=1500) or ""))[:500]
+    except Exception:
+        dialog_text = ""
+    if dialog_text:
+        diagnostics.append(f"dialog={dialog_text!r}")
+    return " ; ".join(diagnostics)[:1800]
 
 
 def _find_profile_field(page: Any) -> Any:
     legacy_marker = "Product Hunt"
     current_marker = "Decision Brief"
-    for selector in ("textarea:visible", 'input:visible[type="text"]', '[contenteditable="true"]:visible'):
+    selectors = (
+        "textarea:visible",
+        'input:visible[type="text"]',
+        '[contenteditable]:visible',
+        '[role="textbox"]:visible',
+    )
+    for selector in selectors:
         locators = page.locator(selector)
         for idx in range(locators.count()):
             candidate = locators.nth(idx)
             value = _field_value(candidate)
             if legacy_marker in value or current_marker in value:
                 return candidate
-    raise base.NoteDraftError("Run311 could not identify the existing profile-description field")
+    diagnostic = _profile_field_diagnostics(page)
+    raise base.NoteDraftError(
+        "Run311 could not identify the existing profile-description field"
+        + (f"; visible entry diagnostics: {diagnostic}" if diagnostic else "")
+    )
 
 
 def _set_profile_field(page: Any, field: Any, value: str) -> None:
