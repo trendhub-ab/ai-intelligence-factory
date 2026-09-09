@@ -7,6 +7,7 @@
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
 - **Current paid member UX baseline:** Run215 — final current-authority action dedup
 - **Current paid member commerce/onboarding baseline:** Run217 — zero-API monetization readiness / product fulfillment
+- **Current paid member note onboarding baseline:** Run326b — Run325 exact latest-draft finalization / Run326b logged-out members-only verification
 - **Current paid member navigation/UI baseline:** Run218 — PC-first member UX reconciliation
 - **Current paid member human-language UI baseline:** Run219 — non-engineer member presentation language
 - **Current paid member DB destination baseline:** Run220 — canonical member DB cutover / fail-closed destination
@@ -219,6 +220,22 @@ Run221 protects the Notion permission boundary discovered during Run220 post-mer
 
 Full hosting contract: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`.
 
+
+### Run325 / Run326b — note member onboarding publication + customer-facing verification
+
+The current paid-member onboarding-note contract is split into a hard-bound maintenance path and a zero-click public audit.
+
+- Canonical note: `n284e428c80f4`
+- Current title: `【最初にお読みください】「このAI、使える！」を判断するための使い方`
+- Exact finalized body SHA256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
+- Run325 finalizes only through the proven existing-article route: latest draft → `公開に進む` → `試し読みエリアを設定` → **no trial-read line** → one exact `更新する`.
+- The article remains attached to `AI Decision Intelligence`; all-plans exposure is not added.
+- Run326b audits the public URL from a fresh zero-cookie browser with **zero clicks**, verifies the new title / no not-for-sale state / members-only gate, and proves protected deep-body markers are not exposed logged out.
+- `/aiif note onboarding update` is the exact maintenance command; `/aiif note onboarding public-audit` is read-only.
+- Zero Gemini/model calls and zero Notion writes on both paths.
+
+Full contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
+
 ## note private-draft automation
 
 The current note path is intentionally layered and fail-closed:
@@ -319,6 +336,7 @@ Run210 makes documentation freshness a CI contract. Later member-product Runs ex
 - Run227 Japanese surface integrity must stay zero-model and high-precision, fail closed instead of guessing missing words, and must not change Fact/Evidence/Decision or API budgets.
 - Run228 Reader Rhythm must preserve important Evidence while reducing report-only Fact stacking inside the existing generation request; it must not add style-count quotas, a fixed article template, or a new model call.
 - Run272 must keep acquisition/source dates raw until persistence, canonicalize only at the Notion date boundary, defer arXiv health checks after a run-local fetch-error circuit opens without mutating Evidence, and keep Product Review child runtime bounded without extending the global Daily timeout or Gemini budgets.
+- Run325/Run326b paid-member note onboarding must preserve the exact existing-article latest-draft route, keep the trial-read line unset for full members-only access, retain `AI Decision Intelligence` without all-plans exposure, and pass the zero-click logged-out public audit before the customer-facing update is considered fully verified.
 - A Production behavior change that makes canonical documentation stale must fail CI until documentation is updated in the same change set.
 
 ## change discipline
