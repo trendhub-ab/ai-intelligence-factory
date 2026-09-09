@@ -1,8 +1,9 @@
 # Run308 — Public note ready-to-paste package
 
-状態: **current human-only handoff**  
+状態: **current handoff**  
 対象: 公開固定note / noteプロフィール  
-公開操作: **human-only**
+通常の公開操作: **human-only**  
+例外: **Run310で明示承認された固定LP `ned673e381ef8` の1件更新のみ、自動適用を許可**
 
 このファイルは、Run307/308で確定した商品価値を公開固定noteへ一度で反映するための完全差し替え正本。
 
@@ -16,7 +17,7 @@
 
 ## 2. 公開固定note 完全差し替え本文
 
-# 「このAI、使える！」を、根拠付きで判断できる。
+## 「このAI、使える！」を、根拠付きで判断できる。
 
 新しいAI、新しいモデル、新しい開発ツール。
 毎日のように情報が増えています。
@@ -133,9 +134,7 @@ AIの専門家である必要はありません。
 
 **月額1,980円**
 
-**［月額1,980円の内容を見る］**
-
-https://note.com/trendhub_biz/membership
+[月額1,980円の内容を見る](https://note.com/trendhub_biz/membership)
 
 ※リンク先で内容を確認してから、noteの参加手続きへ進めます。
 
@@ -190,12 +189,12 @@ AI Intelligence Factoryは、そのための判断基盤を目指します。
 
 ---
 
-## 6. Human-only 最終確認
+## 6. 最終確認
 
-note編集画面で保存する前に人間が確認する。
+固定LP `ned673e381ef8` はRun310の明示承認Updaterで反映できる。その他の公開記事・プロフィールの保存/公開操作は、別途明示承認がない限りhuman-onlyを維持する。
 
 1. タイトルが `「このAI、使える！」を根拠付きで判断する｜Decision Brief + AI意思決定DB`
-2. Product Hunt表記が本文・プロフィールから消えている
+2. Product Hunt表記が本文から消えている
 3. `Decision Brief` / `AI意思決定DB` / `判断メモ` の3価値が見える
 4. 情報源が `GitHub / Hacker News / ArXiv / OfficialVendor`
 5. CTAが `月額1,980円の内容を見る`
@@ -203,4 +202,4 @@ note編集画面で保存する前に人間が確認する。
 7. 月額が `1,980円`
 8. 無料noteを意図的に弱くする表現がない
 9. 根拠のないROI・時短率・売上効果がない
-10. 公開/保存操作は人間が行う
+10. Run310以外の通常公開契約を広げない
