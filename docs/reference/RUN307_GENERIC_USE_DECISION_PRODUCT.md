@@ -136,7 +136,7 @@ AI Intelligence Factoryでは、主に次の4系統を継続的に確認しま�
 - **GitHub** — 実装やOSSの動き
 - **ArXiv** — 技術の先行動向
 - **Hacker News** — 開発者・市場の反応
-- **Official Vendor** — OpenAI、Anthropic、Google Gemini、中国主要AIベンダーなどの公式情報
+- **OfficialVendor** — OpenAI、Anthropic、Google Gemini、中国主要AIベンダーなどの公式情報
 
 ニュースの転載ではなく、**実際の利用判断へつながる一次情報とEvidence**を重視します。
 
