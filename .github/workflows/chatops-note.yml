@@ -104,10 +104,11 @@ jobs:
             echo '- target branch: `main`'
             echo '- Gemini calls performed by bridge: `0`'
             echo '- Production started: `false`'
+            echo '- public note release performed: `false`'
             if [ "$ACTION" = 'lp_update' ]; then
-              echo '- public note mutation authorized: `true`'
+              echo '- downstream public note mutation authorized: `true`'
               echo '- authorized target: `ned673e381ef8` only'
             else
-              echo '- public note mutation authorized: `false`'
+              echo '- downstream public note mutation authorized: `false`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
