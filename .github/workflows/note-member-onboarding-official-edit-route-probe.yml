@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Exact Run321 confirmation token'
+        description: 'Exact Run321-323 confirmation token'
         required: true
         type: string
 
@@ -27,10 +27,12 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify exact official edit-route probe and diagnostic
+      - name: Falsify exact official edit-route progression
         run: |
           python -m unittest tests.test_run321_member_onboarding_official_edit_route_probe -v
           python -m unittest tests.test_run321b_member_onboarding_edit_route_diagnostic -v
+          python -m unittest tests.test_run322_member_onboarding_version_confirm_publish_probe -v
+          python -m unittest tests.test_run323_member_onboarding_publish_surface_deep_probe -v
       - name: Validate exact probe authorization
         id: auth
         env:
@@ -70,7 +72,7 @@ jobs:
     if: ${{ needs.preflight.outputs.authorized == 'true' }}
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -81,42 +83,55 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run exact official edit-route diagnostic regression
-        run: python -m unittest tests.test_run321b_member_onboarding_edit_route_diagnostic -v
-      - name: Diagnose UI after exact 編集 without mutation
+      - name: Re-run exact deep publish-surface regression
+        run: python -m unittest tests.test_run323_member_onboarding_publish_surface_deep_probe -v
+      - name: Deep-probe exact publish surface without mutation
         env:
-          NOTE_MEMBER_ONBOARDING_EDIT_ROUTE_DIAGNOSTIC_CONFIRM: ${{ inputs.confirm }}
-          NOTE_MEMBER_ONBOARDING_EDIT_ROUTE_DIAGNOSTIC_RESULT_FILE: ${{ runner.temp }}/run321b-result.json
+          NOTE_MEMBER_ONBOARDING_PUBLISH_SURFACE_DEEP_PROBE_CONFIRM: ${{ inputs.confirm }}
+          NOTE_MEMBER_ONBOARDING_PUBLISH_SURFACE_DEEP_PROBE_RESULT_FILE: ${{ runner.temp }}/run323-result.json
+          NOTE_MEMBER_ONBOARDING_PUBLISH_SURFACE_SCREENSHOT_FILE: ${{ runner.temp }}/run323-publish-surface.png
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run321b_member_onboarding_edit_route_diagnostic.py
-      - name: Summarize diagnostic
+        run: xvfb-run -a python run323_member_onboarding_publish_surface_deep_probe.py
+      - name: Summarize deep publish-surface probe
         env:
-          RESULT_FILE: ${{ runner.temp }}/run321b-result.json
+          RESULT_FILE: ${{ runner.temp }}/run323-result.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          if r.get('status') != 'diagnostic_complete_no_mutation':
-              raise SystemExit('Run321b diagnostic did not complete')
+          if r.get('status') != 'deep_probe_complete_no_public_mutation':
+              raise SystemExit('Run323 deep probe did not complete')
           if r.get('final_commit_clicked') is not False or r.get('public_mutation') is not False:
-              raise SystemExit('Run321b mutation contract failed')
-          after = r.get('after_edit') or {}
-          labels = r.get('exact_labels_after_edit') or {}
+              raise SystemExit('Run323 mutation contract failed')
+          snaps = r.get('snapshots') or []
+          forms = max((len(s.get('forms') or []) for s in snaps), default=0)
+          fixed = max((len(s.get('fixedSticky') or []) for s in snaps), default=0)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run321b edit-route diagnostic\n')
+              fh.write('### Run323 deep publish-surface probe\n')
               fh.write(f'- target: `{r.get("target_note_id")}`\n')
-              fh.write(f'- source title: `{r.get("source_title")}`\n')
               fh.write(f'- source body sha: `{r.get("source_body_sha256")}`\n')
-              fh.write(f'- after edit URL: `{after.get("url")}`\n')
-              fh.write(f'- editor route reached: `{bool(r.get("editor_route_reached"))}`\n')
-              fh.write(f'- exact labels after edit: `{json.dumps(labels, ensure_ascii=False)}`\n')
-              fh.write(f'- version prompt: `{bool(r.get("version_choice", {}).get("prompt_present"))}`\n')
+              fh.write(f'- publish URL: `{r.get("publish_url")}`\n')
+              fh.write(f'- snapshots: `{len(snaps)}`\n')
+              fh.write(f'- max forms observed: `{forms}`\n')
+              fh.write(f'- max fixed/sticky nodes observed: `{fixed}`\n')
+              fh.write(f'- exact 更新する outerHTML hits: `{r.get("exact_update_outerhtml_hits_across_snapshots")}`\n')
+              fh.write(f'- candidate labels: `{json.dumps((r.get("candidate_labels") or [])[:40], ensure_ascii=False)}`\n')
               fh.write('- final commit clicked: `false`\n')
               fh.write('- public mutation: `false`\n')
               fh.write('- zero model calls: `true`\n')
           PY
+      - name: Preserve Run323 forensic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run323-onboarding-publish-surface
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run323-result.json
+            ${{ runner.temp }}/run323-publish-surface.png
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
