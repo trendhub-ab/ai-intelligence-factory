@@ -45,11 +45,13 @@ Run315 therefore uses a dedicated process-local adapter before executing the exi
 1. locate the exact body contenteditable with the existing Run315/base selectors;
 2. create a DOM `Range` and call `selectNodeContents(body)`;
 3. fail closed unless the resulting selection starts at offset `0` on the body element and ends at `body.childNodes.length` on that same element;
-4. dispatch the same safe `text/html` + `text/plain` paste payload already used by the shared note helper;
-5. leave the shared generic paste helper unchanged for every other note automation;
-6. immediately run the existing full-body content verification, required-marker verification, forbidden-old-marker verification, and exact-link verification before entering publish settings.
+4. only after those exact range boundaries are proven, issue a real keyboard `Backspace` to delete the selected legacy blocks;
+5. normalize zero-width/BOM characters and fail closed unless the body is visibly empty after deletion;
+6. dispatch the same safe `text/html` + `text/plain` paste payload already used by the shared note helper;
+7. leave the shared generic paste helper unchanged for every other note automation;
+8. immediately run the existing full-body content verification, required-marker verification, forbidden-old-marker verification, and exact-link verification before entering publish settings.
 
-If the editor DOM drifts so the exact body range cannot be established, Run315 stops before membership or publish mutation.
+A synthetic paste event by itself is not treated as deletion. Run315 must prove the legacy body is empty before inserting the new manuscript. If selection, deletion, or post-delete emptiness verification fails, Run315 stops before membership or publish mutation.
 
 ## Membership publication repair
 
@@ -62,10 +64,23 @@ Run315 therefore keeps `記事タイプ=無料`, selects the exact `AI Intellige
 - exact note ID only;
 - exact Run314 old body SHA or an exact staged Run315 body;
 - exact body DOM Range boundaries before replacement;
+- exact body-empty proof after the authorized deletion;
 - exact membership name only;
 - refuses unexpected title/body/settings;
 - never changes tags, magazine, eyecatch, AI translation, AI compensation, comments, or profile;
 - post-update public verification must remove the not-for-sale message and expose the new title.
+
+## Live rollback verification after first DOM-Range attempt
+
+The first Run315 DOM-Range attempt proved that the editor selection covered the exact body but also proved that a synthetic paste event alone did not delete the selected legacy blocks; the forbidden marker `会員向けDigest` remained and Run315 stopped before entering membership mutation.
+
+A subsequent read-only Run314 audit confirmed that note restored the exact audited source state before the next attempt:
+
+- title: `【最初にお読みください】AI Decision Intelligenceの利用方法`
+- body SHA-256: `4826aabc101f5f5319e2ea441e0e929ce2e7ee382be10a5fd0a976583c49c9f4`
+- membership surface: `AI Intelligence Factory` still shows `追加`
+
+No partially rewritten body or membership change remained.
 
 ## Cost
 
