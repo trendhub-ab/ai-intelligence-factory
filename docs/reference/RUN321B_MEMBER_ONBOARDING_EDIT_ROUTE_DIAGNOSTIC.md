@@ -2,43 +2,43 @@
 
 ## Purpose
 
-Run321 reproduced note's documented existing-article route (`自分の記事 -> … -> 編集`) for the exact onboarding article `n284e428c80f4`, but the live browser remained on `https://note.com/notes` after the exact `編集` menu item was clicked. Run321b narrows the next step to observation only: capture the intermediate UI and any exact version-choice labels without guessing a follow-up control.
+Run321 reproduced note's documented existing-article route (`自分の記事 -> … -> 編集`) for the exact onboarding article `n284e428c80f4`, but the live browser remained on `https://note.com/notes` after the exact `編集` menu item was clicked. Run321b captured the intermediate UI without public mutation.
 
 ## Fixed source state
 
-Run321b refuses to run unless a fresh cookie-only browser independently proves the server-saved Run315 revision:
+The live diagnostic independently re-proved the server-saved Run315 revision in a fresh cookie-only browser:
 
 - target note: `n284e428c80f4`
 - title: `【最初にお読みください】「このAI、使える！」を判断するための使い方`
 - body SHA-256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
 
-## Diagnostic route
+## Live result — workflow run 34361159552
 
-1. Prove the exact server-saved title/body in a fresh cookie-only context.
-2. Open `https://note.com/notes`.
-3. Locate the exact target article card.
-4. Open only that card's exact menu.
-5. Click the exact `編集` menu item.
-6. Capture URL, body text, visible dialogs, visible controls, and actionable DOM controls.
-7. Record exact visible counts for likely version-choice labels.
-8. If and only if Run321's exact `最新の下書き` helper observes its already-authorized version prompt, select that navigation option and capture the resulting state.
-9. Stop. Do not enter publish settings and do not publish.
+The exact `編集` menu item does not navigate immediately. note opens one dialog on `https://note.com/notes`:
 
-## Safety contract
+`公開されていない下書きがあります`  
+`どちらを編集しますか？`
 
-- no title/body mutation
-- no settings mutation
-- no membership mutation
-- no public mutation
-- no final save/update/publish click
-- zero Gemini/model calls
-- zero Notion writes
-- same hard-bound Run321 confirmation token and existing ChatOps command are reused; no broader authorization is added
+The dialog exposes both revisions and one confirmation button:
 
-## Workflow integration
+- `公開した時点の記事` — 2026年9月1日 21:04, 1526文字
+- `最新の下書き` — 2026年9月9日 21:16, 1424文字
+- `キャンセル`
+- `編集する`
 
-The existing workflow `.github/workflows/note-member-onboarding-official-edit-route-probe.yml` is temporarily narrowed to run the Run321b diagnostic after Run321's live route mismatch. The existing control command remains:
+Exact visible counts were one each for `最新の下書き`, `公開した時点の記事`, `編集する`, and `キャンセル`.
+
+Run321b selected `最新の下書き` only. The dialog remained open and the URL remained `https://note.com/notes`. This falsified the previous assumption that selecting `最新の下書き` itself performs navigation. The required route is two-stage:
+
+1. select `最新の下書き`;
+2. click `編集する`.
+
+No title/body/settings/membership/public mutation occurred. No final save/update/publish control was clicked. Zero model calls and zero Notion writes.
+
+## Successor
+
+Run322 follows only the newly proven second step: exact `最新の下書き` selection followed by exact `編集する`, then verifies the resulting editor revision and enters `公開に進む` only to inventory the final publish-settings controls. It still stops before any final commit.
+
+The existing hard-bound workflow and ChatOps command remain in use:
 
 `/aiif note onboarding edit-route-probe`
-
-This avoids adding another privileged workflow/ChatOps command while the exact note UI behavior is still being falsified.
