@@ -6,15 +6,16 @@ status wording and the visible generated-callout label only. Current score,
 status, Evidence, risk, source copy, next action, article state and source data
 remain authoritative and unchanged.
 
-The migration recognizes previous member-callout variants plus the current
-Proposal-First paid-product surface, so existing generated bodies are replaced
-instead of duplicated. Manual blocks continue to be preserved by the existing
-fast body sync.
+The migration recognizes previous member-callout variants plus the historical
+Work-First / Proposal-First surfaces and the current Run307 generic use-decision
+surface, so existing generated bodies are replaced instead of duplicated. Manual
+blocks continue to be preserved by the existing fast body sync.
 
 Run225 installs lifecycle navigation, Run250 remains the historical Work-First
-compatibility layer, and Run270 installs after Run250 as the current Proposal-First
-presentation authority. Run219 remains the authoritative workflow wrapper so
-Run170-Run215 copy authority and the existing operational contract are not bypassed.
+compatibility layer, Run270 remains the historical Proposal-First compatibility
+layer, and Run307 installs last as the current member-facing presentation authority.
+Run219 remains the authoritative workflow wrapper so Run170-Run215 copy authority
+and the existing operational contract are not bypassed.
 
 ZERO Gemini/model requests.
 """
@@ -128,7 +129,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 def _looks_like_generated_member_callout(
     block: dict[str, Any], child_cache: dict[str, list[dict[str, Any]]]
 ) -> bool:
-    """Recognize historical, Work-First and current Proposal-First generated callouts."""
+    """Recognize historical and current generated member callouts."""
     if block.get("type") != "callout":
         return False
     label = body._block_text(block)
@@ -144,7 +145,14 @@ def _looks_like_generated_member_callout(
         child_cache[block_id] = children
     headings = guard._heading_texts(children)
     has_decision = bool(
-        {"いま、どうする？", "いまの判断", "結論", "顧客にどう答える？"} & headings
+        {
+            "いま、どうする？",
+            "いまの判断",
+            "結論",
+            "顧客にどう答える？",
+            "いま、使える？",
+        }
+        & headings
     )
     has_reason = bool(
         {
@@ -154,6 +162,8 @@ def _looks_like_generated_member_callout(
             "仕事への意味（Business Impact）",
             "提案できる場面",
             "提案前に確認すること",
+            "使える場面",
+            "使う前に確認すること",
         }
         & headings
     )
@@ -163,6 +173,7 @@ def _looks_like_generated_member_callout(
             "提案時の次の一手",
             "試すときの次の一手",
             "提案・検証の次の一手",
+            "試す・導入する次の一手",
         }
         & headings
     )
@@ -185,7 +196,7 @@ def install() -> None:
 
 
 def _install_current_navigation_overlays() -> None:
-    """Install lifecycle -> historical Work-First -> current Proposal-First overlays."""
+    """Install lifecycle -> Work-First -> Proposal-First -> generic use-decision overlays."""
     try:
         import run225_member_lifecycle_ui as run225
     except ImportError:
@@ -201,6 +212,11 @@ def _install_current_navigation_overlays() -> None:
     except ImportError:
         return
     run270.install_navigation()
+    try:
+        import run307_use_decision_member_surface as run307
+    except ImportError:
+        return
+    run307.install_navigation()
 
 
 def run_presentation_sync() -> dict[str, Any]:
@@ -225,6 +241,12 @@ def run_presentation_sync() -> dict[str, Any]:
         run270 = None
     if run270 is not None:
         result["run270_proposal_first_member_surface"] = run270.contract()
+    try:
+        import run307_use_decision_member_surface as run307
+    except ImportError:
+        run307 = None
+    if run307 is not None:
+        result["run307_use_decision_member_surface"] = run307.contract()
     result["zero_gemini_calls"] = True
     return result
 
@@ -245,8 +267,16 @@ def run_body_sync() -> dict[str, Any]:
     except ImportError:
         run270 = None
     if run270 is not None:
-        # Run270 is the current presentation authority and must install after Run250.
+        # Run270 remains a compatibility layer and must install after Run250.
         run270.install_body(sys.modules[__name__])
+
+    try:
+        import run307_use_decision_member_surface as run307
+    except ImportError:
+        run307 = None
+    if run307 is not None:
+        # Run307 is the current generic presentation authority and must install last.
+        run307.install_body(sys.modules[__name__])
 
     install()
     result = run215.run_body_sync()
@@ -259,6 +289,17 @@ def run_body_sync() -> dict[str, Any]:
         result["run250_client_action_product"] = run250.contract()
     if run270 is not None:
         result["run270_proposal_first_member_surface"] = run270.contract()
+    if run307 is not None:
+        result["run307_use_decision_member_surface"] = run307.contract()
+        result["reader_order"] = [
+            "これは何？",
+            "いま、使える？",
+            "使える場面",
+            "なぜ今見る？",
+            "使う前に確認すること",
+            "試す・導入する次の一手",
+        ]
+    elif run270 is not None:
         result["reader_order"] = [
             "これは何？",
             "顧客にどう答える？",
