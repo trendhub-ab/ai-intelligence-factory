@@ -19,7 +19,9 @@ import run318_member_onboarding_publish_cta_probe as run318
 import run319_member_onboarding_article_list_probe as run319
 import run321_member_onboarding_official_edit_route_probe as run321
 
-CONFIRM_TOKEN = "DIAG_MEMBER_ONBOARDING_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B"
+# Reuse the already-reviewed Run321 exact authorization because this diagnostic is strictly
+# narrower: it stops before the editor/publish route and performs no mutation.
+CONFIRM_TOKEN = run321.CONFIRM_TOKEN
 RESULT_ENV = "NOTE_MEMBER_ONBOARDING_EDIT_ROUTE_DIAGNOSTIC_RESULT_FILE"
 
 
