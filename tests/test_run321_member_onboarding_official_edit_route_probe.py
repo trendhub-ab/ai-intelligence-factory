@@ -4,6 +4,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "run321_member_onboarding_official_edit_route_probe.py").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / ".github/workflows/note-member-onboarding-official-edit-route-probe.yml").read_text(encoding="utf-8") if (ROOT / ".github/workflows/note-member-onboarding-official-edit-route-probe.yml").exists() else ""
+CHATOPS = (ROOT / ".github/workflows/chatops-note.yml").read_text(encoding="utf-8")
 
 
 class Run321OfficialEditRouteProbeTests(unittest.TestCase):
@@ -31,12 +32,15 @@ class Run321OfficialEditRouteProbeTests(unittest.TestCase):
         self.assertNotIn('"更新する").click()', SCRIPT)
         self.assertNotIn('"公開する").click()', SCRIPT)
 
-    def test_workflow_is_hard_bound_and_zero_model(self):
-        self.assertIn("PROBE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B", WORKFLOW)
-        self.assertIn("/aiif note onboarding edit-route-probe", WORKFLOW)
+    def test_workflow_and_chatops_are_hard_bound_and_zero_model(self):
+        token = "PROBE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B"
+        self.assertIn(token, WORKFLOW)
         self.assertIn("tests.test_run321_member_onboarding_official_edit_route_probe", WORKFLOW)
         self.assertIn("run321_member_onboarding_official_edit_route_probe.py", WORKFLOW)
-        upper = WORKFLOW.upper()
+        self.assertIn("/aiif note onboarding edit-route-probe", CHATOPS)
+        self.assertIn("note-member-onboarding-official-edit-route-probe.yml", CHATOPS)
+        self.assertIn(token, CHATOPS)
+        upper = (WORKFLOW + CHATOPS).upper()
         self.assertNotIn("GEMINI_API", upper)
         self.assertNotIn("GOOGLE_API_KEY", upper)
         self.assertNotIn("NOTION_API", upper)
