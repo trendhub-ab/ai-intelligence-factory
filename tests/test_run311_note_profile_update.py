@@ -27,12 +27,25 @@ class Run311NoteProfileUpdateTests(unittest.TestCase):
         for forbidden in ("公開に進む", "更新する", "_set_title", "_paste_manuscript", "eyecatch"):
             self.assertNotIn(forbidden, source)
 
-    def test_profile_field_requires_legacy_or_current_marker(self) -> None:
+    def test_profile_field_requires_legacy_or_current_marker_across_current_textbox_variants(self) -> None:
         source = inspect.getsource(run311._find_profile_field)
         self.assertIn("Product Hunt", source)
         self.assertIn("Decision Brief", source)
         self.assertIn('textarea:visible', source)
-        self.assertIn('[contenteditable="true"]:visible', source)
+        self.assertIn('[contenteditable]:visible', source)
+        self.assertIn('[role="textbox"]:visible', source)
+        self.assertNotIn('contenteditable="true"', source)
+
+    def test_field_failure_emits_read_only_visible_entry_diagnostics(self) -> None:
+        source = inspect.getsource(run311._profile_field_diagnostics)
+        self.assertIn("placeholder", source)
+        self.assertIn("aria-label", source)
+        self.assertIn("role", source)
+        self.assertIn("contenteditable", source)
+        self.assertIn('[role="dialog"]:visible', source)
+        updater = inspect.getsource(run311._find_profile_field)
+        self.assertIn("_profile_field_diagnostics(page)", updater)
+        self.assertIn("visible entry diagnostics", updater)
 
     def test_public_verification_removes_product_hunt(self) -> None:
         source = inspect.getsource(run311._verify_public)
