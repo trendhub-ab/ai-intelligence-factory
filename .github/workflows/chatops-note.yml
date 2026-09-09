@@ -3,7 +3,7 @@ name: AIIF ChatOps Note Bridge
 # Safe, zero-model bridge from the dedicated GitHub control issue to Note workflows.
 # Run309/312 and Run314 audits are read-only. Run316/318/321/324 are no-final-save UI probes. Run317
 # is an exact server-save proof with no public release. Run310 fixed-LP, Run311 profile copy,
-# Run313 exact-state LP reconciliation, and Run315 exact member-onboarding maintenance are explicit
+# Run313 exact-state LP reconciliation, and Run325 exact member-onboarding maintenance are explicit
 # hard-bound exceptions; ordinary article publication remains human-only.
 on:
   issue_comment:
@@ -132,7 +132,7 @@ jobs:
               ;;
             onboarding_update)
               workflow='note-member-onboarding-update.yml'
-              payload='{"ref":"main","inputs":{"confirm":"UPDATE_MEMBER_ONBOARDING_N284E428C80F4_SHA4826AABC"}}'
+              payload='{"ref":"main","inputs":{"confirm":"FINALIZE_MEMBER_ONBOARDING_N284E428C80F4_SHAAAB9E57B_KEEP_MEMBERS_ONLY"}}'
               ;;
             profile_update)
               workflow='note-profile-update.yml'
@@ -184,7 +184,7 @@ jobs:
                 echo '- explicit maintenance mutation authorized: `false; open trial-read setup only for n284e428c80f4; no line selection and no final commit`'
                 ;;
               onboarding_update)
-                echo '- explicit maintenance mutation authorized: `member onboarding n284e428c80f4 exact audited SHA + membership re-association only`'
+                echo '- explicit maintenance mutation authorized: `n284e428c80f4 exact latest SHA only; open trial-read bridge, keep no trial line, click one exact update, preserve AI Decision Intelligence membership`'
                 ;;
               profile_update)
                 echo '- explicit maintenance mutation authorized: `trendhub_biz profile description only`'
