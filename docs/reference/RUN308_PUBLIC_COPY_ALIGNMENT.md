@@ -21,11 +21,23 @@ Run307で確定した商品価値を、公開LP・プロフィール・記事CTA
 
 Product HuntはRun268以降active Sourceではないため、current public copyでは情報源として案内しない。歴史資料・互換コード内の記録は削除対象ではない。
 
-## 手動反映用・固定note LP
+## 固定note LP
 
-公開中の固定noteは自動編集しない。人間がnote編集画面で反映するための**完全差し替え本文・タイトル・プロフィール・最終確認項目**は、次をcurrent handoff正本とする。
+固定noteの**完全差し替え本文・タイトル・プロフィール・最終確認項目**は、次をcurrent handoff正本とする。
 
 - `docs/reference/RUN308_PUBLIC_NOTE_READY_TO_PASTE.md`
+
+通常の公開note本文変更・公開操作は引き続きhuman-onlyとする。ただしRun310では、ユーザーが明示許可した固定LP `ned673e381ef8` **1件だけ**について、Run309で実測したnote UIを使うone-time exact-scope updateを例外として許可する。この例外を他記事・別note ID・通常の公開automationへ一般化しない。
+
+Run310 exact-scope exceptionは次を必須とする。
+
+- 対象note ID: `ned673e381ef8` 固定。環境変数等からgeneric targetを受け取らない。
+- 更新前タイトルが `AIはとっても重要。でも正直、もう追いきれない。` と完全一致しない場合はmutation前に停止する。
+- Run309で実測した `公開に進む` → `/publish/` → `更新する` の経路だけを使う。
+- タグ・マガジン・メンバーシップ等の公開設定を変更しない。
+- 公開後に新タイトル、Decision Brief、AI意思決定DB、OfficialVendor、月額1,980円、membership hrefを実public URLで再検証する。
+- Gemini/model 0、Production pipeline 0、Notion write 0。
+- 詳細契約は `docs/reference/RUN310_PUBLIC_FIXED_LP_UPDATE.md`。
 
 ### 推奨タイトル
 
@@ -69,6 +81,8 @@ AI Intelligence Factoryは、自分の開発で使うときも、業務へ導入
 
 **GitHub / Hacker News / ArXiv / OfficialVendorの一次情報を継続的に確認し、「このAI、使える！」を根拠付きで判断できる形に整理しています。**
 
+プロフィールはRun310固定LP例外の対象外であり、selector/保存経路を実UIで読み取り監査するまで自動変更しない。
+
 ## 反映ルール
 
 - `顧客` / `クライアント`を商品コピーの主語にしない。
@@ -79,7 +93,7 @@ AI Intelligence Factoryは、自分の開発で使うときも、業務へ導入
 - 記事CTAは **月額1,980円の内容を見る**。
 - 根拠のないROI・時短率・売上効果を作らない。
 - 無料noteの品質を意図的に落とさない。
-- **公開noteはhuman-only**。この文書・Workflow・Guardから公開noteの本文変更や公開操作を自動実行しない。
+- **公開noteはhuman-only**を通常契約とする。Run310の明示許可された固定LP `ned673e381ef8` 1件だけをone-time exact-scope exceptionとし、他の公開noteへ拡張しない。
 
 ## Verification scope
 
@@ -92,8 +106,12 @@ Guard対象:
 - `PAID_PRODUCT_CONTRACT.md` のnote有料導線
 - 本Run308 handoff
 
-Human-only公開作業の完全差し替え正本:
+固定LP完全差し替え正本:
 
 - `docs/reference/RUN308_PUBLIC_NOTE_READY_TO_PASTE.md`
 
-Run308はzero-network / zero-provider。Gemini API、Notion schema、Evidence、Decision Score、Source Scoreを変更しない。
+Run310 exact fixed-LP mutation契約:
+
+- `docs/reference/RUN310_PUBLIC_FIXED_LP_UPDATE.md`
+
+Run308/310の公開copy整合処理はzero-provider。Gemini API、Notion schema、Evidence、Decision Score、Source Scoreを変更しない。
