@@ -1,8 +1,8 @@
 name: AIIF ChatOps Note Bridge
 
-# Safe, zero-model bridge from the dedicated GitHub control issue to the
-# existing Note Ready sync, private note-draft, private-draft audit, and exact public-LP audit workflows.
-# Run309 public-LP audits target only ned673e381ef8 and do not change title/body or confirm publication.
+# Safe, zero-model bridge from the dedicated GitHub control issue to Note workflows.
+# Run309 audits are read-only. Run310 is one explicit public-mutation exception hard-bound to
+# fixed LP ned673e381ef8; ordinary article publication remains human-only.
 on:
   issue_comment:
     types: [created]
@@ -28,7 +28,8 @@ jobs:
        github.event.comment.body == '/aiif note draft' ||
        github.event.comment.body == '/aiif note audit' ||
        github.event.comment.body == '/aiif note lp audit' ||
-       github.event.comment.body == '/aiif note lp publish-audit')
+       github.event.comment.body == '/aiif note lp publish-audit' ||
+       github.event.comment.body == '/aiif note lp update')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -45,6 +46,7 @@ jobs:
             '/aiif note audit') action='audit' ;;
             '/aiif note lp audit') action='lp_audit' ;;
             '/aiif note lp publish-audit') action='lp_publish_audit' ;;
+            '/aiif note lp update') action='lp_update' ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
           echo "action=$action" >> "$GITHUB_OUTPUT"
@@ -76,6 +78,10 @@ jobs:
               workflow='note-public-lp-audit.yml'
               payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP","stage":"publish_settings"}}'
               ;;
+            lp_update)
+              workflow='note-public-lp-update.yml'
+              payload='{"ref":"main","inputs":{"confirm":"UPDATE_PUBLIC_LP_NED673E381EF8"}}'
+              ;;
             *)
               echo '::error::Refusing unknown action'
               exit 1
@@ -99,4 +105,10 @@ jobs:
             echo '- Gemini calls performed by bridge: `0`'
             echo '- Production started: `false`'
             echo '- public note release performed: `false`'
+            if [ "$ACTION" = 'lp_update' ]; then
+              echo '- downstream public note mutation authorized: `true`'
+              echo '- authorized target: `ned673e381ef8` only'
+            else
+              echo '- downstream public note mutation authorized: `false`'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
