@@ -28,6 +28,7 @@ import member_presentation_body_sync as body
 import run219_member_human_language_ui as run219
 import run250_member_client_action_product as run250
 import run270_proposal_first_member_surface as run270
+import run307_use_decision_member_surface as run307
 
 
 class Run270ProposalFirstMemberSurfaceTests(unittest.TestCase):
@@ -120,31 +121,34 @@ class Run270ProposalFirstMemberSurfaceTests(unittest.TestCase):
             body._build_children = original_builder
             body._body_matches = original_matcher
 
-    def test_run219_installs_run270_after_run250_and_reports_proposal_order(self):
+    def test_run219_preserves_run270_then_installs_run307(self):
         with (
             patch.object(run250, "install_body") as install250,
             patch.object(run270, "install_body") as install270,
+            patch.object(run307, "install_body") as install307,
             patch.object(run219, "install") as install_run219,
             patch.object(run219.run215, "run_body_sync", return_value={}),
         ):
             result = run219.run_body_sync()
         install250.assert_called_once_with(sys.modules[run219.__name__])
         install270.assert_called_once_with(sys.modules[run219.__name__])
+        install307.assert_called_once_with(sys.modules[run219.__name__])
         install_run219.assert_called_once_with()
         self.assertEqual(
             [
                 "これは何？",
-                "顧客にどう答える？",
-                "提案できる場面",
+                "いま、使える？",
+                "使える場面",
                 "なぜ今見る？",
-                "提案前に確認すること",
-                "提案・検証の次の一手",
+                "使う前に確認すること",
+                "試す・導入する次の一手",
             ],
             result["reader_order"],
         )
         self.assertTrue(result["run270_proposal_first_member_surface"]["client_proposal_primary"])
+        self.assertFalse(result["run307_use_decision_member_surface"]["client_proposal_primary"])
 
-    def test_generated_callout_recognizer_accepts_proposal_first_shape(self):
+    def test_generated_callout_recognizer_accepts_historical_proposal_first_shape(self):
         fake_block = {
             "type": "callout",
             "id": "block-1",
