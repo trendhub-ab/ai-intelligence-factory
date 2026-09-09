@@ -56,6 +56,27 @@ Run320 does **not**:
 - write to Notion;
 - call Gemini or any other model.
 
+## Live result — 2026-09-09
+
+Workflow run `34356629292` completed successfully, including VM shutdown.
+
+The exact existing-article membership dialog showed:
+
+- dialog: `メンバーシップに記事を追加・解除`
+- `すべてのプラン（全員に公開）` -> `追加`
+- `AI Decision Intelligence` -> `追加済`
+- final control: `閉じる`
+- no separate save/update/confirm control
+
+Therefore the target plan `AI Decision Intelligence` is already associated with this article through the authoritative existing-article membership surface. No membership mutation is required. The `追加` button belongs to `すべてのプラン（全員に公開）`; clicking it would broaden access and must not be used for this repair.
+
+This also resolves the naming distinction observed across note UI surfaces:
+
+- membership/service: `AI Intelligence Factory`
+- associated plan: `AI Decision Intelligence`
+
+The earlier publish-settings surface displaying `AI Intelligence Factory` with `追加` must not be used as evidence that the existing-article plan association is absent; the article-list membership dialog is the current existing-article relationship surface.
+
 ## Success contract
 
 A successful Run320 returns:
@@ -67,8 +88,8 @@ A successful Run320 returns:
 - exact target card/menu evidence
 - `membership_menu_action=メンバーシップ特典追加・解除`
 - dialog/control inventory
-- membership-name mentions
-- possible final-confirm controls
+- `AI Decision Intelligence` observed as `追加済`
+- `すべてのプラン（全員に公開）` observed as `追加`
 - `membership_selection_clicked=false`
 - `final_confirm_clicked=false`
 - `membership_mutation=false`
@@ -76,4 +97,4 @@ A successful Run320 returns:
 - `zero_gemini_calls=true`
 - `notion_writes=0`
 
-Only after this live probe identifies an exact, unique membership selection and exact final confirmation path may a mutation Run be created.
+No membership mutation Run should be created for the current state. Publication of the server-saved new revision must be solved separately.
