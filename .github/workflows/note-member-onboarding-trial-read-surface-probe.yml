@@ -1,0 +1,160 @@
+name: Probe onboarding trial-read surface
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Exact Run324 trial-read-surface confirmation token'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-member-onboarding-trial-read-surface-probe-n284e428c80f4
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Falsify exact trial-read-surface progression
+        run: |
+          python -m unittest tests.test_run322_member_onboarding_version_confirm_publish_probe -v
+          python -m unittest tests.test_run323_member_onboarding_publish_surface_deep_probe -v
+          python -m unittest tests.test_run324_member_onboarding_trial_read_surface_probe -v
+      - name: Validate exact probe authorization
+        id: auth
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = 'PROBE_MEMBER_ONBOARDING_TRIAL_READ_SURFACE_N284E428C80F4_SHAAAB9E57B' ] || exit 1
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  probe:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
+          command -v xvfb-run >/dev/null 2>&1 || exit 1
+      - name: Re-run exact Run324 regression
+        run: python -m unittest tests.test_run324_member_onboarding_trial_read_surface_probe -v
+      - name: Probe exact trial-read surface without mutation
+        env:
+          NOTE_MEMBER_ONBOARDING_TRIAL_READ_SURFACE_PROBE_CONFIRM: ${{ inputs.confirm }}
+          NOTE_MEMBER_ONBOARDING_TRIAL_READ_SURFACE_PROBE_RESULT_FILE: ${{ runner.temp }}/run324-result.json
+          NOTE_MEMBER_ONBOARDING_TRIAL_READ_SURFACE_PROBE_SCREENSHOT_FILE: ${{ runner.temp }}/run324-trial-read-surface.png
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run324_member_onboarding_trial_read_surface_probe.py
+      - name: Summarize trial-read-surface probe
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run324-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'trial_read_surface_probe_complete_no_public_mutation':
+              raise SystemExit('Run324 trial-read probe did not complete')
+          if r.get('trial_read_cta_clicked') is not True:
+              raise SystemExit('Run324 did not open the documented trial-read surface')
+          if r.get('trial_read_line_clicked') is not False or r.get('final_commit_clicked') is not False:
+              raise SystemExit('Run324 no-final-mutation contract failed')
+          if r.get('public_mutation') is not False:
+              raise SystemExit('Run324 public mutation contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run324 trial-read-surface probe\n')
+              fh.write(f'- target: `{r.get("target_note_id")}`\n')
+              fh.write(f'- source body sha: `{r.get("source_body_sha256")}`\n')
+              fh.write(f'- pre-update count: `{r.get("pre_exact_update_count")}`\n')
+              fh.write(f'- pre-trial-read count: `{r.get("pre_exact_trial_read_count")}`\n')
+              fh.write(f'- URL after trial-read CTA: `{r.get("url_after_trial_read")}`\n')
+              fh.write(f'- post-update count: `{r.get("post_exact_update_count")}`\n')
+              fh.write(f'- line candidates: `{r.get("trial_read_line_candidate_count")}`\n')
+              fh.write(f'- post buttons: `{json.dumps(r.get("post_visible_buttons") or [], ensure_ascii=False)}`\n')
+              fh.write('- trial-read line clicked: `false`\n')
+              fh.write('- final commit clicked: `false`\n')
+              fh.write('- public mutation: `false`\n')
+              fh.write('- zero model calls: `true`\n')
+          PY
+      - name: Preserve Run324 forensic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run324-onboarding-trial-read-surface
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run324-result.json
+            ${{ runner.temp }}/run324-trial-read-surface.png
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, probe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
