@@ -59,7 +59,7 @@ jobs:
       - name: Verify only expected documentation changed before cleanup
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only | sort)"
+          changed="$(git -c core.quotepath=false diff --name-only | sort)"
           expected=$'AI_Intelligence_Factory_最終仕様書.md\nREADME.md'
           [ "$changed" = "$expected" ] || { echo "Unexpected changed files:"; printf '%s\n' "$changed"; exit 1; }
           grep -F 'Current paid member note onboarding baseline:' README.md >/dev/null
