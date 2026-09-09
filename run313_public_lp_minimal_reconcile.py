@@ -51,68 +51,75 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _select_exact_block_range(body: Any, start_text: str, end_text: str) -> None:
+def _select_unique_text_span(body: Any, start_text: str, end_text: str) -> None:
+    """Select an exact unique text span across arbitrary editor text-node boundaries.
+
+    note's current editor can render several visually separate paragraphs inside wrapper structures
+    that do not expose one matching p/div per visible line. We therefore map the root text nodes to
+    one concatenated string, then convert the exact string offsets back to DOM Range endpoints.
+    No DOM content is mutated by this helper; the caller performs the real keyboard edit.
+    """
     result = body.evaluate(
         """
         (root, args) => {
-          const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-          const candidates = Array.from(root.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote,div'));
-          const unique = (text) => {
-            const wanted = norm(text);
-            const matches = candidates.filter((el) => norm(el.innerText) === wanted);
-            // Prefer the smallest exact text-bearing element, avoiding nested duplicate wrappers.
-            const leaf = matches.filter((el) => !matches.some((other) => other !== el && el.contains(other)));
-            const usable = leaf.length ? leaf : matches;
-            if (usable.length !== 1) return {error: `expected 1 exact block for ${wanted}; got ${usable.length}`};
-            return {element: usable[0]};
-          };
-          const start = unique(args.start);
-          if (start.error) return {error: start.error};
-          const end = unique(args.end);
-          if (end.error) return {error: end.error};
-          if (!(start.element.compareDocumentPosition(end.element) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-            return {error: 'legacy prefix end is not after prefix start'};
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          const nodes = [];
+          let joined = '';
+          let node;
+          while ((node = walker.nextNode())) {
+            const value = String(node.nodeValue || '');
+            if (!value) continue;
+            const start = joined.length;
+            joined += value;
+            nodes.push({node, start, end: joined.length});
           }
+          const startNeedle = String(args.start || '');
+          const endNeedle = String(args.end || '');
+          const startIndex = joined.indexOf(startNeedle);
+          const endIndexRaw = joined.indexOf(endNeedle);
+          if (startIndex < 0) return {error: `start text not found: ${startNeedle}`};
+          if (joined.indexOf(startNeedle, startIndex + 1) >= 0) return {error: `start text not unique: ${startNeedle}`};
+          if (endIndexRaw < 0) return {error: `end text not found: ${endNeedle}`};
+          if (joined.indexOf(endNeedle, endIndexRaw + 1) >= 0) return {error: `end text not unique: ${endNeedle}`};
+          const endIndex = endIndexRaw + endNeedle.length;
+          if (endIndex <= startIndex) return {error: 'end text does not follow start text'};
+          const point = (index, isEnd) => {
+            for (const item of nodes) {
+              if (index < item.end || (isEnd && index === item.end)) {
+                return {node: item.node, offset: Math.max(0, Math.min(index - item.start, item.node.nodeValue.length))};
+              }
+            }
+            return null;
+          };
+          const startPoint = point(startIndex, false);
+          const endPoint = point(endIndex, true);
+          if (!startPoint || !endPoint) return {error: 'could not map exact text offsets to DOM nodes'};
           const range = document.createRange();
-          range.setStartBefore(start.element);
-          range.setEndAfter(end.element);
+          range.setStart(startPoint.node, startPoint.offset);
+          range.setEnd(endPoint.node, endPoint.offset);
           const selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
           root.focus();
-          return {ok: true};
+          return {
+            ok: true,
+            selected: range.toString(),
+            startIndex,
+            endIndex,
+          };
         }
         """,
         {"start": start_text, "end": end_text},
     )
     if not isinstance(result, dict) or result.get("ok") is not True:
-        raise base.NoteDraftError(f"Run313 could not select exact malformed prefix: {result}")
+        raise base.NoteDraftError(f"Run313 could not select exact text span: {result}")
+    selected = str(result.get("selected") or "")
+    if not selected.startswith(start_text) or not selected.endswith(end_text):
+        raise base.NoteDraftError("Run313 DOM range did not preserve the exact authorized endpoints")
 
 
-def _select_exact_block_text(body: Any, text: str) -> None:
-    result = body.evaluate(
-        """
-        (root, text) => {
-          const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-          const wanted = norm(text);
-          const candidates = Array.from(root.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote,div'));
-          const matches = candidates.filter((el) => norm(el.innerText) === wanted);
-          const leaf = matches.filter((el) => !matches.some((other) => other !== el && el.contains(other)));
-          const usable = leaf.length ? leaf : matches;
-          if (usable.length !== 1) return {error: `expected 1 exact block for ${wanted}; got ${usable.length}`};
-          const range = document.createRange();
-          range.selectNodeContents(usable[0]);
-          const selection = window.getSelection();
-          selection.removeAllRanges();
-          selection.addRange(range);
-          root.focus();
-          return {ok: true};
-        }
-        """,
-        text,
-    )
-    if not isinstance(result, dict) or result.get("ok") is not True:
-        raise base.NoteDraftError(f"Run313 could not select exact mobile-support block: {result}")
+def _select_exact_text(body: Any, text: str) -> None:
+    _select_unique_text_span(body, text, text)
 
 
 def _validate_reconciled_editor(body: Any, original_text: str) -> str:
@@ -179,7 +186,6 @@ def reconcile() -> dict[str, Any]:
             body = base._find_body(page, title_field)
             original_text = _body_text(body)
             if _sha256(original_text) != EXPECTED_BODY_SHA256:
-                # Idempotent path: if the two corrections are already live, verify without mutation.
                 if (
                     original_text.startswith(CANONICAL_BODY_START)
                     and LEGACY_PREFIX_START not in original_text
@@ -207,11 +213,11 @@ def reconcile() -> dict[str, Any]:
             if CANONICAL_BODY_START not in original_text:
                 raise base.NoteDraftError("Run313 canonical body start is missing")
 
-            _select_exact_block_range(body, LEGACY_PREFIX_START, LEGACY_PREFIX_END)
+            _select_unique_text_span(body, LEGACY_PREFIX_START, LEGACY_PREFIX_END)
             page.keyboard.press("Backspace")
             page.wait_for_timeout(500)
 
-            _select_exact_block_text(body, MOBILE_OLD)
+            _select_exact_text(body, MOBILE_OLD)
             page.keyboard.insert_text(MOBILE_NEW)
             page.wait_for_timeout(900)
 

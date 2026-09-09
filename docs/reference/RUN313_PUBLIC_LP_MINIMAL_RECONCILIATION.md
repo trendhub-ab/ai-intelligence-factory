@@ -44,6 +44,14 @@ Therefore replace only with:
 
 `PCでの利用を推奨（スマートフォン向け簡易ビューあり）`
 
+## Live falsification
+
+初回Run313はRun312のtitle/body SHAを正しく確認した後、**実編集前**にfail-closedで停止した。原因は、画面上で独立段落に見える冒頭文がnote editor DOMでは独立した`p/div` exact blockとして存在しなかったため。
+
+Backspace、文字挿入、`公開に進む`、`更新する`には到達しておらず、public mutationは0。
+
+修正後はDOM要素の形を仮定せず、editor root配下のtext nodeを連結してexact unique文字列のoffsetを求め、DOM Rangeへ戻して選択する。Range helper自体は内容を変更せず、実変更はPlaywright keyboard inputだけで行う。この方式でもbody SHA gateは維持する。
+
 ## Preserve unchanged
 
 - user-edited structure and wording outside the two targets
@@ -58,7 +66,7 @@ Therefore replace only with:
 
 Run313 mutates only if the body SHA-256 exactly equals the Run312 audited snapshot. If the user edits the page again before execution, it refuses to overwrite the new state.
 
-The already-corrected state is idempotently verified and does not mutate.
+The already-corrected state is idempotently verified and does not mutate。
 
 ## Cost / safety
 
