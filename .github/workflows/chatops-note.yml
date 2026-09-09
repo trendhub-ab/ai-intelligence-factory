@@ -1,8 +1,8 @@
 name: AIIF ChatOps Note Bridge
 
 # Safe, zero-model bridge from the dedicated GitHub control issue to the
-# existing Note Ready sync, private note-draft, and read-only private-draft audit workflows.
-# It never runs Production and never performs a public note release.
+# existing Note Ready sync, private note-draft, private-draft audit, and exact public-LP audit workflows.
+# Run309 public-LP audit is read-only and targets only ned673e381ef8.
 on:
   issue_comment:
     types: [created]
@@ -28,7 +28,8 @@ jobs:
       github.actor == 'trendhub-ab' &&
       (github.event.comment.body == '/aiif note sync' ||
        github.event.comment.body == '/aiif note draft' ||
-       github.event.comment.body == '/aiif note audit')
+       github.event.comment.body == '/aiif note audit' ||
+       github.event.comment.body == '/aiif note lp audit')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -43,6 +44,7 @@ jobs:
             '/aiif note sync') action='sync' ;;
             '/aiif note draft') action='draft' ;;
             '/aiif note audit') action='audit' ;;
+            '/aiif note lp audit') action='lp_audit' ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
           echo "action=$action" >> "$GITHUB_OUTPUT"
@@ -65,6 +67,10 @@ jobs:
             audit)
               workflow='note-private-draft-audit.yml'
               payload='{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3bd479ffdca9817f926aeaffbb779c4b"}}'
+              ;;
+            lp_audit)
+              workflow='note-public-lp-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP"}}'
               ;;
             *)
               echo '::error::Refusing unknown action'
