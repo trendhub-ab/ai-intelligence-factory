@@ -28,7 +28,7 @@ jobs:
           python-version: '3.11'
       - run: pip install requests
       - name: Falsify exact onboarding update
-        run: python -m unittest tests.test_run315_member_onboarding_update -v
+        run: python -m unittest tests.test_run315_member_onboarding_update tests.test_run315_dom_range_replace -v
       - name: Validate exact audited-state authorization
         id: auth
         env:
@@ -80,7 +80,7 @@ jobs:
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
       - name: Re-run exact onboarding regression
-        run: python -m unittest tests.test_run315_member_onboarding_update -v
+        run: python -m unittest tests.test_run315_member_onboarding_update tests.test_run315_dom_range_replace -v
       - name: Rewrite, re-associate, and verify exact onboarding note
         env:
           NOTE_MEMBER_ONBOARDING_UPDATE_CONFIRM: ${{ inputs.confirm }}
@@ -88,7 +88,7 @@ jobs:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run315_member_onboarding_update.py
+        run: xvfb-run -a python run315_member_onboarding_update_dom_range.py
       - name: Summarize verified update
         env:
           RESULT_FILE: ${{ runner.temp }}/run315-member-onboarding-update.json
