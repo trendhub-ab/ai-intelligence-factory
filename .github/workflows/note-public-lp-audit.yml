@@ -30,6 +30,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install zero-browser audit dependency
+        run: pip install requests
+
       - name: Exact target / no-mutation regression
         run: python -m unittest tests.test_run309_public_lp_audit -v
 
