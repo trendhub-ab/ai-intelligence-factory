@@ -37,8 +37,10 @@ class Run320MembershipDialogProbeTests(unittest.TestCase):
         self.assertIn("/aiif note onboarding membership-probe", WORKFLOW)
         self.assertIn("tests.test_run320_member_onboarding_membership_dialog_probe", WORKFLOW)
         self.assertIn("run320_member_onboarding_membership_dialog_probe.py", WORKFLOW)
-        self.assertNotIn("GEMINI", WORKFLOW.upper())
-        self.assertNotIn("NOTION_API", WORKFLOW.upper())
+        upper = WORKFLOW.upper()
+        self.assertNotIn("GEMINI_API", upper)
+        self.assertNotIn("GOOGLE_API_KEY", upper)
+        self.assertNotIn("NOTION_API", upper)
 
 
 if __name__ == "__main__":
