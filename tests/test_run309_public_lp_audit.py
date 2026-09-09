@@ -22,13 +22,12 @@ class Run309PublicLpAuditTests(unittest.TestCase):
             "https://editor.note.com/notes/ned673e381ef8/edit/",
         )
 
-    def test_audit_source_contains_no_mutation_calls(self) -> None:
+    def test_audit_source_contains_no_content_mutation_calls(self) -> None:
         source = inspect.getsource(run309.audit)
         forbidden = (
             "_set_title(",
             "_paste_manuscript(",
             "_save_draft_and_verify(",
-            ".click(",
             ".press(",
             ".fill(",
             "evaluate(\"el => el.innerHTML =",
@@ -36,9 +35,18 @@ class Run309PublicLpAuditTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, source)
 
+    def test_publish_settings_stage_clicks_only_unique_continue_control(self) -> None:
+        source = inspect.getsource(run309._enter_publish_settings)
+        self.assertIn('name="公開に進む"', source)
+        self.assertIn("count() != 1", source)
+        self.assertEqual(source.count(".click()"), 1)
+        for forbidden in ("更新", "公開する", "投稿", "一時保存", "_set_title", "_paste_manuscript"):
+            self.assertNotIn(forbidden, source)
+
     def test_workflow_is_exact_confirmation_read_only(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-public-lp-audit.yml").read_text(encoding="utf-8")
         self.assertIn("AUDIT_PUBLIC_LP", workflow)
+        self.assertIn("publish_settings", workflow)
         self.assertIn("run309_public_lp_editor_audit.py", workflow)
         self.assertNotIn("UPDATE_PUBLIC_LP", workflow)
         self.assertNotIn("public release performed: `true`", workflow)

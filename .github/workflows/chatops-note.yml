@@ -2,7 +2,7 @@ name: AIIF ChatOps Note Bridge
 
 # Safe, zero-model bridge from the dedicated GitHub control issue to the
 # existing Note Ready sync, private note-draft, private-draft audit, and exact public-LP audit workflows.
-# Run309 public-LP audit is read-only and targets only ned673e381ef8.
+# Run309 public-LP audits target only ned673e381ef8 and do not change title/body or confirm publication.
 on:
   issue_comment:
     types: [created]
@@ -18,8 +18,6 @@ concurrency:
 
 jobs:
   authorize-and-dispatch:
-    # Fail closed: exact commands only, repository owner only, dedicated issue only.
-    # Manual reruns are blocked so one comment can dispatch at most once.
     if: >-
       github.run_attempt == 1 &&
       github.event.issue.number == 71 &&
@@ -29,7 +27,8 @@ jobs:
       (github.event.comment.body == '/aiif note sync' ||
        github.event.comment.body == '/aiif note draft' ||
        github.event.comment.body == '/aiif note audit' ||
-       github.event.comment.body == '/aiif note lp audit')
+       github.event.comment.body == '/aiif note lp audit' ||
+       github.event.comment.body == '/aiif note lp publish-audit')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -45,6 +44,7 @@ jobs:
             '/aiif note draft') action='draft' ;;
             '/aiif note audit') action='audit' ;;
             '/aiif note lp audit') action='lp_audit' ;;
+            '/aiif note lp publish-audit') action='lp_publish_audit' ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
           echo "action=$action" >> "$GITHUB_OUTPUT"
@@ -70,7 +70,11 @@ jobs:
               ;;
             lp_audit)
               workflow='note-public-lp-audit.yml'
-              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP"}}'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP","stage":"editor"}}'
+              ;;
+            lp_publish_audit)
+              workflow='note-public-lp-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP","stage":"publish_settings"}}'
               ;;
             *)
               echo '::error::Refusing unknown action'
