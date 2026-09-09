@@ -62,3 +62,33 @@ A successful probe returns:
 - `notion_writes=0`
 
 A later publication Run may use only an exact, uniquely observed Run318 control; it must not guess a final CTA.
+
+## Live result — 2026-09-09
+
+Workflow run `34349885711`, attempt 2, completed successfully after the first VM-start attempt hit a transient GCP fingerprint race. The retry reached note and made no mutation.
+
+The clean cookie-only browser proved the exact Run317 server-saved source again:
+
+- title: `【最初にお読みください】「このAI、使える！」を判断するための使い方`
+- body SHA-256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
+- publish URL: `https://editor.note.com/notes/n284e428c80f4/publish/`
+- localStorage seeded: `false`
+
+The current publish-settings DOM exposed the normal settings controls and `AI Intelligence Factory` with `追加`, but **no final commit control at all**. Before and after scrolling to the bottom:
+
+- candidate `更新する` / `更新` controls: `0`
+- candidate `公開する` controls: `0`
+- candidate `投稿する` / `投稿` controls: `0`
+- candidate `保存する` controls: `0`
+- raw text occurrences of each of those markers: `0`
+
+Result contract:
+
+- `status=probe_complete_no_mutation`
+- `final_commit_clicked=false`
+- `membership_mutation=false`
+- `public_mutation=false`
+- `zero_gemini_calls=true`
+- `notion_writes=0`
+
+This falsifies the assumption that the ordinary browser-help `公開に進む` → `更新する` path is currently available for this particular sales-stopped, membership-detached article state. Run319 therefore probes note's separately documented existing-article route: `自分の記事` → exact target article menu → `メンバーシップ特典に追加`, without selecting the action.
