@@ -50,11 +50,14 @@ class Run315MemberOnboardingUpdateTests(unittest.TestCase):
         self.assertIn("NEW_TITLE", source)
         self.assertIn('"not_for_sale_removed": True', source)
 
-    def test_workflow_is_manual_exact_and_zero_model(self) -> None:
+    def test_workflow_is_manual_exact_zero_model_and_dom_range_routed(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-member-onboarding-update.yml").read_text(encoding="utf-8")
+        adapter = (ROOT / "run315_member_onboarding_update_dom_range.py").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("UPDATE_MEMBER_ONBOARDING_N284E428C80F4_SHA4826AABC", workflow)
-        self.assertIn("run315_member_onboarding_update.py", workflow)
+        self.assertIn("run315_member_onboarding_update_dom_range.py", workflow)
+        self.assertIn("import run315_member_onboarding_update as run315", adapter)
+        self.assertIn("run315.main()", adapter)
         self.assertNotIn("schedule:", workflow)
         self.assertNotIn("push:", workflow)
         self.assertIn("zero Gemini calls", workflow)
