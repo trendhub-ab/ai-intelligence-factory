@@ -41,10 +41,20 @@ class Run313PublicLpMinimalReconcileTests(unittest.TestCase):
             "fill(",
         ):
             self.assertNotIn(forbidden, source)
-        self.assertIn("_select_exact_block_range", source)
-        self.assertIn("_select_exact_block_text", source)
+        self.assertIn("_select_unique_text_span", source)
+        self.assertIn("_select_exact_text", source)
         self.assertIn('page.keyboard.press("Backspace")', source)
         self.assertIn("page.keyboard.insert_text(MOBILE_NEW)", source)
+
+    def test_text_range_selector_maps_exact_unique_strings_to_dom_range_without_mutation(self) -> None:
+        source = inspect.getsource(run313._select_unique_text_span)
+        self.assertIn("document.createTreeWalker", source)
+        self.assertIn("NodeFilter.SHOW_TEXT", source)
+        self.assertIn("joined.indexOf(startNeedle)", source)
+        self.assertIn("document.createRange", source)
+        self.assertIn("selection.addRange(range)", source)
+        for forbidden in ("removeChild", "innerHTML =", "textContent =", ".click()", ".fill("):
+            self.assertNotIn(forbidden, source)
 
     def test_body_drift_fails_closed_except_verified_idempotent_state(self) -> None:
         source = inspect.getsource(run313.reconcile)
