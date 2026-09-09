@@ -110,7 +110,7 @@ jobs:
             echo '- target branch: `main`'
             echo '- Gemini calls performed by bridge: `0`'
             echo '- Production started: `false`'
-            echo '- ordinary article public release performed: `false`'
+            echo '- public note release performed: `false`'
             case "$ACTION" in
               lp_update)
                 echo '- explicit maintenance mutation authorized: `fixed LP ned673e381ef8 only`'
