@@ -41,11 +41,13 @@ class Run321bEditRouteDiagnosticTests(unittest.TestCase):
         self.assertNotIn('"更新する").click()', RUN322)
         self.assertNotIn('"公開する").click()', RUN322)
 
-    def test_existing_hard_bound_workflow_and_chatops_are_unchanged(self):
+    def test_existing_hard_bound_workflow_and_chatops_advance_to_run323(self):
         token = "PROBE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B"
         self.assertIn(token, WORKFLOW)
-        self.assertIn("run321b_member_onboarding_edit_route_diagnostic.py", WORKFLOW)
         self.assertIn("tests.test_run321b_member_onboarding_edit_route_diagnostic", WORKFLOW)
+        self.assertIn("tests.test_run322_member_onboarding_version_confirm_publish_probe", WORKFLOW)
+        self.assertIn("tests.test_run323_member_onboarding_publish_surface_deep_probe", WORKFLOW)
+        self.assertIn("run323_member_onboarding_publish_surface_deep_probe.py", WORKFLOW)
         self.assertIn("/aiif note onboarding edit-route-probe", CHATOPS)
         self.assertIn("note-member-onboarding-official-edit-route-probe.yml", CHATOPS)
         self.assertIn(token, CHATOPS)
