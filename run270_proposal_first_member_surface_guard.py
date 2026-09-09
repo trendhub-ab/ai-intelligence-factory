@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Run270 zero-network fail-closed Proposal-First member-surface guard."""
+"""Run270 zero-network fail-closed historical Proposal-First compatibility guard.
+
+Run307 supersedes Run270 as the current visible member-product framing. This guard keeps the
+Run270 compatibility layer intact and verifies that Run307 installs after it rather than deleting
+or silently bypassing the historical migration surface.
+"""
 from __future__ import annotations
 
 import ast
@@ -78,22 +83,25 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         (
             "import run250_member_client_action_product as run250",
             "import run270_proposal_first_member_surface as run270",
+            "import run307_use_decision_member_surface as run307",
             "run250.install_navigation()",
             "run270.install_navigation()",
+            "run307.install_navigation()",
             "run250.install_body(sys.modules[__name__])",
             "run270.install_body(sys.modules[__name__])",
+            "run307.install_body(sys.modules[__name__])",
             'result["run270_proposal_first_member_surface"] = run270.contract()',
-            '"顧客にどう答える？"',
-            '"提案・検証の次の一手"',
         ),
         "run219_wrapper",
     )
     for before, after, label in (
-        ("run250.install_navigation()", "run270.install_navigation()", "navigation"),
-        ("run250.install_body(sys.modules[__name__])", "run270.install_body(sys.modules[__name__])", "body"),
+        ("run250.install_navigation()", "run270.install_navigation()", "navigation_after_run250"),
+        ("run270.install_navigation()", "run307.install_navigation()", "navigation_before_run307"),
+        ("run250.install_body(sys.modules[__name__])", "run270.install_body(sys.modules[__name__])", "body_after_run250"),
+        ("run270.install_body(sys.modules[__name__])", "run307.install_body(sys.modules[__name__])", "body_before_run307"),
     ):
         if before in wrapper and after in wrapper and wrapper.index(before) > wrapper.index(after):
-            errors.append(f"run270_must_install_after_run250:{label}")
+            errors.append(f"run270_compatibility_order_drifted:{label}")
 
     workflow = texts[WORKFLOW]
     errors += _require(
@@ -102,7 +110,8 @@ def collect_errors(root: Path = ROOT) -> list[str]:
             "run270_proposal_first_member_surface.py",
             "tests/test_run270_proposal_first_member_surface.py",
             "python -m unittest tests/test_run270_proposal_first_member_surface.py",
-            "Proposal-First UI",
+            "run307_use_decision_member_surface.py",
+            "Use-Decision UI",
         ),
         "member_workflow",
     )
@@ -111,22 +120,12 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     errors += _require(
         paid,
         (
-            "Run270 current product contract",
-            "Primaryは顧客案件での技術選定・提案判断",
-            "Run270以降の最終可視本文はProposal-Firstを正本とする",
-            "Run250のWork-First本文は歴史的互換層として残すが、最終表示Authorityではない",
-            "AI導入 判断・提案メモ",
-            "Run270 — Proposal-First member visible surface",
+            "Run307 current product contract",
+            "Run270のProposal-First本文は歴史的互換層",
+            "Run270 — Proposal-First member visible surface / static Notion surface alignment（歴史的互換層）",
         ),
         "paid_contract",
     )
-    stale_paid_markers = (
-        "既存表示契約は壊さず、判断・提案メモ側でProposal-Firstへ強める",
-        "顧客案件に使う場合も同じシートを転用できます",
-    )
-    for marker in stale_paid_markers:
-        if marker in paid:
-            errors.append(f"paid_contract_stale_work_first:{marker}")
 
     reference = texts[REFERENCE]
     errors += _require(
@@ -147,9 +146,11 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     errors += _require(
         spec,
         (
-            "Member Surface Baseline: **Run270",
+            "Member Surface Baseline: **Run307",
+            "Run270",
             "Proposal-First Member Surface",
             "docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md",
+            "docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md",
         ),
         "canonical_spec",
     )
