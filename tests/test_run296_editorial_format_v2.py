@@ -37,7 +37,7 @@ Netflixが推薦基盤の新しい方向性を公開しました。
 [会員向け意思決定DB＋月次ダイジェストを見る](https://note.com/example?utm_source=note)
 """
 
-    def test_exact_reader_approved_intro_and_cta(self):
+    def test_current_intro_and_generic_paid_cta(self):
         out = r296.normalize_article_format_v2(self._legacy_manuscript())
         self.assertIn("## どんな内容？", out)
         self.assertNotIn("30秒でわかるこの記事", out)
@@ -47,7 +47,9 @@ Netflixが推薦基盤の新しい方向性を公開しました。
         self.assertIn("**結論は？**", out)
         self.assertIn("### 有料サブスクのご案内", out)
         self.assertIn(r296.CTA_BODY, out)
-        self.assertIn("[詳しくはこちら](https://note.com/example?utm_source=note)", out)
+        self.assertIn("Decision Brief", out)
+        self.assertIn("このAI、使える！", out)
+        self.assertIn("[月額1,980円の内容を見る](https://note.com/example?utm_source=note)", out)
         self.assertNotIn("調査と判断の時間を減らしたい方へ", out)
         self.assertNotIn("会員向け意思決定DB＋月次ダイジェストを見る", out)
         self.assertNotIn("EvidenceとActionを継続的に整理", out)
@@ -74,7 +76,7 @@ Netflixが推薦基盤の新しい方向性を公開しました。
             "https://note.com/example?utm_source=note", url
         )
         out = r296.normalize_article_format_v2(old)
-        self.assertIn(f"[詳しくはこちら]({url})", out)
+        self.assertIn(f"[月額1,980円の内容を見る]({url})", out)
 
     def test_missing_cta_link_fails_safe_without_deleting_old_block(self):
         old = self._legacy_manuscript().replace(
