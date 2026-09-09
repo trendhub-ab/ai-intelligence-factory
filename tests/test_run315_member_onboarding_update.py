@@ -50,17 +50,20 @@ class Run315MemberOnboardingUpdateTests(unittest.TestCase):
         self.assertIn("NEW_TITLE", source)
         self.assertIn('"not_for_sale_removed": True', source)
 
-    def test_workflow_is_manual_exact_zero_model_and_dom_range_routed(self) -> None:
+    def test_legacy_run315_live_route_is_retired_in_favor_of_run325(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-member-onboarding-update.yml").read_text(encoding="utf-8")
         adapter = (ROOT / "run315_member_onboarding_update_dom_range.py").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("UPDATE_MEMBER_ONBOARDING_N284E428C80F4_SHA4826AABC", workflow)
-        self.assertIn("run315_member_onboarding_update_dom_range.py", workflow)
+        self.assertIn("FINALIZE_MEMBER_ONBOARDING_N284E428C80F4_SHAAAB9E57B_KEEP_MEMBERS_ONLY", workflow)
+        self.assertIn("run325_member_onboarding_finalize_latest.py", workflow)
+        self.assertNotIn("run315_member_onboarding_update_dom_range.py", workflow)
+        # Keep the old adapter and its tests as historical regression coverage, but never dispatch it live.
         self.assertIn("import run315_member_onboarding_update as run315", adapter)
         self.assertIn("run315.main()", adapter)
         self.assertNotIn("schedule:", workflow)
         self.assertNotIn("push:", workflow)
-        self.assertIn("zero Gemini calls", workflow)
+        self.assertIn("Gemini calls: `0`", workflow)
+        self.assertIn("Notion writes: `0`", workflow)
 
 
 if __name__ == "__main__":
