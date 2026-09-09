@@ -33,11 +33,28 @@ class Run310PublicLpUpdateTests(unittest.TestCase):
         self.assertIn("re.escape(name)", source)
         self.assertNotIn('page.get_by_role("button"', source)
 
+    def test_staged_editor_state_is_not_treated_as_already_published(self) -> None:
+        source = inspect.getsource(run310.update_public_lp)
+        self.assertIn("current_title == title", source)
+        self.assertIn("base._verify_body_content(staged_body, manuscript)", source)
+        self.assertIn("_public_state_from_separate_page(context, title)", source)
+        self.assertIn('public_state == "current_public"', source)
+        self.assertIn("staged_editor = True", source)
+        self.assertIn('"staged_editor_published_and_verified"', source)
+
+    def test_public_state_probe_preserves_editor_page_and_only_accepts_missing_title_as_legacy(self) -> None:
+        source = inspect.getsource(run310._public_state_from_separate_page)
+        self.assertIn("context.new_page()", source)
+        self.assertIn("PUBLIC_TITLE_MISSING", source)
+        self.assertIn('return "legacy_public", None', source)
+        self.assertIn('return "current_public", verification', source)
+        self.assertIn("verification_page.close()", source)
+
     def test_updater_uses_only_observed_public_update_controls(self) -> None:
         source = inspect.getsource(run310.update_public_lp)
         self.assertIn('_unique_button(page, "公開に進む").click()', source)
         self.assertIn('_unique_button(page, "更新する").click()', source)
-        self.assertIn("current_title != LEGACY_TITLE", source)
+        self.assertIn("current_title == LEGACY_TITLE", source)
         self.assertIn("_verify_public(page, title)", source)
         for forbidden in ("#生成AI", "#AI活用", "#個人開発", "マガジン", "メンバーシップ設定"):
             self.assertNotIn(forbidden, source)
@@ -47,6 +64,7 @@ class Run310PublicLpUpdateTests(unittest.TestCase):
         self.assertIn('a[href*="note.com/trendhub_biz/membership"]', source)
         self.assertIn("LEGACY_TITLE", source)
         self.assertIn("REQUIRED_PUBLIC_MARKERS", source)
+        self.assertIn("PUBLIC_TITLE_MISSING", source)
 
     def test_workflow_is_exact_and_manual_only(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-public-lp-update.yml").read_text(encoding="utf-8")
