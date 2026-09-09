@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Run309: read-only audit of the exact published fixed note editor.
 
-This is a zero-model, zero-mutation browser probe for one explicitly authorized public note.
-It exists only to observe the current note.com editor controls before any public-page update is
-implemented. It never changes title/body, never clicks save/update/publish controls, and never
-opens a generic article target.
+This zero-model browser probe targets one explicitly authorized public note. The default stage only
+observes the editor. The optional ``publish_settings`` stage clicks the unique ``公開に進む``
+control without changing title/body, then observes the confirmation/settings controls. It never
+clicks save/update/publish confirmation controls and never opens a generic article target.
 """
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ TARGET_NOTE_ID = "ned673e381ef8"
 TARGET_PUBLIC_URL = f"https://note.com/trendhub_biz/n/{TARGET_NOTE_ID}"
 TARGET_EDITOR_URL = f"https://editor.note.com/notes/{TARGET_NOTE_ID}/edit/"
 RESULT_ENV = "NOTE_PUBLIC_LP_AUDIT_RESULT_FILE"
+STAGE_ENV = "NOTE_PUBLIC_LP_AUDIT_STAGE"
+ALLOWED_STAGES = {"editor", "publish_settings"}
 
 
 def _field_text(locator: Any) -> str:
@@ -61,9 +63,20 @@ def _is_exact_editor_url(value: str) -> bool:
     return text.startswith("https://editor.note.com/") and TARGET_NOTE_ID in text and "/edit" in text
 
 
+def _enter_publish_settings(page: Any) -> None:
+    controls = page.get_by_role("button", name="公開に進む", exact=True)
+    if controls.count() != 1 or not controls.first.is_visible():
+        raise base.NoteDraftError("Run309 expected exactly one visible 公開に進む control")
+    controls.first.click()
+    page.wait_for_timeout(1200)
+
+
 def audit() -> dict[str, Any]:
     if os.environ.get("NOTE_PUBLIC_LP_CONFIRM", "").strip() != CONFIRM_TOKEN:
         raise base.NoteDraftError("Run309 public LP audit confirmation token is missing or invalid")
+    stage = os.environ.get(STAGE_ENV, "editor").strip() or "editor"
+    if stage not in ALLOWED_STAGES:
+        raise base.NoteDraftError(f"Run309 refuses unsupported audit stage: {stage}")
 
     try:
         from playwright.sync_api import sync_playwright
@@ -92,6 +105,11 @@ def audit() -> dict[str, Any]:
             body = base._find_body(page, title_field)
             title = _field_text(title_field)
             body_text = _field_text(body)
+            editor_buttons = _visible_button_texts(page)
+
+            if stage == "publish_settings":
+                _enter_publish_settings(page)
+
             result = {
                 "status": "audit_passed",
                 "read_only": True,
@@ -99,9 +117,12 @@ def audit() -> dict[str, Any]:
                 "public_mutation": False,
                 "target_note_id": TARGET_NOTE_ID,
                 "editor_url_match": True,
+                "audit_stage": stage,
                 "current_title": title,
                 "body_visible_chars": len(body_text),
+                "editor_button_texts": editor_buttons,
                 "visible_button_texts": _visible_button_texts(page),
+                "post_stage_url": str(page.url or ""),
             }
             return result
         finally:
