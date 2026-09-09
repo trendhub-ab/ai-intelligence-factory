@@ -16,7 +16,6 @@ from typing import Any
 import note_draft_automation as base
 import run310_public_lp_update as run310
 import run315_member_onboarding_update as run315
-import run316_member_onboarding_finalize_probe as run316
 import run317_member_onboarding_server_save as run317
 import run318_member_onboarding_publish_cta_probe as run318
 import run319_member_onboarding_article_list_probe as run319
@@ -40,6 +39,18 @@ def _exact_visible_text(page: Any, label: str) -> Any:
     if len(visible) != 1:
         raise base.NoteDraftError(f"Run322 expected one exact visible text {label!r}; got {len(visible)}")
     return visible[0]
+
+
+def _visible_text_count(page: Any, label: str) -> int:
+    loc = page.get_by_text(label, exact=True)
+    count = 0
+    for idx in range(loc.count()):
+        try:
+            if loc.nth(idx).is_visible():
+                count += 1
+        except Exception:
+            pass
+    return count
 
 
 def _select_latest_and_confirm(page: Any) -> dict[str, Any]:
@@ -102,7 +113,6 @@ def probe() -> dict[str, Any]:
                 page = context.new_page()
                 page.set_default_timeout(30000)
 
-                # Exact clean server-state proof before using any article-list navigation.
                 _, body, source_title, source_body_text = run317._open_exact_clean_editor(page)
                 source_sha = run315._sha256(source_body_text)
                 if source_title != run315.NEW_TITLE or source_sha != run317.NEW_BODY_SHA256:
@@ -122,8 +132,16 @@ def probe() -> dict[str, Any]:
                 run321._visible_exact(page, role="menuitem", name=run321.EDIT_LABEL).click()
                 page.wait_for_timeout(700)
 
+                after_edit = run321._snapshot(page)
+                exact_labels_after_edit = {
+                    "最新の下書き": _visible_text_count(page, "最新の下書き"),
+                    "公開した時点の記事": _visible_text_count(page, "公開した時点の記事"),
+                    "編集する": _visible_text_count(page, "編集する"),
+                    "キャンセル": _visible_text_count(page, "キャンセル"),
+                }
                 version_route = _select_latest_and_confirm(page)
                 page.wait_for_timeout(800)
+
                 title_field = base._find_title(page)
                 body = base._find_body(page, title_field)
                 routed_title = run315._field_text(title_field)
@@ -151,7 +169,10 @@ def probe() -> dict[str, Any]:
                 publish_bottom_snapshot = run321._snapshot(page)
                 rows = publish_snapshot["all_actionables"] + publish_bottom_snapshot["all_actionables"]
                 commit_candidates = run321._commit_candidates(rows)
-                membership_visible = run315.MEMBERSHIP_NAME in str(publish_snapshot.get("body_text") or "") or run315.MEMBERSHIP_NAME in str(publish_bottom_snapshot.get("body_text") or "")
+                membership_visible = (
+                    run315.MEMBERSHIP_NAME in str(publish_snapshot.get("body_text") or "")
+                    or run315.MEMBERSHIP_NAME in str(publish_bottom_snapshot.get("body_text") or "")
+                )
 
                 return {
                     "status": "probe_complete_no_public_mutation",
@@ -163,7 +184,15 @@ def probe() -> dict[str, Any]:
                     "article_list_card": card,
                     "article_list_menu": menu,
                     "edit_menu_clicked": True,
+                    "after_edit": after_edit,
+                    "exact_labels_after_edit": exact_labels_after_edit,
+                    "version_choice": {
+                        "prompt_present": True,
+                        "latest_choice_clicked": True,
+                        "edit_confirm_clicked": True,
+                    },
                     "version_route": version_route,
+                    "editor_route_reached": True,
                     "routed_title": routed_title,
                     "routed_body_sha256": routed_sha,
                     "editor_snapshot": editor_snapshot,
