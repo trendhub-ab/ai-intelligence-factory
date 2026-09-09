@@ -46,9 +46,13 @@ class Run319MemberOnboardingArticleListProbeTests(unittest.TestCase):
         self.assertIn('"membership_mutation": False', source)
         self.assertIn('"public_mutation": False', source)
 
-    def test_workflow_is_manual_and_zero_model(self) -> None:
+    def test_workflow_is_manual_or_exact_control_issue_and_zero_model(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-member-onboarding-article-list-probe.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("issue_comment:", workflow)
+        self.assertIn("github.event.issue.number == 71", workflow)
+        self.assertIn("github.event.comment.user.login == 'trendhub-ab'", workflow)
+        self.assertIn("github.event.comment.body == '/aiif note onboarding list-probe'", workflow)
         self.assertIn("PROBE_MEMBER_ONBOARDING_ARTICLE_LIST_N284E428C80F4_SHAAAB9E57B", workflow)
         self.assertIn("run319_member_onboarding_article_list_probe.py", workflow)
         self.assertIn("menu action clicked: `false`", workflow)
@@ -58,12 +62,11 @@ class Run319MemberOnboardingArticleListProbeTests(unittest.TestCase):
         self.assertNotIn("schedule:", workflow)
         self.assertNotIn("push:", workflow)
 
-    def test_chatops_route_is_exact_probe_only(self) -> None:
-        bridge = (ROOT / ".github" / "workflows" / "chatops-note.yml").read_text(encoding="utf-8")
-        self.assertIn("/aiif note onboarding list-probe", bridge)
-        self.assertIn("onboarding_list_probe", bridge)
-        self.assertIn("note-member-onboarding-article-list-probe.yml", bridge)
-        self.assertIn("article-list membership-route inventory only", bridge)
+    def test_no_existing_chatops_bridge_mutation_required(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "note-member-onboarding-article-list-probe.yml").read_text(encoding="utf-8")
+        self.assertIn("/aiif note onboarding list-probe", workflow)
+        self.assertNotIn("GH_TOKEN", workflow)
+        self.assertNotIn("actions: write", workflow)
 
 
 if __name__ == "__main__":
