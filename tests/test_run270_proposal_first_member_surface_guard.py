@@ -26,7 +26,7 @@ class Run270ProposalFirstMemberSurfaceGuardTests(unittest.TestCase):
     def test_current_repository_contract_passes(self):
         self.assertEqual([], guard.collect_errors(guard.ROOT))
 
-    def test_guard_rejects_run270_before_run250(self):
+    def test_guard_fails_if_run270_moves_before_run250(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._copy_contract(root)
@@ -40,9 +40,25 @@ class Run270ProposalFirstMemberSurfaceGuardTests(unittest.TestCase):
             text = text.replace(old270, old250, 1)
             text = text.replace("        __RUN270_SWAP__", old270, 1)
             wrapper.write_text(text, encoding="utf-8")
-            self.assertIn("run270_must_install_after_run250:body", guard.collect_errors(root))
+            self.assertIn("run270_compatibility_order_drifted:body_after_run250", guard.collect_errors(root))
 
-    def test_guard_rejects_client_proposal_demoted_to_secondary(self):
+    def test_guard_fails_if_run270_moves_after_current_run307(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            wrapper = root / guard.WRAPPER
+            text = wrapper.read_text(encoding="utf-8")
+            old270 = "        run270.install_body(sys.modules[__name__])"
+            old307 = "        run307.install_body(sys.modules[__name__])"
+            self.assertIn(old270, text)
+            self.assertIn(old307, text)
+            text = text.replace(old270, "        __RUN307_SWAP__", 1)
+            text = text.replace(old307, old270, 1)
+            text = text.replace("        __RUN307_SWAP__", old307, 1)
+            wrapper.write_text(text, encoding="utf-8")
+            self.assertIn("run270_compatibility_order_drifted:body_before_run307", guard.collect_errors(root))
+
+    def test_guard_rejects_run270_compatibility_contract_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._copy_contract(root)
@@ -53,16 +69,19 @@ class Run270ProposalFirstMemberSurfaceGuardTests(unittest.TestCase):
             errors = guard.collect_errors(root)
             self.assertTrue(any(e.startswith("run270_module_missing:") for e in errors))
 
-    def test_guard_rejects_stale_work_first_paid_contract(self):
+    def test_guard_requires_paid_contract_to_mark_run270_historical(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._copy_contract(root)
             paid = root / guard.PAID_CONTRACT
-            text = paid.read_text(encoding="utf-8")
-            text += "\n既存表示契約は壊さず、判断・提案メモ側でProposal-Firstへ強める。\n"
+            text = paid.read_text(encoding="utf-8").replace(
+                "Run270のProposal-First本文は歴史的互換層",
+                "Run270のProposal-First本文",
+                1,
+            )
             paid.write_text(text, encoding="utf-8")
             errors = guard.collect_errors(root)
-            self.assertTrue(any(e.startswith("paid_contract_stale_work_first:") for e in errors))
+            self.assertTrue(any(e.startswith("paid_contract_missing:") for e in errors))
 
     def test_guard_rejects_model_or_notion_surface(self):
         with tempfile.TemporaryDirectory() as tmp:
