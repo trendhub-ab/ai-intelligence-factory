@@ -88,6 +88,11 @@ jobs:
           python -m unittest tests.test_run307_use_decision_product_guard -v
           python -m unittest tests.test_run307_use_decision_member_surface -v
 
+      - name: Enforce Run308 current public-copy alignment
+        run: |
+          python run308_public_copy_alignment_guard.py
+          python -m unittest tests.test_run308_public_copy_alignment -v
+
       - name: Enforce Run271 member body delta sync contract
         run: |
           python run271_member_body_delta_sync_guard.py
