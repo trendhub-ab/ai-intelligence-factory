@@ -35,6 +35,16 @@ class Run309PublicLpAuditTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, source)
 
+    def test_read_only_snapshot_exposes_body_hash_text_and_links(self) -> None:
+        source = inspect.getsource(run309.audit)
+        self.assertIn('"body_sha256"', source)
+        self.assertIn('"body_text"', source)
+        self.assertIn('"body_links"', source)
+        helper = inspect.getsource(run309._body_links)
+        self.assertIn('body.locator("a[href]")', helper)
+        for forbidden in (".click()", ".fill(", ".press(", "insert_text", "innerHTML ="):
+            self.assertNotIn(forbidden, helper)
+
     def test_publish_settings_stage_clicks_only_unique_continue_control(self) -> None:
         source = inspect.getsource(run309._enter_publish_settings)
         self.assertIn('name="公開に進む"', source)
