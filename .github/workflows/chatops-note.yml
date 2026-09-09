@@ -1,8 +1,8 @@
 name: AIIF ChatOps Note Bridge
 
 # Safe, zero-model bridge from the dedicated GitHub control issue to Note workflows.
-# Run309/312 and Run314 audits are read-only. Run316 is a no-final-save UI probe. Run317 is an
-# exact server-save proof with no public release. Run310 fixed-LP, Run311 profile copy, Run313
+# Run309/312 and Run314 audits are read-only. Run316/318 are no-final-save UI probes. Run317 is
+# an exact server-save proof with no public release. Run310 fixed-LP, Run311 profile copy, Run313
 # exact-state LP reconciliation, and Run315 exact member-onboarding maintenance are explicit
 # hard-bound exceptions; ordinary article publication remains human-only.
 on:
@@ -36,6 +36,7 @@ jobs:
        github.event.comment.body == '/aiif note onboarding audit' ||
        github.event.comment.body == '/aiif note onboarding probe' ||
        github.event.comment.body == '/aiif note onboarding server-save' ||
+       github.event.comment.body == '/aiif note onboarding publish-probe' ||
        github.event.comment.body == '/aiif note onboarding update' ||
        github.event.comment.body == '/aiif note profile update')
     runs-on: ubuntu-latest
@@ -59,6 +60,7 @@ jobs:
             '/aiif note onboarding audit') action='onboarding_audit' ;;
             '/aiif note onboarding probe') action='onboarding_probe' ;;
             '/aiif note onboarding server-save') action='onboarding_server_save' ;;
+            '/aiif note onboarding publish-probe') action='onboarding_publish_probe' ;;
             '/aiif note onboarding update') action='onboarding_update' ;;
             '/aiif note profile update') action='profile_update' ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
@@ -112,6 +114,10 @@ jobs:
               workflow='note-member-onboarding-server-save.yml'
               payload='{"ref":"main","inputs":{"confirm":"SAVE_MEMBER_ONBOARDING_SERVER_N284E428C80F4_SHA4826AABC"}}'
               ;;
+            onboarding_publish_probe)
+              workflow='note-member-onboarding-publish-cta-probe.yml'
+              payload='{"ref":"main","inputs":{"confirm":"PROBE_MEMBER_ONBOARDING_PUBLISH_CTA_N284E428C80F4_SHAAAB9E57B"}}'
+              ;;
             onboarding_update)
               workflow='note-member-onboarding-update.yml'
               payload='{"ref":"main","inputs":{"confirm":"UPDATE_MEMBER_ONBOARDING_N284E428C80F4_SHA4826AABC"}}'
@@ -155,6 +161,9 @@ jobs:
                 ;;
               onboarding_server_save)
                 echo '- explicit maintenance mutation authorized: `n284e428c80f4 server-save proof only; exact temporary save plus fresh cookie-only verification; no public release`'
+                ;;
+              onboarding_publish_probe)
+                echo '- explicit maintenance mutation authorized: `false; clean cookie-only publish-CTA inventory only; no settings/member/public mutation`'
                 ;;
               onboarding_update)
                 echo '- explicit maintenance mutation authorized: `member onboarding n284e428c80f4 exact audited SHA + membership re-association only`'

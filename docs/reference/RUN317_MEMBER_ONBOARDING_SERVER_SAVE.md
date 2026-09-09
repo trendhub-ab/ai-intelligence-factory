@@ -58,3 +58,24 @@ The workflow must return:
 - `notion_writes=0`
 
 Only after this passes may the publication/membership repair be resumed.
+
+## Live result — 2026-09-09
+
+Workflow run `34349317863` completed the exact server-save proof successfully.
+
+Observed result:
+
+- `status=server_saved_and_verified`
+- source state: `server_legacy_exact`
+- rewritten: `true`
+- exact `一時保存` clicked: `true`
+- fresh second cookie-only context verified: `true`
+- fresh title: `【最初にお読みください】「このAI、使える！」を判断するための使い方`
+- fresh body SHA-256: `aab9e57bbb152b8be053c54cb2e5782f37b52b98dbbf0eb04313ed96f2063ba6`
+- fresh-context localStorage seeded: `false`
+- public release: `false`
+- membership mutation: `false`
+- Gemini/model calls: `0`
+- Notion writes: `0`
+
+This closes the persistence defect: the new title/body are now proven to come back from note's server in a completely separate browser context. Public publication and membership association remain separate unresolved steps. Run318 must probe the current publish-settings CTA from this proven server state before any public mutation.
