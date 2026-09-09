@@ -3,7 +3,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "run325_member_onboarding_finalize_latest.py").read_text(encoding="utf-8")
-WORKFLOW = (ROOT / ".github/workflows/note-member-onboarding-finalize-latest.yml").read_text(encoding="utf-8")
+WORKFLOW = (ROOT / ".github/workflows/note-member-onboarding-update.yml").read_text(encoding="utf-8")
 CHATOPS = (ROOT / ".github/workflows/chatops-note.yml").read_text(encoding="utf-8")
 
 
@@ -51,15 +51,17 @@ class Run325MemberOnboardingFinalizeLatestTests(unittest.TestCase):
         self.assertIn('"members_only_access_preserved": True', SCRIPT)
         self.assertIn('"all_plans_exposure_preserved_false": True', SCRIPT)
 
-    def test_zero_model_zero_notion_and_hard_bound_workflow(self):
+    def test_existing_workflow_and_chatops_are_repaired_and_hard_bound(self):
         token = "FINALIZE_MEMBER_ONBOARDING_N284E428C80F4_SHAAAB9E57B_KEEP_MEMBERS_ONLY"
         self.assertIn(token, SCRIPT)
         self.assertIn(token, WORKFLOW)
         self.assertIn("run325_member_onboarding_finalize_latest.py", WORKFLOW)
         self.assertIn("tests.test_run325_member_onboarding_finalize_latest", WORKFLOW)
         self.assertIn("run325-result.json", WORKFLOW)
-        self.assertIn("/aiif note onboarding finalize-latest", CHATOPS)
-        self.assertIn("note-member-onboarding-finalize-latest.yml", CHATOPS)
+        self.assertIn("/aiif note onboarding update", CHATOPS)
+        self.assertIn(token, CHATOPS)
+        self.assertIn("note-member-onboarding-update.yml", CHATOPS)
+        self.assertNotIn("run315_member_onboarding_update_dom_range.py", WORKFLOW)
         upper = (WORKFLOW + CHATOPS).upper()
         self.assertNotIn("GEMINI_API", upper)
         self.assertNotIn("GOOGLE_API_KEY", upper)
