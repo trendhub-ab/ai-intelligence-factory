@@ -24,6 +24,12 @@ Run309で実noteをzero-mutation監査した。
 
 したがってRun310は推測selectorではなく、**`公開に進む` → `更新する`** の実測導線だけを使用する。
 
+### First live update falsification
+
+2026-09-09の初回Run310 live updateは、本文・タイトルをeditorへ入れた後、最終`更新する`を押す前にfail-closedで停止した。原因は、DOM上のhidden duplicateまで含むrole locatorの`count()==1`を要求していたためで、Run309で実測した「画面上の見える`更新する`は1個」という事実とselector contractが一致していなかった。
+
+修正後は `button:visible` に限定し、可視ボタンのexact textだけを解決する。hidden duplicateは候補数に含めない。公開ページを再確認した結果、初回失敗後も旧タイトルのままであり、最終更新は発生していないことを確認済み。
+
 ## Content authority
 
 本文・タイトルは `docs/reference/RUN308_PUBLIC_NOTE_READY_TO_PASTE.md` のSection 1/2を唯一の入力正本とする。
@@ -46,9 +52,9 @@ CTAはMarkdown linkで `https://note.com/trendhub_biz/membership` へ明示的�
 4. 想定外タイトルなら無変更で停止
 5. タイトルをcurrentへ置換
 6. Run308本文を挿入し、editor内で本文一致を検証
-7. `公開に進む` が1個だけ見えることを確認してクリック
+7. 画面上でvisibleな`公開に進む`がexactly oneであることを確認してクリック
 8. exact `/notes/ned673e381ef8/publish/` を確認
-9. タグ・マガジン・メンバーシップ設定へ触れず、`更新する` が1個だけ見えることを確認してクリック
+9. タグ・マガジン・メンバーシップ設定へ触れず、画面上でvisibleな`更新する`がexactly oneであることを確認してクリック
 10. public URLを再読込
 11. 新タイトル・主要marker・membership clickable link・旧タイトル消失を確認
 

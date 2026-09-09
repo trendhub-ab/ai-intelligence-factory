@@ -26,6 +26,13 @@ class Run310PublicLpUpdateTests(unittest.TestCase):
         self.assertNotIn("Product Hunt", body)
         self.assertIn("[月額1,980円の内容を見る](https://note.com/trendhub_biz/membership)", body)
 
+    def test_visible_button_resolver_ignores_hidden_duplicate_dom_controls(self) -> None:
+        source = inspect.getsource(run310._unique_button)
+        self.assertIn('page.locator("button:visible")', source)
+        self.assertIn('wait_for(state="visible"', source)
+        self.assertIn("re.escape(name)", source)
+        self.assertNotIn('page.get_by_role("button"', source)
+
     def test_updater_uses_only_observed_public_update_controls(self) -> None:
         source = inspect.getsource(run310.update_public_lp)
         self.assertIn('_unique_button(page, "公開に進む").click()', source)
