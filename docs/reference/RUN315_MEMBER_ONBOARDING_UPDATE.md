@@ -36,6 +36,21 @@ The page must:
 7. state that Notion access ends when note membership eligibility ends, rather than implying immediate loss at the moment a cancellation action is submitted;
 8. link to the live registration form and current Notion destinations.
 
+## Existing-body replacement contract
+
+The generic note paste helper uses keyboard `Control+A`, which is suitable for new or empty drafts but is not trusted for this populated legacy article because the editor can keep selection inside only the active block.
+
+Run315 therefore uses a dedicated process-local adapter before executing the existing updater:
+
+1. locate the exact body contenteditable with the existing Run315/base selectors;
+2. create a DOM `Range` and call `selectNodeContents(body)`;
+3. fail closed unless the resulting selection starts at offset `0` on the body element and ends at `body.childNodes.length` on that same element;
+4. dispatch the same safe `text/html` + `text/plain` paste payload already used by the shared note helper;
+5. leave the shared generic paste helper unchanged for every other note automation;
+6. immediately run the existing full-body content verification, required-marker verification, forbidden-old-marker verification, and exact-link verification before entering publish settings.
+
+If the editor DOM drifts so the exact body range cannot be established, Run315 stops before membership or publish mutation.
+
 ## Membership publication repair
 
 Current note help confirms that a free article becomes a member-benefit article when it is added to a membership. If a previously attached free benefit loses its plan association, other users can see a not-for-sale state.
@@ -46,6 +61,7 @@ Run315 therefore keeps `記事タイプ=無料`, selects the exact `AI Intellige
 
 - exact note ID only;
 - exact Run314 old body SHA or an exact staged Run315 body;
+- exact body DOM Range boundaries before replacement;
 - exact membership name only;
 - refuses unexpected title/body/settings;
 - never changes tags, magazine, eyecatch, AI translation, AI compensation, comments, or profile;
