@@ -88,7 +88,6 @@ def _load_handoff() -> tuple[str, str]:
     if title != EXPECTED_TITLE:
         raise base.NoteDraftError("Run310 handoff title drifted from the authorized title")
     if manuscript.startswith("# "):
-        # note_draft_automation intentionally supports H2-H4; the lead is a body hero, not the note title.
         manuscript = "## " + manuscript[2:]
     if len(manuscript) < 1500:
         raise base.NoteDraftError("Run310 handoff body is unexpectedly short")
@@ -120,9 +119,25 @@ def _open_exact_editor(context: Any, page: Any) -> None:
 
 
 def _unique_button(page: Any, name: str) -> Any:
-    controls = page.get_by_role("button", name=name, exact=True)
-    if controls.count() != 1 or not controls.first.is_visible():
-        raise base.NoteDraftError(f"Run310 expected exactly one visible {name} control")
+    """Resolve one actually-visible note button, ignoring hidden duplicate DOM controls."""
+    pattern = re.compile(rf"^\s*{re.escape(name)}\s*$")
+    controls = page.locator("button:visible").filter(has_text=pattern)
+    try:
+        controls.first.wait_for(state="visible", timeout=10000)
+    except Exception as exc:
+        raise base.NoteDraftError(f"Run310 could not observe visible {name} control") from exc
+    if controls.count() != 1:
+        visible_texts = [
+            _canon(raw)
+            for raw in page.locator("button:visible").all_text_contents()
+            if _canon(raw)
+        ]
+        matches = [text for text in visible_texts if text == name]
+        if len(matches) != 1:
+            raise base.NoteDraftError(
+                f"Run310 expected exactly one visible {name} control; visible exact matches={len(matches)}"
+            )
+        controls = page.locator("button:visible").filter(has_text=pattern)
     return controls.first
 
 
@@ -141,7 +156,6 @@ def _verify_public(page: Any, title: str) -> dict[str, Any]:
     page.wait_for_timeout(1600)
     public_text = _canon(_article_text(page))
     if title not in public_text:
-        # Some note layouts keep the article title outside <article>; check the full page as a title fallback.
         full_text = _canon(str(page.locator("body").inner_text(timeout=10000) or ""))
         if title not in full_text:
             raise base.NoteDraftError("Run310 public verification could not find the new title")
@@ -210,8 +224,8 @@ def update_public_lp() -> dict[str, Any]:
                 raise base.NoteDraftError("Run310 did not reach the exact publish settings route") from exc
             if not str(page.url or "").startswith(TARGET_PUBLISH_URL):
                 raise base.NoteDraftError("Run310 publish settings URL is not the exact authorized note")
+            page.wait_for_timeout(1200)
 
-            # Preserve existing tags/magazine/membership settings: touch only the observed final update control.
             _unique_button(page, "更新する").click()
             page.wait_for_timeout(2200)
 
