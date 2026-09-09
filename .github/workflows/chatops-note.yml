@@ -1,8 +1,9 @@
 name: AIIF ChatOps Note Bridge
 
 # Safe, zero-model bridge from the dedicated GitHub control issue to Note workflows.
-# Run309/312 and Run314 audits are read-only. Run310 fixed-LP, Run311 profile copy, and Run313 exact-state LP
-# reconciliation are explicit, hard-bound maintenance exceptions; ordinary article publication remains human-only.
+# Run309/312 and Run314 audits are read-only. Run310 fixed-LP, Run311 profile copy, Run313 exact-state LP
+# reconciliation, and Run315 exact member-onboarding maintenance are explicit hard-bound exceptions;
+# ordinary article publication remains human-only.
 on:
   issue_comment:
     types: [created]
@@ -32,6 +33,7 @@ jobs:
        github.event.comment.body == '/aiif note lp update' ||
        github.event.comment.body == '/aiif note lp reconcile' ||
        github.event.comment.body == '/aiif note onboarding audit' ||
+       github.event.comment.body == '/aiif note onboarding update' ||
        github.event.comment.body == '/aiif note profile update')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -52,6 +54,7 @@ jobs:
             '/aiif note lp update') action='lp_update' ;;
             '/aiif note lp reconcile') action='lp_reconcile' ;;
             '/aiif note onboarding audit') action='onboarding_audit' ;;
+            '/aiif note onboarding update') action='onboarding_update' ;;
             '/aiif note profile update') action='profile_update' ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
@@ -96,6 +99,10 @@ jobs:
               workflow='note-member-onboarding-audit.yml'
               payload='{"ref":"main","inputs":{"confirm":"AUDIT_MEMBER_ONBOARDING_N284E428C80F4","stage":"publish_settings"}}'
               ;;
+            onboarding_update)
+              workflow='note-member-onboarding-update.yml'
+              payload='{"ref":"main","inputs":{"confirm":"UPDATE_MEMBER_ONBOARDING_N284E428C80F4_SHA4826AABC"}}'
+              ;;
             profile_update)
               workflow='note-profile-update.yml'
               payload='{"ref":"main","inputs":{"confirm":"UPDATE_NOTE_PROFILE_TRENDHUB_BIZ"}}'
@@ -129,6 +136,9 @@ jobs:
                 ;;
               lp_reconcile)
                 echo '- explicit maintenance mutation authorized: `fixed LP ned673e381ef8 exact audited SHA, two text corrections only`'
+                ;;
+              onboarding_update)
+                echo '- explicit maintenance mutation authorized: `member onboarding n284e428c80f4 exact audited SHA + membership re-association only`'
                 ;;
               profile_update)
                 echo '- explicit maintenance mutation authorized: `trendhub_biz profile description only`'
