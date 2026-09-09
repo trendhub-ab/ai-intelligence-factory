@@ -14,8 +14,9 @@ Paid Member Navigation/UI Baseline: **Run218**
 Paid Member Presentation Baseline: **Run219**  
 Paid Member Database Destination Baseline: **Run220**  
 Paid Member Database Hosting Baseline: **Run221**  
-Paid Product Baseline: **Run268 — Proposal-First Decision Intelligence / Four-Source Intelligence**  
-Member Surface Baseline: **Run270 — Proposal-First Member Surface / Run250 compatibility overlay**  
+Paid Product Baseline: **Run307 — Generic Use-Decision Intelligence / Run268 Four-Source architecture**  
+Paid Product Messaging Baseline: **Run307 — self-development + work use + optional proposal**  
+Member Surface Baseline: **Run307 — Generic Use-Decision Member Surface / Run270 compatibility overlay**  
 Member Body Sync Baseline: **Run271.1 — Member Body Delta Sync / previous-success checkpoint / sentinel full-fallback**  
 Paid Product Contract: **`PAID_PRODUCT_CONTRACT.md`**  
 Article Production Baseline: **Run249 + current article-quality stack**  
@@ -31,9 +32,9 @@ Integration Determinism Baseline: **Run263 — Hermetic / Locked / Zero-Provider
 Standalone Synthetic Baseline: **Run264 — Hermetic Synthetic Regression**  
 Dependency Compatibility Baseline: **Run266 — Pillow 12.1+ Production Floor / <13 Upper Bound**  
 Required PR Check Governance Baseline: **Run267 — Required contexts must be emitted for every PR to main**  
-Business / Source Strategy Baseline: **Run268 — Proposal-First ICP / Four-Source Intelligence / OfficialVendor East-West Coverage**  
+Business / Source Strategy Baseline: **Run268 — Four-Source Intelligence / OfficialVendor East-West Coverage**  
 Acquisition Precision Baseline: **Run269 — Live Acquisition Precision / 11-Vendor Structured Smoke**  
-Operational Reliability Baseline: **Run272 — Bounded Daily Failure Tails / Notion Date Boundary / arXiv Run-Local Circuit / Product Review 600s Bound**
+Operational Reliability Baseline: **Run272 — Bounded Daily Failure Tails / Notion Date Boundary / arXiv Run-Local Circuit / Product Review 600s Bound**  
 Note Editorial Format Baseline: **Run296 — Reader-approved Note Editorial Format v2**
 
 > 本書は「現在のProductionで何を守るか」を示すcanonical仕様である。歴史を無制限に積み増さない一方、現在もコード・Workflow・Fail-Closed Guard・回帰テストが保護する契約は省略しない。詳細な変更理由と観測記録は `docs/reference/`、過去資料は `docs/archive/` とGit履歴へ分離する。
@@ -53,25 +54,28 @@ Productionコード・テスト・Fail-Closed Guardを、文書整理の都合�
 
 ---
 
-## 1. 事業・商品契約
+## 1. 事業・商品契約 — Run307 current
 
 AI Intelligence Factoryは **note事業そのものではない**。noteは低コストの集客・SEO・信頼形成チャネルの一つであり、将来はGoogle検索、X、YouTube、LinkedIn、Zenn/Qiita、コミュニティ、紹介等から同じ有料商品へ送客できる構造を維持する。
 
 ### 初期ICP
 
-**AI・Web・業務システム等を顧客へ提案・開発する、1〜3名規模のフリーランス／小規模開発事業者。**
+**AI・Web・業務システム等を自ら開発・導入したり、必要に応じて提案したりする、フリーランス／個人事業主／1〜3名規模の小規模事業者。**
 
-- Primary Jobは、顧客から「このAI・技術を使うべきか」と聞かれたとき、Evidence・比較・リスク・利用条件・小規模検証条件を短時間で整理し、判断・提案メモへ落とすこと。
-- 自己学習・技術力向上はSecondary Valueとする。Primaryと同格にしない。
-- AI専業である必要はないが、技術選定・提案・実装判断が売上や案件品質に影響する人を優先する。
-- 「AIに興味がある個人全般」「非エンジニア全般」「法人全般」は初期ICPにしない。
-- 法人は将来の高単価市場として保持するが、PMF前に請求書・複数席・SSO・管理者機能を作り込まない。
+Primary Job:
+
+- 新しいAI・技術を見つけたとき、短時間で「このAI、使える！」と判断できる材料をそろえる。
+- Evidence、比較、主なリスク、利用条件、小規模検証条件を確認する。
+- 自分の開発、業務利用、必要に応じた提案のどれにも転用できる判断メモへ落とす。
+- 毎日GitHub、論文、Hacker News、各社公式情報を自力で巡回しない。
+
+**顧客提案は利用場面の一つであり、商品メッセージの主語にはしない。** 自分の開発・業務利用・必要に応じた提案を同じ判断基盤で扱う。
 
 ### 中心価値
 
-> **「このAI、使える？」に、根拠付きで早く答えられる。**
+> **「このAI、使える！」を、根拠付きで判断できる。**
 
-有料価値は「情報量」ではなく、**変化を知る → Evidenceを確認する → 使う/試す/待つ/避けるを判断する → リスクと条件を整理する → 判断・提案メモへ落とす**工程を短時間で進められること。DB件数やニュース量を購入理由の中心にしない。
+有料価値は「情報量」ではなく、**変化を知る → Evidenceを確認する → 使う / 試す / 待つ / 避けるを判断する → リスクと条件を整理する → 試す・導入する次の一手へ落とす**工程を短時間で進められること。DB件数やニュース量を購入理由の中心にしない。
 
 ### Intelligence Source Contract — Run268
 
@@ -94,16 +98,16 @@ OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadat
 ### 商品4層
 
 1. **無料note** — 知る・面白く理解する。無料品質を意図的に落とさない。
-2. **Decision Brief** — 今月、顧客案件・技術選定で知っておく価値がある3〜7件を先に読む。
+2. **Decision Brief** — 今月「使えるか」の判断に影響する重要な3〜7件を先に読む。
 3. **Decision Intelligence** — 必要時に全体DBで比較・根拠・リスク・履歴を確認する。
-4. **Decision / Proposal Action Asset** — 利用条件、判断・提案メモ、小規模検証条件、比較観点等へ落とす。大量テンプレート市場へピボットしない。
+4. **Decision / Action Asset** — 利用条件、判断メモ、小規模検証条件、比較観点、次の一手へ落とす。必要に応じて提案にも転用できるが、提案テンプレート販売を本体にしない。
 
 内部の Intelligence Engine は上記より広く、Deep Techを含む。内部追跡対象と会員トップ表示を同一視しない。
 
 ### 価格・初期商業検証
 
 - 標準価格: **月額1,980円**を維持して検証する。
-- 初期主要マイルストーン: **知らない実顧客10人が実際に支払うこと**。
+- 初期主要マイルストーン: **知らない実利用者10人が実際に支払うこと**。
 - 100人獲得や広告投下は、その後。
 - 決済事業者・entitlement方式は実装済みProduction事実だけを本書へ昇格させる。未検証のStripe/note checkout案をProduction完了扱いしない。
 
@@ -145,42 +149,54 @@ OfficialVendorはRound Robin上では**1 Source**として扱い、内部metadat
 AI導入 判断・提案メモ Page ID: `3d3479ff-dca9-8119-b0d8-c014b068fe82`
 
 ### 2.4 Member同期・Commerce互換契約
+
 **Run211** の派生同期は、`Subscriber Decision Brief Sync` → `Member Presentation Sync` の順序を守る。`Inventory plan` はwrite fan-outを起こさず、Inventory Bootstrapのapplyだけを派生write対象にする。
 
 Scheduled Dailyは現在 **`Daily Intelligence & Content Pipeline [PAUSED]`** としてhard-PAUSEDである。Run261以降、成功したONE-SHOTの直接fan-outは受動的なONE-SHOT `workflow_run` に依存しない。`.github/workflows/daily-one-shot.yml` が `${{ secrets.GH_PAT }}` で `note-ready-sync.yml`、`subscriber-decision-brief.yml`、`cross-db-contract-guard.yml` を `workflow_dispatch` する。これら3本は直接ONE-SHOTをpassive subscribeせず、将来GitHub側の挙動が変化しても同じONE-SHOTから二重writeしない契約とする。
 
-`Subscriber Decision Brief Sync` の `workflow_run` は独立した `Subscriber Inventory Bootstrap` 完了経路だけを保持し、`[apply]` のみwrite対象とする。`Member Presentation Sync` は `Subscriber Decision Brief Sync` の完了後に動き、同一の `member-derived-notion-writes` lockで直列化する。PAUSED stubや存在しない将来aliasをlive triggerとして残さない。Scheduled Dailyを明示的に再開する場合、その時点の実在するworkflowとfan-out方式を同一のreviewed changeで再設計する。
+`Subscriber Decision Brief Sync` の `workflow_run` は独立した `Subscriber Inventory Bootstrap` 完了経路だけを保持し、`[apply]` のみwrite対象とする。`Member Presentation Sync` は `Subscriber Decision Brief Sync` の完了後に動き、同一の `member-derived-notion-writes` lockで直列化する。PAUSED stubや存在しない将来aliasをlive triggerとして残さない。
 
 ChatOps control issueからONE-SHOTをdispatchする場合は、**Run259** の契約として `${{ secrets.GH_PAT }}` を必須のdispatch credentialにする。`${{ github.token }}` / repository `GITHUB_TOKEN` へ黙ってフォールバックしない。さらに**Run261**では、ONE-SHOT成功後の直接fan-outにも同じくGH_PATを必須とし、PAT未設定・dispatch失敗はfail closedとする。Production本体だけ成功し会員向け派生同期が欠落する「部分成功」を正常扱いしない。
 
-**Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。自動生成停止を「Digest提供停止」と読み替えない。
+**Run217** はCommerce/Onboarding履歴として保持し、Run218/220/221の後続Authorityを明示する。Digestを販売価値として案内する以上、**Digest自動生成が停止中でも**、人間運用を含めて会員へ約束したDigestを無言で消さない。
 
-### 2.5 Proposal-First Member Surface — Run270
+### 2.5 Proposal-First Member Surface — Run270（歴史的互換層）
 
-Run268でPrimary ICPとPaid ProductをProposal-Firstへ変更した後も、Run250由来のWork-First bodyが最終可視面として残っていた。Run270はRun250を歴史的互換層として保持しつつ、`run219_member_human_language_ui.py` の実workflow入口で**Run250の後**に `run270_proposal_first_member_surface` を適用する。
+Run270は、Run268当時のProposal-First商品を実会員表示へ反映した歴史的互換層として保持する。Run250の後、Run307の前にinstallされることで既存generated bodyの移行互換性を守る。
 
-Member Presentation DBのgenerated detail bodyは、既存canonical値だけを使って原則次の順に表示する。
+歴史的Run270見出し:
 
-- `これは何？`
 - `顧客にどう答える？`
 - `提案できる場面`
-- `なぜ今見る？`
 - `提案前に確認すること`
 - `提案・検証の次の一手`
-- material changeがある場合 `Decision Update｜提案を変える必要がある？`
-- `確認に使った公式・一次情報`
 
-Home / Decision Brief / AI導入 判断・提案メモの静的Notion面も同じProposal-First契約へ揃える。顧客提案を「副次利用」と表現しない。社内利用・自己学習はSecondary Valueとして残す。
+Run270の詳細と実ページIDは `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を履歴/互換正本として保持する。Run270は現在の最終可視Authorityではない。
 
-Run270はSource score / Decision / Evidence / Deep Tech / Notion schemaを変更せず、表示のためのGemini/model callを追加しない。詳細と実ページIDは `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
+### 2.6 Generic Use-Decision Member Surface — Run307
 
-### 2.6 Run271 — Member Body Delta Sync
+Run307はRun250 → Run270の後段にinstallされ、**現在のmember-facing presentation Authority**となる。自分の開発・業務利用・必要に応じた提案を一つの利用判断UIで扱う。
+
+Member Presentation DBのgenerated detail bodyは、既存canonical値だけを使い原則次の順に表示する。
+
+1. `これは何？`
+2. `いま、使える？`
+3. `使える場面`
+4. `なぜ今見る？`
+5. `使う前に確認すること`
+6. `試す・導入する次の一手`
+7. material change時のみ `Decision Update｜判断を変える必要がある？`
+8. `確認に使った公式・一次情報`
+
+Run307はSource score / Decision / Evidence / Deep Tech / Notion schemaを変更せず、表示のためのGemini/model callを追加しない。`client_proposal_supported=true`を維持する一方、`client_proposal_primary=false`とする。
+
+詳細・固定LP copy・有料導線の正本は `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md`。
+
+### 2.7 Run271 — Member Body Delta Sync
 
 Run270本番反映ではMember Presentation DB **206件**の本文移行に約13分23秒を要した。Run169.1でgenerated-only pageの親callout再構築は既に導入済みだったため、Run271はsteady-stateの主因である**全206ページのblock GET / body一致判定**を通常運用から外す。
 
-Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前回成功したmainのMember Presentation Syncの `run_started_at`** を取得し、それを `MEMBER_BODY_CHANGED_SINCE` とする。body phaseはNotion DB一覧を1回取得した後、原則として `last_edited_time >= MEMBER_BODY_CHANGED_SINCE` のページだけをblock GET / write対象にする。前回成功runの開始時刻を使うことで、前回run実行中またはrun間に手動・自動で編集されたgenerated bodyも次回に再検査する安全なoverlapを持つ。
-
-ただし高速化でmigration safetyを弱めない。
+Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前回成功したmainのMember Presentation Syncの `run_started_at`** を取得し、それを `MEMBER_BODY_CHANGED_SINCE` とする。body phaseはNotion DB一覧を1回取得した後、原則として `last_edited_time >= MEMBER_BODY_CHANGED_SINCE` のページだけをblock GET / write対象にする。
 
 - delta runごとにgenerated bodyを**sentinel 1件**だけcurrent body contractと照合する。
 - sentinelが一致すればchanged pagesだけ本文I/Oする。
@@ -190,19 +206,20 @@ Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前�
 - push-triggered member presentation workflowはbody contract変更の可能性を考慮してfull modeとする。
 - workflow rerun（`github.run_attempt > 1`）もrecoveryのためfull modeとする。
 - manual `workflow_dispatch` は `force_full_body_sync` で明示full migrationできる。
-- manual Notion block保護、Run270見出し、Evidence / Decision / source / Deep Tech、Notion schema、ZERO Gemini/model call契約は変更しない。
+- manual Notion block保護、current Run307見出し、Evidence / Decision / source / Deep Tech、Notion schema、ZERO Gemini/model call契約は変更しない。
 
-詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。2026-09-07の通常delta Production観測では、206件中 `scanned_body_pages=0` / `skipped_by_delta=206` / `sentinel_checked=1` / `delta_fallback_full=false`、本文stepは約**2.34秒**だった。Run270の約13分23秒比で約**343.4倍高速・99.71%短縮**、Run271.1 push安全fullの約130.78秒比で約**55.9倍高速・98.21%短縮**。これは単一のno-change Production観測値でありSLAではない。
+詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。2026-09-07の通常delta Production観測では、206件中 `scanned_body_pages=0` / `skipped_by_delta=206` / `sentinel_checked=1` / `delta_fallback_full=false`、本文stepは約**2.34秒**だった。Run270移行時の約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
 
 ---
 
-## 3. Decision Brief / Decision Update 契約 — Run256 / Run270
+## 3. Decision Brief / Decision Update 契約 — Run307 current
 
 Decision Briefは静的な「今月のおすすめ一覧」だけにしない。
+
 - 今月の主要候補を3〜7件へ絞る。
 - `使う / 試す / 待つ / 避ける` の判断を出す。
-- 顧客案件・技術選定への意味、確認事項、次の一手を短く示す。
-- **技術選定・提案判断を変えるmaterial changeが存在する場合、少なくとも1件は具体例をBrief本文へ出す。** 一覧リンクだけで代替しない。
+- 自分の開発・業務利用・導入判断への意味、確認事項、次の一手を短く示す。
+- **利用判断を変えるmaterial changeが存在する場合、少なくとも1件は具体例をBrief本文へ出す。** 一覧リンクだけで代替しない。
 - material changeがない月は、無理に変化を作らず **「重要な判断変更なし」** を価値として示す。
 - 生の `82 → 91` を継続課金価値の中心にしない。何が変わり、判断を変える必要があるかへ翻訳する。
 - 既存のStatus変更・Decision Score差分・INITIAL判定を壊さない。
@@ -236,7 +253,7 @@ Run269は `production_pipeline.py` でRun268 install後に適用し、Source arc
 
 - Fact / Evidence / DecisionのHARD BLOCKを商品都合で弱めない。
 - 一次情報・Evidence境界を保持する。
-- Source scoreを顧客適合度へ置換しない。
+- Source scoreをICP適合度へ置換しない。
 - Deep Techを削除しない。
 - canonical DBと会員表示層を分離する。
 - 429 / 404 / 503等はFail-Closedまたは既存Retry Budgetに従う。
@@ -318,11 +335,12 @@ Run261 article model routing:
 - Run261のlive-path wrapperは既存`_call_model_pool`へ1回だけ委譲し、新規retry loop・Gate緩和・追加のDeep Dive枠を作らない。
 - `gemini-3.8-flash`のrepository-local安全上限は最大18 requests/day。`GEMINI_38_FLASH_DAILY_BUDGET`は18以下へ下げるためだけに使う。
 - Deep Dive全体のper-run 12 requests上限は維持する。
+
 詳細は `GEMINI_QUOTA_SETUP.md`、`docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`、`docs/reference/RUN260_GEMINI_37_PRIMARY_38_QUALITY_RESCUE.md`、current runtime code、Google AI Studio Rate Limitsを正本とする。
 
 ---
 
-## 6. 無料note記事契約
+## 6. 無料note記事 / 有料導線契約
 
 無料noteはAcquisitionであり、品質を下げてPaywall gapを作らない。
 
@@ -346,19 +364,27 @@ Article production surface:
 - Run261: Gemini 3.7 primary / Gemini 3.8 bounded quality repair at the live Deep Dive entrypoint
 - Public releaseは**human-only**。自動化はprivate draftまで。
 
-### Run296 Reader-approved Note Editorial Format v2
+### Run296 Reader-approved Note Editorial Format v2 / Run307 CTA
 
-最初の実note Private Draftの人間レビューをProduction標準へ反映する。`run296_editorial_format_v2.py` はRun222後段のreader-facing surfaceを正規化し、追加Gemini/model requestを作らない。
+`run296_editorial_format_v2.py` はRun222後段のreader-facing surfaceを正規化し、追加Gemini/model requestを作らない。
 
 - 記事冒頭は `どんな内容？` とし、`30秒でわかるこの記事` と `何が出た？` を廃止する。
-- 有料CTAは `有料サブスクのご案内`、指定本文、`詳しくはこちら` をcanonical copyとし、既存tracking URLは保持する。
+- 有料CTA見出しは `有料サブスクのご案内`。
+- Run307以降のCTA本文は、Decision Brief / 意思決定DB / 判断メモを通じて**「このAI、使える！」を判断できる**価値を説明する。
+- CTAリンクラベルは **`月額1,980円の内容を見る`**。既存tracking URLはbyte-for-byte保持する。
 - 長い記事タイトルをアイキャッチへそのまま複製せず、意味を保った短いvisual copyへ圧縮する。
 - `舞台裏` 等の保護対象複合語を行境界で分割しない。
 - highlightは意味の完結したフレーズを使い、Netflix GenRecでは `舵を切った理由` 全体を強調する。
 - アイキャッチ下部説明文/subheadlineは描画しない。
 - Netflix GenRecのreviewed specimenは `Netflix推薦の舞台裏` / `LLMネイティブへ` / `舵を切った理由` の3行をdeterministicに使う。
 - Run306以降、最終フォントサイズはモデル提示値ではなく実測文字量で決め、reviewed Netflix通常文字72pxを上限とする。
-- Public releaseは引き続きhuman-only。既存private draft更新は別のspecimen-bound workflowでin-place実施し、read-only監査を再実行する。
+- Public releaseは引き続きhuman-only。
+
+販売導線は次を正本とする。
+
+**無料note → 固定LP → noteメンバーシップ → 会員ホーム / Decision Brief / 判断DB**
+
+固定LPの現行copy正本は `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md`。公開中LPの編集はhuman-onlyであり、GitHubのcopy正本更新だけで公開noteが自動変更されたとは扱わない。
 
 ### Eyecatch
 
@@ -401,22 +427,22 @@ Run250–256で確立したproduct presentation履歴:
 - Run255: context-safe / natural neutralization
 - Run256: concrete Decision Update + documentation reconciliation
 
-Run270は上記を削除せず、Run250の後段で現行Proposal-First visible surfaceを適用する。
+Run270はProposal-Firstの歴史的互換層、Run307が現在のvisible surface Authorityである。
 
-### Member表示順 — Run270
+### Member表示順 — Run307
 
 会員向け詳細は既存canonical値を使い、原則として次を表示する。
 
 - `これは何？`
-- `顧客にどう答える？`
-- `提案できる場面`
+- `いま、使える？`
+- `使える場面`
 - `なぜ今見る？`
-- `提案前に確認すること`
-- `提案・検証の次の一手`
-- material changeがある場合 `Decision Update｜提案を変える必要がある？`
+- `使う前に確認すること`
+- `試す・導入する次の一手`
+- material changeがある場合 `Decision Update｜判断を変える必要がある？`
 - 公式・一次情報
 
-Source score / Decision / Evidence / Deep Tech分類を顧客適合のために改変しない。ICP relevanceはNavigation-only。Run270ではRun250のproven navigation rankerを維持し、表示AuthorityだけをProposal-Firstへ更新する。
+Source score / Decision / Evidence / Deep Tech分類をICP適合のために改変しない。ICP relevanceはNavigation-only。Run307では既存navigation rankerを維持し、表示AuthorityだけをGeneric Use-Decisionへ更新する。
 
 ### 日本語表現
 
@@ -457,6 +483,7 @@ Run263以降、`Integration Reconciliation CI` はProduction不具合とCI自身
 - Integrationはstructural guards → **full pytestを1回** → current Production stackのSynthetic smokeという順を維持する。
 - Run264以降、standalone `Synthetic Regression Suite` も同じhermetic/locked/pytest契約を使い、旧 `unittest discover` 全件実行へ戻さない。
 - これらの回帰はGemini/Notion等のProduction call・Production writeを行わない。
+
 詳細は `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md`、`docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md`、`integration_stability_guard.py` を正本とする。
 
 ### 8.2 Dependency compatibility契約 — Run265 / Run266
@@ -497,7 +524,6 @@ Run272は、Run `34075019008` の45分cancelを「Workflow全体が遅い」と�
 - provider unavailableを `MISSING` / `MATERIAL_CHANGE` と誤認せず、deferred arXiv候補のEvidence Ledger healthを障害だけを理由に書き換えない。
 - `daily_portfolio_review.py` はProduct Review childを既定**600秒**へ有界化する。Run305以降、childはraw `pipeline.py`を直接起動せず、`AIIF_PRODUCT_REVIEW_RUNTIME=true` を付けた唯一のroot authority `production_pipeline.py` を起動する。timeout時もpartial outputへunsafe-activity detectorを適用し、安全なら `bounded_child_timeout` としてdeferする。
 - Gemini request budget / retry budget / RPD safety ceiling、Run268 four-source architecture、Fact/Evidence/Decision gate、Public release契約は変更しない。
-- 反証過程で、取得層の日付正規化と `source_normalization.install()` 公開面拡張は既存契約を壊すため撤回された。Run272はpersistence/maintenance/deadline境界に限定する。
 
 詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
 
@@ -533,7 +559,8 @@ Run38は同時に、raw `pipeline.py` childがRun209/Run303 provider/quota runti
 - Run267 Documentation Contract Guard
 - Run268 Business / Source Strategy Guard
 - Run269 Acquisition Precision Guard
-- Run270 Proposal-First Member Surface Guard
+- Run270 Proposal-First Member Surface Guard（歴史的互換層）
+- **Run307 Generic Use-Decision Product Guard**
 - Run271 Member Body Delta Sync Guard
 - Run272 Daily Failure Tail zero-API regression tests
 - 関連unit tests / full pytest
@@ -543,15 +570,17 @@ Run38は同時に、raw `pipeline.py` childがRun209/Run303 provider/quota runti
 特に表示ロジックでは、テストが緑でも次を反証する。
 
 - 実行中moduleとimport moduleのAuthorityずれ
-- Run270より後にRun250が再適用されていないか
-- stale bodyをcurrentと誤認
+- Run250 → Run270 → Run307のinstall順が逆転していないか
+- Run270のProposal-First bodyをcurrentと誤認していないか
+- stale bodyをcurrentと誤認していないか
 - Run271 delta scopeがchanged pages以外へ不要なblock GETを広げていないか
 - Run271 sentinel不一致時にfull fallbackできるか
 - Run271.1 checkpointが前回成功runの開始時刻を使い、取得失敗時にfull fallbackできるか
 - 文字列置換による不自然な日本語
 - old fixed shortlistの復活
 - Source score / Evidence / Deep Techの意図しない変異
-- 顧客提案が再びSecondary扱いになっていないか
+- 顧客提案が再び商品メッセージのPrimaryへ昇格していないか
+- 自分の開発・業務利用が販売copyから脱落していないか
 
 Run272の運用信頼性変更では、さらに次を反証する。
 
@@ -595,14 +624,14 @@ Workflow / CI変更では、さらに次を反証する。
 
 利益に近い順に判断する。
 
-**顧客需要 → 売れるか → 継続するか → 粗利 → 自動化 → 技術的完成度**
+**利用者需要 → 売れるか → 継続するか → 粗利 → 自動化 → 技術的完成度**
 
 現在の優先順位:
 
 1. Paid Product / LP / Offerの整合
-2. 実有料顧客10人の獲得
+2. 実有料利用者10人の獲得
 3. 初月利用・継続理由の観測
-4. Decision Update / Proposal Actionの価値検証
+4. Decision Update / Use-Decision Actionの価値検証
 5. 集客チャネル拡張
 6. 法人版は実需要が見えてから
 
@@ -634,9 +663,10 @@ PMF前にやらないこと:
 - Run263のIntegration hermeticity / deterministic CIは `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md` と `integration_stability_guard.py` を正本とする。
 - Run264のstandalone Synthetic hermeticityは `docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md` と `integration_stability_guard.py` を正本とする。
 - Run265/266のPillow compatibility結果とRun267のrequired-check/canonical同期は `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md`
-- `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行Source architecture / paid-product要約を保持する。
+- `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md` に現行Four-Source architectureとRun268時点の商品履歴を保持する。
 - Run269のLive Acquisition Precision / 11-Vendor structured smoke / HN exact-match契約は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md` を正本とする。
-- Run270のProposal-First Member Surface / static Notion surface契約は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を正本とする。
+- Run270のProposal-First Member Surface / static Notion surface契約は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md` を**歴史的互換正本**として保持する。
+- **Run307のGeneric Use-Decision product / note funnel / member surface契約は `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md` を現行正本とする。**
 - Run271/271.1のdelta-scoped Member body sync / previous-success checkpoint / sentinel fallback契約は `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。
 - Run272のNotion date boundary / arXiv run-local Evidence Health circuit / bounded Product Review child契約は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
 - Run303のverified HTTP 503 / consecutive-only circuit / timeout分離契約は `docs/reference/RUN303_GEMINI_PROVIDER_503_RESILIENCE.md` を正本とする。
@@ -644,13 +674,13 @@ PMF前にやらないこと:
 - Run306のtext-volume adaptive eyecatch typography / reviewed 72px ceiling / Y=370 shared visual center契約は `docs/reference/RUN306_EYECATCH_ADAPTIVE_TYPOGRAPHY.md` を正本とする。
 - Run267はRun263〜266以降のcurrent CI/dependency/Eyecatch/required-check契約がcanonical仕様から脱落しないよう `run267_documentation_contract_guard.py` でFail-Closedする。
 - Run269はRun268のSource architectureを上書きせず、取得精度だけを `run269_acquisition_precision_guard.py` でFail-Closedする。
-- Run270はRun250を歴史層として保持し、最終member surfaceだけを `run270_proposal_first_member_surface_guard.py` でFail-Closedする。
+- Run270は歴史的互換層として `run270_proposal_first_member_surface_guard.py` で保護する。
+- Run307はcurrent generic product framingを `run307_use_decision_product_guard.py` でFail-Closedする。
 - Run271.1は通常本文同期を前回成功run以降のchanged pagesへ限定しつつ、checkpoint取得失敗 / sentinel mismatch / explicit force / recovery時のfull fallbackを `run271_member_body_delta_sync_guard.py` でFail-Closedする。
 - Run272は専用zero-API regression `tests/test_run272_daily_failure_tails.py` と既存Repository-wide / Integration / Run269契約の組合せで、修正がSource Evidence・Notion・Product Review safetyを横断破壊していないことを反証する。
-- Run262 GuardはRun261 live routing/fan-outのfocused guardとして残し、Run267 Guardがpost-Run262 current governanceを補完する。これらとRun268/269/270/271 GuardをRepository-wide Falsification Guard内で実行する。
 
-**現在のPaid Product Strategy正本はRun268。**  
-**現在のMember Surface正本はRun270。**  
+**現在のPaid Product Strategy正本はRun307。**  
+**現在のMember Surface正本はRun307。**  
 **現在のMember Body Sync正本はRun271.1。**  
 **現在のSource Architecture正本はRun268。**  
 **現在のAcquisition Precision正本はRun269。**  
@@ -667,69 +697,62 @@ PMF前にやらないこと:
 **現在のDependency Compatibility正本はRun266。**  
 **現在のDocumentation Contract Freshness正本はRun267。**
 
-### Run268 — Proposal-First / Four-Source Intelligence
+### Run268 — Proposal-First / Four-Source Intelligence（履歴 + current Source architecture）
 
-- Primary ICPを顧客へAI・Web・業務システムを提案・開発する1〜3名規模のフリーランス/小規模開発事業者へ再定義。
-- 自己学習はSecondary Valueへ降ろし、判断・提案メモを有料価値の中心Artifactへ格上げ。
-- active Sourceを GitHub / HackerNews / ArXiv / OfficialVendor の4系統へ再編。
+- Run268当時はPrimary ICPを顧客へAI・Web・業務システムを提案・開発する1〜3名規模のフリーランス/小規模開発事業者へ再定義した。**この商品framingはRun307でsupersedeされた。**
+- active Sourceを GitHub / HackerNews / ArXiv / OfficialVendor の4系統へ再編したSource architectureは現在も有効。
 - Product Hunt Production取得を退役し、OfficialVendorへ置換。新しいAPIキー・有料APIは追加しない。
-- HNはFirebase Top Stories全巡回からbounded Algolia AI queryへ変更し、取得段階で市場・エンジニア反応へ絞る。
+- HNはFirebase Top Stories全巡回からbounded Algolia AI queryへ変更。
 - OfficialVendorは米国3 + 中国主要8を1 Source内のvendor-level round robinで公平化する。
-- Run268 guardはProduction入口、active source tuple、Vendor registry、Product contract、本仕様書、CI組込みをzero-networkでfail closed検証する。
+- 詳細は `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md`。
 
 ### Run269 — Live Acquisition Precision / Structured Vendor Evidence
 
-- Run268のfour-source architecture・ICP・Product contractは変更しない。
+- Run268のfour-source architectureを変更しない。
 - HN Algoliaをtitle限定・30日・exact token / exact phrase再検証へ強化し、typo toleranceのfalse matchを除外する。
 - OfficialVendorのナビゲーション文言を更新候補へ昇格させず、`structured_html` / `structured_embedded` / `structured_current_state` / `page_fallback` を区別する。
 - `page_fallback`だけではStrict Live Smokeを合格させない。
 - ByteDance/Volcengineの公式モデル一覧は架空のreleaseではなくcurrent-state一次情報として扱う。
 - 実ネットワーク最終SmokeでOfficialVendor 11/11 structured成功、US 3/3、CN 8/8、fallback-only 0、HN 20 candidates / 11 queries / 30日を確認した。
 - Live SmokeはGemini/model 0、Notion write 0、Production DB write 0、publication 0を維持する。
-- Run269 GuardはProduction install順、HN precision、Vendor registry/current-state、Live Smoke safety、canonical仕様、CI組込みをzero-networkでfail closed検証する。
+- 詳細は `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md`。
 
-### Run270 — Proposal-First Member Surface
+### Run270 — Proposal-First Member Surface（歴史的互換層）
 
-- Run268のPrimary ICPとPaid Product contractを実会員表示へ反映する。
-- Run250 Work-First rendererは歴史的互換層として残し、Run270をその後段に適用して最終可視AuthorityをProposal-Firstへ切り替える。
-- Member detail bodyは `顧客にどう答える？` / `提案できる場面` / `提案前に確認すること` / `提案・検証の次の一手` を中心にする。
-- Home / Decision Brief / AI導入 判断・提案メモも同じPrimary Jobへ同期する。
+- Run268当時の商品framingを実会員面へ反映した層。
+- Run250 Work-First rendererの後段にあり、Run307以降はRun307の前段互換層として残す。
+- 歴史的見出しは `顧客にどう答える？` / `提案できる場面` / `提案前に確認すること` / `提案・検証の次の一手`。
 - Evidence / Decision Score / canonical status / Source / Deep Tech / Notion schemaは変更しない。
-- Run250 navigation rankerはRun270では維持し、未検証の大きなranking再設計を同時導入しない。
 - ZERO Gemini/model calls。
-- Run270 GuardはRun250→Run270 install順、Proposal-First contract、member workflow test、static Notion page IDs、canonical仕様、required Falsification組込みをzero-networkでfail closed検証する。
+- 詳細は `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md`。
 
 ### Run271 — Member Body Delta Sync
 
-- Run270のvisible body contractは変更せず、steady-stateの本文同期I/Oだけをdelta化する。
-- Run271.1では `MEMBER_BODY_CHANGED_SINCE` を前回成功したmainのMember Presentation Sync `run_started_at` から解決し、それ以降に編集されたMember pagesだけを通常のblock GET/write対象にする。
+- steady-stateの本文同期I/Oだけをdelta化する。
+- Run271.1では `MEMBER_BODY_CHANGED_SINCE` を前回成功したmainのMember Presentation Sync `run_started_at` から解決する。
 - delta runではsentinel 1件をcurrent body contractと照合し、不一致なら全件scan/migrationへfallbackする。
-- checkpoint取得失敗 / push / rerun / explicit `force_full_body_sync` はfull modeを選ぶため、手動編集・本文契約変更・recoveryをdelta最適化で取りこぼさない。
+- checkpoint取得失敗 / push / rerun / explicit `force_full_body_sync` はfull modeを選ぶ。
 - workflow履歴取得は `actions: read` のみを使い、新規secret・GH_PAT・有料APIは追加しない。
 - manual Notion blocks、Evidence / Decision / Source / Deep Tech / schema、ZERO Gemini/model call契約を保持する。
-- 2026-09-07の通常delta Production観測では本文step約**2.34秒**、`scanned_body_pages=0`、`skipped_by_delta=206`、`sentinel_checked=1`、`delta_fallback_full=false`。Run270約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
-- Run271 Guardはprevious-success checkpoint / delta cutoff / sentinel / full fallback / workflow recovery / canonical仕様 / required Falsification組込みをzero-networkでfail closed検証する。
+- 2026-09-07の通常delta Production観測では本文step約**2.34秒**、`scanned_body_pages=0`、`skipped_by_delta=206`、`sentinel_checked=1`、`delta_fallback_full=false`。Run270移行時約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
+- 詳細は `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md`。
 
 ### Run272 — Daily Failure-Tail Hardening
 
 - Run34075019008の45分cancelを、Production本体・Evidence Health・Product Reviewへ分解して根因を反証した。
 - Notion dateはsource raw valueを保持したまま、persistence boundaryだけでISO化し、不正値は空欄へfail closedする。
-- arXiv Evidence Healthは最初のFETCH_ERRORでrun-local circuitを開き、残りarXiv checkをdeferする。non-arXiv checkは継続し、provider unavailableをEvidence消失へ変換しない。
-- Product Review childは既定600秒へbounded化し、timeout partial outputでもunsafe detectorを実行する。安全ならstructured deferredとして返す。Run305以降はraw `pipeline.py`を直接起動せず、`AIIF_PRODUCT_REVIEW_RUNTIME=true` 付き `production_pipeline.py` を唯一のroot authorityとして使う。
+- arXiv Evidence Healthは最初のFETCH_ERRORでrun-local circuitを開き、残りarXiv checkをdeferする。non-arXiv checkは継続する。
+- Product Review childは既定600秒へbounded化。Run305以降は `AIIF_PRODUCT_REVIEW_RUNTIME=true` 付き `production_pipeline.py` を唯一のroot authorityとして使う。
 - Global Daily timeout 45分、Gemini budget/retry、Run268 Source architecture、Fact/Evidence/Decision gateは変更しない。
-- 初期案の取得層date normalizationとsource normalization公開面拡張は既存契約を壊したためCI反証で撤回し、最終修正を境界層へ限定した。
-- 実装merge前にfull pytest **1795 passed**、Repository-wide Falsification、Integration/Synthetic Production Smoke、Notion Access Policy、Run269 Live Acquisition SmokeをPASSした。
-- 詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md` を正本とする。
+- 詳細は `docs/reference/RUN272_DAILY_FAILURE_TAIL_HARDENING.md`。
 
 ### Run305 — Product Review Provider Runtime
 
 - Run304でProduct Review childのpersistent counter authorityを `runtime-state` に統一し、Run38で非ゼロcounter継承を実環境確認した。
-- Run38でraw childがRun209/Run303をinstallしていないことを反証し、Run305で唯一のroot Production entrypoint `production_pipeline.py` にProduct Review専用modeを追加した。
-- `AIIF_PRODUCT_REVIEW_RUNTIME=true` のとき、Run203 → Run209 → transient recovery → Run303だけを適用し、runtime-state preflight後にproduct-only coreへ進む。
+- Run305では `AIIF_PRODUCT_REVIEW_RUNTIME=true` のとき、Run203 → Run209 → transient recovery → Run303だけを適用する。
 - Product Reviewモデル順、max reviews 2、request budget 3、persistent daily capsは変更しない。
 - Run260/Run172/article/publication/Reader Value/eyecatch layerはProduct Review専用runtimeへ導入しない。
-- Repository-wide direct core-pipeline bypass guard、Run203/Run231通常Production source ordering、Daily PAUSED、public note human-onlyを維持する。
-- 詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md` を正本とする。
+- 詳細は `docs/reference/RUN305_PRODUCT_REVIEW_PROVIDER_RUNTIME.md`。
 
 ### Run306 — Eyecatch Adaptive Typography
 
@@ -740,4 +763,16 @@ PMF前にやらないこと:
 - 2行と3行は共通視覚中心**Y=370**へ実測blockを配置する。旧2行Y=234 / 3行Y=226はsafe topとしてのみ残す。
 - Run180 semantic 2〜3行、Run182 highlight phrase、Run183 emphasis、Run296複合語保護、approved background/right illustrationを維持する。
 - Gemini/model request追加0、Evidence/Decision Gate変更0、note公開変更0、DailyはPAUSEDのまま。
-- 詳細は `docs/reference/RUN306_EYECATCH_ADAPTIVE_TYPOGRAPHY.md` を正本とする。
+- 詳細は `docs/reference/RUN306_EYECATCH_ADAPTIVE_TYPOGRAPHY.md`。
+
+### Run307 — Generic Use-Decision Product
+
+- 商品のPrimaryを「顧客提案」から**AI・技術が使えるかの判断**へ広げる。
+- 中心メッセージは **「このAI、使える！」を、根拠付きで判断できる。**
+- 自分の開発、業務利用、必要に応じた提案を同じDecision Intelligenceで扱う。
+- 顧客提案は利用場面の一つであり、販売copyの主語にしない。
+- current member surfaceは `いま、使える？` / `使える場面` / `使う前に確認すること` / `試す・導入する次の一手`。
+- note記事CTAはDecision Brief / 判断DB / 判断メモの価値を案内し、リンク文言は `月額1,980円の内容を見る`。
+- 固定LPの現行copy正本は `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md`。
+- Run268 Four-Source architecture、Evidence、Decision、Source score、Deep Tech、Notion schemaを変更しない。
+- ZERO Gemini/model calls。Scheduled DailyはPAUSED。Public note releaseはhuman-only。
