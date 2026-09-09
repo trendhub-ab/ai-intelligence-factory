@@ -3,7 +3,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "run321b_member_onboarding_edit_route_diagnostic.py").read_text(encoding="utf-8")
-WORKFLOW = (ROOT / ".github/workflows/note-member-onboarding-edit-route-diagnostic.yml").read_text(encoding="utf-8") if (ROOT / ".github/workflows/note-member-onboarding-edit-route-diagnostic.yml").exists() else ""
+WORKFLOW = (ROOT / ".github/workflows/note-member-onboarding-official-edit-route-probe.yml").read_text(encoding="utf-8")
 CHATOPS = (ROOT / ".github/workflows/chatops-note.yml").read_text(encoding="utf-8")
 
 
@@ -36,13 +36,14 @@ class Run321bEditRouteDiagnosticTests(unittest.TestCase):
         ):
             self.assertIn(marker, SCRIPT)
 
-    def test_workflow_and_chatops_are_hard_bound(self):
-        token = "DIAG_MEMBER_ONBOARDING_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B"
+    def test_reuses_existing_hard_bound_workflow_and_chatops(self):
+        token = "PROBE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B"
+        self.assertIn("CONFIRM_TOKEN = run321.CONFIRM_TOKEN", SCRIPT)
         self.assertIn(token, WORKFLOW)
         self.assertIn("run321b_member_onboarding_edit_route_diagnostic.py", WORKFLOW)
         self.assertIn("tests.test_run321b_member_onboarding_edit_route_diagnostic", WORKFLOW)
-        self.assertIn("/aiif note onboarding edit-route-diagnostic", CHATOPS)
-        self.assertIn("note-member-onboarding-edit-route-diagnostic.yml", CHATOPS)
+        self.assertIn("/aiif note onboarding edit-route-probe", CHATOPS)
+        self.assertIn("note-member-onboarding-official-edit-route-probe.yml", CHATOPS)
         self.assertIn(token, CHATOPS)
         upper = (WORKFLOW + CHATOPS).upper()
         self.assertNotIn("GEMINI_API", upper)
