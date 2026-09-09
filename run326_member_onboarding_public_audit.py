@@ -5,6 +5,11 @@ Run325 successfully finalized the exact latest draft for n284e428c80f4 while pre
 AI Decision Intelligence membership access and leaving the trial-read line unset. Run326
 verifies the customer-facing surface from a fresh browser with NO cookies/storage state.
 
+Run326b correction: note.com issues `_note_session_v5` even to a fresh logged-out visitor.
+That server-created anonymous session cookie is not evidence that authentication was seeded.
+The authentication invariant is therefore: the browser starts with zero cookies/storage,
+no state is ever injected, and no explicit auth/token cookie is acquired.
+
 Safety contract:
 - exact public URL only;
 - fresh no-cookie/no-storage browser context;
@@ -26,6 +31,7 @@ import run317_member_onboarding_server_save as run317
 CONFIRM_TOKEN = "AUDIT_PUBLIC_MEMBER_ONBOARDING_N284E428C80F4_SHAAAB9E57B_LOGGED_OUT"
 RESULT_ENV = "NOTE_MEMBER_ONBOARDING_PUBLIC_AUDIT_RESULT_FILE"
 SCREENSHOT_ENV = "NOTE_MEMBER_ONBOARDING_PUBLIC_AUDIT_SCREENSHOT_FILE"
+ANONYMOUS_NOTE_SESSION_COOKIE = "_note_session_v5"
 
 # Markers from well below the public introduction. With no trial-read line configured,
 # these must not be exposed to a logged-out visitor.
@@ -88,8 +94,9 @@ def audit() -> dict[str, Any]:
                 viewport={"width": 1440, "height": 1200},
             )
             try:
-                # Critical external-view invariant: no authentication or browser state is seeded.
-                if context.cookies():
+                # Critical external-view invariant: no authentication/browser state is seeded.
+                cookies_before = context.cookies()
+                if cookies_before:
                     raise base.NoteDraftError("Run326 fresh context unexpectedly contains cookies before navigation")
 
                 page = context.new_page()
@@ -137,18 +144,29 @@ def audit() -> dict[str, Any]:
                         "Run326 could not prove a member/subscriber gate on the logged-out public surface"
                     )
 
+                # note.com is allowed to create an anonymous server session after first navigation.
+                # Because this context started with zero cookies and no storage was injected, that
+                # cookie cannot represent pre-existing user authentication. Fail only on explicit
+                # auth/token-like cookies; record the anonymous session separately for auditability.
                 cookies_after = context.cookies()
-                note_auth_cookie_names = sorted(
+                note_cookie_names_after = sorted(
                     {
                         str(item.get("name") or "")
                         for item in cookies_after
                         if str(item.get("domain") or "").endswith("note.com")
-                        and any(token in str(item.get("name") or "").lower() for token in ("session", "auth", "token"))
                     }
                 )
-                if note_auth_cookie_names:
+                explicit_auth_cookie_names = sorted(
+                    {
+                        name
+                        for name in note_cookie_names_after
+                        if name != ANONYMOUS_NOTE_SESSION_COOKIE
+                        and any(token in name.lower() for token in ("auth", "token", "login", "user_id"))
+                    }
+                )
+                if explicit_auth_cookie_names:
                     raise base.NoteDraftError(
-                        f"Run326 logged-out context unexpectedly acquired auth-like note cookies: {note_auth_cookie_names}"
+                        f"Run326 fresh public context unexpectedly acquired explicit auth cookies: {explicit_auth_cookie_names}"
                     )
 
                 screenshot_file = os.environ.get(SCREENSHOT_ENV, "").strip()
@@ -172,8 +190,11 @@ def audit() -> dict[str, Any]:
                     "protected_body_markers_exposed": protected_hits,
                     "gate_markers_seen": gate_hits,
                     "members_only_gate_verified": True,
+                    "cookies_before_navigation": [],
+                    "note_cookie_names_after": note_cookie_names_after,
+                    "anonymous_note_session_seen": ANONYMOUS_NOTE_SESSION_COOKIE in note_cookie_names_after,
+                    "explicit_auth_cookie_names_after": explicit_auth_cookie_names,
                     "fresh_no_cookie_context": True,
-                    "auth_like_note_cookies_after": note_auth_cookie_names,
                     "body_visible_chars": len(body_text),
                     "body_excerpt": body_text[:8000],
                     "screenshot_written": bool(screenshot_file),
