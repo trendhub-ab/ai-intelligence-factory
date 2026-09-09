@@ -17,12 +17,21 @@ class Run326MemberOnboardingPublicAuditTests(unittest.TestCase):
 
     def test_audit_is_fresh_logged_out_and_never_seeds_state(self):
         self.assertIn("browser.new_context", SCRIPT)
-        self.assertIn("if context.cookies():", SCRIPT)
+        self.assertIn("cookies_before = context.cookies()", SCRIPT)
+        self.assertIn("if cookies_before:", SCRIPT)
+        self.assertIn('"cookies_before_navigation": []', SCRIPT)
         self.assertIn('"fresh_no_cookie_context": True', SCRIPT)
         self.assertNotIn("add_cookies", SCRIPT)
         self.assertNotIn("storage_state", SCRIPT)
         self.assertNotIn("_seed_note_state", SCRIPT)
         self.assertNotIn("_launch_persistent_context", SCRIPT)
+
+    def test_note_anonymous_session_is_not_mistaken_for_seeded_auth(self):
+        self.assertIn('ANONYMOUS_NOTE_SESSION_COOKIE = "_note_session_v5"', SCRIPT)
+        self.assertIn("name != ANONYMOUS_NOTE_SESSION_COOKIE", SCRIPT)
+        self.assertIn("explicit_auth_cookie_names", SCRIPT)
+        self.assertIn('"anonymous_note_session_seen"', SCRIPT)
+        self.assertNotIn("unexpectedly acquired auth-like note cookies", SCRIPT)
 
     def test_no_click_or_mutation_paths_exist(self):
         self.assertNotIn(".click()", SCRIPT)
