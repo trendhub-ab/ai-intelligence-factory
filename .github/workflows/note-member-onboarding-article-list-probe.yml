@@ -7,6 +7,8 @@ on:
         description: 'Type PROBE_MEMBER_ONBOARDING_ARTICLE_LIST_N284E428C80F4_SHAAAB9E57B'
         required: true
         type: string
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -17,6 +19,15 @@ concurrency:
 
 jobs:
   preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.run_attempt == 1 &&
+       github.event.issue.number == 71 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.user.login == 'trendhub-ab' &&
+       github.actor == 'trendhub-ab' &&
+       github.event.comment.body == '/aiif note onboarding list-probe')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -32,10 +43,16 @@ jobs:
       - name: Validate exact probe authorization
         id: auth
         env:
+          EVENT_NAME: ${{ github.event_name }}
           CONFIRM: ${{ inputs.confirm }}
+          COMMENT: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          [ "$CONFIRM" = 'PROBE_MEMBER_ONBOARDING_ARTICLE_LIST_N284E428C80F4_SHAAAB9E57B' ] || exit 1
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            [ "$CONFIRM" = 'PROBE_MEMBER_ONBOARDING_ARTICLE_LIST_N284E428C80F4_SHAAAB9E57B' ] || exit 1
+          else
+            [ "$COMMENT" = '/aiif note onboarding list-probe' ] || exit 1
+          fi
           echo 'authorized=true' >> "$GITHUB_OUTPUT"
 
   start-cloud-vm:
@@ -83,7 +100,7 @@ jobs:
         run: python -m unittest tests.test_run319_member_onboarding_article_list_probe -v
       - name: Probe exact article-list menu without mutation
         env:
-          NOTE_MEMBER_ONBOARDING_ARTICLE_LIST_PROBE_CONFIRM: ${{ inputs.confirm }}
+          NOTE_MEMBER_ONBOARDING_ARTICLE_LIST_PROBE_CONFIRM: PROBE_MEMBER_ONBOARDING_ARTICLE_LIST_N284E428C80F4_SHAAAB9E57B
           NOTE_MEMBER_ONBOARDING_ARTICLE_LIST_PROBE_RESULT_FILE: ${{ runner.temp }}/run319-member-onboarding-article-list-probe.json
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
