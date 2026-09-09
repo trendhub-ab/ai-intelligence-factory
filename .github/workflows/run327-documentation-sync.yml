@@ -7,9 +7,12 @@ on:
         description: 'Exact Run327 documentation-sync token'
         required: true
         type: string
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
+  issues: read
 
 concurrency:
   group: run327-documentation-sync
@@ -17,6 +20,15 @@ concurrency:
 
 jobs:
   sync-to-review-branch:
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'issue_comment' &&
+       github.run_attempt == 1 &&
+       github.event.issue.number == 71 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.user.login == 'trendhub-ab' &&
+       github.actor == 'trendhub-ab' &&
+       github.event.comment.body == '/aiif docs sync-run327')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,10 +40,16 @@ jobs:
           python-version: '3.11'
       - name: Validate exact one-time authorization
         env:
+          EVENT_NAME: ${{ github.event_name }}
           CONFIRM: ${{ inputs.confirm }}
+          COMMENT: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          [ "$CONFIRM" = 'SYNC_RUN327_NOTE_ONBOARDING_CANONICAL_DOCS' ] || exit 1
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            [ "$CONFIRM" = 'SYNC_RUN327_NOTE_ONBOARDING_CANONICAL_DOCS' ] || exit 1
+          else
+            [ "$COMMENT" = '/aiif docs sync-run327' ] || exit 1
+          fi
       - name: Falsify deterministic sync before writing
         run: |
           python -m unittest tests.test_run327_documentation_sync -v
