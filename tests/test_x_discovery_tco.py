@@ -55,15 +55,25 @@ class TcoResolutionTests(unittest.TestCase):
         self.assertEqual(again, resolved)
         self.assertEqual(resolver.calls, 1)
         self.assertEqual(resolver.successes, 1)
+        self.assertEqual(resolver.internal_resolutions, 0)
         self.assertEqual(resolver.failures, 0)
         self.assertTrue(FakeConnection.requested)
         self.assertTrue(all(host == "t.co" for host, _, _ in FakeConnection.requested))
 
-    def test_rejects_redirect_back_to_x(self):
+    def test_classifies_redirect_back_to_x_as_internal_not_failure(self):
         FakeConnection.locations["/internal"] = "https://x.com/i/article/123"
         resolver = TcoRedirectResolver()
         with patch("x_discovery.url_resolution.http.client.HTTPSConnection", FakeConnection):
             self.assertIsNone(resolver.resolve("https://t.co/internal"))
+        self.assertEqual(resolver.successes, 0)
+        self.assertEqual(resolver.internal_resolutions, 1)
+        self.assertEqual(resolver.failures, 0)
+
+    def test_counts_missing_redirect_as_failure(self):
+        resolver = TcoRedirectResolver()
+        with patch("x_discovery.url_resolution.http.client.HTTPSConnection", FakeConnection):
+            self.assertIsNone(resolver.resolve("https://t.co/missing"))
+        self.assertEqual(resolver.internal_resolutions, 0)
         self.assertEqual(resolver.failures, 1)
 
     def test_enrichment_turns_tco_into_external_candidate_without_fetching_destination(self):
