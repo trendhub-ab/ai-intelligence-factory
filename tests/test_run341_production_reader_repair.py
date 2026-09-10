@@ -27,17 +27,18 @@ class Run341ProductionReaderRepairTests(unittest.TestCase):
             "message": f"reader_value_review:{label}",
         }]
 
-    def test_new_reader_only_failure_gets_exactly_one_existing_retry(self):
+    def test_reader_only_fresh_articles_are_authorized_without_process_global_spend(self):
         pipeline = self._pipeline()
         run341.install(pipeline)
-        first = pipeline.should_attempt_dynamic_retry(
+        first_article = pipeline.should_attempt_dynamic_retry(
             self._reader_rows("non_engineer_access_failure"), self._safe_evidence(), "new"
         )
-        second = pipeline.should_attempt_dynamic_retry(
-            self._reader_rows("non_engineer_access_failure"), self._safe_evidence(), "new"
+        second_article = pipeline.should_attempt_dynamic_retry(
+            self._reader_rows("multi_axis_reader_weakness"), self._safe_evidence(), "new"
         )
-        self.assertEqual(first, (True, "run341_production_reader_repair"))
-        self.assertEqual(second, (False, "reader_value_review_no_retry"))
+        self.assertEqual(first_article, (True, "run341_production_reader_repair"))
+        self.assertEqual(second_article, (True, "run341_production_reader_repair"))
+        self.assertFalse(hasattr(pipeline, "_run341_production_reader_repair_spent"))
 
     def test_reader_repair_requires_sufficient_decision_safe_evidence(self):
         for evidence in (
@@ -110,6 +111,18 @@ class Run341ProductionReaderRepairTests(unittest.TestCase):
         self.assertIn("Decision/Score/Action", instruction)
         self.assertIn("新しい数値", instruction)
         self.assertIn("Readyにしない", instruction)
+
+    def test_mixed_hard_and_reader_retry_receives_reader_contract_without_changing_authority(self):
+        pipeline = self._pipeline(original_retry=(True, "hard_local_repair"))
+        run341.install(pipeline)
+        instruction, sections = pipeline.build_dynamic_retry_instruction([
+            {"severity": "HARD", "message": "FACT_NUMERICAL_MISMATCH"},
+            {"severity": "REVIEW", "message": "reader_value_review:multi_axis_reader_weakness"},
+        ])
+        self.assertEqual(sections, ["ARTICLE"])
+        self.assertIn("BASE RETRY", instruction)
+        self.assertIn("Run341 Reader Repair", instruction)
+        self.assertIn("Factを固定", instruction)
 
     def test_non_reader_retry_does_not_receive_reader_repair_contract(self):
         pipeline = self._pipeline()
