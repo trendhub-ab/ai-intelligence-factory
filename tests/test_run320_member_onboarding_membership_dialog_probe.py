@@ -35,8 +35,10 @@ class Run320MembershipDialogProbeTests(unittest.TestCase):
     def test_run320_is_preserved_as_history_but_live_workflow_has_advanced(self):
         self.assertNotIn("run320_member_onboarding_membership_dialog_probe.py", WORKFLOW)
         self.assertNotIn("/aiif note onboarding membership-probe", WORKFLOW)
-        self.assertIn("run332_membership_description_edit_route_probe.py", WORKFLOW)
-        self.assertIn("/aiif note membership description-probe", WORKFLOW)
+        self.assertNotIn("run332_membership_description_edit_route_probe.py", WORKFLOW)
+        self.assertNotIn("/aiif note membership description-probe", WORKFLOW)
+        self.assertIn("run333_membership_description_exact_update.py", WORKFLOW)
+        self.assertIn("/aiif note membership description-update", WORKFLOW)
         upper = WORKFLOW.upper()
         self.assertNotIn("GEMINI_API", upper)
         self.assertNotIn("GOOGLE_API_KEY", upper)
