@@ -3,7 +3,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "run329_note_profile_direct_route_probe.py").read_text(encoding="utf-8")
-WORKFLOW = (ROOT / ".github/workflows/note-profile-direct-route-probe.yml").read_text(encoding="utf-8")
+WORKFLOW = (ROOT / ".github/workflows/note-profile-settings-probe.yml").read_text(encoding="utf-8")
 
 
 class Run329NoteProfileDirectRouteProbeTests(unittest.TestCase):
@@ -45,9 +45,9 @@ class Run329NoteProfileDirectRouteProbeTests(unittest.TestCase):
         self.assertIn("surface_t3", SCRIPT)
         self.assertIn("page.screenshot", SCRIPT)
 
-    def test_workflow_is_exact_manual_and_zero_model(self):
+    def test_existing_workflow_is_reused_exactly_and_zero_model(self):
         token = "PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY"
-        command = "/aiif note profile direct-probe"
+        command = "/aiif note profile probe"
         self.assertIn(token, SCRIPT)
         self.assertIn(token, WORKFLOW)
         self.assertIn(command, WORKFLOW)
@@ -55,6 +55,8 @@ class Run329NoteProfileDirectRouteProbeTests(unittest.TestCase):
         self.assertIn("issue_comment:", WORKFLOW)
         self.assertIn("github.event.issue.number == 71", WORKFLOW)
         self.assertIn("run329_note_profile_direct_route_probe.py", WORKFLOW)
+        self.assertIn("tests.test_run328_note_profile_settings_probe", WORKFLOW)
+        self.assertIn("tests.test_run329_note_profile_direct_route_probe", WORKFLOW)
         self.assertNotIn("schedule:", WORKFLOW)
         self.assertNotIn("push:", WORKFLOW)
         upper = WORKFLOW.upper()
