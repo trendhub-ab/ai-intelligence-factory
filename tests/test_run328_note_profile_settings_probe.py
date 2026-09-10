@@ -45,17 +45,21 @@ class Run328NoteProfileSettingsProbeTests(unittest.TestCase):
         ):
             self.assertIn(marker, SCRIPT)
 
-    def test_workflow_is_exact_manual_read_only(self):
-        token = "PROBE_NOTE_PROFILE_SETTINGS_TRENDHUB_BIZ_READONLY"
+    def test_run328_history_is_preserved_but_live_workflow_is_run329(self):
+        old_token = "PROBE_NOTE_PROFILE_SETTINGS_TRENDHUB_BIZ_READONLY"
+        new_token = "PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY"
         command = "/aiif note profile probe"
-        self.assertIn(token, SCRIPT)
-        self.assertIn(token, WORKFLOW)
+        self.assertIn(old_token, SCRIPT)
+        self.assertNotIn(old_token, WORKFLOW)
+        self.assertIn(new_token, WORKFLOW)
         self.assertIn(command, WORKFLOW)
         self.assertIn("workflow_dispatch:", WORKFLOW)
         self.assertIn("issue_comment:", WORKFLOW)
         self.assertIn("github.event.issue.number == 71", WORKFLOW)
-        self.assertIn("run328_note_profile_settings_probe.py", WORKFLOW)
         self.assertIn("tests.test_run328_note_profile_settings_probe", WORKFLOW)
+        self.assertIn("tests.test_run329_note_profile_direct_route_probe", WORKFLOW)
+        self.assertIn("run329_note_profile_direct_route_probe.py", WORKFLOW)
+        self.assertNotIn("xvfb-run -a python run328_note_profile_settings_probe.py", WORKFLOW)
         self.assertNotIn("schedule:", WORKFLOW)
         self.assertNotIn("push:", WORKFLOW)
         upper = WORKFLOW.upper()
