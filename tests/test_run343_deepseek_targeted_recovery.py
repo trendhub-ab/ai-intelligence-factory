@@ -15,7 +15,7 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
         key = "title" if title else "rich_text"
         return {key: [{"plain_text": value}]}
 
-    def _payload(self):
+    def _payload(self, content_status="Quality Failed"):
         return {
             "id": run343.TARGET_PAGE_ID,
             "properties": {
@@ -23,7 +23,7 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
                 "元情報URL": {"url": run343.TARGET_URL},
                 "一次情報URL": {"url": run343.TARGET_URL},
                 "情報源": {"select": {"name": run343.TARGET_SOURCE}},
-                "コンテンツ状態": {"select": {"name": "Quality Failed"}},
+                "コンテンツ状態": {"select": {"name": content_status}},
                 "記事状態": {"select": {"name": "Not Planned"}},
                 "選別スコア": {"number": 85},
                 "判断スコア": {"number": 85},
@@ -35,7 +35,7 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
             },
         }
 
-    def test_reconstructs_only_exact_page_identity(self):
+    def test_reconstructs_quality_failed_exact_page_identity(self):
         item = run343.candidate_from_page_payload(self._pipeline(), self._payload())
         self.assertEqual(item["notion_page_id"], run343.TARGET_PAGE_ID)
         self.assertEqual(item["repo"]["nameWithOwner"], run343.TARGET_NAME)
@@ -43,6 +43,11 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
         self.assertEqual(item["repo"]["source"], run343.TARGET_SOURCE)
         self.assertEqual(item["screening_score"], 85)
         self.assertEqual(item["repo"]["engagement"], 399)
+
+    def test_reconstructs_pending_retry_after_provider_unavailable(self):
+        item = run343.candidate_from_page_payload(self._pipeline(), self._payload("Pending Retry"))
+        self.assertEqual(item["revalidation_content_status"], "Pending Retry")
+        self.assertEqual(item["notion_page_id"], run343.TARGET_PAGE_ID)
 
     def test_optional_primary_url_can_be_unexposed_when_canonical_url_is_exact(self):
         payload = self._payload()
@@ -73,14 +78,15 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "source"):
             run343.candidate_from_page_payload(self._pipeline(), payload)
 
-    def test_refuses_when_no_longer_quality_failed(self):
-        payload = self._payload()
-        payload["properties"]["コンテンツ状態"] = {"select": {"name": "Deep Dive"}}
-        with self.assertRaisesRegex(RuntimeError, "content_status"):
-            run343.candidate_from_page_payload(self._pipeline(), payload)
+    def test_refuses_any_other_content_status(self):
+        for status in ("Deep Dive", "Ready", "Draft", "Stocked"):
+            with self.subTest(status=status):
+                payload = self._payload(status)
+                with self.assertRaisesRegex(RuntimeError, "content_status"):
+                    run343.candidate_from_page_payload(self._pipeline(), payload)
 
     def test_refuses_already_ready_target(self):
-        payload = self._payload()
+        payload = self._payload("Pending Retry")
         payload["properties"]["記事状態"] = {"select": {"name": "Ready"}}
         with self.assertRaisesRegex(RuntimeError, "already_ready"):
             run343.candidate_from_page_payload(self._pipeline(), payload)
