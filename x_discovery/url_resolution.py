@@ -243,10 +243,24 @@ class AllowlistedShortenerResolver:
 
 
 class TcoRedirectResolver(AllowlistedShortenerResolver):
-    """Resolve only t.co first hops; retained as a separate strict security boundary."""
+    """Start only from t.co, but safely continue through owned shorteners if chained."""
 
     def __init__(self, *, timeout_seconds: int = 8):
-        super().__init__(allowed_hosts=tuple(_TCO_HOSTS), timeout_seconds=timeout_seconds, max_hops=1)
+        super().__init__(
+            allowed_hosts=tuple(_SHORTENER_HOSTS),
+            timeout_seconds=timeout_seconds,
+            max_hops=3,
+        )
+
+    def handles(self, url: str) -> bool:
+        canonical = canonicalize_url(url)
+        return bool(canonical and _host(canonical) in _TCO_HOSTS)
+
+    def resolve(self, url: str) -> Optional[str]:
+        canonical = canonicalize_url(url)
+        if not canonical or _host(canonical) not in _TCO_HOSTS:
+            return None
+        return super().resolve(canonical)
 
 
 class OfficialShortenerResolver(AllowlistedShortenerResolver):
