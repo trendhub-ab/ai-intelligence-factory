@@ -167,27 +167,19 @@ class ApifyProvider(XDiscoveryProvider):
             message += f"; response={body}"
         return RuntimeError(message)
 
-    def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
-        if not 1 <= int(max_records) <= 100:
-            raise ValueError("live Apify max_records must be between 1 and 100")
-
-        output_format = str(self.actor_input.get("outputFormat") or "posts").lower()
-        paid_item_cap = int(max_records)
-        if output_format == "profile" and self.requested_profile_count:
-            paid_item_cap = min(int(max_records), self.requested_profile_count)
-
+    def _request(self, actor_input: Mapping[str, Any], *, paid_item_cap: int, charge_cap_usd: float) -> List[Dict[str, Any]]:
         actor = quote(self.actor_id, safe="~")
         query = urlencode(
             {
                 "timeout": self.timeout_seconds,
-                "maxItems": paid_item_cap,
-                "maxTotalChargeUsd": self.max_total_charge_usd,
+                "maxItems": int(paid_item_cap),
+                "maxTotalChargeUsd": float(charge_cap_usd),
                 "clean": "true",
                 "format": "json",
             }
         )
         endpoint = f"https://api.apify.com/v2/actors/{actor}/run-sync-get-dataset-items?{query}"
-        body = json.dumps(self.actor_input, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(dict(actor_input), ensure_ascii=False).encode("utf-8")
         request = Request(
             endpoint,
             data=body,
@@ -195,7 +187,7 @@ class ApifyProvider(XDiscoveryProvider):
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
-                "User-Agent": "ai-intelligence-factory-x-discovery/0.5",
+                "User-Agent": "ai-intelligence-factory-x-discovery/0.6",
             },
             method="POST",
         )
@@ -210,8 +202,63 @@ class ApifyProvider(XDiscoveryProvider):
             payload = payload.get("items", payload.get("data", []))
         if not isinstance(payload, list):
             raise ValueError("Apify Actor response must be a JSON array or contain items/data")
+        return [dict(item) for item in payload if isinstance(item, Mapping)]
 
-        self.raw_items = [dict(item) for item in payload if isinstance(item, Mapping)]
+    def _fetch_isolated_profiles(self, base_input: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        handles = base_input.get("handles")
+        if not isinstance(handles, list) or not handles:
+            raise ValueError("isolateProfiles requires a non-empty handles array")
+        if len(handles) > 100:
+            raise ValueError("isolateProfiles supports at most 100 handles per PoC run")
+
+        per_call_charge_cap = self.max_total_charge_usd / len(handles)
+        if per_call_charge_cap <= 0:
+            raise ValueError("invalid per-profile charge cap")
+
+        rows: List[Dict[str, Any]] = []
+        for raw_handle in handles:
+            handle = str(raw_handle).strip().lstrip("@")
+            if not handle:
+                self.provider_errors.append({"handle": "unknown", "error": "bad_input"})
+                continue
+            one_input = dict(base_input)
+            one_input["handles"] = [handle]
+            try:
+                rows.extend(self._request(one_input, paid_item_cap=1, charge_cap_usd=per_call_charge_cap))
+            except RuntimeError as exc:
+                # One malformed/unreadable profile must never poison the rest of the watchlist.
+                self.provider_errors.append(
+                    {
+                        "handle": handle,
+                        "error": "actor_run_failed",
+                        "description": str(exc)[:2000],
+                    }
+                )
+        return rows
+
+    def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
+        if not 1 <= int(max_records) <= 100:
+            raise ValueError("live Apify max_records must be between 1 and 100")
+
+        actor_input = dict(self.actor_input)
+        isolate_profiles = bool(actor_input.pop("isolateProfiles", False))
+        output_format = str(actor_input.get("outputFormat") or "posts").lower()
+
+        if isolate_profiles:
+            if output_format != "profile":
+                raise ValueError("isolateProfiles requires outputFormat=profile")
+            payload_rows = self._fetch_isolated_profiles(actor_input)
+        else:
+            paid_item_cap = int(max_records)
+            if output_format == "profile" and self.requested_profile_count:
+                paid_item_cap = min(int(max_records), self.requested_profile_count)
+            payload_rows = self._request(
+                actor_input,
+                paid_item_cap=paid_item_cap,
+                charge_cap_usd=self.max_total_charge_usd,
+            )
+
+        self.raw_items = payload_rows
         if output_format == "profile":
             return self._flatten_profile_rows(self.raw_items, max_records=int(max_records))
 
