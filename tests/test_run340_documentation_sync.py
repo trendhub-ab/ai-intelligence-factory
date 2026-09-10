@@ -38,7 +38,7 @@ class Run340DocumentationSyncTests(unittest.TestCase):
             self.assertIn("Run339b workflow `34437339132`", spec)
             self.assertIn("Run339b artifact `10136678201`", spec)
             self.assertIn("RUN339B_NOTE_PUBLIC_PURCHASE_FUNNEL_BASELINE.md", run335_text)
-            self.assertIn("public purchase-funnel rendering", run335_text)
+            self.assertIn("Public purchase-funnel rendering", run335_text)
             self.assertIn("workflow run: `34437339132`", ref)
             self.assertIn("audit job: `102745213582`", ref)
             self.assertIn("artifact: `10136678201`", ref)
