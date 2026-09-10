@@ -40,7 +40,14 @@ jobs:
           }
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write('APIFY_INPUT_JSON=' + json.dumps(payload, separators=(',', ':')) + '\n')
-          print(json.dumps({'handles': len(handles), 'maxPosts': 5, 'timeWindow': None, 'isolated': True, 'resolve_tco': True}))
+          print(json.dumps({
+              'handles': len(handles),
+              'maxPosts': 5,
+              'timeWindow': None,
+              'isolated': True,
+              'resolve_tco': True,
+              'resolve_official_shorteners': True,
+          }))
           PY
       - name: Validate bootstrap guardrails
         run: |
@@ -73,7 +80,8 @@ jobs:
             --provider apify \
             --output-dir /tmp/x-discovery-bootstrap \
             --max-records "$MAX_RECORDS" \
-            --resolve-tco
+            --resolve-tco \
+            --resolve-official-shorteners
       - name: Verify isolation and bootstrap artifact
         run: |
           python - <<'PY'
@@ -90,6 +98,7 @@ jobs:
           assert manifest['x_official_api_calls'] == 0
           assert manifest['external_provider_calls'] == 20
           assert manifest['tco_resolution_enabled'] is True
+          assert manifest['official_shortener_resolution_enabled'] is True
           assert (root / 'provider_diagnostics.json').exists()
           assert (root / 'provider_raw_items.json').exists()
           assert (root / 'discovery_candidates.json').exists()
