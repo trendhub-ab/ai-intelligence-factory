@@ -32,11 +32,11 @@ class Run320MembershipDialogProbeTests(unittest.TestCase):
         self.assertIn('"zero_gemini_calls": True', SCRIPT)
         self.assertIn('"notion_writes": 0', SCRIPT)
 
-    def test_workflow_is_exact_and_zero_model(self):
-        self.assertIn("PROBE_MEMBER_ONBOARDING_MEMBERSHIP_DIALOG_N284E428C80F4_SHAAAB9E57B", WORKFLOW)
-        self.assertIn("/aiif note onboarding membership-probe", WORKFLOW)
-        self.assertIn("tests.test_run320_member_onboarding_membership_dialog_probe", WORKFLOW)
-        self.assertIn("run320_member_onboarding_membership_dialog_probe.py", WORKFLOW)
+    def test_run320_is_preserved_as_history_but_live_workflow_has_advanced(self):
+        self.assertNotIn("run320_member_onboarding_membership_dialog_probe.py", WORKFLOW)
+        self.assertNotIn("/aiif note onboarding membership-probe", WORKFLOW)
+        self.assertIn("run332_membership_description_edit_route_probe.py", WORKFLOW)
+        self.assertIn("/aiif note membership description-probe", WORKFLOW)
         upper = WORKFLOW.upper()
         self.assertNotIn("GEMINI_API", upper)
         self.assertNotIn("GOOGLE_API_KEY", upper)

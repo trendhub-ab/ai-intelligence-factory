@@ -1,10 +1,10 @@
-name: Probe exact onboarding membership dialog
+name: Probe membership description edit route
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type PROBE_MEMBER_ONBOARDING_MEMBERSHIP_DIALOG_N284E428C80F4_SHAAAB9E57B'
+        description: 'Type PROBE_MEMBERSHIP_DESCRIPTION_EDIT_ROUTE_AI_DECISION_INTELLIGENCE_READONLY'
         required: true
         type: string
   issue_comment:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: note-member-onboarding-membership-dialog-probe-n284e428c80f4
+  group: note-membership-description-edit-route-probe
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
        github.event.issue.pull_request == null &&
        github.event.comment.user.login == 'trendhub-ab' &&
        github.actor == 'trendhub-ab' &&
-       github.event.comment.body == '/aiif note onboarding membership-probe')
+       github.event.comment.body == '/aiif note membership description-probe')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -38,9 +38,9 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify exact membership-dialog probe
-        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe -v
-      - name: Validate exact probe authorization
+      - name: Falsify Run320 history and exact Run332 zero-click probe
+        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe tests.test_run332_membership_description_edit_route_probe -v
+      - name: Validate exact read-only authorization
         id: auth
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -49,9 +49,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
-            [ "$CONFIRM" = 'PROBE_MEMBER_ONBOARDING_MEMBERSHIP_DIALOG_N284E428C80F4_SHAAAB9E57B' ] || exit 1
+            [ "$CONFIRM" = 'PROBE_MEMBERSHIP_DESCRIPTION_EDIT_ROUTE_AI_DECISION_INTELLIGENCE_READONLY' ] || exit 1
           else
-            [ "$COMMENT" = '/aiif note onboarding membership-probe' ] || exit 1
+            [ "$COMMENT" = '/aiif note membership description-probe' ] || exit 1
           fi
           echo 'authorized=true' >> "$GITHUB_OUTPUT"
 
@@ -77,6 +77,13 @@ jobs:
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
           if [ "$state" != "RUNNING" ]; then
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
@@ -96,40 +103,55 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run exact membership-dialog regression
-        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe -v
-      - name: Probe exact membership dialog without mutation
+      - name: Re-run exact Run332 regression
+        run: python -m unittest tests.test_run332_membership_description_edit_route_probe -v
+      - name: Probe membership description edit route with zero clicks
         env:
-          NOTE_MEMBER_ONBOARDING_MEMBERSHIP_DIALOG_PROBE_CONFIRM: PROBE_MEMBER_ONBOARDING_MEMBERSHIP_DIALOG_N284E428C80F4_SHAAAB9E57B
-          NOTE_MEMBER_ONBOARDING_MEMBERSHIP_DIALOG_PROBE_RESULT_FILE: ${{ runner.temp }}/run320-member-onboarding-membership-dialog-probe.json
+          NOTE_MEMBERSHIP_DESCRIPTION_ROUTE_PROBE_CONFIRM: PROBE_MEMBERSHIP_DESCRIPTION_EDIT_ROUTE_AI_DECISION_INTELLIGENCE_READONLY
+          NOTE_MEMBERSHIP_DESCRIPTION_ROUTE_PROBE_RESULT_FILE: ${{ runner.temp }}/run332-membership-description-route.json
+          NOTE_MEMBERSHIP_DESCRIPTION_ROUTE_PROBE_SCREENSHOT_FILE: ${{ runner.temp }}/run332-membership-description-route.png
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run320_member_onboarding_membership_dialog_probe.py
-      - name: Summarize membership-dialog probe
+        run: xvfb-run -a python run332_membership_description_edit_route_probe.py
+      - name: Enforce zero-click no-mutation contract
         env:
-          RESULT_FILE: ${{ runner.temp }}/run320-member-onboarding-membership-dialog-probe.json
+          RESULT_FILE: ${{ runner.temp }}/run332-membership-description-route.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          if r.get('status') != 'probe_complete_no_membership_mutation':
-              raise SystemExit('Run320 membership-dialog probe did not complete')
-          if r.get('membership_selection_clicked') is not False or r.get('final_confirm_clicked') is not False:
-              raise SystemExit('Run320 no-mutation contract failed')
+          if r.get('status') != 'membership_description_edit_route_probed_no_mutation':
+              raise SystemExit(f'Run332 unexpected status: {r.get("status")!r}')
+          if r.get('clicks_performed') != 0 or r.get('field_filled') is not False or r.get('save_clicked') is not False:
+              raise SystemExit('Run332 zero-click/zero-fill/zero-save contract failed')
+          if r.get('membership_mutation') is not False or r.get('public_mutation') is not False:
+              raise SystemExit('Run332 no-mutation contract failed')
+          if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
+              raise SystemExit('Run332 zero-model/zero-Notion contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run320 exact membership-dialog probe\n')
-              fh.write(f'- target: `{r.get("target_note_id")}`\n')
-              fh.write(f'- source title: `{r.get("source_title")}`\n')
-              fh.write(f'- source body sha: `{r.get("source_body_sha256")}`\n')
-              fh.write(f'- dialog count: `{len(r.get("surface_dialogs") or [])}`\n')
-              fh.write(f'- membership mentions: `{len(r.get("membership_mentions") or [])}`\n')
-              fh.write(f'- confirm candidates: `{len(r.get("confirm_candidates") or [])}`\n')
-              fh.write('- membership selection clicked: `false`\n')
-              fh.write('- final confirm clicked: `false`\n')
-              fh.write('- public mutation: `false`\n')
-              fh.write('- zero Gemini calls: `true`\n')
+              fh.write('### Run332 membership description edit-route probe\n')
+              fh.write(f'- membership: `{r.get("membership_name")}`\n')
+              fh.write(f'- audited edit href: `{r.get("audited_edit_href")}`\n')
+              fh.write(f'- destination: `{r.get("url_after_direct_navigation")}`\n')
+              fh.write(f'- description candidates: `{len(r.get("description_candidates") or [])}`\n')
+              fh.write(f'- save candidates: `{len(r.get("save_candidates") or [])}`\n')
+              fh.write('- clicks: `0`\n')
+              fh.write('- fills: `0`\n')
+              fh.write('- saves: `0`\n')
+              fh.write('- Gemini calls: `0`\n')
+              fh.write('- Notion writes: `0`\n')
           PY
+      - name: Preserve Run332 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run332-membership-description-edit-route-probe
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run332-membership-description-route.json
+            ${{ runner.temp }}/run332-membership-description-route.png
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
