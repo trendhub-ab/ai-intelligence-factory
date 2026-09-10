@@ -40,9 +40,21 @@ def run_ingestion(
     fresh, duplicate_count, all_seen = dedupe_signals(signals, seen)
     candidates = cluster_candidates(fresh)
 
+    provider_errors = list(getattr(provider, "provider_errors", []) or [])
+    skipped_pinned = int(getattr(provider, "skipped_pinned", 0) or 0)
+
     _write_json(output_dir / "raw_posts.json", raw)
     _write_json(output_dir / "normalized_signals.json", [item.to_dict() for item in fresh])
     _write_json(output_dir / "discovery_candidates.json", [item.to_dict() for item in candidates])
+    _write_json(
+        output_dir / "provider_diagnostics.json",
+        {
+            "provider": provider.name,
+            "provider_error_count": len(provider_errors),
+            "provider_errors": provider_errors,
+            "skipped_pinned_count": skipped_pinned,
+        },
+    )
 
     if seen_ids_path:
         save_seen_ids(Path(seen_ids_path), all_seen)
@@ -56,6 +68,8 @@ def run_ingestion(
         "duplicate_count": duplicate_count,
         "candidate_count": len(candidates),
         "external_url_count": sum(len(item.external_urls) for item in fresh),
+        "provider_error_count": len(provider_errors),
+        "skipped_pinned_count": skipped_pinned,
         "factory_write": False,
         "evidence_promoted": False,
         "evidence_status": "discovery_only",
