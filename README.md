@@ -7,7 +7,7 @@
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
 - **Current paid member UX baseline:** Run215 — final current-authority action dedup
 - **Current paid member commerce/onboarding baseline:** Run217 — zero-API monetization readiness / product fulfillment
-- **Current paid member note onboarding baseline:** Run326b — Run325 exact latest-draft finalization / Run326b logged-out members-only verification
+- **Current paid member note onboarding baseline:** Run335 — Run325 article finalization / Run326b logged-out entitlement verification / Run334 membership-copy save / Run335 public+saved-form verification
 - **Current paid member navigation/UI baseline:** Run218 — PC-first member UX reconciliation
 - **Current paid member human-language UI baseline:** Run219 — non-engineer member presentation language
 - **Current paid member DB destination baseline:** Run220 — canonical member DB cutover / fail-closed destination
@@ -221,7 +221,7 @@ Run221 protects the Notion permission boundary discovered during Run220 post-mer
 Full hosting contract: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`.
 
 
-### Run325 / Run326b — note member onboarding publication + customer-facing verification
+### Run325 / Run326b / Run335 — note member onboarding publication + customer-facing verification
 
 The current paid-member onboarding-note contract is split into a hard-bound maintenance path and a zero-click public audit.
 
@@ -234,7 +234,17 @@ The current paid-member onboarding-note contract is split into a hard-bound main
 - `/aiif note onboarding update` is the exact maintenance command; `/aiif note onboarding public-audit` is read-only.
 - Zero Gemini/model calls and zero Notion writes on both paths.
 
-Full contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
+**Run334 / Run335 — membership description convergence**
+
+- `AI Decision Intelligence` remains **¥1,980/月**; the existing Decision DB and Digest benefits are unchanged.
+- Current plan description is **114 characters** and no longer hard-codes the retired onboarding article title. The durable guidance is `参加後は、メンバー限定の「最初にお読みください」記事をご確認ください。`.
+- Run334 used the exact audited plan edit route and one exact `プランを変更する` click. Its immediate public check still observed the legacy copy during note propagation and failed closed; it was **not retried**.
+- Run335 then used **0 clicks / 0 fills / 0 saves** and verified `public_state=current`, `edit_state=current`, `public_edit_consistent=true`, plus exact plan-name / ¥1,980 fee / two existing-benefit invariants.
+- Therefore Run334's save succeeded; the Run334 failure was a short public-propagation false negative, not a failed save. When the current 114-character copy is present, **do not resave**.
+- Run335 used zero Gemini/model calls and zero Notion writes.
+
+Current customer-surface contract: `docs/reference/RUN335_NOTE_ONBOARDING_CUSTOMER_SURFACE_BASELINE.md`.  
+Historical article-publication contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
 
 ## note private-draft automation
 

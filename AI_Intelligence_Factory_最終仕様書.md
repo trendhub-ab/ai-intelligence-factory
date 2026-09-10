@@ -10,7 +10,7 @@ Production Source of Truth: **`main`**
 Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member Presentation Sync**  
 Paid Member UX Baseline: **Run215**  
 Paid Member Commerce/Onboarding Baseline: **Run217**  
-Paid Member note Onboarding Baseline: **Run326b — Run325 exact latest-draft finalization / Run326b logged-out members-only verification**  
+Paid Member note Onboarding Baseline: **Run335 — Run325 article finalization / Run326b logged-out entitlement verification / Run334 membership-copy save / Run335 public+saved-form verification**  
 Paid Member Navigation/UI Baseline: **Run218**  
 Paid Member Presentation Baseline: **Run219**  
 Paid Member Database Destination Baseline: **Run220**  
@@ -212,7 +212,7 @@ Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前�
 詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。2026-09-07の通常delta Production観測では、206件中 `scanned_body_pages=0` / `skipped_by_delta=206` / `sentinel_checked=1` / `delta_fallback_full=false`、本文stepは約**2.34秒**だった。Run270移行時の約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
 
 
-### 2.8 note Member Onboarding Publication / Public Verification — Run325 / Run326b
+### 2.8 note Member Onboarding Publication / Public Verification — Run325 / Run326b / Run335
 
 Paid-member onboarding note `n284e428c80f4` is governed by a three-layer proof: exact manuscript state, existing-article public finalization, and logged-out entitlement verification.
 
@@ -241,8 +241,19 @@ Exact finalized body SHA256:
 - clicks 0、content/settings/membership/public mutation 0;
 - Gemini/model call 0、Notion write 0.
 
-Production evidence: Run325 workflow `34388876334`; Run326b workflow `34416681984`.  
-Full contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
+**Run334 / Run335 membership-description contract**:
+
+- target plan is exact `AI Decision Intelligence` at `https://note.com/membership/settings/plans/358b94bcb3c6/edit`;
+- current description is 114 characters and ends with `参加後は、メンバー限定の「最初にお読みください」記事をご確認ください。`; the legacy `はじめに｜AI Decision Intelligenceの利用方法` reference is absent;
+- plan name, `1,980 円/月` fee marker, and the two existing benefits (`AI Decision Intelligence｜会員向け意思決定DB` / `AI Decision Intelligence｜会員向けDigest`) remain unchanged;
+- Run334 executed one exact `プランを変更する` click. Its bounded immediate public verification still saw legacy content and failed closed. No automatic or manual retry was issued;
+- Run335 subsequently verified `public_state=current`, `edit_state=current`, `public_edit_consistent=true` with zero clicks/fills/saves, proving Run334's save succeeded and the earlier failure was public propagation delay;
+- if both public and saved edit state are already current, operator action is **no resave / no mutation**;
+- Run335 Gemini/model calls 0, Notion writes 0.
+
+Production evidence: Run325 workflow `34388876334`; Run326b workflow `34416681984`; Run334 workflow `34433539671`; Run335 workflow `34433925788`; Run335 artifact `10135503385`.  
+Current customer-surface contract: `docs/reference/RUN335_NOTE_ONBOARDING_CUSTOMER_SURFACE_BASELINE.md`.  
+Historical article-publication contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
 
 ---
 
