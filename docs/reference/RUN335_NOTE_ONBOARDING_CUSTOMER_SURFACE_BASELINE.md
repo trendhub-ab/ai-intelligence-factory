@@ -71,3 +71,5 @@ Conclusion: **Run334 saved successfully.** Its post-save failure was a short pub
 ## 4. Relationship to prior baseline
 
 `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md` remains the historical/current contract for Run325 article finalization and Run326b logged-out members-only verification. This Run335 reference adds the now-verified membership-plan customer surface and supersedes Run326b **only as the top-level note onboarding customer-surface baseline**; it does not replace the underlying Run325/326b article contracts.
+
+Public purchase-funnel rendering and logged-out join-page verification are governed separately by `docs/reference/RUN339B_NOTE_PUBLIC_PURCHASE_FUNNEL_BASELINE.md`. Run339b does not replace Run335 saved-state authority and does not authorize a membership resave.

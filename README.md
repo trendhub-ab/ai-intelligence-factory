@@ -8,6 +8,7 @@
 - **Current paid member UX baseline:** Run215 — final current-authority action dedup
 - **Current paid member commerce/onboarding baseline:** Run217 — zero-API monetization readiness / product fulfillment
 - **Current paid member note onboarding baseline:** Run335 — Run325 article finalization / Run326b logged-out entitlement verification / Run334 membership-copy save / Run335 public+saved-form verification
+- **Current paid member note purchase funnel baseline:** Run339b — hydrated logged-out `/membership` → `/membership/join` purchase-surface verification
 - **Current paid member navigation/UI baseline:** Run218 — PC-first member UX reconciliation
 - **Current paid member human-language UI baseline:** Run219 — non-engineer member presentation language
 - **Current paid member DB destination baseline:** Run220 — canonical member DB cutover / fail-closed destination
@@ -221,7 +222,7 @@ Run221 protects the Notion permission boundary discovered during Run220 post-mer
 Full hosting contract: `docs/reference/RUN221_MEMBER_DB_HOST_ISOLATION.md`.
 
 
-### Run325 / Run326b / Run335 — note member onboarding publication + customer-facing verification
+### Run325 / Run326b / Run335 / Run339b — note member onboarding publication + customer-facing verification
 
 The current paid-member onboarding-note contract is split into a hard-bound maintenance path and a zero-click public audit.
 
@@ -243,7 +244,17 @@ The current paid-member onboarding-note contract is split into a hard-bound main
 - Therefore Run334's save succeeded; the Run334 failure was a short public-propagation false negative, not a failed save. When the current 114-character copy is present, **do not resave**.
 - Run335 used zero Gemini/model calls and zero Notion writes.
 
-Current customer-surface contract: `docs/reference/RUN335_NOTE_ONBOARDING_CUSTOMER_SURFACE_BASELINE.md`.  
+**Run339b — logged-out public purchase funnel**
+
+- Fresh browser starts with cookie `[]` and navigates to `https://note.com/trendhub_biz/membership`.
+- note may first expose a client-rendering shell. Production audit therefore waits for the actual plan/description/price/join/logged-out markers before judging the customer surface; the Run339b live observation hydrated in **3,969 ms**. This is an observation, not an SLA.
+- After hydration, the exact customer route is `https://note.com/trendhub_biz/membership/join` with HTTP 200.
+- The public purchase surface exposes `AI Decision Intelligence`, **¥1,980/月**, the current 114-character description, both existing paid benefits, the exact current onboarding article link, the current creator profile, and visible `参加手続きへ` actions; legacy onboarding-title/Product Hunt copy is absent.
+- A fresh logged-out visitor may receive `note_gql_auth_token`. It is treated as anonymous **only** when the browser began with zero cookies and both `ログイン` and `会員登録` are positively visible. Any other auth/token/login/user_id-like cookie remains fail-closed.
+- `/aiif note membership public-audit` is the current read-only purchase-funnel audit. It performs 0 clicks / 0 fills / 0 saves, zero Gemini/model calls, and zero Notion writes.
+
+Current membership-plan saved-state contract: `docs/reference/RUN335_NOTE_ONBOARDING_CUSTOMER_SURFACE_BASELINE.md`.  
+Current public purchase-funnel contract: `docs/reference/RUN339B_NOTE_PUBLIC_PURCHASE_FUNNEL_BASELINE.md`.  
 Historical article-publication contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
 
 ## note private-draft automation

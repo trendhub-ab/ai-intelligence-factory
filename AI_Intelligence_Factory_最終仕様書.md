@@ -11,6 +11,7 @@ Paid Member Sync Baseline: **Run211 — Subscriber Decision Brief Sync / Member 
 Paid Member UX Baseline: **Run215**  
 Paid Member Commerce/Onboarding Baseline: **Run217**  
 Paid Member note Onboarding Baseline: **Run335 — Run325 article finalization / Run326b logged-out entitlement verification / Run334 membership-copy save / Run335 public+saved-form verification**  
+Paid Member note Purchase Funnel Baseline: **Run339b — hydrated logged-out `/membership` → `/membership/join` verification**  
 Paid Member Navigation/UI Baseline: **Run218**  
 Paid Member Presentation Baseline: **Run219**  
 Paid Member Database Destination Baseline: **Run220**  
@@ -212,7 +213,7 @@ Run271.1では `Member Presentation Sync` がGitHub Actions read APIから**前�
 詳細・反証・Production timingは `docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md` を正本とする。2026-09-07の通常delta Production観測では、206件中 `scanned_body_pages=0` / `skipped_by_delta=206` / `sentinel_checked=1` / `delta_fallback_full=false`、本文stepは約**2.34秒**だった。Run270移行時の約13分23秒比で約**343.4倍高速・99.71%短縮**。単一no-change観測でありSLAではない。
 
 
-### 2.8 note Member Onboarding Publication / Public Verification — Run325 / Run326b / Run335
+### 2.8 note Member Onboarding Publication / Public Verification — Run325 / Run326b / Run335 / Run339b
 
 Paid-member onboarding note `n284e428c80f4` is governed by a three-layer proof: exact manuscript state, existing-article public finalization, and logged-out entitlement verification.
 
@@ -251,8 +252,19 @@ Exact finalized body SHA256:
 - if both public and saved edit state are already current, operator action is **no resave / no mutation**;
 - Run335 Gemini/model calls 0, Notion writes 0.
 
-Production evidence: Run325 workflow `34388876334`; Run326b workflow `34416681984`; Run334 workflow `34433539671`; Run335 workflow `34433925788`; Run335 artifact `10135503385`.  
-Current customer-surface contract: `docs/reference/RUN335_NOTE_ONBOARDING_CUSTOMER_SURFACE_BASELINE.md`.  
+**Run339b logged-out purchase-funnel contract**:
+
+- the audit begins in a fresh browser with navigation-time cookies `[]` and no seeded storage;
+- `https://note.com/trendhub_biz/membership` may initially be a client-rendering shell, so customer content is not judged at `DOMContentLoaded` alone;
+- bounded hydration waits for the exact membership name, current 114-character description, observed ¥1,980/month price form, a visible join action, and positive logged-out UI;
+- only after hydration does the route check require exact `https://note.com/trendhub_biz/membership/join`; Run339b Production observed HTTP 200 and hydration in **3,969 ms** (single observation, not an SLA);
+- the hydrated surface must expose both existing paid benefits, the exact current onboarding article link/title, and current creator profile while legacy onboarding-title/Product Hunt copy remains absent;
+- note-issued `note_gql_auth_token` is anonymous only when the context started with zero cookies and both `ログイン` / `会員登録` are visible. Any other auth/token/login/user_id-like cookie fails closed;
+- `/aiif note membership public-audit` is read-only: clicks/fills/saves 0, content/settings/membership/public mutation 0, Gemini/model calls 0, Notion writes 0.
+
+Production evidence: Run325 workflow `34388876334`; Run326b workflow `34416681984`; Run334 workflow `34433539671`; Run335 workflow `34433925788`; Run335 artifact `10135503385`; Run339b workflow `34437339132`; Run339b artifact `10136678201` (SHA256 `405a33d168bf4bcac432b5ca9696509022557149da235345ebd3446c6c2faafd`).  
+Current membership-plan saved-state contract: `docs/reference/RUN335_NOTE_ONBOARDING_CUSTOMER_SURFACE_BASELINE.md`.  
+Current public purchase-funnel contract: `docs/reference/RUN339B_NOTE_PUBLIC_PURCHASE_FUNNEL_BASELINE.md`.  
 Historical article-publication contract: `docs/reference/RUN327_NOTE_ONBOARDING_PRODUCTION_BASELINE.md`.
 
 ---
