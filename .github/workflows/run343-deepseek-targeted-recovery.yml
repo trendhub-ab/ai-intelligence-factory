@@ -49,7 +49,8 @@ jobs:
           assert r.TARGET_NAME == 'DeepSeek launching v4.1 flash cheaper and more capable than v4 pro'
           assert r.TARGET_URL == 'https://news.ycombinator.com/item?id=49624603'
           assert r.TARGET_SOURCE == 'HackerNews'
-          print('Run343e exact target confirmed; recovery states=Quality Failed/Pending Retry; temporary provider order=3.6,3.5')
+          assert r.TARGET_MODEL_POOL == ('gemini-3.6-flash', 'gemini-3.5-flash')
+          print('Run343f exact target + effective post-runtime provider pin confirmed: 3.6,3.5')
           PY
       - name: Recover exact DeepSeek article under current Production gates
         run: python run343_deepseek_targeted_recovery.py
@@ -118,4 +119,4 @@ jobs:
         run: |
           test -n "${GH_TOKEN:-}"
           gh workflow run note-ready-sync.yml --ref main
-          echo 'Run343e accepted: dispatched Note Ready sync; no public note release requested.'
+          echo 'Run343f accepted: dispatched Note Ready sync; no public note release requested.'
