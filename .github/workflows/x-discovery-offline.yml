@@ -6,17 +6,19 @@ on:
       - feature/x-discovery-ingestion
     paths:
       - 'x_discovery/**'
-      - 'tests/test_x_discovery_ingestion.py'
+      - 'tests/test_x_discovery*.py'
       - 'README_X_DISCOVERY.md'
       - '.github/workflows/x-discovery-offline.yml'
       - '.github/workflows/x-discovery-apify-smoke.yml'
+      - '.github/workflows/x-discovery-stage2-smoke.yml'
   pull_request:
     paths:
       - 'x_discovery/**'
-      - 'tests/test_x_discovery_ingestion.py'
+      - 'tests/test_x_discovery*.py'
       - 'README_X_DISCOVERY.md'
       - '.github/workflows/x-discovery-offline.yml'
       - '.github/workflows/x-discovery-apify-smoke.yml'
+      - '.github/workflows/x-discovery-stage2-smoke.yml'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +34,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Unit tests
-        run: python -m unittest discover -s tests -p 'test_x_discovery_ingestion.py' -v
+        run: python -m unittest discover -s tests -p 'test_x_discovery*.py' -v
       - name: Fixture ingestion
         run: python -m x_discovery.runner --provider fixture --output-dir /tmp/x-discovery --max-records 20
       - name: Verify isolation contract
@@ -48,6 +50,7 @@ jobs:
           assert manifest['evidence_status'] == 'discovery_only'
           assert manifest['x_official_api_calls'] == 0
           assert manifest['external_provider_calls'] == 0
+          assert manifest['tco_resolution_calls'] == 0
           assert (root / 'discovery_candidates.json').exists()
           print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
           PY
