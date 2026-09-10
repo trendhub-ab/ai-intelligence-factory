@@ -46,6 +46,44 @@ class XDiscoveryIngestionTests(unittest.TestCase):
         self.assertFalse(signal.is_evidence)
         self.assertEqual(signal.evidence_status, "discovery_only")
 
+    def test_simple_actor_schema_normalizes_without_data_loss(self):
+        signal = normalize_post(
+            {
+                "type": "tweet",
+                "id": "2090877991228264814",
+                "url": "https://x.com/NASA/status/2090877991228264814",
+                "text": "New release https://example.org/release",
+                "likeCount": 878,
+                "replyCount": 65,
+                "retweetCount": 138,
+                "quoteCount": 6,
+                "bookmarkCount": 39,
+                "viewCount": 411170,
+                "createdAt": "Fri Aug 21 19:05:34 +0000 2026",
+                "createdAtIso": "2026-08-21T19:05:34.000Z",
+                "urls": ["https://example.org/release?utm_source=x"],
+                "author": {"userName": "NASA", "name": "NASA"},
+            },
+            provider="apify",
+            discovered_at="2026-09-10T00:00:00+00:00",
+        )
+        self.assertEqual(signal.post_id, "2090877991228264814")
+        self.assertEqual(signal.author_handle, "NASA")
+        self.assertEqual(signal.posted_at, "2026-08-21T19:05:34.000Z")
+        self.assertEqual(signal.external_urls, ["https://example.org/release"])
+        self.assertEqual(
+            signal.engagement_snapshot,
+            {
+                "likes": 878,
+                "reposts": 138,
+                "replies": 65,
+                "quotes": 6,
+                "views": 411170,
+                "bookmarks": 39,
+            },
+        )
+        self.assertFalse(signal.is_evidence)
+
     def test_dedupe_and_cluster_same_url_across_authors(self):
         a = normalize_post(
             {"id": "a", "username": "one", "text": "https://example.com/z?utm_source=x"},
@@ -84,6 +122,8 @@ class XDiscoveryIngestionTests(unittest.TestCase):
             self.assertEqual(manifest["duplicate_count"], 1)
             self.assertEqual(manifest["candidate_count"], 3)
             self.assertEqual(manifest["external_provider_calls"], 0)
+            self.assertEqual(manifest["provider_error_count"], 0)
+            self.assertEqual(manifest["skipped_pinned_count"], 0)
             self.assertEqual(manifest["x_official_api_calls"], 0)
             self.assertFalse(manifest["factory_write"])
             self.assertFalse(manifest["evidence_promoted"])
@@ -93,6 +133,7 @@ class XDiscoveryIngestionTests(unittest.TestCase):
             self.assertEqual(by_url["https://example.com/post"]["mention_count"], 2)
             self.assertTrue(by_url["https://arxiv.org/abs/2609.01234"]["primary_source_candidate"])
             self.assertTrue(by_url["https://github.com/example/project"]["primary_source_candidate"])
+            self.assertTrue((Path(tmp) / "provider_diagnostics.json").exists())
 
     def test_seen_ids_persist_across_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -132,10 +173,40 @@ class XDiscoveryIngestionTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         request = mocked.call_args.args[0]
         self.assertEqual(request.headers["Authorization"], "Bearer secret")
+        self.assertIn("/v2/actors/someone~actor/run-sync-get-dataset-items", request.full_url)
         self.assertIn("maxItems=20", request.full_url)
         self.assertIn("maxTotalChargeUsd=0.2", request.full_url)
         self.assertNotIn("secret", request.full_url)
         self.assertEqual(provider.external_calls, 1)
+
+    def test_apify_skips_pinned_and_provider_error_rows(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    [
+                        {"id": "pin", "text": "old pin", "isPinned": True},
+                        {"handle": "protected", "error": "profile unavailable"},
+                        {"id": "fresh", "text": "new post", "isPinned": False},
+                    ]
+                ).encode("utf-8")
+
+        provider = ApifyProvider(
+            token="secret",
+            actor_id="simple.actor~x-profile-posts",
+            actor_input={"handles": ["a"]},
+            max_total_charge_usd=0.05,
+        )
+        with patch("x_discovery.providers.urlopen", return_value=FakeResponse()):
+            items = provider.fetch(max_records=20)
+        self.assertEqual([item["id"] for item in items], ["fresh"])
+        self.assertEqual(provider.skipped_pinned, 1)
+        self.assertEqual(provider.provider_errors, [{"handle": "protected", "error": "profile unavailable"}])
 
 
 if __name__ == "__main__":
