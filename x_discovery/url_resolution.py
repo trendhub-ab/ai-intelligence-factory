@@ -121,6 +121,7 @@ class TcoRedirectResolver:
         self.timeout_seconds = int(timeout_seconds)
         self.calls = 0
         self.successes = 0
+        self.internal_resolutions = 0
         self.failures = 0
         self.cache: Dict[str, Optional[str]] = {}
 
@@ -141,7 +142,14 @@ class TcoRedirectResolver:
         for method in ("HEAD", "GET"):
             conn = http.client.HTTPSConnection("t.co", timeout=self.timeout_seconds)
             try:
-                conn.request(method, path, headers={"User-Agent": "ai-intelligence-factory-url-resolver/0.1"})
+                conn.request(
+                    method,
+                    path,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (compatible; ai-intelligence-factory-url-resolver/0.2)",
+                        "Accept": "*/*",
+                    },
+                )
                 response = conn.getresponse()
                 location = response.getheader("Location")
                 if method == "GET":
@@ -154,14 +162,20 @@ class TcoRedirectResolver:
                 break
 
         resolved = canonicalize_url(location or "")
-        if resolved and not is_unresolved_short_url(resolved) and not is_internal_x_url(resolved):
-            self.successes += 1
-            self.cache[canonical_short] = resolved
-            return resolved
+        if not resolved or is_unresolved_short_url(resolved):
+            self.failures += 1
+            self.cache[canonical_short] = None
+            return None
 
-        self.failures += 1
-        self.cache[canonical_short] = None
-        return None
+        if is_internal_x_url(resolved):
+            # Media/broadcast t.co links intentionally point back to X. This is not a resolver failure.
+            self.internal_resolutions += 1
+            self.cache[canonical_short] = None
+            return None
+
+        self.successes += 1
+        self.cache[canonical_short] = resolved
+        return resolved
 
 
 def enrich_record_with_tco(record: Mapping[str, object], resolver: TcoRedirectResolver) -> Dict[str, object]:
