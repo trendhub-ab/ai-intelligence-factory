@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN333_EXACT'
+        description: 'Type UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN334_EXACT'
         required: true
         type: string
   issue_comment:
@@ -38,8 +38,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify Run320/332 history and exact Run333 updater
-        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe tests.test_run332_membership_description_edit_route_probe tests.test_run333_membership_description_exact_update -v
+      - name: Falsify Run320/332/333 history and exact Run334 repair
+        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe tests.test_run332_membership_description_edit_route_probe tests.test_run333_membership_description_exact_update tests.test_run334_membership_snapshot_locator_evaluate -v
       - name: Validate exact mutation authorization
         id: auth
         env:
@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
-            [ "$CONFIRM" = 'UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN333_EXACT' ] || exit 1
+            [ "$CONFIRM" = 'UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN334_EXACT' ] || exit 1
           else
             [ "$COMMENT" = '/aiif note membership description-update' ] || exit 1
           fi
@@ -103,18 +103,18 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run exact Run333 regression
-        run: python -m unittest tests.test_run333_membership_description_exact_update -v
-      - name: Update exact membership description only
+      - name: Re-run exact Run333/334 regression
+        run: python -m unittest tests.test_run333_membership_description_exact_update tests.test_run334_membership_snapshot_locator_evaluate -v
+      - name: Update exact membership description through Run334 snapshot repair
         env:
-          NOTE_MEMBERSHIP_DESCRIPTION_RUN333_CONFIRM: UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN333_EXACT
-          NOTE_MEMBERSHIP_DESCRIPTION_RUN333_RESULT_FILE: ${{ runner.temp }}/run333-membership-description-update.json
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN334_CONFIRM: UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN334_EXACT
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN334_RESULT_FILE: ${{ runner.temp }}/run334-membership-description-update.json
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run333_membership_description_exact_update.py
-      - name: Enforce exact Run333 postconditions
+        run: xvfb-run -a python run334_membership_description_exact_update.py
+      - name: Enforce exact Run334 postconditions
         env:
-          RESULT_FILE: ${{ runner.temp }}/run333-membership-description-update.json
+          RESULT_FILE: ${{ runner.temp }}/run334-membership-description-update.json
         run: |
           python - <<'PY'
           import json, os
@@ -122,37 +122,40 @@ jobs:
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
           status = r.get('status')
           if status not in {'updated_and_verified_exact_description_only', 'already_current_verified_no_mutation'}:
-              raise SystemExit(f'Run333 unexpected status: {status!r}')
+              raise SystemExit(f'Run334 unexpected status: {status!r}')
+          if r.get('run334_snapshot_repair') is not True:
+              raise SystemExit('Run334 snapshot repair marker missing')
           if r.get('other_plan_settings_unchanged') is not True:
-              raise SystemExit('Run333 unrelated plan-setting invariance failed')
+              raise SystemExit('Run334 unrelated plan-setting invariance failed')
           if r.get('legacy_reference_present') is not False:
-              raise SystemExit('Run333 legacy reference still present')
+              raise SystemExit('Run334 legacy reference still present')
           if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
-              raise SystemExit('Run333 zero-model/zero-Notion contract failed')
+              raise SystemExit('Run334 zero-model/zero-Notion contract failed')
           if status == 'updated_and_verified_exact_description_only':
               if r.get('description_mutation') is not True or r.get('save_clicks') != 1:
-                  raise SystemExit('Run333 exact mutation/save contract failed')
+                  raise SystemExit('Run334 exact mutation/save contract failed')
           else:
               if r.get('description_mutation') is not False or r.get('save_clicks') != 0:
-                  raise SystemExit('Run333 idempotent no-op contract failed')
+                  raise SystemExit('Run334 idempotent no-op contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run333 exact membership description update\n')
+              fh.write('### Run334 exact membership description update\n')
               fh.write(f'- status: `{status}`\n')
               fh.write(f'- description chars: `{r.get("description_chars")}` / 140\n')
               fh.write(f'- save clicks: `{r.get("save_clicks")}`\n')
+              fh.write('- snapshot transport repaired: `true`\n')
               fh.write('- unrelated plan settings changed: `false`\n')
               fh.write('- legacy onboarding reference present: `false`\n')
               fh.write('- Gemini calls: `0`\n')
               fh.write('- Notion writes: `0`\n')
           PY
-      - name: Preserve Run333 result
+      - name: Preserve Run334 result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run333-membership-description-exact-update
+          name: run334-membership-description-exact-update
           if-no-files-found: warn
           retention-days: 7
-          path: ${{ runner.temp }}/run333-membership-description-update.json
+          path: ${{ runner.temp }}/run334-membership-description-update.json
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
