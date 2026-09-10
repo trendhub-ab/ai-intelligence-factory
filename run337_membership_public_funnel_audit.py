@@ -24,6 +24,7 @@ import note_draft_automation as base
 import run311_note_profile_update as run311
 import run317_member_onboarding_server_save as run317
 import run326_member_onboarding_public_audit as run326
+import run332_membership_description_edit_route_probe as run332
 import run333_membership_description_exact_update as run333
 
 CONFIRM_TOKEN = "AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT"
@@ -128,7 +129,7 @@ def audit() -> dict[str, Any]:
                 current_description = _canon(run333.NEW_DESCRIPTION)
                 legacy_description = _canon(run333.OLD_DESCRIPTION)
                 description_verified = current_description in body_text
-                legacy_description_absent = legacy_description not in body_text and run326._canon(run333.run332.LEGACY_REFERENCE) not in body_text
+                legacy_description_absent = legacy_description not in body_text and _canon(run332.LEGACY_REFERENCE) not in body_text
                 if not description_verified:
                     raise base.NoteDraftError("Run337 public purchase surface does not expose the current 114-character plan description")
                 if not legacy_description_absent:
