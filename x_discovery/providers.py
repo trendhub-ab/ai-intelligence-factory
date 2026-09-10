@@ -171,11 +171,16 @@ class ApifyProvider(XDiscoveryProvider):
         if not 1 <= int(max_records) <= 100:
             raise ValueError("live Apify max_records must be between 1 and 100")
 
+        output_format = str(self.actor_input.get("outputFormat") or "posts").lower()
+        paid_item_cap = int(max_records)
+        if output_format == "profile" and self.requested_profile_count:
+            paid_item_cap = min(int(max_records), self.requested_profile_count)
+
         actor = quote(self.actor_id, safe="~")
         query = urlencode(
             {
                 "timeout": self.timeout_seconds,
-                "maxItems": int(max_records),
+                "maxItems": paid_item_cap,
                 "maxTotalChargeUsd": self.max_total_charge_usd,
                 "clean": "true",
                 "format": "json",
@@ -190,7 +195,7 @@ class ApifyProvider(XDiscoveryProvider):
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
-                "User-Agent": "ai-intelligence-factory-x-discovery/0.4",
+                "User-Agent": "ai-intelligence-factory-x-discovery/0.5",
             },
             method="POST",
         )
@@ -207,7 +212,7 @@ class ApifyProvider(XDiscoveryProvider):
             raise ValueError("Apify Actor response must be a JSON array or contain items/data")
 
         self.raw_items = [dict(item) for item in payload if isinstance(item, Mapping)]
-        if str(self.actor_input.get("outputFormat") or "posts").lower() == "profile":
+        if output_format == "profile":
             return self._flatten_profile_rows(self.raw_items, max_records=int(max_records))
 
         accepted: List[Dict[str, Any]] = []
