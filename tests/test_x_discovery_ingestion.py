@@ -208,6 +208,95 @@ class XDiscoveryIngestionTests(unittest.TestCase):
         self.assertEqual(provider.skipped_pinned, 1)
         self.assertEqual(provider.provider_errors, [{"handle": "protected", "error": "profile unavailable"}])
 
+    def test_apify_profile_mode_flattens_posts_and_preserves_coverage(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    [
+                        {
+                            "type": "user",
+                            "userName": "NASA",
+                            "posts": [
+                                {"id": "pin", "text": "old", "isPinned": True},
+                                {"id": "fresh", "text": "new", "createdAtIso": "2026-09-10T01:00:00Z"},
+                            ],
+                        },
+                        {"type": "user", "userName": "quiet", "posts": []},
+                        {
+                            "handle": "fast_account",
+                            "error": "window_too_wide",
+                            "errorDescription": "Five visible posts do not cover the requested window",
+                            "oldestVisiblePostAt": "2026-09-10T10:00:00Z",
+                        },
+                    ]
+                ).encode("utf-8")
+
+        provider = ApifyProvider(
+            token="secret",
+            actor_id="simple.actor~x-profile-posts",
+            actor_input={
+                "handles": ["NASA", "quiet", "fast_account"],
+                "outputFormat": "profile",
+                "onlyPostsNewerThan": "12 hours",
+            },
+            max_total_charge_usd=0.05,
+        )
+        with patch("x_discovery.providers.urlopen", return_value=FakeResponse()):
+            items = provider.fetch(max_records=20)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], "fresh")
+        self.assertEqual(items[0]["authorUserName"], "NASA")
+        self.assertEqual(provider.requested_profile_count, 3)
+        self.assertEqual(provider.profile_rows_read, 2)
+        self.assertEqual(provider.empty_profile_count, 1)
+        self.assertEqual(provider.profiles_with_posts, {"NASA"})
+        self.assertEqual(provider.skipped_pinned, 1)
+        self.assertEqual(provider.provider_errors[0]["handle"], "fast_account")
+        self.assertEqual(provider.provider_errors[0]["error"], "window_too_wide")
+        self.assertIn("description", provider.provider_errors[0])
+        self.assertEqual(provider.provider_errors[0]["oldest_visible_post_at"], "2026-09-10T10:00:00Z")
+
+    def test_runner_writes_profile_diagnostics_and_provider_raw_items(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    [
+                        {
+                            "type": "user",
+                            "userName": "NASA",
+                            "posts": [{"id": "fresh", "text": "https://www.nasa.gov/news", "urls": ["https://www.nasa.gov/news"]}],
+                        }
+                    ]
+                ).encode("utf-8")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = ApifyProvider(
+                token="secret",
+                actor_id="simple.actor~x-profile-posts",
+                actor_input={"handles": ["NASA"], "outputFormat": "profile"},
+                max_total_charge_usd=0.05,
+            )
+            with patch("x_discovery.providers.urlopen", return_value=FakeResponse()):
+                manifest = run_ingestion(provider, output_dir=Path(tmp), max_records=20)
+            self.assertEqual(manifest["requested_profile_count"], 1)
+            self.assertEqual(manifest["profile_rows_read"], 1)
+            self.assertEqual(manifest["profiles_with_posts_count"], 1)
+            self.assertEqual(manifest["empty_profile_count"], 0)
+            self.assertTrue((Path(tmp) / "provider_raw_items.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
