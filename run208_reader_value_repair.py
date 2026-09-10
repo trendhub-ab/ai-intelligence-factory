@@ -1,4 +1,4 @@
-"""Run208/341/342: bounded Reader Value repair and first-pass Reader Path.
+"""Run208/341/342/344: bounded Reader Value repair and first-pass Reader Path.
 
 Run208 originally authorized one Reader Value repair only in the Pending Retry fast
 lane. The 2026-09-10 real Daily falsified that narrow scope as the sole Production
@@ -10,6 +10,13 @@ Run342 replays the failed real manuscripts and tightens only the semantic orderi
 the Reader Path. A rhetorical question or analogy can make prose friendlier without
 making the decision easier to reach; therefore reader proximity and decision distance
 are treated as different editorial requirements.
+
+Run344 folds the second DeepSeek recovery result back into the same authority. The
+article reached Publication Readiness with Gemini 3.6 but still failed Human Appeal and
+``LIMITATION_DROPPED``. This falsifies a simple "make it friendlier" strategy: reader
+simplification must preserve the practical limit/exception that bounds the decision.
+The first-pass contract therefore requires a plain-Japanese limitation bridge and a
+small reader payload rather than a larger explanatory surface.
 
 The canonical Reader Value layer owns three bounded responsibilities without relaxing
 any gate:
@@ -55,7 +62,10 @@ ARTICLEは専門知識を見せる順番ではなく、読者が判断できる�
 ・高密度な技術説明を2段落続けない。技術説明の次には、その事実が読者の判断をどう変えるかを置く。
 ・数値は「何の判断に効く数字か」が先に分かるように置く。数字の羅列を先に見せない。ただしEvidence上その数値自体がニュースの核心なら例外とする。
 ・実装詳細、API名、内部構造、ベンチマーク条件はDecisionに必要なものだけ残し、必要なら暫定判断を示した後へ送る。
+・重要な制約・対象範囲・例外・未検証条件がEvidenceにある場合は削らない。専門語をそのまま残すのではなく、「ただし、〜の場合に限る／〜はまだ分からない」のような普通の日本語で1〜2文に圧縮し、暫定判断の直後か、その判断を支える段落内に置く。制約を脚注扱いで最後へ追いやらない。
+・読者が前半で覚える中心メッセージは原則3つまでに絞る。①変化 ②判断 ③判断を変えうる重要な制約、を優先し、それ以外の実装詳細や周辺比較は後段へ送る。
 ・「面白さ」は架空の体験・感情・因果で作らない。比喩を使う場合も事実の代替にせず、Evidenceの意味を平易にする補助に限る。Evidenceの中から意外な差分や判断の分かれ目を1つ選び、そこを記事の軸にする。
+・Human Appealは問いかけや比喩の数ではなく、「自分に関係する理由が分かる」「判断が早い」「条件付きでも次に何をするか分かる」で作る。親しみのための前置きは増やさない。
 ・「私ならどう判断するか」まで待たず、本文前半で暫定判断を示し、終盤では条件・例外・実行手順を精密化する。
 ・タイトルは日本語として閉じた一文にし、引用符を必ず対応させる。専門語だけのタイトルにしない。
 """.strip()
@@ -71,6 +81,9 @@ READER_REPAIR_CONTRACT = r"""
 ・冒頭約600文字の専門語・実装識別子は、Decisionに不要なら後段へ移す。意味を落とさず、名称より普通の日本語を先に置く。
 ・専門語が連続する箇所では、同じEvidenceの意味を普通の日本語で1回だけ橋渡しする。
 ・数値列挙の前に、その数字が何の判断に効くのかを既存文から前置きする。Evidence条件や単位は削らない。
+・前稿にある重要な制約・対象範囲・例外・未検証条件は、平易化のために削除してはいけない。専門語を減らす場合は意味を保った普通の日本語へ置換し、Decisionの直後または同じ判断段落に1〜2文で残す。
+・Reader Repair後の前半は、①何が変わった ②今どう判断する ③その判断を変えうる重要な制約、の3点を優先する。問いかけ・比喩・周辺比較よりこの3点を先に置く。
+・Human Appealを上げるために導入を長くしない。読者に関係する理由と具体的な次Actionを既存Evidence/Decisionから前へ出す。
 ・記事全体を短くすること自体を目的にしない。Evidenceを落とさず、情報の置き場所を変えて読みやすくする。
 ・修正後も事実Gate、Evidence Gate、Publication Gate、Reader Gateをすべて再判定し、通らなければReadyにしない。
 """.strip()
@@ -166,5 +179,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.build_dynamic_retry_instruction = build_dynamic_retry_instruction_with_reader_repair
     pipeline_module.RUN341_PRODUCTION_READER_REPAIR = True
     pipeline_module.RUN342_READER_DECISION_DISTANCE = True
+    pipeline_module.RUN344_READER_LIMITATION_BRIDGE = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module

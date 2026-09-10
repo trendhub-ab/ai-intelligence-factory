@@ -119,6 +119,17 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIn("架空の体験・感情・因果", prompt)
         self.assertIn("固定見出しや定型句は使わず", prompt)
 
+    def test_first_pass_prompt_preserves_plain_language_limitations_and_small_reader_payload(self):
+        pipeline = self._pipeline()
+        run208.install(pipeline)
+        prompt = pipeline.build_decision_prompt()
+        self.assertIn("重要な制約・対象範囲・例外・未検証条件", prompt)
+        self.assertIn("普通の日本語で1〜2文に圧縮", prompt)
+        self.assertIn("制約を脚注扱いで最後へ追いやらない", prompt)
+        self.assertIn("中心メッセージは原則3つまで", prompt)
+        self.assertIn("Human Appealは問いかけや比喩の数ではなく", prompt)
+        self.assertIn("親しみのための前置きは増やさない", prompt)
+
     def test_reader_retry_contract_preserves_fact_evidence_and_decision(self):
         pipeline = self._pipeline()
         run208.install(pipeline)
@@ -135,6 +146,19 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIn("冒頭3段落以内へ前倒し", instruction)
         self.assertIn("問いかけ・比喩がDecision到達を遅らせている場合", instruction)
         self.assertIn("Readyにしない", instruction)
+
+    def test_reader_retry_keeps_limitations_visible_while_simplifying(self):
+        pipeline = self._pipeline()
+        run208.install(pipeline)
+        instruction, _ = pipeline.build_dynamic_retry_instruction([
+            {"message": "FACT_CONDITIONALITY_LOSS", "severity": "HARD"},
+            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
+        ])
+        self.assertIn("重要な制約・対象範囲・例外・未検証条件", instruction)
+        self.assertIn("平易化のために削除してはいけない", instruction)
+        self.assertIn("Decisionの直後または同じ判断段落", instruction)
+        self.assertIn("①何が変わった ②今どう判断する ③その判断を変えうる重要な制約", instruction)
+        self.assertIn("導入を長くしない", instruction)
 
     def test_reader_contract_does_not_reintroduce_fixed_heading_template(self):
         pipeline = self._pipeline()
@@ -160,6 +184,7 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIs(retry, pipeline.should_attempt_dynamic_retry)
         self.assertIs(prompt, pipeline.build_decision_prompt)
         self.assertTrue(pipeline.RUN342_READER_DECISION_DISTANCE)
+        self.assertTrue(pipeline.RUN344_READER_LIMITATION_BRIDGE)
 
 
 if __name__ == "__main__":
