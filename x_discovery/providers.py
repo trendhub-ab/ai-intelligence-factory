@@ -11,6 +11,8 @@ from urllib.request import Request, urlopen
 class XDiscoveryProvider(ABC):
     name = "unknown"
     external_calls = 0
+    skipped_pinned = 0
+    provider_errors: List[Dict[str, str]] = []
 
     @abstractmethod
     def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
@@ -23,6 +25,8 @@ class FixtureProvider(XDiscoveryProvider):
     def __init__(self, fixture_path: Path):
         self.fixture_path = Path(fixture_path)
         self.external_calls = 0
+        self.skipped_pinned = 0
+        self.provider_errors = []
 
     def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
         payload = json.loads(self.fixture_path.read_text(encoding="utf-8"))
@@ -59,6 +63,8 @@ class ApifyProvider(XDiscoveryProvider):
         self.timeout_seconds = int(timeout_seconds)
         self.max_total_charge_usd = float(max_total_charge_usd)
         self.external_calls = 0
+        self.skipped_pinned = 0
+        self.provider_errors: List[Dict[str, str]] = []
 
     def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
         if not 1 <= int(max_records) <= 100:
@@ -83,7 +89,7 @@ class ApifyProvider(XDiscoveryProvider):
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
-                "User-Agent": "ai-intelligence-factory-x-discovery/0.1",
+                "User-Agent": "ai-intelligence-factory-x-discovery/0.2",
             },
             method="POST",
         )
@@ -95,4 +101,24 @@ class ApifyProvider(XDiscoveryProvider):
             payload = payload.get("items", payload.get("data", []))
         if not isinstance(payload, list):
             raise ValueError("Apify Actor response must be a JSON array or contain items/data")
-        return [dict(item) for item in payload[:max_records] if isinstance(item, Mapping)]
+
+        accepted: List[Dict[str, Any]] = []
+        for item in payload:
+            if not isinstance(item, Mapping):
+                continue
+            row = dict(item)
+            if row.get("error"):
+                self.provider_errors.append(
+                    {
+                        "handle": str(row.get("handle") or row.get("userName") or "unknown"),
+                        "error": str(row.get("error")),
+                    }
+                )
+                continue
+            if bool(row.get("isPinned") or row.get("is_pinned")):
+                self.skipped_pinned += 1
+                continue
+            accepted.append(row)
+            if len(accepted) >= int(max_records):
+                break
+        return accepted
