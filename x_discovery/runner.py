@@ -42,14 +42,26 @@ def run_ingestion(
 
     provider_errors = list(getattr(provider, "provider_errors", []) or [])
     skipped_pinned = int(getattr(provider, "skipped_pinned", 0) or 0)
+    requested_profiles = int(getattr(provider, "requested_profile_count", 0) or 0)
+    profile_rows_read = int(getattr(provider, "profile_rows_read", 0) or 0)
+    empty_profiles = int(getattr(provider, "empty_profile_count", 0) or 0)
+    profiles_with_posts = sorted(str(value) for value in (getattr(provider, "profiles_with_posts", set()) or set()))
+    provider_raw_items = list(getattr(provider, "raw_items", []) or [])
 
     _write_json(output_dir / "raw_posts.json", raw)
     _write_json(output_dir / "normalized_signals.json", [item.to_dict() for item in fresh])
     _write_json(output_dir / "discovery_candidates.json", [item.to_dict() for item in candidates])
+    if provider_raw_items:
+        _write_json(output_dir / "provider_raw_items.json", provider_raw_items)
     _write_json(
         output_dir / "provider_diagnostics.json",
         {
             "provider": provider.name,
+            "requested_profile_count": requested_profiles,
+            "profile_rows_read": profile_rows_read,
+            "profiles_with_posts_count": len(profiles_with_posts),
+            "profiles_with_posts": profiles_with_posts,
+            "empty_profile_count": empty_profiles,
             "provider_error_count": len(provider_errors),
             "provider_errors": provider_errors,
             "skipped_pinned_count": skipped_pinned,
@@ -68,6 +80,10 @@ def run_ingestion(
         "duplicate_count": duplicate_count,
         "candidate_count": len(candidates),
         "external_url_count": sum(len(item.external_urls) for item in fresh),
+        "requested_profile_count": requested_profiles,
+        "profile_rows_read": profile_rows_read,
+        "profiles_with_posts_count": len(profiles_with_posts),
+        "empty_profile_count": empty_profiles,
         "provider_error_count": len(provider_errors),
         "skipped_pinned_count": skipped_pinned,
         "factory_write": False,
