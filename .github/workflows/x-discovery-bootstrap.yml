@@ -1,0 +1,109 @@
+name: X Discovery Bootstrap
+
+on:
+  push:
+    branches:
+      - feature/x-discovery-ingestion
+    paths:
+      - '.github/workflows/x-discovery-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_ACTOR_ID: simple.actor~x-profile-posts
+      APIFY_MAX_CHARGE_USD: '0.05'
+      MAX_RECORDS: '100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build fixed bootstrap Actor input
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          watchlist = json.loads(Path('x_discovery/watchlists/ai_core_20.json').read_text(encoding='utf-8'))
+          handles = [row['handle'] for row in watchlist['accounts']]
+          if len(handles) != 20 or len(set(h.lower() for h in handles)) != 20:
+              raise SystemExit('Bootstrap watchlist must contain exactly 20 unique handles')
+          payload = {
+              'handles': handles,
+              'outputFormat': 'profile',
+              'maxPosts': 5,
+              'includeRaw': False,
+              'isolateProfiles': True,
+          }
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write('APIFY_INPUT_JSON=' + json.dumps(payload, separators=(',', ':')) + '\n')
+          print(json.dumps({'handles': len(handles), 'maxPosts': 5, 'timeWindow': None, 'isolated': True, 'resolve_tco': True}))
+          PY
+      - name: Validate bootstrap guardrails
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          if not os.getenv('APIFY_TOKEN', '').strip():
+              raise SystemExit('APIFY_TOKEN repository secret is required; refusing live run')
+          if os.environ.get('APIFY_ACTOR_ID') != 'simple.actor~x-profile-posts':
+              raise SystemExit('unexpected Actor ID; refusing live run')
+          if float(os.environ['APIFY_MAX_CHARGE_USD']) > 0.05:
+              raise SystemExit('Bootstrap total requested charge budget must be <= $0.05')
+          if int(os.environ['MAX_RECORDS']) != 100:
+              raise SystemExit('Bootstrap max records must be exactly 100')
+          payload = json.loads(os.environ['APIFY_INPUT_JSON'])
+          if payload.get('outputFormat') != 'profile' or payload.get('isolateProfiles') is not True:
+              raise SystemExit('Bootstrap must use isolated profile output')
+          if 'onlyPostsNewerThan' in payload:
+              raise SystemExit('Bootstrap must not use a time window')
+          if payload.get('maxPosts') != 5:
+              raise SystemExit('Bootstrap must request latest five posts')
+          if len(payload.get('handles', [])) != 20:
+              raise SystemExit('Bootstrap must contain exactly 20 handles')
+          print('Bootstrap guardrails OK; Factory writes remain disabled.')
+          PY
+      - name: Run isolated bootstrap ingestion
+        run: |
+          python -m x_discovery.runner \
+            --provider apify \
+            --output-dir /tmp/x-discovery-bootstrap \
+            --max-records "$MAX_RECORDS" \
+            --resolve-tco
+      - name: Verify isolation and bootstrap artifact
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/x-discovery-bootstrap')
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          assert manifest['provider'] == 'apify'
+          assert manifest['requested_profile_count'] == 20
+          assert manifest['factory_write'] is False
+          assert manifest['evidence_promoted'] is False
+          assert manifest['evidence_status'] == 'discovery_only'
+          assert manifest['x_official_api_calls'] == 0
+          assert manifest['external_provider_calls'] == 20
+          assert manifest['tco_resolution_enabled'] is True
+          assert (root / 'provider_diagnostics.json').exists()
+          assert (root / 'provider_raw_items.json').exists()
+          assert (root / 'discovery_candidates.json').exists()
+          print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Upload bootstrap diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-discovery-bootstrap-${{ github.run_number }}
+          path: /tmp/x-discovery-bootstrap/
+          if-no-files-found: error
+          retention-days: 7
