@@ -1,0 +1,2 @@
+Run331 scope: profile-form snapshot false-positive hardening only.
+No note mutation is required or authorized by this branch.
