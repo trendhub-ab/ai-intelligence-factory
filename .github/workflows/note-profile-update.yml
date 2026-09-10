@@ -30,8 +30,8 @@ jobs:
           python-version: '3.11'
       - name: Install minimal preflight dependency
         run: pip install requests
-      - name: Falsify Run311 history and exact Run330 updater
-        run: python -m unittest tests.test_run311_note_profile_update tests.test_run330_note_profile_exact_update -v
+      - name: Falsify Run311 history and exact Run330/331 updater
+        run: python -m unittest tests.test_run311_note_profile_update tests.test_run330_note_profile_exact_update tests.test_run331_profile_form_snapshot_scope -v
       - name: Validate exact profile authorization
         id: auth
         env:
@@ -108,8 +108,8 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
-      - name: Re-run exact Run330 regression
-        run: python -m unittest tests.test_run330_note_profile_exact_update -v
+      - name: Re-run exact Run330/331 regression
+        run: python -m unittest tests.test_run330_note_profile_exact_update tests.test_run331_profile_form_snapshot_scope -v
       - name: Update and verify exact profile biography only
         env:
           NOTE_PROFILE_RUN330_CONFIRM: ${{ inputs.confirm }}
@@ -142,11 +142,11 @@ jobs:
               if result.get('biography_mutation') is not False or result.get('save_clicks') != 0:
                   raise SystemExit('Run330 idempotent no-op contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run330 exact note profile biography update\n')
+              fh.write('### Run330/331 exact note profile biography update\n')
               fh.write(f'- status: `{status}`\n')
               fh.write(f'- biography mutation: `{result.get("biography_mutation") is True}`\n')
               fh.write(f'- save clicks: `{result.get("save_clicks")}`\n')
-              fh.write('- unrelated settings changed: `false`\n')
+              fh.write('- unrelated profile-form settings changed: `false`\n')
               fh.write('- Product Hunt present after verified update: `false`\n')
               fh.write('- Gemini calls: `0`\n')
               fh.write('- Notion writes: `0`\n')

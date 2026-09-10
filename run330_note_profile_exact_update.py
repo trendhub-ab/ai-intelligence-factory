@@ -5,11 +5,19 @@ Safety contract:
 - exact public account and exact legacy/current biography state only;
 - verify the public `設定` href is exactly https://note.com/settings/profile, but never click it;
 - mutate only textarea[name="editBiography"][aria-label="自己紹介"];
-- preserve creator name and every other settings-form control value/state;
+- preserve creator name and every other user-visible control in the biography's profile form;
 - click exactly one visible enabled `保存` button exactly once when mutation is required;
 - verify the public profile and a fresh settings read after save;
 - idempotent no-op when the public/settings state is already current;
 - zero Gemini/model calls and zero Notion writes.
+
+Run331 hardening: the unrelated-setting invariant is scoped to the actual profile form and
+semantic user-visible control state. Global header/search controls, hidden framework tokens,
+DOM ordering, and transient disabled state are not customer settings and are excluded from the
+post-save comparison. note renders real switch controls as transparent checkbox inputs, so
+role="switch" controls remain explicitly included even when their input element is visually hidden.
+This prevents a successful save from being reported as a false failure without dropping real
+layout/menu settings from the invariant.
 """
 from __future__ import annotations
 
@@ -70,29 +78,96 @@ def _public_state(page: Any) -> str:
 
 
 def _form_snapshot(page: Any) -> list[dict[str, Any]]:
-    """Snapshot settings controls excluding the authorized biography field.
+    """Snapshot semantic user settings in the form that owns the biography.
 
-    Dynamic React ids/classes are intentionally excluded. Ordering is retained so unnamed
-    switches remain comparable. Search controls are included because they must also remain
-    unchanged by this maintenance action.
+    Run330 originally compared every input on the whole page, including unrelated header
+    controls and framework/transient state. note can legitimately re-render those after Save,
+    which caused a false-positive failure even though the biography save succeeded. The current
+    invariant follows the actual profile form, ignores the authorized biography itself, excludes
+    non-visible implementation controls, but keeps role=switch inputs because note visually hides
+    those checkbox elements while they still represent real customer settings. Stable semantic
+    values are compared independent of DOM ordering.
     """
     raw = page.evaluate(
         r"""
-        () => Array.from(document.querySelectorAll('input, textarea, select')).map((el, index) => ({
-          index,
-          tag: el.tagName.toLowerCase(),
-          type: el.getAttribute('type') || '',
-          name: el.getAttribute('name') || '',
-          ariaLabel: el.getAttribute('aria-label') || '',
-          value: 'value' in el ? String(el.value || '') : '',
-          checked: 'checked' in el ? Boolean(el.checked) : null,
-          disabled: Boolean(el.disabled),
-        })).filter(row => !(row.tag === 'textarea' && row.name === 'editBiography' && row.ariaLabel === '自己紹介'))
+        () => {
+          const bio = document.querySelector('textarea[name="editBiography"][aria-label="自己紹介"]');
+          if (!bio) return null;
+          const root = bio.closest('form');
+          if (!root) return null;
+          const visible = (el) => {
+            const rect = el.getBoundingClientRect();
+            const style = getComputedStyle(el);
+            return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+              style.visibility !== 'hidden' && style.opacity !== '0';
+          };
+          const rows = Array.from(root.querySelectorAll('input, textarea, select'))
+            .filter(el => visible(el) || (el.getAttribute('role') || '') === 'switch')
+            .filter(el => !(el.tagName.toLowerCase() === 'textarea' &&
+              (el.getAttribute('name') || '') === 'editBiography' &&
+              (el.getAttribute('aria-label') || '') === '自己紹介'))
+            .map(el => ({
+              tag: el.tagName.toLowerCase(),
+              type: el.getAttribute('type') || '',
+              role: el.getAttribute('role') || '',
+              name: el.getAttribute('name') || '',
+              ariaLabel: el.getAttribute('aria-label') || '',
+              value: 'value' in el ? String(el.value || '') : '',
+              checked: 'checked' in el ? Boolean(el.checked) : null,
+            }));
+          const counts = {};
+          for (const row of rows) {
+            const base = [row.tag, row.type, row.role, row.name, row.ariaLabel].join('|');
+            const occurrence = counts[base] || 0;
+            counts[base] = occurrence + 1;
+            row.occurrence = occurrence;
+          }
+          rows.sort((a, b) => {
+            const ka = [a.tag, a.type, a.role, a.name, a.ariaLabel, a.occurrence].join('|');
+            const kb = [b.tag, b.type, b.role, b.name, b.ariaLabel, b.occurrence].join('|');
+            return ka.localeCompare(kb);
+          });
+          return rows;
+        }
         """
     )
     if not isinstance(raw, list):
-        raise base.NoteDraftError("Run330 could not snapshot profile settings controls")
+        raise base.NoteDraftError("Run330 could not locate the profile form for settings snapshot")
     return raw
+
+
+def _snapshot_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        row.get("tag"),
+        row.get("type"),
+        row.get("role"),
+        row.get("name"),
+        row.get("ariaLabel"),
+        row.get("occurrence"),
+    )
+
+
+def _snapshot_diff(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> str:
+    if before == after:
+        return ""
+    before_map = {_snapshot_key(row): row for row in before}
+    after_map = {_snapshot_key(row): row for row in after}
+    keys = sorted(set(before_map) | set(after_map), key=str)
+    changed: list[str] = []
+    for key in keys:
+        left = before_map.get(key)
+        right = after_map.get(key)
+        if left != right:
+            changed.append(f"{key!r}: {left!r} -> {right!r}")
+        if len(changed) >= 6:
+            break
+    return " ; ".join(changed)[:1800]
+
+
+def _require_snapshot_unchanged(before: list[dict[str, Any]], after: list[dict[str, Any]], stage: str) -> None:
+    diff = _snapshot_diff(before, after)
+    if diff:
+        raise base.NoteDraftError(f"Run330 detected a non-biography profile-form change {stage}; diff: {diff}")
 
 
 def _open_settings_and_assert_account(page: Any, expected_bio: str) -> tuple[Any, list[dict[str, Any]]]:
@@ -172,8 +247,7 @@ def update_profile() -> dict[str, Any]:
             page.wait_for_timeout(400)
             if _canon(bio.input_value()) != _canon(run311.CURRENT_PROFILE):
                 raise base.NoteDraftError("Run330 biography field did not contain the exact authorized current copy")
-            if _form_snapshot(page) != before_snapshot:
-                raise base.NoteDraftError("Run330 detected a non-biography settings change before save")
+            _require_snapshot_unchanged(before_snapshot, _form_snapshot(page), "before save")
 
             save = _exact_save_control(page)
             save.click()
@@ -182,14 +256,11 @@ def update_profile() -> dict[str, Any]:
             if save_clicks != 1:
                 raise base.NoteDraftError("Run330 exact-one-save contract failed")
 
-            if _form_snapshot(page) != before_snapshot:
-                raise base.NoteDraftError("Run330 detected a non-biography settings change after save")
-
+            _require_snapshot_unchanged(before_snapshot, _form_snapshot(page), "after save")
             _verify_public_current(page)
 
             _, after_fresh_snapshot = _open_settings_and_assert_account(page, run311.CURRENT_PROFILE)
-            if after_fresh_snapshot != before_snapshot:
-                raise base.NoteDraftError("Run330 fresh settings verification found an unrelated field change")
+            _require_snapshot_unchanged(before_snapshot, after_fresh_snapshot, "on fresh settings verification")
             _verify_public_current(page)
 
             return {
