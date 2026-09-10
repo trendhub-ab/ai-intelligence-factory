@@ -1,0 +1,198 @@
+name: Audit public membership purchase surface logged out
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT'
+        required: true
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-membership-public-funnel-audit
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.run_attempt == 1 &&
+       github.event.issue.number == 71 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.user.login == 'trendhub-ab' &&
+       github.actor == 'trendhub-ab' &&
+       github.event.comment.body == '/aiif note membership public-audit')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Falsify exact Run337 logged-out purchase-surface audit
+        run: python -m unittest tests.test_run337_membership_public_funnel_audit -v
+      - name: Validate exact read-only authorization
+        id: auth
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CONFIRM: ${{ inputs.confirm }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            [ "$CONFIRM" = 'AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT' ] || exit 1
+          else
+            [ "$COMMENT" = '/aiif note membership public-audit' ] || exit 1
+          fi
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  audit:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
+          command -v xvfb-run >/dev/null 2>&1 || exit 1
+      - name: Re-run exact Run337 regression
+        run: python -m unittest tests.test_run337_membership_public_funnel_audit -v
+      - name: Audit membership purchase surface in fresh logged-out browser
+        env:
+          NOTE_MEMBERSHIP_PUBLIC_RUN337_CONFIRM: AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT
+          NOTE_MEMBERSHIP_PUBLIC_RUN337_RESULT_FILE: ${{ runner.temp }}/run337-membership-public-audit.json
+          NOTE_MEMBERSHIP_PUBLIC_RUN337_SCREENSHOT_FILE: ${{ runner.temp }}/run337-membership-public-audit.png
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run337_membership_public_funnel_audit.py
+      - name: Enforce customer-facing purchase-surface postconditions
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run337-membership-public-audit.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'logged_out_membership_purchase_surface_verified':
+              raise SystemExit(f'Run337 unexpected status: {r.get("status")!r}')
+          required = {
+              'membership_name_verified': True,
+              'price_1980_month_verified': True,
+              'current_description_verified': True,
+              'legacy_description_absent': True,
+              'stale_profile_absent': True,
+              'join_action_verified': True,
+              'fresh_no_cookie_context': True,
+              'content_mutation': False,
+              'settings_mutation': False,
+              'membership_mutation': False,
+              'public_mutation': False,
+              'zero_gemini_calls': True,
+          }
+          for key, expected in required.items():
+              if r.get(key) is not expected:
+                  raise SystemExit(f'Run337 postcondition failed: {key}={r.get(key)!r}')
+          if r.get('explicit_auth_cookie_names_after'):
+              raise SystemExit('Run337 acquired explicit auth-like cookies')
+          if r.get('clicks_performed') != 0 or r.get('field_filled') is not False or r.get('save_clicked') is not False:
+              raise SystemExit('Run337 zero-click/fill/save contract failed')
+          if r.get('notion_writes') != 0:
+              raise SystemExit('Run337 zero-Notion contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run337 logged-out membership purchase-surface audit\n')
+              fh.write(f'- HTTP status: `{r.get("http_status")}`\n')
+              fh.write(f'- page title: `{r.get("page_title", "")}`\n')
+              fh.write('- plan: `AI Decision Intelligence`\n')
+              fh.write('- price: `¥1,980/月 verified`\n')
+              fh.write('- current 114-char description: `verified`\n')
+              fh.write('- legacy onboarding reference: `absent`\n')
+              fh.write('- stale Product Hunt profile copy: `absent`\n')
+              fh.write(f'- join candidates: `{json.dumps(r.get("join_candidates") or [], ensure_ascii=False)}`\n')
+              fh.write('- fresh logged-out context: `true`\n')
+              fh.write('- clicks/fills/saves: `0 / 0 / 0`\n')
+              fh.write('- Gemini calls: `0`\n')
+              fh.write('- Notion writes: `0`\n')
+          PY
+      - name: Preserve Run337 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run337-membership-public-funnel-audit
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run337-membership-public-audit.json
+            ${{ runner.temp }}/run337-membership-public-audit.png
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
