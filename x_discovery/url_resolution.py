@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import http.client
 import re
-from typing import Dict, Iterable, List, Mapping, MutableSet, Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from typing import Dict, Iterable, List, Mapping, MutableSet, Optional, Sequence, Set
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 _URL_RE = re.compile(r"https?://[^\s<>()\[\]{}\"']+", re.IGNORECASE)
-_TRACKING_KEYS = {"fbclid", "gclid", "dclid", "msclkid", "ref", "ref_src"}
+_TRACKING_KEYS = {
+    "fbclid", "gclid", "dclid", "msclkid", "ref", "ref_src",
+    "ncid", "ocid", "wt.mc_id",
+}
 _INTERNAL_X_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}
-_SHORTENER_HOSTS = {"t.co", "www.t.co"}
+_TCO_HOSTS = {"t.co", "www.t.co"}
+_OFFICIAL_SHORTENER_HOSTS = {"msft.it", "www.msft.it", "aka.ms", "www.aka.ms", "nvda.ws", "www.nvda.ws"}
+_SHORTENER_HOSTS = _TCO_HOSTS | _OFFICIAL_SHORTENER_HOSTS
 _PRIMARY_SOURCE_SUFFIXES = (
     "github.com",
     "arxiv.org",
@@ -129,39 +134,59 @@ def extract_external_urls(record: Mapping[str, object], text: str) -> List[str]:
     return result
 
 
-class TcoRedirectResolver:
-    """Resolve only t.co's first redirect without connecting to the destination host."""
+class AllowlistedShortenerResolver:
+    """Resolve redirect chains only while the connected host is explicitly allowlisted.
 
-    def __init__(self, *, timeout_seconds: int = 8):
+    Destination hosts are never fetched. A chain may continue only when the next hop is
+    another allowlisted shortener. This lets msft.it -> aka.ms -> destination work without
+    turning this component into an arbitrary URL fetcher.
+    """
+
+    def __init__(
+        self,
+        *,
+        allowed_hosts: Sequence[str],
+        timeout_seconds: int = 8,
+        max_hops: int = 1,
+    ):
+        hosts = {str(host).lower().strip() for host in allowed_hosts if str(host).strip()}
+        if not hosts or not hosts.issubset(_SHORTENER_HOSTS):
+            raise ValueError("resolver hosts must be a non-empty subset of known shorteners")
+        if not 1 <= int(max_hops) <= 3:
+            raise ValueError("max_hops must be between 1 and 3")
+        self.allowed_hosts: Set[str] = hosts
         self.timeout_seconds = int(timeout_seconds)
+        self.max_hops = int(max_hops)
         self.calls = 0
+        self.network_requests = 0
         self.successes = 0
         self.internal_resolutions = 0
+        self.unresolved_chains = 0
         self.failures = 0
         self.cache: Dict[str, Optional[str]] = {}
 
-    def resolve(self, url: str) -> Optional[str]:
-        canonical_short = canonicalize_url(url)
-        if not canonical_short or not is_unresolved_short_url(canonical_short):
-            return None
-        if canonical_short in self.cache:
-            return self.cache[canonical_short]
+    def handles(self, url: str) -> bool:
+        canonical = canonicalize_url(url)
+        return bool(canonical and _host(canonical) in self.allowed_hosts)
 
-        self.calls += 1
-        parts = urlsplit(canonical_short)
+    def _first_location(self, url: str) -> Optional[str]:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        if host not in self.allowed_hosts:
+            return None
         path = parts.path or "/"
         if parts.query:
             path += "?" + parts.query
 
-        location: Optional[str] = None
         for method in ("HEAD", "GET"):
-            conn = http.client.HTTPSConnection("t.co", timeout=self.timeout_seconds)
+            conn = http.client.HTTPSConnection(host, timeout=self.timeout_seconds)
+            self.network_requests += 1
             try:
                 conn.request(
                     method,
                     path,
                     headers={
-                        "User-Agent": "Mozilla/5.0 (compatible; ai-intelligence-factory-url-resolver/0.2)",
+                        "User-Agent": "Mozilla/5.0 (compatible; ai-intelligence-factory-url-resolver/0.3)",
                         "Accept": "*/*",
                     },
                 )
@@ -169,51 +194,119 @@ class TcoRedirectResolver:
                 location = response.getheader("Location")
                 if method == "GET":
                     response.read(1)
+                if location:
+                    return urljoin(url, location)
             except Exception:
-                location = None
+                pass
             finally:
                 conn.close()
-            if location:
-                break
+        return None
 
-        resolved = canonicalize_url(location or "")
-        if not resolved or is_unresolved_short_url(resolved):
-            self.failures += 1
-            self.cache[canonical_short] = None
+    def resolve(self, url: str) -> Optional[str]:
+        canonical_short = canonicalize_url(url)
+        if not canonical_short or _host(canonical_short) not in self.allowed_hosts:
             return None
+        if canonical_short in self.cache:
+            return self.cache[canonical_short]
 
-        if is_internal_x_url(resolved):
-            # Media/broadcast t.co links intentionally point back to X. This is not a resolver failure.
-            self.internal_resolutions += 1
-            self.cache[canonical_short] = None
-            return None
+        self.calls += 1
+        current = canonical_short
+        for hop in range(self.max_hops):
+            location = self._first_location(current)
+            resolved = canonicalize_url(location or "")
+            if not resolved:
+                self.failures += 1
+                self.cache[canonical_short] = None
+                return None
 
-        self.successes += 1
-        self.cache[canonical_short] = resolved
-        return resolved
+            if is_internal_x_url(resolved):
+                self.internal_resolutions += 1
+                self.cache[canonical_short] = None
+                return None
+
+            next_host = _host(resolved)
+            if next_host in _SHORTENER_HOSTS:
+                if next_host in self.allowed_hosts and hop + 1 < self.max_hops:
+                    current = resolved
+                    continue
+                self.unresolved_chains += 1
+                self.cache[canonical_short] = None
+                return None
+
+            self.successes += 1
+            self.cache[canonical_short] = resolved
+            return resolved
+
+        self.unresolved_chains += 1
+        self.cache[canonical_short] = None
+        return None
 
 
-def enrich_record_with_tco(record: Mapping[str, object], resolver: TcoRedirectResolver) -> Dict[str, object]:
-    enriched: Dict[str, object] = dict(record)
-    text = ""
+class TcoRedirectResolver(AllowlistedShortenerResolver):
+    """Resolve only t.co first hops; retained as a separate strict security boundary."""
+
+    def __init__(self, *, timeout_seconds: int = 8):
+        super().__init__(allowed_hosts=tuple(_TCO_HOSTS), timeout_seconds=timeout_seconds, max_hops=1)
+
+
+class OfficialShortenerResolver(AllowlistedShortenerResolver):
+    """Resolve Microsoft/NVIDIA-owned shorteners; never fetch the destination host."""
+
+    def __init__(self, *, timeout_seconds: int = 8):
+        super().__init__(
+            allowed_hosts=tuple(_OFFICIAL_SHORTENER_HOSTS),
+            timeout_seconds=timeout_seconds,
+            max_hops=2,
+        )
+
+
+def _record_text(record: Mapping[str, object]) -> str:
     for key in ("text", "full_text", "fullText", "content"):
         value = record.get(key)
         if isinstance(value, str) and value:
-            text = value
-            break
+            return value
+    return ""
 
-    existing = list(record.get("urls") or []) if isinstance(record.get("urls"), list) else []
-    expanded: List[str] = []
-    for raw in _URL_RE.findall(text):
+
+def enrich_record_with_shorteners(
+    record: Mapping[str, object],
+    resolvers: Sequence[AllowlistedShortenerResolver],
+) -> Dict[str, object]:
+    enriched: Dict[str, object] = dict(record)
+    text = _record_text(record)
+    structured = list(_structured_urls(record))
+    raw_urls = structured + _URL_RE.findall(text)
+
+    output_urls: List[str] = []
+    seen: Set[str] = set()
+    for raw in raw_urls:
         canonical = canonicalize_url(raw)
-        if not canonical or not is_unresolved_short_url(canonical):
+        if not canonical:
             continue
-        resolved = resolver.resolve(canonical)
-        if resolved:
-            expanded.append(resolved)
-    if expanded:
-        enriched["urls"] = existing + expanded
+
+        resolver = next((item for item in resolvers if item.handles(canonical)), None)
+        if resolver is not None:
+            resolved = resolver.resolve(canonical)
+            if resolved and resolved not in seen:
+                seen.add(resolved)
+                output_urls.append(resolved)
+            continue
+
+        # Keep ordinary URLs and shorteners assigned to another resolver; downstream
+        # extraction filters unresolved shorteners fail-closed.
+        if canonical not in seen:
+            seen.add(canonical)
+            output_urls.append(canonical)
+
+    if output_urls:
+        enriched["urls"] = output_urls
+    elif "urls" in enriched:
+        enriched["urls"] = []
     return enriched
+
+
+def enrich_record_with_tco(record: Mapping[str, object], resolver: TcoRedirectResolver) -> Dict[str, object]:
+    return enrich_record_with_shorteners(record, [resolver])
 
 
 def is_primary_source_candidate(url: str) -> bool:
