@@ -55,12 +55,12 @@ class Run333MembershipDescriptionExactUpdateTests(unittest.TestCase):
         self.assertIn("already_current_verified_no_mutation", source)
         self.assertIn("updated_and_verified_exact_description_only", source)
 
-    def test_live_workflow_is_manual_exact_and_zero_model(self) -> None:
+    def test_run333_contract_is_preserved_but_live_workflow_advances_to_run334(self) -> None:
         self.assertIn("workflow_dispatch:", WORKFLOW)
         self.assertIn("/aiif note membership description-update", WORKFLOW)
-        self.assertIn(run333.CONFIRM_TOKEN, WORKFLOW)
-        self.assertIn("run333_membership_description_exact_update.py", WORKFLOW)
         self.assertIn("tests.test_run333_membership_description_exact_update", WORKFLOW)
+        self.assertIn("run334_membership_description_exact_update.py", WORKFLOW)
+        self.assertNotIn("xvfb-run -a python run333_membership_description_exact_update.py", WORKFLOW)
         self.assertNotIn("schedule:", WORKFLOW)
         self.assertNotIn("push:", WORKFLOW)
         upper = WORKFLOW.upper()
