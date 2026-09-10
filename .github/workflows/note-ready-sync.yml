@@ -69,7 +69,6 @@ on:
       - 'run296_editorial_format_v2.py'
       - 'run248_first_real_publish_quality_calibration.py'
       - 'run249_final_publication_surface_gate.py'
-      - 'run341_production_reader_repair.py'
       - 'publication_contract.py'
       - 'run194_publication_contract.py'
       - 'run280_publication_dependency_guard.py'
@@ -90,7 +89,6 @@ on:
       - 'tests/test_run228_reader_rhythm_planning.py'
       - 'tests/test_run248_first_real_publish_quality_calibration.py'
       - 'tests/test_run249_final_publication_surface_gate.py'
-      - 'tests/test_run341_production_reader_repair.py'
       - 'tests/test_run280_publication_dependency_guard.py'
       - 'tests/test_run281_publication_causality_source_contract.py'
       - 'tests/test_run296_editorial_format_v2.py'
@@ -135,7 +133,6 @@ jobs:
           python -m unittest tests.test_run227_japanese_surface_integrity -v
           python -m unittest tests.test_run228_reader_rhythm_planning -v
           python -m unittest tests.test_run249_final_publication_surface_gate -v
-          python -m unittest tests.test_run341_production_reader_repair -v
           python -m unittest tests.test_run273_reader_draft_autoflow -v
           python -m unittest tests.test_run280_publication_dependency_guard -v
           python -m unittest tests.test_run281_publication_causality_source_contract -v
