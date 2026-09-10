@@ -13,6 +13,7 @@ _PRIMARY_SOURCE_SUFFIXES = (
     "github.com",
     "arxiv.org",
     "openai.com",
+    "chatgpt.com",
     "anthropic.com",
     "deepmind.google",
     "ai.google.dev",
@@ -20,6 +21,20 @@ _PRIMARY_SOURCE_SUFFIXES = (
     "huggingface.co",
     "microsoft.com",
     "meta.com",
+    "mistral.ai",
+    "nvidia.com",
+    "langchain.com",
+    "llamaindex.ai",
+    "perplexity.ai",
+    "replicate.com",
+    "cohere.com",
+    "together.ai",
+    "groq.com",
+    "cursor.com",
+    "stability.ai",
+    "stabilityai.com",
+    "stableaudio.com",
+    "x.ai",
 )
 _TRAILING_PUNCTUATION = ".,;:!?)]}>、。！？）」』】"
 
