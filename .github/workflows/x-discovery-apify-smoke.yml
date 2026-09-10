@@ -1,12 +1,27 @@
 name: X Discovery Apify Smoke
 
 on:
-  push:
-    branches:
-      - feature/x-discovery-ingestion
-    paths:
-      - '.github/workflows/x-discovery-apify-smoke.yml'
   workflow_dispatch:
+    inputs:
+      actor_id:
+        description: 'Apify Actor ID, e.g. username~actor-name'
+        required: true
+        type: string
+      actor_input_json:
+        description: 'Actor input as a JSON object'
+        required: true
+        default: '{}'
+        type: string
+      max_records:
+        description: 'Maximum charged/returned items for this smoke run (1-100)'
+        required: true
+        default: '20'
+        type: string
+      max_charge_usd:
+        description: 'Maximum total Actor charge for this run (must be <= 1.00)'
+        required: true
+        default: '0.25'
+        type: string
 
 permissions:
   contents: read
@@ -17,10 +32,10 @@ jobs:
     timeout-minutes: 8
     env:
       APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-      APIFY_ACTOR_ID: simple.actor~x-profile-posts
-      APIFY_INPUT_JSON: '{"handles":["OpenAI","AnthropicAI","GoogleDeepMind","huggingface","ylecun"],"outputFormat":"posts","maxPosts":5,"onlyPostsNewerThan":"3 days","includeRaw":false}'
-      APIFY_MAX_CHARGE_USD: '0.05'
-      MAX_RECORDS: '25'
+      APIFY_ACTOR_ID: ${{ inputs.actor_id }}
+      APIFY_INPUT_JSON: ${{ inputs.actor_input_json }}
+      APIFY_MAX_CHARGE_USD: ${{ inputs.max_charge_usd }}
+      MAX_RECORDS: ${{ inputs.max_records }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,18 +49,18 @@ jobs:
 
           if not os.getenv('APIFY_TOKEN', '').strip():
               raise SystemExit('APIFY_TOKEN repository secret is required; refusing live run')
-          if os.environ.get('APIFY_ACTOR_ID') != 'simple.actor~x-profile-posts':
-              raise SystemExit('unexpected Actor ID; refusing live run')
+          if not os.getenv('APIFY_ACTOR_ID', '').strip():
+              raise SystemExit('actor_id is required')
           max_records = int(os.environ['MAX_RECORDS'])
           max_charge = float(os.environ['APIFY_MAX_CHARGE_USD'])
-          if not 1 <= max_records <= 25:
-              raise SystemExit('one-shot smoke max_records must be between 1 and 25')
-          if not 0 < max_charge <= 0.05:
-              raise SystemExit('one-shot smoke max_charge_usd must be > 0 and <= 0.05')
+          if not 1 <= max_records <= 100:
+              raise SystemExit('max_records must be between 1 and 100')
+          if not 0 < max_charge <= 1.0:
+              raise SystemExit('max_charge_usd must be > 0 and <= 1.00')
           actor_input = json.loads(os.environ['APIFY_INPUT_JSON'])
-          if not isinstance(actor_input, dict) or len(actor_input.get('handles', [])) != 5:
-              raise SystemExit('one-shot smoke must contain exactly five handles')
-          print('One-shot live guardrails OK; official X API remains unused.')
+          if not isinstance(actor_input, dict):
+              raise SystemExit('actor_input_json must be a JSON object')
+          print('Live guardrails OK; official X API remains unused.')
           PY
       - name: Run isolated Apify smoke ingestion
         run: |
