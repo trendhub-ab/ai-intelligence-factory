@@ -22,10 +22,11 @@ class Run337MembershipPublicFunnelAuditTests(unittest.TestCase):
         self.assertIn("AI Decision Intelligenceの利用方法", run332.LEGACY_REFERENCE)
         self.assertIn("Product Hunt", run311.LEGACY_PROFILE)
 
-    def test_price_parser_accepts_expected_public_variants(self) -> None:
-        for value in ("¥1,980 / 月", "￥1,980/月", "1,980円/月", "月額 1,980円"):
+    def test_price_parser_accepts_observed_public_variants_only(self) -> None:
+        for value in ("¥1,980 / 月", "￥1,980/月", "1,980円/月"):
             self.assertTrue(run337._price_verified(value), value)
         self.assertFalse(run337._price_verified("980円/月"))
+        self.assertFalse(run337._price_verified("月額 1,980円"))
 
     def test_join_candidate_detection_is_semantic_not_single_label(self) -> None:
         actions = [
