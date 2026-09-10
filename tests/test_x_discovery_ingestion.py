@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
+from io import BytesIO
 
 from x_discovery.dedupe import cluster_candidates, dedupe_signals
 from x_discovery.normalize import normalize_post
@@ -262,6 +264,58 @@ class XDiscoveryIngestionTests(unittest.TestCase):
         self.assertEqual(provider.provider_errors[0]["error"], "window_too_wide")
         self.assertIn("description", provider.provider_errors[0])
         self.assertEqual(provider.provider_errors[0]["oldest_visible_post_at"], "2026-09-10T10:00:00Z")
+
+    def test_isolated_profile_mode_contains_actor_failure_and_splits_budget(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(self.payload).encode("utf-8")
+
+        def fake_urlopen(request, timeout):
+            body = json.loads(request.data.decode("utf-8"))
+            handle = body["handles"][0]
+            if handle == "broken":
+                raise HTTPError(
+                    request.full_url,
+                    400,
+                    "Bad Request",
+                    hdrs=None,
+                    fp=BytesIO(b'{"error":{"type":"run-failed","message":"payload changed"}}'),
+                )
+            return FakeResponse([{"type": "user", "userName": handle, "posts": [{"id": handle + "-1", "text": "new"}]}])
+
+        provider = ApifyProvider(
+            token="secret",
+            actor_id="simple.actor~x-profile-posts",
+            actor_input={
+                "handles": ["good1", "broken", "good2"],
+                "outputFormat": "profile",
+                "isolateProfiles": True,
+                "onlyPostsNewerThan": "12 hours",
+            },
+            max_total_charge_usd=0.03,
+        )
+        with patch("x_discovery.providers.urlopen", side_effect=fake_urlopen) as mocked:
+            items = provider.fetch(max_records=20)
+
+        self.assertEqual([item["id"] for item in items], ["good1-1", "good2-1"])
+        self.assertEqual(provider.external_calls, 3)
+        self.assertEqual(provider.requested_profile_count, 3)
+        self.assertEqual(provider.profile_rows_read, 2)
+        self.assertEqual(provider.profiles_with_posts, {"good1", "good2"})
+        self.assertEqual(provider.provider_errors[0]["handle"], "broken")
+        self.assertEqual(provider.provider_errors[0]["error"], "actor_run_failed")
+        for call in mocked.call_args_list:
+            self.assertIn("maxItems=1", call.args[0].full_url)
+            self.assertIn("maxTotalChargeUsd=0.01", call.args[0].full_url)
 
     def test_runner_writes_profile_diagnostics_and_provider_raw_items(self):
         class FakeResponse:
