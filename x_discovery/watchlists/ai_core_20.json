@@ -12,7 +12,7 @@
     {"handle": "huggingface", "tier": 1, "kind": "open_source_platform"},
     {"handle": "AIatMeta", "tier": 1, "kind": "frontier_lab"},
     {"handle": "MistralAI", "tier": 1, "kind": "frontier_lab"},
-    {"handle": "xai", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "SpaceXAI", "tier": 1, "kind": "frontier_lab"},
     {"handle": "cohere", "tier": 1, "kind": "enterprise_ai"},
     {"handle": "Perplexity_AI", "tier": 1, "kind": "ai_product"},
     {"handle": "NVIDIAAI", "tier": 1, "kind": "ai_infrastructure"},
