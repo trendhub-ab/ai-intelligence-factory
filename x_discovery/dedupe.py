@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from urllib.parse import urlsplit
 
 from .models import DiscoveryCandidate, DiscoverySignal
 from .url_resolution import is_primary_source_candidate
@@ -41,17 +42,31 @@ def dedupe_signals(
     return emitted, duplicates, known
 
 
+def _candidate_identity(url: str) -> str:
+    """Treat http/https variants of the same host/path/query as one discovery target."""
+    parts = urlsplit(url)
+    return f"{parts.netloc.lower()}{parts.path}?{parts.query}"
+
+
 def cluster_candidates(signals: Sequence[DiscoverySignal]) -> List[DiscoveryCandidate]:
-    by_url: Dict[str, DiscoveryCandidate] = {}
+    by_identity: Dict[str, DiscoveryCandidate] = {}
     for signal in signals:
         for url in signal.external_urls:
-            candidate = by_url.get(url)
+            identity = _candidate_identity(url)
+            candidate = by_identity.get(identity)
             if candidate is None:
                 candidate = DiscoveryCandidate(
                     canonical_url=url,
                     primary_source_candidate=is_primary_source_candidate(url),
                 )
-                by_url[url] = candidate
+                by_identity[identity] = candidate
+            else:
+                # Prefer HTTPS when both schemes were observed for the same resource.
+                if candidate.canonical_url.startswith("http://") and url.startswith("https://"):
+                    candidate.canonical_url = url
+                candidate.primary_source_candidate = (
+                    candidate.primary_source_candidate or is_primary_source_candidate(url)
+                )
             candidate.mention_count += 1
             if signal.author_handle not in candidate.authors:
                 candidate.authors.append(signal.author_handle)
@@ -60,6 +75,6 @@ def cluster_candidates(signals: Sequence[DiscoverySignal]) -> List[DiscoveryCand
             if signal.post_url and signal.post_url not in candidate.post_urls:
                 candidate.post_urls.append(signal.post_url)
     return sorted(
-        by_url.values(),
+        by_identity.values(),
         key=lambda item: (-item.mention_count, item.canonical_url),
     )
