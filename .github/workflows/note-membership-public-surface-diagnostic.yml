@@ -1,0 +1,187 @@
+name: Diagnose public membership surface logged out
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DIAGNOSE_PUBLIC_MEMBERSHIP_TRENDHUB_BIZ_RUN338_LOGGED_OUT'
+        required: true
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-membership-public-surface-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.run_attempt == 1 &&
+       github.event.issue.number == 71 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.user.login == 'trendhub-ab' &&
+       github.actor == 'trendhub-ab' &&
+       github.event.comment.body == '/aiif note membership public-diagnostic')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Falsify exact Run338 logged-out diagnostic
+        run: python -m unittest tests.test_run338_membership_public_surface_diagnostic -v
+      - name: Validate exact read-only authorization
+        id: auth
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CONFIRM: ${{ inputs.confirm }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            [ "$CONFIRM" = 'DIAGNOSE_PUBLIC_MEMBERSHIP_TRENDHUB_BIZ_RUN338_LOGGED_OUT' ] || exit 1
+          else
+            [ "$COMMENT" = '/aiif note membership public-diagnostic' ] || exit 1
+          fi
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  diagnostic:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
+          command -v xvfb-run >/dev/null 2>&1 || exit 1
+      - name: Re-run exact Run338 regression
+        run: python -m unittest tests.test_run338_membership_public_surface_diagnostic -v
+      - name: Diagnose public membership and profile surfaces without mutation
+        env:
+          NOTE_MEMBERSHIP_PUBLIC_RUN338_CONFIRM: DIAGNOSE_PUBLIC_MEMBERSHIP_TRENDHUB_BIZ_RUN338_LOGGED_OUT
+          NOTE_MEMBERSHIP_PUBLIC_RUN338_RESULT_FILE: ${{ runner.temp }}/run338-membership-public-diagnostic.json
+          NOTE_MEMBERSHIP_PUBLIC_RUN338_MEMBERSHIP_SCREENSHOT_FILE: ${{ runner.temp }}/run338-membership-public.png
+          NOTE_MEMBERSHIP_PUBLIC_RUN338_PROFILE_SCREENSHOT_FILE: ${{ runner.temp }}/run338-profile-public.png
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run338_membership_public_surface_diagnostic.py
+      - name: Enforce diagnostic safety contract without assuming customer state
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run338-membership-public-diagnostic.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'diagnostic_completed_no_mutation':
+              raise SystemExit(f'Run338 diagnostic runtime failed: {r.get("status")!r} {r.get("error", "")}')
+          if r.get('fresh_no_cookie_context') is not True:
+              raise SystemExit('Run338 did not start from a fresh zero-cookie context')
+          if r.get('explicit_auth_cookie_names_after'):
+              raise SystemExit(f'Run338 acquired explicit auth-like cookies: {r.get("explicit_auth_cookie_names_after")}')
+          if r.get('clicks_performed') != 0 or r.get('field_filled') is not False or r.get('save_clicked') is not False:
+              raise SystemExit('Run338 zero-click/fill/save contract failed')
+          if any(r.get(k) is not False for k in ('content_mutation','settings_mutation','membership_mutation','public_mutation')):
+              raise SystemExit('Run338 mutation contract failed')
+          if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
+              raise SystemExit('Run338 zero-provider contract failed')
+          if not r.get('membership_checkpoints'):
+              raise SystemExit('Run338 produced no membership checkpoints')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run338 logged-out membership diagnostic\n')
+              fh.write(f'- classification: `{r.get("classification")}`\n')
+              fh.write(f'- membership HTTP: `{r.get("membership_http_status")}`\n')
+              fh.write(f'- profile HTTP: `{r.get("profile_http_status")}`\n')
+              fh.write(f'- checkpoints: `{len(r.get("membership_checkpoints") or [])}`\n')
+              fh.write(f'- profile membership links: `{json.dumps(r.get("profile_membership_links") or [], ensure_ascii=False)}`\n')
+              fh.write(f'- request failures: `{len(r.get("request_failures") or [])}`\n')
+              fh.write(f'- HTTP error responses: `{len(r.get("http_error_responses") or [])}`\n')
+              fh.write('- clicks/fills/saves: `0 / 0 / 0`\n')
+              fh.write('- Gemini calls: `0`\n')
+              fh.write('- Notion writes: `0`\n')
+          PY
+      - name: Preserve Run338 diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run338-membership-public-surface-diagnostic
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run338-membership-public-diagnostic.json
+            ${{ runner.temp }}/run338-membership-public.png
+            ${{ runner.temp }}/run338-profile-public.png
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, diagnostic]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
