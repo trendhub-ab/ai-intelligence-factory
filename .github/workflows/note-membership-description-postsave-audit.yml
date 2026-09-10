@@ -1,0 +1,181 @@
+name: Audit membership description post-save state
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type AUDIT_MEMBERSHIP_DESCRIPTION_POSTSAVE_RUN335_READONLY'
+        required: true
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-membership-description-postsave-audit
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.run_attempt == 1 &&
+       github.event.issue.number == 71 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.user.login == 'trendhub-ab' &&
+       github.actor == 'trendhub-ab' &&
+       github.event.comment.body == '/aiif note membership description-audit')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Falsify exact Run335 read-only audit
+        run: python -m unittest tests.test_run335_membership_description_postsave_readonly_audit -v
+      - name: Validate exact read-only authorization
+        id: auth
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CONFIRM: ${{ inputs.confirm }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            [ "$CONFIRM" = 'AUDIT_MEMBERSHIP_DESCRIPTION_POSTSAVE_RUN335_READONLY' ] || exit 1
+          else
+            [ "$COMMENT" = '/aiif note membership description-audit' ] || exit 1
+          fi
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  audit:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
+          command -v xvfb-run >/dev/null 2>&1 || exit 1
+      - name: Re-run exact Run335 regression
+        run: python -m unittest tests.test_run335_membership_description_postsave_readonly_audit -v
+      - name: Audit public and saved edit state with zero mutation
+        env:
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN335_CONFIRM: AUDIT_MEMBERSHIP_DESCRIPTION_POSTSAVE_RUN335_READONLY
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN335_RESULT_FILE: ${{ runner.temp }}/run335-membership-postsave-audit.json
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN335_SCREENSHOT_FILE: ${{ runner.temp }}/run335-membership-postsave-audit.png
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run335_membership_description_postsave_readonly_audit.py
+      - name: Enforce read-only audit contract
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run335-membership-postsave-audit.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'postsave_state_audited_no_mutation':
+              raise SystemExit(f'Run335 unexpected status: {r.get("status")!r}')
+          if r.get('public_state') not in {'legacy','current','unexpected'}:
+              raise SystemExit('Run335 invalid public state')
+          if r.get('edit_state') not in {'legacy','current'}:
+              raise SystemExit('Run335 invalid saved edit state')
+          if not all(r.get(k) is True for k in ('plan_name_verified','fee_marker_verified','benefits_verified')):
+              raise SystemExit('Run335 exact plan invariants failed')
+          if r.get('clicks_performed') != 0 or r.get('field_filled') is not False or r.get('save_clicked') is not False:
+              raise SystemExit('Run335 zero-click/fill/save contract failed')
+          if r.get('membership_mutation') is not False or r.get('public_mutation') is not False:
+              raise SystemExit('Run335 mutation contract failed')
+          if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
+              raise SystemExit('Run335 zero-model/zero-Notion contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run335 post-save read-only audit\n')
+              fh.write(f'- public state: `{r.get("public_state")}`\n')
+              fh.write(f'- saved edit state: `{r.get("edit_state")}`\n')
+              fh.write(f'- public/edit consistent: `{str(r.get("public_edit_consistent")).lower()}`\n')
+              fh.write('- clicks/fills/saves: `0 / 0 / 0`\n')
+              fh.write('- Gemini calls: `0`\n')
+              fh.write('- Notion writes: `0`\n')
+          PY
+      - name: Preserve Run335 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run335-membership-postsave-readonly-audit
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run335-membership-postsave-audit.json
+            ${{ runner.temp }}/run335-membership-postsave-audit.png
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
