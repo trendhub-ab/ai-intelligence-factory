@@ -8,6 +8,7 @@ import run311_note_profile_update as run311
 import run332_membership_description_edit_route_probe as run332
 import run333_membership_description_exact_update as run333
 import run337_membership_public_funnel_audit as run337
+import run339_membership_public_funnel_audit as run339
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (ROOT / ".github/workflows/note-membership-public-funnel-audit.yml").read_text(encoding="utf-8")
@@ -37,7 +38,7 @@ class Run337MembershipPublicFunnelAuditTests(unittest.TestCase):
         found = run337._join_candidates(actions)
         self.assertEqual(len(found), 2)
 
-    def test_audit_is_fresh_logged_out_and_zero_mutation(self) -> None:
+    def test_historical_audit_was_zero_mutation(self) -> None:
         source = inspect.getsource(run337.audit)
         self.assertIn("cookies_before = context.cookies()", source)
         self.assertIn("PUBLIC_MEMBERSHIP_URL", source)
@@ -55,11 +56,13 @@ class Run337MembershipPublicFunnelAuditTests(unittest.TestCase):
         self.assertIn('"zero_gemini_calls": True', source)
         self.assertIn('"notion_writes": 0', source)
 
-    def test_workflow_is_manual_exact_zero_model(self) -> None:
+    def test_live_public_audit_is_promoted_to_run339(self) -> None:
         self.assertIn("/aiif note membership public-audit", WORKFLOW)
-        self.assertIn(run337.CONFIRM_TOKEN, WORKFLOW)
-        self.assertIn("run337_membership_public_funnel_audit.py", WORKFLOW)
-        self.assertIn("tests.test_run337_membership_public_funnel_audit", WORKFLOW)
+        self.assertNotIn(run337.CONFIRM_TOKEN, WORKFLOW)
+        self.assertNotIn("run337_membership_public_funnel_audit.py", WORKFLOW)
+        self.assertIn(run339.CONFIRM_TOKEN, WORKFLOW)
+        self.assertIn("run339_membership_public_funnel_audit.py", WORKFLOW)
+        self.assertIn("tests.test_run339_membership_public_funnel_audit", WORKFLOW)
         self.assertNotIn("schedule:", WORKFLOW)
         self.assertNotIn("push:", WORKFLOW)
         upper = WORKFLOW.upper()
