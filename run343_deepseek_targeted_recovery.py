@@ -1,10 +1,15 @@
-"""Run343e one-shot recovery for the exact DeepSeek V4.1 Flash article.
+"""Run343f one-shot recovery for the exact DeepSeek V4.1 Flash article.
 
 This temporary route binds to one exact Notion page and re-verifies page id, title,
 canonical source URL, source, and lifecycle before any provider call or mutation.
 A prior provider-unavailable attempt may legitimately move this exact item from
 Quality Failed to Pending Retry, so only those two non-Ready recovery states are
 accepted. Every other lifecycle state still fails closed.
+
+Run260 intentionally prepends the canonical Production 3.7/3.8 routing even when a
+workflow supplies a narrower environment pool. For this one exact recovery only,
+Run343f therefore pins the *effective installed pipeline module pool* immediately
+before generation. Global Production routing and Daily remain unchanged.
 """
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ TARGET_NAME = "DeepSeek launching v4.1 flash cheaper and more capable than v4 pr
 TARGET_URL = "https://news.ycombinator.com/item?id=49624603"
 TARGET_SOURCE = "HackerNews"
 ALLOWED_RECOVERY_CONTENT_STATUSES = {"Quality Failed", "Pending Retry"}
+TARGET_MODEL_POOL = ("gemini-3.6-flash", "gemini-3.5-flash")
 
 
 def _rich_text(prop: dict[str, Any] | None) -> str:
@@ -70,7 +76,7 @@ def candidate_from_page_payload(pipeline, payload: dict[str, Any]) -> dict[str, 
         mismatches.append("already_ready")
     if mismatches:
         raise RuntimeError(
-            "Run343e exact Notion target contract changed; refusing provider call/mutation: "
+            "Run343f exact Notion target contract changed; refusing provider call/mutation: "
             + ",".join(mismatches)
         )
 
@@ -111,24 +117,44 @@ def read_exact_target(pipeline) -> dict[str, Any]:
             timeout=10,
         )
     except Exception as exc:
-        raise RuntimeError(f"Run343e exact Notion page read failed: {exc}") from exc
+        raise RuntimeError(f"Run343f exact Notion page read failed: {exc}") from exc
     if int(getattr(response, "status_code", 0) or 0) != 200:
         raise RuntimeError(
-            f"Run343e exact Notion page read failed HTTP {getattr(response, 'status_code', 0)}"
+            f"Run343f exact Notion page read failed HTTP {getattr(response, 'status_code', 0)}"
         )
     return candidate_from_page_payload(pipeline, response.json() or {})
+
+
+def pin_effective_target_model_pool(pipeline) -> list[str]:
+    """Pin only this installed runtime to 3.6 -> 3.5 and prove the effective value."""
+    target = list(TARGET_MODEL_POOL)
+    pipeline.DEEP_DIVE_MODEL_POOL = list(target)
+    pipeline.DEEP_DIVE_MODEL_CANDIDATES = list(target)
+    if hasattr(pipeline, "SELECTED_DEEP_DIVE_MODEL"):
+        pipeline.SELECTED_DEEP_DIVE_MODEL = target[0]
+
+    effective_pool = [str(v).strip() for v in getattr(pipeline, "DEEP_DIVE_MODEL_POOL", []) if str(v).strip()]
+    effective_candidates = [
+        str(v).strip() for v in getattr(pipeline, "DEEP_DIVE_MODEL_CANDIDATES", []) if str(v).strip()
+    ]
+    if effective_pool != target or effective_candidates != target:
+        raise RuntimeError(
+            "Run343f effective model pool pin failed; refusing provider call: "
+            f"pool={effective_pool!r} candidates={effective_candidates!r}"
+        )
+    return effective_pool
 
 
 def run_targeted_recovery(pipeline) -> dict[str, Any]:
     budget = article_revalidation._cap_validation_budget(pipeline)
     pipeline.logger.warning(
-        "[RUN343E TARGETED RECOVERY] page=%s exact=%s url=%s request_budget=%s persist=true",
+        "[RUN343F TARGETED RECOVERY] page=%s exact=%s url=%s request_budget=%s persist=true",
         TARGET_PAGE_ID, TARGET_NAME, TARGET_URL, budget,
     )
     item = read_exact_target(pipeline)
     repo = item["repo"]
     pipeline.logger.info(
-        "[RUN343E TARGET VERIFIED] page=%s status=%s/%s score=%s source=%s",
+        "[RUN343F TARGET VERIFIED] page=%s status=%s/%s score=%s source=%s",
         TARGET_PAGE_ID,
         item.get("revalidation_article_status"),
         item.get("revalidation_content_status"),
@@ -137,7 +163,13 @@ def run_targeted_recovery(pipeline) -> dict[str, Any]:
     )
     is_safe, license_status = pipeline.legal_safety_gate(repo)
     if not is_safe:
-        raise RuntimeError(f"Run343e legal safety gate rejected target: {license_status}")
+        raise RuntimeError(f"Run343f legal safety gate rejected target: {license_status}")
+
+    effective_pool = pin_effective_target_model_pool(pipeline)
+    pipeline.logger.warning(
+        "[RUN343F EFFECTIVE MODEL POOL] %s",
+        ",".join(effective_pool),
+    )
 
     generated = pipeline.generate_intelligence_report(
         repo,
@@ -150,12 +182,12 @@ def run_targeted_recovery(pipeline) -> dict[str, Any]:
         persist_results=True,
     )
     if not generated:
-        raise RuntimeError("Run343e target did not produce an accepted current-policy manuscript")
+        raise RuntimeError("Run343f target did not produce an accepted current-policy manuscript")
     manuscript, status = generated if isinstance(generated, tuple) else (generated, "accepted")
     if status != "accepted":
-        raise RuntimeError(f"Run343e target remained non-Ready: status={status}")
+        raise RuntimeError(f"Run343f target remained non-Ready: status={status}")
     pipeline.logger.info(
-        "[RUN343E TARGETED RECOVERY READY] %s chars=%s page=%s",
+        "[RUN343F TARGETED RECOVERY READY] %s chars=%s page=%s",
         TARGET_NAME, len(manuscript or ""), TARGET_PAGE_ID,
     )
     return {"accepted": 1, "page_id": TARGET_PAGE_ID, "name": TARGET_NAME, "url": TARGET_URL}

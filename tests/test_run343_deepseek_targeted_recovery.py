@@ -51,9 +51,34 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
 
     def test_optional_primary_url_can_be_unexposed_when_canonical_url_is_exact(self):
         payload = self._payload()
-        payload["properties"]["一次情報URL"] = {"type": "formula", "formula": {"type": "string", "string": run343.TARGET_URL}}
+        payload["properties"]["一次情報URL"] = {
+            "type": "formula",
+            "formula": {"type": "string", "string": run343.TARGET_URL},
+        }
         item = run343.candidate_from_page_payload(self._pipeline(), payload)
         self.assertEqual(item["repo"]["url"], run343.TARGET_URL)
+
+    def test_effective_pool_pin_overrides_run260_expansion_for_this_one_shot(self):
+        pipeline = types.SimpleNamespace(
+            DEEP_DIVE_MODEL_POOL=[
+                "gemini-3.7-flash",
+                "gemini-3.8-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+            ],
+            DEEP_DIVE_MODEL_CANDIDATES=[
+                "gemini-3.7-flash",
+                "gemini-3.8-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+            ],
+            SELECTED_DEEP_DIVE_MODEL="gemini-3.7-flash",
+        )
+        effective = run343.pin_effective_target_model_pool(pipeline)
+        self.assertEqual(effective, ["gemini-3.6-flash", "gemini-3.5-flash"])
+        self.assertEqual(pipeline.DEEP_DIVE_MODEL_POOL, ["gemini-3.6-flash", "gemini-3.5-flash"])
+        self.assertEqual(pipeline.DEEP_DIVE_MODEL_CANDIDATES, ["gemini-3.6-flash", "gemini-3.5-flash"])
+        self.assertEqual(pipeline.SELECTED_DEEP_DIVE_MODEL, "gemini-3.6-flash")
 
     def test_refuses_wrong_page_id_before_provider(self):
         payload = self._payload()
