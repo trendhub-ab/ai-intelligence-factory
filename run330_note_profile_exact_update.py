@@ -14,7 +14,10 @@ Safety contract:
 Run331 hardening: the unrelated-setting invariant is scoped to the actual profile form and
 semantic user-visible control state. Global header/search controls, hidden framework tokens,
 DOM ordering, and transient disabled state are not customer settings and are excluded from the
-post-save comparison. This prevents a successful save from being reported as a false failure.
+post-save comparison. note renders real switch controls as transparent checkbox inputs, so
+role="switch" controls remain explicitly included even when their input element is visually hidden.
+This prevents a successful save from being reported as a false failure without dropping real
+layout/menu settings from the invariant.
 """
 from __future__ import annotations
 
@@ -75,14 +78,15 @@ def _public_state(page: Any) -> str:
 
 
 def _form_snapshot(page: Any) -> list[dict[str, Any]]:
-    """Snapshot only semantic user settings in the form that owns the biography.
+    """Snapshot semantic user settings in the form that owns the biography.
 
-    The original Run330 compared every input on the whole page, including unrelated header
+    Run330 originally compared every input on the whole page, including unrelated header
     controls and framework/transient state. note can legitimately re-render those after Save,
     which caused a false-positive failure even though the biography save succeeded. The current
     invariant follows the actual profile form, ignores the authorized biography itself, excludes
-    non-visible implementation controls, and compares stable semantic values independent of DOM
-    ordering.
+    non-visible implementation controls, but keeps role=switch inputs because note visually hides
+    those checkbox elements while they still represent real customer settings. Stable semantic
+    values are compared independent of DOM ordering.
     """
     raw = page.evaluate(
         r"""
@@ -98,13 +102,14 @@ def _form_snapshot(page: Any) -> list[dict[str, Any]]:
               style.visibility !== 'hidden' && style.opacity !== '0';
           };
           const rows = Array.from(root.querySelectorAll('input, textarea, select'))
-            .filter(el => visible(el))
+            .filter(el => visible(el) || (el.getAttribute('role') || '') === 'switch')
             .filter(el => !(el.tagName.toLowerCase() === 'textarea' &&
               (el.getAttribute('name') || '') === 'editBiography' &&
               (el.getAttribute('aria-label') || '') === '自己紹介'))
             .map(el => ({
               tag: el.tagName.toLowerCase(),
               type: el.getAttribute('type') || '',
+              role: el.getAttribute('role') || '',
               name: el.getAttribute('name') || '',
               ariaLabel: el.getAttribute('aria-label') || '',
               value: 'value' in el ? String(el.value || '') : '',
@@ -112,14 +117,14 @@ def _form_snapshot(page: Any) -> list[dict[str, Any]]:
             }));
           const counts = {};
           for (const row of rows) {
-            const base = [row.tag, row.type, row.name, row.ariaLabel].join('|');
+            const base = [row.tag, row.type, row.role, row.name, row.ariaLabel].join('|');
             const occurrence = counts[base] || 0;
             counts[base] = occurrence + 1;
             row.occurrence = occurrence;
           }
           rows.sort((a, b) => {
-            const ka = [a.tag, a.type, a.name, a.ariaLabel, a.occurrence].join('|');
-            const kb = [b.tag, b.type, b.name, b.ariaLabel, b.occurrence].join('|');
+            const ka = [a.tag, a.type, a.role, a.name, a.ariaLabel, a.occurrence].join('|');
+            const kb = [b.tag, b.type, b.role, b.name, b.ariaLabel, b.occurrence].join('|');
             return ka.localeCompare(kb);
           });
           return rows;
@@ -131,17 +136,22 @@ def _form_snapshot(page: Any) -> list[dict[str, Any]]:
     return raw
 
 
+def _snapshot_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        row.get("tag"),
+        row.get("type"),
+        row.get("role"),
+        row.get("name"),
+        row.get("ariaLabel"),
+        row.get("occurrence"),
+    )
+
+
 def _snapshot_diff(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> str:
     if before == after:
         return ""
-    before_map = {
-        (row.get("tag"), row.get("type"), row.get("name"), row.get("ariaLabel"), row.get("occurrence")): row
-        for row in before
-    }
-    after_map = {
-        (row.get("tag"), row.get("type"), row.get("name"), row.get("ariaLabel"), row.get("occurrence")): row
-        for row in after
-    }
+    before_map = {_snapshot_key(row): row for row in before}
+    after_map = {_snapshot_key(row): row for row in after}
     keys = sorted(set(before_map) | set(after_map), key=str)
     changed: list[str] = []
     for key in keys:
