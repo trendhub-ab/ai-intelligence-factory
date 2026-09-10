@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 from .dedupe import cluster_candidates, dedupe_signals, load_seen_ids, save_seen_ids
+from .handoff import build_primary_resolution_queue
 from .normalize import normalize_post
 from .providers import ApifyProvider, FixtureProvider, XDiscoveryProvider
 from .url_resolution import (
@@ -55,6 +56,7 @@ def run_ingestion(
     candidates = cluster_candidates(fresh)
     primary_candidate_count = sum(1 for item in candidates if item.primary_source_candidate)
     primary_candidate_rate = round(primary_candidate_count / len(candidates), 4) if candidates else 0.0
+    primary_resolution_queue = build_primary_resolution_queue(candidates)
 
     provider_errors = list(getattr(provider, "provider_errors", []) or [])
     skipped_pinned = int(getattr(provider, "skipped_pinned", 0) or 0)
@@ -89,6 +91,7 @@ def run_ingestion(
     _write_json(output_dir / "raw_posts.json", raw)
     _write_json(output_dir / "normalized_signals.json", [item.to_dict() for item in fresh])
     _write_json(output_dir / "discovery_candidates.json", [item.to_dict() for item in candidates])
+    _write_json(output_dir / "primary_resolution_queue.json", primary_resolution_queue)
     if provider_raw_items:
         _write_json(output_dir / "provider_raw_items.json", provider_raw_items)
     _write_json(
@@ -118,6 +121,7 @@ def run_ingestion(
             "official_shortener_failures": official["failures"],
             "primary_candidate_count": primary_candidate_count,
             "primary_candidate_rate": primary_candidate_rate,
+            "primary_resolution_queue_count": int(primary_resolution_queue["item_count"]),
         },
     )
 
@@ -134,6 +138,7 @@ def run_ingestion(
         "candidate_count": len(candidates),
         "primary_candidate_count": primary_candidate_count,
         "primary_candidate_rate": primary_candidate_rate,
+        "primary_resolution_queue_count": int(primary_resolution_queue["item_count"]),
         "external_url_count": sum(len(item.external_urls) for item in fresh),
         "requested_profile_count": requested_profiles,
         "profile_rows_read": profile_rows_read,
