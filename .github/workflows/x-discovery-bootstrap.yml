@@ -1,11 +1,6 @@
 name: X Discovery Bootstrap
 
 on:
-  push:
-    branches:
-      - feature/x-discovery-ingestion
-    paths:
-      - '.github/workflows/x-discovery-bootstrap.yml'
   workflow_dispatch:
 
 permissions:
