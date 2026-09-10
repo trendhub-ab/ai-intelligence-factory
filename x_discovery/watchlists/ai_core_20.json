@@ -19,7 +19,7 @@
     {"handle": "msftresearch", "tier": 2, "kind": "research"},
     {"handle": "MicrosoftAI", "tier": 1, "kind": "ai_product"},
     {"handle": "StabilityAI", "tier": 2, "kind": "generative_ai"},
-    {"handle": "LangChainAI", "tier": 2, "kind": "developer_platform"},
+    {"handle": "LangChain", "tier": 2, "kind": "developer_platform"},
     {"handle": "llama_index", "tier": 2, "kind": "developer_platform"},
     {"handle": "togethercompute", "tier": 2, "kind": "ai_infrastructure"},
     {"handle": "GroqInc", "tier": 2, "kind": "ai_infrastructure"},
