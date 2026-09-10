@@ -1,7 +1,81 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08T22:14:37.993183+00:00",
+  "updated_at": "2026-09-10T05:36:27.083791+00:00",
   "items": [
+    {
+      "key": "https://news.ycombinator.com/item?id=49629668",
+      "deferred_at": "2026-09-10T05:36:27.083593+00:00",
+      "expires_at": "2026-09-24T05:36:27.083593+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "I Let Claude Merge 38 PRs. Here's What Broke",
+        "originalTitle": "I Let Claude Merge 38 PRs. Here's What Broke",
+        "displayName": "I Let Claude Merge 38 PRs. Here's What Broke",
+        "sourceLanguage": "en",
+        "url": "https://www.craigphares.com/i-let-claude-merge-38-prs-heres-what-broke/",
+        "description": "I Let Claude Merge 38 PRs. Here's What Broke",
+        "stargazerCount": 2,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-09T17:01:05Z",
+        "sourceContext": "HN points=2 comments=2 matched_query=Claude",
+        "primaryUrl": "https://www.craigphares.com/i-let-claude-merge-38-prs-heres-what-broke/",
+        "sourceDetails": {
+          "hn_id": "49629668",
+          "hn_url": "https://news.ycombinator.com/item?id=49629668",
+          "external_url": "https://www.craigphares.com/i-let-claude-merge-38-prs-heres-what-broke/",
+          "comments": 2,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-81d2-bb41-ff73480ecd61",
+      "score": 78,
+      "reason": "Claudeによる大量PR自動マージの実務での失敗談と教訓",
+      "commercial_score": 85,
+      "shelf_life_score": 45,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 80.45
+    },
+    {
+      "key": "https://hugovergnes.github.io/little-lm-3-8b",
+      "deferred_at": "2026-09-10T05:36:27.083446+00:00",
+      "expires_at": "2026-09-24T05:36:27.083446+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
+        "originalTitle": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
+        "displayName": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
+        "sourceLanguage": "en",
+        "url": "https://hugovergnes.github.io/little-lm-3-8b/",
+        "description": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
+        "stargazerCount": 35,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-10T02:04:11Z",
+        "sourceContext": "HN points=35 comments=5 matched_query=LLM",
+        "primaryUrl": "https://hugovergnes.github.io/little-lm-3-8b/",
+        "sourceDetails": {
+          "hn_id": "49637435",
+          "hn_url": "https://news.ycombinator.com/item?id=49637435",
+          "external_url": "https://hugovergnes.github.io/little-lm-3-8b/",
+          "comments": 5,
+          "matched_query": "LLM",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-81b5-969b-d6f65ae5ad5d",
+      "score": 78,
+      "reason": "超低コストな独自モデル学習の好例",
+      "commercial_score": 85,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 80.45
+    },
     {
       "key": "https://arxiv.org/abs/2609.05269",
       "deferred_at": "2026-09-07T04:00:39.861354+00:00",
@@ -102,6 +176,79 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 77.4
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.10263",
+      "deferred_at": "2026-09-10T05:36:27.083656+00:00",
+      "expires_at": "2026-11-09T05:36:27.083656+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "What Should an Agent Forget? Separating What Is Stored from What Is Used",
+        "originalTitle": "What Should an Agent Forget? Separating What Is Stored from What Is Used",
+        "displayName": "What Should an Agent Forget? Separating What Is Stored from What Is Used",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.10263v1",
+        "description": "Persistent language agents need stored experience to remain available across time, while each answer requires evidence suited to a particular question. A superseded fact can mislead a current-state answer and still be essential for a historical query. We present RD-Forget, a training-free framework that separates what an agent stores from what it uses. A retained source archive preserves observations, and a query-conditioned memory view controls their influence on the current answer. A frozen la",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-09T14:48:09Z",
+        "sourceContext": "Persistent language agents need stored experience to remain available across time, while each answer requires evidence suited to a particular question. A superseded fact can mislead a current-state answer and still be essential for a historical query. We present RD-Forget, a training-free framework that separates what an agent stores from what it uses. A retained source archive preserves observations, and a query-conditioned memory view controls their influence on the current answer. A frozen language-model curator extracts relevant evidence, groups facts into semantic slots, and preserves the relations needed for multi-hop reasoning. Same-slot replacement links suppress superseded values in current-state contexts, while intent-aware retrieval makes earlier evidence eligible again. A rate-distortion formulation guides construction of the answer-time view within a memory budget. Experiments span conversational memory, knowledge updating, fact consolidation, long-context reasoning, and personalization under a shared answering pipeline. The results associate accurate answers with both query-relevant evidence construction and control over obsolete alternatives. Configurations without forgetting or query conditioning have the largest score deficits, while slot grouping, historical access, and relation preservation contribute complementary functions. Retaining history while selectively controlling its use offers a practical way to accommodate changing facts and future questions.",
+        "primaryUrl": "https://arxiv.org/abs/2609.10263v1",
+        "sourceDetails": {
+          "authors": [
+            "Yuhang Li",
+            "Yuchen Li"
+          ],
+          "categories": [
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-8120-a32f-cce64b4c58e7",
+      "score": 78,
+      "reason": "エージェントの持続的記憶管理と忘却の分離フレームワーク",
+      "commercial_score": 75,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 76.95
+    },
+    {
+      "key": "https://castforge.ai",
+      "deferred_at": "2026-09-10T05:36:27.083720+00:00",
+      "expires_at": "2026-09-24T05:36:27.083720+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: Castforge – run Claude Code, Codex and Gemini as one dev team",
+        "originalTitle": "Show HN: Castforge – run Claude Code, Codex and Gemini as one dev team",
+        "displayName": "Show HN: Castforge – run Claude Code, Codex and Gemini as one dev team",
+        "sourceLanguage": "en",
+        "url": "https://castforge.ai/",
+        "description": "Show HN: Castforge – run Claude Code, Codex and Gemini as one dev team",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-09T13:47:56Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=Claude",
+        "primaryUrl": "https://castforge.ai/",
+        "sourceDetails": {
+          "hn_id": "49626524",
+          "hn_url": "https://news.ycombinator.com/item?id=49626524",
+          "external_url": "https://castforge.ai/",
+          "comments": 0,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-8179-9d60-c22e658e26bd",
+      "score": 75,
+      "reason": "複数のAI開発ツールをチームとして統合するアプローチ",
+      "commercial_score": 80,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://arxiv.org/abs/2608.31017",
@@ -566,110 +713,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 66.95
-    },
-    {
-      "key": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
-      "deferred_at": "2026-09-07T09:52:34.057357+00:00",
-      "expires_at": "2026-09-21T09:52:34.057357+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Alibaba Qwen — GLM-5.2 Fast mode price reduction notice",
-        "originalTitle": "Alibaba Qwen — GLM-5.2 Fast mode price reduction notice",
-        "displayName": "Alibaba Qwen — GLM-5.2 Fast mode price reduction notice",
-        "sourceLanguage": "en",
-        "url": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes?aif_revision=dc1f5cdf70b5c338",
-        "description": "GLM-5.2 Fast mode price reduction notice",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "GLM-5.2 Fast mode price reduction notice",
-        "primaryUrl": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
-        "sourceDetails": {
-          "vendor": "Alibaba Qwen",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
-          "candidate_revision": "dc1f5cdf70b5c338",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-8129-a929-d80351093928",
-      "score": 65,
-      "reason": "主要モデルの価格改定に関する公式通知。",
-      "commercial_score": 70,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 66.75
-    },
-    {
-      "key": "https://ai.google.dev/gemini-api/docs/changelog",
-      "deferred_at": "2026-09-07T10:40:04.073612+00:00",
-      "expires_at": "2026-09-21T10:40:04.073612+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Google Gemini — The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
-        "originalTitle": "Google Gemini — The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
-        "displayName": "Google Gemini — The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
-        "sourceLanguage": "en",
-        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=4b8a104bcdd58a00",
-        "description": "The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "September 3, 2026",
-        "sourceContext": "The model supports text and image inputs and generates high-fidelity 44.1 kHz stereo audio. See the Music generation guide for details and code samples.",
-        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
-        "sourceDetails": {
-          "vendor": "Google Gemini",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
-          "candidate_revision": "4b8a104bcdd58a00",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-8149-ba3f-fb157622df71",
-      "score": 65,
-      "reason": "API選定における機能要件比較として重要",
-      "commercial_score": 65,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MULTIMODAL",
-      "deep_dive_priority_score": 65.0
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49548852",
-      "deferred_at": "2026-09-06T10:18:29.084743+00:00",
-      "expires_at": "2026-11-05T10:18:29.084743+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "How Swiss tables work in Go built-in map",
-        "originalTitle": "How Swiss tables work in Go built-in map",
-        "displayName": "How Swiss tables work in Go built-in map",
-        "sourceLanguage": "en",
-        "url": "https://victoriametrics.com/blog/go-swiss-table-map/index.html",
-        "description": "How Swiss tables work in Go built-in map",
-        "stargazerCount": 79,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-03T11:59:17+00:00",
-        "sourceContext": "",
-        "primaryUrl": "https://victoriametrics.com/blog/go-swiss-table-map/index.html",
-        "sourceDetails": {
-          "hn_id": 49548852,
-          "hn_url": "https://news.ycombinator.com/item?id=49548852",
-          "external_url": "https://victoriametrics.com/blog/go-swiss-table-map/index.html"
-        }
-      },
-      "notion_page_id": "3d3479ff-dca9-8111-a8fe-d58c365da763",
-      "score": 70,
-      "reason": "GoのビルトインマップにおけるSwiss tables実装解説",
-      "commercial_score": 50,
-      "shelf_life_score": 80,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 63.0
     }
   ]
 }
