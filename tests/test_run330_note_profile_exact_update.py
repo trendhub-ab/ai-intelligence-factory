@@ -46,11 +46,13 @@ class Run330ExactProfileUpdateTests(unittest.TestCase):
     def test_all_other_settings_are_snapshotted_and_verified_unchanged(self) -> None:
         snapshot = inspect.getsource(run330._form_snapshot)
         source = inspect.getsource(run330.update_profile)
-        self.assertIn("querySelectorAll('input, textarea, select')", snapshot)
+        self.assertIn("root.querySelectorAll('input, textarea, select')", snapshot)
         self.assertIn("editBiography", snapshot)
+        self.assertIn("role", snapshot)
         self.assertIn("before_snapshot", source)
-        self.assertIn("_form_snapshot(page) != before_snapshot", source)
-        self.assertIn("after_fresh_snapshot != before_snapshot", source)
+        self.assertIn('_require_snapshot_unchanged(before_snapshot, _form_snapshot(page), "before save")', source)
+        self.assertIn('_require_snapshot_unchanged(before_snapshot, _form_snapshot(page), "after save")', source)
+        self.assertIn('_require_snapshot_unchanged(before_snapshot, after_fresh_snapshot, "on fresh settings verification")', source)
         self.assertIn("other_settings_unchanged", source)
 
     def test_public_state_is_fail_closed_and_idempotent(self) -> None:
@@ -70,6 +72,7 @@ class Run330ExactProfileUpdateTests(unittest.TestCase):
         self.assertIn(token, WORKFLOW)
         self.assertIn("run330_note_profile_exact_update.py", WORKFLOW)
         self.assertIn("tests.test_run330_note_profile_exact_update", WORKFLOW)
+        self.assertIn("tests.test_run331_profile_form_snapshot_scope", WORKFLOW)
         self.assertNotIn("xvfb-run -a python run311_note_profile_update.py", WORKFLOW)
         self.assertIn("/aiif note profile update", CHATOPS)
         self.assertIn(token, CHATOPS)
