@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from x_discovery.url_resolution import (
     OfficialShortenerResolver,
+    TcoRedirectResolver,
     enrich_record_with_shorteners,
     extract_external_urls,
 )
@@ -57,6 +58,18 @@ class OfficialShortenerTests(unittest.TestCase):
         self.assertEqual(resolver.failures, 0)
         self.assertEqual(resolver.unresolved_chains, 0)
         self.assertEqual([host for host, _, _ in FakeConnection.requested], ["msft.it", "aka.ms"])
+        self.assertNotIn("www.microsoft.com", [host for host, _, _ in FakeConnection.requested])
+
+    def test_tco_can_hand_off_through_msft_it_without_fetching_destination(self):
+        FakeConnection.locations[("t.co", "/wrapped")] = "https://msft.it/abc"
+        FakeConnection.locations[("msft.it", "/abc")] = "https://www.microsoft.com/en-us/research/blog/example"
+        resolver = TcoRedirectResolver()
+        with patch("x_discovery.url_resolution.http.client.HTTPSConnection", FakeConnection):
+            resolved = resolver.resolve("https://t.co/wrapped")
+        self.assertEqual(resolved, "https://www.microsoft.com/en-us/research/blog/example")
+        self.assertEqual(resolver.successes, 1)
+        self.assertEqual(resolver.unresolved_chains, 0)
+        self.assertEqual([host for host, _, _ in FakeConnection.requested], ["t.co", "msft.it"])
         self.assertNotIn("www.microsoft.com", [host for host, _, _ in FakeConnection.requested])
 
     def test_nvda_first_hop_resolves_and_tracking_is_removed(self):
