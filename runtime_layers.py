@@ -39,7 +39,6 @@ RUNTIME_LAYER_ORDER = (
     "run296_editorial_format_v2.install",
     "run248_first_real_publish_quality_calibration.install",
     "run249_final_publication_surface_gate.install",
-    "run341_production_reader_repair.install",
     "run194_publication_contract.install",
 )
 
@@ -74,7 +73,6 @@ def install_runtime_layers(pipeline_module):
     import run296_editorial_format_v2
     import run248_first_real_publish_quality_calibration
     import run249_final_publication_surface_gate
-    import run341_production_reader_repair
     import run194_publication_contract
 
     runtime_state_channel.install(pipeline_module)
@@ -134,17 +132,10 @@ def install_runtime_layers(pipeline_module):
     run296_editorial_format_v2.install(pipeline_module)
 
     # First-real-publish calibration is zero-provider-call and deliberately sits after all
-    # article/eyecatch/presentation layers. Run249 rechecks the reader-first public
+    # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
     # projection so late title/summary assembly cannot bypass Reader Value diagnostics.
+    # The content-addressed Publication Contract remains the last installed layer.
     run248_first_real_publish_quality_calibration.install(pipeline_module)
     run249_final_publication_surface_gate.install(pipeline_module)
-
-    # Run341 is the narrow Production response to the 2026-09-10 real Daily findings.
-    # It never relaxes a gate: it strengthens the first-pass Reader Path and permits
-    # exactly one already-budgeted retry for reader-only accessibility failures on fresh
-    # Production candidates. It sits after Run249 so final-surface reader labels are in
-    # scope, and before the content-addressed Publication Contract remains last.
-    run341_production_reader_repair.install(pipeline_module)
-
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
