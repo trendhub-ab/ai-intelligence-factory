@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-10T05:36:31.479857+00:00",
+  "updated_at": "2026-09-10T10:05:03.627624+00:00",
   "items": [
     {
       "key": "https://news.ycombinator.com/item?id=49629668",
@@ -114,6 +114,50 @@
       "deep_dive_priority_score": 80.0
     },
     {
+      "key": "https://arxiv.org/abs/2609.10441",
+      "deferred_at": "2026-09-10T10:05:03.627350+00:00",
+      "expires_at": "2026-09-24T10:05:03.627350+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "ConvMem: Convolutional Memory for Long-Context Reasoning",
+        "originalTitle": "ConvMem: Convolutional Memory for Long-Context Reasoning",
+        "displayName": "ConvMem: Convolutional Memory for Long-Context Reasoning",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.10441v1",
+        "description": "While Large Language Models (LLMs) have demonstrated impressive capabilities, they often struggle with extremely long contexts due to fixed context limits. To address this, sequential approaches like MemAgent extend the effective context by reading text in segments and iteratively updating a fixed-size memory. However, this sequential paradigm suffers from high latency and requires costly reinforcement learning (RL) training, which can lead to overfitting on specific datasets. To overcome these",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-09T16:53:02Z",
+        "sourceContext": "While Large Language Models (LLMs) have demonstrated impressive capabilities, they often struggle with extremely long contexts due to fixed context limits. To address this, sequential approaches like MemAgent extend the effective context by reading text in segments and iteratively updating a fixed-size memory. However, this sequential paradigm suffers from high latency and requires costly reinforcement learning (RL) training, which can lead to overfitting on specific datasets. To overcome these limitations, we propose ConvMem, a training-free, highly parallelizable framework that reformulates long-context reasoning as a hierarchical convolution. Inspired by CNNs, ConvMem treats an LLM prompted with a specific query as a convolutional kernel. This kernel summarizes text segments hierarchically, shortening the reasoning path from a linear chain into a logarithmic tree. Specifically, ConvMem integrates \\textit{Configurable Strides} and \\textit{Skip Connections} to ensure robust evidence capture and propagation, while employing \\textit{Multi-Kernel Convolution} to decompose complex queries into disentangled semantic channels. This design not only mitigates error accumulation but also enables massive parallelization across both text segments and reasoning threads. Experiments on RULER-HotpotQA and RULER-2WikiMultiHopQA demonstrate that ConvMem outperforms training-free baselines and avoids the risk of overfitting to parametric priors often observed in RL-trained models on out-of-distribution tasks.",
+        "primaryUrl": "https://arxiv.org/abs/2609.10441v1",
+        "sourceDetails": {
+          "authors": [
+            "Hongming Zhang",
+            "Zhaozhen Gu",
+            "Fengshuo Bai",
+            "Ming Hao",
+            "Qingyang Zhang",
+            "Yuanyuan Wang",
+            "Shiyang Tang",
+            "Yanna Wang",
+            "Bo Xu"
+          ],
+          "categories": [
+            "cs.AI",
+            "cs.CL"
+          ]
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-812c-8945-c1bbe3f21b13",
+      "score": 78,
+      "reason": "長文コンテキスト処理の効率化に関する有望なアプローチ。",
+      "commercial_score": 80,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 78.7
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49548600",
       "deferred_at": "2026-09-04T01:03:15.800568+00:00",
       "expires_at": "2026-09-18T01:03:15.800568+00:00",
@@ -212,6 +256,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 76.95
+    },
+    {
+      "key": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/main/DeepSeek_V41_Tech_Report.pdf",
+      "deferred_at": "2026-09-10T10:05:03.627200+00:00",
+      "expires_at": "2026-09-24T10:05:03.627200+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "(Tech Report) DeepSeek-v4.1-Flash: Pushing Limits of KV Cache Compression [pdf]",
+        "originalTitle": "(Tech Report) DeepSeek-v4.1-Flash: Pushing Limits of KV Cache Compression [pdf]",
+        "displayName": "(Tech Report) DeepSeek-v4.1-Flash: Pushing Limits of KV Cache Compression [pdf]",
+        "sourceLanguage": "en",
+        "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/main/DeepSeek_V41_Tech_Report.pdf",
+        "description": "(Tech Report) DeepSeek-v4.1-Flash: Pushing Limits of KV Cache Compression [pdf]",
+        "stargazerCount": 6,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-10T06:13:07Z",
+        "sourceContext": "HN points=6 comments=0 matched_query=DeepSeek",
+        "primaryUrl": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/main/DeepSeek_V41_Tech_Report.pdf",
+        "sourceDetails": {
+          "hn_id": "49639110",
+          "hn_url": "https://news.ycombinator.com/item?id=49639110",
+          "external_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/main/DeepSeek_V41_Tech_Report.pdf",
+          "comments": 0,
+          "matched_query": "DeepSeek",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-8153-b844-e325598be2d7",
+      "score": 75,
+      "reason": "KVキャッシュ圧縮による推論効率化技術の詳細。",
+      "commercial_score": 80,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://castforge.ai",
@@ -529,6 +610,43 @@
       "deep_dive_priority_score": 73.05
     },
     {
+      "key": "https://news.ycombinator.com/item?id=49639094",
+      "deferred_at": "2026-09-10T10:05:03.627446+00:00",
+      "expires_at": "2026-09-24T10:05:03.627446+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Hackers are stealing Claude tokens from subscribers",
+        "originalTitle": "Hackers are stealing Claude tokens from subscribers",
+        "displayName": "Hackers are stealing Claude tokens from subscribers",
+        "sourceLanguage": "en",
+        "url": "https://techcrunch.com/2026/09/08/hackers-are-stealing-claude-tokens-from-subscribers/",
+        "description": "Hackers are stealing Claude tokens from subscribers",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-10T06:11:22Z",
+        "sourceContext": "HN points=4 comments=1 matched_query=Claude",
+        "primaryUrl": "https://techcrunch.com/2026/09/08/hackers-are-stealing-claude-tokens-from-subscribers/",
+        "sourceDetails": {
+          "hn_id": "49639094",
+          "hn_url": "https://news.ycombinator.com/item?id=49639094",
+          "external_url": "https://techcrunch.com/2026/09/08/hackers-are-stealing-claude-tokens-from-subscribers/",
+          "comments": 1,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d7479ff-dca9-810b-a075-f875c9c094b7",
+      "score": 70,
+      "reason": "AIサービス利用時のセキュリティ侵害リスクの警告。",
+      "commercial_score": 75,
+      "shelf_life_score": 35,
+      "shelf_life": "TREND",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 71.75
+    },
+    {
       "key": "https://arxiv.org/abs/2608.31016",
       "deferred_at": "2026-09-01T08:11:30.624270+00:00",
       "expires_at": "2026-10-31T08:11:30.624270+00:00",
@@ -602,117 +720,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 69.3
-    },
-    {
-      "key": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
-      "deferred_at": "2026-09-08T21:02:44.808525+00:00",
-      "expires_at": "2026-09-22T21:02:44.808525+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "How I Extend Claude Code",
-        "originalTitle": "How I Extend Claude Code",
-        "displayName": "How I Extend Claude Code",
-        "sourceLanguage": "en",
-        "url": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
-        "description": "How I Extend Claude Code",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-08T17:19:32Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=Claude",
-        "primaryUrl": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
-        "sourceDetails": {
-          "hn_id": "49613348",
-          "hn_url": "https://news.ycombinator.com/item?id=49613348",
-          "external_url": "https://malucelli.net/posts/2026-09-07-how-i-extend-claude-code",
-          "comments": 0,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d5479ff-dca9-81bd-88cb-e6fa1b7f2064",
-      "score": 70,
-      "reason": "開発ツールの拡張に関する実用知見",
-      "commercial_score": 65,
-      "shelf_life_score": 35,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 68.25
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49587647",
-      "deferred_at": "2026-09-08T14:59:04.214253+00:00",
-      "expires_at": "2026-11-07T14:59:04.214253+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
-        "originalTitle": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
-        "displayName": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
-        "sourceLanguage": "en",
-        "url": "https://qwen.ai/blog?id=qwen-scope",
-        "description": "Qwen-Scope: Decoding Intelligence, Unleashing Potential",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-06T15:45:23Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=Qwen",
-        "primaryUrl": "https://qwen.ai/blog?id=qwen-scope",
-        "sourceDetails": {
-          "hn_id": "49587647",
-          "hn_url": "https://news.ycombinator.com/item?id=49587647",
-          "external_url": "https://qwen.ai/blog?id=qwen-scope",
-          "comments": 0,
-          "matched_query": "Qwen",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d5479ff-dca9-8132-b521-fe03b354abd8",
-      "score": 70,
-      "reason": "モデル内部の解釈性向上に関する有用な情報。",
-      "commercial_score": 65,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 68.25
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49597354",
-      "deferred_at": "2026-09-08T14:59:04.214431+00:00",
-      "expires_at": "2026-09-22T14:59:04.214431+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
-        "originalTitle": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
-        "displayName": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
-        "sourceLanguage": "en",
-        "url": "https://www.theregister.com/columnists/2026/09/07/openais-rebel-agent-swarm-died-young-but-its-chilling-logs-live-on/5294446",
-        "description": "OpenAI's rebel agent swarm died young, but its chilling logs live on",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-07T12:07:08Z",
-        "sourceContext": "HN points=5 comments=0 matched_query=OpenAI",
-        "primaryUrl": "https://www.theregister.com/columnists/2026/09/07/openais-rebel-agent-swarm-died-young-but-its-chilling-logs-live-on/5294446",
-        "sourceDetails": {
-          "hn_id": "49597354",
-          "hn_url": "https://news.ycombinator.com/item?id=49597354",
-          "external_url": "https://www.theregister.com/columnists/2026/09/07/openais-rebel-agent-swarm-died-young-but-its-chilling-logs-live-on/5294446",
-          "comments": 0,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d5479ff-dca9-81bf-82c8-fda62edb1699",
-      "score": 68,
-      "reason": "エージェント暴走のログから安全性課題を学べる。",
-      "commercial_score": 65,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 66.95
     }
   ]
 }
