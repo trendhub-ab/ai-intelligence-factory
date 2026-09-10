@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Run339: hydration-aware, logged-out audit of the public membership purchase surface.
+"""Run339b: hydration-aware, logged-out audit of the public membership purchase surface.
 
-Run337 failed at the first DOM read. Run338 proved note redirects /membership to /membership/join,
-returns a client-rendering shell first, and hydrates the complete customer surface about 1.5s later.
+Run337 failed at the first DOM read. Run338 proved note initially serves /membership as a
+client-rendering shell, then hydrates the complete customer surface and transitions to
+/membership/join. The first Run339 correction still checked the final URL too early, immediately
+after DOMContentLoaded. Run339b fixes only that ordering bug: hydrate first, then verify the exact
+client-side final route.
+
 Run338 also proved `note_gql_auth_token` is issued to a fresh logged-out visitor while the page
-still visibly exposes `ログイン` and `会員登録`.
-
-Run339 turns those observed facts into the durable read-only production audit without weakening
-unknown-auth-cookie fail-closed behavior.
+still visibly exposes `ログイン` and `会員登録`. That token is therefore anonymous only under that
+positive logged-out UI proof; unknown auth-like cookies remain fail-closed.
 
 Safety contract:
 - fresh browser with zero seeded cookies/storage;
-- exact /membership start URL and exact /membership/join final URL only;
-- bounded wait for the proven customer markers instead of auditing the initial rendering shell;
-- `note_gql_auth_token` is treated as anonymous only when logged-out UI is positively verified;
+- exact /membership start URL and exact /membership/join post-hydration final URL only;
+- bounded wait for proven customer markers before client-route verification;
+- `note_gql_auth_token` is anonymous only when logged-out UI is positively verified;
 - every other auth/token/login/user_id-like cookie remains fail-closed;
 - navigation + DOM reads + screenshot only; zero clicks/fills/saves/mutations;
 - zero Gemini/model calls and zero Notion writes.
@@ -35,7 +37,7 @@ import run332_membership_description_edit_route_probe as run332
 import run333_membership_description_exact_update as run333
 import run337_membership_public_funnel_audit as run337
 
-CONFIRM_TOKEN = "AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN339_HYDRATED_LOGGED_OUT"
+CONFIRM_TOKEN = "AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN339B_POST_HYDRATION_LOGGED_OUT"
 RESULT_ENV = "NOTE_MEMBERSHIP_PUBLIC_RUN339_RESULT_FILE"
 SCREENSHOT_ENV = "NOTE_MEMBERSHIP_PUBLIC_RUN339_SCREENSHOT_FILE"
 PUBLIC_MEMBERSHIP_URL = run337.PUBLIC_MEMBERSHIP_URL
@@ -43,6 +45,7 @@ PUBLIC_MEMBERSHIP_JOIN_URL = PUBLIC_MEMBERSHIP_URL + "/join"
 ANONYMOUS_LOGGED_OUT_AUTHLIKE_COOKIE = "note_gql_auth_token"
 HYDRATION_TIMEOUT_MS = 12000
 HYDRATION_POLL_MS = 250
+REDIRECT_TIMEOUT_MS = 3000
 EXPECTED_BENEFITS = (
     "AI Decision Intelligence｜会員向け意思決定DB",
     "AI Decision Intelligence｜会員向けDigest",
@@ -93,7 +96,7 @@ def _wait_for_hydrated_purchase_surface(page: Any, timeout_ms: int = HYDRATION_T
             return last_body, last_actions, int((time.monotonic() - start) * 1000)
         if time.monotonic() >= deadline:
             raise base.NoteDraftError(
-                "Run339 timed out waiting for hydrated logged-out purchase surface: "
+                "Run339b timed out waiting for hydrated logged-out purchase surface: "
                 f"url={page.url!r} body_excerpt={last_body[:1200]!r}"
             )
         page.wait_for_timeout(HYDRATION_POLL_MS)
@@ -108,12 +111,12 @@ def _exact_onboarding_link_verified(page: Any, body_text: str) -> bool:
 
 def audit() -> dict[str, Any]:
     if os.environ.get("NOTE_MEMBERSHIP_PUBLIC_RUN339_CONFIRM", "").strip() != CONFIRM_TOKEN:
-        raise base.NoteDraftError("Run339 exact logged-out membership-audit confirmation is missing or invalid")
+        raise base.NoteDraftError("Run339b exact logged-out membership-audit confirmation is missing or invalid")
 
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
-        raise base.NoteDraftError("Playwright is required for Run339") from exc
+        raise base.NoteDraftError("Playwright is required for Run339b") from exc
 
     with sync_playwright() as playwright:
         browser = run317._launch_clean_browser(playwright)
@@ -126,30 +129,38 @@ def audit() -> dict[str, Any]:
             try:
                 cookies_before = context.cookies()
                 if cookies_before:
-                    raise base.NoteDraftError("Run339 fresh context unexpectedly contains cookies before navigation")
+                    raise base.NoteDraftError("Run339b fresh context unexpectedly contains cookies before navigation")
 
                 page = context.new_page()
                 page.set_default_timeout(30000)
                 response = page.goto(PUBLIC_MEMBERSHIP_URL, wait_until="domcontentloaded", timeout=60000)
-
-                final_url = str(page.url or "")
-                if final_url != PUBLIC_MEMBERSHIP_JOIN_URL:
-                    raise base.NoteDraftError(f"Run339 refuses unexpected membership final URL: {final_url!r}")
+                initial_url = str(page.url or "")
 
                 http_status = response.status if response is not None else None
                 if http_status != 200:
-                    raise base.NoteDraftError(f"Run339 public membership HTTP status is not 200: {http_status!r}")
+                    raise base.NoteDraftError(f"Run339b public membership HTTP status is not 200: {http_status!r}")
 
+                # Run338 proved the client route can still be /membership at DOMContentLoaded.
+                # First wait for the real customer surface; only then enforce the final /join route.
                 body_text, actions, hydration_wait_ms = _wait_for_hydrated_purchase_surface(page)
-                page_title = _canon(page.title())
+                try:
+                    page.wait_for_url(PUBLIC_MEMBERSHIP_JOIN_URL, timeout=REDIRECT_TIMEOUT_MS)
+                except Exception as exc:
+                    raise base.NoteDraftError(
+                        f"Run339b hydrated surface did not converge to exact join route: {page.url!r}"
+                    ) from exc
+                final_url = str(page.url or "")
+                if final_url != PUBLIC_MEMBERSHIP_JOIN_URL:
+                    raise base.NoteDraftError(f"Run339b refuses unexpected post-hydration final URL: {final_url!r}")
 
+                page_title = _canon(page.title())
                 challenge_hits = [m for m in run326.BOT_OR_CHALLENGE_MARKERS if m.lower() in body_text.lower()]
                 if challenge_hits:
-                    raise base.NoteDraftError(f"Run339 membership page is blocked by challenge: {challenge_hits}")
+                    raise base.NoteDraftError(f"Run339b membership page is blocked by challenge: {challenge_hits}")
 
                 not_available_hits = [m for m in run337.NOT_AVAILABLE_MARKERS if m in body_text]
                 if not_available_hits:
-                    raise base.NoteDraftError(f"Run339 membership page reports unavailable state: {not_available_hits}")
+                    raise base.NoteDraftError(f"Run339b membership page reports unavailable state: {not_available_hits}")
 
                 membership_verified = run333.MEMBERSHIP_NAME in body_text
                 current_description = _canon(run333.NEW_DESCRIPTION)
@@ -165,17 +176,17 @@ def audit() -> dict[str, Any]:
                 onboarding_link_verified = _exact_onboarding_link_verified(page, body_text)
 
                 if not all((membership_verified, description_verified, legacy_description_absent, price_verified)):
-                    raise base.NoteDraftError("Run339 core purchase-surface contract is incomplete after hydration")
+                    raise base.NoteDraftError("Run339b core purchase-surface contract is incomplete after hydration")
                 if not stale_profile_absent or not current_profile_visible:
-                    raise base.NoteDraftError("Run339 public purchase surface profile biography is not current")
+                    raise base.NoteDraftError("Run339b public purchase surface profile biography is not current")
                 if not joins:
-                    raise base.NoteDraftError("Run339 could not identify a visible join/signup action")
+                    raise base.NoteDraftError("Run339b could not identify a visible join/signup action")
                 if not logged_out_ui_verified:
-                    raise base.NoteDraftError("Run339 could not positively verify logged-out UI")
+                    raise base.NoteDraftError("Run339b could not positively verify logged-out UI")
                 if not benefits_verified:
-                    raise base.NoteDraftError("Run339 public purchase surface is missing an expected paid benefit")
+                    raise base.NoteDraftError("Run339b public purchase surface is missing an expected paid benefit")
                 if not onboarding_link_verified:
-                    raise base.NoteDraftError("Run339 could not verify the exact current onboarding article link")
+                    raise base.NoteDraftError("Run339b could not verify the exact current onboarding article link")
 
                 cookies_after = context.cookies()
                 note_cookie_names_after = sorted(
@@ -190,7 +201,7 @@ def audit() -> dict[str, Any]:
                 )
                 if explicit_auth_cookie_names:
                     raise base.NoteDraftError(
-                        f"Run339 fresh logged-out context acquired unexpected auth-like cookies: {explicit_auth_cookie_names}"
+                        f"Run339b fresh logged-out context acquired unexpected auth-like cookies: {explicit_auth_cookie_names}"
                     )
 
                 screenshot_file = os.environ.get(SCREENSHOT_ENV, "").strip()
@@ -201,8 +212,9 @@ def audit() -> dict[str, Any]:
 
                 return {
                     "status": "logged_out_membership_purchase_surface_verified",
-                    "run": "Run339",
+                    "run": "Run339b",
                     "public_url": PUBLIC_MEMBERSHIP_URL,
+                    "initial_url": initial_url,
                     "final_url": final_url,
                     "redirect_to_join_verified": True,
                     "http_status": http_status,
@@ -252,7 +264,7 @@ def main() -> None:
         path = Path(output)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("RUN339_MEMBERSHIP_PUBLIC_FUNNEL_AUDIT=" + json.dumps(result, ensure_ascii=False))
+    print("RUN339B_MEMBERSHIP_PUBLIC_FUNNEL_AUDIT=" + json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":

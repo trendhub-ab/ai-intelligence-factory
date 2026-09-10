@@ -20,6 +20,7 @@ class Run339MembershipPublicFunnelAuditTests(unittest.TestCase):
         self.assertEqual(run339.PUBLIC_MEMBERSHIP_JOIN_URL, "https://note.com/trendhub_biz/membership/join")
         self.assertEqual(run339.HYDRATION_TIMEOUT_MS, 12000)
         self.assertEqual(run339.HYDRATION_POLL_MS, 250)
+        self.assertEqual(run339.REDIRECT_TIMEOUT_MS, 3000)
         self.assertEqual(run333.MEMBERSHIP_NAME, "AI Decision Intelligence")
         self.assertEqual(len(run333.NEW_DESCRIPTION), 114)
         self.assertIn("AI Decision Intelligenceの利用方法", run332.LEGACY_REFERENCE)
@@ -55,11 +56,22 @@ class Run339MembershipPublicFunnelAuditTests(unittest.TestCase):
         self.assertTrue(run339._hydrated_customer_state(body, actions))
         self.assertFalse(run339._hydrated_customer_state(body, actions[:2]))
 
+    def test_run339b_checks_client_route_only_after_hydration(self) -> None:
+        source = inspect.getsource(run339.audit)
+        hydrate_pos = source.index("_wait_for_hydrated_purchase_surface(page)")
+        wait_url_pos = source.index("page.wait_for_url(PUBLIC_MEMBERSHIP_JOIN_URL")
+        final_url_pos = source.index("final_url = str(page.url or \"\")")
+        self.assertLess(hydrate_pos, wait_url_pos)
+        self.assertLess(wait_url_pos, final_url_pos)
+        pre_hydration = source[:hydrate_pos]
+        self.assertNotIn("refuses unexpected membership final URL", pre_hydration)
+        self.assertIn("initial_url = str(page.url or \"\")", pre_hydration)
+
     def test_audit_waits_for_hydration_and_is_zero_mutation(self) -> None:
         source = inspect.getsource(run339.audit)
         wait_source = inspect.getsource(run339._wait_for_hydrated_purchase_surface)
         self.assertIn("_wait_for_hydrated_purchase_surface(page)", source)
-        self.assertIn("PUBLIC_MEMBERSHIP_JOIN_URL", source)
+        self.assertIn("page.wait_for_url(PUBLIC_MEMBERSHIP_JOIN_URL", source)
         self.assertIn("_explicit_auth_cookie_names", source)
         self.assertIn("logged_out_ui_verified", source)
         self.assertIn("benefits_verified", source)
@@ -77,11 +89,12 @@ class Run339MembershipPublicFunnelAuditTests(unittest.TestCase):
         self.assertIn('"zero_gemini_calls": True', source)
         self.assertIn('"notion_writes": 0', source)
 
-    def test_workflow_promotes_live_command_to_run339(self) -> None:
+    def test_workflow_promotes_live_command_to_run339b(self) -> None:
         self.assertIn("/aiif note membership public-audit", WORKFLOW)
         self.assertIn(run339.CONFIRM_TOKEN, WORKFLOW)
         self.assertIn("run339_membership_public_funnel_audit.py", WORKFLOW)
         self.assertIn("tests.test_run339_membership_public_funnel_audit", WORKFLOW)
+        self.assertIn("Run339b", WORKFLOW)
         self.assertNotIn("NOTE_MEMBERSHIP_PUBLIC_RUN337_CONFIRM", WORKFLOW)
         self.assertNotIn("schedule:", WORKFLOW)
         self.assertNotIn("push:", WORKFLOW)
