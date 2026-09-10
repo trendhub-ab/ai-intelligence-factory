@@ -10,19 +10,20 @@ non-engineer accessibility is primarily a model-capability problem:
 
 This overlay does not relax any gate. It changes only two things:
 1. generation receives a Reader Path contract before the first provider call;
-2. normal new-candidate Production may spend exactly one existing quality-retry call
-   when Evidence is sufficient and every remaining blocker is a proven reader-only
-   accessibility family.
+2. normal new-candidate Production may use the existing one-quality-retry-per-article
+   path when Evidence is sufficient and every remaining blocker is a proven
+   reader-only accessibility family.
 
-Provider/per-run budgets remain authoritative. Fact/Evidence/Publication validation
-still runs after the repair and decides Ready fail-closed.
+This module creates no retry loop and owns no provider budget. The canonical article
+orchestrator's existing one-retry bound plus provider/per-run budgets remain
+authoritative. Fact/Evidence/Publication validation still reruns after repair and
+Ready remains fail-closed.
 """
 from __future__ import annotations
 
 from typing import Any
 
 _INSTALL_FLAG = "_run341_production_reader_repair_installed"
-_SPENT_FLAG = "_run341_production_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
 
 _REPAIRABLE_READER_LABELS = (
@@ -104,7 +105,6 @@ def install(pipeline_module: Any) -> Any:
     original_retry = pipeline_module.should_attempt_dynamic_retry
     original_prompt = pipeline_module.build_decision_prompt
     original_retry_instruction = pipeline_module.build_dynamic_retry_instruction
-    setattr(pipeline_module, _SPENT_FLAG, False)
 
     def should_attempt_dynamic_retry_with_production_reader_repair(
         reason_rows: list[dict], evidence_result: dict | None, candidate_origin: str = "new"
@@ -116,14 +116,13 @@ def install(pipeline_module: Any) -> Any:
             return allowed, reason
         if reason != "reader_value_review_no_retry":
             return allowed, reason
-        if bool(getattr(pipeline_module, _SPENT_FLAG, False)):
-            return allowed, reason
         if not _evidence_safe(pipeline_module, evidence_result):
             return allowed, reason
         hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
         if not _reader_only_repairable(list(reason_rows or []), hard):
             return allowed, reason
-        setattr(pipeline_module, _SPENT_FLAG, True)
+        # Authorization only. The existing article orchestration owns the one-retry
+        # lifecycle; this wrapper cannot recurse or issue a provider call itself.
         return True, "run341_production_reader_repair"
 
     def build_decision_prompt_with_reader_path(*args: Any, **kwargs: Any) -> str:
