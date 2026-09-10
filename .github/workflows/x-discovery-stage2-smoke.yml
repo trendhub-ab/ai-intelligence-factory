@@ -20,6 +20,7 @@ jobs:
       APIFY_ACTOR_ID: simple.actor~x-profile-posts
       APIFY_MAX_CHARGE_USD: '0.05'
       MAX_RECORDS: '100'
+      STAGE2_ATTEMPT: 'profile-cap-aligned'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
