@@ -1,4 +1,4 @@
-"""Run208/341: bounded Reader Value repair and first-pass Reader Path.
+"""Run208/341/342: bounded Reader Value repair and first-pass Reader Path.
 
 Run208 originally authorized one Reader Value repair only in the Pending Retry fast
 lane. The 2026-09-10 real Daily falsified that narrow scope as the sole Production
@@ -6,8 +6,13 @@ policy: IBIB passed factual/evidence/publication checks but normal Production st
 at ``reader_value_review_no_retry``; DeepSeek's mixed HARD retry improved factual
 surface while reader-flow scores regressed under the historical local-patch contract.
 
-The canonical Reader Value layer now owns three bounded responsibilities without
-relaxing any gate:
+Run342 replays the failed real manuscripts and tightens only the semantic ordering of
+the Reader Path. A rhetorical question or analogy can make prose friendlier without
+making the decision easier to reach; therefore reader proximity and decision distance
+are treated as different editorial requirements.
+
+The canonical Reader Value layer owns three bounded responsibilities without relaxing
+any gate:
 1. add a first-pass Reader Path contract before generation;
 2. preserve the historical one-spend Pending Retry fast-lane repair;
 3. allow fresh Production reader-only accessibility failures to use the article
@@ -42,13 +47,16 @@ _FRESH_REPAIRABLE = (
 
 READER_PATH_CONTRACT = r"""
 【Reader Path Contract｜非エンジニアが迷子にならない順序】
-ARTICLEは専門知識を見せる順番ではなく、読者が判断できる順番で書く。
-・冒頭2〜3文で、専門語を増やさず「何が変わった／なぜ自分に関係する／今どうする」を先に渡す。
+ARTICLEは専門知識を見せる順番ではなく、読者が判断できる順番で書く。固定見出しや定型句は使わず、意味の順序だけ守る。
+・冒頭3段落以内に必ず、①何が変わった ②それが読者の仕事・利用判断にどう関係する ③現時点の暫定判断（試す／比較する／待つ／見送る等）を置く。結論を最終節まで隠さない。
+・冒頭の問いかけや比喩は、それだけではReader Bridgeとみなさない。使うなら直後に「だから何を判断すべきか」まで接続し、問いかけ→説明→比喩→説明だけで冒頭を消費しない。
 ・最初の専門語・略語は、同じEvidenceの範囲で一度だけ普通の日本語に言い換える。説明のための新事実は足さない。
+・冒頭約600文字では、Decisionに不要なAPI名・内部構造・精度名・ベンチマーク条件・実装識別子を並べない。必要な専門語は先に意味、後で名称の順にする。
 ・高密度な技術説明を2段落続けない。技術説明の次には、その事実が読者の判断をどう変えるかを置く。
-・実装詳細、API名、内部構造、ベンチマーク条件はDecisionに必要なものだけ残し、必要なら判断を示した後へ送る。
-・「面白さ」は架空の体験・感情・比喩で作らない。Evidenceの中から意外な差分や判断の分かれ目を1つ選び、そこを記事の軸にする。
-・終盤まで結論を隠さない。Evidenceが許す範囲で、試す／比較する／待つ／見送るの距離感を早めに見せる。
+・数値は「何の判断に効く数字か」が先に分かるように置く。数字の羅列を先に見せない。ただしEvidence上その数値自体がニュースの核心なら例外とする。
+・実装詳細、API名、内部構造、ベンチマーク条件はDecisionに必要なものだけ残し、必要なら暫定判断を示した後へ送る。
+・「面白さ」は架空の体験・感情・因果で作らない。比喩を使う場合も事実の代替にせず、Evidenceの意味を平易にする補助に限る。Evidenceの中から意外な差分や判断の分かれ目を1つ選び、そこを記事の軸にする。
+・「私ならどう判断するか」まで待たず、本文前半で暫定判断を示し、終盤では条件・例外・実行手順を精密化する。
 ・タイトルは日本語として閉じた一文にし、引用符を必ず対応させる。専門語だけのタイトルにしない。
 """.strip()
 
@@ -58,8 +66,11 @@ READER_REPAIR_CONTRACT = r"""
 ・Evidence URL、一次情報の意味、Decision/Score/Action、根拠付き数値・単位・固有名詞・条件を変えない。
 ・新しい数値、製品名、API名、比較対象、使用経験、感情、因果、保証表現を追加しない。
 ・許可する変更は、タイトル句読点、冒頭と節頭の順序、専門語の平易な言い換え、重複文の削除・統合、判断に不要な実装細部の後送り／削除に限る。
-・冒頭2〜3文だけで「何が変わった／なぜ関係する／今どうする」が分かるようにする。
+・前稿の後半に既に存在するDecision/Actionを、意味を変えずに冒頭3段落以内へ前倒ししてよい。新しい判断を作ってはいけない。
+・冒頭の問いかけ・比喩がDecision到達を遅らせている場合は、削除または1文へ圧縮し、直後に「何が変わった／なぜ関係する／今どうする」を置く。
+・冒頭約600文字の専門語・実装識別子は、Decisionに不要なら後段へ移す。意味を落とさず、名称より普通の日本語を先に置く。
 ・専門語が連続する箇所では、同じEvidenceの意味を普通の日本語で1回だけ橋渡しする。
+・数値列挙の前に、その数字が何の判断に効くのかを既存文から前置きする。Evidence条件や単位は削らない。
 ・記事全体を短くすること自体を目的にしない。Evidenceを落とさず、情報の置き場所を変えて読みやすくする。
 ・修正後も事実Gate、Evidence Gate、Publication Gate、Reader Gateをすべて再判定し、通らなければReadyにしない。
 """.strip()
@@ -130,7 +141,7 @@ def install(pipeline_module: Any) -> Any:
             setattr(pipeline_module, _SPENT_ATTR, True)
             return True, "run208_reader_value_fast_lane_repair"
 
-        # Run341 Production finding, folded into this canonical layer to avoid adding
+        # Run341/342 Production finding, folded into this canonical layer to avoid adding
         # another permanent runtime wrapper. Authorization only: the article lifecycle
         # already permits at most one quality retry for this candidate.
         if candidate_origin == "new" and _fresh_evidence_safe(pipeline_module, evidence_result):
@@ -154,5 +165,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.build_decision_prompt = build_decision_prompt_with_reader_path
     pipeline_module.build_dynamic_retry_instruction = build_dynamic_retry_instruction_with_reader_repair
     pipeline_module.RUN341_PRODUCTION_READER_REPAIR = True
+    pipeline_module.RUN342_READER_DECISION_DISTANCE = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
