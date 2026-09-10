@@ -44,6 +44,12 @@ class Run343DeepSeekTargetedRecoveryTests(unittest.TestCase):
         self.assertEqual(item["screening_score"], 85)
         self.assertEqual(item["repo"]["engagement"], 399)
 
+    def test_optional_primary_url_can_be_unexposed_when_canonical_url_is_exact(self):
+        payload = self._payload()
+        payload["properties"]["一次情報URL"] = {"type": "formula", "formula": {"type": "string", "string": run343.TARGET_URL}}
+        item = run343.candidate_from_page_payload(self._pipeline(), payload)
+        self.assertEqual(item["repo"]["url"], run343.TARGET_URL)
+
     def test_refuses_wrong_page_id_before_provider(self):
         payload = self._payload()
         payload["id"] = "00000000-0000-0000-0000-000000000000"
