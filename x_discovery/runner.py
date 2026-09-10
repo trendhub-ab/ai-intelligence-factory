@@ -46,6 +46,8 @@ def run_ingestion(
     seen = load_seen_ids(Path(seen_ids_path)) if seen_ids_path else set()
     fresh, duplicate_count, all_seen = dedupe_signals(signals, seen)
     candidates = cluster_candidates(fresh)
+    primary_candidate_count = sum(1 for item in candidates if item.primary_source_candidate)
+    primary_candidate_rate = round(primary_candidate_count / len(candidates), 4) if candidates else 0.0
 
     provider_errors = list(getattr(provider, "provider_errors", []) or [])
     skipped_pinned = int(getattr(provider, "skipped_pinned", 0) or 0)
@@ -81,6 +83,8 @@ def run_ingestion(
             "tco_resolution_successes": tco_successes,
             "tco_internal_resolutions": tco_internal,
             "tco_resolution_failures": tco_failures,
+            "primary_candidate_count": primary_candidate_count,
+            "primary_candidate_rate": primary_candidate_rate,
         },
     )
 
@@ -95,6 +99,8 @@ def run_ingestion(
         "new_signal_count": len(fresh),
         "duplicate_count": duplicate_count,
         "candidate_count": len(candidates),
+        "primary_candidate_count": primary_candidate_count,
+        "primary_candidate_rate": primary_candidate_rate,
         "external_url_count": sum(len(item.external_urls) for item in fresh),
         "requested_profile_count": requested_profiles,
         "profile_rows_read": profile_rows_read,
