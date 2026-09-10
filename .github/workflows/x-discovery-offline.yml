@@ -1,0 +1,53 @@
+name: X Discovery Offline
+
+on:
+  push:
+    branches:
+      - feature/x-discovery-ingestion
+    paths:
+      - 'x_discovery/**'
+      - 'tests/test_x_discovery_ingestion.py'
+      - 'README_X_DISCOVERY.md'
+      - '.github/workflows/x-discovery-offline.yml'
+      - '.github/workflows/x-discovery-apify-smoke.yml'
+  pull_request:
+    paths:
+      - 'x_discovery/**'
+      - 'tests/test_x_discovery_ingestion.py'
+      - 'README_X_DISCOVERY.md'
+      - '.github/workflows/x-discovery-offline.yml'
+      - '.github/workflows/x-discovery-apify-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p 'test_x_discovery_ingestion.py' -v
+      - name: Fixture ingestion
+        run: python -m x_discovery.runner --provider fixture --output-dir /tmp/x-discovery --max-records 20
+      - name: Verify isolation contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/x-discovery')
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          assert manifest['factory_write'] is False
+          assert manifest['evidence_promoted'] is False
+          assert manifest['evidence_status'] == 'discovery_only'
+          assert manifest['x_official_api_calls'] == 0
+          assert manifest['external_provider_calls'] == 0
+          assert (root / 'discovery_candidates.json').exists()
+          print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
