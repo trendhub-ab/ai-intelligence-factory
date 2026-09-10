@@ -1,10 +1,10 @@
-name: Probe membership description edit route
+name: Update exact membership description
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type PROBE_MEMBERSHIP_DESCRIPTION_EDIT_ROUTE_AI_DECISION_INTELLIGENCE_READONLY'
+        description: 'Type UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN333_EXACT'
         required: true
         type: string
   issue_comment:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: note-membership-description-edit-route-probe
+  group: note-membership-description-exact-update
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
        github.event.issue.pull_request == null &&
        github.event.comment.user.login == 'trendhub-ab' &&
        github.actor == 'trendhub-ab' &&
-       github.event.comment.body == '/aiif note membership description-probe')
+       github.event.comment.body == '/aiif note membership description-update')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -38,9 +38,9 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify Run320 history and exact Run332 zero-click probe
-        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe tests.test_run332_membership_description_edit_route_probe -v
-      - name: Validate exact read-only authorization
+      - name: Falsify Run320/332 history and exact Run333 updater
+        run: python -m unittest tests.test_run320_member_onboarding_membership_dialog_probe tests.test_run332_membership_description_edit_route_probe tests.test_run333_membership_description_exact_update -v
+      - name: Validate exact mutation authorization
         id: auth
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -49,9 +49,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
-            [ "$CONFIRM" = 'PROBE_MEMBERSHIP_DESCRIPTION_EDIT_ROUTE_AI_DECISION_INTELLIGENCE_READONLY' ] || exit 1
+            [ "$CONFIRM" = 'UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN333_EXACT' ] || exit 1
           else
-            [ "$COMMENT" = '/aiif note membership description-probe' ] || exit 1
+            [ "$COMMENT" = '/aiif note membership description-update' ] || exit 1
           fi
           echo 'authorized=true' >> "$GITHUB_OUTPUT"
 
@@ -88,7 +88,7 @@ jobs:
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
 
-  probe:
+  update:
     if: ${{ needs.preflight.outputs.authorized == 'true' }}
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
@@ -103,59 +103,60 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run exact Run332 regression
-        run: python -m unittest tests.test_run332_membership_description_edit_route_probe -v
-      - name: Probe membership description edit route with zero clicks
+      - name: Re-run exact Run333 regression
+        run: python -m unittest tests.test_run333_membership_description_exact_update -v
+      - name: Update exact membership description only
         env:
-          NOTE_MEMBERSHIP_DESCRIPTION_ROUTE_PROBE_CONFIRM: PROBE_MEMBERSHIP_DESCRIPTION_EDIT_ROUTE_AI_DECISION_INTELLIGENCE_READONLY
-          NOTE_MEMBERSHIP_DESCRIPTION_ROUTE_PROBE_RESULT_FILE: ${{ runner.temp }}/run332-membership-description-route.json
-          NOTE_MEMBERSHIP_DESCRIPTION_ROUTE_PROBE_SCREENSHOT_FILE: ${{ runner.temp }}/run332-membership-description-route.png
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN333_CONFIRM: UPDATE_MEMBERSHIP_DESCRIPTION_AI_DECISION_INTELLIGENCE_RUN333_EXACT
+          NOTE_MEMBERSHIP_DESCRIPTION_RUN333_RESULT_FILE: ${{ runner.temp }}/run333-membership-description-update.json
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run332_membership_description_edit_route_probe.py
-      - name: Enforce zero-click no-mutation contract
+        run: xvfb-run -a python run333_membership_description_exact_update.py
+      - name: Enforce exact Run333 postconditions
         env:
-          RESULT_FILE: ${{ runner.temp }}/run332-membership-description-route.json
+          RESULT_FILE: ${{ runner.temp }}/run333-membership-description-update.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          if r.get('status') != 'membership_description_edit_route_probed_no_mutation':
-              raise SystemExit(f'Run332 unexpected status: {r.get("status")!r}')
-          if r.get('clicks_performed') != 0 or r.get('field_filled') is not False or r.get('save_clicked') is not False:
-              raise SystemExit('Run332 zero-click/zero-fill/zero-save contract failed')
-          if r.get('membership_mutation') is not False or r.get('public_mutation') is not False:
-              raise SystemExit('Run332 no-mutation contract failed')
+          status = r.get('status')
+          if status not in {'updated_and_verified_exact_description_only', 'already_current_verified_no_mutation'}:
+              raise SystemExit(f'Run333 unexpected status: {status!r}')
+          if r.get('other_plan_settings_unchanged') is not True:
+              raise SystemExit('Run333 unrelated plan-setting invariance failed')
+          if r.get('legacy_reference_present') is not False:
+              raise SystemExit('Run333 legacy reference still present')
           if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
-              raise SystemExit('Run332 zero-model/zero-Notion contract failed')
+              raise SystemExit('Run333 zero-model/zero-Notion contract failed')
+          if status == 'updated_and_verified_exact_description_only':
+              if r.get('description_mutation') is not True or r.get('save_clicks') != 1:
+                  raise SystemExit('Run333 exact mutation/save contract failed')
+          else:
+              if r.get('description_mutation') is not False or r.get('save_clicks') != 0:
+                  raise SystemExit('Run333 idempotent no-op contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run332 membership description edit-route probe\n')
-              fh.write(f'- membership: `{r.get("membership_name")}`\n')
-              fh.write(f'- audited edit href: `{r.get("audited_edit_href")}`\n')
-              fh.write(f'- destination: `{r.get("url_after_direct_navigation")}`\n')
-              fh.write(f'- description candidates: `{len(r.get("description_candidates") or [])}`\n')
-              fh.write(f'- save candidates: `{len(r.get("save_candidates") or [])}`\n')
-              fh.write('- clicks: `0`\n')
-              fh.write('- fills: `0`\n')
-              fh.write('- saves: `0`\n')
+              fh.write('### Run333 exact membership description update\n')
+              fh.write(f'- status: `{status}`\n')
+              fh.write(f'- description chars: `{r.get("description_chars")}` / 140\n')
+              fh.write(f'- save clicks: `{r.get("save_clicks")}`\n')
+              fh.write('- unrelated plan settings changed: `false`\n')
+              fh.write('- legacy onboarding reference present: `false`\n')
               fh.write('- Gemini calls: `0`\n')
               fh.write('- Notion writes: `0`\n')
           PY
-      - name: Preserve Run332 evidence
+      - name: Preserve Run333 result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run332-membership-description-edit-route-probe
+          name: run333-membership-description-exact-update
           if-no-files-found: warn
           retention-days: 7
-          path: |
-            ${{ runner.temp }}/run332-membership-description-route.json
-            ${{ runner.temp }}/run332-membership-description-route.png
+          path: ${{ runner.temp }}/run333-membership-description-update.json
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [preflight, start-cloud-vm, probe]
+    needs: [preflight, start-cloud-vm, update]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

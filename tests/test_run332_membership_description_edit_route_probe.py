@@ -51,12 +51,11 @@ class Run332MembershipDescriptionEditRouteProbeTests(unittest.TestCase):
         self.assertIn("_description_candidates", inspect.getsource(run332.probe))
         self.assertIn("_save_candidates", inspect.getsource(run332.probe))
 
-    def test_existing_workflow_is_reused_as_read_only_run332_route(self) -> None:
-        self.assertIn("workflow_dispatch:", WORKFLOW)
-        self.assertIn("/aiif note membership description-probe", WORKFLOW)
-        self.assertIn(run332.CONFIRM_TOKEN, WORKFLOW)
-        self.assertIn("run332_membership_description_edit_route_probe.py", WORKFLOW)
-        self.assertIn("tests.test_run332_membership_description_edit_route_probe", WORKFLOW)
+    def test_run332_is_preserved_as_history_while_live_workflow_advances(self) -> None:
+        self.assertNotIn("/aiif note membership description-probe", WORKFLOW)
+        self.assertNotIn("run332_membership_description_edit_route_probe.py", WORKFLOW)
+        self.assertIn("/aiif note membership description-update", WORKFLOW)
+        self.assertIn("run333_membership_description_exact_update.py", WORKFLOW)
         self.assertNotIn("schedule:", WORKFLOW)
         self.assertNotIn("push:", WORKFLOW)
         upper = WORKFLOW.upper()
