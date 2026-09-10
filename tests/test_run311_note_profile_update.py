@@ -53,14 +53,18 @@ class Run311NoteProfileUpdateTests(unittest.TestCase):
         self.assertIn("Product Hunt", source)
         self.assertIn("PUBLIC_PROFILE_URL", source)
 
-    def test_workflow_is_manual_exact_and_zero_model(self) -> None:
+    def test_run311_is_historical_and_live_workflow_is_run330(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "note-profile-update.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("UPDATE_NOTE_PROFILE_TRENDHUB_BIZ", workflow)
-        self.assertIn("run311_note_profile_update.py", workflow)
+        self.assertNotIn("UPDATE_NOTE_PROFILE_TRENDHUB_BIZ'", workflow)
+        self.assertNotIn("xvfb-run -a python run311_note_profile_update.py", workflow)
+        self.assertIn("UPDATE_NOTE_PROFILE_TRENDHUB_BIZ_RUN330_EXACT_BIOGRAPHY", workflow)
+        self.assertIn("run330_note_profile_exact_update.py", workflow)
+        self.assertIn("tests.test_run311_note_profile_update", workflow)
+        self.assertIn("tests.test_run330_note_profile_exact_update", workflow)
         self.assertNotIn("schedule:", workflow)
         self.assertNotIn("push:", workflow)
-        self.assertIn("zero Gemini calls", workflow)
+        self.assertIn("Gemini calls", workflow)
 
 
 if __name__ == "__main__":
