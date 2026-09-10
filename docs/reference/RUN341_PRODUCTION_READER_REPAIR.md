@@ -11,6 +11,8 @@ These observations falsify a model-only explanation. The control policy itself w
 
 ## Production contract
 
+Run341 is implemented by extending the existing canonical Reader Value authority, `run208_reader_value_repair.py`. No additional permanent runtime layer was retained. This keeps the production wrapper stack slim while making the new behavior publication-material through the already fingerprinted Run208 module.
+
 Run341 does not lower any quality threshold and adds no independent retry loop.
 
 1. **Reader Path on first generation**
@@ -24,7 +26,7 @@ Run341 does not lower any quality threshold and adds no independent retry loop.
    - Applies only to fresh Production candidates.
    - Requires Evidence state `SUFFICIENT` and `decision_scope_safe=true`.
    - Every blocker must be in the proven Reader Value accessibility family.
-   - Authorizes the canonical article orchestrator's existing one-quality-retry-per-article path; Run341 itself never calls a provider and never loops.
+   - Authorizes the canonical article orchestrator's existing one-quality-retry-per-article path; the Reader Value layer itself never calls a provider and never loops.
 
 3. **Mixed Fact + Reader retry**
    - Existing HARD/REVIEW retry authority remains unchanged.
@@ -39,7 +41,9 @@ Run341 does not lower any quality threshold and adds no independent retry loop.
 
 ## Provenance and reconciliation
 
-`run341_production_reader_repair.py` is a Publication Contract policy file. Its bytes therefore change the automatic policy SHA. It is also a Note Ready reconciliation trigger, so historical Ready content cannot silently be treated as current-policy after Run341 changes.
+`run208_reader_value_repair.py` was already part of the Publication Contract fingerprint and the Note Ready reconciliation trigger set. Therefore the Run341 behavior change automatically changes the policy SHA and forces current-policy reconciliation without adding another policy file or workflow path.
+
+Historical Ready content cannot silently be treated as current-policy after this change.
 
 ## Cost policy
 
