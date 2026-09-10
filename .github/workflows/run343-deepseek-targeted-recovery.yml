@@ -45,9 +45,11 @@ jobs:
         run: |
           python - <<'PY'
           import run343_deepseek_targeted_recovery as r
+          assert r.TARGET_PAGE_ID == '3d7479ff-dca9-81eb-9256-ca37b93d410f'
           assert r.TARGET_NAME == 'DeepSeek launching v4.1 flash cheaper and more capable than v4 pro'
           assert r.TARGET_URL == 'https://news.ycombinator.com/item?id=49624603'
-          print('Run343 exact target confirmed')
+          assert r.TARGET_SOURCE == 'HackerNews'
+          print('Run343b exact Notion page target confirmed')
           PY
       - name: Recover exact DeepSeek article under current Production gates
         run: python run343_deepseek_targeted_recovery.py
@@ -116,4 +118,4 @@ jobs:
         run: |
           test -n "${GH_TOKEN:-}"
           gh workflow run note-ready-sync.yml --ref main
-          echo 'Run343 accepted: dispatched Note Ready sync; no public note release requested.'
+          echo 'Run343b accepted: dispatched Note Ready sync; no public note release requested.'
