@@ -4,6 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set
+from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
@@ -149,11 +150,22 @@ class ApifyProvider(XDiscoveryProvider):
             if added_for_profile:
                 self.profiles_with_posts.add(handle)
             elif posts:
-                # A profile may contain only an old pinned post after filtering.
                 self.empty_profile_count += 1
             if len(accepted) >= max_records:
                 break
         return accepted
+
+    @staticmethod
+    def _safe_http_error(exc: HTTPError) -> RuntimeError:
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        body = " ".join(body.split())[:2000]
+        message = f"Apify HTTP {exc.code}: {exc.reason}"
+        if body:
+            message += f"; response={body}"
+        return RuntimeError(message)
 
     def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
         if not 1 <= int(max_records) <= 100:
@@ -178,13 +190,16 @@ class ApifyProvider(XDiscoveryProvider):
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
-                "User-Agent": "ai-intelligence-factory-x-discovery/0.3",
+                "User-Agent": "ai-intelligence-factory-x-discovery/0.4",
             },
             method="POST",
         )
         self.external_calls += 1
-        with urlopen(request, timeout=self.timeout_seconds + 15) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=self.timeout_seconds + 15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            raise self._safe_http_error(exc) from exc
 
         if isinstance(payload, dict):
             payload = payload.get("items", payload.get("data", []))
