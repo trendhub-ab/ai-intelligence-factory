@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT'
+        description: 'Type AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN339_HYDRATED_LOGGED_OUT'
         required: true
         type: string
   issue_comment:
@@ -38,8 +38,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify exact Run337 logged-out purchase-surface audit
-        run: python -m unittest tests.test_run337_membership_public_funnel_audit -v
+      - name: Falsify exact Run339 hydration-aware logged-out audit
+        run: python -m unittest tests.test_run339_membership_public_funnel_audit -v
       - name: Validate exact read-only authorization
         id: auth
         env:
@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
-            [ "$CONFIRM" = 'AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT' ] || exit 1
+            [ "$CONFIRM" = 'AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN339_HYDRATED_LOGGED_OUT' ] || exit 1
           else
             [ "$COMMENT" = '/aiif note membership public-audit' ] || exit 1
           fi
@@ -103,33 +103,38 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run exact Run337 regression
-        run: python -m unittest tests.test_run337_membership_public_funnel_audit -v
-      - name: Audit membership purchase surface in fresh logged-out browser
+      - name: Re-run exact Run339 regression
+        run: python -m unittest tests.test_run339_membership_public_funnel_audit -v
+      - name: Audit hydrated membership purchase surface in fresh logged-out browser
         env:
-          NOTE_MEMBERSHIP_PUBLIC_RUN337_CONFIRM: AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN337_LOGGED_OUT
-          NOTE_MEMBERSHIP_PUBLIC_RUN337_RESULT_FILE: ${{ runner.temp }}/run337-membership-public-audit.json
-          NOTE_MEMBERSHIP_PUBLIC_RUN337_SCREENSHOT_FILE: ${{ runner.temp }}/run337-membership-public-audit.png
+          NOTE_MEMBERSHIP_PUBLIC_RUN339_CONFIRM: AUDIT_PUBLIC_MEMBERSHIP_FUNNEL_TRENDHUB_BIZ_RUN339_HYDRATED_LOGGED_OUT
+          NOTE_MEMBERSHIP_PUBLIC_RUN339_RESULT_FILE: ${{ runner.temp }}/run339-membership-public-audit.json
+          NOTE_MEMBERSHIP_PUBLIC_RUN339_SCREENSHOT_FILE: ${{ runner.temp }}/run339-membership-public-audit.png
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run337_membership_public_funnel_audit.py
-      - name: Enforce customer-facing purchase-surface postconditions
+        run: xvfb-run -a python run339_membership_public_funnel_audit.py
+      - name: Enforce Run339 customer-facing purchase-surface postconditions
         env:
-          RESULT_FILE: ${{ runner.temp }}/run337-membership-public-audit.json
+          RESULT_FILE: ${{ runner.temp }}/run339-membership-public-audit.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          if r.get('status') != 'logged_out_membership_purchase_surface_verified':
-              raise SystemExit(f'Run337 unexpected status: {r.get("status")!r}')
+          if r.get('status') != 'logged_out_membership_purchase_surface_verified' or r.get('run') != 'Run339':
+              raise SystemExit(f'Run339 unexpected status: {r.get("status")!r} run={r.get("run")!r}')
           required = {
+              'redirect_to_join_verified': True,
               'membership_name_verified': True,
               'price_1980_month_verified': True,
               'current_description_verified': True,
               'legacy_description_absent': True,
               'stale_profile_absent': True,
+              'current_profile_visible': True,
+              'benefits_verified': True,
+              'onboarding_link_verified': True,
               'join_action_verified': True,
+              'logged_out_ui_verified': True,
               'fresh_no_cookie_context': True,
               'content_mutation': False,
               'settings_mutation': False,
@@ -139,38 +144,46 @@ jobs:
           }
           for key, expected in required.items():
               if r.get(key) is not expected:
-                  raise SystemExit(f'Run337 postcondition failed: {key}={r.get(key)!r}')
+                  raise SystemExit(f'Run339 postcondition failed: {key}={r.get(key)!r}')
+          if r.get('http_status') != 200:
+              raise SystemExit(f'Run339 HTTP status is not 200: {r.get("http_status")!r}')
+          if r.get('final_url') != 'https://note.com/trendhub_biz/membership/join':
+              raise SystemExit(f'Run339 final URL mismatch: {r.get("final_url")!r}')
           if r.get('explicit_auth_cookie_names_after'):
-              raise SystemExit('Run337 acquired explicit auth-like cookies')
+              raise SystemExit(f'Run339 acquired unexpected auth-like cookies: {r.get("explicit_auth_cookie_names_after")}')
           if r.get('clicks_performed') != 0 or r.get('field_filled') is not False or r.get('save_clicked') is not False:
-              raise SystemExit('Run337 zero-click/fill/save contract failed')
+              raise SystemExit('Run339 zero-click/fill/save contract failed')
           if r.get('notion_writes') != 0:
-              raise SystemExit('Run337 zero-Notion contract failed')
+              raise SystemExit('Run339 zero-Notion contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run337 logged-out membership purchase-surface audit\n')
+              fh.write('### Run339 logged-out membership purchase-surface audit\n')
               fh.write(f'- HTTP status: `{r.get("http_status")}`\n')
-              fh.write(f'- page title: `{r.get("page_title", "")}`\n')
+              fh.write(f'- final route: `{r.get("final_url")}`\n')
+              fh.write(f'- hydration wait: `{r.get("hydration_wait_ms")} ms`\n')
               fh.write('- plan: `AI Decision Intelligence`\n')
-              fh.write('- price: `¥1,980/月 verified`\n')
+              fh.write('- price: `¥1,980/month verified`\n')
               fh.write('- current 114-char description: `verified`\n')
-              fh.write('- legacy onboarding reference: `absent`\n')
-              fh.write('- stale Product Hunt profile copy: `absent`\n')
+              fh.write('- two paid benefits: `verified`\n')
+              fh.write('- current onboarding article link: `verified`\n')
+              fh.write('- current profile biography: `verified`\n')
+              fh.write('- legacy onboarding/Product Hunt copy: `absent`\n')
               fh.write(f'- join candidates: `{json.dumps(r.get("join_candidates") or [], ensure_ascii=False)}`\n')
-              fh.write('- fresh logged-out context: `true`\n')
+              fh.write('- fresh logged-out UI: `verified`\n')
+              fh.write(f'- anonymous note_gql_auth_token seen: `{r.get("anonymous_note_gql_auth_token_seen") is True}`\n')
               fh.write('- clicks/fills/saves: `0 / 0 / 0`\n')
               fh.write('- Gemini calls: `0`\n')
               fh.write('- Notion writes: `0`\n')
           PY
-      - name: Preserve Run337 evidence
+      - name: Preserve Run339 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run337-membership-public-funnel-audit
+          name: run339-membership-public-funnel-audit
           if-no-files-found: warn
           retention-days: 7
           path: |
-            ${{ runner.temp }}/run337-membership-public-audit.json
-            ${{ runner.temp }}/run337-membership-public-audit.png
+            ${{ runner.temp }}/run339-membership-public-audit.json
+            ${{ runner.temp }}/run339-membership-public-audit.png
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
