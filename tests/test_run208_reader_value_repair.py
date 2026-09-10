@@ -111,9 +111,13 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         run208.install(pipeline)
         prompt = pipeline.build_decision_prompt()
         self.assertIn("Reader Path Contract", prompt)
-        self.assertIn("何が変わった／なぜ自分に関係する／今どうする", prompt)
+        self.assertIn("①何が変わった", prompt)
+        self.assertIn("③現時点の暫定判断", prompt)
+        self.assertIn("問いかけや比喩は、それだけではReader Bridgeとみなさない", prompt)
+        self.assertIn("冒頭約600文字", prompt)
         self.assertIn("新事実は足さない", prompt)
-        self.assertIn("架空の体験・感情", prompt)
+        self.assertIn("架空の体験・感情・因果", prompt)
+        self.assertIn("固定見出しや定型句は使わず", prompt)
 
     def test_reader_retry_contract_preserves_fact_evidence_and_decision(self):
         pipeline = self._pipeline()
@@ -128,7 +132,16 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIn("Evidence URL", instruction)
         self.assertIn("Decision/Score/Action", instruction)
         self.assertIn("新しい数値", instruction)
+        self.assertIn("冒頭3段落以内へ前倒し", instruction)
+        self.assertIn("問いかけ・比喩がDecision到達を遅らせている場合", instruction)
         self.assertIn("Readyにしない", instruction)
+
+    def test_reader_contract_does_not_reintroduce_fixed_heading_template(self):
+        pipeline = self._pipeline()
+        run208.install(pipeline)
+        prompt = pipeline.build_decision_prompt()
+        for heading in ("## なぜ重要なのか", "## 何が変わるのか", "## 最終判断"):
+            self.assertNotIn(heading, prompt)
 
     def test_non_reader_retry_does_not_receive_reader_contract(self):
         pipeline = self._pipeline()
@@ -146,6 +159,7 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         run208.install(pipeline)
         self.assertIs(retry, pipeline.should_attempt_dynamic_retry)
         self.assertIs(prompt, pipeline.build_decision_prompt)
+        self.assertTrue(pipeline.RUN342_READER_DECISION_DISTANCE)
 
 
 if __name__ == "__main__":
