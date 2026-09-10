@@ -1,0 +1,61 @@
+name: X Discovery Apify Failed Run Diagnostic
+
+on:
+  push:
+    branches:
+      - feature/x-discovery-ingestion
+    paths:
+      - '.github/workflows/x-discovery-apify-failed-run-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_RUN_ID: VxnSNNeSA1eG5M5op
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch sanitized Apify run metadata and log tail
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          token = os.getenv('APIFY_TOKEN', '').strip()
+          run_id = os.getenv('APIFY_RUN_ID', '').strip()
+          if not token or not run_id:
+              raise SystemExit('required secret/run id missing')
+
+          def get(url, accept='application/json'):
+              req = Request(url, headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': accept,
+                  'User-Agent': 'ai-intelligence-factory-x-discovery-diagnostic/0.1',
+              })
+              with urlopen(req, timeout=30) as resp:
+                  return resp.read().decode('utf-8', errors='replace')
+
+          metadata_raw = get(f'https://api.apify.com/v2/actor-runs/{run_id}')
+          metadata_obj = json.loads(metadata_raw)
+          data = metadata_obj.get('data', metadata_obj)
+          allow = {
+              'id', 'actId', 'buildId', 'status', 'statusMessage', 'startedAt', 'finishedAt',
+              'exitCode', 'defaultDatasetId', 'defaultKeyValueStoreId', 'defaultRequestQueueId',
+              'usageTotalUsd', 'pricingInfo', 'generalAccess', 'memoryMbytes', 'timeoutSecs'
+          }
+          safe_meta = {k: v for k, v in data.items() if k in allow}
+          print('APIFY_RUN_METADATA=' + json.dumps(safe_meta, ensure_ascii=False, sort_keys=True))
+
+          log_text = get(f'https://api.apify.com/v2/actor-runs/{run_id}/log', accept='text/plain')
+          tail = log_text[-12000:]
+          print('APIFY_RUN_LOG_TAIL_BEGIN')
+          print(tail)
+          print('APIFY_RUN_LOG_TAIL_END')
+          PY
