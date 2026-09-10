@@ -20,7 +20,6 @@ jobs:
       APIFY_ACTOR_ID: simple.actor~x-profile-posts
       APIFY_MAX_CHARGE_USD: '0.05'
       MAX_RECORDS: '100'
-      STAGE2_ATTEMPT: 'profile-cap-aligned'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,10 +42,11 @@ jobs:
               'maxPosts': 5,
               'onlyPostsNewerThan': '12 hours',
               'includeRaw': False,
+              'isolateProfiles': True,
           }
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write('APIFY_INPUT_JSON=' + json.dumps(payload, separators=(',', ':')) + '\n')
-          print(json.dumps({'handles': len(handles), 'window': '12 hours', 'outputFormat': 'profile'}))
+          print(json.dumps({'handles': len(handles), 'window': '12 hours', 'outputFormat': 'profile', 'isolated': True}))
           PY
       - name: Validate Stage2 guardrails
         run: |
@@ -59,12 +59,12 @@ jobs:
           if os.environ.get('APIFY_ACTOR_ID') != 'simple.actor~x-profile-posts':
               raise SystemExit('unexpected Actor ID; refusing live run')
           if float(os.environ['APIFY_MAX_CHARGE_USD']) > 0.05:
-              raise SystemExit('Stage2 charge cap must be <= $0.05')
+              raise SystemExit('Stage2 total requested charge budget must be <= $0.05')
           if int(os.environ['MAX_RECORDS']) != 100:
               raise SystemExit('Stage2 max records must be exactly 100')
           payload = json.loads(os.environ['APIFY_INPUT_JSON'])
-          if payload.get('outputFormat') != 'profile':
-              raise SystemExit('Stage2 must use profile output for coverage diagnostics')
+          if payload.get('outputFormat') != 'profile' or payload.get('isolateProfiles') is not True:
+              raise SystemExit('Stage2 must use isolated profile output')
           if payload.get('onlyPostsNewerThan') != '12 hours':
               raise SystemExit('Stage2 must use a 12-hour polling window')
           if payload.get('maxPosts') != 5:
@@ -92,7 +92,7 @@ jobs:
           assert manifest['factory_write'] is False
           assert manifest['evidence_promoted'] is False
           assert manifest['x_official_api_calls'] == 0
-          assert manifest['external_provider_calls'] == 1
+          assert manifest['external_provider_calls'] == 20
           assert (root / 'provider_diagnostics.json').exists()
           assert (root / 'provider_raw_items.json').exists()
           print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
