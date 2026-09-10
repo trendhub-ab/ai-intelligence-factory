@@ -88,6 +88,7 @@ def install_runtime_layers(pipeline_module):
     import run296_editorial_format_v2
     import run248_first_real_publish_quality_calibration
     import run249_final_publication_surface_gate
+    import run341_production_reader_repair
     import run194_publication_contract
 
     return _canonical_install_runtime_layers(pipeline_module)
