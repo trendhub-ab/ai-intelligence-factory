@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "ai_core_20",
+  "purpose": "High-signal public AI organization accounts for isolated discovery polling",
+  "poll_window": "12 hours",
+  "max_posts_per_profile": 5,
+  "accounts": [
+    {"handle": "OpenAI", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "AnthropicAI", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "GoogleDeepMind", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "GoogleAI", "tier": 1, "kind": "platform"},
+    {"handle": "huggingface", "tier": 1, "kind": "open_source_platform"},
+    {"handle": "AIatMeta", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "MistralAI", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "xai", "tier": 1, "kind": "frontier_lab"},
+    {"handle": "cohere", "tier": 1, "kind": "enterprise_ai"},
+    {"handle": "Perplexity_AI", "tier": 1, "kind": "ai_product"},
+    {"handle": "NVIDIAAI", "tier": 1, "kind": "ai_infrastructure"},
+    {"handle": "msftresearch", "tier": 2, "kind": "research"},
+    {"handle": "MicrosoftAI", "tier": 1, "kind": "ai_product"},
+    {"handle": "StabilityAI", "tier": 2, "kind": "generative_ai"},
+    {"handle": "LangChainAI", "tier": 2, "kind": "developer_platform"},
+    {"handle": "llama_index", "tier": 2, "kind": "developer_platform"},
+    {"handle": "togethercompute", "tier": 2, "kind": "ai_infrastructure"},
+    {"handle": "GroqInc", "tier": 2, "kind": "ai_infrastructure"},
+    {"handle": "replicate", "tier": 2, "kind": "developer_platform"},
+    {"handle": "cursor_ai", "tier": 1, "kind": "developer_tool"}
+  ]
+}
