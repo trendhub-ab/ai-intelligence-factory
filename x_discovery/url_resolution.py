@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import http.client
 import re
-from typing import Iterable, List, Mapping, MutableSet, Optional
+from typing import Dict, Iterable, List, Mapping, MutableSet, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _URL_RE = re.compile(r"https?://[^\s<>()\[\]{}\"']+", re.IGNORECASE)
@@ -111,6 +112,79 @@ def extract_external_urls(record: Mapping[str, object], text: str) -> List[str]:
         seen.add(canonical)
         result.append(canonical)
     return result
+
+
+class TcoRedirectResolver:
+    """Resolve only t.co's first redirect without connecting to the destination host."""
+
+    def __init__(self, *, timeout_seconds: int = 8):
+        self.timeout_seconds = int(timeout_seconds)
+        self.calls = 0
+        self.successes = 0
+        self.failures = 0
+        self.cache: Dict[str, Optional[str]] = {}
+
+    def resolve(self, url: str) -> Optional[str]:
+        canonical_short = canonicalize_url(url)
+        if not canonical_short or not is_unresolved_short_url(canonical_short):
+            return None
+        if canonical_short in self.cache:
+            return self.cache[canonical_short]
+
+        self.calls += 1
+        parts = urlsplit(canonical_short)
+        path = parts.path or "/"
+        if parts.query:
+            path += "?" + parts.query
+
+        location: Optional[str] = None
+        for method in ("HEAD", "GET"):
+            conn = http.client.HTTPSConnection("t.co", timeout=self.timeout_seconds)
+            try:
+                conn.request(method, path, headers={"User-Agent": "ai-intelligence-factory-url-resolver/0.1"})
+                response = conn.getresponse()
+                location = response.getheader("Location")
+                if method == "GET":
+                    response.read(1)
+            except Exception:
+                location = None
+            finally:
+                conn.close()
+            if location:
+                break
+
+        resolved = canonicalize_url(location or "")
+        if resolved and not is_unresolved_short_url(resolved) and not is_internal_x_url(resolved):
+            self.successes += 1
+            self.cache[canonical_short] = resolved
+            return resolved
+
+        self.failures += 1
+        self.cache[canonical_short] = None
+        return None
+
+
+def enrich_record_with_tco(record: Mapping[str, object], resolver: TcoRedirectResolver) -> Dict[str, object]:
+    enriched: Dict[str, object] = dict(record)
+    text = ""
+    for key in ("text", "full_text", "fullText", "content"):
+        value = record.get(key)
+        if isinstance(value, str) and value:
+            text = value
+            break
+
+    existing = list(record.get("urls") or []) if isinstance(record.get("urls"), list) else []
+    expanded: List[str] = []
+    for raw in _URL_RE.findall(text):
+        canonical = canonicalize_url(raw)
+        if not canonical or not is_unresolved_short_url(canonical):
+            continue
+        resolved = resolver.resolve(canonical)
+        if resolved:
+            expanded.append(resolved)
+    if expanded:
+        enriched["urls"] = existing + expanded
+    return enriched
 
 
 def is_primary_source_candidate(url: str) -> bool:
