@@ -17,12 +17,21 @@ def _first(record: Mapping[str, Any], *keys: str) -> Any:
 
 
 def _handle(record: Mapping[str, Any]) -> str:
-    direct = _first(record, "author_handle", "username", "screen_name", "handle")
+    direct = _first(
+        record,
+        "author_handle",
+        "authorHandle",
+        "authorUserName",
+        "username",
+        "userName",
+        "screen_name",
+        "handle",
+    )
     if direct:
         return str(direct).lstrip("@")
     author = record.get("author") or record.get("user")
     if isinstance(author, Mapping):
-        nested = _first(author, "username", "screen_name", "handle", "name")
+        nested = _first(author, "username", "userName", "screen_name", "handle", "name")
         if nested:
             return str(nested).lstrip("@")
     if isinstance(author, str):
@@ -41,12 +50,30 @@ def _engagement(record: Mapping[str, Any]) -> Dict[str, int]:
     public_metrics = record.get("public_metrics")
     metrics = public_metrics if isinstance(public_metrics, Mapping) else {}
     return {
-        "likes": _int(_first(record, "like_count", "likes", "favorite_count") or metrics.get("like_count")),
-        "reposts": _int(_first(record, "retweet_count", "repost_count", "retweets") or metrics.get("retweet_count")),
-        "replies": _int(_first(record, "reply_count", "replies") or metrics.get("reply_count")),
-        "quotes": _int(_first(record, "quote_count", "quotes") or metrics.get("quote_count")),
-        "views": _int(_first(record, "view_count", "views", "impressions") or metrics.get("impression_count")),
-        "bookmarks": _int(_first(record, "bookmark_count", "bookmarks") or metrics.get("bookmark_count")),
+        "likes": _int(
+            _first(record, "like_count", "likeCount", "likes", "favorite_count")
+            or metrics.get("like_count")
+        ),
+        "reposts": _int(
+            _first(record, "retweet_count", "retweetCount", "repost_count", "repostCount", "retweets")
+            or metrics.get("retweet_count")
+        ),
+        "replies": _int(
+            _first(record, "reply_count", "replyCount", "replies")
+            or metrics.get("reply_count")
+        ),
+        "quotes": _int(
+            _first(record, "quote_count", "quoteCount", "quotes")
+            or metrics.get("quote_count")
+        ),
+        "views": _int(
+            _first(record, "view_count", "viewCount", "views", "impressions")
+            or metrics.get("impression_count")
+        ),
+        "bookmarks": _int(
+            _first(record, "bookmark_count", "bookmarkCount", "bookmarks")
+            or metrics.get("bookmark_count")
+        ),
     }
 
 
@@ -58,7 +85,7 @@ def normalize_post(
 ) -> DiscoverySignal:
     text = str(_first(record, "text", "full_text", "fullText", "content") or "").strip()
     handle = _handle(record)
-    post_url = str(_first(record, "post_url", "tweet_url", "url") or "").strip()
+    post_url = str(_first(record, "post_url", "tweet_url", "twitterUrl", "url") or "").strip()
     post_id_raw = _first(record, "post_id", "tweet_id", "id_str", "id")
     if post_id_raw is None:
         seed = "|".join((post_url, handle, text))
@@ -66,7 +93,15 @@ def normalize_post(
     else:
         post_id = str(post_id_raw)
 
-    posted_at_raw = _first(record, "posted_at", "created_at", "createdAt", "timestamp", "date")
+    posted_at_raw = _first(
+        record,
+        "posted_at",
+        "created_at",
+        "createdAtIso",
+        "createdAt",
+        "timestamp",
+        "date",
+    )
     posted_at = str(posted_at_raw) if posted_at_raw is not None else None
     now = discovered_at or datetime.now(timezone.utc).isoformat()
 
