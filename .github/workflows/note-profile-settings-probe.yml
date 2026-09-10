@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Exact Run328 read-only profile probe token'
+        description: 'Exact Run329 zero-click profile-route probe token'
         required: true
         type: string
   issue_comment:
@@ -39,8 +39,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Falsify exact read-only profile probe
-        run: python -m unittest tests.test_run328_note_profile_settings_probe -v
+      - name: Falsify Run328 history and exact Run329 zero-click route
+        run: python -m unittest tests.test_run328_note_profile_settings_probe tests.test_run329_note_profile_direct_route_probe -v
       - name: Validate exact authorization
         id: auth
         env:
@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
-            [ "$CONFIRM" = 'PROBE_NOTE_PROFILE_SETTINGS_TRENDHUB_BIZ_READONLY' ] || exit 1
+            [ "$CONFIRM" = 'PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY' ] || exit 1
           else
             [ "$COMMENT" = '/aiif note profile probe' ] || exit 1
           fi
@@ -97,52 +97,57 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
           command -v xvfb-run >/dev/null 2>&1 || exit 1
-      - name: Re-run Run328 regression
-        run: python -m unittest tests.test_run328_note_profile_settings_probe -v
-      - name: Probe profile settings surface without save
+      - name: Re-run exact Run329 regression
+        run: python -m unittest tests.test_run329_note_profile_direct_route_probe -v
+      - name: Probe exact profile settings route with zero clicks
         env:
-          NOTE_PROFILE_SETTINGS_PROBE_CONFIRM: 'PROBE_NOTE_PROFILE_SETTINGS_TRENDHUB_BIZ_READONLY'
-          NOTE_PROFILE_SETTINGS_PROBE_RESULT_FILE: ${{ runner.temp }}/run328-result.json
-          NOTE_PROFILE_SETTINGS_PROBE_SCREENSHOT_FILE: ${{ runner.temp }}/run328-profile-settings.png
+          NOTE_PROFILE_DIRECT_PROBE_CONFIRM: 'PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY'
+          NOTE_PROFILE_DIRECT_PROBE_RESULT_FILE: ${{ runner.temp }}/run329-result.json
+          NOTE_PROFILE_DIRECT_PROBE_SCREENSHOT_FILE: ${{ runner.temp }}/run329-profile-settings.png
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python run328_note_profile_settings_probe.py
-      - name: Enforce no-mutation probe contract
+        run: xvfb-run -a python run329_note_profile_direct_route_probe.py
+      - name: Enforce zero-click no-mutation probe contract
         env:
-          RESULT_FILE: ${{ runner.temp }}/run328-result.json
+          RESULT_FILE: ${{ runner.temp }}/run329-result.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          if r.get('status') not in {'profile_settings_surface_probed_no_mutation', 'already_current_no_probe_needed'}:
-              raise SystemExit(f'Run328 unexpected status: {r.get("status")!r}')
+          if r.get('status') not in {'profile_settings_direct_route_probed_no_mutation', 'already_current_no_probe_needed'}:
+              raise SystemExit(f'Run329 unexpected status: {r.get("status")!r}')
           if r.get('public_mutation') is not False or r.get('settings_mutation') is not False:
-              raise SystemExit('Run328 mutation contract failed')
+              raise SystemExit('Run329 mutation contract failed')
+          if r.get('clicks_performed') != 0:
+              raise SystemExit('Run329 zero-click contract failed')
           if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
-              raise SystemExit('Run328 zero-model/zero-Notion contract failed')
-          if r.get('status') == 'profile_settings_surface_probed_no_mutation':
-              if r.get('settings_control_clicked') is not True or r.get('save_control_clicked') is not False or r.get('field_filled') is not False:
-                  raise SystemExit('Run328 interaction contract failed')
+              raise SystemExit('Run329 zero-model/zero-Notion contract failed')
+          if r.get('status') == 'profile_settings_direct_route_probed_no_mutation':
+              if r.get('settings_href_verified') != 'https://note.com/settings/profile':
+                  raise SystemExit('Run329 settings href proof failed')
+              if r.get('save_control_clicked') is not False or r.get('field_filled') is not False:
+                  raise SystemExit('Run329 save/fill contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Run328 profile settings probe\n')
+              fh.write('### Run329 profile direct-route probe\n')
               fh.write(f'- status: `{r.get("status")}`\n')
-              fh.write(f'- URL after settings: `{r.get("url_after_settings", "")}`\n')
+              fh.write(f'- URL: `{r.get("url_after_direct_navigation", "")}`\n')
+              fh.write('- clicks: `0`\n')
               fh.write('- profile text changed: `false`\n')
               fh.write('- save clicked: `false`\n')
               fh.write('- Gemini calls: `0`\n')
               fh.write('- Notion writes: `0`\n')
           PY
-      - name: Preserve Run328 evidence
+      - name: Preserve Run329 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run328-profile-settings-probe
+          name: run329-profile-direct-route-probe
           if-no-files-found: warn
           retention-days: 7
           path: |
-            ${{ runner.temp }}/run328-result.json
-            ${{ runner.temp }}/run328-profile-settings.png
+            ${{ runner.temp }}/run329-result.json
+            ${{ runner.temp }}/run329-profile-settings.png
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
