@@ -1,0 +1,170 @@
+name: Probe current note profile settings surface
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Exact Run328 read-only profile probe token'
+        required: true
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: note-profile-settings-probe-trendhub-biz
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'issue_comment' &&
+       github.run_attempt == 1 &&
+       github.event.issue.number == 71 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.user.login == 'trendhub-ab' &&
+       github.actor == 'trendhub-ab' &&
+       github.event.comment.body == '/aiif note profile probe')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Falsify exact read-only profile probe
+        run: python -m unittest tests.test_run328_note_profile_settings_probe -v
+      - name: Validate exact authorization
+        id: auth
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CONFIRM: ${{ inputs.confirm }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            [ "$CONFIRM" = 'PROBE_NOTE_PROFILE_SETTINGS_TRENDHUB_BIZ_READONLY' ] || exit 1
+          else
+            [ "$COMMENT" = '/aiif note profile probe' ] || exit 1
+          fi
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  probe:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
+          command -v xvfb-run >/dev/null 2>&1 || exit 1
+      - name: Re-run Run328 regression
+        run: python -m unittest tests.test_run328_note_profile_settings_probe -v
+      - name: Probe profile settings surface without save
+        env:
+          NOTE_PROFILE_SETTINGS_PROBE_CONFIRM: 'PROBE_NOTE_PROFILE_SETTINGS_TRENDHUB_BIZ_READONLY'
+          NOTE_PROFILE_SETTINGS_PROBE_RESULT_FILE: ${{ runner.temp }}/run328-result.json
+          NOTE_PROFILE_SETTINGS_PROBE_SCREENSHOT_FILE: ${{ runner.temp }}/run328-profile-settings.png
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run328_note_profile_settings_probe.py
+      - name: Enforce no-mutation probe contract
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run328-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') not in {'profile_settings_surface_probed_no_mutation', 'already_current_no_probe_needed'}:
+              raise SystemExit(f'Run328 unexpected status: {r.get("status")!r}')
+          if r.get('public_mutation') is not False or r.get('settings_mutation') is not False:
+              raise SystemExit('Run328 mutation contract failed')
+          if r.get('zero_gemini_calls') is not True or r.get('notion_writes') != 0:
+              raise SystemExit('Run328 zero-model/zero-Notion contract failed')
+          if r.get('status') == 'profile_settings_surface_probed_no_mutation':
+              if r.get('settings_control_clicked') is not True or r.get('save_control_clicked') is not False or r.get('field_filled') is not False:
+                  raise SystemExit('Run328 interaction contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run328 profile settings probe\n')
+              fh.write(f'- status: `{r.get("status")}`\n')
+              fh.write(f'- URL after settings: `{r.get("url_after_settings", "")}`\n')
+              fh.write('- profile text changed: `false`\n')
+              fh.write('- save clicked: `false`\n')
+              fh.write('- Gemini calls: `0`\n')
+              fh.write('- Notion writes: `0`\n')
+          PY
+      - name: Preserve Run328 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run328-profile-settings-probe
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run328-result.json
+            ${{ runner.temp }}/run328-profile-settings.png
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, probe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
