@@ -1,0 +1,105 @@
+name: X Discovery Stage2 Smoke
+
+on:
+  push:
+    branches:
+      - feature/x-discovery-ingestion
+    paths:
+      - '.github/workflows/x-discovery-stage2-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage2-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_ACTOR_ID: simple.actor~x-profile-posts
+      APIFY_MAX_CHARGE_USD: '0.05'
+      MAX_RECORDS: '100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build fixed Stage2 Actor input
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          watchlist = json.loads(Path('x_discovery/watchlists/ai_core_20.json').read_text(encoding='utf-8'))
+          handles = [row['handle'] for row in watchlist['accounts']]
+          if len(handles) != 20 or len(set(handle.lower() for handle in handles)) != 20:
+              raise SystemExit('Stage2 watchlist must contain exactly 20 unique handles')
+          payload = {
+              'handles': handles,
+              'outputFormat': 'profile',
+              'maxPosts': 5,
+              'onlyPostsNewerThan': '12 hours',
+              'includeRaw': False,
+          }
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
+              fh.write('APIFY_INPUT_JSON=' + json.dumps(payload, separators=(',', ':')) + '\n')
+          print(json.dumps({'handles': len(handles), 'window': '12 hours', 'outputFormat': 'profile'}))
+          PY
+      - name: Validate Stage2 guardrails
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          if not os.getenv('APIFY_TOKEN', '').strip():
+              raise SystemExit('APIFY_TOKEN repository secret is required; refusing live run')
+          if os.environ.get('APIFY_ACTOR_ID') != 'simple.actor~x-profile-posts':
+              raise SystemExit('unexpected Actor ID; refusing live run')
+          if float(os.environ['APIFY_MAX_CHARGE_USD']) > 0.05:
+              raise SystemExit('Stage2 charge cap must be <= $0.05')
+          if int(os.environ['MAX_RECORDS']) != 100:
+              raise SystemExit('Stage2 max records must be exactly 100')
+          payload = json.loads(os.environ['APIFY_INPUT_JSON'])
+          if payload.get('outputFormat') != 'profile':
+              raise SystemExit('Stage2 must use profile output for coverage diagnostics')
+          if payload.get('onlyPostsNewerThan') != '12 hours':
+              raise SystemExit('Stage2 must use a 12-hour polling window')
+          if payload.get('maxPosts') != 5:
+              raise SystemExit('Stage2 must request all five visible posts')
+          if len(payload.get('handles', [])) != 20:
+              raise SystemExit('Stage2 must contain exactly 20 handles')
+          print('Stage2 live guardrails OK; Factory writes remain disabled.')
+          PY
+      - name: Run isolated Stage2 ingestion
+        run: |
+          python -m x_discovery.runner \
+            --provider apify \
+            --output-dir /tmp/x-discovery-stage2 \
+            --max-records "$MAX_RECORDS"
+      - name: Verify isolation and coverage artifact
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/x-discovery-stage2')
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          assert manifest['provider'] == 'apify'
+          assert manifest['requested_profile_count'] == 20
+          assert manifest['factory_write'] is False
+          assert manifest['evidence_promoted'] is False
+          assert manifest['x_official_api_calls'] == 0
+          assert manifest['external_provider_calls'] == 1
+          assert (root / 'provider_diagnostics.json').exists()
+          assert (root / 'provider_raw_items.json').exists()
+          print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Upload Stage2 diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-discovery-stage2-smoke-${{ github.run_number }}
+          path: /tmp/x-discovery-stage2/
+          if-no-files-found: error
+          retention-days: 7
