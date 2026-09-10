@@ -44,10 +44,10 @@ MAX_UI_CHARS = 140
 FINAL_BUTTON = "プランを変更する"
 EXPECTED_PLAN_NAME = MEMBERSHIP_NAME
 EXPECTED_FEE_MARKER = "1,980 円/月"
-EXPECTED_BENEFITS = (
+EXPECTED_BENEFITS = tuple(sorted((
     "特典を削除: AI Decision Intelligence｜会員向け意思決定DB",
     "特典を削除: AI Decision Intelligence｜会員向けDigest",
-)
+)))
 
 
 def _canon(value: Any) -> str:
@@ -78,7 +78,7 @@ def _public_description_state(page: Any) -> str:
     raise base.NoteDraftError("Run333 refuses an unexpected public membership-description state")
 
 
-def _open_exact_edit(page: Any, expected_state: str) -> tuple[Any, list[dict[str, Any]]]:
+def _open_exact_edit(page: Any, expected_state: str) -> tuple[Any, dict[str, Any]]:
     page.goto(EDIT_URL, wait_until="domcontentloaded", timeout=60000)
     page.wait_for_timeout(1600)
     if base._looks_logged_out(page):
@@ -130,12 +130,17 @@ def _open_exact_edit(page: Any, expected_state: str) -> tuple[Any, list[dict[str
 
 
 def _other_plan_snapshot(page: Any, description: Any) -> dict[str, Any]:
+    """Snapshot all user-editable plan controls except the authorized description.
+
+    Dynamic React ids, classes, DOM ordering, file controls, button enabled state, and the form's
+    aggregate innerText are excluded. The two existing benefit delete labels are included
+    separately so neither benefit can disappear unnoticed.
+    """
     value = page.evaluate(
         r"""
         (descriptionEl) => {
           const form = descriptionEl.closest('form');
           if (!form) return null;
-          const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
           const controls = [];
           const counts = {};
           for (const el of Array.from(form.querySelectorAll('input,textarea,select'))) {
@@ -164,7 +169,7 @@ def _other_plan_snapshot(page: Any, description: Any) -> dict[str, Any]:
             .map(el => el.getAttribute('aria-label') || '')
             .filter(s => s.startsWith('特典を削除:'))
             .sort();
-          return {controls, benefitLabels, formText: norm(form.innerText).slice(0,9000)};
+          return {controls, benefitLabels};
         }
         """,
         description,
