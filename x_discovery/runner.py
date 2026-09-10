@@ -56,6 +56,7 @@ def run_ingestion(
     provider_raw_items = list(getattr(provider, "raw_items", []) or [])
     tco_calls = int(tco_resolver.calls if tco_resolver else 0)
     tco_successes = int(tco_resolver.successes if tco_resolver else 0)
+    tco_internal = int(tco_resolver.internal_resolutions if tco_resolver else 0)
     tco_failures = int(tco_resolver.failures if tco_resolver else 0)
 
     _write_json(output_dir / "raw_posts.json", raw)
@@ -78,6 +79,7 @@ def run_ingestion(
             "tco_resolution_enabled": bool(resolve_tco),
             "tco_resolution_calls": tco_calls,
             "tco_resolution_successes": tco_successes,
+            "tco_internal_resolutions": tco_internal,
             "tco_resolution_failures": tco_failures,
         },
     )
@@ -103,6 +105,7 @@ def run_ingestion(
         "tco_resolution_enabled": bool(resolve_tco),
         "tco_resolution_calls": tco_calls,
         "tco_resolution_successes": tco_successes,
+        "tco_internal_resolutions": tco_internal,
         "tco_resolution_failures": tco_failures,
         "factory_write": False,
         "evidence_promoted": False,
