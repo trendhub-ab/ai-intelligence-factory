@@ -9,7 +9,11 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 from .dedupe import cluster_candidates, dedupe_signals, load_seen_ids, save_seen_ids
 from .normalize import normalize_post
 from .providers import ApifyProvider, FixtureProvider, XDiscoveryProvider
-from .url_resolution import TcoRedirectResolver, enrich_record_with_tco
+from .url_resolution import (
+    OfficialShortenerResolver,
+    TcoRedirectResolver,
+    enrich_record_with_shorteners,
+)
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _DEFAULT_FIXTURE = _PACKAGE_DIR / "fixtures" / "sample_posts.json"
@@ -28,6 +32,7 @@ def run_ingestion(
     seen_ids_path: Optional[Path] = None,
     discovered_at: Optional[str] = None,
     resolve_tco: bool = False,
+    resolve_official_shorteners: bool = False,
 ) -> Dict[str, Any]:
     if not 1 <= int(max_records) <= 100:
         raise ValueError("max_records must be between 1 and 100")
@@ -35,8 +40,10 @@ def run_ingestion(
     output_dir = Path(output_dir)
     provider_raw = provider.fetch(max_records=int(max_records))
     tco_resolver = TcoRedirectResolver() if resolve_tco else None
+    official_resolver = OfficialShortenerResolver() if resolve_official_shorteners else None
+    resolvers = [item for item in (tco_resolver, official_resolver) if item is not None]
     raw = [
-        enrich_record_with_tco(record, tco_resolver) if tco_resolver else dict(record)
+        enrich_record_with_shorteners(record, resolvers) if resolvers else dict(record)
         for record in provider_raw
     ]
     signals = [
@@ -56,10 +63,28 @@ def run_ingestion(
     empty_profiles = int(getattr(provider, "empty_profile_count", 0) or 0)
     profiles_with_posts = sorted(str(value) for value in (getattr(provider, "profiles_with_posts", set()) or set()))
     provider_raw_items = list(getattr(provider, "raw_items", []) or [])
-    tco_calls = int(tco_resolver.calls if tco_resolver else 0)
-    tco_successes = int(tco_resolver.successes if tco_resolver else 0)
-    tco_internal = int(tco_resolver.internal_resolutions if tco_resolver else 0)
-    tco_failures = int(tco_resolver.failures if tco_resolver else 0)
+
+    def resolver_stats(resolver: Any) -> Dict[str, int]:
+        if resolver is None:
+            return {
+                "calls": 0,
+                "network_requests": 0,
+                "successes": 0,
+                "internal_resolutions": 0,
+                "unresolved_chains": 0,
+                "failures": 0,
+            }
+        return {
+            "calls": int(resolver.calls),
+            "network_requests": int(resolver.network_requests),
+            "successes": int(resolver.successes),
+            "internal_resolutions": int(resolver.internal_resolutions),
+            "unresolved_chains": int(resolver.unresolved_chains),
+            "failures": int(resolver.failures),
+        }
+
+    tco = resolver_stats(tco_resolver)
+    official = resolver_stats(official_resolver)
 
     _write_json(output_dir / "raw_posts.json", raw)
     _write_json(output_dir / "normalized_signals.json", [item.to_dict() for item in fresh])
@@ -79,10 +104,18 @@ def run_ingestion(
             "provider_errors": provider_errors,
             "skipped_pinned_count": skipped_pinned,
             "tco_resolution_enabled": bool(resolve_tco),
-            "tco_resolution_calls": tco_calls,
-            "tco_resolution_successes": tco_successes,
-            "tco_internal_resolutions": tco_internal,
-            "tco_resolution_failures": tco_failures,
+            "tco_resolution_calls": tco["calls"],
+            "tco_resolution_network_requests": tco["network_requests"],
+            "tco_resolution_successes": tco["successes"],
+            "tco_internal_resolutions": tco["internal_resolutions"],
+            "tco_unresolved_chains": tco["unresolved_chains"],
+            "tco_resolution_failures": tco["failures"],
+            "official_shortener_resolution_enabled": bool(resolve_official_shorteners),
+            "official_shortener_calls": official["calls"],
+            "official_shortener_network_requests": official["network_requests"],
+            "official_shortener_successes": official["successes"],
+            "official_shortener_unresolved_chains": official["unresolved_chains"],
+            "official_shortener_failures": official["failures"],
             "primary_candidate_count": primary_candidate_count,
             "primary_candidate_rate": primary_candidate_rate,
         },
@@ -109,10 +142,18 @@ def run_ingestion(
         "provider_error_count": len(provider_errors),
         "skipped_pinned_count": skipped_pinned,
         "tco_resolution_enabled": bool(resolve_tco),
-        "tco_resolution_calls": tco_calls,
-        "tco_resolution_successes": tco_successes,
-        "tco_internal_resolutions": tco_internal,
-        "tco_resolution_failures": tco_failures,
+        "tco_resolution_calls": tco["calls"],
+        "tco_resolution_network_requests": tco["network_requests"],
+        "tco_resolution_successes": tco["successes"],
+        "tco_internal_resolutions": tco["internal_resolutions"],
+        "tco_unresolved_chains": tco["unresolved_chains"],
+        "tco_resolution_failures": tco["failures"],
+        "official_shortener_resolution_enabled": bool(resolve_official_shorteners),
+        "official_shortener_calls": official["calls"],
+        "official_shortener_network_requests": official["network_requests"],
+        "official_shortener_successes": official["successes"],
+        "official_shortener_unresolved_chains": official["unresolved_chains"],
+        "official_shortener_failures": official["failures"],
         "factory_write": False,
         "evidence_promoted": False,
         "evidence_status": "discovery_only",
@@ -140,6 +181,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seen-ids", type=Path)
     parser.add_argument("--max-records", type=int, default=20)
     parser.add_argument("--resolve-tco", action="store_true")
+    parser.add_argument("--resolve-official-shorteners", action="store_true")
     parser.add_argument("--apify-actor-id", default=os.getenv("APIFY_ACTOR_ID", ""))
     parser.add_argument("--apify-input-json", default=os.getenv("APIFY_INPUT_JSON", "{}"))
     parser.add_argument(
@@ -168,6 +210,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         max_records=args.max_records,
         seen_ids_path=args.seen_ids,
         resolve_tco=args.resolve_tco,
+        resolve_official_shorteners=args.resolve_official_shorteners,
     )
     print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
     return 0
