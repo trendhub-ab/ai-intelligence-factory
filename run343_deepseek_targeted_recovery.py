@@ -1,11 +1,10 @@
-"""Run343c one-shot recovery for the exact DeepSeek V4.1 Flash article.
+"""Run343e one-shot recovery for the exact DeepSeek V4.1 Flash article.
 
-The requested Quality Failed row was never article-saved, so generic regeneration
-inventory is not authoritative. This temporary route binds to one exact Notion page and
-re-verifies page id, title, canonical source URL, source, and lifecycle before any
-provider call or mutation. The auxiliary primary-evidence URL is checked when the REST
-payload exposes it as a URL; an absent/non-URL representation cannot override the exact
-canonical source URL that uniquely identifies this Hacker News item.
+This temporary route binds to one exact Notion page and re-verifies page id, title,
+canonical source URL, source, and lifecycle before any provider call or mutation.
+A prior provider-unavailable attempt may legitimately move this exact item from
+Quality Failed to Pending Retry, so only those two non-Ready recovery states are
+accepted. Every other lifecycle state still fails closed.
 """
 from __future__ import annotations
 
@@ -18,6 +17,7 @@ TARGET_PAGE_ID = "3d7479ff-dca9-81eb-9256-ca37b93d410f"
 TARGET_NAME = "DeepSeek launching v4.1 flash cheaper and more capable than v4 pro"
 TARGET_URL = "https://news.ycombinator.com/item?id=49624603"
 TARGET_SOURCE = "HackerNews"
+ALLOWED_RECOVERY_CONTENT_STATUSES = {"Quality Failed", "Pending Retry"}
 
 
 def _rich_text(prop: dict[str, Any] | None) -> str:
@@ -51,6 +51,8 @@ def candidate_from_page_payload(pipeline, payload: dict[str, Any]) -> dict[str, 
     content_status = _select(props.get("コンテンツ状態"))
     article_status = _select(props.get("記事状態"))
 
+    quality_failed = str(pipeline.CONTENT_STATUS_QUALITY_FAILED)
+    allowed_statuses = {quality_failed, "Pending Retry"}
     mismatches = []
     if str((payload or {}).get("id") or "").replace("-", "") != TARGET_PAGE_ID.replace("-", ""):
         mismatches.append("page_id")
@@ -62,13 +64,13 @@ def candidate_from_page_payload(pipeline, payload: dict[str, Any]) -> dict[str, 
         mismatches.append("primary_url")
     if source != TARGET_SOURCE:
         mismatches.append("source")
-    if content_status != str(pipeline.CONTENT_STATUS_QUALITY_FAILED):
+    if content_status not in allowed_statuses:
         mismatches.append("content_status")
     if article_status == str(getattr(pipeline, "ARTICLE_STATUS_READY", "Ready")):
         mismatches.append("already_ready")
     if mismatches:
         raise RuntimeError(
-            "Run343c exact Notion target contract changed; refusing provider call/mutation: "
+            "Run343e exact Notion target contract changed; refusing provider call/mutation: "
             + ",".join(mismatches)
         )
 
@@ -109,10 +111,10 @@ def read_exact_target(pipeline) -> dict[str, Any]:
             timeout=10,
         )
     except Exception as exc:
-        raise RuntimeError(f"Run343c exact Notion page read failed: {exc}") from exc
+        raise RuntimeError(f"Run343e exact Notion page read failed: {exc}") from exc
     if int(getattr(response, "status_code", 0) or 0) != 200:
         raise RuntimeError(
-            f"Run343c exact Notion page read failed HTTP {getattr(response, 'status_code', 0)}"
+            f"Run343e exact Notion page read failed HTTP {getattr(response, 'status_code', 0)}"
         )
     return candidate_from_page_payload(pipeline, response.json() or {})
 
@@ -120,13 +122,13 @@ def read_exact_target(pipeline) -> dict[str, Any]:
 def run_targeted_recovery(pipeline) -> dict[str, Any]:
     budget = article_revalidation._cap_validation_budget(pipeline)
     pipeline.logger.warning(
-        "[RUN343C TARGETED RECOVERY] page=%s exact=%s url=%s request_budget=%s persist=true",
+        "[RUN343E TARGETED RECOVERY] page=%s exact=%s url=%s request_budget=%s persist=true",
         TARGET_PAGE_ID, TARGET_NAME, TARGET_URL, budget,
     )
     item = read_exact_target(pipeline)
     repo = item["repo"]
     pipeline.logger.info(
-        "[RUN343C TARGET VERIFIED] page=%s status=%s/%s score=%s source=%s",
+        "[RUN343E TARGET VERIFIED] page=%s status=%s/%s score=%s source=%s",
         TARGET_PAGE_ID,
         item.get("revalidation_article_status"),
         item.get("revalidation_content_status"),
@@ -135,7 +137,7 @@ def run_targeted_recovery(pipeline) -> dict[str, Any]:
     )
     is_safe, license_status = pipeline.legal_safety_gate(repo)
     if not is_safe:
-        raise RuntimeError(f"Run343c legal safety gate rejected target: {license_status}")
+        raise RuntimeError(f"Run343e legal safety gate rejected target: {license_status}")
 
     generated = pipeline.generate_intelligence_report(
         repo,
@@ -148,12 +150,12 @@ def run_targeted_recovery(pipeline) -> dict[str, Any]:
         persist_results=True,
     )
     if not generated:
-        raise RuntimeError("Run343c target did not produce an accepted current-policy manuscript")
+        raise RuntimeError("Run343e target did not produce an accepted current-policy manuscript")
     manuscript, status = generated if isinstance(generated, tuple) else (generated, "accepted")
     if status != "accepted":
-        raise RuntimeError(f"Run343c target remained non-Ready: status={status}")
+        raise RuntimeError(f"Run343e target remained non-Ready: status={status}")
     pipeline.logger.info(
-        "[RUN343C TARGETED RECOVERY READY] %s chars=%s page=%s",
+        "[RUN343E TARGETED RECOVERY READY] %s chars=%s page=%s",
         TARGET_NAME, len(manuscript or ""), TARGET_PAGE_ID,
     )
     return {"accepted": 1, "page_id": TARGET_PAGE_ID, "name": TARGET_NAME, "url": TARGET_URL}
