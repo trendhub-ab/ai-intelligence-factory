@@ -58,7 +58,7 @@ class Run345ReaderConceptHierarchyTests(unittest.TestCase):
         self.assertEqual(["ARTICLE"], sections)
         self.assertIn("Decision理解 → 重要な制約 → Evidence → 中核メカニズム1つ → 実装名", instruction)
         self.assertIn("まず削除・カテゴリ化を検討", instruction)
-        self.assertIn("『複数の既存手法』等へ圧縮", instruction)
+        self.assertIn("「複数の既存手法」等へ圧縮", instruction)
         self.assertIn("Human Appealのための会話句・雑談・比喩は追加しない", instruction)
 
     def test_run345_adds_no_new_retry_authority_or_budget(self):
