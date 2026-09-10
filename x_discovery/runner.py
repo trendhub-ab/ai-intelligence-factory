@@ -9,6 +9,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 from .dedupe import cluster_candidates, dedupe_signals, load_seen_ids, save_seen_ids
 from .normalize import normalize_post
 from .providers import ApifyProvider, FixtureProvider, XDiscoveryProvider
+from .url_resolution import TcoRedirectResolver, enrich_record_with_tco
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _DEFAULT_FIXTURE = _PACKAGE_DIR / "fixtures" / "sample_posts.json"
@@ -26,12 +27,18 @@ def run_ingestion(
     max_records: int = 20,
     seen_ids_path: Optional[Path] = None,
     discovered_at: Optional[str] = None,
+    resolve_tco: bool = False,
 ) -> Dict[str, Any]:
     if not 1 <= int(max_records) <= 100:
         raise ValueError("max_records must be between 1 and 100")
 
     output_dir = Path(output_dir)
-    raw = provider.fetch(max_records=int(max_records))
+    provider_raw = provider.fetch(max_records=int(max_records))
+    tco_resolver = TcoRedirectResolver() if resolve_tco else None
+    raw = [
+        enrich_record_with_tco(record, tco_resolver) if tco_resolver else dict(record)
+        for record in provider_raw
+    ]
     signals = [
         normalize_post(record, provider=provider.name, discovered_at=discovered_at)
         for record in raw
@@ -47,6 +54,9 @@ def run_ingestion(
     empty_profiles = int(getattr(provider, "empty_profile_count", 0) or 0)
     profiles_with_posts = sorted(str(value) for value in (getattr(provider, "profiles_with_posts", set()) or set()))
     provider_raw_items = list(getattr(provider, "raw_items", []) or [])
+    tco_calls = int(tco_resolver.calls if tco_resolver else 0)
+    tco_successes = int(tco_resolver.successes if tco_resolver else 0)
+    tco_failures = int(tco_resolver.failures if tco_resolver else 0)
 
     _write_json(output_dir / "raw_posts.json", raw)
     _write_json(output_dir / "normalized_signals.json", [item.to_dict() for item in fresh])
@@ -65,6 +75,10 @@ def run_ingestion(
             "provider_error_count": len(provider_errors),
             "provider_errors": provider_errors,
             "skipped_pinned_count": skipped_pinned,
+            "tco_resolution_enabled": bool(resolve_tco),
+            "tco_resolution_calls": tco_calls,
+            "tco_resolution_successes": tco_successes,
+            "tco_resolution_failures": tco_failures,
         },
     )
 
@@ -86,6 +100,10 @@ def run_ingestion(
         "empty_profile_count": empty_profiles,
         "provider_error_count": len(provider_errors),
         "skipped_pinned_count": skipped_pinned,
+        "tco_resolution_enabled": bool(resolve_tco),
+        "tco_resolution_calls": tco_calls,
+        "tco_resolution_successes": tco_successes,
+        "tco_resolution_failures": tco_failures,
         "factory_write": False,
         "evidence_promoted": False,
         "evidence_status": "discovery_only",
@@ -112,6 +130,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--seen-ids", type=Path)
     parser.add_argument("--max-records", type=int, default=20)
+    parser.add_argument("--resolve-tco", action="store_true")
     parser.add_argument("--apify-actor-id", default=os.getenv("APIFY_ACTOR_ID", ""))
     parser.add_argument("--apify-input-json", default=os.getenv("APIFY_INPUT_JSON", "{}"))
     parser.add_argument(
@@ -139,6 +158,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         output_dir=args.output_dir,
         max_records=args.max_records,
         seen_ids_path=args.seen_ids,
+        resolve_tco=args.resolve_tco,
     )
     print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
     return 0
