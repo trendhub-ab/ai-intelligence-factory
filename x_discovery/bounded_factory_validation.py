@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping
 
 from candidate_identity import canonicalize_url
 
@@ -36,13 +36,7 @@ def _canonical(value: object, label: str) -> str:
 
 
 def validate_saved_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate exactly one saved discovery candidate and its saved source text.
-
-    This contract deliberately accepts no list/batch input. X remains discovery-only;
-    the official primary-source body must already be saved in the payload so this lane
-    never needs Apify, FetchLayer, page fetching, redirect resolution, or evidence
-    promotion.
-    """
+    """Validate exactly one saved discovery candidate and its prepared source text."""
     root = _require_mapping(payload, "payload")
     if root.get("schema_version") != 1:
         raise BoundedValidationError("schema_version must be 1")
@@ -110,10 +104,7 @@ def _canonical_existing_urls(existing: object) -> set[str]:
 
 
 def build_screening_repo(validated: Mapping[str, Any]) -> dict[str, Any]:
-    """Map saved X provenance to the existing Factory screening candidate shape.
-
-    X engagement is intentionally not mapped into Factory engagement/scoring.
-    """
+    """Map saved X provenance to the existing Factory screening candidate shape."""
     return {
         "nameWithOwner": validated["title"],
         "description": validated["source_text"][:4000],
@@ -131,16 +122,8 @@ def build_screening_repo(validated: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_bounded_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Reach the real installed screening prompt boundary with zero model/write calls.
-
-    The only permitted external Factory operation is the existing Notion dedup READ.
-    Telegram is suppressed for this validation call so a dedup outage cannot create an
-    external notification side effect. No source fetch, provider request, persistence,
-    evidence promotion, generation, or publication function is invoked here.
-    """
+def _prepare_boundary(pipeline_module: Any, payload: Mapping[str, Any]):
     validated = validate_saved_candidate(payload)
-
     original_alert = getattr(pipeline_module, "send_telegram_alert", None)
     if original_alert is not None:
         pipeline_module.send_telegram_alert = lambda *_args, **_kwargs: None
@@ -149,17 +132,20 @@ def run_bounded_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> 
     finally:
         if original_alert is not None:
             pipeline_module.send_telegram_alert = original_alert
-
     existing_urls = _canonical_existing_urls(existing)
     if validated["canonical_url"] in existing_urls:
         raise BoundedValidationError("candidate already exists in Factory; refusing duplicate screening")
-
     repo = build_screening_repo(validated)
     screening_item = {"screening_id": "X0001", "repo": repo}
     prompt = pipeline_module._batch_screening_prompt([screening_item])
     if not isinstance(prompt, str) or not prompt.strip():
         raise BoundedValidationError("Factory screening prompt could not be constructed")
+    return validated, screening_item, prompt
 
+
+def run_bounded_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Reach the installed screening prompt boundary with zero model/write calls."""
+    validated, _screening_item, prompt = _prepare_boundary(pipeline_module, payload)
     return {
         "schema_version": 1,
         "lane": "x_saved_candidate_validation",
@@ -183,11 +169,108 @@ def run_bounded_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> 
     }
 
 
-def run_from_path(pipeline_module: Any, path: Path) -> dict[str, Any]:
+def run_single_screening_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Execute exactly one Gemini screening request and nothing downstream.
+
+    The caller must set the process-local Gemini budget to one request and screening
+    retry budget to zero. This function additionally bypasses the normal provider pool
+    retry/fallback layer by calling `_generate_via_chat` exactly once with the first
+    configured screening model. Notion is read only for dedup; no calibration,
+    persistence, generation, publication, source fetching, Apify, or FetchLayer is used.
+    """
+    validated, _screening_item, prompt = _prepare_boundary(pipeline_module, payload)
+    if getattr(pipeline_module.GEMINI_BUDGET, "daily_budget", None) != 1:
+        raise BoundedValidationError("single screening validation requires GEMINI_DAILY_REQUEST_BUDGET=1")
+    if getattr(pipeline_module.GEMINI_BUDGET, "screening_retry_budget", None) != 0:
+        raise BoundedValidationError("single screening validation requires GEMINI_SCREENING_RETRY_BUDGET=0")
+    pool = list(getattr(pipeline_module, "SCREENING_MODEL_POOL", []) or [])
+    if len(pool) != 1 or not str(pool[0]).strip():
+        raise BoundedValidationError("single screening validation requires exactly one screening model")
+    model_name = str(pool[0]).strip()
+    if not getattr(pipeline_module, "GEMINI_API_KEY", None) or getattr(pipeline_module, "client", None) is None:
+        raise BoundedValidationError("GEMINI_API_KEY is required for single screening validation")
+
+    # Register usage observability without running normal Production preflight or any
+    # source/product/article side path. Persistent quota reservation remains authoritative.
+    register = getattr(pipeline_module, "_register_gemini_usage_atexit", None)
+    if callable(register):
+        register()
+
+    try:
+        response = pipeline_module._generate_via_chat(
+            model_name,
+            prompt,
+            config={"max_output_tokens": 5000},
+            request_kind="x_saved_screening_validation",
+            request_context="x_saved:X0001",
+            count_as_deep_dive=False,
+            request_origin="new",
+        )
+    except Exception:
+        # Fail closed. No retry/fallback is permitted even for 503/429/timeout.
+        raise
+
+    text = str(getattr(response, "text", "") or "")
+    parsed, missing, diagnostic = pipeline_module._parse_batch_screening_response(
+        text, {"X0001"}, include_diagnostic=True
+    )
+    if missing or "X0001" not in parsed:
+        raise BoundedValidationError(
+            "single screening response failed Factory parser: " + (diagnostic or "missing X0001")
+        )
+    row = parsed["X0001"]
+    if row.get("commercial_score") is None or row.get("shelf_life_score") is None or not row.get("topic_valid"):
+        raise BoundedValidationError("single screening response is incomplete: " + (diagnostic or "schema fields missing"))
+    if int(getattr(pipeline_module.GEMINI_BUDGET, "request_count", 0)) != 1:
+        raise BoundedValidationError("single screening validation did not consume exactly one model request")
+
+    return {
+        "schema_version": 1,
+        "lane": "x_saved_candidate_screening_validation",
+        "status": "SCREENING_VALIDATED",
+        "candidate_count": 1,
+        "canonical_url": validated["canonical_url"],
+        "x_post_id": validated["x_post_id"],
+        "dedup_verified": True,
+        "screening_id": "X0001",
+        "screening_model": model_name,
+        "score": row["score"],
+        "commercial_score": row["commercial_score"],
+        "shelf_life_score": row["shelf_life_score"],
+        "portfolio_topic": row["portfolio_topic"],
+        "tracking_eligible": row["tracking_eligible"],
+        "tracking_reason": row["tracking_reason"],
+        "reason": row["reason"],
+        "screening_executed": True,
+        "model_calls": 1,
+        "source_fetch_calls": 0,
+        "apify_calls": 0,
+        "fetchlayer_calls": 0,
+        "factory_write": False,
+        "evidence_promoted": False,
+        "calibration_executed": False,
+        "generation_executed": False,
+        "publication_executed": False,
+    }
+
+
+def _load_payload(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise BoundedValidationError(f"could not read validation payload: {exc}") from exc
-    result = run_bounded_validation(pipeline_module, payload)
+    if not isinstance(payload, dict):
+        raise BoundedValidationError("validation payload must be an object")
+    return payload
+
+
+def run_from_path(pipeline_module: Any, path: Path) -> dict[str, Any]:
+    result = run_bounded_validation(pipeline_module, _load_payload(path))
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return result
+
+
+def run_single_screening_from_path(pipeline_module: Any, path: Path) -> dict[str, Any]:
+    result = run_single_screening_validation(pipeline_module, _load_payload(path))
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return result
