@@ -7,21 +7,34 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from ai_provider import ProviderError
+from groq_rate_policy import SAFE_TPD, SAFE_TPM
 from groq_validation import reserve_attempt, run_saved_prompt_validation
 
 
 class ValidationTests(unittest.TestCase):
-    def test_persistent_cap_and_rolling_recovery(self):
+    def test_persistent_caps_and_rolling_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             ledger = str(Path(directory) / "usage.sqlite")
-            reserve_attempt(ledger, 8000, 100000)
-            with self.assertRaisesRegex(ProviderError, "pacing"):
-                reserve_attempt(ledger, 8000, 100010)
-            reserve_attempt(ledger, 8000, 100100)
-            reserve_attempt(ledger, 8000, 100200)
-            with self.assertRaisesRegex(ProviderError, "persistent_validation_budget"):
-                reserve_attempt(ledger, 1, 100300)
-            reserve_attempt(ledger, 8000, 200000)
+            reserve_attempt(ledger, 4000, 100000)
+            with self.assertRaisesRegex(ProviderError, "minute_budget"):
+                reserve_attempt(ledger, SAFE_TPM - 3999, 100010)
+            reserve_attempt(ledger, 3000, 100010)
+
+            # Build daily usage while keeping each request in a separate minute.
+            stamp = 100100
+            used = 7000
+            index = 0
+            while used + 6000 <= SAFE_TPD:
+                reserve_attempt(ledger, 6000, stamp)
+                used += 6000
+                stamp += 61
+                index += 1
+            with self.assertRaisesRegex(ProviderError, "daily_budget"):
+                reserve_attempt(ledger, SAFE_TPD - used + 1, stamp)
+
+            # Once the rolling 24h window has moved past all previous reservations,
+            # capacity becomes available again.
+            reserve_attempt(ledger, 1000, stamp + 86401)
 
     def test_offline_never_opens_network(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -33,6 +46,7 @@ class ValidationTests(unittest.TestCase):
                         result = run_saved_prompt_validation()
             self.assertEqual(result["provider_calls"], 0)
             self.assertFalse(result["quality_validated"])
+            self.assertEqual(result["safety_budget"]["tpm"], SAFE_TPM)
 
     def test_live_without_key_fails_before_network(self):
         with tempfile.TemporaryDirectory() as directory:
