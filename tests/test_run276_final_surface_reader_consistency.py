@@ -183,7 +183,7 @@ class Run276FinalSurfaceReaderConsistencyTests(unittest.TestCase):
         self.assertEqual(state, "WEAK")
         self.assertTrue(any("final_surface_summary_jargon_cluster" in x for x in issues))
 
-    def test_genuinely_weak_article_still_blocks_on_final_surface(self):
+    def test_final_surface_does_not_duplicate_body_reader_weakness(self):
         summary = {
             "what": "新しい研究が公開されました。",
             "why": "実務条件を比較できます。",
@@ -195,9 +195,11 @@ class Run276FinalSurfaceReaderConsistencyTests(unittest.TestCase):
             {"title_text": "研究結果をどう使うか。", "note_draft": "本文自体が高密度な想定です。"},
             [],
         )
-        self.assertEqual(state, "WEAK")
-        self.assertTrue(any("final_surface_multi_axis_reader_weakness" in x for x in issues))
-        self.assertTrue(any("final_surface_non_engineer_access_failure" in x for x in issues))
+        # Run248/body Reader validation is the authoritative owner for article-wide axes.
+        # Run249 must only add defects introduced or exposed by the late public surface.
+        self.assertEqual(state, "ACCEPTABLE")
+        self.assertFalse(any("final_surface_multi_axis_reader_weakness" in x for x in issues))
+        self.assertFalse(any("final_surface_non_engineer_access_failure" in x for x in issues))
 
     def test_run276_precision_adds_no_provider_or_model_call_site(self):
         source = inspect.getsource(precision) + "\n" + inspect.getsource(r249)
@@ -208,6 +210,7 @@ class Run276FinalSurfaceReaderConsistencyTests(unittest.TestCase):
         self.assertNotIn("requests.post(", source)
         self.assertTrue(r249.RUN249_ZERO_PROVIDER_CALLS)
         self.assertTrue(r249.RUN276_SUMMARY_AWARE_FINAL_SURFACE)
+        self.assertTrue(r249.RUN354_BODY_READER_DEDUP)
 
 
 if __name__ == "__main__":

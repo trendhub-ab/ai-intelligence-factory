@@ -1,4 +1,4 @@
-"""Run249/276: final publication-surface revalidation before Ready.
+"""Run249/276/354: final publication-surface revalidation before Ready.
 
 Run248 proved that reader-value diagnostics can stop weak generated drafts, but the first
 post-Run248 real article exposed a later boundary: the reader-first summary/title/presentation
@@ -9,9 +9,13 @@ Run32 exposed an important category boundary. The final projection prepends thre
 compact 30-second summary answers to the article. Feeding that combined surface back through the
 full long-form article density/rhythm diagnostics can manufacture Jargon/Information-Budget
 reviews even when the article body itself is healthy: two 70-110 character summary rows are
-enough to look like two dense "article paragraphs". Run276 keeps final-surface protection but
-uses the article body as authority for article-wide Reader axes and applies narrow, high-confidence
-summary checks to the compact header itself.
+enough to look like two dense "article paragraphs". Run276 therefore uses narrow, high-confidence
+summary checks for the compact header.
+
+Run354 removes a remaining duplicate: article-wide Reader axes belong to the upstream Run248/body
+Reader gate and are not re-generated here under final_surface_* aliases. This layer now protects
+only late title/summary/presentation defects plus high-confidence malformed Japanese on the actual
+assembled projection.
 
 This layer stays zero-provider-call. It also repairs one deterministic presentation-only defect
 (the canonical disclaimer being glued to a supplemental Evidence link). No Evidence, Decision,
@@ -26,6 +30,7 @@ _INSTALLED_ATTR = "_run249_final_publication_surface_gate_installed"
 READER_VALUE_MARKER = "reader_value_review:"
 RUN249_ZERO_PROVIDER_CALLS = True
 RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
+RUN354_BODY_READER_DEDUP = True
 
 _SUMMARY_LABELS = (
     ("what", "何が出た？"),
@@ -33,8 +38,9 @@ _SUMMARY_LABELS = (
     ("decision", "結論は？"),
 )
 
-# Article-wide Reader dimensions. These belong to the long-form body; Run276 does not let the
-# compact 30-second header redefine them merely because it is prepended to the final surface.
+# Compatibility helper contract retained for historical Run249 unit tests and offline diagnostics.
+# Run354 deliberately does NOT call this helper from final_surface_issues(): article-wide Reader
+# axes are owned by upstream Run248/body validation and must not be registered twice.
 _CORE_READER_KEYS = (
     "accessibility",
     "curiosity_pull",
@@ -46,26 +52,9 @@ _CORE_READER_KEYS = (
     "reader_temperature_rhythm",
 )
 
-_SURFACE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (
-        re.compile(r"をに(?=(?:速|遅|高|低|大|小|強|弱|増|減|変|近|遠|広|狭|長|短|重|軽))"),
-        "particle_collision_wo_ni",
-    ),
-    (re.compile(r"主主要"), "duplicated_primary_modifier"),
-    (re.compile(r"眼砲"), "malformed_lexeme_ganpou"),
-)
-
-_SUMMARY_COMMON_ACRONYMS = {
-    "AI", "API", "LLM", "OSS", "URL", "UI", "UX", "DB", "CPU", "GPU", "ID", "PC",
-}
-_SUMMARY_PLAIN_BRIDGE_RE = re.compile(
-    r"(?:簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|"
-    r"言葉を変えると|たとえば|例えば|ようなもの|という意味|を指します|のことです)"
-)
-
 
 def _extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
-    """Broad long-form reader weakness over the article body."""
+    """Historical body-Reader helper; retained but not invoked by the final-surface gate."""
     reviewed = [key for key in _CORE_READER_KEYS if signals.get(key) == "REVIEW"]
     issues: list[str] = []
     if len(reviewed) >= 4:
@@ -84,6 +73,24 @@ def _extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
             + "non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
         )
     return list(dict.fromkeys(issues))
+
+
+_SURFACE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"をに(?=(?:速|遅|高|低|大|小|強|弱|増|減|変|近|遠|広|狭|長|短|重|軽))"),
+        "particle_collision_wo_ni",
+    ),
+    (re.compile(r"主主要"), "duplicated_primary_modifier"),
+    (re.compile(r"眼砲"), "malformed_lexeme_ganpou"),
+)
+
+_SUMMARY_COMMON_ACRONYMS = {
+    "AI", "API", "LLM", "OSS", "URL", "UI", "UX", "DB", "CPU", "GPU", "ID", "PC",
+}
+_SUMMARY_PLAIN_BRIDGE_RE = re.compile(
+    r"(?:簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|"
+    r"言葉を変えると|たとえば|例えば|ようなもの|という意味|を指します|のことです)"
+)
 
 
 def _extra_japanese_surface_failures(article: str) -> list[str]:
@@ -214,13 +221,12 @@ def final_surface_issues(
     original_build_summary,
     parsed: dict,
 ) -> tuple[list[str], dict[str, str], str]:
-    """Return material issues for the final public projection, zero API.
+    """Return only late public-surface issues, zero API.
 
-    Run276 separates two domains:
-    - article-wide Reader axes are evaluated on the actual article body;
-    - late title/summary/presentation defects are evaluated with surface-specific checks.
-    The final projection is still scanned for malformed Japanese, so presentation assembly cannot
-    hide a broken public sentence.
+    Article-wide Reader axes are authoritative upstream in Run248/body Reader validation. This
+    function intentionally does not call ``_reader_experience_signals`` on the body again.
+    The final projection is still scanned for a tiny set of malformed-Japanese defects so the
+    assembly step itself cannot hide or introduce an obviously broken public sentence.
     """
     parsed = parsed or {}
     issues: list[str] = []
@@ -239,13 +245,6 @@ def final_surface_issues(
     projection = _final_surface_probe(
         pipeline_module, original_build_manuscript, parsed, summary
     )
-
-    article = str(parsed.get("note_draft") or "")
-    if article:
-        signals = pipeline_module._reader_experience_signals(article)
-        for issue in _extra_reader_value_issues(signals):
-            suffix = str(issue).split(READER_VALUE_MARKER, 1)[-1]
-            issues.append(READER_VALUE_MARKER + "final_surface_" + suffix)
 
     if projection:
         for failure in _extra_japanese_surface_failures(projection):
@@ -303,5 +302,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN249_ZERO_PROVIDER_CALLS = True
     pipeline_module.RUN249_FINAL_SURFACE_REVALIDATION = True
     pipeline_module.RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
+    pipeline_module.RUN354_BODY_READER_DEDUP = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module

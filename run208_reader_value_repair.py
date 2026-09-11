@@ -1,4 +1,4 @@
-"""Run208/341/342/344/345: bounded Reader Value repair and first-pass Reader Path.
+"""Run208/341/342/344/345/354: bounded Reader Value repair and first-pass Reader Path.
 
 Run208 originally authorized one Reader Value repair only in the Pending Retry fast
 lane. The 2026-09-10 real Daily falsified that narrow scope as the sole Production
@@ -13,6 +13,10 @@ jargon-heavy. The missing authority was a discard hierarchy: which technical det
 must lose when reader comprehension and evidence depth compete. This layer therefore
 keeps the same budgets and gates, but makes Decision comprehension, limitation fidelity
 and one central mechanism outrank implementation-name inventory.
+
+Run354 keeps article_validation semantically aligned with fresh Production for Reader-only
+retry authorization. article_validation remains read-only because persistence is controlled by
+its caller; only the quality/retry policy matches the new-candidate path when Evidence is safe.
 
 The canonical Reader Value layer creates no provider loop and no new request budget.
 Fact/Evidence/Publication/Reader gates still rerun after repair and remain fail-closed.
@@ -39,6 +43,7 @@ _FRESH_REPAIRABLE = (
     "final_surface_summary_jargon_cluster",
     "final_surface_summary_fragment",
 )
+_FRESH_EQUIVALENT_ORIGINS = frozenset({"new", "article_revalidation"})
 
 READER_PATH_CONTRACT = r"""
 【Reader Path Contract｜非エンジニアが迷子にならない順序】
@@ -139,7 +144,7 @@ def install(pipeline_module: Any) -> Any:
             setattr(pipeline_module, _SPENT_ATTR, True)
             return True, "run208_reader_value_fast_lane_repair"
 
-        if candidate_origin == "new" and _fresh_evidence_safe(pipeline_module, evidence_result):
+        if candidate_origin in _FRESH_EQUIVALENT_ORIGINS and _fresh_evidence_safe(pipeline_module, evidence_result):
             hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
             if _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard):
                 return True, "run341_production_reader_repair"
@@ -163,5 +168,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN342_READER_DECISION_DISTANCE = True
     pipeline_module.RUN344_READER_LIMITATION_BRIDGE = True
     pipeline_module.RUN345_READER_CONCEPT_HIERARCHY = True
+    pipeline_module.RUN354_VALIDATION_RETRY_PARITY = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
