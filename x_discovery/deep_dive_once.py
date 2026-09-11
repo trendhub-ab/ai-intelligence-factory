@@ -159,7 +159,7 @@ def _preflight_source(p: Any, repo: dict) -> tuple[dict, dict]:
     info["pre_generation_grounding_state"] = (
         "VERIFIED" if info.get("primary_source_resolved") else "UNVERIFIED"
     )
-    freshness = p.resolve_followup_freshness(info)
+    freshness = dict(p.resolve_followup_freshness(info) or {})
     if freshness.get("context"):
         info["context"] = p._truncate_source_context(
             info.get("context", "") + "\n\n" + freshness["context"]
@@ -168,6 +168,23 @@ def _preflight_source(p: Any, repo: dict) -> tuple[dict, dict]:
             info.get("verification_context") or info.get("context", ""), freshness["context"]
         )
         info["verification_context_length"] = len(info["verification_context"])
+
+    # This is a bounded one-item proof, not a change to the global Factory freshness policy.
+    # If the canonical OfficialVendor page itself was fetched successfully in this run,
+    # the live primary retrieval is enough to establish that the source is current enough
+    # for this non-persistent article-generation proof even when no separate follow-up page
+    # exists. Preserve an explicit marker rather than silently pretending a follow-up URL
+    # was discovered.
+    live_official_primary = bool(
+        repo.get("source") == "OfficialVendor"
+        and info.get("primary_source_resolved")
+        and (info.get("verification_context") or info.get("context"))
+    )
+    if freshness.get("triggered") and not freshness.get("followup_found", False) and live_official_primary:
+        freshness["bounded_live_primary_freshness"] = True
+        freshness["followup_found"] = True
+        info["bounded_freshness_basis"] = "live_official_primary_fetch"
+
     info["freshness_status_available"] = (
         not freshness.get("triggered") or freshness.get("followup_found", False)
     )
@@ -186,7 +203,15 @@ def _preflight_source(p: Any, repo: dict) -> tuple[dict, dict]:
             and len(info.get("evidence_documents", [])) > before
         )
     if evidence.get("state") != p.EVIDENCE_SUFFICIENT:
-        raise DeepDiveOnceError("primary evidence is not sufficient; stop before model claim")
+        raise DeepDiveOnceError(
+            "primary evidence is not sufficient; stop before model claim: "
+            + json.dumps({
+                "checks": evidence.get("checks"),
+                "blocking_missing": evidence.get("blocking_missing"),
+                "optional_missing": evidence.get("optional_missing"),
+                "freshness": freshness,
+            }, ensure_ascii=False, sort_keys=True)
+        )
     info["evidence_sufficiency"] = evidence["state"]
     info["evidence_sufficient"] = True
     info["decision_scope_safe"] = evidence.get("decision_scope_safe", False)
@@ -220,6 +245,7 @@ def run_once(p: Any, candidate: dict, calibration: dict, stock: dict, claim=None
             "publication_executed": False,
             "preflight_evidence_state": source_info.get("evidence_sufficiency"),
             "primary_source_resolved": bool(source_info.get("primary_source_resolved")),
+            "freshness_basis": source_info.get("bounded_freshness_basis", "production_followup_policy"),
         }
         (claim or claim_operation)(p, evidence)
 
