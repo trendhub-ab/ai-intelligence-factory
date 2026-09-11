@@ -68,8 +68,9 @@ class GroqProvider:
 
     Calibration defaults to standalone GPT-OSS 120B. Article parity may explicitly use
     Compound Mini because its published Free Plan TPM envelope can fit the canonical
-    Production article prompt. Compound tools are disabled so no search/code tool can
-    alter evidence or introduce variable external-tool cost during parity validation.
+    Production article prompt. Compound built-in tools are disabled through the
+    Compound-specific configuration surface so no search/code tool can alter evidence
+    or introduce variable external-tool cost during parity validation.
     """
 
     def __init__(self, transport: Callable, *, validate_schema: Callable | None = None,
@@ -101,9 +102,10 @@ class GroqProvider:
         if self.model.startswith("openai/gpt-oss-"):
             payload["reasoning_effort"] = request.reasoning_effort
         if self.model.startswith("groq/compound"):
-            # Source context is already supplied by Factory. External tools would make
-            # parity non-deterministic and can carry separate tool pricing.
-            payload["tool_choice"] = "none"
+            # Compound built-in tools are configured through compound_custom, not the
+            # local-tool `tool_choice` surface. An empty allow-list keeps parity fully
+            # grounded in Factory-supplied source context.
+            payload["compound_custom"] = {"tools": {"enabled_tools": []}}
             payload["citation_options"] = "disabled"
         if request.schema is not None:
             if self.model.startswith("groq/compound"):
@@ -139,7 +141,7 @@ class GroqProvider:
             raise ProviderError("transport_error") from None
         if status != 200:
             kind = {400: "invalid_request", 401: "authentication_error", 403: "permission_error",
-                    404: "model_unavailable", 429: "rate_limit_error"}.get(status,
+                    404: "model_unavailable", 422: "invalid_request", 429: "rate_limit_error"}.get(status,
                     "capacity_error" if isinstance(status, int) and status >= 500 else "http_error")
             raise ProviderError(kind, status, _retry_after(headers))
         try:
