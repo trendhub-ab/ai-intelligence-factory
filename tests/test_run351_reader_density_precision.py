@@ -69,7 +69,8 @@ Artificial AnalysisのIntelligence IndexではDeepSeek v4.1 Flashを他のオー
         article = "自社の業務で判断します。A4とMITを確認します。たとえば小さく検証します。"
         signals = correct_reader_signals(article, self._base(jargon_dense_paragraph_count=1))
         self.assertEqual(["A4", "MIT"], signals["unexplained_jargon"])
-        self.assertEqual("REVIEW", signals["jargon_translation"])
+        self.assertEqual("REVIEW", signals["accessibility"])
+        self.assertIn("unexplained_acronyms", signals["accessibility_issues"])
 
     def test_real_unexplained_acronym_remains_blocking(self):
         article = self._run38_like_article().replace("A4用紙", "XYZ方式").replace("MITライセンス", "公開ライセンス")
