@@ -23,18 +23,34 @@ _BYTEDANCE_MODEL_LIST_URL = "https://www.volcengine.com/docs/82379/1799865?lang=
 _BYTEDANCE_MODEL_LIST_CANONICAL_URL = "https://www.volcengine.com/docs/82379/1330310"
 _VOLCENGINE_DOC_FETCH_API = "https://docs-api.cn-beijing.volces.com/api/v1/doc/fetch"
 
-OFFICIAL_VENDOR_REGISTRY = tuple(
-    (
-        {
+
+def _normalize_vendor_registry_row(row: dict) -> dict:
+    """Apply narrow official-source migrations without weakening vendor boundaries."""
+    if row["vendor"] == "ByteDance Doubao/Seed":
+        return {
             **row,
             "release_url": _BYTEDANCE_MODEL_LIST_URL,
             "current_state_page": True,
             "current_state_label": "火山方舟 公式モデル一覧",
             "current_state_fetch_url": _BYTEDANCE_MODEL_LIST_CANONICAL_URL,
         }
-        if row["vendor"] == "ByteDance Doubao/Seed"
-        else row
-    )
+    if row["vendor"] == "MiniMax":
+        # 2026-09: the legacy minimaxi.com docs endpoint redirects to MiniMax's
+        # official mainland China platform domain. Permit only the exact official
+        # domain family observed in the live smoke; do not broaden to arbitrary hosts.
+        return {
+            **row,
+            "allowed_domains": tuple(dict.fromkeys((
+                *(row.get("allowed_domains") or ()),
+                "platform.minimax.cn",
+                "minimax.cn",
+            ))),
+        }
+    return row
+
+
+OFFICIAL_VENDOR_REGISTRY = tuple(
+    _normalize_vendor_registry_row(row)
     for row in precision.OFFICIAL_VENDOR_REGISTRY
 )
 

@@ -49,6 +49,33 @@ class Run269VendorCurrentStateTests(unittest.TestCase):
         self.assertIn("1799865", row["release_url"])
         self.assertIn("1330310", row["current_state_fetch_url"])
 
+    def test_minimax_registry_accepts_only_known_official_domain_families(self):
+        row = next(row for row in OFFICIAL_VENDOR_REGISTRY if row["vendor"] == "MiniMax")
+        allowed = tuple(row["allowed_domains"])
+        self.assertIn("platform.minimaxi.com", allowed)
+        self.assertIn("minimaxi.com", allowed)
+        self.assertIn("platform.minimax.cn", allowed)
+        self.assertIn("minimax.cn", allowed)
+        self.assertNotIn("minimax.com", allowed)
+
+    def test_minimax_official_cn_redirect_is_accepted(self):
+        vendor = next(row for row in OFFICIAL_VENDOR_REGISTRY if row["vendor"] == "MiniMax")
+        html = (
+            '<h1>Release notes</h1><h2>Sep 10, 2026</h2>'
+            '<h3>MiniMax M3 model update</h3><p>MiniMax M3 model released for API use.</p>'
+        )
+        rows = fetch_official_vendor_updates(
+            1,
+            normalize_item=normalize_item,
+            http_get=lambda url, **kwargs: FakeResponse(
+                html,
+                "https://platform.minimax.cn/docs/release-notes/models",
+            ),
+            registry=(vendor,),
+        )
+        self.assertEqual(1, len(rows))
+        self.assertTrue(rows[0]["sourceDetails"]["vendor_record_kind"].startswith("structured_"))
+
     def test_recent_update_timestamp_is_extracted_from_official_page_shape(self):
         self.assertEqual(
             "2026.07.20",
