@@ -1,5 +1,7 @@
 name: X Defense Factory Deep Dive Once
 
+# Re-armed once after the first run stopped before the operation claim/model request
+# because the bounded freshness preflight required a separate follow-up page.
 on:
   push:
     branches:
