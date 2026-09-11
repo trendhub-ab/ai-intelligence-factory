@@ -29,12 +29,7 @@ PRODUCT_REVIEW_PROVIDER_LAYER_ORDER = (
 
 
 def install_product_review_provider_runtime(pipeline_module):
-    """Install only provider/quota safety required by the product-only child.
-
-    Run260 is intentionally excluded so Product Review keeps its explicit
-    3.6 -> 3.7 -> 3.8 -> 3.5 model order rather than inheriting article routing.
-    Article/publication/Reader Value/eyecatch layers are also deliberately absent.
-    """
+    """Install only provider/quota safety required by the product-only child."""
     import run203_runtime_state_channel as runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
@@ -52,14 +47,7 @@ def _product_review_runtime_requested() -> bool:
 
 
 def install_runtime_layers(pipeline_module):
-    """Compatibility manifest for the existing Documentation Freshness Guard.
-
-    The imports below intentionally mirror the canonical modules but contain no
-    installation logic. ``runtime_layers.py`` remains the single source of truth for
-    install order and behavior. Keeping this import-only manifest lets the existing
-    fail-closed documentation guard continue to audit every active layer during the
-    Run231 refactor without weakening its contract.
-    """
+    """Compatibility manifest for the existing Documentation Freshness Guard."""
     import run203_runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
@@ -142,26 +130,18 @@ def main() -> None:
 
     mode = _workflow_dispatch_mode()
 
-    # Saved-X validation is intentionally earlier than runtime-state preflight/font setup.
-    # It installs the canonical production runtime and current overlays, then permits only
-    # the authoritative Notion dedup READ before stopping at the screening prompt boundary.
     if mode == "x_saved_candidate_validation":
         from pathlib import Path
         from x_discovery.bounded_factory_validation import BoundedValidationError, run_from_path
-
         candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
         if not candidate_path:
             raise BoundedValidationError("AIIF_X_SAVED_CANDIDATE_PATH is required")
         run_from_path(pipeline, Path(candidate_path))
         return
 
-    # Saved-X Global Calibration defaults to a provider-free prompt boundary.
-    # Explicit execution additionally requires a durable one-operation claim.
-    # Neither path persists Stock, generates articles, or publishes content.
     if mode == "x_saved_candidate_calibration_validation":
         from pathlib import Path
         from x_discovery.bounded_calibration_validation import BoundedCalibrationError, run_from_paths
-
         candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
         screening_path = os.environ.get("AIIF_X_SAVED_SCREENING_PATH", "").strip()
         if not candidate_path:
@@ -171,13 +151,9 @@ def main() -> None:
         run_from_paths(pipeline, Path(candidate_path), Path(screening_path))
         return
 
-    # Persist exactly one previously observed real Final as Stock. This lane performs
-    # authoritative dedup and one Notion metadata write; it cannot invoke Gemini,
-    # Deep Dive generation, article generation, or publication.
     if mode == "x_saved_candidate_stock_once":
         from pathlib import Path
         from x_discovery.stock_once import StockOnceError, run_from_paths
-
         candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
         observation_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
         if not candidate_path:
@@ -190,12 +166,26 @@ def main() -> None:
     if mode == "x_saved_stock_deep_dive_handoff":
         from pathlib import Path
         from x_discovery.stock_deep_dive_handoff import StockHandoffError, run_from_paths
-
         candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
         calibration_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
         stock_path = os.environ.get("AIIF_X_STOCK_OBSERVATION_PATH", "").strip()
         if not all((candidate_path, calibration_path, stock_path)):
             raise StockHandoffError("candidate, Calibration and Stock paths are required")
+        run_from_paths(pipeline, Path(candidate_path), Path(calibration_path), Path(stock_path))
+        return
+
+    # One non-persistent Deep Dive generation proof from the already persisted Stock.
+    # Screening, Calibration and Stock persistence are never re-run here. The operation
+    # owns a durable create-only claim and permits exactly one model request, no Quality
+    # Retry, no Gemini URL/Search tools, no Notion write, and no publication.
+    if mode == "x_saved_stock_deep_dive_once":
+        from pathlib import Path
+        from x_discovery.deep_dive_once import DeepDiveOnceError, run_from_paths
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        calibration_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
+        stock_path = os.environ.get("AIIF_X_STOCK_OBSERVATION_PATH", "").strip()
+        if not all((candidate_path, calibration_path, stock_path)):
+            raise DeepDiveOnceError("candidate, Calibration and Stock paths are required")
         run_from_paths(pipeline, Path(candidate_path), Path(calibration_path), Path(stock_path))
         return
 
@@ -212,15 +202,12 @@ def main() -> None:
     if mode == "current_policy_ready_recovery":
         run_current_policy_ready_recovery(pipeline)
         return
-
     if mode == "article_validation":
         run_article_revalidation(pipeline)
         return
-
     if mode == "pending_retry_validation":
         run_article_revalidation(pipeline, pending_only=True)
         return
-
     if mode == "full":
         install_full_recovery(pipeline)
 
@@ -230,7 +217,6 @@ def main() -> None:
 def _run_product_review_runtime() -> None:
     import pipeline
     import run203_runtime_state_channel as runtime_state_channel
-
     install_product_review_provider_runtime(pipeline)
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
