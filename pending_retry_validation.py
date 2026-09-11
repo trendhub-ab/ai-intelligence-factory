@@ -6,20 +6,25 @@ has already paid the collection/screening cost and a Deep Dive failed transientl
 do not spend another run discovering fresh candidates before attempting recovery.
 
 Safety contract:
-- installs the exact current Production runtime/publication layers;
+- installs the exact current Production article/runtime/publication stack, including
+  current precision/recovery overlays, before applying fast-lane-only controls;
 - proves runtime-state writability before any Gemini reservation;
-- caps this fast lane at three Pending Retry requests so one transient provider
-  failure can still leave room for one generation and one quality recompose;
-- cools a model for the rest of this fast-lane run after its first HTTP 503, while
-  the normal Production Run205 policy remains unchanged at two occurrences;
-- permits at most one Reader Value recompose, only when factual/evidence blockers
-  are absent and the existing reader bridge reports repairable reader-only reasons;
+- caps this fast lane at three Pending Retry requests so two provider failures can
+  still leave one cross-model generation opportunity; this is an explicit fast-lane
+  cap and does not raise any persistent per-model or global provider safety ceiling;
+- cools a model for the rest of this fast-lane run after its first HTTP 503;
+- permits at most one Reader Value recompose under the same current Production
+  recovery policy when factual/evidence blockers are absent;
 - reuses the persistent daily counters and all global Deep Dive/provider caps;
 - ranks the fetched Pending Retry backlog by screening score, while preserving the
   core query's stable order as the tie-breaker;
 - stops immediately after the first successful article;
 - never publishes to note.com; downstream Note Ready Sync remains fail-closed and
   public note release stays human-only.
+
+Run356 fixes a parity defect proven by live ONE-SHOT #45: this fast lane previously
+installed only the historical runtime stack, so newer Production overlays such as
+Run349/350/351/352 were absent even though this module claimed Production parity.
 """
 from __future__ import annotations
 
@@ -94,16 +99,45 @@ def run_pending_retry_lane(pipeline_module, items: list[dict[str, Any]] | None, 
     return {"attempted": attempted, "succeeded": succeeded}
 
 
+def install_current_production_article_stack(pipeline_module, note_manuscript_module):
+    """Install the same current article-quality overlays as production_pipeline.main().
+
+    Fast-lane transport controls are deliberately excluded here and installed by main()
+    only after parity is established. Keep this order synchronized with Production.
+    """
+    import production_pipeline
+    from source_normalization import install as install_source_normalization
+    from run231_performance_telemetry import install as install_performance_telemetry
+    from run268_business_source_strategy import install as install_run268_business_source_strategy
+    from run269_business_source_precision import install as install_run269_business_source_precision
+    from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence
+    from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
+    from run287_publication_date_provenance import install as install_run287_publication_date_provenance
+    from reader_quality_precision import install as install_reader_quality_precision
+
+    install_source_normalization(pipeline_module)
+    production_pipeline.install_runtime_layers(pipeline_module)
+    production_pipeline.install_run349_score_narrative_negation_precision(pipeline_module)
+    install_run283_numeric_evidence_equivalence(pipeline_module)
+    install_run268_business_source_strategy(pipeline_module)
+    install_run269_business_source_precision(pipeline_module)
+    install_reader_quality_precision(pipeline_module)
+    install_run284_reader_recovery_precision(pipeline_module)
+    install_run287_publication_date_provenance(note_manuscript_module, pipeline_module)
+    install_performance_telemetry(pipeline_module)
+    return pipeline_module
+
+
 def main() -> int:
     prepare_fast_lane_env()
 
     import gemini_transient_recovery
+    import note_manuscript
     import pipeline
-    import production_pipeline
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
 
-    production_pipeline.install_runtime_layers(pipeline)
+    install_current_production_article_stack(pipeline, note_manuscript)
     gemini_transient_recovery.configure_cooldown_threshold(
         pipeline,
         FAST_LANE_503_COOLDOWN_THRESHOLD,
