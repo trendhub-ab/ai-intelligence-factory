@@ -1,11 +1,13 @@
 import inspect
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import x_discovery.bounded_factory_validation as bounded_validation
 from x_discovery.bounded_factory_validation import (
     BoundedValidationError,
     run_bounded_validation,
+    run_single_screening_validation,
     validate_saved_candidate,
 )
 
@@ -17,6 +19,10 @@ class FakePipeline:
         self.prompt_calls = 0
         self.provider_calls = 0
         self.write_calls = 0
+        self.GEMINI_BUDGET = SimpleNamespace(daily_budget=1, screening_retry_budget=0, request_count=0)
+        self.SCREENING_MODEL_POOL = ["gemini-test"]
+        self.GEMINI_API_KEY = "test-key"
+        self.client = object()
 
     def send_telegram_alert(self, message):
         self.alerts.append(message)
@@ -31,9 +37,24 @@ class FakePipeline:
         assert batch[0]["repo"]["stargazerCount"] == 0
         return "screen exactly one saved candidate"
 
-    def call_screening_provider(self, *_args, **_kwargs):
+    def _register_gemini_usage_atexit(self):
+        return None
+
+    def _generate_via_chat(self, model_name, prompt, **kwargs):
         self.provider_calls += 1
-        raise AssertionError("model/provider must never be called")
+        if self.provider_calls > 1:
+            raise AssertionError("more than one provider call")
+        self.GEMINI_BUDGET.request_count += 1
+        return SimpleNamespace(text='[{"id":"X0001","score":81,"commercial_score":73,"shelf_life_score":78,"topic":"SECURITY","tracking_eligible":true,"tracking_reason":"継続監視価値あり","reason":"実務影響が大きい"}]')
+
+    def _parse_batch_screening_response(self, text, expected_ids, include_diagnostic=False):
+        self.assert_expected = expected_ids
+        return ({"X0001": {
+            "score": 81, "commercial_score": 73, "shelf_life_score": 78,
+            "portfolio_topic": "SECURITY", "topic_valid": True,
+            "tracking_eligible": True, "tracking_reason": "継続監視価値あり",
+            "reason": "実務影響が大きい",
+        }}, [], "")
 
     def persist_to_notion(self, *_args, **_kwargs):
         self.write_calls += 1
@@ -81,6 +102,38 @@ class BoundedFactoryValidationTests(unittest.TestCase):
         self.assertEqual(fake.write_calls, 0)
         self.assertEqual(fake.alerts, [])
 
+    def test_single_screening_executes_exactly_one_provider_request(self):
+        fake = FakePipeline()
+        result = run_single_screening_validation(fake, payload())
+        self.assertEqual(result["status"], "SCREENING_VALIDATED")
+        self.assertEqual(result["model_calls"], 1)
+        self.assertEqual(result["score"], 81)
+        self.assertEqual(result["portfolio_topic"], "SECURITY")
+        self.assertEqual(fake.provider_calls, 1)
+        self.assertEqual(fake.GEMINI_BUDGET.request_count, 1)
+        self.assertEqual(fake.write_calls, 0)
+
+    def test_single_screening_rejects_budget_above_one_before_provider(self):
+        fake = FakePipeline()
+        fake.GEMINI_BUDGET.daily_budget = 2
+        with self.assertRaisesRegex(BoundedValidationError, "GEMINI_DAILY_REQUEST_BUDGET=1"):
+            run_single_screening_validation(fake, payload())
+        self.assertEqual(fake.provider_calls, 0)
+
+    def test_single_screening_rejects_retry_budget_before_provider(self):
+        fake = FakePipeline()
+        fake.GEMINI_BUDGET.screening_retry_budget = 1
+        with self.assertRaisesRegex(BoundedValidationError, "GEMINI_SCREENING_RETRY_BUDGET=0"):
+            run_single_screening_validation(fake, payload())
+        self.assertEqual(fake.provider_calls, 0)
+
+    def test_single_screening_rejects_multi_model_pool_before_provider(self):
+        fake = FakePipeline()
+        fake.SCREENING_MODEL_POOL = ["one", "two"]
+        with self.assertRaisesRegex(BoundedValidationError, "exactly one screening model"):
+            run_single_screening_validation(fake, payload())
+        self.assertEqual(fake.provider_calls, 0)
+
     def test_duplicate_is_fail_closed(self):
         fake = FakePipeline(existing={"https://example.com/defense-factory"})
         with self.assertRaisesRegex(BoundedValidationError, "already exists"):
@@ -114,11 +167,13 @@ class BoundedFactoryValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(BoundedValidationError, "too short"):
             validate_saved_candidate(bad)
 
-    def test_lane_source_contains_no_provider_or_persistence_call(self):
+    def test_lane_source_contains_no_http_or_persistence_call(self):
         source = inspect.getsource(bounded_validation)
         self.assertNotIn("call_screening_provider(", source)
         self.assertNotIn("persist_to_notion(", source)
         self.assertNotIn("requests.", source)
+        self.assertNotIn("_call_screening_pool(", source)
+        self.assertNotIn("_call_model_pool(", source)
 
     def test_production_entrypoint_routes_lane_before_live_preflight(self):
         source = Path("production_pipeline.py").read_text(encoding="utf-8")
