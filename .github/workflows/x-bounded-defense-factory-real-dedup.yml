@@ -1,0 +1,40 @@
+name: X Bounded Defense Factory Real Dedup
+
+on:
+  pull_request:
+    paths:
+      - 'x_discovery/bounded_factory_validation.py'
+      - 'x_discovery/fixtures/defense_factory_boundary_20260911.json'
+      - 'production_pipeline.py'
+      - '.github/workflows/x-bounded-defense-factory-real-dedup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-dedup-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run exactly one saved-X candidate to screening boundary
+        env:
+          AIIF_ONE_SHOT_MODE: x_saved_candidate_validation
+          AIIF_X_SAVED_CANDIDATE_PATH: x_discovery/fixtures/defense_factory_boundary_20260911.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          GEMINI_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+          TZ: Asia/Tokyo
+        run: python production_pipeline.py
