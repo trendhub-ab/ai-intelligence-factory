@@ -9,6 +9,8 @@ import json
 import math
 from typing import Callable, Protocol
 
+from groq_rate_policy import GPT_OSS_120B, policy_for_model
+
 
 class ProviderError(RuntimeError):
     def __init__(self, kind: str, status: int | None = None, retry_after: float | None = None):
@@ -62,23 +64,29 @@ def conservative_token_estimate(text: str) -> int:
 
 
 class GroqProvider:
-    """Bounded validation adapter. One instance is a run, NOT a daily quota ledger.
+    """Bounded Groq adapter. One instance is a run, NOT a daily quota ledger.
 
-    transport(payload) returns (HTTP status, headers, decoded JSON body).
-    Input estimation uses a conservative language-aware token approximation plus
-    framing/schema overhead, not UTF-8 bytes. Oversized prompts are rejected, never cut.
-    A schema request requires an independent validator that raises on invalid data.
+    Calibration defaults to standalone GPT-OSS 120B. Article parity may explicitly use
+    Compound Mini because its published Free Plan TPM envelope can fit the canonical
+    Production article prompt. Compound tools are disabled so no search/code tool can
+    alter evidence or introduce variable external-tool cost during parity validation.
     """
-    model = "openai/gpt-oss-120b"
 
     def __init__(self, transport: Callable, *, validate_schema: Callable | None = None,
-                 request_budget: int = 1, token_budget: int = 8000):
+                 request_budget: int = 1, token_budget: int | None = None,
+                 model: str = GPT_OSS_120B.model):
+        try:
+            policy = policy_for_model(model)
+        except ValueError:
+            raise ProviderError("unsupported_model") from None
         if type(request_budget) is not int or not 1 <= request_budget <= 3:
             raise ProviderError("invalid_validation_budget")
-        if type(token_budget) is not int or not 1 <= token_budget <= 8000:
+        token_budget = policy.safe_tpm if token_budget is None else token_budget
+        if type(token_budget) is not int or not 1 <= token_budget <= policy.official_tpm:
             raise ProviderError("invalid_validation_budget")
         self.transport, self.validate_schema = transport, validate_schema
         self.request_budget, self.token_budget = request_budget, token_budget
+        self.model, self.policy = model, policy
         self.attempts = self.reserved_tokens = 0
 
     def prepare(self, request: GenerationRequest) -> tuple[dict, int]:
@@ -89,9 +97,17 @@ class GroqProvider:
         if request.reasoning_effort not in {"low", "medium", "high"}:
             raise ProviderError("invalid_reasoning_effort")
         payload = {"model": self.model, "messages": [{"role": "user", "content": request.prompt}],
-                   "max_completion_tokens": request.max_output_tokens,
-                   "reasoning_effort": request.reasoning_effort, "stream": False}
+                   "max_completion_tokens": request.max_output_tokens, "stream": False}
+        if self.model.startswith("openai/gpt-oss-"):
+            payload["reasoning_effort"] = request.reasoning_effort
+        if self.model.startswith("groq/compound"):
+            # Source context is already supplied by Factory. External tools would make
+            # parity non-deterministic and can carry separate tool pricing.
+            payload["tool_choice"] = "none"
+            payload["citation_options"] = "disabled"
         if request.schema is not None:
+            if self.model.startswith("groq/compound"):
+                raise ProviderError("schema_not_supported_for_model")
             if not isinstance(request.schema, dict) or self.validate_schema is None:
                 raise ProviderError("schema_validator_required")
             payload["response_format"] = {"type": "json_schema", "json_schema": {
