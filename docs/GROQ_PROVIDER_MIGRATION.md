@@ -68,3 +68,11 @@ Groq Bounded Validationは当該workflow変更時だけ1件送信し、同じexp
 初回fixture: observed_history/screening_20260902T083606Z.jsonのB0031。元のcalibration_promptを1件に適用。予約推定3516 tokens、出力上限1500。
 履歴にdescription/trackingが残っていないため厳密な旧出力比較ではない。単一候補の接続・構造・日本語理由の検証でありGlobal Calibration全体の品質合格ではない。
 JSON配列のID一致・型・点数範囲・topic・理由40字制限をAPI後に独立検証。業務DB更新なし。
+
+## Phase 2 first live result
+Run34656087894: SUCCESS. Model openai/gpt-oss-120b; provider_calls=1; input=516, output=223, total=739 tokens. No retry or fallback.
+B0031: Decision82 / Commercial70 / ShelfLife70 / INFRA / tracking=false。
+reason: 技術新規性高・実務インパクト中。tracking_reason: 低追跡価値。
+JSON・ID・型・点数・文字数チェックPASS。runtime/groq-validation台帳にcalibration-B0031-first予約を送信前に保存済み。
+旧Decision82との一致だけで品質合格とはしない。題名のみでは技術的新規性を高と断定する根拠が弱く、説明文と一次資料を含む追加検証が必要。
+Notion/note書込み0。現行DailyはGeminiのまま。生成結果はRun artifact groq-calibration-B0031に保存（30日）。
