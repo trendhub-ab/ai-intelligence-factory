@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install jsonschema
-      - name: Build current Production article prompt
+      - name: Build and preflight current Production article contract
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           PYTHONPATH: ${{ github.workspace }}
@@ -34,7 +34,10 @@ jobs:
           import note_manuscript
           import pipeline
           import production_pipeline
+          from ai_provider import GenerationRequest, GroqProvider
           from groq_article_parity import build_production_article_fixture
+          from groq_prompt_compiler import MAX_COMPILED_PROMPT_BYTES
+          from groq_rate_policy import policy_for_model
           from source_normalization import install as install_source_normalization
           from run268_business_source_strategy import install as install_run268
           from run269_business_source_precision import install as install_run269
@@ -56,12 +59,34 @@ jobs:
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'groq-article-production-prompt.json',
           )
+          policy = policy_for_model(fixture['model'])
+          provider = GroqProvider(lambda _: None, token_budget=policy.safe_tpm, model=fixture['model'])
+          payload, estimate = provider.prepare(GenerationRequest(
+              fixture['prompt'], fixture['max_output_tokens'], None, fixture['reasoning_effort']
+          ))
+          request_bytes = len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+          canonical_bytes = int(fixture['provenance']['canonical_prompt_bytes'])
+          compiled_bytes = int(fixture['provenance']['compiled_prompt_bytes'])
+          max_request_json_bytes = 24 * 1024
+          assert compiled_bytes == len(fixture['prompt'].encode('utf-8'))
+          assert compiled_bytes <= MAX_COMPILED_PROMPT_BYTES
+          assert compiled_bytes < canonical_bytes
+          assert request_bytes <= max_request_json_bytes, (request_bytes, max_request_json_bytes)
+          assert payload.get('compound_custom', {}).get('tools', {}).get('enabled_tools') == []
+          assert 'tool_choice' not in payload
+          assert payload.get('citation_options') == 'disabled'
           print(json.dumps({
               'model': fixture['model'],
               'rate_policy': fixture['rate_policy'],
-              'reserved_estimate': fixture['provenance']['estimated_total_tokens'],
-              'safe_tpm': fixture['provenance']['groq_safe_tpm'],
-              'external_tools': fixture['provenance']['external_tools'],
+              'reserved_estimate': estimate,
+              'safe_tpm': policy.safe_tpm,
+              'canonical_prompt_bytes': canonical_bytes,
+              'compiled_prompt_bytes': compiled_bytes,
+              'compiler_reduction_pct': round((1 - compiled_bytes / canonical_bytes) * 100, 1),
+              'request_json_bytes': request_bytes,
+              'request_json_guard_bytes': max_request_json_bytes,
+              'transport_compiler': fixture['provenance']['transport_compiler'],
+              'external_tools': 'disabled_via_compound_custom',
               'business_writes': 0,
           }, ensure_ascii=False))
       - name: One guarded Groq article generation call
@@ -71,7 +96,7 @@ jobs:
           AIIF_GROQ_REPORT: groq-article-result.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-parity-B0049-compound-mini-v2
+          AIIF_GROQ_EXPERIMENT: article-parity-B0049-compound-mini-v3
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
@@ -118,6 +143,7 @@ jobs:
               'model': evaluation['model'],
               'gate_state': evaluation['gate_state'],
               'gate_issue_count': len(evaluation['gate_issues']),
+              'gate_issues': evaluation['gate_issues'],
               'quality_validated': evaluation['quality_validated'],
               'decision_score': evaluation['decision_score'],
               'article_chars': evaluation['article_chars'],
