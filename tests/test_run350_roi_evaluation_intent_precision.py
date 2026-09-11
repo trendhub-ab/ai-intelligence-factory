@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 import unittest
 
-from run350_roi_evaluation_intent_precision import (
+from run283_numeric_evidence_equivalence import (
     ROI_OUTCOME_FAILURE,
     install,
     roi_sentences_are_evaluation_intent_only,
@@ -22,11 +22,22 @@ class Run350RoiEvaluationIntentPrecisionTests(unittest.TestCase):
     def _pipeline(self, extra_failures=None):
         extra_failures = list(extra_failures or [])
 
+        def base_numeric(draft, source_context, evidence_metadata=None):
+            return []
+
+        def condition_compatible(claim_window, evidence_window):
+            return True
+
         def base_gate(parsed, *args, **kwargs):
             failures = [ROI_OUTCOME_FAILURE, *extra_failures]
             return False, failures
 
-        return SimpleNamespace(validate_fact_gate=base_gate, logger=_Logger())
+        return SimpleNamespace(
+            _find_unsupported_numeric_claims=base_numeric,
+            _numeric_condition_compatible=condition_compatible,
+            validate_fact_gate=base_gate,
+            logger=_Logger(),
+        )
 
     def test_real_run38_deepseek_sentence_is_evaluation_intent(self):
         article = (
