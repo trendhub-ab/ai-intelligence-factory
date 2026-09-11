@@ -1,9 +1,14 @@
 """Canonical production runtime-layer installation order.
 
 Run231 moves the production patch stack out of ``production_pipeline.py`` without
-changing its behavior. The order below is a compatibility contract.
+changing its behavior.  The order below is a compatibility contract: later layers
+intentionally wrap or refine functions installed by earlier layers.
+
+Do not reorder, remove, or merge a layer here unless its own regression suite proves
+that the resulting production behavior is equivalent or intentionally superseded.
 """
 from __future__ import annotations
+
 
 RUNTIME_LAYER_ORDER = (
     "run203_runtime_state_channel.install",
@@ -35,7 +40,6 @@ RUNTIME_LAYER_ORDER = (
     "run248_first_real_publish_quality_calibration.install",
     "run249_final_publication_surface_gate.install",
     "run194_publication_contract.install",
-    "run346_backlog_budget_reserve.install",
 )
 
 
@@ -70,39 +74,68 @@ def install_runtime_layers(pipeline_module):
     import run248_first_real_publish_quality_calibration
     import run249_final_publication_surface_gate
     import run194_publication_contract
-    import run346_backlog_budget_reserve
 
     runtime_state_channel.install(pipeline_module)
+
+    # Provider RPD telemetry proved that transport timeouts can still consume daily quota.
+    # Keep the pre-send reservation fail-closed while preserving the existing per-model
+    # safety ceilings configured by Production workflows.
     gemini_timeout_rpd_fail_closed.install(pipeline_module)
     gemini_transient_recovery.install(pipeline_module)
+    # Run260 changes routing only: 3.7 is fresh Deep Dive primary, 3.8 is preferred for
+    # model-based quality repair, and existing request/gate budgets remain authoritative.
     run260_gemini_model_routing.install(pipeline_module)
     run172_production_reliability.install(pipeline_module)
+    # Run303 supersedes only Run172's provider-transport fail-fast behavior. A single
+    # structured HTTP 503 now receives one bounded same-model confirmation retry; only
+    # two consecutive verified 503s open the run-local model circuit. No gate changes.
     gemini_provider_resilience.install(pipeline_module)
     run173_operational_yield.install(pipeline_module)
     run174_monthly_digest_integrity.install(pipeline_module)
     run175_semantic_fact_precision.install(pipeline_module)
+
+    # Technical/factual precision stack.  Run224 is a zero-API deterministic rescue for
+    # the narrow multiplier-scope failure detected by Run223; Run227 blocks only
+    # high-confidence broken Japanese and delegates repair to the existing bounded path.
     run223_technical_claim_precision.install(pipeline_module)
     run224_multiplier_deterministic_rescue.install(pipeline_module)
     run227_japanese_surface_integrity.install(pipeline_module)
     run176_scope_fidelity.install(pipeline_module)
     run177_paid_funnel_alignment.install(pipeline_module)
+
+    # Reader planning changes only the existing generation prompt.  These layers add no
+    # model call and must remain in this order so Run228 refines the Run226 plan.
     run226_reader_delight_planning.install(pipeline_module)
     run228_reader_rhythm_planning.install(pipeline_module)
+
+    # Eyecatch layers are deliberately ordered refinements of the same renderer.
     run178_eyecatch_editorial_layout_optimizer.install(pipeline_module)
     run179_eyecatch_font_refinement.install(pipeline_module)
     run180_eyecatch_semantic_layout.install(pipeline_module)
     run181_eyecatch_visual_balance.install(pipeline_module)
     run182_eyecatch_conclusion_emphasis.install(pipeline_module)
     run183_eyecatch_emphasis_scale.install(pipeline_module)
+
     reader_value_review_bridge.install(pipeline_module)
+    # Reader-only dynamic repair is installed after the historical bridge so it can
+    # selectively override only the bridge's reader_value_review_no_retry decision.
     run208_reader_value_repair.install(pipeline_module)
+
+    # Presentation-only but publication-material: keep CTA ordering after evidence and
+    # disclaimer without changing Evidence/Decision semantics.
     run222_note_presentation_integrity.install_pipeline(pipeline_module)
+
+    # First real-draft visual review policy. Run296 deliberately sits after Run222 so it
+    # can normalize the final reader header/CTA surface while retaining Sources-before-CTA,
+    # and after Run183 so it can tighten the existing single-call eyecatch direction without
+    # adding another provider request.
     run296_editorial_format_v2.install(pipeline_module)
+
+    # First-real-publish calibration is zero-provider-call and deliberately sits after all
+    # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
+    # projection so late title/summary assembly cannot bypass Reader Value diagnostics.
+    # The content-addressed Publication Contract remains the last installed layer.
     run248_first_real_publish_quality_calibration.install(pipeline_module)
     run249_final_publication_surface_gate.install(pipeline_module)
     run194_publication_contract.install(pipeline_module)
-
-    # Run346 is budget partitioning only. Install last so it sees the final canonical
-    # backlog helper and final Deep Dive budget object. It does not alter gates/routing.
-    run346_backlog_budget_reserve.install(pipeline_module)
     return pipeline_module
