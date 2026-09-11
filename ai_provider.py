@@ -33,6 +33,7 @@ class GenerationResult:
     model: str
     prompt_tokens: int
     completion_tokens: int
+    reserved_token_estimate: int = 0
 
 
 class Provider(Protocol):
@@ -48,13 +49,12 @@ def _retry_after(headers: dict) -> float | None:
 
 
 def conservative_token_estimate(text: str) -> int:
-    """Estimate input tokens conservatively without coupling Production to a tokenizer.
+    """Preflight estimate only; provider-reported usage is authoritative after success.
 
-    UTF-8 byte length is not a token count and severely over-reserves Japanese text.
-    Count each non-ASCII code point as one token, ASCII at four chars/token, then add
-    20% headroom. This is deliberately conservative for the Factory's Japanese prompts;
-    live provider usage is still checked after every response and rate-limit headers are
-    the authority for current account capacity.
+    UTF-8 bytes are not tokens and greatly overstate some text while understating some
+    model tokenizers for Japanese. This estimate intentionally stays tokenizer-free so
+    Production has no model-SDK coupling. It is used to reject obviously oversized
+    requests before send; every successful live response is reconciled to Groq's usage.
     """
     if not isinstance(text, str):
         raise ProviderError("invalid_request")
@@ -66,11 +66,9 @@ def conservative_token_estimate(text: str) -> int:
 class GroqProvider:
     """Bounded Groq adapter. One instance is a run, NOT a daily quota ledger.
 
-    Calibration defaults to standalone GPT-OSS 120B. Article parity may explicitly use
-    Compound Mini because its published Free Plan TPM envelope can fit the canonical
-    Production article prompt. Compound built-in tools are disabled through the
-    Compound-specific configuration surface so no search/code tool can alter evidence
-    or introduce variable external-tool cost during parity validation.
+    The pre-send estimate is a safety reservation, not a claim about exact tokenization.
+    If Groq returns a valid successful response, provider-reported usage is authoritative.
+    The caller must reconcile its persistent reservation ledger to that actual usage.
     """
 
     def __init__(self, transport: Callable, *, validate_schema: Callable | None = None,
@@ -102,9 +100,6 @@ class GroqProvider:
         if self.model.startswith("openai/gpt-oss-"):
             payload["reasoning_effort"] = request.reasoning_effort
         if self.model.startswith("groq/compound"):
-            # Compound built-in tools are configured through compound_custom, not the
-            # local-tool `tool_choice` surface. An empty allow-list keeps parity fully
-            # grounded in Factory-supplied source context.
             payload["compound_custom"] = {"tools": {"enabled_tools": []}}
             payload["citation_options"] = "disabled"
         if request.schema is not None:
@@ -132,7 +127,7 @@ class GroqProvider:
         if self.attempts >= self.request_budget or self.reserved_tokens + estimate > self.token_budget:
             raise ProviderError("validation_budget_exceeded")
         self.attempts += 1
-        self.reserved_tokens += estimate  # Keep reservation even on unknown timeout.
+        self.reserved_tokens += estimate  # Unknown timeout/failure remains conservatively counted.
         try:
             status, headers, body = self.transport(payload)
         except TimeoutError:
@@ -141,7 +136,8 @@ class GroqProvider:
             raise ProviderError("transport_error") from None
         if status != 200:
             kind = {400: "invalid_request", 401: "authentication_error", 403: "permission_error",
-                    404: "model_unavailable", 422: "invalid_request", 429: "rate_limit_error"}.get(status,
+                    404: "model_unavailable", 413: "request_too_large", 422: "invalid_request",
+                    429: "rate_limit_error"}.get(status,
                     "capacity_error" if isinstance(status, int) and status >= 500 else "http_error")
             raise ProviderError(kind, status, _retry_after(headers))
         try:
@@ -158,15 +154,20 @@ class GroqProvider:
             counts = [usage["prompt_tokens"], usage["completion_tokens"]]
             if any(type(n) is not int or n < 0 for n in counts):
                 raise ProviderError("invalid_usage")
-            if sum(counts) > estimate:
-                self.reserved_tokens += sum(counts) - estimate
-                raise ProviderError("token_estimate_exceeded")
+            actual_tokens = sum(counts)
+            # A valid provider response must not be discarded merely because our local
+            # tokenizer-free estimate was low. Record actual usage in-memory and let the
+            # persistent ledger reconcile to it immediately after return.
+            if actual_tokens > self.reserved_tokens:
+                self.reserved_tokens = actual_tokens
+            if actual_tokens > self.token_budget:
+                raise ProviderError("actual_usage_exceeds_safety_budget")
             if request.schema is not None:
                 try:
                     parsed = json.loads(content, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
                     self.validate_schema(parsed, request.schema)
                 except Exception:
                     raise ProviderError("schema_error") from None
-            return GenerationResult(content, "groq", self.model, *counts)
+            return GenerationResult(content, "groq", self.model, *counts, reserved_token_estimate=estimate)
         except (KeyError, IndexError, TypeError, AttributeError):
             raise ProviderError("malformed_response") from None
