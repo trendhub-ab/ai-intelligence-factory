@@ -82,6 +82,11 @@ def schema_validator(schema: dict | None):
     return lambda data, _: validator.validate(data)
 
 
+def _write_report(path: str, report: dict) -> None:
+    if path:
+        Path(path).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+
+
 def run_saved_prompt_validation() -> dict:
     fixture_path = os.environ.get("AIIF_GROQ_FIXTURE", "")
     if not fixture_path:
@@ -148,9 +153,18 @@ def run_saved_prompt_validation() -> dict:
             except urllib.error.HTTPError as exc:
                 return exc.code, dict(exc.headers), {}
         provider.transport = transport
-        result = provider.generate(request)
+        try:
+            result = provider.generate(request)
+        except ProviderError as exc:
+            report.update(
+                live=True,
+                provider_calls=provider.attempts,
+                error={"kind": exc.kind, "status": exc.status, "retry_after": exc.retry_after},
+            )
+            _write_report(output, report)
+            print(json.dumps({k: v for k, v in report.items() if k != "result"}, ensure_ascii=False))
+            raise
         report.update(live=True, provider_calls=provider.attempts, result=asdict(result))
-    if output:
-        Path(output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    _write_report(output, report)
     print(json.dumps({k: v for k, v in report.items() if k != "result"}, ensure_ascii=False))
     return report
