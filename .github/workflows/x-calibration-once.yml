@@ -1,0 +1,65 @@
+name: X Defense Factory Calibration Once
+
+on:
+  push:
+    branches: ['validation/defense-calibration-once-20260911']
+    paths: ['.github/workflows/x-calibration-once.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  calibration-once:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install verified SDK and runtime dependencies
+        run: pip install -r requirements.txt google-genai==1.75.0
+      - name: Verify operation guard offline
+        env:
+          GEMINI_API_KEY: ''
+          GOOGLE_API_KEY: ''
+          GH_PAT: ''
+          NOTION_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+        run: python -m unittest discover -s tests -p 'test_x*calibration*.py' -v
+      - name: Consume the single authorized Calibration attempt
+        env:
+          AIIF_ONE_SHOT_MODE: x_saved_candidate_calibration_validation
+          AIIF_X_CALIBRATION_EXECUTE: 'true'
+          AIIF_X_CALIBRATION_OPERATION: defense-factory-calibration-20260911
+          AIIF_X_SAVED_CANDIDATE_PATH: x_discovery/fixtures/defense_factory_boundary_20260911.json
+          AIIF_X_SAVED_SCREENING_PATH: x_discovery/fixtures/defense_factory_screening_result_20260911.json
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GEMINI_SCREENING_MODEL_CANDIDATES: gemini-3.5-flash-lite
+          GEMINI_DAILY_REQUEST_BUDGET: '1'
+          GEMINI_SCREENING_RETRY_BUDGET: '0'
+          GEMINI_DEEP_DIVE_RETRY_BUDGET: '0'
+          GEMINI_RESERVED_DEEP_DIVE_REQUESTS: '0'
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: runtime-state
+          AIIF_RUNTIME_STATE_BRANCH: runtime-state
+          NOTION_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+        run: |
+          set -o pipefail
+          python -u production_pipeline.py 2>&1 | tee calibration-once.log
+      - name: Preserve response or failure without another model request
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-factory-calibration-once
+          path: calibration-once.log
+          if-no-files-found: ignore

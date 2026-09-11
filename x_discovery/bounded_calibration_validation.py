@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -159,7 +160,11 @@ def run_calibration_boundary(
 
 
 def run_from_paths(pipeline_module: Any, candidate_path: Path, screening_path: Path) -> dict[str, Any]:
-    result = run_calibration_boundary(
+    runner = run_calibration_boundary
+    if os.environ.get("AIIF_X_CALIBRATION_EXECUTE", "").lower() == "true":
+        from x_discovery.calibration_once import run_once
+        runner = run_once
+    result = runner(
         pipeline_module,
         _load_json(candidate_path, "candidate payload"),
         _load_json(screening_path, "screening payload"),

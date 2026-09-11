@@ -155,9 +155,9 @@ def main() -> None:
         run_from_path(pipeline, Path(candidate_path))
         return
 
-    # Saved-X Global Calibration boundary. This provider-free mode consumes the already
-    # screened observation and stops after constructing the real Production calibration
-    # prompt. It cannot write Stock, select Deep Dive, fetch sources, or call a model.
+    # Saved-X Global Calibration defaults to a provider-free prompt boundary.
+    # Explicit execution additionally requires a durable one-operation claim.
+    # Neither path persists Stock, generates articles, or publishes content.
     if mode == "x_saved_candidate_calibration_validation":
         from pathlib import Path
         from x_discovery.bounded_calibration_validation import BoundedCalibrationError, run_from_paths
