@@ -40,6 +40,7 @@ jobs:
         shell: python
         run: |
           import json
+          import re
           import pipeline
           import production_pipeline
           from ai_provider import GenerationRequest, GroqProvider
@@ -67,6 +68,20 @@ jobs:
           assert 'tool_choice' not in payload
           assert payload.get('citation_options') == 'disabled'
           assert fixture['rate_policy'] == policy.name
+          prompt = fixture['prompt']
+          payload_bytes = len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+          prompt_bytes = len(prompt.encode('utf-8'))
+          headings = list(re.finditer(r'(?m)^【([^】]+)】\s*$', prompt))
+          sections = []
+          for i, match in enumerate(headings):
+              end = headings[i + 1].start() if i + 1 < len(headings) else len(prompt)
+              text = prompt[match.start():end]
+              sections.append({
+                  'heading': match.group(1),
+                  'chars': len(text),
+                  'bytes': len(text.encode('utf-8')),
+              })
+          sections.sort(key=lambda row: row['bytes'], reverse=True)
           print(json.dumps({
               'free_plan_preflight': 'PASS',
               'model': fixture['model'],
@@ -75,6 +90,10 @@ jobs:
               'reserved_estimate': estimate,
               'headroom': policy.safe_tpm - estimate,
               'max_output_tokens': fixture['max_output_tokens'],
+              'prompt_chars': len(prompt),
+              'prompt_utf8_bytes': prompt_bytes,
+              'request_json_utf8_bytes': payload_bytes,
+              'top_prompt_sections': sections[:12],
               'external_tools': 'disabled_via_compound_custom',
               'business_writes': 0,
               'live_provider': False,
