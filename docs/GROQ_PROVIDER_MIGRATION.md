@@ -56,4 +56,6 @@ Screening batch=25 / max output=5000、Calibration batch=50 / max output=4000も
 
 ## 検証結果
 13件のoffline unittest成功（予算超過、HTTP 429/503、timeout予約維持、不正出力、schema、永続上限、回復、Production入口からのGemini import隔離）。
-実Groq呼出し0。Groqキーは開発環境に未設定。実Calibration・記事品質・Daily E2Eは未実施。
+GitHub SecretsのGROQ_API_KEY登録を確認。モデル一覧GETによる認証チェック成功（Run34655752401）、openai/gpt-oss-120bの掲載を確認。生成API呼出し0。実Calibration・記事品質・Daily E2Eは未実施。
+最初のurllib既定クライアントでHTTP403、明示的なUser-Agent: AI-Intelligence-Factory/1.0で成功。同じ識別を生成transportにも設定。キー値・応答本文はログに出さない。
+Groq Credential Checkは開発ブランチの当該workflowファイル変更時だけモデル一覧GETを行う。推論・SQLite検証予算・業務DBは使用しない。

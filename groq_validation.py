@@ -94,7 +94,8 @@ def run_saved_prompt_validation() -> dict:
             reserve_attempt(ledger, estimate)
             req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions",
                 data=json.dumps(payload).encode(),
-                headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"}, method="POST")
+                headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                         "User-Agent": "AI-Intelligence-Factory/1.0", "Accept": "application/json"}, method="POST")
             try:
                 with opener.open(req, timeout=60) as response:
                     return response.status, dict(response.headers), json.load(response)
