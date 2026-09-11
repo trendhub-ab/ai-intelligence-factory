@@ -1,0 +1,32 @@
+name: X Post-Screening Dry Run CI
+
+on:
+  pull_request:
+    paths:
+      - 'x_discovery/post_screening_dry_run.py'
+      - 'x_discovery/fixtures/defense_factory_screening_result_20260911.json'
+      - 'tests/test_x_post_screening_dry_run.py'
+      - '.github/workflows/x-post-screening-dry-run-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      GEMINI_API_KEY: ''
+      NOTION_API_KEY: ''
+      GH_PAT: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile provider-free route audit
+        run: python -m py_compile x_discovery/post_screening_dry_run.py tests/test_x_post_screening_dry_run.py
+      - name: Run provider-free route audit tests
+        run: python -m unittest tests.test_x_post_screening_dry_run
