@@ -23,8 +23,10 @@ jobs:
       - name: Build current Production article prompt
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
         shell: python
         run: |
+          import json
           import pipeline
           import production_pipeline
           from groq_article_parity import build_production_article_fixture
@@ -36,11 +38,19 @@ jobs:
           install_run283(pipeline)
           install_reader_quality_precision(pipeline)
           install_run284(pipeline)
-          build_production_article_fixture(
+          fixture = build_production_article_fixture(
               pipeline,
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'groq-article-production-prompt.json',
           )
+          print(json.dumps({
+              'model': fixture['model'],
+              'rate_policy': fixture['rate_policy'],
+              'reserved_estimate': fixture['provenance']['estimated_total_tokens'],
+              'safe_tpm': fixture['provenance']['groq_safe_tpm'],
+              'external_tools': fixture['provenance']['external_tools'],
+              'business_writes': 0,
+          }, ensure_ascii=False))
       - name: One guarded Groq article generation call
         env:
           AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
@@ -55,6 +65,7 @@ jobs:
       - name: Evaluate with current Production parser and publication gate
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
         shell: python
         run: |
           import json
@@ -77,6 +88,7 @@ jobs:
           )
           print(json.dumps({
               'candidate_id': evaluation['candidate_id'],
+              'model': evaluation['model'],
               'gate_state': evaluation['gate_state'],
               'gate_issue_count': len(evaluation['gate_issues']),
               'decision_score': evaluation['decision_score'],
