@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -36,7 +37,6 @@ def _canonical(value: object, label: str) -> str:
 
 
 def validate_saved_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate exactly one saved discovery candidate and its prepared source text."""
     root = _require_mapping(payload, "payload")
     if root.get("schema_version") != 1:
         raise BoundedValidationError("schema_version must be 1")
@@ -104,7 +104,6 @@ def _canonical_existing_urls(existing: object) -> set[str]:
 
 
 def build_screening_repo(validated: Mapping[str, Any]) -> dict[str, Any]:
-    """Map saved X provenance to the existing Factory screening candidate shape."""
     return {
         "nameWithOwner": validated["title"],
         "description": validated["source_text"][:4000],
@@ -144,7 +143,6 @@ def _prepare_boundary(pipeline_module: Any, payload: Mapping[str, Any]):
 
 
 def run_bounded_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Reach the installed screening prompt boundary with zero model/write calls."""
     validated, _screening_item, prompt = _prepare_boundary(pipeline_module, payload)
     return {
         "schema_version": 1,
@@ -170,14 +168,7 @@ def run_bounded_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> 
 
 
 def run_single_screening_validation(pipeline_module: Any, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Execute exactly one Gemini screening request and nothing downstream.
-
-    The caller must set the process-local Gemini budget to one request and screening
-    retry budget to zero. This function additionally bypasses the normal provider pool
-    retry/fallback layer by calling `_generate_via_chat` exactly once with the first
-    configured screening model. Notion is read only for dedup; no calibration,
-    persistence, generation, publication, source fetching, Apify, or FetchLayer is used.
-    """
+    """Execute exactly one Gemini screening request and stop before every downstream lane."""
     validated, _screening_item, prompt = _prepare_boundary(pipeline_module, payload)
     if getattr(pipeline_module.GEMINI_BUDGET, "daily_budget", None) != 1:
         raise BoundedValidationError("single screening validation requires GEMINI_DAILY_REQUEST_BUDGET=1")
@@ -190,25 +181,22 @@ def run_single_screening_validation(pipeline_module: Any, payload: Mapping[str, 
     if not getattr(pipeline_module, "GEMINI_API_KEY", None) or getattr(pipeline_module, "client", None) is None:
         raise BoundedValidationError("GEMINI_API_KEY is required for single screening validation")
 
-    # Register usage observability without running normal Production preflight or any
-    # source/product/article side path. Persistent quota reservation remains authoritative.
     register = getattr(pipeline_module, "_register_gemini_usage_atexit", None)
     if callable(register):
         register()
 
-    try:
-        response = pipeline_module._generate_via_chat(
-            model_name,
-            prompt,
-            config={"max_output_tokens": 5000},
-            request_kind="x_saved_screening_validation",
-            request_context="x_saved:X0001",
-            count_as_deep_dive=False,
-            request_origin="new",
-        )
-    except Exception:
-        # Fail closed. No retry/fallback is permitted even for 503/429/timeout.
-        raise
+    # Deliberately do not call _call_screening_pool/_call_model_pool. Those production
+    # helpers can retry/fallback on provider errors. The direct provider wrapper still
+    # enforces local + persistent quota accounting, but this lane gets one send only.
+    response = pipeline_module._generate_via_chat(
+        model_name,
+        prompt,
+        config={"response_mime_type": "application/json", "max_output_tokens": 1000},
+        request_kind="x_saved_screening_validation",
+        request_context="x_saved:X0001",
+        count_as_deep_dive=False,
+        request_origin="new",
+    )
 
     text = str(getattr(response, "text", "") or "")
     parsed, missing, diagnostic = pipeline_module._parse_batch_screening_response(
@@ -265,12 +253,12 @@ def _load_payload(path: Path) -> dict[str, Any]:
 
 
 def run_from_path(pipeline_module: Any, path: Path) -> dict[str, Any]:
-    result = run_bounded_validation(pipeline_module, _load_payload(path))
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return result
-
-
-def run_single_screening_from_path(pipeline_module: Any, path: Path) -> dict[str, Any]:
-    result = run_single_screening_validation(pipeline_module, _load_payload(path))
+    payload = _load_payload(path)
+    execute_one = os.environ.get("AIIF_X_SCREENING_EXECUTE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    result = (
+        run_single_screening_validation(pipeline_module, payload)
+        if execute_one
+        else run_bounded_validation(pipeline_module, payload)
+    )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return result
