@@ -4,9 +4,9 @@ import types
 import unittest
 
 import run284_reader_recovery_precision
-from run352_retry_preservation import (
+from run284_reader_recovery_precision import (
     RETRY_PRESERVATION_CONTRACT,
-    install,
+    _install_run352_precision as install,
     repair_deterministic_rescue_surface,
     retry_feedback_with_preservation,
 )
