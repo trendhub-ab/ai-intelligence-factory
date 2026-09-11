@@ -1,16 +1,19 @@
-"""Run283: conservative cross-language numeric evidence equivalence.
+"""Run283/350: conservative Fact precision for numeric equivalence and ROI evaluation intent.
 
-Production finding from Run282:
+Run283 production finding:
 - Anthropic's primary source explicitly says cache reads cost ``0.1x`` input price, while
   the Japanese article naturally rendered that as ``10分の1``.
 - The same source says prompt cache expires after ``an hour`` on a subscription, while the
   article rendered that as ``1時間``.
 
-The base numeric validator intentionally does not perform semantic conversion. This overlay
-removes only ``unsupported numeric claim`` failures when exact quantity equivalence is proven
-in primary-source text *and* the local semantic context matches. It does not weaken numeric
-condition mismatches, inferred numbers, vague quantities, actor checks, hype checks, or any
-other Fact Gate.
+Run350 real-article finding:
+- Run38 DeepSeek was Fact-blocked because ``自社にとって投資対効果が見合うかを見極めて
+  いきましょう`` contains the term 投資対効果, even though it proposes measuring/evaluating
+  ROI during a bounded trial and does not assert any ROI result.
+
+This overlay removes only proven false positives. It never weakens numeric-condition mismatches,
+inferred numbers, vague quantities, actor checks, hype checks, or positive/mixed ROI outcome
+claims. It adds no provider, network, or persistence call.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ from typing import Any
 
 _INSTALLED_ATTR = "_run283_numeric_evidence_equivalence_installed"
 _UNSUPPORTED_PREFIX = "unsupported numeric claim: "
+ROI_OUTCOME_FAILURE = "unsupported outcome extrapolation: ROI/financial outcome not measured by evidence"
 
 _DOMAIN_PATTERNS = {
     "pricing": re.compile(
@@ -50,6 +54,26 @@ _TOPIC_PATTERNS = {
     "subscription": re.compile(r"(?:サブスクリプション|subscription)", re.I),
     "api": re.compile(r"(?:APIキー|API\s*key|api)", re.I),
 }
+
+_ROI_TERM_RE = re.compile(r"\bROI\b|投資対効果|投資の成果|return on investment", re.I)
+_ROI_EVALUATION_INTENT_RE = re.compile(
+    r"(?:"
+    r"(?:ROI|投資対効果|投資の成果).{0,36}(?:測|計測|測定|確認|検証|評価|比較|見極|判断|算出|試算|確かめ|チェック)|"
+    r"(?:測|計測|測定|確認|検証|評価|比較|見極|判断|算出|試算|確かめ|チェック).{0,36}(?:ROI|投資対効果|投資の成果)|"
+    r"投資対効果が見合うか|ROIが見合うか|"
+    r"return on investment.{0,36}(?:measure|evaluate|assess|check|estimate|calculate|validate)"
+    r")",
+    re.I,
+)
+_ROI_OUTCOME_ASSERTION_RE = re.compile(
+    r"(?:"
+    r"(?:ROI|投資対効果|投資の成果).{0,36}(?:高い|低い|良い|悪い|優れる|改善|向上|増加|上がる|下がる|確実|保証|十分|大きい|小さい|見合う(?:。|です|といえる|と言える))|"
+    r"(?:高い|低い|良い|悪い|優れる|改善|向上|増加|確実|保証).{0,36}(?:ROI|投資対効果|投資の成果)|"
+    r"(?:ROI|投資対効果|投資の成果).{0,24}(?:\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*[倍x×]|黒字|赤字|回収|利益|収益)|"
+    r"return on investment.{0,36}(?:high|low|better|improv|increase|decrease|guarantee|positive|negative|profitable)"
+    r")",
+    re.I,
+)
 
 
 def _window(text: str, start: int, end: int, left: int = 140, right: int = 180) -> str:
@@ -125,12 +149,7 @@ def _tags(text: str, patterns: dict[str, re.Pattern]) -> set[str]:
 
 
 def _semantic_context_compatible(token: str, claim_window: str, evidence_window: str) -> bool:
-    """Require quantity equivalence to refer to the same local semantic purpose.
-
-    A source may legitimately contain several ``0.1x`` or ``one hour`` values. Quantity alone
-    must never allow a pricing value to legalize a speed claim, or a cache TTL to legalize a
-    runtime claim. Specific domains/purposes therefore take precedence over broad topic tags.
-    """
+    """Require quantity equivalence to refer to the same local semantic purpose."""
     if _ratio_value_from_japanese_fraction(token) is not None:
         claim_domains = _tags(claim_window, _DOMAIN_PATTERNS)
         evidence_domains = _tags(evidence_window, _DOMAIN_PATTERNS)
@@ -192,27 +211,66 @@ def filter_numeric_false_positives(
             token,
             draft,
             source_context,
-            condition_compatible,
+            condition_compatible=condition_compatible,
         ):
             continue
         filtered.append(failure)
     return filtered
 
 
+def _sentences(text: str) -> list[str]:
+    return [
+        part.strip()
+        for part in re.split(r"(?<=[。！？!?])|\n+", str(text or ""))
+        if part and part.strip()
+    ]
+
+
+def roi_sentences_are_evaluation_intent_only(text: str) -> bool:
+    """True only when every ROI-bearing sentence is an instruction to evaluate, not an outcome.
+
+    Unknown, mixed, positive, quantified, or guaranteed ROI wording deliberately fails closed.
+    """
+    roi_sentences = [sentence for sentence in _sentences(text) if _ROI_TERM_RE.search(sentence)]
+    if not roi_sentences:
+        return False
+    for sentence in roi_sentences:
+        if _ROI_OUTCOME_ASSERTION_RE.search(sentence):
+            return False
+        if not _ROI_EVALUATION_INTENT_RE.search(sentence):
+            return False
+    return True
+
+
+def filter_roi_evaluation_intent_false_positive(failures: list[str], parsed: dict | None) -> list[str]:
+    """Remove the ROI-outcome failure only for proven evaluation-intent-only manuscripts."""
+    rows = list(failures or [])
+    if ROI_OUTCOME_FAILURE not in rows:
+        return rows
+    parsed = parsed or {}
+    article = str(parsed.get("note_draft") or "")
+    action = str(parsed.get("action_text") or "")
+    combined = "\n".join(part for part in (article, action) if part)
+    if not roi_sentences_are_evaluation_intent_only(combined):
+        return rows
+    return [failure for failure in rows if failure != ROI_OUTCOME_FAILURE]
+
+
 def install(pipeline_module: Any) -> Any:
-    """Wrap only numeric unsupported-claim validation; all other Fact Gate behavior stays base."""
+    """Install conservative Fact false-positive filters; all unproven cases stay blocked."""
     if getattr(pipeline_module, _INSTALLED_ATTR, False):
         return pipeline_module
 
-    original = pipeline_module._find_unsupported_numeric_claims
+    original_numeric = pipeline_module._find_unsupported_numeric_claims
     condition_compatible = pipeline_module._numeric_condition_compatible
+    original_fact_gate = pipeline_module.validate_fact_gate
 
     def _find_unsupported_numeric_claims_with_equivalence(
         draft: str,
         source_context: str,
         evidence_metadata: dict | None = None,
     ) -> list[str]:
-        failures = original(draft, source_context, evidence_metadata)
+        failures = original_numeric(draft, source_context, evidence_metadata)
         return filter_numeric_false_positives(
             failures,
             draft,
@@ -220,6 +278,18 @@ def install(pipeline_module: Any) -> Any:
             condition_compatible=condition_compatible,
         )
 
+    def validate_fact_gate_with_precision(*args: Any, **kwargs: Any):
+        ok, failures = original_fact_gate(*args, **kwargs)
+        parsed = args[0] if args else kwargs.get("parsed", {})
+        filtered = filter_roi_evaluation_intent_false_positive(list(failures or []), parsed)
+        if len(filtered) != len(list(failures or [])):
+            logger = getattr(pipeline_module, "logger", None)
+            if logger is not None:
+                logger.info("[RUN350 ROI INTENT PRECISION] removed evaluation-intent false positive")
+        return (not filtered), list(dict.fromkeys(filtered))
+
     pipeline_module._find_unsupported_numeric_claims = _find_unsupported_numeric_claims_with_equivalence
+    pipeline_module.validate_fact_gate = validate_fact_gate_with_precision
+    pipeline_module.RUN350_ZERO_PROVIDER_CALLS = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
