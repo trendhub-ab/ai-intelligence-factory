@@ -80,10 +80,20 @@ class Run349ScoreNarrativeNegationPrecisionTests(unittest.TestCase):
     def test_explicit_do_not_rush_is_rescued(self):
         for article in (
             "今すぐ導入する必要はありません。まず観察します。",
-            "全面導入は避け、限定検証に留めます。",
+            "全面導入は避けるべきです。限定検証に留めます。",
             "直ちに切り替える必要はないため、現状を維持します。",
         ):
             self.assertTrue(_all_low_score_urgency_mentions_are_explicitly_rejected(article), article)
+
+    def test_ambiguous_conjunctive_avoid_form_stays_fail_closed_for_now(self):
+        # 「避け、」 can connect to many following predicates. Run349 intentionally does
+        # not infer the missing predicate; Run348 mutation work can broaden this only after
+        # enough positive/negative controls prove it safe.
+        self.assertFalse(
+            _all_low_score_urgency_mentions_are_explicitly_rejected(
+                "全面導入は避け、状況によっては別経路を選びます。"
+            )
+        )
 
     def test_score_above_low_band_is_never_changed(self):
         article = "全面移行するのはリスクが高すぎます。"
