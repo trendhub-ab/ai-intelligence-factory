@@ -55,7 +55,9 @@ _TOPIC_PATTERNS = {
     "api": re.compile(r"(?:APIキー|API\s*key|api)", re.I),
 }
 
-_ROI_TERM_RE = re.compile(r"\bROI\b|投資対効果|投資の成果|return on investment", re.I)
+# Python's Unicode \b treats Japanese characters as word characters, so ``ROIが`` does not
+# satisfy ``\bROI\b``. Use ASCII-only boundaries so mixed Japanese/Latin prose is covered.
+_ROI_TERM_RE = re.compile(r"(?<![A-Za-z0-9])ROI(?![A-Za-z0-9])|投資対効果|投資の成果|return on investment", re.I)
 _ROI_EVALUATION_INTENT_RE = re.compile(
     r"(?:"
     r"(?:ROI|投資対効果|投資の成果).{0,36}(?:測|計測|測定|確認|検証|評価|比較|見極|判断|算出|試算|確かめ|チェック)|"
@@ -263,7 +265,7 @@ def install(pipeline_module: Any) -> Any:
 
     original_numeric = pipeline_module._find_unsupported_numeric_claims
     condition_compatible = pipeline_module._numeric_condition_compatible
-    original_fact_gate = pipeline_module.validate_fact_gate
+    original_fact_gate = getattr(pipeline_module, "validate_fact_gate", None)
 
     def _find_unsupported_numeric_claims_with_equivalence(
         draft: str,
@@ -278,18 +280,22 @@ def install(pipeline_module: Any) -> Any:
             condition_compatible=condition_compatible,
         )
 
-    def validate_fact_gate_with_precision(*args: Any, **kwargs: Any):
-        ok, failures = original_fact_gate(*args, **kwargs)
-        parsed = args[0] if args else kwargs.get("parsed", {})
-        filtered = filter_roi_evaluation_intent_false_positive(list(failures or []), parsed)
-        if len(filtered) != len(list(failures or [])):
-            logger = getattr(pipeline_module, "logger", None)
-            if logger is not None:
-                logger.info("[RUN350 ROI INTENT PRECISION] removed evaluation-intent false positive")
-        return (not filtered), list(dict.fromkeys(filtered))
-
     pipeline_module._find_unsupported_numeric_claims = _find_unsupported_numeric_claims_with_equivalence
-    pipeline_module.validate_fact_gate = validate_fact_gate_with_precision
-    pipeline_module.RUN350_ZERO_PROVIDER_CALLS = True
+
+    if callable(original_fact_gate):
+        def validate_fact_gate_with_precision(*args: Any, **kwargs: Any):
+            ok, failures = original_fact_gate(*args, **kwargs)
+            rows = list(failures or [])
+            parsed = args[0] if args else kwargs.get("parsed", {})
+            filtered = filter_roi_evaluation_intent_false_positive(rows, parsed)
+            if len(filtered) != len(rows):
+                logger = getattr(pipeline_module, "logger", None)
+                if logger is not None:
+                    logger.info("[RUN350 ROI INTENT PRECISION] removed evaluation-intent false positive")
+            return (bool(ok) if filtered == rows else not filtered), list(dict.fromkeys(filtered))
+
+        pipeline_module.validate_fact_gate = validate_fact_gate_with_precision
+        pipeline_module.RUN350_ZERO_PROVIDER_CALLS = True
+
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
