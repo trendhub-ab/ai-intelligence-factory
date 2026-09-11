@@ -66,7 +66,15 @@ class FakePipeline:
         return canonical_test_prompt(kwargs["source_context"])
 
     def _parse_gemini_response(self, text):
-        return {"note_draft": "本文" * 300, "score": 82, "decision": "WATCH", "raw": text}
+        return {"note_draft": "本文 WATCH " * 100, "score": 82, "decision": "WATCH", "raw": text}
+
+    def _apply_final_japanese_polish(self, parsed):
+        out = dict(parsed)
+        out["note_draft"] = out["note_draft"].replace("WATCH", "今後の動きを注視する")
+        return out, ["decision_code:WATCH"]
+
+    def _apply_deterministic_structure_polish(self, parsed):
+        return dict(parsed), []
 
     def validate_fact_gate(self, *args, **kwargs):
         return not self.fact_failures, list(self.fact_failures)
@@ -129,7 +137,7 @@ class GroqArticleParityTests(unittest.TestCase):
         with self.assertRaises(PromptCompileError):
             compile_article_prompt(source.replace("【SOURCE BOUNDARY — 最重要】", "【SOURCE BOUNDARY】"))
 
-    def test_evaluation_computes_sufficiency_and_runs_all_four_gates(self):
+    def test_evaluation_computes_sufficiency_runs_polish_and_all_four_gates(self):
         fake = FakePipeline()
         with tempfile.TemporaryDirectory() as td:
             report = Path(td) / "groq.json"; self._report(report)
@@ -137,6 +145,7 @@ class GroqArticleParityTests(unittest.TestCase):
             evaluation = parity.evaluate_groq_article_output(fake, str(report), str(self.fixture), str(out))
             self.assertTrue(evaluation["evidence_sufficient"])
             self.assertTrue(fake.gate_args[2]["sufficient"])
+            self.assertIn("decision_code:WATCH", evaluation["polish_changes"])
             self.assertTrue(evaluation["fact_ok"])
             self.assertEqual(evaluation["publication_state"], "PASS")
             self.assertEqual(evaluation["human_appeal_state"], "ACCEPTABLE")
