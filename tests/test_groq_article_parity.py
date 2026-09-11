@@ -40,11 +40,26 @@ ARTICLE
 
 
 class FakePipeline:
-    def __init__(self, gate_state="PASS", gate_issues=None):
+    EVIDENCE_SUFFICIENT = "SUFFICIENT"
+    GATE_DISPOSITION_PASS = "PASS"
+    GATE_DISPOSITION_PASS_WITH_WARNINGS = "PASS_WITH_WARNINGS"
+
+    def __init__(self, publication_state="PASS", publication_issues=None, fact_failures=None):
         self.prompt_args = None
         self.gate_args = None
-        self.gate_state = gate_state
-        self.gate_issues = [] if gate_issues is None else gate_issues
+        self.publication_state = publication_state
+        self.publication_issues = [] if publication_issues is None else publication_issues
+        self.fact_failures = [] if fact_failures is None else fact_failures
+        self.evidence_source_info = None
+
+    def _build_evidence_metadata(self, context, deep_source_scanned):
+        return {"coverage": {"method": "FOUND"}, "context_seen": context, "deep": deep_source_scanned}
+
+    def assess_evidence_sufficiency(self, source_info):
+        self.evidence_source_info = dict(source_info)
+        state = self.EVIDENCE_SUFFICIENT if source_info.get("primary_source_resolved") else "INSUFFICIENT"
+        return {"state": state, "decision_scope_safe": state == self.EVIDENCE_SUFFICIENT,
+                "checks": {"primary_source_resolved": bool(source_info.get("primary_source_resolved"))}}
 
     def build_decision_prompt(self, *args, **kwargs):
         self.prompt_args = (args, kwargs)
@@ -53,9 +68,26 @@ class FakePipeline:
     def _parse_gemini_response(self, text):
         return {"note_draft": "本文" * 300, "score": 82, "decision": "WATCH", "raw": text}
 
+    def validate_fact_gate(self, *args, **kwargs):
+        return not self.fact_failures, list(self.fact_failures)
+
+    def validate_editorial_gate(self, parsed, name):
+        return True, []
+
     def validate_publication_readiness_gate(self, parsed, source_context="", source_info=None):
         self.gate_args = (parsed, source_context, source_info)
-        return self.gate_state, self.gate_issues
+        if not source_info.get("sufficient"):
+            return "REVIEW", ["primary_evidence_insufficient"]
+        return self.publication_state, list(self.publication_issues)
+
+    def validate_human_appeal_gate(self, parsed, peer_articles):
+        return "ACCEPTABLE", []
+
+    def map_gate_reasons(self, gate, issues):
+        return [{"gate": gate, "message": issue, "severity": "HARD"} for issue in issues]
+
+    def gate_reason_disposition(self, rows):
+        return "BLOCK" if rows else self.GATE_DISPOSITION_PASS
 
 
 class GroqArticleParityTests(unittest.TestCase):
@@ -63,20 +95,27 @@ class GroqArticleParityTests(unittest.TestCase):
         self.fixture = Path("tests/fixtures/groq/article_parity_B0049_input.json")
         self.assertTrue(self.fixture.exists())
 
-    def test_build_uses_current_production_prompt_builder_then_compiles_transport_copy(self):
+    def _report(self, path):
+        path.write_text(json.dumps({
+            "provider": "groq", "model": "groq/compound-mini", "provider_calls": 1,
+            "result": {"text": "MODEL_OUTPUT", "prompt_tokens": 100, "completion_tokens": 200}
+        }), encoding="utf-8")
+
+    def test_build_uses_current_production_prompt_and_computed_evidence(self):
         fake = FakePipeline()
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "article.json"
             payload = parity.build_production_article_fixture(fake, str(self.fixture), str(out))
             self.assertEqual(payload["stage"], "article")
             self.assertIn("CURRENT_PRODUCTION_PROMPT", payload["prompt"])
+            self.assertTrue(payload["provenance"]["evidence_sufficient"])
             self.assertEqual(payload["provenance"]["business_writes"], 0)
             self.assertEqual(payload["provenance"]["production_prompt_builder"], "pipeline.build_decision_prompt")
             self.assertEqual(payload["provenance"]["transport_compiler"], "groq_prompt_compiler.compile_article_prompt")
             self.assertLess(payload["provenance"]["compiled_prompt_bytes"], payload["provenance"]["canonical_prompt_bytes"])
             self.assertLessEqual(payload["provenance"]["compiled_prompt_bytes"], MAX_COMPILED_PROMPT_BYTES)
             self.assertEqual(fake.prompt_args[0][0], "Path to Astra: critical capabilities and frontier safeguards")
-            self.assertEqual(fake.prompt_args[0][5], "HackerNews")
+            self.assertTrue(fake.prompt_args[1]["evidence_result"]["decision_scope_safe"])
             self.assertTrue(out.exists())
 
     def test_compiler_preserves_evidence_contract_and_fails_on_drift(self):
@@ -90,39 +129,40 @@ class GroqArticleParityTests(unittest.TestCase):
         with self.assertRaises(PromptCompileError):
             compile_article_prompt(source.replace("【SOURCE BOUNDARY — 最重要】", "【SOURCE BOUNDARY】"))
 
-    def test_evaluation_uses_current_parser_and_publication_gate(self):
+    def test_evaluation_computes_sufficiency_and_runs_all_four_gates(self):
         fake = FakePipeline()
         with tempfile.TemporaryDirectory() as td:
-            report = Path(td) / "groq.json"
-            report.write_text(json.dumps({
-                "provider": "groq", "model": "groq/compound-mini", "provider_calls": 1,
-                "result": {"text": "MODEL_OUTPUT", "prompt_tokens": 100, "completion_tokens": 200}
-            }), encoding="utf-8")
+            report = Path(td) / "groq.json"; self._report(report)
             out = Path(td) / "evaluation.json"
             evaluation = parity.evaluate_groq_article_output(fake, str(report), str(self.fixture), str(out))
-            self.assertEqual(evaluation["gate_state"], "PASS")
+            self.assertTrue(evaluation["evidence_sufficient"])
+            self.assertTrue(fake.gate_args[2]["sufficient"])
+            self.assertTrue(evaluation["fact_ok"])
+            self.assertEqual(evaluation["publication_state"], "PASS")
+            self.assertEqual(evaluation["human_appeal_state"], "ACCEPTABLE")
             self.assertTrue(evaluation["quality_validated"])
             self.assertEqual(evaluation["business_writes"], 0)
             self.assertFalse(evaluation["persist_results"])
-            self.assertEqual(fake.gate_args[1], parity.load_input(str(self.fixture))["source_context"])
 
-    def test_gate_issue_cannot_be_mislabeled_quality_validated(self):
-        fake = FakePipeline(gate_state="PASS", gate_issues=["reader_issue"])
+    def test_fact_failure_cannot_be_mislabeled_quality_validated(self):
+        fake = FakePipeline(fact_failures=["unsupported claim"])
         with tempfile.TemporaryDirectory() as td:
-            report = Path(td) / "groq.json"
-            report.write_text(json.dumps({
-                "provider": "groq", "model": "groq/compound-mini", "provider_calls": 1,
-                "result": {"text": "MODEL_OUTPUT", "prompt_tokens": 100, "completion_tokens": 200}
-            }), encoding="utf-8")
-            out = Path(td) / "evaluation.json"
-            evaluation = parity.evaluate_groq_article_output(fake, str(report), str(self.fixture), str(out))
+            report = Path(td) / "groq.json"; self._report(report)
+            evaluation = parity.evaluate_groq_article_output(fake, str(report), str(self.fixture), str(Path(td) / "evaluation.json"))
+            self.assertFalse(evaluation["quality_validated"])
+            self.assertEqual(evaluation["gate_disposition"], "BLOCK")
+
+    def test_publication_issue_cannot_be_mislabeled_quality_validated(self):
+        fake = FakePipeline(publication_state="REVIEW", publication_issues=["reader_issue"])
+        with tempfile.TemporaryDirectory() as td:
+            report = Path(td) / "groq.json"; self._report(report)
+            evaluation = parity.evaluate_groq_article_output(fake, str(report), str(self.fixture), str(Path(td) / "evaluation.json"))
             self.assertFalse(evaluation["quality_validated"])
 
     def test_missing_primary_context_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             bad = Path(td) / "bad.json"
-            data = parity.load_input(str(self.fixture))
-            data["source_context"] = ""
+            data = parity.load_input(str(self.fixture)); data["source_context"] = ""
             bad.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             with self.assertRaises(ValueError):
                 parity.load_input(str(bad))
