@@ -171,6 +171,22 @@ def main() -> None:
         run_from_paths(pipeline, Path(candidate_path), Path(screening_path))
         return
 
+    # Persist exactly one previously observed real Final as Stock. This lane performs
+    # authoritative dedup and one Notion metadata write; it cannot invoke Gemini,
+    # Deep Dive generation, article generation, or publication.
+    if mode == "x_saved_candidate_stock_once":
+        from pathlib import Path
+        from x_discovery.stock_once import StockOnceError, run_from_paths
+
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        observation_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
+        if not candidate_path:
+            raise StockOnceError("AIIF_X_SAVED_CANDIDATE_PATH is required")
+        if not observation_path:
+            raise StockOnceError("AIIF_X_CALIBRATION_OBSERVATION_PATH is required")
+        run_from_paths(pipeline, Path(candidate_path), Path(observation_path))
+        return
+
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
 
