@@ -1,0 +1,97 @@
+name: Groq Article Parity Live
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: groq-article-parity-live
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install jsonschema
+      - name: Build current Production article prompt
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+        shell: python
+        run: |
+          import pipeline
+          import production_pipeline
+          from groq_article_parity import build_production_article_fixture
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from reader_quality_precision import install as install_reader_quality_precision
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline)
+          install_reader_quality_precision(pipeline)
+          install_run284(pipeline)
+          build_production_article_fixture(
+              pipeline,
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-article-production-prompt.json',
+          )
+      - name: One guarded Groq article generation call
+        env:
+          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
+          AIIF_GROQ_FIXTURE: groq-article-production-prompt.json
+          AIIF_GROQ_REPORT: groq-article-result.json
+          AIIF_GROQ_LIVE: 'true'
+          AIIF_GROQ_BUDGET_BACKEND: github
+          AIIF_GROQ_EXPERIMENT: article-parity-B0049-production-v1
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
+        run: python production_pipeline.py
+      - name: Evaluate with current Production parser and publication gate
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+        shell: python
+        run: |
+          import json
+          import pipeline
+          import production_pipeline
+          from groq_article_parity import evaluate_groq_article_output
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from reader_quality_precision import install as install_reader_quality_precision
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline)
+          install_reader_quality_precision(pipeline)
+          install_run284(pipeline)
+          evaluation = evaluate_groq_article_output(
+              pipeline,
+              'groq-article-result.json',
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-article-evaluation.json',
+          )
+          print(json.dumps({
+              'candidate_id': evaluation['candidate_id'],
+              'gate_state': evaluation['gate_state'],
+              'gate_issue_count': len(evaluation['gate_issues']),
+              'decision_score': evaluation['decision_score'],
+              'article_chars': evaluation['article_chars'],
+              'provider_calls': evaluation['provider_calls'],
+              'tokens': evaluation['prompt_tokens'] + evaluation['completion_tokens'],
+              'business_writes': evaluation['business_writes'],
+          }, ensure_ascii=False))
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-article-parity-B0049
+          path: |
+            groq-article-production-prompt.json
+            groq-article-result.json
+            groq-article-evaluation.json
+          if-no-files-found: warn
+          retention-days: 30
