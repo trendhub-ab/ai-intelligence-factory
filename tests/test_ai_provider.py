@@ -1,5 +1,6 @@
 import unittest
 from ai_provider import GenerationRequest, GroqProvider, ProviderError, conservative_token_estimate
+from groq_rate_policy import COMPOUND_MINI
 
 
 def response(text='{"score":60}', finish="stop"):
@@ -17,6 +18,24 @@ class ProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(ProviderError, "validation_budget_exceeded"):
             p.generate(GenerationRequest("採点", 100))
         self.assertEqual(len(calls), 1)
+
+    def test_compound_article_lane_disables_external_tools(self):
+        calls = []
+        p = GroqProvider(
+            lambda data: (calls.append(data) or 200, {}, response("ARTICLE")),
+            model=COMPOUND_MINI.model,
+            token_budget=COMPOUND_MINI.safe_tpm,
+        )
+        result = p.generate(GenerationRequest("記事" * 2000, 2000, reasoning_effort="medium"))
+        self.assertEqual(result.model, COMPOUND_MINI.model)
+        self.assertEqual(calls[0]["tool_choice"], "none")
+        self.assertEqual(calls[0]["citation_options"], "disabled")
+        self.assertNotIn("reasoning_effort", calls[0])
+
+    def test_compound_rejects_json_schema(self):
+        p = GroqProvider(lambda _: self.fail("must not send"), model=COMPOUND_MINI.model)
+        with self.assertRaisesRegex(ProviderError, "schema_not_supported"):
+            p.generate(GenerationRequest("test", 100, {}))
 
     def test_japanese_estimator_is_token_oriented_not_utf8_bytes(self):
         estimate = conservative_token_estimate("あ" * 1000)
