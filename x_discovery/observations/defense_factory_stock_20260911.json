@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "lane": "x_saved_candidate_stock_once",
+  "operation": "defense-factory-stock-20260911",
+  "status": "STOCK_SAVED",
+  "canonical_url": "https://openai.com/the-defense-factory",
+  "x_post_id": "2097786616311840853",
+  "raw_score": 88,
+  "final_score": 88,
+  "source": "OfficialVendor",
+  "existing_url_count": 1144,
+  "dedup_verified": true,
+  "notion_write_ceiling": 1,
+  "notion_writes": 1,
+  "notion_page_id": "3d8479ff-dca9-81d2-aff1-f203bf02222f",
+  "notion_page_url": "https://app.notion.com/p/3d8479ffdca981d2aff1f203bf02222f",
+  "stock_persisted": true,
+  "deep_dive_selected": false,
+  "factory_write": true,
+  "model_calls": 0,
+  "generation_executed": false,
+  "publication_executed": false,
+  "persisted_properties": {
+    "title": "Defense Factory",
+    "decision_score": 88,
+    "screening_score": 88,
+    "evaluation_status": "Stocked",
+    "content_status": "Stocked",
+    "article_status": "Not Planned",
+    "visibility": "Subscriber Only",
+    "source": "OfficialVendor",
+    "grounding_status": "Metadata Only"
+  },
+  "observation_provenance": {
+    "workflow_run_id": 34601525320,
+    "job_id": 103269733330,
+    "artifact_id": 10264102884,
+    "source_commit": "2e6dbea87ec5fd27a067fc5ce43a95cf21a5fe06",
+    "persisted_at": "2026-09-11T12:56:34.664Z",
+    "notion_fetch_verified": true,
+    "gemini_counter_unchanged_used": 5
+  }
+}
