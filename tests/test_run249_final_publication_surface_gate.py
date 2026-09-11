@@ -64,7 +64,7 @@ class Run249FinalPublicationSurfaceGateTests(unittest.TestCase):
         self.assertIn('final_surface_summary_fragment:なぜ重要？', joined)
         self.assertNotIn('final_surface_summary_fragment:結論は？', joined)
 
-    def test_multi_axis_weakness_on_final_projection_cannot_ready(self):
+    def test_multi_axis_body_weakness_is_not_duplicated_by_final_surface(self):
         signals = {
             'accessibility': 'REVIEW',
             'curiosity_pull': 'GOOD',
@@ -80,9 +80,11 @@ class Run249FinalPublicationSurfaceGateTests(unittest.TestCase):
         state, issues = pipeline.validate_human_appeal_gate(
             {'title_text': 'AIの説明を因果で見直す。', 'note_draft': '本文です。'}, []
         )
-        self.assertEqual(state, 'WEAK')
-        self.assertTrue(any('final_surface_multi_axis_reader_weakness' in issue for issue in issues))
-        self.assertTrue(any('final_surface_non_engineer_access_failure' in issue for issue in issues))
+        # Run248/body Reader validation already owns these axes. Run249 must not manufacture
+        # duplicate final_surface_* aliases from the same article body.
+        self.assertEqual(state, 'ACCEPTABLE')
+        self.assertFalse(any('final_surface_multi_axis_reader_weakness' in issue for issue in issues))
+        self.assertFalse(any('final_surface_non_engineer_access_failure' in issue for issue in issues))
 
     def test_complete_healthy_final_surface_preserves_acceptance(self):
         signals = {
