@@ -38,6 +38,43 @@ _SUMMARY_LABELS = (
     ("decision", "結論は？"),
 )
 
+# Compatibility helper contract retained for historical Run249 unit tests and offline diagnostics.
+# Run354 deliberately does NOT call this helper from final_surface_issues(): article-wide Reader
+# axes are owned by upstream Run248/body validation and must not be registered twice.
+_CORE_READER_KEYS = (
+    "accessibility",
+    "curiosity_pull",
+    "reader_enjoyment",
+    "narrative_pull",
+    "jargon_translation",
+    "non_engineer_core_clarity",
+    "information_budget",
+    "reader_temperature_rhythm",
+)
+
+
+def _extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
+    """Historical body-Reader helper; retained but not invoked by the final-surface gate."""
+    reviewed = [key for key in _CORE_READER_KEYS if signals.get(key) == "REVIEW"]
+    issues: list[str] = []
+    if len(reviewed) >= 4:
+        issues.append(
+            READER_VALUE_MARKER
+            + "multi_axis_reader_weakness ("
+            + "/".join(reviewed)
+            + ")"
+        )
+    if all(
+        signals.get(key) == "REVIEW"
+        for key in ("accessibility", "jargon_translation", "non_engineer_core_clarity")
+    ):
+        issues.append(
+            READER_VALUE_MARKER
+            + "non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+        )
+    return list(dict.fromkeys(issues))
+
+
 _SURFACE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"をに(?=(?:速|遅|高|低|大|小|強|弱|増|減|変|近|遠|広|狭|長|短|重|軽))"),
