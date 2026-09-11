@@ -6,15 +6,12 @@ could also return HTTP 200 later in the same run. The historical Run172 bridge
 fell back immediately after the first 503, amplifying a short provider wobble into
 an apparent run-wide outage.
 
-This layer intentionally runs after Run172 and becomes the authoritative model-pool
-transport policy:
-- only an explicit numeric provider status 503 is classified as HTTP 503;
-- the first 503 gets exactly one same-model confirmation retry;
-- only a second consecutive 503 opens the run-local circuit for that model;
-- success, timeout, 429, 404, or another non-503 result breaks the 503 sequence;
-- local request budgets remain terminal before pacing/fallback;
-- all existing persistent-daily, quality-repair and publication budgets remain
-  authoritative; no new Gemini request lane is created.
+Run355 keeps that confirmation policy for normal generation, screening, and Product
+Review, but narrows Pending Retry. Its dedicated budget is only two requests; spending
+both on same-model 503 confirmation makes cross-model fallback unreachable. Therefore a
+structured 503 on a pending-retry request opens a run-local circuit immediately and
+preserves the second request for the next model. No quota cap is raised and no gate is
+weakened.
 """
 from __future__ import annotations
 
@@ -27,7 +24,6 @@ _MAX_503_CONFIRM_DELAY_SECONDS = 20
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
-    """Return a provider HTTP status only from structured exception fields."""
     values = [getattr(exc, "code", None)]
     response = getattr(exc, "response", None)
     values.append(getattr(response, "status_code", None) if response is not None else None)
@@ -73,7 +69,6 @@ def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_orig
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install provider-verified, bounded 503 confirmation handling."""
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
         return pipeline_module
 
@@ -86,55 +81,44 @@ def install(pipeline_module: Any) -> Any:
         raise RuntimeError("Run303 provider resilience missing pipeline contract: " + ", ".join(missing))
 
     def call_model_pool_provider_verified(
-        prompt: str,
-        config: dict | None,
-        kind: str,
-        reserve: int,
-        pool: list[str],
-        deep_dive: bool = False,
-        request_context: str = "",
-        request_origin: str = "new",
+        prompt: str, config: dict | None, kind: str, reserve: int, pool: list[str],
+        deep_dive: bool = False, request_context: str = "", request_origin: str = "new",
     ):
         last_error: Exception | None = None
         for model_name in pool:
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
-
             for attempt in range(2):
                 try:
                     if deep_dive:
                         _check_deep_dive_local_budgets(pipeline_module, kind, request_origin)
                         if attempt == 0:
                             time.sleep(max(0, pipeline_module.GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
-
-                    timeout_seconds = (
-                        pipeline_module.GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS
-                        if deep_dive else pipeline_module.GEMINI_SCREENING_CALL_TIMEOUT_SECONDS
-                    )
+                    timeout_seconds = pipeline_module.GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS if deep_dive else pipeline_module.GEMINI_SCREENING_CALL_TIMEOUT_SECONDS
                     with pipeline_module._gemini_call_timeout(timeout_seconds):
                         response = pipeline_module._generate_via_chat(
-                            model_name,
-                            prompt,
-                            config=config,
-                            request_kind=kind,
-                            reserve=reserve,
-                            request_context=request_context,
-                            count_as_deep_dive=deep_dive,
+                            model_name, prompt, config=config, request_kind=kind, reserve=reserve,
+                            request_context=request_context, count_as_deep_dive=deep_dive,
                             request_origin=request_origin,
                         )
                     _clear_legacy_503_state(pipeline_module, model_name)
                     return response, model_name
-
                 except pipeline_module.APIError as exc:
                     last_error = exc
                     code = _provider_status_code(exc)
                     quota_type = pipeline_module.classify_gemini_quota_error(exc) if code == 429 else ""
-
                     if code == 503:
                         pipeline_module.logger.warning(
                             "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s/2 verified=structured_status",
                             model_name, kind, attempt + 1,
                         )
+                        if request_origin == "pending_retry":
+                            pipeline_module.logger.warning(
+                                "[RUN355 PENDING RETRY 503 FALLBACK] model=%s kind=%s; preserve remaining dedicated request for next model",
+                                model_name, kind,
+                            )
+                            pipeline_module._mark_model_unavailable(model_name, "provider_503_pending_retry_budget_preserved")
+                            break
                         if attempt == 0:
                             delay = _confirmation_delay(pipeline_module, exc)
                             pipeline_module.logger.warning(
@@ -149,7 +133,6 @@ def install(pipeline_module: Any) -> Any:
                         )
                         _mark_confirmed_503(pipeline_module, model_name)
                         break
-
                     _clear_legacy_503_state(pipeline_module, model_name)
                     if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
                         pipeline_module._mark_model_exhausted(model_name, quota_type)
@@ -161,17 +144,14 @@ def install(pipeline_module: Any) -> Any:
                         time.sleep(pipeline_module._extract_retry_delay(exc, 15))
                         continue
                     break
-
                 except (pipeline_module.PendingRetryBudgetExceededError, pipeline_module.DeepDiveRunBudgetExceededError):
                     raise
-
                 except pipeline_module.GeminiBudgetExceededError as exc:
                     last_error = exc
                     _clear_legacy_503_state(pipeline_module, model_name)
                     if "Persistent Gemini model budget exhausted" in str(exc):
                         pipeline_module._mark_model_exhausted(model_name, "persistent safety cap")
                     break
-
                 except pipeline_module.GeminiCallTimeoutError as exc:
                     last_error = exc
                     _clear_legacy_503_state(pipeline_module, model_name)
@@ -180,7 +160,6 @@ def install(pipeline_module: Any) -> Any:
                         model_name, kind, exc,
                     )
                     break
-
                 except Exception as exc:
                     _clear_legacy_503_state(pipeline_module, model_name)
                     if pipeline_module._is_gemini_transport_timeout(exc):
@@ -191,53 +170,39 @@ def install(pipeline_module: Any) -> Any:
                         )
                         break
                     raise
-
         raise pipeline_module.NoAvailableModelError("利用可能なGeminiモデルがありません") from last_error
 
-    def call_product_review_pool_provider_verified(
-        prompt: str,
-        request_context: str,
-        request_kind_base: str = "product_review",
-    ):
+    def call_product_review_pool_provider_verified(prompt: str, request_context: str, request_kind_base: str = "product_review"):
         last_error: Exception | None = None
         structured_repair = request_kind_base == "product_review_retry"
         thinking_level = "low" if structured_repair else "medium"
         max_output_tokens = 5000 if structured_repair else 8000
-
         for model_name in pipeline_module.DEEP_DIVE_MODEL_POOL:
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
-
             for attempt in range(2):
                 if not pipeline_module.PRODUCT_REVIEW_REQUEST_BUDGET.can_request():
-                    raise pipeline_module.ProductReviewBudgetExceededError(
-                        pipeline_module.PRODUCT_REVIEW_REQUEST_BUDGET.summary()
-                    )
+                    raise pipeline_module.ProductReviewBudgetExceededError(pipeline_module.PRODUCT_REVIEW_REQUEST_BUDGET.summary())
                 try:
                     if attempt == 0:
                         time.sleep(max(0, pipeline_module.GEMINI_DEEP_DIVE_CALL_PACING_SECONDS))
                     response = pipeline_module._generate_via_chat(
-                        model_name,
-                        prompt,
+                        model_name, prompt,
                         config={
                             "response_mime_type": "application/json",
                             "response_json_schema": pipeline_module._PRODUCT_REVIEW_RESPONSE_SCHEMA,
                             "thinking_config": {"thinking_level": thinking_level},
                             "max_output_tokens": max_output_tokens,
                         },
-                        request_kind=request_kind_base,
-                        request_context=request_context,
-                        count_as_deep_dive=False,
-                        request_origin="product_review",
+                        request_kind=request_kind_base, request_context=request_context,
+                        count_as_deep_dive=False, request_origin="product_review",
                     )
                     _clear_legacy_503_state(pipeline_module, model_name)
                     return response, model_name
-
                 except pipeline_module.APIError as exc:
                     last_error = exc
                     code = _provider_status_code(exc)
                     quota_type = pipeline_module.classify_gemini_quota_error(exc) if code == 429 else ""
-
                     if code == 503:
                         pipeline_module.logger.warning(
                             "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s/2 verified=structured_status",
@@ -257,7 +222,6 @@ def install(pipeline_module: Any) -> Any:
                         )
                         _mark_confirmed_503(pipeline_module, model_name)
                         break
-
                     _clear_legacy_503_state(pipeline_module, model_name)
                     if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
                         pipeline_module._mark_model_exhausted(model_name, quota_type)
@@ -269,7 +233,6 @@ def install(pipeline_module: Any) -> Any:
                         time.sleep(pipeline_module._extract_retry_delay(exc, 15))
                         continue
                     break
-
                 except pipeline_module.GeminiBudgetExceededError as exc:
                     last_error = exc
                     _clear_legacy_503_state(pipeline_module, model_name)
@@ -286,7 +249,6 @@ def install(pipeline_module: Any) -> Any:
                         last_error = exc
                         break
                     raise
-
         raise pipeline_module.NoAvailableModelError("Product Reviewに利用可能なGeminiモデルがありません") from last_error
 
     pipeline_module._call_model_pool = call_model_pool_provider_verified
