@@ -38,6 +38,20 @@ The correct route for Defense Factory is therefore:
 
 Expected audit status: `CALIBRATION_REQUIRED`.
 
+## Post-calibration counterexample proof
+
+A second provider-free audit now exercises the canonical deterministic Stock/Deep Dive guard with hypothetical Final Scores only. It does not claim that Calibration actually ran.
+
+- Final 59, unpersisted -> rejected.
+- Final 60, unpersisted -> rejected because Stock persistence is missing.
+- Final 60 with a synthetic test-only persistence marker -> accepted by the deterministic selector.
+- hypothetical Defense Factory Final 88, unpersisted -> rejected.
+- hypothetical Defense Factory Final 88 with a synthetic test-only persistence marker -> accepted under the current threshold.
+
+The synthetic persistence marker is never written to Notion. This proves that a high Final Score cannot bypass successful Stock persistence.
+
+See `docs/x_post_calibration_counterexample_audit_20260911.md`.
+
 ## Safety invariants
 
 - Gemini/model calls: 0
@@ -54,4 +68,4 @@ Expected audit status: `CALIBRATION_REQUIRED`.
 
 The X -> Factory bridge is behaving conservatively. A high Raw screening score cannot bypass the existing cross-batch Calibration policy or the persisted-Stock requirement. This prevents X-discovered candidates from receiving privileged treatment relative to the four existing Factory sources.
 
-The next provider-using gate, if authorized later, is exactly one bounded Global Calibration request for this one candidate. No additional screening is necessary.
+The next provider-using gate, if authorized later, is exactly one bounded Global Calibration request for this one candidate with an operation-wide request ceiling of one. No additional screening is necessary, and Stock persistence, article generation, and publication remain disabled during that validation.
