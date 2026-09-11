@@ -1,5 +1,5 @@
 import unittest
-from ai_provider import GenerationRequest, GroqProvider, ProviderError
+from ai_provider import GenerationRequest, GroqProvider, ProviderError, conservative_token_estimate
 
 
 def response(text='{"score":60}', finish="stop"):
@@ -18,10 +18,15 @@ class ProviderTests(unittest.TestCase):
             p.generate(GenerationRequest("採点", 100))
         self.assertEqual(len(calls), 1)
 
+    def test_japanese_estimator_is_token_oriented_not_utf8_bytes(self):
+        estimate = conservative_token_estimate("あ" * 1000)
+        self.assertGreaterEqual(estimate, 1000)
+        self.assertLess(estimate, 3000)
+
     def test_oversized_never_sent_or_truncated(self):
         p = GroqProvider(lambda _: self.fail("must not send"))
         with self.assertRaisesRegex(ProviderError, "validation_budget_exceeded"):
-            p.generate(GenerationRequest("あ" * 3000, 100))
+            p.generate(GenerationRequest("あ" * 7000, 100))
         self.assertEqual(p.attempts, 0)
 
     def test_http_failure_is_not_retried(self):
@@ -68,9 +73,9 @@ class ProviderTests(unittest.TestCase):
 
     def test_multiple_calls_share_token_budget(self):
         p = GroqProvider(lambda _: (200, {}, response()), request_budget=3, token_budget=1000)
-        p.generate(GenerationRequest("test", 100))
+        p.generate(GenerationRequest("test", 300))
         with self.assertRaisesRegex(ProviderError, "validation_budget_exceeded"):
-            p.generate(GenerationRequest("test", 100))
+            p.generate(GenerationRequest("test", 600))
 
     def test_refusal_and_untrusted_usage(self):
         for mutation in ["refusal", "usage"]:
