@@ -45,12 +45,28 @@ def _retry_after(headers: dict) -> float | None:
         return None
 
 
+def conservative_token_estimate(text: str) -> int:
+    """Estimate input tokens conservatively without coupling Production to a tokenizer.
+
+    UTF-8 byte length is not a token count and severely over-reserves Japanese text.
+    Count each non-ASCII code point as one token, ASCII at four chars/token, then add
+    20% headroom. This is deliberately conservative for the Factory's Japanese prompts;
+    live provider usage is still checked after every response and rate-limit headers are
+    the authority for current account capacity.
+    """
+    if not isinstance(text, str):
+        raise ProviderError("invalid_request")
+    non_ascii = sum(1 for char in text if ord(char) > 127)
+    ascii_chars = len(text) - non_ascii
+    return max(1, math.ceil((non_ascii + ascii_chars / 4.0) * 1.20))
+
+
 class GroqProvider:
     """Bounded validation adapter. One instance is a run, NOT a daily quota ledger.
 
     transport(payload) returns (HTTP status, headers, decoded JSON body).
-    Input estimation is deliberately conservative UTF-8 bytes plus framing/schema
-    overhead, not an exact tokenizer. Oversized prompts are rejected, never cut.
+    Input estimation uses a conservative language-aware token approximation plus
+    framing/schema overhead, not UTF-8 bytes. Oversized prompts are rejected, never cut.
     A schema request requires an independent validator that raises on invalid data.
     """
     model = "openai/gpt-oss-120b"
@@ -81,7 +97,12 @@ class GroqProvider:
             payload["response_format"] = {"type": "json_schema", "json_schema": {
                 "name": "factory_response", "strict": True, "schema": request.schema}}
         try:
-            estimate = len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")) + 256 + request.max_output_tokens
+            framing = dict(payload)
+            framing["messages"] = [{"role": "user", "content": ""}]
+            framing_tokens = conservative_token_estimate(
+                json.dumps(framing, ensure_ascii=False, allow_nan=False)
+            ) + 128
+            estimate = conservative_token_estimate(request.prompt) + framing_tokens + request.max_output_tokens
         except (TypeError, ValueError):
             raise ProviderError("invalid_request") from None
         if estimate > self.token_budget:
