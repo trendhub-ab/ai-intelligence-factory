@@ -1,9 +1,9 @@
 """Single saved-prompt validation through production_pipeline.py; no business writes.
 
-Default is offline. Live mode requires a key and explicit live flag. Its SQLite
-ledger is a conservative rolling 24h validation cap (3 requests / 24000 reserved
-tokens), not a claim to know an organization's remaining Free Plan allowance.
-Keep the ledger on durable shared storage and serialize all validation runs.
+Default is offline. Live mode requires a key and explicit live flag. Local and GitHub
+ledgers enforce the same conservative safety envelope below Groq's published Free Plan
+limits for openai/gpt-oss-120b. This is not a claim to know account-specific remaining
+allowance; provider response headers remain authoritative for live quota state.
 """
 from dataclasses import asdict
 import hashlib
@@ -16,6 +16,15 @@ import urllib.error
 import urllib.request
 
 from ai_provider import GenerationRequest, GroqProvider, ProviderError
+from groq_rate_policy import (
+    MAX_RESERVED_TOKENS_PER_REQUEST,
+    ROLLING_DAY_SECONDS,
+    ROLLING_MINUTE_SECONDS,
+    SAFE_RPD,
+    SAFE_RPM,
+    SAFE_TPD,
+    SAFE_TPM,
+)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -26,18 +35,23 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def reserve_attempt(path: str, tokens: int, now: float | None = None) -> None:
     """Atomic reserve before send; failures/timeouts stay counted. Never auto-delete."""
     now = time.time() if now is None else now
-    if type(tokens) is not int or not 1 <= tokens <= 8000:
+    if type(tokens) is not int or not 1 <= tokens <= MAX_RESERVED_TOKENS_PER_REQUEST:
         raise ProviderError("invalid_token_reservation")
     with sqlite3.connect(path, timeout=10) as db:
         db.execute("CREATE TABLE IF NOT EXISTS attempts (stamp REAL NOT NULL, tokens INTEGER NOT NULL)")
         db.execute("BEGIN IMMEDIATE")
-        count, total, last = db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(tokens),0), MAX(stamp) FROM attempts WHERE stamp > ?",
-            (now - 86400,)).fetchone()
-        if count >= 3 or total + tokens > 24000:
-            raise ProviderError("persistent_validation_budget_exceeded")
-        if last is not None and now - last < 65:
-            raise ProviderError("validation_pacing_required")
+        day_count, day_tokens = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE stamp > ?",
+            (now - ROLLING_DAY_SECONDS,),
+        ).fetchone()
+        minute_count, minute_tokens = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE stamp > ?",
+            (now - ROLLING_MINUTE_SECONDS,),
+        ).fetchone()
+        if day_count >= SAFE_RPD or day_tokens + tokens > SAFE_TPD:
+            raise ProviderError("persistent_validation_daily_budget_exceeded")
+        if minute_count >= SAFE_RPM or minute_tokens + tokens > SAFE_TPM:
+            raise ProviderError("persistent_validation_minute_budget_exceeded")
         db.execute("INSERT INTO attempts VALUES (?, ?)", (now, tokens))
 
 
@@ -77,7 +91,8 @@ def run_saved_prompt_validation() -> dict:
     report = {"mode": "groq_saved_prompt_validation", "provider": "groq", "model": provider.model,
               "stage": fixture["stage"], "fixture_sha256": hashlib.sha256(raw).hexdigest(),
               "reserved_token_estimate": estimate, "live": False, "provider_calls": 0,
-              "business_writes": 0, "quality_validated": False}
+              "business_writes": 0, "quality_validated": False,
+              "safety_budget": {"rpm": SAFE_RPM, "rpd": SAFE_RPD, "tpm": SAFE_TPM, "tpd": SAFE_TPD}}
     output = os.environ.get("AIIF_GROQ_REPORT", "").strip()
     if output and Path(output).resolve() == Path(fixture_path).resolve():
         raise ProviderError("report_must_not_overwrite_fixture")
