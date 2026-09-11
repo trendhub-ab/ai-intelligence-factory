@@ -63,15 +63,25 @@ def claim_operation(pipeline: Any, evidence: dict, put=None) -> None:
 
 
 def _force_bounded_generation_controls(p: Any) -> dict[str, Any]:
-    """Disable every optional second-turn/tool path only inside this bounded process."""
+    """Disable every optional second-turn/tool/fallback path only in this bounded process.
+
+    Run260 intentionally expands the legacy singleton 3.6 pool into the normal
+    Production 3.7/3.8/3.6/3.5 routing set. That is desirable for Daily, but this
+    one-operation proof must have no fallback path. Re-pin the installed runtime only
+    after all Production layers are installed, then restore every global afterwards.
+    """
     original = {
         "MAX_QUALITY_RETRIES": p.MAX_QUALITY_RETRIES,
         "ENABLE_URL_CONTEXT": p.ENABLE_URL_CONTEXT,
         "ENABLE_GOOGLE_SEARCH_GROUNDING": p.ENABLE_GOOGLE_SEARCH_GROUNDING,
+        "DEEP_DIVE_MODEL_POOL": list(p.DEEP_DIVE_MODEL_POOL),
+        "DEEP_DIVE_MODEL_CANDIDATES": list(getattr(p, "DEEP_DIVE_MODEL_CANDIDATES", [])),
     }
     p.MAX_QUALITY_RETRIES = 0
     p.ENABLE_URL_CONTEXT = False
     p.ENABLE_GOOGLE_SEARCH_GROUNDING = False
+    p.DEEP_DIVE_MODEL_POOL = [MODEL]
+    p.DEEP_DIVE_MODEL_CANDIDATES = [MODEL]
     return original
 
 
@@ -104,7 +114,12 @@ def _validate_runtime(p: Any) -> None:
         or p.DEEP_DIVE_MODEL_POOL != [MODEL]
         or p.client is None
     ):
-        raise DeepDiveOnceError("one unused Deep Dive request and one model are required")
+        raise DeepDiveOnceError(
+            "one unused Deep Dive request and one model are required "
+            f"(daily={p.GEMINI_BUDGET.daily_budget}, used={p.GEMINI_BUDGET.request_count}, "
+            f"deep_budget={p.DEEP_DIVE_MODEL_BUDGET.budget}, deep_used={p.DEEP_DIVE_MODEL_BUDGET.used}, "
+            f"pool={p.DEEP_DIVE_MODEL_POOL}, client={p.client is not None})"
+        )
     if p.MAX_QUALITY_RETRIES != 0:
         raise DeepDiveOnceError("Quality Retry must be disabled for one-request proof")
     if p.ENABLE_URL_CONTEXT or p.ENABLE_GOOGLE_SEARCH_GROUNDING:
@@ -192,7 +207,6 @@ def run_once(p: Any, candidate: dict, calibration: dict, stock: dict, claim=None
     original_controls = _force_bounded_generation_controls(p)
     try:
         _validate_runtime(p)
-        # Evidence acquisition is Gemini-free and happens before the irreversible claim.
         source_info, freshness = _preflight_source(p, item["repo"])
         evidence = {
             "lane": "x_saved_stock_deep_dive_once",
@@ -215,7 +229,6 @@ def run_once(p: Any, candidate: dict, calibration: dict, stock: dict, claim=None
         original_alert = p.send_telegram_alert
         original_eyecatch = p.generate_note_editorial_eyecatch
         try:
-            # Reuse exact pre-claim evidence/freshness bytes after authorization is spent.
             p.prepare_source_context = lambda _repo: dict(source_info)
             p.resolve_followup_freshness = lambda _info: dict(freshness)
             p._call_deep_dive_pool = _strict_single_model_pool(p)
