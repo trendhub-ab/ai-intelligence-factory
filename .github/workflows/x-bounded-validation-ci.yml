@@ -18,6 +18,7 @@ on:
       - 'tests/test_x_stock_once.py'
       - 'tests/test_x_stock_deep_dive_handoff.py'
       - 'tests/test_x_deep_dive_once.py'
+      - 'tests/test_x_deep_dive_runtime.py'
       - '.github/workflows/x-bounded-validation-ci.yml'
   workflow_dispatch:
 
@@ -27,7 +28,7 @@ permissions:
 jobs:
   contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       GEMINI_API_KEY: ''
@@ -38,6 +39,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install runtime dependencies for offline transport proof
+        run: pip install -r requirements.txt google-genai==1.75.0
       - name: Compile bounded validation files
         run: >-
           python -m py_compile
@@ -52,6 +55,7 @@ jobs:
           tests/test_x_stock_once.py
           tests/test_x_stock_deep_dive_handoff.py
           tests/test_x_deep_dive_once.py
+          tests/test_x_deep_dive_runtime.py
       - name: Run bounded validation unit contracts
         run: >-
           python -m unittest
@@ -60,3 +64,4 @@ jobs:
           tests.test_x_stock_once
           tests.test_x_stock_deep_dive_handoff
           tests.test_x_deep_dive_once
+          tests.test_x_deep_dive_runtime
