@@ -25,7 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run exactly one saved-X candidate to screening boundary
+      - name: Verify the persisted Defense Factory is rejected before Screening
         env:
           AIIF_ONE_SHOT_MODE: x_saved_candidate_validation
           AIIF_X_SAVED_CANDIDATE_PATH: x_discovery/fixtures/defense_factory_boundary_20260911.json
@@ -37,4 +37,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ''
           TELEGRAM_CHAT_ID: ''
           TZ: Asia/Tokyo
-        run: python production_pipeline.py
+        run: |
+          set +e
+          python production_pipeline.py > real-dedup.log 2>&1
+          status=$?
+          set -e
+          cat real-dedup.log
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Persisted Defense Factory unexpectedly passed dedup"
+            exit 1
+          fi
+          grep -F "candidate already exists in Factory; refusing duplicate screening" real-dedup.log
