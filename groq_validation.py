@@ -1,9 +1,8 @@
 """Single saved-prompt validation through production_pipeline.py; no business writes.
 
-Default is offline. Live mode requires a key and explicit live flag. Local and GitHub
-ledgers enforce the same conservative safety envelope below Groq's published Free Plan
-limits for openai/gpt-oss-120b. This is not a claim to know account-specific remaining
-allowance; provider response headers remain authoritative for live quota state.
+Default is offline. Live mode requires a key and explicit live flag. Model selection is
+fixture-declared and restricted to the Factory's approved Groq Free Plan policies.
+Local and GitHub ledgers enforce the matching model-specific safety envelope.
 """
 from dataclasses import asdict
 import hashlib
@@ -17,13 +16,11 @@ import urllib.request
 
 from ai_provider import GenerationRequest, GroqProvider, ProviderError
 from groq_rate_policy import (
+    GPT_OSS_120B,
     MAX_RESERVED_TOKENS_PER_REQUEST,
     ROLLING_DAY_SECONDS,
     ROLLING_MINUTE_SECONDS,
-    SAFE_RPD,
-    SAFE_RPM,
-    SAFE_TPD,
-    SAFE_TPM,
+    policy_for_model,
 )
 
 
@@ -32,33 +29,43 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def reserve_attempt(path: str, tokens: int, now: float | None = None) -> None:
+def reserve_attempt(path: str, tokens: int, now: float | None = None,
+                    profile: str = GPT_OSS_120B.name) -> None:
     """Atomic reserve before send; failures/timeouts stay counted. Never auto-delete."""
     now = time.time() if now is None else now
-    if type(tokens) is not int or not 1 <= tokens <= MAX_RESERVED_TOKENS_PER_REQUEST:
+    from groq_rate_policy import policy_for_name
+    try:
+        policy = policy_for_name(profile)
+    except ValueError:
+        raise ProviderError("invalid_token_reservation") from None
+    if type(tokens) is not int or not 1 <= tokens <= policy.safe_tpm:
         raise ProviderError("invalid_token_reservation")
     with sqlite3.connect(path, timeout=10) as db:
-        db.execute("CREATE TABLE IF NOT EXISTS attempts (stamp REAL NOT NULL, tokens INTEGER NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS attempts (stamp REAL NOT NULL, tokens INTEGER NOT NULL, profile TEXT NOT NULL DEFAULT 'gpt_oss_120b')")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
+        if "profile" not in columns:
+            db.execute("ALTER TABLE attempts ADD COLUMN profile TEXT NOT NULL DEFAULT 'gpt_oss_120b'")
         db.execute("BEGIN IMMEDIATE")
         day_count, day_tokens = db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE stamp > ?",
-            (now - ROLLING_DAY_SECONDS,),
+            "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE profile = ? AND stamp > ?",
+            (profile, now - ROLLING_DAY_SECONDS),
         ).fetchone()
         minute_count, minute_tokens = db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE stamp > ?",
-            (now - ROLLING_MINUTE_SECONDS,),
+            "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE profile = ? AND stamp > ?",
+            (profile, now - ROLLING_MINUTE_SECONDS),
         ).fetchone()
-        if day_count >= SAFE_RPD or day_tokens + tokens > SAFE_TPD:
+        if day_count >= policy.safe_rpd:
             raise ProviderError("persistent_validation_daily_budget_exceeded")
-        if minute_count >= SAFE_RPM or minute_tokens + tokens > SAFE_TPM:
+        if policy.safe_tpd is not None and day_tokens + tokens > policy.safe_tpd:
+            raise ProviderError("persistent_validation_daily_budget_exceeded")
+        if minute_count >= policy.safe_rpm or minute_tokens + tokens > policy.safe_tpm:
             raise ProviderError("persistent_validation_minute_budget_exceeded")
-        db.execute("INSERT INTO attempts VALUES (?, ?)", (now, tokens))
+        db.execute("INSERT INTO attempts (stamp, tokens, profile) VALUES (?, ?, ?)", (now, tokens, profile))
 
 
 def schema_validator(schema: dict | None):
     if schema is None:
         return None
-    # Dedicated validation dependency. Not imported by the existing Gemini path.
     from jsonschema import Draft202012Validator
     Draft202012Validator.check_schema(schema)
     def reject_remote_refs(value):
@@ -83,16 +90,31 @@ def run_saved_prompt_validation() -> dict:
     fixture = json.loads(raw)
     if fixture.get("stage") not in {"screening", "calibration", "article", "quality_gate", "product_review"}:
         raise ProviderError("invalid_fixture_stage")
+    model = str(fixture.get("model") or GPT_OSS_120B.model)
+    try:
+        policy = policy_for_model(model)
+    except ValueError:
+        raise ProviderError("unsupported_model") from None
+    declared_policy = str(fixture.get("rate_policy") or policy.name)
+    if declared_policy != policy.name:
+        raise ProviderError("rate_policy_model_mismatch")
     request = GenerationRequest(fixture["prompt"], fixture["max_output_tokens"],
                                 fixture.get("schema"), fixture.get("reasoning_effort", "low"))
     validator = schema_validator(request.schema)
-    provider = GroqProvider(lambda _: None, validate_schema=validator)
+    provider = GroqProvider(
+        lambda _: None,
+        validate_schema=validator,
+        token_budget=policy.safe_tpm,
+        model=model,
+    )
     _, estimate = provider.prepare(request)
     report = {"mode": "groq_saved_prompt_validation", "provider": "groq", "model": provider.model,
-              "stage": fixture["stage"], "fixture_sha256": hashlib.sha256(raw).hexdigest(),
+              "rate_policy": policy.name, "stage": fixture["stage"],
+              "fixture_sha256": hashlib.sha256(raw).hexdigest(),
               "reserved_token_estimate": estimate, "live": False, "provider_calls": 0,
               "business_writes": 0, "quality_validated": False,
-              "safety_budget": {"rpm": SAFE_RPM, "rpd": SAFE_RPD, "tpm": SAFE_TPM, "tpd": SAFE_TPD}}
+              "safety_budget": {"rpm": policy.safe_rpm, "rpd": policy.safe_rpd,
+                                "tpm": policy.safe_tpm, "tpd": policy.safe_tpd}}
     output = os.environ.get("AIIF_GROQ_REPORT", "").strip()
     if output and Path(output).resolve() == Path(fixture_path).resolve():
         raise ProviderError("report_must_not_overwrite_fixture")
@@ -113,9 +135,9 @@ def run_saved_prompt_validation() -> dict:
         def transport(payload):
             if backend == "github":
                 from groq_remote_budget import reserve_remote
-                reserve_remote(github_token, experiment, estimate, opener)
+                reserve_remote(github_token, experiment, estimate, opener, policy.name)
             else:
-                reserve_attempt(ledger, estimate)
+                reserve_attempt(ledger, estimate, profile=policy.name)
             req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions",
                 data=json.dumps(payload).encode(),
                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
@@ -124,12 +146,11 @@ def run_saved_prompt_validation() -> dict:
                 with opener.open(req, timeout=60) as response:
                     return response.status, dict(response.headers), json.load(response)
             except urllib.error.HTTPError as exc:
-                return exc.code, dict(exc.headers), {}  # Never echo provider error body.
+                return exc.code, dict(exc.headers), {}
         provider.transport = transport
         result = provider.generate(request)
         report.update(live=True, provider_calls=provider.attempts, result=asdict(result))
     if output:
         Path(output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-    # Generated content stays in the explicitly selected report, not CI console.
     print(json.dumps({k: v for k, v in report.items() if k != "result"}, ensure_ascii=False))
     return report
