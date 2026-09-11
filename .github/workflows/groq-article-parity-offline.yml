@@ -8,6 +8,7 @@ on:
       - 'groq_validation.py'
       - 'groq_remote_budget.py'
       - 'groq_article_parity.py'
+      - 'groq_prompt_compiler.py'
       - 'tests/test_groq_article_parity.py'
       - 'tests/test_ai_provider.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
@@ -45,6 +46,7 @@ jobs:
           import production_pipeline
           from ai_provider import GenerationRequest, GroqProvider
           from groq_article_parity import build_production_article_fixture
+          from groq_prompt_compiler import MAX_COMPILED_PROMPT_BYTES
           from groq_rate_policy import policy_for_model
           from run283_numeric_evidence_equivalence import install as install_run283
           from run284_reader_recovery_precision import install as install_run284
@@ -71,16 +73,23 @@ jobs:
           prompt = fixture['prompt']
           payload_bytes = len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
           prompt_bytes = len(prompt.encode('utf-8'))
+          canonical_bytes = int(fixture['provenance']['canonical_prompt_bytes'])
+          compiled_bytes = int(fixture['provenance']['compiled_prompt_bytes'])
+          assert compiled_bytes == prompt_bytes
+          assert compiled_bytes <= MAX_COMPILED_PROMPT_BYTES
+          assert compiled_bytes < canonical_bytes
+          # Groq documents 413 as an oversized request but does not publish a text-chat
+          # body byte ceiling. Keep a conservative local 24 KiB body guard based on the
+          # observed 51.7 KiB rejection; this B0049 request is ~22 KiB after compilation.
+          max_request_json_bytes = 24 * 1024
+          assert payload_bytes <= max_request_json_bytes, (payload_bytes, max_request_json_bytes)
+          reduction_pct = round((1 - compiled_bytes / canonical_bytes) * 100, 1)
           headings = list(re.finditer(r'(?m)^【([^】]+)】\s*$', prompt))
           sections = []
           for i, match in enumerate(headings):
               end = headings[i + 1].start() if i + 1 < len(headings) else len(prompt)
               text = prompt[match.start():end]
-              sections.append({
-                  'heading': match.group(1),
-                  'chars': len(text),
-                  'bytes': len(text.encode('utf-8')),
-              })
+              sections.append({'heading': match.group(1), 'chars': len(text), 'bytes': len(text.encode('utf-8'))})
           sections.sort(key=lambda row: row['bytes'], reverse=True)
           print(json.dumps({
               'free_plan_preflight': 'PASS',
@@ -90,9 +99,12 @@ jobs:
               'reserved_estimate': estimate,
               'headroom': policy.safe_tpm - estimate,
               'max_output_tokens': fixture['max_output_tokens'],
-              'prompt_chars': len(prompt),
-              'prompt_utf8_bytes': prompt_bytes,
+              'canonical_prompt_utf8_bytes': canonical_bytes,
+              'compiled_prompt_utf8_bytes': compiled_bytes,
+              'compiler_reduction_pct': reduction_pct,
               'request_json_utf8_bytes': payload_bytes,
+              'request_json_guard_bytes': max_request_json_bytes,
+              'transport_compiler': fixture['provenance']['transport_compiler'],
               'top_prompt_sections': sections[:12],
               'external_tools': 'disabled_via_compound_custom',
               'business_writes': 0,
