@@ -188,6 +188,22 @@ def main() -> None:
     # primary source's publication/update date. This is deterministic and zero-provider.
     install_run287_publication_date_provenance(note_manuscript, pipeline)
 
+    mode = _workflow_dispatch_mode()
+
+    # Saved-X validation is intentionally earlier than runtime-state preflight/font setup.
+    # It installs the canonical production runtime and current overlays, then permits only
+    # the authoritative Notion dedup READ before stopping at the screening prompt boundary.
+    # No source fetch, model request, Factory write, generation, or publication is allowed.
+    if mode == "x_saved_candidate_validation":
+        from pathlib import Path
+        from x_discovery.bounded_factory_validation import BoundedValidationError, run_from_path
+
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        if not candidate_path:
+            raise BoundedValidationError("AIIF_X_SAVED_CANDIDATE_PATH is required")
+        run_from_path(pipeline, Path(candidate_path))
+        return
+
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
 
@@ -203,8 +219,6 @@ def main() -> None:
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.
     install_performance_telemetry(pipeline)
-
-    mode = _workflow_dispatch_mode()
 
     # Run282: current-policy Ready recovery is an explicit, bounded business-write lane.
     # It never enters fresh acquisition/screening/Product Review and regenerates at most
