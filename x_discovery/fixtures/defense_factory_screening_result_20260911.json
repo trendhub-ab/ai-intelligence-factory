@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "lane": "x_saved_post_screening_dry_run",
+  "factory_write": false,
+  "model_calls_allowed": 0,
+  "observation_provenance": {
+    "checked_at": "2026-09-11",
+    "candidate": "Defense Factory",
+    "canonical_url": "https://openai.com/the-defense-factory",
+    "x_post_id": "2097786616311840853",
+    "screening_model": "gemini-3.5-flash-lite",
+    "successful_observations": 2,
+    "consensus": {
+      "score": 88,
+      "commercial_score": 90,
+      "portfolio_topic": "SECURITY",
+      "tracking_eligible": true
+    },
+    "shelf_life_score_observed": [75, 80],
+    "selected_observation": "second_successful_run"
+  },
+  "screening_result": {
+    "screening_id": "X0001",
+    "score": 88,
+    "commercial_score": 90,
+    "shelf_life_score": 80,
+    "portfolio_topic": "SECURITY",
+    "tracking_eligible": true,
+    "tracking_reason": "組織的なエージェントセキュリティ運用の標準モデルとなるため。",
+    "reason": "OpenAIの先進的なセキュリティ自動化手法で関心が高い。"
+  }
+}
