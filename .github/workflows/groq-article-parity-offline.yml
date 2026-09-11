@@ -63,7 +63,9 @@ jobs:
           payload, estimate = provider.prepare(GenerationRequest(
               fixture['prompt'], fixture['max_output_tokens'], None, fixture['reasoning_effort']
           ))
-          assert payload.get('tool_choice') == 'none'
+          assert payload.get('compound_custom', {}).get('tools', {}).get('enabled_tools') == []
+          assert 'tool_choice' not in payload
+          assert payload.get('citation_options') == 'disabled'
           assert fixture['rate_policy'] == policy.name
           print(json.dumps({
               'free_plan_preflight': 'PASS',
@@ -73,7 +75,7 @@ jobs:
               'reserved_estimate': estimate,
               'headroom': policy.safe_tpm - estimate,
               'max_output_tokens': fixture['max_output_tokens'],
-              'external_tools': 'disabled',
+              'external_tools': 'disabled_via_compound_custom',
               'business_writes': 0,
               'live_provider': False,
           }, ensure_ascii=False))
