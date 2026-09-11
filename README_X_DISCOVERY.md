@@ -16,7 +16,9 @@ This is an isolated **X -> Factory discovery** proof of concept. It does not wri
 
 `provider -> normalize -> post-id dedupe -> external URL extraction/canonicalization -> URL clustering -> isolated JSON artifacts`
 
-The final artifact is `discovery_candidates.json`. A repeated canonical URL increases `mention_count`; this is a discovery signal only. `primary_source_candidate` is a conservative heuristic and is **not** evidence validation.
+The candidate artifact is `discovery_candidates.json`. `mention_count` counts distinct post IDs for each clustered resource, not URL occurrences or distinct authors. HTTP/HTTPS aliases in one post count once; two different posts count twice even from the same author. HTTPS remains preferred regardless of input order. `primary_source_candidate` is a conservative heuristic and is **not** evidence validation.
+
+Primary-domain candidates are emitted to `primary_resolution_queue.json`. The inert `x_discovery.factory_adapter` validates that queue and emits a dry-run preview; it does not insert candidates into production screening.
 
 ## Offline run
 
@@ -33,6 +35,8 @@ Outputs:
 - `normalized_signals.json`
 - `discovery_candidates.json`
 - `manifest.json`
+- `primary_resolution_queue.json`
+- `provider_diagnostics.json` (and provider raw items when supplied by the provider)
 
 To persist de-duplication across runs, add `--seen-ids /path/to/seen.json`.
 
@@ -52,3 +56,9 @@ The provider calls Apify's synchronous Actor endpoint with Bearer authentication
 - automatic scheduling of the live provider
 
 Those are separate integration steps after this isolated ingestion layer proves useful and stable.
+
+## Offline validation, 2026-09-11
+
+The distinct-post counting correction and historical replay are documented in [the validation record](docs/x_discovery_offline_validation_20260911.md). Four saved runs were replayed with networking blocked. Candidate identities and accepted URL sets were unchanged; Bootstrap had six overcounts corrected from two to one, including three primary-source candidates.
+
+The production runtime at `c5a587183208ad44c9a95d27ac57ab867a6ac47d` was separately installed in a local offline probe. This is not a new live X dispatch lane. No provider calls, production writes, evidence promotion or generation were authorized by that probe.

@@ -67,11 +67,13 @@ def cluster_candidates(signals: Sequence[DiscoverySignal]) -> List[DiscoveryCand
                 candidate.primary_source_candidate = (
                     candidate.primary_source_candidate or is_primary_source_candidate(url)
                 )
-            candidate.mention_count += 1
             if signal.author_handle not in candidate.authors:
                 candidate.authors.append(signal.author_handle)
             if signal.post_id not in candidate.post_ids:
                 candidate.post_ids.append(signal.post_id)
+                # A mention is a distinct post, not a URL occurrence. Keep the
+                # URL preference update above even when the post was seen.
+                candidate.mention_count += 1
             if signal.post_url and signal.post_url not in candidate.post_urls:
                 candidate.post_urls.append(signal.post_url)
     return sorted(
