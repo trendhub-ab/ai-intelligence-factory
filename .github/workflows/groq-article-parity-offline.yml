@@ -3,6 +3,8 @@ on:
   push:
     branches: ['dev/groq-provider-foundation']
     paths:
+      - 'ai_provider.py'
+      - 'groq_rate_policy.py'
       - 'groq_article_parity.py'
       - 'tests/test_groq_article_parity.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
@@ -12,7 +14,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,5 +22,48 @@ jobs:
           python-version: '3.11'
       - name: Prove prompt/gate wiring without provider or business writes
         run: python -m unittest tests.test_groq_article_parity -v
+      - name: Install runtime dependencies for real prompt preflight
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install jsonschema
+      - name: Build current Production prompt and prove Free Plan TPM fit
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          AIIF_GROQ_LIVE: 'false'
+        shell: python
+        run: |
+          import json
+          import pipeline
+          import production_pipeline
+          from ai_provider import GenerationRequest, GroqProvider
+          from groq_article_parity import build_production_article_fixture
+          from groq_rate_policy import SAFE_TPM
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from reader_quality_precision import install as install_reader_quality_precision
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline)
+          install_reader_quality_precision(pipeline)
+          install_run284(pipeline)
+          fixture = build_production_article_fixture(
+              pipeline,
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-article-production-prompt.json',
+          )
+          provider = GroqProvider(lambda _: None, token_budget=SAFE_TPM)
+          _, estimate = provider.prepare(GenerationRequest(
+              fixture['prompt'], fixture['max_output_tokens'], None, fixture['reasoning_effort']
+          ))
+          print(json.dumps({
+              'free_plan_preflight': 'PASS',
+              'safe_tpm': SAFE_TPM,
+              'reserved_estimate': estimate,
+              'headroom': SAFE_TPM - estimate,
+              'max_output_tokens': fixture['max_output_tokens'],
+              'business_writes': 0,
+              'live_provider': False,
+          }, ensure_ascii=False))
       - name: Assert live provider remains disabled in offline CI
         run: test -z "${GROQ_API_KEY:-}"
