@@ -1,5 +1,9 @@
 name: X Defense Factory Deep Dive Once
 
+# The first run stopped before the durable claim and before any Gemini request because
+# Run260 expanded the normal model pool. The operation marker is still absent; this
+# push consumes the same, still-unclaimed one-operation authorization after re-pinning
+# the bounded lane to gemini-3.6-flash only.
 on:
   push:
     branches: ['validation/defense-deep-dive-once-20260911']
