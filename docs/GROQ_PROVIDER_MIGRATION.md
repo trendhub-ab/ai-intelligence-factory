@@ -59,3 +59,12 @@ Screening batch=25 / max output=5000、Calibration batch=50 / max output=4000も
 GitHub SecretsのGROQ_API_KEY登録を確認。モデル一覧GETによる認証チェック成功（Run34655752401）、openai/gpt-oss-120bの掲載を確認。生成API呼出し0。実Calibration・記事品質・Daily E2Eは未実施。
 最初のurllib既定クライアントでHTTP403、明示的なUser-Agent: AI-Intelligence-Factory/1.0で成功。同じ識別を生成transportにも設定。キー値・応答本文はログに出さない。
 Groq Credential Checkは開発ブランチの当該workflowファイル変更時だけモデル一覧GETを行う。推論・SQLite検証予算・業務DBは使用しない。
+
+## Phase 2: bounded CI validation
+SQLiteに加え、runtime/groq-validationブランチの.runtime/groq_validation_ledger.jsonに送信前の予約を永続化するbackendを追加。
+API PUTは取得したSHAでcompare-and-swap。競合・台帳欠落・保存失敗は送信前停止。台帳は自動初期化/削除しない。
+3要求/ローリング24h、24000予約tokens、65秒間隔。experiment IDは期間を超えても再利用禁止。タイムアウトでも予約維持。
+Groq Bounded Validationは当該workflow変更時だけ1件送信し、同じexperimentの再実行は停止。これは永続台帳を持つため旧来の使い捨てCI禁止条件に該当しない。
+初回fixture: observed_history/screening_20260902T083606Z.jsonのB0031。元のcalibration_promptを1件に適用。予約推定3516 tokens、出力上限1500。
+履歴にdescription/trackingが残っていないため厳密な旧出力比較ではない。単一候補の接続・構造・日本語理由の検証でありGlobal Calibration全体の品質合格ではない。
+JSON配列のID一致・型・点数範囲・topic・理由40字制限をAPI後に独立検証。業務DB更新なし。

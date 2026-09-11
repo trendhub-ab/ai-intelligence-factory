@@ -87,11 +87,20 @@ def run_saved_prompt_validation() -> dict:
     if live == "true":
         key = os.environ.get("GROQ_API_KEY", "").strip()
         ledger = os.environ.get("AIIF_GROQ_LEDGER", "").strip()
-        if not key or not ledger:
+        backend = os.environ.get("AIIF_GROQ_BUDGET_BACKEND", "sqlite")
+        if backend not in {"sqlite", "github"}:
+            raise ProviderError("invalid_budget_backend")
+        github_token = os.environ.get("GROQ_LEDGER_GITHUB_TOKEN", "")
+        experiment = os.environ.get("AIIF_GROQ_EXPERIMENT", "")
+        if not key or (backend == "sqlite" and not ledger) or (backend == "github" and (not github_token or not experiment)):
             raise ProviderError("groq_key_and_persistent_ledger_required")
         opener = urllib.request.build_opener(NoRedirect())
         def transport(payload):
-            reserve_attempt(ledger, estimate)
+            if backend == "github":
+                from groq_remote_budget import reserve_remote
+                reserve_remote(github_token, experiment, estimate, opener)
+            else:
+                reserve_attempt(ledger, estimate)
             req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions",
                 data=json.dumps(payload).encode(),
                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
