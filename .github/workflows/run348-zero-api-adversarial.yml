@@ -1,0 +1,73 @@
+name: Run348 Zero-API Adversarial Editorial Lab
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'run348_adversarial_editorial_lab.py'
+      - 'editorial_naturalness.py'
+      - 'reader_experience_signals.py'
+      - 'fact_validation_signals.py'
+      - 'gate_reasoning.py'
+      - 'tests/test_run348_adversarial_editorial_lab.py'
+      - '.github/workflows/run348-zero-api-adversarial.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial-zero-api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GEMINI_PERSISTENT_DAILY_COUNTER: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11.16'
+
+      - name: Compile zero-API lab
+        run: |
+          python -m py_compile \
+            run348_adversarial_editorial_lab.py \
+            editorial_naturalness.py \
+            reader_experience_signals.py \
+            fact_validation_signals.py \
+            tests/test_run348_adversarial_editorial_lab.py
+
+      - name: Run Run348 adversarial regression
+        run: python -m unittest tests.test_run348_adversarial_editorial_lab -v
+
+      - name: Generate 10000-case adversarial report
+        run: |
+          python run348_adversarial_editorial_lab.py \
+            --cases 10000 \
+            --report run348-adversarial-report.json
+
+      - name: Assert provider and persistence isolation
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('run348-adversarial-report.json', encoding='utf-8'))
+          expected = {
+              'gemini_calls': 0,
+              'notion_reads': 0,
+              'notion_writes': 0,
+              'network_calls': 0,
+              'pipeline_imported': False,
+          }
+          assert report['safety_contract'] == expected, report['safety_contract']
+          assert report['total_cases'] == 10000, report['total_cases']
+          PY
+
+      - name: Upload adversarial report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: run348-adversarial-report-${{ github.run_number }}
+          path: run348-adversarial-report.json
+          if-no-files-found: error
+          retention-days: 30
