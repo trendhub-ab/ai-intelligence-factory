@@ -15,12 +15,20 @@ This overlay is deliberately narrow:
   repairable density/accessibility failures observed in Production;
 - preserve the original retry decision everywhere else.
 
+Run352 is chained at the end of this already-canonical post-reader precision installation point.
+It does not authorize another retry. It only strengthens the prompt of an already-authorized
+retry to preserve non-target reader structure, and repairs the exact stranded adverbial particle
+created by deterministic hype deletion. This keeps Production installation order unchanged while
+avoiding another orchestration branch in ``production_pipeline.py``.
+
 It adds no provider call by itself. It only authorizes the existing bounded quality-retry path
 inside the explicit Run282 recovery workflow, whose four-request hard cap remains authoritative.
 """
 from __future__ import annotations
 
 from typing import Any
+
+import run352_retry_preservation
 
 _INSTALL_FLAG = "_run284_reader_recovery_precision_installed"
 _SPENT_FLAG = "_run284_current_policy_reader_repair_spent"
@@ -86,6 +94,9 @@ def _evidence_is_safe_for_reader_repair(pipeline_module: Any, evidence_result: d
 def install(pipeline_module: Any) -> Any:
     """Install after the historical reader bridge / Run208 stack, idempotently."""
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
+        # Run352 has its own idempotency marker. Calling it here also makes an older
+        # process that pre-installed Run284 but not Run352 converge safely.
+        run352_retry_preservation.install(pipeline_module)
         return pipeline_module
 
     # This removes a deterministic corruption source before any Production generation call.
@@ -121,5 +132,10 @@ def install(pipeline_module: Any) -> Any:
         return True, "run284_current_policy_reader_repair"
 
     pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_current_policy_reader_repair
+
+    # Run352 is global retry/rescue precision but intentionally adds no new authorization path.
+    # Chaining it here preserves the established post-reader install location in Production.
+    run352_retry_preservation.install(pipeline_module)
+
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module
