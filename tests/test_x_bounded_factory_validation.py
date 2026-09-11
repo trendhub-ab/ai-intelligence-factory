@@ -1,5 +1,8 @@
+import inspect
 import unittest
+from pathlib import Path
 
+import x_discovery.bounded_factory_validation as bounded_validation
 from x_discovery.bounded_factory_validation import (
     BoundedValidationError,
     run_bounded_validation,
@@ -110,6 +113,21 @@ class BoundedFactoryValidationTests(unittest.TestCase):
         bad["prepared_primary_source"]["text"] = "too short"
         with self.assertRaisesRegex(BoundedValidationError, "too short"):
             validate_saved_candidate(bad)
+
+    def test_lane_source_contains_no_provider_or_persistence_call(self):
+        source = inspect.getsource(bounded_validation)
+        self.assertNotIn("call_screening_provider(", source)
+        self.assertNotIn("persist_to_notion(", source)
+        self.assertNotIn("requests.", source)
+
+    def test_production_entrypoint_routes_lane_before_live_preflight(self):
+        source = Path("production_pipeline.py").read_text(encoding="utf-8")
+        lane = source.index('if mode == "x_saved_candidate_validation":')
+        preflight = source.index("runtime_state_channel.preflight_runtime_state_channel()", lane)
+        font_setup = source.index("run179_eyecatch_font_refinement.ensure_google_font_assets(", lane)
+        self.assertLess(lane, preflight)
+        self.assertLess(lane, font_setup)
+        self.assertIn("run_from_path(pipeline, Path(candidate_path))", source[lane:preflight])
 
 
 if __name__ == "__main__":
