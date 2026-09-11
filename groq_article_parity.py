@@ -1,9 +1,9 @@
 """Read-only Groq article-generation parity harness.
 
-This module deliberately reuses the current Production article prompt builder and
-publication gate. It never writes to Notion or note. The live Groq call remains in
-``groq_validation`` so the same persistent reservation ledger protects all provider
-experiments.
+The canonical Production prompt remains the source of truth. A deterministic transport
+compiler shortens only duplicated editorial meta-guidance so Groq can accept the request;
+evidence and publication contracts remain unchanged. This module never writes to Notion
+or note.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ai_provider import GenerationRequest, GroqProvider, ProviderError
+from groq_prompt_compiler import compile_article_prompt
 from groq_rate_policy import COMPOUND_MINI
 
 
@@ -51,9 +52,9 @@ def _fit_output_budget(prompt: str, requested_output_tokens: int, reasoning_effo
 
 
 def build_production_article_fixture(pipeline, input_path: str, output_path: str) -> dict[str, Any]:
-    """Materialize the *current* Production article prompt for one saved candidate."""
+    """Build canonical Production prompt, then compile only its editorial meta-guidance."""
     row = load_input(input_path)
-    prompt = pipeline.build_decision_prompt(
+    canonical_prompt = pipeline.build_decision_prompt(
         row["name"],
         row["url"],
         int(row.get("stars") or 0),
@@ -67,6 +68,8 @@ def build_production_article_fixture(pipeline, input_path: str, output_path: str
         previous_article="",
         evidence_result=row.get("evidence_result") or {},
     )
+    compiled = compile_article_prompt(canonical_prompt)
+    prompt = compiled.prompt
     reasoning_effort = row.get("reasoning_effort") or "medium"
     requested_output = int(row.get("max_output_tokens") or 4000)
     selected_output, fixed_estimate, total_estimate = _fit_output_budget(
@@ -87,6 +90,12 @@ def build_production_article_fixture(pipeline, input_path: str, output_path: str
             "screening_score": int(row.get("screening_score") or 0),
             "business_writes": 0,
             "production_prompt_builder": "pipeline.build_decision_prompt",
+            "transport_compiler": "groq_prompt_compiler.compile_article_prompt",
+            "canonical_prompt_sha256": compiled.source_sha256,
+            "compiled_prompt_sha256": compiled.compiled_sha256,
+            "canonical_prompt_bytes": compiled.source_bytes,
+            "compiled_prompt_bytes": compiled.compiled_bytes,
+            "compiled_replaced_sections": list(compiled.replaced_sections),
             "groq_model": ARTICLE_MODEL,
             "groq_safe_tpm": COMPOUND_MINI.safe_tpm,
             "requested_output_tokens": requested_output,
