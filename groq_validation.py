@@ -2,7 +2,8 @@
 
 Default is offline. Live mode requires a key and explicit live flag. Model selection is
 fixture-declared and restricted to the Factory's approved Groq Free Plan policies.
-Local and GitHub ledgers enforce the matching model-specific safety envelope.
+Pre-send reservations are reconciled to provider-reported usage after every successful
+response so tokenizer approximation never discards valid output or understates usage.
 """
 from dataclasses import asdict
 import hashlib
@@ -17,7 +18,6 @@ import urllib.request
 from ai_provider import GenerationRequest, GroqProvider, ProviderError
 from groq_rate_policy import (
     GPT_OSS_120B,
-    MAX_RESERVED_TOKENS_PER_REQUEST,
     ROLLING_DAY_SECONDS,
     ROLLING_MINUTE_SECONDS,
     policy_for_model,
@@ -27,6 +27,13 @@ from groq_rate_policy import (
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def _ensure_local_schema(db):
+    db.execute("CREATE TABLE IF NOT EXISTS attempts (stamp REAL NOT NULL, tokens INTEGER NOT NULL, profile TEXT NOT NULL DEFAULT 'gpt_oss_120b')")
+    columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
+    if "profile" not in columns:
+        db.execute("ALTER TABLE attempts ADD COLUMN profile TEXT NOT NULL DEFAULT 'gpt_oss_120b'")
 
 
 def reserve_attempt(path: str, tokens: int, now: float | None = None,
@@ -41,10 +48,7 @@ def reserve_attempt(path: str, tokens: int, now: float | None = None,
     if type(tokens) is not int or not 1 <= tokens <= policy.safe_tpm:
         raise ProviderError("invalid_token_reservation")
     with sqlite3.connect(path, timeout=10) as db:
-        db.execute("CREATE TABLE IF NOT EXISTS attempts (stamp REAL NOT NULL, tokens INTEGER NOT NULL, profile TEXT NOT NULL DEFAULT 'gpt_oss_120b')")
-        columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
-        if "profile" not in columns:
-            db.execute("ALTER TABLE attempts ADD COLUMN profile TEXT NOT NULL DEFAULT 'gpt_oss_120b'")
+        _ensure_local_schema(db)
         db.execute("BEGIN IMMEDIATE")
         day_count, day_tokens = db.execute(
             "SELECT COUNT(*), COALESCE(SUM(tokens),0) FROM attempts WHERE profile = ? AND stamp > ?",
@@ -61,6 +65,28 @@ def reserve_attempt(path: str, tokens: int, now: float | None = None,
         if minute_count >= policy.safe_rpm or minute_tokens + tokens > policy.safe_tpm:
             raise ProviderError("persistent_validation_minute_budget_exceeded")
         db.execute("INSERT INTO attempts (stamp, tokens, profile) VALUES (?, ?, ?)", (now, tokens, profile))
+
+
+def reconcile_attempt(path: str, actual_tokens: int, profile: str = GPT_OSS_120B.name) -> None:
+    """Reconcile the latest serialized local reservation upward to actual usage."""
+    from groq_rate_policy import policy_for_name
+    try:
+        policy = policy_for_name(profile)
+    except ValueError:
+        raise ProviderError("invalid_token_reconciliation") from None
+    if type(actual_tokens) is not int or not 1 <= actual_tokens <= policy.official_tpm:
+        raise ProviderError("invalid_token_reconciliation")
+    with sqlite3.connect(path, timeout=10) as db:
+        _ensure_local_schema(db)
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT rowid, tokens FROM attempts WHERE profile = ? ORDER BY rowid DESC LIMIT 1",
+            (profile,),
+        ).fetchone()
+        if not row:
+            raise ProviderError("local_reconciliation_reservation_missing")
+        rowid, reserved = row
+        db.execute("UPDATE attempts SET tokens = ? WHERE rowid = ?", (max(int(reserved), actual_tokens), rowid))
 
 
 def schema_validator(schema: dict | None):
@@ -106,12 +132,8 @@ def run_saved_prompt_validation() -> dict:
     request = GenerationRequest(fixture["prompt"], fixture["max_output_tokens"],
                                 fixture.get("schema"), fixture.get("reasoning_effort", "low"))
     validator = schema_validator(request.schema)
-    provider = GroqProvider(
-        lambda _: None,
-        validate_schema=validator,
-        token_budget=policy.safe_tpm,
-        model=model,
-    )
+    provider = GroqProvider(lambda _: None, validate_schema=validator,
+                            token_budget=policy.safe_tpm, model=model)
     _, estimate = provider.prepare(request)
     report = {"mode": "groq_saved_prompt_validation", "provider": "groq", "model": provider.model,
               "rate_policy": policy.name, "stage": fixture["stage"],
@@ -155,6 +177,12 @@ def run_saved_prompt_validation() -> dict:
         provider.transport = transport
         try:
             result = provider.generate(request)
+            actual_tokens = result.prompt_tokens + result.completion_tokens
+            if backend == "github":
+                from groq_remote_budget import reconcile_remote
+                reconcile_remote(github_token, experiment, actual_tokens, opener, policy.name)
+            else:
+                reconcile_attempt(ledger, actual_tokens, profile=policy.name)
         except ProviderError as exc:
             report.update(
                 live=True,
@@ -164,7 +192,14 @@ def run_saved_prompt_validation() -> dict:
             _write_report(output, report)
             print(json.dumps({k: v for k, v in report.items() if k != "result"}, ensure_ascii=False))
             raise
-        report.update(live=True, provider_calls=provider.attempts, result=asdict(result))
+        report.update(
+            live=True,
+            provider_calls=provider.attempts,
+            actual_tokens=actual_tokens,
+            estimate_delta_tokens=actual_tokens - estimate,
+            ledger_reconciled=True,
+            result=asdict(result),
+        )
     _write_report(output, report)
     print(json.dumps({k: v for k, v in report.items() if k != "result"}, ensure_ascii=False))
     return report
