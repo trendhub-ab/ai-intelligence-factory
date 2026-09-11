@@ -1,0 +1,22 @@
+name: Groq Article Parity Offline
+on:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - 'groq_article_parity.py'
+      - 'tests/test_groq_article_parity.py'
+      - 'tests/fixtures/groq/article_parity_B0049_input.json'
+      - '.github/workflows/groq-article-parity-offline.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prove prompt/gate wiring without provider or business writes
+        run: python -m unittest tests.test_groq_article_parity -v
