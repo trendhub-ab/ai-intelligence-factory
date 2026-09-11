@@ -9,7 +9,7 @@
   "grounding_status_hint": "PRIMARY_SOURCE",
   "screening_score": 82,
   "screening_reason": "OpenAIによる次世代フロンティアセーフガードと機能の方針。",
-  "max_output_tokens": 8000,
+  "max_output_tokens": 4000,
   "reasoning_effort": "medium",
   "provenance": {
     "primary_source": "https://openai.com/index/path-to-astra/",
@@ -17,6 +17,7 @@
     "purpose": "Groq article-generation parity using the current production prompt and current publication gate",
     "persist_results": false,
     "notion_writes": 0,
-    "note_writes": 0
+    "note_writes": 0,
+    "free_plan_tpm_fit": "Output ceiling reduced from 8000 so input+output can fit within the 8000 TPM Free Plan envelope."
   }
 }
