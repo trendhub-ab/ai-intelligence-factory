@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "lane": "x_saved_stock_deep_dive_handoff",
+  "status": "DEEP_DIVE_SELECTION_READY",
+  "canonical_url": "https://openai.com/the-defense-factory",
+  "notion_page_id": "3d8479ff-dca9-81d2-aff1-f203bf02222f",
+  "final_score": 88,
+  "stock_persisted": true,
+  "deep_dive_selected": true,
+  "model_calls": 0,
+  "notion_writes": 0,
+  "generation_executed": false,
+  "publication_executed": false,
+  "factory_write": false,
+  "verification": "production_entrypoint_and_real_selector"
+}

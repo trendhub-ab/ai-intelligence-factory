@@ -187,6 +187,18 @@ def main() -> None:
         run_from_paths(pipeline, Path(candidate_path), Path(observation_path))
         return
 
+    if mode == "x_saved_stock_deep_dive_handoff":
+        from pathlib import Path
+        from x_discovery.stock_deep_dive_handoff import StockHandoffError, run_from_paths
+
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        calibration_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
+        stock_path = os.environ.get("AIIF_X_STOCK_OBSERVATION_PATH", "").strip()
+        if not all((candidate_path, calibration_path, stock_path)):
+            raise StockHandoffError("candidate, Calibration and Stock paths are required")
+        run_from_paths(pipeline, Path(candidate_path), Path(calibration_path), Path(stock_path))
+        return
+
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
 
