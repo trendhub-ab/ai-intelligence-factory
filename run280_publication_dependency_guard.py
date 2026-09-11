@@ -56,6 +56,7 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "gemini_timeout_rpd_fail_closed.py": "quota reservation/timeout safety only",
     "gemini_transient_recovery.py": "transport retry/failover safety only",
     "gemini_provider_resilience.py": "provider transport classification/retry/circuit safety only; no public-byte or gate policy",
+    "run346_backlog_budget_reserve.py": "full-run Deep Dive budget partition/scheduling only; no public-byte, gate, model-routing, retry, or Notion policy",
     "regression_suite.py": "synthetic regression entrypoint only",
     "legacy_eyecatch_renderer.py": "obsolete compatibility bridge; current editorial renderer is separately fingerprinted",
 }

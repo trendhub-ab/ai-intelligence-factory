@@ -145,6 +145,7 @@ def main() -> None:
     from run283_numeric_evidence_equivalence import install as install_run283_numeric_evidence_equivalence
     from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
     from run287_publication_date_provenance import install as install_run287_publication_date_provenance
+    from run346_backlog_budget_reserve import install as install_run346_backlog_budget_reserve
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -232,6 +233,10 @@ def main() -> None:
     # policy remains unchanged.
     if mode == "full":
         install_full_recovery(pipeline)
+        # Run346 is a full-run orchestration overlay, not a historical publication layer.
+        # Install after Run277 so it wraps the final backlog helper while leaving the
+        # canonical runtime stack (and Publication Contract last-position invariant) intact.
+        install_run346_backlog_budget_reserve(pipeline)
 
     pipeline.main()
 
