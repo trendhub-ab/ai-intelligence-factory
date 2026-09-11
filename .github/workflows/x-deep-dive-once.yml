@@ -1,0 +1,76 @@
+name: X Defense Factory Deep Dive Once
+
+on:
+  push:
+    branches: ['validation/defense-deep-dive-once-20260911']
+    paths: ['.github/workflows/x-deep-dive-once.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  deep-dive-once:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install verified SDK and runtime dependencies
+        run: pip install -r requirements.txt google-genai==1.75.0
+      - name: Verify one-turn guards offline
+        env:
+          GEMINI_API_KEY: ''
+          GOOGLE_API_KEY: ''
+          GH_PAT: ''
+          NOTION_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+        run: >-
+          python -m unittest
+          tests.test_x_deep_dive_once
+          tests.test_x_deep_dive_runtime -v
+      - name: Consume the single authorized Deep Dive attempt
+        env:
+          AIIF_ONE_SHOT_MODE: x_saved_stock_deep_dive_once
+          AIIF_X_DEEP_DIVE_EXECUTE: 'true'
+          AIIF_X_DEEP_DIVE_OPERATION: defense-factory-deep-dive-20260911
+          AIIF_X_SAVED_CANDIDATE_PATH: x_discovery/fixtures/defense_factory_boundary_20260911.json
+          AIIF_X_CALIBRATION_OBSERVATION_PATH: x_discovery/observations/defense_factory_calibration_20260911.json
+          AIIF_X_STOCK_OBSERVATION_PATH: x_discovery/observations/defense_factory_stock_20260911.json
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: gemini-3.6-flash
+          GEMINI_DAILY_REQUEST_BUDGET: '1'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '1'
+          GEMINI_DEEP_DIVE_DAILY_REQUEST_BUDGET: '1'
+          GEMINI_DEEP_DIVE_RETRY_BUDGET: '0'
+          GEMINI_SCREENING_RETRY_BUDGET: '0'
+          GEMINI_RESERVED_DEEP_DIVE_REQUESTS: '0'
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: runtime-state
+          AIIF_RUNTIME_STATE_BRANCH: runtime-state
+          NOTION_API_KEY: ''
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+          REGEN_TEST_OUTPUT_DIR: defense_factory_deep_dive_artifact
+          TZ: Asia/Tokyo
+        run: |
+          set -o pipefail
+          python -u production_pipeline.py 2>&1 | tee deep-dive-once.log
+      - name: Preserve article/result or failure without another model request
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-factory-deep-dive-once
+          path: |
+            deep-dive-once.log
+            defense_factory_deep_dive_artifact/
+          if-no-files-found: ignore
+          retention-days: 7
