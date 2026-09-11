@@ -1,7 +1,13 @@
-"""Gate reason-code classification and diagnostic record shaping (Run241).
+"""Gate reason-code classification and diagnostic record shaping (Run241/353).
 
 This module does not execute quality gates. It only maps already-produced gate messages into
 stable reason codes/severities/dispositions and shapes audit records.
+
+Run353 fixes two classification defects without relaxing Fact/Evidence safety:
+- Publication reasons are no longer all promoted to HARD_BLOCK. Repairable publication
+  consistency/presentation issues remain REVIEW while evidence/overclaim failures stay HARD.
+- Reader Value reasons injected through the Human Appeal gate receive dedicated READER_* codes
+  instead of falling back to APPEAL_DECISION_VOICE_LOSS.
 """
 
 GATE_STATUS_NOT_RUN = "NOT_RUN"
@@ -48,10 +54,50 @@ REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
 REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
 REASON_CODE_APPEAL_AI_STYLE_COMPOSITE = "APPEAL_AI_STYLE_COMPOSITE"
 REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT = "APPEAL_CROSS_ARTICLE_FINGERPRINT"
+REASON_CODE_READER_DENSE_REPORT = "READER_DENSE_REPORT"
+REASON_CODE_READER_REPETITIVE_INSIGHT = "READER_REPETITIVE_INSIGHT"
+REASON_CODE_READER_MULTI_AXIS_WEAKNESS = "READER_MULTI_AXIS_WEAKNESS"
+REASON_CODE_READER_NON_ENGINEER_ACCESS = "READER_NON_ENGINEER_ACCESS"
+REASON_CODE_READER_FINAL_SURFACE = "READER_FINAL_SURFACE"
+REASON_CODE_READER_VALUE_OTHER = "READER_VALUE_OTHER"
 REASON_CODE_PENDING_RETRY = "PENDING_RETRY"
 REASON_CODE_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
 REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED = "DEEP_DIVE_RUN_BUDGET_EXHAUSTED"
 REASON_CODE_NOTION_PERSISTENCE_FAILED = "NOTION_PERSISTENCE_FAILED"
+
+READER_VALUE_MARKER = "reader_value_review:"
+
+# Publication reasons that represent factual/evidence/public-claim safety failures. These remain
+# fail-closed HARD_BLOCK. Repairable consistency/presentation reasons are intentionally excluded.
+_PUBLICATION_HARD_CODES = {
+    REASON_CODE_PUB_HEADLINE_OVERCLAIM,
+    REASON_CODE_PUB_INTRO_OVERCLAIM,
+    REASON_CODE_PUB_UNSUPPORTED_CONCLUSION,
+    REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH,
+    REASON_CODE_PUB_SOURCE_SUFFICIENCY,
+    REASON_CODE_PUB_NEGATIVE_EVIDENCE_OMISSION,
+}
+_PUBLICATION_REVIEW_CODES = {
+    REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH,
+    REASON_CODE_STRUCTURE_MISSING,
+}
+
+
+def _reader_reason_code(message: str) -> str:
+    text = (message or "").lower()
+    if READER_VALUE_MARKER not in text:
+        return ""
+    if "dense_report_cluster" in text:
+        return REASON_CODE_READER_DENSE_REPORT
+    if "repetitive_insight" in text:
+        return REASON_CODE_READER_REPETITIVE_INSIGHT
+    if "non_engineer_access_failure" in text:
+        return REASON_CODE_READER_NON_ENGINEER_ACCESS
+    if "multi_axis_reader_weakness" in text:
+        return REASON_CODE_READER_MULTI_AXIS_WEAKNESS
+    if "final_surface_" in text:
+        return REASON_CODE_READER_FINAL_SURFACE
+    return REASON_CODE_READER_VALUE_OTHER
 
 
 def reason_code(message: str, gate: str) -> str:
@@ -93,6 +139,9 @@ def reason_code(message: str, gate: str) -> str:
         }
         return mapping.get(message, REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH)
     if gate == "human_appeal":
+        reader_code = _reader_reason_code(message)
+        if reader_code:
+            return reader_code
         mapping = {
             "over_hedging_without_decision": REASON_CODE_APPEAL_OVER_HEDGING,
             "action_collapsed_to_generic_monitoring": REASON_CODE_APPEAL_ACTION_COLLAPSE,
@@ -113,6 +162,10 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code_value: st
     if gate in {"fact", "evidence"}:
         return GATE_SEVERITY_HARD
     if gate == "publication":
+        if code in _PUBLICATION_REVIEW_CODES:
+            return GATE_SEVERITY_REVIEW
+        # Unknown publication reasons stay fail-closed. Only explicitly audited repairable
+        # classes may downgrade from HARD to REVIEW.
         return GATE_SEVERITY_HARD
     if gate == "editorial":
         if "unsupported personal experience" in text:
@@ -131,6 +184,8 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code_value: st
     if gate == "human_appeal":
         if code == REASON_CODE_APPEAL_FABRICATED_EXPERIENCE or "fabricated_personal_experience" in text:
             return GATE_SEVERITY_HARD
+        if code.startswith("READER_"):
+            return GATE_SEVERITY_REVIEW
         if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
             return GATE_SEVERITY_SOFT
         if message in {"ai_style_composite_high", "cross_article_fingerprint_high"} or code in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT}:
@@ -168,7 +223,7 @@ def infer_gate_from_reason_code(reason_code_value: str) -> str:
         return "publication"
     if code == REASON_CODE_EDITORIAL_STRUCTURE_ERROR:
         return "editorial"
-    if code.startswith("APPEAL_"):
+    if code.startswith("APPEAL_") or code.startswith("READER_"):
         return "human_appeal"
     if code in {REASON_CODE_PENDING_RETRY, REASON_CODE_MODEL_UNAVAILABLE,
                 REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, REASON_CODE_NOTION_PERSISTENCE_FAILED}:
