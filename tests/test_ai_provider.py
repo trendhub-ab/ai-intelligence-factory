@@ -50,7 +50,7 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(p.attempts, 0)
 
     def test_http_failure_is_not_retried(self):
-        for status, kind in [(429, "rate_limit_error"), (503, "capacity_error"), (401, "authentication_error"), (422, "invalid_request")]:
+        for status, kind in [(429, "rate_limit_error"), (503, "capacity_error"), (401, "authentication_error"), (413, "request_too_large"), (422, "invalid_request")]:
             p = GroqProvider(lambda _: (status, {"Retry-After": "2"}, {"secret": "hidden"}))
             with self.assertRaises(ProviderError) as cm:
                 p.generate(GenerationRequest("test", 100))
@@ -96,6 +96,24 @@ class ProviderTests(unittest.TestCase):
         p.generate(GenerationRequest("test", 300))
         with self.assertRaisesRegex(ProviderError, "validation_budget_exceeded"):
             p.generate(GenerationRequest("test", 600))
+
+    def test_provider_accepts_actual_usage_above_estimate_within_safety_budget(self):
+        body = response("ARTICLE")
+        body["usage"] = {"prompt_tokens": 600, "completion_tokens": 200}
+        p = GroqProvider(lambda _: (200, {}, body), token_budget=1000)
+        result = p.generate(GenerationRequest("test", 100))
+        self.assertEqual(result.prompt_tokens + result.completion_tokens, 800)
+        self.assertLess(result.reserved_token_estimate, 800)
+        self.assertEqual(p.reserved_tokens, 800)
+        self.assertEqual(result.text, "ARTICLE")
+
+    def test_provider_rejects_actual_usage_above_safety_budget(self):
+        body = response("ARTICLE")
+        body["usage"] = {"prompt_tokens": 900, "completion_tokens": 200}
+        p = GroqProvider(lambda _: (200, {}, body), token_budget=1000)
+        with self.assertRaisesRegex(ProviderError, "actual_usage_exceeds_safety_budget"):
+            p.generate(GenerationRequest("test", 100))
+        self.assertEqual(p.reserved_tokens, 1100)
 
     def test_refusal_and_untrusted_usage(self):
         for mutation in ["refusal", "usage"]:
