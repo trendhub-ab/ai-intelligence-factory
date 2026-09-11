@@ -10,6 +10,7 @@ on:
       - 'groq_article_parity.py'
       - 'groq_prompt_compiler.py'
       - 'tests/test_groq_article_parity.py'
+      - 'tests/test_groq_budget_reconciliation.py'
       - 'tests/test_ai_provider.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
       - '.github/workflows/groq-article-parity-offline.yml'
@@ -24,9 +25,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Prove provider routing and prompt/gate wiring without network
+      - name: Prove provider routing prompt gate and budget reconciliation without network
         run: |
           python -m unittest tests.test_ai_provider -v
+          python -m unittest tests.test_groq_budget_reconciliation -v
           python -m unittest tests.test_groq_article_parity -v
       - name: Install runtime dependencies for real prompt preflight
         run: |
@@ -78,9 +80,6 @@ jobs:
           assert compiled_bytes == prompt_bytes
           assert compiled_bytes <= MAX_COMPILED_PROMPT_BYTES
           assert compiled_bytes < canonical_bytes
-          # Groq documents 413 as an oversized request but does not publish a text-chat
-          # body byte ceiling. Keep a conservative local 24 KiB body guard based on the
-          # observed 51.7 KiB rejection; this B0049 request is ~22 KiB after compilation.
           max_request_json_bytes = 24 * 1024
           assert payload_bytes <= max_request_json_bytes, (payload_bytes, max_request_json_bytes)
           reduction_pct = round((1 - compiled_bytes / canonical_bytes) * 100, 1)
