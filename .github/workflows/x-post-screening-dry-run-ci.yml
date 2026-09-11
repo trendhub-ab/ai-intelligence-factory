@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - 'x_discovery/post_screening_dry_run.py'
+      - 'x_discovery/post_calibration_dry_run.py'
       - 'x_discovery/fixtures/defense_factory_screening_result_20260911.json'
       - 'tests/test_x_post_screening_dry_run.py'
+      - 'tests/test_x_post_calibration_dry_run.py'
       - '.github/workflows/x-post-screening-dry-run-ci.yml'
   workflow_dispatch:
 
@@ -26,7 +28,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile provider-free route audit
-        run: python -m py_compile x_discovery/post_screening_dry_run.py tests/test_x_post_screening_dry_run.py
+      - name: Compile provider-free route audits
+        run: >-
+          python -m py_compile
+          x_discovery/post_screening_dry_run.py
+          x_discovery/post_calibration_dry_run.py
+          tests/test_x_post_screening_dry_run.py
+          tests/test_x_post_calibration_dry_run.py
       - name: Run provider-free route audit tests
-        run: python -m unittest tests.test_x_post_screening_dry_run
+        run: >-
+          python -m unittest
+          tests.test_x_post_screening_dry_run
+          tests.test_x_post_calibration_dry_run
