@@ -1,36 +1,31 @@
-"""Run284: Production findings from bounded current-policy Ready recovery.
+"""Run284/352: post-reader Production precision and bounded recovery policy.
 
-Two real recovery attempts established two independent issues:
-1. ``_JAPANESE_SAFE_FIXES`` contained an over-broad ``をな... -> を...`` substitution that
-   corrupted valid Japanese such as ``迷子をなくす`` into ``迷子をくす``.
-2. A candidate with sufficient Evidence and PASS Fact/Editorial/Publication gates could fail
-   only Reader Value, yet the dedicated recovery lane spent one generation request and then
-   stopped even though its hard budget intentionally allows up to four requests.
+Run284 came from bounded current-policy Ready recovery and keeps two narrow protections:
+1. disable the proven unsafe ``をな... -> を...`` Japanese polish substitution;
+2. allow at most one existing model-based Reader Value repair only inside the explicit
+   current-policy Ready recovery lane when Evidence is already safe and blockers are reader-only.
 
-This overlay is deliberately narrow:
-- disable only the proven unsafe Japanese substitution; all other deterministic fixes remain;
-- permit at most one model-based Reader Value repair only for
-  ``candidate_origin=current_policy_ready_recovery``;
-- require evidence state SUFFICIENT, decision scope safe, reader-only REVIEW reasons, and only
-  repairable density/accessibility failures observed in Production;
-- preserve the original retry decision everywhere else.
+Run352 comes from the real Run38 DeepSeek artifact comparison. The original draft had GOOD
+Curiosity/Narrative/Temperature/Reader Proximity, but the Fact-oriented Quality Retry rewrote
+non-target reader material and the final deterministic rescue later created ``だがに`` by
+removing ``圧倒的`` from ``だが圧倒的に``. Run352 therefore:
+- strengthens only an already-authorized retry with a local-edit preservation contract;
+- forbids filling a repair with new numbers, ROI/cost outcomes, comparisons, adoption claims,
+  or named entities that were absent from the previous article;
+- repairs only an adverbial ``に`` proven to have been stranded by the base rescue's exact
+  deletion of ``圧倒的`` / ``劇的`` / ``革命的``.
 
-Run352 is chained at the end of this already-canonical post-reader precision installation point.
-It does not authorize another retry. It only strengthens the prompt of an already-authorized
-retry to preserve non-target reader structure, and repairs the exact stranded adverbial particle
-created by deterministic hype deletion. This keeps Production installation order unchanged while
-avoiding another orchestration branch in ``production_pipeline.py``.
-
-It adds no provider call by itself. It only authorizes the existing bounded quality-retry path
-inside the explicit Run282 recovery workflow, whose four-request hard cap remains authoritative.
+No provider call, retry authorization, retry count, Fact/Evidence/Publication threshold, or
+Notion/network path is added. Keeping Run352 in this already fingerprinted publication-material
+module avoids a new dependency surface while preserving the established Production install order.
 """
 from __future__ import annotations
 
-from typing import Any
-
-import run352_retry_preservation
+import inspect
+from typing import Any, Callable
 
 _INSTALL_FLAG = "_run284_reader_recovery_precision_installed"
+_RUN352_FLAG = "_run352_retry_preservation_installed"
 _SPENT_FLAG = "_run284_current_policy_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
 _DANGEROUS_POLISH_PATTERN = r"をな(?=[一-龥ぁ-んァ-ヶA-Za-z])"
@@ -44,13 +39,18 @@ _REPAIRABLE_READER_LABELS = (
     "final_surface_non_engineer_access_failure",
 )
 
+RETRY_PRESERVATION_CONTRACT = """
+【Run352 局所修正契約｜前回稿の読者価値を壊さない】
+・これは全文リライトではありません。編集フィードバックで指摘された事実・数値・帰属・条件・対象節だけを直してください。
+・指摘対象でない見出し、段落順、導入の読者接点、問い、比喩、具体例、筆者判断、結論の温度感は前回ARTICLEの表現を維持してください。
+・claim / numbers / conditions の修正では、問題のある文だけを削除または根拠範囲へ弱め、周辺段落を新しい説明へ作り直さないでください。
+・前回ARTICLEにない新しい数値、価格、速度、割合、ROI、コスト効果、競合比較、採用実績、固有名詞を修正の穴埋めとして追加しないでください。
+・削除後に助詞だけが残る、文法が壊れる、読者への橋渡しが消える修正は禁止です。修正対象外の文章を短くして帳尻を合わせないでください。
+""".strip()
+
 
 def disable_overbroad_japanese_polish(pipeline_module: Any) -> int:
-    """Remove only the Production-proven unsafe ``をな`` substitution.
-
-    The historical cleanup tuple remains otherwise byte-for-byte equivalent. Returning the
-    removal count makes tests fail loudly if a future refactor changes this contract.
-    """
+    """Remove only the Production-proven unsafe ``をな`` substitution."""
     fixes = tuple(getattr(pipeline_module, "_JAPANESE_SAFE_FIXES", ()) or ())
     filtered = tuple(
         (pattern, replacement)
@@ -91,15 +91,101 @@ def _evidence_is_safe_for_reader_repair(pipeline_module: Any, evidence_result: d
     return evidence_result.get("decision_scope_safe") is True
 
 
+def retry_feedback_with_preservation(quality_feedback: str, previous_article: str) -> str:
+    """Add the Run352 local-edit contract only to an actual retry."""
+    feedback = str(quality_feedback or "").strip()
+    previous = str(previous_article or "").strip()
+    if not feedback or not previous:
+        return quality_feedback or ""
+    if RETRY_PRESERVATION_CONTRACT in feedback:
+        return feedback
+    return feedback + "\n\n" + RETRY_PRESERVATION_CONTRACT
+
+
+def _repair_stranded_adverb_particle(before: str, after: str) -> tuple[str, list[str]]:
+    """Repair only ``に`` stranded by the base rescue's exact hype-token deletion."""
+    original = str(before or "")
+    repaired = str(after or "")
+    changes: list[str] = []
+    for token in ("圧倒的", "劇的", "革命的"):
+        needle = token + "に"
+        start = 0
+        while True:
+            idx = original.find(needle, start)
+            if idx < 0:
+                break
+            prefix = original[max(0, idx - 18):idx]
+            suffix = original[idx + len(needle):idx + len(needle) + 18]
+            bad = prefix + "に" + suffix
+            good = prefix + suffix
+            if bad and bad in repaired:
+                repaired = repaired.replace(bad, good, 1)
+                changes.append(f"remove_stranded_ni_after_{token}")
+            start = idx + len(needle)
+    return repaired, changes
+
+
+def repair_deterministic_rescue_surface(before: dict, rescued: dict) -> tuple[dict, list[str]]:
+    """Repair proven grammar damage without restoring any unsupported claim."""
+    out = dict(rescued or {})
+    changes: list[str] = []
+    for field in ("note_draft", "title_text", "action_text"):
+        fixed, field_changes = _repair_stranded_adverb_particle(
+            str((before or {}).get(field) or ""), str(out.get(field) or "")
+        )
+        if field_changes:
+            out[field] = fixed
+            changes.extend(f"{field}:{change}" for change in field_changes)
+    return out, changes
+
+
+def _wrap_build_decision_prompt(original: Callable[..., Any]) -> Callable[..., Any]:
+    signature = inspect.signature(original)
+
+    def wrapped(*args, **kwargs):
+        bound = signature.bind_partial(*args, **kwargs)
+        feedback = str(bound.arguments.get("quality_feedback") or "")
+        previous = str(bound.arguments.get("previous_article") or "")
+        if feedback and previous:
+            bound.arguments["quality_feedback"] = retry_feedback_with_preservation(feedback, previous)
+        return original(*bound.args, **bound.kwargs)
+
+    wrapped.__name__ = getattr(original, "__name__", "build_decision_prompt")
+    wrapped.__doc__ = getattr(original, "__doc__", None)
+    return wrapped
+
+
+def _install_run352_precision(pipeline_module: Any) -> Any:
+    """Install Run352 prompt/rescue precision without changing retry authorization."""
+    if bool(getattr(pipeline_module, _RUN352_FLAG, False)):
+        return pipeline_module
+
+    original_prompt = getattr(pipeline_module, "build_decision_prompt", None)
+    if callable(original_prompt):
+        pipeline_module.build_decision_prompt = _wrap_build_decision_prompt(original_prompt)
+
+    original_rescue = getattr(pipeline_module, "_apply_deterministic_publication_rescue", None)
+    if callable(original_rescue):
+        def rescue_with_surface_precision(parsed: dict, reason_rows):
+            rescued, changes = original_rescue(parsed, reason_rows)
+            fixed, grammar_changes = repair_deterministic_rescue_surface(parsed, rescued)
+            merged_changes = list(changes or [])
+            if grammar_changes:
+                merged_changes.extend(grammar_changes)
+            return fixed, list(dict.fromkeys(merged_changes))
+
+        pipeline_module._apply_deterministic_publication_rescue = rescue_with_surface_precision
+
+    setattr(pipeline_module, _RUN352_FLAG, True)
+    return pipeline_module
+
+
 def install(pipeline_module: Any) -> Any:
     """Install after the historical reader bridge / Run208 stack, idempotently."""
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
-        # Run352 has its own idempotency marker. Calling it here also makes an older
-        # process that pre-installed Run284 but not Run352 converge safely.
-        run352_retry_preservation.install(pipeline_module)
+        _install_run352_precision(pipeline_module)
         return pipeline_module
 
-    # This removes a deterministic corruption source before any Production generation call.
     disable_overbroad_japanese_polish(pipeline_module)
 
     original_retry_policy = pipeline_module.should_attempt_dynamic_retry
@@ -126,16 +212,11 @@ def install(pipeline_module: Any) -> Any:
         if not _reader_only_repairable(rows, hard):
             return allowed, reason
 
-        # One process-local spend maximum. Run282's DEEP_DIVE_MODEL_BUDGET and workflow hard
-        # cap remain the real provider quota authority, so this cannot form an unbounded loop.
         setattr(pipeline_module, _SPENT_FLAG, True)
         return True, "run284_current_policy_reader_repair"
 
     pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_current_policy_reader_repair
-
-    # Run352 is global retry/rescue precision but intentionally adds no new authorization path.
-    # Chaining it here preserves the established post-reader install location in Production.
-    run352_retry_preservation.install(pipeline_module)
+    _install_run352_precision(pipeline_module)
 
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module
