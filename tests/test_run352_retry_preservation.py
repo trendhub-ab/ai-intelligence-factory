@@ -3,6 +3,7 @@ from __future__ import annotations
 import types
 import unittest
 
+import run284_reader_recovery_precision
 from run352_retry_preservation import (
     RETRY_PRESERVATION_CONTRACT,
     install,
@@ -100,6 +101,28 @@ class Run352RetryPreservationTests(unittest.TestCase):
         self.assertEqual("おしゃべりだが速い", fixed["note_draft"])
         self.assertIn("remove_hype:圧倒的", changes)
         self.assertTrue(any("remove_stranded_ni_after_圧倒的" in item for item in changes))
+
+    def test_run284_production_install_chains_run352_without_authorizing_new_retry(self):
+        retry_calls = []
+
+        def base_retry(reason_rows, evidence_result, candidate_origin="new"):
+            retry_calls.append((list(reason_rows or []), candidate_origin))
+            return False, "reader_value_review_no_retry"
+
+        module = types.SimpleNamespace(
+            _JAPANESE_SAFE_FIXES=(),
+            should_attempt_dynamic_retry=base_retry,
+            GATE_SEVERITY_HARD="HARD",
+            EVIDENCE_SUFFICIENT="SUFFICIENT",
+        )
+        run284_reader_recovery_precision.install(module)
+
+        self.assertTrue(getattr(module, "_run284_reader_recovery_precision_installed", False))
+        self.assertTrue(getattr(module, "_run352_retry_preservation_installed", False))
+        allowed, reason = module.should_attempt_dynamic_retry([], None, "new")
+        self.assertFalse(allowed)
+        self.assertEqual("reader_value_review_no_retry", reason)
+        self.assertEqual(1, len(retry_calls))
 
 
 if __name__ == "__main__":
