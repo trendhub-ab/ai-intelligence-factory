@@ -1,0 +1,107 @@
+name: Groq Article Parity Re-evaluate v4
+on:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - 'groq_article_parity.py'
+      - 'tests/fixtures/groq/article_parity_B0049_input.json'
+      - '.github/workflows/groq-article-parity-reevaluate.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reevaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install jsonschema
+      - name: Download saved v4 Groq output without any provider call
+        uses: actions/download-artifact@v4
+        with:
+          name: groq-article-parity-B0049
+          path: prior-artifact
+          repository: trendhub-ab/ai-intelligence-factory
+          run-id: 34659160334
+          github-token: ${{ github.token }}
+      - name: Re-evaluate saved output with current Production evidence and all quality gates
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          AIIF_GROQ_LIVE: 'false'
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          import note_manuscript
+          import pipeline
+          import production_pipeline
+          from groq_article_parity import evaluate_groq_article_output
+          from source_normalization import install as install_source_normalization
+          from run268_business_source_strategy import install as install_run268
+          from run269_business_source_precision import install as install_run269
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from run287_publication_date_provenance import install as install_run287
+          from reader_quality_precision import install as install_reader_quality_precision
+
+          install_source_normalization(pipeline)
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline)
+          install_run268(pipeline)
+          install_run269(pipeline)
+          install_reader_quality_precision(pipeline)
+          install_run284(pipeline)
+          install_run287(note_manuscript, pipeline)
+
+          candidates = list(Path('prior-artifact').rglob('groq-article-result.json'))
+          assert len(candidates) == 1, candidates
+          evaluation = evaluate_groq_article_output(
+              pipeline,
+              str(candidates[0]),
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-article-v4-reevaluation.json',
+          )
+          assert evaluation['provider_calls'] == 1
+          assert evaluation['business_writes'] == 0
+          assert evaluation['persist_results'] is False
+          assert evaluation['parsed']
+          assert evaluation['article_chars'] > 0
+          print(json.dumps({
+              'candidate_id': evaluation['candidate_id'],
+              'model': evaluation['model'],
+              'provider_calls_from_saved_report': evaluation['provider_calls'],
+              'new_provider_calls': 0,
+              'evidence_state': evaluation['evidence_state'],
+              'evidence_sufficient': evaluation['evidence_sufficient'],
+              'fact_ok': evaluation['fact_ok'],
+              'fact_failures': evaluation['fact_failures'],
+              'editorial_ok': evaluation['editorial_ok'],
+              'editorial_warnings': evaluation['editorial_warnings'],
+              'publication_state': evaluation['publication_state'],
+              'publication_issues': evaluation['publication_issues'],
+              'human_appeal_state': evaluation['human_appeal_state'],
+              'human_appeal_issues': evaluation['human_appeal_issues'],
+              'gate_disposition': evaluation['gate_disposition'],
+              'quality_validated': evaluation['quality_validated'],
+              'decision_score': evaluation['decision_score'],
+              'article_chars': evaluation['article_chars'],
+              'business_writes': evaluation['business_writes'],
+          }, ensure_ascii=False))
+      - name: Assert no live provider credential exists
+        run: test -z "${GROQ_API_KEY:-}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-article-parity-v4-reevaluation
+          path: groq-article-v4-reevaluation.json
+          if-no-files-found: warn
+          retention-days: 30
