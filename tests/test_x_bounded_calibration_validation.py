@@ -1,7 +1,6 @@
 import json
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 
 from x_discovery.bounded_calibration_validation import (
     BoundedCalibrationError,
@@ -87,6 +86,17 @@ class XBoundedCalibrationValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(BoundedCalibrationError, "below Calibration threshold"):
             run_calibration_boundary(fake, load(CANDIDATE), load(SCREENING))
         self.assertEqual(fake.provider_calls, 0)
+
+    def test_production_entrypoint_routes_calibration_boundary_before_live_preflight(self):
+        source = Path("production_pipeline.py").read_text(encoding="utf-8")
+        lane = source.index('if mode == "x_saved_candidate_calibration_validation":')
+        preflight = source.index("runtime_state_channel.preflight_runtime_state_channel()", lane)
+        font_setup = source.index("run179_eyecatch_font_refinement.ensure_google_font_assets(", lane)
+        self.assertLess(lane, preflight)
+        self.assertLess(lane, font_setup)
+        scoped = source[lane:preflight]
+        self.assertIn("run_from_paths(pipeline, Path(candidate_path), Path(screening_path))", scoped)
+        self.assertNotIn("pipeline.main()", scoped)
 
 
 if __name__ == "__main__":
