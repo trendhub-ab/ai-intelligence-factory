@@ -1,13 +1,9 @@
-"""GitHub-backed atomic reservation for serialized, bounded Groq experiments.
+"""GitHub-backed atomic reservation and usage reconciliation for Groq experiments.
 
-The pre-existing ledger is never initialized, deleted, or reset by this code.
-GitHub's file SHA is the compare-and-swap token. A conflict aborts before Groq.
-An experiment ID may be sent once, even after the rolling window expires.
-
-Reservations are bucketed by Groq model/rate-policy profile. Historical rows without
-an explicit profile are treated as standalone GPT-OSS 120B reservations, preserving
-all previous consumption and replay protection while allowing the article lane to use
-Compound Mini's separately published Free Plan limits.
+Reservations happen before send and are never deleted. After a successful provider
+response, the same experiment row is atomically reconciled upward to Groq-reported
+actual usage. Experiment IDs remain one-shot forever; reconciliation never creates a
+second request record.
 """
 import base64
 import json
@@ -27,23 +23,9 @@ BRANCH = "runtime/groq-validation"
 PATH = ".runtime/groq_validation_ledger.json"
 
 
-def reserve_state(state, experiment, tokens, now, profile: str = GPT_OSS_120B.name):
-    try:
-        policy = policy_for_name(profile)
-    except ValueError:
-        raise ProviderError("invalid_remote_reservation") from None
+def _validate_state(state, now):
     if not isinstance(state, dict) or state.get("version") != 1 or not isinstance(state.get("attempts"), list):
         raise ProviderError("invalid_remote_ledger")
-    if (
-        not isinstance(experiment, str)
-        or not experiment
-        or type(tokens) is not int
-        or not 1 <= tokens <= policy.safe_tpm
-    ):
-        raise ProviderError("invalid_remote_reservation")
-
-    recent_day = []
-    recent_minute = []
     for row in state["attempts"]:
         if not isinstance(row, dict) or not isinstance(row.get("experiment"), str):
             raise ProviderError("invalid_remote_ledger")
@@ -51,13 +33,27 @@ def reserve_state(state, experiment, tokens, now, profile: str = GPT_OSS_120B.na
             raise ProviderError("invalid_remote_ledger")
         if type(row.get("stamp")) not in {int, float} or not 0 <= row["stamp"] <= now:
             raise ProviderError("invalid_remote_ledger")
+        try:
+            policy_for_name(str(row.get("profile") or GPT_OSS_120B.name))
+        except ValueError:
+            raise ProviderError("invalid_remote_ledger") from None
+
+
+def reserve_state(state, experiment, tokens, now, profile: str = GPT_OSS_120B.name):
+    try:
+        policy = policy_for_name(profile)
+    except ValueError:
+        raise ProviderError("invalid_remote_reservation") from None
+    _validate_state(state, now)
+    if not isinstance(experiment, str) or not experiment or type(tokens) is not int or not 1 <= tokens <= policy.safe_tpm:
+        raise ProviderError("invalid_remote_reservation")
+
+    recent_day = []
+    recent_minute = []
+    for row in state["attempts"]:
         if row["experiment"] == experiment:
             raise ProviderError("experiment_already_reserved")
         row_profile = str(row.get("profile") or GPT_OSS_120B.name)
-        try:
-            policy_for_name(row_profile)
-        except ValueError:
-            raise ProviderError("invalid_remote_ledger") from None
         if row_profile != profile:
             continue
         if row["stamp"] > now - ROLLING_DAY_SECONDS:
@@ -72,15 +68,43 @@ def reserve_state(state, experiment, tokens, now, profile: str = GPT_OSS_120B.na
     if len(recent_minute) >= policy.safe_rpm or sum(row["tokens"] for row in recent_minute) + tokens > policy.safe_tpm:
         raise ProviderError("persistent_validation_minute_budget_exceeded")
 
-    return {
-        "version": 1,
-        "attempts": state["attempts"] + [
-            {"experiment": experiment, "profile": profile, "stamp": now, "tokens": tokens}
-        ],
-    }
+    return {"version": 1, "attempts": state["attempts"] + [
+        {"experiment": experiment, "profile": profile, "stamp": now, "tokens": tokens}
+    ]}
 
 
-def reserve_remote(token, experiment, tokens, opener, profile: str = GPT_OSS_120B.name):
+def reconcile_state(state, experiment, actual_tokens, now, profile: str = GPT_OSS_120B.name):
+    """Replace one reservation with actual usage; never reduce consumed tokens."""
+    try:
+        policy = policy_for_name(profile)
+    except ValueError:
+        raise ProviderError("invalid_remote_reconciliation") from None
+    _validate_state(state, now)
+    if not isinstance(experiment, str) or not experiment or type(actual_tokens) is not int or actual_tokens <= 0:
+        raise ProviderError("invalid_remote_reconciliation")
+
+    matches = [i for i, row in enumerate(state["attempts"]) if row["experiment"] == experiment]
+    if len(matches) != 1:
+        raise ProviderError("reconciliation_experiment_not_unique")
+    idx = matches[0]
+    row = state["attempts"][idx]
+    row_profile = str(row.get("profile") or GPT_OSS_120B.name)
+    if row_profile != profile:
+        raise ProviderError("reconciliation_profile_mismatch")
+    reconciled = max(int(row["tokens"]), actual_tokens)
+    # Usage has already happened, so preserve the truth even if it crossed a local safety
+    # envelope. The caller can then fail closed for subsequent sends using this ledger.
+    if reconciled > policy.official_tpm:
+        raise ProviderError("provider_usage_exceeds_official_tpm")
+
+    attempts = [dict(item) for item in state["attempts"]]
+    attempts[idx]["tokens"] = reconciled
+    attempts[idx]["actual_tokens"] = actual_tokens
+    attempts[idx]["reconciled"] = True
+    return {"version": 1, "attempts": attempts}
+
+
+def _read_remote(token, opener):
     endpoint = f"https://api.github.com/repos/{REPOSITORY}/contents/{PATH}"
     headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
                "User-Agent": "AI-Intelligence-Factory/1.0", "Content-Type": "application/json"}
@@ -88,10 +112,25 @@ def reserve_remote(token, experiment, tokens, opener, profile: str = GPT_OSS_120
     with opener.open(req, timeout=30) as response:
         file = json.load(response)
     state = json.loads(base64.b64decode(file["content"]))
-    updated = reserve_state(state, experiment, tokens, time.time(), profile)
-    data = {"message": "Reserve bounded Groq experiment before provider call", "branch": BRANCH,
-            "sha": file["sha"], "content": base64.b64encode(json.dumps(updated).encode()).decode()}
+    return endpoint, headers, file, state
+
+
+def _write_remote(endpoint, headers, file, state, message, opener):
+    data = {"message": message, "branch": BRANCH, "sha": file["sha"],
+            "content": base64.b64encode(json.dumps(state).encode()).decode()}
     req = urllib.request.Request(endpoint, headers=headers, data=json.dumps(data).encode(), method="PUT")
     with opener.open(req, timeout=30) as response:
         if response.status != 200:
             raise ProviderError("remote_reservation_failed")
+
+
+def reserve_remote(token, experiment, tokens, opener, profile: str = GPT_OSS_120B.name):
+    endpoint, headers, file, state = _read_remote(token, opener)
+    updated = reserve_state(state, experiment, tokens, time.time(), profile)
+    _write_remote(endpoint, headers, file, updated, "Reserve bounded Groq experiment before provider call", opener)
+
+
+def reconcile_remote(token, experiment, actual_tokens, opener, profile: str = GPT_OSS_120B.name):
+    endpoint, headers, file, state = _read_remote(token, opener)
+    updated = reconcile_state(state, experiment, actual_tokens, time.time(), profile)
+    _write_remote(endpoint, headers, file, updated, "Reconcile Groq reservation to provider-reported usage", opener)
