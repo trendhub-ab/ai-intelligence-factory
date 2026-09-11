@@ -16,7 +16,8 @@ class StockHandoffError(RuntimeError):
     pass
 
 
-def run(pipeline: Any, candidate: dict, calibration: dict, stock: dict) -> dict:
+def build_selected_item(pipeline: Any, candidate: dict, calibration: dict, stock: dict) -> tuple[dict, dict]:
+    """Rebuild the one persisted Defense Factory item and pass the real selector."""
     saved = validate_saved_candidate(candidate)
     expected = {
         "status": "STOCK_SAVED", "operation": "defense-factory-stock-20260911",
@@ -53,10 +54,15 @@ def run(pipeline: Any, candidate: dict, calibration: dict, stock: dict) -> dict:
     selected = pipeline._select_stocked_deep_dive_candidates([item])
     if len(selected) != 1 or selected[0].get("notion_page_id") != page_id:
         raise StockHandoffError("real Stock was not selected by Production Deep Dive policy")
+    return saved, selected[0]
+
+
+def run(pipeline: Any, candidate: dict, calibration: dict, stock: dict) -> dict:
+    saved, item = build_selected_item(pipeline, candidate, calibration, stock)
     return {
         "schema_version": 1, "lane": "x_saved_stock_deep_dive_handoff",
         "status": "DEEP_DIVE_SELECTION_READY", "canonical_url": saved["canonical_url"],
-        "notion_page_id": page_id, "final_score": item["final_score"],
+        "notion_page_id": item["notion_page_id"], "final_score": item["final_score"],
         "stock_persisted": True, "deep_dive_selected": True,
         "model_calls": 0, "notion_writes": 0, "generation_executed": False,
         "publication_executed": False, "factory_write": False,
