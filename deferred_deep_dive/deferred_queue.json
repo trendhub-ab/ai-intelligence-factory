@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-11T17:16:21.878785+00:00",
+  "updated_at": "2026-09-11T17:18:53.293634+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49629668",
-      "deferred_at": "2026-09-10T05:36:27.083593+00:00",
-      "expires_at": "2026-09-24T05:36:27.083593+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "I Let Claude Merge 38 PRs. Here's What Broke",
-        "originalTitle": "I Let Claude Merge 38 PRs. Here's What Broke",
-        "displayName": "I Let Claude Merge 38 PRs. Here's What Broke",
-        "sourceLanguage": "en",
-        "url": "https://www.craigphares.com/i-let-claude-merge-38-prs-heres-what-broke/",
-        "description": "I Let Claude Merge 38 PRs. Here's What Broke",
-        "stargazerCount": 2,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-09T17:01:05Z",
-        "sourceContext": "HN points=2 comments=2 matched_query=Claude",
-        "primaryUrl": "https://www.craigphares.com/i-let-claude-merge-38-prs-heres-what-broke/",
-        "sourceDetails": {
-          "hn_id": "49629668",
-          "hn_url": "https://news.ycombinator.com/item?id=49629668",
-          "external_url": "https://www.craigphares.com/i-let-claude-merge-38-prs-heres-what-broke/",
-          "comments": 2,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d7479ff-dca9-81d2-bb41-ff73480ecd61",
-      "score": 78,
-      "reason": "Claudeによる大量PR自動マージの実務での失敗談と教訓",
-      "commercial_score": 85,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 80.45
-    },
     {
       "key": "https://hugovergnes.github.io/little-lm-3-8b",
       "deferred_at": "2026-09-10T05:36:27.083446+00:00",
