@@ -31,7 +31,6 @@ def load_input(path: str) -> dict[str, Any]:
 
 
 def _fit_output_budget(prompt: str, requested_output_tokens: int, reasoning_effort: str) -> tuple[int, int, int]:
-    """Fit one article request inside Compound Mini's conservative Free Plan envelope."""
     if type(requested_output_tokens) is not int or requested_output_tokens <= 0:
         raise ProviderError("invalid_output_limit")
     estimator = GroqProvider(lambda _: None, token_budget=COMPOUND_MINI.safe_tpm, model=ARTICLE_MODEL)
@@ -46,12 +45,6 @@ def _fit_output_budget(prompt: str, requested_output_tokens: int, reasoning_effo
 
 
 def _production_like_source_info(pipeline, row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Reconstruct the zero-network evidence state Production establishes before generation.
-
-    Parity uses a saved, already-resolved primary source, so it must not run URL/network
-    acquisition again.  It does, however, run the exact current evidence sufficiency policy and
-    expose the same compatibility field (``sufficient``) consumed by Publication Readiness.
-    """
     context = str(row["source_context"])
     explicit_metadata = row.get("evidence_metadata") or {}
     build_metadata = getattr(pipeline, "_build_evidence_metadata", None)
@@ -86,7 +79,6 @@ def _production_like_source_info(pipeline, row: dict[str, Any]) -> tuple[dict[st
 
 
 def build_production_article_fixture(pipeline, input_path: str, output_path: str) -> dict[str, Any]:
-    """Build canonical Production prompt, then compile only its editorial meta-guidance."""
     row = load_input(input_path)
     source_info, evidence_result = _production_like_source_info(pipeline, row)
     evidence_metadata = source_info["evidence_metadata"]
@@ -142,7 +134,7 @@ def build_production_article_fixture(pipeline, input_path: str, output_path: str
 
 
 def evaluate_groq_article_output(pipeline, groq_report_path: str, input_path: str, output_path: str) -> dict[str, Any]:
-    """Run the saved Groq output through Production evidence policy and all four quality gates."""
+    """Mirror Production post-processing, evidence policy and all four article gates."""
     row = load_input(input_path)
     report = json.loads(Path(groq_report_path).read_text(encoding="utf-8"))
     result = report.get("result") or {}
@@ -150,24 +142,19 @@ def evaluate_groq_article_output(pipeline, groq_report_path: str, input_path: st
     if not text:
         raise ValueError("Groq article result text missing")
     parsed = pipeline._parse_gemini_response(text)
+    parsed, polish_changes = pipeline._apply_final_japanese_polish(parsed)
+    parsed, structure_changes = pipeline._apply_deterministic_structure_polish(parsed)
     source_info, evidence_result = _production_like_source_info(pipeline, row)
     verification_context = source_info["verification_context"]
     freshness = row.get("freshness") or {}
 
     fact_ok, fact_failures = pipeline.validate_fact_gate(
-        parsed,
-        row["name"],
-        source_context=verification_context,
-        source=row["source"],
-        evidence_metadata=source_info["evidence_metadata"],
-        source_info=source_info,
-        freshness=freshness,
-        output_truncated=False,
+        parsed, row["name"], source_context=verification_context, source=row["source"],
+        evidence_metadata=source_info["evidence_metadata"], source_info=source_info,
+        freshness=freshness, output_truncated=False,
     )
     editorial_ok, editorial_warnings = pipeline.validate_editorial_gate(parsed, row["name"])
-    publication_state, publication_issues = pipeline.validate_publication_readiness_gate(
-        parsed, verification_context, source_info
-    )
+    publication_state, publication_issues = pipeline.validate_publication_readiness_gate(parsed, verification_context, source_info)
     human_state, human_issues = pipeline.validate_human_appeal_gate(parsed, [])
 
     fact_failures = list(fact_failures or [])
@@ -186,35 +173,20 @@ def evaluate_groq_article_output(pipeline, groq_report_path: str, input_path: st
     quality_validated = bool(article.strip()) and disposition in publishable_dispositions
 
     evaluation = {
-        "candidate_id": row["candidate_id"],
-        "provider": report.get("provider"),
-        "model": report.get("model"),
+        "candidate_id": row["candidate_id"], "provider": report.get("provider"), "model": report.get("model"),
         "provider_calls": int(report.get("provider_calls") or 0),
-        "prompt_tokens": int(result.get("prompt_tokens") or 0),
-        "completion_tokens": int(result.get("completion_tokens") or 0),
-        "parsed": bool(parsed),
-        "article_chars": len(article),
-        "decision_score": parsed.get("score"),
-        "decision": parsed.get("decision"),
-        "evidence_state": evidence_result.get("state"),
-        "evidence_sufficient": source_info["sufficient"],
+        "prompt_tokens": int(result.get("prompt_tokens") or 0), "completion_tokens": int(result.get("completion_tokens") or 0),
+        "parsed": bool(parsed), "article_chars": len(article), "decision_score": parsed.get("score"), "decision": parsed.get("decision"),
+        "polish_changes": list(polish_changes or []), "structure_changes": list(structure_changes or []),
+        "evidence_state": evidence_result.get("state"), "evidence_sufficient": source_info["sufficient"],
         "evidence_checks": evidence_result.get("checks") or {},
-        "fact_ok": bool(fact_ok),
-        "fact_failures": fact_failures,
-        "editorial_ok": bool(editorial_ok),
-        "editorial_warnings": editorial_warnings,
-        "publication_state": publication_state,
-        "publication_issues": publication_issues,
-        "human_appeal_state": human_state,
-        "human_appeal_issues": human_issues,
-        "gate_disposition": disposition,
-        "reason_rows": reason_rows,
-        # Backward-compatible aliases used by the existing live workflow summary.
-        "gate_state": publication_state,
-        "gate_issues": publication_issues,
-        "business_writes": 0,
-        "persist_results": False,
-        "quality_validated": quality_validated,
+        "fact_ok": bool(fact_ok), "fact_failures": fact_failures,
+        "editorial_ok": bool(editorial_ok), "editorial_warnings": editorial_warnings,
+        "publication_state": publication_state, "publication_issues": publication_issues,
+        "human_appeal_state": human_state, "human_appeal_issues": human_issues,
+        "gate_disposition": disposition, "reason_rows": reason_rows,
+        "gate_state": publication_state, "gate_issues": publication_issues,
+        "business_writes": 0, "persist_results": False, "quality_validated": quality_validated,
     }
     Path(output_path).write_text(json.dumps(evaluation, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return evaluation
