@@ -28,7 +28,8 @@ class ProviderTests(unittest.TestCase):
         )
         result = p.generate(GenerationRequest("記事" * 2000, 2000, reasoning_effort="medium"))
         self.assertEqual(result.model, COMPOUND_MINI.model)
-        self.assertEqual(calls[0]["tool_choice"], "none")
+        self.assertEqual(calls[0]["compound_custom"]["tools"]["enabled_tools"], [])
+        self.assertNotIn("tool_choice", calls[0])
         self.assertEqual(calls[0]["citation_options"], "disabled")
         self.assertNotIn("reasoning_effort", calls[0])
 
@@ -49,7 +50,7 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(p.attempts, 0)
 
     def test_http_failure_is_not_retried(self):
-        for status, kind in [(429, "rate_limit_error"), (503, "capacity_error"), (401, "authentication_error")]:
+        for status, kind in [(429, "rate_limit_error"), (503, "capacity_error"), (401, "authentication_error"), (422, "invalid_request")]:
             p = GroqProvider(lambda _: (status, {"Retry-After": "2"}, {"secret": "hidden"}))
             with self.assertRaises(ProviderError) as cm:
                 p.generate(GenerationRequest("test", 100))
