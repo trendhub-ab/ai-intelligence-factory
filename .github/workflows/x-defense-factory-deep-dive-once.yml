@@ -1,0 +1,75 @@
+name: X Defense Factory Deep Dive Once
+
+on:
+  push:
+    branches:
+      - feature/x-bounded-factory-validation
+    paths:
+      - '.github/workflows/x-defense-factory-deep-dive-once.yml'
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deep-dive-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/x-bounded-factory-validation
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt google-genai==1.75.0
+
+      - name: Execute exactly one non-persistent Deep Dive turn
+        env:
+          TZ: Asia/Tokyo
+          AIIF_ONE_SHOT_MODE: x_saved_stock_deep_dive_once
+          AIIF_X_SAVED_CANDIDATE_PATH: x_discovery/fixtures/defense_factory_boundary_20260911.json
+          AIIF_X_CALIBRATION_OBSERVATION_PATH: x_discovery/observations/defense_factory_calibration_20260911.json
+          AIIF_X_STOCK_OBSERVATION_PATH: x_discovery/observations/defense_factory_stock_20260911.json
+          AIIF_X_DEEP_DIVE_EXECUTE: 'true'
+          AIIF_X_DEEP_DIVE_OPERATION: defense-factory-deep-dive-20260911
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GEMINI_DAILY_REQUEST_BUDGET: '1'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '1'
+          GEMINI_PENDING_RETRY_REQUEST_BUDGET: '0'
+          GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET: '0'
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: runtime-state
+          GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
+          GEMINI_36_FLASH_DAILY_BUDGET: '18'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: gemini-3.6-flash
+          GEMINI_SCREENING_MODEL_CANDIDATES: gemini-3.5-flash-lite
+          GEMINI_DEEP_DIVE_CALL_PACING_SECONDS: '0'
+          GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: '120'
+          GEMINI_DEEP_DIVE_RETRY_BUDGET: '0'
+          GEMINI_SCREENING_RETRY_BUDGET: '0'
+          TELEGRAM_BOT_TOKEN: ''
+          TELEGRAM_CHAT_ID: ''
+        run: |
+          set -o pipefail
+          python production_pipeline.py 2>&1 | tee deep-dive-once.log
+
+      - name: Upload bounded execution record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defense-factory-deep-dive-once
+          path: deep-dive-once.log
+          if-no-files-found: warn
+          retention-days: 7
