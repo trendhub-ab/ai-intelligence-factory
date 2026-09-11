@@ -8,6 +8,7 @@ on:
       - 'x_discovery/bounded_calibration_validation.py'
       - 'x_discovery/stock_once.py'
       - 'x_discovery/stock_deep_dive_handoff.py'
+      - 'x_discovery/deep_dive_once.py'
       - 'x_discovery/observations/defense_factory_calibration_20260911.json'
       - 'x_discovery/observations/defense_factory_stock_20260911.json'
       - 'x_discovery/fixtures/defense_factory_boundary_20260911.json'
@@ -16,6 +17,7 @@ on:
       - 'tests/test_x_bounded_calibration_validation.py'
       - 'tests/test_x_stock_once.py'
       - 'tests/test_x_stock_deep_dive_handoff.py'
+      - 'tests/test_x_deep_dive_once.py'
       - '.github/workflows/x-bounded-validation-ci.yml'
   workflow_dispatch:
 
@@ -44,10 +46,12 @@ jobs:
           x_discovery/bounded_calibration_validation.py
           x_discovery/stock_once.py
           x_discovery/stock_deep_dive_handoff.py
+          x_discovery/deep_dive_once.py
           tests/test_x_bounded_factory_validation.py
           tests/test_x_bounded_calibration_validation.py
           tests/test_x_stock_once.py
           tests/test_x_stock_deep_dive_handoff.py
+          tests/test_x_deep_dive_once.py
       - name: Run bounded validation unit contracts
         run: >-
           python -m unittest
@@ -55,3 +59,4 @@ jobs:
           tests.test_x_bounded_calibration_validation
           tests.test_x_stock_once
           tests.test_x_stock_deep_dive_handoff
+          tests.test_x_deep_dive_once
