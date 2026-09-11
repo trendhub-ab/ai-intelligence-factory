@@ -120,7 +120,9 @@ def evaluate_groq_article_output(pipeline, groq_report_path: str, input_path: st
         row["source_context"],
         source_info,
     )
+    gate_issues = list(gate_issues or [])
     article = str(parsed.get("note_draft") or "")
+    quality_validated = gate_state == "PASS" and not gate_issues and bool(article.strip())
     evaluation = {
         "candidate_id": row["candidate_id"],
         "provider": report.get("provider"),
@@ -133,10 +135,10 @@ def evaluate_groq_article_output(pipeline, groq_report_path: str, input_path: st
         "decision_score": parsed.get("score"),
         "decision": parsed.get("decision"),
         "gate_state": gate_state,
-        "gate_issues": list(gate_issues or []),
+        "gate_issues": gate_issues,
         "business_writes": 0,
         "persist_results": False,
-        "quality_validated": True,
+        "quality_validated": quality_validated,
     }
     Path(output_path).write_text(json.dumps(evaluation, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return evaluation
