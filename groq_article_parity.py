@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from ai_provider import GenerationRequest, GroqProvider, ProviderError
-from groq_rate_policy import SAFE_TPM
+from groq_rate_policy import COMPOUND_MINI
 
 
 ARTICLE_STAGE = "article"
+ARTICLE_MODEL = COMPOUND_MINI.model
 MIN_ARTICLE_OUTPUT_TOKENS = 2000
 
 
@@ -29,22 +30,20 @@ def load_input(path: str) -> dict[str, Any]:
 
 
 def _fit_output_budget(prompt: str, requested_output_tokens: int, reasoning_effort: str) -> tuple[int, int, int]:
-    """Fit one article request inside the Factory's conservative Groq TPM envelope.
-
-    We measure the current prompt with the exact same estimator used by the provider,
-    then allocate only the remaining SAFE_TPM capacity to completion. If fewer than
-    MIN_ARTICLE_OUTPUT_TOKENS remain, fail closed rather than send a request that is too
-    constrained to be a meaningful article-quality comparison.
-    """
+    """Fit one article request inside Compound Mini's conservative Free Plan envelope."""
     if type(requested_output_tokens) is not int or requested_output_tokens <= 0:
         raise ProviderError("invalid_output_limit")
-    estimator = GroqProvider(lambda _: None, token_budget=SAFE_TPM)
+    estimator = GroqProvider(
+        lambda _: None,
+        token_budget=COMPOUND_MINI.safe_tpm,
+        model=ARTICLE_MODEL,
+    )
     _, minimum_request_estimate = estimator.prepare(
         GenerationRequest(prompt, 1, None, reasoning_effort)
     )
     fixed_input_and_framing = minimum_request_estimate - 1
-    available_output = SAFE_TPM - fixed_input_and_framing
-    selected_output = min(requested_output_tokens, available_output)
+    available_output = COMPOUND_MINI.safe_tpm - fixed_input_and_framing
+    selected_output = min(requested_output_tokens, available_output, 8192)
     if selected_output < MIN_ARTICLE_OUTPUT_TOKENS:
         raise ProviderError("article_prompt_too_large_for_free_plan")
     total_estimate = fixed_input_and_framing + selected_output
@@ -75,6 +74,8 @@ def build_production_article_fixture(pipeline, input_path: str, output_path: str
     )
     payload = {
         "stage": ARTICLE_STAGE,
+        "model": ARTICLE_MODEL,
+        "rate_policy": COMPOUND_MINI.name,
         "prompt": prompt,
         "max_output_tokens": selected_output,
         "reasoning_effort": reasoning_effort,
@@ -86,12 +87,14 @@ def build_production_article_fixture(pipeline, input_path: str, output_path: str
             "screening_score": int(row.get("screening_score") or 0),
             "business_writes": 0,
             "production_prompt_builder": "pipeline.build_decision_prompt",
-            "groq_safe_tpm": SAFE_TPM,
+            "groq_model": ARTICLE_MODEL,
+            "groq_safe_tpm": COMPOUND_MINI.safe_tpm,
             "requested_output_tokens": requested_output,
             "selected_output_tokens": selected_output,
             "estimated_input_and_framing_tokens": fixed_estimate,
             "estimated_total_tokens": total_estimate,
-            "estimated_tpm_headroom": SAFE_TPM - total_estimate,
+            "estimated_tpm_headroom": COMPOUND_MINI.safe_tpm - total_estimate,
+            "external_tools": "disabled",
         },
     }
     Path(output_path).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
