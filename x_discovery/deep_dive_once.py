@@ -16,7 +16,6 @@ from typing import Any
 
 from x_discovery.stock_deep_dive_handoff import (
     EXPECTED_STOCK_SHA256,
-    StockHandoffError,
     build_selected_item,
 )
 
@@ -63,7 +62,27 @@ def claim_operation(pipeline: Any, evidence: dict, put=None) -> None:
         raise DeepDiveOnceError("operation not claimed; stop without model request")
 
 
+def _force_bounded_generation_controls(p: Any) -> dict[str, Any]:
+    """Disable every optional second-turn/tool path only inside this bounded process."""
+    original = {
+        "MAX_QUALITY_RETRIES": p.MAX_QUALITY_RETRIES,
+        "ENABLE_URL_CONTEXT": p.ENABLE_URL_CONTEXT,
+        "ENABLE_GOOGLE_SEARCH_GROUNDING": p.ENABLE_GOOGLE_SEARCH_GROUNDING,
+    }
+    p.MAX_QUALITY_RETRIES = 0
+    p.ENABLE_URL_CONTEXT = False
+    p.ENABLE_GOOGLE_SEARCH_GROUNDING = False
+    return original
+
+
+def _restore_bounded_generation_controls(p: Any, original: dict[str, Any]) -> None:
+    for name, value in original.items():
+        setattr(p, name, value)
+
+
 def _validate_runtime(p: Any) -> None:
+    if os.environ.get("AIIF_X_DEEP_DIVE_EXECUTE", "").strip().lower() != "true":
+        raise DeepDiveOnceError("explicit Deep Dive execution authorization is required")
     if os.environ.get("AIIF_X_DEEP_DIVE_OPERATION") != OPERATION:
         raise DeepDiveOnceError("fixed Deep Dive operation authorization is required")
     if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
@@ -112,18 +131,31 @@ def _strict_single_model_pool(p: Any):
             count_as_deep_dive=True,
             request_origin=request_origin,
         )
+        usage = getattr(response, "usage_metadata", None)
+        p.AIIF_X_DEEP_DIVE_USAGE = usage.model_dump(mode="json") if usage else None
         return response, MODEL
 
     return strict_pool
 
 
-def _preflight_source(p: Any, repo: dict) -> dict:
-    """Resolve primary evidence before spending the irreversible model claim."""
+def _preflight_source(p: Any, repo: dict) -> tuple[dict, dict]:
+    """Resolve primary evidence/freshness before spending the irreversible model claim."""
     info = p.prepare_source_context(repo)
     info["pre_generation_grounding_state"] = (
         "VERIFIED" if info.get("primary_source_resolved") else "UNVERIFIED"
     )
-    info["freshness_status_available"] = True
+    freshness = p.resolve_followup_freshness(info)
+    if freshness.get("context"):
+        info["context"] = p._truncate_source_context(
+            info.get("context", "") + "\n\n" + freshness["context"]
+        )
+        info["verification_context"] = p._merge_verification_context(
+            info.get("verification_context") or info.get("context", ""), freshness["context"]
+        )
+        info["verification_context_length"] = len(info["verification_context"])
+    info["freshness_status_available"] = (
+        not freshness.get("triggered") or freshness.get("followup_found", False)
+    )
     info["evidence_metadata"] = p._build_evidence_metadata(
         info.get("verification_context") or info.get("context", ""),
         bool(info.get("deep_source_scanned")),
@@ -145,7 +177,7 @@ def _preflight_source(p: Any, repo: dict) -> dict:
     info["decision_scope_safe"] = evidence.get("decision_scope_safe", False)
     info["evidence_result"] = evidence
     info["sufficient"] = True
-    return info
+    return info, freshness
 
 
 def run_once(p: Any, candidate: dict, calibration: dict, stock: dict, claim=None) -> dict:
@@ -156,86 +188,91 @@ def run_once(p: Any, candidate: dict, calibration: dict, stock: dict, claim=None
         raise DeepDiveOnceError("only persisted Defense Factory Final 88 is authorized")
     if item.get("notion_page_id") != EXPECTED_PAGE_ID:
         raise DeepDiveOnceError("unexpected persisted Stock page")
-    _validate_runtime(p)
 
-    # Evidence acquisition is free of Gemini and happens before the irreversible claim.
-    source_info = _preflight_source(p, item["repo"])
-    evidence = {
-        "lane": "x_saved_stock_deep_dive_once",
-        "canonical_url": saved["canonical_url"],
-        "x_post_id": saved["x_post_id"],
-        "notion_page_id": item["notion_page_id"],
-        "final_score": item["final_score"],
-        "model": MODEL,
-        "operation_model_request_ceiling": 1,
-        "persist_results": False,
-        "publication_executed": False,
-        "preflight_evidence_state": source_info.get("evidence_sufficiency"),
-        "primary_source_resolved": bool(source_info.get("primary_source_resolved")),
-    }
-    (claim or claim_operation)(p, evidence)
-
-    original_prepare = p.prepare_source_context
-    original_pool = p._call_deep_dive_pool
-    original_alert = p.send_telegram_alert
-    original_eyecatch = p.generate_note_editorial_eyecatch
+    original_controls = _force_bounded_generation_controls(p)
     try:
-        # Reuse the exact preflight bytes so source retrieval cannot change after claim.
-        p.prepare_source_context = lambda _repo: dict(source_info)
-        p._call_deep_dive_pool = _strict_single_model_pool(p)
-        p.send_telegram_alert = lambda *_args, **_kwargs: None
-        # Visual generation is outside this proof and can never affect article gates.
-        p.generate_note_editorial_eyecatch = lambda *_args, **_kwargs: None
-        report = p.generate_intelligence_report(
-            item["repo"],
-            notion_page_id=item["notion_page_id"],
-            screening_score=item["score"],
-            screening_reason=item.get("reason", ""),
-            persist_results=False,
-            candidate_rank=1,
-            candidate_origin="new",
-            attribution_context=item,
+        _validate_runtime(p)
+        # Evidence acquisition is Gemini-free and happens before the irreversible claim.
+        source_info, freshness = _preflight_source(p, item["repo"])
+        evidence = {
+            "lane": "x_saved_stock_deep_dive_once",
+            "canonical_url": saved["canonical_url"],
+            "x_post_id": saved["x_post_id"],
+            "notion_page_id": item["notion_page_id"],
+            "final_score": item["final_score"],
+            "model": MODEL,
+            "operation_model_request_ceiling": 1,
+            "persist_results": False,
+            "publication_executed": False,
+            "preflight_evidence_state": source_info.get("evidence_sufficiency"),
+            "primary_source_resolved": bool(source_info.get("primary_source_resolved")),
+        }
+        (claim or claim_operation)(p, evidence)
+
+        original_prepare = p.prepare_source_context
+        original_freshness = p.resolve_followup_freshness
+        original_pool = p._call_deep_dive_pool
+        original_alert = p.send_telegram_alert
+        original_eyecatch = p.generate_note_editorial_eyecatch
+        try:
+            # Reuse exact pre-claim evidence/freshness bytes after authorization is spent.
+            p.prepare_source_context = lambda _repo: dict(source_info)
+            p.resolve_followup_freshness = lambda _info: dict(freshness)
+            p._call_deep_dive_pool = _strict_single_model_pool(p)
+            p.send_telegram_alert = lambda *_args, **_kwargs: None
+            p.generate_note_editorial_eyecatch = lambda *_args, **_kwargs: None
+            report = p.generate_intelligence_report(
+                item["repo"],
+                notion_page_id=item["notion_page_id"],
+                screening_score=item["score"],
+                screening_reason=item.get("reason", ""),
+                persist_results=False,
+                candidate_rank=1,
+                candidate_origin="new",
+                attribution_context=item,
+            )
+        finally:
+            p.prepare_source_context = original_prepare
+            p.resolve_followup_freshness = original_freshness
+            p._call_deep_dive_pool = original_pool
+            p.send_telegram_alert = original_alert
+            p.generate_note_editorial_eyecatch = original_eyecatch
+
+        if p.GEMINI_BUDGET.request_count != 1 or p.DEEP_DIVE_MODEL_BUDGET.used != 1:
+            raise DeepDiveOnceError("Deep Dive proof did not consume exactly one model request")
+        if report is None:
+            status = "DEEP_DIVE_NO_ARTICLE"
+            article = ""
+            quality_status = "not_returned"
+        elif isinstance(report, tuple) and len(report) == 2:
+            article, quality_status = report
+            status = "DEEP_DIVE_GENERATED"
+        else:
+            article = str(report)
+            quality_status = "accepted"
+            status = "DEEP_DIVE_GENERATED"
+        return dict(
+            evidence,
+            schema_version=1,
+            operation=OPERATION,
+            status=status,
+            generation_executed=True,
+            model_calls=1,
+            notion_writes=0,
+            factory_write=False,
+            article_quality_status=quality_status,
+            article_chars=len(article),
+            article_sha256=hashlib.sha256(article.encode("utf-8")).hexdigest() if article else None,
+            stock_persisted=True,
+            deep_dive_selected=True,
+            screening_reexecuted=False,
+            calibration_reexecuted=False,
+            stock_reexecuted=False,
+            publication_executed=False,
+            usage_metadata=getattr(p, "AIIF_X_DEEP_DIVE_USAGE", None),
         )
     finally:
-        p.prepare_source_context = original_prepare
-        p._call_deep_dive_pool = original_pool
-        p.send_telegram_alert = original_alert
-        p.generate_note_editorial_eyecatch = original_eyecatch
-
-    if p.GEMINI_BUDGET.request_count != 1 or p.DEEP_DIVE_MODEL_BUDGET.used != 1:
-        raise DeepDiveOnceError("Deep Dive proof did not consume exactly one model request")
-    if report is None:
-        status = "DEEP_DIVE_NO_ARTICLE"
-        article = ""
-        quality_status = "not_returned"
-    elif isinstance(report, tuple) and len(report) == 2:
-        article, quality_status = report
-        status = "DEEP_DIVE_GENERATED"
-    else:
-        article = str(report)
-        quality_status = "accepted"
-        status = "DEEP_DIVE_GENERATED"
-    usage = getattr(p, "LAST_GEMINI_USAGE", None)
-    return dict(
-        evidence,
-        schema_version=1,
-        operation=OPERATION,
-        status=status,
-        generation_executed=True,
-        model_calls=1,
-        notion_writes=0,
-        factory_write=False,
-        article_quality_status=quality_status,
-        article_chars=len(article),
-        article_sha256=hashlib.sha256(article.encode("utf-8")).hexdigest() if article else None,
-        stock_persisted=True,
-        deep_dive_selected=True,
-        screening_reexecuted=False,
-        calibration_reexecuted=False,
-        stock_reexecuted=False,
-        publication_executed=False,
-        usage_metadata=usage,
-    )
+        _restore_bounded_generation_controls(p, original_controls)
 
 
 def run_from_paths(p: Any, candidate_path: Path, calibration_path: Path, stock_path: Path) -> dict:
