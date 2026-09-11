@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "lane": "x_saved_candidate_validation",
+  "factory_write": false,
+  "evidence_promoted": false,
+  "fixture_provenance": {
+    "x_artifact_run_id": 34495658282,
+    "x_artifact_name": "x-discovery-bootstrap-2",
+    "x_post_id": "2097786616311840853",
+    "primary_url_resolved_from_saved_artifact": true,
+    "prepared_primary_source_capture": "manual_paraphrase_from_current_official_page_for_boundary_validation_only",
+    "prepared_primary_source_checked_at": "2026-09-11",
+    "historical_cached_primary_body_reused": false
+  },
+  "candidate": {
+    "canonical_url": "https://openai.com/the-defense-factory",
+    "x_post_id": "2097786616311840853",
+    "x_post_url": "https://twitter.com/OpenAI/status/2097786616311840853",
+    "author": "OpenAI",
+    "source_platform": "x",
+    "source_role": "discovery_signal",
+    "evidence_status": "discovery_only",
+    "is_evidence": false,
+    "factory_write": false
+  },
+  "prepared_primary_source": {
+    "url": "https://openai.com/the-defense-factory",
+    "title": "Defense Factory",
+    "text": "OpenAI describes a Defense Factory as a continuous, agent-first security operation for finding, validating, and fixing vulnerabilities. The approach connects existing security and engineering tools with reusable agent skills and isolated, reproducible development environments. The official page says OpenAI used recent cyber models in a company-wide security sprint involving more than 250 people across more than 100 service areas. The proposed defensive loop covers inventory, discovery, dynamic validation, ownership assignment, verified remediation, and repeated learning. The architecture separates a control plane from isolated data-plane development environments and emphasizes policy enforcement, credential controls, auditability, human review for consequential changes, and independent verification of deployed fixes. OpenAI presents the model as an incremental automation strategy rather than immediate full autonomy, with teams starting from small batches and human review and increasing automation only after results earn trust. This text is a boundary-validation paraphrase of the official page checked on 2026-09-11, not the historical cached page body."
+  }
+}

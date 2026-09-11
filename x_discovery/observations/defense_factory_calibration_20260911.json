@@ -1,0 +1,71 @@
+{
+  "apify_calls": 0,
+  "calibration_executed": true,
+  "calibration_min_raw_score": 55,
+  "calibration_prompt_chars": 2141,
+  "calibration_prompt_sha256": "b7139ba840cbd1a3346c039dfb8bfa16531e42db4bde858415193c3c9f95532a",
+  "calibration_result": {
+    "commercial_score": 90,
+    "portfolio_topic": "SECURITY",
+    "reason": "OpenAIの先進的なエージェント型セキュリティ運用モデルの実践例であり技術的影響が大きい。",
+    "score": 88,
+    "shelf_life_score": 80,
+    "topic_valid": true,
+    "tracking_eligible": true,
+    "tracking_reason": "組織的なエージェントセキュリティ運用の標準モデルとなるため。"
+  },
+  "candidate_count": 1,
+  "canonical_url": "https://openai.com/the-defense-factory",
+  "deep_dive_selected": false,
+  "factory_write": false,
+  "fetchlayer_calls": 0,
+  "final_score": 88,
+  "generation_executed": false,
+  "input_sha256": "9ddf2cf6080de9c5a1b52f97f56f056a5ea9bfd1d7adc8fb05cf6ddb53a24acd",
+  "lane": "x_saved_candidate_calibration_validation",
+  "model": "gemini-3.5-flash-lite",
+  "model_calls": 1,
+  "notion_calls": 0,
+  "operation": "defense-factory-calibration-20260911",
+  "operation_model_request_ceiling": 1,
+  "publication_executed": false,
+  "raw_commercial_score": 90,
+  "raw_portfolio_topic": "SECURITY",
+  "raw_score": 88,
+  "raw_shelf_life_score": 80,
+  "schema_version": 1,
+  "screening_id": "X0001",
+  "source_fetch_calls": 0,
+  "status": "CALIBRATION_COMPLETED",
+  "stock_persisted": false,
+  "stock_score_eligible": true,
+  "stock_threshold": 60,
+  "unpersisted_deep_dive_guard_verified": true,
+  "usage_metadata": {
+    "cache_tokens_details": null,
+    "cached_content_token_count": null,
+    "candidates_token_count": 119,
+    "candidates_tokens_details": null,
+    "prompt_token_count": 599,
+    "prompt_tokens_details": [
+      {
+        "modality": "TEXT",
+        "token_count": 599
+      }
+    ],
+    "thoughts_token_count": null,
+    "tool_use_prompt_token_count": null,
+    "tool_use_prompt_tokens_details": null,
+    "total_token_count": 718,
+    "traffic_type": null
+  },
+  "x_post_id": "2097786616311840853",
+  "observation_provenance": {
+    "workflow_run_id": 34600579532,
+    "job_id": 103266586342,
+    "source_commit": "9d8ba7bdf33dee2b9098454c7ed5cb70f6a9771d",
+    "artifact_id": 10264421063,
+    "observed_at": "2026-09-11T12:45:58Z",
+    "response_http_status": 200
+  }
+}

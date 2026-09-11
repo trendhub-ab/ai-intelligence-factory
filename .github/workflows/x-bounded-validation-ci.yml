@@ -1,0 +1,67 @@
+name: X Bounded Validation CI
+
+on:
+  pull_request:
+    paths:
+      - 'production_pipeline.py'
+      - 'x_discovery/bounded_factory_validation.py'
+      - 'x_discovery/bounded_calibration_validation.py'
+      - 'x_discovery/stock_once.py'
+      - 'x_discovery/stock_deep_dive_handoff.py'
+      - 'x_discovery/deep_dive_once.py'
+      - 'x_discovery/observations/defense_factory_calibration_20260911.json'
+      - 'x_discovery/observations/defense_factory_stock_20260911.json'
+      - 'x_discovery/fixtures/defense_factory_boundary_20260911.json'
+      - 'x_discovery/fixtures/defense_factory_screening_result_20260911.json'
+      - 'tests/test_x_bounded_factory_validation.py'
+      - 'tests/test_x_bounded_calibration_validation.py'
+      - 'tests/test_x_stock_once.py'
+      - 'tests/test_x_stock_deep_dive_handoff.py'
+      - 'tests/test_x_deep_dive_once.py'
+      - 'tests/test_x_deep_dive_runtime.py'
+      - '.github/workflows/x-bounded-validation-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      GEMINI_API_KEY: ''
+      NOTION_API_KEY: ''
+      GH_PAT: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies for offline transport proof
+        run: pip install -r requirements.txt google-genai==1.75.0
+      - name: Compile bounded validation files
+        run: >-
+          python -m py_compile
+          production_pipeline.py
+          x_discovery/bounded_factory_validation.py
+          x_discovery/bounded_calibration_validation.py
+          x_discovery/stock_once.py
+          x_discovery/stock_deep_dive_handoff.py
+          x_discovery/deep_dive_once.py
+          tests/test_x_bounded_factory_validation.py
+          tests/test_x_bounded_calibration_validation.py
+          tests/test_x_stock_once.py
+          tests/test_x_stock_deep_dive_handoff.py
+          tests/test_x_deep_dive_once.py
+          tests/test_x_deep_dive_runtime.py
+      - name: Run bounded validation unit contracts
+        run: >-
+          python -m unittest
+          tests.test_x_bounded_factory_validation
+          tests.test_x_bounded_calibration_validation
+          tests.test_x_stock_once
+          tests.test_x_stock_deep_dive_handoff
+          tests.test_x_deep_dive_once
+          tests.test_x_deep_dive_runtime

@@ -29,12 +29,7 @@ PRODUCT_REVIEW_PROVIDER_LAYER_ORDER = (
 
 
 def install_product_review_provider_runtime(pipeline_module):
-    """Install only provider/quota safety required by the product-only child.
-
-    Run260 is intentionally excluded so Product Review keeps its explicit
-    3.6 -> 3.7 -> 3.8 -> 3.5 model order rather than inheriting article routing.
-    Article/publication/Reader Value/eyecatch layers are also deliberately absent.
-    """
+    """Install only provider/quota safety required by the product-only child."""
     import run203_runtime_state_channel as runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
@@ -52,14 +47,7 @@ def _product_review_runtime_requested() -> bool:
 
 
 def install_runtime_layers(pipeline_module):
-    """Compatibility manifest for the existing Documentation Freshness Guard.
-
-    The imports below intentionally mirror the canonical modules but contain no
-    installation logic. ``runtime_layers.py`` remains the single source of truth for
-    install order and behavior. Keeping this import-only manifest lets the existing
-    fail-closed documentation guard continue to audit every active layer during the
-    Run231 refactor without weakening its contract.
-    """
+    """Compatibility manifest for the existing Documentation Freshness Guard."""
     import run203_runtime_state_channel
     import gemini_timeout_rpd_fail_closed
     import gemini_transient_recovery
@@ -93,23 +81,10 @@ def install_runtime_layers(pipeline_module):
     return _canonical_install_runtime_layers(pipeline_module)
 
 
-# Runtime compatibility contract: callers historically imported
-# ``production_pipeline.install_runtime_layers`` and some regression contracts inspect
-# that callable's source to verify wrapper order. Point the public runtime symbol at
-# the canonical implementation so those callers observe the real Source of Truth,
-# while the import-only function above remains available to static documentation
-# freshness analysis. This avoids duplicating installation logic or weakening guards.
 install_runtime_layers = _canonical_install_runtime_layers
 
 
 def _workflow_dispatch_mode() -> str:
-    """Return the ONE-SHOT workflow mode without changing normal/local execution.
-
-    GitHub Actions exposes workflow_dispatch inputs through ``GITHUB_EVENT_PATH``.
-    An explicit ``AIIF_ONE_SHOT_MODE`` is accepted for hermetic tests and controlled
-    local validation. Unknown/missing values deliberately fall back to the normal
-    production path; the workflow itself still owns the allowlist/fail-closed check.
-    """
     explicit = os.environ.get("AIIF_ONE_SHOT_MODE", "").strip()
     if explicit:
         return explicit
@@ -125,9 +100,6 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
-    # Run305: Product Review is still a child process, but every root executable must
-    # enter through this sole production authority. Branch before article imports so
-    # product-only execution does not install or initialize article/publication layers.
     if _product_review_runtime_requested():
         _run_product_review_runtime()
         return
@@ -147,46 +119,75 @@ def main() -> None:
     from run287_publication_date_provenance import install as install_run287_publication_date_provenance
     from reader_quality_precision import install as install_reader_quality_precision
 
-    # Run235 Stage3A structural extraction. These functions are pure and zero-API.
-    # Install them before the historical runtime wrapper chain so every later layer sees
-    # the canonical source-normalization surface without changing wrapper order.
     install_source_normalization(pipeline)
-
-    # Compatibility contract: install every historical production layer before any
-    # current strategy overlay. Historical quality/reliability wrapper order must not
-    # change when source acquisition strategy changes.
     install_runtime_layers(pipeline)
-
-    # Run283 is a current zero-API Fact precision overlay, not a historical runtime-layer
-    # mutation. It filters only proven cross-language numeric false positives and remains
-    # separately fingerprinted by Publication Contract.
     install_run283_numeric_evidence_equivalence(pipeline)
-
-    # Run268 is the source/business architecture authority: four active sources,
-    # OfficialVendor replacing Product Hunt, and Proposal-First product semantics.
     install_run268_business_source_strategy(pipeline)
-
-    # Run269 is precision-only. It keeps Run268's architecture and tightens the two
-    # live network acquisition surfaces after real smoke testing exposed vendor-nav and
-    # HN typo false positives. No provider/model/Notion path is introduced here.
     install_run269_business_source_precision(pipeline)
-
-    # Run275 is a zero-API publication-quality precision overlay derived from real Run31
-    # artifacts. It corrects only reproducible Reader signal false positives (opening
-    # bridge, visible heading rhythm, later acronym explanation) and one malformed
-    # Japanese particle collision. Genuine dense-reader failures remain REVIEW.
     install_reader_quality_precision(pipeline)
-
-    # Run284 is derived from two real current-policy recovery attempts. It removes one
-    # deterministic Japanese corruption rule for every Production article, and authorizes
-    # one existing Reader Value quality-repair call only inside the explicit Run282 recovery
-    # lane when Evidence is already SUFFICIENT and all blockers are reader-only.
     install_run284_reader_recovery_precision(pipeline)
-
-    # Run287 keeps discovery timestamps honest on the public manuscript. Hacker News
-    # item time is labeled as the HN post date and can never masquerade as the external
-    # primary source's publication/update date. This is deterministic and zero-provider.
     install_run287_publication_date_provenance(note_manuscript, pipeline)
+
+    mode = _workflow_dispatch_mode()
+
+    if mode == "x_saved_candidate_validation":
+        from pathlib import Path
+        from x_discovery.bounded_factory_validation import BoundedValidationError, run_from_path
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        if not candidate_path:
+            raise BoundedValidationError("AIIF_X_SAVED_CANDIDATE_PATH is required")
+        run_from_path(pipeline, Path(candidate_path))
+        return
+
+    if mode == "x_saved_candidate_calibration_validation":
+        from pathlib import Path
+        from x_discovery.bounded_calibration_validation import BoundedCalibrationError, run_from_paths
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        screening_path = os.environ.get("AIIF_X_SAVED_SCREENING_PATH", "").strip()
+        if not candidate_path:
+            raise BoundedCalibrationError("AIIF_X_SAVED_CANDIDATE_PATH is required")
+        if not screening_path:
+            raise BoundedCalibrationError("AIIF_X_SAVED_SCREENING_PATH is required")
+        run_from_paths(pipeline, Path(candidate_path), Path(screening_path))
+        return
+
+    if mode == "x_saved_candidate_stock_once":
+        from pathlib import Path
+        from x_discovery.stock_once import StockOnceError, run_from_paths
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        observation_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
+        if not candidate_path:
+            raise StockOnceError("AIIF_X_SAVED_CANDIDATE_PATH is required")
+        if not observation_path:
+            raise StockOnceError("AIIF_X_CALIBRATION_OBSERVATION_PATH is required")
+        run_from_paths(pipeline, Path(candidate_path), Path(observation_path))
+        return
+
+    if mode == "x_saved_stock_deep_dive_handoff":
+        from pathlib import Path
+        from x_discovery.stock_deep_dive_handoff import StockHandoffError, run_from_paths
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        calibration_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
+        stock_path = os.environ.get("AIIF_X_STOCK_OBSERVATION_PATH", "").strip()
+        if not all((candidate_path, calibration_path, stock_path)):
+            raise StockHandoffError("candidate, Calibration and Stock paths are required")
+        run_from_paths(pipeline, Path(candidate_path), Path(calibration_path), Path(stock_path))
+        return
+
+    # One non-persistent Deep Dive generation proof from the already persisted Stock.
+    # Screening, Calibration and Stock persistence are never re-run here. The operation
+    # owns a durable create-only claim and permits exactly one model request, no Quality
+    # Retry, no Gemini URL/Search tools, no Notion write, and no publication.
+    if mode == "x_saved_stock_deep_dive_once":
+        from pathlib import Path
+        from x_discovery.deep_dive_once import DeepDiveOnceError, run_from_paths
+        candidate_path = os.environ.get("AIIF_X_SAVED_CANDIDATE_PATH", "").strip()
+        calibration_path = os.environ.get("AIIF_X_CALIBRATION_OBSERVATION_PATH", "").strip()
+        stock_path = os.environ.get("AIIF_X_STOCK_OBSERVATION_PATH", "").strip()
+        if not all((candidate_path, calibration_path, stock_path)):
+            raise DeepDiveOnceError("candidate, Calibration and Stock paths are required")
+        run_from_paths(pipeline, Path(candidate_path), Path(calibration_path), Path(stock_path))
+        return
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
@@ -196,40 +197,17 @@ def main() -> None:
         logger=getattr(pipeline, "logger", None),
     )
 
-    # The direct-import compatibility bridge in pipeline.py owns the legacy/internal
-    # renderer installation. Do not import legacy_eyecatch_renderer again here: the live
-    # publication renderer remains usable when that obsolete module itself is absent.
-
-    # Zero-API, observational only. Installed last so timers see the final production
-    # functions without participating in the historical wrapper chain.
     install_performance_telemetry(pipeline)
 
-    mode = _workflow_dispatch_mode()
-
-    # Run282: current-policy Ready recovery is an explicit, bounded business-write lane.
-    # It never enters fresh acquisition/screening/Product Review and regenerates at most
-    # one historical Ready row on its original Notion page. The canonical quality stack
-    # still owns the manuscript bytes, status, and fail-closed outcome.
     if mode == "current_policy_ready_recovery":
         run_current_policy_ready_recovery(pipeline)
         return
-
-    # Run277: article_validation must validate an *existing non-Ready* candidate.
-    # Fresh acquisition would be defeated by the authoritative Notion dedupe and would
-    # silently change the validation target after every Gate fix. The dedicated lane is
-    # read-only (persist_results=False) and bounded.
     if mode == "article_validation":
         run_article_revalidation(pipeline)
         return
-
-    # Run276: pending_retry_validation must consume a real persisted pending-retry
-    # candidate rather than a fresh candidate. One item max, persist_results=False.
     if mode == "pending_retry_validation":
         run_article_revalidation(pipeline, pending_only=True)
         return
-
-    # Run277 production repair lane. Outside this explicit mode the historical runtime
-    # policy remains unchanged.
     if mode == "full":
         install_full_recovery(pipeline)
 
@@ -237,10 +215,8 @@ def main() -> None:
 
 
 def _run_product_review_runtime() -> None:
-    """Run product-only pipeline through the narrow Run305 provider runtime."""
     import pipeline
     import run203_runtime_state_channel as runtime_state_channel
-
     install_product_review_provider_runtime(pipeline)
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
