@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from runtime_layers import install_runtime_layers as _canonical_install_runtime_layers
 
@@ -102,6 +103,88 @@ def install_runtime_layers(pipeline_module):
 install_runtime_layers = _canonical_install_runtime_layers
 
 
+def _sentence_around(text: str, start: int, end: int) -> str:
+    """Return the Japanese sentence containing one urgency match."""
+    body = str(text or "")
+    left_candidates = [body.rfind(mark, 0, start) for mark in "。！？!?\n"]
+    left = max(left_candidates, default=-1) + 1
+    right_candidates = [pos for mark in "。！？!?\n" if (pos := body.find(mark, end)) >= 0]
+    right = min(right_candidates) + 1 if right_candidates else len(body)
+    return body[left:right].strip()
+
+
+def _urgency_mention_is_explicitly_rejected(sentence: str, urgency: str) -> bool:
+    """True only for explicit rejection of the matched high-urgency action.
+
+    Mere caution ("risk exists") is intentionally insufficient. We require language
+    such as unnecessary / avoid / do not rush / too risky / should not. This keeps a
+    sentence like "there is risk, but migrate anyway" blocking as before.
+    """
+    s = re.sub(r"\s+", "", str(sentence or ""))
+    if not s or urgency not in s:
+        return False
+    rejection = (
+        r"(?:不要|必要(?:は|が)?(?:ない|ありません)|必要ない|必要ありません|"
+        r"避け(?:る|ます|たい|るべき)|見送(?:る|ります|るべき)|"
+        r"急が(?:ない|なくてよい|なくてもよい)|急ぐ必要(?:は|が)?(?:ない|ありません)|"
+        r"すべきでは(?:ない|ありません)|しては(?:ならない|いけない)|"
+        r"しない|しません|控え(?:る|ます|たい)|"
+        r"リスクが高すぎ|危険すぎ|危険性が高すぎ|おすすめできない|推奨しない)"
+    )
+    return bool(re.search(rejection, s))
+
+
+def _all_low_score_urgency_mentions_are_explicitly_rejected(article: str) -> bool:
+    """Fail closed: rescue only when every matched urgency expression is rejected."""
+    body = str(article or "")
+    urgency_re = re.compile(r"(?:今すぐ|直ちに|全面(?:導入|移行)|必ず導入)")
+    matches = list(urgency_re.finditer(body))
+    if not matches:
+        return False
+    for match in matches:
+        sentence = _sentence_around(body, match.start(), match.end())
+        if not _urgency_mention_is_explicitly_rejected(sentence, match.group(0)):
+            return False
+    return True
+
+
+def install_run349_score_narrative_negation_precision(pipeline_module):
+    """Remove one proven false-positive score/narrative issue, with zero provider calls.
+
+    Real Run38 produced Score 59 with Fact/Editorial/Human PASS, LOW-risk supported
+    action, and the sentence "全面移行するのはリスクが高すぎます". The base urgency
+    scanner saw the token ``全面移行`` and treated the warning *against* migration as
+    an urgent recommendation. This wrapper only removes ``score_narrative_mismatch``
+    when score <= 69 and every urgency token in the article is explicitly rejected.
+    Any positive or mixed urgency mention keeps the original REVIEW unchanged.
+    """
+    p = pipeline_module
+    marker = "_run349_score_narrative_negation_precision_installed"
+    if bool(getattr(p, marker, False)):
+        return p
+    original = getattr(p, "validate_publication_readiness_gate", None)
+    if not callable(original):
+        return p
+
+    def validate_publication_readiness_gate_with_negation_precision(parsed: dict, source_context: str = "", source_info: dict | None = None):
+        state, issues = original(parsed, source_context, source_info)
+        issues = list(issues or [])
+        score = int((parsed or {}).get("score") or 0)
+        article = str((parsed or {}).get("note_draft") or "")
+        if score and score <= 69 and "score_narrative_mismatch" in issues:
+            if _all_low_score_urgency_mentions_are_explicitly_rejected(article):
+                issues = [issue for issue in issues if issue != "score_narrative_mismatch"]
+                state = "REVIEW" if issues else "PASS"
+                logger = getattr(p, "logger", None)
+                if logger is not None:
+                    logger.info("[RUN349 SCORE NARRATIVE PRECISION] removed negated-urgency false positive score=%s", score)
+        return state, list(dict.fromkeys(issues))
+
+    p.validate_publication_readiness_gate = validate_publication_readiness_gate_with_negation_precision
+    setattr(p, marker, True)
+    return p
+
+
 def _workflow_dispatch_mode() -> str:
     """Return the ONE-SHOT workflow mode without changing normal/local execution.
 
@@ -157,6 +240,11 @@ def main() -> None:
     # current strategy overlay. Historical quality/reliability wrapper order must not
     # change when source acquisition strategy changes.
     install_runtime_layers(pipeline)
+
+    # Run349 is publication precision derived from a real blocked article. It does not
+    # relax score policy: it only stops an explicitly rejected high-urgency action from
+    # being misread as a recommendation. Mixed or positive urgency remains REVIEW.
+    install_run349_score_narrative_negation_precision(pipeline)
 
     # Run283 is a current zero-API Fact precision overlay, not a historical runtime-layer
     # mutation. It filters only proven cross-language numeric false positives and remains
