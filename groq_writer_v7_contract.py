@@ -65,6 +65,21 @@ def _extract(text: str) -> tuple[str, str]:
     return match.group(1).strip(), match.group(2).strip()
 
 
+def _prose_paragraphs(article: str) -> list[str]:
+    """Count prose even when a markdown heading and its following prose share one block."""
+    paragraphs: list[str] = []
+    for block in re.split(r"\n\s*\n", article):
+        block = block.strip()
+        if not block:
+            continue
+        lines = block.splitlines()
+        if lines and re.match(r"^##\s+", lines[0]):
+            block = "\n".join(lines[1:]).strip()
+        if block:
+            paragraphs.append(block)
+    return paragraphs
+
+
 def inspect_writer_report(path: str) -> dict:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     try:
@@ -104,7 +119,7 @@ def inspect_writer_report(path: str) -> dict:
 
     if re.search(r"(?m)^\s*(?:[-*+]\s+|\d+[.)]\s+)", article):
         issues.append("list_output")
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", article) if part.strip() and not part.strip().startswith("##")]
+    paragraphs = _prose_paragraphs(article)
     if not 8 <= len(paragraphs) <= 11:
         issues.append(f"paragraph_count:{len(paragraphs)}")
     if not re.search(r"(?:たとえば|例えば|簡単に言えば|使う側から見ると|似ています|ようなもの)", article[:1000]):
