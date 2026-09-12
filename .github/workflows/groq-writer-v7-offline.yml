@@ -1,0 +1,58 @@
+name: Groq Writer v7 Offline
+on:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - 'groq_writer_v7_contract.py'
+      - 'tests/test_groq_writer_v7_contract.py'
+      - '.github/workflows/groq-writer-v7-offline.yml'
+  pull_request:
+    branches: ['main']
+    paths:
+      - 'groq_writer_v7_contract.py'
+      - 'tests/test_groq_writer_v7_contract.py'
+      - '.github/workflows/groq-writer-v7-offline.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run v7 aggregate reader and source-boundary tests
+        run: python -m unittest tests.test_groq_writer_v7_contract -v
+      - name: Prove v7 hardened GPT-OSS writer still fits Free Plan TPM
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json, shutil
+          from groq_two_pass_article import build_writer_fixture
+          from groq_writer_v5_contract import harden_writer_fixture
+          from groq_writer_v7_contract import harden_writer_fixture_v7
+          from groq_writer_v6_route import route_writer_fixture, preflight_writer_fixture
+          shutil.copyfile('tests/fixtures/groq/two_pass_v3_plan_safe_report.json', 'plan.json')
+          build_writer_fixture(
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'plan.json', 'writer.json'
+          )
+          harden_writer_fixture('writer.json')
+          harden_writer_fixture_v7('writer.json')
+          fixture = route_writer_fixture('writer.json')
+          preflight = preflight_writer_fixture('writer.json')
+          assert fixture['model'] == 'openai/gpt-oss-120b'
+          assert preflight['reserved_estimate'] <= 7000
+          print(json.dumps({
+              'v7_offline': 'PASS',
+              'model': fixture['model'],
+              'reserved_estimate': preflight['reserved_estimate'],
+              'safe_tpm': preflight['safe_tpm'],
+              'headroom': preflight['headroom'],
+              'business_writes': 0,
+          }, ensure_ascii=False))
+      - name: Assert no live credential
+        run: test -z "${GROQ_API_KEY:-}"
