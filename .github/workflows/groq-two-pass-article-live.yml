@@ -64,7 +64,7 @@ jobs:
           AIIF_GROQ_REPORT: two-pass-plan-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-plan-v2-strict-subset
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-plan-v3-semantic-guard
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
@@ -101,7 +101,7 @@ jobs:
           AIIF_GROQ_REPORT: two-pass-writer-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v2-strict-subset
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v3-cas-guard
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
@@ -181,7 +181,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: groq-two-pass-article-B0049
+          name: groq-two-pass-article-B0049-v3
           path: |
             two-pass-plan-fixture.json
             two-pass-plan-report.json
