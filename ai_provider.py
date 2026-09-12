@@ -63,6 +63,43 @@ def conservative_token_estimate(text: str) -> int:
     return max(1, math.ceil((non_ascii + ascii_chars / 4.0) * 1.20))
 
 
+def _groq_strict_schema(schema: dict) -> dict:
+    """Return a conservative Groq Strict-Mode schema while preserving local validation.
+
+    Groq documents Strict Structured Outputs as a JSON-Schema subset with every object
+    property required and additionalProperties=false. Keep the structural/type constraints
+    that Groq documents and move presentation-size constraints to the caller's local
+    validator. The original request.schema is still used after generation, so removing
+    transport-only min/max length/item keywords does not weaken Factory validation.
+    """
+    if not isinstance(schema, dict):
+        raise ProviderError("schema_validator_required")
+    validation_only = {"minLength", "maxLength", "minItems", "maxItems"}
+
+    def normalize(node):
+        if isinstance(node, list):
+            return [normalize(value) for value in node]
+        if not isinstance(node, dict):
+            return node
+        out = {}
+        for key, value in node.items():
+            if key in validation_only:
+                continue
+            out[key] = normalize(value)
+        if out.get("type") == "object":
+            properties = out.get("properties")
+            if not isinstance(properties, dict):
+                raise ProviderError("strict_schema_invalid")
+            required = out.get("required")
+            if not isinstance(required, list) or set(required) != set(properties):
+                raise ProviderError("strict_schema_invalid")
+            if out.get("additionalProperties") is not False:
+                raise ProviderError("strict_schema_invalid")
+        return out
+
+    return normalize(schema)
+
+
 class GroqProvider:
     """Bounded Groq adapter. One instance is a run, NOT a daily quota ledger.
 
@@ -108,7 +145,7 @@ class GroqProvider:
             if not isinstance(request.schema, dict) or self.validate_schema is None:
                 raise ProviderError("schema_validator_required")
             payload["response_format"] = {"type": "json_schema", "json_schema": {
-                "name": "factory_response", "strict": True, "schema": request.schema}}
+                "name": "factory_response", "strict": True, "schema": _groq_strict_schema(request.schema)}}
         try:
             framing = dict(payload)
             framing["messages"] = [{"role": "user", "content": ""}]
