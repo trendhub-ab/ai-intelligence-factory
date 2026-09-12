@@ -1,7 +1,7 @@
 name: Run370 Pending Retry Validation [ONE-TIME]
 
-# Read-only pilot for the persisted Pending Retry row produced by Run368.
-# Revision 2 binds pending validation to pipeline.get_pending_retry_items().
+# Read-only pilot for the oldest persisted Pending Retry row.
+# Revision 3 authorizes one Reader-only repair under Run284 safety predicates.
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run370: one Pending Retry candidate, persist=false, no Note Ready sync, no publication.'
+          echo 'Run370: one Pending Retry candidate, one bounded Reader-only repair, persist=false, no Note Ready sync, no publication.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -47,6 +47,7 @@ jobs:
       - name: Zero-API contract tests
         run: |
           python -m pytest tests/test_run277_article_revalidation.py -q
+          python -m pytest tests/test_run370_pending_reader_repair.py -q
           python -m pytest tests/test_run367_readonly_and_reader_interaction.py -q
           python run280_publication_dependency_guard.py
 
@@ -114,7 +115,7 @@ jobs:
             echo '### Run370 pending validation'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
-            echo '- Gemini model order starts with `3.8`'
+            echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
             echo '- provider request budget: at most `4`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
