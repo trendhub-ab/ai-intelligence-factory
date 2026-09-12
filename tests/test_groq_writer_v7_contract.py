@@ -42,6 +42,21 @@ class GroqWriterV7ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(GroqWriterV7Error, "writer_v7_contract"):
                 validate_writer_report_v7(str(path))
 
+    def test_heading_and_following_prose_in_same_block_still_counts_paragraph(self):
+        paras = [f"段落{i}です。" * 35 for i in range(1, 9)]
+        article = (
+            paras[0] + "\n\n" + paras[1] + "\n\n"
+            "## Astraの数字\n" + paras[2] + "\n\n" + paras[3] + "\n\n"
+            "## zero-dayの意味\n" + paras[4] + "\n\n" + paras[5] + "\n\n"
+            "## 利用条件を読む\n" + paras[6] + "\n\n" + paras[7]
+        )
+        text = "===TITLE===\n見出し直後も数える？\n===ARTICLE===\n" + article
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "report.json"
+            path.write_text(json.dumps(report(text), ensure_ascii=False), encoding="utf-8")
+            inspected = inspect_writer_report(str(path))
+            self.assertEqual(inspected["paragraphs"], 8)
+
     def test_harden_adds_v7_contract_once(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "fixture.json"
