@@ -1,0 +1,1 @@
+Excluded from Run364: 11 unmapped Ready-family rows, 20 legacy manuscript-like rows, 5 unsupported/incomplete rows, 1 missing-eyecatch row.
