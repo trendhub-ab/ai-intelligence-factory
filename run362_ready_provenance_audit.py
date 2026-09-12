@@ -2,8 +2,10 @@
 """Run362: read-only provenance audit for stale Ready manuscripts.
 
 Maps persisted Ready-family policy fingerprints to fingerprints that actually existed on
-main's first-parent history. For pages without Ready-family captions it inventories only
-metadata/hashes of manuscript-like code blocks. It never writes Notion and never calls a model.
+main's first-parent history. A historical Ready match is valid only when the caption policy
+fingerprint existed on main AND the caption manuscript SHA matches the persisted body bytes.
+For pages without valid Ready-family captions it inventories only metadata/hashes of
+manuscript-like code blocks. It never writes Notion and never calls a model.
 """
 from __future__ import annotations
 
@@ -106,6 +108,11 @@ def _block_meta(block: dict, index: int) -> dict[str, Any]:
     }
 
 
+def _is_historical_main_ready(meta: dict[str, Any], history: dict[str, dict[str, str]]) -> bool:
+    psha = str(meta.get("caption_policy_sha256") or "")
+    return bool(psha and psha in history and meta.get("body_sha_valid") is True)
+
+
 def main() -> int:
     if not sync.NOTION_API_KEY:
         raise ValueError("NOTION_API_KEY is required")
@@ -124,9 +131,8 @@ def main() -> int:
         ready = [m for m in metas if m["ready_family"]]
         matched = []
         for m in ready:
-            psha = m["caption_policy_sha256"]
-            if psha and psha in history:
-                matched.append({**m, "historical_main": history[psha]})
+            if _is_historical_main_ready(m, history):
+                matched.append({**m, "historical_main": history[m["caption_policy_sha256"]]})
         legacy_candidates = [
             m for m in metas
             if (not m["ready_family"]) and m["body_len"] >= 500
