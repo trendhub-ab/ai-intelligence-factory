@@ -1,11 +1,15 @@
-name: Run370 Pending Retry Validation [ONE-TIME]
+name: Run374 Pending Retry Validation [ONE-TIME]
 
-# Read-only pilot for one persisted Pending Retry row.
-# Run373 safety hardening: manual-only. No push trigger is allowed because this
-# workflow can spend Gemini free-tier budget. No Notion manuscript/status
-# persistence and no Note Ready reconciliation.
+# One authorized read-only validation after Run373 zero-API hardening.
+# Run374 explicitly forbids Gemini 3.6 for this Pending Retry lane.
+# No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run370-pending-retry-validation.yml'
 
 concurrency:
   group: ai-intelligence-gemini-budget
@@ -23,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run373: manual-only, one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, immediate 503 fallback, persist=false, max 6 provider attempts.'
+          echo 'Run374: one Pending Retry candidate, Gemini 3.6 forbidden, one bounded Reader-only repair, persist=false, max 6 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -61,7 +65,8 @@ jobs:
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '6'
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: '6'
           GEMINI_TRANSIENT_503_COOLDOWN_THRESHOLD: '1'
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.8-flash,gemini-3.5-flash'
+          GEMINI_PENDING_RETRY_EXCLUDED_MODELS: 'gemini-3.6-flash'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
@@ -102,7 +107,7 @@ jobs:
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
           GEMINI_COUNTER_BRANCH: 'main'
           EYECATCH_GITHUB_BRANCH: 'main'
-          GEMINI_36_FLASH_DAILY_BUDGET: '18'
+          GEMINI_36_FLASH_DAILY_BUDGET: '0'
           GEMINI_38_FLASH_DAILY_BUDGET: '18'
           GEMINI_35_FLASH_DAILY_BUDGET: '18'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
@@ -113,12 +118,12 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run373 pending validation'
-            echo '- trigger: `workflow_dispatch` only'
+            echo '### Run374 pending validation'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
-            echo '- explicit primary order: `3.8 -> 3.6 -> 3.5 -> 3.7 fallback`'
+            echo '- Gemini 3.6: `FORBIDDEN` at provider dispatch and daily budget `0`'
+            echo '- configured models: `3.8 -> 3.5`; other non-3.6 fallback may remain available only if upstream normalization appends it'
             echo '- pending-validation HTTP 503: immediate next-model fallback'
             echo '- provider request budget: at most `6`'
             echo '- persist_results: `false`'
