@@ -35,7 +35,12 @@ def test_article_revalidation_reader_retry_matches_fresh_production():
     rows = [_reader_row("reader_value_review:multi_axis_reader_weakness (accessibility/jargon_translation)")]
     evidence = {"state": "SUFFICIENT", "decision_scope_safe": True}
 
+    # Fresh Production and article_revalidation represent distinct candidate executions.
+    # Run360 retry ownership is intentionally candidate-local and resets at the first-pass
+    # Writer boundary, so exercise the same boundary the real pipeline uses.
+    pipeline.build_decision_prompt()
     fresh = pipeline.should_attempt_dynamic_retry(rows, evidence, "new")
+    pipeline.build_decision_prompt()
     validation = pipeline.should_attempt_dynamic_retry(rows, evidence, "article_revalidation")
 
     assert fresh == (True, "run341_production_reader_repair")
