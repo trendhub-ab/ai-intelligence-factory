@@ -48,34 +48,31 @@ def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
 
 
 def _hybrid_refined_semantic_guard(plan: dict) -> dict:
-    """Narrow Hybrid guard that distinguishes uncertainty from positive access claims.
-
-    The shared validate_plan still contains an intentionally conservative legacy substring
-    guard. For the migration experiment we preserve all of its structural/action checks, but
-    when the only failure is unconfirmed_access_scope_claim we re-evaluate access semantics
-    with positive-claim phrases rather than bare subject words such as '一般利用者'.
-    """
+    """Distinguish uncertainty wording from unsupported positive access claims."""
+    legacy_scope_failure = False
     try:
-        return validate_plan(plan)
+        validate_plan(plan)
     except TwoPassArticleError as exc:
         if str(exc) != "unconfirmed_access_scope_claim":
             raise
-
-    if plan.get("access_status") != "NOT_CONFIRMED":
-        raise TwoPassArticleError("unconfirmed_access_scope_claim")
+        legacy_scope_failure = True
 
     management_text = "\n".join([
         plan["source_summary"], plan["what"], plan["why_important"],
         *plan["decision_reason"], plan["action"],
     ]).lower()
-    positive_access_claims = (
-        "一般利用者に適用", "一般ユーザーに適用", "一般利用者が利用でき", "一般ユーザーが利用でき",
-        "誰でも利用", "一般提供され", "一般提供して", "一般利用可能", "利用可能である",
-        "アクセス可能である", "publicly available", "generally available",
-        "条件下で提供され", "条件で提供され",
-    )
-    if any(term.lower() in management_text for term in positive_access_claims):
-        raise TwoPassArticleError("unconfirmed_access_scope_claim")
+
+    if legacy_scope_failure:
+        if plan.get("access_status") != "NOT_CONFIRMED":
+            raise TwoPassArticleError("unconfirmed_access_scope_claim")
+        positive_access_claims = (
+            "一般利用者に適用", "一般ユーザーに適用", "一般利用者が利用でき", "一般ユーザーが利用でき",
+            "誰でも利用", "一般提供され", "一般提供して", "一般利用可能", "利用可能である",
+            "アクセス可能である", "publicly available", "generally available",
+            "条件下で提供され", "条件で提供され",
+        )
+        if any(term.lower() in management_text for term in positive_access_claims):
+            raise TwoPassArticleError("unconfirmed_access_scope_claim")
 
     unsupported_safeguard_assessments = (
         "未検証の安全策", "安全策の有効性が未検証", "安全策は未検証", "安全策が未検証",
