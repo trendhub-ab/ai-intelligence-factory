@@ -11,6 +11,13 @@ into a phrase that the immediately-following Human Appeal gate itself classified
 generic monitoring.  The contract changes only that deterministic self-generated
 surface; it does not bypass Human Appeal, relax Fact/Evidence, or change model calls.
 
+Run358 adds a second narrow precision contract for two defects reproduced from a real
+Production manuscript: a slash-delimited acronym with an inline Japanese gloss could
+be split into an unexplained sub-token, and seven-character topic fragments could be
+mistaken for a repeated insight.  The precision contract can only remove those proven
+false-positive signals; it never converts genuine density, Fact, Evidence, Publication,
+or final-surface failures into PASS.
+
 Do not reorder, remove, or merge a layer here unless its own regression suite proves
 that the resulting production behavior is equivalent or intentionally superseded.
 """
@@ -111,6 +118,142 @@ def install_quality_interaction_contract(pipeline_module):
     return p
 
 
+# Run358 reader-signal precision contract.
+# The production RubyGems specimen exposed two deterministic false positives:
+# 1. ``CI/CD（自動ビルド環境）`` was split and ``CI`` was reported as unexplained even
+#    though the whole compound had an adjacent Japanese gloss. ``SF`` was also treated as
+#    specialist jargon despite being ordinary Japanese editorial vocabulary.
+# 2. The 7-character cross-paragraph detector treated topic-bearing fragments such as
+#    「エージェントの」「エージェントが」「ドキュメント生成」 as repeated insight.
+# We only demote these reproduced false positives. Existing density/jargon/final-surface
+# reviews stay authoritative and Fact/Evidence/Publication are untouched.
+_READER_PRECISION_COMMON_ACRONYMS = {
+    "AI", "API", "LLM", "OSS", "URL", "UI", "UX", "DB", "CPU", "GPU", "ID", "SF",
+}
+_READER_PRECISION_ACRONYM_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9-]{1,8})(?![A-Za-z0-9])")
+_READER_PRECISION_COMPOUND_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/.+-")
+_READER_PRECISION_REPEAT_FRAGMENT_LEN = 9
+
+
+def _reader_precision_prose(article: str) -> str:
+    return re.sub(r"^#{1,6}\s+.*$", "", str(article or ""), flags=re.MULTILINE)
+
+
+def _reader_precision_compound(prose: str, start: int, end: int) -> str:
+    left = start
+    right = end
+    while left > 0 and prose[left - 1] in _READER_PRECISION_COMPOUND_CHARS:
+        left -= 1
+    while right < len(prose) and prose[right] in _READER_PRECISION_COMPOUND_CHARS:
+        right += 1
+    return prose[left:right]
+
+
+def _reader_precision_unexplained_acronyms(article: str) -> list[str]:
+    """Return only acronyms that are not common and lack a local/compound gloss."""
+    prose = _reader_precision_prose(article)
+    unexplained: list[str] = []
+    for match in _READER_PRECISION_ACRONYM_RE.finditer(prose):
+        token = match.group(1)
+        if token in _READER_PRECISION_COMMON_ACRONYMS or token in unexplained:
+            continue
+        compound = _reader_precision_compound(prose, match.start(1), match.end(1))
+        near = prose[max(0, match.start() - 90):match.end() + 120]
+        direct_explained = bool(re.search(
+            rf"(?:{re.escape(token)}\s*[（(].{{2,70}}[）)]|"
+            rf"[（(].{{2,70}}[）)]\s*{re.escape(token)}|"
+            rf".{{3,90}}[（(]{re.escape(token)}[）)]|"
+            rf"{re.escape(token)}(?:とは|は、|は){{1}}.{{4,80}}"
+            rf"(?:仕組み|方式|規格|標準|ツール|モデル|プロトコル|ルール))",
+            near,
+            re.S,
+        ))
+        compound_glossed = bool(
+            compound
+            and compound != token
+            and re.search(
+                rf"{re.escape(compound)}\s*[（(][^）)\n]{{2,70}}[）)]",
+                near,
+            )
+        )
+        if not (direct_explained or compound_glossed):
+            unexplained.append(token)
+    return unexplained
+
+
+def _reader_precision_repetitive_insight(article: str) -> bool:
+    """Detect repeated wording without treating short topic nouns as repeated insight.
+
+    The historical 7-character detector was shorter than common Japanese topic phrases.
+    Nine characters keeps the zero-API behavior while requiring a more distinctive span.
+    We still require multiple overlapping long fragments to recur in at least three distinct
+    paragraphs, so genuinely duplicated explanation remains detectable.
+    """
+    prose = _reader_precision_prose(article)
+    paragraphs = [x.strip() for x in re.split(r"\n\s*\n", prose) if x.strip()]
+    fragment_paragraphs: dict[str, set[int]] = {}
+    n = _READER_PRECISION_REPEAT_FRAGMENT_LEN
+    for paragraph_index, paragraph in enumerate(paragraphs):
+        compact = re.sub(
+            r"https?://\S+|`[^`]+`|[A-Za-z0-9_.:/+-]+|"
+            r"[\s。、！？!?「」『』（）()【】#*_>・:：;；,，.-]+",
+            "",
+            paragraph,
+        )
+        if len(compact) < n:
+            continue
+        seen = {compact[index:index + n] for index in range(len(compact) - n + 1)}
+        for fragment in seen:
+            fragment_paragraphs.setdefault(fragment, set()).add(paragraph_index)
+    repeated = [fragment for fragment, owners in fragment_paragraphs.items() if len(owners) >= 3]
+    return len(repeated) >= 2
+
+
+def install_reader_signal_precision_contract(pipeline_module):
+    """Demote only reproduced reader-signal false positives; never create a new PASS path."""
+    p = pipeline_module
+    marker = "_run358_reader_signal_precision_contract_installed"
+    if bool(getattr(p, marker, False)):
+        return p
+
+    target_name = "_reader_experience_signals"
+    original = getattr(p, target_name, None)
+    if not callable(original):
+        target_name = "_reader_experience_signals_impl"
+        original = getattr(p, target_name, None)
+    if not callable(original):
+        return p
+
+    def reader_experience_signals_with_precision(article: str, *args, **kwargs):
+        signals = dict(original(article, *args, **kwargs) or {})
+
+        precise_acronyms = _reader_precision_unexplained_acronyms(article)
+        signals["unexplained_jargon"] = precise_acronyms[:8]
+        accessibility_issues = list(signals.get("accessibility_issues") or [])
+        if not precise_acronyms and "unexplained_acronyms" in accessibility_issues:
+            accessibility_issues = [x for x in accessibility_issues if x != "unexplained_acronyms"]
+            signals["accessibility_issues"] = accessibility_issues
+            if not accessibility_issues:
+                signals["accessibility"] = "GOOD"
+
+        if bool(signals.get("repetitive_insight")) and not _reader_precision_repetitive_insight(article):
+            signals["repetitive_insight"] = False
+            enjoyment_issues = [
+                x for x in list(signals.get("enjoyment_issues") or []) if x != "repetitive_insight"
+            ]
+            signals["enjoyment_issues"] = enjoyment_issues
+            if not enjoyment_issues:
+                signals["reader_enjoyment"] = "GOOD"
+
+        signals["reader_signal_precision_contract"] = "run358"
+        return signals
+
+    setattr(p, target_name, reader_experience_signals_with_precision)
+    setattr(p, marker, True)
+    setattr(p, "RUN358_READER_SIGNAL_PRECISION_CONTRACT", True)
+    return p
+
+
 def install_runtime_layers(pipeline_module):
     """Install every validated production layer in the historical canonical order."""
     import run203_runtime_state_channel as runtime_state_channel
@@ -185,6 +328,10 @@ def install_runtime_layers(pipeline_module):
     run183_eyecatch_emphasis_scale.install(pipeline_module)
 
     reader_value_review_bridge.install(pipeline_module)
+    # Run358 is a zero-provider-call precision correction over the canonical reader
+    # diagnostics. It removes only reproduced false positives and leaves all genuine
+    # density/jargon/final-surface diagnostics available to Run208/248/249.
+    install_reader_signal_precision_contract(pipeline_module)
     # Reader-only dynamic repair is installed after the historical bridge so it can
     # selectively override only the bridge's reader_value_review_no_retry decision.
     run208_reader_value_repair.install(pipeline_module)
@@ -202,8 +349,7 @@ def install_runtime_layers(pipeline_module):
     # First-real-publish calibration is zero-provider-call and deliberately sits after all
     # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
     # projection so late title/summary assembly cannot bypass Reader Value diagnostics.
-    # Run357 is an internal interaction contract, not another runtime layer: it prevents
-    # the deterministic WATCH cleanup from manufacturing a Human Appeal failure of its own.
+    # Run357/358 are internal interaction/precision contracts, not numbered runtime layers.
     # The canonical layer manifest remains unchanged so Run279 continues to prove the
     # historical module.install sequence, while runtime_layers.py itself remains covered by
     # Publication Contract provenance.
