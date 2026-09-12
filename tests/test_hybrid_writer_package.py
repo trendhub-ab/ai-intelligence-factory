@@ -36,8 +36,14 @@ def test_resume_uses_only_durable_record_in_empty_directory(tmp_path):
     assert len(calls) == 1
     assert calls[0] == record['writer_snapshot']['fixture']
     restored = json.loads(open(result['restored_paths']['plan_report']).read())
-    # Preserve sanitization/provenance: the fixture must not become evidence of raw Groq quality.
-    assert restored['sanitized_for_writer_isolation'] is True
+    # Preserve current Fact-Locked provenance. Recovery must restore the exact validated
+    # composed Plan, never reinterpret the raw categorical Groq output as prose evidence.
+    assert restored['mode'] == 'hybrid_groq_judgment_fact_locked'
+    assert restored['status'] == 'PLAN_VALIDATED'
+    assert restored['semantic_plan_validated'] is True
+    assert restored['fact_envelope_sha256']
+    assert restored['composed_plan']['decision'] == 'WATCH'
+    assert restored['composed_plan']['access_status'] == 'NOT_CONFIRMED'
 
 
 @pytest.mark.parametrize('field', ['writer_prompt', 'writer_max_output_tokens', 'decision_package'])
