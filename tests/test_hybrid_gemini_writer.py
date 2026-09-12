@@ -66,7 +66,7 @@ def test_management_data_is_deterministic_from_groq_plan():
 
 def test_writer_parser_accepts_complete_natural_surface():
     paragraph = "これは一次情報の範囲を守りながら、読者が判断しやすいよう普通の言葉で説明する文章です。"
-    article = (paragraph + "\n\n") * 15 + "私なら、いまは利用条件の一次情報を確認してから次を判断します。"
+    article = (paragraph + "\n\n") * 30 + "私なら、いまは利用条件の一次情報を確認してから次を判断します。"
     title, body = parse_gemini_writer_output(
         f"{TITLE_MARKER}\n数字の大きさだけで決めてよい？\n{ARTICLE_MARKER}\n{article}"
     )
