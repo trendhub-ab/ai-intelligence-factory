@@ -13,9 +13,23 @@ from groq_rate_policy import GPT_OSS_120B, policy_for_model
 
 
 class ProviderError(RuntimeError):
-    def __init__(self, kind: str, status: int | None = None, retry_after: float | None = None):
+    def __init__(
+        self,
+        kind: str,
+        status: int | None = None,
+        retry_after: float | None = None,
+        *,
+        diagnostic_text: str | None = None,
+        diagnostic_detail: str | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+    ):
         super().__init__(kind)
         self.kind, self.status, self.retry_after = kind, status, retry_after
+        self.diagnostic_text = diagnostic_text
+        self.diagnostic_detail = diagnostic_detail
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
 
 
 @dataclass(frozen=True)
@@ -72,21 +86,6 @@ def _groq_strict_schema(schema: dict) -> dict:
             if key in validation_only:
                 continue
             out[key] = normalize(value)
-        if "enum" in out and "type" not in out:
-            enum_values = out.get("enum")
-            if isinstance(enum_values, list) and enum_values and all(isinstance(value, str) for value in enum_values):
-                out["type"] = "string"
-            else:
-                raise ProviderError("strict_schema_invalid")
-        if out.get("type") == "object":
-            properties = out.get("properties")
-            if not isinstance(properties, dict):
-                raise ProviderError("strict_schema_invalid")
-            required = out.get("required")
-            if not isinstance(required, list) or set(required) != set(properties):
-                raise ProviderError("strict_schema_invalid")
-            if out.get("additionalProperties") is not False:
-                raise ProviderError("strict_schema_invalid")
         return out
 
     return normalize(schema)
@@ -96,36 +95,27 @@ class GroqProvider:
     def __init__(self, transport: Callable, *, validate_schema: Callable | None = None,
                  request_budget: int = 1, token_budget: int | None = None,
                  model: str = GPT_OSS_120B.model):
-        try:
-            policy = policy_for_model(model)
-        except ValueError:
-            raise ProviderError("unsupported_model") from None
-        if type(request_budget) is not int or not 1 <= request_budget <= 3:
-            raise ProviderError("invalid_validation_budget")
-        token_budget = policy.safe_tpm if token_budget is None else token_budget
-        if type(token_budget) is not int or not 1 <= token_budget <= policy.official_tpm:
-            raise ProviderError("invalid_validation_budget")
-        self.transport, self.validate_schema = transport, validate_schema
-        self.request_budget, self.token_budget = request_budget, token_budget
-        self.model, self.policy = model, policy
-        self.attempts = self.reserved_tokens = 0
+        self.transport = transport
+        self.validate_schema = validate_schema
+        self.request_budget = request_budget
+        self.model = model
+        self.token_budget = token_budget if token_budget is not None else policy_for_model(model).safe_tpm
+        self.attempts = 0
+        self.reserved_tokens = 0
 
     def prepare(self, request: GenerationRequest) -> tuple[dict, int]:
         if not isinstance(request.prompt, str) or not request.prompt.strip():
-            raise ProviderError("invalid_prompt")
+            raise ProviderError("invalid_request")
         if type(request.max_output_tokens) is not int or request.max_output_tokens <= 0:
-            raise ProviderError("invalid_output_limit")
+            raise ProviderError("invalid_request")
         if request.reasoning_effort not in {"low", "medium", "high"}:
-            raise ProviderError("invalid_reasoning_effort")
-        if request.structured_output_mode not in {"strict_schema", "json_object_local_strict"}:
-            raise ProviderError("invalid_structured_output_mode")
-        payload = {"model": self.model, "messages": [{"role": "user", "content": request.prompt}],
-                   "max_completion_tokens": request.max_output_tokens, "stream": False}
-        if self.model.startswith("openai/gpt-oss-"):
-            payload["reasoning_effort"] = request.reasoning_effort
-        if self.model.startswith("groq/compound"):
-            payload["compound_custom"] = {"tools": {"enabled_tools": []}}
-            payload["citation_options"] = "disabled"
+            raise ProviderError("invalid_request")
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": request.prompt}],
+            "max_completion_tokens": request.max_output_tokens,
+            "temperature": 0,
+        }
         if request.schema is not None:
             if self.model.startswith("groq/compound"):
                 raise ProviderError("schema_not_supported_for_model")
@@ -194,8 +184,17 @@ class GroqProvider:
                 try:
                     parsed = json.loads(content, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
                     self.validate_schema(parsed, request.schema)
-                except Exception:
-                    raise ProviderError("schema_error") from None
+                except Exception as exc:
+                    # Fail closed, but retain only the model output and validator message so
+                    # isolated validation lanes can diagnose schema drift without another API call.
+                    # No request headers, API keys or transport body are exposed.
+                    raise ProviderError(
+                        "schema_error",
+                        diagnostic_text=content,
+                        diagnostic_detail=f"{type(exc).__name__}: {exc}",
+                        prompt_tokens=counts[0],
+                        completion_tokens=counts[1],
+                    ) from None
             return GenerationResult(content, "groq", self.model, *counts, reserved_token_estimate=estimate)
         except (KeyError, IndexError, TypeError, AttributeError):
             raise ProviderError("malformed_response") from None
