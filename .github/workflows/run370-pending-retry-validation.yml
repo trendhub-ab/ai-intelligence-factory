@@ -1,7 +1,7 @@
-name: Run377 Pending Retry Validation [ONE-TIME]
+name: Run379 Pending Retry Validation [ONE-TIME]
 
-# One authorized read-only validation after Run376 showed Gemini 3.5 could not clear
-# the Fact boundary before Reader Repair. Prefer Gemini 3.7, keep 3.6 forbidden and
+# One authorized read-only validation after Run378 bridged exact Reader Gate reasons
+# into the reason-specific repair prompt. Prefer Gemini 3.7, keep 3.6 forbidden and
 # preserve 3.8. No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run377: one Pending Retry candidate, Gemini 3.7 preferred, 3.6 forbidden, 3.8 preserved, 3.5 fallback, persist=false, max 4 provider attempts.'
+          echo 'Run379: verify Run378->Run373 reason-specific Reader repair. Gemini 3.7 preferred, 3.6 forbidden, 3.8 preserved, 3.5 fallback, persist=false, max 4 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -118,7 +118,8 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run377 pending validation'
+            echo '### Run379 pending validation'
+            echo '- purpose: prove `RUN378 Reader Reason Bridge -> RUN373 reason-specific plan` on the real candidate'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
