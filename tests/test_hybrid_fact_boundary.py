@@ -45,6 +45,7 @@ def test_unsupported_url_is_rejected():
     ('データ混入の可能性が極めて低い評価だ。', 'contamination_certainty_inflation'),
     ('まだ誰も発見していなかった未知の不具合を見つけた。', 'zero_day_inflation'),
     ('Astraは開発中の新しい基盤モデルだ。', 'development_state_inflation'),
+    ('本番環境でも同じ結果が出る。', 'evaluation_scope_inflation'),
 ])
 def test_known_writer_fact_inflation_modes_are_rejected(phrase, kind):
     report = audit_fact_boundary(_source(), phrase)
@@ -75,7 +76,7 @@ def test_nfkc_normalization_does_not_create_false_numeric_delta():
     assert audit_fact_boundary(source, article)['passed'] is True
 
 
-def test_historical_writer_red_team_corpus_has_zero_false_negative_and_zero_false_positive():
+def test_semantic_red_team_corpus_has_zero_false_negative_and_zero_false_positive():
     fixture = json.loads(Path(RED_TEAM).read_text(encoding='utf-8'))
     source = _source()
     tp = tn = fp = fn = 0
@@ -114,9 +115,9 @@ def test_historical_writer_red_team_corpus_has_zero_false_negative_and_zero_fals
     }
     assert failures == [], {'metrics': metrics, 'failures': failures}
     assert metrics == {
-        'cases': 16,
-        'true_positive': 8,
-        'true_negative': 8,
+        'cases': 64,
+        'true_positive': 50,
+        'true_negative': 14,
         'false_positive': 0,
         'false_negative': 0,
         'recall': 1.0,
