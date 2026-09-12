@@ -1,4 +1,4 @@
-"""Run284/352/360/370/371/373: bounded Reader recovery policy."""
+"""Run284/352/360/370/371/373/375: bounded Reader recovery policy."""
 from __future__ import annotations
 
 import inspect
@@ -19,6 +19,7 @@ _REPAIRABLE_READER_LABELS = (
     "dense_report_cluster", "repetitive_insight", "multi_axis_reader_weakness",
     "non_engineer_access_failure", "final_surface_multi_axis_reader_weakness",
     "final_surface_non_engineer_access_failure", "final_surface_summary_jargon_cluster",
+    "final_surface_summary_fragment",
 )
 
 RETRY_PRESERVATION_CONTRACT = """
@@ -45,6 +46,7 @@ RUN373_READER_REPAIR_RULES = {
     "non_engineer_access_failure": "専門語を別の専門語で説明しない。Decisionを変えない専門名・略語は普通名詞へカテゴリ化し、冒頭約600文字の中核専門概念を1つまでにする。",
     "repetitive_insight": "同じ判断・効用・注意点の言い換えを1回に統合する。Evidenceや反証を重複と誤認して削除しない。",
     "final_surface_summary_jargon_cluster": "『何が出た？』等の要約面では製品名以外の専門語列挙を避け、読者が得る変化を普通の日本語1文で完結させる。",
+    "final_surface_summary_fragment": "『何が出た？』『結論は？』等の要約面を、主語と述語を持つ独立した自然な日本語1文にする。断片句・名詞止め・途中で切れた文を残さず、新しい事実は足さない。",
     "final_surface_multi_axis_reader_weakness": "最終要約を、変化・判断・制約が各1文で分かる形へ圧縮する。",
     "final_surface_non_engineer_access_failure": "最終要約の略語・内部部品名を削り、非エンジニアが単独で意味を取れる文にする。",
 }
@@ -119,7 +121,6 @@ def retry_feedback_with_preservation(quality_feedback: str, previous_article: st
     if not feedback or not previous:
         return quality_feedback or ""
     if any(marker in feedback for marker in _READER_REPAIR_FEEDBACK_MARKERS):
-        # Reader Repair must not inherit the contradictory paragraph-order freeze.
         rows = [{"message": line} for line in feedback.splitlines() if READER_VALUE_MARKER in line]
         plan = reader_repair_feedback(rows)
         return feedback if not plan or plan in feedback else feedback + "\n\n" + plan
