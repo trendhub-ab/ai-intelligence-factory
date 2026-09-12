@@ -30,6 +30,8 @@ jobs:
       - name: Install schema validator
         run: pip install jsonschema
       - name: Prove both pass fixtures fit their Free Plan lanes
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         shell: python
         run: |
           import json
@@ -54,8 +56,6 @@ jobs:
               plan_fixture['schema'], plan_fixture['reasoning_effort'],
           ))
 
-          # Synthetic schema-valid Plan; no provider call. This proves the writer fixture
-          # and transport budget independently from live model behavior.
           plan = {
               'source_summary': 'AstraはCritical級サイバー能力の閾値に到達した。',
               'what': '限定条件下のサイバー評価で高い能力が報告された。',
