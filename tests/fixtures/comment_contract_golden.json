@@ -1,0 +1,24 @@
+{
+  "source": "synthetic",
+  "purpose": "Contract regression fixture only. This is not a copy of production Notion data.",
+  "records": [
+    {
+      "property_name": "主リスク",
+      "existing_value": "既存の短いが具体的な主リスク。",
+      "candidate_value": "新方式が生成した置換候補。",
+      "expected_decision": "preserve"
+    },
+    {
+      "property_name": "向いている用途",
+      "existing_value": "",
+      "candidate_value": "限定された検証用途。",
+      "expected_decision": "blank_fill"
+    },
+    {
+      "property_name": "判断理由",
+      "existing_value": "",
+      "candidate_value": "Shadow比較専用の候補。",
+      "expected_decision": "shadow"
+    }
+  ]
+}

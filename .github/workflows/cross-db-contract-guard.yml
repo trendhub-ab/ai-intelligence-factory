@@ -16,11 +16,16 @@ on:
       - 'notion_access_policy_guard.py'
       - 'notion_audit_views.json'
       - 'documentation_freshness_guard.py'
+      - 'comment_write_contract.py'
       - 'tests/test_cross_db_contract_guard.py'
       - 'tests/test_content_db_contract_guard.py'
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
       - 'tests/test_run232_notion_integration_reconciliation.py'
+      - 'tests/test_comment_write_contract.py'
+      - 'tests/test_decision_comment_preservation.py'
+      - 'tests/test_product_review_provider_lock.py'
+      - 'tests/fixtures/comment_contract_golden.json'
       - '.github/workflows/cross-db-contract-guard.yml'
   push:
     branches: [main]
@@ -37,11 +42,16 @@ on:
       - 'notion_access_policy_guard.py'
       - 'notion_audit_views.json'
       - 'documentation_freshness_guard.py'
+      - 'comment_write_contract.py'
       - 'tests/test_cross_db_contract_guard.py'
       - 'tests/test_content_db_contract_guard.py'
       - 'tests/test_evidence_db_contract_guard.py'
       - 'tests/test_member_presentation_resolution_guard.py'
       - 'tests/test_run232_notion_integration_reconciliation.py'
+      - 'tests/test_comment_write_contract.py'
+      - 'tests/test_decision_comment_preservation.py'
+      - 'tests/test_product_review_provider_lock.py'
+      - 'tests/fixtures/comment_contract_golden.json'
       - '.github/workflows/cross-db-contract-guard.yml'
   # ONE-SHOT fan-out is explicit via GH_PAT from daily-one-shot.yml. Keep only the
   # independent member-presentation completion trigger here.
@@ -75,6 +85,9 @@ jobs:
           python -m unittest tests/test_evidence_db_contract_guard.py
           python -m unittest tests/test_member_presentation_resolution_guard.py
           python -m unittest tests/test_run232_notion_integration_reconciliation.py
+          python -m unittest tests/test_comment_write_contract.py
+          python -m unittest tests/test_decision_comment_preservation.py
+          python -m unittest tests/test_product_review_provider_lock.py
 
   live-schema-contract:
     if: >-

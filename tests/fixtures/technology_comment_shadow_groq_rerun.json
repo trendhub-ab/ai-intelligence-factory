@@ -1,0 +1,63 @@
+{
+  "mode": "technology_comment_shadow_live_replay_fixture",
+  "structured_output_mode": "json_object_local_strict",
+  "candidate_id": "TECH-SHADOW-SYNTH-001",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "challenger": {
+    "main_risk": "バッチモードが実験的で、安定版リリース前に変更される可能性がある点",
+    "best_for": "限定的なテスト環境でバッチ処理の性能を評価する用途",
+    "avoid_for": "本番環境での安定運用やコスト削減を目的とした利用",
+    "short_rationale": "ベンチマークはバッチ設定下でのみレイテンシ低減を示すが、実運用や費用効果は未検証であり、実装は実験段階のため"
+  },
+  "comparison": {
+    "baseline_scores": {
+      "specificity": 85,
+      "decision_usefulness": 100,
+      "evidence_alignment": 80,
+      "naturalness": 100,
+      "concision": 83,
+      "total": 89.6
+    },
+    "challenger_scores": {
+      "specificity": 85,
+      "decision_usefulness": 100,
+      "evidence_alignment": 60,
+      "naturalness": 100,
+      "concision": 72,
+      "total": 83.4
+    },
+    "margin": -6.2,
+    "strictly_better_axes": [],
+    "worse_axes": ["evidence_alignment", "concision"],
+    "baseline_style_violations": {
+      "main_risk": [],
+      "best_for": [],
+      "avoid_for": [],
+      "short_rationale": []
+    },
+    "challenger_style_violations": {
+      "main_risk": [],
+      "best_for": [],
+      "avoid_for": [],
+      "short_rationale": []
+    },
+    "deterministic_gate_passed": false,
+    "promotion_candidate": false,
+    "automatic_promotion_allowed": false,
+    "human_or_independent_semantic_review_required": true,
+    "persist_allowed": false,
+    "business_writes": 0,
+    "tie_policy": "baseline_wins"
+  },
+  "usage": {
+    "prompt_tokens": 606,
+    "completion_tokens": 289,
+    "total_tokens": 895
+  },
+  "rate_headers": {},
+  "persist_allowed": false,
+  "business_writes": 0,
+  "automatic_promotion_allowed": false,
+  "fixture_provenance": "Synthetic Groq challenger frozen from bounded workflow run 34682689485 rerun attempt. No production Notion content."
+}

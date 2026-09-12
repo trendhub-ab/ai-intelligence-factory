@@ -1,13 +1,15 @@
-"""Run256 thin extension over the byte-preserved Run255 Decision Intelligence core.
+"""Run257 thin extension over the byte-preserved Run255 Decision Intelligence core.
 
 The Run255 implementation is stored verbatim in decision_intelligence_run255_core.py.
 It is executed in this module's globals so existing patching/import behaviour remains
-unchanged. Run256 overrides only the monthly Decision Brief renderer: meaningful
-changes become concrete Decision Updates; no-change months state that explicitly
-and include one monitoring point. No schema, score/status semantics, Evidence gate,
-or provider-call policy is changed.
+unchanged. Run256 overrides only the monthly Decision Brief renderer. Run257 adds a
+fail-closed ownership guard around Technology Intelligence comment-like properties:
+existing non-empty values are immutable and only owned blanks may be filled.
+No schema, score/status semantics, Evidence gate, or provider-call policy is changed.
 """
 from pathlib import Path as _Run256Path
+
+from comment_write_contract import CommentWriteRequest, WriteDecision, decide_comment_write
 
 _RUN256_CORE_PATH = _Run256Path(__file__).with_name("decision_intelligence_run255_core.py")
 exec(compile(_RUN256_CORE_PATH.read_text(encoding="utf-8"), str(_RUN256_CORE_PATH), "exec"), globals(), globals())
@@ -187,3 +189,57 @@ def create_history_monthly_digest(period_id: str, generated_at: str | None = Non
         "decision_brief_count": len(decision_brief),
         "page_id": res.json().get("id") or "",
     }
+
+
+# Run257: preserve existing product copy while allowing only owned blank fills.
+# The core remains byte-preserved. We extend the current-state snapshot and property
+# builder so the core's single existing-page query is the only Notion read required.
+_RUN257_COMMENT_FIELDS = {
+    "main_risk": TECH_PROP_MAIN_RISK,
+    "best_for": TECH_PROP_BEST_FOR,
+    "avoid_for": TECH_PROP_AVOID_FOR,
+    "short_rationale": TECH_PROP_SHORT_RATIONALE,
+}
+_RUN257_CURRENT_STATE_CORE = _current_state
+_RUN257_BUILD_TECHNOLOGY_PROPERTIES_CORE = _build_technology_properties
+
+
+def _current_state(page: dict | None) -> dict:
+    """Extend the core state with protected product-copy values from the same page read."""
+    current = dict(_RUN257_CURRENT_STATE_CORE(page))
+    if not page:
+        return current
+    props = page.get("properties") or {}
+    for assessment_key, property_name in _RUN257_COMMENT_FIELDS.items():
+        current[assessment_key] = _rich_text_value(props.get(property_name, {}))
+    return current
+
+
+def _run257_protect_comment_fields(assessment: dict, current: dict | None) -> dict:
+    """Apply the ownership contract using the core's already-loaded current state."""
+    current = current or {}
+    protected = dict(assessment)
+    for assessment_key, property_name in _RUN257_COMMENT_FIELDS.items():
+        existing_value = current.get(assessment_key)
+        result = decide_comment_write(
+            CommentWriteRequest(
+                property_name=property_name,
+                existing_value=existing_value,
+                candidate_value=assessment.get(assessment_key),
+                owner_allowed=True,
+            )
+        )
+        if result.decision in {WriteDecision.PRESERVE, WriteDecision.BLANK_FILL}:
+            protected[assessment_key] = result.value
+        else:
+            # Fail closed. Shadow/blocked candidates never enter production properties.
+            protected[assessment_key] = existing_value
+    return protected
+
+
+def _build_technology_properties(
+    assessment: dict, resolution: EntityResolution, current: dict | None = None
+) -> dict:
+    """Guard four product-copy fields without adding any Notion read or altering core flow."""
+    protected_assessment = _run257_protect_comment_fields(assessment, current)
+    return _RUN257_BUILD_TECHNOLOGY_PROPERTIES_CORE(protected_assessment, resolution, current)

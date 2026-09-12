@@ -1,0 +1,27 @@
+{
+  "source": "synthetic_public_validation",
+  "purpose": "Bounded live-provider validation only. No production Notion data.",
+  "candidate_id": "TECH-SHADOW-SYNTH-001",
+  "evidence": [
+    "A new inference runtime adds a batch execution mode for repeated model requests.",
+    "The published benchmark reports lower median latency only under the documented batch test setup.",
+    "The release notes state that the batch mode is experimental and may change before a stable release.",
+    "The benchmark does not establish cost savings or production reliability outside the tested setup."
+  ],
+  "decision_surface": {
+    "adoption_status": "TEST",
+    "production_readiness": "LOW",
+    "evidence_confidence": "MEDIUM",
+    "decision": "限定検証。安定版前のため本番採用は保留する。"
+  },
+  "specificity_anchors": ["batch", "実験", "レイテンシ"],
+  "evidence_terms": ["batch", "レイテンシ", "実験", "テスト"],
+  "decision_terms": ["検証", "本番", "用途", "保留"],
+  "forbidden_claims": ["コスト削減", "本番で安定", "一般提供", "50%", "半減"],
+  "baseline": {
+    "main_risk": "バッチ実行は実験段階で、安定版まで仕様変更の可能性がある。公開ベンチマークだけでは本番信頼性も判断できない。",
+    "best_for": "同じモデルへの反復リクエストをまとめ、レイテンシ差を限定環境で検証したい用途。",
+    "avoid_for": "仕様固定や本番信頼性が前提となる運用。公開されたバッチ条件以外へ性能結果を一般化したい用途にも向かない。",
+    "short_rationale": "公開情報ではバッチ条件下のレイテンシ改善は確認できる一方、実験機能であり本番信頼性やコスト効果までは示されていないため、現時点はTESTが妥当。"
+  }
+}
