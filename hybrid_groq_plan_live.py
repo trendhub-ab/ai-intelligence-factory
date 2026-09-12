@@ -58,12 +58,40 @@ def run_live(fixture_path: str, report_path: str) -> dict:
             return exc.code,dict(exc.headers),{}
 
     provider.transport=transport
-    result=provider.generate(request)
+    try:
+        result=provider.generate(request)
+    except ProviderError as exc:
+        # Schema-invalid model output is diagnostic evidence only. Persist it so we can
+        # understand the contract failure without spending another call; never compose it.
+        if exc.kind == 'schema_error' and isinstance(exc.diagnostic_text,str):
+            prompt_tokens=int(exc.prompt_tokens or 0)
+            completion_tokens=int(exc.completion_tokens or 0)
+            actual=prompt_tokens+completion_tokens
+            reconcile_remote(token,experiment,actual,opener,policy.name)
+            report={
+                'mode':'hybrid_groq_judgment_fact_locked', 'provider':'groq', 'model':model,
+                'rate_policy':policy.name, 'stage':'article', 'pass':fixture.get('pass','decision_judgment_codes'),
+                'candidate_id':fixture.get('candidate_id'), 'structured_output_mode':MODE,
+                'provider_calls':1, 'reserved_token_estimate':estimate, 'actual_tokens':actual,
+                'ledger_reconciled':True, 'local_schema_validated':False,
+                'semantic_plan_validated':False, 'quality_validated':False,
+                'business_writes':0, 'persist_results':False,
+                'fact_envelope_sha256':envelope['fact_ledger_sha256'],
+                'status':'PLAN_REJECTED', 'schema_error':exc.diagnostic_detail,
+                'rejected_result':{
+                    'text':exc.diagnostic_text,
+                    'prompt_tokens':prompt_tokens,
+                    'completion_tokens':completion_tokens,
+                },
+            }
+            Path(report_path).write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+        raise
+
     actual=result.prompt_tokens+result.completion_tokens
     reconcile_remote(token,experiment,actual,opener,policy.name)
     report={
         'mode':'hybrid_groq_judgment_fact_locked', 'provider':'groq', 'model':model,
-        'rate_policy':policy.name, 'stage':'article', 'pass':'decision_judgment',
+        'rate_policy':policy.name, 'stage':'article', 'pass':fixture.get('pass','decision_judgment_codes'),
         'candidate_id':fixture.get('candidate_id'), 'structured_output_mode':MODE,
         'provider_calls':1, 'reserved_token_estimate':estimate, 'actual_tokens':actual,
         'ledger_reconciled':True, 'local_schema_validated':True,
