@@ -44,7 +44,7 @@ def restore_pending_package(record: dict, output_dir: str) -> dict[str, str]:
     before sending. Restoring material alone does not grant permission to publish.
     """
     from hybrid_writer_deferred import validate_pending_writer_record, _stable_payload_hash
-    from groq_two_pass_article import load_plan_report
+    from hybrid_groq_plan import load_hybrid_plan_report
     from groq_article_parity import load_input
     validate_pending_writer_record(record, allow_not_ready=True)
     fixture = validate_snapshot(record.get('writer_snapshot'))
@@ -74,7 +74,9 @@ def restore_pending_package(record: dict, output_dir: str) -> dict[str, str]:
         with Path(paths[key]).open('x', encoding='utf-8') as stream:
             json.dump(value, stream, ensure_ascii=False, indent=2)
     load_input(paths['input'])
-    load_plan_report(paths['plan_report'])
+    # Recovery must use the same canonical Fact-Locked contract as the normal Writer handoff.
+    # This blocks a raw categorical Groq result from bypassing deterministic Plan composition.
+    load_hybrid_plan_report(paths['plan_report'])
     with Path(paths['fixture']).open('x', encoding='utf-8') as stream:
         json.dump(fixture, stream, ensure_ascii=False, indent=2)
     return paths
