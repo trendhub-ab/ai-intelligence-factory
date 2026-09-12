@@ -62,15 +62,41 @@ Repository-wide falsification exposed an unrelated Run371 regression: the histor
 
 An explicit recovery override such as `3.8 -> 3.6 -> 3.5` remains explicit and keeps that order before missing fallbacks are appended.
 
-## Before the next provider-backed validation
+## Zero-API validation result
 
-Do not launch another Gemini validation until all zero-API checks are green.
+At head `a067fa92ee88ba71ff17b4141560286dca74c8ec`, all four required PR checks completed successfully:
 
-The one-time workflow `.github/workflows/run370-pending-retry-validation.yml` still contains a semantic environment-variable typo:
+- Repository-wide Falsification Guard — PASS
+- Integration Reconciliation CI — PASS
+- Notion Access Policy Guard — PASS
+- Workflow Reference Guard — PASS
 
-`EVIDENCE_LEDGER_REQUIRED: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}`
+No Gemini/provider request was made by Run373 while establishing this result.
 
-The intended variable is `vars.EVIDENCE_LEDGER_REQUIRED`. Do not edit that workflow while its path-based push trigger can automatically launch the provider-backed validation. Disable/retire the one-time trigger first, then correct the variable before any later live validation.
+## Provider-backed validation boundary
+
+The one-time workflow `.github/workflows/run370-pending-retry-validation.yml` is now manual-only (`workflow_dispatch`). Its previous path-based push trigger was removed before changing any live validation configuration, so branch edits can no longer automatically spend Gemini free-tier budget.
+
+The semantic environment-variable typo was corrected at commit `32ad5d4b6e42d2a41cea43f98818fb4ce2443a1e`:
+
+`EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}`
+
+The workflow remains read-only with these boundaries:
+
+- Pending Retry only;
+- at most one candidate;
+- at most one Reader-only repair when Evidence is safe;
+- explicit model order `3.8 -> 3.6 -> 3.5`, with missing canonical fallback appended by runtime routing;
+- maximum six provider-visible attempts;
+- `persist_results=false`;
+- no branch Note Ready reconciliation;
+- no note draft or publication.
+
+No automatic provider-backed run was launched by the trigger-removal/config-fix commit.
+
+## Next live proof requirement
+
+The next Gemini validation must be started explicitly and only after the operator decides to spend the bounded free-tier budget. A successful result is not inferred from zero-API tests: the selected real Pending Retry manuscript must pass Fact/Evidence, Publication, Human Appeal, Reader, and final surface checks in the live read-only lane before any persistence recovery is allowed.
 
 ## Non-goals
 
@@ -79,4 +105,4 @@ The intended variable is `vars.EVIDENCE_LEDGER_REQUIRED`. Do not edit that workf
 - no Notion content/status persistence;
 - no Note Ready sync from the branch;
 - no note draft or public publication;
-- no Gemini/provider call in Run373.
+- no automatic Gemini/provider call in Run373.
