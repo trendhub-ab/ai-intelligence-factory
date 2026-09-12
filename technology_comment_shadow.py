@@ -106,6 +106,8 @@ def build_shadow_prompt(fixture: Mapping[str, Any]) -> str:
 - short_rationale: 判断理由
 
 【絶対ルール】
+- 4項目の本文は必ず自然な日本語で書く。EVIDENCEが英語でも英訳のまま返してはいけない。
+- 製品名・技術用語など必要な固有語以外、英語文を出力しない。
 - 事実として使えるのは EVIDENCE だけ。
 - DECISION SURFACE は判断材料であり、新しい事実ソースではない。
 - EVIDENCEにない数値、機能、利用条件、因果、一般提供状況を創作しない。
@@ -136,6 +138,8 @@ def _style_violations(field: str, text: str) -> list[str]:
     violations: list[str] = []
     if not low <= len(text) <= high:
         violations.append("length_out_of_range")
+    if not re.search(r"[ぁ-んァ-ヶ一-龯]", text):
+        violations.append("japanese_required")
     if "\n" in text or "\r" in text:
         violations.append("multiline")
     if re.search(r"(^|\s)(#{1,6}|[-*+]\s|\d+[.)]\s)", text):
@@ -179,7 +183,7 @@ def score_values(values: Mapping[str, Any], fixture: Mapping[str, Any]) -> tuple
     evidence_alignment = max(0, evidence_alignment)
 
     violation_count = sum(len(rows) for rows in style.values())
-    naturalness = max(0, 100 - violation_count * 20)
+    naturalness = max(0, 100 - violation_count * 25)
 
     target_lengths = {"main_risk": 90, "best_for": 70, "avoid_for": 70, "short_rationale": 120}
     distance = sum(abs(len(cleaned[k]) - target_lengths[k]) / target_lengths[k] for k in SHADOW_FIELDS) / 4
