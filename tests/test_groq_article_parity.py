@@ -137,6 +137,12 @@ class GroqArticleParityTests(unittest.TestCase):
         self.assertIn("初出で必ず", result.prompt)
         self.assertIn("90字以上の説明段落を3つ以上連続させない", result.prompt)
         self.assertIn("簡単に言えば", result.prompt)
+        self.assertIn("数値は必ず測定対象・条件", result.prompt)
+        self.assertIn("評価条件の横滑り", result.prompt)
+        self.assertIn("名称から動作", result.prompt)
+        self.assertIn("アクセス可否が未確認なら", result.prompt)
+        self.assertIn("未確認のアクセス取得やPoC実施を既成事実にしない", result.prompt)
+        self.assertIn("説明の大半をリスト化しない", result.prompt)
         self.assertEqual(len(result.replaced_sections), 6)
         with self.assertRaises(PromptCompileError):
             compile_article_prompt(source.replace("【SOURCE BOUNDARY — 最重要】", "【SOURCE BOUNDARY】"))
