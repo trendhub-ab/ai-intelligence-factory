@@ -70,7 +70,7 @@ def _post(prompt: str) -> tuple[dict, dict]:
     payload = {
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
-        "max_completion_tokens": 1400,
+        "max_completion_tokens": 900,
         "reasoning_effort": "none",
         "reasoning_format": "hidden",
         "temperature": 0.2,
