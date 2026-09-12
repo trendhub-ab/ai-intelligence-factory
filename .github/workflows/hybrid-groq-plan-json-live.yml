@@ -34,6 +34,10 @@ jobs:
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'hybrid-groq-plan-json-fixture.json',
           )
+          # Isolated output-budget experiment: retain prompt/schema/model/reasoning.
+          fx['max_output_tokens']=3000
+          with open('hybrid-groq-plan-json-fixture.json','w',encoding='utf-8') as f:
+              json.dump(fx,f,ensure_ascii=False,indent=2)
           provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fx['schema']),token_budget=7000,model=fx['model'])
           payload,estimate=provider.prepare(GenerationRequest(
               fx['prompt'],fx['max_output_tokens'],fx['schema'],fx['reasoning_effort'],fx['structured_output_mode']
