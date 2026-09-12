@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from groq_article_parity import load_input, _production_like_source_info
+from hybrid_fact_boundary import audit_fact_boundary
 from hybrid_groq_plan import load_hybrid_plan_report
 from hybrid_gemini_writer import (
     build_gemini_writer_prompt,
@@ -83,9 +84,13 @@ def _management_surface(plan: dict) -> str:
 
 def assemble_canonical_response(pipeline, input_path: str, plan_report_path: str, writer_text: str) -> tuple[str, str, str]:
     """Assemble the exact parser-facing surface without asking Gemini to regenerate management data."""
-    _ = load_input(input_path)
+    row = load_input(input_path)
     plan = load_hybrid_plan_report(plan_report_path)
     title, article = parse_gemini_writer_output(writer_text)
+    boundary = audit_fact_boundary(str(row.get("source_context") or ""), article)
+    if not boundary["passed"]:
+        kinds = ",".join(sorted({item["type"] for item in boundary["violations"]}))
+        raise RuntimeError(f"hybrid_fact_boundary_failed:{kinds}")
     split_token = getattr(pipeline, "SECTION_SPLIT_TOKEN", None)
     if not isinstance(split_token, str) or not split_token.strip():
         raise RuntimeError("pipeline_section_split_token_missing")
@@ -104,7 +109,10 @@ def evaluate_writer_text(
     gemini_live_calls: int = 1,
 ) -> dict:
     row = load_input(input_path)
-    canonical, title, article = assemble_canonical_response(pipeline, input_path, plan_report_path, writer_text)
+    _, raw_title, raw_article = assemble_canonical_response(pipeline, input_path, plan_report_path, writer_text)
+    boundary_report = audit_fact_boundary(str(row.get("source_context") or ""), raw_article)
+    canonical = _management_surface(load_hybrid_plan_report(plan_report_path)) + "\n" + pipeline.SECTION_SPLIT_TOKEN + "\n" + raw_title + "\n\n" + raw_article
+    title, article = raw_title, raw_article
     parsed = pipeline._parse_gemini_response(canonical)
     if not parsed:
         raise RuntimeError("hybrid_parser_failed")
@@ -136,6 +144,7 @@ def evaluate_writer_text(
     disposition = pipeline.gate_reason_disposition(reason_rows)
     publishable = {pipeline.GATE_DISPOSITION_PASS, pipeline.GATE_DISPOSITION_PASS_WITH_WARNINGS}
     final_article = str(parsed.get("note_draft") or "")
+    combined_fact_ok = bool(fact_ok) and bool(boundary_report["passed"])
     result = {
         "candidate_id": row["candidate_id"],
         "provider_mode": "hybrid_groq_gemini",
@@ -151,7 +160,9 @@ def evaluate_writer_text(
         "decision_score": parsed.get("score"),
         "evidence_state": evidence_result.get("state"),
         "evidence_sufficient": source_info["sufficient"],
-        "fact_ok": bool(fact_ok),
+        "fact_boundary_passed": bool(boundary_report["passed"]),
+        "fact_boundary_report": boundary_report,
+        "fact_ok": combined_fact_ok,
         "fact_failures": fact_failures,
         "editorial_ok": bool(editorial_ok),
         "editorial_warnings": editorial_warnings,
@@ -161,7 +172,7 @@ def evaluate_writer_text(
         "human_appeal_issues": human_issues,
         "gate_disposition": disposition,
         "reason_rows": reason_rows,
-        "quality_validated": bool(final_article.strip()) and disposition in publishable,
+        "quality_validated": bool(final_article.strip()) and boundary_report["passed"] and disposition in publishable,
         "polish_changes": list(polish_changes or []),
         "structure_changes": list(structure_changes or []),
         "business_writes": 0,
