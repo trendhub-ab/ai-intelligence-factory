@@ -6,7 +6,9 @@ small Fact-Locked shadow surface for parity comparison before any provider migra
 """
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Mapping
 
 from hybrid_fact_boundary import audit_fact_boundary
@@ -29,7 +31,6 @@ LEGACY_PRODUCT_REVIEW_FROZEN = "legacy_product_review_frozen"
 SYSTEM_DETERMINISTIC = "system_deterministic"
 EXTERNAL_REVIEW_OR_FORMULA = "external_review_or_formula"
 
-# Exact property names are intentionally explicit. Unknown comment-like properties fail closed.
 CONTENT_COMMENT_CONTRACT = {
     "スコア内訳": (FACT_LOCKED_PLAN_DETERMINISTIC, SHADOW_ONLY),
     "これは何？": (LEGACY_ARTICLE_MANAGEMENT_FROZEN, PRODUCTION_FROZEN),
@@ -72,10 +73,7 @@ PRODUCT_REVIEW_DIRECT_FIELDS = {
 
 
 def property_contract(database: str, property_name: str) -> dict:
-    contracts = {
-        "content": CONTENT_COMMENT_CONTRACT,
-        "technology": TECHNOLOGY_COMMENT_CONTRACT,
-    }
+    contracts = {"content": CONTENT_COMMENT_CONTRACT, "technology": TECHNOLOGY_COMMENT_CONTRACT}
     if database not in contracts:
         raise CommentContractError("comment_database_unknown")
     row = contracts[database].get(property_name)
@@ -93,6 +91,24 @@ def property_contract(database: str, property_name: str) -> dict:
     }
 
 
+def _strict_fact_locked_plan(plan_report_path: str) -> dict:
+    try:
+        report = json.loads(Path(plan_report_path).read_text(encoding="utf-8"))
+    except Exception:
+        raise CommentContractError("comment_shadow_plan_report_invalid") from None
+    if not isinstance(report, dict):
+        raise CommentContractError("comment_shadow_plan_report_invalid")
+    if report.get("mode") != "hybrid_groq_judgment_fact_locked":
+        raise CommentContractError("comment_shadow_fact_locked_plan_required")
+    if report.get("status") != "PLAN_VALIDATED" or report.get("semantic_plan_validated") is not True:
+        raise CommentContractError("comment_shadow_validated_plan_required")
+    if not isinstance(report.get("fact_envelope_sha256"), str) or len(report["fact_envelope_sha256"]) != 64:
+        raise CommentContractError("comment_shadow_fact_hash_required")
+    if not isinstance(report.get("composed_plan"), dict):
+        raise CommentContractError("comment_shadow_composed_plan_required")
+    return load_hybrid_plan_report(plan_report_path)
+
+
 def _score_breakdown(plan: Mapping) -> str:
     return (
         f"Business Impact {plan['business_impact']}/25 / "
@@ -105,7 +121,7 @@ def _score_breakdown(plan: Mapping) -> str:
 
 def build_content_comment_shadow(plan_report_path: str) -> dict:
     """Build non-persistent candidate comments from the canonical Fact-Locked Plan only."""
-    plan = load_hybrid_plan_report(plan_report_path)
+    plan = _strict_fact_locked_plan(plan_report_path)
     values = {
         "スコア内訳": _score_breakdown(plan),
         "なぜ重要？": str(plan["why_important"]),
@@ -124,7 +140,6 @@ def build_content_comment_shadow(plan_report_path: str) -> dict:
 
 
 def validate_product_review_comment_style(field: str, text: str) -> dict:
-    """High-signal style guard for future shadow candidates; does not approve persistence."""
     spec = PRODUCT_REVIEW_DIRECT_FIELDS.get(field)
     if spec is None:
         raise CommentContractError("product_review_comment_field_unknown")
@@ -145,17 +160,12 @@ def validate_product_review_comment_style(field: str, text: str) -> dict:
     if sentence_count > 2:
         violations.append("too_many_sentences")
     return {
-        "field": field,
-        "passed": not violations,
-        "violations": violations,
-        "chars": len(value),
-        "sentences": sentence_count,
-        "persist_allowed": False,
+        "field": field, "passed": not violations, "violations": violations,
+        "chars": len(value), "sentences": sentence_count, "persist_allowed": False,
     }
 
 
 def audit_product_review_shadow_fact_boundary(source_context: str, assessment: Mapping) -> dict:
-    """Audit concrete factual additions in future Product Review shadow prose."""
     chunks = []
     style = {}
     for field in PRODUCT_REVIEW_DIRECT_FIELDS:
@@ -164,28 +174,22 @@ def audit_product_review_shadow_fact_boundary(source_context: str, assessment: M
         chunks.append(value)
     fact = audit_fact_boundary(source_context, "\n".join(chunks))
     return {
-        "mode": SHADOW_ONLY,
-        "persist_allowed": False,
-        "style": style,
+        "mode": SHADOW_ONLY, "persist_allowed": False, "style": style,
         "fact_boundary": fact,
         "passed": fact["passed"] and all(row["passed"] for row in style.values()),
     }
 
 
 def compare_comment_style(existing: str, candidate: str) -> dict:
-    """Provider-free presentation parity metrics, not semantic quality equivalence."""
     old = str(existing or "").strip()
     new = str(candidate or "").strip()
     old_sentences = len([x for x in re.split(r"[。！？!?]+", old) if x.strip()])
     new_sentences = len([x for x in re.split(r"[。！？!?]+", new) if x.strip()])
     ratio = len(new) / len(old) if old else None
     return {
-        "existing_chars": len(old),
-        "candidate_chars": len(new),
-        "length_ratio": ratio,
+        "existing_chars": len(old), "candidate_chars": len(new), "length_ratio": ratio,
         "sentence_count_delta": new_sentences - old_sentences,
         "candidate_multiline": "\n" in new or "\r" in new,
         "candidate_has_markdown": bool(re.search(r"(^|\s)(#{1,6}|[-*+]\s|\d+[.)]\s)", new)),
-        "semantic_equivalence_claimed": False,
-        "persist_allowed": False,
+        "semantic_equivalence_claimed": False, "persist_allowed": False,
     }
