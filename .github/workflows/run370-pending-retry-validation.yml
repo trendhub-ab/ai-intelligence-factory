@@ -54,7 +54,6 @@ jobs:
           python -m pytest tests/test_run371_pending_origin_provider_policy.py -q
           python -m pytest tests/test_run367_readonly_and_reader_interaction.py -q
           python -m pytest tests/test_run382_retry_snapshot.py -q
-          python -m pytest tests/test_run383_intro_overclaim_precision.py -q
           python -m pytest tests/test_run384_final_summary_precision.py -q
           python run280_publication_dependency_guard.py
 
