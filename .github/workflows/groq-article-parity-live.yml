@@ -96,7 +96,7 @@ jobs:
           AIIF_GROQ_REPORT: groq-article-result.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-parity-B0049-compound-mini-v5-human-appeal-v1
+          AIIF_GROQ_EXPERIMENT: article-parity-B0049-compound-mini-v6-boundary-reader-v1
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
