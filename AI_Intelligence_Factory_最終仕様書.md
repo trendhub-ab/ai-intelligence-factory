@@ -857,3 +857,14 @@ PMF前にやらないこと:
 再開成功は通信成功であり `quality_validated=false`。復元されたinput/planを用いて既存 `evaluate_writer_text` と公開制御を通す必要がある。snapshotは503/404後に保存されるため、送信中のプロセス強制終了まで保証する事前checkpointではない。
 SHA256は保存内容の一致検証であり、一次資料の真実性やGroq出力の意味的品質の証明ではない。`sanitized_for_writer_isolation` 等の編集履歴を保存し、人手修正済みPlanを未修正Groq品質の合格証拠としない。
 検証: 元fixtureを削除した新規ディレクトリから1回だけWriter再開、prompt/出力上限/Evidenceの変更拒否、復元上書き拒否。Hybrid関連9ファイル47テスト成功。ライブAPI・業務DB書込み0。
+
+
+### Hybrid Groq Plan 実検証と判断品質（2026-09-12）
+
+- Run34674378575の診断成功はPlan成功ではなく、HTTP400/json_validate_failed（failed_generation空）の診断完了だった。
+- Run34675144954: prompt/model/medium effortを変えず出力上限1100→3000で1回検証。JSON/既存semantic検査成功、input865/output1692/total2557 tokens。出力上限不足が有力な仮説だが1回比較で原因確定とはしない。Hybridのみ3000を採用し、既存7000の予約上限は維持。
+- 保存PlanはAVOID/35点だった。Run34675269638の0-model監査で、評価条件を提供条件へ読み替える誤りと、未確認の安全策を否定的事実へ変換する問題を確認。Writerへ渡さず、品質未合格。
+- Plannerに評価/提供条件の分離、不明/危険の分離、各スコア軸の独立評価、article_valueの0〜100尺度と導入可否との分離を追加。NOT_CONFIRMEDで「条件下で提供され」「条件で提供され」を含む管理文を既存scope guardで拒否する。
+- Run34675347830: 修正後1回検証はunconfirmed_access_scope_claimで停止。失敗Planが保存されない旧挙動のため、誤生成か検査の偽陽性かは未判定。Writer呼出し0。
+- hybrid_groq_plan_liveは今後、意味検査で拒否された最終JSONをPLAN_REJECTED/semantic_plan_validated=false/quality_validated=falseとしてartifactに保存し、例外を再送出する。モデルの内部推論は保存しない。自動修正・自動再試行は行わない。
+- 本ターンの生成要求はGroq2回、Gemini0回、業務DB書込み0。追加試行は行わず、診断保存の欠落を先に修正。通常Dailyの切替・Groq Plan品質同等認定は未実施。

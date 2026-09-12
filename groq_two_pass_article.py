@@ -165,6 +165,8 @@ Screening Reason: {item['screening_reason']}
 
 def load_plan_report(plan_report_path: str) -> dict:
     report = json.loads(Path(plan_report_path).read_text(encoding="utf-8"))
+    if report.get("status") == "PLAN_REJECTED" or report.get("semantic_plan_validated") is False:
+        raise TwoPassArticleError("plan_report_rejected")
     if report.get("provider") != "groq" or report.get("provider_calls") != 1:
         raise TwoPassArticleError("plan_provider_contract_invalid")
     try:

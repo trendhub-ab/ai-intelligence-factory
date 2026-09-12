@@ -71,7 +71,6 @@ def run_live(fixture_path: str, report_path: str) -> dict:
     result=provider.generate(request)
     actual=result.prompt_tokens+result.completion_tokens
     reconcile_remote(token,experiment,actual,opener,policy.name)
-    plan=validate_hybrid_plan_text(result.text)
     report={
         'mode':'hybrid_groq_plan_json_object_local_strict',
         'provider':'groq',
@@ -86,10 +85,22 @@ def run_live(fixture_path: str, report_path: str) -> dict:
         'actual_tokens':actual,
         'ledger_reconciled':True,
         'local_schema_validated':True,
-        'semantic_plan_validated':True,
+        'semantic_plan_validated':False,
+        'quality_validated':False,
         'business_writes':0,
         'persist_results':False,
         'result':asdict(result),
     }
+    # Keep the final JSON response even when semantics reject it. Never repair it,
+    # pass it to Writer, or label transport/schema success as article quality.
+    try:
+        validate_hybrid_plan_text(result.text)
+    except Exception as exc:
+        report['status']='PLAN_REJECTED'
+        report['semantic_error_type']=type(exc).__name__
+        Path(report_path).write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+        raise
+    report['status']='PLAN_VALIDATED'
+    report['semantic_plan_validated']=True
     Path(report_path).write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     return report

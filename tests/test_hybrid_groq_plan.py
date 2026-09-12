@@ -91,3 +91,38 @@ def test_hybrid_completion_budget_preserves_rate_safety(tmp_path):
     provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fixture['schema']),token_budget=7000,model=fixture['model'])
     _,estimate=provider.prepare(GenerationRequest(fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort'],fixture['structured_output_mode']))
     assert estimate<=7000
+
+
+def test_rejected_plan_is_saved_without_becoming_quality_success(tmp_path, monkeypatch):
+    from dataclasses import dataclass
+    import hybrid_groq_plan_live as live
+    fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
+    plan=_valid_plan()
+    plan['what']='限定条件下で提供されている。'
+    @dataclass
+    class Result:
+        text: str
+        prompt_tokens: int = 100
+        completion_tokens: int = 200
+    class FakeProvider:
+        def __init__(self,*a,**kw): pass
+        def prepare(self,request):
+            return {'response_format':{'type':'json_object'},'reasoning_format':'hidden'},500
+        def generate(self,request): return Result(json.dumps(plan,ensure_ascii=False))
+    monkeypatch.setattr(live,'GroqProvider',FakeProvider)
+    monkeypatch.setattr(live,'reconcile_remote',lambda *a:None)
+    for name in ('GROQ_API_KEY','GROQ_LEDGER_GITHUB_TOKEN','AIIF_GROQ_EXPERIMENT'):
+        monkeypatch.setenv(name,'offline-placeholder')
+    output=tmp_path/'report.json'
+    with pytest.raises(Exception,match='unconfirmed_access_scope_claim'):
+        live.run_live(str(tmp_path/'fixture.json'),str(output))
+    report=json.loads(output.read_text())
+    assert report['status']=='PLAN_REJECTED'
+    assert report['semantic_plan_validated'] is False
+    assert report['quality_validated'] is False
+    assert json.loads(report['result']['text'])==plan
+    assert report['business_writes']==0
+
+    from groq_two_pass_article import load_plan_report
+    with pytest.raises(Exception,match='plan_report_rejected'):
+        load_plan_report(str(output))
