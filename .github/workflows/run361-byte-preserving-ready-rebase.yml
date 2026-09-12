@@ -16,6 +16,10 @@ on:
         required: false
         default: ''
         type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/run361-dry-run.txt'
 
 permissions:
   contents: read
@@ -52,15 +56,15 @@ jobs:
           python -m unittest tests.test_comment_write_contract -v
 
       - name: Fail closed on invalid apply confirmation
-        if: ${{ inputs.mode == 'apply' && inputs.confirm != 'REBASE_IDENTICAL_BODY' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.confirm != 'REBASE_IDENTICAL_BODY' }}
         run: |
           echo '::error::apply requires exact confirmation REBASE_IDENTICAL_BODY'
           exit 1
 
       - name: Audit or apply exact byte-preserving Ready rebase
         env:
-          AIIF_READY_REBASE_MODE: ${{ inputs.mode }}
-          AIIF_READY_REBASE_CONFIRM: ${{ inputs.confirm }}
+          AIIF_READY_REBASE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'dry_run' }}
+          AIIF_READY_REBASE_CONFIRM: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm || '' }}
           AIIF_READY_REBASE_MAX: '40'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -72,7 +76,7 @@ jobs:
         run: python run361_byte_preserving_ready_rebase.py
 
       - name: Reconcile note Ready DB after safe apply
-        if: ${{ inputs.mode == 'apply' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' }}
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
