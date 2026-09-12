@@ -2,14 +2,11 @@ name: Gemini Technology Comment Shadow Judge Only
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - safety/comment-contract-shadow-guard
-    paths:
-      - '.github/workflows/gemini-technology-comment-shadow-judge-only.yml'
-      - 'gemini_technology_comment_shadow_judge.py'
-      - 'tests/fixtures/technology_comment_shadow_live.json'
-      - 'tests/fixtures/technology_comment_shadow_groq_rerun.json'
+    inputs:
+      authorize_google_api:
+        description: 'Type AUTHORIZE_GOOGLE_API to explicitly authorize this Google/Gemini API call'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +17,7 @@ concurrency:
 
 jobs:
   semantic-judge-replay:
+    if: ${{ inputs.authorize_google_api == 'AUTHORIZE_GOOGLE_API' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
