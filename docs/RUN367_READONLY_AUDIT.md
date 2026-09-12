@@ -1,0 +1,78 @@
+# Run367 読み取り専用監査・Reader Repair相互作用修正
+
+対象コード: main `2eb8f3fcc71ec9f925580bd322678b383125affd`。監査対象はContent Intelligence DBのReady表示45件からRun365の復旧済み7件を除いた38件。
+
+## 結果
+
+|分類|件数|
+|---|---:|
+|追加救済可能（全Gateを証明）|0|
+|現行Reader／文章表面検査で不合格|32|
+|証拠不足（surface_clean_but_unproven）|1|
+|unsupported（ProductHunt）|5|
+|合計|38|
+
+証拠不足は「LLMを待たずに分岐する。公式比較『4ミリ秒』のSemantic Routerとは。」。追加Ready化は行っていない。
+
+## 監査の限界
+
+Notion MCPで取得した38ページのMarkdownに現行production runtimeのReader診断、Run248の複合Reader判定、Run249の引用符・高確度日本語表面検査を適用した。本文の組立・修復・再生成は行っていない。診断用にタイトル・元情報ヘッダー・出典フッターを本文から分離した。
+
+これは全Publication/Fact/Evidence Gateの再実行ではない。取得Markdownでは契約キャプションが省略され、元ブロックのbyte同一性、保存済みEvidence Envelope、現行全Gateの合格記録、アイキャッチ品質の合格記録を証明できない。画像プロパティの存在だけで画像品質合格としない。32件は少なくとも今回検査した現行条件に不合格、残り1件は文章検査を通っただけで救済可能ではない。
+
+Run366実行ログは applied=7 / body_bytes_modified=0 / model_calls=0、同期後 source_ready=7 / stale_publication_contract=33 / unsupported_source=5 を記録している。実行URL: https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/34694536202
+
+## 相互作用の修正
+
+実際に全runtime layerを適用したbuild_dynamic_retry_instructionで、Run171由来の「記事全体の再構成や新事実の追加はしない」とReader Repairの「既存Evidenceを並べ替える」が併存することを再現した。
+
+run208のReader-only分岐で、前者から再構成禁止だけを除去する。新事実追加禁止、Fact混在時の局所修正制限、Evidence安全条件、再試行回数制限、Quality Gateの基準は維持する。DBの本文や既存コメントは変更しない。
+
+ゼロAPIの全runtime連携テストで、3候補それぞれの初回Writer境界で再試行所有状態がリセットされること、各候補のReader修正が1回までであること、矛盾した指示が除かれること、Fact混在時は局所保持制約が残ること、問題が残れば不合格のままであることを検証した。これは実原稿3本のモデル再生成成功を証明するテストではない。
+
+## 反映状態
+
+修正は別ブランチで準備。run208はPublication Contract依存ファイルのため、このままmainへ反映すると指紋が変わる。復旧済み7件を含めた契約移行の証明が必要であり、本作業ではmainへのマージやDB再署名を実施しない。
+
+## 38件の内訳
+
+|記事|分類|検出理由|
+|---|---|---|
+|科学探究の自動化を目指す「Intern-S2-Preview」の技術的ポテンシャルと商用化への壁|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|AIエージェントの「記憶」を中央集権化せよ：Memmy Agentの実用的判断|unsupported|ProductHuntは現行公開対象外|
+|物理シミュレーションの常識が変わる：機械学習による3次元密度汎関数の可能性|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity); reader_value_review:repetitive_insight|
+|Qwen 3.8 27B：中規模モデルによる「エージェントAI」実用化の現実解|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|Googleが仕掛ける「暗号化したままAI推論」の正体と、我々が今取るべき戦略|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|表形式データのDeep Learning活用における「精度×解釈性」のジレンマを解くTabSOMの衝撃|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|OpenAI Realtime APIを自社管理下に：Hugging Face "speech-to-speech" の技術的価値と導入戦略|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|Wayland環境のリモート管理は「RustDesk」で解決するのか？――検証すべき次の一手|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|Wispr Flow Notetaker：会議後の「コピペ作業」を根絶するMCP時代の議事録最適化戦略|unsupported|ProductHuntは現行公開対象外|
+|UIのダークモード切り替えは本当に「3つ」も必要なのか：意思決定のための設計思想分析|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|MLflowはLLM開発の「必須インフラ」になり得るか：プロダクト開発責任者がいま確認すべきこと|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity); reader_value_review:repetitive_insight|
+|SaaS依存から解放されるか：音声AI開発における「Dograh」の現実的な評価と導入戦略|unsupported|ProductHuntは現行公開対象外|
+|単一量子ビットによる信号処理の革命：指数関数的な測定効率化の衝撃|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|AI検索で自社が「無視」されていないかを確認する技術：AI Search Consoleの導入判断|unsupported|ProductHuntは現行公開対象外|
+|術後予後の動的予測：医療AIにおける「介入認識型ワールドモデル」の可能性|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|AIとの対話はコード記述より「リーダーシップ」に似ている|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|LLMと自動評価ループがもたらすGPUカーネル最適化の進展：コンテスト事例から見る実用性|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|Google Researchの膨大な研究コードと、どう向き合うべきか？|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|自然言語からCIS準拠トポロジを自動生成するTopoIntentの試みとは？|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|実行可能スタックよ、さらば。GCCが目指す「安全でゼロコストなC言語クロージャ」の正体。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity); reader_value_review:repetitive_insight|
+|創薬AIは本当に魔法を起こしているのか？現場が語る現実と過剰期待の境界線。|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|手描き線画を綺麗にベクター化するDisneyの新手法。2D Gaussian SplattingとBézierスプラインの融合。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity); reader_value_review:repetitive_insight|
+|RISC-Vは本当にあらゆる領域を制覇できるのか？|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity); reader_value_review:repetitive_insight|
+|PostgreSQLにすべてを任せる構成は、どこまで実用に耐えるのか。|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|オープン音声モデルの応答遅延を50ms未満に抑える技術とは？Nari LabsによるQwen3-TTS最適化の全貌。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|ESP32開発でDocker Sandboxesを使うべき理由とは？|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|エージェントごとのコンテキスト乖離を防げるか？ 共有記憶レイヤー「OzBrain」の検証価値。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|Kobo上で独立アプリを動かす「Cobalt」は、何を変えるのか。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|仕様書とコードの乖離をどう防ぐか。ビジネスロジック統合エンジン「GoRules」の登場から考える。|unsupported|ProductHuntは現行公開対象外|
+|MCP次期ロードマップが示す、エージェント基盤の標準化と実務へのインパクト。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity); reader_value_review:repetitive_insight|
+|CursorからOpenAIモデルが消える日。SpaceX買収劇の裏で開発チームが受ける影響と今なすべき備え。|gate_failed|reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm); reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|ベースモデルは据え置きのまま、事後学習でどこまで賢くなるか？ オープンウェイト「GLM-5.3」の性能と実務での注意点。|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|全社にAIを配っても使いこなせない？ 大手企業70万件のログが明かす「熟練度」の壁。|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/reader_temperature_rhythm)|
+|AIエージェントは自ら隠れ連絡網を作り、テストを裏でハックしたのか？|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/reader_temperature_rhythm)|
+|ネットワークが突如として「海」に変わる瞬間を数学が解明した。|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|LLMを待たずに分岐する。公式比較「4ミリ秒」のSemantic Routerとは。|surface_clean_but_unproven|全Gate合格の証拠不足|
+|なぜ自分のPCでサーバーを立てるのが難しくなったのか？|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget/reader_temperature_rhythm); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|
+|AIエージェントに振り回されないためのスキル集「mattpocock/skills」とは？|gate_failed|reader_value_review:multi_axis_reader_weakness (accessibility/jargon_translation/non_engineer_core_clarity/information_budget); reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)|

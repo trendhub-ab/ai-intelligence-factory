@@ -245,6 +245,14 @@ def install(pipeline_module: Any) -> Any:
         hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
         reader_only = _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard)
         if reader_only:
+            # Run367: Run171's local Fact-retry guidance is inherited by this
+            # wrapper. Its global restructuring ban contradicts Reader Repair's
+            # explicit permission to reorder existing facts. Remove only that
+            # prohibition; keep the ban on new facts and every acceptance gate.
+            instruction = str(instruction).replace(
+                "記事全体の再構成や新事実の追加はしないでください。",
+                "新事実の追加はしないでください。",
+            )
             instruction = str(instruction).rstrip() + "\n\n" + READER_REPAIR_CONTRACT
             targeted = _run359_targeted_repair(rows)
             if targeted:
