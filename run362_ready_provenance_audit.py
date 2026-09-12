@@ -108,6 +108,11 @@ def _block_meta(block: dict, index: int) -> dict[str, Any]:
     }
 
 
+def _is_historical_main_ready(meta: dict[str, Any], history: dict[str, dict[str, str]]) -> bool:
+    psha = str(meta.get("caption_policy_sha256") or "")
+    return bool(psha and psha in history and meta.get("body_sha_valid") is True)
+
+
 def main() -> int:
     if not sync.NOTION_API_KEY:
         raise ValueError("NOTION_API_KEY is required")
@@ -126,9 +131,8 @@ def main() -> int:
         ready = [m for m in metas if m["ready_family"]]
         matched = []
         for m in ready:
-            psha = m["caption_policy_sha256"]
-            if psha and psha in history and m["body_sha_valid"]:
-                matched.append({**m, "historical_main": history[psha]})
+            if _is_historical_main_ready(m, history):
+                matched.append({**m, "historical_main": history[m["caption_policy_sha256"]]})
         legacy_candidates = [
             m for m in metas
             if (not m["ready_family"]) and m["body_len"] >= 500
