@@ -1,11 +1,15 @@
-name: Pending Retry Validation [MANUAL ONLY]
+name: Run385 Pending Retry Validation [ONE-TIME]
 
-# Manual-only safety harness. Automatic branch pushes must never consume Gemini quota.
-# Current operator policy: Gemini 3.6 remains forbidden; 3.8 and 3.5 are preserved unless
-# explicitly re-authorized in a future one-shot validation. No Notion manuscript/status
-# persistence and no Note Ready reconciliation.
+# One-shot read-only validation after Run383/384 precision fixes.
+# Gemini 3.7 is the only allowed model. 3.6/3.8/3.5 are forbidden for this run.
+# No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run370-pending-retry-validation.yml'
 
 concurrency:
   group: ai-intelligence-gemini-budget
@@ -23,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Manual-only Pending Retry validation. No automatic Gemini consumption.'
+          echo 'Run385: Gemini 3.7 only; one Pending Retry; read-only; max 3 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -49,6 +53,9 @@ jobs:
           python -m pytest tests/test_run371_transient_503_override.py -q
           python -m pytest tests/test_run371_pending_origin_provider_policy.py -q
           python -m pytest tests/test_run367_readonly_and_reader_interaction.py -q
+          python -m pytest tests/test_run382_retry_snapshot.py -q
+          python -m pytest tests/test_run383_intro_overclaim_precision.py -q
+          python -m pytest tests/test_run384_final_summary_precision.py -q
           python run280_publication_dependency_guard.py
 
       - name: Validate one persisted Pending Retry candidate
@@ -114,8 +121,11 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Manual Pending Retry validation'
+            echo '### Run385 pending validation'
             echo '- candidate count: at most `1`'
+            echo '- Gemini 3.7: `ONLY ALLOWED MODEL`'
+            echo '- Gemini 3.6/3.8/3.5: `FORBIDDEN`'
+            echo '- provider request budget: at most `3`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
             echo '- note draft/public publication: `false`'
