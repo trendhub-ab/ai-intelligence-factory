@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from comment_write_contract import (
     CommentWriteRequest,
@@ -182,6 +184,12 @@ class CommentWriteContractTests(unittest.TestCase):
         )
         self.assertEqual(WriteDecision.BLOCKED, result.decision)
         self.assertEqual({}, build_production_property_mutation({"主リスク": result}))
+
+    def test_golden_fixture_is_explicitly_synthetic(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "comment_contract_golden.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        self.assertEqual("synthetic", fixture["source"])
+        self.assertIn("not a copy of production Notion data", fixture["purpose"])
 
 
 if __name__ == "__main__":
