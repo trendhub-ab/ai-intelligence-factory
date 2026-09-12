@@ -33,6 +33,13 @@ def report(article: str):
     }
 
 
+def bounded_filler(repeat=42):
+    return (
+        "一次資料に書かれた事実と、そこから想像できることは分けて読む必要があります。"
+        "数字だけを切り取らず、その数字がどの評価条件で出たのかを確認することが大切です。"
+    ) * repeat
+
+
 class GroqWriterV4ContractTests(unittest.TestCase):
     def test_hardening_is_idempotent_and_groq_only(self):
         with tempfile.TemporaryDirectory() as td:
@@ -48,7 +55,7 @@ class GroqWriterV4ContractTests(unittest.TestCase):
     def test_v3_inferred_safeguard_mechanics_are_blocked(self):
         article = (
             "100%という数字には条件があります。例えば、レーシングカーの速さと公道で乗れるかは別の話です。"
-            + "Astraについて一次情報の条件を確認する必要があります。" * 35
+            + bounded_filler()
             + "system safety classifierが出力内容を安全基準に照らしてリアルタイムで評価します。"
             + "私なら、現時点では導入判断をせず、まず一次情報で利用条件を確認します。"
         )
@@ -61,7 +68,7 @@ class GroqWriterV4ContractTests(unittest.TestCase):
     def test_v3_general_availability_inference_is_blocked(self):
         article = (
             "2件のzero-dayが見つかったという事実は目を引きます。簡単に言えば、能力と利用条件は別々に読む必要があります。"
-            + "条件を一次情報で確認することが重要です。" * 40
+            + bounded_filler()
             + "一般的な本番環境での利用は想定されていません。"
             + "私なら、今すぐ導入判断はせず、まず一次情報で利用条件を確認します。"
         )
@@ -74,8 +81,10 @@ class GroqWriterV4ContractTests(unittest.TestCase):
     def test_reader_contract_requires_decision_voice(self):
         article = (
             "100%という数字には条件があります。例えば、レーシングカーの速さと公道で乗れるかは別の話です。"
-            + "一次情報に書かれた範囲だけを見ることが大切です。" * 45
+            + bounded_filler()
+            + "能力の高さだけで導入可否を決めるべきではありません。"
         )
+        self.assertGreaterEqual(len(article), 1300)
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "report.json"
             path.write_text(json.dumps(report(article), ensure_ascii=False), encoding="utf-8")
@@ -92,10 +101,12 @@ class GroqWriterV4ContractTests(unittest.TestCase):
             "zero-dayとは、まだ広く知られていない脆弱性のことです。数字の派手さより、どの条件で確認されたかを見る必要があります。\n\n"
             "安全策として、アクセス制限、拒否訓練、system safety classifier、監視、misalignment detectionが挙げられています。"
             "ここで重要なのは、名称から動作を想像して補わないことです。一次資料が示す範囲だけで判断します。\n\n"
-            "能力が高いというニュースと、今すぐ自社で使えるという話は同じではありません。"
+            + bounded_filler(20)
+            + "\n\n能力が高いというニュースと、今すぐ自社で使えるという話は同じではありません。"
             "私なら、現時点では導入判断をせず、まず一次情報で利用条件を確認します。"
-            + "その確認が済むまでは、能力の高さをそのまま導入理由にはしません。" * 18
+            "その確認が済むまでは、能力の高さをそのまま導入理由にはしません。"
         )
+        self.assertGreaterEqual(len(article), 1300)
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "report.json"
             path.write_text(json.dumps(report(article), ensure_ascii=False), encoding="utf-8")
