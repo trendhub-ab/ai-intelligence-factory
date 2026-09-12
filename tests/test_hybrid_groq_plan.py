@@ -59,6 +59,8 @@ def test_fixture_is_categorical_and_contains_no_freeform_fact_fields(tmp_path):
     for forbidden in ('source_summary','what','why_important','decision_reason','action','article_angle','reader_bridge','title_seed'):
         assert forbidden not in fixture['schema']['properties']
     assert 'あなたは文章を書きません' in fixture['prompt']
+    assert 'Decision Score較正' in fixture['prompt']
+    assert '一般利用可否が不明でも一次Evidenceの信頼性は下げない' in fixture['prompt']
     assert fixture['business_writes']==0 and fixture['persist_results'] is False
     provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fixture['schema']),token_budget=7000,model=fixture['model'])
     payload,_=provider.prepare(GenerationRequest(fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort'],fixture['structured_output_mode']))
@@ -87,13 +89,33 @@ def test_freeform_fact_prose_is_schema_rejected():
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
 
 
-def test_unconfirmed_access_requires_safe_action_and_reason_code():
+def test_unconfirmed_access_requires_safe_action_but_reason_is_derived_deterministically():
     judgment=_valid_judgment(); judgment['action_code']='COMPARE'
     with pytest.raises(Exception,match='unconfirmed_access_action_escalation'):
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
-    judgment=_valid_judgment(); judgment['reason_codes']=['HIGH_TECHNICAL_SIGNIFICANCE']
-    with pytest.raises(Exception,match='unconfirmed_access_reason_missing'):
-        validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
+    judgment=_valid_judgment(); judgment['reason_codes']=['HIGH_TECHNICAL_SIGNIFICANCE','BUSINESS_RELEVANCE','EVIDENCE_STRONG']
+    validated=validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
+    plan=compose_fact_locked_plan(build_fact_envelope(INPUT),validated)
+    assert plan['decision_reason']==[
+        '技術的な影響が大きく、継続監視の価値がある。',
+        '事業判断への影響を見極める価値がある。',
+        '一般利用条件は確認できていない。',
+    ]
+
+
+def test_captured_calibrated_judgment_revalidates_without_repair():
+    captured={
+        'decision':'WATCH',
+        'reason_codes':['HIGH_TECHNICAL_SIGNIFICANCE','BUSINESS_RELEVANCE','EVIDENCE_STRONG'],
+        'business_impact':20,'technical_impact':22,'urgency':15,'market_impact':12,'reliability':13,
+        'article_value':80,'access_status':'NOT_CONFIRMED','action_code':'CONFIRM_ACCESS','reader_priority':'TECHNICAL',
+    }
+    judgment=validate_hybrid_judgment_text(json.dumps(captured,ensure_ascii=False))
+    plan=compose_fact_locked_plan(build_fact_envelope(INPUT),judgment)
+    assert sum(plan[k] for k in ('business_impact','technical_impact','urgency','market_impact','reliability'))==82
+    assert plan['decision']=='WATCH'
+    assert plan['access_status']=='NOT_CONFIRMED'
+    assert plan['decision_reason'][-1]=='一般利用条件は確認できていない。'
 
 
 def test_confirmed_access_cannot_keep_unconfirmed_reason():
