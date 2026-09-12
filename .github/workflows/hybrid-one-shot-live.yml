@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 15
     env:
       PYTHONPATH: ${{ github.workspace }}
+      AIIF_RUNTIME_STATE_BRANCH: runtime-state
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,10 +53,11 @@ jobs:
               'writer_models':fx['writer_models'],
               'writer_prompt_bytes':len(fx['writer_prompt'].encode('utf-8')),
               'gemini_live_calls_max':2,
-              'fallback':'503/404 only',
+              'availability_policy':'503/404 -> durable PENDING_WRITER',
               'business_writes':0,
           },ensure_ascii=False))
-      - name: Bounded Gemini final-writer and complete Production gate evaluation
+      - name: Bounded Gemini writer, durable deferral, and Production gates
+        id: writer
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -63,7 +65,7 @@ jobs:
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
           GH_PAT: ${{ secrets.GH_PAT }}
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
-          GEMINI_COUNTER_BRANCH: 'main'
+          GEMINI_COUNTER_BRANCH: runtime-state
           GEMINI_36_FLASH_DAILY_BUDGET: '18'
           GEMINI_37_FLASH_DAILY_BUDGET: '18'
           GEMINI_38_FLASH_DAILY_BUDGET: '18'
@@ -74,9 +76,10 @@ jobs:
           SYNTHETIC_REGRESSION_MODE: 'false'
         shell: python
         run: |
-          import json
+          import json, os
           import note_manuscript, pipeline, production_pipeline
-          from hybrid_one_shot import run_bounded_gemini_writer_calls, evaluate_writer_text
+          from hybrid_one_shot import evaluate_writer_text
+          from hybrid_writer_runtime import run_or_defer_writer
           from source_normalization import install as install_source_normalization
           from run268_business_source_strategy import install as install_run268
           from run269_business_source_precision import install as install_run269
@@ -91,27 +94,47 @@ jobs:
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
 
-          before_used=getattr(getattr(pipeline,'DEEP_DIVE_MODEL_BUDGET',None),'used',None)
-          report=run_bounded_gemini_writer_calls(pipeline,'hybrid-writer-fixture.json','hybrid-writer-report.json')
-          after_used=getattr(getattr(pipeline,'DEEP_DIVE_MODEL_BUDGET',None),'used',None)
-          assert 1 <= report['provider_calls'] <= 2 and report['business_writes']==0
-          writer_text=report['text']
+          outcome=run_or_defer_writer(
+              pipeline,
+              'hybrid-writer-fixture.json',
+              'hybrid-writer-report.json',
+              'hybrid-pending-writer.json',
+          )
+          status=outcome['status']
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as handle:
+              handle.write(f"status={status}\n")
+              handle.write(f"provider_calls={int(outcome.get('provider_calls') or 0)}\n")
+
+          if status=='DEFERRED':
+              pending=outcome['pending']
+              print(json.dumps({
+                  'status':'DEFERRED',
+                  'candidate_id':pending['candidate_id'],
+                  'reason':outcome['reason'],
+                  'provider_calls':outcome['provider_calls'],
+                  'retry_cycles':pending['retry_cycles'],
+                  'retry_after':pending['retry_after'],
+                  'expires_at':pending['expires_at'],
+                  'business_writes':pending['business_writes'],
+              },ensure_ascii=False))
+              raise SystemExit(0)
+
+          report=outcome['report']
           ev=evaluate_writer_text(
               pipeline,
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'tests/fixtures/groq/two_pass_v3_plan_safe_report.json',
-              writer_text,
+              report['text'],
               'hybrid-evaluation.json',
               writer_model=report['model'],
               gemini_live_calls=report['provider_calls'],
           )
           print(json.dumps({
+              'status':'SUCCESS',
               'candidate_id':ev['candidate_id'],
               'gemini_live_calls':ev['gemini_live_calls'],
               'attempts':report['attempts'],
               'model':ev['writer_model'],
-              'deep_dive_budget_before':before_used,
-              'deep_dive_budget_after':after_used,
               'article_chars':ev['article_chars'],
               'decision':ev['decision'],
               'decision_score':ev['decision_score'],
@@ -138,9 +161,21 @@ jobs:
             hybrid-writer-fixture.json
             hybrid-writer-report.json
             hybrid-evaluation.json
+            hybrid-pending-writer.json
           if-no-files-found: warn
           retention-days: 30
+      - name: Prove availability deferral is safe
+        if: steps.writer.outputs.status == 'DEFERRED'
+        shell: python
+        run: |
+          import json
+          pending=json.load(open('hybrid-pending-writer.json',encoding='utf-8'))
+          assert pending['status']=='PENDING_WRITER'
+          assert pending['business_writes']==0 and pending['persist_results'] is False
+          assert 1 <= pending['retry_cycles'] <= pending['max_retry_cycles'] == 3
+          print({'hybrid_result':'DEFERRED_NOT_FAILED','candidate_id':pending['candidate_id'],'business_writes':0})
       - name: Require full article quality parity
+        if: steps.writer.outputs.status == 'SUCCESS'
         shell: python
         run: |
           import json
