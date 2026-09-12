@@ -38,7 +38,7 @@ class GroqWriterV7ContractTests(unittest.TestCase):
             self.assertIn("heading_count:0", inspected["issues"])
             self.assertIn("title_punctuation", inspected["issues"])
             self.assertIn("daybreak_access_assumption", inspected["issues"])
-            self.assertIn("controlled_environment_inference", inspected["issues"])
+            self.assertIn("source_boundary:高度に制御された環境であることを裏付け", inspected["issues"])
             with self.assertRaisesRegex(GroqWriterV7Error, "writer_v7_contract"):
                 validate_writer_report_v7(str(path))
 
@@ -55,14 +55,14 @@ class GroqWriterV7ContractTests(unittest.TestCase):
 
     def test_valid_shape_passes(self):
         paras = [
-            "100%という数字は強烈です。しかし対象はExploitBenchで、簡単に言えば測定結果と利用条件は別の話です。" + "条件を丁寧に読む必要があります。" * 5,
-            "OpenAIのPreparedness Frameworkという評価枠組みでは、Astraが重大なサイバー能力の基準に到達したとされています。" + "ここで重要なのは数字の対象を広げないことです。" * 4,
-            "2026年6月から8月の評価では高深刻度のV8脆弱性20件が扱われ、2件のzero-dayも記録されています。" + "一次資料が示す範囲だけを読み取ります。" * 4,
-            "安全策についてはアクセス制限、拒否訓練、system safety classifier、監視、misalignment detectionという名称が示されています。" + "名称から具体的な動作を推測してはいけません。" * 4,
-            "能力が高いことと、誰がどの条件で利用できるかは別問題です。" + "この一次資料から利用条件は確認できません。" * 5,
-            "読者側で変わるのは、性能の数字だけで導入判断をしないことです。" + "測定条件と提供条件を分けて確認します。" * 5,
-            "私なら、今すぐ導入判断はせず、まず一次情報で利用条件を確認します。" + "確認できるまでPoCや申請を前提にしません。" * 5,
-            "そのうえで、自社に関係する条件が一次情報で確認できた時点で改めて判断します。" + "今は注視が妥当です。" * 5,
+            "100%という数字は強烈です。しかし対象はExploitBenchで、簡単に言えば測定結果と利用条件は別の話です。" + "条件を丁寧に読む必要があります。" * 8,
+            "OpenAIのPreparedness Frameworkという評価枠組みでは、Astraが重大なサイバー能力の基準に到達したとされています。" + "ここで重要なのは数字の対象を広げないことです。" * 7,
+            "2026年6月から8月の評価では高深刻度のV8脆弱性20件が扱われ、2件のzero-dayも記録されています。" + "一次資料が示す範囲だけを読み取ります。" * 7,
+            "安全策についてはアクセス制限、拒否訓練、system safety classifier、監視、misalignment detectionという名称が示されています。" + "名称から具体的な動作を推測してはいけません。" * 7,
+            "能力が高いことと、誰がどの条件で利用できるかは別問題です。" + "この一次資料から利用条件は確認できません。" * 8,
+            "読者側で変わるのは、性能の数字だけで導入判断をしないことです。" + "測定条件と提供条件を分けて確認します。" * 8,
+            "私なら、今すぐ導入判断はせず、まず一次情報で利用条件を確認します。" + "確認できるまでPoCや申請を前提にしません。" * 8,
+            "そのうえで、自社に関係する条件が一次情報で確認できた時点で改めて判断します。" + "今は注視が妥当です。" * 8,
         ]
         article = paras[0] + "\n\n## 100%をそのまま読まない\n\n" + paras[1] + "\n\n" + paras[2] + "\n\n## 数字の外側にある安全策\n\n" + paras[3] + "\n\n" + paras[4] + "\n\n## 導入判断より先に確認すること\n\n" + "\n\n".join(paras[5:])
         self.assertGreaterEqual(len(article), 1500)
