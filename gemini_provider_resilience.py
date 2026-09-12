@@ -21,9 +21,14 @@ many provider-visible HTTP attempts and makes Factory usage telemetry undercount
 real transport work. Production therefore rebuilds the Gemini client with SDK retries
 disabled (one total SDK attempt). All retry/fallback decisions remain owned by the
 Factory budgets and circuits below.
+
+Run374 adds an operator safety exclusion for Pending Retry only. This is evaluated
+immediately before provider dispatch so a model excluded for quota preservation can
+never be reintroduced by upstream fallback-pool normalization.
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -37,6 +42,11 @@ _PENDING_RETRY_ORIGINS = frozenset({"pending_retry", "pending_retry_validation"}
 
 def _is_pending_retry_origin(request_origin: str) -> bool:
     return str(request_origin or "").strip() in _PENDING_RETRY_ORIGINS
+
+
+def _pending_retry_excluded_models() -> frozenset[str]:
+    raw = str(os.environ.get("GEMINI_PENDING_RETRY_EXCLUDED_MODELS", "") or "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
@@ -110,7 +120,7 @@ def _install_single_retry_owner_client(pipeline_module: Any) -> None:
     pipeline_module.client = single_owner_client
     pipeline_module.GEMINI_SDK_RETRY_ATTEMPTS = _SDK_RETRY_ATTEMPTS
     pipeline_module.GEMINI_RETRY_OWNER = "factory"
-    setattr(pipeline_module, _SDK_SINGLE_OWNER_FLAG, True)
+    setattr(pipeline_module, _SDK_SINGLE_RETRY_OWNER_FLAG, True)
 
     logger = getattr(pipeline_module, "logger", None)
     if logger is not None:
@@ -139,7 +149,14 @@ def install(pipeline_module: Any) -> Any:
         deep_dive: bool = False, request_context: str = "", request_origin: str = "new",
     ):
         last_error: Exception | None = None
+        excluded = _pending_retry_excluded_models() if _is_pending_retry_origin(request_origin) else frozenset()
         for model_name in pool:
+            if model_name in excluded:
+                pipeline_module.logger.info(
+                    "[RUN374 PENDING RETRY MODEL EXCLUDED] model=%s origin=%s; provider_call=false",
+                    model_name, request_origin,
+                )
+                continue
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
             for attempt in range(2):
