@@ -41,6 +41,7 @@ def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
 【絶対ルール】
 - source_summary / what は出力しない。事実の要約・言い換え・再構成をしない。
 - FACT ENVELOPEにない事実、数値、日付、固有名詞、条件、時制、提供範囲、安全策の状態を追加しない。
+- Decision Reason / Why Important / Actionでも、Factの状態を別の動詞へ言い換えない。「安全策が実装されている」「安全策が適用されている」「安全策が導入済み」のような状態表現は禁止。必要なら「Fact Envelopeに安全策の記載がある」のように、記載の存在と判断を分離する。
 - 評価条件を提供条件へ、安全策の公開時方針を評価時の適用事実へ変換しない。
 - 安全策の名称から有効性・無効性・検証実施の有無を推測しない。必要なら「この資料から有効性は確認できない」と判断理由に書く。
 - アクセス可否が確認できない場合 access_status=NOT_CONFIRMED。Actionは条件確認までとし、PoC、申請、導入、試用を勧めない。
@@ -97,24 +98,33 @@ def _parse_judgment_text(text: str) -> dict:
 
 
 def _validate_judgment_semantics(judgment: dict) -> dict:
-    text = "\n".join([judgment["why_important"], *judgment["decision_reason"], judgment["action"]]).lower()
+    management_text = "\n".join([judgment["why_important"], *judgment["decision_reason"], judgment["action"]]).lower()
+    editorial_text = "\n".join([judgment["article_angle"], judgment["reader_bridge"], judgment["title_seed"]]).lower()
+    all_text = management_text + "\n" + editorial_text
     if judgment.get("access_status") == "NOT_CONFIRMED":
         positive_access_claims = (
             "一般利用者が利用でき", "一般ユーザーが利用でき", "誰でも利用", "一般提供され",
             "一般利用可能", "利用可能である", "アクセス可能である", "publicly available",
             "generally available", "条件下で提供され", "条件で提供され",
         )
-        if any(term.lower() in text for term in positive_access_claims):
+        if any(term.lower() in all_text for term in positive_access_claims):
             raise TwoPassArticleError("unconfirmed_access_scope_claim")
         forbidden_action = ("PoC", "概念実証", "申請", "導入する", "試す", "利用開始", "実施する")
         if any(word.lower() in judgment["action"].lower() for word in forbidden_action):
             raise TwoPassArticleError("unconfirmed_access_action_escalation")
     unsupported = ("未検証の安全策", "安全策の有効性が未検証", "安全策は未検証", "安全策が未検証")
-    if any(term in text for term in unsupported):
+    if any(term in all_text for term in unsupported):
         raise TwoPassArticleError("unsupported_safeguard_validation_claim")
     timing = ("評価で安全策が適用された", "評価時に安全策が適用された", "評価中に安全策が適用された", "適用された安全策")
-    if any(term in text for term in timing):
+    if any(term in all_text for term in timing):
         raise TwoPassArticleError("unsupported_safeguard_application_timing_claim")
+    state_rewrites = (
+        "安全策が実装され", "安全策を実装し", "安全策を実装して", "安全策が適用され", "安全策を適用し",
+        "安全策を適用して", "安全策が導入され", "安全策を導入し", "安全策が稼働", "安全策は有効",
+        "安全策が有効", "安全策が機能し", "安全策が機能して",
+    )
+    if any(term in all_text for term in state_rewrites):
+        raise TwoPassArticleError("unsupported_safeguard_state_rewrite")
     return judgment
 
 
@@ -128,7 +138,6 @@ def compose_fact_locked_plan(envelope: dict, judgment: dict) -> dict:
     ledger = envelope["fact_ledger"].strip()
     if len(ledger) > PLAN_SCHEMA["properties"]["source_summary"]["maxLength"]:
         raise TwoPassArticleError("fact_ledger_too_long_for_legacy_plan")
-    # Fact-bearing fields are deterministic. No model-generated factual prose is accepted here.
     plan = {
         "source_summary": ledger,
         "what": envelope["name"],
@@ -141,7 +150,6 @@ def validate_hybrid_plan_text(text: str, envelope: dict | None = None) -> dict:
     """Compatibility validator. With an envelope, text is judgment-only and gets composed."""
     if envelope is not None:
         return compose_fact_locked_plan(envelope, validate_hybrid_judgment_text(text))
-    # Existing saved composed plans remain readable during migration.
     try:
         data = json.loads(text, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
     except Exception:
@@ -161,7 +169,6 @@ def load_hybrid_plan_report(plan_report_path: str) -> dict:
         raise TwoPassArticleError("hybrid_plan_persistence_contract_invalid")
     plan = report.get("composed_plan")
     if not isinstance(plan, dict):
-        # Migration path for previously validated reports.
         try:
             return validate_hybrid_plan_text(report["result"]["text"])
         except (KeyError, TypeError):
