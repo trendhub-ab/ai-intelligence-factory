@@ -191,25 +191,36 @@ def create_history_monthly_digest(period_id: str, generated_at: str | None = Non
     }
 
 
-# Run257: preserve the existing product copy while allowing only owned blank fills.
-# Keep this in the thin extension; decision_intelligence_run255_core.py remains byte-preserved.
+# Run257: preserve existing product copy while allowing only owned blank fills.
+# The core remains byte-preserved. We extend the current-state snapshot and property
+# builder so the core's single existing-page query is the only Notion read required.
 _RUN257_COMMENT_FIELDS = {
     "main_risk": TECH_PROP_MAIN_RISK,
     "best_for": TECH_PROP_BEST_FOR,
     "avoid_for": TECH_PROP_AVOID_FOR,
     "short_rationale": TECH_PROP_SHORT_RATIONALE,
 }
-_RUN257_UPSERT_TECHNOLOGY_INTELLIGENCE_CORE = upsert_technology_intelligence
+_RUN257_CURRENT_STATE_CORE = _current_state
+_RUN257_BUILD_TECHNOLOGY_PROPERTIES_CORE = _build_technology_properties
 
 
-def _run257_protect_existing_comment_fields(assessment: dict, existing_page: dict | None) -> dict:
-    """Return a copy whose four product-copy fields obey the ownership contract."""
-    if not existing_page:
-        return dict(assessment)
-    props = existing_page.get("properties") or {}
+def _current_state(page: dict | None) -> dict:
+    """Extend the core state with protected product-copy values from the same page read."""
+    current = dict(_RUN257_CURRENT_STATE_CORE(page))
+    if not page:
+        return current
+    props = page.get("properties") or {}
+    for assessment_key, property_name in _RUN257_COMMENT_FIELDS.items():
+        current[assessment_key] = _rich_text_value(props.get(property_name, {}))
+    return current
+
+
+def _run257_protect_comment_fields(assessment: dict, current: dict | None) -> dict:
+    """Apply the ownership contract using the core's already-loaded current state."""
+    current = current or {}
     protected = dict(assessment)
     for assessment_key, property_name in _RUN257_COMMENT_FIELDS.items():
-        existing_value = _rich_text_value(props.get(property_name, {}))
+        existing_value = current.get(assessment_key)
         result = decide_comment_write(
             CommentWriteRequest(
                 property_name=property_name,
@@ -218,20 +229,17 @@ def _run257_protect_existing_comment_fields(assessment: dict, existing_page: dic
                 owner_allowed=True,
             )
         )
-        if result.decision is WriteDecision.PRESERVE:
-            protected[assessment_key] = result.value
-        elif result.decision is WriteDecision.BLANK_FILL:
+        if result.decision in {WriteDecision.PRESERVE, WriteDecision.BLANK_FILL}:
             protected[assessment_key] = result.value
         else:
-            # Fail closed. A blocked/shadow candidate must not reach the production core.
+            # Fail closed. Shadow/blocked candidates never enter production properties.
             protected[assessment_key] = existing_value
     return protected
 
 
-def upsert_technology_intelligence(assessment: dict, resolution: EntityResolution) -> dict:
-    """Run257 guarded wrapper around the byte-preserved Run255 upsert."""
-    if not ENABLE_DECISION_INTELLIGENCE_DB or resolution.status == "AMBIGUOUS":
-        return _RUN257_UPSERT_TECHNOLOGY_INTELLIGENCE_CORE(assessment, resolution)
-    existing_page = get_technology_record_by_entity_id(resolution.entity_id)
-    protected_assessment = _run257_protect_existing_comment_fields(assessment, existing_page)
-    return _RUN257_UPSERT_TECHNOLOGY_INTELLIGENCE_CORE(protected_assessment, resolution)
+def _build_technology_properties(
+    assessment: dict, resolution: EntityResolution, current: dict | None = None
+) -> dict:
+    """Guard four product-copy fields without adding any Notion read or altering core flow."""
+    protected_assessment = _run257_protect_comment_fields(assessment, current)
+    return _RUN257_BUILD_TECHNOLOGY_PROPERTIES_CORE(protected_assessment, resolution, current)
