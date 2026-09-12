@@ -11,7 +11,6 @@ from pathlib import Path
 import re
 
 from groq_writer_v9_compound import (
-    GroqWriterV9Error,
     route_compound_writer,
     preflight_compound_writer,
     inspect_compound_writer_v9,
@@ -30,8 +29,9 @@ V10_CONTRACT = r"""
 - 長さは新しいFactで埋めない。次の一次Evidenceを、条件を保ったまま「何を意味するか」「何を意味しないか」「読者判断がどう変わるか」で説明して厚くする：ExploitBench 100%、2026年6〜8月の高深刻度V8脆弱性20件、評価中に発見したzero-day 2件、結果はdefault production configurationではなくDaybreak Blue access条件、能力向上に伴う一部開発・公開の遅延、安全策の強化。
 - 「限定された脆弱性リスト」「そのリスト全体を網羅」など、LedgerにないExploitBenchの内部構成を追加しない。
 - 「認証プロセス」「申請手順」「取得方法」「参加方法」など、Ledgerにないアクセス手続きを追加しない。
-- Daybreak Blueについては「この資料から一般利用条件は確認できない」まで。取得・申請・一般提供を推測しない。
-- 安全策はLedgerにある名称と「複数の安全策を適用する」という範囲を超えて、具体動作・効果・保証を追加しない。
+- Daybreak Blueを「限定された環境」と言い換えない。確認済みなのはDaybreak Blue access条件で得た結果であり、一般利用条件はこの資料から確認できない、までに留める。
+- 安全策はLedgerにある名称と「複数の安全策を適用する」という範囲を超えない。「名称が示す通りの機能が組み込まれている」のように名称から実装機能を推測しない。
+- 「高度な能力自体がリスクと見なされた」「未知のリスクが潜在する」など、一次資料にない因果・評価を事実化しない。
 - 比喩は最大1つ。比喩は技術的事実ではなく理解補助だと分かる自然な書き方にする。
 - 最終段落は、現時点では導入判断を急がず一次情報で利用条件を確認する、というWATCH相当の判断で閉じる。
 返答前に、8段落・3見出し・1500字以上を自己確認する。
@@ -69,6 +69,10 @@ def inspect_compound_writer_v10(path: str) -> dict:
         (r"限定された脆弱性リスト|限られた脆弱性リスト|リスト全体を網羅", "unsupported_exploitbench_structure"),
         (r"認証プロセス|申請手順|取得方法|参加方法", "unsupported_access_procedure"),
         (r"Daybreak\s*Blue[^。！？\n]{0,120}(?:申請|取得|参加|一般提供|利用開始)", "daybreak_access_expansion"),
+        (r"Daybreak\s*Blue[^。！？\n]{0,60}(?:限定された環境|限定環境|限られた環境)", "daybreak_environment_rewrite"),
+        (r"(?:名称が示す通り|名称どおり)[^。！？\n]{0,80}(?:機能|組み込)", "safeguard_name_to_function_inference"),
+        (r"(?:高度な|高い)[^。！？\n]{0,60}(?:サイバー)?能力[^。！？\n]{0,80}(?:自体が)?リスクと見な", "unsupported_capability_risk_causality"),
+        (r"未知のリスク[^。！？\n]{0,60}(?:潜在|存在|ある)", "unsupported_unknown_risk"),
     )
     for pattern, code in patterns:
         if re.search(pattern, article, re.I):
