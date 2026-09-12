@@ -1,0 +1,103 @@
+name: Hybrid Groq Plan JSON Object Live
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/hybrid-groq-gemini']
+    paths:
+      - '.runtime/hybrid_groq_plan_json_trigger.txt'
+permissions:
+  contents: write
+concurrency:
+  group: ai-intelligence-hybrid-groq-plan-json
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install validation dependency
+        run: python -m pip install jsonschema
+      - name: Build and preflight Hybrid Decision Plan JSON Object fixture
+        shell: python
+        run: |
+          import json
+          from ai_provider import GenerationRequest, GroqProvider
+          from groq_validation import schema_validator
+          from hybrid_groq_plan import build_hybrid_plan_fixture, MODE
+          fx=build_hybrid_plan_fixture(
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'hybrid-groq-plan-json-fixture.json',
+          )
+          provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fx['schema']),token_budget=7000,model=fx['model'])
+          payload,estimate=provider.prepare(GenerationRequest(
+              fx['prompt'],fx['max_output_tokens'],fx['schema'],fx['reasoning_effort'],fx['structured_output_mode']
+          ))
+          assert fx['structured_output_mode']==MODE
+          assert payload['response_format']=={'type':'json_object'}
+          assert payload['reasoning_format']=='hidden'
+          assert estimate <= 7000
+          print(json.dumps({
+              'candidate_id':fx['candidate_id'],
+              'model':fx['model'],
+              'structured_output_mode':fx['structured_output_mode'],
+              'estimate':estimate,
+              'local_schema_required':True,
+              'business_writes':0,
+              'gemini_calls':0,
+          },ensure_ascii=False))
+      - name: One live Groq Plan call with full local validation
+        env:
+          AIIF_GROQ_EXPERIMENT: hybrid-plan-json-${{ github.run_id }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json
+          from hybrid_groq_plan_live import run_live
+          report=run_live('hybrid-groq-plan-json-fixture.json','hybrid-groq-plan-json-report.json')
+          print(json.dumps({
+              'candidate_id':report['candidate_id'],
+              'mode':report['structured_output_mode'],
+              'provider_calls':report['provider_calls'],
+              'actual_tokens':report['actual_tokens'],
+              'ledger_reconciled':report['ledger_reconciled'],
+              'local_schema_validated':report['local_schema_validated'],
+              'semantic_plan_validated':report['semantic_plan_validated'],
+              'business_writes':report['business_writes'],
+              'gemini_calls':0,
+          },ensure_ascii=False))
+      - name: Re-validate saved report through canonical Plan loader
+        shell: python
+        run: |
+          import json
+          from groq_two_pass_article import load_plan_report
+          report=json.load(open('hybrid-groq-plan-json-report.json',encoding='utf-8'))
+          plan=load_plan_report('hybrid-groq-plan-json-report.json')
+          assert report['provider_calls']==1
+          assert report['business_writes']==0 and report['persist_results'] is False
+          assert report['local_schema_validated'] is True
+          assert report['semantic_plan_validated'] is True
+          assert plan['decision'] in {'NOW','TRY','WATCH','WAIT','AVOID'}
+          print(json.dumps({
+              'terminal':'GROQ_PLAN_VALID',
+              'decision':plan['decision'],
+              'access_status':plan['access_status'],
+              'decision_score':sum(plan[k] for k in ('business_impact','technical_impact','urgency','market_impact','reliability')),
+              'business_writes':0,
+          },ensure_ascii=False))
+      - name: Upload validated Plan evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hybrid-groq-plan-json-B0049
+          path: |
+            hybrid-groq-plan-json-fixture.json
+            hybrid-groq-plan-json-report.json
+          if-no-files-found: warn
+          retention-days: 30
