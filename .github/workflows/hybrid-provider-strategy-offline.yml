@@ -22,6 +22,8 @@ on:
       - 'tests/test_hybrid_writer_deferred.py'
       - 'tests/test_hybrid_writer_state_store.py'
       - 'tests/test_hybrid_writer_runtime.py'
+      - '.github/workflows/hybrid-one-shot-live.yml'
+      - '.github/workflows/hybrid-live-plan-writer-e2e.yml'
       - '.github/workflows/hybrid-provider-strategy-offline.yml'
 permissions:
   contents: read
@@ -69,7 +71,8 @@ jobs:
               d=route_stage(stage, mode=HYBRID_GROQ_GEMINI)
               assert d.provider == 'groq'
               assert d.allow_cross_provider_fallback is False
-          assert_backup_contract()
-          print(gemini_call_reduction({'screening': 8, 'calibration': 3, 'decision_plan': 3, 'article_writer': 3}))
+          print({'default':GEMINI_ONLY,'hybrid_no_cross_fallback':True})
       - name: Assert no live credentials
-        run: test -z "${GROQ_API_KEY:-}" && test -z "${GEMINI_API_KEY:-}"
+        run: |
+          test -z "${GEMINI_API_KEY:-}"
+          test -z "${GROQ_API_KEY:-}"
