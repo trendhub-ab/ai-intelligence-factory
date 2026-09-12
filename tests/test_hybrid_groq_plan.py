@@ -107,6 +107,24 @@ def test_safeguard_validation_status_cannot_be_invented_from_named_safeguards():
     assert validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))['decision']=='WATCH'
 
 
+def test_publication_time_safeguards_cannot_move_into_evaluation_time():
+    plan=_valid_plan()
+    plan['source_summary']='評価時に複数の安全策が適用された。'
+    with pytest.raises(Exception,match='unsupported_safeguard_application_timing_claim'):
+        validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))
+    plan['source_summary']='公開時に複数の安全策を適用するとされる。'
+    assert validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))['decision']=='WATCH'
+
+
+def test_prompt_calibrates_reliability_separately_from_access_and_preserves_safeguard_timing(tmp_path):
+    fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
+    prompt=fixture['prompt']
+    assert '公開時の方針' in prompt
+    assert '評価中に安全策が適用済みだったことを意味しない' in prompt
+    assert '一般利用可否が未確認であること自体はreliability低下の理由ではない' in prompt
+    assert 'アクセス不明はaccess_status、decision_reason、actionで表現する' in prompt
+
+
 def test_hybrid_completion_budget_preserves_rate_safety(tmp_path):
     fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
     assert fixture['max_output_tokens']==3000
