@@ -9,9 +9,9 @@ Safety goals:
 - Preserve the existing Gemini-only path as the rollback authority.
 - Move only bounded preprocessing/decision work to Groq.
 - Keep final Japanese article writing on Gemini.
-- Never silently fall back from a failed Groq preprocessing stage to Gemini; doing so
-  would recreate the Gemini call volume we are trying to reduce.
+- Never silently fall back from a failed Groq preprocessing stage to Gemini.
 - Keep quality gates local/provider-neutral.
+- Keep Product Review/comment prose OUTSIDE Hybrid routing until shadow parity is proven.
 """
 from __future__ import annotations
 
@@ -23,12 +23,16 @@ GEMINI_ONLY = "gemini_only"
 HYBRID_GROQ_GEMINI = "hybrid_groq_gemini"
 VALID_MODES = frozenset({GEMINI_ONLY, HYBRID_GROQ_GEMINI})
 
-# Immutable rollback references created before Hybrid implementation.
 GEMINI_ONLY_BACKUP_BRANCH = "backup/gemini-only-run360-20260912"
 GEMINI_ONLY_BACKUP_SHA = "bdcd0a548084b348efb821b45b32d4a3faa0dc12"
 PRE_RUN360_BACKUP_BRANCH = "backup/gemini-only-run359-20260912"
 
-# Stages that are allowed to consume a model call. Local gates are explicitly not here.
+# Product Review writes comment-like Technology Intelligence properties. It remains a
+# separately governed legacy stage and MUST NOT be added to Hybrid Groq routing merely
+# because other preprocessing moved to Groq. Migration requires shadow parity evidence.
+PRODUCT_REVIEW_MIGRATION_POLICY = "production_frozen_until_shadow_parity"
+PRODUCT_REVIEW_HYBRID_ROUTING_ALLOWED = False
+
 MODEL_STAGES = (
     "screening",
     "calibration",
@@ -36,9 +40,6 @@ MODEL_STAGES = (
     "article_writer",
 )
 
-# Hybrid deliberately keeps prose generation on Gemini. Groq handles the work where
-# structured output, classification and bounded reasoning are more valuable than
-# Japanese editorial quality.
 HYBRID_STAGE_PROVIDER = {
     "screening": "groq",
     "calibration": "groq",
@@ -75,7 +76,6 @@ class RouteDecision:
 
 
 def resolve_mode(env: Mapping[str, str] | None = None) -> str:
-    """Resolve routing mode; default is always the existing Gemini-only path."""
     source = os.environ if env is None else env
     mode = str(source.get("AIIF_PROVIDER_MODE", GEMINI_ONLY)).strip().lower()
     if mode not in VALID_MODES:
@@ -85,6 +85,8 @@ def resolve_mode(env: Mapping[str, str] | None = None) -> str:
 
 def route_stage(stage: str, *, mode: str | None = None, env: Mapping[str, str] | None = None) -> RouteDecision:
     stage = str(stage or "").strip().lower()
+    if stage == "product_review":
+        raise HybridRoutingError("product_review_provider_migration_frozen")
     if stage in LOCAL_ONLY_STAGES:
         return RouteDecision(
             mode=mode or resolve_mode(env),
@@ -99,14 +101,8 @@ def route_stage(stage: str, *, mode: str | None = None, env: Mapping[str, str] |
     if selected_mode not in VALID_MODES:
         raise HybridRoutingError(f"unsupported_provider_mode:{selected_mode}")
 
-    provider_map = (
-        GEMINI_ONLY_STAGE_PROVIDER if selected_mode == GEMINI_ONLY
-        else HYBRID_STAGE_PROVIDER
-    )
+    provider_map = GEMINI_ONLY_STAGE_PROVIDER if selected_mode == GEMINI_ONLY else HYBRID_STAGE_PROVIDER
     provider = provider_map[stage]
-
-    # Critical rule: Hybrid preprocessing does not silently consume Gemini when Groq
-    # fails. Final article writing is already Gemini by design; local gates remain local.
     return RouteDecision(
         mode=selected_mode,
         stage=stage,
@@ -116,11 +112,6 @@ def route_stage(stage: str, *, mode: str | None = None, env: Mapping[str, str] |
 
 
 def estimate_provider_calls(stage_counts: Mapping[str, int], *, mode: str) -> dict[str, int]:
-    """Estimate model-call distribution without executing either provider.
-
-    Counts are intentionally stage-level and conservative. Retry behavior is excluded;
-    transport retry policy belongs to each provider runtime and must not be hidden here.
-    """
     if mode not in VALID_MODES:
         raise HybridRoutingError(f"unsupported_provider_mode:{mode}")
     totals = {"gemini": 0, "groq": 0, "local": 0}
@@ -134,11 +125,6 @@ def estimate_provider_calls(stage_counts: Mapping[str, int], *, mode: str) -> di
 
 
 def gemini_call_reduction(stage_counts: Mapping[str, int]) -> dict[str, float | int]:
-    """Return deterministic Gemini-call reduction from routing alone.
-
-    This is not a promise about 503 probability. It measures only how many scheduled
-    model calls are routed away from Gemini before retries are considered.
-    """
     baseline = estimate_provider_calls(stage_counts, mode=GEMINI_ONLY)
     hybrid = estimate_provider_calls(stage_counts, mode=HYBRID_GROQ_GEMINI)
     before = baseline["gemini"]
@@ -155,7 +141,6 @@ def gemini_call_reduction(stage_counts: Mapping[str, int]) -> dict[str, float | 
 
 
 def assert_backup_contract() -> None:
-    """Static invariant used by CI/documentation guards."""
     if not GEMINI_ONLY_BACKUP_BRANCH.startswith("backup/gemini-only-"):
         raise HybridRoutingError("gemini_backup_branch_invalid")
     if len(GEMINI_ONLY_BACKUP_SHA) != 40:
