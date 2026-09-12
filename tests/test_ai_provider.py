@@ -68,6 +68,24 @@ class ProviderTests(unittest.TestCase):
             self.assertNotIn("hidden", str(cm.exception))
             self.assertEqual(p.attempts, 1)
 
+    def test_transport_provider_error_is_preserved(self):
+        def blocked(_):
+            raise ProviderError("persistent_validation_minute_budget_exceeded")
+        p = GroqProvider(blocked)
+        with self.assertRaises(ProviderError) as cm:
+            p.generate(GenerationRequest("test", 100))
+        self.assertEqual(cm.exception.kind, "persistent_validation_minute_budget_exceeded")
+        self.assertEqual(p.attempts, 1)
+
+    def test_unknown_transport_error_is_sanitized(self):
+        def broken(_):
+            raise RuntimeError("secret implementation detail")
+        p = GroqProvider(broken)
+        with self.assertRaises(ProviderError) as cm:
+            p.generate(GenerationRequest("test", 100))
+        self.assertEqual(cm.exception.kind, "transport_error")
+        self.assertNotIn("secret", str(cm.exception))
+
     def test_timeout_keeps_reservation(self):
         def timeout(_):
             raise TimeoutError("credential must not leak")
@@ -108,7 +126,6 @@ class ProviderTests(unittest.TestCase):
         serialized = str(sent["schema"])
         for key in ("minLength", "maxLength", "minItems", "maxItems"):
             self.assertNotIn(key, serialized)
-        self.assertIn("minimum", str({"minimum": 0}))  # numeric range remains an allowed local/provider constraint
         self.assertEqual(schema["properties"]["summary"]["maxLength"], 10)
 
     def test_strict_schema_rejects_open_or_optional_object_before_send(self):
