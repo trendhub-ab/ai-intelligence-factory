@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from hybrid_provider_strategy import (
     GEMINI_ONLY,
     HYBRID_GROQ_GEMINI,
@@ -72,3 +74,17 @@ def test_backup_contract_is_pinned_to_current_gemini_only_snapshot():
     assert GEMINI_ONLY_BACKUP_BRANCH == "backup/gemini-only-run360-20260912"
     assert GEMINI_ONLY_BACKUP_SHA == "bdcd0a548084b348efb821b45b32d4a3faa0dc12"
     assert_backup_contract()
+
+
+def test_hybrid_google_workflows_are_manual_approval_only():
+    for path in (
+        '.github/workflows/hybrid-one-shot-live.yml',
+        '.github/workflows/hybrid-live-plan-writer-e2e.yml',
+    ):
+        text = Path(path).read_text(encoding='utf-8')
+        assert 'workflow_dispatch:' in text
+        assert 'google_api_approved:' in text
+        assert "inputs.google_api_approved == true" in text
+        assert "AIIF_GOOGLE_API_APPROVED: 'true'" in text
+        # These Google/Gemini Hybrid workflows must never auto-run from a push.
+        assert '\n  push:' not in text
