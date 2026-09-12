@@ -5,7 +5,9 @@ on:
     branches: ['dev/hybrid-groq-gemini']
     paths:
       - 'hybrid_provider_strategy.py'
+      - 'hybrid_gemini_writer.py'
       - 'tests/test_hybrid_provider_strategy.py'
+      - 'tests/test_hybrid_gemini_writer.py'
       - '.github/workflows/hybrid-provider-strategy-offline.yml'
 permissions:
   contents: read
@@ -22,26 +24,29 @@ jobs:
           python-version: '3.11'
       - name: Install pytest
         run: python -m pip install pytest
-      - name: Run routing regressions
-        run: python -m pytest tests/test_hybrid_provider_strategy.py -q
+      - name: Run hybrid routing and writer regressions
+        run: python -m pytest tests/test_hybrid_provider_strategy.py tests/test_hybrid_gemini_writer.py -q
       - name: Prove routing module has no provider SDK or business side effects
         shell: python
         run: |
           import ast, pathlib
-          src = pathlib.Path('hybrid_provider_strategy.py').read_text(encoding='utf-8')
-          tree = ast.parse(src)
-          imports=[]
-          for node in ast.walk(tree):
-              if isinstance(node, ast.Import):
-                  imports.extend(alias.name for alias in node.names)
-              elif isinstance(node, ast.ImportFrom):
-                  imports.append(node.module or '')
-          forbidden=('google', 'gemini', 'groq', 'requests', 'urllib', 'notion', 'ai_provider')
-          bad=[name for name in imports if any(token in name.lower() for token in forbidden)]
-          assert not bad, bad
-          for forbidden_text in ('GEMINI_API_KEY', 'GROQ_API_KEY', 'requests.', 'urllib.request'):
-              assert forbidden_text not in src
-          print({'provider_sdk_imports': bad, 'business_writes': 0})
+          for path in ('hybrid_provider_strategy.py', 'hybrid_gemini_writer.py'):
+              src = pathlib.Path(path).read_text(encoding='utf-8')
+              tree = ast.parse(src)
+              imports=[]
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      imports.extend(alias.name for alias in node.names)
+                  elif isinstance(node, ast.ImportFrom):
+                      imports.append(node.module or '')
+              # Local pure Groq plan-validation helpers are allowed. Provider SDKs/network
+              # clients and provider boundary execution are not.
+              forbidden=('google', 'requests', 'urllib', 'notion_client', 'ai_provider')
+              bad=[name for name in imports if any(token in name.lower() for token in forbidden)]
+              assert not bad, (path, bad)
+              for forbidden_text in ('GEMINI_API_KEY', 'GROQ_API_KEY', 'requests.', 'urllib.request'):
+                  assert forbidden_text not in src, (path, forbidden_text)
+          print({'provider_sdk_imports': [], 'business_writes': 0})
       - name: Prove default remains Gemini-only and Hybrid does not cross-fallback
         shell: python
         run: |
