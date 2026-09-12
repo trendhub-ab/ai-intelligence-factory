@@ -40,6 +40,17 @@ def classify(issues, source_supported, complete=False):
     return "surface_clean_but_unproven"
 
 
+def extract_markdown_manuscript(content_text: str) -> str | None:
+    """Remove only the outer Notion MCP markdown wrapper, preserving nested fences."""
+    raw = str(content_text or "")
+    prefix = "```markdown\n"
+    suffix = "\n```"
+    if not raw.startswith(prefix) or not raw.endswith(suffix):
+        return None
+    manuscript = raw[len(prefix):-len(suffix)]
+    return manuscript if manuscript else None
+
+
 def audit_snapshot(snapshot, pipeline):
     from publication_source_contract import ACTIVE_PUBLIC_SOURCES
     from reader_value_review_bridge import _material_reader_value_issues
@@ -59,12 +70,11 @@ def audit_snapshot(snapshot, pipeline):
     row.update(title=props.get("note記事タイトル") or data.get("title"), source=props.get("情報源"))
     supported = row["source"] in ACTIVE_PUBLIC_SOURCES
     content = re.search(r"<content>\n(.*?)\n</content>", text, re.S)
-    bodies = re.findall(r"^```markdown\n(.*?)\n```", content.group(1) if content else "", re.S | re.M)
-    complete = bool(len(bodies) == 1 and not data.get("truncated") and not data.get("unknown_block_count")
+    manuscript = extract_markdown_manuscript(content.group(1) if content else "")
+    complete = bool(manuscript is not None and not data.get("truncated") and not data.get("unknown_block_count")
                     and not data.get("unknown_block_ids"))
     issues = []
     if complete:
-        manuscript = bodies[0]
         # Partition existing projection; do not rebuild, polish or repair any text.
         body = manuscript
         if "### 元情報\n" in body:
