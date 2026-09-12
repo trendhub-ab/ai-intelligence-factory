@@ -37,7 +37,9 @@ jobs:
           forbidden=('google', 'gemini', 'groq', 'requests', 'urllib', 'notion', 'ai_provider')
           bad=[name for name in imports if any(token in name.lower() for token in forbidden)]
           assert not bad, bad
-          for forbidden_text in ('GEMINI_API_KEY', 'GROQ_API_KEY', 'requests.', 'notion'):
+          # Credential access or network-call syntax is forbidden. Provider names and
+          # local stage labels may legitimately appear as routing data/docstrings.
+          for forbidden_text in ('GEMINI_API_KEY', 'GROQ_API_KEY', 'requests.', 'urllib.request'):
               assert forbidden_text not in src
           print({'provider_sdk_imports': bad, 'business_writes': 0})
       - name: Prove default remains Gemini-only and Hybrid does not cross-fallback
