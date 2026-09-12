@@ -1,10 +1,12 @@
 name: Hybrid Groq Plan + Gemini Writer ONE-SHOT
 on:
   workflow_dispatch:
-  push:
-    branches: ['dev/hybrid-groq-gemini']
-    paths:
-      - '.runtime/hybrid_one_shot_trigger.txt'
+    inputs:
+      google_api_approved:
+        description: 'Explicitly approve ONE Google/Gemini API validation call for this run'
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -12,11 +14,13 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    if: ${{ inputs.google_api_approved == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       PYTHONPATH: ${{ github.workspace }}
       AIIF_RUNTIME_STATE_BRANCH: runtime-state
+      AIIF_GOOGLE_API_APPROVED: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,14 +50,15 @@ jobs:
           assert plan['decision']=='WATCH' and plan['access_status']=='NOT_CONFIRMED'
           assert sum(plan[k] for k in ('business_impact','technical_impact','urgency','market_impact','reliability'))==80
           assert plan['article_value']==85
+          assert fx['google_api_requires_explicit_approval'] is True
           assert fx['business_writes']==0 and fx['persist_results'] is False
           assert len(fx['writer_prompt'].encode('utf-8')) < 32000
-          # Validation-only override: skip repeatedly unavailable 3.7 and spend exactly one 3.8 call.
-          # This does not change the production/default model order in hybrid_one_shot.py.
+          # Validation-only override: exactly one 3.8 call after explicit manual approval.
+          # Production/default model order remains unchanged.
           fx['writer_model']='gemini-3.8-flash'
           fx['writer_models']=['gemini-3.8-flash']
           fx['provider_calls_expected']={'groq_live':0,'gemini_live_max':1}
-          fx['fallback_contract']='validation-only direct 3.8; no fallback; production/default unchanged'
+          fx['fallback_contract']='manual-approval validation-only direct 3.8; no fallback; production/default unchanged'
           with open('hybrid-writer-fixture.json','w',encoding='utf-8') as f:
               json.dump(fx,f,ensure_ascii=False,indent=2)
           print(json.dumps({
@@ -68,6 +73,7 @@ jobs:
               'writer_prompt_bytes':len(fx['writer_prompt'].encode('utf-8')),
               'groq_live_calls':0,
               'gemini_live_calls_max':1,
+              'explicit_google_api_approval':True,
               'business_writes':0,
               'production_model_order_changed':False,
           },ensure_ascii=False))
