@@ -1,1 +1,1 @@
-One bounded Plan diagnostic after rejected-Plan persistence fix; classify model semantic error vs validator false positive. Groq 1 call only; Gemini/Notion/note 0.
+One bounded Plan validation after uncertainty/safeguard guard correction; Groq 1 call only; Gemini/Notion/note 0; Writer disabled.
