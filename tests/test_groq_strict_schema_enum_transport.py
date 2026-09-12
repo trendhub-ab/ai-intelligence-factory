@@ -13,7 +13,7 @@ def _schema():
     }
 
 
-def test_string_enum_gets_transport_type_without_mutating_original():
+def test_string_enum_gets_transport_type_and_hidden_reasoning_without_mutating_original():
     schema=_schema()
     provider=GroqProvider(lambda _: None,validate_schema=lambda *_:None,token_budget=7000)
     payload,_=provider.prepare(GenerationRequest('test',100,schema,'medium'))
@@ -22,6 +22,8 @@ def test_string_enum_gets_transport_type_without_mutating_original():
         'enum':['NOW','TRY','WATCH','WAIT','AVOID'],
         'type':'string',
     }
+    assert payload['reasoning_effort']=='medium'
+    assert payload['reasoning_format']=='hidden'
     assert 'type' not in schema['properties']['decision']
     assert sent['properties']['score']['minimum']==0
     assert sent['properties']['score']['maximum']==100
