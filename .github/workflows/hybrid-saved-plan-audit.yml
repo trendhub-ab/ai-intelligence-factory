@@ -1,0 +1,36 @@
+name: Hybrid Saved Plan Audit
+on:
+  push:
+    branches: ['dev/hybrid-groq-gemini']
+    paths: ['.github/workflows/hybrid-saved-plan-audit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hybrid-groq-plan-json-B0049
+          run-id: 34675144954
+          github-token: ${{ github.token }}
+          path: saved-plan
+      - name: Inspect final Plan only without model calls
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          from groq_two_pass_article import load_plan_report
+          path='saved-plan/hybrid-groq-plan-json-report.json'
+          report=json.loads(Path(path).read_text())
+          plan=load_plan_report(path)
+          assert report['candidate_id']=='B0049'
+          assert report['provider_calls']==1
+          assert report['business_writes']==0
+          assert report['semantic_plan_validated'] is True
+          output=json.dumps({'plan':plan,'usage':{k:report['result'][k] for k in ('prompt_tokens','completion_tokens')},'audit_model_calls':0},ensure_ascii=False)
+          assert 'gsk_' not in output
+          print(output)
