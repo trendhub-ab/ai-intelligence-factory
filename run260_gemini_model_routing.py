@@ -1,4 +1,4 @@
-"""Run260/261/278/371: bounded Gemini primary / quality-repair routing.
+"""Run260/261/278/371/373: bounded Gemini primary / quality-repair routing.
 
 Business goal
 -------------
@@ -17,12 +17,12 @@ requests while a usable draft already existed. Quality repair is therefore bound
 the preferred model plus one distinct fallback (2 provider-visible model attempts).
 Fresh Deep Dive keeps the full pool.
 
-Run371 fixes an operator-order bug exposed by bounded Pending Retry recovery. The old
-install path always prepended ``DEFAULT_DEEP_DIVE_POOL`` after reading explicit config,
-so an operator request for 3.8-first still executed 3.7-first. Production now keeps the
-established 3.7-first default when there is no explicit override, while an explicit
-configured pool keeps its exact order and only appends missing default fallbacks after
-that order. Quotas, per-model budgets, request ceilings, and Gate policy are unchanged.
+Run371 fixes an operator-order bug exposed by bounded Pending Retry recovery. Explicit
+operator model order is preserved exactly before missing default fallbacks are appended.
+Run373 additionally distinguishes the historical core three-model pool from a real
+operator override: that legacy default is implicit and must still normalize to the
+canonical 3.7 -> 3.8 -> 3.6 -> 3.5 fresh Deep Dive order. Quotas, per-model budgets,
+request ceilings, and Gate policy are unchanged.
 """
 from __future__ import annotations
 
@@ -38,6 +38,10 @@ QUALITY_MODEL = "gemini-3.8-flash"
 FALLBACK_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = (QUALITY_MODEL, *FALLBACK_MODELS, PRIMARY_MODEL)
+LEGACY_IMPLICIT_DEEP_DIVE_POOLS = (
+    ("gemini-3.6-flash",),
+    ("gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash"),
+)
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
 
@@ -54,12 +58,13 @@ def _dedupe(models: Iterable[str]) -> list[str]:
 def _configured_deep_dive_pool(pipeline_module: Any) -> tuple[list[str], bool]:
     """Return configured pool plus whether it is an explicit operator override.
 
-    The pre-Run260 core default is a singleton 3.6 pool. Treat only that exact value
-    (or an empty value) as implicit. Any other non-empty ordering is explicit and must
-    retain operator order. Missing Run260 defaults are appended later as fallbacks.
+    Empty values and the two historical core defaults are implicit. Any other non-empty
+    ordering is explicit and must retain operator order. Missing Run260 defaults are
+    appended later as fallbacks.
     """
     configured = _dedupe(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
-    if not configured or configured == ["gemini-3.6-flash"]:
+    configured_tuple = tuple(configured)
+    if not configured or configured_tuple in LEGACY_IMPLICIT_DEEP_DIVE_POOLS:
         return list(DEFAULT_DEEP_DIVE_POOL), False
     return configured, True
 
@@ -79,11 +84,7 @@ def _quality_first_pool(pool: Iterable[str]) -> list[str]:
 
 
 def _bounded_quality_pool(pool: Iterable[str]) -> list[str]:
-    """Keep one preferred repair model plus one distinct fallback.
-
-    This is a *routing* bound, not a request budget. Provider-visible failures remain
-    counted by the existing counters and Run172 still decides transport retry/failover.
-    """
+    """Keep one preferred repair model plus one distinct fallback."""
     return _quality_first_pool(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
 
 
