@@ -24,7 +24,7 @@ class GroqWriterV10Tests(unittest.TestCase):
             self.assertEqual(data['model'],'groq/compound-mini')
             self.assertEqual(data['max_output_tokens'],7800)
             self.assertIn('V13 EVIDENCE-SLOTTED PROSE',data['prompt'])
-            self.assertIn('Gemini Run359同期',data['prompt'])
+            self.assertIn('【Gemini Run359同期｜Reader実行契約 — Provider非依存部分のみ】',data['prompt'])
             self.assertIn('追加provider callの許可ではない',data['prompt'])
             self.assertIn('gemini_run359_provider_neutral',data['contract_version_v10'])
             self.assertGreater(pf['headroom'],10000)
@@ -37,7 +37,7 @@ class GroqWriterV10Tests(unittest.TestCase):
             first=route_compound_writer_v10(str(p))['prompt']
             second=route_compound_writer_v10(str(p))['prompt']
             self.assertEqual(first,second)
-            self.assertEqual(second.count('Gemini Run359同期'),1)
+            self.assertEqual(second.count('【Gemini Run359同期｜Reader実行契約 — Provider非依存部分のみ】'),1)
             self.assertEqual(second.count('V13 EVIDENCE-SLOTTED PROSE'),1)
 
     def test_guard_rejects_unverified_benchmark_and_access_details(self):
