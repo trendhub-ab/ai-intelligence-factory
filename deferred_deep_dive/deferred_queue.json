@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-11T17:18:53.293634+00:00",
+  "updated_at": "2026-09-12T02:07:51.212346+00:00",
   "items": [
     {
       "key": "https://hugovergnes.github.io/little-lm-3-8b",
@@ -682,6 +682,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 73.05
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49660651",
+      "deferred_at": "2026-09-12T02:07:51.212072+00:00",
+      "expires_at": "2026-09-14T02:07:51.212072+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
+        "originalTitle": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
+        "displayName": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
+        "sourceLanguage": "en",
+        "url": "https://www.businessinsider.com/openai-caltech-ai-math-hackathon-backlash-anthropic-2026-9",
+        "description": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-11T16:02:11Z",
+        "sourceContext": "HN points=7 comments=0 matched_query=OpenAI",
+        "primaryUrl": "https://www.businessinsider.com/openai-caltech-ai-math-hackathon-backlash-anthropic-2026-9",
+        "sourceDetails": {
+          "hn_id": "49660651",
+          "hn_url": "https://news.ycombinator.com/item?id=49660651",
+          "external_url": "https://www.businessinsider.com/openai-caltech-ai-math-hackathon-backlash-anthropic-2026-9",
+          "comments": 0,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3d9479ff-dca9-810c-bf0e-f26466ad3082",
+      "score": 70,
+      "reason": "ハッカソンを巡る倫理的批判と撤退の動向。",
+      "commercial_score": 55,
+      "shelf_life_score": 30,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 64.75
     }
   ]
 }
