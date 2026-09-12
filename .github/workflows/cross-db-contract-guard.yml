@@ -24,6 +24,7 @@ on:
       - 'tests/test_run232_notion_integration_reconciliation.py'
       - 'tests/test_comment_write_contract.py'
       - 'tests/test_decision_comment_preservation.py'
+      - 'tests/test_product_review_provider_lock.py'
       - 'tests/fixtures/comment_contract_golden.json'
       - '.github/workflows/cross-db-contract-guard.yml'
   push:
@@ -49,6 +50,7 @@ on:
       - 'tests/test_run232_notion_integration_reconciliation.py'
       - 'tests/test_comment_write_contract.py'
       - 'tests/test_decision_comment_preservation.py'
+      - 'tests/test_product_review_provider_lock.py'
       - 'tests/fixtures/comment_contract_golden.json'
       - '.github/workflows/cross-db-contract-guard.yml'
   # ONE-SHOT fan-out is explicit via GH_PAT from daily-one-shot.yml. Keep only the
@@ -85,6 +87,7 @@ jobs:
           python -m unittest tests/test_run232_notion_integration_reconciliation.py
           python -m unittest tests/test_comment_write_contract.py
           python -m unittest tests/test_decision_comment_preservation.py
+          python -m unittest tests/test_product_review_provider_lock.py
 
   live-schema-contract:
     if: >-
