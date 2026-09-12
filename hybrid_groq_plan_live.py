@@ -1,4 +1,4 @@
-"""One-call Hybrid Groq Decision Plan runner using JSON Object Mode + local strict validation."""
+"""One-call Hybrid Groq judgment runner with deterministic Fact Envelope composition."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -12,28 +12,24 @@ from ai_provider import GenerationRequest, GroqProvider, ProviderError
 from groq_rate_policy import policy_for_model
 from groq_remote_budget import reserve_remote, reconcile_remote
 from groq_validation import NoRedirect, schema_validator
-from hybrid_groq_plan import MODE, validate_hybrid_plan_text
+from hybrid_fact_envelope import validate_fact_envelope
+from hybrid_groq_plan import MODE, validate_hybrid_judgment_text, compose_fact_locked_plan
 
 
 def run_live(fixture_path: str, report_path: str) -> dict:
     fixture=json.loads(Path(fixture_path).read_text(encoding='utf-8'))
     if fixture.get('structured_output_mode') != MODE:
         raise ProviderError('hybrid_plan_mode_required')
+    envelope=validate_fact_envelope(fixture.get('fact_envelope'))
     model=str(fixture['model'])
     policy=policy_for_model(model)
     request=GenerationRequest(
-        fixture['prompt'],
-        int(fixture['max_output_tokens']),
-        fixture['schema'],
-        fixture.get('reasoning_effort','medium'),
-        fixture['structured_output_mode'],
+        fixture['prompt'], int(fixture['max_output_tokens']), fixture['schema'],
+        fixture.get('reasoning_effort','medium'), fixture['structured_output_mode'],
     )
     provider=GroqProvider(
-        lambda _: None,
-        validate_schema=schema_validator(fixture['schema']),
-        request_budget=1,
-        token_budget=policy.safe_tpm,
-        model=model,
+        lambda _: None, validate_schema=schema_validator(fixture['schema']), request_budget=1,
+        token_budget=policy.safe_tpm, model=model,
     )
     payload,estimate=provider.prepare(request)
     if payload.get('response_format') != {'type':'json_object'}:
@@ -51,14 +47,8 @@ def run_live(fixture_path: str, report_path: str) -> dict:
     def transport(payload):
         reserve_remote(token,experiment,estimate,opener,policy.name)
         req=urllib.request.Request(
-            'https://api.groq.com/openai/v1/chat/completions',
-            data=json.dumps(payload).encode('utf-8'),
-            headers={
-                'Authorization':'Bearer '+key,
-                'Content-Type':'application/json',
-                'User-Agent':'AI-Intelligence-Factory/1.0',
-                'Accept':'application/json',
-            },
+            'https://api.groq.com/openai/v1/chat/completions', data=json.dumps(payload).encode('utf-8'),
+            headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','User-Agent':'AI-Intelligence-Factory/1.0','Accept':'application/json'},
             method='POST',
         )
         try:
@@ -72,29 +62,18 @@ def run_live(fixture_path: str, report_path: str) -> dict:
     actual=result.prompt_tokens+result.completion_tokens
     reconcile_remote(token,experiment,actual,opener,policy.name)
     report={
-        'mode':'hybrid_groq_plan_json_object_local_strict',
-        'provider':'groq',
-        'model':model,
-        'rate_policy':policy.name,
-        'stage':'article',
-        'pass':'decision_plan',
-        'candidate_id':fixture.get('candidate_id'),
-        'structured_output_mode':MODE,
-        'provider_calls':1,
-        'reserved_token_estimate':estimate,
-        'actual_tokens':actual,
-        'ledger_reconciled':True,
-        'local_schema_validated':True,
-        'semantic_plan_validated':False,
-        'quality_validated':False,
-        'business_writes':0,
-        'persist_results':False,
-        'result':asdict(result),
+        'mode':'hybrid_groq_judgment_fact_locked', 'provider':'groq', 'model':model,
+        'rate_policy':policy.name, 'stage':'article', 'pass':'decision_judgment',
+        'candidate_id':fixture.get('candidate_id'), 'structured_output_mode':MODE,
+        'provider_calls':1, 'reserved_token_estimate':estimate, 'actual_tokens':actual,
+        'ledger_reconciled':True, 'local_schema_validated':True,
+        'semantic_plan_validated':False, 'quality_validated':False,
+        'business_writes':0, 'persist_results':False,
+        'fact_envelope_sha256':envelope['fact_ledger_sha256'], 'result':asdict(result),
     }
-    # Keep the final JSON response even when semantics reject it. Never repair it,
-    # pass it to Writer, or label transport/schema success as article quality.
     try:
-        validate_hybrid_plan_text(result.text)
+        judgment=validate_hybrid_judgment_text(result.text)
+        composed=compose_fact_locked_plan(envelope,judgment)
     except Exception as exc:
         report['status']='PLAN_REJECTED'
         report['semantic_error_type']=type(exc).__name__
@@ -102,5 +81,6 @@ def run_live(fixture_path: str, report_path: str) -> dict:
         raise
     report['status']='PLAN_VALIDATED'
     report['semantic_plan_validated']=True
+    report['composed_plan']=composed
     Path(report_path).write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     return report
