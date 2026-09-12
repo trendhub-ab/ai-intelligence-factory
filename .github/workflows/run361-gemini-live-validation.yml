@@ -1,0 +1,51 @@
+name: Run361 Gemini Live Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'run361_gemini_live_validation.py'
+      - '.github/workflows/run361-gemini-live-validation.yml'
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-live-validation:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Run361: execute bounded Gemini live validation' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Assert zero-persistence diagnostic contract
+        run: |
+          test -n "${GEMINI_API_KEY}"
+          echo "Run361: one Gemini logical call, no Notion/note/persistence side effects."
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Execute exactly one bounded Gemini call
+        run: python run361_gemini_live_validation.py
+        env:
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RUN361_MODEL: 'gemini-3.7-flash'
