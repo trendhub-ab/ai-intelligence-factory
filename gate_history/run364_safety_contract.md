@@ -1,0 +1,1 @@
+Run364 safety contract: exactly eight Run362-proven historical Ready rows; live metadata and body SHA revalidation; all-or-nothing apply; exact confirmation token; append-only current Ready caption; byte-identical manuscript; zero model/provider/Google API calls; no public release; no comment-property mutation.
