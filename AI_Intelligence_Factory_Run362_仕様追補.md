@@ -35,12 +35,64 @@ B/Cは同一モデル、同一runner、同一Run360 Gemini client設定で逐次
 - ログ対象: case / model / prompt chars / prompt bytes / max_output_tokens / HTTP status / elapsed / error type
 - Productionと同じGemini budget concurrency groupを使用
 
+## 実測結果（2026-09-12 / Run362）
+
+### A: Run361 lightweight control
+- HTTP 200
+- elapsed 1.356s
+- SDK attempts=1
+- SDK retry=0
+
+### B: compressed Production shape
+- model: gemini-3.7-flash
+- prompt_chars: 16,212
+- prompt_bytes: 36,391
+- max_output_tokens: 3,000
+- HTTP 503
+- elapsed 4.458s
+- SDK attempts=1
+- retry owner: Factory
+- provider message: `This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.`
+
+### C: fuller Production shape
+- model: gemini-3.7-flash
+- prompt_chars: 25,214
+- prompt_bytes: 45,393
+- max_output_tokens: 9,000
+- HTTP 503
+- elapsed 11.458s
+- SDK attempts=1
+- retry owner: Factory
+- provider message: Bと同一のhigh demand / UNAVAILABLE 503
+
+### 副作用
+- Notion write: 0
+- note write: 0
+- persistence: false
+- publication: 0
+- live Gemini call: 2回のみ
+
 ## 判定
-- A/B/Cすべて200: 単発request shapeだけでは503再現せず。連続call、実Evidence、tool利用、provider capacity等を次段で切り分ける。
-- A/B=200、C=503: Production負荷形状が503発生に関与する強い証拠。
-- A=200、B/C=503: Production prompt構造または出力予約量の関与が強い。
-- B/Cとも503以外（429等）: quota/rate-limit系として別診断。
-- B/Cが同種503: request sizeだけでなく共通Production prompt/config要因を疑う。
+実測は `A=200 / B=503 / C=503`。
+
+これは「Gemini 3.7 Flashが常時503」ではなく、**Production型のrequest shapeに切り替わると503が発生する**という仮説を強く支持する。
+
+ただし、今回の2ケースではprompt長とmax_output_tokensを同時に増減しているため、現時点で原因を以下のどれか1つへ断定してはならない。
+
+1. prompt/context長
+2. max_output_tokensによる出力予約量
+3. Production promptの命令密度・構造
+4. 上記の複合負荷が、provider側の高需要時capacity admissionに不利に働くこと
+
+CはBよりelapsedが長い（11.458s vs 4.458s）が、単発2件だけなので「重いほど遅く503になる」という統計的結論にはまだ使わない。
+
+## 結論
+- SDK hidden retry増幅説: Run360で解消済み。今回もattempts=1を実ログ確認。
+- quota超過説: 今回の応答は429ではなく503 UNAVAILABLE。
+- Gemini全体障害説: 軽量Aが同じ3.7 Flashで200のため単独原因としては弱い。
+- Production request負荷関与説: **強く支持**。
+
+したがってGeminiをバックアップProviderとして維持するなら、次の最小検証は「prompt長」と「max_output_tokens」を分離した2x2のうち、Aを再利用して追加2callだけで主要因を切り分けること。Production変更はその結果を見てから行う。
 
 ## Run361からの継承
 Retry ownershipはFactoryのみ。SDK retryはattempts=1。Run360前Gemini-only backup `backup/gemini-only-run359-20260912` は維持する。
