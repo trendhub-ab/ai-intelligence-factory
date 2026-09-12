@@ -1,0 +1,56 @@
+name: Run363 Gemini 3.8 Temporal Control
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'run363_gemini38_temporal_control.py'
+      - '.github/workflows/run363-gemini38-temporal-control.yml'
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-gemini38-temporal-control:
+    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'Run363 execute Gemini38 temporal control')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Assert bounded contract
+        run: |
+          test -n "${GEMINI_API_KEY}"
+          echo "Run363: Gemini 3.8 only; A1 -> B -> A2; max 3 live calls; no persistence/publication."
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Run zero-API checks
+        run: python -m pytest -q run363_gemini38_temporal_control_test.py
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+
+      - name: Execute bounded Gemini 3.8 temporal control
+        run: python run363_gemini38_temporal_control.py
+        env:
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
