@@ -1,8 +1,7 @@
-name: Run374 Pending Retry Validation [ONE-TIME]
+name: Run376 Pending Retry Validation [ONE-TIME]
 
-# One authorized read-only validation after Run373 zero-API hardening.
-# Run374 retry-2 verifies that Pending Retry exclusion is applied before the bounded
-# quality pool is sliced, so Gemini 3.5 remains the fallback when 3.6 is forbidden.
+# One authorized read-only validation after Run375 Reader-reason hardening.
+# Run376 isolates the repair proof on Gemini 3.5 only so scarce 3.8/3.6 quota is preserved.
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
@@ -28,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run374 retry-2: one Pending Retry candidate, Gemini 3.6 forbidden, 3.8 -> 3.5 quality fallback, persist=false, max 6 provider attempts.'
+          echo 'Run376: one Pending Retry candidate, Gemini 3.5 only, 3.6 and 3.8 forbidden, persist=false, max 4 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -62,12 +61,12 @@ jobs:
           TZ: 'Asia/Tokyo'
           AIIF_ONE_SHOT_MODE: 'pending_retry_validation'
           ARTICLE_REVALIDATION_LIMIT: '1'
-          ARTICLE_REVALIDATION_REQUEST_BUDGET: '6'
-          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '6'
-          GEMINI_PENDING_RETRY_REQUEST_BUDGET: '6'
+          ARTICLE_REVALIDATION_REQUEST_BUDGET: '4'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
+          GEMINI_PENDING_RETRY_REQUEST_BUDGET: '4'
           GEMINI_TRANSIENT_503_COOLDOWN_THRESHOLD: '1'
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.8-flash,gemini-3.5-flash'
-          GEMINI_PENDING_RETRY_EXCLUDED_MODELS: 'gemini-3.6-flash'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.5-flash'
+          GEMINI_PENDING_RETRY_EXCLUDED_MODELS: 'gemini-3.6-flash,gemini-3.8-flash'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
@@ -109,7 +108,7 @@ jobs:
           GEMINI_COUNTER_BRANCH: 'main'
           EYECATCH_GITHUB_BRANCH: 'main'
           GEMINI_36_FLASH_DAILY_BUDGET: '0'
-          GEMINI_38_FLASH_DAILY_BUDGET: '18'
+          GEMINI_38_FLASH_DAILY_BUDGET: '0'
           GEMINI_35_FLASH_DAILY_BUDGET: '18'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
           MAX_EVIDENCE_DOCUMENTS: '3'
@@ -119,14 +118,14 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run374 retry-2 pending validation'
+            echo '### Run376 pending validation'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
-            echo '- Gemini 3.6: `FORBIDDEN` at provider dispatch and daily budget `0`'
-            echo '- bounded quality order after exclusions: `3.8 -> 3.5`'
-            echo '- pending-validation HTTP 503: immediate next-model fallback'
-            echo '- provider request budget: at most `6`'
+            echo '- Gemini 3.6: `FORBIDDEN`'
+            echo '- Gemini 3.8: `PRESERVED / FORBIDDEN FOR THIS RUN`'
+            echo '- model: `gemini-3.5-flash` only'
+            echo '- provider request budget: at most `4`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
             echo '- note draft/public publication: `false`'
