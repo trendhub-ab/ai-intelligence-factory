@@ -48,9 +48,14 @@ jobs:
               fixture['prompt'], fixture['max_output_tokens'], fixture['schema'], fixture['reasoning_effort']
           ))
           assert estimate <= 7000
+          sent_schema = payload['response_format']['json_schema']['schema']
+          sent_serialized = json.dumps(sent_schema, ensure_ascii=False)
+          for unsupported in ('minLength', 'maxLength', 'minItems', 'maxItems'):
+              assert unsupported not in sent_serialized
+          assert payload['response_format']['json_schema']['strict'] is True
           print(json.dumps({'plan_preflight': 'PASS', 'model': fixture['model'], 'estimate': estimate,
                             'safe_tpm': 7000, 'request_bytes': len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')),
-                            'business_writes': 0}, ensure_ascii=False))
+                            'strict_schema': True, 'business_writes': 0}, ensure_ascii=False))
 
       - name: One guarded GPT-OSS Decision Plan call
         env:
@@ -59,7 +64,7 @@ jobs:
           AIIF_GROQ_REPORT: two-pass-plan-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-plan-v1
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-plan-v2-strict-subset
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
@@ -96,7 +101,7 @@ jobs:
           AIIF_GROQ_REPORT: two-pass-writer-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v1
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v2-strict-subset
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
