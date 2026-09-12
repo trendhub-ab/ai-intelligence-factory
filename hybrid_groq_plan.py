@@ -1,122 +1,171 @@
-"""Hybrid-only Groq Decision Plan adapter.
+"""Hybrid-only Groq judgment adapter with deterministic Fact Envelope.
 
-The shared Groq strict-schema route remains unchanged for other stages. Decision Plan uses
-Groq JSON Object Mode because repeated strict=true calls returned provider-side
-json_validate_failed with a short non-JSON failed_generation. Safety is preserved by
-validating the returned JSON against the original full PLAN_SCHEMA locally and then applying
-Hybrid semantic guards before any Gemini writer call.
+Verified evidence is locked before Groq. Groq may judge, score and propose editorial framing,
+but it no longer writes source_summary/what. The final Decision Plan is composed locally from
+the immutable envelope plus the validated Groq judgment.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from groq_two_pass_article import PLAN_SCHEMA, build_plan_fixture, validate_plan, TwoPassArticleError
+from groq_article_parity import load_input
+from groq_rate_policy import GPT_OSS_120B, policy_for_model
+from groq_two_pass_article import PLAN_SCHEMA, validate_plan, TwoPassArticleError
+from hybrid_fact_envelope import build_fact_envelope, validate_fact_envelope
 
 MODE = "json_object_local_strict"
 
+JUDGMENT_FIELDS = [
+    "why_important", "decision", "decision_reason", "business_impact", "technical_impact",
+    "urgency", "market_impact", "reliability", "action", "article_value", "article_angle",
+    "reader_bridge", "title_seed", "access_status",
+]
+JUDGMENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": JUDGMENT_FIELDS,
+    "properties": {key: PLAN_SCHEMA["properties"][key] for key in JUDGMENT_FIELDS},
+}
+
 
 def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
-    fixture = build_plan_fixture(input_path, output_path)
-    exact_keys = ", ".join(PLAN_SCHEMA["required"])
-    fixture["structured_output_mode"] = MODE
-    # 2026-09-12: same-prompt 3000-token experiment succeeded with 1692 output tokens.
-    # Keep this bounded Hybrid setting separate from other Groq stages.
-    fixture["max_output_tokens"] = 3000
-    fixture["prompt"] = fixture["prompt"].replace(
-        "- JSON Schemaに厳密に従いJSONだけを返す。",
-        "- JSONオブジェクト1個だけを返す。Markdown、コードフェンス、説明、前置き、後書きは禁止。\n"
-        f"- 必須キーは次の16個だけ。すべて1回ずつ含め、余分なキーは禁止: {exact_keys}\n"
-        "- decision は NOW / TRY / WATCH / WAIT / AVOID のいずれか。\n"
-        "- access_status は CONFIRMED_AVAILABLE / NOT_CONFIRMED / NOT_RELEVANT のいずれか。\n"
-        "- business_impact/technical_impact/urgency/market_impact/reliability/article_value は整数。\n"
-        "- decision_reason は1〜3個の文字列配列。それ以外の説明項目は文字列。"
-    )
-    fixture["prompt"] += """
+    item = load_input(input_path)
+    envelope = validate_fact_envelope(build_fact_envelope(input_path))
+    policy = policy_for_model(GPT_OSS_120B.model)
+    exact_keys = ", ".join(JUDGMENT_FIELDS)
+    prompt = f"""あなたはAI Intelligence FactoryのDecision Judgeです。
+事実を書き直す担当ではありません。FACT ENVELOPEはプログラムで固定された読み取り専用Evidenceです。
+あなたの担当は、確認済みEvidenceを解釈し、判断・採点・実務アクション・編集方針だけを返すことです。
 
-【判断と採点の較正】
-- 評価時の設定・アクセス条件は、製品の提供形態ではない。Daybreak Blueはこの資料では評価条件としてだけ扱う。
-- 資料が「公開時に安全策を適用する」と述べる場合、それは公開時の方針であり、評価中に安全策が適用済みだったことを意味しない。「評価で安全策が適用された」「適用された安全策」のように時制・適用範囲を変換しない。「公開時に適用するとされる安全策」までに留める。
-- 資料が安全策の名称を示すだけなら、有効性も無効性も未確定。「未検証の安全策」「安全策の有効性が未検証」のように、検証実施の有無まで事実化しない。必要なら「この資料から有効性は確認できない」と書く。
-- 利用条件が未確認であることだけを理由にAVOIDへ飛躍しない。WATCH/WAIT/AVOIDは、対象読者と確認済みの採否根拠を区別して決める。根拠のある見送りは妨げない。
-- access_status=NOT_CONFIRMEDでも「一般利用者向けに確認できない」のような未確認表現は許可する。一方、「一般利用者が利用できる」「一般提供される」のような提供範囲の肯定断定は禁止する。
-- Decision Scoreの上限はbusiness_impact=25、technical_impact=25、urgency=20、market_impact=15、reliability=15。各軸を別々に評価し、利用条件の不明を全軸へ重複減点しない。
-- reliabilityは一次情報・測定記述・根拠の信頼性を評価する軸。一般利用可否が未確認であること自体はreliability低下の理由ではない。アクセス不明はaccess_status、decision_reason、actionで表現する。
-- business_impact / technical_impact / urgency / market_impact も、アクセス未確認を同じ理由で繰り返し減点しない。確認済みの事実が各軸に与える影響だけを採点する。
-- article_valueは0〜100の記事としての価値。導入の可否や安全性とは別に、確認済みの発見が読者へ与える理解と判断材料を評価する。
-- 読者は中学生〜非エンジニアも含む。reader_bridgeは読者が理解できる説明の橋渡しを具体化する。「判断のための指針」のような目的説明だけにしない。
+【絶対ルール】
+- source_summary / what は出力しない。事実の要約・言い換え・再構成をしない。
+- FACT ENVELOPEにない事実、数値、日付、固有名詞、条件、時制、提供範囲、安全策の状態を追加しない。
+- 評価条件を提供条件へ、安全策の公開時方針を評価時の適用事実へ変換しない。
+- 安全策の名称から有効性・無効性・検証実施の有無を推測しない。必要なら「この資料から有効性は確認できない」と判断理由に書く。
+- アクセス可否が確認できない場合 access_status=NOT_CONFIRMED。Actionは条件確認までとし、PoC、申請、導入、試用を勧めない。
+- reliabilityはEvidence自体の信頼性。アクセス未確認をreliabilityへ重複減点しない。
+- business_impact / technical_impact / urgency / market_impact は各軸を独立採点し、同じ不確実性を全軸へ重複減点しない。
+- article_valueは導入可否とは別に、確認済み発見が読者へ与える理解・判断材料を評価する。
+- article_angle / reader_bridge / title_seed は編集案であり、新しいFactを含めない。自然な日本語で書く。
+- 読者は中学生〜非エンジニアも含む。reader_bridgeは具体的な理解の橋渡しにする。
+- JSONオブジェクト1個だけを返す。Markdown、コードフェンス、前置き、後書きは禁止。
+- 必須キーは次の14個だけ。すべて1回ずつ含め、余分なキーは禁止: {exact_keys}
+- decision は NOW / TRY / WATCH / WAIT / AVOID のいずれか。
+- access_status は CONFIRMED_AVAILABLE / NOT_CONFIRMED / NOT_RELEVANT のいずれか。
+- business_impact=0..25、technical_impact=0..25、urgency=0..20、market_impact=0..15、reliability=0..15、article_value=0..100 の整数。
+- decision_reason は1〜3個の文字列配列。それ以外の説明項目は文字列。
+
+【候補】
+Name: {item['name']}
+Screening Score: {item['screening_score']}
+Screening Reason: {item['screening_reason']}
+
+【FACT ENVELOPE — READ ONLY】
+{json.dumps(envelope, ensure_ascii=False)}
 """
+    fixture = {
+        "stage": "article",
+        "provider": "groq",
+        "model": GPT_OSS_120B.model,
+        "rate_policy": policy.name,
+        "prompt": prompt,
+        "max_output_tokens": 2200,
+        "reasoning_effort": "medium",
+        "schema": JUDGMENT_SCHEMA,
+        "candidate_id": item["candidate_id"],
+        "pass": "decision_judgment",
+        "structured_output_mode": MODE,
+        "fact_envelope": envelope,
+        "persist_results": False,
+        "business_writes": 0,
+    }
     Path(output_path).write_text(json.dumps(fixture, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return fixture
 
 
-def _hybrid_refined_semantic_guard(plan: dict) -> dict:
-    """Distinguish uncertainty wording from unsupported access/safeguard claims."""
-    legacy_scope_failure = False
-    try:
-        validate_plan(plan)
-    except TwoPassArticleError as exc:
-        if str(exc) != "unconfirmed_access_scope_claim":
-            raise
-        legacy_scope_failure = True
-
-    management_text = "\n".join([
-        plan["source_summary"], plan["what"], plan["why_important"],
-        *plan["decision_reason"], plan["action"],
-    ]).lower()
-
-    if legacy_scope_failure:
-        if plan.get("access_status") != "NOT_CONFIRMED":
-            raise TwoPassArticleError("unconfirmed_access_scope_claim")
-        positive_access_claims = (
-            "一般利用者に適用", "一般ユーザーに適用", "一般利用者が利用でき", "一般ユーザーが利用でき",
-            "誰でも利用", "一般提供され", "一般提供して", "一般利用可能", "利用可能である",
-            "アクセス可能である", "publicly available", "generally available",
-            "条件下で提供され", "条件で提供され",
-        )
-        if any(term.lower() in management_text for term in positive_access_claims):
-            raise TwoPassArticleError("unconfirmed_access_scope_claim")
-
-    unsupported_safeguard_assessments = (
-        "未検証の安全策", "安全策の有効性が未検証", "安全策は未検証", "安全策が未検証",
-    )
-    if any(term in management_text for term in unsupported_safeguard_assessments):
-        raise TwoPassArticleError("unsupported_safeguard_validation_claim")
-
-    # Migration guard: the current B0049 ledger describes safeguards as publication-time
-    # controls. Do not allow the Planner to move them backward into the evaluation itself.
-    unsupported_safeguard_timing = (
-        "評価で安全策が適用された", "評価時に安全策が適用された", "評価中に安全策が適用された",
-        "適用された安全策", "安全策が適用された",
-    )
-    if any(term in management_text for term in unsupported_safeguard_timing):
-        raise TwoPassArticleError("unsupported_safeguard_application_timing_claim")
-    return plan
-
-
-def validate_hybrid_plan_text(text: str) -> dict:
+def _parse_judgment_text(text: str) -> dict:
     if not isinstance(text, str) or not text.strip():
-        raise ValueError("hybrid_plan_empty")
+        raise ValueError("hybrid_judgment_empty")
+    try:
+        data = json.loads(text, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+    except Exception:
+        raise ValueError("hybrid_judgment_json_invalid") from None
+    from jsonschema import Draft202012Validator
+    Draft202012Validator(JUDGMENT_SCHEMA).validate(data)
+    return data
+
+
+def _validate_judgment_semantics(judgment: dict) -> dict:
+    text = "\n".join([judgment["why_important"], *judgment["decision_reason"], judgment["action"]]).lower()
+    if judgment.get("access_status") == "NOT_CONFIRMED":
+        positive_access_claims = (
+            "一般利用者が利用でき", "一般ユーザーが利用でき", "誰でも利用", "一般提供され",
+            "一般利用可能", "利用可能である", "アクセス可能である", "publicly available",
+            "generally available", "条件下で提供され", "条件で提供され",
+        )
+        if any(term.lower() in text for term in positive_access_claims):
+            raise TwoPassArticleError("unconfirmed_access_scope_claim")
+        forbidden_action = ("PoC", "概念実証", "申請", "導入する", "試す", "利用開始", "実施する")
+        if any(word.lower() in judgment["action"].lower() for word in forbidden_action):
+            raise TwoPassArticleError("unconfirmed_access_action_escalation")
+    unsupported = ("未検証の安全策", "安全策の有効性が未検証", "安全策は未検証", "安全策が未検証")
+    if any(term in text for term in unsupported):
+        raise TwoPassArticleError("unsupported_safeguard_validation_claim")
+    timing = ("評価で安全策が適用された", "評価時に安全策が適用された", "評価中に安全策が適用された", "適用された安全策")
+    if any(term in text for term in timing):
+        raise TwoPassArticleError("unsupported_safeguard_application_timing_claim")
+    return judgment
+
+
+def validate_hybrid_judgment_text(text: str) -> dict:
+    return _validate_judgment_semantics(_parse_judgment_text(text))
+
+
+def compose_fact_locked_plan(envelope: dict, judgment: dict) -> dict:
+    envelope = validate_fact_envelope(envelope)
+    judgment = _validate_judgment_semantics(judgment)
+    ledger = envelope["fact_ledger"].strip()
+    if len(ledger) > PLAN_SCHEMA["properties"]["source_summary"]["maxLength"]:
+        raise TwoPassArticleError("fact_ledger_too_long_for_legacy_plan")
+    # Fact-bearing fields are deterministic. No model-generated factual prose is accepted here.
+    plan = {
+        "source_summary": ledger,
+        "what": envelope["name"],
+        **judgment,
+    }
+    return validate_plan(plan)
+
+
+def validate_hybrid_plan_text(text: str, envelope: dict | None = None) -> dict:
+    """Compatibility validator. With an envelope, text is judgment-only and gets composed."""
+    if envelope is not None:
+        return compose_fact_locked_plan(envelope, validate_hybrid_judgment_text(text))
+    # Existing saved composed plans remain readable during migration.
     try:
         data = json.loads(text, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
     except Exception:
         raise ValueError("hybrid_plan_json_invalid") from None
     from jsonschema import Draft202012Validator
     Draft202012Validator(PLAN_SCHEMA).validate(data)
-    return _hybrid_refined_semantic_guard(data)
+    return validate_plan(data)
 
 
 def load_hybrid_plan_report(plan_report_path: str) -> dict:
-    """Canonical Hybrid Plan loader used by every Groq->Gemini handoff."""
-    report=json.loads(Path(plan_report_path).read_text(encoding="utf-8"))
+    report = json.loads(Path(plan_report_path).read_text(encoding="utf-8"))
     if report.get("status") != "PLAN_VALIDATED" or report.get("semantic_plan_validated") is not True:
         raise TwoPassArticleError("hybrid_plan_report_rejected")
     if report.get("provider") != "groq" or report.get("provider_calls") != 1:
         raise TwoPassArticleError("hybrid_plan_provider_contract_invalid")
     if report.get("business_writes") != 0 or report.get("persist_results") is not False:
         raise TwoPassArticleError("hybrid_plan_persistence_contract_invalid")
-    try:
-        text=report["result"]["text"]
-    except (KeyError, TypeError):
-        raise TwoPassArticleError("hybrid_plan_result_missing") from None
-    return validate_hybrid_plan_text(text)
+    plan = report.get("composed_plan")
+    if not isinstance(plan, dict):
+        # Migration path for previously validated reports.
+        try:
+            return validate_hybrid_plan_text(report["result"]["text"])
+        except (KeyError, TypeError):
+            raise TwoPassArticleError("hybrid_plan_result_missing") from None
+    from jsonschema import Draft202012Validator
+    Draft202012Validator(PLAN_SCHEMA).validate(plan)
+    return validate_plan(plan)
