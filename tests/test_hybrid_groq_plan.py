@@ -51,6 +51,7 @@ def test_fixture_is_judgment_only_and_groq_cannot_write_fact_fields(tmp_path):
     assert 'source_summary' not in fixture['schema']['properties']
     assert 'what' not in fixture['schema']['properties']
     assert 'source_summary / what は出力しない' in fixture['prompt']
+    assert 'Factの状態を別の動詞へ言い換えない' in fixture['prompt']
     assert fixture['fact_envelope']['fact_ledger']==build_fact_envelope(INPUT)['fact_ledger']
     assert fixture['business_writes']==0 and fixture['persist_results'] is False
     provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fixture['schema']),token_budget=7000,model=fixture['model'])
@@ -90,6 +91,20 @@ def test_safeguard_validation_and_timing_invention_fail_closed():
     judgment=_valid_judgment(); judgment['decision_reason']=['評価時に安全策が適用された。']
     with pytest.raises(Exception,match='unsupported_safeguard_application_timing_claim'):
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
+
+
+def test_safeguard_state_rewrite_inside_judgment_fails_closed():
+    judgment=_valid_judgment()
+    judgment['decision_reason']=['高度な能力と複数の安全策が実装されているため条件確認が必要。']
+    with pytest.raises(Exception,match='unsupported_safeguard_state_rewrite'):
+        validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
+    judgment=_valid_judgment()
+    judgment['reader_bridge']='安全策が適用されている仕組みを日常の鍵に例える。'
+    with pytest.raises(Exception,match='unsupported_safeguard_state_rewrite'):
+        validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
+    judgment=_valid_judgment()
+    judgment['decision_reason']=['Fact Envelopeに安全策の記載があるため、利用条件と合わせて判断する。']
+    assert validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))['decision']=='WATCH'
 
 
 def test_legacy_composed_plan_remains_readable_during_migration():
