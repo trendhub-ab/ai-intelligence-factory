@@ -1,13 +1,10 @@
-name: Groq Writer v10 Production Re-evaluate
+name: Groq Writer v13 Production Re-evaluate
 on:
   workflow_dispatch:
   push:
     branches: ['dev/groq-provider-foundation']
     paths:
       - '.github/workflows/groq-writer-v10-production-reevaluate.yml'
-      - 'groq_writer_v7_contract.py'
-      - 'groq_writer_v10_compound.py'
-      - 'groq_quality_contract_sync.py'
 permissions:
   actions: read
   contents: read
@@ -25,23 +22,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install jsonschema
-      - name: Download saved v10 live artifact without provider access
+      - name: Download saved v13 live artifact without provider access
         uses: actions/download-artifact@v4
         with:
-          name: groq-writer-v10-compound-B0049
-          path: saved-v10
+          name: groq-writer-v13-compound-B0049
+          path: saved-v13
           github-token: ${{ github.token }}
           repository: trendhub-ab/ai-intelligence-factory
-          run-id: 34667953427
-      - name: Reinspect saved v10 with corrected local diagnostics
+          run-id: 34669555004
+      - name: Reinspect saved v13 with complete local diagnostics
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
         run: |
           import json, shutil
           from groq_writer_v10_compound import inspect_compound_writer_v10
-          shutil.copyfile('saved-v10/two-pass-plan-report.json','two-pass-plan-report.json')
-          shutil.copyfile('saved-v10/two-pass-writer-report.json','two-pass-writer-report.json')
+          shutil.copyfile('saved-v13/two-pass-plan-report.json','two-pass-plan-report.json')
+          shutil.copyfile('saved-v13/two-pass-writer-report.json','two-pass-writer-report.json')
           inspected=inspect_compound_writer_v10('two-pass-writer-report.json')
           print(json.dumps({
               'zero_api': True,
@@ -52,7 +49,8 @@ jobs:
               'business_writes': 0,
           },ensure_ascii=False))
           assert inspected['paragraphs'] == 8, inspected
-      - name: Assemble saved article and evaluate Production gates with synced quality contracts
+          assert len(inspected['headings']) == 3, inspected
+      - name: Assemble v13 and evaluate full Production gates despite local BLOCK
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           PYTHONPATH: ${{ github.workspace }}
@@ -70,17 +68,13 @@ jobs:
           from run287_publication_date_provenance import install as install_run287
           from reader_quality_precision import install as install_reader_quality_precision
 
-          combined=assemble_combined_report(
-              'two-pass-plan-report.json','two-pass-writer-report.json','two-pass-combined-report.json'
-          )
+          combined=assemble_combined_report('two-pass-plan-report.json','two-pass-writer-report.json','two-pass-combined-report.json')
           assert combined['business_writes']==0
           install_source_normalization(pipeline)
           production_pipeline.install_runtime_layers(pipeline)
           production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
-          # Run357/358 parity must be the outermost quality precision layer so older
-          # Groq-side reader overlays cannot reinterpret the corrected signals afterward.
           install_provider_neutral_quality_contracts(pipeline)
           probe=pipeline._reader_experience_signals('SFの話です。CI/CD（自動ビルド環境）を使います。')
           assert probe.get('reader_signal_precision_contract') == 'run358', probe
@@ -111,11 +105,13 @@ jobs:
           },ensure_ascii=False))
           assert getattr(pipeline,'GROQ_QUALITY_SYNC_VERSION',None)
           assert ev['business_writes']==0 and ev['persist_results'] is False
-      - name: Upload zero-API reevaluation
+      - name: Upload v13 zero-API reevaluation
         uses: actions/upload-artifact@v4
         with:
-          name: groq-writer-v10-production-reevaluation
+          name: groq-writer-v13-production-reevaluation
           path: |
             two-pass-combined-report.json
             two-pass-evaluation.json
           retention-days: 30
+      - name: Assert no live credentials
+        run: test -z "${GROQ_API_KEY:-}" && test -z "${GEMINI_API_KEY:-}"
