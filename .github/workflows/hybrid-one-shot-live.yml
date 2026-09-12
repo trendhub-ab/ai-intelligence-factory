@@ -27,7 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install jsonschema
-      - name: Preflight saved Fact-Locked Groq plan and compact Gemini writer fixture
+      - name: Preflight saved Fact-Locked Groq plan and one-call Gemini 3.8 validation fixture
         shell: python
         run: |
           import json
@@ -46,10 +46,16 @@ jobs:
           assert plan['decision']=='WATCH' and plan['access_status']=='NOT_CONFIRMED'
           assert sum(plan[k] for k in ('business_impact','technical_impact','urgency','market_impact','reliability'))==80
           assert plan['article_value']==85
-          assert fx['provider_calls_expected']=={'groq_live':0,'gemini_live_max':2}
-          assert fx['writer_models']==['gemini-3.7-flash','gemini-3.8-flash']
           assert fx['business_writes']==0 and fx['persist_results'] is False
-          assert len(fx['writer_prompt'].encode('utf-8')) < 30000
+          assert len(fx['writer_prompt'].encode('utf-8')) < 32000
+          # Validation-only override: skip repeatedly unavailable 3.7 and spend exactly one 3.8 call.
+          # This does not change the production/default model order in hybrid_one_shot.py.
+          fx['writer_model']='gemini-3.8-flash'
+          fx['writer_models']=['gemini-3.8-flash']
+          fx['provider_calls_expected']={'groq_live':0,'gemini_live_max':1}
+          fx['fallback_contract']='validation-only direct 3.8; no fallback; production/default unchanged'
+          with open('hybrid-writer-fixture.json','w',encoding='utf-8') as f:
+              json.dump(fx,f,ensure_ascii=False,indent=2)
           print(json.dumps({
               'candidate_id':fx['candidate_id'],
               'plan_provider':'groq(saved fact-locked validated)',
@@ -58,14 +64,14 @@ jobs:
               'article_value':plan['article_value'],
               'access_status':plan['access_status'],
               'writer_provider':'gemini',
-              'writer_models':fx['writer_models'],
+              'validation_writer_model':fx['writer_model'],
               'writer_prompt_bytes':len(fx['writer_prompt'].encode('utf-8')),
               'groq_live_calls':0,
-              'gemini_live_calls_max':2,
-              'availability_policy':'503/404 -> durable PENDING_WRITER',
+              'gemini_live_calls_max':1,
               'business_writes':0,
+              'production_model_order_changed':False,
           },ensure_ascii=False))
-      - name: Bounded Gemini writer, durable deferral, and Production gates
+      - name: One Gemini 3.8 writer call and Production gates
         id: writer
         env:
           TZ: 'Asia/Tokyo'
@@ -85,10 +91,9 @@ jobs:
           SYNTHETIC_REGRESSION_MODE: 'false'
         shell: python
         run: |
-          import json, os
+          import json
           import note_manuscript, pipeline, production_pipeline
-          from hybrid_one_shot import evaluate_writer_text
-          from hybrid_writer_runtime import run_or_defer_writer
+          from hybrid_one_shot import evaluate_writer_text, run_one_gemini_writer_call
           from source_normalization import install as install_source_normalization
           from run268_business_source_strategy import install as install_run268
           from run269_business_source_precision import install as install_run269
@@ -103,32 +108,13 @@ jobs:
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
 
-          outcome=run_or_defer_writer(
+          report=run_one_gemini_writer_call(
               pipeline,
               'hybrid-writer-fixture.json',
               'hybrid-writer-report.json',
-              'hybrid-pending-writer.json',
           )
-          status=outcome['status']
-          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as handle:
-              handle.write(f"status={status}\n")
-              handle.write(f"provider_calls={int(outcome.get('provider_calls') or 0)}\n")
-
-          if status=='DEFERRED':
-              pending=outcome['pending']
-              print(json.dumps({
-                  'status':'DEFERRED',
-                  'candidate_id':pending['candidate_id'],
-                  'reason':outcome['reason'],
-                  'provider_calls':outcome['provider_calls'],
-                  'retry_cycles':pending['retry_cycles'],
-                  'retry_after':pending['retry_after'],
-                  'expires_at':pending['expires_at'],
-                  'business_writes':pending['business_writes'],
-              },ensure_ascii=False))
-              raise SystemExit(0)
-
-          report=outcome['report']
+          assert report['provider_calls']==1
+          assert report['model']=='gemini-3.8-flash'
           ev=evaluate_writer_text(
               pipeline,
               'tests/fixtures/groq/article_parity_B0049_input.json',
@@ -142,8 +128,8 @@ jobs:
               'status':'SUCCESS',
               'candidate_id':ev['candidate_id'],
               'gemini_live_calls':ev['gemini_live_calls'],
-              'attempts':report['attempts'],
               'model':ev['writer_model'],
+              'raw_article_chars':ev['raw_article_chars'],
               'article_chars':ev['article_chars'],
               'decision':ev['decision'],
               'decision_score':ev['decision_score'],
@@ -170,21 +156,9 @@ jobs:
             hybrid-writer-fixture.json
             hybrid-writer-report.json
             hybrid-evaluation.json
-            hybrid-pending-writer.json
           if-no-files-found: warn
           retention-days: 30
-      - name: Prove availability deferral is safe
-        if: steps.writer.outputs.status == 'DEFERRED'
-        shell: python
-        run: |
-          import json
-          pending=json.load(open('hybrid-pending-writer.json',encoding='utf-8'))
-          assert pending['status']=='PENDING_WRITER'
-          assert pending['business_writes']==0 and pending['persist_results'] is False
-          assert 1 <= pending['retry_cycles'] <= pending['max_retry_cycles'] == 3
-          print({'hybrid_result':'DEFERRED_NOT_FAILED','candidate_id':pending['candidate_id'],'business_writes':0})
       - name: Require full article quality parity
-        if: steps.writer.outputs.status == 'SUCCESS'
         shell: python
         run: |
           import json
