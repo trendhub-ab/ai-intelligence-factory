@@ -39,7 +39,8 @@ jobs:
               'hybrid-writer-fixture.json',
           )
           assert plan['decision']=='WATCH' and plan['access_status']=='NOT_CONFIRMED'
-          assert fx['provider_calls_expected']=={'groq_live':0,'gemini_live':1}
+          assert fx['provider_calls_expected']=={'groq_live':0,'gemini_live_max':2}
+          assert fx['writer_models']==['gemini-3.7-flash','gemini-3.8-flash']
           assert fx['business_writes']==0 and fx['persist_results'] is False
           assert len(fx['writer_prompt'].encode('utf-8')) < 30000
           print(json.dumps({
@@ -48,12 +49,13 @@ jobs:
               'decision':plan['decision'],
               'access_status':plan['access_status'],
               'writer_provider':'gemini',
-              'writer_model':fx['writer_model'],
+              'writer_models':fx['writer_models'],
               'writer_prompt_bytes':len(fx['writer_prompt'].encode('utf-8')),
-              'gemini_live_calls_expected':1,
+              'gemini_live_calls_max':2,
+              'fallback':'503/404 only',
               'business_writes':0,
           },ensure_ascii=False))
-      - name: One Gemini final-writer call and complete Production gate evaluation
+      - name: Bounded Gemini final-writer and complete Production gate evaluation
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -74,7 +76,7 @@ jobs:
         run: |
           import json
           import note_manuscript, pipeline, production_pipeline
-          from hybrid_one_shot import run_one_gemini_writer_call, evaluate_writer_text
+          from hybrid_one_shot import run_bounded_gemini_writer_calls, evaluate_writer_text
           from source_normalization import install as install_source_normalization
           from run268_business_source_strategy import install as install_run268
           from run269_business_source_precision import install as install_run269
@@ -90,9 +92,9 @@ jobs:
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
 
           before_used=getattr(getattr(pipeline,'DEEP_DIVE_MODEL_BUDGET',None),'used',None)
-          report=run_one_gemini_writer_call(pipeline,'hybrid-writer-fixture.json','hybrid-writer-report.json')
+          report=run_bounded_gemini_writer_calls(pipeline,'hybrid-writer-fixture.json','hybrid-writer-report.json')
           after_used=getattr(getattr(pipeline,'DEEP_DIVE_MODEL_BUDGET',None),'used',None)
-          assert report['provider_calls']==1 and report['business_writes']==0
+          assert 1 <= report['provider_calls'] <= 2 and report['business_writes']==0
           writer_text=report['text']
           ev=evaluate_writer_text(
               pipeline,
@@ -100,10 +102,13 @@ jobs:
               'tests/fixtures/groq/two_pass_v3_plan_safe_report.json',
               writer_text,
               'hybrid-evaluation.json',
+              writer_model=report['model'],
+              gemini_live_calls=report['provider_calls'],
           )
           print(json.dumps({
               'candidate_id':ev['candidate_id'],
               'gemini_live_calls':ev['gemini_live_calls'],
+              'attempts':report['attempts'],
               'model':ev['writer_model'],
               'deep_dive_budget_before':before_used,
               'deep_dive_budget_after':after_used,
