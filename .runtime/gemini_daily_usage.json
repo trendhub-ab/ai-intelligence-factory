@@ -2,69 +2,20 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3.1-flash-lite": {
-          "budget": 450,
-          "by_kind": {
-            "screening_batch": 2
-          },
-          "exhausted": false,
-          "used": 2
-        },
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 12
-          },
-          "exhausted": false,
-          "used": 12
-        },
         "gemini-3.5-flash-lite": {
           "budget": 450,
           "by_kind": {
-            "global_calibration": 4,
-            "screening_batch": 8,
-            "x_saved_screening_validation": 4
+            "screening_batch": 1
           },
           "exhausted": false,
-          "used": 16
-        },
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 11,
-            "product_review": 3,
-            "quality_retry": 4
-          },
-          "exhausted": false,
-          "used": 18
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 9,
-            "hybrid_final_writer": 4,
-            "product_review": 4
-          },
-          "exhausted": false,
-          "used": 17
-        },
-        "gemini-3.8-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 7,
-            "hybrid_final_writer": 3,
-            "product_review": 2,
-            "quality_retry": 3
-          },
-          "exhausted": false,
-          "used": 15
+          "used": 1
         }
       }
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-09-11",
+  "quota_date": "2026-09-12",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-12T06:13:22.829977+00:00"
+  "updated_at": "2026-09-12T10:10:13.415458+00:00"
 }
