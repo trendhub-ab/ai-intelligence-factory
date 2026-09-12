@@ -8,6 +8,7 @@ from hybrid_one_shot import (
     PRIMARY_GEMINI_WRITER_MODEL,
     SECONDARY_GEMINI_WRITER_MODEL,
     _management_surface,
+    assemble_canonical_response,
     build_writer_fixture,
     run_bounded_gemini_writer_calls,
     run_one_gemini_writer_call,
@@ -24,6 +25,18 @@ class Fake503(RuntimeError):
 
 class Fake400(RuntimeError):
     code=400
+
+
+def _fact_boundary_surface(injected=''):
+    paragraph='AstraはExploitBenchで100%を記録した。結果はDaybreak Blue access条件を反映する。'
+    article=(paragraph+'\n\n')*15
+    article+='## 数字と条件を分けて読む\n\n'
+    article+=(paragraph+'\n\n')*15
+    article+='## 次に確認すること\n\n'
+    if injected:
+        article+=injected+'\n\n'
+    article+='私なら、一般利用条件を一次情報で確認してから次を判断します。'
+    return '===TITLE===\n数字だけで決めてよい？\n===ARTICLE===\n'+article
 
 
 def test_fixture_keeps_fact_locked_groq_plan_and_bounded_gemini_writer(tmp_path):
@@ -70,6 +83,22 @@ def test_writer_prompt_uses_source_context_as_fact_ceiling_not_plan_as_new_evide
     assert 'Daybreak Blue' in prompt
     assert '評価条件から「安全装置を外した」' in prompt
     assert '公開時は高度なサイバー能力へのアクセス制限' in prompt
+
+
+def test_fact_boundary_blocks_unsupported_writer_fact_before_production_gates():
+    class FakePipeline:
+        SECTION_SPLIT_TOKEN='=== ARTICLE ==='
+    with pytest.raises(RuntimeError,match='hybrid_fact_boundary_failed:unsupported_numeric_fact'):
+        assemble_canonical_response(FakePipeline(),INPUT,PLAN,_fact_boundary_surface('新しい評価では99%だった。'))
+
+
+def test_fact_boundary_allows_source_supported_writer_facts():
+    class FakePipeline:
+        SECTION_SPLIT_TOKEN='=== ARTICLE ==='
+    canonical,title,article=assemble_canonical_response(FakePipeline(),INPUT,PLAN,_fact_boundary_surface())
+    assert 'ExploitBenchで100%' in article
+    assert title.endswith('？')
+    assert '=== ARTICLE ===' in canonical
 
 
 def test_rejected_plan_never_builds_writer_fixture(tmp_path):
