@@ -1,0 +1,85 @@
+name: Groq Screening Shadow Run46
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - validation/groq-screening-ab-run46
+    paths:
+      - groq_screening_shadow_run46.py
+      - screening_protocol.py
+      - tests/test_groq_screening_shadow_run46.py
+      - .github/workflows/groq-screening-shadow-run46.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-groq-screening-shadow
+  cancel-in-progress: false
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Contract tests
+        run: python -m unittest tests/test_groq_screening_shadow_run46.py -v
+
+      - name: Load immutable Run46 observed baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin runtime-state --depth=1
+          git show FETCH_HEAD:observed_history/screening_20260912T020237Z.json > /tmp/screening_run46.json
+          python - <<'PY'
+          import json
+          p='/tmp/screening_run46.json'
+          data=json.load(open(p, encoding='utf-8'))
+          assert data['run_id']=='20260912T020237Z'
+          assert data['total_screened']==24
+          print({'run_id': data['run_id'], 'total_screened': data['total_screened']})
+          PY
+
+      - name: Run Groq raw-Screening shadow twice
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          AIIF_SCREENING_RUN46_BASELINE: /tmp/screening_run46.json
+          AIIF_GROQ_SCREENING_SHADOW_REPORT: groq-screening-shadow-run46.json
+        run: python groq_screening_shadow_run46.py
+
+      - name: Verify zero-write and no-promotion contract
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('groq-screening-shadow-run46.json', encoding='utf-8'))
+          assert r['persist_allowed'] is False
+          assert r['business_writes']==0
+          assert r['automatic_promotion_allowed'] is False
+          assert r['promotion_candidate'] is False
+          assert r['input_fidelity']['production_equivalent'] is False
+          assert 'incomplete_input_fidelity:missing_description' in r['promotion_blockers']
+          print({
+            'decision_flip_count': r['stability']['decision_flip_count'],
+            'false_promotion_count': len(r['stability']['false_promotions_vs_historical']),
+            'false_demotion_count': len(r['stability']['false_demotions_vs_historical']),
+            'schema_complete': r['stability']['schema_complete'],
+            'promotion_candidate': r['promotion_candidate'],
+            'business_writes': r['business_writes'],
+          })
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-screening-shadow-run46
+          path: groq-screening-shadow-run46.json
+          if-no-files-found: error
