@@ -229,6 +229,7 @@ def main() -> None:
     from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
     from run287_publication_date_provenance import install as install_run287_publication_date_provenance
     from run346_backlog_budget_reserve import install as install_run346_backlog_budget_reserve
+    from run382_retry_snapshot import install as install_run382_retry_snapshot
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -271,6 +272,12 @@ def main() -> None:
     # one existing Reader Value quality-repair call only inside the explicit Run282 recovery
     # lane when Evidence is already SUFFICIENT and all blockers are reader-only.
     install_run284_reader_recovery_precision(pipeline)
+
+    # Run382 is read-only diagnostics only. It captures the exact pre-retry manuscript
+    # already passed to the bounded quality retry. If the provider fails before returning
+    # a replacement, validation lanes return that snapshot as rejected instead of losing
+    # the specimen. persist_results=True production paths can never consume this fallback.
+    install_run382_retry_snapshot(pipeline)
 
     # Run287 keeps discovery timestamps honest on the public manuscript. Hacker News
     # item time is labeled as the HN post date and can never masquerade as the external
