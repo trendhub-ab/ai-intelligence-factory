@@ -34,7 +34,6 @@ jobs:
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'hybrid-groq-plan-json-fixture.json',
           )
-          # Isolated output-budget experiment: retain prompt/schema/model/reasoning.
           fx['max_output_tokens']=3000
           with open('hybrid-groq-plan-json-fixture.json','w',encoding='utf-8') as f:
               json.dump(fx,f,ensure_ascii=False,indent=2)
@@ -76,23 +75,25 @@ jobs:
               'business_writes':report['business_writes'],
               'gemini_calls':0,
           },ensure_ascii=False))
-      - name: Re-validate saved report through canonical Plan loader
+      - name: Re-validate saved report through Hybrid semantic loader
         shell: python
         run: |
           import json
-          from groq_two_pass_article import load_plan_report
+          from hybrid_groq_plan import validate_hybrid_plan_text
           report=json.load(open('hybrid-groq-plan-json-report.json',encoding='utf-8'))
-          plan=load_plan_report('hybrid-groq-plan-json-report.json')
           assert report['provider_calls']==1
           assert report['business_writes']==0 and report['persist_results'] is False
           assert report['local_schema_validated'] is True
           assert report['semantic_plan_validated'] is True
+          assert report['status']=='PLAN_VALIDATED'
+          plan=validate_hybrid_plan_text(report['result']['text'])
           assert plan['decision'] in {'NOW','TRY','WATCH','WAIT','AVOID'}
           print(json.dumps({
               'terminal':'GROQ_PLAN_VALID',
               'decision':plan['decision'],
               'access_status':plan['access_status'],
               'decision_score':sum(plan[k] for k in ('business_impact','technical_impact','urgency','market_impact','reliability')),
+              'article_value':plan['article_value'],
               'business_writes':0,
           },ensure_ascii=False))
       - name: Upload validated Plan evidence
