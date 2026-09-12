@@ -18,8 +18,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install offline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest jsonschema
       - name: Run adversarial contract regressions
-        run: python -m unittest tests.test_groq_quality_contract_sync -v
+        run: python -m pytest tests/test_groq_quality_contract_sync.py -q
       - name: Prove no provider or Gemini retry mutation is imported
         shell: python
         run: |
