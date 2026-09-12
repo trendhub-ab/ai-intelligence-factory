@@ -13,6 +13,7 @@ from hybrid_notion_comment_contract import (
     SHADOW_ONLY,
     PRODUCTION_FROZEN,
     LEGACY_PRODUCT_REVIEW_FROZEN,
+    LEGACY_ARTICLE_MANAGEMENT_FROZEN,
     FACT_LOCKED_PLAN_DETERMINISTIC,
     CommentContractError,
     property_contract,
@@ -71,19 +72,25 @@ def test_product_review_direct_comments_are_frozen_shadow_only():
         assert contract['existing_value_policy'] == PRESERVE_EXISTING
 
 
-def test_content_shadow_is_small_deterministic_surface_and_never_persistent():
+def test_completed_content_golden_sample_forces_rich_comments_to_remain_frozen():
+    for name in ('これは何？', 'なぜ重要？', '判断理由', '次にやること', '向いている人', '向いていない人', '今後の見通し'):
+        contract = property_contract('content', name)
+        assert contract['migration'] == PRODUCTION_FROZEN
+        assert contract['authority'] == LEGACY_ARTICLE_MANAGEMENT_FROZEN
+    assert property_contract('content', 'スコア内訳')['migration'] == SHADOW_ONLY
+
+
+def test_content_shadow_is_score_only_and_preserves_established_format():
     shadow = build_content_comment_shadow(PLAN)
     assert shadow['mode'] == SHADOW_ONLY
     assert shadow['persist_allowed'] is False
     assert shadow['existing_value_policy'] == PRESERVE_EXISTING
     assert shadow['source'] == FACT_LOCKED_PLAN_DETERMINISTIC
-    assert set(shadow['values']) == {'スコア内訳', 'なぜ重要？', '判断理由', '次にやること'}
+    assert set(shadow['values']) == {'スコア内訳'}
     assert shadow['values']['スコア内訳'] == (
-        'Business Impact 20/25 / Technical Impact 22/25 / Urgency 15/20 / '
-        'Market Impact 10/15 / Reliability 13/15'
+        'Business Impact 20/25; Technical Impact 22/25; Urgency 15/20; '
+        'Market Impact 10/15; Reliability 13/15; 合計 80/100'
     )
-    assert '一般利用条件は確認できていない。' in shadow['values']['判断理由']
-    assert shadow['values']['次にやること'] == '利用条件を一次情報で確認する。'
 
 
 def test_content_shadow_rejects_legacy_plan_report(tmp_path):
