@@ -1,4 +1,4 @@
-"""Run284/352: post-reader Production precision and bounded recovery policy.
+"""Run284/352/360: post-reader Production precision and bounded recovery policy.
 
 Run284 came from bounded current-policy Ready recovery and keeps two narrow protections:
 1. disable the proven unsafe ``をな... -> を...`` Japanese polish substitution;
@@ -8,16 +8,15 @@ Run284 came from bounded current-policy Ready recovery and keeps two narrow prot
 Run352 comes from the real Run38 DeepSeek artifact comparison. The original draft had GOOD
 Curiosity/Narrative/Temperature/Reader Proximity, but the Fact-oriented Quality Retry rewrote
 non-target reader material and the final deterministic rescue later created ``だがに`` by
-removing ``圧倒的`` from ``だが圧倒的に``. Run352 therefore:
-- strengthens only an already-authorized retry with a local-edit preservation contract;
-- forbids filling a repair with new numbers, ROI/cost outcomes, comparisons, adoption claims,
-  or named entities that were absent from the previous article;
-- repairs only an adverbial ``に`` proven to have been stranded by the base rescue's exact
-  deletion of ``圧倒的`` / ``劇的`` / ``革命的``.
+removing ``圧倒的`` from ``だが圧倒的に``. Run352 therefore strengthens a Fact-oriented retry
+with a local-edit preservation contract and repairs only a proven stranded adverbial particle.
 
-No provider call, retry authorization, retry count, Fact/Evidence/Publication threshold, or
-Notion/network path is added. Keeping Run352 in this already fingerprinted publication-material
-module avoids a new dependency surface while preserving the established Production install order.
+Run360 comes from ONE-SHOT Run47. The generic Run352 preservation contract required paragraph
+order and non-target reader material to stay fixed, while the Reader Repair contract required
+reordering and compression. Applying both to the same reader-only retry was self-contradictory.
+A dedicated Reader Repair already freezes Fact/Evidence/Decision and therefore deliberately
+bypasses only the paragraph-order preservation text. Fact/claim retries still receive Run352
+unchanged. No quality threshold is relaxed.
 """
 from __future__ import annotations
 
@@ -29,6 +28,10 @@ _RUN352_FLAG = "_run352_retry_preservation_installed"
 _SPENT_FLAG = "_run284_current_policy_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
 _DANGEROUS_POLISH_PATTERN = r"をな(?=[一-龥ぁ-んァ-ヶA-Za-z])"
+_READER_REPAIR_FEEDBACK_MARKERS = (
+    "【Reader Repair｜Factを固定した読者導線修正】",
+    "【RUN359 Reader Repair Execution Contract】",
+)
 
 _REPAIRABLE_READER_LABELS = (
     "dense_report_cluster",
@@ -92,11 +95,15 @@ def _evidence_is_safe_for_reader_repair(pipeline_module: Any, evidence_result: d
 
 
 def retry_feedback_with_preservation(quality_feedback: str, previous_article: str) -> str:
-    """Add the Run352 local-edit contract only to an actual retry."""
+    """Add Run352 only to fact/local retries, never to a dedicated Reader Repair."""
     feedback = str(quality_feedback or "").strip()
     previous = str(previous_article or "").strip()
     if not feedback or not previous:
         return quality_feedback or ""
+    if any(marker in feedback for marker in _READER_REPAIR_FEEDBACK_MARKERS):
+        # Reader Repair already freezes Fact/Evidence/Decision but must be free to move,
+        # compress or delete reader-hostile prose. Paragraph-order preservation conflicts.
+        return feedback
     if RETRY_PRESERVATION_CONTRACT in feedback:
         return feedback
     return feedback + "\n\n" + RETRY_PRESERVATION_CONTRACT
