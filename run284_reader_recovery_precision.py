@@ -1,4 +1,4 @@
-"""Run284/352/360/370/371/373/375: bounded Reader recovery policy."""
+"""Run284/352/360/370/371/373/375/378: bounded Reader recovery policy."""
 from __future__ import annotations
 
 import inspect
@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 _INSTALL_FLAG = "_run284_reader_recovery_precision_installed"
 _RUN352_FLAG = "_run352_retry_preservation_installed"
+_RUN378_FLAG = "_run378_reader_reason_bridge_installed"
 _SPENT_FLAG = "_run284_current_policy_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
 _DANGEROUS_POLISH_PATTERN = r"をな(?=[一-龥ぁ-んァ-ヶA-Za-z])"
@@ -172,6 +173,29 @@ def _wrap_build_decision_prompt(original: Callable[..., Any]) -> Callable[..., A
     return wrapped
 
 
+def _wrap_dynamic_retry_instruction_with_reason_bridge(original: Callable[..., Any]) -> Callable[..., Any]:
+    """Preserve exact Reader Gate labels so the later Run373 prompt can target them."""
+    def wrapped(reason_rows: list[dict]):
+        rows = list(reason_rows or [])
+        result = original(rows)
+        if not isinstance(result, tuple) or len(result) != 2:
+            return result
+        instruction, sections = result
+        instruction = str(instruction or "")
+        labels = deterministic_reader_repair_plan(rows)
+        if labels and any(marker in instruction for marker in _READER_REPAIR_FEEDBACK_MARKERS):
+            bridge = "【RUN378 Reader Reason Bridge｜実Gate理由】\n" + "\n".join(
+                f"{READER_VALUE_MARKER}{label}" for label in labels
+            )
+            if "【RUN378 Reader Reason Bridge｜実Gate理由】" not in instruction:
+                instruction = instruction.rstrip() + "\n\n" + bridge
+        return instruction, sections
+
+    wrapped.__name__ = getattr(original, "__name__", "build_dynamic_retry_instruction")
+    wrapped.__doc__ = getattr(original, "__doc__", None)
+    return wrapped
+
+
 def _install_run352_precision(pipeline_module: Any) -> Any:
     if bool(getattr(pipeline_module, _RUN352_FLAG, False)):
         return pipeline_module
@@ -189,8 +213,19 @@ def _install_run352_precision(pipeline_module: Any) -> Any:
     return pipeline_module
 
 
+def _install_run378_reason_bridge(pipeline_module: Any) -> Any:
+    if bool(getattr(pipeline_module, _RUN378_FLAG, False)):
+        return pipeline_module
+    original_instruction = getattr(pipeline_module, "build_dynamic_retry_instruction", None)
+    if callable(original_instruction):
+        pipeline_module.build_dynamic_retry_instruction = _wrap_dynamic_retry_instruction_with_reason_bridge(original_instruction)
+    setattr(pipeline_module, _RUN378_FLAG, True)
+    return pipeline_module
+
+
 def install(pipeline_module: Any) -> Any:
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
+        _install_run378_reason_bridge(pipeline_module)
         _install_run352_precision(pipeline_module)
         return pipeline_module
     disable_overbroad_japanese_polish(pipeline_module)
@@ -213,6 +248,7 @@ def install(pipeline_module: Any) -> Any:
         return True, f"run284_{lane}_reader_repair"
 
     pipeline_module.should_attempt_dynamic_retry = wrapped_retry
+    _install_run378_reason_bridge(pipeline_module)
     _install_run352_precision(pipeline_module)
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module
