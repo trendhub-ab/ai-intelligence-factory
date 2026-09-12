@@ -1,4 +1,4 @@
-"""Run208/341/342/344/345/354: bounded Reader Value repair and first-pass Reader Path.
+"""Run208/341/342/344/345/354/359: bounded Reader Value repair and first-pass Reader Path.
 
 Run208 originally authorized one Reader Value repair only in the Pending Retry fast
 lane. The 2026-09-10 real Daily falsified that narrow scope as the sole Production
@@ -17,6 +17,11 @@ and one central mechanism outrank implementation-name inventory.
 Run354 keeps article_validation semantically aligned with fresh Production for Reader-only
 retry authorization. article_validation remains read-only because persistence is controlled by
 its caller; only the quality/retry policy matches the new-candidate path when Evidence is safe.
+
+Run359 is based on the 2026-09-12 RubyGems Production specimen: a quality repair could
+preserve the same jargon inventory and then fail Reader/final-summary review again. The
+repair prompt now translates concrete gate reasons into executable deletion/category-
+compression operations while preserving every inherited Run208/342/344/345 safety rule.
 
 The canonical Reader Value layer creates no provider loop and no new request budget.
 Fact/Evidence/Publication/Reader gates still rerun after repair and remain fail-closed.
@@ -81,6 +86,11 @@ READER_REPAIR_CONTRACT = r"""
 ・Evidenceを落とさず、情報の置き場所と粒度を変えて読みやすくする。修正後も事実Gate、Evidence Gate、Publication Gate、Reader Gateをすべて再判定し、通らなければReadyにしない。
 """.strip()
 
+_READER_DENSITY_LABELS = (
+    "dense_report_cluster", "multi_axis_reader_weakness", "non_engineer_access_failure",
+    "final_surface_multi_axis_reader_weakness", "final_surface_non_engineer_access_failure",
+)
+
 
 def _message(row: dict) -> str:
     return str((row or {}).get("message") or (row or {}).get("reason") or "")
@@ -112,6 +122,44 @@ def _fresh_evidence_safe(pipeline_module: Any, evidence_result: dict | None) -> 
 
 def _has_reader_issue(rows: list[dict]) -> bool:
     return any(READER_VALUE_MARKER in _message(row) for row in rows or [])
+
+
+def _run359_targeted_repair(rows: list[dict]) -> str:
+    """Turn actual Reader failures into observable edit operations, zero API by itself."""
+    messages = "\n".join(_message(row) for row in rows or [])
+    directives: list[str] = []
+
+    if any(label in messages for label in _READER_DENSITY_LABELS):
+        directives.append(
+            "【実行必須：専門語密度を下げる】前稿を段落ごとに見直し、Decision・重要制約・一次Evidenceの意味を変えない専門名、略語、内部部品名、方式名は削除する。"
+            "同じ段落に専門名・略語が3個以上残る場合、個々の名称の違いがDecisionを変える根拠を本文中で示せないものは意味カテゴリへ統合する。"
+            "これは『説明を追加する』作業ではなく『不要な名称を捨てる』作業である。"
+        )
+        directives.append(
+            "【実行必須：専門語の連鎖を切る】専門語を別の専門語で説明しない。最初に必要な専門概念は普通の日本語1文で意味を置き、その直後は新しい技術名ではなく、"
+            "読者の判断・制約・Actionのどれが変わるかを書く。高密度な技術段落を連続させない。"
+        )
+
+    if "final_surface_summary_jargon_cluster" in messages:
+        directives.append(
+            "【実行必須：30秒要約の素材を平易化する】最終要約は本文から自動抽出されるため、source_summary/冒頭/why/conclusion/final/actionの候補文そのものを平易にする。"
+            "要約候補文では固有の実装名や略語の列挙を避け、『何が変わった』『なぜ読者に関係する』『何をする』が専門知識なしで一読できる文にする。"
+            "Factを削るのではなく、Decisionに不要な名称を削る。"
+        )
+
+    if "repetitive_insight" in messages:
+        directives.append(
+            "【実行必須：重複を削る】同じ核心説明を複数箇所に残さず1箇所へ統合し、後段はその事実が判断に与える意味へ進める。"
+        )
+
+    if "final_surface_summary_fragment" in messages:
+        directives.append(
+            "【実行必須：要約候補文を完結させる】冒頭・why・conclusion・final/actionの候補文を読点で切れた断片にせず、短い完結文にする。"
+        )
+
+    if not directives:
+        return ""
+    return "\n".join(["【RUN359 Reader Repair Execution Contract】", *directives])
 
 
 def install(pipeline_module: Any) -> Any:
@@ -156,9 +204,13 @@ def install(pipeline_module: Any) -> Any:
         return prompt.rstrip() + "\n\n" + READER_PATH_CONTRACT + "\n"
 
     def build_dynamic_retry_instruction_with_reader_repair(reason_rows: list[dict]):
-        instruction, sections = original_retry_instruction(reason_rows)
-        if _has_reader_issue(list(reason_rows or [])):
+        rows = list(reason_rows or [])
+        instruction, sections = original_retry_instruction(rows)
+        if _has_reader_issue(rows):
             instruction = str(instruction).rstrip() + "\n\n" + READER_REPAIR_CONTRACT
+            targeted = _run359_targeted_repair(rows)
+            if targeted:
+                instruction = instruction.rstrip() + "\n\n" + targeted
         return instruction, sections
 
     pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_reader_repair
@@ -169,5 +221,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN344_READER_LIMITATION_BRIDGE = True
     pipeline_module.RUN345_READER_CONCEPT_HIERARCHY = True
     pipeline_module.RUN354_VALIDATION_RETRY_PARITY = True
+    pipeline_module.RUN359_READER_REPAIR_EXECUTION = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
