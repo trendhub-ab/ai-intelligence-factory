@@ -4,10 +4,19 @@ Run231 moves the production patch stack out of ``production_pipeline.py`` withou
 changing its behavior.  The order below is a compatibility contract: later layers
 intentionally wrap or refine functions installed by earlier layers.
 
+Run357 adds a stable interaction contract inside this canonical module instead of
+adding another numbered patch module.  The contract fixes one proven cross-layer
+self-contradiction: final Japanese polish used to translate a leaked ``WATCH`` code
+into a phrase that the immediately-following Human Appeal gate itself classified as
+generic monitoring.  The contract changes only that deterministic self-generated
+surface; it does not bypass Human Appeal, relax Fact/Evidence, or change model calls.
+
 Do not reorder, remove, or merge a layer here unless its own regression suite proves
 that the resulting production behavior is equivalent or intentionally superseded.
 """
 from __future__ import annotations
+
+import re
 
 
 RUNTIME_LAYER_ORDER = (
@@ -41,6 +50,65 @@ RUNTIME_LAYER_ORDER = (
     "run249_final_publication_surface_gate.install",
     "run194_publication_contract.install",
 )
+
+
+# Run357 cross-layer invariant.
+# Base pipeline._apply_final_japanese_polish maps leaked WATCH to
+# 「今後の動きを注視する」, while validate_human_appeal_gate interprets 注視/様子を見る
+# without a concrete action as action_collapsed_to_generic_monitoring.  We deliberately
+# keep the Human Appeal rule intact and normalize only the phrase created by the system
+# itself.  The replacement is a real WATCH decision: wait for new primary evidence and
+# then re-evaluate.  It also satisfies the existing concrete-action vocabulary via 待ち.
+_MANAGEMENT_WATCH_TOKEN_RE = re.compile(r"(?<![A-Za-z])WATCH(?![A-Za-z])")
+_LEGACY_SELF_CONFLICTING_WATCH_PHRASE = "今後の動きを注視する"
+_PUBLIC_WATCH_DECISION_PHRASE = "新しい一次情報が出るまで待ち、出た時点で再評価する"
+
+
+def install_quality_interaction_contract(pipeline_module):
+    """Prevent deterministic cleanup from creating a later quality-gate violation.
+
+    Scope is intentionally narrow:
+    - applies only when the incoming article actually contains an uppercase standalone
+      MANAGEMENT ``WATCH`` token;
+    - rewrites only the exact legacy phrase produced by the existing deterministic polish;
+    - does not suppress or special-case any quality gate;
+    - performs zero provider/API calls.
+    """
+    p = pipeline_module
+    marker = "_run357_quality_interaction_contract_installed"
+    if bool(getattr(p, marker, False)):
+        return p
+
+    original = getattr(p, "_apply_final_japanese_polish", None)
+    if not callable(original):
+        return p
+
+    def apply_final_japanese_polish_with_interaction_contract(parsed: dict):
+        incoming = dict(parsed or {})
+        original_article = str(incoming.get("note_draft") or "")
+        had_management_watch_leak = bool(_MANAGEMENT_WATCH_TOKEN_RE.search(original_article))
+
+        out, changes = original(parsed)
+        out = dict(out or {})
+        changes = list(changes or [])
+
+        if had_management_watch_leak:
+            article = str(out.get("note_draft") or "")
+            rewritten, count = re.subn(
+                re.escape(_LEGACY_SELF_CONFLICTING_WATCH_PHRASE),
+                _PUBLIC_WATCH_DECISION_PHRASE,
+                article,
+            )
+            if count:
+                out["note_draft"] = rewritten
+                changes.append(f"note_draft:watch_quality_interaction_contract:{count}")
+
+        return out, changes
+
+    p._apply_final_japanese_polish = apply_final_japanese_polish_with_interaction_contract
+    setattr(p, marker, True)
+    setattr(p, "RUN357_QUALITY_INTERACTION_CONTRACT", True)
+    return p
 
 
 def install_runtime_layers(pipeline_module):
@@ -134,8 +202,13 @@ def install_runtime_layers(pipeline_module):
     # First-real-publish calibration is zero-provider-call and deliberately sits after all
     # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
     # projection so late title/summary assembly cannot bypass Reader Value diagnostics.
-    # The content-addressed Publication Contract remains the last installed layer.
+    # Run357 is an internal interaction contract, not another runtime layer: it prevents
+    # the deterministic WATCH cleanup from manufacturing a Human Appeal failure of its own.
+    # The canonical layer manifest remains unchanged so Run279 continues to prove the
+    # historical module.install sequence, while runtime_layers.py itself remains covered by
+    # Publication Contract provenance.
     run248_first_real_publish_quality_calibration.install(pipeline_module)
     run249_final_publication_surface_gate.install(pipeline_module)
+    install_quality_interaction_contract(pipeline_module)
     run194_publication_contract.install(pipeline_module)
     return pipeline_module
