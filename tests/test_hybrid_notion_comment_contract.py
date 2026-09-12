@@ -5,7 +5,9 @@ import pytest
 
 from hybrid_notion_comment_contract import (
     CONTENT_COMMENT_CONTRACT,
+    CONTENT_PAYLOAD_CONFIG_MAP,
     TECHNOLOGY_COMMENT_CONTRACT,
+    TECHNOLOGY_CORE_CONSTANT_MAP,
     PRODUCT_REVIEW_DIRECT_FIELDS,
     PRESERVE_EXISTING,
     SHADOW_ONLY,
@@ -18,6 +20,7 @@ from hybrid_notion_comment_contract import (
     validate_product_review_comment_style,
     audit_product_review_shadow_fact_boundary,
     compare_comment_style,
+    evaluate_shadow_promotion,
 )
 
 PLAN = 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
@@ -44,6 +47,20 @@ def test_unknown_database_and_property_fail_closed():
         property_contract('other', '判断理由')
     with pytest.raises(CommentContractError, match='comment_property_unknown'):
         property_contract('content', '未知コメント')
+
+
+def test_production_content_payload_comment_keys_are_governed():
+    source = Path('notion_payloads.py').read_text(encoding='utf-8')
+    for config_key, property_name in CONTENT_PAYLOAD_CONFIG_MAP.items():
+        assert property_name in CONTENT_COMMENT_CONTRACT
+        assert f'_cfg(config, "{config_key}")' in source
+
+
+def test_technology_core_comment_constants_are_governed():
+    source = Path('decision_intelligence_run255_core.py').read_text(encoding='utf-8')
+    for constant, property_name in TECHNOLOGY_CORE_CONSTANT_MAP.items():
+        assert property_name in TECHNOLOGY_COMMENT_CONTRACT
+        assert f"{constant} = '{property_name}'" in source
 
 
 def test_product_review_direct_comments_are_frozen_shadow_only():
@@ -74,7 +91,7 @@ def test_content_shadow_rejects_legacy_plan_report(tmp_path):
     report['mode'] = 'legacy_freeform_plan'
     bad = tmp_path / 'legacy.json'
     bad.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
-    with pytest.raises(Exception):
+    with pytest.raises(CommentContractError, match='fact_locked_plan_required'):
         build_content_comment_shadow(str(bad))
 
 
@@ -140,6 +157,24 @@ def test_style_comparison_never_claims_semantic_equivalence_or_persistence():
     assert report['semantic_equivalence_claimed'] is False
     assert report['persist_allowed'] is False
     assert report['existing_chars'] > 0 and report['candidate_chars'] > 0
+
+
+def test_shadow_machine_pass_can_never_auto_promote_comments():
+    result = evaluate_shadow_promotion(
+        {'判断理由': '既存判断です。'},
+        {'判断理由': '候補判断です。'},
+        machine_checks_passed=True,
+    )
+    assert result['machine_checks_passed'] is True
+    assert result['human_semantic_review_required'] is True
+    assert result['automatic_promotion_allowed'] is False
+    assert result['production_write_allowed'] is False
+    assert result['existing_value_policy'] == PRESERVE_EXISTING
+
+
+def test_shadow_promotion_requires_existing_reference_value():
+    with pytest.raises(CommentContractError, match='shadow_existing_value_missing'):
+        evaluate_shadow_promotion({}, {'判断理由': '候補判断です。'}, machine_checks_passed=True)
 
 
 def test_contract_module_has_no_provider_or_business_persistence_surface():
