@@ -1,3 +1,4 @@
+import json
 import pytest
 
 from hybrid_gemini_writer import (
@@ -56,19 +57,49 @@ def _surface(article):
     return f"{TITLE_MARKER}\n数字の大きさだけで決めてよい？\n{ARTICLE_MARKER}\n{article}"
 
 
+def _decision_plan_json(prompt: str) -> dict:
+    marker = "【GROQ DECISION PLAN — judgment/editorial authority only; contains no fact summary】\n"
+    tail = prompt.split(marker, 1)[1]
+    raw = tail.split("\n\n【最終セルフチェック】", 1)[0]
+    return json.loads(raw)
+
+
 def test_prompt_keeps_gemini_to_final_writer_only():
     prompt = build_gemini_writer_prompt(_item(), _plan())
     assert "最終日本語Writer" in prompt
     assert "管理データを再計算・再生成してはいけません" in prompt
     assert TITLE_MARKER in prompt and ARTICLE_MARKER in prompt
     assert "GROQ DECISION PLAN" in prompt
-    assert "SOURCE CONTEXT — factual ceiling" in prompt
+    assert "SOURCE CONTEXT — sole factual surface / factual ceiling" in prompt
     assert "access_status=NOT_CONFIRMED" in prompt
     assert "Markdown見出し" in prompt
     assert "劇的" in prompt and "使わない" in prompt
     assert "誰でも使えない" in prompt
     assert "常時判定" in prompt
     assert "1700字未満の本文は返してはいけない" in prompt
+
+
+def test_writer_plan_contains_only_judgment_and_editorial_fields():
+    prompt = build_gemini_writer_prompt(_item(), _plan())
+    writer_plan = _decision_plan_json(prompt)
+    assert "source_summary" not in writer_plan
+    assert "what" not in writer_plan
+    assert writer_plan["decision"] == "WATCH"
+    assert writer_plan["action"] == "一次情報で利用条件を確認する。"
+    assert writer_plan["access_status"] == "NOT_CONFIRMED"
+    assert set(writer_plan) == {
+        "why_important", "decision", "decision_reason", "decision_score", "action",
+        "article_angle", "reader_bridge", "title_seed", "access_status",
+    }
+
+
+def test_source_context_is_the_only_fact_prose_surface():
+    prompt = build_gemini_writer_prompt(_item(), _plan())
+    writer_plan = _decision_plan_json(prompt)
+    assert _item()["source_context"] in prompt
+    assert _plan()["source_summary"] not in json.dumps(writer_plan, ensure_ascii=False)
+    assert _plan()["what"] not in json.dumps(writer_plan, ensure_ascii=False)
+    assert "Writerに渡す事実本文はSOURCE CONTEXTだけ" in prompt
 
 
 def test_prompt_does_not_ask_gemini_to_rescore():
