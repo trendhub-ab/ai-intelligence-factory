@@ -1,16 +1,11 @@
-name: Run381 Pending Reader Repair Validation [ONE-TIME]
+name: Pending Retry Validation [MANUAL ONLY]
 
-# One authorized read-only validation after Run380 fixed Pending Retry quality-repair
-# routing to honor operator order. Gemini 3.7 is the only allowed model in this run;
-# 3.6 is forbidden, 3.8 is preserved, and 3.5 is preserved after Run379 consumed it.
-# No Notion manuscript/status persistence and no Note Ready reconciliation.
+# Manual-only safety harness. Automatic branch pushes must never consume Gemini quota.
+# Current operator policy: Gemini 3.6 remains forbidden; 3.8 and 3.5 are preserved unless
+# explicitly re-authorized in a future one-shot validation. No Notion manuscript/status
+# persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run370-pending-retry-validation.yml'
 
 concurrency:
   group: ai-intelligence-gemini-budget
@@ -28,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run381: verify Run380 makes both initial Pending Retry generation and Reader Repair use Gemini 3.7 only. 3.6/3.8/3.5 forbidden, persist=false, max 3 provider attempts.'
+          echo 'Manual-only Pending Retry validation. No automatic Gemini consumption.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -119,16 +114,8 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run381 pending validation'
-            echo '- purpose: prove `RUN380 operator order -> RUN373 reason-specific Reader Repair` on one real candidate'
-            echo '- candidate status: `Pending Retry` only'
+            echo '### Manual Pending Retry validation'
             echo '- candidate count: at most `1`'
-            echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
-            echo '- Gemini 3.7: `ONLY ALLOWED MODEL`'
-            echo '- Gemini 3.6: `FORBIDDEN`'
-            echo '- Gemini 3.8: `PRESERVED / FORBIDDEN FOR THIS RUN`'
-            echo '- Gemini 3.5: `PRESERVED / FORBIDDEN FOR THIS RUN`'
-            echo '- provider request budget: at most `3`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
             echo '- note draft/public publication: `false`'
