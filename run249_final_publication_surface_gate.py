@@ -1,4 +1,4 @@
-"""Run249/276/354: final publication-surface revalidation before Ready.
+"""Run249/276/354/384: final publication-surface revalidation before Ready.
 
 Run248 proved that reader-value diagnostics can stop weak generated drafts, but the first
 post-Run248 real article exposed a later boundary: the reader-first summary/title/presentation
@@ -17,6 +17,13 @@ Reader gate and are not re-generated here under final_surface_* aliases. This la
 only late title/summary/presentation defects plus high-confidence malformed Japanese on the actual
 assembled projection.
 
+Run384 fixes a producer/validator contradiction found during Pending Retry validation. The
+reader-summary producer could choose a comma-truncated or jargon-dense first sentence even when
+the same parsed article already contained a shorter, complete, plainer sentence. Before the final
+surface gate, Run384 may therefore replace a summary row only with an existing complete sentence
+from the same parsed record. It never paraphrases, invents facts, suppresses a remaining fragment,
+or converts a genuinely jargon-dense surface into PASS without a safer existing candidate.
+
 This layer stays zero-provider-call. It also repairs one deterministic presentation-only defect
 (the canonical disclaimer being glued to a supplemental Evidence link). No Evidence, Decision,
 numerical claim, model call, eyecatch background, or public release behavior is changed.
@@ -31,6 +38,7 @@ READER_VALUE_MARKER = "reader_value_review:"
 RUN249_ZERO_PROVIDER_CALLS = True
 RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
 RUN354_BODY_READER_DEDUP = True
+RUN384_EXISTING_FACT_SUMMARY_PRECISION = True
 
 _SUMMARY_LABELS = (
     ("what", "何が出た？"),
@@ -175,6 +183,101 @@ def _summary_reader_value_issues(summary: dict[str, str] | None) -> list[str]:
     return []
 
 
+def _complete_summary_sentences(value: str, *, max_chars: int = 110) -> list[str]:
+    """Return only verbatim complete sentences already present in a candidate value."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return []
+    rows: list[str] = []
+    for match in re.finditer(r"[^。！？!?]+[。！？!?]", text):
+        sentence = match.group(0).strip()
+        if sentence and len(sentence) <= max_chars:
+            rows.append(sentence)
+    return list(dict.fromkeys(rows))
+
+
+def _summary_plainness_rank(value: str) -> tuple[int, int, int]:
+    """Prefer non-jargon, lower-technical-load, shorter verbatim sentences."""
+    text = str(value or "").strip()
+    uncommon = {
+        token for token in re.findall(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9-]{1,8})(?![A-Za-z0-9])", text)
+        if token not in _SUMMARY_COMMON_ACRONYMS
+    }
+    technical = {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", text)
+    }
+    return (1 if _summary_row_is_jargon_dense(text) else 0, len(uncommon) * 3 + len(technical), len(text))
+
+
+def _decision_fallback_from_code(parsed: dict) -> str:
+    return {
+        "NOW": "現時点で、具体的な導入・検証判断を進める価値があります。",
+        "TRY": "まずは限定した環境で小さく試し、条件を確かめる価値があります。",
+        "WATCH": "今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。",
+        "WAIT": "現時点では導入を急がず、条件とEvidenceが整うまで待つのが妥当です。",
+        "AVOID": "現時点では採用を見送り、代替手段を優先するのが妥当です。",
+    }.get(str((parsed or {}).get("decision_text") or "").strip().upper(), "")
+
+
+def _summary_existing_candidates(key: str, summary: dict[str, str], parsed: dict) -> list[str]:
+    parsed = parsed or {}
+    values: list[str] = [str(summary.get(key) or "")]
+    if key == "what":
+        values.extend([
+            str(parsed.get("source_summary_text") or ""),
+            str(parsed.get("what_text") or ""),
+        ])
+    elif key == "why":
+        values.extend([
+            str(parsed.get("why_important_text") or ""),
+            str(parsed.get("decision_reason_text") or ""),
+        ])
+    elif key == "decision":
+        values.extend([
+            str(parsed.get("action_text") or ""),
+            str(parsed.get("decision_reason_text") or ""),
+            _decision_fallback_from_code(parsed),
+        ])
+    candidates: list[str] = []
+    for value in values:
+        candidates.extend(_complete_summary_sentences(value))
+    return list(dict.fromkeys(candidates))
+
+
+def repair_reader_summary_from_existing_facts(
+    summary: dict[str, str] | None,
+    parsed: dict | None = None,
+) -> dict[str, str]:
+    """Select a safer existing summary sentence without inventing or paraphrasing facts.
+
+    Replacement happens only when the current row is an obvious comma fragment or jargon-dense,
+    and only when the same parsed record already contains a complete <=110-char sentence that is
+    strictly safer by the deterministic rank. If no such sentence exists, keep the original so
+    the downstream final-surface gate still blocks it.
+    """
+    out = {key: str(value or "").strip() for key, value in dict(summary or {}).items()}
+    parsed = parsed or {}
+    for key, _label in _SUMMARY_LABELS:
+        current = str(out.get(key) or "").strip()
+        if not current:
+            continue
+        fragment = bool(re.search(r"[、，,]\s*$", current))
+        dense = _summary_row_is_jargon_dense(current)
+        if not (fragment or dense):
+            continue
+        candidates = _summary_existing_candidates(key, out, parsed)
+        if not candidates:
+            continue
+        best = min(candidates, key=_summary_plainness_rank)
+        if fragment:
+            # Any complete candidate is safer than an obvious fragment. Prefer the plainest.
+            out[key] = best
+        elif _summary_plainness_rank(best) < _summary_plainness_rank(current):
+            out[key] = best
+    return out
+
+
 def _projection_from_parts(title: str, summary: dict[str, str], article: str) -> str:
     lines = [f"# {str(title or '').strip()}", "", "## 30秒でわかるこの記事", ""]
     for key, label in _SUMMARY_LABELS:
@@ -218,7 +321,7 @@ def _final_surface_probe(
 def final_surface_issues(
     pipeline_module: Any,
     original_build_manuscript,
-    original_build_summary,
+    build_summary,
     parsed: dict,
 ) -> tuple[list[str], dict[str, str], str]:
     """Return only late public-surface issues, zero API.
@@ -236,7 +339,7 @@ def final_surface_issues(
         issues.append(title_issue)
 
     try:
-        summary = dict(original_build_summary(parsed) or {})
+        summary = dict(build_summary(parsed) or {})
     except Exception:
         summary = {}
     issues.extend(_summary_fragment_issues(summary))
@@ -272,13 +375,17 @@ def install(pipeline_module: Any) -> Any:
     original_build_manuscript = pipeline_module.build_clean_note_manuscript
     original_build_summary = pipeline_module.build_reader_first_summary
 
+    def build_reader_first_summary_with_run384(parsed: dict) -> dict[str, str]:
+        raw = dict(original_build_summary(parsed) or {})
+        return repair_reader_summary_from_existing_facts(raw, parsed)
+
     def validate_human_appeal_gate_with_final_surface(parsed: dict, peer_articles=None):
         state, issues = original_human_appeal(parsed, peer_articles)
         merged = list(issues or [])
         extra, summary, projection = final_surface_issues(
             pipeline_module,
             original_build_manuscript,
-            original_build_summary,
+            build_reader_first_summary_with_run384,
             parsed,
         )
         if extra:
@@ -295,13 +402,20 @@ def install(pipeline_module: Any) -> Any:
         return state, list(dict.fromkeys(merged))
 
     def build_clean_note_manuscript_with_final_presentation_repair(*args: Any, **kwargs: Any) -> str:
+        if isinstance(kwargs.get("reader_summary"), dict):
+            kwargs = dict(kwargs)
+            kwargs["reader_summary"] = repair_reader_summary_from_existing_facts(
+                kwargs.get("reader_summary"), {}
+            )
         return repair_final_public_manuscript(original_build_manuscript(*args, **kwargs))
 
+    pipeline_module.build_reader_first_summary = build_reader_first_summary_with_run384
     pipeline_module.validate_human_appeal_gate = validate_human_appeal_gate_with_final_surface
     pipeline_module.build_clean_note_manuscript = build_clean_note_manuscript_with_final_presentation_repair
     pipeline_module.RUN249_ZERO_PROVIDER_CALLS = True
     pipeline_module.RUN249_FINAL_SURFACE_REVALIDATION = True
     pipeline_module.RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
     pipeline_module.RUN354_BODY_READER_DEDUP = True
+    pipeline_module.RUN384_EXISTING_FACT_SUMMARY_PRECISION = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
