@@ -5,6 +5,9 @@ from hybrid_provider_strategy import (
     HYBRID_GROQ_GEMINI,
     GEMINI_ONLY_BACKUP_BRANCH,
     GEMINI_ONLY_BACKUP_SHA,
+    PRODUCT_REVIEW_MIGRATION_POLICY,
+    PRODUCT_REVIEW_HYBRID_ROUTING_ALLOWED,
+    HYBRID_STAGE_PROVIDER,
     HybridRoutingError,
     assert_backup_contract,
     estimate_provider_calls,
@@ -27,6 +30,17 @@ def test_hybrid_routes_only_preprocessing_to_groq():
     assert route_stage("calibration", mode=HYBRID_GROQ_GEMINI).provider == "groq"
     assert route_stage("decision_plan", mode=HYBRID_GROQ_GEMINI).provider == "groq"
     assert route_stage("article_writer", mode=HYBRID_GROQ_GEMINI).provider == "gemini"
+
+
+def test_product_review_provider_migration_is_explicitly_frozen():
+    assert PRODUCT_REVIEW_HYBRID_ROUTING_ALLOWED is False
+    assert PRODUCT_REVIEW_MIGRATION_POLICY == "production_frozen_until_shadow_parity"
+    assert "product_review" not in HYBRID_STAGE_PROVIDER
+    try:
+        route_stage("product_review", mode=HYBRID_GROQ_GEMINI)
+        raise AssertionError("product review must not enter Hybrid routing before shadow parity")
+    except HybridRoutingError as exc:
+        assert str(exc) == "product_review_provider_migration_frozen"
 
 
 def test_local_quality_gates_never_become_provider_calls():
@@ -86,5 +100,4 @@ def test_hybrid_google_workflows_are_manual_approval_only():
         assert 'google_api_approved:' in text
         assert "inputs.google_api_approved == true" in text
         assert "AIIF_GOOGLE_API_APPROVED: 'true'" in text
-        # These Google/Gemini Hybrid workflows must never auto-run from a push.
         assert '\n  push:' not in text
