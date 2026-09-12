@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 
+from groq_quality_contract_sync import GROQ_READER_EXECUTION_CONTRACT
 from groq_writer_v9_compound import (
     route_compound_writer,
     preflight_compound_writer,
@@ -45,10 +46,13 @@ def route_compound_writer_v10(path: str) -> dict:
     p = Path(path)
     prompt = data["prompt"]
     if "V10 EVIDENCE-DENSE PROSE" not in prompt:
-        data["prompt"] = prompt.rstrip() + V10_CONTRACT
+        prompt = prompt.rstrip() + V10_CONTRACT
+    if "Gemini Run359同期" not in prompt:
+        prompt = prompt.rstrip() + "\n\n" + GROQ_READER_EXECUTION_CONTRACT + "\n"
+    data["prompt"] = prompt
     data["max_output_tokens"] = 4400
     data["writer_route"] = "compound_mini_two_pass_v10_evidence_dense"
-    data["contract_version_v10"] = "groq_writer_v10_evidence_dense"
+    data["contract_version_v10"] = "groq_writer_v10_evidence_dense+gemini_run359_provider_neutral"
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return data
 
