@@ -1,4 +1,4 @@
-"""Run208/341/342/344/345/354/359: bounded Reader Value repair and first-pass Reader Path.
+"""Run208/341/342/344/345/354/359/360: bounded Reader Value repair and first-pass Reader Path.
 
 Run208 originally authorized one Reader Value repair only in the Pending Retry fast
 lane. The 2026-09-10 real Daily falsified that narrow scope as the sole Production
@@ -11,8 +11,8 @@ instructions do not solve the problem. The base prompt already required 2-3 conc
 plain-language bridges and reader proximity, yet three unrelated articles still became
 jargon-heavy. The missing authority was a discard hierarchy: which technical details
 must lose when reader comprehension and evidence depth compete. This layer therefore
-keeps the same budgets and gates, but makes Decision comprehension, limitation fidelity
-and one central mechanism outrank implementation-name inventory.
+keeps the same gates, but makes Decision comprehension, limitation fidelity and one
+central mechanism outrank implementation-name inventory.
 
 Run354 keeps article_validation semantically aligned with fresh Production for Reader-only
 retry authorization. article_validation remains read-only because persistence is controlled by
@@ -20,11 +20,22 @@ its caller; only the quality/retry policy matches the new-candidate path when Ev
 
 Run359 is based on the 2026-09-12 RubyGems Production specimen: a quality repair could
 preserve the same jargon inventory and then fail Reader/final-summary review again. The
-repair prompt now translates concrete gate reasons into executable deletion/category-
-compression operations while preserving every inherited Run208/342/344/345 safety rule.
+repair prompt translates concrete gate reasons into executable deletion/category-compression
+operations while preserving inherited safety rules.
 
-The canonical Reader Value layer creates no provider loop and no new request budget.
-Fact/Evidence/Publication/Reader gates still rerun after repair and remain fail-closed.
+Run360 is based on ONE-SHOT Run47. Three generated manuscripts reached Ready=0 because
+Fact/Publication repair and Reader restructuring were mixed in the same retry, while a later
+preservation layer simultaneously told the model to keep paragraph order. A manuscript that
+used its one generic quality retry could then retain a reader-only blocker with no dedicated
+repair opportunity. Run360 makes the two repair owners orthogonal:
+- at most one ordinary Fact/Quality retry per candidate;
+- Reader Repair instructions are added only when every blocking row is reader-only;
+- after re-gating, at most one dedicated Reader Repair may run when Evidence is SUFFICIENT
+  and decision_scope_safe is true;
+- the per-candidate budget resets on a fresh first-pass prompt;
+- no thresholds are relaxed and no retry loop is introduced beyond these two bounded owners.
+
+Fact/Evidence/Publication/Reader gates always rerun and remain fail-closed.
 """
 from __future__ import annotations
 
@@ -34,6 +45,8 @@ from typing import Any
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 _INSTALLED_ATTR = "_run208_reader_value_repair_installed"
 _SPENT_ATTR = "_run208_reader_value_repair_spent"
+_BASE_RETRY_SPENT_ATTR = "_run360_base_quality_retry_spent"
+_READER_REPAIR_SPENT_ATTR = "_run360_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
 _PENDING_REPAIRABLE = ("dense_report_cluster", "repetitive_insight")
 _FRESH_REPAIRABLE = (
@@ -61,6 +74,7 @@ ARTICLEは専門知識を見せる順番ではなく、読者が判断できる�
 4. 中核メカニズム：読者が「なぜそうなるか」を理解するための仕組みは原則1つを主役にする。2つ目以降は、それがないとDecisionか重要な制約を誤解する場合だけ本文へ入れる。
 5. 実装名・略語・ベンチマーク名：Decisionも制約も変えない名前は本文から外すか、「複数の既存手法」「内部の圧縮方式」等の意味カテゴリへ圧縮する。一次情報に名前があることはARTICLEへ列挙する理由にならない。
 
+・初稿の段階でReader Gateを後工程へ丸投げしない。専門名を残すか迷ったら、Decisionまたは重要制約を変える名前だけを残し、それ以外は削るか意味カテゴリへ圧縮する。
 ・読者が前半で覚える中心メッセージは原則3つまで。①変化 ②判断 ③判断を変えうる重要な制約を優先する。
 ・冒頭約600文字では中核メカニズムを1つまでに絞り、Decisionに不要なAPI名・内部構造・精度名・ベンチマーク条件・実装識別子を並べない。名称より「何をする仕組みか」を先に書く。
 ・専門語を説明するために別の未説明専門語を持ち込まない。最初の専門語・略語は同じEvidenceの範囲で一度だけ普通の日本語に言い換える。新事実は足さない。
@@ -171,13 +185,26 @@ def install(pipeline_module: Any) -> Any:
     original_prompt = pipeline_module.build_decision_prompt
     original_retry_instruction = pipeline_module.build_dynamic_retry_instruction
     setattr(pipeline_module, _SPENT_ATTR, False)
+    setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)
+    setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)
+
+    # The base pipeline loop is bounded by MAX_QUALITY_RETRIES. Run360 raises only the loop
+    # ceiling; the owner-specific state below still allows at most one ordinary retry plus
+    # one reader-only repair for a fresh/article-revalidation candidate.
+    pipeline_module.MAX_QUALITY_RETRIES = max(2, int(getattr(pipeline_module, "MAX_QUALITY_RETRIES", 1) or 1))
 
     def should_attempt_dynamic_retry_with_reader_repair(
         reason_rows: list[dict], evidence_result: dict | None, candidate_origin: str = "new"
     ):
         allowed, reason = original_retry(reason_rows, evidence_result, candidate_origin)
+
         if allowed:
+            if candidate_origin in _FRESH_EQUIVALENT_ORIGINS:
+                if bool(getattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)):
+                    return False, "run360_base_quality_retry_already_spent"
+                setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, True)
             return allowed, reason
+
         if reason != "reader_value_review_no_retry":
             return allowed, reason
 
@@ -195,18 +222,29 @@ def install(pipeline_module: Any) -> Any:
         if candidate_origin in _FRESH_EQUIVALENT_ORIGINS and _fresh_evidence_safe(pipeline_module, evidence_result):
             hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
             if _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard):
+                if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                    return False, "run360_reader_repair_already_spent"
+                setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
                 return True, "run341_production_reader_repair"
 
         return allowed, reason
 
     def build_decision_prompt_with_reader_path(*args: Any, **kwargs: Any) -> str:
+        quality_feedback = str(args[4] if len(args) > 4 else kwargs.get("quality_feedback") or "")
+        previous_article = str(kwargs.get("previous_article") or "")
+        if not quality_feedback.strip() and not previous_article.strip():
+            # Fresh candidate boundary. Retry ownership must never leak into the next article.
+            setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)
+            setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)
         prompt = str(original_prompt(*args, **kwargs) or "")
         return prompt.rstrip() + "\n\n" + READER_PATH_CONTRACT + "\n"
 
     def build_dynamic_retry_instruction_with_reader_repair(reason_rows: list[dict]):
         rows = list(reason_rows or [])
         instruction, sections = original_retry_instruction(rows)
-        if _has_reader_issue(rows):
+        hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
+        reader_only = _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard)
+        if reader_only:
             instruction = str(instruction).rstrip() + "\n\n" + READER_REPAIR_CONTRACT
             targeted = _run359_targeted_repair(rows)
             if targeted:
@@ -222,5 +260,6 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN345_READER_CONCEPT_HIERARCHY = True
     pipeline_module.RUN354_VALIDATION_RETRY_PARITY = True
     pipeline_module.RUN359_READER_REPAIR_EXECUTION = True
+    pipeline_module.RUN360_RETRY_OWNER_ORTHOGONALITY = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module

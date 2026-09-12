@@ -11,6 +11,7 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         pipeline = types.SimpleNamespace()
         pipeline.GATE_SEVERITY_HARD = "HARD"
         pipeline.EVIDENCE_SUFFICIENT = "SUFFICIENT"
+        pipeline.MAX_QUALITY_RETRIES = 1
         pipeline.should_attempt_dynamic_retry = lambda rows, evidence, origin="new": result
         pipeline.build_decision_prompt = lambda *args, **kwargs: "BASE PROMPT"
         pipeline.build_dynamic_retry_instruction = lambda rows: ("BASE RETRY", ["ARTICLE"])
@@ -19,6 +20,13 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
     @staticmethod
     def _fresh_safe_evidence():
         return {"state": "SUFFICIENT", "decision_scope_safe": True}
+
+    @staticmethod
+    def _reader_rows():
+        return [
+            {"message": "reader_value_review:multi_axis_reader_weakness", "severity": "REVIEW"},
+            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
+        ]
 
     def test_disabled_pending_repair_outside_fast_lane(self):
         pipeline = self._pipeline()
@@ -42,18 +50,15 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertEqual(first, (True, "run208_reader_value_fast_lane_repair"))
         self.assertEqual(second, (False, "reader_value_review_no_retry"))
 
-    def test_fresh_reader_only_accessibility_failure_uses_existing_article_retry(self):
+    def test_fresh_reader_only_accessibility_failure_gets_exactly_one_reader_repair(self):
         pipeline = self._pipeline()
         run208.install(pipeline)
-        rows = [
-            {"message": "reader_value_review:multi_axis_reader_weakness", "severity": "REVIEW"},
-            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
-        ]
+        rows = self._reader_rows()
         with patch.dict(os.environ, {}, clear=True):
             first_article = pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")
             second_article = pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")
         self.assertEqual(first_article, (True, "run341_production_reader_repair"))
-        self.assertEqual(second_article, (True, "run341_production_reader_repair"))
+        self.assertEqual(second_article, (False, "run360_reader_repair_already_spent"))
 
     def test_fresh_reader_repair_requires_sufficient_decision_safe_evidence(self):
         rows = [{"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"}]
@@ -93,18 +98,56 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
             allowed, _ = pipeline.should_attempt_dynamic_retry(rows, {"evidence": "present"}, "pending_retry")
         self.assertFalse(allowed)
 
-    def test_preserves_original_true_decision_for_mixed_hard_retry(self):
-        pipeline = self._pipeline((True, "hard_retry"))
+    def test_one_base_retry_then_one_reader_only_repair(self):
+        calls = {"n": 0}
+
+        def base_retry(rows, evidence, origin="new"):
+            calls["n"] += 1
+            if any("FACT_" in str(row.get("message")) for row in rows):
+                return True, "hard_retry"
+            return False, "reader_value_review_no_retry"
+
+        pipeline = self._pipeline()
+        pipeline.should_attempt_dynamic_retry = base_retry
         run208.install(pipeline)
-        rows = [
+        pipeline.build_decision_prompt("n", "u", 1, "d", "", "GitHub", previous_article="")
+
+        mixed = [
             {"message": "FACT_NUMERICAL_MISMATCH", "severity": "HARD"},
             {"message": "reader_value_review:multi_axis_reader_weakness", "severity": "REVIEW"},
         ]
-        with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(
-                pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new"),
-                (True, "hard_retry"),
-            )
+        self.assertEqual(
+            pipeline.should_attempt_dynamic_retry(mixed, self._fresh_safe_evidence(), "new"),
+            (True, "hard_retry"),
+        )
+        self.assertEqual(
+            pipeline.should_attempt_dynamic_retry(self._reader_rows(), self._fresh_safe_evidence(), "new"),
+            (True, "run341_production_reader_repair"),
+        )
+        self.assertEqual(
+            pipeline.should_attempt_dynamic_retry(self._reader_rows(), self._fresh_safe_evidence(), "new"),
+            (False, "run360_reader_repair_already_spent"),
+        )
+        self.assertEqual(pipeline.MAX_QUALITY_RETRIES, 2)
+
+    def test_second_fact_retry_is_blocked(self):
+        pipeline = self._pipeline((True, "hard_retry"))
+        run208.install(pipeline)
+        rows = [{"message": "FACT_NUMERICAL_MISMATCH", "severity": "HARD"}]
+        first = pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")
+        second = pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")
+        self.assertEqual(first, (True, "hard_retry"))
+        self.assertEqual(second, (False, "run360_base_quality_retry_already_spent"))
+
+    def test_fresh_prompt_resets_retry_owners_for_next_candidate(self):
+        pipeline = self._pipeline((True, "hard_retry"))
+        run208.install(pipeline)
+        rows = [{"message": "FACT_NUMERICAL_MISMATCH", "severity": "HARD"}]
+        pipeline.build_decision_prompt("a", "u", 1, "d", "", "GitHub", previous_article="")
+        self.assertTrue(pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")[0])
+        self.assertFalse(pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")[0])
+        pipeline.build_decision_prompt("b", "u", 1, "d", "", "GitHub", previous_article="")
+        self.assertTrue(pipeline.should_attempt_dynamic_retry(rows, self._fresh_safe_evidence(), "new")[0])
 
     def test_first_pass_prompt_adds_reader_path_without_permission_to_invent(self):
         pipeline = self._pipeline()
@@ -113,6 +156,7 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIn("Reader Path Contract", prompt)
         self.assertIn("①何が変わった", prompt)
         self.assertIn("③現時点の暫定判断", prompt)
+        self.assertIn("初稿の段階でReader Gateを後工程へ丸投げしない", prompt)
         self.assertIn("問いかけや比喩は、それだけではReader Bridgeとみなさない", prompt)
         self.assertIn("冒頭約600文字", prompt)
         self.assertIn("新事実は足さない", prompt)
@@ -130,13 +174,10 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIn("Human Appealは問いかけや比喩の数ではなく", prompt)
         self.assertIn("親しみのための前置きは増やさない", prompt)
 
-    def test_reader_retry_contract_preserves_fact_evidence_and_decision(self):
+    def test_reader_only_retry_contract_preserves_fact_evidence_and_decision(self):
         pipeline = self._pipeline()
         run208.install(pipeline)
-        instruction, sections = pipeline.build_dynamic_retry_instruction([
-            {"message": "FACT_NUMERICAL_MISMATCH", "severity": "HARD"},
-            {"message": "reader_value_review:final_surface_title_unbalanced_kagi", "severity": "REVIEW"},
-        ])
+        instruction, sections = pipeline.build_dynamic_retry_instruction(self._reader_rows())
         self.assertEqual(sections, ["ARTICLE"])
         self.assertIn("BASE RETRY", instruction)
         self.assertIn("Factを固定", instruction)
@@ -147,13 +188,22 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIn("問いかけ・比喩がDecision到達を遅らせている場合", instruction)
         self.assertIn("Readyにしない", instruction)
 
+    def test_mixed_fact_and_reader_retry_does_not_receive_reader_restructure_contract(self):
+        pipeline = self._pipeline()
+        run208.install(pipeline)
+        rows = [
+            {"message": "FACT_NUMERICAL_MISMATCH", "severity": "HARD"},
+            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
+        ]
+        instruction, _ = pipeline.build_dynamic_retry_instruction(rows)
+        self.assertEqual(instruction, "BASE RETRY")
+        self.assertNotIn("Reader Repair", instruction)
+        self.assertNotIn("RUN359 Reader Repair", instruction)
+
     def test_reader_retry_keeps_limitations_visible_while_simplifying(self):
         pipeline = self._pipeline()
         run208.install(pipeline)
-        instruction, _ = pipeline.build_dynamic_retry_instruction([
-            {"message": "FACT_CONDITIONALITY_LOSS", "severity": "HARD"},
-            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
-        ])
+        instruction, _ = pipeline.build_dynamic_retry_instruction(self._reader_rows())
         self.assertIn("重要な制約・対象範囲・例外・未検証条件", instruction)
         self.assertIn("平易化のために削除してはいけない", instruction)
         self.assertIn("Decisionの直後または同じ判断段落", instruction)
@@ -185,6 +235,7 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertIs(prompt, pipeline.build_decision_prompt)
         self.assertTrue(pipeline.RUN342_READER_DECISION_DISTANCE)
         self.assertTrue(pipeline.RUN344_READER_LIMITATION_BRIDGE)
+        self.assertTrue(pipeline.RUN360_RETRY_OWNER_ORTHOGONALITY)
 
 
 if __name__ == "__main__":
