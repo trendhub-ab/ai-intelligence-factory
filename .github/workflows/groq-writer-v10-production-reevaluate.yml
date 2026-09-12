@@ -7,6 +7,7 @@ on:
       - '.github/workflows/groq-writer-v10-production-reevaluate.yml'
       - 'groq_writer_v7_contract.py'
       - 'groq_writer_v10_compound.py'
+      - 'groq_quality_contract_sync.py'
 permissions:
   actions: read
   contents: read
@@ -51,7 +52,7 @@ jobs:
               'business_writes': 0,
           },ensure_ascii=False))
           assert inspected['paragraphs'] == 8, inspected
-      - name: Assemble saved article and evaluate exact current Production gates
+      - name: Assemble saved article and evaluate Production gates with synced quality contracts
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           PYTHONPATH: ${{ github.workspace }}
@@ -59,6 +60,7 @@ jobs:
         run: |
           import json, note_manuscript, pipeline, production_pipeline
           from groq_article_parity import evaluate_groq_article_output
+          from groq_quality_contract_sync import install_provider_neutral_quality_contracts
           from groq_two_pass_article import assemble_combined_report
           from source_normalization import install as install_source_normalization
           from run268_business_source_strategy import install as install_run268
@@ -74,6 +76,7 @@ jobs:
           assert combined['business_writes']==0
           install_source_normalization(pipeline)
           production_pipeline.install_runtime_layers(pipeline)
+          install_provider_neutral_quality_contracts(pipeline)
           production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
@@ -83,6 +86,7 @@ jobs:
           )
           print(json.dumps({
               'zero_api': True,
+              'quality_sync': getattr(pipeline,'GROQ_QUALITY_SYNC_VERSION',None),
               'evidence_state': ev['evidence_state'],
               'evidence_sufficient': ev['evidence_sufficient'],
               'fact_ok': ev['fact_ok'],
@@ -99,6 +103,7 @@ jobs:
               'article_chars': ev['article_chars'],
               'business_writes': ev['business_writes'],
           },ensure_ascii=False))
+          assert getattr(pipeline,'GROQ_QUALITY_SYNC_VERSION',None)
           assert ev['business_writes']==0 and ev['persist_results'] is False
       - name: Upload zero-API reevaluation
         uses: actions/upload-artifact@v4
