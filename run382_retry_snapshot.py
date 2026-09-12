@@ -63,16 +63,19 @@ def _persist_results(args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install read-only retry-snapshot preservation without weakening any gate."""
+    """Install read-only retry-snapshot preservation without weakening any gate.
+
+    Minimal test doubles and non-article runtimes may intentionally omit either target
+    callable. In that case Run382 is inapplicable and must be a no-op rather than changing
+    the compatibility contract of ``production_pipeline.main``.
+    """
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
         return pipeline_module
 
     original_prompt = getattr(pipeline_module, "build_decision_prompt", None)
     original_generate = getattr(pipeline_module, "generate_intelligence_report", None)
-    if not callable(original_prompt):
-        raise RuntimeError("Run382 requires pipeline.build_decision_prompt")
-    if not callable(original_generate):
-        raise RuntimeError("Run382 requires pipeline.generate_intelligence_report")
+    if not callable(original_prompt) or not callable(original_generate):
+        return pipeline_module
 
     def prompt_with_snapshot(*args: Any, **kwargs: Any):
         _capture_from_prompt_call(pipeline_module, args, kwargs)
