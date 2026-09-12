@@ -1,9 +1,9 @@
 """One-call Groq Plan diagnostic with no business writes and no raw failed-generation persistence.
 
-This module exists only to isolate recurring HTTP 400 json_validate_failed responses.
-The provider's failed_generation is parsed in memory, compared with the exact transport
-schema, reduced to structural reason codes, and discarded. Raw model output, prompts,
-credentials and HTTP bodies are never written to the diagnostic report.
+The provider's failed_generation is parsed only in runner memory, reduced to structural
+reason codes, and discarded. Raw model output, prompts, credentials and HTTP bodies are
+never written to the diagnostic report. Supports both strict-schema and the Hybrid Plan
+JSON Object transport so provider failures can be compared safely.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _path_text(parts) -> str:
     return out
 
 
-def failed_generation_schema_diagnostic(failed_generation, transport_schema: dict) -> dict:
+def failed_generation_schema_diagnostic(failed_generation, validation_schema: dict) -> dict:
     """Summarize schema failures without retaining generated values or raw text."""
     result = {
         "present": failed_generation is not None,
@@ -70,15 +70,12 @@ def failed_generation_schema_diagnostic(failed_generation, transport_schema: dic
     result["json_parseable"] = True
     result["top_level_type"] = _json_type(candidate)
     from jsonschema import Draft202012Validator
-    validator = Draft202012Validator(transport_schema)
+    validator = Draft202012Validator(validation_schema)
     errors = sorted(validator.iter_errors(candidate), key=lambda e: (list(e.path), list(e.schema_path)))
     result["schema_error_count"] = len(errors)
     issues = []
     for error in errors[:12]:
-        issue = {
-            "path": _path_text(error.path),
-            "validator": str(error.validator),
-        }
+        issue = {"path": _path_text(error.path), "validator": str(error.validator)}
         if error.validator == "required" and isinstance(error.instance, dict):
             required = list(error.validator_value or [])
             issue["missing_required"] = [name for name in required if name not in error.instance]
@@ -101,14 +98,17 @@ def run_probe(fixture_path: str, output_path: str) -> dict:
     fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
     model = str(fixture["model"])
     policy = policy_for_model(model)
+    mode = str(fixture.get("structured_output_mode") or "strict_schema")
     request = GenerationRequest(
         fixture["prompt"], fixture["max_output_tokens"], fixture.get("schema"),
-        fixture.get("reasoning_effort", "low"),
+        fixture.get("reasoning_effort", "low"), mode,
     )
     validate = schema_validator(request.schema)
     provider = GroqProvider(lambda _: None, validate_schema=validate, token_budget=policy.safe_tpm, model=model)
     payload, estimate = provider.prepare(request)
-    transport_schema = payload["response_format"]["json_schema"]["schema"]
+    validation_schema = request.schema
+    if not isinstance(validation_schema, dict):
+        raise ProviderError("schema_validator_required")
 
     key = os.environ.get("GROQ_API_KEY", "").strip()
     token = os.environ.get("GROQ_LEDGER_GITHUB_TOKEN", "").strip()
@@ -129,7 +129,10 @@ def run_probe(fixture_path: str, output_path: str) -> dict:
         method="POST",
     )
     report = {
-        "mode": "groq_plan_strict_diagnostic",
+        "mode": "groq_plan_transport_diagnostic",
+        "structured_output_mode": mode,
+        "response_format_type": payload.get("response_format", {}).get("type"),
+        "reasoning_format": payload.get("reasoning_format"),
         "model": model,
         "reserved_token_estimate": estimate,
         "provider_calls": 1,
@@ -160,10 +163,10 @@ def run_probe(fixture_path: str, output_path: str) -> dict:
             status="HTTP_ERROR",
             http_status=exc.code,
             provider_diagnostic=_safe_http_error_diagnostic(body),
-            generation_schema_diagnostic=failed_generation_schema_diagnostic(failed, transport_schema),
+            generation_schema_diagnostic=failed_generation_schema_diagnostic(failed, validation_schema),
         )
     serialized = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
-    for forbidden in ("failed_generation\"", "GROQ_API_KEY", "Authorization: Bearer", "gsk_"):
+    for forbidden in ("\"failed_generation\"", "GROQ_API_KEY", "Authorization: Bearer", "gsk_"):
         if forbidden in serialized:
             raise RuntimeError("diagnostic_secret_surface_detected")
     Path(output_path).write_text(serialized, encoding="utf-8")
