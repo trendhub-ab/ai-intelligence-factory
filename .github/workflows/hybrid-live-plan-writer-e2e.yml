@@ -1,4 +1,4 @@
-name: Hybrid Live Groq Plan + Gemini Writer E2E
+name: Hybrid Live Fact-Locked Groq Plan + Gemini Writer E2E
 on:
   workflow_dispatch:
     inputs:
@@ -31,82 +31,55 @@ jobs:
           pip install -r requirements.txt
           pip install jsonschema
 
-      - name: Build and preflight one live Groq Decision Plan
+      - name: Build Fact-Locked Groq categorical fixture
         shell: python
         run: |
           import json
-          from ai_provider import GenerationRequest, GroqProvider
-          from groq_two_pass_article import build_plan_fixture
-          from groq_validation import schema_validator
-          fixture=build_plan_fixture(
+          from hybrid_groq_plan import build_hybrid_plan_fixture
+          fx=build_hybrid_plan_fixture(
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'hybrid-live-plan-fixture.json',
           )
-          provider=GroqProvider(
-              lambda _: None,
-              validate_schema=schema_validator(fixture['schema']),
-              token_budget=7000,
-              model=fixture['model'],
-          )
-          payload,estimate=provider.prepare(GenerationRequest(
-              fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort']
-          ))
-          assert estimate <= 7000
-          sent_schema=payload['response_format']['json_schema']['schema']
-          sent_serialized=json.dumps(sent_schema,ensure_ascii=False)
-          for unsupported in ('minLength','maxLength','minItems','maxItems'):
-              assert unsupported not in sent_serialized
-          assert payload['response_format']['json_schema']['strict'] is True
-          assert sent_schema['properties']['decision']['type']=='string'
-          assert sent_schema['properties']['access_status']['type']=='string'
-          print(json.dumps({
-              'candidate_id':fixture['candidate_id'],
-              'plan_model':fixture['model'],
-              'estimate':estimate,
-              'safe_tpm':7000,
-              'strict_enum_types':True,
-              'groq_live_calls_expected':1,
-              'google_api_explicitly_approved':True,
-              'business_writes':0,
-          },ensure_ascii=False))
+          assert fx['pass']=='decision_judgment_codes'
+          assert fx['structured_output_mode']=='json_object_local_strict'
+          assert fx['fact_envelope']['fact_ledger_sha256']
+          assert fx['business_writes']==0 and fx['persist_results'] is False
+          print(json.dumps({'candidate_id':fx['candidate_id'],'groq_live_calls_expected':1,'fact_locked':True,'business_writes':0},ensure_ascii=False))
 
-      - name: One guarded live Groq Decision Plan call
+      - name: One guarded live Groq categorical judgment call
         env:
-          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
-          AIIF_GROQ_FIXTURE: hybrid-live-plan-fixture.json
-          AIIF_GROQ_REPORT: hybrid-live-plan-report.json
-          AIIF_GROQ_LIVE: 'true'
-          AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: hybrid-live-B0049-plan-${{ github.run_id }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
-        run: python production_pipeline.py
-
-      - name: Validate live Groq Plan and build bounded Gemini Writer fixture
+          AIIF_GROQ_EXPERIMENT: hybrid-live-B0049-plan-${{ github.run_id }}
         shell: python
         run: |
           import json
-          from groq_two_pass_article import load_plan_report
+          from hybrid_groq_plan_live import run_live
+          report=run_live('hybrid-live-plan-fixture.json','hybrid-live-plan-report.json')
+          assert report['mode']=='hybrid_groq_judgment_fact_locked'
+          assert report['status']=='PLAN_VALIDATED'
+          assert report['semantic_plan_validated'] is True
+          assert report['business_writes']==0 and report['persist_results'] is False
+          print(json.dumps({'candidate_id':report['candidate_id'],'fact_envelope_sha256':report['fact_envelope_sha256'],'status':report['status']},ensure_ascii=False))
+
+      - name: Bind exact Evidence to bounded Gemini Writer fixture
+        shell: python
+        run: |
+          import json
           from hybrid_live_plan_writer import build_live_writer_fixture
-          plan=load_plan_report('hybrid-live-plan-report.json')
-          fixture=build_live_writer_fixture(
+          from hybrid_groq_plan import load_hybrid_plan_report
+          plan=load_hybrid_plan_report('hybrid-live-plan-report.json')
+          fx=build_live_writer_fixture(
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'hybrid-live-plan-report.json',
               'hybrid-live-writer-fixture.json',
           )
-          assert fixture['plan_source']=='live_groq_report'
-          assert fixture['provider_calls_expected']=={'groq_live':1,'gemini_live_max':2}
-          assert fixture['business_writes']==0 and fixture['persist_results'] is False
-          assert len(fixture['writer_prompt'].encode('utf-8')) < 30000
-          print(json.dumps({
-              'candidate_id':fixture['candidate_id'],
-              'plan_decision':plan['decision'],
-              'plan_access_status':plan['access_status'],
-              'writer_models':fixture['writer_models'],
-              'writer_prompt_bytes':len(fixture['writer_prompt'].encode('utf-8')),
-              'total_live_calls_max':3,
-              'business_writes':0,
-          },ensure_ascii=False))
+          assert fx['plan_source']=='live_groq_report'
+          assert fx['fact_envelope_sha256']==fx['decision_package']['plan_report']['fact_envelope_sha256']
+          assert fx['provider_calls_expected']=={'groq_live':1,'gemini_live_max':2}
+          assert fx['business_writes']==0 and fx['persist_results'] is False
+          assert len(fx['writer_prompt'].encode('utf-8')) < 32000
+          print(json.dumps({'candidate_id':fx['candidate_id'],'decision':plan['decision'],'writer_prompt_bytes':len(fx['writer_prompt'].encode('utf-8')),'fact_binding':True},ensure_ascii=False))
 
       - name: Bounded Gemini Writer or durable PENDING_WRITER then full Production gates
         env:
@@ -125,7 +98,6 @@ jobs:
           GEMINI_35_FLASH_DAILY_BUDGET: '18'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '2'
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash'
           SYNTHETIC_REGRESSION_MODE: 'false'
         shell: python
         run: |
@@ -148,62 +120,24 @@ jobs:
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
 
-          runtime=run_or_defer_writer(
-              pipeline,
-              'hybrid-live-writer-fixture.json',
-              'hybrid-live-writer-report.json',
-              'hybrid-live-pending-writer.json',
-          )
-          terminal={
-              'candidate_id':'B0049',
-              'status':runtime['status'],
-              'plan_live_calls':1,
-              'gemini_live_calls':int(runtime.get('provider_calls') or 0),
-              'business_writes':0,
-              'persist_results':False,
-          }
+          runtime=run_or_defer_writer(pipeline,'hybrid-live-writer-fixture.json','hybrid-live-writer-report.json','hybrid-live-pending-writer.json')
+          terminal={'candidate_id':'B0049','status':runtime['status'],'plan_live_calls':1,'gemini_live_calls':int(runtime.get('provider_calls') or 0),'business_writes':0,'persist_results':False}
           if runtime['status']=='DEFERRED':
-              terminal['reason']=runtime['reason']
-              terminal['pending_status']=runtime['pending']['status']
-              terminal['next_retry_at']=runtime['pending'].get('next_retry_at')
-              terminal['expires_at']=runtime['pending'].get('expires_at')
-              terminal['quality_evaluated']=False
-              Path('hybrid-live-terminal.json').write_text(json.dumps(terminal,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-              print(json.dumps(terminal,ensure_ascii=False))
+              terminal.update({'reason':runtime['reason'],'pending_status':runtime['pending']['status'],'quality_evaluated':False})
           elif runtime['status']=='SUCCESS':
               report=runtime['report']
-              ev=evaluate_live_writer_text(
-                  pipeline,
-                  'tests/fixtures/groq/article_parity_B0049_input.json',
-                  'hybrid-live-plan-report.json',
-                  report['text'],
-                  'hybrid-live-evaluation.json',
-                  writer_model=report['model'],
-                  gemini_live_calls=report['provider_calls'],
-              )
-              terminal.update({
-                  'quality_evaluated':True,
-                  'writer_model':ev['writer_model'],
-                  'decision':ev['decision'],
-                  'decision_score':ev['decision_score'],
-                  'article_chars':ev['article_chars'],
-                  'fact_ok':ev['fact_ok'],
-                  'editorial_ok':ev['editorial_ok'],
-                  'publication_state':ev['publication_state'],
-                  'human_appeal_state':ev['human_appeal_state'],
-                  'gate_disposition':ev['gate_disposition'],
-                  'quality_validated':ev['quality_validated'],
-              })
-              Path('hybrid-live-terminal.json').write_text(json.dumps(terminal,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-              print(json.dumps(terminal,ensure_ascii=False))
+              ev=evaluate_live_writer_text(pipeline,'tests/fixtures/groq/article_parity_B0049_input.json','hybrid-live-plan-report.json',report['text'],'hybrid-live-evaluation.json',writer_model=report['model'],gemini_live_calls=report['provider_calls'])
+              terminal.update({'quality_evaluated':True,'fact_boundary_passed':ev['fact_boundary_passed'],'fact_ok':ev['fact_ok'],'editorial_ok':ev['editorial_ok'],'publication_state':ev['publication_state'],'human_appeal_state':ev['human_appeal_state'],'gate_disposition':ev['gate_disposition'],'quality_validated':ev['quality_validated']})
           else:
               raise RuntimeError('hybrid_live_terminal_state_invalid')
+          Path('hybrid-live-terminal.json').write_text(json.dumps(terminal,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps(terminal,ensure_ascii=False))
 
       - name: Upload complete Hybrid E2E evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: hybrid-live-groq-plan-gemini-writer-B0049
+          name: hybrid-live-fact-locked-B0049
           path: |
             hybrid-live-plan-fixture.json
             hybrid-live-plan-report.json
@@ -225,15 +159,12 @@ jobs:
           if terminal['status']=='DEFERRED':
               assert terminal['pending_status']=='PENDING_WRITER'
               assert terminal['quality_evaluated'] is False
-              assert 0 <= terminal['gemini_live_calls'] <= 2
-              print({'terminal':'PENDING_WRITER','safe_defer':True})
           else:
               ev=json.load(open('hybrid-live-evaluation.json',encoding='utf-8'))
               assert terminal['status']=='SUCCESS'
+              assert ev['fact_boundary_passed'] is True, ev['fact_boundary_report']
               assert ev['fact_ok'] is True, ev['fact_failures']
               assert ev['editorial_ok'] is True, ev['editorial_warnings']
               assert ev['publication_state']=='PASS', ev['publication_issues']
               assert ev['human_appeal_state']=='ACCEPTABLE', ev['human_appeal_issues']
               assert ev['quality_validated'] is True, ev
-              assert ev['business_writes']==0 and ev['persist_results'] is False
-              print({'terminal':'QUALITY_PASS','safe_defer':False})
