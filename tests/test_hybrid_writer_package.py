@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from hybrid_one_shot import build_writer_fixture
-from hybrid_writer_deferred import build_pending_writer_record
-from hybrid_writer_package import WriterPackageError, restore_pending_package
+from hybrid_writer_deferred import build_pending_writer_record, _stable_payload_hash
+from hybrid_writer_package import WriterPackageError, restore_pending_package, snapshot_fixture
 from hybrid_writer_runtime import resume_saved_writer, run_or_defer_writer, HybridWriterRuntimeError
 
 INPUT = 'tests/fixtures/groq/article_parity_B0049_input.json'
@@ -36,8 +36,6 @@ def test_resume_uses_only_durable_record_in_empty_directory(tmp_path):
     assert len(calls) == 1
     assert calls[0] == record['writer_snapshot']['fixture']
     restored = json.loads(open(result['restored_paths']['plan_report']).read())
-    # Preserve current Fact-Locked provenance. Recovery must restore the exact validated
-    # composed Plan, never reinterpret the raw categorical Groq output as prose evidence.
     assert restored['mode'] == 'hybrid_groq_judgment_fact_locked'
     assert restored['status'] == 'PLAN_VALIDATED'
     assert restored['semantic_plan_validated'] is True
@@ -67,6 +65,40 @@ def test_same_prompt_with_changed_evidence_blocked_before_call(tmp_path):
             str(tmp_path / 'pending.json'), load_state=lambda cid: record,
             writer_runner=lambda *args: calls.append(True))
     assert calls == []
+
+
+def _rehash_record(record, fixture):
+    record = copy.deepcopy(record)
+    record['writer_snapshot'] = snapshot_fixture(fixture)
+    record['payload_hash'] = _stable_payload_hash(fixture)
+    return record
+
+
+def test_rehashed_snapshot_with_changed_source_context_still_fails_closed(tmp_path):
+    record = pending(tmp_path)
+    fixture = copy.deepcopy(record['writer_snapshot']['fixture'])
+    fixture['decision_package']['input']['source_context'] += ' 改変されたEvidence。'
+    record = _rehash_record(record, fixture)
+    with pytest.raises(WriterPackageError, match='fact_hash_mismatch'):
+        restore_pending_package(record, str(tmp_path / 'restore'))
+
+
+def test_rehashed_snapshot_with_changed_prompt_still_fails_closed(tmp_path):
+    record = pending(tmp_path)
+    fixture = copy.deepcopy(record['writer_snapshot']['fixture'])
+    fixture['writer_prompt'] += '\n改変された指示。'
+    record = _rehash_record(record, fixture)
+    with pytest.raises(WriterPackageError, match='prompt_mismatch'):
+        restore_pending_package(record, str(tmp_path / 'restore'))
+
+
+def test_rehashed_snapshot_with_legacy_plan_mode_still_fails_closed(tmp_path):
+    record = pending(tmp_path)
+    fixture = copy.deepcopy(record['writer_snapshot']['fixture'])
+    fixture['decision_package']['plan_report']['mode'] = 'legacy_two_pass'
+    record = _rehash_record(record, fixture)
+    with pytest.raises(WriterPackageError, match='fact_locked_plan_required'):
+        restore_pending_package(record, str(tmp_path / 'restore'))
 
 
 def test_restore_refuses_to_overwrite_existing_material(tmp_path):
