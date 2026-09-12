@@ -75,13 +75,35 @@ def test_json_object_mode_requires_schema():
         provider.prepare(GenerationRequest('Return JSON',100,None,'low',MODE))
 
 
-
 def test_unconfirmed_evaluation_conditions_cannot_become_provision_claim():
     plan=_valid_plan()
     plan['what']='特定のアクセス条件下で提供され、複数の安全策がある。'
     with pytest.raises(Exception,match='unconfirmed_access_scope_claim'):
         validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))
     plan['what']='特定のアクセス条件下で評価された。'
+    assert validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))['decision']=='WATCH'
+
+
+def test_unconfirmed_subject_word_is_allowed_when_sentence_is_explicitly_negative():
+    plan=_valid_plan()
+    plan['decision_reason']=['アクセス条件が一般利用者向けに確認できない。']
+    validated=validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))
+    assert validated['access_status']=='NOT_CONFIRMED'
+
+
+def test_positive_general_access_claim_still_fails_closed():
+    plan=_valid_plan()
+    plan['decision_reason']=['一般利用者が利用できる。']
+    with pytest.raises(Exception,match='unconfirmed_access_scope_claim'):
+        validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))
+
+
+def test_safeguard_validation_status_cannot_be_invented_from_named_safeguards():
+    plan=_valid_plan()
+    plan['why_important']='安全策の有効性が未検証なので導入リスクがある。'
+    with pytest.raises(Exception,match='unsupported_safeguard_validation_claim'):
+        validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))
+    plan['why_important']='この資料から安全策の有効性は確認できない。'
     assert validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))['decision']=='WATCH'
 
 
