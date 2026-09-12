@@ -14,6 +14,9 @@ on:
     branches: ['dev/hybrid-groq-gemini']
     paths:
       - 'ai_provider.py'
+      - 'groq_rate_policy.py'
+      - 'groq_remote_budget.py'
+      - 'groq_validation.py'
       - 'tests/test_ai_provider.py'
       - 'tests/test_groq_*.py'
       - '.github/workflows/groq-provider-offline.yml'
