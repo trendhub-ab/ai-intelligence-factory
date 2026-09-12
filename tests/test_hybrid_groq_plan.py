@@ -1,3 +1,4 @@
+import hashlib
 import json
 import pytest
 
@@ -68,10 +69,12 @@ def test_fixture_is_categorical_and_contains_no_freeform_fact_fields(tmp_path):
     assert payload['reasoning_format']=='hidden'
 
 
-def test_composed_plan_uses_only_envelope_and_deterministic_mappings_for_prose():
+def test_composed_plan_uses_envelope_reference_and_deterministic_mappings_for_prose():
     envelope=build_fact_envelope(INPUT)
     plan=compose_fact_locked_plan(envelope,_valid_judgment())
-    assert plan['source_summary']==envelope['fact_ledger']
+    assert envelope['fact_ledger'] not in plan['source_summary']
+    assert envelope['fact_ledger_sha256'] in plan['source_summary']
+    assert 'Fact Envelope参照' in plan['source_summary']
     assert plan['what']==envelope['name']
     assert plan['decision']=='WATCH'
     assert plan['decision_reason']==[
@@ -81,6 +84,20 @@ def test_composed_plan_uses_only_envelope_and_deterministic_mappings_for_prose()
     ]
     assert plan['action']=='利用条件を一次情報で確認する。'
     assert '実装された安全策' not in json.dumps(plan,ensure_ascii=False)
+
+
+def test_long_fact_ledger_is_never_truncated_into_legacy_plan():
+    envelope=build_fact_envelope(INPUT)
+    long_ledger='確認済みFact。' * 500
+    assert len(long_ledger) > 500
+    envelope['fact_ledger']=long_ledger
+    envelope['fact_ledger_sha256']=hashlib.sha256(long_ledger.encode('utf-8')).hexdigest()
+    validate_fact_envelope(envelope)
+    plan=compose_fact_locked_plan(envelope,_valid_judgment())
+    assert len(plan['source_summary']) < 500
+    assert long_ledger not in plan['source_summary']
+    assert envelope['fact_ledger_sha256'] in plan['source_summary']
+    assert envelope['fact_ledger']==long_ledger
 
 
 def test_freeform_fact_prose_is_schema_rejected():
