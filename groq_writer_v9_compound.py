@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 from ai_provider import GenerationRequest, GroqProvider
 from groq_rate_policy import COMPOUND_MINI, policy_for_model
+from groq_writer_v7_contract import inspect_writer_report
 
 
 class GroqWriterV9Error(RuntimeError):
@@ -47,7 +49,7 @@ def route_compound_writer(path: str) -> dict:
     data["model"] = COMPOUND_MINI.model
     data["rate_policy"] = policy.name
     data["max_output_tokens"] = 4200
-    data["reasoning_effort"] = "low"  # ignored by Compound transport; kept for common request schema
+    data["reasoning_effort"] = "low"
     data["writer_route"] = "compound_mini_two_pass_v9"
     data["contract_version_v9"] = "groq_writer_v9_compound_reader_boundary"
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -71,13 +73,44 @@ def preflight_compound_writer(path: str) -> dict:
         raise GroqWriterV9Error("compound_citations_not_disabled")
     request_bytes = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     return {
-        "model": data["model"],
-        "rate_policy": data["rate_policy"],
-        "max_output_tokens": data["max_output_tokens"],
-        "reserved_estimate": estimate,
-        "safe_tpm": policy.safe_tpm,
-        "headroom": policy.safe_tpm - estimate,
-        "request_bytes": request_bytes,
-        "external_tools": "disabled",
+        "model": data["model"], "rate_policy": data["rate_policy"],
+        "max_output_tokens": data["max_output_tokens"], "reserved_estimate": estimate,
+        "safe_tpm": policy.safe_tpm, "headroom": policy.safe_tpm - estimate,
+        "request_bytes": request_bytes, "external_tools": "disabled",
         "writer_route": data["writer_route"],
     }
+
+
+def inspect_compound_writer_v9(path: str) -> dict:
+    inspected = inspect_writer_report(path)
+    article = inspected["article"]
+    issues = [x for x in inspected["issues"] if not x.startswith("article_too_long:") and not x.startswith("paragraph_count:")]
+    if not 1500 <= len(article) <= 2200:
+        issues.append(f"v9_article_chars:{len(article)}")
+    if not 8 <= inspected["paragraphs"] <= 10:
+        issues.append(f"v9_paragraph_count:{inspected['paragraphs']}")
+    if len(inspected["headings"]) != 3:
+        issues.append(f"v9_heading_count:{len(inspected['headings'])}")
+    extra_patterns = (
+        (r"Daybreak\s*Blue[^。！？\n]{0,120}(?:取得|申請|参加|一般提供|利用開始)", "daybreak_access_expansion"),
+        (r"(?:実務利用|実務での利用|導入)[^。！？\n]{0,90}(?:別途|追加)[^。！？\n]{0,80}(?:条件|アクセス権|運用条件)[^。！？\n]{0,50}(?:必要|要する)", "unconfirmed_usage_condition"),
+        (r"未知のリスク[^。！？\n]{0,60}(?:潜在|存在|ある)", "unsupported_unknown_risk"),
+        (r"(?:限定|限られ)[^。！？\n]{0,80}(?:環境|アクセス)[^。！？\n]{0,80}(?:のみ|だけ|証明|裏付)", "limited_environment_inference"),
+    )
+    for pattern, code in extra_patterns:
+        if re.search(pattern, article, re.I):
+            issues.append(code)
+    inspected["issues"] = sorted(set(issues))
+    return inspected
+
+
+def validate_compound_writer_v9(path: str) -> dict:
+    inspected = inspect_compound_writer_v9(path)
+    if inspected["issues"]:
+        raise GroqWriterV9Error("writer_v9_contract:" + "|".join(inspected["issues"]))
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    data["v9_contract_validated"] = True
+    data["v9_article_chars"] = inspected["article_chars"]
+    data["v9_headings"] = len(inspected["headings"])
+    data["v9_paragraphs"] = inspected["paragraphs"]
+    return data
