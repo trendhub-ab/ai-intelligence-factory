@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-12T02:07:51.212346+00:00",
+  "updated_at": "2026-09-12T02:08:40.798082+00:00",
   "items": [
-    {
-      "key": "https://hugovergnes.github.io/little-lm-3-8b",
-      "deferred_at": "2026-09-10T05:36:27.083446+00:00",
-      "expires_at": "2026-09-24T05:36:27.083446+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
-        "originalTitle": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
-        "displayName": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
-        "sourceLanguage": "en",
-        "url": "https://hugovergnes.github.io/little-lm-3-8b/",
-        "description": "Training a 3.8B LLM to 0.384 CORE for $998 – Hugo Vergnes",
-        "stargazerCount": 35,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-10T02:04:11Z",
-        "sourceContext": "HN points=35 comments=5 matched_query=LLM",
-        "primaryUrl": "https://hugovergnes.github.io/little-lm-3-8b/",
-        "sourceDetails": {
-          "hn_id": "49637435",
-          "hn_url": "https://news.ycombinator.com/item?id=49637435",
-          "external_url": "https://hugovergnes.github.io/little-lm-3-8b/",
-          "comments": 5,
-          "matched_query": "LLM",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d7479ff-dca9-81b5-969b-d6f65ae5ad5d",
-      "score": 78,
-      "reason": "超低コストな独自モデル学習の好例",
-      "commercial_score": 85,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 80.45
-    },
     {
       "key": "https://arxiv.org/abs/2609.05269",
       "deferred_at": "2026-09-07T04:00:39.861354+00:00",
