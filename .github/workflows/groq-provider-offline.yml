@@ -10,6 +10,13 @@ on:
       - 'tests/test_ai_provider.py'
       - 'tests/test_groq_*.py'
       - '.github/workflows/groq-provider-offline.yml'
+  push:
+    branches: ['dev/hybrid-groq-gemini']
+    paths:
+      - 'ai_provider.py'
+      - 'tests/test_ai_provider.py'
+      - 'tests/test_groq_*.py'
+      - '.github/workflows/groq-provider-offline.yml'
   workflow_dispatch:
 permissions:
   contents: read
