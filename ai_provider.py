@@ -167,6 +167,8 @@ class GroqProvider:
         self.reserved_tokens += estimate  # Unknown timeout/failure remains conservatively counted.
         try:
             status, headers, body = self.transport(payload)
+        except ProviderError:
+            raise
         except TimeoutError:
             raise ProviderError("timeout") from None
         except Exception:
@@ -192,9 +194,6 @@ class GroqProvider:
             if any(type(n) is not int or n < 0 for n in counts):
                 raise ProviderError("invalid_usage")
             actual_tokens = sum(counts)
-            # A valid provider response must not be discarded merely because our local
-            # tokenizer-free estimate was low. Record actual usage in-memory and let the
-            # persistent ledger reconcile to it immediately after return.
             if actual_tokens > self.reserved_tokens:
                 self.reserved_tokens = actual_tokens
             if actual_tokens > self.token_budget:
