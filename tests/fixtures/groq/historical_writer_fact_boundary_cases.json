@@ -1,0 +1,118 @@
+{
+  "source_input": "tests/fixtures/groq/article_parity_B0049_input.json",
+  "purpose": "Offline Red Team regression set built from historically observed Hybrid Writer factual inflation plus safe contrast cases. No provider calls.",
+  "cases": [
+    {
+      "id": "OBS-001",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["development_state_inflation"],
+      "text": "Astraは開発中の新しい基盤モデルだ。"
+    },
+    {
+      "id": "OBS-002",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["availability_inflation"],
+      "text": "これは一般に通常の対話画面で触れられる設定だ。"
+    },
+    {
+      "id": "OBS-003",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["contamination_certainty_inflation"],
+      "text": "この評価ではデータ混入の可能性が極めて低い。"
+    },
+    {
+      "id": "OBS-004",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["zero_day_inflation"],
+      "text": "まだ誰も発見していなかった未知の不具合を見つけた。"
+    },
+    {
+      "id": "OBS-005",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["refusal_training_function_inference"],
+      "text": "拒否訓練は不適切な指示を断るための訓練だ。"
+    },
+    {
+      "id": "OBS-006",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["classifier_function_inference"],
+      "text": "system safety classifierは安全性を判定する仕組みだ。"
+    },
+    {
+      "id": "OBS-007",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["unsupported_numeric_fact"],
+      "text": "ExploitBenchでは99%を記録した。"
+    },
+    {
+      "id": "OBS-008",
+      "label": "historical_observed_bad",
+      "expected_pass": false,
+      "expected_types": ["unsupported_technical_identifier"],
+      "text": "CyberBenchXでも評価された。"
+    },
+    {
+      "id": "SAFE-001",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルと説明される。"
+    },
+    {
+      "id": "SAFE-002",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "ExploitBenchでは100%を記録した。"
+    },
+    {
+      "id": "SAFE-003",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "2026年6〜8月に公開された高深刻度V8脆弱性20件を評価し、2件のzero-day脆弱性を発見した。"
+    },
+    {
+      "id": "SAFE-004",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "結果はdefault production configurationではなくDaybreak Blue access条件を反映する。"
+    },
+    {
+      "id": "SAFE-005",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "公開時は拒否訓練、system safety classifier、監視、misalignment detectionなど複数の安全策を適用する。"
+    },
+    {
+      "id": "SAFE-006",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "数字の大きさだけでなく、どの条件で得られた結果なのかを分けて読む必要がある。"
+    },
+    {
+      "id": "SAFE-007",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "一般利用条件はSOURCE CONTEXTからは確認できないため、そこは未確認のまま扱う。"
+    },
+    {
+      "id": "SAFE-008",
+      "label": "safe_contrast",
+      "expected_pass": true,
+      "expected_types": [],
+      "text": "Astraは100％を記録し、対象は２０件、zero-day脆弱性は２件だった。"
+    }
+  ]
+}
