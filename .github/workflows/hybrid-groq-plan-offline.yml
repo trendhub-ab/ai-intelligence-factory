@@ -1,0 +1,42 @@
+name: Hybrid Groq Plan JSON Object Offline
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/hybrid-groq-gemini']
+    paths:
+      - 'ai_provider.py'
+      - 'hybrid_groq_plan.py'
+      - 'hybrid_groq_plan_live.py'
+      - 'tests/test_hybrid_groq_plan.py'
+      - '.github/workflows/hybrid-groq-plan-offline.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install pytest jsonschema
+      - name: Run Hybrid Decision Plan transport and fail-closed tests
+        run: python -m pytest tests/test_hybrid_groq_plan.py tests/test_groq_strict_schema_enum_transport.py -q
+      - name: Prove no business persistence or provider call in adapter import
+        shell: python
+        run: |
+          import ast, pathlib
+          for path in ('hybrid_groq_plan.py','hybrid_groq_plan_live.py'):
+              src=pathlib.Path(path).read_text(encoding='utf-8')
+              for forbidden in ('notion_client','create_page(','update_page(','note.com'):
+                  assert forbidden not in src, (path,forbidden)
+          from hybrid_groq_plan import build_hybrid_plan_fixture
+          fx=build_hybrid_plan_fixture('tests/fixtures/groq/article_parity_B0049_input.json','/tmp/hybrid-plan.json')
+          assert fx['structured_output_mode']=='json_object_local_strict'
+          assert fx['business_writes']==0 and fx['persist_results'] is False
+          print({'plan_mode':fx['structured_output_mode'],'business_writes':0,'live_calls':0})
+      - name: Assert no live credentials
+        run: test -z "${GROQ_API_KEY:-}" && test -z "${GEMINI_API_KEY:-}"
