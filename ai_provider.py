@@ -71,6 +71,11 @@ def _groq_strict_schema(schema: dict) -> dict:
     that Groq documents and move presentation-size constraints to the caller's local
     validator. The original request.schema is still used after generation, so removing
     transport-only min/max length/item keywords does not weaken Factory validation.
+
+    Groq's strict-mode enum examples explicitly declare the underlying primitive type
+    (for example ``type: string`` together with ``enum``). Older Factory schemas allowed
+    string enums without ``type``. Normalize those only on the transport copy; the
+    original schema remains untouched and is still used for local post-response checks.
     """
     if not isinstance(schema, dict):
         raise ProviderError("schema_validator_required")
@@ -86,6 +91,12 @@ def _groq_strict_schema(schema: dict) -> dict:
             if key in validation_only:
                 continue
             out[key] = normalize(value)
+        if "enum" in out and "type" not in out:
+            enum_values = out.get("enum")
+            if isinstance(enum_values, list) and enum_values and all(isinstance(value, str) for value in enum_values):
+                out["type"] = "string"
+            else:
+                raise ProviderError("strict_schema_invalid")
         if out.get("type") == "object":
             properties = out.get("properties")
             if not isinstance(properties, dict):
