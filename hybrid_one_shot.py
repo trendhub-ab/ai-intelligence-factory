@@ -1,4 +1,4 @@
-"""Read-only Hybrid ONE-SHOT: saved Groq Decision Plan -> one Gemini writer call -> Production gates.
+"""Read-only Hybrid ONE-SHOT: saved Groq Decision Plan -> bounded Gemini writer -> Production gates.
 
 This module never persists to Notion/note. The first live validation intentionally reuses
 a previously validated Groq Decision Plan so Gemini writer quality can be isolated before
@@ -18,6 +18,8 @@ from hybrid_gemini_writer import (
 )
 
 PRIMARY_GEMINI_WRITER_MODEL = "gemini-3.7-flash"
+SECONDARY_GEMINI_WRITER_MODEL = "gemini-3.8-flash"
+HYBRID_GEMINI_WRITER_MODELS = (PRIMARY_GEMINI_WRITER_MODEL, SECONDARY_GEMINI_WRITER_MODEL)
 HYBRID_KIND = "hybrid_final_writer"
 
 
@@ -32,9 +34,11 @@ def build_writer_fixture(input_path: str, plan_report_path: str, output_path: st
         "plan_source": "saved_validated_report",
         "writer_provider": "gemini",
         "writer_model": PRIMARY_GEMINI_WRITER_MODEL,
+        "writer_models": list(HYBRID_GEMINI_WRITER_MODELS),
         "writer_prompt": prompt,
         "writer_max_output_tokens": 5000,
-        "provider_calls_expected": {"groq_live": 0, "gemini_live": 1},
+        "provider_calls_expected": {"groq_live": 0, "gemini_live_max": 2},
+        "fallback_contract": "3.7 -> 3.8 only on 503/404; no quality retry; no model-pool fanout",
         "business_writes": 0,
         "persist_results": False,
     }
@@ -74,7 +78,16 @@ def assemble_canonical_response(pipeline, input_path: str, plan_report_path: str
     return canonical, title, article
 
 
-def evaluate_writer_text(pipeline, input_path: str, plan_report_path: str, writer_text: str, output_path: str) -> dict:
+def evaluate_writer_text(
+    pipeline,
+    input_path: str,
+    plan_report_path: str,
+    writer_text: str,
+    output_path: str,
+    *,
+    writer_model: str = PRIMARY_GEMINI_WRITER_MODEL,
+    gemini_live_calls: int = 1,
+) -> dict:
     row = load_input(input_path)
     canonical, title, article = assemble_canonical_response(pipeline, input_path, plan_report_path, writer_text)
     parsed = pipeline._parse_gemini_response(canonical)
@@ -114,8 +127,8 @@ def evaluate_writer_text(pipeline, input_path: str, plan_report_path: str, write
         "plan_provider": "groq",
         "plan_live_calls": 0,
         "writer_provider": "gemini",
-        "writer_model": PRIMARY_GEMINI_WRITER_MODEL,
-        "gemini_live_calls": 1,
+        "writer_model": writer_model,
+        "gemini_live_calls": int(gemini_live_calls),
         "title": title,
         "raw_article_chars": len(article),
         "article_chars": len(final_article),
@@ -143,14 +156,20 @@ def evaluate_writer_text(pipeline, input_path: str, plan_report_path: str, write
     return result
 
 
-def run_one_gemini_writer_call(pipeline, fixture_path: str, report_path: str) -> dict:
-    """Exactly one Factory-owned Gemini transport attempt; no pool fallback and no wrapper retry."""
-    fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
-    prompt = str(fixture["writer_prompt"])
-    model = str(fixture["writer_model"])
-    response = pipeline._generate_via_chat(
+def _provider_status_code(exc: BaseException) -> int | None:
+    for value in (getattr(exc, "code", None), getattr(getattr(exc, "response", None), "status_code", None)):
+        try:
+            if value is not None:
+                return int(value)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _direct_writer_call(pipeline, fixture: dict, model: str):
+    return pipeline._generate_via_chat(
         model,
-        prompt,
+        str(fixture["writer_prompt"]),
         config={"thinking_config": {"thinking_level": "medium"}, "max_output_tokens": int(fixture["writer_max_output_tokens"])},
         request_kind=HYBRID_KIND,
         reserve=0,
@@ -158,17 +177,61 @@ def run_one_gemini_writer_call(pipeline, fixture_path: str, report_path: str) ->
         count_as_deep_dive=True,
         request_origin="hybrid_validation",
     )
+
+
+def run_one_gemini_writer_call(pipeline, fixture_path: str, report_path: str) -> dict:
+    """Compatibility helper: exactly one direct Gemini writer attempt."""
+    fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
+    model = str(fixture["writer_model"])
+    response = _direct_writer_call(pipeline, fixture, model)
     text = str(getattr(response, "text", "") or "").strip()
     if not text:
         raise RuntimeError("hybrid_gemini_empty_output")
     report = {
-        "candidate_id": fixture["candidate_id"],
-        "provider": "gemini",
-        "model": model,
-        "provider_calls": 1,
-        "business_writes": 0,
-        "persist_results": False,
-        "text": text,
+        "candidate_id": fixture["candidate_id"], "provider": "gemini", "model": model,
+        "provider_calls": 1, "attempts": [{"model": model, "status": "success"}],
+        "business_writes": 0, "persist_results": False, "text": text,
     }
     Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return report
+
+
+def run_bounded_gemini_writer_calls(pipeline, fixture_path: str, report_path: str) -> dict:
+    """Try 3.7 once, then 3.8 once only when 3.7 returns provider availability 503/404.
+
+    No quality retry, no same-model retry, and no four-model Production pool fanout is
+    allowed here. Any non-availability error fails closed immediately.
+    """
+    fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
+    models = tuple(fixture.get("writer_models") or HYBRID_GEMINI_WRITER_MODELS)
+    if models != HYBRID_GEMINI_WRITER_MODELS:
+        raise RuntimeError("hybrid_writer_model_contract_invalid")
+    attempts: list[dict] = []
+    last_error: BaseException | None = None
+    for index, model in enumerate(models):
+        try:
+            response = _direct_writer_call(pipeline, fixture, model)
+            text = str(getattr(response, "text", "") or "").strip()
+            if not text:
+                raise RuntimeError("hybrid_gemini_empty_output")
+            attempts.append({"model": model, "status": "success"})
+            report = {
+                "candidate_id": fixture["candidate_id"], "provider": "gemini", "model": model,
+                "provider_calls": len(attempts), "attempts": attempts,
+                "business_writes": 0, "persist_results": False, "text": text,
+            }
+            Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            return report
+        except Exception as exc:
+            last_error = exc
+            status = _provider_status_code(exc)
+            attempts.append({"model": model, "status": "error", "http_status": status})
+            if status not in {503, 404} or index >= len(models) - 1:
+                break
+    failure = {
+        "candidate_id": fixture["candidate_id"], "provider": "gemini", "model": None,
+        "provider_calls": len(attempts), "attempts": attempts,
+        "business_writes": 0, "persist_results": False, "error": type(last_error).__name__ if last_error else "unknown",
+    }
+    Path(report_path).write_text(json.dumps(failure, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    raise RuntimeError("hybrid_gemini_writer_unavailable") from last_error
