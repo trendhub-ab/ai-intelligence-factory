@@ -45,7 +45,7 @@ jobs:
           preflight=preflight_writer_fixture('writer.json')
           assert preflight['reserved_estimate'] <= 7000
           data=json.load(open('writer.json',encoding='utf-8'))
-          assert data['max_output_tokens']==3000
+          assert data['max_output_tokens']==2800
           print(json.dumps({'v8_offline':'PASS',**preflight,'business_writes':0},ensure_ascii=False))
       - name: Assert no live credential
         run: test -z "${GROQ_API_KEY:-}"
