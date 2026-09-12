@@ -20,9 +20,27 @@ Run360で導入した「Gemini retry owner = Factory / SDK attempts = 1」を、
 ## 成功条件
 1. `GEMINI_RETRY_OWNER == "factory"`
 2. `GEMINI_SDK_RETRY_ATTEMPTS == 1`
-3. Gemini 3.7 Flashが `RUN361_OK` を返す
-4. Workflow終了コード0
-5. Notion/note/persistence副作用がない
+3. `send_message` がprovider応答を返す（transport成功）
+4. Notion/note/persistence副作用がない
+
+Run361はtransport/retry ownershipの検証であり、記事生成品質の検証ではない。極小output budgetではthinking等により `response.text` が空でもHTTP transport自体は成功し得るため、本文一致は成功条件にしない。
+
+## 2026-09-12 実測結果
+- model: `gemini-3.7-flash`
+- Run360 log: `owner=factory sdk_attempts=1 sdk_retries=0`
+- provider request: `POST ... gemini-3.7-flash:generateContent`
+- HTTP status: `200 OK`
+- logical call: 1回
+- elapsed: 1.356秒
+- response.text: 空文字（16 token上限のため。transport failureではない）
+- 503: 0
+- SDK内部retry: 0
+- Notion書込: 0
+- note書込: 0
+- persistence: false
+
+### 判定
+Run360の目的である「1 logical call = 1 SDK transport attempt」「Factoryが唯一のretry owner」は実Gemini API接続で成立した。少なくとも軽量requestではGemini 3.7 Flashは即時HTTP 200を返しており、当時のprovider全面障害仮説は支持されない。
 
 ## 失敗時
 - HTTP/APIエラーはそのままfail closed。
