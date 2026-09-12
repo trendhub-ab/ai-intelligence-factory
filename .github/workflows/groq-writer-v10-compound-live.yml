@@ -88,14 +88,18 @@ jobs:
           assert combined['business_writes']==0
           install_source_normalization(pipeline)
           production_pipeline.install_runtime_layers(pipeline)
-          install_provider_neutral_quality_contracts(pipeline)
           production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
+          # Latest provider-neutral Gemini quality precision is intentionally outermost.
+          install_provider_neutral_quality_contracts(pipeline)
+          probe=pipeline._reader_experience_signals('SFの話です。CI/CD（自動ビルド環境）を使います。')
+          assert probe.get('reader_signal_precision_contract') == 'run358', probe
+          assert 'CI' not in list(probe.get('unexplained_jargon') or []), probe
           ev=evaluate_groq_article_output(pipeline,'two-pass-combined-report.json','tests/fixtures/groq/article_parity_B0049_input.json','two-pass-evaluation.json')
           assert ev['business_writes']==0 and ev['persist_results'] is False and ev['parsed']
           assert getattr(pipeline,'GROQ_QUALITY_SYNC_VERSION',None)
-          print(json.dumps({'quality_sync':pipeline.GROQ_QUALITY_SYNC_VERSION,'evidence_state':ev['evidence_state'],'evidence_sufficient':ev['evidence_sufficient'],'fact_ok':ev['fact_ok'],'fact_failures':ev['fact_failures'],'editorial_ok':ev['editorial_ok'],'editorial_warnings':ev['editorial_warnings'],'publication_state':ev['publication_state'],'publication_issues':ev['publication_issues'],'human_appeal_state':ev['human_appeal_state'],'human_appeal_issues':ev['human_appeal_issues'],'gate_disposition':ev['gate_disposition'],'quality_validated':ev['quality_validated'],'decision_score':ev['decision_score'],'article_chars':ev['article_chars'],'business_writes':0},ensure_ascii=False))
+          print(json.dumps({'quality_sync':pipeline.GROQ_QUALITY_SYNC_VERSION,'reader_sync_effective':probe.get('reader_signal_precision_contract'),'evidence_state':ev['evidence_state'],'evidence_sufficient':ev['evidence_sufficient'],'fact_ok':ev['fact_ok'],'fact_failures':ev['fact_failures'],'editorial_ok':ev['editorial_ok'],'editorial_warnings':ev['editorial_warnings'],'publication_state':ev['publication_state'],'publication_issues':ev['publication_issues'],'human_appeal_state':ev['human_appeal_state'],'human_appeal_issues':ev['human_appeal_issues'],'gate_disposition':ev['gate_disposition'],'quality_validated':ev['quality_validated'],'decision_score':ev['decision_score'],'article_chars':ev['article_chars'],'business_writes':0},ensure_ascii=False))
       - name: Upload v12 evidence
         uses: actions/upload-artifact@v4
         if: always()
