@@ -1,0 +1,51 @@
+name: Run362 Gemini Request Shape Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'run362_gemini_request_shape_validation.py'
+      - '.github/workflows/run362-gemini-request-shape-validation.yml'
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-request-shape-validation:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'Run362: execute bounded request-shape validation')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Assert diagnostic contract
+        run: |
+          test -n "${GEMINI_API_KEY}"
+          echo "Run362: reuse A; send only B and C; no persistence or publication side effects."
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Execute two bounded Gemini calls
+        run: python run362_gemini_request_shape_validation.py
+        env:
+          TZ: 'Asia/Tokyo'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RUN362_MODEL: 'gemini-3.7-flash'
