@@ -25,12 +25,13 @@ jobs:
           pip install -r requirements.txt
           pip install jsonschema
 
-      - name: Reuse safe Plan and build v8 GPT-OSS Writer fixture
+      - name: Reuse safe Plan and build v8b GPT-OSS Writer fixture
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
         run: |
           import json, shutil
+          from ai_provider import GenerationRequest, GroqProvider
           from groq_two_pass_article import build_writer_fixture, load_plan_report
           from groq_writer_v5_contract import harden_writer_fixture
           from groq_writer_v7_contract import harden_writer_fixture_v7
@@ -47,26 +48,33 @@ jobs:
           harden_writer_fixture('two-pass-writer-fixture.json')
           harden_writer_fixture_v7('two-pass-writer-fixture.json')
           route_writer_fixture('two-pass-writer-fixture.json')
-          harden_writer_fixture_v8('two-pass-writer-fixture.json')
+          fixture = harden_writer_fixture_v8('two-pass-writer-fixture.json')
           preflight = preflight_writer_fixture('two-pass-writer-fixture.json')
+          assert fixture['reasoning_effort'] == 'low'
           assert preflight['reserved_estimate'] <= 7000
           assert preflight['headroom'] >= 300
+          provider = GroqProvider(lambda _: None, token_budget=7000, model=fixture['model'])
+          payload, _ = provider.prepare(GenerationRequest(
+              fixture['prompt'], fixture['max_output_tokens'], None, fixture['reasoning_effort']
+          ))
+          assert payload.get('reasoning_effort') == 'low'
           print(json.dumps({
               'plan_evidence': 'v3-sanitized-writer-isolation',
               'plan_decision': plan['decision'],
               'plan_access_status': plan['access_status'],
+              'reasoning_effort': fixture['reasoning_effort'],
               **preflight,
               'business_writes': 0,
           }, ensure_ascii=False))
 
-      - name: One guarded GPT-OSS v8 Writer call
+      - name: One guarded GPT-OSS v8b Writer call
         env:
           AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
           AIIF_GROQ_FIXTURE: two-pass-writer-fixture.json
           AIIF_GROQ_REPORT: two-pass-writer-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v8-gpt-oss-structured-prose
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v8b-gpt-oss-low-reasoning
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
@@ -162,11 +170,11 @@ jobs:
               'business_writes': evaluation['business_writes'],
           }, ensure_ascii=False))
 
-      - name: Upload v8 validation evidence
+      - name: Upload v8b validation evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: groq-writer-v8-B0049
+          name: groq-writer-v8b-B0049
           path: |
             two-pass-plan-report.json
             two-pass-writer-fixture.json
