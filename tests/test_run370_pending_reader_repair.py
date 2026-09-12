@@ -12,12 +12,26 @@ def _pipeline():
     def base_retry(reason_rows, evidence_result, candidate_origin="new"):
         return False, "reader_value_review_no_retry"
 
+    def base_prompt(*, quality_feedback="", previous_article="", **kwargs):
+        return quality_feedback or "prompt"
+
+    def base_instruction(reason_rows):
+        messages = [str((row or {}).get("message") or "") for row in reason_rows or []]
+        if any("reader_value_review:" in message for message in messages):
+            return (
+                "【Reader Repair｜Factを固定した読者導線修正】\n"
+                "【RUN359 Reader Repair Execution Contract】",
+                [],
+            )
+        return "FACT_RETRY_ONLY", []
+
     return SimpleNamespace(
         _JAPANESE_SAFE_FIXES=((_Pattern(run284._DANGEROUS_POLISH_PATTERN), "safe"),),
         should_attempt_dynamic_retry=base_retry,
         EVIDENCE_SUFFICIENT="SUFFICIENT",
         GATE_SEVERITY_HARD="HARD",
-        build_decision_prompt=lambda *args, **kwargs: kwargs.get("quality_feedback", "prompt"),
+        build_decision_prompt=base_prompt,
+        build_dynamic_retry_instruction=base_instruction,
     )
 
 
@@ -133,3 +147,41 @@ def test_run373_human_appeal_and_reader_repair_are_not_self_contradictory():
     assert "読者接点まで禁止してはいけない" in text
     assert "既存Fact同士の対比" in text
     assert "新しい具体例や数値比喩を捏造しない" in text
+
+
+def test_run378_actual_reason_bridge_reaches_run373_reason_specific_prompt():
+    p = _pipeline(); run284.install(p)
+    rows = [
+        {"severity": "REVIEW", "message": "reader_value_review:multi_axis_reader_weakness (accessibility/information_budget)"},
+        {"severity": "REVIEW", "message": "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation)"},
+        {"severity": "REVIEW", "message": "reader_value_review:final_surface_summary_fragment:結論は？"},
+        {"severity": "REVIEW", "message": "reader_value_review:final_surface_summary_jargon_cluster (何が出た？/結論は？)"},
+    ]
+    instruction, sections = p.build_dynamic_retry_instruction(rows)
+    assert sections == []
+    assert "RUN378 Reader Reason Bridge｜実Gate理由" in instruction
+    assert instruction.count("reader_value_review:multi_axis_reader_weakness") == 1
+    assert instruction.count("reader_value_review:non_engineer_access_failure") == 1
+    assert instruction.count("reader_value_review:final_surface_summary_fragment") == 1
+    assert instruction.count("reader_value_review:final_surface_summary_jargon_cluster") == 1
+
+    prompt = p.build_decision_prompt(quality_feedback=instruction, previous_article="previous")
+    assert "RUN373 Reason-Specific Reader Repair" in prompt
+    assert "何が変わった→今どう判断する→判断を変える重要制約" in prompt
+    assert "冒頭約600文字" in prompt
+    assert "主語と述語を持つ独立した自然な日本語1文" in prompt
+    assert "製品名以外の専門語列挙を避け" in prompt
+    assert run284.RETRY_PRESERVATION_CONTRACT not in prompt
+
+
+def test_run378_does_not_bridge_fact_retry_or_unknown_reader_reason():
+    p = _pipeline(); run284.install(p)
+    fact_instruction, _ = p.build_dynamic_retry_instruction([
+        {"severity": "HARD", "message": "fact_validation:unsupported_claim"}
+    ])
+    assert "RUN378 Reader Reason Bridge" not in fact_instruction
+
+    unknown_instruction, _ = p.build_dynamic_retry_instruction([
+        {"severity": "REVIEW", "message": "reader_value_review:future_unknown_label"}
+    ])
+    assert "RUN378 Reader Reason Bridge" not in unknown_instruction
