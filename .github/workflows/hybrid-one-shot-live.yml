@@ -27,31 +27,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install jsonschema
-      - name: Preflight saved Groq plan and compact Gemini writer fixture
+      - name: Preflight saved Fact-Locked Groq plan and compact Gemini writer fixture
         shell: python
         run: |
           import json
           from hybrid_one_shot import build_writer_fixture
-          from groq_two_pass_article import load_plan_report
-          plan=load_plan_report('tests/fixtures/groq/two_pass_v3_plan_safe_report.json')
+          from hybrid_groq_plan import load_hybrid_plan_report
+          plan=load_hybrid_plan_report('tests/fixtures/groq/two_pass_v3_plan_safe_report.json')
           fx=build_writer_fixture(
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'tests/fixtures/groq/two_pass_v3_plan_safe_report.json',
               'hybrid-writer-fixture.json',
           )
+          saved=fx['decision_package']['plan_report']
+          assert saved['mode']=='hybrid_groq_judgment_fact_locked'
+          assert saved['fact_envelope_sha256']
+          assert saved['composed_plan']==plan
           assert plan['decision']=='WATCH' and plan['access_status']=='NOT_CONFIRMED'
+          assert sum(plan[k] for k in ('business_impact','technical_impact','urgency','market_impact','reliability'))==80
+          assert plan['article_value']==85
           assert fx['provider_calls_expected']=={'groq_live':0,'gemini_live_max':2}
           assert fx['writer_models']==['gemini-3.7-flash','gemini-3.8-flash']
           assert fx['business_writes']==0 and fx['persist_results'] is False
           assert len(fx['writer_prompt'].encode('utf-8')) < 30000
           print(json.dumps({
               'candidate_id':fx['candidate_id'],
-              'plan_provider':'groq(saved validated)',
+              'plan_provider':'groq(saved fact-locked validated)',
               'decision':plan['decision'],
+              'decision_score':80,
+              'article_value':plan['article_value'],
               'access_status':plan['access_status'],
               'writer_provider':'gemini',
               'writer_models':fx['writer_models'],
               'writer_prompt_bytes':len(fx['writer_prompt'].encode('utf-8')),
+              'groq_live_calls':0,
               'gemini_live_calls_max':2,
               'availability_policy':'503/404 -> durable PENDING_WRITER',
               'business_writes':0,
