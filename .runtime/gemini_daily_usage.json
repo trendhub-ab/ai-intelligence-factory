@@ -52,10 +52,10 @@
           "by_kind": {
             "deep_dive": 5,
             "product_review": 1,
-            "quality_retry": 2
+            "quality_retry": 3
           },
           "exhausted": false,
-          "used": 8
+          "used": 9
         }
       }
     }
@@ -64,5 +64,5 @@
   "quota_date": "2026-09-11",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-12T02:03:17.489770+00:00"
+  "updated_at": "2026-09-12T02:03:50.764080+00:00"
 }
