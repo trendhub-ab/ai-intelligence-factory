@@ -1,0 +1,11 @@
+{
+  "run": "run364_historical_ready_rebase",
+  "frozen_allowlist_size": 8,
+  "source_audit_run_id": 34693337315,
+  "source_audit_head_sha": "b401e65ccaa48b0d706a416afcad50ebf0c57bb0",
+  "excluded_rows": 37,
+  "body_rewrite_allowed": false,
+  "model_calls_allowed": false,
+  "google_api_calls_allowed": false,
+  "public_release_allowed": false
+}
