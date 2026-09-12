@@ -1,15 +1,11 @@
-name: Run385 Pending Retry Validation [ONE-TIME]
+name: Pending Retry Validation [MANUAL ONLY]
 
-# One-shot read-only validation after Run383/384 precision fixes.
-# Gemini 3.7 is the only allowed model. 3.6/3.8/3.5 are forbidden for this run.
+# Manual-only safety harness after successful Run385 validation.
+# Gemini 3.6 remains forbidden. 3.7 may be used only by explicit manual dispatch;
+# 3.8 and 3.5 remain preserved unless explicitly re-authorized.
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run370-pending-retry-validation.yml'
 
 concurrency:
   group: ai-intelligence-gemini-budget
@@ -27,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run385: Gemini 3.7 only; one Pending Retry; read-only; max 3 provider attempts.'
+          echo 'Manual-only Pending Retry validation. No automatic Gemini consumption.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -120,7 +116,7 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run385 pending validation'
+            echo '### Manual Pending Retry validation'
             echo '- candidate count: at most `1`'
             echo '- Gemini 3.7: `ONLY ALLOWED MODEL`'
             echo '- Gemini 3.6/3.8/3.5: `FORBIDDEN`'
