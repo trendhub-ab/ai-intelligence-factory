@@ -8,6 +8,15 @@ def response(text='{"score":60}', finish="stop"):
             "usage": {"prompt_tokens": 10, "completion_tokens": 10}}
 
 
+def score_schema():
+    return {
+        "type": "object",
+        "properties": {"score": {"type": "integer", "minimum": 0, "maximum": 100}},
+        "required": ["score"],
+        "additionalProperties": False,
+    }
+
+
 class ProviderTests(unittest.TestCase):
     def test_success_and_exhaustion(self):
         calls = []
@@ -79,17 +88,51 @@ class ProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(ProviderError, "schema_validator_required"):
             p.generate(GenerationRequest("test", 100, {}))
 
+    def test_strict_schema_transport_drops_local_only_size_constraints(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "minLength": 1, "maxLength": 10},
+                "reasons": {
+                    "type": "array", "minItems": 1, "maxItems": 3,
+                    "items": {"type": "string", "minLength": 1, "maxLength": 20},
+                },
+            },
+            "required": ["summary", "reasons"],
+            "additionalProperties": False,
+        }
+        p = GroqProvider(lambda _: self.fail("prepare only"), validate_schema=lambda *_: None)
+        payload, _ = p.prepare(GenerationRequest("test", 100, schema))
+        sent = payload["response_format"]["json_schema"]
+        self.assertTrue(sent["strict"])
+        serialized = str(sent["schema"])
+        for key in ("minLength", "maxLength", "minItems", "maxItems"):
+            self.assertNotIn(key, serialized)
+        self.assertIn("minimum", str({"minimum": 0}))  # numeric range remains an allowed local/provider constraint
+        self.assertEqual(schema["properties"]["summary"]["maxLength"], 10)
+
+    def test_strict_schema_rejects_open_or_optional_object_before_send(self):
+        for schema in [
+            {"type": "object", "properties": {"x": {"type": "string"}}, "required": [], "additionalProperties": False},
+            {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]},
+        ]:
+            p = GroqProvider(lambda _: self.fail("must not send"), validate_schema=lambda *_: None)
+            with self.assertRaisesRegex(ProviderError, "strict_schema_invalid"):
+                p.prepare(GenerationRequest("test", 100, schema))
+
     def test_schema_and_json_failures(self):
-        def validator(value, schema):
+        schema = score_schema()
+        def validator(value, original_schema):
+            self.assertIs(original_schema, schema)
             if type(value.get("score")) is not int or not 0 <= value["score"] <= 100:
                 raise ValueError("bad score")
         for text in ['{"score":60}', '{"score":101}', '{"score":"60"}', 'invalid', '{"score":NaN}']:
             p = GroqProvider(lambda _: (200, {}, response(text)), validate_schema=validator)
             if text == '{"score":60}':
-                self.assertEqual(p.generate(GenerationRequest("test", 100, {})).text, text)
+                self.assertEqual(p.generate(GenerationRequest("test", 100, schema)).text, text)
             else:
                 with self.assertRaisesRegex(ProviderError, "schema_error"):
-                    p.generate(GenerationRequest("test", 100, {}))
+                    p.generate(GenerationRequest("test", 100, schema))
 
     def test_multiple_calls_share_token_budget(self):
         p = GroqProvider(lambda _: (200, {}, response()), request_budget=3, token_budget=1000)
