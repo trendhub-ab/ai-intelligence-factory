@@ -109,6 +109,7 @@ def validate_plan(plan: dict) -> dict:
         unknown_scope = (
             "一般利用者", "一般ユーザー", "誰でも利用", "一般提供", "利用可能",
             "アクセス可能", "publicly available", "generally available",
+            "条件下で提供され", "条件で提供され",
         )
         management_text = "\n".join([
             plan["source_summary"], plan["what"], plan["why_important"],

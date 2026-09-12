@@ -1,1 +1,1 @@
-One-call output budget comparison: 1100 -> 3000; same prompt, model, medium effort, local schema and semantic guards.
+One bounded Plan validation after evidence-boundary and independent-scoring clarification; 3000 output tokens.

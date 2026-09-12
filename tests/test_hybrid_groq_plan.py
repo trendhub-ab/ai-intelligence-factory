@@ -73,3 +73,21 @@ def test_json_object_mode_requires_schema():
     provider=GroqProvider(lambda _:None,token_budget=7000)
     with pytest.raises(ProviderError,match='structured_output_schema_required'):
         provider.prepare(GenerationRequest('Return JSON',100,None,'low',MODE))
+
+
+
+def test_unconfirmed_evaluation_conditions_cannot_become_provision_claim():
+    plan=_valid_plan()
+    plan['what']='特定のアクセス条件下で提供され、複数の安全策がある。'
+    with pytest.raises(Exception,match='unconfirmed_access_scope_claim'):
+        validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))
+    plan['what']='特定のアクセス条件下で評価された。'
+    assert validate_hybrid_plan_text(json.dumps(plan,ensure_ascii=False))['decision']=='WATCH'
+
+
+def test_hybrid_completion_budget_preserves_rate_safety(tmp_path):
+    fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
+    assert fixture['max_output_tokens']==3000
+    provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fixture['schema']),token_budget=7000,model=fixture['model'])
+    _,estimate=provider.prepare(GenerationRequest(fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort'],fixture['structured_output_mode']))
+    assert estimate<=7000
