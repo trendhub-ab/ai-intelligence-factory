@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from groq_article_parity import load_input, _production_like_source_info
-from groq_two_pass_article import load_plan_report
+from hybrid_groq_plan import load_hybrid_plan_report
 from hybrid_gemini_writer import (
     build_gemini_writer_prompt,
     deterministic_management_data,
@@ -25,7 +25,7 @@ HYBRID_KIND = "hybrid_final_writer"
 
 def build_writer_fixture(input_path: str, plan_report_path: str, output_path: str) -> dict:
     item = load_input(input_path)
-    plan = load_plan_report(plan_report_path)
+    plan = load_hybrid_plan_report(plan_report_path)
     prompt = build_gemini_writer_prompt(item, plan)
     fixture = {
         "candidate_id": item["candidate_id"],
@@ -74,7 +74,7 @@ def _management_surface(plan: dict) -> str:
 def assemble_canonical_response(pipeline, input_path: str, plan_report_path: str, writer_text: str) -> tuple[str, str, str]:
     """Assemble the exact parser-facing surface without asking Gemini to regenerate management data."""
     _ = load_input(input_path)
-    plan = load_plan_report(plan_report_path)
+    plan = load_hybrid_plan_report(plan_report_path)
     title, article = parse_gemini_writer_output(writer_text)
     split_token = getattr(pipeline, "SECTION_SPLIT_TOKEN", None)
     if not isinstance(split_token, str) or not split_token.strip():
