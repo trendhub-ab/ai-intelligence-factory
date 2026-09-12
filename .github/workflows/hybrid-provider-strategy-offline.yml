@@ -15,6 +15,7 @@ on:
       - 'hybrid_writer_runtime.py'
       - 'hybrid_writer_package.py'
       - 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
+      - 'tests/fixtures/groq/historical_writer_fact_boundary_cases.json'
       - 'tests/test_hybrid_writer_package.py'
       - 'tests/test_hybrid_provider_strategy.py'
       - 'tests/test_hybrid_gemini_writer.py'
