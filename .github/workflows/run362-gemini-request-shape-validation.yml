@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   bounded-request-shape-validation:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'Run362: execute bounded request-shape validation')
+    if: "${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'Run362: execute bounded request-shape validation') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
