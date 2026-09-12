@@ -1,8 +1,8 @@
-name: Run376 Pending Retry Validation [ONE-TIME]
+name: Run377 Pending Retry Validation [ONE-TIME]
 
-# One authorized read-only validation after Run375 Reader-reason hardening.
-# Run376 isolates the repair proof on Gemini 3.5 only so scarce 3.8/3.6 quota is preserved.
-# No Notion manuscript/status persistence and no Note Ready reconciliation.
+# One authorized read-only validation after Run376 showed Gemini 3.5 could not clear
+# the Fact boundary before Reader Repair. Prefer Gemini 3.7, keep 3.6 forbidden and
+# preserve 3.8. No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
   push:
@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run376: one Pending Retry candidate, Gemini 3.5 only, 3.6 and 3.8 forbidden, persist=false, max 4 provider attempts.'
+          echo 'Run377: one Pending Retry candidate, Gemini 3.7 preferred, 3.6 forbidden, 3.8 preserved, 3.5 fallback, persist=false, max 4 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -65,7 +65,7 @@ jobs:
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: '4'
           GEMINI_TRANSIENT_503_COOLDOWN_THRESHOLD: '1'
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.5-flash'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.7-flash,gemini-3.5-flash'
           GEMINI_PENDING_RETRY_EXCLUDED_MODELS: 'gemini-3.6-flash,gemini-3.8-flash'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
@@ -118,13 +118,14 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run376 pending validation'
+            echo '### Run377 pending validation'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
+            echo '- Gemini 3.7: `PREFERRED / ALLOWED`'
             echo '- Gemini 3.6: `FORBIDDEN`'
             echo '- Gemini 3.8: `PRESERVED / FORBIDDEN FOR THIS RUN`'
-            echo '- model: `gemini-3.5-flash` only'
+            echo '- Gemini 3.5: `FALLBACK`'
             echo '- provider request budget: at most `4`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
