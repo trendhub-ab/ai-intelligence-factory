@@ -1,1 +1,1 @@
-One bounded Plan validation after uncertainty/safeguard guard correction; Groq 1 call only; Gemini/Notion/note 0; Writer disabled.
+One final bounded Plan quality discrimination after safeguard-timing and score-axis calibration; Groq 1 call only; Gemini/Notion/note 0; Writer disabled.
