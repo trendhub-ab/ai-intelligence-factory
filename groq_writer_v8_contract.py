@@ -36,7 +36,10 @@ def harden_writer_fixture_v8(path: str) -> dict:
     if "V8 OUTPUT SHAPE" not in prompt:
         data["prompt"] = prompt.rstrip() + V8_CONTRACT
     data["max_output_tokens"] = 2800
-    data["contract_version_v8"] = "groq_writer_v8_explicit_structure"
+    # Writer needs its completion budget for Japanese prose. Planning/reasoning was already
+    # separated into pass 1, so low reasoning is the correct free-tier route here.
+    data["reasoning_effort"] = "low"
+    data["contract_version_v8"] = "groq_writer_v8_explicit_structure_low_reasoning"
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return data
 
