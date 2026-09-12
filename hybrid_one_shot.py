@@ -1,12 +1,13 @@
 """Read-only Hybrid ONE-SHOT: saved Groq Decision Plan -> bounded Gemini writer -> Production gates.
 
-This module never persists to Notion/note. The first live validation intentionally reuses
-a previously validated Groq Decision Plan so Gemini writer quality can be isolated before
-spending another Groq request in the same run.
+This module never persists to Notion/note. Google/Gemini transport is fail-closed unless
+an explicit per-run approval flag is present. Offline fixture building/evaluation remains
+available without any Google API access.
 """
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from groq_article_parity import load_input, _production_like_source_info
@@ -21,6 +22,13 @@ PRIMARY_GEMINI_WRITER_MODEL = "gemini-3.7-flash"
 SECONDARY_GEMINI_WRITER_MODEL = "gemini-3.8-flash"
 HYBRID_GEMINI_WRITER_MODELS = (PRIMARY_GEMINI_WRITER_MODEL, SECONDARY_GEMINI_WRITER_MODEL)
 HYBRID_KIND = "hybrid_final_writer"
+GOOGLE_API_APPROVAL_ENV = "AIIF_GOOGLE_API_APPROVED"
+
+
+def _require_google_api_approval() -> None:
+    """Block every Hybrid Google API call unless this run was explicitly approved."""
+    if str(os.environ.get(GOOGLE_API_APPROVAL_ENV, "")).strip().lower() != "true":
+        raise RuntimeError("hybrid_google_api_explicit_approval_required")
 
 
 def build_writer_fixture(input_path: str, plan_report_path: str, output_path: str) -> dict:
@@ -44,6 +52,8 @@ def build_writer_fixture(input_path: str, plan_report_path: str, output_path: st
         "writer_max_output_tokens": 5000,
         "provider_calls_expected": {"groq_live": 0, "gemini_live_max": 2},
         "fallback_contract": "3.7 -> 3.8 only on 503/404; no quality retry; no model-pool fanout",
+        "google_api_requires_explicit_approval": True,
+        "google_api_approval_env": GOOGLE_API_APPROVAL_ENV,
         "business_writes": 0,
         "persist_results": False,
     }
@@ -172,6 +182,7 @@ def _provider_status_code(exc: BaseException) -> int | None:
 
 
 def _direct_writer_call(pipeline, fixture: dict, model: str):
+    _require_google_api_approval()
     return pipeline._generate_via_chat(
         model,
         str(fixture["writer_prompt"]),
@@ -185,7 +196,7 @@ def _direct_writer_call(pipeline, fixture: dict, model: str):
 
 
 def run_one_gemini_writer_call(pipeline, fixture_path: str, report_path: str) -> dict:
-    """Compatibility helper: exactly one direct Gemini writer attempt."""
+    """Compatibility helper: exactly one direct Gemini writer attempt, only after explicit approval."""
     fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
     model = str(fixture["writer_model"])
     response = _direct_writer_call(pipeline, fixture, model)
@@ -202,11 +213,12 @@ def run_one_gemini_writer_call(pipeline, fixture_path: str, report_path: str) ->
 
 
 def run_bounded_gemini_writer_calls(pipeline, fixture_path: str, report_path: str) -> dict:
-    """Try 3.7 once, then 3.8 once only when 3.7 returns provider availability 503/404.
+    """Try 3.7 once, then 3.8 once only after explicit approval and on 503/404.
 
     No quality retry, no same-model retry, and no four-model Production pool fanout is
     allowed here. Any non-availability error fails closed immediately.
     """
+    _require_google_api_approval()
     fixture = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
     models = tuple(fixture.get("writer_models") or HYBRID_GEMINI_WRITER_MODELS)
     if models != HYBRID_GEMINI_WRITER_MODELS:
