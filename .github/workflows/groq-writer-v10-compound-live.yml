@@ -1,0 +1,117 @@
+name: Groq Writer v10 Compound Live
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - '.runtime/groq_writer_v10_compound_trigger.txt'
+permissions:
+  contents: write
+concurrency:
+  group: groq-writer-v10-compound-live
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install jsonschema
+      - name: Build guarded v10 Compound writer fixture
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json, shutil
+          from groq_two_pass_article import build_writer_fixture, load_plan_report
+          from groq_writer_v5_contract import harden_writer_fixture
+          from groq_writer_v7_contract import harden_writer_fixture_v7
+          from groq_writer_v10_compound import route_compound_writer_v10, preflight_compound_writer_v10
+          shutil.copyfile('tests/fixtures/groq/two_pass_v3_plan_safe_report.json','two-pass-plan-report.json')
+          plan=load_plan_report('two-pass-plan-report.json')
+          build_writer_fixture('tests/fixtures/groq/article_parity_B0049_input.json','two-pass-plan-report.json','two-pass-writer-fixture.json')
+          harden_writer_fixture('two-pass-writer-fixture.json'); harden_writer_fixture_v7('two-pass-writer-fixture.json')
+          route_compound_writer_v10('two-pass-writer-fixture.json')
+          pf=preflight_compound_writer_v10('two-pass-writer-fixture.json')
+          assert pf['model']=='groq/compound-mini' and pf['external_tools']=='disabled'
+          assert pf['reserved_estimate'] <= 60000 and pf['headroom'] >= 10000 and pf['request_bytes'] < 24576
+          print(json.dumps({'plan_decision':plan['decision'],'plan_access_status':plan['access_status'],**pf,'business_writes':0},ensure_ascii=False))
+      - name: One guarded Compound Mini v10 writer call
+        env:
+          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
+          AIIF_GROQ_FIXTURE: two-pass-writer-fixture.json
+          AIIF_GROQ_REPORT: two-pass-writer-report.json
+          AIIF_GROQ_LIVE: 'true'
+          AIIF_GROQ_BUDGET_BACKEND: github
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v10-compound-evidence-dense
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
+        run: python production_pipeline.py
+      - name: Require v10 local contract
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json
+          from groq_writer_v10_compound import inspect_compound_writer_v10, validate_compound_writer_v10
+          inspected=inspect_compound_writer_v10('two-pass-writer-report.json')
+          print(json.dumps({'v10_article_chars':inspected['article_chars'],'v10_headings':len(inspected['headings']),'v10_paragraphs':inspected['paragraphs'],'v10_issues':inspected['issues'],'business_writes':0},ensure_ascii=False))
+          validated=validate_compound_writer_v10('two-pass-writer-report.json')
+          provider=validated['result']
+          print(json.dumps({'v10_local_guard':'PASS','writer_tokens':provider['prompt_tokens']+provider['completion_tokens'],'business_writes':0},ensure_ascii=False))
+      - name: Assemble v10 and evaluate Production gates
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json, note_manuscript, pipeline, production_pipeline
+          from groq_article_parity import evaluate_groq_article_output
+          from groq_two_pass_article import assemble_combined_report
+          from source_normalization import install as install_source_normalization
+          from run268_business_source_strategy import install as install_run268
+          from run269_business_source_precision import install as install_run269
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from run287_publication_date_provenance import install as install_run287
+          from reader_quality_precision import install as install_reader_quality_precision
+          combined=assemble_combined_report('two-pass-plan-report.json','two-pass-writer-report.json','two-pass-combined-report.json')
+          assert combined['business_writes']==0
+          install_source_normalization(pipeline)
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
+          install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
+          ev=evaluate_groq_article_output(pipeline,'two-pass-combined-report.json','tests/fixtures/groq/article_parity_B0049_input.json','two-pass-evaluation.json')
+          assert ev['business_writes']==0 and ev['persist_results'] is False and ev['parsed']
+          print(json.dumps({'evidence_state':ev['evidence_state'],'evidence_sufficient':ev['evidence_sufficient'],'fact_ok':ev['fact_ok'],'fact_failures':ev['fact_failures'],'editorial_ok':ev['editorial_ok'],'editorial_warnings':ev['editorial_warnings'],'publication_state':ev['publication_state'],'publication_issues':ev['publication_issues'],'human_appeal_state':ev['human_appeal_state'],'human_appeal_issues':ev['human_appeal_issues'],'gate_disposition':ev['gate_disposition'],'quality_validated':ev['quality_validated'],'decision_score':ev['decision_score'],'article_chars':ev['article_chars'],'business_writes':0},ensure_ascii=False))
+      - name: Upload v10 evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-writer-v10-compound-B0049
+          path: |
+            two-pass-plan-report.json
+            two-pass-writer-fixture.json
+            two-pass-writer-report.json
+            two-pass-combined-report.json
+            two-pass-evaluation.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Require all quality gates
+        shell: python
+        run: |
+          import json
+          data=json.load(open('two-pass-evaluation.json',encoding='utf-8'))
+          assert data['quality_validated'] is True, data
+          assert data['fact_ok'] is True, data['fact_failures']
+          assert data['editorial_ok'] is True, data['editorial_warnings']
+          assert data['publication_state']=='PASS', data['publication_issues']
+          assert data['human_appeal_state']=='ACCEPTABLE', data['human_appeal_issues']
