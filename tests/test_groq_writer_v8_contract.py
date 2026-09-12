@@ -32,12 +32,13 @@ class GroqWriterV8Tests(unittest.TestCase):
             p.write_text(json.dumps(report('===TITLE===\nタイトルです。\n===ARTICLE===\n'+article),ensure_ascii=False),encoding='utf-8')
             self.assertIn('unconfirmed_access_requirement_assertion', inspect_writer_report_v8(str(p))['issues'])
 
-    def test_harden_sets_2800_output_and_is_idempotent(self):
+    def test_harden_sets_2800_output_low_reasoning_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as td:
             p=Path(td)/'f.json'
-            p.write_text(json.dumps({'provider':'groq','stage':'article','prompt':'base','max_output_tokens':2600}),encoding='utf-8')
+            p.write_text(json.dumps({'provider':'groq','stage':'article','prompt':'base','max_output_tokens':2600,'reasoning_effort':'medium'}),encoding='utf-8')
             harden_writer_fixture_v8(str(p)); data=harden_writer_fixture_v8(str(p))
             self.assertEqual(data['max_output_tokens'],2800)
+            self.assertEqual(data['reasoning_effort'],'low')
             self.assertEqual(data['prompt'].count('V8 OUTPUT SHAPE'),1)
 
 
