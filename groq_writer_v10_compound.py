@@ -56,6 +56,8 @@ ARTICLEは必ず次の順序で、本文8段落＋`## `見出し3本にする。
 返答前に、本文8段落・見出し3本・1500字以上・最終文完結を自己確認する。
 """
 
+_RUN359_CONTRACT_MARKER = "【Gemini Run359同期｜Reader実行契約 — Provider非依存部分のみ】"
+
 
 def route_compound_writer_v10(path: str) -> dict:
     data = route_compound_writer(path)
@@ -63,7 +65,9 @@ def route_compound_writer_v10(path: str) -> dict:
     prompt = data["prompt"]
     if "V13 EVIDENCE-SLOTTED PROSE" not in prompt:
         prompt = prompt.rstrip() + V10_CONTRACT
-    if "Gemini Run359同期" not in prompt:
+    # Use the exact contract header, not a loose substring. V13 itself mentions the words
+    # "Gemini Run359同期" and a loose check would falsely conclude the contract is present.
+    if _RUN359_CONTRACT_MARKER not in prompt:
         prompt = prompt.rstrip() + "\n\n" + GROQ_READER_EXECUTION_CONTRACT + "\n"
     data["prompt"] = prompt
     # v12 returned finish_reason=stop but only 912 visible Japanese chars while spending
