@@ -132,7 +132,7 @@ def evaluate_writer_text(
         "title": title,
         "raw_article_chars": len(article),
         "article_chars": len(final_article),
-        "decision": parsed.get("decision"),
+        "decision": parsed.get("decision_text"),
         "decision_score": parsed.get("score"),
         "evidence_state": evidence_result.get("state"),
         "evidence_sufficient": source_info["sufficient"],
