@@ -12,7 +12,7 @@ from hybrid_one_shot import (
     run_bounded_gemini_writer_calls,
     run_one_gemini_writer_call,
 )
-from groq_two_pass_article import load_plan_report
+from hybrid_groq_plan import load_hybrid_plan_report
 
 INPUT='tests/fixtures/groq/article_parity_B0049_input.json'
 PLAN='tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
@@ -41,12 +41,22 @@ def test_fixture_keeps_saved_groq_plan_and_bounded_gemini_writer(tmp_path):
 
 
 def test_management_surface_is_deterministic_and_score_stays_62():
-    plan=load_plan_report(PLAN)
+    plan=load_hybrid_plan_report(PLAN)
     text=_management_surface(plan)
     assert '・Decision: WATCH' in text
     assert '合計 62/100' in text
     assert 'Article Value: 80' in text
     assert '一般利用条件は確認できない' in text
+
+
+def test_rejected_plan_never_builds_writer_fixture(tmp_path):
+    report=json.loads(Path(PLAN).read_text(encoding='utf-8'))
+    report['status']='PLAN_REJECTED'
+    report['semantic_plan_validated']=False
+    bad=tmp_path/'bad-plan.json'
+    bad.write_text(json.dumps(report,ensure_ascii=False),encoding='utf-8')
+    with pytest.raises(Exception,match='hybrid_plan_report_rejected'):
+        build_writer_fixture(INPUT,str(bad),str(tmp_path/'writer.json'))
 
 
 def test_one_writer_transport_attempt_has_no_pool_fallback(tmp_path):
