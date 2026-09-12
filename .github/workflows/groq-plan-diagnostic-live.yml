@@ -58,38 +58,54 @@ jobs:
               'gemini_calls':0,
               'business_writes':0,
           },ensure_ascii=False))
-      - name: One live Groq call with sanitized diagnostics enabled
-        id: live_call
-        continue-on-error: true
+      - name: One live Groq call with in-memory failed-generation diagnosis
         env:
-          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
-          AIIF_GROQ_FIXTURE: groq-plan-diagnostic-fixture.json
-          AIIF_GROQ_REPORT: groq-plan-diagnostic-report.json
-          AIIF_GROQ_LIVE: 'true'
-          AIIF_GROQ_ERROR_DIAGNOSTIC: 'true'
-          AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: groq-plan-diagnostic-${{ github.run_id }}
+          AIIF_GROQ_EXPERIMENT: groq-plan-structural-diagnostic-${{ github.run_id }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
-        run: python production_pipeline.py
-      - name: Require safe diagnostic surface or valid success
+        shell: python
+        run: |
+          import json
+          from groq_plan_diagnostic import run_probe
+          report=run_probe('groq-plan-diagnostic-fixture.json','groq-plan-diagnostic-report.json')
+          print(json.dumps({
+              'status':report['status'],
+              'http_status':report.get('http_status'),
+              'provider_diagnostic':report.get('provider_diagnostic'),
+              'generation_schema_diagnostic':report.get('generation_schema_diagnostic'),
+              'business_writes':report['business_writes'],
+              'gemini_calls':report['gemini_calls'],
+          },ensure_ascii=False))
+      - name: Require sanitized structural diagnosis or valid success
         shell: python
         run: |
           import json
           report=json.load(open('groq-plan-diagnostic-report.json',encoding='utf-8'))
           assert report['business_writes']==0
+          assert report['gemini_calls']==0
           assert report['provider_calls']==1
           assert report['model']=='openai/gpt-oss-120b'
+          assert report['raw_failed_generation_persisted'] is False
+          def all_keys(value):
+              if isinstance(value,dict):
+                  for key,child in value.items():
+                      yield key
+                      yield from all_keys(child)
+              elif isinstance(value,list):
+                  for child in value:
+                      yield from all_keys(child)
+          assert 'failed_generation' not in set(all_keys(report))
           serialized=json.dumps(report,ensure_ascii=False)
-          for forbidden in ('failed_generation','GROQ_API_KEY','Authorization: Bearer','api_key=gsk_'):
+          for forbidden in ('GROQ_API_KEY','Authorization: Bearer','api_key=gsk_','gsk_'):
               assert forbidden not in serialized
-          if 'error' in report:
-              assert report['error']['status']==400, report['error']
-              diagnostic=report['error'].get('provider_diagnostic') or {}
-              assert diagnostic, report['error']
-              assert set(diagnostic).issubset({'type','code','param','message'})
-              print(json.dumps({'terminal':'DIAGNOSTIC_400','provider_diagnostic':diagnostic,'business_writes':0,'gemini_calls':0},ensure_ascii=False))
+          if report['status']=='HTTP_ERROR':
+              assert report['http_status']==400
+              assert report['provider_diagnostic'].get('code')=='json_validate_failed'
+              structural=report['generation_schema_diagnostic']
+              assert structural['present'] is True
+              print(json.dumps({'terminal':'STRUCTURAL_DIAGNOSTIC','structural':structural,'business_writes':0,'gemini_calls':0},ensure_ascii=False))
           else:
+              assert report['status']=='SUCCESS'
               assert report.get('ledger_reconciled') is True
               print(json.dumps({'terminal':'GROQ_PLAN_SUCCESS','actual_tokens':report.get('actual_tokens'),'business_writes':0,'gemini_calls':0},ensure_ascii=False))
       - name: Upload sanitized diagnostic evidence
