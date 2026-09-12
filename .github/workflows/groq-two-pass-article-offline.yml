@@ -5,18 +5,24 @@ on:
     paths:
       - 'groq_two_pass_article.py'
       - 'groq_writer_v4_contract.py'
+      - 'groq_writer_v5_contract.py'
       - 'tests/test_groq_two_pass_article.py'
       - 'tests/test_groq_writer_v4_contract.py'
+      - 'tests/test_groq_writer_v5_contract.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
+      - 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
       - '.github/workflows/groq-two-pass-article-offline.yml'
   pull_request:
     branches: ['main']
     paths:
       - 'groq_two_pass_article.py'
       - 'groq_writer_v4_contract.py'
+      - 'groq_writer_v5_contract.py'
       - 'tests/test_groq_two_pass_article.py'
       - 'tests/test_groq_writer_v4_contract.py'
+      - 'tests/test_groq_writer_v5_contract.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
+      - 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
       - '.github/workflows/groq-two-pass-article-offline.yml'
 permissions:
   contents: read
@@ -29,11 +35,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run two-pass and v4 writer guard tests without network
-        run: python -m unittest tests.test_groq_two_pass_article tests.test_groq_writer_v4_contract -v
+      - name: Run two-pass, v4 regression, and v5 writer guard tests without network
+        run: python -m unittest tests.test_groq_two_pass_article tests.test_groq_writer_v4_contract tests.test_groq_writer_v5_contract -v
       - name: Install schema validator
         run: pip install jsonschema
-      - name: Prove both pass fixtures fit their Free Plan lanes with v4 writer contract
+      - name: Prove both pass fixtures fit their Free Plan lanes with v5 writer contract
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
@@ -42,7 +48,7 @@ jobs:
           from pathlib import Path
           from ai_provider import GenerationRequest, GroqProvider
           from groq_two_pass_article import build_plan_fixture, build_writer_fixture, validate_plan
-          from groq_writer_v4_contract import harden_writer_fixture
+          from groq_writer_v5_contract import harden_writer_fixture
           from groq_validation import schema_validator
 
           plan_fixture = build_plan_fixture(
@@ -92,8 +98,8 @@ jobs:
           writer_payload, writer_estimate = writer_provider.prepare(GenerationRequest(
               writer_fixture['prompt'], writer_fixture['max_output_tokens'], None, writer_fixture['reasoning_effort'],
           ))
-          assert writer_fixture['contract_version'] == 'groq_writer_v4_reader_first'
-          assert 'V4 READER-FIRST CONTRACT' in writer_fixture['prompt']
+          assert writer_fixture['contract_version'] == 'groq_writer_v5_reader_length_precision'
+          assert 'V5 READER-LENGTH + EVIDENCE PRECISION CONTRACT' in writer_fixture['prompt']
           print(json.dumps({
               'two_pass_preflight': 'PASS',
               'plan_model': plan_fixture['model'],
