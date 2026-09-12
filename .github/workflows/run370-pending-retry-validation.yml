@@ -1,16 +1,11 @@
 name: Run370 Pending Retry Validation [ONE-TIME]
 
-# Read-only pilot for the oldest persisted Pending Retry row.
-# Revision 6 / Run372: keep 3.8-first immediate 503 fallback and one bounded
-# Reader-only repair, but allow two additional provider attempts so transient
-# provider failures do not consume the entire quality-repair allowance.
-# No Notion manuscript/status persistence and no Note Ready reconciliation.
+# Read-only pilot for one persisted Pending Retry row.
+# Run373 safety hardening: manual-only. No push trigger is allowed because this
+# workflow can spend Gemini free-tier budget. No Notion manuscript/status
+# persistence and no Note Ready reconciliation.
 on:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run370-pending-retry-validation.yml'
+  workflow_dispatch:
 
 concurrency:
   group: ai-intelligence-gemini-budget
@@ -28,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run372: one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, immediate 503 fallback, persist=false, max 6 provider attempts.'
+          echo 'Run373: manual-only, one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, immediate 503 fallback, persist=false, max 6 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -83,7 +78,7 @@ jobs:
           NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
-          EVIDENCE_LEDGER_REQUIRED: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
           NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           EVIDENCE_HEALTH_MAX_CHECKS_PER_RUN: '0'
@@ -118,7 +113,8 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run372 pending validation'
+            echo '### Run373 pending validation'
+            echo '- trigger: `workflow_dispatch` only'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
