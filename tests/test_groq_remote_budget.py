@@ -1,5 +1,9 @@
 import unittest
-from groq_remote_budget import reserve_state
+import urllib.error
+from unittest.mock import patch
+
+import groq_remote_budget
+from groq_remote_budget import reserve_remote, reserve_state
 from groq_rate_policy import SAFE_RPD, SAFE_RPM, SAFE_TPD, SAFE_TPM
 from ai_provider import ProviderError
 
@@ -16,7 +20,6 @@ class RemoteBudgetTests(unittest.TestCase):
     def test_daily_token_cap_and_recovery(self):
         now = 200000
         state = {"version": 1, "attempts": []}
-        # Stay below minute cap by spacing attempts, then consume the daily token envelope.
         per_call = 6000
         calls = SAFE_TPD // per_call
         for index in range(calls):
@@ -44,3 +47,42 @@ class RemoteBudgetTests(unittest.TestCase):
     def test_corrupt_state_rejected(self):
         with self.assertRaisesRegex(ProviderError, "invalid_remote_ledger"):
             reserve_state({"version": 1, "attempts": [{}]}, "second", 1000, 100100)
+
+    def test_remote_reservation_retries_only_stale_sha_conflict(self):
+        empty = {"version": 1, "attempts": []}
+        conflict = urllib.error.HTTPError("https://api.github.test", 409, "Conflict", {}, None)
+        reads = [("endpoint", {}, {"sha": "old"}, empty),
+                 ("endpoint", {}, {"sha": "new"}, empty)]
+        writes = [conflict, None]
+
+        def fake_read(*_):
+            return reads.pop(0)
+
+        def fake_write(*_):
+            outcome = writes.pop(0)
+            if outcome:
+                raise outcome
+
+        with patch.object(groq_remote_budget, "_read_remote", side_effect=fake_read) as read_mock, \
+             patch.object(groq_remote_budget, "_write_remote", side_effect=fake_write) as write_mock, \
+             patch.object(groq_remote_budget.time, "sleep") as sleep_mock:
+            reserve_remote("token", "writer-after-reconcile", 1000, object())
+        self.assertEqual(read_mock.call_count, 2)
+        self.assertEqual(write_mock.call_count, 2)
+        sleep_mock.assert_called_once()
+
+    def test_remote_reservation_does_not_retry_non_cas_http_error(self):
+        empty = {"version": 1, "attempts": []}
+        failure = urllib.error.HTTPError("https://api.github.test", 403, "Forbidden", {}, None)
+        with patch.object(groq_remote_budget, "_read_remote", return_value=("endpoint", {}, {"sha": "x"}, empty)) as read_mock, \
+             patch.object(groq_remote_budget, "_write_remote", side_effect=failure) as write_mock, \
+             patch.object(groq_remote_budget.time, "sleep") as sleep_mock:
+            with self.assertRaises(urllib.error.HTTPError):
+                reserve_remote("token", "no-provider-retry", 1000, object())
+        self.assertEqual(read_mock.call_count, 1)
+        self.assertEqual(write_mock.call_count, 1)
+        sleep_mock.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
