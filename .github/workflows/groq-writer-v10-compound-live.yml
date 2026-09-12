@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install jsonschema
-      - name: Build guarded v10 Compound writer fixture
+      - name: Build guarded v11 Compound writer fixture
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
@@ -43,18 +43,18 @@ jobs:
           assert pf['model']=='groq/compound-mini' and pf['external_tools']=='disabled'
           assert pf['reserved_estimate'] <= 60000 and pf['headroom'] >= 10000 and pf['request_bytes'] < 24576
           print(json.dumps({'plan_decision':plan['decision'],'plan_access_status':plan['access_status'],**pf,'business_writes':0},ensure_ascii=False))
-      - name: One guarded Compound Mini v10 writer call
+      - name: One guarded Compound Mini v11 writer call
         env:
           AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
           AIIF_GROQ_FIXTURE: two-pass-writer-fixture.json
           AIIF_GROQ_REPORT: two-pass-writer-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v10-compound-evidence-dense
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v11-compound-production-aligned
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
-      - name: Require v10 local contract
+      - name: Require v11 local contract
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
@@ -62,11 +62,11 @@ jobs:
           import json
           from groq_writer_v10_compound import inspect_compound_writer_v10, validate_compound_writer_v10
           inspected=inspect_compound_writer_v10('two-pass-writer-report.json')
-          print(json.dumps({'v10_article_chars':inspected['article_chars'],'v10_headings':len(inspected['headings']),'v10_paragraphs':inspected['paragraphs'],'v10_issues':inspected['issues'],'business_writes':0},ensure_ascii=False))
+          print(json.dumps({'v11_article_chars':inspected['article_chars'],'v11_headings':len(inspected['headings']),'v11_paragraphs':inspected['paragraphs'],'v11_issues':inspected['issues'],'business_writes':0},ensure_ascii=False))
           validated=validate_compound_writer_v10('two-pass-writer-report.json')
           provider=validated['result']
-          print(json.dumps({'v10_local_guard':'PASS','writer_tokens':provider['prompt_tokens']+provider['completion_tokens'],'business_writes':0},ensure_ascii=False))
-      - name: Assemble v10 and evaluate Production gates
+          print(json.dumps({'v11_local_guard':'PASS','writer_tokens':provider['prompt_tokens']+provider['completion_tokens'],'business_writes':0},ensure_ascii=False))
+      - name: Assemble v11 and evaluate Production gates
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           PYTHONPATH: ${{ github.workspace }}
@@ -92,11 +92,11 @@ jobs:
           ev=evaluate_groq_article_output(pipeline,'two-pass-combined-report.json','tests/fixtures/groq/article_parity_B0049_input.json','two-pass-evaluation.json')
           assert ev['business_writes']==0 and ev['persist_results'] is False and ev['parsed']
           print(json.dumps({'evidence_state':ev['evidence_state'],'evidence_sufficient':ev['evidence_sufficient'],'fact_ok':ev['fact_ok'],'fact_failures':ev['fact_failures'],'editorial_ok':ev['editorial_ok'],'editorial_warnings':ev['editorial_warnings'],'publication_state':ev['publication_state'],'publication_issues':ev['publication_issues'],'human_appeal_state':ev['human_appeal_state'],'human_appeal_issues':ev['human_appeal_issues'],'gate_disposition':ev['gate_disposition'],'quality_validated':ev['quality_validated'],'decision_score':ev['decision_score'],'article_chars':ev['article_chars'],'business_writes':0},ensure_ascii=False))
-      - name: Upload v10 evidence
+      - name: Upload v11 evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: groq-writer-v10-compound-B0049
+          name: groq-writer-v11-compound-B0049
           path: |
             two-pass-plan-report.json
             two-pass-writer-fixture.json
