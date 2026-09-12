@@ -1,8 +1,9 @@
 """Hybrid-only Groq judgment adapter with deterministic Fact Envelope.
 
 Verified evidence is locked before Groq. Groq returns only categorical judgment, scores and
-routing codes. It never writes factual prose. The legacy-shaped Decision Plan is composed
-locally from the immutable envelope plus deterministic code-to-text mappings.
+routing codes. It never writes factual prose. The Decision Plan stores only a deterministic
+reference to the immutable Fact Envelope; the full evidence ledger stays outside legacy
+source_summary limits and remains available from the writer input/snapshot.
 """
 from __future__ import annotations
 
@@ -104,6 +105,12 @@ _PRIORITY_TEXT = {
 }
 
 
+def _fact_envelope_reference(envelope: dict) -> str:
+    """Return a short deterministic legacy-compatible pointer, never a truncated fact."""
+    digest = str(envelope["fact_ledger_sha256"])
+    return f"Fact Envelope参照（SHA256:{digest}）。本文の事実根拠は固定Evidenceを使用する。"
+
+
 def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
     item = load_input(input_path)
     envelope = validate_fact_envelope(build_fact_envelope(input_path))
@@ -193,9 +200,6 @@ def validate_hybrid_judgment_text(text: str) -> dict:
 def compose_fact_locked_plan(envelope: dict, judgment: dict) -> dict:
     envelope = validate_fact_envelope(envelope)
     judgment = _validate_judgment_semantics(judgment)
-    ledger = envelope["fact_ledger"].strip()
-    if len(ledger) > PLAN_SCHEMA["properties"]["source_summary"]["maxLength"]:
-        raise TwoPassArticleError("fact_ledger_too_long_for_legacy_plan")
     why_important, article_angle, reader_bridge, title_seed_base = _PRIORITY_TEXT[judgment["reader_priority"]]
     reason_codes = list(judgment["reason_codes"])
     if judgment["access_status"] == "NOT_CONFIRMED" and "ACCESS_UNCONFIRMED" not in reason_codes:
@@ -205,7 +209,7 @@ def compose_fact_locked_plan(envelope: dict, judgment: dict) -> dict:
     if len(title_seed) > PLAN_SCHEMA["properties"]["title_seed"]["maxLength"]:
         title_seed = title_seed_base
     plan = {
-        "source_summary": ledger,
+        "source_summary": _fact_envelope_reference(envelope),
         "what": envelope["name"],
         "why_important": why_important,
         "decision": judgment["decision"],
