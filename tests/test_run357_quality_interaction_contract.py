@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import re
 from types import SimpleNamespace
 
@@ -78,10 +79,10 @@ def test_contract_install_is_idempotent():
     assert pipeline.RUN357_QUALITY_INTERACTION_CONTRACT is True
 
 
-def test_interaction_contract_is_after_final_surface_and_before_publication_contract():
-    order = runtime_layers.RUNTIME_LAYER_ORDER
-    interaction = order.index("runtime_layers.install_quality_interaction_contract")
-    final_surface = order.index("run249_final_publication_surface_gate.install")
-    publication_contract = order.index("run194_publication_contract.install")
+def test_interaction_contract_executes_after_final_surface_and_before_publication_contract():
+    source = inspect.getsource(runtime_layers.install_runtime_layers)
+    final_surface = source.index("run249_final_publication_surface_gate.install(pipeline_module)")
+    interaction = source.index("install_quality_interaction_contract(pipeline_module)")
+    publication_contract = source.index("run194_publication_contract.install(pipeline_module)")
 
     assert final_surface < interaction < publication_contract
