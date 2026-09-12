@@ -69,7 +69,10 @@ def _number_tokens(text: str) -> set[str]:
 
 def _ascii_identifiers(text: str) -> set[str]:
     value = _norm(text)
-    tokens = set(re.findall(r"\b(?=[A-Za-z0-9._-]*[A-Za-z])(?=[A-Za-z0-9._-]*[A-Z0-9])[A-Za-z][A-Za-z0-9._-]{1,}\b", value))
+    # Python Unicode word boundaries treat adjacent Japanese as word characters. Use
+    # ASCII-only lookarounds so `CyberBenchXでも` still exposes `CyberBenchX`.
+    pattern = r"(?<![A-Za-z0-9._-])(?=[A-Za-z0-9._-]*[A-Za-z])(?=[A-Za-z0-9._-]*[A-Z0-9])[A-Za-z][A-Za-z0-9._-]{1,}(?![A-Za-z0-9._-])"
+    tokens = set(re.findall(pattern, value))
     return {t for t in tokens if t not in _GENERIC_ASCII_ALLOWLIST and not t.startswith(("http", "www"))}
 
 
