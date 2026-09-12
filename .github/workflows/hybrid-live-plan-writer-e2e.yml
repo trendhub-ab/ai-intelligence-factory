@@ -53,11 +53,14 @@ jobs:
           for unsupported in ('minLength','maxLength','minItems','maxItems'):
               assert unsupported not in sent_serialized
           assert payload['response_format']['json_schema']['strict'] is True
+          assert sent_schema['properties']['decision']['type']=='string'
+          assert sent_schema['properties']['access_status']['type']=='string'
           print(json.dumps({
               'candidate_id':fixture['candidate_id'],
               'plan_model':fixture['model'],
               'estimate':estimate,
               'safe_tpm':7000,
+              'strict_enum_types':True,
               'groq_live_calls_expected':1,
               'business_writes':0,
           },ensure_ascii=False))
@@ -69,7 +72,7 @@ jobs:
           AIIF_GROQ_REPORT: hybrid-live-plan-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: hybrid-live-B0049-plan-v1
+          AIIF_GROQ_EXPERIMENT: hybrid-live-B0049-plan-${{ github.run_id }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
