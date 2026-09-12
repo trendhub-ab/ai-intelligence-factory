@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-12T02:08:40.798082+00:00",
+  "updated_at": "2026-09-12T10:17:16.802945+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.05269",
@@ -682,6 +682,47 @@
       "shelf_life": "FLASH",
       "portfolio_topic": "PRODUCT",
       "deep_dive_priority_score": 64.75
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.11697",
+      "deferred_at": "2026-09-12T10:17:16.802359+00:00",
+      "expires_at": "2026-11-11T10:17:16.802359+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "ActSafeGuard: Differentiable and Training-Aligned Constraint Enforcement for Flow-Matching Policies",
+        "originalTitle": "ActSafeGuard: Differentiable and Training-Aligned Constraint Enforcement for Flow-Matching Policies",
+        "displayName": "ActSafeGuard: Differentiable and Training-Aligned Constraint Enforcement for Flow-Matching Policies",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.11697v1",
+        "description": "Vision-Language-Action (VLA) and World-Action Models (WAMs) have demonstrated strong capabilities in general-purpose robotic manipulation, yet their generated actions may violate hard physical constraints and therefore be unsafe or infeasible for deployment. Existing safety approaches either optimize statistical safety objectives without deterministic per-step guarantees or correct unsafe actions only during inference, creating a mismatch between policy training and execution. We introduce ActSa",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-10T15:21:47Z",
+        "sourceContext": "Vision-Language-Action (VLA) and World-Action Models (WAMs) have demonstrated strong capabilities in general-purpose robotic manipulation, yet their generated actions may violate hard physical constraints and therefore be unsafe or infeasible for deployment. Existing safety approaches either optimize statistical safety objectives without deterministic per-step guarantees or correct unsafe actions only during inference, creating a mismatch between policy training and execution. We introduce ActSafeGuard, a differentiable and training-aligned safeguard layer for flow-matching based policies. ActSafeGuard integrates hard action feasibility into policy learning, not merely treating safety as an inference-time external component. Through an analytical ray-scaling operator design, ActSafeGuard enables boundary-aware gradients to guide the model to naturally learn constrained manifolds. Extensive experiments on multiple standard foundation backbones ($π_{0.5}$ and Fast-WAM) across various tasks demonstrate that ActSafeGuard consistently achieves a $100\\%$ step safety rate while fully preserving or even boosting task success rates, providing a scalable and minimally invasive solution for safe embodied AI deployment.",
+        "primaryUrl": "https://arxiv.org/abs/2609.11697v1",
+        "sourceDetails": {
+          "authors": [
+            "Jianming Ma",
+            "Rongjun Jin",
+            "Xiaxi Si",
+            "Yang Zhang",
+            "Yiheng Li",
+            "Yue Gao"
+          ],
+          "categories": [
+            "cs.RO",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3d9479ff-dca9-81fc-b976-ca6a69d7f2e4",
+      "score": 65,
+      "reason": "ロボット制御における厳格な安全性保証。",
+      "commercial_score": 60,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 63.25
     }
   ]
 }
