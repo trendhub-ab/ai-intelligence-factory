@@ -124,7 +124,7 @@ FACT ENVELOPEはプログラムで固定された読み取り専用Evidenceで�
 - reliabilityはEvidence自体の信頼性。アクセス未確認を重複減点しない。
 - business_impact / technical_impact / urgency / market_impact は各軸を独立採点する。
 - article_valueは導入可否と別に、記事としての判断材料価値を0〜100で採点する。
-- access_status=NOT_CONFIRMEDなら action_code は CONFIRM_ACCESS / MONITOR / HOLD のいずれかにする。
+- access_status=NOT_CONFIRMEDなら action_code は CONFIRM_ACCESS / MONITOR / HOLD のいずれかにする。reason_codesにACCESS_UNCONFIRMEDを必須化しない。アクセス状態はプログラム側でDecision Reasonへ確実に反映する。
 
 【Decision Score較正】
 各軸は他軸と独立して採点し、同じ不確実性を複数軸で重複減点しない。
@@ -181,8 +181,6 @@ def _parse_judgment_text(text: str) -> dict:
 def _validate_judgment_semantics(judgment: dict) -> dict:
     if judgment.get("access_status") == "NOT_CONFIRMED" and judgment.get("action_code") not in {"CONFIRM_ACCESS", "MONITOR", "HOLD"}:
         raise TwoPassArticleError("unconfirmed_access_action_escalation")
-    if judgment.get("access_status") == "NOT_CONFIRMED" and "ACCESS_UNCONFIRMED" not in judgment.get("reason_codes", []):
-        raise TwoPassArticleError("unconfirmed_access_reason_missing")
     if judgment.get("access_status") == "CONFIRMED_AVAILABLE" and "ACCESS_UNCONFIRMED" in judgment.get("reason_codes", []):
         raise TwoPassArticleError("confirmed_access_reason_conflict")
     return judgment
@@ -199,7 +197,10 @@ def compose_fact_locked_plan(envelope: dict, judgment: dict) -> dict:
     if len(ledger) > PLAN_SCHEMA["properties"]["source_summary"]["maxLength"]:
         raise TwoPassArticleError("fact_ledger_too_long_for_legacy_plan")
     why_important, article_angle, reader_bridge, title_seed_base = _PRIORITY_TEXT[judgment["reader_priority"]]
-    reason_texts = [_REASON_TEXT[code] for code in judgment["reason_codes"]]
+    reason_codes = list(judgment["reason_codes"])
+    if judgment["access_status"] == "NOT_CONFIRMED" and "ACCESS_UNCONFIRMED" not in reason_codes:
+        reason_codes = reason_codes[:2] + ["ACCESS_UNCONFIRMED"]
+    reason_texts = [_REASON_TEXT[code] for code in reason_codes]
     title_seed = f"{title_seed_base}：{envelope['name']}"
     if len(title_seed) > PLAN_SCHEMA["properties"]["title_seed"]["maxLength"]:
         title_seed = title_seed_base
