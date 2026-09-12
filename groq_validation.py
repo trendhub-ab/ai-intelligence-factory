@@ -115,7 +115,11 @@ def _sanitize_provider_error_message(message: object) -> str:
     if not value:
         return ""
     value = re.sub(r"https?://\S+", "[URL]", value, flags=re.IGNORECASE)
-    value = re.sub(r"(?i)\b(?:bearer|authorization|api[_ -]?key|token)\b\s*[:=]?\s*\S+", "[REDACTED]", value)
+    # Redact complete auth headers before generic labels so a two-token
+    # ``Authorization: Bearer SECRET`` surface cannot leave SECRET behind.
+    value = re.sub(r"(?i)\bauthorization\s*:\s*bearer\s+\S+", "[REDACTED]", value)
+    value = re.sub(r"(?i)\bbearer\s+\S+", "[REDACTED]", value)
+    value = re.sub(r"(?i)\b(?:api[_ -]?key|token)\b\s*[:=]?\s*\S+", "[REDACTED]", value)
     value = re.sub(r"(?i)gsk_[A-Za-z0-9_-]+", "[REDACTED]", value)
     value = re.sub(r"[\r\n\t]+", " ", value)
     value = re.sub(r"\s{2,}", " ", value).strip()
@@ -208,12 +212,11 @@ def run_saved_prompt_validation() -> dict:
                 with opener.open(req, timeout=60) as response:
                     return response.status, dict(response.headers), json.load(response)
             except urllib.error.HTTPError as exc:
-                body: object = {}
                 if diagnostic_enabled:
                     try:
                         raw_error = exc.read(32768)
-                        body = json.loads(raw_error.decode("utf-8", errors="replace"))
-                        last_http_error_diagnostic = _safe_http_error_diagnostic(body)
+                        parsed_error = json.loads(raw_error.decode("utf-8", errors="replace"))
+                        last_http_error_diagnostic = _safe_http_error_diagnostic(parsed_error)
                     except Exception:
                         last_http_error_diagnostic = {}
                 return exc.code, dict(exc.headers), {}
