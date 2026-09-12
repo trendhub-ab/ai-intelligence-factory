@@ -157,6 +157,11 @@ class GroqProvider:
                 raise ProviderError("schema_validator_required")
             payload["response_format"] = {"type": "json_schema", "json_schema": {
                 "name": "factory_response", "strict": True, "schema": _groq_strict_schema(request.schema)}}
+            # Groq requires reasoning output to be parsed/hidden when GPT-OSS is used
+            # with JSON modes. Keep reasoning private and reserve the visible response
+            # exclusively for the strict schema surface.
+            if self.model.startswith("openai/gpt-oss-"):
+                payload["reasoning_format"] = "hidden"
         try:
             framing = dict(payload)
             framing["messages"] = [{"role": "user", "content": ""}]
