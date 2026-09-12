@@ -20,8 +20,13 @@ class HybridWriterError(RuntimeError):
 TITLE_MARKER = "===TITLE==="
 ARTICLE_MARKER = "===ARTICLE==="
 MAX_SOURCE_CONTEXT_CHARS = 14000
-MIN_ARTICLE_CHARS = 1200
-MAX_ARTICLE_CHARS = 3000
+MIN_ARTICLE_CHARS = 1400
+MAX_ARTICLE_CHARS = 2400
+MIN_HEADINGS = 2
+MAX_HEADINGS = 4
+_FORBIDDEN_UNSUPPORTED_INTENSIFIERS = (
+    "劇的", "驚異的", "革命的", "圧倒的", "完全に攻略", "完璧に機能",
+)
 
 
 def _bounded_context(text: str) -> str:
@@ -45,8 +50,6 @@ def build_gemini_writer_prompt(item: dict, plan: dict) -> str:
         raise HybridWriterError("candidate_identity_missing")
     context = _bounded_context(item.get("source_context"))
 
-    # Keep only fields required to write the article. Exact scores are included so prose
-    # cannot accidentally imply a stronger decision than the deterministic management block.
     writer_plan = {
         "source_summary": plan["source_summary"],
         "what": plan["what"],
@@ -69,26 +72,36 @@ def build_gemini_writer_prompt(item: dict, plan: dict) -> str:
     }
 
     return f"""あなたはAI Intelligence Factoryの最終日本語Writerです。
-この工程では記事本文だけを担当します。採点・分類・Decision Planは前工程で確定済みです。
+この工程では記事タイトルと本文だけを担当します。採点・分類・Decision Planは前工程で確定済みです。
 管理データを再計算・再生成してはいけません。
 
-【絶対境界】
+【最優先：Factを増やさない】
 - 事実の上限はSOURCE CONTEXT。PLANは編集方針と判断であり、新しい事実ソースではない。
 - SOURCE CONTEXTにない固有名詞、数値、価格、アクセス条件、機能、比較、因果、効果を追加しない。
+- SOURCE CONTEXTの語を説明するために、モデル知識から別の技術事実を足さない。
 - PLANのDecision/Action/Scoreより強い推奨へ書き換えない。
-- access_status=NOT_CONFIRMEDなら、利用可能・一般提供・申請可能・PoC可能と推測しない。
-- 安全策の名称から機能や効果を推測しない。
-- 不足する説明をモデル知識で埋めない。必要なら「一次情報からはここまで」と自然に限定する。
+- access_status=NOT_CONFIRMEDなら、「誰でも使えない」「限定提供である」「一般公開されない」も断定しない。確認できるのは一般利用条件が未確認ということだけ。
+- Daybreak Blue等の評価条件から「安全装置を外した」「制限を緩めた」「専門家向け」等の具体像を作らない。
+- 安全策はSOURCE CONTEXTにある名称・存在以上の機能を説明しない。「常時判定」「ログ収集」「AIの意図を読む」「完全に防ぐ」等を足さない。
+- 「劇的」「驚異的」「革命的」「圧倒的」「完全に攻略」等、Evidenceより強い形容を使わない。面白さは形容詞ではなく確認済み事実で出す。
 
-【読者体験】
-- 中学生〜非エンジニアでも入口から理解でき、専門家にも判断材料が残る日本語にする。
-- 発表要約から始めず、SOURCE CONTEXTにある最も意外な事実・変化・困りごとのどれか1つから入る。
-- 専門語は必要になった時点で普通の言葉に言い換える。
-- AI的な定型句、均一な段落、機械的な箇条書きを避ける。
-- 箇条書き・番号リストは禁止。本文は自然な段落で書く。
-- 見出しは2〜4個。記事固有の日本語にする。
-- 最後は「私なら」に相当する人間の判断で閉じる。ただし架空の体験は作らない。
-- 本文は{MIN_ARTICLE_CHARS}〜{MAX_ARTICLE_CHARS}日本語文字を目安にする。根拠不足なら水増ししない。
+【読者体験：非エンジニアを置いていかない】
+- 中学生〜非エンジニアでも「要するに何が起きたか」を一文で言える日本語にする。
+- 最初の600字は特に平易にし、未説明の専門語を一文に2個以上積まない。
+- 本文で読者が覚える専門概念は原則2〜3個に絞る。Decisionに不要な英語名・内部名称・安全策の列挙は圧縮する。
+- 英語の正式名を出すときは、先に普通の日本語で役割を説明する。日本語だけで十分なら英語を併記しない。
+- 比喩は最大1つ。SOURCE CONTEXTにない装置・人物・運用条件を比喩の事実のように持ち込まない。似ている点だけを短く使う。
+- 発表要約から始めず、確認済みの意外な事実を入口にする。ただし煽らない。
+- 読者への近さは雑談の追加ではなく、硬い説明を普通の言葉へ置き換えて作る。
+- 最後は「私なら」で始まる1段落で、PLANのDecision/Actionと同じ距離感の判断に着地する。
+
+【構造契約】
+- 箇条書き・番号リストは禁止。本文は自然な段落だけで書く。
+- Markdown見出しを必ず{MIN_HEADINGS}〜{MAX_HEADINGS}個使う。見出し行は必ず「## 見出し」の形式。裸の見出しは禁止。
+- 見出しは記事固有の日本語にし、「なぜ重要」「まとめ」「最終判断」のような汎用ラベルだけにしない。
+- タイトルは「。」「？」のどちらかで終える。
+- 本文は{MIN_ARTICLE_CHARS}〜{MAX_ARTICLE_CHARS}日本語文字を目安にする。水増ししない。
+- 同じ事実を専門説明と比喩説明で二重に説明しない。
 
 {_source_fact_discipline(source)}
 {_human_editorial_style_rules()}
@@ -104,12 +117,20 @@ Primary URL: {url}
 【GROQ DECISION PLAN — editorial/decision authority, not factual evidence】
 {json.dumps(writer_plan, ensure_ascii=False, indent=2)}
 
+【最終セルフチェック】
+返答前にARTICLEだけを読み、次を満たさない箇所は新情報を足さず削除・圧縮・言い換えで直す。
+1. SOURCE CONTEXTにない機能・因果・アクセス条件を作っていない。
+2. 「劇的」「驚異的」などEvidenceより強い語がない。
+3. 未説明の専門語が連続していない。
+4. Markdownの「## 」見出しが{MIN_HEADINGS}〜{MAX_HEADINGS}個ある。
+5. 最後がPLANと矛盾しない「私なら」の判断になっている。
+
 【出力】
 次の2ブロックだけを返す。説明・管理データ・コードフェンスは禁止。
 {TITLE_MARKER}
 記事タイトル（#なし。「。」または「？」で終える）
 {ARTICLE_MARKER}
-記事本文
+記事本文（Markdownの##見出しを必ず含める）
 """
 
 
@@ -128,12 +149,20 @@ def parse_gemini_writer_output(text: str) -> tuple[str, str]:
         raise HybridWriterError("writer_title_punctuation_invalid")
     if re.search(r"(?m)^\s*(?:[-*+]\s+|\d+[.)]\s+)", article):
         raise HybridWriterError("writer_list_output_forbidden")
+    headings = re.findall(r"(?m)^##\s+\S.+$", article)
+    if not MIN_HEADINGS <= len(headings) <= MAX_HEADINGS:
+        raise HybridWriterError("writer_markdown_heading_contract_invalid")
+    if any(term in article for term in _FORBIDDEN_UNSUPPORTED_INTENSIFIERS):
+        raise HybridWriterError("writer_unsupported_intensifier")
     if len(article) < MIN_ARTICLE_CHARS:
         raise HybridWriterError("writer_article_too_short")
-    if len(article) > MAX_ARTICLE_CHARS + 800:
+    if len(article) > MAX_ARTICLE_CHARS + 500:
         raise HybridWriterError("writer_article_excessive")
     if not article.rstrip().endswith(("。", "！", "？")):
         raise HybridWriterError("writer_article_incomplete")
+    last_paragraph = next((p.strip() for p in reversed(re.split(r"\n\s*\n", article)) if p.strip()), "")
+    if not last_paragraph.startswith("私なら"):
+        raise HybridWriterError("writer_decision_voice_missing")
     return title, article
 
 
