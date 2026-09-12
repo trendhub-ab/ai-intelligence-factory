@@ -1,1 +1,1 @@
-Categorical Fact-Locked score calibration validation: one Groq call; no freeform prose; Gemini/Notion/note 0.
+Categorical Fact-Locked final Plan validation: deterministic access reason; calibrated scores; one Groq call; Gemini/Notion/note 0.
