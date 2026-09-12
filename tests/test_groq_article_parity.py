@@ -133,6 +133,10 @@ class GroqArticleParityTests(unittest.TestCase):
         self.assertIn("【SOURCE BOUNDARY — 最重要】", result.prompt)
         self.assertIn("【Structured Evidence / Required Qualifiers — 最優先】", result.prompt)
         self.assertIn("required_qualifiers", result.prompt)
+        self.assertIn("最初の1100字以内", result.prompt)
+        self.assertIn("初出で必ず", result.prompt)
+        self.assertIn("90字以上の説明段落を3つ以上連続させない", result.prompt)
+        self.assertIn("簡単に言えば", result.prompt)
         self.assertEqual(len(result.replaced_sections), 6)
         with self.assertRaises(PromptCompileError):
             compile_article_prompt(source.replace("【SOURCE BOUNDARY — 最重要】", "【SOURCE BOUNDARY】"))
