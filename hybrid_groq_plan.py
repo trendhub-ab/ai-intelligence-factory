@@ -1,8 +1,8 @@
 """Hybrid-only Groq judgment adapter with deterministic Fact Envelope.
 
-Verified evidence is locked before Groq. Groq may judge, score and propose editorial framing,
-but it no longer writes source_summary/what. The final Decision Plan is composed locally from
-the immutable envelope plus the validated Groq judgment.
+Verified evidence is locked before Groq. Groq returns only categorical judgment, scores and
+routing codes. It never writes factual prose. The legacy-shaped Decision Plan is composed
+locally from the immutable envelope plus deterministic code-to-text mappings.
 """
 from __future__ import annotations
 
@@ -16,16 +16,91 @@ from hybrid_fact_envelope import build_fact_envelope, validate_fact_envelope
 
 MODE = "json_object_local_strict"
 
+REASON_CODES = (
+    "HIGH_TECHNICAL_SIGNIFICANCE",
+    "BUSINESS_RELEVANCE",
+    "ACCESS_UNCONFIRMED",
+    "SAFEGUARD_EFFECTIVENESS_UNCONFIRMED",
+    "EVIDENCE_STRONG",
+    "EVALUATION_CONDITION_LIMITED",
+    "URGENCY_HIGH",
+    "MARKET_SIGNAL",
+    "NEED_MORE_EVIDENCE",
+)
+ACTION_CODES = ("CONFIRM_ACCESS", "MONITOR", "COMPARE", "HOLD", "AVOID", "NONE")
+READER_PRIORITIES = ("BUSINESS", "TECHNICAL", "SAFETY", "GENERAL")
+
 JUDGMENT_FIELDS = [
-    "why_important", "decision", "decision_reason", "business_impact", "technical_impact",
-    "urgency", "market_impact", "reliability", "action", "article_value", "article_angle",
-    "reader_bridge", "title_seed", "access_status",
+    "decision", "reason_codes", "business_impact", "technical_impact", "urgency",
+    "market_impact", "reliability", "article_value", "access_status", "action_code",
+    "reader_priority",
 ]
 JUDGMENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": JUDGMENT_FIELDS,
-    "properties": {key: PLAN_SCHEMA["properties"][key] for key in JUDGMENT_FIELDS},
+    "properties": {
+        "decision": PLAN_SCHEMA["properties"]["decision"],
+        "reason_codes": {
+            "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": True,
+            "items": {"enum": list(REASON_CODES)},
+        },
+        "business_impact": PLAN_SCHEMA["properties"]["business_impact"],
+        "technical_impact": PLAN_SCHEMA["properties"]["technical_impact"],
+        "urgency": PLAN_SCHEMA["properties"]["urgency"],
+        "market_impact": PLAN_SCHEMA["properties"]["market_impact"],
+        "reliability": PLAN_SCHEMA["properties"]["reliability"],
+        "article_value": PLAN_SCHEMA["properties"]["article_value"],
+        "access_status": PLAN_SCHEMA["properties"]["access_status"],
+        "action_code": {"enum": list(ACTION_CODES)},
+        "reader_priority": {"enum": list(READER_PRIORITIES)},
+    },
+}
+
+_REASON_TEXT = {
+    "HIGH_TECHNICAL_SIGNIFICANCE": "技術的な影響が大きく、継続監視の価値がある。",
+    "BUSINESS_RELEVANCE": "事業判断への影響を見極める価値がある。",
+    "ACCESS_UNCONFIRMED": "一般利用条件は確認できていない。",
+    "SAFEGUARD_EFFECTIVENESS_UNCONFIRMED": "安全策の有効性は、このEvidenceだけでは確認できない。",
+    "EVIDENCE_STRONG": "一次情報を中心に根拠を確認できる。",
+    "EVALUATION_CONDITION_LIMITED": "評価条件と実運用条件を分けて読む必要がある。",
+    "URGENCY_HIGH": "追加情報を待ちつつ、継続的な確認が必要である。",
+    "MARKET_SIGNAL": "市場・競争環境への波及を継続監視する価値がある。",
+    "NEED_MORE_EVIDENCE": "判断確度を上げるには追加Evidenceが必要である。",
+}
+_ACTION_TEXT = {
+    "CONFIRM_ACCESS": "利用条件を一次情報で確認する。",
+    "MONITOR": "追加の一次情報を継続監視する。",
+    "COMPARE": "比較可能な一次情報を追加確認する。",
+    "HOLD": "追加Evidenceが揃うまで判断を保留する。",
+    "AVOID": "現時点では採用を見送る。",
+    "NONE": "追加対応は行わず記録のみとする。",
+}
+_PRIORITY_TEXT = {
+    "BUSINESS": (
+        "確認済みEvidenceを事業判断へどう結びつけるかが重要である。",
+        "確認済みEvidenceが事業判断にどう影響するかを、Factと不確実性を分けて読む。",
+        "専門語を減らし、導入判断に必要なFactと未確認事項を分けて説明する。",
+        "事業判断のために確認すべきポイント",
+    ),
+    "TECHNICAL": (
+        "確認済みEvidenceの技術的な意味を、評価条件と分けて読む価値がある。",
+        "技術的な意味を、確認済みFactと評価条件を混同せずに読む。",
+        "専門語を日常語に置き換え、何が確認済みで何が未確認かを分けて説明する。",
+        "技術Evidenceから読む次の判断材料",
+    ),
+    "SAFETY": (
+        "能力と安全性の判断を、確認済みEvidenceと未確認事項に分けることが重要である。",
+        "安全性を、確認済みFactと未確認事項を混同せずに読む。",
+        "危険性を煽らず、確認済みFactと安全性の未確認部分を分けて説明する。",
+        "安全性を判断するための確認ポイント",
+    ),
+    "GENERAL": (
+        "確認済みEvidenceから、読者が次に何を確認すべきか整理する価値がある。",
+        "確認済みFactと未確認事項を分け、読者の次の判断材料を整理する。",
+        "難しい用語を普通の言葉に置き換え、Factと判断を分けて説明する。",
+        "確認済みEvidenceから読む次の判断材料",
+    ),
 }
 
 
@@ -35,27 +110,23 @@ def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
     policy = policy_for_model(GPT_OSS_120B.model)
     exact_keys = ", ".join(JUDGMENT_FIELDS)
     prompt = f"""あなたはAI Intelligence FactoryのDecision Judgeです。
-事実を書き直す担当ではありません。FACT ENVELOPEはプログラムで固定された読み取り専用Evidenceです。
-あなたの担当は、確認済みEvidenceを解釈し、判断・採点・実務アクション・編集方針だけを返すことです。
+FACT ENVELOPEはプログラムで固定された読み取り専用Evidenceです。
+あなたは文章を書きません。確認済みEvidenceを読んで、判断コード・採点・ルーティングコードだけを返します。
 
 【絶対ルール】
-- source_summary / what は出力しない。事実の要約・言い換え・再構成をしない。
-- FACT ENVELOPEにない事実、数値、日付、固有名詞、条件、時制、提供範囲、安全策の状態を追加しない。
-- Decision Reason / Why Important / Actionでも、Factの状態を別の動詞へ言い換えない。「安全策が実装されている」「安全策が適用されている」「安全策が導入済み」のような状態表現は禁止。必要なら「Fact Envelopeに安全策の記載がある」のように、記載の存在と判断を分離する。
-- 評価条件を提供条件へ、安全策の公開時方針を評価時の適用事実へ変換しない。
-- 安全策の名称から有効性・無効性・検証実施の有無を推測しない。必要なら「この資料から有効性は確認できない」と判断理由に書く。
-- アクセス可否が確認できない場合 access_status=NOT_CONFIRMED。Actionは条件確認までとし、PoC、申請、導入、試用を勧めない。
-- reliabilityはEvidence自体の信頼性。アクセス未確認をreliabilityへ重複減点しない。
-- business_impact / technical_impact / urgency / market_impact は各軸を独立採点し、同じ不確実性を全軸へ重複減点しない。
-- article_valueは導入可否とは別に、確認済み発見が読者へ与える理解・判断材料を評価する。
-- article_angle / reader_bridge / title_seed は編集案であり、新しいFactを含めない。自然な日本語で書く。
-- 読者は中学生〜非エンジニアも含む。reader_bridgeは具体的な理解の橋渡しにする。
-- JSONオブジェクト1個だけを返す。Markdown、コードフェンス、前置き、後書きは禁止。
-- 必須キーは次の14個だけ。すべて1回ずつ含め、余分なキーは禁止: {exact_keys}
-- decision は NOW / TRY / WATCH / WAIT / AVOID のいずれか。
-- access_status は CONFIRMED_AVAILABLE / NOT_CONFIRMED / NOT_RELEVANT のいずれか。
-- business_impact=0..25、technical_impact=0..25、urgency=0..20、market_impact=0..15、reliability=0..15、article_value=0..100 の整数。
-- decision_reason は1〜3個の文字列配列。それ以外の説明項目は文字列。
+- Factの要約、言い換え、説明文、タイトル案、読者向け文章を出力しない。
+- FACT ENVELOPEにない事実を推測しない。
+- decisionは NOW / TRY / WATCH / WAIT / AVOID。
+- reason_codesは次から1〜3個だけ選ぶ: {', '.join(REASON_CODES)}
+- access_statusは CONFIRMED_AVAILABLE / NOT_CONFIRMED / NOT_RELEVANT。
+- action_codeは次から1個: {', '.join(ACTION_CODES)}
+- reader_priorityは次から1個: {', '.join(READER_PRIORITIES)}
+- reliabilityはEvidence自体の信頼性。アクセス未確認を重複減点しない。
+- business_impact / technical_impact / urgency / market_impact は各軸を独立採点する。
+- article_valueは導入可否と別に、記事としての判断材料価値を0〜100で採点する。
+- access_status=NOT_CONFIRMEDなら action_code は CONFIRM_ACCESS / MONITOR / HOLD のいずれかにする。
+- JSONオブジェクト1個だけを返す。Markdown・説明文・余分なキーは禁止。
+- 必須キーは次の11個だけ: {exact_keys}
 
 【候補】
 Name: {item['name']}
@@ -66,20 +137,12 @@ Screening Reason: {item['screening_reason']}
 {json.dumps(envelope, ensure_ascii=False)}
 """
     fixture = {
-        "stage": "article",
-        "provider": "groq",
-        "model": GPT_OSS_120B.model,
-        "rate_policy": policy.name,
-        "prompt": prompt,
-        "max_output_tokens": 2200,
-        "reasoning_effort": "medium",
-        "schema": JUDGMENT_SCHEMA,
-        "candidate_id": item["candidate_id"],
-        "pass": "decision_judgment",
-        "structured_output_mode": MODE,
-        "fact_envelope": envelope,
-        "persist_results": False,
-        "business_writes": 0,
+        "stage": "article", "provider": "groq", "model": GPT_OSS_120B.model,
+        "rate_policy": policy.name, "prompt": prompt, "max_output_tokens": 1200,
+        "reasoning_effort": "medium", "schema": JUDGMENT_SCHEMA,
+        "candidate_id": item["candidate_id"], "pass": "decision_judgment_codes",
+        "structured_output_mode": MODE, "fact_envelope": envelope,
+        "persist_results": False, "business_writes": 0,
     }
     Path(output_path).write_text(json.dumps(fixture, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return fixture
@@ -98,33 +161,12 @@ def _parse_judgment_text(text: str) -> dict:
 
 
 def _validate_judgment_semantics(judgment: dict) -> dict:
-    management_text = "\n".join([judgment["why_important"], *judgment["decision_reason"], judgment["action"]]).lower()
-    editorial_text = "\n".join([judgment["article_angle"], judgment["reader_bridge"], judgment["title_seed"]]).lower()
-    all_text = management_text + "\n" + editorial_text
-    if judgment.get("access_status") == "NOT_CONFIRMED":
-        positive_access_claims = (
-            "一般利用者が利用でき", "一般ユーザーが利用でき", "誰でも利用", "一般提供され",
-            "一般利用可能", "利用可能である", "アクセス可能である", "publicly available",
-            "generally available", "条件下で提供され", "条件で提供され",
-        )
-        if any(term.lower() in all_text for term in positive_access_claims):
-            raise TwoPassArticleError("unconfirmed_access_scope_claim")
-        forbidden_action = ("PoC", "概念実証", "申請", "導入する", "試す", "利用開始", "実施する")
-        if any(word.lower() in judgment["action"].lower() for word in forbidden_action):
-            raise TwoPassArticleError("unconfirmed_access_action_escalation")
-    unsupported = ("未検証の安全策", "安全策の有効性が未検証", "安全策は未検証", "安全策が未検証")
-    if any(term in all_text for term in unsupported):
-        raise TwoPassArticleError("unsupported_safeguard_validation_claim")
-    timing = ("評価で安全策が適用された", "評価時に安全策が適用された", "評価中に安全策が適用された", "適用された安全策")
-    if any(term in all_text for term in timing):
-        raise TwoPassArticleError("unsupported_safeguard_application_timing_claim")
-    state_rewrites = (
-        "安全策が実装され", "安全策を実装し", "安全策を実装して", "安全策が適用され", "安全策を適用し",
-        "安全策を適用して", "安全策が導入され", "安全策を導入し", "安全策が稼働", "安全策は有効",
-        "安全策が有効", "安全策が機能し", "安全策が機能して",
-    )
-    if any(term in all_text for term in state_rewrites):
-        raise TwoPassArticleError("unsupported_safeguard_state_rewrite")
+    if judgment.get("access_status") == "NOT_CONFIRMED" and judgment.get("action_code") not in {"CONFIRM_ACCESS", "MONITOR", "HOLD"}:
+        raise TwoPassArticleError("unconfirmed_access_action_escalation")
+    if judgment.get("access_status") == "NOT_CONFIRMED" and "ACCESS_UNCONFIRMED" not in judgment.get("reason_codes", []):
+        raise TwoPassArticleError("unconfirmed_access_reason_missing")
+    if judgment.get("access_status") == "CONFIRMED_AVAILABLE" and "ACCESS_UNCONFIRMED" in judgment.get("reason_codes", []):
+        raise TwoPassArticleError("confirmed_access_reason_conflict")
     return judgment
 
 
@@ -138,16 +180,33 @@ def compose_fact_locked_plan(envelope: dict, judgment: dict) -> dict:
     ledger = envelope["fact_ledger"].strip()
     if len(ledger) > PLAN_SCHEMA["properties"]["source_summary"]["maxLength"]:
         raise TwoPassArticleError("fact_ledger_too_long_for_legacy_plan")
+    why_important, article_angle, reader_bridge, title_seed_base = _PRIORITY_TEXT[judgment["reader_priority"]]
+    reason_texts = [_REASON_TEXT[code] for code in judgment["reason_codes"]]
+    title_seed = f"{title_seed_base}：{envelope['name']}"
+    if len(title_seed) > PLAN_SCHEMA["properties"]["title_seed"]["maxLength"]:
+        title_seed = title_seed_base
     plan = {
         "source_summary": ledger,
         "what": envelope["name"],
-        **judgment,
+        "why_important": why_important,
+        "decision": judgment["decision"],
+        "decision_reason": reason_texts,
+        "business_impact": judgment["business_impact"],
+        "technical_impact": judgment["technical_impact"],
+        "urgency": judgment["urgency"],
+        "market_impact": judgment["market_impact"],
+        "reliability": judgment["reliability"],
+        "action": _ACTION_TEXT[judgment["action_code"]],
+        "article_value": judgment["article_value"],
+        "article_angle": article_angle,
+        "reader_bridge": reader_bridge,
+        "title_seed": title_seed,
+        "access_status": judgment["access_status"],
     }
     return validate_plan(plan)
 
 
 def validate_hybrid_plan_text(text: str, envelope: dict | None = None) -> dict:
-    """Compatibility validator. With an envelope, text is judgment-only and gets composed."""
     if envelope is not None:
         return compose_fact_locked_plan(envelope, validate_hybrid_judgment_text(text))
     try:
