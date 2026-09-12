@@ -43,11 +43,11 @@ def _item():
 def _valid_article():
     paragraph = "これは一次情報の範囲を守りながら、読者が判断しやすいよう普通の言葉で説明する文章です。条件と結果を分けて読むことで、数字だけに引っ張られず次の確認点が見えてきます。"
     return (
-        (paragraph + "\n\n") * 6
+        (paragraph + "\n\n") * 8
         + "## 数字を見る前に条件を見る\n\n"
-        + (paragraph + "\n\n") * 6
+        + (paragraph + "\n\n") * 8
         + "## 実際に確認すべきこと\n\n"
-        + (paragraph + "\n\n") * 6
+        + (paragraph + "\n\n") * 8
         + "私なら、いまは利用条件の一次情報を確認してから次を判断します。"
     )
 
@@ -68,6 +68,7 @@ def test_prompt_keeps_gemini_to_final_writer_only():
     assert "劇的" in prompt and "使わない" in prompt
     assert "誰でも使えない" in prompt
     assert "常時判定" in prompt
+    assert "1700字未満の本文は返してはいけない" in prompt
 
 
 def test_prompt_does_not_ask_gemini_to_rescore():
