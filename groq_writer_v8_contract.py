@@ -14,14 +14,14 @@ class GroqWriterV8Error(RuntimeError):
 
 V8_CONTRACT = r"""
 
-【V8 OUTPUT SHAPE — この形を厳守】
-- ARTICLEは10段落。本文段落だけで1500〜2000日本語文字を使う。
-- `## ` 見出しを必ず3本入れる。導入2段落の後、5段落目の前、8段落目の前に置く。
-- 見出しはAstra/100%/利用条件など本文固有の語から作り、汎用ラベルは禁止。
-- 各段落は目安140〜210字。短い結論文だけで段落数を稼がない。
-- 「導入には別途のアクセス権・運用条件が必要」と断定しない。確認できるのは「この一次資料から一般利用条件は確認できない」まで。
+【V8 OUTPUT SHAPE — 厳守】
+- ARTICLEは10段落、1500〜2000日本語文字。
+- `## ` 見出しを3本。導入2段落後、5段落目前、8段落目前に置く。
+- 見出しはAstra/100%/利用条件など記事固有語を使い、汎用ラベルは禁止。
+- 各段落140〜210字を目安にし、短文で段落数を稼がない。
+- 「導入には別途のアクセス権・運用条件が必要」と断定しない。「この一次資料から一般利用条件は確認できない」まで。
 - TITLE末尾は「。」または「？」。
-返答直前に、10段落・3見出し・1500字以上を数えてから返す。
+返答前に10段落・3見出し・1500字以上を確認する。
 """
 
 
@@ -35,7 +35,7 @@ def harden_writer_fixture_v8(path: str) -> dict:
         raise GroqWriterV8Error("writer_fixture_prompt_missing")
     if "V8 OUTPUT SHAPE" not in prompt:
         data["prompt"] = prompt.rstrip() + V8_CONTRACT
-    data["max_output_tokens"] = 3000
+    data["max_output_tokens"] = 2800
     data["contract_version_v8"] = "groq_writer_v8_explicit_structure"
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return data
@@ -45,7 +45,6 @@ def inspect_writer_report_v8(path: str) -> dict:
     inspected = inspect_writer_report(path)
     article = inspected["article"]
     issues = list(inspected["issues"])
-    # v8 is stricter than v7 on exact prose shape.
     if inspected["paragraphs"] != 10:
         issues.append(f"v8_paragraph_count:{inspected['paragraphs']}")
     if len(inspected["headings"]) != 3:
