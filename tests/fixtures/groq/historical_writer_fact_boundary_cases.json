@@ -1,118 +1,70 @@
 {
   "source_input": "tests/fixtures/groq/article_parity_B0049_input.json",
-  "purpose": "Offline Red Team regression set built from historically observed Hybrid Writer factual inflation plus safe contrast cases. No provider calls.",
+  "purpose": "Provider-free semantic Red Team regression set. Expands historically observed factual inflation into paraphrase families plus safe contrasts.",
   "cases": [
-    {
-      "id": "OBS-001",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["development_state_inflation"],
-      "text": "Astraは開発中の新しい基盤モデルだ。"
-    },
-    {
-      "id": "OBS-002",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["availability_inflation"],
-      "text": "これは一般に通常の対話画面で触れられる設定だ。"
-    },
-    {
-      "id": "OBS-003",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["contamination_certainty_inflation"],
-      "text": "この評価ではデータ混入の可能性が極めて低い。"
-    },
-    {
-      "id": "OBS-004",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["zero_day_inflation"],
-      "text": "まだ誰も発見していなかった未知の不具合を見つけた。"
-    },
-    {
-      "id": "OBS-005",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["refusal_training_function_inference"],
-      "text": "拒否訓練は不適切な指示を断るための訓練だ。"
-    },
-    {
-      "id": "OBS-006",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["classifier_function_inference"],
-      "text": "system safety classifierは安全性を判定する仕組みだ。"
-    },
-    {
-      "id": "OBS-007",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["unsupported_numeric_fact"],
-      "text": "ExploitBenchでは99%を記録した。"
-    },
-    {
-      "id": "OBS-008",
-      "label": "historical_observed_bad",
-      "expected_pass": false,
-      "expected_types": ["unsupported_technical_identifier"],
-      "text": "CyberBenchXでも評価された。"
-    },
-    {
-      "id": "SAFE-001",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルと説明される。"
-    },
-    {
-      "id": "SAFE-002",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "ExploitBenchでは100%を記録した。"
-    },
-    {
-      "id": "SAFE-003",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "2026年6〜8月に公開された高深刻度V8脆弱性20件を評価し、2件のzero-day脆弱性を発見した。"
-    },
-    {
-      "id": "SAFE-004",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "結果はdefault production configurationではなくDaybreak Blue access条件を反映する。"
-    },
-    {
-      "id": "SAFE-005",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "公開時は拒否訓練、system safety classifier、監視、misalignment detectionなど複数の安全策を適用する。"
-    },
-    {
-      "id": "SAFE-006",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "数字の大きさだけでなく、どの条件で得られた結果なのかを分けて読む必要がある。"
-    },
-    {
-      "id": "SAFE-007",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "一般利用条件はSOURCE CONTEXTからは確認できないため、そこは未確認のまま扱う。"
-    },
-    {
-      "id": "SAFE-008",
-      "label": "safe_contrast",
-      "expected_pass": true,
-      "expected_types": [],
-      "text": "Astraは100％を記録し、対象は２０件、zero-day脆弱性は２件だった。"
-    }
+    {"id":"BAD-001","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは開発中の新しい基盤モデルだ。"},
+    {"id":"BAD-002","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは開発中の基盤モデルである。"},
+    {"id":"BAD-003","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは開発段階の基盤モデルだ。"},
+    {"id":"BAD-004","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは次世代基盤モデルとして開発されている。"},
+    {"id":"BAD-005","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは次世代の基盤モデルだ。"},
+    {"id":"BAD-006","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは未公開の基盤モデルだ。"},
+    {"id":"BAD-007","expected_pass":false,"expected_types":["development_state_inflation"],"text":"Astraは試作中の基盤モデルだ。"},
+    {"id":"BAD-008","expected_pass":false,"expected_types":["availability_inflation"],"text":"これは誰でも使えるモデルだ。"},
+    {"id":"BAD-009","expected_pass":false,"expected_types":["availability_inflation"],"text":"Astraは誰でも利用できる。"},
+    {"id":"BAD-010","expected_pass":false,"expected_types":["availability_inflation"],"text":"現在は誰でもアクセスできる。"},
+    {"id":"BAD-011","expected_pass":false,"expected_types":["availability_inflation"],"text":"Astraは一般公開されている。"},
+    {"id":"BAD-012","expected_pass":false,"expected_types":["availability_inflation"],"text":"Astraは一般に公開された。"},
+    {"id":"BAD-013","expected_pass":false,"expected_types":["availability_inflation"],"text":"すでに一般提供されている。"},
+    {"id":"BAD-014","expected_pass":false,"expected_types":["availability_inflation"],"text":"普通のユーザーでも使える設定だ。"},
+    {"id":"BAD-015","expected_pass":false,"expected_types":["availability_inflation"],"text":"一般ユーザーでも使えるモデルだ。"},
+    {"id":"BAD-016","expected_pass":false,"expected_types":["availability_inflation"],"text":"通常の対話画面から利用できる。"},
+    {"id":"BAD-017","expected_pass":false,"expected_types":["availability_inflation"],"text":"普通の対話画面で触れられる。"},
+    {"id":"BAD-018","expected_pass":false,"expected_types":["availability_inflation"],"text":"一般ユーザー向け設定で動く。"},
+    {"id":"BAD-019","expected_pass":false,"expected_types":["availability_inflation"],"text":"標準設定で使える。"},
+    {"id":"BAD-020","expected_pass":false,"expected_types":["availability_inflation"],"text":"デフォルト設定で使える。"},
+    {"id":"BAD-021","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"データ混入の可能性が極めて低い。"},
+    {"id":"BAD-022","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"データ混入の可能性はほぼない。"},
+    {"id":"BAD-023","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"今回の評価で混入はほぼ考えにくい。"},
+    {"id":"BAD-024","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"学習データに混入したとは考えにくい。"},
+    {"id":"BAD-025","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"学習データに混入している可能性は低い。"},
+    {"id":"BAD-026","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"この問題は学習データに混入していない。"},
+    {"id":"BAD-027","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"データ汚染の可能性は低い。"},
+    {"id":"BAD-028","expected_pass":false,"expected_types":["contamination_certainty_inflation"],"text":"モデルが答えを覚えていた可能性は低い。"},
+    {"id":"BAD-029","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"まだ誰も発見していなかった脆弱性を見つけた。"},
+    {"id":"BAD-030","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"誰にも発見されていなかった脆弱性だった。"},
+    {"id":"BAD-031","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"これまで誰も見つけていなかった問題だ。"},
+    {"id":"BAD-032","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"世界で初めて発見した脆弱性だ。"},
+    {"id":"BAD-033","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"世界初の脆弱性発見だった。"},
+    {"id":"BAD-034","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"未知の脆弱性を発見した。"},
+    {"id":"BAD-035","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"未発見の脆弱性を見つけた。"},
+    {"id":"BAD-036","expected_pass":false,"expected_types":["zero_day_inflation"],"text":"史上初の発見だった。"},
+    {"id":"BAD-037","expected_pass":false,"expected_types":["evaluation_scope_inflation"],"text":"本番環境でも同じ結果が出る。"},
+    {"id":"BAD-038","expected_pass":false,"expected_types":["evaluation_scope_inflation"],"text":"実運用でも同じ性能を示す。"},
+    {"id":"BAD-039","expected_pass":false,"expected_types":["evaluation_scope_inflation"],"text":"通常環境でも同じ結果になる。"},
+    {"id":"BAD-040","expected_pass":false,"expected_types":["evaluation_scope_inflation"],"text":"一般利用でも同じ性能が得られる。"},
+    {"id":"BAD-041","expected_pass":false,"expected_types":["refusal_training_function_inference"],"text":"拒否訓練は不適切な指示を断るための訓練だ。"},
+    {"id":"BAD-042","expected_pass":false,"expected_types":["refusal_training_function_inference"],"text":"拒否訓練によって危険な要求を拒否する。"},
+    {"id":"BAD-043","expected_pass":false,"expected_types":["classifier_function_inference"],"text":"system safety classifierは安全性を判定する仕組みだ。"},
+    {"id":"BAD-044","expected_pass":false,"expected_types":["classifier_function_inference"],"text":"system safety classifierが危険かどうかを判定する。"},
+    {"id":"BAD-045","expected_pass":false,"expected_types":["monitoring_function_inference"],"text":"監視によって全ユーザーを監視する。"},
+    {"id":"BAD-046","expected_pass":false,"expected_types":["monitoring_function_inference"],"text":"監視機能が操作を記録する。"},
+    {"id":"BAD-047","expected_pass":false,"expected_types":["misalignment_function_inference"],"text":"misalignment detectionはAIの本音を読む仕組みだ。"},
+    {"id":"BAD-048","expected_pass":false,"expected_types":["misalignment_function_inference"],"text":"misalignment detectionが隠れた意図を検知する。"},
+    {"id":"BAD-049","expected_pass":false,"expected_types":["unsupported_numeric_fact"],"text":"ExploitBenchでは99%を記録した。"},
+    {"id":"BAD-050","expected_pass":false,"expected_types":["unsupported_technical_identifier"],"text":"CyberBenchXでも評価された。"},
+    {"id":"SAFE-001","expected_pass":true,"expected_types":[],"text":"AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルと説明される。"},
+    {"id":"SAFE-002","expected_pass":true,"expected_types":[],"text":"ExploitBenchでは100%を記録した。"},
+    {"id":"SAFE-003","expected_pass":true,"expected_types":[],"text":"2026年6〜8月に公開された高深刻度V8脆弱性20件を評価し、2件のzero-day脆弱性を発見した。"},
+    {"id":"SAFE-004","expected_pass":true,"expected_types":[],"text":"結果はdefault production configurationではなくDaybreak Blue access条件を反映する。"},
+    {"id":"SAFE-005","expected_pass":true,"expected_types":[],"text":"公開時は拒否訓練、system safety classifier、監視、misalignment detectionなど複数の安全策を適用する。"},
+    {"id":"SAFE-006","expected_pass":true,"expected_types":[],"text":"数字の大きさだけでなく、どの条件で得られた結果なのかを分けて読む必要がある。"},
+    {"id":"SAFE-007","expected_pass":true,"expected_types":[],"text":"一般利用条件はSOURCE CONTEXTからは確認できないため、そこは未確認のまま扱う。"},
+    {"id":"SAFE-008","expected_pass":true,"expected_types":[],"text":"Astraは100％を記録し、対象は２０件、zero-day脆弱性は２件だった。"},
+    {"id":"SAFE-009","expected_pass":true,"expected_types":[],"text":"データ混入懸念から追加評価を実施した。"},
+    {"id":"SAFE-010","expected_pass":true,"expected_types":[],"text":"zero-day脆弱性を2件発見したと一次資料は説明している。"},
+    {"id":"SAFE-011","expected_pass":true,"expected_types":[],"text":"Daybreak Blue access条件で得られた結果として読む必要がある。"},
+    {"id":"SAFE-012","expected_pass":true,"expected_types":[],"text":"default production configurationの結果ではない点が重要だ。"},
+    {"id":"SAFE-013","expected_pass":true,"expected_types":[],"text":"安全策の名称だけから具体的な機能を推測しない。"},
+    {"id":"SAFE-014","expected_pass":true,"expected_types":[],"text":"能力向上を理由に一部の開発・公開を遅らせ、安全策を強化した。"}
   ]
 }
