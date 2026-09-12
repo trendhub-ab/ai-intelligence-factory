@@ -120,7 +120,7 @@ def _install_single_retry_owner_client(pipeline_module: Any) -> None:
     pipeline_module.client = single_owner_client
     pipeline_module.GEMINI_SDK_RETRY_ATTEMPTS = _SDK_RETRY_ATTEMPTS
     pipeline_module.GEMINI_RETRY_OWNER = "factory"
-    setattr(pipeline_module, _SDK_SINGLE_RETRY_OWNER_FLAG, True)
+    setattr(pipeline_module, _SDK_SINGLE_OWNER_FLAG, True)
 
     logger = getattr(pipeline_module, "logger", None)
     if logger is not None:
