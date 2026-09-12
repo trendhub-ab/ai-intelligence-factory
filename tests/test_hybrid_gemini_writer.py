@@ -40,6 +40,22 @@ def _item():
     }
 
 
+def _valid_article():
+    paragraph = "これは一次情報の範囲を守りながら、読者が判断しやすいよう普通の言葉で説明する文章です。"
+    return (
+        (paragraph + "\n\n") * 8
+        + "## 数字を見る前に条件を見る\n\n"
+        + (paragraph + "\n\n") * 8
+        + "## 実際に確認すべきこと\n\n"
+        + (paragraph + "\n\n") * 8
+        + "私なら、いまは利用条件の一次情報を確認してから次を判断します。"
+    )
+
+
+def _surface(article):
+    return f"{TITLE_MARKER}\n数字の大きさだけで決めてよい？\n{ARTICLE_MARKER}\n{article}"
+
+
 def test_prompt_keeps_gemini_to_final_writer_only():
     prompt = build_gemini_writer_prompt(_item(), _plan())
     assert "最終日本語Writer" in prompt
@@ -48,6 +64,10 @@ def test_prompt_keeps_gemini_to_final_writer_only():
     assert "GROQ DECISION PLAN" in prompt
     assert "SOURCE CONTEXT — factual ceiling" in prompt
     assert "access_status=NOT_CONFIRMED" in prompt
+    assert "Markdown見出し" in prompt
+    assert "劇的" in prompt and "使わない" in prompt
+    assert "誰でも使えない" in prompt
+    assert "常時判定" in prompt
 
 
 def test_prompt_does_not_ask_gemini_to_rescore():
@@ -65,25 +85,38 @@ def test_management_data_is_deterministic_from_groq_plan():
 
 
 def test_writer_parser_accepts_complete_natural_surface():
-    paragraph = "これは一次情報の範囲を守りながら、読者が判断しやすいよう普通の言葉で説明する文章です。"
-    article = (paragraph + "\n\n") * 30 + "私なら、いまは利用条件の一次情報を確認してから次を判断します。"
-    title, body = parse_gemini_writer_output(
-        f"{TITLE_MARKER}\n数字の大きさだけで決めてよい？\n{ARTICLE_MARKER}\n{article}"
-    )
+    title, body = parse_gemini_writer_output(_surface(_valid_article()))
     assert title.endswith("？")
     assert body.endswith("。")
+    assert body.count("## ") == 2
+
+
+def test_writer_parser_rejects_bare_headings_and_unsupported_intensifier():
+    bare = _valid_article().replace("## 数字を見る前に条件を見る", "数字を見る前に条件を見る").replace(
+        "## 実際に確認すべきこと", "実際に確認すべきこと"
+    )
+    with pytest.raises(HybridWriterError, match="writer_markdown_heading_contract_invalid"):
+        parse_gemini_writer_output(_surface(bare))
+    hype = _valid_article().replace("普通の言葉", "劇的な言葉", 1)
+    with pytest.raises(HybridWriterError, match="writer_unsupported_intensifier"):
+        parse_gemini_writer_output(_surface(hype))
+
+
+def test_writer_parser_rejects_missing_decision_voice():
+    article = _valid_article().replace(
+        "私なら、いまは利用条件の一次情報を確認してから次を判断します。",
+        "いまは利用条件の一次情報を確認してから次を判断します。",
+    )
+    with pytest.raises(HybridWriterError, match="writer_decision_voice_missing"):
+        parse_gemini_writer_output(_surface(article))
 
 
 def test_writer_parser_rejects_list_and_short_or_incomplete_output():
     with pytest.raises(HybridWriterError, match="writer_list_output_forbidden"):
-        parse_gemini_writer_output(
-            f"{TITLE_MARKER}\nテスト。\n{ARTICLE_MARKER}\n" + ("本文です。" * 260) + "\n- 箇条書きです。"
-        )
+        parse_gemini_writer_output(_surface(_valid_article() + "\n- 箇条書きです。"))
+    short = "## 条件を見る\n\n短い本文です。\n\n## 判断する\n\n私なら、待ちます。"
     with pytest.raises(HybridWriterError, match="writer_article_too_short"):
-        parse_gemini_writer_output(
-            f"{TITLE_MARKER}\nテスト。\n{ARTICLE_MARKER}\n短い本文です。"
-        )
+        parse_gemini_writer_output(_surface(short))
+    incomplete = _valid_article()[:-1] + "途中"
     with pytest.raises(HybridWriterError, match="writer_article_incomplete"):
-        parse_gemini_writer_output(
-            f"{TITLE_MARKER}\nテスト。\n{ARTICLE_MARKER}\n" + ("本文です。" * 250) + "途中"
-        )
+        parse_gemini_writer_output(_surface(incomplete))
