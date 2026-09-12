@@ -104,3 +104,19 @@ def validate_hybrid_plan_text(text: str) -> dict:
     from jsonschema import Draft202012Validator
     Draft202012Validator(PLAN_SCHEMA).validate(data)
     return _hybrid_refined_semantic_guard(data)
+
+
+def load_hybrid_plan_report(plan_report_path: str) -> dict:
+    """Canonical Hybrid Plan loader used by every Groq->Gemini handoff."""
+    report=json.loads(Path(plan_report_path).read_text(encoding="utf-8"))
+    if report.get("status") != "PLAN_VALIDATED" or report.get("semantic_plan_validated") is not True:
+        raise TwoPassArticleError("hybrid_plan_report_rejected")
+    if report.get("provider") != "groq" or report.get("provider_calls") != 1:
+        raise TwoPassArticleError("hybrid_plan_provider_contract_invalid")
+    if report.get("business_writes") != 0 or report.get("persist_results") is not False:
+        raise TwoPassArticleError("hybrid_plan_persistence_contract_invalid")
+    try:
+        text=report["result"]["text"]
+    except (KeyError, TypeError):
+        raise TwoPassArticleError("hybrid_plan_result_missing") from None
+    return validate_hybrid_plan_text(text)
