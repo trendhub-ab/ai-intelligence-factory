@@ -48,6 +48,7 @@ def test_fixture_keeps_fact_locked_groq_plan_and_bounded_gemini_writer(tmp_path)
     assert report['mode']=='hybrid_groq_judgment_fact_locked'
     assert report['pass']=='decision_judgment_codes'
     assert report['fact_envelope_sha256']
+    assert fx['fact_envelope_sha256']==report['fact_envelope_sha256']
     assert report['composed_plan']['source_summary']
     assert report['composed_plan']['what']=='Path to Astra: critical capabilities and frontier safeguards'
     assert fx['writer_provider']=='gemini'
@@ -99,6 +100,33 @@ def test_fact_boundary_allows_source_supported_writer_facts():
     assert 'ExploitBenchで100%' in article
     assert title.endswith('？')
     assert '=== ARTICLE ===' in canonical
+
+
+def test_writer_handoff_rejects_source_context_changed_after_plan(tmp_path):
+    item=json.loads(Path(INPUT).read_text(encoding='utf-8'))
+    item['source_context'] += ' 後から追加された未検証Fact。'
+    changed=tmp_path/'changed-input.json'
+    changed.write_text(json.dumps(item,ensure_ascii=False),encoding='utf-8')
+    with pytest.raises(RuntimeError,match='hybrid_writer_fact_envelope_binding_mismatch'):
+        build_writer_fixture(str(changed),PLAN,str(tmp_path/'writer.json'))
+
+
+def test_writer_handoff_rejects_same_candidate_with_wrong_fact_hash(tmp_path):
+    report=json.loads(Path(PLAN).read_text(encoding='utf-8'))
+    report['fact_envelope_sha256']='0'*64
+    wrong=tmp_path/'wrong-hash-plan.json'
+    wrong.write_text(json.dumps(report,ensure_ascii=False),encoding='utf-8')
+    with pytest.raises(RuntimeError,match='hybrid_writer_fact_envelope_binding_mismatch'):
+        build_writer_fixture(INPUT,str(wrong),str(tmp_path/'writer.json'))
+
+
+def test_writer_handoff_rejects_legacy_non_fact_locked_plan(tmp_path):
+    report=json.loads(Path(PLAN).read_text(encoding='utf-8'))
+    report['mode']='legacy_two_pass'
+    legacy=tmp_path/'legacy-plan.json'
+    legacy.write_text(json.dumps(report,ensure_ascii=False),encoding='utf-8')
+    with pytest.raises(RuntimeError,match='hybrid_writer_fact_locked_plan_required'):
+        build_writer_fixture(INPUT,str(legacy),str(tmp_path/'writer.json'))
 
 
 def test_rejected_plan_never_builds_writer_fixture(tmp_path):
