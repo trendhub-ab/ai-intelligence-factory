@@ -4,14 +4,18 @@ on:
     branches: ['dev/groq-provider-foundation']
     paths:
       - 'groq_two_pass_article.py'
+      - 'groq_writer_v4_contract.py'
       - 'tests/test_groq_two_pass_article.py'
+      - 'tests/test_groq_writer_v4_contract.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
       - '.github/workflows/groq-two-pass-article-offline.yml'
   pull_request:
     branches: ['main']
     paths:
       - 'groq_two_pass_article.py'
+      - 'groq_writer_v4_contract.py'
       - 'tests/test_groq_two_pass_article.py'
+      - 'tests/test_groq_writer_v4_contract.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
       - '.github/workflows/groq-two-pass-article-offline.yml'
 permissions:
@@ -25,11 +29,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run two-pass adapter tests without network
-        run: python -m unittest tests.test_groq_two_pass_article -v
+      - name: Run two-pass and v4 writer guard tests without network
+        run: python -m unittest tests.test_groq_two_pass_article tests.test_groq_writer_v4_contract -v
       - name: Install schema validator
         run: pip install jsonschema
-      - name: Prove both pass fixtures fit their Free Plan lanes
+      - name: Prove both pass fixtures fit their Free Plan lanes with v4 writer contract
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
@@ -38,6 +42,7 @@ jobs:
           from pathlib import Path
           from ai_provider import GenerationRequest, GroqProvider
           from groq_two_pass_article import build_plan_fixture, build_writer_fixture, validate_plan
+          from groq_writer_v4_contract import harden_writer_fixture
           from groq_validation import schema_validator
 
           plan_fixture = build_plan_fixture(
@@ -77,15 +82,18 @@ jobs:
               'business_writes': 0,
               'result': {'text': json.dumps(plan, ensure_ascii=False), 'prompt_tokens': 1, 'completion_tokens': 1},
           }, ensure_ascii=False), encoding='utf-8')
-          writer_fixture = build_writer_fixture(
+          build_writer_fixture(
               'tests/fixtures/groq/article_parity_B0049_input.json',
               'synthetic-plan-report.json',
               'two-pass-writer-fixture.json',
           )
+          writer_fixture = harden_writer_fixture('two-pass-writer-fixture.json')
           writer_provider = GroqProvider(lambda _: None, token_budget=60000, model=writer_fixture['model'])
           writer_payload, writer_estimate = writer_provider.prepare(GenerationRequest(
               writer_fixture['prompt'], writer_fixture['max_output_tokens'], None, writer_fixture['reasoning_effort'],
           ))
+          assert writer_fixture['contract_version'] == 'groq_writer_v4_reader_first'
+          assert 'V4 READER-FIRST CONTRACT' in writer_fixture['prompt']
           print(json.dumps({
               'two_pass_preflight': 'PASS',
               'plan_model': plan_fixture['model'],
@@ -97,6 +105,7 @@ jobs:
               'writer_safe_tpm': 60000,
               'writer_request_bytes': len(json.dumps(writer_payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')),
               'writer_tools': writer_payload.get('compound_custom', {}).get('tools', {}).get('enabled_tools'),
+              'writer_contract': writer_fixture['contract_version'],
               'business_writes': 0,
               'live_provider': False,
           }, ensure_ascii=False))
