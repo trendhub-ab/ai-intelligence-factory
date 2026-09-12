@@ -1,4 +1,4 @@
-"""Run260/261/278/371/373/374: bounded Gemini primary / quality-repair routing.
+"""Run260/261/278/371/373/374/380: bounded Gemini primary / quality-repair routing.
 
 Business goal
 -------------
@@ -28,6 +28,12 @@ Run374 fixes the interaction between bounded quality-repair routing and the oper
 Pending Retry exclusion list. Excluded models are removed *before* the two-model quality
 pool is sliced, so an excluded 3.6 cannot consume the only fallback slot and prevent
 3.5 from being tried.
+
+Run380 uses Run379 production evidence. In a Pending Retry validation where the operator
+explicitly configured 3.7 -> 3.5 and excluded scarce 3.6/3.8, the generic quality-first
+sort still promoted 3.5 ahead of 3.7. Pending Retry quality repair must therefore honor
+the eligible operator order after exclusions; normal Production quality repair keeps the
+3.8-first policy. No request or gate budget is increased.
 """
 from __future__ import annotations
 
@@ -87,6 +93,11 @@ def _bounded_quality_pool(pool: Iterable[str]) -> list[str]:
     return _quality_first_pool(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
 
 
+def _bounded_pending_retry_quality_pool(pool: Iterable[str]) -> list[str]:
+    """Honor explicit eligible operator order for bounded Pending Retry repair."""
+    return _dedupe(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+
+
 def _pending_retry_excluded_models(request_origin: str) -> frozenset[str]:
     if str(request_origin or "").strip() not in _PENDING_RETRY_ORIGINS:
         return frozenset()
@@ -99,6 +110,13 @@ def _pool_after_pending_exclusions(pool: Iterable[str], request_origin: str) -> 
     if not excluded:
         return _dedupe(pool)
     return [model for model in _dedupe(pool) if model not in excluded]
+
+
+def _quality_pool_for_origin(pool: Iterable[str], request_origin: str) -> list[str]:
+    eligible = _pool_after_pending_exclusions(pool, request_origin)
+    if str(request_origin or "").strip() in _PENDING_RETRY_ORIGINS:
+        return _bounded_pending_retry_quality_pool(eligible)
+    return _bounded_quality_pool(eligible)
 
 
 def _is_quality_repair_kind(kind: str) -> bool:
@@ -179,8 +197,7 @@ def install(pipeline_module: Any) -> Any:
         current_pool = _request_pool(args, kwargs, production_pool)
         if _is_quality_repair_kind(kind):
             origin = _request_origin(args, kwargs)
-            eligible_pool = _pool_after_pending_exclusions(current_pool, origin)
-            args2, kwargs2 = _replace_pool_argument(args, kwargs, _bounded_quality_pool(eligible_pool))
+            args2, kwargs2 = _replace_pool_argument(args, kwargs, _quality_pool_for_origin(current_pool, origin))
             return original(*args2, **kwargs2)
         return original(*args, **kwargs)
 
@@ -201,11 +218,10 @@ def install(pipeline_module: Any) -> Any:
                 request_context=request_context,
                 request_origin=request_origin,
             )
-        eligible_pool = _pool_after_pending_exclusions(
+        quality_pool = _quality_pool_for_origin(
             getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool),
             request_origin,
         )
-        quality_pool = _bounded_quality_pool(eligible_pool)
         return pipeline_module._call_model_pool(
             prompt,
             config,
