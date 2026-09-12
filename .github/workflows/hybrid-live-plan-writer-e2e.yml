@@ -1,10 +1,12 @@
 name: Hybrid Live Groq Plan + Gemini Writer E2E
 on:
   workflow_dispatch:
-  push:
-    branches: ['dev/hybrid-groq-gemini']
-    paths:
-      - '.runtime/hybrid_live_plan_writer_trigger.txt'
+    inputs:
+      google_api_approved:
+        description: 'Explicitly approve Google/Gemini API use for this one E2E run'
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -12,10 +14,12 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    if: ${{ inputs.google_api_approved == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       PYTHONPATH: ${{ github.workspace }}
+      AIIF_GOOGLE_API_APPROVED: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,6 +66,7 @@ jobs:
               'safe_tpm':7000,
               'strict_enum_types':True,
               'groq_live_calls_expected':1,
+              'google_api_explicitly_approved':True,
               'business_writes':0,
           },ensure_ascii=False))
 
