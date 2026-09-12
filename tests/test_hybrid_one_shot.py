@@ -42,6 +42,8 @@ def test_fixture_keeps_fact_locked_groq_plan_and_bounded_gemini_writer(tmp_path)
     assert fx['writer_models']==[PRIMARY_GEMINI_WRITER_MODEL,SECONDARY_GEMINI_WRITER_MODEL]
     assert fx['provider_calls_expected']=={'groq_live':0,'gemini_live_max':2}
     assert '503/404' in fx['fallback_contract']
+    assert fx['google_api_requires_explicit_approval'] is True
+    assert fx['google_api_approval_env']=='AIIF_GOOGLE_API_APPROVED'
     assert fx['business_writes']==0 and fx['persist_results'] is False
     assert '最終日本語Writer' in fx['writer_prompt']
     assert '事実の上限はSOURCE CONTEXT' in fx['writer_prompt']
@@ -80,7 +82,21 @@ def test_rejected_plan_never_builds_writer_fixture(tmp_path):
         build_writer_fixture(INPUT,str(bad),str(tmp_path/'writer.json'))
 
 
-def test_one_writer_transport_attempt_has_no_pool_fallback(tmp_path):
+def test_google_api_is_blocked_without_explicit_approval(tmp_path, monkeypatch):
+    monkeypatch.delenv('AIIF_GOOGLE_API_APPROVED', raising=False)
+    build_writer_fixture(INPUT,PLAN,str(tmp_path/'fixture.json'))
+    calls=[]
+    class FakePipeline:
+        def _generate_via_chat(self,*args,**kwargs):
+            calls.append(True)
+            return SimpleNamespace(text='never')
+    with pytest.raises(RuntimeError,match='hybrid_google_api_explicit_approval_required'):
+        run_one_gemini_writer_call(FakePipeline(),str(tmp_path/'fixture.json'),str(tmp_path/'report.json'))
+    assert calls==[]
+
+
+def test_one_writer_transport_attempt_has_no_pool_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv('AIIF_GOOGLE_API_APPROVED','true')
     build_writer_fixture(INPUT,PLAN,str(tmp_path/'fixture.json'))
     calls=[]
     class FakePipeline:
@@ -96,7 +112,8 @@ def test_one_writer_transport_attempt_has_no_pool_fallback(tmp_path):
     assert report['provider_calls']==1 and report['business_writes']==0
 
 
-def test_bounded_writer_falls_back_once_from_503_to_38(tmp_path):
+def test_bounded_writer_falls_back_once_from_503_to_38(tmp_path, monkeypatch):
+    monkeypatch.setenv('AIIF_GOOGLE_API_APPROVED','true')
     build_writer_fixture(INPUT,PLAN,str(tmp_path/'fixture.json'))
     calls=[]
     class FakePipeline:
@@ -112,7 +129,8 @@ def test_bounded_writer_falls_back_once_from_503_to_38(tmp_path):
     assert report['attempts'][0]['http_status']==503
 
 
-def test_bounded_writer_does_not_fallback_on_nonavailability_error(tmp_path):
+def test_bounded_writer_does_not_fallback_on_nonavailability_error(tmp_path, monkeypatch):
+    monkeypatch.setenv('AIIF_GOOGLE_API_APPROVED','true')
     build_writer_fixture(INPUT,PLAN,str(tmp_path/'fixture.json'))
     calls=[]
     class FakePipeline:
