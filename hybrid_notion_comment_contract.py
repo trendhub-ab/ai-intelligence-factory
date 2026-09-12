@@ -50,6 +50,27 @@ CONTENT_COMMENT_CONTRACT = {
     "公開要約": (LEGACY_ARTICLE_MANAGEMENT_FROZEN, PRODUCTION_FROZEN),
 }
 
+# Production notion_payloads.py config keys that feed comment-like Content DB fields.
+# CI statically binds these surfaces to the ownership inventory so a new payload field
+# cannot silently bypass migration governance.
+CONTENT_PAYLOAD_CONFIG_MAP = {
+    "PROP_SCORE_BREAKDOWN": "スコア内訳",
+    "PROP_WHAT": "これは何？",
+    "PROP_WHY_IMPORTANT": "なぜ重要？",
+    "PROP_WHY_NOT_IMPORTANT": "なぜ重要ではない？",
+    "PROP_WHO": "対象",
+    "PROP_ACTION": "次にやること",
+    "PROP_PARADIGM_SHIFT": "パラダイム変化",
+    "PROP_ALTERNATIVE_COMPARISON": "代替比較",
+    "PROP_MIGRATION_COST": "移行コスト",
+    "PROP_SOURCE_SUMMARY": "元情報要約",
+    "PROP_DECISION_REASON": "判断理由",
+    "PROP_WHO_SHOULD_USE": "向いている人",
+    "PROP_WHO_SHOULD_NOT_USE": "向いていない人",
+    "PROP_FUTURE_SCENARIO": "今後の見通し",
+    "PROP_SCREENING_REASON": "選別理由",
+}
+
 TECHNOLOGY_COMMENT_CONTRACT = {
     "主リスク（内部）": (LEGACY_PRODUCT_REVIEW_FROZEN, SHADOW_ONLY),
     "向いている用途（内部）": (LEGACY_PRODUCT_REVIEW_FROZEN, SHADOW_ONLY),
@@ -62,6 +83,17 @@ TECHNOLOGY_COMMENT_CONTRACT = {
     "元情報要約": (SYSTEM_DETERMINISTIC, PRODUCTION_FROZEN),
     "推奨アクション理由": (SYSTEM_DETERMINISTIC, PRODUCTION_FROZEN),
     "一次情報URL（内部）": (SOURCE_INHERITED, PRODUCTION_FROZEN),
+}
+
+TECHNOLOGY_CORE_CONSTANT_MAP = {
+    "TECH_PROP_MAIN_RISK": "主リスク（内部）",
+    "TECH_PROP_BEST_FOR": "向いている用途（内部）",
+    "TECH_PROP_AVOID_FOR": "向いていない用途（内部）",
+    "TECH_PROP_SHORT_RATIONALE": "判断理由（内部）",
+    "TECH_PROP_TRACKING_REASON": "追跡理由",
+    "TECH_PROP_SCREENING_REASON": "選別理由",
+    "TECH_PROP_SOURCE_SUMMARY": "元情報要約",
+    "TECH_PROP_EVIDENCE_URLS": "一次情報URL（内部）",
 }
 
 PRODUCT_REVIEW_DIRECT_FIELDS = {
@@ -120,7 +152,6 @@ def _score_breakdown(plan: Mapping) -> str:
 
 
 def build_content_comment_shadow(plan_report_path: str) -> dict:
-    """Build non-persistent candidate comments from the canonical Fact-Locked Plan only."""
     plan = _strict_fact_locked_plan(plan_report_path)
     values = {
         "スコア内訳": _score_breakdown(plan),
@@ -131,11 +162,9 @@ def build_content_comment_shadow(plan_report_path: str) -> dict:
     if set(values) != {name for name, (_, state) in CONTENT_COMMENT_CONTRACT.items() if state == SHADOW_ONLY}:
         raise CommentContractError("content_shadow_contract_drift")
     return {
-        "mode": SHADOW_ONLY,
-        "persist_allowed": False,
+        "mode": SHADOW_ONLY, "persist_allowed": False,
         "existing_value_policy": PRESERVE_EXISTING,
-        "source": FACT_LOCKED_PLAN_DETERMINISTIC,
-        "values": values,
+        "source": FACT_LOCKED_PLAN_DETERMINISTIC, "values": values,
     }
 
 
@@ -192,4 +221,22 @@ def compare_comment_style(existing: str, candidate: str) -> dict:
         "candidate_multiline": "\n" in new or "\r" in new,
         "candidate_has_markdown": bool(re.search(r"(^|\s)(#{1,6}|[-*+]\s|\d+[.)]\s)", new)),
         "semantic_equivalence_claimed": False, "persist_allowed": False,
+    }
+
+
+def evaluate_shadow_promotion(existing_values: Mapping, candidate_values: Mapping, *, machine_checks_passed: bool) -> dict:
+    """Return evidence for review, never an automatic production migration approval."""
+    comparisons = {}
+    for name, candidate in candidate_values.items():
+        if name not in existing_values:
+            raise CommentContractError("shadow_existing_value_missing")
+        comparisons[name] = compare_comment_style(str(existing_values[name]), str(candidate))
+    return {
+        "machine_checks_passed": bool(machine_checks_passed),
+        "comparisons": comparisons,
+        "human_semantic_review_required": True,
+        "automatic_promotion_allowed": False,
+        "production_write_allowed": False,
+        "existing_value_policy": PRESERVE_EXISTING,
+        "reason": "comment_migration_requires_explicit_quality_parity_review",
     }
