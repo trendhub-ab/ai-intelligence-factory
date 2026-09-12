@@ -14,7 +14,7 @@ from groq_rate_policy import GPT_OSS_120B, policy_for_model
 
 class ProviderError(RuntimeError):
     def __init__(self, kind: str, status: int | None = None, retry_after: float | None = None):
-        super().__init__(kind)  # Never include response bodies, prompts or keys.
+        super().__init__(kind)
         self.kind, self.status, self.retry_after = kind, status, retry_after
 
 
@@ -24,6 +24,7 @@ class GenerationRequest:
     max_output_tokens: int
     schema: dict | None = None
     reasoning_effort: str = "low"
+    structured_output_mode: str = "strict_schema"
 
 
 @dataclass(frozen=True)
@@ -49,13 +50,6 @@ def _retry_after(headers: dict) -> float | None:
 
 
 def conservative_token_estimate(text: str) -> int:
-    """Preflight estimate only; provider-reported usage is authoritative after success.
-
-    UTF-8 bytes are not tokens and greatly overstate some text while understating some
-    model tokenizers for Japanese. This estimate intentionally stays tokenizer-free so
-    Production has no model-SDK coupling. It is used to reject obviously oversized
-    requests before send; every successful live response is reconciled to Groq's usage.
-    """
     if not isinstance(text, str):
         raise ProviderError("invalid_request")
     non_ascii = sum(1 for char in text if ord(char) > 127)
@@ -64,19 +58,6 @@ def conservative_token_estimate(text: str) -> int:
 
 
 def _groq_strict_schema(schema: dict) -> dict:
-    """Return a conservative Groq Strict-Mode schema while preserving local validation.
-
-    Groq documents Strict Structured Outputs as a JSON-Schema subset with every object
-    property required and additionalProperties=false. Keep the structural/type constraints
-    that Groq documents and move presentation-size constraints to the caller's local
-    validator. The original request.schema is still used after generation, so removing
-    transport-only min/max length/item keywords does not weaken Factory validation.
-
-    Groq's strict-mode enum examples explicitly declare the underlying primitive type
-    (for example ``type: string`` together with ``enum``). Older Factory schemas allowed
-    string enums without ``type``. Normalize those only on the transport copy; the
-    original schema remains untouched and is still used for local post-response checks.
-    """
     if not isinstance(schema, dict):
         raise ProviderError("schema_validator_required")
     validation_only = {"minLength", "maxLength", "minItems", "maxItems"}
@@ -112,13 +93,6 @@ def _groq_strict_schema(schema: dict) -> dict:
 
 
 class GroqProvider:
-    """Bounded Groq adapter. One instance is a run, NOT a daily quota ledger.
-
-    The pre-send estimate is a safety reservation, not a claim about exact tokenization.
-    If Groq returns a valid successful response, provider-reported usage is authoritative.
-    The caller must reconcile its persistent reservation ledger to that actual usage.
-    """
-
     def __init__(self, transport: Callable, *, validate_schema: Callable | None = None,
                  request_budget: int = 1, token_budget: int | None = None,
                  model: str = GPT_OSS_120B.model):
@@ -143,6 +117,8 @@ class GroqProvider:
             raise ProviderError("invalid_output_limit")
         if request.reasoning_effort not in {"low", "medium", "high"}:
             raise ProviderError("invalid_reasoning_effort")
+        if request.structured_output_mode not in {"strict_schema", "json_object_local_strict"}:
+            raise ProviderError("invalid_structured_output_mode")
         payload = {"model": self.model, "messages": [{"role": "user", "content": request.prompt}],
                    "max_completion_tokens": request.max_output_tokens, "stream": False}
         if self.model.startswith("openai/gpt-oss-"):
@@ -155,19 +131,19 @@ class GroqProvider:
                 raise ProviderError("schema_not_supported_for_model")
             if not isinstance(request.schema, dict) or self.validate_schema is None:
                 raise ProviderError("schema_validator_required")
-            payload["response_format"] = {"type": "json_schema", "json_schema": {
-                "name": "factory_response", "strict": True, "schema": _groq_strict_schema(request.schema)}}
-            # Groq requires reasoning output to be parsed/hidden when GPT-OSS is used
-            # with JSON modes. Keep reasoning private and reserve the visible response
-            # exclusively for the strict schema surface.
+            if request.structured_output_mode == "strict_schema":
+                payload["response_format"] = {"type": "json_schema", "json_schema": {
+                    "name": "factory_response", "strict": True, "schema": _groq_strict_schema(request.schema)}}
+            else:
+                payload["response_format"] = {"type": "json_object"}
             if self.model.startswith("openai/gpt-oss-"):
                 payload["reasoning_format"] = "hidden"
+        elif request.structured_output_mode != "strict_schema":
+            raise ProviderError("structured_output_schema_required")
         try:
             framing = dict(payload)
             framing["messages"] = [{"role": "user", "content": ""}]
-            framing_tokens = conservative_token_estimate(
-                json.dumps(framing, ensure_ascii=False, allow_nan=False)
-            ) + 128
+            framing_tokens = conservative_token_estimate(json.dumps(framing, ensure_ascii=False, allow_nan=False)) + 128
             estimate = conservative_token_estimate(request.prompt) + framing_tokens + request.max_output_tokens
         except (TypeError, ValueError):
             raise ProviderError("invalid_request") from None
@@ -180,7 +156,7 @@ class GroqProvider:
         if self.attempts >= self.request_budget or self.reserved_tokens + estimate > self.token_budget:
             raise ProviderError("validation_budget_exceeded")
         self.attempts += 1
-        self.reserved_tokens += estimate  # Unknown timeout/failure remains conservatively counted.
+        self.reserved_tokens += estimate
         try:
             status, headers, body = self.transport(payload)
         except ProviderError:
