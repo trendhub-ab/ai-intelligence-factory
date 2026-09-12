@@ -30,7 +30,7 @@ jobs:
           expected='RUN366_ONE_SHOT_APPLY_7_20260912_3f7c1a9e'
           actual="$(tr -d '\r\n' < .github/triggers/run366-apply-run365.txt)"
           test "$actual" = "$expected"
-          changed="$(git diff-tree --no-commit-id --name-only -r HEAD | sort)"
+          changed="$(git diff --name-only HEAD^1 HEAD | sort)"
           printf '%s\n' "$changed"
           printf '%s\n' "$changed" | grep -Fx '.github/triggers/run366-apply-run365.txt'
           printf '%s\n' "$changed" | grep -Fx '.github/workflows/run366-one-shot-run365-apply.yml'
