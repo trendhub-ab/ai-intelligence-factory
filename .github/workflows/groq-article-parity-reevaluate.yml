@@ -4,6 +4,7 @@ on:
     branches: ['dev/groq-provider-foundation']
     paths:
       - 'groq_article_parity.py'
+      - 'tests/test_groq_article_parity.py'
       - 'tests/fixtures/groq/article_parity_B0049_input.json'
       - '.github/workflows/groq-article-parity-reevaluate.yml'
 permissions:
