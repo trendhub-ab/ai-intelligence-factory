@@ -32,17 +32,21 @@ class _Response:
 
 
 def _selector_pipeline():
-    rows = [
+    regen_rows = [
         {"notion_page_id": "ready", "repo": {"nameWithOwner": "ready"}},
         {"notion_page_id": "review", "repo": {"nameWithOwner": "review"}},
         {"notion_page_id": "quality", "repo": {"nameWithOwner": "quality"}},
+    ]
+    pending_rows = [
         {"notion_page_id": "pending", "repo": {"nameWithOwner": "pending"}},
+        {"notion_page_id": "stale", "repo": {"nameWithOwner": "stale"}},
     ]
     statuses = {
         "ready": ("Ready", "Deep Dive"),
         "review": ("Needs Editorial Review", "Deep Dive"),
         "quality": ("Not Planned", "Quality Failed"),
         "pending": ("Not Planned", "Pending Retry"),
+        "stale": ("Needs Editorial Review", "Deep Dive"),
     }
 
     class _Requests:
@@ -51,16 +55,22 @@ def _selector_pipeline():
             page_id = url.rsplit("/", 1)[-1]
             return _Response(*statuses[page_id])
 
-    calls = []
+    regen_calls = []
+    pending_calls = []
 
     def get_regen_test_items(limit, source):
-        calls.append((limit, source))
-        return rows
+        regen_calls.append((limit, source))
+        return regen_rows
+
+    def get_pending_retry_items(limit):
+        pending_calls.append(limit)
+        return pending_rows
 
     pipeline = SimpleNamespace(
         requests=_Requests,
         _notion_headers=lambda: {"Authorization": "test"},
         get_regen_test_items=get_regen_test_items,
+        get_pending_retry_items=get_pending_retry_items,
         logger=_Logger(),
         PROP_ARTICLE_STATUS="Article Status",
         PROP_CONTENT_STATUS="Content Status",
@@ -69,31 +79,44 @@ def _selector_pipeline():
         CONTENT_STATUS_PENDING_RETRY="Pending Retry",
         CONTENT_STATUS_QUALITY_FAILED="Quality Failed",
     )
-    return pipeline, calls
+    return pipeline, regen_calls, pending_calls
 
 
 def test_selector_bypasses_acquisition_dedup_but_excludes_ready_and_pending():
-    pipeline, calls = _selector_pipeline()
+    pipeline, regen_calls, pending_calls = _selector_pipeline()
     selected = article_revalidation.select_revalidation_items(pipeline, limit=2)
 
-    assert calls == [(100, "")]
+    assert regen_calls == [(100, "")]
+    assert pending_calls == []
     assert [row["notion_page_id"] for row in selected] == ["review", "quality"]
     assert selected[0]["revalidation_article_status"] == "Needs Editorial Review"
     assert selected[1]["revalidation_content_status"] == "Quality Failed"
 
 
-def test_pending_only_selector_isolates_pending_retry():
-    pipeline, calls = _selector_pipeline()
+def test_pending_only_selector_uses_canonical_pending_reader_and_rechecks_state():
+    pipeline, regen_calls, pending_calls = _selector_pipeline()
     selected = article_revalidation.select_revalidation_items(
         pipeline,
         limit=1,
         pending_only=True,
     )
 
-    assert calls == [(100, "")]
+    assert regen_calls == []
+    assert pending_calls == [100]
     assert [row["notion_page_id"] for row in selected] == ["pending"]
     assert selected[0]["revalidation_article_status"] == "Not Planned"
     assert selected[0]["revalidation_content_status"] == "Pending Retry"
+
+
+def test_pending_only_fails_closed_without_canonical_reader():
+    pipeline, _, _ = _selector_pipeline()
+    delattr(pipeline, "get_pending_retry_items")
+
+    assert article_revalidation.select_revalidation_items(
+        pipeline,
+        limit=1,
+        pending_only=True,
+    ) is None
 
 
 def test_revalidation_is_read_only_and_bounded(monkeypatch):
