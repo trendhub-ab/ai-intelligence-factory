@@ -1,8 +1,9 @@
 name: Run370 Pending Retry Validation [ONE-TIME]
 
 # Read-only pilot for the oldest persisted Pending Retry row.
-# Revision 5 validates Run371: explicit 3.8-first order, pending-validation immediate
-# 503 fallback, and one bounded Reader-only repair including final summary jargon.
+# Revision 6 / Run372: keep 3.8-first immediate 503 fallback and one bounded
+# Reader-only repair, but allow two additional provider attempts so transient
+# provider failures do not consume the entire quality-repair allowance.
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   push:
@@ -27,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run370/371: one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, immediate pending-validation 503 fallback, persist=false.'
+          echo 'Run372: one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, immediate 503 fallback, persist=false, max 6 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -61,9 +62,9 @@ jobs:
           TZ: 'Asia/Tokyo'
           AIIF_ONE_SHOT_MODE: 'pending_retry_validation'
           ARTICLE_REVALIDATION_LIMIT: '1'
-          ARTICLE_REVALIDATION_REQUEST_BUDGET: '4'
-          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
-          GEMINI_PENDING_RETRY_REQUEST_BUDGET: '4'
+          ARTICLE_REVALIDATION_REQUEST_BUDGET: '6'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '6'
+          GEMINI_PENDING_RETRY_REQUEST_BUDGET: '6'
           GEMINI_TRANSIENT_503_COOLDOWN_THRESHOLD: '1'
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -82,7 +83,7 @@ jobs:
           NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
-          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
           NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           EVIDENCE_HEALTH_MAX_CHECKS_PER_RUN: '0'
@@ -117,13 +118,13 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run370/371 pending validation'
+            echo '### Run372 pending validation'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
             echo '- explicit primary order: `3.8 -> 3.6 -> 3.5 -> 3.7 fallback`'
             echo '- pending-validation HTTP 503: immediate next-model fallback'
-            echo '- provider request budget: at most `4`'
+            echo '- provider request budget: at most `6`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
             echo '- note draft/public publication: `false`'
