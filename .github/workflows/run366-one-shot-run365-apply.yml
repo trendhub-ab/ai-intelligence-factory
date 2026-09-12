@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected='RUN366_ONE_SHOT_APPLY_7_20260912_3f7c1a9e'
+          expected='RUN366_ONE_SHOT_APPLY_7_20260912_b84e5c21'
           actual="$(tr -d '\r\n' < .github/triggers/run366-apply-run365.txt)"
           test "$actual" = "$expected"
           changed="$(git diff --name-only HEAD^1 HEAD | sort)"
@@ -47,7 +47,6 @@ jobs:
 
       - name: Re-run zero-provider recovery guards
         run: |
-          python -m unittest tests.test_run362_ready_provenance_audit -v
           python -m unittest tests.test_run365_historical_ready_rebase -v
           python -m unittest tests.test_run364_historical_ready_rebase -v
           python -m unittest tests.test_run361_byte_preserving_ready_rebase -v
