@@ -66,19 +66,25 @@ def select_revalidation_items(
 ):
     """Return existing non-Ready rows, independent of acquisition dedup.
 
-    ``get_regen_test_items`` already reconstructs the source/candidate payload from
-    Notion without screening or Stock writes. We deliberately scan a larger bounded
-    window, then verify the *current* page lifecycle before selecting anything.
-
-    ``pending_only=True`` is a separate fail-closed contract used by the explicit
-    pending-retry validation mode. It selects only Content Status = Pending Retry and
-    never mixes Editorial Review or Quality Failed rows into that lane.
+    Normal validation uses ``get_regen_test_items`` for current Deep Dive rows.
+    Pending Retry must use the canonical persisted backlog reader instead: the regen
+    reader intentionally filters ``Content Status = Deep Dive`` and therefore can never
+    surface a Pending Retry row. Both paths remain read-only here, and every selected
+    page is re-read immediately before validation so stale lifecycle state fails closed.
     """
     limit = max(0, int(limit))
     if limit == 0:
         return []
     scan_limit = max(limit, min(100, int(scan_limit)))
-    rows = pipeline.get_regen_test_items(scan_limit, "")
+
+    if pending_only:
+        pending_reader = getattr(pipeline, "get_pending_retry_items", None)
+        if not callable(pending_reader):
+            pipeline.logger.error("[ARTICLE REVALIDATION] pending retry reader unavailable")
+            return None
+        rows = pending_reader(scan_limit)
+    else:
+        rows = pipeline.get_regen_test_items(scan_limit, "")
     if rows is None:
         return None
 
