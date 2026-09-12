@@ -1,0 +1,27 @@
+{
+  "mode": "groq_saved_plan_evidence",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "rate_policy": "gpt_oss_120b",
+  "stage": "article",
+  "source_run_id": 34663921192,
+  "source_experiment": "article-two-pass-B0049-plan-v3-semantic-guard",
+  "live": true,
+  "provider_calls": 1,
+  "business_writes": 0,
+  "quality_validated": false,
+  "actual_tokens": 2067,
+  "sanitized_for_writer_isolation": true,
+  "sanitization": {
+    "reason": "Remove unverified authorization/escalation wording before isolated writer validation.",
+    "changed_fields": ["action", "article_angle", "reader_bridge", "title_seed"]
+  },
+  "result": {
+    "text": "{\"source_summary\":\"OpenAI一次資料（2026-09-01）によると、AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルであり、ExploitBenchで既知脆弱性の100%を記録し、2026年6〜8月に公開されたV8脆弱性20件の評価中に2件のzero-day脆弱性を発見した。\",\"what\":\"Astraのサイバー能力評価と公開時に示された安全策\",\"why_important\":\"能力の高さと実際の利用条件を分けて判断する必要があるため\",\"decision\":\"WATCH\",\"decision_reason\":[\"能力は一次資料で確認された\",\"一般利用条件は確認できない\"],\"business_impact\":15,\"technical_impact\":20,\"urgency\":10,\"market_impact\":5,\"reliability\":12,\"action\":\"利用条件を一次情報で確認する。\",\"article_value\":80,\"article_angle\":\"100%という数字の強さと、実際に使える条件は別の話として読む。\",\"reader_bridge\":\"簡単に言えば、レーシングカーの速さと公道を走れる条件は別々に確認する必要があります。\",\"title_seed\":\"100%でも、今すぐ使えるとは限らない\",\"access_status\":\"NOT_CONFIRMED\"}",
+    "provider": "groq",
+    "model": "openai/gpt-oss-120b",
+    "prompt_tokens": 1005,
+    "completion_tokens": 1062,
+    "reserved_token_estimate": 2532
+  }
+}
