@@ -1,8 +1,8 @@
 name: Run370 Pending Retry Validation [ONE-TIME]
 
 # Read-only pilot for the oldest persisted Pending Retry row.
-# Revision 4 adds Run371 routing precision: explicit 3.8-first order is authoritative
-# and this bounded lane cools down a model after its first 503.
+# Revision 5 validates Run371: explicit 3.8-first order, pending-validation immediate
+# 503 fallback, and one bounded Reader-only repair including final summary jargon.
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run370/371: one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, one-503 fallback, persist=false.'
+          echo 'Run370/371: one Pending Retry candidate, one bounded Reader-only repair, 3.8-first, immediate pending-validation 503 fallback, persist=false.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -51,6 +51,7 @@ jobs:
           python -m pytest tests/test_run370_pending_reader_repair.py -q
           python -m pytest tests/test_run371_explicit_model_order.py -q
           python -m pytest tests/test_run371_transient_503_override.py -q
+          python -m pytest tests/test_run371_pending_origin_provider_policy.py -q
           python -m pytest tests/test_run367_readonly_and_reader_interaction.py -q
           python run280_publication_dependency_guard.py
 
@@ -121,7 +122,7 @@ jobs:
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
             echo '- explicit primary order: `3.8 -> 3.6 -> 3.5 -> 3.7 fallback`'
-            echo '- 503 cooldown threshold: `1` for this process only'
+            echo '- pending-validation HTTP 503: immediate next-model fallback'
             echo '- provider request budget: at most `4`'
             echo '- persist_results: `false`'
             echo '- Note Ready reconciliation: `false`'
