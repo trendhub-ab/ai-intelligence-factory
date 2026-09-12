@@ -24,6 +24,7 @@ class GroqWriterV9CompoundTests(unittest.TestCase):
             self.assertEqual(preflight['external_tools'], 'disabled')
             self.assertLessEqual(preflight['reserved_estimate'], preflight['safe_tpm'])
             self.assertGreater(preflight['headroom'], 10000)
+            self.assertLess(preflight['request_bytes'], 24576)
 
     def test_v9_contract_is_idempotent(self):
         with tempfile.TemporaryDirectory() as td:
