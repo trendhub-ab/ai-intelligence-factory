@@ -1,4 +1,4 @@
-# AI Intelligence Factory Run370 仕様追補
+# AI Intelligence Factory Run370 / Run371 仕様追補
 
 更新日: 2026-09-12
 
@@ -6,7 +6,7 @@
 
 Run368の実復旧で `Pending Retry` へ退避した候補を、通常の新規取得・Screening・Stock作成へ戻さず、保存済み一次情報と現行Quality Gateを使って安全に再検証する。
 
-Run370はGate緩和ではなく、既存のPending Retry経路に存在した到達不能・Reader Repair契約不整合を修正する。
+Run370/371はGate緩和ではなく、既存のPending Retry経路に存在した到達不能・Reader Repair・モデルルーティング・503消費の契約不整合を修正する。
 
 ## 実データから判明した問題
 
@@ -14,6 +14,8 @@ Run370はGate緩和ではなく、既存のPending Retry経路に存在した到
 2. 通常の `get_regen_test_items()` は `Content Status = Deep Dive` を固定条件としており、`Pending Retry` 候補を構造的に返せなかった。
 3. `pipeline.py` には既に正規の `get_pending_retry_items()` が存在するため、新規DB取得ロジックを作る必要はなかった。
 4. 実Pending Retry「Agent Memory as a File Format」はFact/Evidence/Publication側では通過可能だったが、Reader-only REVIEWで `reader_value_review_no_retry` となり、Run284のReader Repair認可が `current_policy_ready_recovery` 専用だったため修復されなかった。
+5. Run370 workflowで `3.8 -> 3.6 -> 3.5` を明示してもRun260 install時にDEFAULT poolが前置され、実際には3.7から実行された。
+6. 4-requestの小さい検証枠で同一モデルの503を2回許すと、3.7×2 + 3.8×2だけで全枠を消費し、品質修復へ到達できなかった。
 
 ## Run370の修正
 
@@ -44,12 +46,49 @@ Run284の既存認可を、次の明示レーンだけへ拡張する。
 
 通常の新規候補、Fact混在、Evidence不足、HARD blockerは従来どおり `reader_value_review_no_retry` のままとする。
 
+## Run371の修正
+
+### 明示モデル順を尊重する
+
+通常Productionで明示設定がない場合は、従来どおり次を既定とする。
+
+1. `gemini-3.7-flash`
+2. `gemini-3.8-flash`
+3. `gemini-3.6-flash`
+4. `gemini-3.5-flash`
+
+ただし、`DEEP_DIVE_MODEL_POOL` / workflow由来の明示設定が存在する場合は、その指定順を先頭から保持し、未指定の既定fallbackだけを末尾へ追加する。
+
+Run370 read-only検証では次を明示する。
+
+1. `gemini-3.8-flash`
+2. `gemini-3.6-flash`
+3. `gemini-3.5-flash`
+4. 未指定既定fallbackとして `gemini-3.7-flash`
+
+この変更はモデル別quota、persistent safety cap、Deep Dive request budget、Quality Gateを変更しない。
+
+### 503の小予算検証向けcooldown
+
+通常Productionの一時503 policyは従来どおり「同一モデル2回目の503でrun-local cooldown」とする。
+
+明示的な小予算検証レーンでは `GEMINI_TRANSIENT_503_COOLDOWN_THRESHOLD=1` を設定可能とし、同一モデルが最初の503を返した時点でそのRun中だけcooldownへ入れる。
+
+- 成功扱いにはしない。
+- quota/Gateを緩和しない。
+- 別モデルへ早くfallbackするためだけに使う。
+- 環境変数で2より大きい値を指定してもProduction defaultより緩くできない。
+- 設定はプロセス内だけで永続化しない。
+
 ## Read-only検証契約
 
 `pending_retry_validation` は次を固定する。
 
 - 対象: 最大1件
 - Gemini request budget: 最大4
+- Reader Repair: 最大1回、Reader-only + safe Evidenceのみ
+- 明示モデル順: 3.8 -> 3.6 -> 3.5 -> 3.7 fallback
+- 503 cooldown: この検証プロセスのみ1回
 - `persist_results = false`
 - Notion本文・Article Status・Content Statusを書き換えない
 - Note Ready同期を行わない
@@ -70,6 +109,13 @@ Run284の既存認可を、次の明示レーンだけへ拡張する。
 8. 通常新規候補はRepair不可。
 9. 既存 `current_policy_ready_recovery` の認可は維持。
 10. read-only検証では永続化しない。
+11. 明示モデル設定がなければ3.7-firstを維持する。
+12. 明示3.8-first設定は順序を維持する。
+13. 未指定既定モデルは明示モデル群の後ろへ追加する。
+14. モデル重複は除去する。
+15. 通常503 thresholdは2のまま維持する。
+16. 小予算検証のthreshold=1では最初の503でrun-local cooldownする。
+17. threshold設定でProduction defaultより緩くできない。
 
 ## 次工程: Pending Retry Recovery
 
