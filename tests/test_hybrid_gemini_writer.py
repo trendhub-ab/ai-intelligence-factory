@@ -102,6 +102,13 @@ def test_source_context_is_the_only_fact_prose_surface():
     assert "Writerに渡す事実本文はSOURCE CONTEXTだけ" in prompt
 
 
+def test_source_context_over_writer_limit_fails_closed_instead_of_truncating():
+    item = _item()
+    item["source_context"] = "確認済みFact。" * 3000
+    with pytest.raises(HybridWriterError, match="source_context_exceeds_writer_fact_surface"):
+        build_gemini_writer_prompt(item, _plan())
+
+
 def test_prompt_does_not_ask_gemini_to_rescore():
     prompt = build_gemini_writer_prompt(_item(), _plan())
     for phrase in ("Decision Scoreを再計算", "採点してください", "Article Valueを採点"):
