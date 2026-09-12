@@ -1,13 +1,15 @@
-"""Run256 thin extension over the byte-preserved Run255 Decision Intelligence core.
+"""Run257 thin extension over the byte-preserved Run255 Decision Intelligence core.
 
 The Run255 implementation is stored verbatim in decision_intelligence_run255_core.py.
 It is executed in this module's globals so existing patching/import behaviour remains
-unchanged. Run256 overrides only the monthly Decision Brief renderer: meaningful
-changes become concrete Decision Updates; no-change months state that explicitly
-and include one monitoring point. No schema, score/status semantics, Evidence gate,
-or provider-call policy is changed.
+unchanged. Run256 overrides only the monthly Decision Brief renderer. Run257 adds a
+fail-closed ownership guard around Technology Intelligence comment-like properties:
+existing non-empty values are immutable and only owned blanks may be filled.
+No schema, score/status semantics, Evidence gate, or provider-call policy is changed.
 """
 from pathlib import Path as _Run256Path
+
+from comment_write_contract import CommentWriteRequest, WriteDecision, decide_comment_write
 
 _RUN256_CORE_PATH = _Run256Path(__file__).with_name("decision_intelligence_run255_core.py")
 exec(compile(_RUN256_CORE_PATH.read_text(encoding="utf-8"), str(_RUN256_CORE_PATH), "exec"), globals(), globals())
@@ -187,3 +189,49 @@ def create_history_monthly_digest(period_id: str, generated_at: str | None = Non
         "decision_brief_count": len(decision_brief),
         "page_id": res.json().get("id") or "",
     }
+
+
+# Run257: preserve the existing product copy while allowing only owned blank fills.
+# Keep this in the thin extension; decision_intelligence_run255_core.py remains byte-preserved.
+_RUN257_COMMENT_FIELDS = {
+    "main_risk": TECH_PROP_MAIN_RISK,
+    "best_for": TECH_PROP_BEST_FOR,
+    "avoid_for": TECH_PROP_AVOID_FOR,
+    "short_rationale": TECH_PROP_SHORT_RATIONALE,
+}
+_RUN257_UPSERT_TECHNOLOGY_INTELLIGENCE_CORE = upsert_technology_intelligence
+
+
+def _run257_protect_existing_comment_fields(assessment: dict, existing_page: dict | None) -> dict:
+    """Return a copy whose four product-copy fields obey the ownership contract."""
+    if not existing_page:
+        return dict(assessment)
+    props = existing_page.get("properties") or {}
+    protected = dict(assessment)
+    for assessment_key, property_name in _RUN257_COMMENT_FIELDS.items():
+        existing_value = _rich_text_value(props.get(property_name, {}))
+        result = decide_comment_write(
+            CommentWriteRequest(
+                property_name=property_name,
+                existing_value=existing_value,
+                candidate_value=assessment.get(assessment_key),
+                owner_allowed=True,
+            )
+        )
+        if result.decision is WriteDecision.PRESERVE:
+            protected[assessment_key] = result.value
+        elif result.decision is WriteDecision.BLANK_FILL:
+            protected[assessment_key] = result.value
+        else:
+            # Fail closed. A blocked/shadow candidate must not reach the production core.
+            protected[assessment_key] = existing_value
+    return protected
+
+
+def upsert_technology_intelligence(assessment: dict, resolution: EntityResolution) -> dict:
+    """Run257 guarded wrapper around the byte-preserved Run255 upsert."""
+    if not ENABLE_DECISION_INTELLIGENCE_DB or resolution.status == "AMBIGUOUS":
+        return _RUN257_UPSERT_TECHNOLOGY_INTELLIGENCE_CORE(assessment, resolution)
+    existing_page = get_technology_record_by_entity_id(resolution.entity_id)
+    protected_assessment = _run257_protect_existing_comment_fields(assessment, existing_page)
+    return _RUN257_UPSERT_TECHNOLOGY_INTELLIGENCE_CORE(protected_assessment, resolution)
