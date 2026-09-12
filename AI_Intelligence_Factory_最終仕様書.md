@@ -833,3 +833,18 @@ PMF前にやらないこと:
 - 固定LPの現行copy正本は `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md`。
 - Run268 Four-Source architecture、Evidence、Decision、Source score、Deep Tech、Notion schemaを変更しない。
 - ZERO Gemini/model calls。Scheduled DailyはPAUSED。Public note releaseはhuman-only。
+
+
+## Hybrid Groq Intelligence / Gemini Writer 開発契約（2026-09-12）
+
+本節は `dev/hybrid-groq-gemini` の検証実装を記録する。通常Dailyへの切替完了や品質同等性の認定ではない。
+
+- 目標: 候補抽出・Screening・採点・Evidence整理・Decision Planをルール/Groqで処理し、最終日本語WriterだけGeminiに渡す。
+- 現在の分岐契約: screening/calibration/decision_plan → Groq、article_writer → Gemini。候補収集・Evidence正規化・品質ゲートはlocal。通常ProductionはGeminiのまま。
+- Geminiに渡す主張、Evidence、Decisionと点数を確定し、管理データはPythonで組み立てる。Writerが判断を再生成する経路を作らない。
+- 検証Writerは主要生成1回を目標とし、現行実装は503/404のみ第2モデルへ最大1回。1 call保証ではない。品質再生成はしない。
+- Writer再開では、API送信前に候補ID・保存済みpayload hash一致・48時間TTL・最大3サイクルを検証する。失効・予算到達状態は自動削除して再送せず停止する。4時間のcooldown中は0 calls。
+- Gemini版復元点は `hybrid_provider_strategy.py` に記録。既存バックアップや本番DBを変更しない。
+- 残る本番化条件: 全前処理の実配線、一次資料に基づくGroq Plan比較、完成Decision Packageの耐久保存と単独再開、実Writer出力の現行品質ゲート合格、重複保存・公開制御のE2E検証。
+- 機械的なFact Gateは数字・固有名詞・参照境界等の検査であり、全主張の意味的真実性を保証するものではない。
+- 本変更のオフライン検証: Hybrid関連8ファイル41テスト成功。モデルAPI呼出し0、Notion/note書込み0。

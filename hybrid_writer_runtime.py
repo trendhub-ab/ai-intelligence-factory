@@ -15,6 +15,8 @@ from hybrid_writer_deferred import (
     PENDING_WRITER,
     WRITER_EXPIRED,
     WRITER_READY,
+    WRITER_MAX_RETRY_CYCLES,
+    _stable_payload_hash,
     PendingWriterError,
     build_pending_writer_record,
     validate_pending_writer_record,
@@ -66,10 +68,15 @@ def run_or_defer_writer(
     previous=load_state(candidate_id)
     if previous is not None:
         state=validate_pending_writer_record(previous,allow_not_ready=True)
+        if previous.get('candidate_id') != candidate_id:
+            raise HybridWriterRuntimeError('pending_writer_candidate_mismatch')
+        if previous.get('payload_hash') != _stable_payload_hash(fixture):
+            raise HybridWriterRuntimeError('pending_writer_payload_changed')
         if state==WRITER_EXPIRED:
-            delete_state(candidate_id)
-            previous=None
-        elif state==PENDING_WRITER:
+            raise HybridWriterRuntimeError('pending_writer_expired')
+        if int(previous['retry_cycles']) >= WRITER_MAX_RETRY_CYCLES:
+            raise HybridWriterRuntimeError('pending_writer_retry_budget_exhausted')
+        if state==PENDING_WRITER:
             Path(pending_output_path).write_text(json.dumps(previous,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
             return {'status':'DEFERRED','reason':'cooldown_active','provider_calls':0,'pending':previous}
         elif state!=WRITER_READY:

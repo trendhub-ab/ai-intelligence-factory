@@ -94,3 +94,55 @@ def test_nonavailability_runtime_error_is_not_deferred(tmp_path):
     else:
         raise AssertionError('expected failure')
     assert saved==[]
+
+
+
+def test_resume_preflight_blocks_without_calls_or_state_deletion(tmp_path):
+    from datetime import timedelta
+    import pytest
+    from hybrid_writer_runtime import HybridWriterRuntimeError
+
+    fixture_path, fixture = _fixture(tmp_path)
+    report_path = tmp_path / 'report.json'
+    failure = _failure_report(report_path)
+    now = datetime.now(timezone.utc)
+    original = build_pending_writer_record(fixture, failure, now=now - timedelta(hours=5))
+    cases = []
+    changed = dict(original, payload_hash='different-plan')
+    cases.append((changed, 'pending_writer_payload_changed'))
+    wrong_candidate = dict(original, candidate_id='another-candidate')
+    cases.append((wrong_candidate, 'pending_writer_candidate_mismatch'))
+    exhausted = dict(original, retry_cycles=3)
+    cases.append((exhausted, 'pending_writer_retry_budget_exhausted'))
+    expired = dict(original, expires_at=(now - timedelta(hours=1)).isoformat())
+    cases.append((expired, 'pending_writer_expired'))
+    for pending, reason in cases:
+        effects = []
+        with pytest.raises(HybridWriterRuntimeError, match=reason):
+            run_or_defer_writer(
+                SimpleNamespace(), fixture_path, str(report_path), str(tmp_path / 'pending.json'),
+                load_state=lambda cid: pending,
+                save_state=lambda rec: effects.append('save'),
+                delete_state=lambda cid: effects.append('delete'),
+                writer_runner=lambda *args: effects.append('provider'),
+            )
+        assert effects == []
+
+
+def test_ready_matching_package_can_resume(tmp_path):
+    from datetime import timedelta
+    fixture_path, fixture = _fixture(tmp_path)
+    report_path = tmp_path / 'report.json'
+    failure = _failure_report(report_path)
+    pending = build_pending_writer_record(
+        fixture, failure, now=datetime.now(timezone.utc) - timedelta(hours=5),
+    )
+    calls = []
+    result = run_or_defer_writer(
+        SimpleNamespace(), fixture_path, str(report_path), str(tmp_path / 'pending.json'),
+        load_state=lambda cid: pending, save_state=lambda rec: None,
+        delete_state=lambda cid: calls.append('delete'),
+        writer_runner=lambda *args: (calls.append('provider') or {'provider_calls': 1, 'text': 'ok'}),
+    )
+    assert result['status'] == 'SUCCESS'
+    assert calls == ['provider', 'delete']
