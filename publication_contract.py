@@ -53,6 +53,7 @@ PUBLICATION_POLICY_FILES = (
     "editorial_eyecatch.py",
     "eyecatch_badge_taxonomy.py",
     "decision_intelligence.py",
+    "comment_write_contract.py",
     "evidence_authority.py",
     "evidence_ledger.py",
     "subscription_attribution.py",
