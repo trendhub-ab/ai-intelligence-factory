@@ -14,18 +14,25 @@ INPUT='tests/fixtures/groq/article_parity_B0049_input.json'
 
 def _valid_judgment():
     return {
-        'why_important':'能力の上限を判断する材料になる。', 'decision':'WATCH',
-        'decision_reason':['利用条件は一次情報で確認する必要がある。'],
-        'business_impact':12, 'technical_impact':18, 'urgency':8, 'market_impact':10,
-        'reliability':12, 'action':'一次情報で利用条件を確認する。', 'article_value':82,
-        'article_angle':'大きな数字ほど条件と一緒に読む。',
-        'reader_bridge':'テストの満点と日常での万能さは別だと考える。',
-        'title_seed':'100%の数字はどこまで信じていい？', 'access_status':'NOT_CONFIRMED',
+        'decision':'WATCH',
+        'reason_codes':['HIGH_TECHNICAL_SIGNIFICANCE','ACCESS_UNCONFIRMED','SAFEGUARD_EFFECTIVENESS_UNCONFIRMED'],
+        'business_impact':18, 'technical_impact':20, 'urgency':12, 'market_impact':10,
+        'reliability':13, 'article_value':80, 'access_status':'NOT_CONFIRMED',
+        'action_code':'CONFIRM_ACCESS', 'reader_priority':'SAFETY',
     }
 
 
 def _legacy_plan():
-    return {'source_summary':'一次情報で確認された評価結果。','what':'特定条件で能力評価が行われた。',**_valid_judgment()}
+    return {
+        'source_summary':'一次情報で確認された評価結果。', 'what':'特定条件で能力評価が行われた。',
+        'why_important':'確認済みEvidenceを実務判断へ結びつける価値がある。', 'decision':'WATCH',
+        'decision_reason':['一般利用条件は確認できていない。'],
+        'business_impact':12, 'technical_impact':18, 'urgency':8, 'market_impact':10, 'reliability':12,
+        'action':'利用条件を一次情報で確認する。', 'article_value':82,
+        'article_angle':'確認済みFactと未確認事項を分けて読む。',
+        'reader_bridge':'専門語を普通の言葉に置き換えて説明する。',
+        'title_seed':'確認済みEvidenceから読む次の判断材料', 'access_status':'NOT_CONFIRMED',
+    }
 
 
 def test_fact_envelope_preserves_verified_ledger_verbatim_and_hashes_it():
@@ -44,15 +51,14 @@ def test_fact_envelope_tamper_fails_closed():
         validate_fact_envelope(envelope)
 
 
-def test_fixture_is_judgment_only_and_groq_cannot_write_fact_fields(tmp_path):
+def test_fixture_is_categorical_and_contains_no_freeform_fact_fields(tmp_path):
     fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
     assert fixture['structured_output_mode']==MODE
+    assert fixture['pass']=='decision_judgment_codes'
     assert set(fixture['schema']['required'])==set(JUDGMENT_FIELDS)
-    assert 'source_summary' not in fixture['schema']['properties']
-    assert 'what' not in fixture['schema']['properties']
-    assert 'source_summary / what は出力しない' in fixture['prompt']
-    assert 'Factの状態を別の動詞へ言い換えない' in fixture['prompt']
-    assert fixture['fact_envelope']['fact_ledger']==build_fact_envelope(INPUT)['fact_ledger']
+    for forbidden in ('source_summary','what','why_important','decision_reason','action','article_angle','reader_bridge','title_seed'):
+        assert forbidden not in fixture['schema']['properties']
+    assert 'あなたは文章を書きません' in fixture['prompt']
     assert fixture['business_writes']==0 and fixture['persist_results'] is False
     provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fixture['schema']),token_budget=7000,model=fixture['model'])
     payload,_=provider.prepare(GenerationRequest(fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort'],fixture['structured_output_mode']))
@@ -60,51 +66,40 @@ def test_fixture_is_judgment_only_and_groq_cannot_write_fact_fields(tmp_path):
     assert payload['reasoning_format']=='hidden'
 
 
-def test_composed_plan_gets_fact_fields_only_from_envelope():
+def test_composed_plan_uses_only_envelope_and_deterministic_mappings_for_prose():
     envelope=build_fact_envelope(INPUT)
     plan=compose_fact_locked_plan(envelope,_valid_judgment())
     assert plan['source_summary']==envelope['fact_ledger']
     assert plan['what']==envelope['name']
     assert plan['decision']=='WATCH'
+    assert plan['decision_reason']==[
+        '技術的な影響が大きく、継続監視の価値がある。',
+        '一般利用条件は確認できていない。',
+        '安全策の有効性は、このEvidenceだけでは確認できない。',
+    ]
+    assert plan['action']=='利用条件を一次情報で確認する。'
+    assert '実装された安全策' not in json.dumps(plan,ensure_ascii=False)
 
 
-def test_groq_attempt_to_add_fact_fields_is_schema_rejected():
-    judgment=_valid_judgment()
-    judgment['source_summary']='Groqが作った要約'
+def test_freeform_fact_prose_is_schema_rejected():
+    judgment=_valid_judgment(); judgment['why_important']='Astraは臨界点を超えた。'
     with pytest.raises(Exception):
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
 
 
-def test_unconfirmed_access_claim_and_action_fail_closed():
-    judgment=_valid_judgment(); judgment['decision_reason']=['一般利用者が利用できる。']
-    with pytest.raises(Exception,match='unconfirmed_access_scope_claim'):
-        validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
-    judgment=_valid_judgment(); judgment['action']='PoCを実施する。'
+def test_unconfirmed_access_requires_safe_action_and_reason_code():
+    judgment=_valid_judgment(); judgment['action_code']='COMPARE'
     with pytest.raises(Exception,match='unconfirmed_access_action_escalation'):
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
-
-
-def test_safeguard_validation_and_timing_invention_fail_closed():
-    judgment=_valid_judgment(); judgment['why_important']='安全策の有効性が未検証なので危険。'
-    with pytest.raises(Exception,match='unsupported_safeguard_validation_claim'):
-        validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
-    judgment=_valid_judgment(); judgment['decision_reason']=['評価時に安全策が適用された。']
-    with pytest.raises(Exception,match='unsupported_safeguard_application_timing_claim'):
+    judgment=_valid_judgment(); judgment['reason_codes']=['HIGH_TECHNICAL_SIGNIFICANCE']
+    with pytest.raises(Exception,match='unconfirmed_access_reason_missing'):
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
 
 
-def test_safeguard_state_rewrite_inside_judgment_fails_closed():
-    judgment=_valid_judgment()
-    judgment['decision_reason']=['高度な能力と複数の安全策が実装されているため条件確認が必要。']
-    with pytest.raises(Exception,match='unsupported_safeguard_state_rewrite'):
+def test_confirmed_access_cannot_keep_unconfirmed_reason():
+    judgment=_valid_judgment(); judgment['access_status']='CONFIRMED_AVAILABLE'; judgment['action_code']='COMPARE'
+    with pytest.raises(Exception,match='confirmed_access_reason_conflict'):
         validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
-    judgment=_valid_judgment()
-    judgment['reader_bridge']='安全策が適用されている仕組みを日常の鍵に例える。'
-    with pytest.raises(Exception,match='unsupported_safeguard_state_rewrite'):
-        validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))
-    judgment=_valid_judgment()
-    judgment['decision_reason']=['Fact Envelopeに安全策の記載があるため、利用条件と合わせて判断する。']
-    assert validate_hybrid_judgment_text(json.dumps(judgment,ensure_ascii=False))['decision']=='WATCH'
 
 
 def test_legacy_composed_plan_remains_readable_during_migration():
@@ -119,7 +114,7 @@ def test_json_object_mode_requires_schema():
 
 def test_hybrid_completion_budget_preserves_rate_safety(tmp_path):
     fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
-    assert fixture['max_output_tokens']==2200
+    assert fixture['max_output_tokens']==1200
     provider=GroqProvider(lambda _:None,validate_schema=schema_validator(fixture['schema']),token_budget=7000,model=fixture['model'])
     _,estimate=provider.prepare(GenerationRequest(fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort'],fixture['structured_output_mode']))
     assert estimate<=7000
@@ -129,7 +124,7 @@ def test_rejected_judgment_is_saved_and_never_composed(tmp_path, monkeypatch):
     from dataclasses import dataclass
     import hybrid_groq_plan_live as live
     fixture=build_hybrid_plan_fixture(INPUT,str(tmp_path/'fixture.json'))
-    judgment=_valid_judgment(); judgment['decision_reason']=['一般利用者が利用できる。']
+    judgment=_valid_judgment(); judgment['action_code']='COMPARE'
     @dataclass
     class Result:
         text: str
@@ -144,7 +139,7 @@ def test_rejected_judgment_is_saved_and_never_composed(tmp_path, monkeypatch):
     for name in ('GROQ_API_KEY','GROQ_LEDGER_GITHUB_TOKEN','AIIF_GROQ_EXPERIMENT'):
         monkeypatch.setenv(name,'offline-placeholder')
     output=tmp_path/'report.json'
-    with pytest.raises(Exception,match='unconfirmed_access_scope_claim'):
+    with pytest.raises(Exception,match='unconfirmed_access_action_escalation'):
         live.run_live(str(tmp_path/'fixture.json'),str(output))
     report=json.loads(output.read_text())
     assert report['status']=='PLAN_REJECTED'
