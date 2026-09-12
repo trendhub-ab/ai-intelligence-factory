@@ -1,1 +1,1 @@
-Categorical Fact-Locked Plan validation: Groq returns codes/scores only; no factual prose; one Groq call; Gemini/Notion/note 0.
+Categorical Fact-Locked diagnostic validation: capture schema-rejected Groq output safely; one Groq call; Gemini/Notion/note 0.
