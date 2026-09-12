@@ -6,6 +6,7 @@ import pytest
 from hybrid_fact_boundary import FactBoundaryError, assert_fact_boundary, audit_fact_boundary
 
 INPUT = 'tests/fixtures/groq/article_parity_B0049_input.json'
+RED_TEAM = 'tests/fixtures/groq/historical_writer_fact_boundary_cases.json'
 
 
 def _source():
@@ -72,3 +73,53 @@ def test_nfkc_normalization_does_not_create_false_numeric_delta():
     source = '評価は100%で、対象は20件だった。'
     article = '評価は１００％で、対象は２０件だった。'
     assert audit_fact_boundary(source, article)['passed'] is True
+
+
+def test_historical_writer_red_team_corpus_has_zero_false_negative_and_zero_false_positive():
+    fixture = json.loads(Path(RED_TEAM).read_text(encoding='utf-8'))
+    source = _source()
+    tp = tn = fp = fn = 0
+    failures = []
+    for case in fixture['cases']:
+        report = audit_fact_boundary(source, case['text'])
+        actual_pass = bool(report['passed'])
+        expected_pass = bool(case['expected_pass'])
+        if expected_pass and actual_pass:
+            tn += 1
+        elif expected_pass and not actual_pass:
+            fp += 1
+            failures.append((case['id'], 'false_positive', report['violations']))
+        elif not expected_pass and not actual_pass:
+            tp += 1
+        else:
+            fn += 1
+            failures.append((case['id'], 'false_negative', report['violations']))
+        actual_types = {row['type'] for row in report['violations']}
+        for expected_type in case.get('expected_types') or []:
+            if expected_type not in actual_types:
+                failures.append((case['id'], 'missing_expected_type', expected_type, sorted(actual_types)))
+
+    recall = tp / (tp + fn) if (tp + fn) else 1.0
+    specificity = tn / (tn + fp) if (tn + fp) else 1.0
+    precision = tp / (tp + fp) if (tp + fp) else 1.0
+    metrics = {
+        'cases': len(fixture['cases']),
+        'true_positive': tp,
+        'true_negative': tn,
+        'false_positive': fp,
+        'false_negative': fn,
+        'recall': recall,
+        'specificity': specificity,
+        'precision': precision,
+    }
+    assert failures == [], {'metrics': metrics, 'failures': failures}
+    assert metrics == {
+        'cases': 16,
+        'true_positive': 8,
+        'true_negative': 8,
+        'false_positive': 0,
+        'false_negative': 0,
+        'recall': 1.0,
+        'specificity': 1.0,
+        'precision': 1.0,
+    }
