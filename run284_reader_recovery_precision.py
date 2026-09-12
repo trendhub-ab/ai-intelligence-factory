@@ -1,4 +1,4 @@
-"""Run284/352/360/370: post-reader Production precision and bounded recovery policy.
+"""Run284/352/360/370/371: post-reader Production precision and bounded recovery policy.
 
 Run284 came from bounded current-policy Ready recovery and keeps two narrow protections:
 1. disable the proven unsafe ``をな... -> を...`` Japanese polish substitution;
@@ -19,9 +19,10 @@ bypasses only the paragraph-order preservation text. Fact/claim retries still re
 unchanged. No quality threshold is relaxed.
 
 Run370 extends the exact same one-call Reader-only repair authorization to the explicit
-``pending_retry_validation`` lane. This lane is read-only at the orchestration layer; mixed
-Fact/Evidence blockers, unsafe Evidence, normal fresh candidates, and all other origins remain
-ineligible. This changes retry authorization only, never Gate thresholds or persistence policy.
+``pending_retry_validation`` lane. Run371 adds the observed final-surface summary jargon
+cluster to the same Reader-only family after a real read-only validation showed it alongside
+other Reader Value REVIEW reasons with Publication PASS. Mixed Fact/Evidence blockers, unsafe
+Evidence, normal fresh candidates, and all other origins remain ineligible.
 """
 from __future__ import annotations
 
@@ -50,6 +51,7 @@ _REPAIRABLE_READER_LABELS = (
     "non_engineer_access_failure",
     "final_surface_multi_axis_reader_weakness",
     "final_surface_non_engineer_access_failure",
+    "final_surface_summary_jargon_cluster",
 )
 
 RETRY_PRESERVATION_CONTRACT = """
