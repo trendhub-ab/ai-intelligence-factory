@@ -2,8 +2,10 @@
 """Run362: read-only provenance audit for stale Ready manuscripts.
 
 Maps persisted Ready-family policy fingerprints to fingerprints that actually existed on
-main's first-parent history. For pages without Ready-family captions it inventories only
-metadata/hashes of manuscript-like code blocks. It never writes Notion and never calls a model.
+main's first-parent history. A historical Ready match is valid only when the caption policy
+fingerprint existed on main AND the caption manuscript SHA matches the persisted body bytes.
+For pages without valid Ready-family captions it inventories only metadata/hashes of
+manuscript-like code blocks. It never writes Notion and never calls a model.
 """
 from __future__ import annotations
 
@@ -125,7 +127,7 @@ def main() -> int:
         matched = []
         for m in ready:
             psha = m["caption_policy_sha256"]
-            if psha and psha in history:
+            if psha and psha in history and m["body_sha_valid"]:
                 matched.append({**m, "historical_main": history[psha]})
         legacy_candidates = [
             m for m in metas
