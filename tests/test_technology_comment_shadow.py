@@ -19,11 +19,12 @@ class TechnologyCommentShadowTests(unittest.TestCase):
         self.fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
         self.baseline = self.fixture["baseline"]
 
-    def test_prompt_is_shadow_only_and_evidence_bounded(self):
+    def test_prompt_is_shadow_only_evidence_bounded_and_japanese_required(self):
         prompt = build_shadow_prompt(self.fixture)
         self.assertIn("本番DBへ書き込む権限はありません", prompt)
         self.assertIn("EVIDENCE — sole factual surface", prompt)
         self.assertIn("4キー以外は禁止", prompt)
+        self.assertIn("必ず自然な日本語", prompt)
 
     def test_parse_rejects_extra_key(self):
         payload = dict(self.baseline)
@@ -36,6 +37,19 @@ class TechnologyCommentShadowTests(unittest.TestCase):
         bad["short_rationale"] = "公開情報によりコスト削減と本番で安定した運用が確認されているため採用する。"
         scores, _ = score_values(bad, self.fixture)
         self.assertLess(scores.evidence_alignment, 80)
+
+    def test_english_only_output_is_hard_style_failure(self):
+        english = {
+            "main_risk": "The batch execution mode is experimental and may change before a stable release.",
+            "best_for": "Controlled testing that uses the documented batch setup for repeated requests.",
+            "avoid_for": "Production workloads that require stable behavior and validated reliability.",
+            "short_rationale": "The benchmark shows latency improvement only under the documented batch test while production reliability remains unverified.",
+        }
+        scores, violations = score_values(english, self.fixture)
+        self.assertTrue(all("japanese_required" in violations[field] for field in english))
+        self.assertEqual(0, scores.naturalness)
+        result = compare_shadow_to_baseline(self.baseline, english, self.fixture)
+        self.assertFalse(result["deterministic_gate_passed"])
 
     def test_tie_is_never_promoted(self):
         result = compare_shadow_to_baseline(self.baseline, self.baseline, self.fixture)
