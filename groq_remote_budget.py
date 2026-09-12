@@ -3,11 +3,12 @@
 Reservations happen before send and are never deleted. After a successful provider
 response, the same experiment row is atomically reconciled upward to Groq-reported
 actual usage. Experiment IDs remain one-shot forever; reconciliation never creates a
-second request record.
+second request record. GitHub ledger CAS conflicts may be retried; provider calls are not.
 """
 import base64
 import json
 import time
+import urllib.error
 import urllib.request
 from ai_provider import ProviderError
 from groq_rate_policy import (
@@ -21,6 +22,8 @@ from groq_rate_policy import (
 REPOSITORY = "trendhub-ab/ai-intelligence-factory"
 BRANCH = "runtime/groq-validation"
 PATH = ".runtime/groq_validation_ledger.json"
+CAS_RETRIES = 3
+CAS_RETRY_SECONDS = 0.15
 
 
 def _validate_state(state, now):
@@ -92,8 +95,6 @@ def reconcile_state(state, experiment, actual_tokens, now, profile: str = GPT_OS
     if row_profile != profile:
         raise ProviderError("reconciliation_profile_mismatch")
     reconciled = max(int(row["tokens"]), actual_tokens)
-    # Usage has already happened, so preserve the truth even if it crossed a local safety
-    # envelope. The caller can then fail closed for subsequent sends using this ledger.
     if reconciled > policy.official_tpm:
         raise ProviderError("provider_usage_exceeds_official_tpm")
 
@@ -124,13 +125,37 @@ def _write_remote(endpoint, headers, file, state, message, opener):
             raise ProviderError("remote_reservation_failed")
 
 
+def _cas_mutate(token, opener, mutate, message):
+    """Retry only stale-SHA/CAS conflicts. Never retries a Groq provider request."""
+    last_conflict = None
+    for attempt in range(CAS_RETRIES):
+        endpoint, headers, file, state = _read_remote(token, opener)
+        updated = mutate(state)
+        try:
+            _write_remote(endpoint, headers, file, updated, message, opener)
+            return
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {409, 422}:
+                raise
+            last_conflict = exc
+            if attempt + 1 < CAS_RETRIES:
+                time.sleep(CAS_RETRY_SECONDS * (attempt + 1))
+    raise ProviderError("remote_ledger_cas_conflict", getattr(last_conflict, "code", None)) from None
+
+
 def reserve_remote(token, experiment, tokens, opener, profile: str = GPT_OSS_120B.name):
-    endpoint, headers, file, state = _read_remote(token, opener)
-    updated = reserve_state(state, experiment, tokens, time.time(), profile)
-    _write_remote(endpoint, headers, file, updated, "Reserve bounded Groq experiment before provider call", opener)
+    _cas_mutate(
+        token,
+        opener,
+        lambda state: reserve_state(state, experiment, tokens, time.time(), profile),
+        "Reserve bounded Groq experiment before provider call",
+    )
 
 
 def reconcile_remote(token, experiment, actual_tokens, opener, profile: str = GPT_OSS_120B.name):
-    endpoint, headers, file, state = _read_remote(token, opener)
-    updated = reconcile_state(state, experiment, actual_tokens, time.time(), profile)
-    _write_remote(endpoint, headers, file, updated, "Reconcile Groq reservation to provider-reported usage", opener)
+    _cas_mutate(
+        token,
+        opener,
+        lambda state: reconcile_state(state, experiment, actual_tokens, time.time(), profile),
+        "Reconcile Groq reservation to provider-reported usage",
+    )
