@@ -2,7 +2,7 @@
 
 Keeps GPT-OSS for the safe Decision Plan and Compound Mini for prose. V10 expands only
 verified evidence already present in the B0049 ledger; it must not invent access or
-operational details to satisfy article length.
+operational details to satisfy article length. Gemini Production remains untouched.
 """
 from __future__ import annotations
 
@@ -27,12 +27,14 @@ V10_CONTRACT = r"""
 - ARTICLE本文は8段落。各段落はおおむね190〜240日本語文字とし、本文全体を1500〜2000字にする。
 - `## `見出しはちょうど3本。見出しは段落数に数えない。
 - 長さは新しいFactで埋めない。次の一次Evidenceを、条件を保ったまま「何を意味するか」「何を意味しないか」「読者判断がどう変わるか」で説明して厚くする：ExploitBench 100%、2026年6〜8月の高深刻度V8脆弱性20件、評価中に発見したzero-day 2件、結果はdefault production configurationではなくDaybreak Blue access条件、能力向上に伴う一部開発・公開の遅延、安全策の強化。
+- ExploitBenchは「既知脆弱性からexploitを開発する評価」と必ず説明する。benchmarkという語だけで済ませず、100%を一般性能へ広げない。
 - 「限定された脆弱性リスト」「そのリスト全体を網羅」など、LedgerにないExploitBenchの内部構成を追加しない。
 - 「認証プロセス」「申請手順」「取得方法」「参加方法」など、Ledgerにないアクセス手続きを追加しない。
 - Daybreak Blueを「限定された環境」と言い換えない。確認済みなのはDaybreak Blue access条件で得た結果であり、一般利用条件はこの資料から確認できない、までに留める。
-- 安全策はLedgerにある名称と「複数の安全策を適用する」という範囲を超えない。「名称が示す通りの機能が組み込まれている」のように名称から実装機能を推測しない。
+- 安全策はLedgerにある名称と「複数の安全策を適用する」という範囲を超えない。classifierやmonitoring等の名称から実装機能・効果・自動性を推測しない。
 - 「高度な能力自体がリスクと見なされた」「未知のリスクが潜在する」など、一次資料にない因果・評価を事実化しない。
 - 比喩は最大1つ。比喩は技術的事実ではなく理解補助だと分かる自然な書き方にする。
+- Decision Scoreは管理データの合計値と矛盾させない。記事本文では内部スコアや内部Decisionコードを出さず、WATCH相当の慎重な判断にする。低〜中程度のスコアなのに「極めて高い」「非常に高い緊急性・市場影響」などと誇張しない。
 - 最終段落は、現時点では導入判断を急がず一次情報で利用条件を確認する、というWATCH相当の判断で閉じる。
 返答前に、8段落・3見出し・1500字以上を自己確認する。
 """
@@ -71,12 +73,17 @@ def inspect_compound_writer_v10(path: str) -> dict:
         (r"Daybreak\s*Blue[^。！？\n]{0,120}(?:申請|取得|参加|一般提供|利用開始)", "daybreak_access_expansion"),
         (r"Daybreak\s*Blue[^。！？\n]{0,60}(?:限定された環境|限定環境|限られた環境)", "daybreak_environment_rewrite"),
         (r"(?:名称が示す通り|名称どおり)[^。！？\n]{0,80}(?:機能|組み込)", "safeguard_name_to_function_inference"),
+        (r"(?:classifier|monitoring|misalignment\s*detection)[^。！？\n]{0,100}(?:検知する|判定する|自動的|リアルタイム|介入する|停止する)", "safeguard_name_to_function_inference"),
         (r"(?:高度な|高い)[^。！？\n]{0,60}(?:サイバー)?能力[^。！？\n]{0,80}(?:自体が)?リスクと見な", "unsupported_capability_risk_causality"),
         (r"未知のリスク[^。！？\n]{0,60}(?:潜在|存在|ある)", "unsupported_unknown_risk"),
+        (r"(?:緊急性|市場(?:への)?影響)[^。！？\n]{0,50}(?:極めて高|非常に高)", "score_narrative_overstatement"),
     )
     for pattern, code in patterns:
         if re.search(pattern, article, re.I):
             issues.append(code)
+    # The Production Fact Gate expects benchmark claims to carry their verified scope.
+    if ("ExploitBench" in article or "100%" in article) and not re.search(r"既知脆弱性[^。！？\n]{0,80}(?:exploit|エクスプロイト)[^。！？\n]{0,40}(?:開発|作成)", article, re.I):
+        issues.append("exploitbench_scope_missing")
     inspected["issues"] = sorted(set(issues))
     return inspected
 
