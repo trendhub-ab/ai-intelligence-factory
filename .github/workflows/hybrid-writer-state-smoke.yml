@@ -1,0 +1,61 @@
+name: Hybrid Pending Writer State Smoke
+on:
+  push:
+    branches: ['dev/hybrid-groq-gemini']
+    paths:
+      - '.runtime/hybrid_writer_state_smoke_trigger.txt'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      AIIF_RUNTIME_STATE_BRANCH: runtime-state
+      GH_PAT: ${{ secrets.GH_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install HTTP dependency only
+        run: python -m pip install requests
+      - name: Save load and delete isolated pending-writer smoke state
+        shell: python
+        run: |
+          from datetime import datetime, timezone
+          import json
+          from hybrid_writer_deferred import build_pending_writer_record
+          from hybrid_writer_state_store import save_pending_writer_state, load_pending_writer_state, delete_pending_writer_state
+
+          fixture={
+              'candidate_id':'HYBRID-STATE-SMOKE',
+              'plan_provider':'groq',
+              'plan_source':'state-smoke',
+              'writer_models':['gemini-3.7-flash','gemini-3.8-flash'],
+              'writer_prompt':'zero-api runtime-state smoke only',
+              'business_writes':0,
+              'persist_results':False,
+          }
+          provider_report={
+              'attempts':[
+                  {'model':'gemini-3.7-flash','status':'error','http_status':503},
+                  {'model':'gemini-3.8-flash','status':'error','http_status':503},
+              ]
+          }
+          record=build_pending_writer_record(fixture,provider_report,now=datetime.now(timezone.utc))
+          try:
+              saved=save_pending_writer_state(record)
+              loaded=load_pending_writer_state('HYBRID-STATE-SMOKE')
+              assert saved['branch']=='runtime-state'
+              assert loaded['candidate_id']=='HYBRID-STATE-SMOKE'
+              assert loaded['status']=='PENDING_WRITER'
+              assert loaded['business_writes']==0 and loaded['persist_results'] is False
+              print(json.dumps({'saved':saved,'loaded_status':loaded['status'],'business_writes':0,'gemini_calls':0},ensure_ascii=False))
+          finally:
+              delete_pending_writer_state('HYBRID-STATE-SMOKE')
+          assert load_pending_writer_state('HYBRID-STATE-SMOKE') is None
+          print({'cleanup':True,'runtime_state_branch':'runtime-state','gemini_calls':0,'business_writes':0})
+      - name: Assert no Gemini or Groq credentials consumed
+        run: test -z "${GEMINI_API_KEY:-}" && test -z "${GROQ_API_KEY:-}"
