@@ -1,7 +1,7 @@
 """Canonical installed runtime, with network physically blocked by the fixture."""
 import copy
 import pytest
-from run367_readonly_inventory_audit import offline_runtime, classify
+from run367_readonly_inventory_audit import offline_runtime, classify, extract_markdown_manuscript
 import run208_reader_value_repair as reader
 import run284_reader_recovery_precision as precision
 
@@ -14,6 +14,21 @@ def runtime():
 
 def row(message):
     return {"message": "reader_value_review:" + message, "severity": "REVIEW"}
+
+
+def test_markdown_extraction_keeps_nested_code_fences():
+    source = (
+        "```markdown\n"
+        "# title\n\n"
+        "before\n\n"
+        "```python\nprint('nested')\n```\n\n"
+        "after\n"
+        "```"
+    )
+    manuscript = extract_markdown_manuscript(source)
+    assert manuscript is not None
+    assert "print('nested')" in manuscript
+    assert manuscript.endswith("after")
 
 
 def test_three_candidates_each_get_one_repair_without_order_lock(runtime):
