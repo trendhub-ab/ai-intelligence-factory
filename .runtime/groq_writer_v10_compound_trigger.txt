@@ -1,2 +1,2 @@
-article-two-pass-B0049-writer-v11-compound-production-aligned
-2026-09-12T11:43+09:00
+article-two-pass-B0049-writer-v12-gemini-quality-sync
+2026-09-12T12:02+09:00
