@@ -33,7 +33,9 @@ def _bounded_context(text: str) -> str:
     value = str(text or "").strip()
     if not value:
         raise HybridWriterError("source_context_missing")
-    return value[:MAX_SOURCE_CONTEXT_CHARS]
+    if len(value) > MAX_SOURCE_CONTEXT_CHARS:
+        raise HybridWriterError("source_context_exceeds_writer_fact_surface")
+    return value
 
 
 def _writer_decision_surface(plan: dict) -> dict:
