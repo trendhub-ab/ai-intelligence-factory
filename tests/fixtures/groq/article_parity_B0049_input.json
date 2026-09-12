@@ -5,7 +5,7 @@
   "url": "https://openai.com/index/path-to-astra/",
   "stars": 147,
   "description": "OpenAIはAstraがPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルだと説明。未知の脆弱性発見やexploit開発能力の評価を踏まえ、開発・公開の一部を遅らせて安全策を強化した。公開時は高度なサイバー能力へのアクセスを限定し、拒否訓練、システム安全分類、監視、misalignment検知など多層防御を適用するとしている。",
-  "source_context": "OpenAI一次資料。AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルと説明されている。未知の脆弱性発見やexploit開発能力を評価し、能力向上を理由に一部の開発・公開を遅らせ、安全策を強化した。公開時は高度なサイバー能力へのアクセス制限、拒否訓練、system safety classifier、監視、misalignment detectionなど複数の安全策を適用する。",
+  "source_context": "OpenAI一次資料（2026-09-01）。AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルと説明される。既知脆弱性からexploitを開発するExploitBenchで100%を記録。データ混入懸念から、2026年6〜8月に公開された高深刻度V8脆弱性20件の社内評価も実施し、評価中に2件のzero-day脆弱性を発見してexploit chainの一部として利用した。これらの結果はdefault production configurationではなくDaybreak Blue access条件を反映する。能力向上を理由に一部の開発・公開を遅らせ、安全策を強化。公開時は高度なサイバー能力へのアクセス制限、拒否訓練、system safety classifier、監視、misalignment detectionなど複数の安全策を適用する。",
   "grounding_status_hint": "PRIMARY_SOURCE",
   "screening_score": 82,
   "screening_reason": "OpenAIによる次世代フロンティアセーフガードと機能の方針。",
@@ -18,6 +18,6 @@
     "persist_results": false,
     "notion_writes": 0,
     "note_writes": 0,
-    "free_plan_tpm_fit": "Output ceiling reduced from 8000 so input+output can fit within the 8000 TPM Free Plan envelope."
+    "free_plan_tpm_fit": "Compound Mini article lane uses a 60000 TPM Factory safety envelope; output ceiling remains 4000 tokens."
   }
 }
