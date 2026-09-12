@@ -5,6 +5,7 @@ on:
     branches: ['dev/hybrid-groq-gemini']
     paths:
       - 'hybrid_provider_strategy.py'
+      - 'hybrid_groq_plan.py'
       - 'hybrid_gemini_writer.py'
       - 'hybrid_one_shot.py'
       - 'hybrid_live_plan_writer.py'
@@ -12,6 +13,7 @@ on:
       - 'hybrid_writer_state_store.py'
       - 'hybrid_writer_runtime.py'
       - 'hybrid_writer_package.py'
+      - 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
       - 'tests/test_hybrid_writer_package.py'
       - 'tests/test_hybrid_provider_strategy.py'
       - 'tests/test_hybrid_gemini_writer.py'
@@ -34,8 +36,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install pytest
-        run: python -m pip install pytest
+      - name: Install test dependencies
+        run: python -m pip install pytest jsonschema
       - name: Run Hybrid routing, writer, live-plan, deferral, state-store and runtime regressions
         run: python -m pytest tests/test_hybrid_provider_strategy.py tests/test_hybrid_gemini_writer.py tests/test_hybrid_one_shot.py tests/test_hybrid_live_plan_writer.py tests/test_hybrid_writer_deferred.py tests/test_hybrid_writer_state_store.py tests/test_hybrid_writer_runtime.py tests/test_hybrid_writer_package.py -q
       - name: Prove routing modules avoid provider SDK and business persistence
