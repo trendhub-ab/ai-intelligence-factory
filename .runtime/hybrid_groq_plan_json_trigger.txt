@@ -1,1 +1,1 @@
-Fact-Locked Plan live validation #2: judgment prose must not restate safeguard state; Groq 1 call only; Gemini 0; Notion/note 0; Writer disabled.
+Categorical Fact-Locked Plan validation: Groq returns codes/scores only; no factual prose; one Groq call; Gemini/Notion/note 0.
