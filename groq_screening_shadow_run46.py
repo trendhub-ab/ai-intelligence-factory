@@ -20,10 +20,12 @@ from screening_protocol import batch_screening_prompt, parse_batch_screening_res
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = os.environ.get("AIIF_GROQ_SCREENING_MODEL", "openai/gpt-oss-120b").strip()
 TRACKING_THRESHOLD = 55
+TEMPERATURE = 0
+SEED = 424242
 PORTFOLIO_TOPICS = {"MODEL", "AGENT", "DEVTOOLS", "INFRA", "DATA", "SECURITY", "MULTIMODAL", "PRODUCT", "OTHER"}
 
 
-def _post(prompt: str) -> tuple[str, dict]:
+def _post(prompt: str) -> tuple[str, dict, str | None]:
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GROQ_API_KEY is required")
@@ -33,6 +35,8 @@ def _post(prompt: str) -> tuple[str, dict]:
         "max_completion_tokens": 3000,
         "reasoning_effort": "low",
         "reasoning_format": "hidden",
+        "temperature": TEMPERATURE,
+        "seed": SEED,
         "stream": False,
         "response_format": {"type": "json_object"},
     }
@@ -56,7 +60,7 @@ def _post(prompt: str) -> tuple[str, dict]:
         choice = body["choices"][0]
         if choice.get("finish_reason") != "stop":
             raise RuntimeError(f"Groq incomplete output: {choice.get('finish_reason')}")
-        return choice["message"]["content"], body.get("usage") or {}
+        return choice["message"]["content"], body.get("usage") or {}, body.get("system_fingerprint")
     except (KeyError, IndexError, TypeError):
         raise RuntimeError("Groq malformed response") from None
 
@@ -125,7 +129,7 @@ def run(baseline_path: str, report_path: str, repeats: int = 2) -> dict:
     prompt = batch_screening_prompt(prompt_items)
     runs = []
     for index in range(repeats):
-        raw, usage = _post(prompt)
+        raw, usage, system_fingerprint = _post(prompt)
         parsed, missing, diagnostic = _parse(raw, ids)
         runs.append({
             "index": index + 1,
@@ -136,6 +140,7 @@ def run(baseline_path: str, report_path: str, repeats: int = 2) -> dict:
             "topics": {candidate_id: row["portfolio_topic"] for candidate_id, row in parsed.items()},
             "missing": missing,
             "diagnostic": diagnostic,
+            "system_fingerprint": system_fingerprint,
             "usage": {
                 "prompt_tokens": usage.get("prompt_tokens"),
                 "completion_tokens": usage.get("completion_tokens"),
@@ -163,10 +168,12 @@ def run(baseline_path: str, report_path: str, repeats: int = 2) -> dict:
                 false_demotions.append({"id": candidate_id, "run": run_index})
 
     schema_complete = all(not row["missing"] and not row["diagnostic"] for row in runs)
+    fingerprints = [row.get("system_fingerprint") for row in runs]
     report = {
         "mode": "groq_raw_screening_shadow_run46",
         "provider": "groq",
         "model": MODEL,
+        "sampling": {"temperature": TEMPERATURE, "seed": SEED},
         "historical_reference": {
             "run_id": baseline["run_id"],
             "stage": "raw_screening",
@@ -192,6 +199,7 @@ def run(baseline_path: str, report_path: str, repeats: int = 2) -> dict:
             "false_promotions_vs_historical": false_promotions,
             "false_demotions_vs_historical": false_demotions,
             "schema_complete": schema_complete,
+            "same_system_fingerprint": len(set(fingerprints)) <= 1,
         },
         "persist_allowed": False,
         "business_writes": 0,
@@ -216,11 +224,14 @@ def main() -> int:
         "mode": report["mode"],
         "provider": report["provider"],
         "model": report["model"],
+        "temperature": report["sampling"]["temperature"],
+        "seed": report["sampling"]["seed"],
         "selected_count": len(report["selected"]),
         "decision_flip_count": report["stability"]["decision_flip_count"],
         "false_promotion_count": len(report["stability"]["false_promotions_vs_historical"]),
         "false_demotion_count": len(report["stability"]["false_demotions_vs_historical"]),
         "schema_complete": report["stability"]["schema_complete"],
+        "same_system_fingerprint": report["stability"]["same_system_fingerprint"],
         "production_equivalent": report["input_fidelity"]["production_equivalent"],
         "automatic_promotion_allowed": False,
         "business_writes": 0,
