@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import time
 import urllib.error
@@ -108,6 +109,37 @@ def schema_validator(schema: dict | None):
     return lambda data, _: validator.validate(data)
 
 
+def _sanitize_provider_error_message(message: object) -> str:
+    """Return a tiny diagnostic string without prompts, generations, URLs or credentials."""
+    value = str(message or "")
+    if not value:
+        return ""
+    value = re.sub(r"https?://\S+", "[URL]", value, flags=re.IGNORECASE)
+    value = re.sub(r"(?i)\b(?:bearer|authorization|api[_ -]?key|token)\b\s*[:=]?\s*\S+", "[REDACTED]", value)
+    value = re.sub(r"(?i)gsk_[A-Za-z0-9_-]+", "[REDACTED]", value)
+    value = re.sub(r"[\r\n\t]+", " ", value)
+    value = re.sub(r"\s{2,}", " ", value).strip()
+    return value[:300]
+
+
+def _safe_http_error_diagnostic(payload: object) -> dict[str, object]:
+    """Whitelist only low-risk Groq error metadata; ignore failed_generation and extras."""
+    if not isinstance(payload, dict):
+        return {}
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return {}
+    diagnostic: dict[str, object] = {}
+    for key in ("type", "code", "param"):
+        value = error.get(key)
+        if isinstance(value, (str, int, float, bool)) and str(value):
+            diagnostic[key] = value
+    message = _sanitize_provider_error_message(error.get("message"))
+    if message:
+        diagnostic["message"] = message
+    return diagnostic
+
+
 def _write_report(path: str, report: dict) -> None:
     if path:
         Path(path).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
@@ -148,6 +180,8 @@ def run_saved_prompt_validation() -> dict:
     live = os.environ.get("AIIF_GROQ_LIVE", "false").lower()
     if live not in {"false", "true"}:
         raise ProviderError("invalid_live_flag")
+    diagnostic_enabled = os.environ.get("AIIF_GROQ_ERROR_DIAGNOSTIC", "false").lower() == "true"
+    last_http_error_diagnostic: dict[str, object] = {}
     if live == "true":
         key = os.environ.get("GROQ_API_KEY", "").strip()
         ledger = os.environ.get("AIIF_GROQ_LEDGER", "").strip()
@@ -160,6 +194,7 @@ def run_saved_prompt_validation() -> dict:
             raise ProviderError("groq_key_and_persistent_ledger_required")
         opener = urllib.request.build_opener(NoRedirect())
         def transport(payload):
+            nonlocal last_http_error_diagnostic
             if backend == "github":
                 from groq_remote_budget import reserve_remote
                 reserve_remote(github_token, experiment, estimate, opener, policy.name)
@@ -173,6 +208,14 @@ def run_saved_prompt_validation() -> dict:
                 with opener.open(req, timeout=60) as response:
                     return response.status, dict(response.headers), json.load(response)
             except urllib.error.HTTPError as exc:
+                body: object = {}
+                if diagnostic_enabled:
+                    try:
+                        raw_error = exc.read(32768)
+                        body = json.loads(raw_error.decode("utf-8", errors="replace"))
+                        last_http_error_diagnostic = _safe_http_error_diagnostic(body)
+                    except Exception:
+                        last_http_error_diagnostic = {}
                 return exc.code, dict(exc.headers), {}
         provider.transport = transport
         try:
@@ -184,11 +227,10 @@ def run_saved_prompt_validation() -> dict:
             else:
                 reconcile_attempt(ledger, actual_tokens, profile=policy.name)
         except ProviderError as exc:
-            report.update(
-                live=True,
-                provider_calls=provider.attempts,
-                error={"kind": exc.kind, "status": exc.status, "retry_after": exc.retry_after},
-            )
+            error = {"kind": exc.kind, "status": exc.status, "retry_after": exc.retry_after}
+            if diagnostic_enabled and last_http_error_diagnostic:
+                error["provider_diagnostic"] = last_http_error_diagnostic
+            report.update(live=True, provider_calls=provider.attempts, error=error)
             _write_report(output, report)
             print(json.dumps({k: v for k, v in report.items() if k != "result"}, ensure_ascii=False))
             raise
