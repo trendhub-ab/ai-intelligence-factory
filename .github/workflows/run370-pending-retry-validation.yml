@@ -1,7 +1,8 @@
 name: Run374 Pending Retry Validation [ONE-TIME]
 
 # One authorized read-only validation after Run373 zero-API hardening.
-# Run374 explicitly forbids Gemini 3.6 for this Pending Retry lane.
+# Run374 retry-2 verifies that Pending Retry exclusion is applied before the bounded
+# quality pool is sliced, so Gemini 3.5 remains the fallback when 3.6 is forbidden.
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   workflow_dispatch:
@@ -27,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run374: one Pending Retry candidate, Gemini 3.6 forbidden, one bounded Reader-only repair, persist=false, max 6 provider attempts.'
+          echo 'Run374 retry-2: one Pending Retry candidate, Gemini 3.6 forbidden, 3.8 -> 3.5 quality fallback, persist=false, max 6 provider attempts.'
 
       - name: Checkout branch
         uses: actions/checkout@v6
@@ -118,12 +119,12 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Run374 pending validation'
+            echo '### Run374 retry-2 pending validation'
             echo '- candidate status: `Pending Retry` only'
             echo '- candidate count: at most `1`'
             echo '- Reader repair: at most `1`, Reader-only + safe Evidence only'
             echo '- Gemini 3.6: `FORBIDDEN` at provider dispatch and daily budget `0`'
-            echo '- configured models: `3.8 -> 3.5`; other non-3.6 fallback may remain available only if upstream normalization appends it'
+            echo '- bounded quality order after exclusions: `3.8 -> 3.5`'
             echo '- pending-validation HTTP 503: immediate next-model fallback'
             echo '- provider request budget: at most `6`'
             echo '- persist_results: `false`'
