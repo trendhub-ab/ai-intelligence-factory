@@ -41,9 +41,9 @@ jobs:
               fx['prompt'],fx['max_output_tokens'],fx['schema'],fx['reasoning_effort'],fx['structured_output_mode']
           ))
           assert fx['structured_output_mode']==MODE
-          assert fx['pass']=='decision_judgment'
-          assert 'source_summary' not in fx['schema']['properties']
-          assert 'what' not in fx['schema']['properties']
+          assert fx['pass']=='decision_judgment_codes'
+          for forbidden in ('source_summary','what','why_important','decision_reason','action','article_angle','reader_bridge','title_seed'):
+              assert forbidden not in fx['schema']['properties']
           assert fx['fact_envelope']['fact_ledger_sha256']
           assert payload['response_format']=={'type':'json_object'}
           assert payload['reasoning_format']=='hidden'
@@ -54,6 +54,7 @@ jobs:
               'structured_output_mode':fx['structured_output_mode'],
               'estimate':estimate,
               'max_output_tokens':fx['max_output_tokens'],
+              'categorical_judgment':True,
               'fact_locked':True,
               'business_writes':0,
               'gemini_calls':0,
