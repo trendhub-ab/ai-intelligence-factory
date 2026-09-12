@@ -53,7 +53,12 @@ class GroqTwoPassArticleTests(unittest.TestCase):
             self.assertEqual(fixture["model"], "openai/gpt-oss-120b")
             self.assertEqual(fixture["rate_policy"], "gpt_oss_120b")
             self.assertIsNotNone(fixture["schema"])
-            provider = GroqProvider(lambda _: None, token_budget=7000, model=fixture["model"])
+            provider = GroqProvider(
+                lambda _: None,
+                validate_schema=lambda data, schema: None,
+                token_budget=7000,
+                model=fixture["model"],
+            )
             payload, estimate = provider.prepare(GenerationRequest(
                 fixture["prompt"], fixture["max_output_tokens"], fixture["schema"], fixture["reasoning_effort"]
             ))
