@@ -1,4 +1,6 @@
+import os
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import run260_gemini_model_routing as run260
 
@@ -87,3 +89,36 @@ def test_quality_retry_still_prefers_38_and_is_bounded_to_two_models():
     assert args[2] == "quality_retry"
     assert args[4] == ["gemini-3.8-flash", "gemini-3.6-flash"]
     assert kwargs["deep_dive"] is True
+
+
+def test_run374_pending_exclusion_is_applied_before_two_model_bound():
+    p, calls = _pipeline(["gemini-3.8-flash", "gemini-3.5-flash"])
+    with patch.dict(
+        os.environ,
+        {"GEMINI_PENDING_RETRY_EXCLUDED_MODELS": "gemini-3.6-flash"},
+        clear=False,
+    ):
+        run260.install(p)
+        p._call_deep_dive_pool(
+            "prompt",
+            {},
+            "quality_retry",
+            request_origin="pending_retry_validation",
+        )
+    args, kwargs = calls[-1]
+    assert args[4] == ["gemini-3.8-flash", "gemini-3.5-flash"]
+    assert "gemini-3.6-flash" not in args[4]
+    assert kwargs["request_origin"] == "pending_retry_validation"
+
+
+def test_run374_exclusion_does_not_change_normal_quality_retry_pool():
+    p, calls = _pipeline(_canonical_default())
+    with patch.dict(
+        os.environ,
+        {"GEMINI_PENDING_RETRY_EXCLUDED_MODELS": "gemini-3.6-flash"},
+        clear=False,
+    ):
+        run260.install(p)
+        p._call_deep_dive_pool("prompt", {}, "quality_retry", request_origin="new")
+    args, _ = calls[-1]
+    assert args[4] == ["gemini-3.8-flash", "gemini-3.6-flash"]
