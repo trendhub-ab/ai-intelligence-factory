@@ -1,4 +1,4 @@
-name: Groq Writer v10 Compound Live
+name: Groq Writer v13 Compound Live
 on:
   workflow_dispatch:
   push:
@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: groq-writer-v10-compound-live
+  group: groq-writer-v13-compound-live
   cancel-in-progress: false
 jobs:
   validate:
@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install jsonschema
-      - name: Build guarded v12 Compound writer fixture
+      - name: Build guarded v13 Compound writer fixture
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
@@ -40,22 +40,24 @@ jobs:
           harden_writer_fixture('two-pass-writer-fixture.json'); harden_writer_fixture_v7('two-pass-writer-fixture.json')
           routed=route_compound_writer_v10('two-pass-writer-fixture.json')
           pf=preflight_compound_writer_v10('two-pass-writer-fixture.json')
-          assert 'Gemini Run359同期' in routed['prompt']
+          assert 'V13 EVIDENCE-SLOTTED PROSE' in routed['prompt']
+          assert '【Gemini Run359同期｜Reader実行契約 — Provider非依存部分のみ】' in routed['prompt']
+          assert routed['max_output_tokens']==7800
           assert pf['model']=='groq/compound-mini' and pf['external_tools']=='disabled'
           assert pf['reserved_estimate'] <= 60000 and pf['headroom'] >= 10000 and pf['request_bytes'] < 24576
-          print(json.dumps({'plan_decision':plan['decision'],'plan_access_status':plan['access_status'],'reader_contract_sync':True,**pf,'business_writes':0},ensure_ascii=False))
-      - name: One guarded Compound Mini v12 writer call
+          print(json.dumps({'plan_decision':plan['decision'],'plan_access_status':plan['access_status'],'reader_contract_sync':True,'writer_contract':'v13_evidence_slotted',**pf,'business_writes':0},ensure_ascii=False))
+      - name: One guarded Compound Mini v13 writer call
         env:
           AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
           AIIF_GROQ_FIXTURE: two-pass-writer-fixture.json
           AIIF_GROQ_REPORT: two-pass-writer-report.json
           AIIF_GROQ_LIVE: 'true'
           AIIF_GROQ_BUDGET_BACKEND: github
-          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v12-gemini-quality-sync
+          AIIF_GROQ_EXPERIMENT: article-two-pass-B0049-writer-v13-evidence-slotted-gemini-quality-sync
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
         run: python production_pipeline.py
-      - name: Require v12 local contract
+      - name: Require v13 local contract
         env:
           PYTHONPATH: ${{ github.workspace }}
         shell: python
@@ -63,11 +65,11 @@ jobs:
           import json
           from groq_writer_v10_compound import inspect_compound_writer_v10, validate_compound_writer_v10
           inspected=inspect_compound_writer_v10('two-pass-writer-report.json')
-          print(json.dumps({'v12_article_chars':inspected['article_chars'],'v12_headings':len(inspected['headings']),'v12_paragraphs':inspected['paragraphs'],'v12_issues':inspected['issues'],'business_writes':0},ensure_ascii=False))
+          print(json.dumps({'v13_article_chars':inspected['article_chars'],'v13_headings':len(inspected['headings']),'v13_paragraphs':inspected['paragraphs'],'v13_issues':inspected['issues'],'business_writes':0},ensure_ascii=False))
           validated=validate_compound_writer_v10('two-pass-writer-report.json')
           provider=validated['result']
-          print(json.dumps({'v12_local_guard':'PASS','writer_tokens':provider['prompt_tokens']+provider['completion_tokens'],'business_writes':0},ensure_ascii=False))
-      - name: Assemble v12 and evaluate Production gates with synced Gemini contracts
+          print(json.dumps({'v13_local_guard':'PASS','writer_tokens':provider['prompt_tokens']+provider['completion_tokens'],'business_writes':0},ensure_ascii=False))
+      - name: Assemble v13 and evaluate Production gates with synced Gemini contracts
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           PYTHONPATH: ${{ github.workspace }}
@@ -91,7 +93,6 @@ jobs:
           production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
           install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
           install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
-          # Latest provider-neutral Gemini quality precision is intentionally outermost.
           install_provider_neutral_quality_contracts(pipeline)
           probe=pipeline._reader_experience_signals('SFの話です。CI/CD（自動ビルド環境）を使います。')
           assert probe.get('reader_signal_precision_contract') == 'run358', probe
@@ -100,11 +101,11 @@ jobs:
           assert ev['business_writes']==0 and ev['persist_results'] is False and ev['parsed']
           assert getattr(pipeline,'GROQ_QUALITY_SYNC_VERSION',None)
           print(json.dumps({'quality_sync':pipeline.GROQ_QUALITY_SYNC_VERSION,'reader_sync_effective':probe.get('reader_signal_precision_contract'),'evidence_state':ev['evidence_state'],'evidence_sufficient':ev['evidence_sufficient'],'fact_ok':ev['fact_ok'],'fact_failures':ev['fact_failures'],'editorial_ok':ev['editorial_ok'],'editorial_warnings':ev['editorial_warnings'],'publication_state':ev['publication_state'],'publication_issues':ev['publication_issues'],'human_appeal_state':ev['human_appeal_state'],'human_appeal_issues':ev['human_appeal_issues'],'gate_disposition':ev['gate_disposition'],'quality_validated':ev['quality_validated'],'decision_score':ev['decision_score'],'article_chars':ev['article_chars'],'business_writes':0},ensure_ascii=False))
-      - name: Upload v12 evidence
+      - name: Upload v13 evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: groq-writer-v12-compound-B0049
+          name: groq-writer-v13-compound-B0049
           path: |
             two-pass-plan-report.json
             two-pass-writer-fixture.json
