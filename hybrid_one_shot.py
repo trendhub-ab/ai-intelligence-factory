@@ -32,6 +32,11 @@ def build_writer_fixture(input_path: str, plan_report_path: str, output_path: st
         "provider_mode": "hybrid_groq_gemini",
         "plan_provider": "groq",
         "plan_source": "saved_validated_report",
+        "decision_package": {
+            "version": 1,
+            "input": item,
+            "plan_report": json.loads(Path(plan_report_path).read_text(encoding="utf-8")),
+        },
         "writer_provider": "gemini",
         "writer_model": PRIMARY_GEMINI_WRITER_MODEL,
         "writer_models": list(HYBRID_GEMINI_WRITER_MODELS),

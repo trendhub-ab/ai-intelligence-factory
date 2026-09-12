@@ -14,6 +14,8 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 
+from hybrid_writer_package import snapshot_fixture, validate_snapshot
+
 PENDING_WRITER = "PENDING_WRITER"
 WRITER_READY = "WRITER_READY"
 WRITER_EXPIRED = "WRITER_EXPIRED"
@@ -108,6 +110,7 @@ def build_pending_writer_record(
         "status": PENDING_WRITER,
         "candidate_id": fixture["candidate_id"],
         "payload_hash": _stable_payload_hash(fixture),
+        "writer_snapshot": snapshot_fixture(fixture),
         "created_at": created_at.isoformat(),
         "updated_at": current.isoformat(),
         "retry_after": (current + timedelta(hours=WRITER_COOLDOWN_HOURS)).isoformat(),
@@ -142,6 +145,10 @@ def validate_pending_writer_record(
         raise PendingWriterError("pending_writer_record_invalid") from None
     if not 1 <= cycles <= WRITER_MAX_RETRY_CYCLES or maximum != WRITER_MAX_RETRY_CYCLES:
         raise PendingWriterError("pending_writer_retry_budget_invalid")
+    if "writer_snapshot" in record:
+        fixture = validate_snapshot(record["writer_snapshot"])
+        if fixture.get("candidate_id") != record["candidate_id"] or _stable_payload_hash(fixture) != record.get("payload_hash"):
+            raise PendingWriterError("pending_writer_snapshot_mismatch")
     current = _utc(now)
     if current >= expires_at:
         return WRITER_EXPIRED

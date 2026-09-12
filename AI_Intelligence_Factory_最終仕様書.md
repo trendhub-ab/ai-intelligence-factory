@@ -848,3 +848,12 @@ PMF前にやらないこと:
 - 残る本番化条件: 全前処理の実配線、一次資料に基づくGroq Plan比較、完成Decision Packageの耐久保存と単独再開、実Writer出力の現行品質ゲート合格、重複保存・公開制御のE2E検証。
 - 機械的なFact Gateは数字・固有名詞・参照境界等の検査であり、全主張の意味的真実性を保証するものではない。
 - 本変更のオフライン検証: Hybrid関連8ファイル41テスト成功。モデルAPI呼出し0、Notion/note書込み0。
+
+
+### Hybrid Writer 復元パッケージ
+
+新規PENDING_WRITERは `writer_snapshot` に、Writer fixture全体（入力候補・一次資料context・Groq Planレポート・Writer prompt・モデル・出力上限）をJSONで保持し、全体SHA256を検証する。既存runtime-state保存経路を使用する。
+`hybrid_writer_runtime.resume_saved_writer` は元fixtureを必要とせず、固定ファイル名で材料を復元して既存の制限付きWriter処理を呼ぶ。上書き復元は禁止。旧snapshotなし待機状態は自動復元せず、元fixtureを使う従来経路のみ。
+再開成功は通信成功であり `quality_validated=false`。復元されたinput/planを用いて既存 `evaluate_writer_text` と公開制御を通す必要がある。snapshotは503/404後に保存されるため、送信中のプロセス強制終了まで保証する事前checkpointではない。
+SHA256は保存内容の一致検証であり、一次資料の真実性やGroq出力の意味的品質の証明ではない。`sanitized_for_writer_isolation` 等の編集履歴を保存し、人手修正済みPlanを未修正Groq品質の合格証拠としない。
+検証: 元fixtureを削除した新規ディレクトリから1回だけWriter再開、prompt/出力上限/Evidenceの変更拒否、復元上書き拒否。Hybrid関連9ファイル47テスト成功。ライブAPI・業務DB書込み0。

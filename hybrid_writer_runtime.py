@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from hybrid_one_shot import run_bounded_gemini_writer_calls
+from hybrid_writer_package import validate_snapshot, package_hash
 from hybrid_writer_deferred import (
     PENDING_WRITER,
     WRITER_EXPIRED,
@@ -67,11 +68,15 @@ def run_or_defer_writer(
 
     previous=load_state(candidate_id)
     if previous is not None:
-        state=validate_pending_writer_record(previous,allow_not_ready=True)
         if previous.get('candidate_id') != candidate_id:
             raise HybridWriterRuntimeError('pending_writer_candidate_mismatch')
         if previous.get('payload_hash') != _stable_payload_hash(fixture):
             raise HybridWriterRuntimeError('pending_writer_payload_changed')
+        state=validate_pending_writer_record(previous,allow_not_ready=True)
+        if 'writer_snapshot' in previous:
+            saved_fixture = validate_snapshot(previous['writer_snapshot'])
+            if package_hash(saved_fixture) != package_hash(fixture):
+                raise HybridWriterRuntimeError('pending_writer_payload_changed')
         if state==WRITER_EXPIRED:
             raise HybridWriterRuntimeError('pending_writer_expired')
         if int(previous['retry_cycles']) >= WRITER_MAX_RETRY_CYCLES:
@@ -103,3 +108,32 @@ def run_or_defer_writer(
 
     delete_state(candidate_id)
     return {'status':'SUCCESS','provider_calls':int(report.get('provider_calls') or 0),'report':report}
+
+
+def resume_saved_writer(pipeline, candidate_id: str, output_dir: str, *,
+                        load_state=load_pending_writer_state,
+                        save_state=save_pending_writer_state,
+                        delete_state=delete_pending_writer_state,
+                        writer_runner=run_bounded_gemini_writer_calls) -> dict:
+    """Resume from durable material alone, without Groq or fresh source collection.
+
+    A SUCCESS here is transport success only. Restored input/plan paths are returned
+    for the same existing evaluate_writer_text gates before any downstream use.
+    """
+    from hybrid_writer_package import restore_pending_package
+    record = load_state(candidate_id)
+    if record is None:
+        raise HybridWriterRuntimeError('pending_writer_missing')
+    if record.get('candidate_id') != candidate_id:
+        raise HybridWriterRuntimeError('pending_writer_candidate_mismatch')
+    paths = restore_pending_package(record, output_dir)
+    directory = Path(output_dir)
+    result = run_or_defer_writer(
+        pipeline, paths['fixture'], str(directory / 'writer-report.json'),
+        str(directory / 'pending-writer.json'),
+        load_state=load_state, save_state=save_state, delete_state=delete_state,
+        writer_runner=writer_runner,
+    )
+    result['restored_paths'] = paths
+    result['quality_validated'] = False
+    return result
