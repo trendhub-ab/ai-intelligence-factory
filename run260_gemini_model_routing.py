@@ -1,11 +1,12 @@
-"""Run260/261/278/371/373: bounded Gemini primary / quality-repair routing.
+"""Run260/261/278/371/373/374: bounded Gemini primary / quality-repair routing.
 
 Business goal
 -------------
 Improve Ready yield without weakening Fact/Evidence/Publication/Reader gates and
 without increasing the existing Deep Dive request ceiling. Fresh article Deep Dive
 uses Gemini 3.7 first by default. Dynamic model-based quality repair uses Gemini 3.8
-first. Gemini 3.6 and 3.5 remain fallbacks.
+first. Gemini 3.6 and 3.5 remain fallbacks unless an operator explicitly excludes a
+model for a Pending Retry lane.
 
 Run261 production evidence proved that wrapping only ``_call_model_pool`` was not a
 strong enough contract: the live quality-retry path is entered through
@@ -21,8 +22,12 @@ Run371 fixes an operator-order bug exposed by bounded Pending Retry recovery. Ex
 operator model order is preserved exactly before missing default fallbacks are appended.
 Run373 additionally distinguishes the historical core three-model pool from a real
 operator override: that legacy default is implicit and must still normalize to the
-canonical 3.7 -> 3.8 -> 3.6 -> 3.5 fresh Deep Dive order. Quotas, per-model budgets,
-request ceilings, and Gate policy are unchanged.
+canonical 3.7 -> 3.8 -> 3.6 -> 3.5 fresh Deep Dive order.
+
+Run374 fixes the interaction between bounded quality-repair routing and the operator
+Pending Retry exclusion list. Excluded models are removed *before* the two-model quality
+pool is sliced, so an excluded 3.6 cannot consume the only fallback slot and prevent
+3.5 from being tried.
 """
 from __future__ import annotations
 
@@ -42,6 +47,7 @@ LEGACY_IMPLICIT_DEEP_DIVE_POOLS = (
     ("gemini-3.6-flash",),
     ("gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash"),
 )
+_PENDING_RETRY_ORIGINS = frozenset({"pending_retry", "pending_retry_validation"})
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
 
@@ -56,12 +62,7 @@ def _dedupe(models: Iterable[str]) -> list[str]:
 
 
 def _configured_deep_dive_pool(pipeline_module: Any) -> tuple[list[str], bool]:
-    """Return configured pool plus whether it is an explicit operator override.
-
-    Empty values and the two historical core defaults are implicit. Any other non-empty
-    ordering is explicit and must retain operator order. Missing Run260 defaults are
-    appended later as fallbacks.
-    """
+    """Return configured pool plus whether it is an explicit operator override."""
     configured = _dedupe(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
     configured_tuple = tuple(configured)
     if not configured or configured_tuple in LEGACY_IMPLICIT_DEEP_DIVE_POOLS:
@@ -77,15 +78,27 @@ def _production_pool(pipeline_module: Any) -> list[str]:
 
 
 def _quality_first_pool(pool: Iterable[str]) -> list[str]:
-    """Prefer 3.8 only for an already-authorized model-based repair call."""
     existing = _dedupe(pool)
     preferred = [QUALITY_MODEL, *FALLBACK_MODELS, PRIMARY_MODEL]
     return _dedupe([m for m in preferred if m in existing] + existing)
 
 
 def _bounded_quality_pool(pool: Iterable[str]) -> list[str]:
-    """Keep one preferred repair model plus one distinct fallback."""
     return _quality_first_pool(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+
+
+def _pending_retry_excluded_models(request_origin: str) -> frozenset[str]:
+    if str(request_origin or "").strip() not in _PENDING_RETRY_ORIGINS:
+        return frozenset()
+    raw = str(os.environ.get("GEMINI_PENDING_RETRY_EXCLUDED_MODELS", "") or "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _pool_after_pending_exclusions(pool: Iterable[str], request_origin: str) -> list[str]:
+    excluded = _pending_retry_excluded_models(request_origin)
+    if not excluded:
+        return _dedupe(pool)
+    return [model for model in _dedupe(pool) if model not in excluded]
 
 
 def _is_quality_repair_kind(kind: str) -> bool:
@@ -121,6 +134,12 @@ def _request_pool(args: tuple, kwargs: dict, fallback: list[str]) -> list[str]:
     if len(args) >= 5:
         return _dedupe(args[4] or fallback)
     return list(fallback)
+
+
+def _request_origin(args: tuple, kwargs: dict) -> str:
+    if "request_origin" in kwargs:
+        return str(kwargs.get("request_origin") or "new")
+    return "new"
 
 
 def install(pipeline_module: Any) -> Any:
@@ -159,7 +178,9 @@ def install(pipeline_module: Any) -> Any:
         kind = _request_kind(args, kwargs)
         current_pool = _request_pool(args, kwargs, production_pool)
         if _is_quality_repair_kind(kind):
-            args2, kwargs2 = _replace_pool_argument(args, kwargs, _bounded_quality_pool(current_pool))
+            origin = _request_origin(args, kwargs)
+            eligible_pool = _pool_after_pending_exclusions(current_pool, origin)
+            args2, kwargs2 = _replace_pool_argument(args, kwargs, _bounded_quality_pool(eligible_pool))
             return original(*args2, **kwargs2)
         return original(*args, **kwargs)
 
@@ -180,9 +201,11 @@ def install(pipeline_module: Any) -> Any:
                 request_context=request_context,
                 request_origin=request_origin,
             )
-        quality_pool = _bounded_quality_pool(
-            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool)
+        eligible_pool = _pool_after_pending_exclusions(
+            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool),
+            request_origin,
         )
+        quality_pool = _bounded_quality_pool(eligible_pool)
         return pipeline_module._call_model_pool(
             prompt,
             config,
