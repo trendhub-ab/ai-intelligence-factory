@@ -12,6 +12,16 @@ both on same-model 503 confirmation makes cross-model fallback unreachable. Ther
 structured 503 on a pending-retry request opens a run-local circuit immediately and
 preserves the second request for the next model. No quota cap is raised and no gate is
 weakened.
+
+Run360 establishes a single retry owner. google-genai retries transient HTTP failures
+(including 503) internally by default, while this module also performs bounded provider
+confirmation/fallback. Layering both mechanisms can multiply one logical request into
+many provider-visible HTTP attempts and makes Factory usage telemetry undercount the
+real transport work. Production therefore rebuilds the Gemini client with SDK retries
+disabled (one total SDK attempt). All retry/fallback decisions remain owned by the
+Factory budgets and circuits below. The saved pre-Run360 Gemini-only branch remains the
+rollback authority; article quality, gates, model routing, Groq, and persistence are
+unchanged here.
 """
 from __future__ import annotations
 
@@ -19,6 +29,8 @@ import time
 from typing import Any
 
 _INSTALL_FLAG = "_aiif_provider_resilience_installed"
+_SDK_SINGLE_OWNER_FLAG = "_aiif_gemini_sdk_single_retry_owner_installed"
+_SDK_RETRY_ATTEMPTS = 1
 _DEFAULT_503_CONFIRM_DELAY_SECONDS = 10
 _MAX_503_CONFIRM_DELAY_SECONDS = 20
 
@@ -68,6 +80,52 @@ def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_orig
         )
 
 
+def _install_single_retry_owner_client(pipeline_module: Any) -> None:
+    """Disable google-genai's internal transient retry for Production.
+
+    google-genai's HttpRetryOptions.attempts counts the original request. Setting it to
+    one means exactly one SDK transport attempt and no SDK retry. The Factory's explicit
+    budgets, delay, fallback, and circuit-breaker policy then become the sole retry owner.
+
+    Import-only/offline tests often have no GEMINI_API_KEY and no usable client. In that
+    state there is no provider call to protect, so installation is deferred safely until
+    a real Production runtime with credentials is initialized.
+    """
+    if bool(getattr(pipeline_module, _SDK_SINGLE_OWNER_FLAG, False)):
+        return
+
+    api_key = str(getattr(pipeline_module, "GEMINI_API_KEY", "") or "").strip()
+    if not api_key:
+        setattr(pipeline_module, "GEMINI_SDK_RETRY_ATTEMPTS", _SDK_RETRY_ATTEMPTS)
+        setattr(pipeline_module, "GEMINI_RETRY_OWNER", "factory")
+        return
+
+    genai_module = getattr(pipeline_module, "genai", None)
+    client_factory = getattr(genai_module, "Client", None) if genai_module is not None else None
+    if not callable(client_factory):
+        raise RuntimeError("Run360 requires google.genai.Client to enforce single retry ownership")
+
+    try:
+        single_owner_client = client_factory(
+            api_key=api_key,
+            http_options={"retry_options": {"attempts": _SDK_RETRY_ATTEMPTS}},
+        )
+    except Exception as exc:
+        raise RuntimeError("Run360 failed to create Gemini client with SDK retry disabled") from exc
+
+    pipeline_module.client = single_owner_client
+    pipeline_module.GEMINI_SDK_RETRY_ATTEMPTS = _SDK_RETRY_ATTEMPTS
+    pipeline_module.GEMINI_RETRY_OWNER = "factory"
+    setattr(pipeline_module, _SDK_SINGLE_OWNER_FLAG, True)
+
+    logger = getattr(pipeline_module, "logger", None)
+    if logger is not None:
+        logger.info(
+            "[RUN360 GEMINI RETRY OWNER] owner=factory sdk_attempts=%s sdk_retries=0",
+            _SDK_RETRY_ATTEMPTS,
+        )
+
+
 def install(pipeline_module: Any) -> Any:
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
         return pipeline_module
@@ -79,6 +137,8 @@ def install(pipeline_module: Any) -> Any:
     missing = [name for name in required if not hasattr(pipeline_module, name)]
     if missing:
         raise RuntimeError("Run303 provider resilience missing pipeline contract: " + ", ".join(missing))
+
+    _install_single_retry_owner_client(pipeline_module)
 
     def call_model_pool_provider_verified(
         prompt: str, config: dict | None, kind: str, reserve: int, pool: list[str],
@@ -254,5 +314,7 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module._call_model_pool = call_model_pool_provider_verified
     pipeline_module._call_product_review_pool = call_product_review_pool_provider_verified
     pipeline_module.provider_status_code = _provider_status_code
+    pipeline_module.GEMINI_SDK_RETRY_ATTEMPTS = _SDK_RETRY_ATTEMPTS
+    pipeline_module.GEMINI_RETRY_OWNER = "factory"
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module
