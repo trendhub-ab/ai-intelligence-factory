@@ -48,7 +48,6 @@ RUNTIME_LAYER_ORDER = (
     "run296_editorial_format_v2.install",
     "run248_first_real_publish_quality_calibration.install",
     "run249_final_publication_surface_gate.install",
-    "runtime_layers.install_quality_interaction_contract",
     "run194_publication_contract.install",
 )
 
@@ -203,9 +202,11 @@ def install_runtime_layers(pipeline_module):
     # First-real-publish calibration is zero-provider-call and deliberately sits after all
     # article/eyecatch/presentation layers.  Run249 then rechecks the reader-first public
     # projection so late title/summary assembly cannot bypass Reader Value diagnostics.
-    # Run357 is an interaction contract, not another quality heuristic: it prevents the
-    # deterministic WATCH cleanup from manufacturing a Human Appeal failure of its own.
-    # The content-addressed Publication Contract remains the last installed layer.
+    # Run357 is an internal interaction contract, not another runtime layer: it prevents
+    # the deterministic WATCH cleanup from manufacturing a Human Appeal failure of its own.
+    # The canonical layer manifest remains unchanged so Run279 continues to prove the
+    # historical module.install sequence, while runtime_layers.py itself remains covered by
+    # Publication Contract provenance.
     run248_first_real_publish_quality_calibration.install(pipeline_module)
     run249_final_publication_surface_gate.install(pipeline_module)
     install_quality_interaction_contract(pipeline_module)
