@@ -53,6 +53,8 @@ class GroqTwoPassArticleTests(unittest.TestCase):
             self.assertEqual(fixture["model"], "openai/gpt-oss-120b")
             self.assertEqual(fixture["rate_policy"], "gpt_oss_120b")
             self.assertIsNotNone(fixture["schema"])
+            self.assertIn("一般利用者に適用", fixture["prompt"])
+            self.assertIn("3項目は必ず自然な日本語", fixture["prompt"])
             provider = GroqProvider(
                 lambda _: None,
                 validate_schema=lambda data, schema: None,
@@ -71,6 +73,23 @@ class GroqTwoPassArticleTests(unittest.TestCase):
         plan["action"] = "Daybreak Blueを申請してPoCを実施する。"
         with self.assertRaisesRegex(TwoPassArticleError, "unconfirmed_access_action_escalation"):
             validate_plan(plan)
+
+    def test_unconfirmed_access_cannot_claim_general_user_scope(self):
+        plan = valid_plan()
+        plan["decision_reason"] = ["アクセス制限が一般利用者に適用されている"]
+        with self.assertRaisesRegex(TwoPassArticleError, "unconfirmed_access_scope_claim"):
+            validate_plan(plan)
+
+    def test_editorial_seeds_must_be_japanese(self):
+        for field, value in [
+            ("article_angle", "Balancing capability and risk"),
+            ("reader_bridge", "This changes how readers should think"),
+            ("title_seed", "Frontier AI and cyber risk"),
+        ]:
+            plan = valid_plan()
+            plan[field] = value
+            with self.assertRaisesRegex(TwoPassArticleError, "plan_editorial_seed_not_japanese"):
+                validate_plan(plan)
 
     def test_writer_fixture_is_article_only_and_compound(self):
         with tempfile.TemporaryDirectory() as td:
