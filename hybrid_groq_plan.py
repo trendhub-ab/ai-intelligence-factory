@@ -36,10 +36,13 @@ def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
 
 【判断と採点の較正】
 - 評価時の設定・アクセス条件は、製品の提供形態ではない。Daybreak Blueはこの資料では評価条件としてだけ扱う。
+- 資料が「公開時に安全策を適用する」と述べる場合、それは公開時の方針であり、評価中に安全策が適用済みだったことを意味しない。「評価で安全策が適用された」「適用された安全策」のように時制・適用範囲を変換しない。「公開時に適用するとされる安全策」までに留める。
 - 資料が安全策の名称を示すだけなら、有効性も無効性も未確定。「未検証の安全策」「安全策の有効性が未検証」のように、検証実施の有無まで事実化しない。必要なら「この資料から有効性は確認できない」と書く。
 - 利用条件が未確認であることだけを理由にAVOIDへ飛躍しない。WATCH/WAIT/AVOIDは、対象読者と確認済みの採否根拠を区別して決める。根拠のある見送りは妨げない。
 - access_status=NOT_CONFIRMEDでも「一般利用者向けに確認できない」のような未確認表現は許可する。一方、「一般利用者が利用できる」「一般提供される」のような提供範囲の肯定断定は禁止する。
 - Decision Scoreの上限はbusiness_impact=25、technical_impact=25、urgency=20、market_impact=15、reliability=15。各軸を別々に評価し、利用条件の不明を全軸へ重複減点しない。
+- reliabilityは一次情報・測定記述・根拠の信頼性を評価する軸。一般利用可否が未確認であること自体はreliability低下の理由ではない。アクセス不明はaccess_status、decision_reason、actionで表現する。
+- business_impact / technical_impact / urgency / market_impact も、アクセス未確認を同じ理由で繰り返し減点しない。確認済みの事実が各軸に与える影響だけを採点する。
 - article_valueは0〜100の記事としての価値。導入の可否や安全性とは別に、確認済みの発見が読者へ与える理解と判断材料を評価する。
 - 読者は中学生〜非エンジニアも含む。reader_bridgeは読者が理解できる説明の橋渡しを具体化する。「判断のための指針」のような目的説明だけにしない。
 """
@@ -48,7 +51,7 @@ def build_hybrid_plan_fixture(input_path: str, output_path: str) -> dict:
 
 
 def _hybrid_refined_semantic_guard(plan: dict) -> dict:
-    """Distinguish uncertainty wording from unsupported positive access claims."""
+    """Distinguish uncertainty wording from unsupported access/safeguard claims."""
     legacy_scope_failure = False
     try:
         validate_plan(plan)
@@ -79,6 +82,15 @@ def _hybrid_refined_semantic_guard(plan: dict) -> dict:
     )
     if any(term in management_text for term in unsupported_safeguard_assessments):
         raise TwoPassArticleError("unsupported_safeguard_validation_claim")
+
+    # Migration guard: the current B0049 ledger describes safeguards as publication-time
+    # controls. Do not allow the Planner to move them backward into the evaluation itself.
+    unsupported_safeguard_timing = (
+        "評価で安全策が適用された", "評価時に安全策が適用された", "評価中に安全策が適用された",
+        "適用された安全策", "安全策が適用された",
+    )
+    if any(term in management_text for term in unsupported_safeguard_timing):
+        raise TwoPassArticleError("unsupported_safeguard_application_timing_claim")
     return plan
 
 
