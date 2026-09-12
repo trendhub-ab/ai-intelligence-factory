@@ -20,7 +20,7 @@ class HybridWriterError(RuntimeError):
 TITLE_MARKER = "===TITLE==="
 ARTICLE_MARKER = "===ARTICLE==="
 MAX_SOURCE_CONTEXT_CHARS = 14000
-MIN_ARTICLE_CHARS = 1400
+MIN_ARTICLE_CHARS = 1700
 MAX_ARTICLE_CHARS = 2400
 MIN_HEADINGS = 2
 MAX_HEADINGS = 4
@@ -78,18 +78,20 @@ def build_gemini_writer_prompt(item: dict, plan: dict) -> str:
 【最優先：Factを増やさない】
 - 事実の上限はSOURCE CONTEXT。PLANは編集方針と判断であり、新しい事実ソースではない。
 - SOURCE CONTEXTにない固有名詞、数値、価格、アクセス条件、機能、比較、因果、効果を追加しない。
-- SOURCE CONTEXTの語を説明するために、モデル知識から別の技術事実を足さない。
+- SOURCE CONTEXTの語を説明するために、モデル知識・一般知識・用語の定義から別の技術事実を足さない。
 - PLANのDecision/Action/Scoreより強い推奨へ書き換えない。
 - access_status=NOT_CONFIRMEDなら、「誰でも使えない」「限定提供である」「一般公開されない」も断定しない。確認できるのは一般利用条件が未確認ということだけ。
-- Daybreak Blue等の評価条件から「安全装置を外した」「制限を緩めた」「専門家向け」等の具体像を作らない。
-- 安全策はSOURCE CONTEXTにある名称・存在以上の機能を説明しない。「常時判定」「ログ収集」「AIの意図を読む」「完全に防ぐ」等を足さない。
+- 評価条件は評価条件のまま書く。Daybreak Blue等から「通常の対話画面」「一般ユーザー向け設定」「製品版の状態」「安全装置を外した」「制限を緩めた」「専門家向け」など、SOURCE CONTEXTにない利用像を作らない。
+- 安全策はSOURCE CONTEXTにある名称・時制・存在以上の機能を説明しない。名称から目的や機能を説明しない。「拒否訓練＝不適切な指示を断る訓練」「classifier＝安全性を判定する仕組み」のような解説も、SOURCE CONTEXTに機能説明がなければ禁止する。
+- 「zero-day」を「誰も発見していなかった」「世界で初めて見つけた」等へ拡張しない。SOURCE CONTEXTに書かれた範囲の「zero-day脆弱性を発見」に留める。
+- データ混入懸念について「混入可能性が極めて低い」「答えを覚えていた」等、確率や原因を断定しない。SOURCE CONTEXTにある懸念と追加評価の事実だけを書く。
 - 「劇的」「驚異的」「革命的」「圧倒的」「完全に攻略」等、Evidenceより強い形容を使わない。面白さは形容詞ではなく確認済み事実で出す。
 
 【読者体験：非エンジニアを置いていかない】
 - 中学生〜非エンジニアでも「要するに何が起きたか」を一文で言える日本語にする。
 - 最初の600字は特に平易にし、未説明の専門語を一文に2個以上積まない。
 - 本文で読者が覚える専門概念は原則2〜3個に絞る。Decisionに不要な英語名・内部名称・安全策の列挙は圧縮する。
-- 英語の正式名を出すときは、先に普通の日本語で役割を説明する。日本語だけで十分なら英語を併記しない。
+- 英語の正式名を出すときは、SOURCE CONTEXTにある範囲だけで普通の日本語へ言い換える。一般知識で機能説明を補足しない。
 - 比喩は最大1つ。SOURCE CONTEXTにない装置・人物・運用条件を比喩の事実のように持ち込まない。似ている点だけを短く使う。
 - 発表要約から始めず、確認済みの意外な事実を入口にする。ただし煽らない。
 - 読者への近さは雑談の追加ではなく、硬い説明を普通の言葉へ置き換えて作る。
@@ -100,7 +102,8 @@ def build_gemini_writer_prompt(item: dict, plan: dict) -> str:
 - Markdown見出しを必ず{MIN_HEADINGS}〜{MAX_HEADINGS}個使う。見出し行は必ず「## 見出し」の形式。裸の見出しは禁止。
 - 見出しは記事固有の日本語にし、「なぜ重要」「まとめ」「最終判断」のような汎用ラベルだけにしない。
 - タイトルは「。」「？」のどちらかで終える。
-- 本文は{MIN_ARTICLE_CHARS}〜{MAX_ARTICLE_CHARS}日本語文字を目安にする。水増ししない。
+- ARTICLE本文は必ず{MIN_ARTICLE_CHARS}字以上、{MAX_ARTICLE_CHARS}字以内にする。「目安」ではなく出力条件である。{MIN_ARTICLE_CHARS}字未満の本文は返してはいけない。
+- 目標は1,850〜2,200字。長さを満たすために新Factを作らず、確認済みEvidenceの意味・条件・読者の判断へのつながりを丁寧に説明する。
 - 同じ事実を専門説明と比喩説明で二重に説明しない。
 
 {_source_fact_discipline(source)}
@@ -118,12 +121,15 @@ Primary URL: {url}
 {json.dumps(writer_plan, ensure_ascii=False, indent=2)}
 
 【最終セルフチェック】
-返答前にARTICLEだけを読み、次を満たさない箇所は新情報を足さず削除・圧縮・言い換えで直す。
-1. SOURCE CONTEXTにない機能・因果・アクセス条件を作っていない。
-2. 「劇的」「驚異的」などEvidenceより強い語がない。
-3. 未説明の専門語が連続していない。
-4. Markdownの「## 」見出しが{MIN_HEADINGS}〜{MAX_HEADINGS}個ある。
-5. 最後がPLANと矛盾しない「私なら」の判断になっている。
+返答前にARTICLEだけを読み、次を満たさない箇所はSOURCE CONTEXT内の事実だけを使って修正する。新しいFactは足さない。
+1. SOURCE CONTEXTにない機能・因果・アクセス条件・用語定義を作っていない。
+2. 評価条件を製品条件や一般利用条件へ変換していない。
+3. 安全策の名称から機能を推測していない。
+4. 「劇的」「驚異的」などEvidenceより強い語がない。
+5. 未説明の専門語が連続していない。
+6. Markdownの「## 」見出しが{MIN_HEADINGS}〜{MAX_HEADINGS}個ある。
+7. ARTICLE本文が{MIN_ARTICLE_CHARS}〜{MAX_ARTICLE_CHARS}字に入っている。{MIN_ARTICLE_CHARS}字未満なら、SOURCE CONTEXTにある条件・意味・判断との関係をもう少し丁寧に説明してから出力する。
+8. 最後がPLANと矛盾しない「私なら」の判断になっている。
 
 【出力】
 次の2ブロックだけを返す。説明・管理データ・コードフェンスは禁止。
