@@ -1,9 +1,9 @@
 """One-call Groq live validator for Technology comment Shadow output.
 
 This script has no Notion credentials or mutation code. It reads a public/synthetic
-fixture, calls Groq once with strict JSON schema output, validates the challenger, and
-writes a local report. The report may contain generated synthetic text; production DB
-content is never used here.
+fixture, calls Groq once in JSON-object mode, then enforces the exact four-field contract
+locally. The report may contain generated synthetic text; production DB content is never
+used here.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ import urllib.error
 import urllib.request
 
 from technology_comment_shadow import (
-    SHADOW_SCHEMA,
     build_shadow_prompt,
     compare_shadow_to_baseline,
     parse_shadow_output,
@@ -62,14 +61,10 @@ def run(fixture_path: str, report_path: str) -> dict:
         "reasoning_effort": "low",
         "reasoning_format": "hidden",
         "stream": False,
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "technology_comment_shadow",
-                "strict": True,
-                "schema": SHADOW_SCHEMA,
-            },
-        },
+        # Groq occasionally routes json_schema output through its tool-call machinery for
+        # this model. JSON object mode plus Factory-side exact-shape validation is the
+        # fail-closed fallback already used by the historical provider boundary.
+        "response_format": {"type": "json_object"},
     }
     body, headers = _post(payload)
     try:
@@ -85,6 +80,7 @@ def run(fixture_path: str, report_path: str) -> dict:
     comparison = compare_shadow_to_baseline(fixture["baseline"], challenger, fixture)
     report = {
         "mode": "technology_comment_shadow_live",
+        "structured_output_mode": "json_object_local_strict",
         "candidate_id": fixture["candidate_id"],
         "provider": "groq",
         "model": MODEL,
@@ -118,6 +114,7 @@ def main() -> int:
     # Intentionally do not print generated prose. Keep logs aggregate-only.
     print(json.dumps({
         "mode": report["mode"],
+        "structured_output_mode": report["structured_output_mode"],
         "candidate_id": report["candidate_id"],
         "provider": report["provider"],
         "model": report["model"],
