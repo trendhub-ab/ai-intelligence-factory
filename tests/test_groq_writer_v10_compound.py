@@ -24,8 +24,20 @@ class GroqWriterV10Tests(unittest.TestCase):
             self.assertEqual(data['model'],'groq/compound-mini')
             self.assertEqual(data['max_output_tokens'],4400)
             self.assertIn('V10 EVIDENCE-DENSE PROSE',data['prompt'])
+            self.assertIn('Gemini Run359同期',data['prompt'])
+            self.assertIn('追加provider callの許可ではない',data['prompt'])
+            self.assertIn('gemini_run359_provider_neutral',data['contract_version_v10'])
             self.assertGreater(pf['headroom'],10000)
             self.assertLess(pf['request_bytes'],24576)
+
+    def test_run359_sync_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td)/'w.json'
+            p.write_text(json.dumps({'provider':'groq','stage':'article','model':'openai/gpt-oss-120b','rate_policy':'gpt_oss_120b','prompt':'base','max_output_tokens':2800,'reasoning_effort':'low','schema':None}),encoding='utf-8')
+            first=route_compound_writer_v10(str(p))['prompt']
+            second=route_compound_writer_v10(str(p))['prompt']
+            self.assertEqual(first,second)
+            self.assertEqual(second.count('Gemini Run359同期'),1)
 
     def test_guard_rejects_unverified_benchmark_and_access_details(self):
         paras=[('簡単に言えば、測定条件と利用条件は別です。' * 25) for _ in range(8)]
