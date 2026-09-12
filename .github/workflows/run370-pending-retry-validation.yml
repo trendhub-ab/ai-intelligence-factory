@@ -1,6 +1,7 @@
 name: Run370 Pending Retry Validation [ONE-TIME]
 
 # Read-only pilot for the persisted Pending Retry row produced by Run368.
+# Revision 2 binds pending validation to pipeline.get_pending_retry_items().
 # No Notion manuscript/status persistence and no Note Ready reconciliation.
 on:
   push:
