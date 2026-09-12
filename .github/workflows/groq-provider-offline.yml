@@ -28,9 +28,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install pytest
+        run: python -m pip install pytest
       - name: Run rate-aware provider tests without credentials or network
         env:
           AIIF_GROQ_LIVE: 'false'
-        run: |
-          python -m unittest discover -s tests -p 'test_ai_provider.py' -v
-          python -m unittest discover -s tests -p 'test_groq_*.py' -v
+        run: python -m pytest tests/test_ai_provider.py tests/test_groq_*.py -q
