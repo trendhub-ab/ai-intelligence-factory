@@ -65,6 +65,10 @@ def _result_text(report: dict) -> str:
     return text.strip()
 
 
+def _contains_japanese(text: str) -> bool:
+    return bool(re.search(r"[ぁ-んァ-ヶ一-龯]", text or ""))
+
+
 def validate_plan(plan: dict) -> dict:
     if not isinstance(plan, dict):
         raise TwoPassArticleError("plan_not_object")
@@ -84,17 +88,34 @@ def validate_plan(plan: dict) -> dict:
         if type(value) is not int or not 0 <= value <= upper:
             raise TwoPassArticleError("plan_score_invalid:" + key)
     reasons = plan.get("decision_reason")
-    if not isinstance(reasons, list) or not 1 <= len(reasons) <= 3 or any(not isinstance(x, str) or not x.strip() for x in reasons):
+    if (not isinstance(reasons, list) or not 1 <= len(reasons) <= 3
+            or any(not isinstance(x, str) or not x.strip() or len(x) > 240 for x in reasons)):
         raise TwoPassArticleError("plan_reasons_invalid")
-    for key in required - set(limits) - {"decision_reason"}:
-        if key in {"decision", "access_status"}:
-            continue
-        if not isinstance(plan.get(key), str) or not plan[key].strip():
+    text_limits = {
+        "source_summary": 500, "what": 500, "why_important": 500, "action": 400,
+        "article_angle": 240, "reader_bridge": 300, "title_seed": 160,
+    }
+    for key, upper in text_limits.items():
+        value = plan.get(key)
+        if not isinstance(value, str) or not value.strip() or len(value) > upper:
             raise TwoPassArticleError("plan_text_invalid:" + key)
+    for key in ("article_angle", "reader_bridge", "title_seed"):
+        if not _contains_japanese(plan[key]):
+            raise TwoPassArticleError("plan_editorial_seed_not_japanese:" + key)
     if plan["access_status"] == "NOT_CONFIRMED":
-        forbidden = ("PoC", "概念実証", "申請", "導入する", "試す", "利用開始", "実施する")
-        if any(word in plan["action"] for word in forbidden):
+        forbidden_action = ("PoC", "概念実証", "申請", "導入する", "試す", "利用開始", "実施する")
+        if any(word in plan["action"] for word in forbidden_action):
             raise TwoPassArticleError("unconfirmed_access_action_escalation")
+        unknown_scope = (
+            "一般利用者", "一般ユーザー", "誰でも利用", "一般提供", "利用可能",
+            "アクセス可能", "publicly available", "generally available",
+        )
+        management_text = "\n".join([
+            plan["source_summary"], plan["what"], plan["why_important"],
+            *plan["decision_reason"], plan["action"],
+        ]).lower()
+        if any(term.lower() in management_text for term in unknown_scope):
+            raise TwoPassArticleError("unconfirmed_access_scope_claim")
     return plan
 
 
@@ -109,8 +130,9 @@ def build_plan_fixture(input_path: str, output_path: str) -> dict:
 - 評価条件を提供条件、安全策の適用範囲、一般利用可否へ横滑りさせない。
 - 安全策の名称から機能、リアルタイム性、ログ、保証を推測しない。
 - アクセス可否が一次情報で確認できない場合 access_status=NOT_CONFIRMED とし、Actionは条件確認まで。PoC、申請、導入、試用を勧めない。
+- access_status=NOT_CONFIRMEDなら、「一般利用者に適用」「一般提供」「誰でも利用可能」などアクセス範囲を断定する表現を、Source Summary / What / Why Important / Decision Reason / Actionのどこにも書かない。
 - why_importantは実務上の意味だが、未検証効果を事実にしない。
-- article_angle / reader_bridge / title_seedは編集案であり、新しいFactを含めない。
+- article_angle / reader_bridge / title_seedは編集案であり、新しいFactを含めない。3項目は必ず自然な日本語で書く。
 - JSON Schemaに厳密に従いJSONだけを返す。
 
 【候補】
