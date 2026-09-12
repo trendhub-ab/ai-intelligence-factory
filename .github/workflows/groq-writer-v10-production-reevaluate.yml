@@ -1,0 +1,110 @@
+name: Groq Writer v10 Production Re-evaluate
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - '.github/workflows/groq-writer-v10-production-reevaluate.yml'
+      - 'groq_writer_v7_contract.py'
+      - 'groq_writer_v10_compound.py'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  reevaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install jsonschema
+      - name: Download saved v10 live artifact without provider access
+        uses: actions/download-artifact@v4
+        with:
+          name: groq-writer-v10-compound-B0049
+          path: saved-v10
+          github-token: ${{ github.token }}
+          repository: trendhub-ab/ai-intelligence-factory
+          run-id: 34667953427
+      - name: Reinspect saved v10 with corrected local diagnostics
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json, shutil
+          from groq_writer_v10_compound import inspect_compound_writer_v10
+          shutil.copyfile('saved-v10/two-pass-plan-report.json','two-pass-plan-report.json')
+          shutil.copyfile('saved-v10/two-pass-writer-report.json','two-pass-writer-report.json')
+          inspected=inspect_compound_writer_v10('two-pass-writer-report.json')
+          print(json.dumps({
+              'zero_api': True,
+              'article_chars': inspected['article_chars'],
+              'paragraphs': inspected['paragraphs'],
+              'headings': len(inspected['headings']),
+              'local_issues': inspected['issues'],
+              'business_writes': 0,
+          },ensure_ascii=False))
+          assert inspected['paragraphs'] == 8, inspected
+      - name: Assemble saved article and evaluate exact current Production gates
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json, note_manuscript, pipeline, production_pipeline
+          from groq_article_parity import evaluate_groq_article_output
+          from groq_two_pass_article import assemble_combined_report
+          from source_normalization import install as install_source_normalization
+          from run268_business_source_strategy import install as install_run268
+          from run269_business_source_precision import install as install_run269
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from run287_publication_date_provenance import install as install_run287
+          from reader_quality_precision import install as install_reader_quality_precision
+
+          combined=assemble_combined_report(
+              'two-pass-plan-report.json','two-pass-writer-report.json','two-pass-combined-report.json'
+          )
+          assert combined['business_writes']==0
+          install_source_normalization(pipeline)
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline); install_run268(pipeline); install_run269(pipeline)
+          install_reader_quality_precision(pipeline); install_run284(pipeline); install_run287(note_manuscript,pipeline)
+          ev=evaluate_groq_article_output(
+              pipeline,'two-pass-combined-report.json',
+              'tests/fixtures/groq/article_parity_B0049_input.json','two-pass-evaluation.json'
+          )
+          print(json.dumps({
+              'zero_api': True,
+              'evidence_state': ev['evidence_state'],
+              'evidence_sufficient': ev['evidence_sufficient'],
+              'fact_ok': ev['fact_ok'],
+              'fact_failures': ev['fact_failures'],
+              'editorial_ok': ev['editorial_ok'],
+              'editorial_warnings': ev['editorial_warnings'],
+              'publication_state': ev['publication_state'],
+              'publication_issues': ev['publication_issues'],
+              'human_appeal_state': ev['human_appeal_state'],
+              'human_appeal_issues': ev['human_appeal_issues'],
+              'gate_disposition': ev['gate_disposition'],
+              'quality_validated': ev['quality_validated'],
+              'decision_score': ev['decision_score'],
+              'article_chars': ev['article_chars'],
+              'business_writes': ev['business_writes'],
+          },ensure_ascii=False))
+          assert ev['business_writes']==0 and ev['persist_results'] is False
+      - name: Upload zero-API reevaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: groq-writer-v10-production-reevaluation
+          path: |
+            two-pass-combined-report.json
+            two-pass-evaluation.json
+          retention-days: 30
