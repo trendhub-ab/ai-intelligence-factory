@@ -1,0 +1,104 @@
+name: Groq Plan Strict Diagnostic Live
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/hybrid-groq-gemini']
+    paths:
+      - '.runtime/groq_plan_diagnostic_trigger.txt'
+permissions:
+  contents: write
+concurrency:
+  group: ai-intelligence-groq-plan-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install only required validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jsonschema
+      - name: Build exact B0049 Decision Plan fixture and preflight
+        shell: python
+        run: |
+          import json
+          from ai_provider import GenerationRequest, GroqProvider
+          from groq_two_pass_article import build_plan_fixture
+          from groq_validation import schema_validator
+          fixture=build_plan_fixture(
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-plan-diagnostic-fixture.json',
+          )
+          provider=GroqProvider(
+              lambda _: None,
+              validate_schema=schema_validator(fixture['schema']),
+              token_budget=7000,
+              model=fixture['model'],
+          )
+          payload,estimate=provider.prepare(GenerationRequest(
+              fixture['prompt'],fixture['max_output_tokens'],fixture['schema'],fixture['reasoning_effort']
+          ))
+          assert estimate <= 7000
+          assert payload['response_format']['json_schema']['strict'] is True
+          assert payload['reasoning_format']=='hidden'
+          assert payload['response_format']['json_schema']['schema']['properties']['decision']['type']=='string'
+          print(json.dumps({
+              'candidate_id':fixture['candidate_id'],
+              'model':fixture['model'],
+              'estimate':estimate,
+              'reasoning_format':payload['reasoning_format'],
+              'strict':True,
+              'gemini_calls':0,
+              'business_writes':0,
+          },ensure_ascii=False))
+      - name: One live Groq call with sanitized diagnostics enabled
+        id: live_call
+        continue-on-error: true
+        env:
+          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
+          AIIF_GROQ_FIXTURE: groq-plan-diagnostic-fixture.json
+          AIIF_GROQ_REPORT: groq-plan-diagnostic-report.json
+          AIIF_GROQ_LIVE: 'true'
+          AIIF_GROQ_ERROR_DIAGNOSTIC: 'true'
+          AIIF_GROQ_BUDGET_BACKEND: github
+          AIIF_GROQ_EXPERIMENT: groq-plan-diagnostic-${{ github.run_id }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
+        run: python production_pipeline.py
+      - name: Require safe diagnostic surface or valid success
+        shell: python
+        run: |
+          import json
+          report=json.load(open('groq-plan-diagnostic-report.json',encoding='utf-8'))
+          assert report['business_writes']==0
+          assert report['provider_calls']==1
+          assert report['model']=='openai/gpt-oss-120b'
+          serialized=json.dumps(report,ensure_ascii=False)
+          for forbidden in ('failed_generation','GROQ_API_KEY','Authorization: Bearer','api_key=gsk_'):
+              assert forbidden not in serialized
+          if 'error' in report:
+              assert report['error']['status']==400, report['error']
+              diagnostic=report['error'].get('provider_diagnostic') or {}
+              assert diagnostic, report['error']
+              assert set(diagnostic).issubset({'type','code','param','message'})
+              print(json.dumps({'terminal':'DIAGNOSTIC_400','provider_diagnostic':diagnostic,'business_writes':0,'gemini_calls':0},ensure_ascii=False))
+          else:
+              assert report.get('ledger_reconciled') is True
+              print(json.dumps({'terminal':'GROQ_PLAN_SUCCESS','actual_tokens':report.get('actual_tokens'),'business_writes':0,'gemini_calls':0},ensure_ascii=False))
+      - name: Upload sanitized diagnostic evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-plan-strict-diagnostic-B0049
+          path: |
+            groq-plan-diagnostic-fixture.json
+            groq-plan-diagnostic-report.json
+          if-no-files-found: warn
+          retention-days: 7
