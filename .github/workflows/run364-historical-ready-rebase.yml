@@ -1,0 +1,82 @@
+name: Run364 Historical Ready Rebase
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry_run rechecks the frozen eight; apply appends identical body under current Ready caption'
+        required: true
+        default: dry_run
+        type: choice
+        options: [dry_run, apply]
+      confirm:
+        description: 'For apply only, type REBASE_RUN362_PROVEN_8'
+        required: false
+        default: ''
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/run364-dry-run.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run364-historical-ready-rebase
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout full main history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Zero-provider safety regression
+        run: |
+          python -m unittest tests.test_run364_historical_ready_rebase -v
+          python -m unittest tests.test_run361_byte_preserving_ready_rebase -v
+          python -m unittest tests.test_run360_retry_owner_orthogonality -v
+          python -m unittest tests.test_product_review_provider_lock -v
+          python -m unittest tests.test_comment_write_contract -v
+      - name: Reject invalid apply confirmation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.confirm != 'REBASE_RUN362_PROVEN_8' }}
+        run: exit 1
+      - name: Recheck or apply frozen Run362-proven set
+        env:
+          AIIF_RUN364_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'dry_run' }}
+          AIIF_RUN364_CONFIRM: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm || '' }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python run364_historical_ready_rebase.py
+      - name: Reconcile Note Ready only after apply
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' }}
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python note_ready_sync.py
+      - name: Upload audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: run364-ready-rebase-${{ github.run_id }}
+          path: gate_history/run364_historical_ready_rebase_report.json
+          if-no-files-found: warn
+          retention-days: 14
