@@ -1,11 +1,11 @@
-"""Run260/261/278: bounded Gemini primary / quality-repair routing.
+"""Run260/261/278/371: bounded Gemini primary / quality-repair routing.
 
 Business goal
 -------------
 Improve Ready yield without weakening Fact/Evidence/Publication/Reader gates and
 without increasing the existing Deep Dive request ceiling. Fresh article Deep Dive
-uses Gemini 3.7 first. Dynamic model-based quality repair uses Gemini 3.8 first.
-Gemini 3.6 and 3.5 remain fallbacks.
+uses Gemini 3.7 first by default. Dynamic model-based quality repair uses Gemini 3.8
+first. Gemini 3.6 and 3.5 remain fallbacks.
 
 Run261 production evidence proved that wrapping only ``_call_model_pool`` was not a
 strong enough contract: the live quality-retry path is entered through
@@ -15,8 +15,14 @@ Run278 production falsification found a different failure tail: a *single logica
 quality repair could fan out across all four Flash models and consume 4/12 Deep Dive
 requests while a usable draft already existed. Quality repair is therefore bounded to
 the preferred model plus one distinct fallback (2 provider-visible model attempts).
-Fresh Deep Dive keeps the full pool. Existing global/per-model/run budgets, Run172
-503 fail-fast behavior, Run204 cooldown, and every publication gate stay authoritative.
+Fresh Deep Dive keeps the full pool.
+
+Run371 fixes an operator-order bug exposed by bounded Pending Retry recovery. The old
+install path always prepended ``DEFAULT_DEEP_DIVE_POOL`` after reading explicit config,
+so an operator request for 3.8-first still executed 3.7-first. Production now keeps the
+established 3.7-first default when there is no explicit override, while an explicit
+configured pool keeps its exact order and only appends missing default fallbacks after
+that order. Quotas, per-model budgets, request ceilings, and Gate policy are unchanged.
 """
 from __future__ import annotations
 
@@ -45,14 +51,24 @@ def _dedupe(models: Iterable[str]) -> list[str]:
     return out
 
 
-def _configured_deep_dive_pool(pipeline_module: Any) -> list[str]:
-    """Use explicit Production config when present; otherwise use Run260 defaults."""
+def _configured_deep_dive_pool(pipeline_module: Any) -> tuple[list[str], bool]:
+    """Return configured pool plus whether it is an explicit operator override.
+
+    The pre-Run260 core default is a singleton 3.6 pool. Treat only that exact value
+    (or an empty value) as implicit. Any other non-empty ordering is explicit and must
+    retain operator order. Missing Run260 defaults are appended later as fallbacks.
+    """
     configured = _dedupe(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
-    # The pre-Run260 code defaulted to a single 3.6 model when no workflow env existed.
-    # Treat that legacy singleton as an implicit default, not an operator override.
-    if configured == ["gemini-3.6-flash"]:
-        return list(DEFAULT_DEEP_DIVE_POOL)
-    return configured or list(DEFAULT_DEEP_DIVE_POOL)
+    if not configured or configured == ["gemini-3.6-flash"]:
+        return list(DEFAULT_DEEP_DIVE_POOL), False
+    return configured, True
+
+
+def _production_pool(pipeline_module: Any) -> list[str]:
+    configured, explicit = _configured_deep_dive_pool(pipeline_module)
+    if not explicit:
+        return _dedupe(DEFAULT_DEEP_DIVE_POOL)
+    return _dedupe([*configured, *DEFAULT_DEEP_DIVE_POOL])
 
 
 def _quality_first_pool(pool: Iterable[str]) -> list[str]:
@@ -73,15 +89,12 @@ def _bounded_quality_pool(pool: Iterable[str]) -> list[str]:
 
 def _is_quality_repair_kind(kind: str) -> bool:
     value = str(kind or "").strip().lower()
-    # Current dynamic recomposition uses quality_retry. Keep narrow forward-compatible
-    # labels for model-based repair/rescue without touching ordinary deep_dive calls.
     return value == "quality_retry" or any(
         token in value for token in ("quality_repair", "quality_rescue", "recompose", "reader_repair")
     )
 
 
 def _replace_pool_argument(args: tuple, kwargs: dict, new_pool: list[str]) -> tuple[tuple, dict]:
-    """Replace _call_model_pool's pool argument while preserving its public signature."""
     if "pool" in kwargs:
         updated = dict(kwargs)
         updated["pool"] = new_pool
@@ -121,13 +134,10 @@ def install(pipeline_module: Any) -> Any:
     if not callable(original_deep_dive):
         raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
-    production_pool = _configured_deep_dive_pool(pipeline_module)
-    production_pool = _dedupe(list(DEFAULT_DEEP_DIVE_POOL) + production_pool)
+    production_pool = _production_pool(pipeline_module)
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
-    # Gemini 3.8 has a Free Tier, but project-visible limits remain authoritative.
-    # Operator input may lower, never raise, the established Flash safety ceiling.
     try:
         requested_budget = int(os.environ.get("GEMINI_38_FLASH_DAILY_BUDGET", str(DEFAULT_FLASH_SAFETY_BUDGET)))
     except (TypeError, ValueError):
@@ -161,7 +171,6 @@ def install(pipeline_module: Any) -> Any:
         request_context: str = "",
         request_origin: str = "new",
     ):
-        """Enforce bounded quality-first routing at the production Deep Dive entrypoint."""
         if not _is_quality_repair_kind(kind):
             return original_deep_dive(
                 prompt,
