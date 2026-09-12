@@ -1,9 +1,9 @@
-"""Run284/352/360: post-reader Production precision and bounded recovery policy.
+"""Run284/352/360/370: post-reader Production precision and bounded recovery policy.
 
 Run284 came from bounded current-policy Ready recovery and keeps two narrow protections:
 1. disable the proven unsafe ``をな... -> を...`` Japanese polish substitution;
-2. allow at most one existing model-based Reader Value repair only inside the explicit
-   current-policy Ready recovery lane when Evidence is already safe and blockers are reader-only.
+2. allow at most one existing model-based Reader Value repair only inside an explicit
+   bounded recovery/validation lane when Evidence is already safe and blockers are reader-only.
 
 Run352 comes from the real Run38 DeepSeek artifact comparison. The original draft had GOOD
 Curiosity/Narrative/Temperature/Reader Proximity, but the Fact-oriented Quality Retry rewrote
@@ -17,6 +17,11 @@ reordering and compression. Applying both to the same reader-only retry was self
 A dedicated Reader Repair already freezes Fact/Evidence/Decision and therefore deliberately
 bypasses only the paragraph-order preservation text. Fact/claim retries still receive Run352
 unchanged. No quality threshold is relaxed.
+
+Run370 extends the exact same one-call Reader-only repair authorization to the explicit
+``pending_retry_validation`` lane. This lane is read-only at the orchestration layer; mixed
+Fact/Evidence blockers, unsafe Evidence, normal fresh candidates, and all other origins remain
+ineligible. This changes retry authorization only, never Gate thresholds or persistence policy.
 """
 from __future__ import annotations
 
@@ -32,6 +37,11 @@ _READER_REPAIR_FEEDBACK_MARKERS = (
     "【Reader Repair｜Factを固定した読者導線修正】",
     "【RUN359 Reader Repair Execution Contract】",
 )
+
+_READER_REPAIR_ALLOWED_ORIGINS = frozenset({
+    "current_policy_ready_recovery",
+    "pending_retry_validation",
+})
 
 _REPAIRABLE_READER_LABELS = (
     "dense_report_cluster",
@@ -101,8 +111,6 @@ def retry_feedback_with_preservation(quality_feedback: str, previous_article: st
     if not feedback or not previous:
         return quality_feedback or ""
     if any(marker in feedback for marker in _READER_REPAIR_FEEDBACK_MARKERS):
-        # Reader Repair already freezes Fact/Evidence/Decision but must be free to move,
-        # compress or delete reader-hostile prose. Paragraph-order preservation conflicts.
         return feedback
     if RETRY_PRESERVATION_CONTRACT in feedback:
         return feedback
@@ -206,7 +214,7 @@ def install(pipeline_module: Any) -> Any:
         allowed, reason = original_retry_policy(reason_rows, evidence_result, candidate_origin)
         if allowed:
             return allowed, reason
-        if candidate_origin != "current_policy_ready_recovery":
+        if candidate_origin not in _READER_REPAIR_ALLOWED_ORIGINS:
             return allowed, reason
         if reason != "reader_value_review_no_retry":
             return allowed, reason
@@ -220,7 +228,8 @@ def install(pipeline_module: Any) -> Any:
             return allowed, reason
 
         setattr(pipeline_module, _SPENT_FLAG, True)
-        return True, "run284_current_policy_reader_repair"
+        lane = "pending_retry" if candidate_origin == "pending_retry_validation" else "current_policy"
+        return True, f"run284_{lane}_reader_repair"
 
     pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_current_policy_reader_repair
     _install_run352_precision(pipeline_module)
