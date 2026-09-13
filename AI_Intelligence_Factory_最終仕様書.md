@@ -4,8 +4,19 @@
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**  
 Current Repository Baseline: **2026-09-13 post-cleanup / Gemini-based Production restored / retired provider & recovery surfaces removed**  
+Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
+Documentation Governance Baseline: **Run267 — Current Canonical Contract Sync / Required-Check Governance**  
 Article Model Routing Baseline: **Run261 — live `_call_deep_dive_pool` routing / Gemini 3.7 Primary / Gemini 3.8 Quality Rescue**  
-ONE-SHOT Downstream Fan-out Baseline: **Run261 — explicit GH_PAT-authenticated workflow_dispatch**
+ONE-SHOT Downstream Fan-out Baseline: **Run261 — explicit GH_PAT-authenticated workflow_dispatch**  
+Integration Determinism Baseline: **Run263 — Hermetic / Locked / Zero-Provider Integration CI**  
+Standalone Synthetic Baseline: **Run264 — Hermetic Synthetic Regression**  
+Dependency Compatibility Baseline: **Run266 — Pillow 12.1+ Production Floor / <13 Upper Bound**  
+Required PR Check Governance Baseline: **Run267 — required contexts on every PR to main**  
+Eyecatch Baseline: **Run183 — Run181 Visual Balance / Run182 Conclusion Emphasis / Run183 Emphasis Scale**  
+Business / Source Strategy Baseline: **Run268 — Four-Source Intelligence / OfficialVendor East-West Coverage**  
+Acquisition Precision Baseline: **Run269 — Live Acquisition Precision / 11-Vendor Structured Smoke**  
+Member Surface Baseline: **Run307 — Generic Use-Decision Member Surface / Run270 compatibility overlay**  
+Paid Product Messaging Baseline: **Run307 — self-development + work use + optional proposal**
 
 > 本書は「現在のProductionで何を守るか」を示す唯一のcanonical仕様書である。Run番号単位の追補、過去の検証レポート、Recovery文書、`docs/reference/`、`docs/archive/`、Git履歴は設計根拠・履歴として参照できるが、**本書と`main`の実装を上書きするAuthorityではない**。
 
@@ -145,7 +156,33 @@ ONE-SHOTという名称自体はRecovery専用ではなく、現行の汎用手�
 
 ---
 
-## 3. Publication / Ready Contract
+## 3. Required CI / Dependency Contract
+
+現在のDocumentation Contract Freshness正本はRun267。
+
+Production依存関係:
+
+- Production Pillow range: `Pillow>=12.1.0,<13.0.0`
+- CI known-green pin: `Pillow==12.3.0`
+- CI constraints: `requirements-ci-constraints.txt`
+
+mainへのPRで必要なrequired context:
+
+- `zero-api-regression`
+- `falsify-all-tracked-surfaces`
+- `notion-access-policy`
+
+**required status checkに指定されたWorkflowは、対象PRで必ずcheck contextを生成できなければならない**。そのためrequired workflowの`pull_request`に **pull_requestのpath filterを置かない**。
+
+現行Integration/Documentation契約の参照:
+
+- `docs/reference/RUN263_INTEGRATION_HERMETICITY_AND_STABILITY.md`
+- `docs/reference/RUN264_STANDALONE_SYNTHETIC_HERMETICITY.md`
+- `docs/reference/RUN267_CANONICAL_SPEC_SYNC.md`
+
+---
+
+## 4. Publication / Ready Contract
 
 Readyは単なるステータスではなく、**現行Publication Policyを満たしたことを証明するprovenance付き状態**である。
 
@@ -174,7 +211,7 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 
 ---
 
-## 4. Article Quality Contract
+## 5. Article Quality / Eyecatch Contract
 
 記事品質は「Gateを通すこと」ではなく、読者にとって理解しやすく、面白く、判断に使えることを目的とする。
 
@@ -191,26 +228,43 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 
 無料noteの品質を意図的に落として有料転換を作らない。無料記事自体が集客・信頼形成の商品入口である。
 
+Eyecatchの現行baselineはRun183。Run181 Visual Balance → Run182 Conclusion Emphasis → Run183 Emphasis Scaleの順序を維持する。
+
 ---
 
-## 5. Intelligence Source Contract
+## 6. Intelligence Source Contract
 
-Productionで同格に扱うactive Sourceは、現行Four-Source architectureを維持する。
+Business / Source Strategy BaselineはRun268、取得精度はRun269を正とする。
 
-1. **GitHub** — 実装動向
-2. **ArXiv** — 技術の先行動向
-3. **HackerNews** — 市場・エンジニア反応
-4. **OfficialVendor** — 商用利用に直結する一次情報
+Productionで同格に扱うactive Source:
 
-Product Huntはactive Production Sourceへ戻さない。
+1. **GitHub = 実装動向**
+2. **ArXiv = 技術の先行動向**
+3. **HackerNews = 市場・エンジニア反応**
+4. **OfficialVendor = 商用利用に直結する一次情報**
+
+**Product HuntはRun268からProductionのactive Sourceではない**。
 
 OfficialVendorはベンダーごとにSource枠を分裂させず、1 Sourceとして扱い、metadataでvendor / regionを識別する。
 
+主要vendorは少なくとも OpenAI / Anthropic / Google Gemini / **Alibaba Qwen** / DeepSeek / ByteDance Doubao・Seed / Moonshot AI Kimi / Zhipu AI GLM / MiniMax / Baidu ERNIE / **Tencent Hunyuan** を含む。
+
 地域・ブランドだけで加点減点せず、一次情報・Evidence・実務影響・Decision契約で評価する。
+
+Run268詳細: `docs/reference/RUN268_BUSINESS_SOURCE_STRATEGY.md`
+
+### HackerNews Precision — Run269
+
+- AI関連取得は広すぎるraw queryではなく、**exact token / exact phrase**を用いて精度を守る。
+- lookbackは現行Run269契約の**30日**。
+- OfficialVendorはcurrent-state取得で `structured_current_state` を優先し、必要時に `page_fallback` を使う。
+- live smokeはprovider/model call、Notion write、Production DB write、publication actionを行わない。
+
+Run269詳細: `docs/reference/RUN269_LIVE_ACQUISITION_PRECISION.md`
 
 ---
 
-## 6. Business / Product Contract
+## 7. Business / Product Contract
 
 AI Intelligence Factoryはnote事業そのものではない。
 
@@ -231,9 +285,16 @@ noteは低コストの集客・SEO・信頼形成チャネルの一つであり�
 
 初期の商業検証は、広告費を大きく使う前に「知らない実利用者が実際に支払う」ことを優先する。
 
+現在のMember Surface正本はRun307。Run270の**Proposal-First Member Surface**は歴史的互換層として保持し、Run307がその後段で現行Use-Decision表示を提供する。
+
+参照:
+
+- `docs/reference/RUN270_PROPOSAL_FIRST_MEMBER_SURFACE.md`
+- `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md`
+
 ---
 
-## 7. Paid Member Production Surface
+## 8. Paid Member Production Surface
 
 既存のPaid Member契約は維持する。
 
@@ -244,6 +305,7 @@ noteは低コストの集客・SEO・信頼形成チャネルの一つであり�
 - Run219 — non-engineer human-language UI
 - Run220 — canonical member DB destination
 - Run221 — API-host isolation / member-view separation
+- Run270 — Proposal-First Member Surface compatibility layer
 - Run307 — Generic Use-Decision Intelligence / paid product messaging
 
 Run番号は各領域の成立履歴を示すものであり、**Factory全体の最新バージョン番号ではない**。
@@ -258,11 +320,20 @@ Run番号は各領域の成立履歴を示すものであり、**Factory全体�
 - legacy DBをProduction destinationへ戻さない
 - member-facing languageは非エンジニアでも理解できる日本語を使う
 
+### Run271 — Member Body Delta Sync
+
+Member body同期はRun271契約を維持する。
+
+- `MEMBER_BODY_CHANGED_SINCE` を使うdelta pathを維持する。
+- 基準は**前回成功**した同期runの開始時刻。
+- checkpointが欠ける、再実行、または契約不一致時はfull scanへfail-safeする。
+- `sentinel` が契約不一致を検出した場合は部分同期で誤魔化さない。
+
 個別のDatabase ID / Page ID / onboarding note / purchase funnel等の運用値は、現行`main`と領域別Operator契約を正とする。
 
 ---
 
-## 8. Safety / Cost / Operations
+## 9. Safety / Cost / Operations
 
 最優先する運用原則:
 
@@ -276,15 +347,15 @@ Run番号は各領域の成立履歴を示すものであり、**Factory全体�
 
 ---
 
-## 9. Documentation Governance
+## 10. Documentation Governance
 
-### 9.1 唯一の現行仕様入口
+### 10.1 唯一の現行仕様入口
 
 今後、Factory全体の現行仕様を確認するときは**本ファイルを最初に読む**。
 
 Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現行仕様の入口にしない。
 
-### 9.2 過去Run文書の扱い
+### 10.2 過去Run文書の扱い
 
 過去Run文書は削除しなくてもよいが、意味は以下に限定する。
 
@@ -296,7 +367,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 
 過去文書に書かれたProvider、Recovery手順、固定ID、固定SHA、旧Workflow名が、現在も有効だと推定してはならない。
 
-### 9.3 更新ルール
+### 10.3 更新ルール
 
 次の変更を`main`へ統合した場合は、本書を同じ変更単位で更新する。
 
@@ -314,7 +385,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 
 ---
 
-## 10. 2026-09-13 廃止事項 — 誤復活防止
+## 11. 2026-09-13 廃止事項 — 誤復活防止
 
 以下を現行Production仕様として扱わない。
 
@@ -334,7 +405,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 
 ---
 
-## 11. Current-state summary
+## 12. Current-state summary
 
 2026-09-13時点のFactoryは、次の状態を正式な基準とする。
 
