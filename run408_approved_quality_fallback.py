@@ -13,12 +13,17 @@ passes the full configured production pool to the already-installed provider/bud
 layer. All existing request budgets remain authoritative; a persistent-cap rejection
 still consumes no local Deep Dive slot. Normal Daily/article_validation/pending_retry
 keep Run260's historical two-configured-model bound.
+
+Run412 may optionally wrap this approved-only route when the apply workflow provides an
+explicit operator-confirmed available-model pool. That temporary override does not touch
+normal Production routing.
 """
 from __future__ import annotations
 
 from typing import Any
 
 import run260_gemini_model_routing as routing
+import run412_approved_38_35_routing
 
 _INSTALLED_ATTR = "_run408_approved_quality_fallback_installed"
 APPROVED_ORIGIN = "approved_article_apply"
@@ -26,6 +31,7 @@ APPROVED_ORIGIN = "approved_article_apply"
 
 def install(pipeline_module: Any) -> Any:
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
+        run412_approved_38_35_routing.install(pipeline_module)
         return pipeline_module
 
     original = getattr(pipeline_module, "_call_deep_dive_pool", None)
@@ -63,8 +69,6 @@ def install(pipeline_module: Any) -> Any:
                 ",".join(quality_pool),
             )
 
-        # _call_model_pool is the final provider-resilience layer at this point. It owns
-        # provider attempts, session circuits and all local/persistent budget checks.
         return pipeline_module._call_model_pool(
             prompt,
             config,
@@ -79,4 +83,5 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module._call_deep_dive_pool = call_deep_dive_pool_with_approved_fallback
     pipeline_module.RUN408_APPROVED_QUALITY_FALLBACK = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
+    run412_approved_38_35_routing.install(pipeline_module)
     return pipeline_module
