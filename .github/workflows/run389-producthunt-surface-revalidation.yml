@@ -1,7 +1,12 @@
-name: Run389 Migrated Article Surface Revalidation [MANUAL ONLY]
+name: Run389 Migrated Article Surface Revalidation [ONE-TIME POST-REPAIR-2]
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run389-producthunt-surface-revalidation.yml'
 
 permissions:
   contents: read
@@ -42,11 +47,3 @@ jobs:
         if: always()
         run: |
           grep '^RUN389_' /tmp/run389.txt >> "$GITHUB_STEP_SUMMARY" || true
-      - name: Upload audit artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: run389-surface-revalidation
-          path: gate_history/run389_producthunt_surface_revalidation.json
-          if-no-files-found: ignore
-          retention-days: 14
