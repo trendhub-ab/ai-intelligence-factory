@@ -4627,11 +4627,67 @@ def _extract_markdown_section(markdown_text: str, heading_text: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _extract_markdown_section_fuzzy(markdown_text: str, keywords: list[str]) -> str:
+    """キーワードの部分一致で見出しを探す fuzzy フォールバック。
+
+    strict matchがすべて空だった場合にのみ呼ばれる。
+    見出し全体のうち、指定キーワードをすべて含む最初のセクションを返す。
+    キーワードは AND 条件（すべて含む必要がある）。
+    """
+    text = markdown_text or ""
+    headings_iter = re.finditer(r"^(#{2,6})\s+(.+?)\s*$", text, re.MULTILINE)
+    heading_positions: list[tuple[int, int, str]] = []
+    for m in headings_iter:
+        heading_positions.append((m.start(), m.end(), m.group(2)))
+
+    for i, (start, end, label) in enumerate(heading_positions):
+        label_norm = re.sub(r"[\s　]", "", label)
+        if all(kw in label_norm for kw in keywords if kw):
+            next_start = heading_positions[i + 1][0] if i + 1 < len(heading_positions) else len(text)
+            body = text[end:next_start].strip()
+            if body:
+                return body
+    return ""
+
+
+# Fuzzy keyword sets keyed by the canonical section name.
+# Keywords are joined by AND: ALL must appear in the stripped heading label.
+# Keep these minimal and conservative — false positives are worse than misses here.
+_FUZZY_SECTION_KEYWORDS: dict[str, list[str]] = {
+    "decision_body": ["私なら", "する"],
+    "decision_reason": ["判断", "なぜ"],
+    "who_should_use": ["使うべき", "向いて"],
+    "who_should_not": ["使わなくて", "向かない"],
+    "migration_cost": ["導入", "コスト"],
+    "future_scenario": ["ヶ月", "起こり"],
+}
+
+
 def _extract_any_markdown_section(markdown_text: str, headings: list[str]) -> str:
+    """指定見出しリストのいずれかにマッチするセクション本文を返す。
+
+    まず全候補で strict 完全一致を試みる。
+    すべて空だった場合に限り、headings の先頭エントリを使った fuzzy
+    キーワードマッチへフォールバックする。
+
+    fuzzy フォールバックは誤検出を避けるため、登録済みの
+    _FUZZY_SECTION_KEYWORDS にマッピングされる見出しにのみ適用する。
+    """
     for heading in headings:
         section = _extract_markdown_section(markdown_text, heading)
         if section:
             return section
+
+    # Fuzzy fallback: match registered keyword sets against heading labels.
+    if not headings:
+        return ""
+    first = headings[0]
+    first_norm = re.sub(r"[\s　]", "", first)
+    for _canonical, keywords in _FUZZY_SECTION_KEYWORDS.items():
+        if any(kw in first_norm for kw in keywords if kw):
+            section = _extract_markdown_section_fuzzy(markdown_text, keywords)
+            if section:
+                return section
     return ""
 
 

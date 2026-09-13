@@ -838,15 +838,15 @@ class TestPublicSyncManualRecordSafety(unittest.TestCase):
 
 class TestWorkflowOperationalGuards(unittest.TestCase):
     def test_daily_timeout_covers_configured_deep_dive_budget(self):
-        daily = (Path(pipeline.__file__).parent / ".github" / "workflows" / "daily.yml").read_text()
+        daily = (Path(pipeline.__file__).parent / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")
         self.assertIn("timeout-minutes: 45", daily)
         self.assertIn('GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: "60"', daily)
         self.assertIn('GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"', daily)
 
     def test_real_regression_shares_gemini_concurrency_group(self):
         root = Path(pipeline.__file__).parent / ".github" / "workflows"
-        daily = (root / "daily.yml").read_text()
-        regen = (root / "regression-test.yml").read_text()
+        daily = (root / "daily.yml").read_text(encoding="utf-8")
+        regen = (root / "regression-test.yml").read_text(encoding="utf-8")
         self.assertIn("group: ai-intelligence-gemini-budget", daily)
         self.assertIn("group: ai-intelligence-gemini-budget", regen)
         self.assertIn("GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}", daily)
@@ -856,7 +856,7 @@ class TestWorkflowOperationalGuards(unittest.TestCase):
         self.assertIn("gate_history/", regen)
 
     def test_monthly_digest_is_private_artifact_not_public_raw_url(self):
-        daily = (Path(pipeline.__file__).parent / ".github" / "workflows" / "daily.yml").read_text()
+        daily = (Path(pipeline.__file__).parent / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")
         self.assertIn("monthly_digests/", daily)
         self.assertIn("actions/upload-artifact@v7", daily)
         self.assertNotIn("raw.githubusercontent.com", pipeline.generate_monthly_digest.__doc__ or "")

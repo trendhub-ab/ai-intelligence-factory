@@ -13,7 +13,7 @@ import content_generation_protocol as protocol
 
 class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
     def test_module_import_surface_is_stdlib_only(self):
-        source = (ROOT / "content_generation_protocol.py").read_text()
+        source = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         imports = []
         for node in tree.body:
@@ -62,7 +62,7 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
         self.assertIsInstance(text, str)
 
     def test_moved_function_sizes_remain_substantive_canonical_owners(self):
-        source = (ROOT / "content_generation_protocol.py").read_text()
+        source = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         funcs = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         expected_minimums = {
@@ -78,7 +78,7 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
             self.assertGreaterEqual(size, minimum, name)
 
     def test_self_contained_prompt_functions_have_no_runtime_globals(self):
-        source = (ROOT / "content_generation_protocol.py").read_text()
+        source = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")
         table = symtable.symtable(source, "content_generation_protocol.py", "exec")
         children = {c.get_name(): c for c in table.get_children() if c.get_type() == "function"}
         for name in ("_source_fact_discipline", "_human_editorial_style_rules"):

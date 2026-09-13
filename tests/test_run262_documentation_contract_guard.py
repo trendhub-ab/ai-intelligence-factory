@@ -51,7 +51,7 @@ class ProviderRoutingAndFanoutGuardTests(unittest.TestCase):
     def test_non_gemini_primary_is_rejected(self):
         values = self._current()
         values["routing"] = values["routing"].replace(
-            'PRIMARY_MODEL = "gemini-3.7-flash"',
+            'PRIMARY_MODEL = "gemini-3.8-flash"',
             'PRIMARY_MODEL = "other-provider-model"',
             1,
         )

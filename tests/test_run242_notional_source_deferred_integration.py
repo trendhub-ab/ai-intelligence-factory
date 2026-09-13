@@ -66,7 +66,7 @@ class Run242IntegrationTests(unittest.TestCase):
             self.assertEqual(pipeline._deferred_key({"repo": {"source": "X", "nameWithOwner": "n"}}), "https://example.com/live")
 
     def test_pipeline_physically_relinquishes_heavy_run242_bodies(self):
-        source = (ROOT / "pipeline.py").read_text()
+        source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}

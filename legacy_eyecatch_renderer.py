@@ -100,7 +100,7 @@ def vertical_center_shift(container_bounds: tuple[int, int], content_bounds: tup
 
 
 def draw_text_stack_centered(
-    draw: ImageDraw.ImageDraw,
+    draw: ImageDraw.Draw,
     box: tuple[int, int, int, int],
     rows: list[tuple[str, object, tuple[int, int, int, int]]],
     gaps: tuple[int, ...],

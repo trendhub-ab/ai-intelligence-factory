@@ -27,8 +27,8 @@ _INSTALLED_ATTR = "_run260_gemini_model_routing_installed"
 _ORIGINAL_CALL_ATTR = "_run260_original_call_model_pool"
 _ORIGINAL_DEEP_DIVE_ATTR = "_run261_original_call_deep_dive_pool"
 
-PRIMARY_MODEL = "gemini-3.7-flash"
-QUALITY_MODEL = "gemini-3.8-flash"
+PRIMARY_MODEL = "gemini-3.8-flash"
+QUALITY_MODEL = "gemini-3.7-flash"
 FALLBACK_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = (QUALITY_MODEL, *FALLBACK_MODELS, PRIMARY_MODEL)
@@ -136,9 +136,11 @@ def install(pipeline_module: Any) -> Any:
 
     model_budgets = getattr(pipeline_module, "MODEL_DAILY_BUDGETS", None)
     if isinstance(model_budgets, dict):
+        model_budgets[PRIMARY_MODEL] = quality_budget
         model_budgets[QUALITY_MODEL] = quality_budget
     persistent = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if persistent is not None and isinstance(getattr(persistent, "model_budgets", None), dict):
+        persistent.model_budgets[PRIMARY_MODEL] = quality_budget
         persistent.model_budgets[QUALITY_MODEL] = quality_budget
 
     setattr(pipeline_module, _ORIGINAL_CALL_ATTR, original)

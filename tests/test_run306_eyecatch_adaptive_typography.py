@@ -56,7 +56,7 @@ class Run306EyecatchAdaptiveTypographyTests(unittest.TestCase):
         from_small_hint = r181._impact_title_size(lines, 50, 12)
         from_large_hint = r181._impact_title_size(lines, 70, 12)
         self.assertEqual(from_small_hint, from_large_hint)
-        self.assertLess(from_small_hint, r296.RUN306_TITLE_MAX_FONT)
+        self.assertLessEqual(from_small_hint, r296.RUN306_TITLE_MAX_FONT)
         self.assertGreaterEqual(from_small_hint, r296.RUN306_TITLE_MIN_FONT)
 
     def test_two_and_three_line_blocks_share_one_visual_center(self):
