@@ -9,7 +9,7 @@ permissions:
   issues: read
 
 concurrency:
-  group: run418-exact-rubygems-canonical-eyecatch
+  group: ai-intelligence-gemini-budget
   cancel-in-progress: false
 
 jobs:
