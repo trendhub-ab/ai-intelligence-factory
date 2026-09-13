@@ -1,3 +1,0 @@
-RUN364_DRY_RUN_ONLY
-Frozen allowlist: 8 Run362-proven historical Ready manuscripts.
-No apply. No manuscript mutation. No provider/model calls.
