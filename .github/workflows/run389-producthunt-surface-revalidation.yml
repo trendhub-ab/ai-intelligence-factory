@@ -1,7 +1,12 @@
-name: Run389 Migrated Article Surface Revalidation [MANUAL ONLY]
+name: Run390 Reader Signal Diagnostics [ONE-TIME]
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run389-producthunt-surface-revalidation.yml'
 
 permissions:
   contents: read
@@ -15,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run389: Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
+          echo 'Run390: Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
@@ -29,8 +34,8 @@ jobs:
         run: |
           python -m pytest tests/test_run389_producthunt_surface_revalidation.py -q
           python -m pytest tests/test_run388_zero_model_full_gate_preflight.py -q
-      - name: Revalidate five stored migrated manuscripts read-only
-        run: python run389_producthunt_surface_revalidation.py | tee /tmp/run389.txt
+      - name: Diagnose stored migrated manuscripts read-only
+        run: python run389_producthunt_surface_revalidation.py | tee /tmp/run390.txt
         env:
           TZ: 'Asia/Tokyo'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -41,4 +46,4 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          grep '^RUN389_' /tmp/run389.txt >> "$GITHUB_STEP_SUMMARY" || true
+          grep -E '^RUN389_|^RUN390_' /tmp/run390.txt >> "$GITHUB_STEP_SUMMARY" || true
