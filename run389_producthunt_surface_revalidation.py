@@ -130,8 +130,6 @@ def evaluate_surface(title: str, manuscript: str, pipeline) -> dict[str, Any]:
     if issues:
         state = "SURFACE_REVIEW"
     else:
-        # Deliberately not Ready: source properties were re-grounded, but the stored body
-        # still needs explicit current Fact/Evidence/body-reground proof.
         state = "SURFACE_CLEAN_BODY_REGROUND_PROOF_REQUIRED"
     return {
         "state": state,
@@ -160,8 +158,10 @@ def _read_target(sync, target: Target) -> dict[str, Any]:
         }
     if not state.get("primary_url"):
         return {"page_id": target.page_id, "title": target.title, "state": "FETCH_BLOCKED", "reason": "primary_url_missing"}
+
+    recovery_blockers: list[str] = []
     if not state.get("eyecatch_url"):
-        return {"page_id": target.page_id, "title": target.title, "state": "FETCH_BLOCKED", "reason": "eyecatch_missing"}
+        recovery_blockers.append("eyecatch_missing")
     try:
         manuscript, caption, candidate_count = select_latest_markdown_manuscript(sync._block_children(target.page_id))
     except Exception as exc:
@@ -171,6 +171,8 @@ def _read_target(sync, target: Target) -> dict[str, Any]:
         "title": target.title,
         "source": target.source,
         "primary_url": state.get("primary_url"),
+        "eyecatch_url": state.get("eyecatch_url") or "",
+        "recovery_blockers": recovery_blockers,
         "manuscript": manuscript,
         "caption": caption,
         "markdown_candidate_count": candidate_count,
@@ -192,15 +194,22 @@ def run() -> dict[str, Any]:
                 rows.append(item)
                 continue
             verdict = evaluate_surface(item["title"], item["manuscript"], pipeline)
-            rows.append({k: v for k, v in item.items() if k not in {"manuscript"}} | verdict)
+            row = {k: v for k, v in item.items() if k not in {"manuscript"}} | verdict
+            if row.get("recovery_blockers"):
+                row["ready_eligible"] = False
+            rows.append(row)
 
     counts: dict[str, int] = {}
+    blocker_counts: dict[str, int] = {}
     for row in rows:
         counts[row["state"]] = counts.get(row["state"], 0) + 1
+        for blocker in row.get("recovery_blockers") or []:
+            blocker_counts[blocker] = blocker_counts.get(blocker, 0) + 1
     result = {
         "run": "run389_producthunt_surface_revalidation",
         "targets": 5,
         "counts": dict(sorted(counts.items())),
+        "recovery_blockers": dict(sorted(blocker_counts.items())),
         "model_calls": 0,
         "google_api_calls": 0,
         "notion_writes": 0,
@@ -217,8 +226,11 @@ def run() -> dict[str, Any]:
 def main() -> int:
     result = run()
     print(f"RUN389_COUNTS={result['counts']}")
+    print(f"RUN389_BLOCKERS={result['recovery_blockers']}")
     for row in result["rows"]:
-        print(f"RUN389_ROW\t{row['state']}\t{row['title']}\t{';'.join(row.get('issues') or []) or row.get('reason','')}")
+        detail = ";".join(row.get("issues") or []) or row.get("reason", "")
+        blockers = ",".join(row.get("recovery_blockers") or [])
+        print(f"RUN389_ROW\t{row['state']}\t{row['title']}\t{detail}\tblockers={blockers}")
     print("RUN389_MODEL_CALLS=0")
     print("RUN389_NOTION_WRITES=0")
     print("RUN389_PUBLICATION_WRITES=0")
