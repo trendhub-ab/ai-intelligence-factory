@@ -32,7 +32,7 @@ PRODUCTHUNT_MIGRATED_TITLES = frozenset(
         "Wispr Flow Notetaker：会議後の「コピペ作業」を根絶するMCP時代の議事録最適化戦略",
         "SaaS依存から解放されるか：音声AI開発における「Dograh」の現実的な評価と導入戦略",
         "AI検索で自社が「無視」されていないかを確認する技術：AI Search Consoleの導入判断",
-        "GoRulesで業務ルールをコードから切り離す：意思決定基盤としての現実的な評価",
+        "仕様書とコードの乖離をどう防ぐか。ビジネスロジック統合エンジン「GoRules」の登場から考える。",
     }
 )
 
