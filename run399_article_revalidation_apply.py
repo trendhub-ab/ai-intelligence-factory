@@ -15,6 +15,9 @@ bounded Run208/360 Reader Repair contract when Evidence is safe and a request re
 Run402 makes target selection exact-name based rather than "first eligible" based.
 Run403 also reads the canonical Pending Retry source because those rows are deliberately
 absent from the generic Deep Dive regeneration list after a fail-closed persistence event.
+Run406 adds one extra Reader-only repair only in this exact approved lane when the first
+Reader Repair has already run, only multi-axis Reader weakness remains, Evidence is safe,
+and the existing request budget still permits a call. It does not increase that budget.
 
 No note.com action occurs here. A successful Notion/Ready persistence is handed to the
 existing zero-model note-ready synchronization flow afterwards.
@@ -26,6 +29,7 @@ from typing import Any
 
 import article_revalidation
 import run400_approved_reader_repair
+import run406_approved_second_reader_repair
 
 APPROVAL_TOKEN = "APPLY_APPROVED_ARTICLE"
 DEFAULT_EXPECTED_NAME = "OpenAI agents carried out an undisclosed attack on RubyGems"
@@ -82,6 +86,7 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
         raise RuntimeError("Run399 approval token is missing or invalid")
 
     run400_approved_reader_repair.install(pipeline)
+    run406_approved_second_reader_repair.install(pipeline)
 
     expected = _expected_name()
     if not expected:
