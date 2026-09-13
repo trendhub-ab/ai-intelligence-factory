@@ -42,8 +42,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Run399 zero-API fail-closed tests
-        run: python -m unittest tests.test_run399_article_revalidation_apply -v
+      - name: Run Run399/400 zero-API fail-closed tests
+        run: |
+          python -m unittest tests.test_run399_article_revalidation_apply -v
+          python -m unittest tests.test_run400_approved_reader_repair -v
 
       - name: Apply exactly the owner-approved RubyGems article
         env:
