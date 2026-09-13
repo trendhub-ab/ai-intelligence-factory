@@ -24,6 +24,7 @@ class Run399ApprovedApplyTests(unittest.TestCase):
         pipeline.DEEP_DIVE_MODEL_BUDGET = _Budget()
         pipeline.logger = types.SimpleNamespace(warning=lambda *a, **k: None, info=lambda *a, **k: None)
         pipeline.legal_safety_gate = lambda repo: (True, "safe")
+        pipeline.should_attempt_dynamic_retry = lambda rows, evidence, origin="new": (False, "test_no_retry")
         return pipeline
 
     def _item(self, name=run399.DEFAULT_EXPECTED_NAME):
