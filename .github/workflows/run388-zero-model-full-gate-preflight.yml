@@ -1,0 +1,35 @@
+name: Run388 Zero-Model Six-Row Preflight [ONE-TIME]
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run388-zero-model-full-gate-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Prove fail-closed zero-model contract
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/test_run388_zero_model_full_gate_preflight.py -q
+          python run388_zero_model_full_gate_preflight.py | tee /tmp/run388.txt
+      - name: Summary
+        run: |
+          {
+            echo '### Run388 Zero-Model Six-Row Preflight'
+            echo '```'
+            grep '^RUN388_' /tmp/run388.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
