@@ -89,6 +89,10 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
     Run404 makes a combined retry deterministic in intent: if Decision/Score narrative
     alignment and reader-density defects coexist, align the reader-visible urgency first
     across the whole article, then compress repetition/density without changing evidence.
+
+    Run405 makes reader-density repair operational rather than aspirational: preserve the
+    evidence-bearing core, but cap visible technical enumeration and force a short decision
+    bridge after each retained mechanism so a single bounded retry can actually reduce density.
     """
     rows = list(reason_rows or [])
     codes = {str(row.get("reason_code") or "") for row in rows}
@@ -99,7 +103,11 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
         getattr(pipeline_module, "REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH", "") in codes
         or "score_narrative_mismatch" in messages
     )
-    reader_density = "dense_report_cluster" in messages or "multi_axis_reader_weakness" in messages
+    reader_density = (
+        "dense_report_cluster" in messages
+        or "multi_axis_reader_weakness" in messages
+        or "non_engineer_access_failure" in messages
+    )
 
     if score_mismatch and reader_density:
         additions.append(
@@ -130,6 +138,20 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
             "削除または平易な1文へ置換してください。段落を短くし、同じ論点は1か所だけに置いてください。"
             "新しい観点を足して長文化せず、記事全体の意味を変える全面書き換えもしないでください。"
         )
+    if reader_density:
+        additions.append(
+            "Run405 Reader Density Compression：前稿の技術説明を機械的に保持しないでください。読者のDecisionを変える中核メカニズムは"
+            "1つだけ本文前半で説明し、その具体的挙動・列挙は原則3点以内に圧縮します。正式名称・コメント文字列・内部部品名・"
+            "実装手順が4個以上連続する場合、各名称の違いがDecisionを変えるEvidenceがないものは削除または意味カテゴリへ統合してください。"
+        )
+        additions.append(
+            "Run405 Decision Bridge：残した技術段落の直後には、新しい事実を足さず『つまり読者の判断では何が変わるか』を普通の日本語で"
+            "1文だけ置いてください。同じ危険性・重要性を後段でもう一度説明しないでください。本文後半は再説明ではなく、重要制約と次Actionへ進みます。"
+        )
+        additions.append(
+            "Run405 Paragraph Budget：1段落に新規専門概念を2個以上持ち込まないでください。専門語が必要なら初出の役割説明を1回だけ残し、"
+            "以後は同じ語を再定義しません。箇条書きはDecisionに必要な条件または挙動だけにし、4項目以上なら3項目以内へ統合してください。"
+        )
     if "multi_axis_reader_weakness" in messages or "non_engineer_access_failure" in messages:
         additions.append(
             "Reader Value修正では、既存Evidence・Decision・数値・制約を変えず、非専門読者が核心へ到達できない箇所だけを"
@@ -138,7 +160,7 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
         )
     if not additions:
         return ""
-    return "\n".join(["【Run171/404 局所修正ガード】", *["・" + item for item in additions]])
+    return "\n".join(["【Run171/404/405 局所修正ガード】", *["・" + item for item in additions]])
 
 
 def install(pipeline_module: Any) -> Any:
