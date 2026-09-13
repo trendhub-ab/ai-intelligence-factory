@@ -9,10 +9,11 @@ an apparent run-wide outage.
 Run355 keeps a narrow budget-preserving policy for Pending Retry. Run398 extends the
 same economic principle to Deep Dive generation after Production article validation
 proved that same-model confirmation can exhaust a four-request validation budget as
-3.8x2 + 3.7x2 before stable 3.6/3.5 fallbacks are attempted. For Deep Dive requests,
-one provider-verified 503 now opens a run-local circuit for that model immediately and
-the next request is preserved for the next distinct model. Screening and Product Review
-keep their existing bounded confirmation behavior.
+3.8x2 + 3.7x2 before stable 3.6/3.5 fallbacks are attempted. For the canonical Gemini
+Flash Deep Dive pool, one provider-verified 503 opens a run-local circuit for that model
+immediately and preserves the next request for the next distinct production model.
+Non-production/custom pools retain the historical confirmation behavior. Screening and
+Product Review keep their existing bounded confirmation behavior.
 
 Run398 also forces ordinary Deep Dive generation to Gemini thinking_level=low. Quality
 repair/rescue/recompose requests remain caller-controlled because they may need stronger
@@ -37,6 +38,12 @@ _SDK_SINGLE_OWNER_FLAG = "_aiif_gemini_sdk_single_retry_owner_installed"
 _SDK_RETRY_ATTEMPTS = 1
 _DEFAULT_503_CONFIRM_DELAY_SECONDS = 10
 _MAX_503_CONFIRM_DELAY_SECONDS = 20
+_RUN398_BUDGET_PRESERVING_MODELS = frozenset({
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+})
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
@@ -84,6 +91,10 @@ def _deep_dive_generation_config(config: dict | None, kind: str) -> dict | None:
     merged = dict(config or {})
     merged["thinking_config"] = {"thinking_level": "low"}
     return merged
+
+
+def _run398_budget_preserving_model(model_name: str) -> bool:
+    return str(model_name or "").strip() in _RUN398_BUDGET_PRESERVING_MODELS
 
 
 def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_origin: str) -> None:
@@ -184,10 +195,10 @@ def install(pipeline_module: Any) -> Any:
                             "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s verified=structured_status",
                             model_name, kind, attempt + 1,
                         )
-                        if deep_dive:
+                        if deep_dive and _run398_budget_preserving_model(model_name):
                             reason = "provider_503_pending_retry_budget_preserved" if request_origin == "pending_retry" else "provider_503_deep_dive_fallback_preserved"
                             pipeline_module.logger.warning(
-                                "[RUN398 DEEP DIVE 503 FALLBACK] model=%s kind=%s; one provider 503 is enough, preserve request for next distinct model",
+                                "[RUN398 DEEP DIVE 503 FALLBACK] model=%s kind=%s; one provider 503 is enough, preserve request for next distinct production model",
                                 model_name, kind,
                             )
                             _mark_confirmed_503(pipeline_module, model_name, reason)
