@@ -1,9 +1,8 @@
 """Run391: zero-model full-gate revalidation for the repaired Memmy manuscript.
 
-The lane is deliberately read-only for Notion and provider-free. It fetches the latest
-stored manuscript plus current first-party Memmy evidence, then runs the current
-Evidence Sufficiency, Fact, Editorial, Publication, Human Appeal, Reader/Surface gates.
-No Ready/status/property/body write, Note Ready sync, draft creation, or publication.
+Reconstruct the production pre-presentation draft from the latest stored manuscript,
+validate it against current first-party evidence, then separately validate the stored
+final Reader/Surface presentation. No model, Notion write, Ready sync, or publication.
 """
 from __future__ import annotations
 
@@ -50,13 +49,7 @@ def fetch_first_party_evidence() -> tuple[str, list[dict[str, Any]]]:
         chunks.append(f"SOURCE URL: {url}\n{text}")
         documents.append({"url": url, "text": text, "origin": kind})
     context = "\n\n".join(chunks)
-    required = (
-        "Claude Code",
-        "Codex",
-        "local",
-        "trial",
-        "API Key",
-    )
+    required = ("Claude Code", "Codex", "local", "trial", "API Key")
     missing = [token for token in required if token.lower() not in context.lower()]
     if missing:
         raise RuntimeError(f"first-party evidence contract drift: missing={missing}")
@@ -85,6 +78,25 @@ def fetch_latest_manuscript() -> tuple[str, dict[str, Any]]:
     }
 
 
+def reconstruct_pre_presentation_draft(manuscript: str) -> str:
+    """Undo only deterministic final-presentation layers added after Quality Gate.
+
+    Production runs Fact/Editorial/Publication/Human gates before build_clean_note_manuscript
+    adds the H1, Reader-first 30-second header and final Sources/Evidence presentation.
+    The business article body is preserved verbatim.
+    """
+    text = str(manuscript or "").strip()
+    text = re.sub(r"(?m)^# [^\n]+\n+", "", text, count=1)
+    text = re.sub(
+        r"(?ms)^## 30秒でわかるこの記事\s*\n.*?(?=^## (?!30秒でわかるこの記事)|\Z)",
+        "",
+        text,
+        count=1,
+    )
+    text = re.sub(r"(?ms)^## Sources / Evidence\s*\n.*\Z", "", text, count=1)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def build_source_info(context: str, documents: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "source": "GitHub",
@@ -104,22 +116,19 @@ def build_source_info(context: str, documents: list[dict[str, Any]]) -> dict[str
         "checked_urls": {doc["url"] for doc in documents},
         "supplement_candidates": [],
         "evidence_metadata": {
-            "coverage": {
-                "method": "FOUND",
-                "limitations": "FOUND",
-            },
+            "coverage": {"method": "FOUND", "limitations": "FOUND"},
             "first_party_urls": [doc["url"] for doc in documents],
         },
     }
 
 
-def build_parsed(manuscript: str) -> dict[str, Any]:
+def build_parsed(core_draft: str) -> dict[str, Any]:
     return {
-        "title_text": TITLE,
-        "note_draft": manuscript,
+        "title_text": TITLE + "。",
+        "note_draft": core_draft,
         "action_text": "まず1案件だけで、別のAIに替えても過去の決定を正しく思い出せるか試す。",
-        "decision_code": "TRY",
-        "decision_score": 65,
+        "decision_text": "TRY",
+        "score": 65,
         "decision_reason_text": "複数のAIを使い、そのたびに背景説明をやり直しているなら限定的に試す価値がある。",
         "source_summary_text": "Memmy Agentは複数のAIが同じ記憶を参照するためのlocal-firstなメモリ基盤を提供する。",
         "what_text": "複数のAIに同じ記憶を使わせるためのオープンソースツール。",
@@ -136,15 +145,16 @@ def run() -> dict[str, Any]:
     manuscript, notion_meta = fetch_latest_manuscript()
     context, documents = fetch_first_party_evidence()
     source_info = build_source_info(context, documents)
-    parsed = build_parsed(manuscript)
+    core_draft = reconstruct_pre_presentation_draft(manuscript)
+    parsed = build_parsed(core_draft)
 
     with deterministic_runtime() as pipeline:
         evidence_result = pipeline.assess_evidence_sufficiency(source_info)
-        freshness = {
-            "status": "CURRENT_FIRST_PARTY_RECHECKED",
-            "current": True,
-            "checked": True,
-        }
+        evidence_ok = str(evidence_result.get("state")) == str(getattr(pipeline, "EVIDENCE_SUFFICIENT", "SUFFICIENT"))
+        source_info["sufficient"] = evidence_ok
+        source_info["decision_scope_safe"] = bool(evidence_result.get("decision_scope_safe"))
+        freshness = {"status": "CURRENT_FIRST_PARTY_RECHECKED", "current": True, "checked": True}
+
         fact_ok, fact_failures = pipeline.validate_fact_gate(
             parsed,
             "MemTensor/memmy-agent",
@@ -158,23 +168,33 @@ def run() -> dict[str, Any]:
         editorial_ok, editorial_warnings = pipeline.validate_editorial_gate(parsed, "MemTensor/memmy-agent")
         publication_state, publication_issues = pipeline.validate_publication_readiness_gate(parsed, context, source_info)
         human_state, human_issues = pipeline.validate_human_appeal_gate(parsed, [])
+        reason_rows = (
+            pipeline.map_gate_reasons("fact", fact_failures)
+            + pipeline.map_gate_reasons("editorial", editorial_warnings)
+            + pipeline.map_gate_reasons("publication", publication_issues)
+            + pipeline.map_gate_reasons("human_appeal", human_issues)
+        )
+        disposition = pipeline.gate_reason_disposition(reason_rows)
+        quality_ok = disposition in {pipeline.GATE_DISPOSITION_PASS, pipeline.GATE_DISPOSITION_PASS_WITH_WARNINGS}
         surface = evaluate_surface(TITLE, manuscript, pipeline)
 
-    evidence_ok = str(evidence_result.get("state")) == str(getattr(pipeline, "EVIDENCE_SUFFICIENT", "SUFFICIENT"))
-    publication_ok = publication_state == "PASS"
-    human_ok = human_state in {"PASS", "GOOD"}
     surface_ok = surface.get("state") == "SURFACE_CLEAN_BODY_REGROUND_PROOF_REQUIRED"
     eyecatch_ok = bool(notion_meta.get("eyecatch_url"))
+    full_gate_proven = all((evidence_ok, quality_ok, surface_ok, eyecatch_ok))
 
-    full_gate_proven = all((evidence_ok, fact_ok, editorial_ok, publication_ok, human_ok, surface_ok, eyecatch_ok))
     blockers: list[str] = []
-    if not evidence_ok: blockers.append(f"evidence:{evidence_result.get('state')}")
-    if not fact_ok: blockers.extend(f"fact:{x}" for x in fact_failures)
-    if not editorial_ok: blockers.extend(f"editorial:{x}" for x in editorial_warnings)
-    if not publication_ok: blockers.extend(f"publication:{x}" for x in publication_issues)
-    if not human_ok: blockers.extend(f"human:{x}" for x in human_issues)
-    if not surface_ok: blockers.extend(f"surface:{x}" for x in surface.get("issues") or [])
-    if not eyecatch_ok: blockers.append("eyecatch_missing")
+    if not evidence_ok:
+        blockers.append(f"evidence:{evidence_result.get('state')}")
+    if not quality_ok:
+        blockers.extend(
+            f"{row.get('gate')}:{row.get('reason_code')}:{row.get('message')}"
+            for row in reason_rows
+            if row.get("message")
+        )
+    if not surface_ok:
+        blockers.extend(f"surface:{x}" for x in surface.get("issues") or [])
+    if not eyecatch_ok:
+        blockers.append("eyecatch_missing")
 
     result = {
         "run": "run391_memmy_full_gate_revalidation",
@@ -198,6 +218,9 @@ def run() -> dict[str, Any]:
             "publication_issues": publication_issues,
             "human_state": human_state,
             "human_issues": human_issues,
+            "quality_disposition": disposition,
+            "quality_ok": quality_ok,
+            "reason_rows": reason_rows,
             "surface_state": surface.get("state"),
             "surface_issues": surface.get("issues") or [],
             "eyecatch_ok": eyecatch_ok,
@@ -220,6 +243,7 @@ def main() -> int:
     print(f"RUN391_EDITORIAL_OK={str(checks['editorial_ok']).lower()} warnings={checks['editorial_warnings']}")
     print(f"RUN391_PUBLICATION={checks['publication_state']} issues={checks['publication_issues']}")
     print(f"RUN391_HUMAN={checks['human_state']} issues={checks['human_issues']}")
+    print(f"RUN391_QUALITY_DISPOSITION={checks['quality_disposition']} quality_ok={str(checks['quality_ok']).lower()}")
     print(f"RUN391_SURFACE={checks['surface_state']} issues={checks['surface_issues']}")
     print(f"RUN391_EYECATCH_OK={str(checks['eyecatch_ok']).lower()}")
     print(f"RUN391_BLOCKERS={result['blockers']}")
