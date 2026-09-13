@@ -1,9 +1,7 @@
-"""Run284/352/360: post-reader Production precision and bounded recovery policy.
+"""Run284/352/360: post-reader Production precision safeguards.
 
-Run284 came from bounded current-policy Ready recovery and keeps two narrow protections:
-1. disable the proven unsafe ``をな... -> を...`` Japanese polish substitution;
-2. allow at most one existing model-based Reader Value repair only inside the explicit
-   current-policy Ready recovery lane when Evidence is already safe and blockers are reader-only.
+Run284 preserves the Production-proven Japanese polish fix that disables the unsafe
+``をな... -> を...`` substitution.
 
 Run352 comes from the real Run38 DeepSeek artifact comparison. The original draft had GOOD
 Curiosity/Narrative/Temperature/Reader Proximity, but the Fact-oriented Quality Retry rewrote
@@ -17,6 +15,9 @@ reordering and compression. Applying both to the same reader-only retry was self
 A dedicated Reader Repair already freezes Fact/Evidence/Decision and therefore deliberately
 bypasses only the paragraph-order preservation text. Fact/claim retries still receive Run352
 unchanged. No quality threshold is relaxed.
+
+The historical Run282 current-policy Ready recovery retry exception has been retired. This
+module no longer changes retry authorization or grants a candidate-origin-specific retry.
 """
 from __future__ import annotations
 
@@ -25,21 +26,10 @@ from typing import Any, Callable
 
 _INSTALL_FLAG = "_run284_reader_recovery_precision_installed"
 _RUN352_FLAG = "_run352_retry_preservation_installed"
-_SPENT_FLAG = "_run284_current_policy_reader_repair_spent"
-READER_VALUE_MARKER = "reader_value_review:"
 _DANGEROUS_POLISH_PATTERN = r"をな(?=[一-龥ぁ-んァ-ヶA-Za-z])"
 _READER_REPAIR_FEEDBACK_MARKERS = (
     "【Reader Repair｜Factを固定した読者導線修正】",
     "【RUN359 Reader Repair Execution Contract】",
-)
-
-_REPAIRABLE_READER_LABELS = (
-    "dense_report_cluster",
-    "repetitive_insight",
-    "multi_axis_reader_weakness",
-    "non_engineer_access_failure",
-    "final_surface_multi_axis_reader_weakness",
-    "final_surface_non_engineer_access_failure",
 )
 
 RETRY_PRESERVATION_CONTRACT = """
@@ -62,36 +52,6 @@ def disable_overbroad_japanese_polish(pipeline_module: Any) -> int:
     )
     pipeline_module._JAPANESE_SAFE_FIXES = filtered
     return len(fixes) - len(filtered)
-
-
-def _message(row: dict) -> str:
-    return str((row or {}).get("message") or (row or {}).get("reason") or "")
-
-
-def _reader_only_repairable(rows: list[dict], hard_severity: str) -> bool:
-    """Accept only the narrow Production-observed Reader Value family."""
-    if not rows:
-        return False
-    saw_repairable = False
-    for row in rows:
-        if str((row or {}).get("severity") or "") == hard_severity:
-            return False
-        message = _message(row)
-        if READER_VALUE_MARKER not in message:
-            return False
-        if not any(label in message for label in _REPAIRABLE_READER_LABELS):
-            return False
-        saw_repairable = True
-    return saw_repairable
-
-
-def _evidence_is_safe_for_reader_repair(pipeline_module: Any, evidence_result: dict | None) -> bool:
-    if not isinstance(evidence_result, dict):
-        return False
-    sufficient = str(getattr(pipeline_module, "EVIDENCE_SUFFICIENT", "SUFFICIENT"))
-    if str(evidence_result.get("state") or "") != sufficient:
-        return False
-    return evidence_result.get("decision_scope_safe") is True
 
 
 def retry_feedback_with_preservation(quality_feedback: str, previous_article: str) -> str:
@@ -188,41 +148,12 @@ def _install_run352_precision(pipeline_module: Any) -> Any:
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install after the historical reader bridge / Run208 stack, idempotently."""
+    """Install post-reader precision safeguards idempotently without changing retry policy."""
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
         _install_run352_precision(pipeline_module)
         return pipeline_module
 
     disable_overbroad_japanese_polish(pipeline_module)
-
-    original_retry_policy = pipeline_module.should_attempt_dynamic_retry
-    setattr(pipeline_module, _SPENT_FLAG, False)
-
-    def should_attempt_dynamic_retry_with_current_policy_reader_repair(
-        reason_rows: list[dict],
-        evidence_result: dict | None,
-        candidate_origin: str = "new",
-    ) -> tuple[bool, str]:
-        allowed, reason = original_retry_policy(reason_rows, evidence_result, candidate_origin)
-        if allowed:
-            return allowed, reason
-        if candidate_origin != "current_policy_ready_recovery":
-            return allowed, reason
-        if reason != "reader_value_review_no_retry":
-            return allowed, reason
-        if bool(getattr(pipeline_module, _SPENT_FLAG, False)):
-            return allowed, reason
-        if not _evidence_is_safe_for_reader_repair(pipeline_module, evidence_result):
-            return allowed, reason
-        hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
-        rows = list(reason_rows or [])
-        if not _reader_only_repairable(rows, hard):
-            return allowed, reason
-
-        setattr(pipeline_module, _SPENT_FLAG, True)
-        return True, "run284_current_policy_reader_repair"
-
-    pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_current_policy_reader_repair
     _install_run352_precision(pipeline_module)
 
     setattr(pipeline_module, _INSTALL_FLAG, True)
