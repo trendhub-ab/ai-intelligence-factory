@@ -35,26 +35,29 @@ class Run399ApprovedApplyTests(unittest.TestCase):
             "screening_reason": "test",
         }
 
+    def _install_rows(self, pipeline, rows):
+        pipeline.get_regen_test_items = lambda limit, query: list(rows)
+
     def test_refuses_without_explicit_approval(self):
         pipeline = self._pipeline()
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "approval token"):
                 run399.run_approved_article_apply(pipeline)
 
-    def test_refuses_target_mismatch_before_generation(self):
+    def test_exact_target_lookup_never_substitutes_first_other_candidate(self):
         pipeline = self._pipeline()
+        self._install_rows(pipeline, [self._item("wrong target")])
         pipeline.generate_intelligence_report = lambda *a, **k: self.fail("must not generate")
         with patch.dict(os.environ, {
             "ARTICLE_REVALIDATION_APPLY_CONFIRM": run399.APPROVAL_TOKEN,
             "ARTICLE_REVALIDATION_EXPECTED_NAME": run399.DEFAULT_EXPECTED_NAME,
-        }, clear=True), patch.object(run399.article_revalidation, "_cap_validation_budget", return_value=4), patch.object(
-            run399.article_revalidation, "select_revalidation_items", return_value=[self._item("wrong target")]
-        ):
-            with self.assertRaisesRegex(RuntimeError, "target mismatch"):
+        }, clear=True), patch.object(run399.article_revalidation, "_cap_validation_budget", return_value=4):
+            with self.assertRaisesRegex(RuntimeError, "exact target count mismatch"):
                 run399.run_approved_article_apply(pipeline)
 
     def test_persists_only_exact_target_and_requires_accepted(self):
         pipeline = self._pipeline()
+        self._install_rows(pipeline, [self._item("other"), self._item()])
         calls = []
 
         def generate(repo, **kwargs):
@@ -66,8 +69,6 @@ class Run399ApprovedApplyTests(unittest.TestCase):
             "ARTICLE_REVALIDATION_APPLY_CONFIRM": run399.APPROVAL_TOKEN,
             "ARTICLE_REVALIDATION_EXPECTED_NAME": run399.DEFAULT_EXPECTED_NAME,
         }, clear=True), patch.object(run399.article_revalidation, "_cap_validation_budget", return_value=4), patch.object(
-            run399.article_revalidation, "select_revalidation_items", return_value=[self._item()]
-        ), patch.object(
             run399.article_revalidation,
             "_read_current_statuses",
             return_value=("Needs Editorial Review", "Deep Dive"),
@@ -79,16 +80,46 @@ class Run399ApprovedApplyTests(unittest.TestCase):
         self.assertTrue(calls[0][1]["persist_results"])
         self.assertEqual(calls[0][1]["candidate_origin"], "approved_article_apply")
         self.assertEqual(calls[0][1]["notion_page_id"], "page-1")
+        self.assertFalse(result["pending_continuation"])
+
+    def test_exact_owner_approved_pending_retry_can_continue(self):
+        pipeline = self._pipeline()
+        self._install_rows(pipeline, [self._item("other"), self._item()])
+        calls = []
+        pipeline.generate_intelligence_report = lambda repo, **kwargs: calls.append((repo, kwargs)) or ("draft", "accepted")
+        with patch.dict(os.environ, {
+            "ARTICLE_REVALIDATION_APPLY_CONFIRM": run399.APPROVAL_TOKEN,
+            "ARTICLE_REVALIDATION_EXPECTED_NAME": run399.DEFAULT_EXPECTED_NAME,
+        }, clear=True), patch.object(run399.article_revalidation, "_cap_validation_budget", return_value=5), patch.object(
+            run399.article_revalidation,
+            "_read_current_statuses",
+            return_value=("Needs Editorial Review", "Pending Retry"),
+        ):
+            result = run399.run_approved_article_apply(pipeline)
+
+        self.assertTrue(result["pending_continuation"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0]["nameWithOwner"], run399.DEFAULT_EXPECTED_NAME)
+
+    def test_duplicate_exact_target_fails_closed_before_generation(self):
+        pipeline = self._pipeline()
+        self._install_rows(pipeline, [self._item(), self._item()])
+        pipeline.generate_intelligence_report = lambda *a, **k: self.fail("must not generate")
+        with patch.dict(os.environ, {
+            "ARTICLE_REVALIDATION_APPLY_CONFIRM": run399.APPROVAL_TOKEN,
+            "ARTICLE_REVALIDATION_EXPECTED_NAME": run399.DEFAULT_EXPECTED_NAME,
+        }, clear=True), patch.object(run399.article_revalidation, "_cap_validation_budget", return_value=5):
+            with self.assertRaisesRegex(RuntimeError, "matches=2"):
+                run399.run_approved_article_apply(pipeline)
 
     def test_rejected_regeneration_fails_closed(self):
         pipeline = self._pipeline()
+        self._install_rows(pipeline, [self._item()])
         pipeline.generate_intelligence_report = lambda *a, **k: ("draft", "rejected")
         with patch.dict(os.environ, {
             "ARTICLE_REVALIDATION_APPLY_CONFIRM": run399.APPROVAL_TOKEN,
             "ARTICLE_REVALIDATION_EXPECTED_NAME": run399.DEFAULT_EXPECTED_NAME,
         }, clear=True), patch.object(run399.article_revalidation, "_cap_validation_budget", return_value=4), patch.object(
-            run399.article_revalidation, "select_revalidation_items", return_value=[self._item()]
-        ), patch.object(
             run399.article_revalidation,
             "_read_current_statuses",
             return_value=("Needs Editorial Review", "Deep Dive"),
