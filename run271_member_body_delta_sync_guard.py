@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent
 BODY = "member_ux_body_fast.py"
 CHECKPOINT = "member_body_delta_checkpoint.py"
 WORKFLOW = ".github/workflows/member-presentation-sync.yml"
+SUBSCRIBER_WORKFLOW = ".github/workflows/subscriber-decision-brief.yml"
 
 
 def _read(root: Path, relative: str) -> str:
@@ -29,10 +30,18 @@ def _missing(text: str, markers: tuple[str, ...], prefix: str) -> list[str]:
     return [f"{prefix}_missing:{marker}" for marker in markers if marker not in text]
 
 
+def _workflow_run_block(text: str) -> str:
+    if "workflow_run:" not in text:
+        return ""
+    tail = text.split("workflow_run:", 1)[1]
+    return tail.split("types: [completed]", 1)[0]
+
+
 def collect_errors(root: Path = ROOT) -> list[str]:
     body = _read(root, BODY)
     checkpoint = _read(root, CHECKPOINT)
     workflow = _read(root, WORKFLOW)
+    subscriber_workflow = _read(root, SUBSCRIBER_WORKFLOW)
     errors: list[str] = []
 
     errors += _missing(
@@ -102,6 +111,39 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     )
     if "GEMINI_API_KEY" in workflow:
         errors.append("member_execution_forbidden:GEMINI_API_KEY")
+
+    # Inventory plan is read-only. Only successful main apply runs may fan out into
+    # subscriber/member writes, and Member Presentation must follow the brief writer
+    # rather than race Daily or Inventory directly.
+    errors += _missing(
+        subscriber_workflow,
+        (
+            "Subscriber Inventory Bootstrap",
+            "workflow_dispatch:",
+            "github.event.workflow_run.name == 'Subscriber Inventory Bootstrap'",
+            "contains(github.event.workflow_run.display_title, '[apply]')",
+            "group: member-derived-notion-writes",
+            "cancel-in-progress: false",
+        ),
+        "subscriber_execution",
+    )
+    subscriber_block = _workflow_run_block(subscriber_workflow)
+    for forbidden in (
+        "Daily Intelligence & Content Pipeline [ONE-SHOT]",
+        "Daily Intelligence & Content Pipeline [PAUSED]",
+    ):
+        if forbidden in subscriber_block:
+            errors.append(f"subscriber_execution_forbidden:{forbidden}")
+    if "GEMINI_API_KEY" in subscriber_workflow:
+        errors.append("subscriber_execution_forbidden:GEMINI_API_KEY")
+
+    presentation_block = _workflow_run_block(workflow)
+    for forbidden in (
+        "Daily Intelligence & Content Pipeline",
+        "Subscriber Inventory Bootstrap",
+    ):
+        if forbidden in presentation_block:
+            errors.append(f"member_execution_forbidden_direct_trigger:{forbidden}")
 
     return list(dict.fromkeys(errors))
 
