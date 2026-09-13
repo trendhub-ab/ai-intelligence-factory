@@ -1,0 +1,44 @@
+name: Run392 Wispr Full Gate Revalidation [ONE-TIME]
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run392-wispr-full-gate-revalidation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Safety contract
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
+          echo 'Run392: Wispr first-party GET + Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Wispr full-gate read-only proof
+        run: python run392_wispr_full_gate_revalidation.py | tee /tmp/run392.txt
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+      - name: Summary
+        if: always()
+        run: |
+          grep '^RUN392_' /tmp/run392.txt >> "$GITHUB_STEP_SUMMARY" || true
