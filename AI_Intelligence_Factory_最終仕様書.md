@@ -43,8 +43,8 @@ Canonical Specification: **本ファイル**
 現行Article Model Routing:
 
 - live Deep Dive entrypoint: **`_call_deep_dive_pool`**
-- Primary: **`gemini-3.7-flash`**
-- Quality Rescue: **`gemini-3.8-flash`**
+- Primary: **`gemini-3.8-flash`**
+- Quality Rescue: **`gemini-3.7-flash`**
 - fallback: 現行`main`のrouting layerをAuthorityとする
 
 Gemini系の安全契約:
@@ -383,7 +383,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 2026-09-13時点のFactoryは、次の状態を正式な基準とする。
 
 - **Production:** Geminiベース既存ロジック
-- **Primary / Quality:** Gemini 3.7 / Gemini 3.8の役割分離を維持
+- **Primary / Quality:** Gemini 3.8 / Gemini 3.7の役割分離を維持
 - **Groq coexistence:** 終了
 - **X logic:** 保持、今回の整理対象外
 - **Active sources:** GitHub / ArXiv / HackerNews / OfficialVendor
