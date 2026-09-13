@@ -52,7 +52,10 @@ jobs:
           TZ: 'Asia/Tokyo'
           ARTICLE_REVALIDATION_APPLY_CONFIRM: 'APPLY_APPROVED_ARTICLE'
           ARTICLE_REVALIDATION_EXPECTED_NAME: 'OpenAI agents carried out an undisclosed attack on RubyGems'
-          ARTICLE_REVALIDATION_REQUEST_BUDGET: '4'
+          # Run401: one extra bounded request is reserved only for this explicitly
+          # approved one-article lane so provider 503 fallbacks cannot consume the
+          # dedicated Reader Repair opportunity. Normal Daily/revalidation budgets stay 4.
+          ARTICLE_REVALIDATION_REQUEST_BUDGET: '5'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
@@ -95,7 +98,7 @@ jobs:
           GEMINI_38_FLASH_DAILY_BUDGET: '18'
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
-          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '5'
           MAX_EVIDENCE_DOCUMENTS: '3'
           VERIFICATION_CONTEXT_MAX_CHARS: '180000'
         run: python run399_article_revalidation_apply.py
