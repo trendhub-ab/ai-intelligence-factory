@@ -4,7 +4,7 @@
 This is deliberately narrower than full Production and deliberately stronger than
 read-only article_validation:
 - exact owner-approved target name is required;
-- exactly one existing non-Ready candidate is selected;
+- exactly one matching existing candidate is selected from a bounded Notion scan;
 - the normal Production runtime/gates are installed by production_pipeline.main();
 - the same bounded Deep Dive request budget is used;
 - persistence is enabled only in this explicit entrypoint;
@@ -12,6 +12,9 @@ read-only article_validation:
 
 Run400 adds no new quality policy. It lets this approved-only origin reuse the already
 bounded Run208/360 Reader Repair contract when Evidence is safe and a request remains.
+Run402 makes target selection exact-name based rather than "first eligible" based. This
+allows the same owner-approved target to continue after a fail-closed Pending Retry
+transition without ever falling through to a different article.
 
 No note.com action occurs here. A successful Notion/Ready persistence is handed to the
 existing zero-model note-ready synchronization flow afterwards.
@@ -36,6 +39,30 @@ def _expected_name() -> str:
     return os.environ.get("ARTICLE_REVALIDATION_EXPECTED_NAME", DEFAULT_EXPECTED_NAME).strip()
 
 
+def _select_exact_approved_target(pipeline, expected: str) -> dict[str, Any]:
+    """Return exactly one bounded-scan row matching the owner-approved target name.
+
+    Unlike the generic revalidation selector, this approved-only lookup intentionally
+    does not exclude Pending Retry before name matching. The owner approval token plus
+    exact target name owns continuation of this one row; another candidate can never be
+    substituted merely because lifecycle state changed after a previous fail-closed run.
+    """
+    rows = pipeline.get_regen_test_items(article_revalidation.DEFAULT_SCAN_LIMIT, "")
+    if rows is None:
+        raise RuntimeError("Run399 candidate read failed")
+    matches = []
+    for row in rows:
+        repo = (row or {}).get("repo") or {}
+        actual = str(repo.get("nameWithOwner") or "").strip()
+        if actual == expected:
+            matches.append(dict(row))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Run399 exact target count mismatch: expected_name={expected!r} matches={len(matches)}"
+        )
+    return matches[0]
+
+
 def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, Any]:
     """Regenerate and persist exactly one pre-approved existing non-Ready article."""
     if not _approval_is_valid():
@@ -51,18 +78,7 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
         raise RuntimeError("Run399 expected article name is required")
 
     request_budget = article_revalidation._cap_validation_budget(pipeline)
-    items = article_revalidation.select_revalidation_items(
-        pipeline,
-        limit=1,
-        scan_limit=article_revalidation.DEFAULT_SCAN_LIMIT,
-        include_quality_failed=True,
-    )
-    if items is None:
-        raise RuntimeError("Run399 candidate read failed")
-    if len(items) != 1:
-        raise RuntimeError(f"Run399 requires exactly one candidate, got {len(items)}")
-
-    item = dict(items[0])
+    item = _select_exact_approved_target(pipeline, expected)
     repo = item.get("repo") or {}
     actual = str(repo.get("nameWithOwner") or "").strip()
     if actual != expected:
@@ -78,20 +94,24 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     article_status, content_status = current
     if article_status == pipeline.ARTICLE_STATUS_READY:
         raise RuntimeError("Run399 refuses an article that is already Ready")
-    if content_status == pipeline.CONTENT_STATUS_PENDING_RETRY:
-        raise RuntimeError("Run399 refuses Pending Retry ownership")
+
+    # Run402: Pending Retry is allowed only here because the exact owner-approved target
+    # has already been resolved before lifecycle evaluation. Generic Production/revalidation
+    # ownership remains unchanged and still excludes Pending Retry from this lane.
+    continuation = content_status == pipeline.CONTENT_STATUS_PENDING_RETRY
 
     safe, license_status = pipeline.legal_safety_gate(repo)
     if not safe:
         raise RuntimeError(f"Run399 legal safety gate failed: {license_status}")
 
     pipeline.logger.warning(
-        "[RUN399 APPROVED APPLY] target=%s page_id=%s request_budget=%s prior_article=%s prior_content=%s persist=true",
+        "[RUN399 APPROVED APPLY] target=%s page_id=%s request_budget=%s prior_article=%s prior_content=%s pending_continuation=%s persist=true",
         actual,
         page_id,
         request_budget,
         article_status,
         content_status,
+        continuation,
     )
 
     generated = pipeline.generate_intelligence_report(
@@ -119,6 +139,7 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
         "target": actual,
         "notion_page_id": page_id,
         "chars": len(manuscript or ""),
+        "pending_continuation": continuation,
     }
     pipeline.logger.info("[RUN399 APPROVED APPLY COMPLETE] %s", result)
     return result
