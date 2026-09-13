@@ -1,0 +1,29 @@
+name: Groq Provider Offline
+on:
+  pull_request:
+    paths:
+      - 'ai_provider.py'
+      - 'groq_rate_policy.py'
+      - 'groq_remote_budget.py'
+      - 'groq_validation.py'
+      - 'production_pipeline.py'
+      - 'tests/test_ai_provider.py'
+      - 'tests/test_groq_*.py'
+      - '.github/workflows/groq-provider-offline.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run rate-aware provider tests without credentials or network
+        env:
+          AIIF_GROQ_LIVE: 'false'
+        run: |
+          python -m unittest discover -s tests -p 'test_ai_provider.py' -v
+          python -m unittest discover -s tests -p 'test_groq_*.py' -v

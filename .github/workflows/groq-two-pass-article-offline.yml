@@ -1,0 +1,129 @@
+name: Groq Two Pass Article Offline
+on:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - 'groq_two_pass_article.py'
+      - 'groq_writer_v4_contract.py'
+      - 'groq_writer_v5_contract.py'
+      - 'groq_writer_v6_route.py'
+      - 'tests/test_groq_two_pass_article.py'
+      - 'tests/test_groq_writer_v4_contract.py'
+      - 'tests/test_groq_writer_v5_contract.py'
+      - 'tests/test_groq_writer_v6_route.py'
+      - 'tests/fixtures/groq/article_parity_B0049_input.json'
+      - 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
+      - '.github/workflows/groq-two-pass-article-offline.yml'
+  pull_request:
+    branches: ['main']
+    paths:
+      - 'groq_two_pass_article.py'
+      - 'groq_writer_v4_contract.py'
+      - 'groq_writer_v5_contract.py'
+      - 'groq_writer_v6_route.py'
+      - 'tests/test_groq_two_pass_article.py'
+      - 'tests/test_groq_writer_v4_contract.py'
+      - 'tests/test_groq_writer_v5_contract.py'
+      - 'tests/test_groq_writer_v6_route.py'
+      - 'tests/fixtures/groq/article_parity_B0049_input.json'
+      - 'tests/fixtures/groq/two_pass_v3_plan_safe_report.json'
+      - '.github/workflows/groq-two-pass-article-offline.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run two-pass, v4/v5 guards, and v6 route tests without network
+        run: python -m unittest tests.test_groq_two_pass_article tests.test_groq_writer_v4_contract tests.test_groq_writer_v5_contract tests.test_groq_writer_v6_route -v
+      - name: Install schema validator
+        run: pip install jsonschema
+      - name: Prove Plan and compact GPT-OSS Writer fit Free Plan lanes
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          from ai_provider import GenerationRequest, GroqProvider
+          from groq_two_pass_article import build_plan_fixture, build_writer_fixture, validate_plan
+          from groq_writer_v5_contract import harden_writer_fixture
+          from groq_writer_v6_route import route_writer_fixture, preflight_writer_fixture
+          from groq_validation import schema_validator
+
+          plan_fixture = build_plan_fixture(
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'two-pass-plan-fixture.json',
+          )
+          plan_validator = schema_validator(plan_fixture['schema'])
+          plan_provider = GroqProvider(
+              lambda _: None,
+              validate_schema=plan_validator,
+              token_budget=7000,
+              model=plan_fixture['model'],
+          )
+          plan_payload, plan_estimate = plan_provider.prepare(GenerationRequest(
+              plan_fixture['prompt'], plan_fixture['max_output_tokens'],
+              plan_fixture['schema'], plan_fixture['reasoning_effort'],
+          ))
+
+          plan = {
+              'source_summary': 'AstraはCritical級サイバー能力の閾値に到達した。',
+              'what': '限定条件下のサイバー評価で高い能力が報告された。',
+              'why_important': '能力と利用条件を分けて判断する必要がある。',
+              'decision': 'WATCH',
+              'decision_reason': ['能力は確認された', '一般利用条件は確認できない'],
+              'business_impact': 10, 'technical_impact': 16, 'urgency': 10,
+              'market_impact': 8, 'reliability': 12,
+              'action': '利用条件と安全策の一次情報を確認する。',
+              'article_value': 78,
+              'article_angle': '100%という数字の条件に注目する。',
+              'reader_bridge': '簡単に言えば、強さの数字と利用条件は別の話です。',
+              'title_seed': '100%の向こう側にある利用条件',
+              'access_status': 'NOT_CONFIRMED',
+          }
+          validate_plan(plan)
+          Path('synthetic-plan-report.json').write_text(json.dumps({
+              'provider': 'groq', 'model': 'openai/gpt-oss-120b', 'provider_calls': 1,
+              'business_writes': 0,
+              'result': {'text': json.dumps(plan, ensure_ascii=False), 'prompt_tokens': 1, 'completion_tokens': 1},
+          }, ensure_ascii=False), encoding='utf-8')
+          build_writer_fixture(
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'synthetic-plan-report.json',
+              'two-pass-writer-fixture.json',
+          )
+          harden_writer_fixture('two-pass-writer-fixture.json')
+          writer_fixture = route_writer_fixture('two-pass-writer-fixture.json')
+          writer_preflight = preflight_writer_fixture('two-pass-writer-fixture.json')
+          writer_provider = GroqProvider(lambda _: None, token_budget=7000, model=writer_fixture['model'])
+          writer_payload, writer_estimate = writer_provider.prepare(GenerationRequest(
+              writer_fixture['prompt'], writer_fixture['max_output_tokens'], None, writer_fixture['reasoning_effort'],
+          ))
+          assert writer_fixture['contract_version'] == 'groq_writer_v5_reader_length_precision'
+          assert writer_fixture['writer_route'] == 'gpt_oss_120b_compact_writer_v6'
+          assert writer_estimate <= 7000
+          assert 'compound_custom' not in writer_payload
+          print(json.dumps({
+              'two_pass_preflight': 'PASS',
+              'plan_model': plan_fixture['model'],
+              'plan_estimate': plan_estimate,
+              'plan_safe_tpm': 7000,
+              'plan_request_bytes': len(json.dumps(plan_payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')),
+              'writer_model': writer_fixture['model'],
+              'writer_estimate': writer_estimate,
+              'writer_safe_tpm': 7000,
+              'writer_headroom': writer_preflight['headroom'],
+              'writer_request_bytes': len(json.dumps(writer_payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')),
+              'writer_route': writer_fixture['writer_route'],
+              'writer_contract': writer_fixture['contract_version'],
+              'business_writes': 0,
+              'live_provider': False,
+          }, ensure_ascii=False))
+      - name: Assert no live credential
+        run: test -z "${GROQ_API_KEY:-}"

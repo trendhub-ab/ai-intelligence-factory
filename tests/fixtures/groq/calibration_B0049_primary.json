@@ -1,0 +1,21 @@
+{
+  "stage": "calibration",
+  "prompt": "以下は一次Batch審査で55点以上だった候補である。候補群を横断比較し、Notion Stock候補としての一貫した最終Decision Scoreを返せ。scoreは技術的新規性、実務インパクト、意思決定への影響、緊急性、情報源の信頼性を評価する。commercial_scoreは品質スコアと独立して、読者需要の見込み、意思決定の緊急性、会員DB転換可能性、継続的な実務需要、商業隣接性をmetadataだけから保守的に再評価する。shelf_life_scoreは情報価値の持続性を0〜100で再評価する。入力にないアクセス数や売上を捏造しない。topicは主テーマを MODEL, AGENT, DEVTOOLS, INFRA, DATA, SECURITY, MULTIMODAL, PRODUCT, OTHER のいずれか1つで再判定する。tracking_eligibleは記事価値と独立したTechnology追跡価値で再判定し、tracking_reasonを40字以内で返す。異Source間でEngagementの絶対値を直接比較してはならない。出力はJSON配列のみ。各要素は id, score, commercial_score, shelf_life_score, topic, tracking_eligible, tracking_reason, reason（40字以内）。\n[{\"id\": \"B0049\", \"source\": \"HackerNews\", \"name\": \"Path to Astra: critical capabilities and frontier safeguards\", \"description\": \"OpenAIはAstraがPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルだと説明。未知の脆弱性発見やexploit開発能力の評価を踏まえ、開発・公開の一部を遅らせて安全策を強化した。公開時は高度なサイバー能力へのアクセスを限定し、拒否訓練、システム安全分類、監視、misalignment検知など多層防御を適用するとしている。\", \"raw_score\": 80, \"raw_commercial_score\": 85, \"raw_shelf_life_score\": 70, \"raw_topic\": \"MODEL\", \"tracking_eligible\": true, \"tracking_reason\": \"フロンティアモデル能力・安全策の継続追跡対象\", \"engagement\": 147, \"published_at\": \"2026-09-01T20:20:41+00:00\", \"url\": \"https://openai.com/index/path-to-astra/\"}]",
+  "max_output_tokens": 1500,
+  "reasoning_effort": "low",
+  "provenance": {
+    "path": "observed_history/screening_20260902T083606Z.json",
+    "candidate_id": "B0049",
+    "historical_raw": 80,
+    "historical_final": 82,
+    "historical_calibrated": true,
+    "primary_source": "https://openai.com/index/path-to-astra/",
+    "primary_source_date": "2026-09-01",
+    "primary_source_checked": "2026-09-12",
+    "purpose": "quality parity validation with complete primary-source context",
+    "limitations": [
+      "single candidate: not global calibration parity",
+      "historical archive preserves final score but not the original Gemini calibration response text"
+    ]
+  }
+}
