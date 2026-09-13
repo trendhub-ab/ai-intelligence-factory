@@ -6,12 +6,20 @@ could also return HTTP 200 later in the same run. The historical Run172 bridge
 fell back immediately after the first 503, amplifying a short provider wobble into
 an apparent run-wide outage.
 
-Run355 keeps that confirmation policy for normal generation, screening, and Product
-Review, but narrows Pending Retry. Its dedicated budget is only two requests; spending
-both on same-model 503 confirmation makes cross-model fallback unreachable. Therefore a
-structured 503 on a pending-retry request opens a run-local circuit immediately and
-preserves the second request for the next model. No quota cap is raised and no gate is
-weakened.
+Run355 keeps a narrow budget-preserving policy for Pending Retry. Run398 extends the
+same economic principle to Deep Dive generation after Production article validation
+proved that same-model confirmation can exhaust a four-request validation budget as
+3.8x2 + 3.7x2 before stable 3.6/3.5 fallbacks are attempted. For the canonical Gemini
+Flash Deep Dive pool, one provider-verified 503 opens a run-local circuit for that model
+immediately and preserves the next request for the next distinct production model.
+Pending Retry keeps its existing one-503 fallback behavior for any model name.
+Non-production/custom ordinary Deep Dive pools retain the historical confirmation
+behavior. Screening and Product Review keep their existing bounded confirmation behavior.
+
+Run398 also forces ordinary Deep Dive generation to Gemini thinking_level=low. Quality
+repair/rescue/recompose requests remain caller-controlled because they may need stronger
+reasoning. This changes provider compute pressure only; Fact/Evidence/Publication/Reader
+gates and all request/daily budgets remain authoritative.
 
 Run360 establishes a single retry owner. google-genai retries transient HTTP failures
 (including 503) internally by default, while this module also performs bounded provider
@@ -19,9 +27,7 @@ confirmation/fallback. Layering both mechanisms can multiply one logical request
 many provider-visible HTTP attempts and makes Factory usage telemetry undercount the
 real transport work. Production therefore rebuilds the Gemini client with SDK retries
 disabled (one total SDK attempt). All retry/fallback decisions remain owned by the
-Factory budgets and circuits below. The saved pre-Run360 Gemini-only branch remains the
-rollback authority; article quality, gates, model routing, Groq, and persistence are
-unchanged here.
+Factory budgets and circuits below.
 """
 from __future__ import annotations
 
@@ -33,6 +39,12 @@ _SDK_SINGLE_OWNER_FLAG = "_aiif_gemini_sdk_single_retry_owner_installed"
 _SDK_RETRY_ATTEMPTS = 1
 _DEFAULT_503_CONFIRM_DELAY_SECONDS = 10
 _MAX_503_CONFIRM_DELAY_SECONDS = 20
+_RUN398_BUDGET_PRESERVING_MODELS = frozenset({
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+})
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
@@ -62,8 +74,28 @@ def _confirmation_delay(pipeline_module: Any, exc: BaseException) -> int:
     return max(1, min(_MAX_503_CONFIRM_DELAY_SECONDS, raw))
 
 
-def _mark_confirmed_503(pipeline_module: Any, model_name: str) -> None:
-    pipeline_module._mark_model_unavailable(model_name, "provider_503_confirmed_pair")
+def _mark_confirmed_503(pipeline_module: Any, model_name: str, reason: str = "provider_503_confirmed_pair") -> None:
+    pipeline_module._mark_model_unavailable(model_name, reason)
+
+
+def _is_quality_reasoning_kind(kind: str) -> bool:
+    value = str(kind or "").strip().lower()
+    return value == "quality_retry" or any(
+        token in value for token in ("quality_repair", "quality_rescue", "recompose", "reader_repair")
+    )
+
+
+def _deep_dive_generation_config(config: dict | None, kind: str) -> dict | None:
+    """Use low thinking for ordinary Deep Dive without weakening repair reasoning."""
+    if _is_quality_reasoning_kind(kind):
+        return config
+    merged = dict(config or {})
+    merged["thinking_config"] = {"thinking_level": "low"}
+    return merged
+
+
+def _run398_budget_preserving_model(model_name: str) -> bool:
+    return str(model_name or "").strip() in _RUN398_BUDGET_PRESERVING_MODELS
 
 
 def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_origin: str) -> None:
@@ -81,16 +113,7 @@ def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_orig
 
 
 def _install_single_retry_owner_client(pipeline_module: Any) -> None:
-    """Disable google-genai's internal transient retry for Production.
-
-    google-genai's HttpRetryOptions.attempts counts the original request. Setting it to
-    one means exactly one SDK transport attempt and no SDK retry. The Factory's explicit
-    budgets, delay, fallback, and circuit-breaker policy then become the sole retry owner.
-
-    Import-only/offline tests often have no GEMINI_API_KEY and no usable client. In that
-    state there is no provider call to protect, so installation is deferred safely until
-    a real Production runtime with credentials is initialized.
-    """
+    """Disable google-genai's internal transient retry for Production."""
     if bool(getattr(pipeline_module, _SDK_SINGLE_OWNER_FLAG, False)):
         return
 
@@ -145,6 +168,7 @@ def install(pipeline_module: Any) -> Any:
         deep_dive: bool = False, request_context: str = "", request_origin: str = "new",
     ):
         last_error: Exception | None = None
+        effective_config = _deep_dive_generation_config(config, kind) if deep_dive else config
         for model_name in pool:
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
@@ -157,7 +181,7 @@ def install(pipeline_module: Any) -> Any:
                     timeout_seconds = pipeline_module.GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS if deep_dive else pipeline_module.GEMINI_SCREENING_CALL_TIMEOUT_SECONDS
                     with pipeline_module._gemini_call_timeout(timeout_seconds):
                         response = pipeline_module._generate_via_chat(
-                            model_name, prompt, config=config, request_kind=kind, reserve=reserve,
+                            model_name, prompt, config=effective_config, request_kind=kind, reserve=reserve,
                             request_context=request_context, count_as_deep_dive=deep_dive,
                             request_origin=request_origin,
                         )
@@ -169,15 +193,16 @@ def install(pipeline_module: Any) -> Any:
                     quota_type = pipeline_module.classify_gemini_quota_error(exc) if code == 429 else ""
                     if code == 503:
                         pipeline_module.logger.warning(
-                            "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s/2 verified=structured_status",
+                            "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s verified=structured_status",
                             model_name, kind, attempt + 1,
                         )
-                        if request_origin == "pending_retry":
+                        if deep_dive and (request_origin == "pending_retry" or _run398_budget_preserving_model(model_name)):
+                            reason = "provider_503_pending_retry_budget_preserved" if request_origin == "pending_retry" else "provider_503_deep_dive_fallback_preserved"
                             pipeline_module.logger.warning(
-                                "[RUN355 PENDING RETRY 503 FALLBACK] model=%s kind=%s; preserve remaining dedicated request for next model",
+                                "[RUN398 DEEP DIVE 503 FALLBACK] model=%s kind=%s; one provider 503 is enough, preserve request for next distinct model",
                                 model_name, kind,
                             )
-                            pipeline_module._mark_model_unavailable(model_name, "provider_503_pending_retry_budget_preserved")
+                            _mark_confirmed_503(pipeline_module, model_name, reason)
                             break
                         if attempt == 0:
                             delay = _confirmation_delay(pipeline_module, exc)
@@ -316,5 +341,7 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.provider_status_code = _provider_status_code
     pipeline_module.GEMINI_SDK_RETRY_ATTEMPTS = _SDK_RETRY_ATTEMPTS
     pipeline_module.GEMINI_RETRY_OWNER = "factory"
+    pipeline_module.GEMINI_DEEP_DIVE_DEFAULT_THINKING_LEVEL = "low"
+    pipeline_module.GEMINI_DEEP_DIVE_503_ATTEMPTS_PER_MODEL = 1
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module
