@@ -1,85 +1,13 @@
-name: Run396B GoRules Eyecatch Recovery [ONE-TIME]
+name: Run396 GoRules Eyecatch Recovery [RETIRED]
 
 on:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run396-gorules-eyecatch-recovery.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  recover:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - name: Safety contract
-        run: |
-          set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run396B: deterministic Pillow image only; Gemini 0; exact one image commit; exact one Notion file-property repair; no body/status/Ready/publication writes.'
-      - uses: actions/checkout@v6
-        with:
-          ref: fix/run367-readonly-audit-reader-conflict
-          fetch-depth: 1
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install Pillow only
-        run: pip install 'Pillow>=12.1.0,<13.0.0'
-      - name: Generate deterministic eyecatch
-        run: |
-          python - <<'PY'
-          from editorial_eyecatch import generate_note_editorial_eyecatch
-          generate_note_editorial_eyecatch(
-              'GoRules：業務ルールをコードの外で管理する選択肢を、まず観察する。',
-              '業務上の判断ルールをコード本体から切り分けて管理・実行する仕組み。',
-              'eyecatch_images/GoRules.png',
-              category='DEV TOOLS',
-              date_label='2026.09',
-          )
-          PY
-          python - <<'PY'
-          from PIL import Image
-          p='eyecatch_images/GoRules.png'
-          im=Image.open(p)
-          assert im.size == (1280, 670), im.size
-          assert im.mode == 'RGB', im.mode
-          print(f'RUN396_IMAGE_OK=true size={im.size[0]}x{im.size[1]}')
-          PY
-      - name: Commit exact image to recovery branch
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f eyecatch_images/GoRules.png
-          test "$(git diff --cached --name-only)" = 'eyecatch_images/GoRules.png'
-          git commit -m 'Run396: restore deterministic GoRules eyecatch'
-          git push origin HEAD:fix/run367-readonly-audit-reader-conflict
-          echo "RUN396_IMAGE_COMMIT=$(git rev-parse HEAD)"
-      - name: Repair only Notion eyecatch property
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-        run: |
-          set -euo pipefail
-          IMAGE_URL='https://raw.githubusercontent.com/trendhub-ab/ai-intelligence-factory/fix/run367-readonly-audit-reader-conflict/eyecatch_images/GoRules.png'
-          code=$(curl -sS -o /tmp/notion.json -w '%{http_code}' -X PATCH 'https://api.notion.com/v1/pages/3c4479ff-dca9-81b6-813b-cd544200f14a' \
-            -H "Authorization: Bearer ${NOTION_API_KEY}" \
-            -H 'Notion-Version: 2026-03-11' \
-            -H 'Content-Type: application/json' \
-            --data "{\"properties\":{\"アイキャッチ\":{\"files\":[{\"name\":\"GoRules.png\",\"type\":\"external\",\"external\":{\"url\":\"${IMAGE_URL}\"}}]}}}")
-          test "$code" = '200'
-          python - <<'PY'
-          import json
-          d=json.load(open('/tmp/notion.json'))
-          files=d['properties']['アイキャッチ']['files']
-          assert len(files)==1
-          assert files[0]['name']=='GoRules.png'
-          print('RUN396_NOTION_EYECATCH_REPAIRED=true')
-          print('RUN396_MODEL_CALLS=0')
-          print('RUN396_BODY_WRITES=0')
-          print('RUN396_STATUS_WRITES=0')
-          print('RUN396_PUBLICATION_WRITES=0')
-          PY
+      - run: echo 'Run396 completed. GoRules eyecatch recovery is retired; no automatic writes.'
