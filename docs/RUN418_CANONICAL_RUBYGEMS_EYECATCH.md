@@ -23,6 +23,8 @@ The raw `editorial_eyecatch.generate_note_editorial_eyecatch()` entrypoint is no
 
 Run418 permits exactly one logical model request, and only for the existing Run180 `eyecatch_layout` request using `gemini-3.5-flash`. Gemini 3.8 is not selected. No model call is used for the article body or private-draft refresh.
 
+The workflow uses the repository-wide `ai-intelligence-gemini-budget` concurrency group and supplies the same `GH_PAT` authorization required by the persistent Gemini daily-usage counter. Missing quota-ledger authorization fails closed before the provider call; it must never bypass or disable the shared counter.
+
 If the semantic layout plan is missing or invalid, Run418 fails closed. It must not fall back to the raw white base template.
 
 ## Exact target and mutation boundary

@@ -47,6 +47,7 @@ jobs:
           TZ: 'Asia/Tokyo'
           RUN418_CONFIRM: 'RUN418_EXACT_RUBYGEMS_CANONICAL_EYECATCH'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
