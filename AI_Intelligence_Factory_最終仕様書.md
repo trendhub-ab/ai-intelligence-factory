@@ -1,6 +1,12 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: 2026-09-10  
+最終更新: 2026-09-13  
+Repository Simplification Baseline: **PR #305 — Gemini-only Production / retired provider-coexistence and fixed-recovery surfaces removed**  
+Current Production Provider Contract: **記事生成・判定のProduction provider pathはGemini系のみ。Groq/Qwen provider/shadow共存経路は廃止**  
+Current Manual Execution Contract: **ChatOps / ONE-SHOT active modes are `article_validation` / `pending_retry_validation` / `full` only**  
+Recovery Status: **固定45件Recoveryは終了。33件未復旧は現行タスクではなく、明示指示なしに再開しない**  
+Publication Provenance Contract: **policy SHAはcurrent codeから導出し、policy変更前のReady metadataはstaleとしてfail closedする**  
+X Contract: **X logicはPR #305の整理対象外で、独立した現行ロジックとして保持する**  
 Core Reliability Baseline: **Run209 — Gemini timeout RPD fail-closed**  
 Provider Resilience Baseline: **Run303 — Verified HTTP 503 confirmation / consecutive-only run-local circuit**  
 Product Review Provider Runtime Baseline: **Run305 — Run304 counter authority / Run203 + Run209 + transient recovery + Run303 via sole `production_pipeline.py` entrypoint**  
@@ -53,6 +59,25 @@ Note Editorial Format Baseline: **Run296 — Reader-approved Note Editorial Form
 6. `docs/archive/` とGit履歴
 
 Productionコード・テスト・Fail-Closed Guardを、文書整理の都合で弱めたり旧仕様扱いしたりしない。
+
+### 0.1 2026-09-13 Current Repository Baseline（PR #305）
+
+- Productionの記事生成・判定に使うモデルprovider pathは **Gemini系のみ** とする。Groq/Qwen provider共存・shadow評価経路は現行Productionではない。
+- `Qwen` がOfficialVendor、観測対象、記事テーマ、製品名として現れることはある。これは **Production model providerとしてQwenを使用することを意味しない**。
+- `current_policy_ready_recovery`、`ready_metadata_rebase`、Run361〜365の固定Recovery／診断surfaceはretiredであり、現行runtimeへ戻さない。
+- 旧45件Recovery運用は **33件未復旧のまま終了済み**。未復旧33件は自動的に再開すべきbacklogではなく、明示的な新規判断がない限り再処理しない。
+- Recovery期に追加された仕組みでも、商品全体を守る汎用安全機構は現行契約として維持する。対象は **Ready provenance / Publication Contract・Gate / Reader Gate / Evidence safety / rate-limit protection / 日本語破損防止 / Reader Repair競合防止 / 局所修正保護**。
+- ChatOps / manual ONE-SHOTのactive modeは **`article_validation` / `pending_retry_validation` / `full` の3つだけ** とする。retired Recovery modeを再追加しない。
+- Scheduled Dailyは引き続き **PAUSED**。明示dispatchによるgeneric ONE-SHOTは現行運用として維持する。
+- X logicはPR #305のRepository整理とは分離し、現行のX surfaceを変更しない。
+- Publication policy fingerprintはfail-closedを維持する。policy対象コード変更後、旧policy SHAを持つReady metadata/captionはcurrent扱いしない。manifestを弱めたり、旧Readyを無検証で再署名したりしない。
+
+### 0.2 Run番号資料・履歴資料のAuthority
+
+- 本書にcurrent authorityとして明記された契約と、`main` の現行コード・テスト・GitHub ActionsをProduction判断の基準とする。
+- 個別のRun追補、過去の検証記録、Recovery報告、`docs/archive/`、Git履歴は **設計根拠・監査証跡** であり、それだけを理由に終了済み機能を復活させない。
+- `docs/reference/` は現行領域別契約を保持できるが、本書またはcurrent `main` と矛盾した場合は `main` → 本書の順で優先し、文書側を修正する。
+- 今後「最新仕様」を別ファイルへ増殖させない。Factory全体のcanonical current specificationは **本ファイル1つ** とする。
 
 ---
 
