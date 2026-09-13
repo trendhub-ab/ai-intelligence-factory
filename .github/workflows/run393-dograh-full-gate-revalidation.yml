@@ -1,12 +1,7 @@
-name: Run393 Dograh Full Gate Revalidation [ONE-TIME]
+name: Run393 Dograh Full Gate Revalidation [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run393-dograh-full-gate-revalidation.yml'
 
 permissions:
   contents: read
