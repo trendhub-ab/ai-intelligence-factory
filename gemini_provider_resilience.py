@@ -12,8 +12,9 @@ proved that same-model confirmation can exhaust a four-request validation budget
 3.8x2 + 3.7x2 before stable 3.6/3.5 fallbacks are attempted. For the canonical Gemini
 Flash Deep Dive pool, one provider-verified 503 opens a run-local circuit for that model
 immediately and preserves the next request for the next distinct production model.
-Non-production/custom pools retain the historical confirmation behavior. Screening and
-Product Review keep their existing bounded confirmation behavior.
+Pending Retry keeps its existing one-503 fallback behavior for any model name.
+Non-production/custom ordinary Deep Dive pools retain the historical confirmation
+behavior. Screening and Product Review keep their existing bounded confirmation behavior.
 
 Run398 also forces ordinary Deep Dive generation to Gemini thinking_level=low. Quality
 repair/rescue/recompose requests remain caller-controlled because they may need stronger
@@ -195,10 +196,10 @@ def install(pipeline_module: Any) -> Any:
                             "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s verified=structured_status",
                             model_name, kind, attempt + 1,
                         )
-                        if deep_dive and _run398_budget_preserving_model(model_name):
+                        if deep_dive and (request_origin == "pending_retry" or _run398_budget_preserving_model(model_name)):
                             reason = "provider_503_pending_retry_budget_preserved" if request_origin == "pending_retry" else "provider_503_deep_dive_fallback_preserved"
                             pipeline_module.logger.warning(
-                                "[RUN398 DEEP DIVE 503 FALLBACK] model=%s kind=%s; one provider 503 is enough, preserve request for next distinct production model",
+                                "[RUN398 DEEP DIVE 503 FALLBACK] model=%s kind=%s; one provider 503 is enough, preserve request for next distinct model",
                                 model_name, kind,
                             )
                             _mark_confirmed_503(pipeline_module, model_name, reason)
