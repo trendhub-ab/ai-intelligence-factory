@@ -5,10 +5,11 @@ from pathlib import Path
 
 import run267_documentation_contract_guard as guard
 
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class RepositoryGovernanceGuardTests(unittest.TestCase):
+class ExecutableCIGovernanceGuardTests(unittest.TestCase):
     def test_current_repository_contract_is_green(self):
         self.assertEqual([], guard.collect_errors(ROOT))
 
@@ -16,7 +17,15 @@ class RepositoryGovernanceGuardTests(unittest.TestCase):
         requirements = (ROOT / guard.REQUIREMENTS).read_text(encoding="utf-8")
         constraints = (ROOT / guard.CONSTRAINTS).read_text(encoding="utf-8")
         broken = requirements.replace("Pillow>=12.1.0,<13.0.0", "Pillow>=11.3.0,<13.0.0")
-        self.assertTrue(any("pillow_range" in e for e in guard.dependency_errors(broken, constraints)))
+        errors = guard.dependency_errors(broken, constraints)
+        self.assertTrue(any("pillow_range" in error for error in errors))
+
+    def test_ci_pin_cannot_drift_silently(self):
+        requirements = (ROOT / guard.REQUIREMENTS).read_text(encoding="utf-8")
+        constraints = (ROOT / guard.CONSTRAINTS).read_text(encoding="utf-8")
+        broken = constraints.replace("Pillow==12.3.0", "Pillow==12.2.0")
+        errors = guard.dependency_errors(requirements, broken)
+        self.assertTrue(any("known_green_pillow_pin" in error for error in errors))
 
     def test_required_check_path_filter_is_rejected(self):
         integration = (ROOT / guard.INTEGRATION).read_text(encoding="utf-8")
@@ -25,20 +34,48 @@ class RepositoryGovernanceGuardTests(unittest.TestCase):
             "    branches:\n      - main\n    paths:\n      - 'pipeline.py'\n",
             1,
         )
-        errors = guard.required_check_errors({"zero-api-regression": (guard.INTEGRATION, broken)})
-        self.assertTrue(any("path_filter" in e for e in errors))
+        errors = guard.required_check_errors(
+            {"zero-api-regression": (guard.INTEGRATION, broken)}
+        )
+        self.assertTrue(any("path_filter" in error for error in errors))
+
+    def test_required_check_must_cover_main(self):
+        integration = (ROOT / guard.INTEGRATION).read_text(encoding="utf-8")
+        broken = integration.replace("      - main\n", "      - other\n", 1)
+        errors = guard.required_check_errors(
+            {"zero-api-regression": (guard.INTEGRATION, broken)}
+        )
+        self.assertTrue(any("does_not_cover_main" in error for error in errors))
 
     def test_required_context_job_name_is_protected(self):
         integration = (ROOT / guard.INTEGRATION).read_text(encoding="utf-8")
         broken = integration.replace("  zero-api-regression:\n", "  zero-api-regression-renamed:\n", 1)
-        errors = guard.required_check_errors({"zero-api-regression": (guard.INTEGRATION, broken)})
-        self.assertTrue(any("job_context_missing" in e for e in errors))
+        errors = guard.required_check_errors(
+            {"zero-api-regression": (guard.INTEGRATION, broken)}
+        )
+        self.assertTrue(any("job_context_missing" in error for error in errors))
 
     def test_eyecatch_scale_contract_is_protected(self):
         runtime = (ROOT / guard.RUNTIME_LAYERS).read_text(encoding="utf-8")
         scale = (ROOT / guard.EYECATCH_SCALE).read_text(encoding="utf-8")
         broken = scale.replace("HIGHLIGHT_FONT_SCALE = 1.20", "HIGHLIGHT_FONT_SCALE = 1.00")
-        self.assertTrue(any("scale_contract_missing" in e for e in guard.eyecatch_errors(runtime, broken)))
+        errors = guard.eyecatch_errors(runtime, broken)
+        self.assertTrue(any("scale_contract_missing" in error for error in errors))
+
+    def test_eyecatch_layer_order_is_protected(self):
+        runtime = (ROOT / guard.RUNTIME_LAYERS).read_text(encoding="utf-8")
+        scale = (ROOT / guard.EYECATCH_SCALE).read_text(encoding="utf-8")
+        broken = runtime.replace(
+            '"run182_eyecatch_conclusion_emphasis.install",\n    "run183_eyecatch_emphasis_scale.install",',
+            '"run183_eyecatch_emphasis_scale.install",\n    "run182_eyecatch_conclusion_emphasis.install",',
+            1,
+        )
+        errors = guard.eyecatch_errors(broken, scale)
+        self.assertTrue(any("order_drifted" in error for error in errors))
+
+    def test_canonical_spec_prose_is_not_an_executable_fixture(self):
+        self.assertFalse(hasattr(guard, "SPEC"))
+        self.assertFalse(hasattr(guard, "REQUIRED_SPEC_MARKERS"))
 
 
 if __name__ == "__main__":
