@@ -53,6 +53,9 @@ jobs:
           TZ: 'Asia/Tokyo'
           ARTICLE_REVALIDATION_APPLY_CONFIRM: 'APPLY_APPROVED_ARTICLE'
           ARTICLE_REVALIDATION_EXPECTED_NAME: 'OpenAI agents carried out an undisclosed attack on RubyGems'
+          # Run410: exact page binding survives the canonical Pending Retry -> Quality Failed
+          # lifecycle transition without opening the lane to any other Stock asset.
+          ARTICLE_REVALIDATION_EXPECTED_PAGE_ID: '3d9479ff-dca9-819a-814c-e4a0aeb3263f'
           # Run401: one extra bounded request is reserved only for this explicitly
           # approved one-article lane so provider 503 fallbacks cannot consume the
           # dedicated Reader Repair opportunity. Normal Daily/revalidation budgets stay 4.
@@ -91,14 +94,14 @@ jobs:
           GEMINI_DEEP_DIVE_CALL_PACING_SECONDS: '20'
           GEMINI_MODEL_TIMEOUT_CIRCUIT_BREAKER_THRESHOLD: '2'
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
-          GEMINI_COUNTER_BRANCH: 'runtime-state'
-          EYECATCH_GITHUB_BRANCH: 'runtime-state'
+          GEMINI_COUNTER_BRANCH: runtime-state
+          EYECATCH_GITHUB_BRANCH: runtime-state
           GEMINI_35_FLASH_DAILY_BUDGET: '18'
           GEMINI_36_FLASH_DAILY_BUDGET: '18'
           GEMINI_37_FLASH_DAILY_BUDGET: '18'
           GEMINI_38_FLASH_DAILY_BUDGET: '18'
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash'
-          GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
+          GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '5'
           MAX_EVIDENCE_DOCUMENTS: '3'
           VERIFICATION_CONTEXT_MAX_CHARS: '180000'
