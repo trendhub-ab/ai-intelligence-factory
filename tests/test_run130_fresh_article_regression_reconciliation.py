@@ -58,12 +58,11 @@ class Run130FreshArticleRegressionReconciliationTests(unittest.TestCase):
         self.assertIn('REGEN_TEST_LIMIT: "3"', txt)
         self.assertIn('REGEN_FRESH_FETCH_PER_SOURCE: "12"', txt)
 
-    def test_workflow_reuses_existing_producthunt_secret_for_four_source_coverage(self):
+    def test_workflow_does_not_require_retired_producthunt_secret(self):
         txt = Path(".github/workflows/regression-test.yml").read_text(encoding="utf-8")
-        self.assertIn(
-            "PRODUCTHUNT_DEVELOPER_TOKEN: ${{ secrets.PRODUCTHUNT_DEVELOPER_TOKEN }}",
-            txt,
-        )
+        self.assertNotIn("PRODUCTHUNT_DEVELOPER_TOKEN", txt)
+        source_guard = Path("run268_business_source_strategy_guard.py").read_text(encoding="utf-8")
+        self.assertIn('ACTIVE_SOURCE_ORDER = ("GitHub", "HackerNews", "ArXiv", "OfficialVendor")', source_guard)
 
     def test_fresh_selector_excludes_known_and_diversifies_sources(self):
         gh_known = repo("GitHub", "known/repo", "https://github.com/known/repo", 999)
