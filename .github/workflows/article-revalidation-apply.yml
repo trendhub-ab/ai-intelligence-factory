@@ -47,19 +47,18 @@ jobs:
           python -m unittest tests.test_run399_article_revalidation_apply -v
           python -m unittest tests.test_run400_approved_reader_repair -v
           python -m unittest tests.test_run408_approved_quality_fallback -v
+          python -m unittest tests.test_run412_approved_38_35_routing -v
 
       - name: Apply exactly the owner-approved RubyGems article
         env:
           TZ: 'Asia/Tokyo'
           ARTICLE_REVALIDATION_APPLY_CONFIRM: 'APPLY_APPROVED_ARTICLE'
           ARTICLE_REVALIDATION_EXPECTED_NAME: 'OpenAI agents carried out an undisclosed attack on RubyGems'
-          # Run410: exact page binding survives the canonical Pending Retry -> Quality Failed
-          # lifecycle transition without opening the lane to any other Stock asset.
           ARTICLE_REVALIDATION_EXPECTED_PAGE_ID: '3d9479ff-dca9-819a-814c-e4a0aeb3263f'
-          # Run401: one extra bounded request is reserved only for this explicitly
-          # approved one-article lane so provider 503 fallbacks cannot consume the
-          # dedicated Reader Repair opportunity. Normal Daily/revalidation budgets stay 4.
           ARTICLE_REVALIDATION_REQUEST_BUDGET: '5'
+          # Run412: operator-confirmed remaining capacity for this approved run only.
+          # Initial generation uses 3.8 -> 3.5; quality/reader repair uses 3.5 -> 3.8.
+          ARTICLE_REVALIDATION_AVAILABLE_MODEL_POOL: 'gemini-3.8-flash,gemini-3.5-flash'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
