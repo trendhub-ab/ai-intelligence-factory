@@ -1,0 +1,46 @@
+name: Run386-387 Zero-API Recovery Triage [MANUAL ONLY]
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Prove zero-API triage and queue contracts
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/test_run386_zero_api_recovery_triage.py -q
+          python -m pytest tests/test_run387_reader_repair_queue.py -q
+          python run386_zero_api_recovery_triage.py | tee /tmp/run386.txt
+          python run387_reader_repair_queue.py | tee /tmp/run387.txt
+
+      - name: Publish counts to summary
+        run: |
+          {
+            echo '### Run386-387 Zero-API Recovery Triage'
+            echo 'No Gemini / Notion / publication write calls.'
+            echo '```'
+            grep '^RUN386_COUNTS=' /tmp/run386.txt
+            grep '^RUN387_TIER_COUNTS=' /tmp/run387.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload triage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: run386-387-recovery-triage
+          path: run386_recovery_triage.md
+          retention-days: 14

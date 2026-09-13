@@ -1,30 +1,13 @@
-"""Run284/352/360: post-reader Production precision and bounded recovery policy.
-
-Run284 came from bounded current-policy Ready recovery and keeps two narrow protections:
-1. disable the proven unsafe ``をな... -> を...`` Japanese polish substitution;
-2. allow at most one existing model-based Reader Value repair only inside the explicit
-   current-policy Ready recovery lane when Evidence is already safe and blockers are reader-only.
-
-Run352 comes from the real Run38 DeepSeek artifact comparison. The original draft had GOOD
-Curiosity/Narrative/Temperature/Reader Proximity, but the Fact-oriented Quality Retry rewrote
-non-target reader material and the final deterministic rescue later created ``だがに`` by
-removing ``圧倒的`` from ``だが圧倒的に``. Run352 therefore strengthens a Fact-oriented retry
-with a local-edit preservation contract and repairs only a proven stranded adverbial particle.
-
-Run360 comes from ONE-SHOT Run47. The generic Run352 preservation contract required paragraph
-order and non-target reader material to stay fixed, while the Reader Repair contract required
-reordering and compression. Applying both to the same reader-only retry was self-contradictory.
-A dedicated Reader Repair already freezes Fact/Evidence/Decision and therefore deliberately
-bypasses only the paragraph-order preservation text. Fact/claim retries still receive Run352
-unchanged. No quality threshold is relaxed.
-"""
+"""Run284/352/360/370/371/373/375/378: bounded Reader recovery policy."""
 from __future__ import annotations
 
 import inspect
+import re
 from typing import Any, Callable
 
 _INSTALL_FLAG = "_run284_reader_recovery_precision_installed"
 _RUN352_FLAG = "_run352_retry_preservation_installed"
+_RUN378_FLAG = "_run378_reader_reason_bridge_installed"
 _SPENT_FLAG = "_run284_current_policy_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
 _DANGEROUS_POLISH_PATTERN = r"をな(?=[一-龥ぁ-んァ-ヶA-Za-z])"
@@ -32,14 +15,12 @@ _READER_REPAIR_FEEDBACK_MARKERS = (
     "【Reader Repair｜Factを固定した読者導線修正】",
     "【RUN359 Reader Repair Execution Contract】",
 )
-
+_READER_REPAIR_ALLOWED_ORIGINS = frozenset({"current_policy_ready_recovery", "pending_retry_validation"})
 _REPAIRABLE_READER_LABELS = (
-    "dense_report_cluster",
-    "repetitive_insight",
-    "multi_axis_reader_weakness",
-    "non_engineer_access_failure",
-    "final_surface_multi_axis_reader_weakness",
-    "final_surface_non_engineer_access_failure",
+    "dense_report_cluster", "repetitive_insight", "multi_axis_reader_weakness",
+    "non_engineer_access_failure", "final_surface_multi_axis_reader_weakness",
+    "final_surface_non_engineer_access_failure", "final_surface_summary_jargon_cluster",
+    "final_surface_summary_fragment",
 )
 
 RETRY_PRESERVATION_CONTRACT = """
@@ -51,15 +32,62 @@ RETRY_PRESERVATION_CONTRACT = """
 ・削除後に助詞だけが残る、文法が壊れる、読者への橋渡しが消える修正は禁止です。修正対象外の文章を短くして帳尻を合わせないでください。
 """.strip()
 
+RUN373_READER_REPAIR_BASE_CONTRACT = """
+【RUN373 Reader Pull Contract｜既存Factだけで読みやすくする】
+・Fact / Evidence / Decision / 重要な制約は固定する。Gate閾値は変更しない。
+・前回ARTICLEにない事実、数値、経験談、人物、用途、比較、効果を追加しない。
+・新しい具体例や数値比喩を捏造しない。一方、既存Factの順序変更、短文化、平易な言い換え、文の長短、問いかけではない読者向けの直接表現、既存Fact同士の対比は許可する。
+・Human Appealを上げるための雑談や架空体験は足さない。ただし、文章のリズムや『自分の判断に何が関係するか』という読者接点まで禁止してはいけない。
+・専門語を削るためにEvidenceやDecision条件を落とさない。固有名詞が判断を変える場合は保持する。
+""".strip()
+
+RUN373_READER_REPAIR_RULES = {
+    "dense_report_cluster": "報告書調の列挙を削る。同一段落の判断に不要な実装名・方式名・補足を統合し、1段落1論点にする。Evidence・重要制約は削らない。",
+    "multi_axis_reader_weakness": "冒頭3段落を『何が変わった→今どう判断する→判断を変える重要制約』の順にする。既存Factの対比と平易な読者向け表現で流れを作るが、新しい比喩や事実は足さない。",
+    "non_engineer_access_failure": "専門語を別の専門語で説明しない。Decisionを変えない専門名・略語は普通名詞へカテゴリ化し、冒頭約600文字の中核専門概念を1つまでにする。",
+    "repetitive_insight": "同じ判断・効用・注意点の言い換えを1回に統合する。Evidenceや反証を重複と誤認して削除しない。",
+    "final_surface_summary_jargon_cluster": "『何が出た？』等の要約面では製品名以外の専門語列挙を避け、読者が得る変化を普通の日本語1文で完結させる。",
+    "final_surface_summary_fragment": "『何が出た？』『結論は？』等の要約面を、主語と述語を持つ独立した自然な日本語1文にする。断片句・名詞止め・途中で切れた文を残さず、新しい事実は足さない。",
+    "final_surface_multi_axis_reader_weakness": "最終要約を、変化・判断・制約が各1文で分かる形へ圧縮する。",
+    "final_surface_non_engineer_access_failure": "最終要約の略語・内部部品名を削り、非エンジニアが単独で意味を取れる文にする。",
+}
+
+
+def _reader_label(message: str) -> str:
+    """Extract one exact Reader reason label; never match labels as substrings."""
+    text = str(message or "")
+    if READER_VALUE_MARKER not in text:
+        return ""
+    tail = text.split(READER_VALUE_MARKER, 1)[1].lstrip()
+    match = re.match(r"([a-z0-9_]+)", tail)
+    return str(match.group(1) if match else "")
+
+
+def deterministic_reader_repair_plan(reason_rows: list[dict]) -> tuple[str, ...]:
+    """Translate exact observed Reader labels into a stable, zero-API edit plan."""
+    labels: list[str] = []
+    for row in reason_rows or []:
+        label = _reader_label(str((row or {}).get("message") or (row or {}).get("reason") or ""))
+        if label in _REPAIRABLE_READER_LABELS and label not in labels:
+            labels.append(label)
+    return tuple(labels)
+
+
+def reader_repair_feedback(reason_rows: list[dict]) -> str:
+    labels = deterministic_reader_repair_plan(reason_rows)
+    if not labels:
+        return ""
+    rules = [RUN373_READER_REPAIR_RULES[label] for label in labels]
+    return (
+        RUN373_READER_REPAIR_BASE_CONTRACT
+        + "\n\n【RUN373 Reason-Specific Reader Repair｜0-API決定論プラン】\n"
+        + "\n".join(f"・{rule}" for rule in rules)
+    )
+
 
 def disable_overbroad_japanese_polish(pipeline_module: Any) -> int:
-    """Remove only the Production-proven unsafe ``をな`` substitution."""
     fixes = tuple(getattr(pipeline_module, "_JAPANESE_SAFE_FIXES", ()) or ())
-    filtered = tuple(
-        (pattern, replacement)
-        for pattern, replacement in fixes
-        if str(getattr(pattern, "pattern", "")) != _DANGEROUS_POLISH_PATTERN
-    )
+    filtered = tuple((p, r) for p, r in fixes if str(getattr(p, "pattern", "")) != _DANGEROUS_POLISH_PATTERN)
     pipeline_module._JAPANESE_SAFE_FIXES = filtered
     return len(fixes) - len(filtered)
 
@@ -69,62 +97,49 @@ def _message(row: dict) -> str:
 
 
 def _reader_only_repairable(rows: list[dict], hard_severity: str) -> bool:
-    """Accept only the narrow Production-observed Reader Value family."""
     if not rows:
         return False
-    saw_repairable = False
+    saw = False
     for row in rows:
         if str((row or {}).get("severity") or "") == hard_severity:
             return False
-        message = _message(row)
-        if READER_VALUE_MARKER not in message:
+        label = _reader_label(_message(row))
+        if label not in _REPAIRABLE_READER_LABELS:
             return False
-        if not any(label in message for label in _REPAIRABLE_READER_LABELS):
-            return False
-        saw_repairable = True
-    return saw_repairable
+        saw = True
+    return saw
 
 
 def _evidence_is_safe_for_reader_repair(pipeline_module: Any, evidence_result: dict | None) -> bool:
     if not isinstance(evidence_result, dict):
         return False
     sufficient = str(getattr(pipeline_module, "EVIDENCE_SUFFICIENT", "SUFFICIENT"))
-    if str(evidence_result.get("state") or "") != sufficient:
-        return False
-    return evidence_result.get("decision_scope_safe") is True
+    return str(evidence_result.get("state") or "") == sufficient and evidence_result.get("decision_scope_safe") is True
 
 
 def retry_feedback_with_preservation(quality_feedback: str, previous_article: str) -> str:
-    """Add Run352 only to fact/local retries, never to a dedicated Reader Repair."""
-    feedback = str(quality_feedback or "").strip()
-    previous = str(previous_article or "").strip()
+    feedback, previous = str(quality_feedback or "").strip(), str(previous_article or "").strip()
     if not feedback or not previous:
         return quality_feedback or ""
     if any(marker in feedback for marker in _READER_REPAIR_FEEDBACK_MARKERS):
-        # Reader Repair already freezes Fact/Evidence/Decision but must be free to move,
-        # compress or delete reader-hostile prose. Paragraph-order preservation conflicts.
-        return feedback
+        rows = [{"message": line} for line in feedback.splitlines() if READER_VALUE_MARKER in line]
+        plan = reader_repair_feedback(rows)
+        return feedback if not plan or plan in feedback else feedback + "\n\n" + plan
     if RETRY_PRESERVATION_CONTRACT in feedback:
         return feedback
     return feedback + "\n\n" + RETRY_PRESERVATION_CONTRACT
 
 
 def _repair_stranded_adverb_particle(before: str, after: str) -> tuple[str, list[str]]:
-    """Repair only ``に`` stranded by the base rescue's exact hype-token deletion."""
-    original = str(before or "")
-    repaired = str(after or "")
-    changes: list[str] = []
+    original, repaired, changes = str(before or ""), str(after or ""), []
     for token in ("圧倒的", "劇的", "革命的"):
-        needle = token + "に"
-        start = 0
+        needle, start = token + "に", 0
         while True:
             idx = original.find(needle, start)
             if idx < 0:
                 break
-            prefix = original[max(0, idx - 18):idx]
-            suffix = original[idx + len(needle):idx + len(needle) + 18]
-            bad = prefix + "に" + suffix
-            good = prefix + suffix
+            prefix, suffix = original[max(0, idx-18):idx], original[idx+len(needle):idx+len(needle)+18]
+            bad, good = prefix + "に" + suffix, prefix + suffix
             if bad and bad in repaired:
                 repaired = repaired.replace(bad, good, 1)
                 changes.append(f"remove_stranded_ni_after_{token}")
@@ -133,16 +148,12 @@ def _repair_stranded_adverb_particle(before: str, after: str) -> tuple[str, list
 
 
 def repair_deterministic_rescue_surface(before: dict, rescued: dict) -> tuple[dict, list[str]]:
-    """Repair proven grammar damage without restoring any unsupported claim."""
-    out = dict(rescued or {})
-    changes: list[str] = []
+    out, changes = dict(rescued or {}), []
     for field in ("note_draft", "title_text", "action_text"):
-        fixed, field_changes = _repair_stranded_adverb_particle(
-            str((before or {}).get(field) or ""), str(out.get(field) or "")
-        )
+        fixed, field_changes = _repair_stranded_adverb_particle(str((before or {}).get(field) or ""), str(out.get(field) or ""))
         if field_changes:
             out[field] = fixed
-            changes.extend(f"{field}:{change}" for change in field_changes)
+            changes.extend(f"{field}:{c}" for c in field_changes)
     return out, changes
 
 
@@ -162,68 +173,82 @@ def _wrap_build_decision_prompt(original: Callable[..., Any]) -> Callable[..., A
     return wrapped
 
 
+def _wrap_dynamic_retry_instruction_with_reason_bridge(original: Callable[..., Any]) -> Callable[..., Any]:
+    """Preserve exact Reader Gate labels so the later Run373 prompt can target them."""
+    def wrapped(reason_rows: list[dict]):
+        rows = list(reason_rows or [])
+        result = original(rows)
+        if not isinstance(result, tuple) or len(result) != 2:
+            return result
+        instruction, sections = result
+        instruction = str(instruction or "")
+        labels = deterministic_reader_repair_plan(rows)
+        if labels and any(marker in instruction for marker in _READER_REPAIR_FEEDBACK_MARKERS):
+            bridge = "【RUN378 Reader Reason Bridge｜実Gate理由】\n" + "\n".join(
+                f"{READER_VALUE_MARKER}{label}" for label in labels
+            )
+            if "【RUN378 Reader Reason Bridge｜実Gate理由】" not in instruction:
+                instruction = instruction.rstrip() + "\n\n" + bridge
+        return instruction, sections
+
+    wrapped.__name__ = getattr(original, "__name__", "build_dynamic_retry_instruction")
+    wrapped.__doc__ = getattr(original, "__doc__", None)
+    return wrapped
+
+
 def _install_run352_precision(pipeline_module: Any) -> Any:
-    """Install Run352 prompt/rescue precision without changing retry authorization."""
     if bool(getattr(pipeline_module, _RUN352_FLAG, False)):
         return pipeline_module
-
     original_prompt = getattr(pipeline_module, "build_decision_prompt", None)
     if callable(original_prompt):
         pipeline_module.build_decision_prompt = _wrap_build_decision_prompt(original_prompt)
-
     original_rescue = getattr(pipeline_module, "_apply_deterministic_publication_rescue", None)
     if callable(original_rescue):
         def rescue_with_surface_precision(parsed: dict, reason_rows):
             rescued, changes = original_rescue(parsed, reason_rows)
             fixed, grammar_changes = repair_deterministic_rescue_surface(parsed, rescued)
-            merged_changes = list(changes or [])
-            if grammar_changes:
-                merged_changes.extend(grammar_changes)
-            return fixed, list(dict.fromkeys(merged_changes))
-
+            return fixed, list(dict.fromkeys(list(changes or []) + grammar_changes))
         pipeline_module._apply_deterministic_publication_rescue = rescue_with_surface_precision
-
     setattr(pipeline_module, _RUN352_FLAG, True)
     return pipeline_module
 
 
+def _install_run378_reason_bridge(pipeline_module: Any) -> Any:
+    if bool(getattr(pipeline_module, _RUN378_FLAG, False)):
+        return pipeline_module
+    original_instruction = getattr(pipeline_module, "build_dynamic_retry_instruction", None)
+    if callable(original_instruction):
+        pipeline_module.build_dynamic_retry_instruction = _wrap_dynamic_retry_instruction_with_reason_bridge(original_instruction)
+    setattr(pipeline_module, _RUN378_FLAG, True)
+    return pipeline_module
+
+
 def install(pipeline_module: Any) -> Any:
-    """Install after the historical reader bridge / Run208 stack, idempotently."""
     if bool(getattr(pipeline_module, _INSTALL_FLAG, False)):
+        _install_run378_reason_bridge(pipeline_module)
         _install_run352_precision(pipeline_module)
         return pipeline_module
-
     disable_overbroad_japanese_polish(pipeline_module)
-
     original_retry_policy = pipeline_module.should_attempt_dynamic_retry
     setattr(pipeline_module, _SPENT_FLAG, False)
 
-    def should_attempt_dynamic_retry_with_current_policy_reader_repair(
-        reason_rows: list[dict],
-        evidence_result: dict | None,
-        candidate_origin: str = "new",
-    ) -> tuple[bool, str]:
+    def wrapped_retry(reason_rows, evidence_result, candidate_origin="new"):
         allowed, reason = original_retry_policy(reason_rows, evidence_result, candidate_origin)
         if allowed:
             return allowed, reason
-        if candidate_origin != "current_policy_ready_recovery":
+        if candidate_origin not in _READER_REPAIR_ALLOWED_ORIGINS or reason != "reader_value_review_no_retry":
             return allowed, reason
-        if reason != "reader_value_review_no_retry":
-            return allowed, reason
-        if bool(getattr(pipeline_module, _SPENT_FLAG, False)):
-            return allowed, reason
-        if not _evidence_is_safe_for_reader_repair(pipeline_module, evidence_result):
+        if bool(getattr(pipeline_module, _SPENT_FLAG, False)) or not _evidence_is_safe_for_reader_repair(pipeline_module, evidence_result):
             return allowed, reason
         hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
-        rows = list(reason_rows or [])
-        if not _reader_only_repairable(rows, hard):
+        if not _reader_only_repairable(list(reason_rows or []), hard):
             return allowed, reason
-
         setattr(pipeline_module, _SPENT_FLAG, True)
-        return True, "run284_current_policy_reader_repair"
+        lane = "pending_retry" if candidate_origin == "pending_retry_validation" else "current_policy"
+        return True, f"run284_{lane}_reader_repair"
 
-    pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_current_policy_reader_repair
+    pipeline_module.should_attempt_dynamic_retry = wrapped_retry
+    _install_run378_reason_bridge(pipeline_module)
     _install_run352_precision(pipeline_module)
-
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module

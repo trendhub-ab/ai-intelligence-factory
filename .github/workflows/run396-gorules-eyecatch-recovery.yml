@@ -1,0 +1,13 @@
+name: Run396 GoRules Eyecatch Recovery [RETIRED]
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Run396 completed. GoRules eyecatch recovery is retired; no automatic writes.'

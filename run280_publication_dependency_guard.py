@@ -40,6 +40,7 @@ REQUIRED_PUBLICATION_DEPENDENCIES = (
     "run260_gemini_model_routing.py",
     "run268_business_source_strategy.py",
     "run269_business_source_precision.py",
+    "run382_retry_snapshot.py",
 )
 
 # Narrow exemptions only. Any newly imported local module is untrusted by default.

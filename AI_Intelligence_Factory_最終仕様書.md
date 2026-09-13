@@ -833,3 +833,8 @@ PMF前にやらないこと:
 - 固定LPの現行copy正本は `docs/reference/RUN307_GENERIC_USE_DECISION_PRODUCT.md`。
 - Run268 Four-Source architecture、Evidence、Decision、Source score、Deep Tech、Notion schemaを変更しない。
 - ZERO Gemini/model calls。Scheduled DailyはPAUSED。Public note releaseはhuman-only。
+
+
+## Run367 追加監査・Reader指示整合（開発ブランチ）
+
+残38件の読み取り専用監査: 現行Reader/文章表面不合格32、証拠不足1、unsupported5、追加救済0。全Gate証明のない文章はReadyにしない。run208のReader-only修正時のみRun171の再構成禁止を除き、新事実追加禁止とFact混在時の局所保持は維持。詳細は docs/RUN367_READONLY_AUDIT.md。契約指紋が変わるため、main反映と復旧済み7件の再署名は本Runでは未実施。

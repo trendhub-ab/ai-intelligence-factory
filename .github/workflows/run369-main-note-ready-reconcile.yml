@@ -1,0 +1,71 @@
+name: Run369 Reconcile Note Ready From Main [ONE-TIME]
+
+# Safety restoration after the branch-only Run368 pilot exercised a different
+# Publication Contract fingerprint. This workflow checks out main explicitly and
+# performs only deterministic Note Ready reconciliation. No model/API generation,
+# browser, draft creation, or publication.
+on:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run369-main-note-ready-reconcile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile-main-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Safety contract
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
+          echo 'Run369: checkout main and reconcile Note Ready only; zero Gemini calls.'
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install production dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Confirm main contract and reconcile Note Ready
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "main"
+          python run280_publication_dependency_guard.py
+          python note_ready_sync.py | tee /tmp/run369-note-ready.txt
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'false'
+          ENABLE_DECISION_INTELLIGENCE_DB: ${{ vars.ENABLE_DECISION_INTELLIGENCE_DB || 'true' }}
+          ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'true' }}
+
+      - name: Record boundary
+        if: always()
+        run: |
+          {
+            echo '### Run369 main reconciliation'
+            echo '- source code checkout: `main`'
+            echo '- Gemini/model calls: `0`'
+            echo '- Note Ready reconciliation only: `true`'
+            echo '- draft/public publication: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"

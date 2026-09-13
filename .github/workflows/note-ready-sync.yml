@@ -70,6 +70,7 @@ on:
       - 'run296_editorial_format_v2.py'
       - 'run248_first_real_publish_quality_calibration.py'
       - 'run249_final_publication_surface_gate.py'
+      - 'run382_retry_snapshot.py'
       - 'publication_contract.py'
       - 'run194_publication_contract.py'
       - 'run280_publication_dependency_guard.py'
@@ -93,6 +94,7 @@ on:
       - 'tests/test_run280_publication_dependency_guard.py'
       - 'tests/test_run281_publication_causality_source_contract.py'
       - 'tests/test_run296_editorial_format_v2.py'
+      - 'tests/test_run382_retry_snapshot.py'
       - '.github/workflows/note-ready-sync.yml'
 
 permissions:
@@ -138,6 +140,7 @@ jobs:
           python -m unittest tests.test_run280_publication_dependency_guard -v
           python -m unittest tests.test_run281_publication_causality_source_contract -v
           python -m unittest tests.test_run296_editorial_format_v2 -v
+          python -m unittest tests.test_run382_retry_snapshot -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
         run: python note_ready_sync.py

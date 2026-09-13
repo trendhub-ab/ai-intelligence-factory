@@ -1,0 +1,44 @@
+name: Run390 Reader Signal Diagnostics [MANUAL ONLY]
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Safety contract
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
+          echo 'Run390: Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Zero-model contract tests
+        run: |
+          python -m pytest tests/test_run389_producthunt_surface_revalidation.py -q
+          python -m pytest tests/test_run388_zero_model_full_gate_preflight.py -q
+      - name: Diagnose stored migrated manuscripts read-only
+        run: python run389_producthunt_surface_revalidation.py | tee /tmp/run390.txt
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+      - name: Summary
+        if: always()
+        run: |
+          grep -E '^RUN389_|^RUN390_' /tmp/run390.txt >> "$GITHUB_STEP_SUMMARY" || true

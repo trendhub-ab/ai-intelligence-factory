@@ -1,11 +1,12 @@
-"""Run260/261/278: bounded Gemini primary / quality-repair routing.
+"""Run260/261/278/371/373/374/380: bounded Gemini primary / quality-repair routing.
 
 Business goal
 -------------
 Improve Ready yield without weakening Fact/Evidence/Publication/Reader gates and
 without increasing the existing Deep Dive request ceiling. Fresh article Deep Dive
-uses Gemini 3.7 first. Dynamic model-based quality repair uses Gemini 3.8 first.
-Gemini 3.6 and 3.5 remain fallbacks.
+uses Gemini 3.7 first by default. Dynamic model-based quality repair uses Gemini 3.8
+first. Gemini 3.6 and 3.5 remain fallbacks unless an operator explicitly excludes a
+model for a Pending Retry lane.
 
 Run261 production evidence proved that wrapping only ``_call_model_pool`` was not a
 strong enough contract: the live quality-retry path is entered through
@@ -15,8 +16,24 @@ Run278 production falsification found a different failure tail: a *single logica
 quality repair could fan out across all four Flash models and consume 4/12 Deep Dive
 requests while a usable draft already existed. Quality repair is therefore bounded to
 the preferred model plus one distinct fallback (2 provider-visible model attempts).
-Fresh Deep Dive keeps the full pool. Existing global/per-model/run budgets, Run172
-503 fail-fast behavior, Run204 cooldown, and every publication gate stay authoritative.
+Fresh Deep Dive keeps the full pool.
+
+Run371 fixes an operator-order bug exposed by bounded Pending Retry recovery. Explicit
+operator model order is preserved exactly before missing default fallbacks are appended.
+Run373 additionally distinguishes the historical core three-model pool from a real
+operator override: that legacy default is implicit and must still normalize to the
+canonical 3.7 -> 3.8 -> 3.6 -> 3.5 fresh Deep Dive order.
+
+Run374 fixes the interaction between bounded quality-repair routing and the operator
+Pending Retry exclusion list. Excluded models are removed *before* the two-model quality
+pool is sliced, so an excluded 3.6 cannot consume the only fallback slot and prevent
+3.5 from being tried.
+
+Run380 uses Run379 production evidence. In a Pending Retry validation where the operator
+explicitly configured 3.7 -> 3.5 and excluded scarce 3.6/3.8, the generic quality-first
+sort still promoted 3.5 ahead of 3.7. Pending Retry quality repair must therefore honor
+the eligible operator order after exclusions; normal Production quality repair keeps the
+3.8-first policy. No request or gate budget is increased.
 """
 from __future__ import annotations
 
@@ -32,6 +49,11 @@ QUALITY_MODEL = "gemini-3.8-flash"
 FALLBACK_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = (QUALITY_MODEL, *FALLBACK_MODELS, PRIMARY_MODEL)
+LEGACY_IMPLICIT_DEEP_DIVE_POOLS = (
+    ("gemini-3.6-flash",),
+    ("gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash"),
+)
+_PENDING_RETRY_ORIGINS = frozenset({"pending_retry", "pending_retry_validation"})
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
 
@@ -45,43 +67,66 @@ def _dedupe(models: Iterable[str]) -> list[str]:
     return out
 
 
-def _configured_deep_dive_pool(pipeline_module: Any) -> list[str]:
-    """Use explicit Production config when present; otherwise use Run260 defaults."""
+def _configured_deep_dive_pool(pipeline_module: Any) -> tuple[list[str], bool]:
+    """Return configured pool plus whether it is an explicit operator override."""
     configured = _dedupe(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
-    # The pre-Run260 code defaulted to a single 3.6 model when no workflow env existed.
-    # Treat that legacy singleton as an implicit default, not an operator override.
-    if configured == ["gemini-3.6-flash"]:
-        return list(DEFAULT_DEEP_DIVE_POOL)
-    return configured or list(DEFAULT_DEEP_DIVE_POOL)
+    configured_tuple = tuple(configured)
+    if not configured or configured_tuple in LEGACY_IMPLICIT_DEEP_DIVE_POOLS:
+        return list(DEFAULT_DEEP_DIVE_POOL), False
+    return configured, True
+
+
+def _production_pool(pipeline_module: Any) -> list[str]:
+    configured, explicit = _configured_deep_dive_pool(pipeline_module)
+    if not explicit:
+        return _dedupe(DEFAULT_DEEP_DIVE_POOL)
+    return _dedupe([*configured, *DEFAULT_DEEP_DIVE_POOL])
 
 
 def _quality_first_pool(pool: Iterable[str]) -> list[str]:
-    """Prefer 3.8 only for an already-authorized model-based repair call."""
     existing = _dedupe(pool)
     preferred = [QUALITY_MODEL, *FALLBACK_MODELS, PRIMARY_MODEL]
     return _dedupe([m for m in preferred if m in existing] + existing)
 
 
 def _bounded_quality_pool(pool: Iterable[str]) -> list[str]:
-    """Keep one preferred repair model plus one distinct fallback.
-
-    This is a *routing* bound, not a request budget. Provider-visible failures remain
-    counted by the existing counters and Run172 still decides transport retry/failover.
-    """
     return _quality_first_pool(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+
+
+def _bounded_pending_retry_quality_pool(pool: Iterable[str]) -> list[str]:
+    """Honor explicit eligible operator order for bounded Pending Retry repair."""
+    return _dedupe(pool)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+
+
+def _pending_retry_excluded_models(request_origin: str) -> frozenset[str]:
+    if str(request_origin or "").strip() not in _PENDING_RETRY_ORIGINS:
+        return frozenset()
+    raw = str(os.environ.get("GEMINI_PENDING_RETRY_EXCLUDED_MODELS", "") or "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _pool_after_pending_exclusions(pool: Iterable[str], request_origin: str) -> list[str]:
+    excluded = _pending_retry_excluded_models(request_origin)
+    if not excluded:
+        return _dedupe(pool)
+    return [model for model in _dedupe(pool) if model not in excluded]
+
+
+def _quality_pool_for_origin(pool: Iterable[str], request_origin: str) -> list[str]:
+    eligible = _pool_after_pending_exclusions(pool, request_origin)
+    if str(request_origin or "").strip() in _PENDING_RETRY_ORIGINS:
+        return _bounded_pending_retry_quality_pool(eligible)
+    return _bounded_quality_pool(eligible)
 
 
 def _is_quality_repair_kind(kind: str) -> bool:
     value = str(kind or "").strip().lower()
-    # Current dynamic recomposition uses quality_retry. Keep narrow forward-compatible
-    # labels for model-based repair/rescue without touching ordinary deep_dive calls.
     return value == "quality_retry" or any(
         token in value for token in ("quality_repair", "quality_rescue", "recompose", "reader_repair")
     )
 
 
 def _replace_pool_argument(args: tuple, kwargs: dict, new_pool: list[str]) -> tuple[tuple, dict]:
-    """Replace _call_model_pool's pool argument while preserving its public signature."""
     if "pool" in kwargs:
         updated = dict(kwargs)
         updated["pool"] = new_pool
@@ -109,6 +154,12 @@ def _request_pool(args: tuple, kwargs: dict, fallback: list[str]) -> list[str]:
     return list(fallback)
 
 
+def _request_origin(args: tuple, kwargs: dict) -> str:
+    if "request_origin" in kwargs:
+        return str(kwargs.get("request_origin") or "new")
+    return "new"
+
+
 def install(pipeline_module: Any) -> Any:
     """Install bounded routing without changing any existing request/gate budget."""
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
@@ -121,13 +172,10 @@ def install(pipeline_module: Any) -> Any:
     if not callable(original_deep_dive):
         raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
-    production_pool = _configured_deep_dive_pool(pipeline_module)
-    production_pool = _dedupe(list(DEFAULT_DEEP_DIVE_POOL) + production_pool)
+    production_pool = _production_pool(pipeline_module)
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
-    # Gemini 3.8 has a Free Tier, but project-visible limits remain authoritative.
-    # Operator input may lower, never raise, the established Flash safety ceiling.
     try:
         requested_budget = int(os.environ.get("GEMINI_38_FLASH_DAILY_BUDGET", str(DEFAULT_FLASH_SAFETY_BUDGET)))
     except (TypeError, ValueError):
@@ -148,7 +196,8 @@ def install(pipeline_module: Any) -> Any:
         kind = _request_kind(args, kwargs)
         current_pool = _request_pool(args, kwargs, production_pool)
         if _is_quality_repair_kind(kind):
-            args2, kwargs2 = _replace_pool_argument(args, kwargs, _bounded_quality_pool(current_pool))
+            origin = _request_origin(args, kwargs)
+            args2, kwargs2 = _replace_pool_argument(args, kwargs, _quality_pool_for_origin(current_pool, origin))
             return original(*args2, **kwargs2)
         return original(*args, **kwargs)
 
@@ -161,7 +210,6 @@ def install(pipeline_module: Any) -> Any:
         request_context: str = "",
         request_origin: str = "new",
     ):
-        """Enforce bounded quality-first routing at the production Deep Dive entrypoint."""
         if not _is_quality_repair_kind(kind):
             return original_deep_dive(
                 prompt,
@@ -170,8 +218,9 @@ def install(pipeline_module: Any) -> Any:
                 request_context=request_context,
                 request_origin=request_origin,
             )
-        quality_pool = _bounded_quality_pool(
-            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool)
+        quality_pool = _quality_pool_for_origin(
+            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool),
+            request_origin,
         )
         return pipeline_module._call_model_pool(
             prompt,

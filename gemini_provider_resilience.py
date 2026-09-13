@@ -7,11 +7,12 @@ fell back immediately after the first 503, amplifying a short provider wobble in
 an apparent run-wide outage.
 
 Run355 keeps that confirmation policy for normal generation, screening, and Product
-Review, but narrows Pending Retry. Its dedicated budget is only two requests; spending
-both on same-model 503 confirmation makes cross-model fallback unreachable. Therefore a
+Review, but narrows Pending Retry. Its dedicated budget is small; spending it on
+same-model 503 confirmation makes cross-model fallback unreachable. Therefore a
 structured 503 on a pending-retry request opens a run-local circuit immediately and
-preserves the second request for the next model. No quota cap is raised and no gate is
-weakened.
+preserves remaining requests for the next model. Run371 applies this same existing
+policy to the explicit read-only ``pending_retry_validation`` origin; it does not
+change normal Production behavior, quota caps, or publication gates.
 
 Run360 establishes a single retry owner. google-genai retries transient HTTP failures
 (including 503) internally by default, while this module also performs bounded provider
@@ -19,12 +20,15 @@ confirmation/fallback. Layering both mechanisms can multiply one logical request
 many provider-visible HTTP attempts and makes Factory usage telemetry undercount the
 real transport work. Production therefore rebuilds the Gemini client with SDK retries
 disabled (one total SDK attempt). All retry/fallback decisions remain owned by the
-Factory budgets and circuits below. The saved pre-Run360 Gemini-only branch remains the
-rollback authority; article quality, gates, model routing, Groq, and persistence are
-unchanged here.
+Factory budgets and circuits below.
+
+Run374 adds an operator safety exclusion for Pending Retry only. This is evaluated
+immediately before provider dispatch so a model excluded for quota preservation can
+never be reintroduced by upstream fallback-pool normalization.
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -33,6 +37,16 @@ _SDK_SINGLE_OWNER_FLAG = "_aiif_gemini_sdk_single_retry_owner_installed"
 _SDK_RETRY_ATTEMPTS = 1
 _DEFAULT_503_CONFIRM_DELAY_SECONDS = 10
 _MAX_503_CONFIRM_DELAY_SECONDS = 20
+_PENDING_RETRY_ORIGINS = frozenset({"pending_retry", "pending_retry_validation"})
+
+
+def _is_pending_retry_origin(request_origin: str) -> bool:
+    return str(request_origin or "").strip() in _PENDING_RETRY_ORIGINS
+
+
+def _pending_retry_excluded_models() -> frozenset[str]:
+    raw = str(os.environ.get("GEMINI_PENDING_RETRY_EXCLUDED_MODELS", "") or "")
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 
 def _provider_status_code(exc: BaseException) -> int | None:
@@ -72,7 +86,7 @@ def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_orig
             f"Deep Dive run budget exhausted: used={pipeline_module.DEEP_DIVE_MODEL_BUDGET.used}, "
             f"budget={pipeline_module.DEEP_DIVE_MODEL_BUDGET.budget}, kind={kind}"
         )
-    if request_origin == "pending_retry" and not pipeline_module.PENDING_RETRY_REQUEST_BUDGET.can_request():
+    if _is_pending_retry_origin(request_origin) and not pipeline_module.PENDING_RETRY_REQUEST_BUDGET.can_request():
         raise pipeline_module.PendingRetryBudgetExceededError(
             "Pending Retry Gemini request budget exhausted: "
             f"used={pipeline_module.PENDING_RETRY_REQUEST_BUDGET.used}, "
@@ -81,16 +95,6 @@ def _check_deep_dive_local_budgets(pipeline_module: Any, kind: str, request_orig
 
 
 def _install_single_retry_owner_client(pipeline_module: Any) -> None:
-    """Disable google-genai's internal transient retry for Production.
-
-    google-genai's HttpRetryOptions.attempts counts the original request. Setting it to
-    one means exactly one SDK transport attempt and no SDK retry. The Factory's explicit
-    budgets, delay, fallback, and circuit-breaker policy then become the sole retry owner.
-
-    Import-only/offline tests often have no GEMINI_API_KEY and no usable client. In that
-    state there is no provider call to protect, so installation is deferred safely until
-    a real Production runtime with credentials is initialized.
-    """
     if bool(getattr(pipeline_module, _SDK_SINGLE_OWNER_FLAG, False)):
         return
 
@@ -145,7 +149,14 @@ def install(pipeline_module: Any) -> Any:
         deep_dive: bool = False, request_context: str = "", request_origin: str = "new",
     ):
         last_error: Exception | None = None
+        excluded = _pending_retry_excluded_models() if _is_pending_retry_origin(request_origin) else frozenset()
         for model_name in pool:
+            if model_name in excluded:
+                pipeline_module.logger.info(
+                    "[RUN374 PENDING RETRY MODEL EXCLUDED] model=%s origin=%s; provider_call=false",
+                    model_name, request_origin,
+                )
+                continue
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
             for attempt in range(2):
@@ -172,10 +183,10 @@ def install(pipeline_module: Any) -> Any:
                             "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s/2 verified=structured_status",
                             model_name, kind, attempt + 1,
                         )
-                        if request_origin == "pending_retry":
+                        if _is_pending_retry_origin(request_origin):
                             pipeline_module.logger.warning(
-                                "[RUN355 PENDING RETRY 503 FALLBACK] model=%s kind=%s; preserve remaining dedicated request for next model",
-                                model_name, kind,
+                                "[RUN355/371 PENDING RETRY 503 FALLBACK] model=%s kind=%s origin=%s; preserve remaining request budget for next model",
+                                model_name, kind, request_origin,
                             )
                             pipeline_module._mark_model_unavailable(model_name, "provider_503_pending_retry_budget_preserved")
                             break
