@@ -1,26 +1,22 @@
-"""Run409: unmask canonical dedicated Reader Repair after base quality retry.
+"""Run409/411: approved-lane retry ownership plus precise Fact repair guidance.
 
-Real approved Run399 #11 showed a retry-owner ordering bug. After one ordinary HARD
-quality retry, all remaining blockers were Reader-only and Evidence/Publication were
-safe. Run208/360 nevertheless returned ``run360_base_quality_retry_already_spent``
-before its dedicated Reader Repair branch could claim the manuscript. One approved
-request slot remained unused.
+Run409 fixes a retry-owner ordering bug: after one ordinary HARD quality retry, safe
+Reader-only blockers can still claim Run360's already-existing dedicated Reader Repair.
 
-This overlay is deliberately narrow:
-- only ``approved_article_apply``;
-- only when the wrapped policy returns ``run360_base_quality_retry_already_spent``;
-- only when every remaining blocker is canonical repairable Reader-only, non-HARD;
-- only with Evidence SUFFICIENT and decision_scope_safe=true;
-- at most one canonical dedicated Reader Repair.
+Run411 is installed from the same approved-only overlay boundary. Real approved Run #15
+showed that the single HARD quality retry could leave valid Fact blockers
+``unsupported vague quantified claim`` and ``LIMITATION_DROPPED``. Run411 does not relax
+those blockers or add a model call; it only makes their patch instruction explicit.
 
-It does not create another generic quality retry, raise any API budget, relax any Gate,
-or change normal Daily/article_validation/pending_retry behavior.
+Neither layer raises any API budget, relaxes any Gate, or changes normal
+Daily/article_validation/pending_retry/X behavior.
 """
 from __future__ import annotations
 
 from typing import Any
 
 import run208_reader_value_repair as canonical_reader
+import run411_fact_retry_specificity
 
 _INSTALLED_ATTR = "_run409_approved_reader_owner_bridge_installed"
 APPROVED_ORIGIN = "approved_article_apply"
@@ -42,6 +38,10 @@ def _eligible(pipeline_module: Any, rows: list[dict], evidence_result: dict | No
 def install(pipeline_module: Any) -> Any:
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
         return pipeline_module
+
+    # Run411 shares this exact owner-approved boundary but changes only the existing
+    # quality-retry instruction. Install it before wrapping retry ownership.
+    run411_fact_retry_specificity.install(pipeline_module)
 
     original = getattr(pipeline_module, "should_attempt_dynamic_retry", None)
     if not callable(original):
