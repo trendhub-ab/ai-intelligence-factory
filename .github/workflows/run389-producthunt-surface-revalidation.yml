@@ -1,7 +1,12 @@
-name: Run389 Migrated Article Surface Revalidation [MANUAL ONLY]
+name: Run389 Migrated Article Surface Revalidation [ONE-TIME]
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/run367-readonly-audit-reader-conflict
+    paths:
+      - '.github/workflows/run389-producthunt-surface-revalidation.yml'
 
 permissions:
   contents: read
