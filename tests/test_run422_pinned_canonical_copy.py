@@ -62,7 +62,8 @@ class Run422PinnedCanonicalCopyTests(unittest.TestCase):
 
     def test_exact_target_and_private_draft_contract_remain(self):
         source = inspect.getsource(r422.render_and_attach)
-        self.assertIn("require_broken=True", source)
+        self.assertIn("require_fixed=True", source)
+        self.assertNotIn("require_broken=True", source)
         self.assertIn("_upload_replace", source)
         refresh = inspect.getsource(r422.refresh_existing_private_draft)
         self.assertIn("r418.refresh_existing_private_draft", refresh)
