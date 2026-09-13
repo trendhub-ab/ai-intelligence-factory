@@ -72,6 +72,44 @@ class Run246RepositoryHygieneTests(unittest.TestCase):
             with self.subTest(path=rel):
                 self.assertTrue((ROOT / rel).exists())
 
+    def test_retired_provider_and_recovery_surfaces_stay_absent(self):
+        retired = (
+            ".github/workflows/gemini-technology-comment-shadow-judge-only.yml",
+            ".github/workflows/groq-qwen-technology-comment-shadow-judge.yml",
+            ".github/workflows/groq-technology-comment-shadow-live.yml",
+            "gemini_technology_comment_shadow_judge.py",
+            "groq_qwen_technology_comment_shadow_judge.py",
+            "groq_technology_comment_shadow_live.py",
+            "technology_comment_shadow.py",
+            ".github/workflows/run361-byte-preserving-ready-rebase.yml",
+            ".github/workflows/run361-gemini-live-validation.yml",
+            ".github/workflows/run362-gemini-request-shape-validation.yml",
+            ".github/workflows/run362-ready-provenance-audit.yml",
+            ".github/workflows/run363-gemini38-temporal-control.yml",
+            ".github/workflows/run364-historical-ready-rebase.yml",
+            ".github/workflows/run365-historical-ready-rebase.yml",
+            "run361_byte_preserving_ready_rebase.py",
+            "run361_gemini_live_validation.py",
+            "run362_gemini_request_shape_validation.py",
+            "run362_gemini_request_shape_validation_test.py",
+            "run362_ready_provenance_audit.py",
+            "run363_gemini38_temporal_control.py",
+            "run363_gemini38_temporal_control_test.py",
+            "run364_historical_ready_rebase.py",
+            "run365_historical_ready_rebase.py",
+        )
+        present = [relative for relative in retired if (ROOT / relative).exists()]
+        self.assertEqual([], present, f"retired provider/recovery surfaces reappeared: {present}")
+
+    def test_retired_groq_dependency_stays_absent(self):
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        package_names = {
+            line.split(";", 1)[0].split("==", 1)[0].split(">=", 1)[0].split("<=", 1)[0].strip().lower()
+            for line in requirements
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        self.assertNotIn("groq", package_names)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

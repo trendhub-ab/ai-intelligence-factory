@@ -18,8 +18,6 @@ ALLOWED_LOGIN = "trendhub-ab"
 COMMAND_TO_MODE = {
     "/aiif run article_validation": "article_validation",
     "/aiif run pending_retry_validation": "pending_retry_validation",
-    "/aiif run current_policy_ready_recovery": "current_policy_ready_recovery",
-    "/aiif run ready_metadata_rebase": "ready_metadata_rebase",
     "/aiif run full": "full",
 }
 
