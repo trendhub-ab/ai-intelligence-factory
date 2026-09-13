@@ -10,6 +10,9 @@ read-only article_validation:
 - persistence is enabled only in this explicit entrypoint;
 - the command fails unless the regenerated article returns status=accepted.
 
+Run400 adds no new quality policy. It lets this approved-only origin reuse the already
+bounded Run208/360 Reader Repair contract when Evidence is safe and a request remains.
+
 No note.com action occurs here. A successful Notion/Ready persistence is handed to the
 existing zero-model note-ready synchronization flow afterwards.
 """
@@ -19,6 +22,7 @@ import os
 from typing import Any
 
 import article_revalidation
+import run400_approved_reader_repair
 
 APPROVAL_TOKEN = "APPLY_APPROVED_ARTICLE"
 DEFAULT_EXPECTED_NAME = "OpenAI agents carried out an undisclosed attack on RubyGems"
@@ -36,6 +40,11 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     """Regenerate and persist exactly one pre-approved existing non-Ready article."""
     if not _approval_is_valid():
         raise RuntimeError("Run399 approval token is missing or invalid")
+
+    # Run400 is intentionally installed only in this explicit owner-approved lane.
+    # It maps this new origin to Run208/360's existing article_revalidation repair
+    # semantics; all quality gates, evidence checks and bounded retry ownership remain.
+    run400_approved_reader_repair.install(pipeline)
 
     expected = _expected_name()
     if not expected:
