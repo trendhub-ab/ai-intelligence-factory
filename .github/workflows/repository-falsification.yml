@@ -47,17 +47,12 @@ jobs:
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
 
-      - name: Enforce Run257 workflow reference integrity inside required check
+      - name: Enforce workflow reference integrity inside required check
         run: |
           python workflow_reference_guard.py
           python -m unittest tests.test_workflow_reference_guard -v
 
-      - name: Enforce Run262 canonical Run261 documentation contract
-        run: |
-          python run262_documentation_contract_guard.py
-          python -m unittest tests.test_run262_documentation_contract_guard -v
-
-      - name: Enforce Run267 current canonical documentation contract
+      - name: Enforce current machine-verifiable repository governance
         run: |
           python run267_documentation_contract_guard.py
           python -m unittest tests.test_run267_documentation_contract_guard -v
@@ -97,7 +92,7 @@ jobs:
           python run271_member_body_delta_sync_guard.py
           python -m unittest tests.test_run271_1_member_body_checkpoint -v
 
-      - name: Enforce Run263 Integration hermeticity and stability
+      - name: Enforce integration hermeticity and stability
         run: |
           python integration_stability_guard.py
           python -m unittest tests.test_integration_stability_guard -v
@@ -137,7 +132,7 @@ jobs:
             -v
           python -m unittest tests.test_run290_quality_workflow_separation -v
 
-      - name: Falsify Run292/293/294/295/296 private-draft and editorial-surface boundaries
+      - name: Falsify private-draft and editorial-surface boundaries
         run: |
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
