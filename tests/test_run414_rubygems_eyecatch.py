@@ -35,6 +35,7 @@ def test_run414_refuses_existing_eyecatch(monkeypatch):
                 "記事状態": {"select": {"name": "Ready"}},
                 "アイキャッチ": {"files": [{"name": "existing.png"}]},
             }}
+    monkeypatch.setenv("NOTION_API_KEY", "test-token")
     monkeypatch.setattr(run414.requests, "get", lambda *a, **k: Response())
     try:
         run414._fetch_target()
