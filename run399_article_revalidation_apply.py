@@ -16,8 +16,11 @@ Run402 makes target selection exact-name based rather than "first eligible" base
 Run403 also reads the canonical Pending Retry source because those rows are deliberately
 absent from the generic Deep Dive regeneration list after a fail-closed persistence event.
 Run406 adds one extra Reader-only repair only in this exact approved lane when the first
-Reader Repair has already run, only multi-axis Reader weakness remains, Evidence is safe,
-and the existing request budget still permits a call. It does not increase that budget.
+Reader Repair has already run, Reader-only weakness remains, Evidence is safe, and the
+existing request budget still permits a call. It does not increase that budget.
+Run408 fixes a provider-routing blind spot only in this approved lane: a model rejected
+by the persistent safety counter before provider send no longer consumes one of Run260's
+two configured fallback positions and strand an available later model.
 
 No note.com action occurs here. A successful Notion/Ready persistence is handed to the
 existing zero-model note-ready synchronization flow afterwards.
@@ -30,6 +33,7 @@ from typing import Any
 import article_revalidation
 import run400_approved_reader_repair
 import run406_approved_second_reader_repair
+import run408_approved_quality_fallback
 
 APPROVAL_TOKEN = "APPLY_APPROVED_ARTICLE"
 DEFAULT_EXPECTED_NAME = "OpenAI agents carried out an undisclosed attack on RubyGems"
@@ -85,8 +89,11 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     if not _approval_is_valid():
         raise RuntimeError("Run399 approval token is missing or invalid")
 
+    # These approved-lane overlays are installed only after Production has installed the
+    # canonical runtime stack, so each wrapper sees the final live policy it is meant to refine.
     run400_approved_reader_repair.install(pipeline)
     run406_approved_second_reader_repair.install(pipeline)
+    run408_approved_quality_fallback.install(pipeline)
 
     expected = _expected_name()
     if not expected:

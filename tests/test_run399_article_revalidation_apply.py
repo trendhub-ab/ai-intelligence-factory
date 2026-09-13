@@ -22,11 +22,19 @@ class Run399ApprovedApplyTests(unittest.TestCase):
         pipeline.CONTENT_STATUS_PENDING_RETRY = "Pending Retry"
         pipeline.CONTENT_STATUS_QUALITY_FAILED = "Quality Failed"
         pipeline.DEEP_DIVE_MODEL_BUDGET = _Budget()
+        pipeline.DEEP_DIVE_MODEL_POOL = [
+            "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"
+        ]
         pipeline.logger = types.SimpleNamespace(warning=lambda *a, **k: None, info=lambda *a, **k: None)
         pipeline.legal_safety_gate = lambda repo: (True, "safe")
         pipeline.should_attempt_dynamic_retry = lambda rows, evidence, origin="new": (False, "test_no_retry")
         pipeline.get_regen_test_items = lambda limit, query: []
         pipeline.get_pending_retry_items = lambda limit: []
+        # Run408 is installed only after the real Production runtime stack. Mirror the
+        # existence of that provider-routing contract in this unit fixture; Run408's own
+        # behavior is exercised separately in test_run408_approved_quality_fallback.py.
+        pipeline._call_deep_dive_pool = lambda *a, **k: ("fixture", "gemini-3.8-flash")
+        pipeline._call_model_pool = lambda *a, **k: ("fixture", "gemini-3.8-flash")
         return pipeline
 
     def _item(self, name=run399.DEFAULT_EXPECTED_NAME, page_id="page-1"):
