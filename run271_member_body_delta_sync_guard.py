@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Fail closed when member-body delta sync safety drifts.
+"""Fail closed when executable member-sync safety drifts.
 
-Protect the executable delta/full-fallback contract only. Historical Run labels,
-canonical-spec wording, reference prose, and past performance measurements are not CI invariants.
+Protect current machine-verifiable member contracts only. Historical Run labels,
+canonical-spec wording, reference prose, and past measurements are not CI invariants.
 """
 from __future__ import annotations
 
 from pathlib import Path
+
+from member_presentation_identity import (
+    ALLOW_CREATE_DEFAULT,
+    API_HOST_PAGE_ID,
+    CANONICAL_DATABASE_ID,
+    CANONICAL_DATA_SOURCE_ID,
+)
 
 ROOT = Path(__file__).resolve().parent
 BODY = "member_ux_body_fast.py"
@@ -69,17 +76,44 @@ def collect_errors(root: Path = ROOT) -> list[str]:
         "member_workflow",
     )
 
+    # Destination identity is an operational safety invariant, not documentation history.
+    errors += _missing(
+        workflow,
+        (
+            "Resolve canonical member DB",
+            f"MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: '{CANONICAL_DATABASE_ID}'",
+            f"MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '{CANONICAL_DATA_SOURCE_ID}'",
+            f"MEMBER_PRESENTATION_API_HOST_PAGE_ID: '{API_HOST_PAGE_ID}'",
+            f"MEMBER_PRESENTATION_ALLOW_CREATE: '{ALLOW_CREATE_DEFAULT}'",
+        ),
+        "member_destination",
+    )
+
+    # Member-derived Notion writes must serialize, and these deterministic transforms
+    # must not silently acquire a model dependency.
+    errors += _missing(
+        workflow,
+        (
+            "group: member-derived-notion-writes",
+            "cancel-in-progress: false",
+            "Subscriber Decision Brief Sync",
+        ),
+        "member_execution",
+    )
+    if "GEMINI_API_KEY" in workflow:
+        errors.append("member_execution_forbidden:GEMINI_API_KEY")
+
     return list(dict.fromkeys(errors))
 
 
 def main() -> int:
     errors = collect_errors(ROOT)
     if errors:
-        print("MEMBER_BODY_DELTA_SYNC_GUARD=FAIL")
+        print("MEMBER_SYNC_SAFETY_GUARD=FAIL")
         for error in errors:
             print(f"- {error}")
         return 1
-    print("MEMBER_BODY_DELTA_SYNC_GUARD=PASS")
+    print("MEMBER_SYNC_SAFETY_GUARD=PASS")
     return 0
 
 
