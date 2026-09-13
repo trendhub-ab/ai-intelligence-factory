@@ -21,6 +21,9 @@ existing request budget still permits a call. It does not increase that budget.
 Run408 fixes a provider-routing blind spot only in this approved lane: a model rejected
 by the persistent safety counter before provider send no longer consumes one of Run260's
 two configured fallback positions and strand an available later model.
+Run409 fixes retry-owner ordering only in this approved lane: after the ordinary quality
+retry is spent, safe Reader-only blockers can still claim Run360's already-existing
+dedicated Reader Repair slot instead of being masked by base-retry exhaustion.
 
 No note.com action occurs here. A successful Notion/Ready persistence is handed to the
 existing zero-model note-ready synchronization flow afterwards.
@@ -34,6 +37,7 @@ import article_revalidation
 import run400_approved_reader_repair
 import run406_approved_second_reader_repair
 import run408_approved_quality_fallback
+import run409_approved_reader_owner_bridge
 
 APPROVAL_TOKEN = "APPLY_APPROVED_ARTICLE"
 DEFAULT_EXPECTED_NAME = "OpenAI agents carried out an undisclosed attack on RubyGems"
@@ -89,9 +93,11 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     if not _approval_is_valid():
         raise RuntimeError("Run399 approval token is missing or invalid")
 
-    # These approved-lane overlays are installed only after Production has installed the
-    # canonical runtime stack, so each wrapper sees the final live policy it is meant to refine.
+    # Approved-lane overlays are installed only after Production has installed the
+    # canonical runtime stack. Run409 must wrap Run400 before Run406 so the canonical
+    # first Reader Repair owner is unmasked before the optional second-repair overlay.
     run400_approved_reader_repair.install(pipeline)
+    run409_approved_reader_owner_bridge.install(pipeline)
     run406_approved_second_reader_repair.install(pipeline)
     run408_approved_quality_fallback.install(pipeline)
 
