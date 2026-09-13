@@ -29,6 +29,7 @@ import run185_note_ready_legacy_skip as run185
 import run189_note_editor_route_gate as run189
 import run193_note_official_header_upload as run193
 import run187_note_editor_readiness as run187
+import run417_note_body_verification as run417
 
 PROFILE_ENV = "NOTE_CHROME_USER_DATA_DIR"
 CHANNEL_ENV = "NOTE_CHROME_CHANNEL"
@@ -240,6 +241,7 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
 def install() -> None:
     # Keep all Run185-193 fail-closed patches, replacing only browser lifecycle/auth storage.
     run193.install()
+    run417.install(base)
     base._decode_storage_state = _compat_storage_path
     base._create_browser_draft = _create_browser_draft
 
