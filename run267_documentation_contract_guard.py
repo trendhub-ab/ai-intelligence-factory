@@ -49,6 +49,17 @@ def _pull_request_block(text: str) -> tuple[bool, str]:
     return True, match.group("body")
 
 
+def _pull_request_covers_main(block: str) -> bool:
+    # No branch filter means all branches are covered, including main.
+    branches_match = re.search(
+        r"(?ms)^[ ]+branches:\s*\n(?P<body>.*?)(?=^[ ]+[A-Za-z_][A-Za-z0-9_-]*:\s*$|\Z)",
+        block,
+    )
+    if branches_match is None:
+        return True
+    return bool(re.search(r"(?m)^\s*-\s*['\"]?main['\"]?\s*$", branches_match.group("body")))
+
+
 def dependency_errors(requirements: str, constraints: str) -> list[str]:
     errors: list[str] = []
     if "Pillow>=12.1.0,<13.0.0" not in requirements.splitlines():
@@ -65,7 +76,7 @@ def required_check_errors(workflows: dict[str, tuple[str, str]]) -> list[str]:
         if not present:
             errors.append(f"required_check_missing_pull_request_trigger:{name}:{context}")
             continue
-        if "main" not in block:
+        if not _pull_request_covers_main(block):
             errors.append(f"required_check_does_not_cover_main:{name}:{context}")
         if re.search(r"(?m)^[ ]+(?:paths|paths-ignore):\s*$", block):
             errors.append(f"required_check_has_pull_request_path_filter:{name}:{context}")
