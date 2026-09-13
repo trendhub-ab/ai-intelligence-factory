@@ -1,12 +1,7 @@
-name: Run386-387 Zero-API Recovery Triage [ONE-TIME]
+name: Run386-387 Zero-API Recovery Triage [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run386-zero-api-recovery-triage.yml'
 
 permissions:
   contents: read
