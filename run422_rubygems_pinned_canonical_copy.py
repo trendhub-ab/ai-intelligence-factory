@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run422/423: exact RubyGems canonical eyecatch with safe semantic line breaks.
+"""Run422/423/424: exact RubyGems canonical eyecatch with safe semantic line breaks.
 
-Run422 restored the canonical 2–3-line copy contract. Run423 tightens that contract after
-the real render split the protected Latin identifier ``RubyGems`` across lines. For this
-exact already-approved article, keep the pinned source-bounded copy and pre-seed semantic
-line boundaries that preserve protected identifiers. No model request is used. All pixels
-are rendered by the installed Production visual stack inherited from Run418/419/421.
+Run422 restored the canonical 2–3-line copy contract. Run423 tightened that contract after
+the real render split the protected Latin identifier ``RubyGems`` across lines. Run424
+allows this exact approved article to replace only the currently installed canonical
+Run422/423 asset, rather than the much older Run416 broken filename. No model request is
+used. All pixels are rendered by the installed Production visual stack.
 """
 from __future__ import annotations
 
@@ -33,14 +33,14 @@ def _require_bounded_title_lines(validated: dict[str, Any]) -> dict[str, Any]:
     title_lines = [str(line).strip() for line in (validated.get("title_lines") or []) if str(line).strip()]
     if len(title_lines) not in (2, 3):
         raise r418.Run418Error(
-            f"Run423 canonical headline must occupy 2 or 3 lines, got {len(title_lines)}"
+            f"Run424 canonical headline must occupy 2 or 3 lines, got {len(title_lines)}"
         )
     if "".join(title_lines) != PINNED_EYECATCH_TITLE:
-        raise r418.Run418Error("Run423 title-line partition changed canonical copy")
+        raise r418.Run418Error("Run424 title-line partition changed canonical copy")
     for token in _latin_tokens(PINNED_EYECATCH_TITLE):
         containing = [line for line in title_lines if token in line]
         if len(containing) != 1:
-            raise r418.Run418Error(f"Run423 refuses split Latin identifier: {token}")
+            raise r418.Run418Error(f"Run424 refuses split Latin identifier: {token}")
     validated = dict(validated)
     validated["title_lines"] = title_lines
     return validated
@@ -52,7 +52,7 @@ def _pinned_plan() -> dict[str, Any]:
 
     source_title = r180._source_title_for_direction(r418.EXPECTED_NOTE_TITLE)
     if r180._validate_eyecatch_title(source_title, PINNED_EYECATCH_TITLE) != PINNED_EYECATCH_TITLE:
-        raise r418.Run418Error("Run423 pinned eyecatch title failed Run180 semantic guard")
+        raise r418.Run418Error("Run424 pinned eyecatch title failed Run180 semantic guard")
 
     raw = {
         "eyecatch_title": PINNED_EYECATCH_TITLE,
@@ -65,9 +65,9 @@ def _pinned_plan() -> dict[str, Any]:
     }
     validated = r419._repair_layout_plan(source_title, PINNED_SUBHEADLINE, raw)
     if validated is None:
-        raise r418.Run418Error("Run423 pinned source-bounded copy failed Run180 geometry validation")
+        raise r418.Run418Error("Run424 pinned source-bounded copy failed Run180 geometry validation")
     if validated.get("eyecatch_title") != PINNED_EYECATCH_TITLE:
-        raise r418.Run418Error("Run423 semantic title changed during deterministic layout")
+        raise r418.Run418Error("Run424 semantic title changed during deterministic layout")
     return _require_bounded_title_lines(validated)
 
 
@@ -86,15 +86,17 @@ def _render_zero_model():
         date_label=None,
     )
     if str(result) != str(r418.OUTPUT) or not r418.OUTPUT.exists() or r418.OUTPUT.stat().st_size < 10_000:
-        raise r418.Run418Error("Run423 canonical eyecatch render missing or unexpectedly small")
+        raise r418.Run418Error("Run424 canonical eyecatch render missing or unexpectedly small")
     with Image.open(r418.OUTPUT) as image:
         if image.size != (1280, 670) or image.format != "PNG":
-            raise r418.Run418Error(f"Run423 canonical eyecatch geometry invalid: {image.size} {image.format}")
+            raise r418.Run418Error(f"Run424 canonical eyecatch geometry invalid: {image.size} {image.format}")
     return r418.OUTPUT, validated
 
 
 def render_and_attach() -> dict[str, Any]:
-    r418._fetch_exact_target(require_broken=True)
+    # Run424 is a canonical-to-canonical correction. Refuse anything except the exact
+    # currently installed canonical filename on the exact Ready RubyGems page.
+    r418._fetch_exact_target(require_fixed=True)
     path, plan = _render_zero_model()
     upload_id = r418._upload_replace(path)
     return {
@@ -122,7 +124,7 @@ def main() -> int:
     parser.add_argument("mode", choices=("render-attach", "refresh-draft"))
     args = parser.parse_args()
     if r418.os.getenv("RUN418_CONFIRM", "").strip() != r418.CONFIRM:
-        raise r418.Run418Error("Run423 exact-target confirmation missing")
+        raise r418.Run418Error("Run424 exact-target confirmation missing")
     result = render_and_attach() if args.mode == "render-attach" else refresh_existing_private_draft()
     print(r418.json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
