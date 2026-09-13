@@ -22,7 +22,9 @@ def test_run414_does_not_modify_article_body_surface():
     assert '"アイキャッチ"' in source
     assert '"記事状態"' in source
     assert "blocks/" not in source
-    assert "append" not in source.lower()
+    assert '"本文"' not in source
+    assert '"記事本文"' not in source
+    assert '"children"' not in source
 
 
 def test_run414_refuses_existing_eyecatch(monkeypatch):
