@@ -1,12 +1,7 @@
-name: Run397 GoRules Final Full Gate Proof [ONE-TIME]
+name: Run397 GoRules Final Full Gate Proof [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run395-gorules-full-gate-revalidation.yml'
 
 permissions:
   contents: read
@@ -20,7 +15,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run397: final read-only GoRules proof; Gemini 0; Notion GET only; no Note Ready sync or publication.'
+          echo 'Run397: read-only GoRules proof; Gemini 0; Notion GET only; no Note Ready sync or publication.'
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
