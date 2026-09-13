@@ -2,6 +2,12 @@
 
 ## Production baseline
 
+- **Current repository simplification baseline:** PR #305 — Gemini-only Production; retired provider-coexistence and fixed-recovery surfaces removed
+- **Current Production provider contract:** Gemini-only provider path. Qwen references under OfficialVendor/product/topic coverage are observation targets, not Production model routing
+- **Current recovery status:** fixed 45-item Recovery is closed with 33 items unrecovered; it is historical state and must not resume automatically
+- **Current ChatOps modes:** `article_validation` / `pending_retry_validation` / `full` only
+- **Current publication provenance contract:** current policy SHA is code-derived; older Ready policy metadata becomes stale by design after policy changes
+- **Current X contract:** X logic remains separate and unchanged by PR #305
 - **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
 - **Current documentation governance baseline:** Run210 — Documentation Freshness Guard
 - **Current paid member sync baseline:** Run211 — paid member sync ordering
@@ -26,6 +32,8 @@
 - Gemini quota specification: `GEMINI_QUOTA_SETUP.md`
 
 New development must start from `main`. Historical/archive branches are reference-only and must not be used as a development base.
+
+Historical Run supplements, recovery reports and archived validation notes are reference/audit evidence, not competing current specifications. Repository-wide current authority is `main` plus `AI_Intelligence_Factory_最終仕様書.md`; when documentation conflicts, update the documentation rather than reviving retired runtime behavior.
 
 ## Active runtime map
 
