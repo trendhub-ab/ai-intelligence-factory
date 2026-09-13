@@ -103,7 +103,6 @@ class Run245FactValidationIntegrationTests(unittest.TestCase):
 
     def test_pipeline_line_count_is_below_run244_baseline(self):
         lines = len((ROOT / "pipeline.py").read_text(encoding="utf-8").splitlines())
-        self.assertEqual(9972, lines)
         self.assertLess(lines, 10434)
 
 

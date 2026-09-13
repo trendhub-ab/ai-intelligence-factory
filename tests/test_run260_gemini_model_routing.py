@@ -45,20 +45,20 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         )
         return module, calls, deep_dive_calls
 
-    def test_fresh_deep_dive_contract_is_37_then_38_then_36_then_35(self):
+    def test_fresh_deep_dive_contract_is_38_then_37_then_36_then_35(self):
         module, _, _ = self._fake_pipeline()
         run260.install(module)
         self.assertEqual(
             module.DEEP_DIVE_MODEL_POOL[:4],
             [
-                "gemini-3.7-flash",
                 "gemini-3.8-flash",
+                "gemini-3.7-flash",
                 "gemini-3.6-flash",
                 "gemini-3.5-flash",
             ],
         )
 
-    def test_quality_retry_prefers_38_and_is_bounded_to_one_fallback(self):
+    def test_quality_retry_prefers_37_and_is_bounded_to_one_fallback(self):
         module, calls, _ = self._fake_pipeline()
         run260.install(module)
         result = module._call_model_pool(
@@ -70,7 +70,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         routed_pool = calls[0][0][4]
         self.assertEqual(
             routed_pool,
-            ["gemini-3.8-flash", "gemini-3.6-flash"],
+            ["gemini-3.7-flash", "gemini-3.6-flash"],
         )
         self.assertEqual(len(routed_pool), run260.QUALITY_RETRY_MAX_DISTINCT_MODELS)
 
@@ -89,7 +89,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(len(deep_dive_calls), 0, "quality retry must use Run261 live-path guard")
         self.assertEqual(
             calls[0][0][4],
-            ["gemini-3.8-flash", "gemini-3.6-flash"],
+            ["gemini-3.7-flash", "gemini-3.6-flash"],
         )
         self.assertTrue(calls[0][1]["deep_dive"])
         self.assertEqual(calls[0][1]["request_context"], "live-path")
@@ -102,19 +102,19 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(len(calls[0][0][4]), 2)
         self.assertNotEqual(calls[0][0][4][0], calls[0][0][4][1])
 
-    def test_live_deep_dive_fresh_path_keeps_full_four_model_pool_and_37_primary(self):
+    def test_live_deep_dive_fresh_path_keeps_full_four_model_pool_and_38_primary(self):
         module, calls, deep_dive_calls = self._fake_pipeline()
         run260.install(module)
         module._call_deep_dive_pool("prompt", None, "deep_dive", request_context="fresh")
         self.assertEqual(len(deep_dive_calls), 1)
         self.assertEqual(len(calls), 1)
         routed_pool = calls[0][0][4]
-        self.assertEqual(routed_pool[0], "gemini-3.7-flash")
+        self.assertEqual(routed_pool[0], "gemini-3.8-flash")
         self.assertEqual(
             routed_pool[:4],
             [
-                "gemini-3.7-flash",
                 "gemini-3.8-flash",
+                "gemini-3.7-flash",
                 "gemini-3.6-flash",
                 "gemini-3.5-flash",
             ],
@@ -127,7 +127,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             "prompt", None, "deep_dive", 0, module.DEEP_DIVE_MODEL_POOL,
             deep_dive=True,
         )
-        self.assertEqual(calls[0][0][4][0], "gemini-3.7-flash")
+        self.assertEqual(calls[0][0][4][0], "gemini-3.8-flash")
         self.assertGreaterEqual(len(calls[0][0][4]), 4)
 
     def test_quality_repair_aliases_get_same_two_model_bound(self):

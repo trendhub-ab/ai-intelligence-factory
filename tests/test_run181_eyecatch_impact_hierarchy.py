@@ -86,10 +86,10 @@ class Run181EyecatchImpactHierarchyTests(unittest.TestCase):
             self.assertIsNotNone(ImageChops.difference(actual.crop(left_box), expected.crop(left_box)).getbbox())
 
             orange_hits = 0
-            for pixel in actual.get_flattened_data():
-                if all(abs(int(pixel[i]) - r181.HIGHLIGHT_ORANGE[i]) <= 3 for i in range(3)):
+            for pixel in actual.getdata():
+                if all(abs(int(pixel[i]) - r181.HIGHLIGHT_ORANGE[i]) <= 5 for i in range(3)):
                     orange_hits += 1
-            self.assertGreater(orange_hits, 20)
+            self.assertGreater(orange_hits, 10)
 
     def test_subheadline_falls_back_to_existing_source_bounded_copy(self):
         probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))

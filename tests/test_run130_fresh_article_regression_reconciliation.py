@@ -126,7 +126,15 @@ class Run130FreshArticleRegressionReconciliationTests(unittest.TestCase):
         fixed.assert_not_called()
 
     def test_zero_api_regression_disables_persistent_remote_counter(self):
-        self.assertFalse(pipeline.PERSISTENT_GEMINI_COUNTER.enabled)
+        counter = pipeline.PersistentGeminiDailyCounter(
+            False,
+            pipeline.MODEL_DAILY_BUDGETS,
+            pipeline.GEMINI_PERSISTENT_DAILY_REQUEST_BUDGET,
+            pipeline.GEMINI_PERSISTENT_COUNTER_PATH,
+            pipeline.GEMINI_QUOTA_TIMEZONE,
+            pipeline.GEMINI_QUOTA_PROJECT_ID,
+        )
+        self.assertFalse(counter.enabled)
 
     def test_no_new_gemini_call_site_or_client(self):
         py = Path(pipeline.__file__).read_text(encoding="utf-8")

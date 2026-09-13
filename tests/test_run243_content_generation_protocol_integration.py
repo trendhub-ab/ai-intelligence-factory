@@ -70,7 +70,7 @@ class Run243ContentGenerationProtocolIntegrationTests(unittest.TestCase):
         self.assertIn("LIVE_STOCK 1件", wrapped)
 
     def test_pipeline_physically_relinquishes_run243_heavy_bodies(self):
-        source = (ROOT / "pipeline.py").read_text()
+        source = (ROOT / "pipeline.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         funcs = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         for moved in ("_source_fact_discipline", "_human_editorial_style_rules", "_promote_plaintext_section_titles"):
@@ -82,7 +82,7 @@ class Run243ContentGenerationProtocolIntegrationTests(unittest.TestCase):
         self.assertLess(len(source.splitlines()), 10900)
 
     def test_canonical_module_has_no_provider_or_persistence_imports(self):
-        source = (ROOT / "content_generation_protocol.py").read_text()
+        source = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         imported = []
         for node in tree.body:

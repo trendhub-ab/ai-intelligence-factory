@@ -15,7 +15,7 @@ class Run242ModuleTests(unittest.TestCase):
     def test_modules_have_no_provider_network_or_persistence_imports(self):
         forbidden = {"requests", "google", "google.genai", "notion_client"}
         for filename in ("notion_payloads.py", "source_document_parsing.py", "deferred_queue_policy.py"):
-            tree = ast.parse((ROOT / filename).read_text())
+            tree = ast.parse((ROOT / filename).read_text(encoding="utf-8"))
             imports = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -23,7 +23,7 @@ class Run242ModuleTests(unittest.TestCase):
                 elif isinstance(node, ast.ImportFrom):
                     imports.add(node.module or "")
             self.assertFalse(any(name in forbidden or name.startswith("google") for name in imports), filename)
-            source = (ROOT / filename).read_text()
+            source = (ROOT / filename).read_text(encoding="utf-8")
             self.assertNotIn("requests.", source)
             self.assertNotIn("open(", source)
 

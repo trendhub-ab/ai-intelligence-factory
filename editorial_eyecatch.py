@@ -130,12 +130,12 @@ def _latin_font(size: int, bold: bool = True):
     return _font(paths, size)
 
 
-def _text_width(draw: ImageDraw.ImageDraw, text: str, font) -> int:
+def _text_width(draw: ImageDraw.Draw, text: str, font) -> int:
     box = draw.textbbox((0, 0), text, font=font)
     return max(0, box[2] - box[0])
 
 
-def _wrap_chars(draw: ImageDraw.ImageDraw, text: str, font, max_width: int, max_lines: int) -> list[str]:
+def _wrap_chars(draw: ImageDraw.Draw, text: str, font, max_width: int, max_lines: int) -> list[str]:
     text = (text or "").strip()
     if not text:
         return []
@@ -187,7 +187,7 @@ def balanced_headline_lines(text: str) -> list[str]:
     return [left, right]
 
 
-def _fit_headline(draw: ImageDraw.ImageDraw, text: str, max_width: int = 760, max_lines: int = 3):
+def _fit_headline(draw: ImageDraw.Draw, text: str, max_width: int = 760, max_lines: int = 3):
     preferred = balanced_headline_lines(text)
     if 1 <= len(preferred) <= 2:
         for size in range(82, 49, -2):
@@ -207,7 +207,7 @@ def _light(color: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
     return tuple(int(round(channel + (255 - channel) * factor)) for channel in color)
 
 
-def _draw_brand(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int]) -> None:
+def _draw_brand(draw: ImageDraw.Draw, accent: tuple[int, int, int]) -> None:
     x0, baseline = 42, 75
     bar_width = 9
     heights = (16, 24, 34, 45)
@@ -218,7 +218,7 @@ def _draw_brand(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int]) -> None
     draw.text((104, 36), BRAND_NAME, font=_latin_font(27, bold=True), fill=(10, 35, 73))
 
 
-def _draw_tags(draw: ImageDraw.ImageDraw, category: str, date_label: str, accent: tuple[int, int, int]) -> None:
+def _draw_tags(draw: ImageDraw.Draw, category: str, date_label: str, accent: tuple[int, int, int]) -> None:
     tag_font = _latin_font(24, bold=True)
     date_font = _latin_font(23, bold=True)
     category_w = _text_width(draw, category, tag_font) + 48
@@ -233,7 +233,7 @@ def _draw_tags(draw: ImageDraw.ImageDraw, category: str, date_label: str, accent
     draw.text((date_box[0] + 20, 43), date_label, font=date_font, fill=(15, 35, 70))
 
 
-def _draw_network_illustration(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int]) -> None:
+def _draw_network_illustration(draw: ImageDraw.Draw, accent: tuple[int, int, int]) -> None:
     pale = _light(accent, 0.84)
     pale2 = _light(accent, 0.93)
     line = _light(accent, 0.58)
