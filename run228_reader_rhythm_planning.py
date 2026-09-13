@@ -5,12 +5,19 @@ not automatically better. Run275 makes the subtractive rule explicit enough for 
 fallback: after two dense explanation paragraphs, advance to meaning/constraint/decision
 instead of stacking a third technical block. The contract remains prompt-only and preserves
 verified decision evidence.
+
+Run368 adds a short last-mile reader check at the very end of the prompt. Run48 showed
+that a fallback model could receive the full Reader Experience contract yet still produce
+a dense report-like ARTICLE after the higher-priority models were unavailable. Repeating a
+small set of non-negotiable reader constraints at the prompt tail improves instruction
+salience without adding a model call, lowering a gate, or changing Evidence/Fact authority.
 """
 from __future__ import annotations
 
 from typing import Any
 
 RUN228_MARKER = "RUN228_READER_RHYTHM_PLANNING"
+RUN368_FINAL_READER_CHECK_MARKER = "RUN368_FINAL_READER_CHECK"
 _INSTALL_FLAG = "_run228_reader_rhythm_planning_installed"
 
 
@@ -40,11 +47,32 @@ ARTICLEはEvidenceの保管庫ではない。Run226で選んだ1本のDiscovery�
 """.strip()
 
 
+def final_reader_check_contract() -> str:
+    """Short tail contract that weak-model fallback cannot easily lose in a long prompt."""
+    return f"""
+[{RUN368_FINAL_READER_CHECK_MARKER} — 出力直前の必須チェック]
+ARTICLEを返す直前に、次だけを最後に確認する。満たさない場合は新しい情報を足さず、削る・平易に言い換える・順序を直す。
+1. 冒頭2段落だけで、非エンジニアにも「何が起きた／なぜ自分に関係する」が普通の日本語で分かる。
+2. 読者が覚える中核専門概念は原則2〜3個。略語・実装名・規格名の列挙で専門性を演出しない。
+3. 技術説明だけの長い段落を3つ連続させない。2段落続いたら、意味・制約・判断へ進む。
+4. 判断に不要な実装細部、重複、報告書調の前置きは削る。Evidence・重要数値・条件・反証・Decisionは削らない。
+5. 平易化のために新しいFact、因果、数値、利用経験、保証、競合情報を作らない。Source/Evidenceの断定範囲を超えない。
+6. 最後に「要するに何の話か」と「私なら次に何をするか」が、それぞれ1文で説明できる状態にする。
+
+Reader要件とFact/Evidence安全境界が衝突する場合は、必ずFact/Evidence安全境界を優先する。読みやすさを理由に根拠を強めたり欠落を埋めたりしない。
+""".strip()
+
+
 def augment_prompt(prompt: str) -> str:
     base = str(prompt or "")
-    if RUN228_MARKER in base:
-        return base
-    return f"{base.rstrip()}\n\n{reader_rhythm_contract()}\n"
+    parts = [base.rstrip()]
+    if RUN228_MARKER not in base:
+        parts.append(reader_rhythm_contract())
+    # Keep this block last even when Run228 was already present: the purpose is salience
+    # at the final edge of long evidence-heavy prompts and quality-retry prompts.
+    if RUN368_FINAL_READER_CHECK_MARKER not in base:
+        parts.append(final_reader_check_contract())
+    return "\n\n".join(part for part in parts if part).rstrip() + "\n"
 
 
 def install(pipeline_module: Any) -> None:
@@ -59,3 +87,4 @@ def install(pipeline_module: Any) -> None:
     pipeline_module.build_decision_prompt = wrapped_build_decision_prompt
     setattr(pipeline_module, _INSTALL_FLAG, True)
     setattr(pipeline_module, RUN228_MARKER, True)
+    setattr(pipeline_module, RUN368_FINAL_READER_CHECK_MARKER, True)

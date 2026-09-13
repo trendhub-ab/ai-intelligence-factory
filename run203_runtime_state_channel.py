@@ -8,6 +8,12 @@ written to a dedicated unprotected runtime-state branch instead.
 The preflight intentionally performs a tiny idempotent state write with the same GH_PAT
 used by the pipeline. This fails before any Gemini request if the runtime state channel
 is missing, protected, or no longer writable.
+
+Run368 hardens the same state channel against one transient GitHub Contents API failure
+observed in Production: HTTP 409 ``Timed out validating rule, please try again``. Only
+that repository-rule timeout receives a bounded retry. Auth/permission and ordinary
+4xx failures remain fail-closed, and Observed-history exhaustion keeps its Telegram
+warning instead of being silently treated as success.
 """
 from __future__ import annotations
 
@@ -16,6 +22,7 @@ import base64
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, MutableMapping
@@ -24,6 +31,8 @@ DEFAULT_RUNTIME_STATE_BRANCH = "runtime-state"
 RUNTIME_STATE_HEALTH_PATH = ".runtime/runtime_state_health.json"
 _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _PRODUCTION_BRANCH_NAMES = {"main", "master"}
+_RUNTIME_RULE_TIMEOUT_ATTEMPTS = 3
+_RUNTIME_RULE_TIMEOUT_DELAYS = (1.0, 2.0)
 
 
 def _http_client():
@@ -34,6 +43,41 @@ def _http_client():
     """
     import requests
     return requests
+
+
+def _is_transient_rule_validation_timeout(response: Any) -> bool:
+    """Recognize only the transient GitHub repository-rule timeout seen in Run48."""
+    if int(getattr(response, "status_code", 0) or 0) != 409:
+        return False
+    text = str(getattr(response, "text", "") or "").lower()
+    return "timed out validating rule" in text or (
+        "repository rule" in text and "timed out" in text and "try again" in text
+    )
+
+
+def _put_with_runtime_rule_retry(http: Any, api_url: str, *, headers: dict, payload: dict,
+                                 timeout: int, logger: Any = None, sleep_fn=time.sleep):
+    """Retry only transient repository-rule validation timeouts, at most three PUTs."""
+    last = None
+    for attempt in range(1, _RUNTIME_RULE_TIMEOUT_ATTEMPTS + 1):
+        last = http.put(api_url, headers=headers, json=payload, timeout=timeout)
+        if int(getattr(last, "status_code", 0) or 0) in {200, 201}:
+            return last
+        if not _is_transient_rule_validation_timeout(last):
+            return last
+        if attempt >= _RUNTIME_RULE_TIMEOUT_ATTEMPTS:
+            return last
+        delay = _RUNTIME_RULE_TIMEOUT_DELAYS[min(attempt - 1, len(_RUNTIME_RULE_TIMEOUT_DELAYS) - 1)]
+        if logger is not None:
+            logger.warning(
+                "[RUNTIME STATE TRANSIENT 409 RETRY] attempt=%s/%s delay=%ss path=%s",
+                attempt,
+                _RUNTIME_RULE_TIMEOUT_ATTEMPTS,
+                delay,
+                api_url,
+            )
+        sleep_fn(delay)
+    return last
 
 
 def resolve_runtime_state_branch() -> str:
@@ -99,6 +143,69 @@ def persist_github_actions_env(branch: str) -> None:
         handle.write(f"EYECATCH_GITHUB_BRANCH={branch}\n")
 
 
+def _install_observed_history_retry(pipeline_module: Any) -> None:
+    """Replace only Observed-history persistence with bounded transient-409 recovery."""
+    marker = "_run368_observed_history_retry_installed"
+    if bool(getattr(pipeline_module, marker, False)):
+        return
+    original = getattr(pipeline_module, "upload_observed_history_to_github", None)
+    if not callable(original):
+        return
+
+    def upload_observed_history_with_retry(local_path: str, dest_filename: str) -> str | None:
+        repo = str(getattr(pipeline_module, "EYECATCH_GITHUB_REPO", "") or "")
+        branch = str(getattr(pipeline_module, "EYECATCH_GITHUB_BRANCH", "") or "")
+        target_dir = str(getattr(pipeline_module, "OBSERVED_HISTORY_GITHUB_DIR", "observed_history") or "observed_history")
+        token = str(getattr(pipeline_module, "GH_PAT", "") or "")
+        logger = getattr(pipeline_module, "logger", None)
+        alert = getattr(pipeline_module, "send_telegram_alert", None)
+        http = getattr(pipeline_module, "requests", None)
+        if not repo or http is None:
+            return original(local_path, dest_filename)
+
+        dest_path = f"{target_dir}/{dest_filename}"
+        api_url = f"https://api.github.com/repos/{repo}/contents/{dest_path}"
+        try:
+            with open(local_path, "rb") as handle:
+                content_b64 = base64.b64encode(handle.read()).decode("utf-8")
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+            current = http.get(api_url, headers=headers, params={"ref": branch}, timeout=15)
+            payload = {
+                "message": f"chore: save observed history {dest_filename}",
+                "content": content_b64,
+                "branch": branch,
+            }
+            if current.status_code == 200:
+                sha = current.json().get("sha")
+                if sha:
+                    payload["sha"] = sha
+
+            put_res = _put_with_runtime_rule_retry(
+                http,
+                api_url,
+                headers=headers,
+                payload=payload,
+                timeout=30,
+                logger=logger,
+            )
+            if int(getattr(put_res, "status_code", 0) or 0) not in {200, 201}:
+                if logger is not None:
+                    logger.error("[OBSERVED UPLOAD FAILED] %s: %s", dest_filename, str(getattr(put_res, "text", ""))[:300])
+                if callable(alert):
+                    alert(f"⚠️ Observed履歴のGitHub保存に失敗しました: {dest_filename}")
+                return None
+            return f"https://raw.githubusercontent.com/{repo}/{branch}/{dest_path}"
+        except Exception as exc:
+            if logger is not None:
+                logger.error("[OBSERVED UPLOAD EXCEPTION] %s", exc)
+            if callable(alert):
+                alert(f"⚠️ Observed履歴のGitHub保存で例外が発生しました: {dest_filename}")
+            return None
+
+    pipeline_module.upload_observed_history_to_github = upload_observed_history_with_retry
+    setattr(pipeline_module, marker, True)
+
+
 def install(pipeline_module: Any) -> Any:
     """Redirect every existing mutable GitHub state writer to the runtime-state branch."""
     branch = apply_runtime_state_env()
@@ -118,6 +225,8 @@ def install(pipeline_module: Any) -> Any:
     counter = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if counter is not None:
         counter.branch = branch
+
+    _install_observed_history_retry(pipeline_module)
     return pipeline_module
 
 
@@ -178,7 +287,7 @@ def preflight_runtime_state_channel() -> dict[str, str]:
         if sha:
             payload["sha"] = sha
 
-    put_res = http.put(api_url, headers=headers, json=payload, timeout=20)
+    put_res = _put_with_runtime_rule_retry(http, api_url, headers=headers, payload=payload, timeout=20)
     if put_res.status_code not in {200, 201}:
         raise RuntimeError(
             f"Runtime-state write preflight failed: HTTP {put_res.status_code} {put_res.text[:300]}"
