@@ -1,12 +1,7 @@
-name: Run391 Memmy Full Gate Revalidation [ONE-TIME A2]
+name: Run391 Memmy Full Gate Revalidation [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run391-memmy-full-gate-revalidation.yml'
 
 permissions:
   contents: read
@@ -20,7 +15,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run391 A2: production-phase-aligned first-party GET + Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
+          echo 'Run391: production-phase-aligned first-party GET + Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
