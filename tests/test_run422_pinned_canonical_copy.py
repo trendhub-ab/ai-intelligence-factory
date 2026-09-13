@@ -26,7 +26,7 @@ class Run422PinnedCanonicalCopyTests(unittest.TestCase):
         self.assertIn(r422.PINNED_HIGHLIGHT, r422.PINNED_EYECATCH_TITLE)
 
     def test_main_copy_accepts_exactly_two_or_three_lines(self):
-        two = {"title_lines": ["OpenAIエージェントとRubyGems、", "権限管理の境界線"]}
+        two = {"title_lines": ["OpenAIエージェントと", "RubyGems、権限管理の境界線"]}
         three = {"title_lines": ["OpenAIエージェントと", "RubyGems、", "権限管理の境界線"]}
         self.assertEqual(len(r422._require_bounded_title_lines(two)["title_lines"]), 2)
         self.assertEqual(len(r422._require_bounded_title_lines(three)["title_lines"]), 3)
@@ -35,7 +35,22 @@ class Run422PinnedCanonicalCopyTests(unittest.TestCase):
         with self.assertRaises(r422.r418.Run418Error):
             r422._require_bounded_title_lines({"title_lines": [r422.PINNED_EYECATCH_TITLE]})
         with self.assertRaises(r422.r418.Run418Error):
-            r422._require_bounded_title_lines({"title_lines": ["OpenAI", "エージェント", "RubyGems", "権限管理"]})
+            r422._require_bounded_title_lines(
+                {"title_lines": ["OpenAIエージェントと", "RubyGems、", "権限管理の", "境界線"]}
+            )
+
+    def test_latin_identifiers_must_not_split_across_lines(self):
+        broken = {"title_lines": ["OpenAIエージェントとRu", "byGems、権限管理の境界線"]}
+        with self.assertRaisesRegex(r422.r418.Run418Error, "RubyGems"):
+            r422._require_bounded_title_lines(broken)
+        safe = r422._require_bounded_title_lines({"title_lines": list(r422.PINNED_TITLE_LINES)})
+        self.assertEqual(tuple(safe["title_lines"]), r422.PINNED_TITLE_LINES)
+        self.assertTrue(any("OpenAI" in line for line in safe["title_lines"]))
+        self.assertTrue(any("RubyGems" in line for line in safe["title_lines"]))
+
+    def test_pinned_plan_seeds_semantic_lines_instead_of_empty_partition(self):
+        source = inspect.getsource(r422._pinned_plan)
+        self.assertIn('"title_lines": list(PINNED_TITLE_LINES)', source)
 
     def test_render_path_has_zero_model_and_no_raw_renderer(self):
         source = inspect.getsource(r422)
