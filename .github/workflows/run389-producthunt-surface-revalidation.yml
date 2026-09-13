@@ -1,12 +1,7 @@
-name: Run390 Reader Signal Diagnostics [ONE-TIME]
+name: Run390 Reader Signal Diagnostics [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run389-producthunt-surface-revalidation.yml'
 
 permissions:
   contents: read
