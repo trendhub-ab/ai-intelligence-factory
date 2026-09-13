@@ -81,9 +81,9 @@ class Run234RequiredCrossDbContractTests(unittest.TestCase):
         self.assertIn("  zero-api-regression:", workflow)
         self.assertIn("python -m pytest -q tests", workflow)
 
-        # Run267: full pytest is the Cross DB coverage authority and the required
-        # zero-api-regression must run for every PR to main. A tests/** path filter is
-        # therefore not just unnecessary; it would make the required context skippable.
+        # Full pytest is the Cross DB coverage authority and the required zero-api
+        # regression must run for every PR to main. A path filter would make the
+        # required context skippable.
         pull_request_section = workflow.split("  workflow_dispatch:", 1)[0]
         self.assertIn("      - main\n", pull_request_section)
         self.assertNotIn("    paths:\n", pull_request_section)
@@ -107,8 +107,8 @@ class Run234RequiredCrossDbContractTests(unittest.TestCase):
         self.assertNotIn("    paths-ignore:\n", pull_request_section)
         self.assertIn("python -m pytest -q tests", workflow)
 
-        # Sensitive surfaces remain present and are collected/validated by the full
-        # repository regression rather than a hand-maintained PR path allowlist.
+        # Sensitive executable safety surfaces remain present and are validated by the
+        # full regression rather than by historical documentation freshness checks.
         for path in (
             "cross_db_contract_guard.py",
             "content_db_contract_guard.py",
@@ -119,7 +119,7 @@ class Run234RequiredCrossDbContractTests(unittest.TestCase):
             "provision_member_presentation_db.py",
             "notion_access_policy_guard.py",
             "notion_audit_views.json",
-            "documentation_freshness_guard.py",
+            "run271_member_body_delta_sync_guard.py",
             ".github/workflows/cross-db-contract-guard.yml",
         ):
             self.assertTrue((ROOT / path).is_file(), path)
