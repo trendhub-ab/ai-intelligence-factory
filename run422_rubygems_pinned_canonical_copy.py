@@ -22,6 +22,18 @@ PINNED_SUBHEADLINE = "AIエージェントの権限設計を考える"
 PINNED_HIGHLIGHT = "権限管理の境界線"
 
 
+def _require_bounded_title_lines(validated: dict[str, Any]) -> dict[str, Any]:
+    """Keep the latest canonical main-copy contract: fixed area, 2–3 measured lines."""
+    title_lines = [str(line).strip() for line in (validated.get("title_lines") or []) if str(line).strip()]
+    if len(title_lines) not in (2, 3):
+        raise r418.Run418Error(
+            f"Run422 canonical headline must occupy 2 or 3 lines, got {len(title_lines)}"
+        )
+    validated = dict(validated)
+    validated["title_lines"] = title_lines
+    return validated
+
+
 def _pinned_plan() -> dict[str, Any]:
     r418._install_canonical_eyecatch_runtime()
     import run180_eyecatch_semantic_layout as r180
@@ -44,7 +56,7 @@ def _pinned_plan() -> dict[str, Any]:
         raise r418.Run418Error("Run422 pinned source-bounded copy failed Run180 geometry validation")
     if validated.get("eyecatch_title") != PINNED_EYECATCH_TITLE:
         raise r418.Run418Error("Run422 semantic title changed during deterministic layout")
-    return validated
+    return _require_bounded_title_lines(validated)
 
 
 def _render_zero_model():
