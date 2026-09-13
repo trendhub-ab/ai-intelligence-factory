@@ -82,6 +82,39 @@ def test_missing_reader_first_header_is_surface_review():
     assert "presentation_contract_missing:reader_first_30sec_header" in result["issues"]
 
 
+def test_missing_eyecatch_is_recovery_blocker_but_body_is_still_returned_for_audit():
+    target = r389.TARGETS[-1]
+    manuscript = "## この記事の結論\n" + "本文です。" * 150
+
+    class Response:
+        status_code = 200
+        @staticmethod
+        def json():
+            return {"id": target.page_id}
+
+    class Sync:
+        @staticmethod
+        def _request(method, _url):
+            assert method == "GET"
+            return Response()
+        @staticmethod
+        def _source_state(_page):
+            return {
+                "title": target.title,
+                "source": target.source,
+                "primary_url": "https://example.com/official",
+                "eyecatch_url": "",
+            }
+        @staticmethod
+        def _block_children(_page_id):
+            return [_code(manuscript)]
+
+    item = r389._read_target(Sync(), target)
+    assert item.get("state") != "FETCH_BLOCKED"
+    assert item["manuscript"] == manuscript
+    assert item["recovery_blockers"] == ["eyecatch_missing"]
+
+
 def test_core_has_no_model_or_write_path():
     source = inspect.getsource(r389)
     forbidden = (
