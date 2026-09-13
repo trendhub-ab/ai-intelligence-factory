@@ -39,8 +39,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Run418 zero-network regression contract
-        run: python -m unittest tests.test_run418_rubygems_canonical_eyecatch -v
+      - name: Run Run418/419 zero-network regression contract
+        run: |
+          python -m unittest tests.test_run418_rubygems_canonical_eyecatch -v
+          python -m unittest tests.test_run419_eyecatch_plan_repair -v
 
       - name: Render through canonical Production stack and replace exact Notion asset
         env:
@@ -53,7 +55,7 @@ jobs:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
-        run: python run418_rubygems_canonical_eyecatch.py render-attach
+        run: python run419_rubygems_eyecatch_plan_repair.py render-attach
 
   start-cloud-vm:
     needs: render-attach
@@ -117,7 +119,9 @@ jobs:
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
       - name: Re-run exact header-only safety contract
-        run: python -m unittest tests.test_run418_rubygems_canonical_eyecatch -v
+        run: |
+          python -m unittest tests.test_run418_rubygems_canonical_eyecatch -v
+          python -m unittest tests.test_run419_eyecatch_plan_repair -v
       - name: Replace only the header in the same existing private draft
         env:
           RUN418_CONFIRM: 'RUN418_EXACT_RUBYGEMS_CANONICAL_EYECATCH'
@@ -131,7 +135,7 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: xvfb-run -a python run418_rubygems_canonical_eyecatch.py refresh-draft
+        run: xvfb-run -a python run419_rubygems_eyecatch_plan_repair.py refresh-draft
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
