@@ -2,11 +2,6 @@ name: Run388 Zero-Model Six-Row Preflight [ONE-TIME]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run388-zero-model-full-gate-preflight.yml'
 
 permissions:
   contents: read
