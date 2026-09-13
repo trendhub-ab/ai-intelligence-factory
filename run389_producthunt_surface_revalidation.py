@@ -1,4 +1,4 @@
-"""Run389: read-only deterministic surface revalidation for five migrated ProductHunt rows.
+"""Run389/390: read-only deterministic surface revalidation for five migrated ProductHunt rows.
 
 This lane intentionally proves only current Reader/Surface status of the latest stored
 manuscript. A surface-clean result never proves Fact/Evidence, body re-grounding,
@@ -39,7 +39,6 @@ REPORT_PATH = Path("gate_history/run389_producthunt_surface_revalidation.json")
 
 
 def select_latest_markdown_manuscript(blocks: list[dict[str, Any]]) -> tuple[str, str, int]:
-    """Return the latest substantial markdown code body; fail closed if none exists."""
     candidates: list[tuple[str, str]] = []
     for block in blocks:
         if block.get("type") != "code":
@@ -66,7 +65,6 @@ def select_latest_markdown_manuscript(blocks: list[dict[str, Any]]) -> tuple[str
 
 
 def partition_article_body(manuscript: str) -> str:
-    """Match Run367's historical-manuscript partition without rewriting text."""
     body = str(manuscript or "")
     if "### 元情報\n" in body:
         _prefix, rest = body.split("### 元情報\n", 1)
@@ -86,7 +84,6 @@ def current_presentation_contract_present(manuscript: str) -> bool:
 
 @contextmanager
 def deterministic_runtime():
-    """Install the current quality stack while forbidding provider/network use during gates."""
     with patch.dict(os.environ, {
         "SYNTHETIC_REGRESSION_MODE": "true",
         "GEMINI_API_KEY": "RUN389_DISABLED",
@@ -107,7 +104,6 @@ def deterministic_runtime():
 
 
 def evaluate_surface(title: str, manuscript: str, pipeline) -> dict[str, Any]:
-    """Apply current deterministic body Reader + Run248/249 high-confidence surface checks."""
     from reader_value_review_bridge import _material_reader_value_issues
     from run248_first_real_publish_quality_calibration import extra_reader_value_issues
     import run249_final_publication_surface_gate as surface
@@ -127,10 +123,7 @@ def evaluate_surface(title: str, manuscript: str, pipeline) -> dict[str, Any]:
         issues.append("presentation_contract_missing:reader_first_30sec_header")
 
     issues = list(dict.fromkeys(issues))
-    if issues:
-        state = "SURFACE_REVIEW"
-    else:
-        state = "SURFACE_CLEAN_BODY_REGROUND_PROOF_REQUIRED"
+    state = "SURFACE_REVIEW" if issues else "SURFACE_CLEAN_BODY_REGROUND_PROOF_REQUIRED"
     return {
         "state": state,
         "issues": issues,
@@ -227,10 +220,22 @@ def main() -> int:
     result = run()
     print(f"RUN389_COUNTS={result['counts']}")
     print(f"RUN389_BLOCKERS={result['recovery_blockers']}")
+    diagnostic_keys = (
+        "accessibility", "jargon_translation", "non_engineer_core_clarity",
+        "opening_non_engineer_access", "opening_technical_terms_per_1000_chars",
+        "technical_terms_per_1000_chars", "unexplained_jargon", "accessibility_issues",
+        "reader_enjoyment", "enjoyment_issues", "reader_delight_positive_signals",
+        "reader_proximity_moment_count", "narrative_understanding_progression",
+        "factual_substance_hits", "explicit_reader_decision_action", "caveat_or_concrete_action",
+        "implementation_identifier_count", "information_budget", "reader_temperature_rhythm",
+    )
     for row in result["rows"]:
         detail = ";".join(row.get("issues") or []) or row.get("reason", "")
         blockers = ",".join(row.get("recovery_blockers") or [])
         print(f"RUN389_ROW\t{row['state']}\t{row['title']}\t{detail}\tblockers={blockers}")
+        signals = row.get("reader_signals") or {}
+        diag = {key: signals.get(key) for key in diagnostic_keys if key in signals}
+        print("RUN390_SIGNALS\t" + row["title"] + "\t" + json.dumps(diag, ensure_ascii=False, sort_keys=True))
     print("RUN389_MODEL_CALLS=0")
     print("RUN389_NOTION_WRITES=0")
     print("RUN389_PUBLICATION_WRITES=0")
