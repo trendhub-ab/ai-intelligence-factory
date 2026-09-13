@@ -1,4 +1,4 @@
-"""Run275/276/351 zero-API reader-quality precision overlay.
+"""Run275/276/351/397 zero-API reader-quality precision overlay.
 
 Real ONE-SHOT Run31 produced three evidence-sufficient manuscripts but Ready=0. Artifact
 falsification showed two different causes mixed together: genuine dense technical prose and
@@ -11,8 +11,12 @@ Run351 uses the real Run38 DeepSeek manuscript as an additional precision case. 
 only three reproducible false-positive surfaces: A4/MIT when used as ordinary compound labels,
 a low-density business-decision opening that is plainly reader-relevant, and a bounded set of
 proper-name-heavy paragraphs inside an otherwise low-density, bridged, well-sectioned article.
-It does not relax Fact/Evidence/Publication gates, create model/provider calls, or turn a
-truly dense or unexplained technical manuscript into GOOD.
+
+Run397 redefines Reader accessibility around Decision Intelligence. Technical vocabulary is not
+itself a publication defect. A specialist article may keep decision-relevant terminology when the
+reader can still understand what changed, why it matters, the important capability/limitation, and
+what action to take. Topic-adaptive plainness only affects density diagnostics; Fact, Evidence,
+Japanese integrity, unexplained required terms, and decision/limitation fidelity are never relaxed.
 """
 from __future__ import annotations
 
@@ -36,14 +40,52 @@ _STRONG_OPENING_BRIDGE_RE = re.compile(
 _GA_NI_COLLISION_RE = re.compile(
     r"がに(?=(?:減少|増加|向上|低下|改善|悪化|変化)(?:し|する|した|します|しました))"
 )
-# A repeated insight should contain repeated meaning/action, not merely the recurring subject of
-# the article. A genuinely repeated Japanese sentence produces several overlapping 7-char
-# fragments containing predicates, whereas topic anchors such as 「エージェントの」 do not.
 _REPETITION_PREDICATE_RE = re.compile(
     r"(?:です|ます|した|して|する|され|でき|ない|なる|なり|ある|あり|いる|"
     r"べき|必要|重要|可能|難し|高止まり|減衰|収縮|改善|悪化|増加|減少|変化|"
     r"超え|引き継|選ぶ|選択|試す|検証|導入|見送|待つ|推奨|勧め|価値)"
 )
+
+_SPECIALIST_TOPIC_RE = re.compile(
+    r"(?:arXiv|論文|数理|定理|証明|モデル構造|アーキテクチャ|認証|認可|セキュリティ|"
+    r"暗号|脆弱性|攻撃|DPoP|OAuth|OIDC|microVM|仮想化|RAG|MCP|ベンチマーク)",
+    re.I,
+)
+_DEVELOPER_TOPIC_RE = re.compile(
+    r"(?:OSS|オープンソース|GitHub|SDK|CLI|API|ライブラリ|フレームワーク|"
+    r"開発ツール|開発者|パッケージ|リポジトリ|データベース|インフラ|Kubernetes)",
+    re.I,
+)
+_DECISION_BRIDGE_RE = re.compile(
+    r"(?:なぜ重要|重要なのは|意味する|何が変わ|変わるのは|影響|判断|"
+    r"私なら|使うなら|導入するなら|試す|比較|待つ|見送|採用|検証)"
+)
+_CAPABILITY_LIMIT_RE = re.compile(
+    r"(?:できる|可能|対応|使える|向いて|ただし|一方で|制約|限界|未検証|"
+    r"できない|難しい|保証|対象外|注意|リスク)"
+)
+_ACTION_RE = re.compile(
+    r"(?:私なら|導入するなら|使うなら|まず[^。！？]{0,80}(?:試|比較|確認|検証)|"
+    r"試す|比較する|比較します|待つ|待ち|見送る|見送ります|採用|導入|検証する|検証します)"
+)
+
+DECISION_ACCESSIBILITY_CONTRACT = r"""
+【Decision Accessibility Contract｜専門性を残したまま判断可能にする】
+この記事の目標は「非専門家が全文を専門家と同じ深さで理解すること」ではなく、
+「非専門家でも核心と意思決定を理解できること」です。既存のReader指示と衝突する場合は、
+Fact/Evidence/Publication安全を除き、この契約を平易さ・専門語処理の上位原則として扱います。
+
+1. 冒頭と結論は、専門知識がなくても「何の話か／なぜ重要か／何ができる・できないか／
+   自分なら試す・比較する・待つ・見送るのどれか」が分かるようにする。
+2. 本文ではDecisionや重要制約を変える専門語を普通に使ってよい。初出時に、その語の役割を
+   同じEvidenceの範囲で短い1文または括弧書きで説明する。専門語を消すための長い比喩は不要。
+3. Evidence、仕様、正式名称、数値、論文上の用語は専門的なままでよい。正確性を落としてまで
+   日常語へ完全置換しない。
+4. 比喩・会話句・身近な例は任意。Gateを通すためだけに追加しない。説明を足し続けて本文を
+   長くするより、Decisionへの橋を1回だけ明確にする。
+5. 一般AIサービスは平易さを高く、開発ツール/OSSは中程度、認証・セキュリティ・論文・数理は
+   専門性を許容する。ただし、どの題材でも核心と次Actionへの橋は省略しない。
+""".strip()
 
 
 def _heading_aware_max_explanatory_run(article: str) -> int:
@@ -78,8 +120,6 @@ def _opening_has_strong_reader_bridge(article: str) -> bool:
 def _token_explained_anywhere(token: str, article: str) -> bool:
     value = str(article or "")
     escaped = re.escape(token)
-    # Python's Unicode \b treats Japanese particles as word characters. Use ASCII-only
-    # boundaries so forms such as ``CLIを`` and ``CLI（...）`` are recognized correctly.
     ascii_token = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
     patterns = (
         rf"{ascii_token}\s*[（(][^）)\n]{{2,90}}[）)]",
@@ -165,8 +205,44 @@ def _has_semantic_repetitive_insight(article: str) -> bool:
     return len(semantic) >= 2
 
 
+def _topic_plainness_profile(article: str) -> str:
+    """Return HIGH/MEDIUM/LOW plainness requirement without changing factual rigor."""
+    value = str(article or "")
+    if _SPECIALIST_TOPIC_RE.search(value):
+        return "LOW"
+    if _DEVELOPER_TOPIC_RE.search(value):
+        return "MEDIUM"
+    return "HIGH"
+
+
+def _decision_accessibility(article: str, signals: dict[str, Any], corrected_jargon: list[str]) -> dict[str, Any]:
+    """Measure whether a non-specialist can decide, independent of raw jargon density."""
+    value = re.sub(r"```.*?```", "", str(article or ""), flags=re.S)
+    opening = re.sub(r"\s+", " ", value[:1400])
+    profile = _topic_plainness_profile(value)
+
+    what = bool(re.search(r"(?:発表|公開|更新|変更|追加|登場|対応|提供|導入|実装|研究|提案|開発)", opening))
+    why = bool(_DECISION_BRIDGE_RE.search(opening) or _DECISION_BRIDGE_RE.search(value))
+    capability_limit = bool(_CAPABILITY_LIMIT_RE.search(value))
+    action = bool(signals.get("explicit_reader_decision_action")) or bool(_ACTION_RE.search(value))
+    opening_bridge = bool(_DECISION_BRIDGE_RE.search(opening)) or _opening_has_strong_reader_bridge(value)
+
+    term_bridge = not corrected_jargon
+    core = bool(what and why and capability_limit and action and opening_bridge and term_bridge)
+    return {
+        "profile": profile,
+        "what_is_it": what,
+        "why_it_matters": why,
+        "capability_or_limit": capability_limit,
+        "next_action": action,
+        "opening_decision_bridge": opening_bridge,
+        "required_term_bridge": term_bridge,
+        "core": core,
+    }
+
+
 def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, Any]:
-    """Apply deterministic Run31/Run32/Run38-derived precision corrections."""
+    """Apply deterministic reader precision while preserving Decision Intelligence."""
     signals = dict(original or {})
     if not signals:
         return signals
@@ -197,9 +273,6 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
     if heading_run <= 2:
         signals["narrative_pull"] = "GOOD"
 
-    # Run351: a few proper-name-heavy paragraphs must not dominate the whole article when
-    # every independent readability safeguard is already satisfied. Keep the raw detector
-    # count for observability; only derive an effective count for downstream precision.
     globally_readable_local_density = (
         technical_density < 30.0
         and not corrected_jargon
@@ -212,10 +285,27 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
     effective_dense_paragraphs = 1 if dense_paragraphs > 1 and globally_readable_local_density else dense_paragraphs
     signals["run351_effective_dense_paragraph_count"] = effective_dense_paragraphs
 
-    jargon_translation = "GOOD" if not (bridge_needed and not plain_bridge) and effective_dense_paragraphs <= 1 else "REVIEW"
+    decision_access = _decision_accessibility(article, signals, corrected_jargon)
+    signals["plainness_requirement"] = decision_access["profile"]
+    signals["decision_accessibility"] = "GOOD" if decision_access["core"] else "REVIEW"
+    signals["decision_accessibility_dimensions"] = {
+        key: value for key, value in decision_access.items() if key not in {"core", "profile"}
+    }
+
+    density_tolerated = bool(
+        decision_access["core"] and decision_access["profile"] in {"MEDIUM", "LOW"}
+    )
+
+    jargon_translation = (
+        "GOOD"
+        if density_tolerated
+        else ("GOOD" if not (bridge_needed and not plain_bridge) and effective_dense_paragraphs <= 1 else "REVIEW")
+    )
     signals["jargon_translation"] = jargon_translation
     signals["non_engineer_core_clarity"] = (
-        "GOOD" if jargon_translation == "GOOD" and (not bridge_needed or plain_bridge) else "REVIEW"
+        "GOOD"
+        if decision_access["core"] or (jargon_translation == "GOOD" and (not bridge_needed or plain_bridge))
+        else "REVIEW"
     )
     signals["plain_language_bridge"] = "GOOD" if plain_bridge or not bridge_needed else "REVIEW"
 
@@ -230,13 +320,15 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
             "reader_temperature_rhythm_weak",
         }
     ]
+    if density_tolerated:
+        issues = [item for item in issues if item != "technical_term_concentration"]
     if corrected_jargon:
         issues.append("unexplained_acronyms")
-    if bridge_needed and not plain_bridge:
+    if bridge_needed and not plain_bridge and not density_tolerated:
         issues.append("plain_language_bridge_missing")
     if jargon_translation != "GOOD":
         issues.append("jargon_translation_weak")
-    if signals.get("opening_non_engineer_access") != "GOOD":
+    if signals.get("opening_non_engineer_access") != "GOOD" and not decision_access["opening_decision_bridge"]:
         issues.append("opening_non_engineer_access_weak")
     if signals.get("reader_temperature_rhythm") != "GOOD":
         issues.append("reader_temperature_rhythm_weak")
@@ -255,7 +347,6 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
     signals["enjoyment_issues"] = list(dict.fromkeys(enjoyment))
     signals["reader_enjoyment"] = "GOOD" if not signals["enjoyment_issues"] else "REVIEW"
 
-    # Only upgrade Information Budget when every known trigger is absent after correction.
     if signals.get("information_budget") == "REVIEW":
         no_known_budget_trigger = (
             effective_dense_paragraphs < 3
@@ -269,6 +360,7 @@ def correct_reader_signals(article: str, original: dict[str, Any]) -> dict[str, 
     signals["run275_precision_overlay"] = True
     signals["run276_semantic_repetition_precision"] = True
     signals["run351_reader_density_precision"] = True
+    signals["run397_decision_accessibility"] = True
     return signals
 
 
@@ -286,6 +378,8 @@ def install(pipeline_module: Any) -> Any:
 
     original_signals = getattr(pipeline_module, "_reader_experience_signals", None)
     original_human_appeal = getattr(pipeline_module, "validate_human_appeal_gate", None)
+    original_prompt = getattr(pipeline_module, "build_decision_prompt", None)
+    original_retry_instruction = getattr(pipeline_module, "build_dynamic_retry_instruction", None)
 
     if callable(original_signals):
         def corrected_signals(article: str) -> dict[str, Any]:
@@ -303,5 +397,23 @@ def install(pipeline_module: Any) -> Any:
             return state, merged
         pipeline_module.validate_human_appeal_gate = validate_with_surface_precision
 
+    if callable(original_prompt):
+        def build_decision_prompt_with_decision_accessibility(*args: Any, **kwargs: Any) -> str:
+            prompt = str(original_prompt(*args, **kwargs) or "")
+            if "Decision Accessibility Contract" in prompt:
+                return prompt
+            return prompt.rstrip() + "\n\n" + DECISION_ACCESSIBILITY_CONTRACT + "\n"
+        pipeline_module.build_decision_prompt = build_decision_prompt_with_decision_accessibility
+
+    if callable(original_retry_instruction):
+        def build_retry_instruction_with_decision_accessibility(reason_rows: list[dict]):
+            instruction, sections = original_retry_instruction(reason_rows)
+            instruction = str(instruction or "")
+            if "Decision Accessibility Contract" not in instruction:
+                instruction = instruction.rstrip() + "\n\n" + DECISION_ACCESSIBILITY_CONTRACT
+            return instruction, sections
+        pipeline_module.build_dynamic_retry_instruction = build_retry_instruction_with_decision_accessibility
+
+    pipeline_module.RUN397_DECISION_ACCESSIBILITY = True
     setattr(pipeline_module, _INSTALL_FLAG, True)
     return pipeline_module

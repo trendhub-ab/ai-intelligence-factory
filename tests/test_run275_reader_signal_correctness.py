@@ -41,7 +41,7 @@ def _base_signals(**overrides):
 
 
 class Run275ReaderSignalCorrectnessTests(unittest.TestCase):
-    def test_run31_question_opening_is_recognized_without_relaxing_density_limit(self):
+    def test_run31_question_opening_is_recognized_and_decision_bridge_is_not_double_penalized(self):
         article = (
             "実際に手元の開発環境でAIを動かすと、環境を壊してしまわないかという"
             "不安を抱くのではないでしょうか。ここでは安全に試す条件を見ます。"
@@ -50,12 +50,16 @@ class Run275ReaderSignalCorrectnessTests(unittest.TestCase):
         self.assertEqual(fixed["opening_non_engineer_access"], "GOOD")
         self.assertNotIn("opening_non_engineer_access_weak", fixed["accessibility_issues"])
 
+        # Run397: raw opening density can remain observable REVIEW while the same opening is not
+        # registered a second time as an accessibility defect when it already provides a direct
+        # reader/decision bridge. General-topic density is still policed independently by the
+        # technical-term and plain-language diagnostics; only the duplicate opening penalty goes.
         dense = run275.correct_reader_signals(
             article,
             _base_signals(opening_technical_terms_per_1000_chars=49.5),
         )
         self.assertEqual(dense["opening_non_engineer_access"], "REVIEW")
-        self.assertIn("opening_non_engineer_access_weak", dense["accessibility_issues"])
+        self.assertNotIn("opening_non_engineer_access_weak", dense["accessibility_issues"])
 
     def test_visible_headings_break_uninterrupted_explanation_run(self):
         para = "これは取得済みEvidenceの範囲で技術の仕組みと条件を説明する段落です。" * 5

@@ -1,0 +1,56 @@
+name: Run397 Decision Accessibility CI
+
+on:
+  pull_request:
+    paths:
+      - 'reader_quality_precision.py'
+      - 'tests/test_run397_decision_accessibility.py'
+      - 'docs/RUN397_DECISION_ACCESSIBILITY.md'
+      - '.github/workflows/run397-decision-accessibility-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decision-accessibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install locked test environment
+        run: |
+          python -m pip install 'pip==26.2.1'
+          pip install -r requirements.txt -c requirements-ci-constraints.txt
+          pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt
+          python -m pip check
+      - name: Run focused zero-API regression tests
+        run: python -m pytest tests/test_run397_decision_accessibility.py -q
+      - name: Publication dependency guard
+        run: python run280_publication_dependency_guard.py
+      - name: Capture full deterministic regression
+        id: full_pytest
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests > /tmp/run397-full-pytest.txt 2>&1
+          code=$?
+          echo "$code" > /tmp/run397-full-pytest.exit
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -n 200 /tmp/run397-full-pytest.txt
+          exit 0
+      - name: Upload full pytest diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: run397-full-pytest-${{ github.run_number }}
+          path: |
+            /tmp/run397-full-pytest.txt
+            /tmp/run397-full-pytest.exit
+          retention-days: 3
+      - name: Enforce full regression result
+        if: always()
+        run: test "${{ steps.full_pytest.outputs.exit_code }}" = "0"
