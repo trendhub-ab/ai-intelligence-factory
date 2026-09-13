@@ -1,0 +1,35 @@
+name: Run413 one-off RubyGems manual Ready
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  actions: write
+  contents: read
+  issues: read
+jobs:
+  run413:
+    if: >-
+      github.run_attempt == 1 && github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null && github.actor == 'trendhub-ab' &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.event.comment.body == '/aiif run413 ruby-gems-manual-ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Recaption exact persisted manuscript with zero model calls
+        env:
+          RUN413_CONFIRM: RUN413_ONEOFF_RUBYGEMS_MANUAL_READY
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+        run: python run413_oneoff_rubygems_manual_ready.py
+      - name: Dispatch Ready sync with private-draft fan-out
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh workflow run note-ready-sync.yml --ref main -f create_private_draft=true
