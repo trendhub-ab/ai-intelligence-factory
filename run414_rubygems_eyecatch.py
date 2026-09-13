@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run414: exact RubyGems eyecatch bridge.
+"""Run414/415: exact RubyGems eyecatch bridge.
 
 One Gemini 3.5 request produces only a bounded public headline. The image itself is
 rendered with the existing deterministic editorial eyecatch renderer, uploaded to
@@ -54,6 +54,36 @@ def _fetch_target() -> dict:
     return page
 
 
+def _extract_headline(data: dict) -> str:
+    """Read JSON output from all Gemini content parts, ignoring thought/empty parts."""
+    try:
+        parts = data["candidates"][0]["content"]["parts"]
+    except Exception as exc:
+        raise RuntimeError("Gemini 3.5 eyecatch response has no candidate parts") from exc
+    texts = [str(part.get("text") or "").strip() for part in parts if isinstance(part, dict) and str(part.get("text") or "").strip()]
+    if not texts:
+        raise RuntimeError("Gemini 3.5 eyecatch response has no textual output part")
+    probes = list(texts)
+    if len(texts) > 1:
+        probes.append("\n".join(texts))
+    for raw in probes:
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I | re.S).strip()
+        candidates = [cleaned]
+        match = re.search(r"\{[\s\S]*\}", cleaned)
+        if match and match.group(0) != cleaned:
+            candidates.append(match.group(0))
+        for candidate in candidates:
+            try:
+                obj = json.loads(candidate)
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                headline = str(obj.get("headline") or "").strip()
+                if headline:
+                    return headline
+    raise RuntimeError(f"Gemini 3.5 eyecatch JSON parse failed across {len(parts)} parts")
+
+
 def _gemini_headline() -> str:
     key = (os.getenv("GEMINI_API_KEY") or "").strip()
     if not key:
@@ -81,12 +111,7 @@ Rules: Japanese, 14-26 characters, understandable to a non-specialist, security-
     )
     if r.status_code != 200:
         raise RuntimeError(f"Gemini 3.5 eyecatch brief failed HTTP {r.status_code}: {r.text[:300]}")
-    data = r.json()
-    try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        headline = str(json.loads(text).get("headline") or "").strip()
-    except Exception as exc:
-        raise RuntimeError("Gemini 3.5 eyecatch JSON parse failed") from exc
+    headline = _extract_headline(r.json())
     headline = re.sub(r"[\r\n\t]+", " ", headline).strip()
     if not (8 <= len(headline) <= 30):
         raise RuntimeError(f"Run414 headline length invalid: {headline!r}")
@@ -149,11 +174,11 @@ def main() -> None:
     if os.getenv("RUN414_CONFIRM", "").strip() != CONFIRM:
         raise RuntimeError("Run414 explicit confirmation missing")
     _fetch_target()
-    headline = _gemini_headline()  # exactly one intended Gemini 3.5 request
+    headline = _gemini_headline()
     path = _render(headline)
     upload_id = _upload_to_notion(path)
     print(json.dumps({
-        "run": 414,
+        "run": 415,
         "page_id": PAGE_ID,
         "model": MODEL,
         "gemini_3_8_calls": 0,
