@@ -43,3 +43,28 @@ def test_run414_refuses_existing_eyecatch(monkeypatch):
         assert "refuses to overwrite" in str(exc)
     else:
         raise AssertionError("existing eyecatch must fail closed")
+
+
+def test_run415_extracts_json_from_later_content_part():
+    data = {"candidates": [{"content": {"parts": [
+        {"thought": True, "text": ""},
+        {"text": '{"headline":"AIエージェントとRubyGems攻撃"}'},
+    ]}}]}
+    assert run414._extract_headline(data) == "AIエージェントとRubyGems攻撃"
+
+
+def test_run415_extracts_fenced_json_without_relaxing_schema():
+    data = {"candidates": [{"content": {"parts": [
+        {"text": '```json\n{"headline":"RubyGemsを狙うAIエージェント"}\n```'},
+    ]}}]}
+    assert run414._extract_headline(data) == "RubyGemsを狙うAIエージェント"
+
+
+def test_run415_fails_when_no_headline_json_exists():
+    data = {"candidates": [{"content": {"parts": [{"text": "not json"}]}}]}
+    try:
+        run414._extract_headline(data)
+    except RuntimeError as exc:
+        assert "JSON parse failed" in str(exc)
+    else:
+        raise AssertionError("invalid Gemini output must fail closed")
