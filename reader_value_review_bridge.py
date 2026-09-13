@@ -1,7 +1,7 @@
 """Run171 Production Yield Guardrails + Run169 Reader Value Review Bridge.
 
 This module remains an installable editorial layer, but its standalone entrypoint is no longer
-an independent production stack.  Direct execution delegates to production_pipeline.main so
+an independent production stack. Direct execution delegates to production_pipeline.main so
 manual/regression callers cannot accidentally run only Run172 + the historical reader bridge
 while bypassing later fact, eyecatch, funnel, and publication-integrity layers.
 """
@@ -85,17 +85,34 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
     Reader-value guidance here never authorizes a new retry. It only rides along when the
     existing quality policy has already decided to spend a retry for another repairable
     blocking issue, so Reader-first quality improves without increasing model-call count.
+
+    Run404 makes a combined retry deterministic in intent: if Decision/Score narrative
+    alignment and reader-density defects coexist, align the reader-visible urgency first
+    across the whole article, then compress repetition/density without changing evidence.
     """
     rows = list(reason_rows or [])
     codes = {str(row.get("reason_code") or "") for row in rows}
     messages = "\n".join(str(row.get("message") or row.get("reason") or "") for row in rows)
     additions: list[str] = []
 
-    if getattr(pipeline_module, "REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH", "") in codes or "score_narrative_mismatch" in messages:
+    score_mismatch = (
+        getattr(pipeline_module, "REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH", "") in codes
+        or "score_narrative_mismatch" in messages
+    )
+    reader_density = "dense_report_cluster" in messages or "multi_axis_reader_weakness" in messages
+
+    if score_mismatch and reader_density:
         additions.append(
-            "Decision整合修正では、既存のMANAGEMENT DATAのDecision・Decision Score・Decision Reason・Actionと"
-            "ARTICLE終盤の判断を同じ行動距離へそろえてください。Evidenceやスコア根拠は作り替えず、"
-            "矛盾する緊急度表現・結論・Actionだけを局所修正してください。"
+            "Run404修復順序：まずDecision / Decision Score / Decision Reason / Actionに合わせて、タイトル→導入→本文→結論の"
+            "緊急度・推奨強度を一貫させ、その後で重複説明と情報密度を圧縮してください。順序を逆にせず、1回の修復で両方を"
+            "完了してください。Decision Score、Evidence、事実、数値、重要制約は変更しないでください。"
+        )
+    if score_mismatch:
+        additions.append(
+            "Decision整合修正では、既存のMANAGEMENT DATAのDecision・Decision Score・Decision Reason・Actionを正とし、"
+            "ARTICLE終盤だけでなくタイトル・導入・本文・結論すべての読者向け表現を同じ行動距離へそろえてください。"
+            "WATCH / WAIT / AVOIDなら、スコアに比べて過度に危機感・断定・即時行動を煽る見出しや語句も弱めます。"
+            "Decision Score、Evidence、事実、数値、重要制約は作り替えず、矛盾する緊急度表現・結論・Actionだけを局所修正してください。"
         )
     if getattr(pipeline_module, "REASON_CODE_APPEAL_DECISION_VOICE_LOSS", "") in codes or "decision_voice_missing" in messages:
         additions.append(
@@ -110,17 +127,18 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
     if "dense_report_cluster" in messages:
         additions.append(
             "Dense report修正では、Evidence・数値・制約を削らず、重複説明・汎用前置き・Decisionに不要な実装列挙だけを"
-            "削除または平易な1文へ置換してください。記事全体の再構成や新事実の追加はしないでください。"
+            "削除または平易な1文へ置換してください。段落を短くし、同じ論点は1か所だけに置いてください。"
+            "新しい観点を足して長文化せず、記事全体の意味を変える全面書き換えもしないでください。"
         )
     if "multi_axis_reader_weakness" in messages or "non_engineer_access_failure" in messages:
         additions.append(
             "Reader Value修正では、既存Evidence・Decision・数値・制約を変えず、非専門読者が核心へ到達できない箇所だけを"
-            "平易化してください。専門語を連続させず、必要なら同じ事実の身近な言い換えを1回だけ置き、報告書調の前置き・"
+            "平易化してください。専門語を連続させず、必要なら同じ事実の短い役割説明を初出で1回だけ置き、報告書調の前置き・"
             "重複説明・判断に不要な実装細部を削ってください。新しい比喩事実・使用経験・因果・数値は追加しないでください。"
         )
     if not additions:
         return ""
-    return "\n".join(["【Run171 局所修正ガード】", *["・" + item for item in additions]])
+    return "\n".join(["【Run171/404 局所修正ガード】", *["・" + item for item in additions]])
 
 
 def install(pipeline_module: Any) -> Any:
