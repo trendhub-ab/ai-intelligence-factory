@@ -14,7 +14,7 @@ PRIMARY_URL="https://gorules.io/"
 EVIDENCE_URLS=(
     "https://gorules.io/open-source",
     "https://gorules.io/open-source/rust-rules-engine",
-    "https://raw.githubusercontent.com/gorules/zen/main/README.md",
+    "https://raw.githubusercontent.com/gorules/zen/master/README.md",
 )
 REPORT_PATH=Path("gate_history/run395_gorules_full_gate_revalidation.json")
 
