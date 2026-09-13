@@ -1,12 +1,7 @@
-name: Run392A Wispr Full Gate Revalidation [ONE-TIME]
+name: Run392A Wispr Full Gate Revalidation [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run392-wispr-full-gate-revalidation.yml'
 
 permissions:
   contents: read
