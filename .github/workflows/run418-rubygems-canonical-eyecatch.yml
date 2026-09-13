@@ -8,10 +8,6 @@ permissions:
   contents: read
   issues: read
 
-concurrency:
-  group: ai-intelligence-gemini-budget
-  cancel-in-progress: false
-
 jobs:
   render-attach:
     if: >-
@@ -19,6 +15,9 @@ jobs:
       github.event.issue.pull_request == null && github.actor == 'trendhub-ab' &&
       github.event.comment.user.login == 'trendhub-ab' &&
       github.event.comment.body == '/aiif run418 ruby-gems-canonical-eyecatch'
+    concurrency:
+      group: ai-intelligence-gemini-budget
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
