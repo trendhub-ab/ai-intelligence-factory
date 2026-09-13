@@ -1,12 +1,7 @@
-name: Run394 AI Search Console Full Gate Revalidation [ONE-TIME]
+name: Run394 AI Search Console Full Gate Revalidation [MANUAL ONLY]
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/run367-readonly-audit-reader-conflict
-    paths:
-      - '.github/workflows/run394-ai-search-console-full-gate-revalidation.yml'
 
 permissions:
   contents: read
