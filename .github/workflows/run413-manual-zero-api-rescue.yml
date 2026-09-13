@@ -1,0 +1,87 @@
+name: Run413 RubyGems Manual Zero-API Rescue
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: write
+  issues: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  rescue-rubygems:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      github.event.comment.body == '/aiif rescue ruby-gems-zero-api'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run zero-API rescue contract tests
+        run: python -m unittest tests.test_run413_manual_zero_api_rescue -v
+
+      - name: Repair exact manuscript, build 3.5 eyecatch, and persist Ready
+        env:
+          TZ: 'Asia/Tokyo'
+          RUN413_CONFIRM: 'RUN413_MANUAL_ZERO_API_RESCUE'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: runtime-state
+          GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
+          GEMINI_35_FLASH_DAILY_BUDGET: '18'
+          GEMINI_36_FLASH_DAILY_BUDGET: '0'
+          GEMINI_37_FLASH_DAILY_BUDGET: '0'
+          GEMINI_38_FLASH_DAILY_BUDGET: '0'
+          GH_PAT: ${{ secrets.GH_PAT }}
+          EYECATCH_GITHUB_BRANCH: runtime-state
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_SUBSCRIPTION_ATTRIBUTION: 'true'
+          SUBSCRIPTION_LANDING_URL: ${{ vars.SUBSCRIPTION_LANDING_URL }}
+          SUBSCRIPTION_CAMPAIGN_ID: 'ai_intelligence_factory_subscription'
+        run: python run413_manual_zero_api_rescue.py
+
+      - name: Dispatch Ready sync and private note draft only
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          gh workflow run note-ready-sync.yml --ref main -f create_private_draft=true
+          {
+            echo '### Run413 completion'
+            echo '- manuscript repair: zero model API'
+            echo '- eyecatch copy: Gemini 3.5 only'
+            echo '- publication: private note draft flow dispatched'
+            echo '- public release: not authorized / not executed'
+          } >> "$GITHUB_STEP_SUMMARY"
