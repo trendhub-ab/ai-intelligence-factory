@@ -1,4 +1,4 @@
-name: Run392 Wispr Full Gate Revalidation [ONE-TIME]
+name: Run392A Wispr Full Gate Revalidation [ONE-TIME]
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run392: Wispr first-party GET + Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
+          echo 'Run392A: Wispr first-party GET + Notion GET only; no Gemini key, no Notion writes, no Note Ready sync, no publication.'
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
@@ -30,7 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run Wispr full-gate read-only proof
-        run: python run392_wispr_full_gate_revalidation.py | tee /tmp/run392.txt
+        run: python run392a_wispr_full_gate_revalidation.py | tee /tmp/run392.txt
         env:
           TZ: 'Asia/Tokyo'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
