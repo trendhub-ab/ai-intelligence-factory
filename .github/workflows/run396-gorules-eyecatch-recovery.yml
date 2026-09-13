@@ -1,4 +1,4 @@
-name: Run396 GoRules Eyecatch Recovery [ONE-TIME]
+name: Run396B GoRules Eyecatch Recovery [ONE-TIME]
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/run367-readonly-audit-reader-conflict"
-          echo 'Run396: deterministic Pillow image only; Gemini 0; exact one image commit; exact one Notion file-property repair; no body/status/Ready/publication writes.'
+          echo 'Run396B: deterministic Pillow image only; Gemini 0; exact one image commit; exact one Notion file-property repair; no body/status/Ready/publication writes.'
       - uses: actions/checkout@v6
         with:
           ref: fix/run367-readonly-audit-reader-conflict
@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add eyecatch_images/GoRules.png
+          git add -f eyecatch_images/GoRules.png
           test "$(git diff --cached --name-only)" = 'eyecatch_images/GoRules.png'
           git commit -m 'Run396: restore deterministic GoRules eyecatch'
           git push origin HEAD:fix/run367-readonly-audit-reader-conflict
