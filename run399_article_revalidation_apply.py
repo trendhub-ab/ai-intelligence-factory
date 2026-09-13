@@ -4,7 +4,7 @@
 This is deliberately narrower than full Production and deliberately stronger than
 read-only article_validation:
 - exact owner-approved target name is required;
-- exactly one matching existing candidate is selected from a bounded Notion scan;
+- exactly one matching existing candidate is selected from bounded canonical sources;
 - the normal Production runtime/gates are installed by production_pipeline.main();
 - the same bounded Deep Dive request budget is used;
 - persistence is enabled only in this explicit entrypoint;
@@ -12,9 +12,9 @@ read-only article_validation:
 
 Run400 adds no new quality policy. It lets this approved-only origin reuse the already
 bounded Run208/360 Reader Repair contract when Evidence is safe and a request remains.
-Run402 makes target selection exact-name based rather than "first eligible" based. This
-allows the same owner-approved target to continue after a fail-closed Pending Retry
-transition without ever falling through to a different article.
+Run402 makes target selection exact-name based rather than "first eligible" based.
+Run403 also reads the canonical Pending Retry source because those rows are deliberately
+absent from the generic Deep Dive regeneration list after a fail-closed persistence event.
 
 No note.com action occurs here. A successful Notion/Ready persistence is handed to the
 existing zero-model note-ready synchronization flow afterwards.
@@ -40,22 +40,35 @@ def _expected_name() -> str:
 
 
 def _select_exact_approved_target(pipeline, expected: str) -> dict[str, Any]:
-    """Return exactly one bounded-scan row matching the owner-approved target name.
+    """Resolve exactly one approved target across canonical bounded candidate sources."""
+    deep_rows = pipeline.get_regen_test_items(article_revalidation.DEFAULT_SCAN_LIMIT, "")
+    if deep_rows is None:
+        raise RuntimeError("Run399 Deep Dive candidate read failed")
 
-    Unlike the generic revalidation selector, this approved-only lookup intentionally
-    does not exclude Pending Retry before name matching. The owner approval token plus
-    exact target name owns continuation of this one row; another candidate can never be
-    substituted merely because lifecycle state changed after a previous fail-closed run.
-    """
-    rows = pipeline.get_regen_test_items(article_revalidation.DEFAULT_SCAN_LIMIT, "")
-    if rows is None:
-        raise RuntimeError("Run399 candidate read failed")
-    matches = []
-    for row in rows:
-        repo = (row or {}).get("repo") or {}
-        actual = str(repo.get("nameWithOwner") or "").strip()
-        if actual == expected:
-            matches.append(dict(row))
+    pending_reader = getattr(pipeline, "get_pending_retry_items", None)
+    if not callable(pending_reader):
+        raise RuntimeError("Run399 requires canonical get_pending_retry_items")
+    pending_rows = pending_reader(article_revalidation.DEFAULT_SCAN_LIMIT)
+    if pending_rows is None:
+        raise RuntimeError("Run399 Pending Retry candidate read failed")
+
+    matches: list[dict[str, Any]] = []
+    seen_page_ids: set[str] = set()
+    for source, rows in (("deep_dive", deep_rows), ("pending_retry", pending_rows)):
+        for raw in rows:
+            row = dict(raw or {})
+            repo = row.get("repo") or {}
+            actual = str(repo.get("nameWithOwner") or "").strip()
+            if actual != expected:
+                continue
+            page_id = str(row.get("notion_page_id") or "").strip()
+            dedupe_key = page_id or f"{source}:{actual}"
+            if dedupe_key in seen_page_ids:
+                continue
+            seen_page_ids.add(dedupe_key)
+            row["approved_target_source"] = source
+            matches.append(row)
+
     if len(matches) != 1:
         raise RuntimeError(
             f"Run399 exact target count mismatch: expected_name={expected!r} matches={len(matches)}"
@@ -68,9 +81,6 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     if not _approval_is_valid():
         raise RuntimeError("Run399 approval token is missing or invalid")
 
-    # Run400 is intentionally installed only in this explicit owner-approved lane.
-    # It maps this new origin to Run208/360's existing article_revalidation repair
-    # semantics; all quality gates, evidence checks and bounded retry ownership remain.
     run400_approved_reader_repair.install(pipeline)
 
     expected = _expected_name()
@@ -95,19 +105,20 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     if article_status == pipeline.ARTICLE_STATUS_READY:
         raise RuntimeError("Run399 refuses an article that is already Ready")
 
-    # Run402: Pending Retry is allowed only here because the exact owner-approved target
-    # has already been resolved before lifecycle evaluation. Generic Production/revalidation
-    # ownership remains unchanged and still excludes Pending Retry from this lane.
     continuation = content_status == pipeline.CONTENT_STATUS_PENDING_RETRY
+    source = str(item.get("approved_target_source") or "")
+    if continuation and source != "pending_retry":
+        raise RuntimeError("Run399 Pending Retry lifecycle must come from canonical pending source")
 
     safe, license_status = pipeline.legal_safety_gate(repo)
     if not safe:
         raise RuntimeError(f"Run399 legal safety gate failed: {license_status}")
 
     pipeline.logger.warning(
-        "[RUN399 APPROVED APPLY] target=%s page_id=%s request_budget=%s prior_article=%s prior_content=%s pending_continuation=%s persist=true",
+        "[RUN399 APPROVED APPLY] target=%s page_id=%s source=%s request_budget=%s prior_article=%s prior_content=%s pending_continuation=%s persist=true",
         actual,
         page_id,
+        source,
         request_budget,
         article_status,
         content_status,
@@ -140,6 +151,7 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
         "notion_page_id": page_id,
         "chars": len(manuscript or ""),
         "pending_continuation": continuation,
+        "target_source": source,
     }
     pipeline.logger.info("[RUN399 APPROVED APPLY COMPLETE] %s", result)
     return result
@@ -148,8 +160,6 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
 def main() -> None:
     if not _approval_is_valid():
         raise SystemExit("Run399 refused: approval token missing")
-    # Reuse the canonical Production installer and article_validation orchestration slot;
-    # only the selected lane function is replaced before production_pipeline imports it.
     article_revalidation.run_article_revalidation = run_approved_article_apply
     os.environ["AIIF_ONE_SHOT_MODE"] = "article_validation"
     import production_pipeline
