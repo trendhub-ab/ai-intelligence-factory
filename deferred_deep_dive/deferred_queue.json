@@ -1,51 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-12T10:20:24.259383+00:00",
+  "updated_at": "2026-09-13T10:02:46.545834+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2609.10441",
-      "deferred_at": "2026-09-10T10:05:03.627350+00:00",
-      "expires_at": "2026-09-24T10:05:03.627350+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "ConvMem: Convolutional Memory for Long-Context Reasoning",
-        "originalTitle": "ConvMem: Convolutional Memory for Long-Context Reasoning",
-        "displayName": "ConvMem: Convolutional Memory for Long-Context Reasoning",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.10441v1",
-        "description": "While Large Language Models (LLMs) have demonstrated impressive capabilities, they often struggle with extremely long contexts due to fixed context limits. To address this, sequential approaches like MemAgent extend the effective context by reading text in segments and iteratively updating a fixed-size memory. However, this sequential paradigm suffers from high latency and requires costly reinforcement learning (RL) training, which can lead to overfitting on specific datasets. To overcome these",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-09T16:53:02Z",
-        "sourceContext": "While Large Language Models (LLMs) have demonstrated impressive capabilities, they often struggle with extremely long contexts due to fixed context limits. To address this, sequential approaches like MemAgent extend the effective context by reading text in segments and iteratively updating a fixed-size memory. However, this sequential paradigm suffers from high latency and requires costly reinforcement learning (RL) training, which can lead to overfitting on specific datasets. To overcome these limitations, we propose ConvMem, a training-free, highly parallelizable framework that reformulates long-context reasoning as a hierarchical convolution. Inspired by CNNs, ConvMem treats an LLM prompted with a specific query as a convolutional kernel. This kernel summarizes text segments hierarchically, shortening the reasoning path from a linear chain into a logarithmic tree. Specifically, ConvMem integrates \\textit{Configurable Strides} and \\textit{Skip Connections} to ensure robust evidence capture and propagation, while employing \\textit{Multi-Kernel Convolution} to decompose complex queries into disentangled semantic channels. This design not only mitigates error accumulation but also enables massive parallelization across both text segments and reasoning threads. Experiments on RULER-HotpotQA and RULER-2WikiMultiHopQA demonstrate that ConvMem outperforms training-free baselines and avoids the risk of overfitting to parametric priors often observed in RL-trained models on out-of-distribution tasks.",
-        "primaryUrl": "https://arxiv.org/abs/2609.10441v1",
-        "sourceDetails": {
-          "authors": [
-            "Hongming Zhang",
-            "Zhaozhen Gu",
-            "Fengshuo Bai",
-            "Ming Hao",
-            "Qingyang Zhang",
-            "Yuanyuan Wang",
-            "Shiyang Tang",
-            "Yanna Wang",
-            "Bo Xu"
-          ],
-          "categories": [
-            "cs.AI",
-            "cs.CL"
-          ]
-        }
-      },
-      "notion_page_id": "3d7479ff-dca9-812c-8945-c1bbe3f21b13",
-      "score": 78,
-      "reason": "長文コンテキスト処理の効率化に関する有望なアプローチ。",
-      "commercial_score": 80,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 78.7
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49548600",
       "deferred_at": "2026-09-04T01:03:15.800568+00:00",
