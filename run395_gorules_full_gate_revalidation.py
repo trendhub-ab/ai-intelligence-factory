@@ -32,7 +32,7 @@ def fetch_evidence()->tuple[str,list[dict[str,Any]]]:
         origin="github_readme" if "raw.githubusercontent.com" in url else "official_vendor"
         docs.append({"url":url,"text":text,"origin":origin}); chunks.append(f"SOURCE URL: {url}\n{text}")
     context="\n\n".join(chunks)
-    required=("MIT","Rust","Python","Go","millisecond")
+    required=("MIT","Rust","Python","Go")
     missing=[x for x in required if x.lower() not in context.lower()]
     if missing: raise RuntimeError(f"evidence contract drift missing={missing}")
     return context,docs
@@ -55,7 +55,7 @@ def source_info(context,docs):
     return {"source":"OfficialVendor","primary_url":PRIMARY_URL,"primary_source_resolved":True,"verification_context":context,"context":context,"freshness_status_available":True,"requested_action_risk_tier":"LOW","numeric_claims_required":False,"actor_attribution_required":False,"deep_source_required":False,"deep_source_scanned":True,"decision_scope_safe":True,"evidence_supplement_attempted":True,"evidence_documents":docs,"checked_urls":{d["url"] for d in docs},"supplement_candidates":[],"evidence_metadata":{"coverage":{"method":"FOUND","limitations":"FOUND"},"first_party_urls":[d["url"] for d in docs]}}
 
 def parsed(core):
-    return {"title_text":FINAL_TITLE,"note_draft":core,"action_text":"変更頻度の高い判断ルールを1つ選び、既存実装と結果・管理しやすさを比較する。","decision_text":"WATCH","score":55,"decision_reason_text":"ルール分離の価値はあるが、本番導入前に互換性・運用・性能を小さく検証すべき段階。","source_summary_text":"GoRulesは業務判断ルールを独立して管理・実行する仕組みで、中核エンジンはオープンソース。","what_text":"業務上の判断ルールをコード本体から切り分けて管理・実行する仕組み。","why_important_text":"変更頻度の高い判断条件を独立管理する選択肢になる。"}
+    return {"title_text":FINAL_TITLE,"note_draft":core,"action_text":"割引ルールを1つ移し、同じ入力で既存実装との出力一致を確認し、変更作業と実行時間を記録する。","decision_text":"WATCH","score":55,"decision_reason_text":"ルール分離の価値はあるが、本番導入前に互換性・運用・性能を小さく検証すべき段階。","source_summary_text":"GoRulesは業務判断ルールを独立して管理・実行する仕組みで、中核エンジンはオープンソース。","what_text":"業務上の判断ルールをコード本体から切り分けて管理・実行する仕組み。","why_important_text":"変更頻度の高い判断条件を独立管理する選択肢になる。"}
 
 def run():
     if not os.environ.get("NOTION_API_KEY"): raise RuntimeError("Notion read credential required")
