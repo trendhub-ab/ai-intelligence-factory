@@ -10,7 +10,7 @@ import run271_member_body_delta_sync_guard as guard
 
 class MemberBodyDeltaSyncGuardTests(unittest.TestCase):
     def _copy_contract(self, root: Path) -> None:
-        for relative in (guard.BODY, guard.CHECKPOINT, guard.WORKFLOW):
+        for relative in (guard.BODY, guard.CHECKPOINT, guard.WORKFLOW, guard.SUBSCRIBER_WORKFLOW):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(guard.ROOT / relative, target)
@@ -66,6 +66,60 @@ class MemberBodyDeltaSyncGuardTests(unittest.TestCase):
             workflow = root / guard.WORKFLOW
             workflow.write_text(workflow.read_text(encoding="utf-8") + "\n# GEMINI_API_KEY\n", encoding="utf-8")
             self.assertIn("member_execution_forbidden:GEMINI_API_KEY", guard.collect_errors(root))
+
+    def test_inventory_plan_must_not_fan_out_into_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            workflow = root / guard.SUBSCRIBER_WORKFLOW
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "contains(github.event.workflow_run.display_title, '[apply]')",
+                    "true",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "subscriber_execution_missing:contains(github.event.workflow_run.display_title, '[apply]')",
+                guard.collect_errors(root),
+            )
+
+    def test_member_presentation_must_not_race_inventory_directly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            workflow = root / guard.WORKFLOW
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "- Subscriber Decision Brief Sync",
+                    "- Subscriber Decision Brief Sync\n      - Subscriber Inventory Bootstrap",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "member_execution_forbidden_direct_trigger:Subscriber Inventory Bootstrap",
+                guard.collect_errors(root),
+            )
+
+    def test_subscriber_sync_must_not_passively_subscribe_to_one_shot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            workflow = root / guard.SUBSCRIBER_WORKFLOW
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "- Subscriber Inventory Bootstrap",
+                    "- Subscriber Inventory Bootstrap\n      - Daily Intelligence & Content Pipeline [ONE-SHOT]",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "subscriber_execution_forbidden:Daily Intelligence & Content Pipeline [ONE-SHOT]",
+                guard.collect_errors(root),
+            )
 
 
 if __name__ == "__main__":
