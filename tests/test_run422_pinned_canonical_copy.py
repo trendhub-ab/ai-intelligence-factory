@@ -25,6 +25,18 @@ class Run422PinnedCanonicalCopyTests(unittest.TestCase):
         self.assertIn("権限管理", r422.PINNED_EYECATCH_TITLE)
         self.assertIn(r422.PINNED_HIGHLIGHT, r422.PINNED_EYECATCH_TITLE)
 
+    def test_main_copy_accepts_exactly_two_or_three_lines(self):
+        two = {"title_lines": ["OpenAIエージェントとRubyGems、", "権限管理の境界線"]}
+        three = {"title_lines": ["OpenAIエージェントと", "RubyGems、", "権限管理の境界線"]}
+        self.assertEqual(len(r422._require_bounded_title_lines(two)["title_lines"]), 2)
+        self.assertEqual(len(r422._require_bounded_title_lines(three)["title_lines"]), 3)
+
+    def test_main_copy_rejects_one_or_four_lines(self):
+        with self.assertRaises(r422.r418.Run418Error):
+            r422._require_bounded_title_lines({"title_lines": [r422.PINNED_EYECATCH_TITLE]})
+        with self.assertRaises(r422.r418.Run418Error):
+            r422._require_bounded_title_lines({"title_lines": ["OpenAI", "エージェント", "RubyGems", "権限管理"]})
+
     def test_render_path_has_zero_model_and_no_raw_renderer(self):
         source = inspect.getsource(r422)
         self.assertNotIn("_generate_via_chat", source)
