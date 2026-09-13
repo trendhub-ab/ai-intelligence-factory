@@ -15,9 +15,6 @@ jobs:
       github.event.issue.pull_request == null && github.actor == 'trendhub-ab' &&
       github.event.comment.user.login == 'trendhub-ab' &&
       github.event.comment.body == '/aiif run418 ruby-gems-canonical-eyecatch'
-    concurrency:
-      group: ai-intelligence-gemini-budget
-      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -38,23 +35,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Run418/419 zero-network regression contract
+      - name: Run Run418/419/421 zero-network regression contract
         run: |
           python -m unittest tests.test_run418_rubygems_canonical_eyecatch -v
           python -m unittest tests.test_run419_eyecatch_plan_repair -v
+          python -m unittest tests.test_run421_zero_model_canonical_layout -v
 
       - name: Render through canonical Production stack and replace exact Notion asset
         env:
           TZ: 'Asia/Tokyo'
           RUN418_CONFIRM: 'RUN418_EXACT_RUBYGEMS_CANONICAL_EYECATCH'
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
-          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
-        run: python run419_rubygems_eyecatch_plan_repair.py render-attach
+        run: python run421_rubygems_zero_model_canonical_layout.py render-attach
 
   start-cloud-vm:
     needs: render-attach
@@ -121,6 +115,7 @@ jobs:
         run: |
           python -m unittest tests.test_run418_rubygems_canonical_eyecatch -v
           python -m unittest tests.test_run419_eyecatch_plan_repair -v
+          python -m unittest tests.test_run421_zero_model_canonical_layout -v
       - name: Replace only the header in the same existing private draft
         env:
           RUN418_CONFIRM: 'RUN418_EXACT_RUBYGEMS_CANONICAL_EYECATCH'
@@ -134,7 +129,7 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: xvfb-run -a python run419_rubygems_eyecatch_plan_repair.py refresh-draft
+        run: xvfb-run -a python run421_rubygems_zero_model_canonical_layout.py refresh-draft
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
