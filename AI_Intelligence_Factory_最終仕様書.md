@@ -3,7 +3,9 @@
 最終更新: **2026-09-13**  
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**  
-Current Repository Baseline: **2026-09-13 post-cleanup / Gemini-based Production restored / retired provider & recovery surfaces removed**
+Current Repository Baseline: **2026-09-13 post-cleanup / Gemini-based Production restored / retired provider & recovery surfaces removed**  
+Article Model Routing Baseline: **Run261 — live `_call_deep_dive_pool` routing / Gemini 3.7 Primary / Gemini 3.8 Quality Rescue**  
+ONE-SHOT Downstream Fan-out Baseline: **Run261 — explicit GH_PAT-authenticated workflow_dispatch**
 
 > 本書は「現在のProductionで何を守るか」を示す唯一のcanonical仕様書である。Run番号単位の追補、過去の検証レポート、Recovery文書、`docs/reference/`、`docs/archive/`、Git履歴は設計根拠・履歴として参照できるが、**本書と`main`の実装を上書きするAuthorityではない**。
 
@@ -49,6 +51,16 @@ Gemini系の既存安全契約は維持する。
 - 503連続時のrun-local circuit
 - Free Tier前提の利用量保護
 - Provider障害を品質不合格と混同しない
+
+### Run261 article model routing
+
+現行のArticle Model RoutingはRun261契約を維持する。
+
+- live entrypointは **`_call_deep_dive_pool`**。
+- Primaryは **`gemini-3.7-flash`**。
+- Quality Rescueは **`gemini-3.8-flash`**。
+- これはGroq共存を意味しない。GeminiベースProduction内部の現行routing contractである。
+- 詳細な成立経緯は `docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md` を参照する。
 
 ### 1.2 X logic
 
@@ -112,6 +124,18 @@ Gemini系の既存安全契約は維持する。
 旧Recovery専用command、Run361〜365専用command、Groq専用commandを復活させない。
 
 ONE-SHOTという名称自体はRecovery専用ではなく、現行の汎用手動実行契約として保持する。
+
+### Run261 ONE-SHOT downstream fan-out
+
+成功したONE-SHOTのdownstream fan-outは、受動的なONE-SHOT `workflow_run` chainingではなく、明示的なworkflow dispatchをAuthorityとする。
+
+- auth: **`${{ secrets.GH_PAT }}`**
+- target: `note-ready-sync.yml`
+- target: `subscriber-decision-brief.yml`
+- target: `cross-db-contract-guard.yml`
+- 3 target workflowはmanual `workflow_dispatch`可能であり、ONE-SHOTをpassive subscribeして二重writeしない。
+- Subscriber Decision Brief側の独立したInventory apply経路は維持する。
+- 詳細は `docs/reference/RUN261_LIVE_ROUTING_AND_FANOUT_REPAIR.md`。
 
 ### 2.3 Production entrypoint
 
