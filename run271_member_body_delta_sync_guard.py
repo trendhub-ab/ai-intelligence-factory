@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
-"""Fail closed if Run271 member-body delta sync is partially reverted."""
+"""Fail closed when member-body delta sync safety drifts.
+
+Protect the executable delta/full-fallback contract only. Historical Run labels,
+canonical-spec wording, reference prose, and past performance measurements are not CI invariants.
+"""
 from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent
+BODY = "member_ux_body_fast.py"
+CHECKPOINT = "member_body_delta_checkpoint.py"
+WORKFLOW = ".github/workflows/member-presentation-sync.yml"
 
 
-def _require(path: str, markers: tuple[str, ...]) -> None:
-    text = (ROOT / path).read_text(encoding="utf-8")
-    missing = [marker for marker in markers if marker not in text]
-    if missing:
-        raise SystemExit(f"Run271 contract missing in {path}: {missing}")
+def _read(root: Path, relative: str) -> str:
+    return (root / relative).read_text(encoding="utf-8")
 
 
-def main() -> int:
-    _require(
-        "member_ux_body_fast.py",
+def _missing(text: str, markers: tuple[str, ...], prefix: str) -> list[str]:
+    return [f"{prefix}_missing:{marker}" for marker in markers if marker not in text]
+
+
+def collect_errors(root: Path = ROOT) -> list[str]:
+    body = _read(root, BODY)
+    checkpoint = _read(root, CHECKPOINT)
+    workflow = _read(root, WORKFLOW)
+    errors: list[str] = []
+
+    errors += _missing(
+        body,
         (
             "MEMBER_BODY_CHANGED_SINCE",
             "MEMBER_BODY_FORCE_FULL",
@@ -27,9 +39,10 @@ def main() -> int:
             '"scanned_body_pages"',
             '"skipped_by_delta"',
         ),
+        "member_body",
     )
-    _require(
-        "member_body_delta_checkpoint.py",
+    errors += _missing(
+        checkpoint,
         (
             "select_previous_successful_start",
             "fetch_previous_successful_start",
@@ -38,9 +51,10 @@ def main() -> int:
             "conclusion",
             'head_branch") or "") != "main"',
         ),
+        "checkpoint",
     )
-    _require(
-        ".github/workflows/member-presentation-sync.yml",
+    errors += _missing(
+        workflow,
         (
             "force_full_body_sync",
             "actions: read",
@@ -52,37 +66,20 @@ def main() -> int:
             "tests/test_run271_member_body_delta_sync.py",
             "tests/test_run271_1_member_body_checkpoint.py",
         ),
+        "member_workflow",
     )
-    _require(
-        ".github/workflows/repository-falsification.yml",
-        (
-            "python run271_member_body_delta_sync_guard.py",
-            "python -m unittest tests.test_run271_1_member_body_checkpoint -v",
-        ),
-    )
-    _require(
-        "AI_Intelligence_Factory_最終仕様書.md",
-        (
-            "Run271 — Member Body Delta Sync",
-            "MEMBER_BODY_CHANGED_SINCE",
-            "前回成功",
-            "sentinel",
-        ),
-    )
-    _require(
-        "docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md",
-        (
-            "Run271 — Member Body Delta Sync",
-            "last_edited_time",
-            "previous successful",
-            "sentinel",
-            "Production measurement — 2026-09-07",
-            "2.34 seconds",
-            "scanned_body_pages",
-            "343.4x faster",
-        ),
-    )
-    print("Run271 member body delta sync guard: OK")
+
+    return list(dict.fromkeys(errors))
+
+
+def main() -> int:
+    errors = collect_errors(ROOT)
+    if errors:
+        print("MEMBER_BODY_DELTA_SYNC_GUARD=FAIL")
+        for error in errors:
+            print(f"- {error}")
+        return 1
+    print("MEMBER_BODY_DELTA_SYNC_GUARD=PASS")
     return 0
 
 
