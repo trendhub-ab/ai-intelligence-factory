@@ -220,7 +220,6 @@ def main() -> None:
     import run179_eyecatch_font_refinement
     import run203_runtime_state_channel as runtime_state_channel
     from article_revalidation import install_full_recovery, run_article_revalidation
-    from current_policy_ready_recovery import run_current_policy_ready_recovery
     from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
     from run268_business_source_strategy import install as install_run268_business_source_strategy
@@ -266,10 +265,9 @@ def main() -> None:
     # Japanese particle collision. Genuine dense-reader failures remain REVIEW.
     install_reader_quality_precision(pipeline)
 
-    # Run284 is derived from two real current-policy recovery attempts. It removes one
-    # deterministic Japanese corruption rule for every Production article, and authorizes
-    # one existing Reader Value quality-repair call only inside the explicit Run282 recovery
-    # lane when Evidence is already SUFFICIENT and all blockers are reader-only.
+    # Run284/352/360 preserves proven Japanese-surface and retry-quality protections.
+    # These safeguards remain active in normal Production even though the retired
+    # historical Ready-recovery entrypoint has been removed.
     install_run284_reader_recovery_precision(pipeline)
 
     # Run287 keeps discovery timestamps honest on the public manuscript. Hacker News
@@ -294,14 +292,6 @@ def main() -> None:
     install_performance_telemetry(pipeline)
 
     mode = _workflow_dispatch_mode()
-
-    # Run282: current-policy Ready recovery is an explicit, bounded business-write lane.
-    # It never enters fresh acquisition/screening/Product Review and regenerates at most
-    # one historical Ready row on its original Notion page. The canonical quality stack
-    # still owns the manuscript bytes, status, and fail-closed outcome.
-    if mode == "current_policy_ready_recovery":
-        run_current_policy_ready_recovery(pipeline)
-        return
 
     # Run277: article_validation must validate an *existing non-Ready* candidate.
     # Fresh acquisition would be defeated by the authoritative Notion dedupe and would
