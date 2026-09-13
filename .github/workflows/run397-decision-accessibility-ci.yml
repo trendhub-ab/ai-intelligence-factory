@@ -1,0 +1,28 @@
+name: Run397 Decision Accessibility CI
+
+on:
+  pull_request:
+    paths:
+      - 'reader_quality_precision.py'
+      - 'tests/test_run397_decision_accessibility.py'
+      - 'docs/RUN397_DECISION_ACCESSIBILITY.md'
+      - '.github/workflows/run397-decision-accessibility-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decision-accessibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Run focused zero-API regression tests
+        run: |
+          python -m pytest tests/test_run397_decision_accessibility.py -q
+      - name: Publication dependency guard
+        run: python run280_publication_dependency_guard.py
