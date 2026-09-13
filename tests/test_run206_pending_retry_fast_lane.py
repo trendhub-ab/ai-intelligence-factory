@@ -28,6 +28,16 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
             logger=Mock(),
         )
 
+    def test_fast_lane_cost_ceiling_stays_three_requests(self):
+        self.assertEqual(fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET, 3)
+        env = {}
+        fast_lane.prepare_fast_lane_env(env)
+        self.assertEqual(env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "3")
+        self.assertEqual(env[fast_lane.FAST_LANE_ENV], "1")
+
+    def test_first_503_remains_fast_lane_cooldown_threshold(self):
+        self.assertEqual(fast_lane.FAST_LANE_503_COOLDOWN_THRESHOLD, 1)
+
     def test_priority_is_screening_score_descending_and_stable_on_ties(self):
         items = [
             {"id": "old-85", "screening_score": 85},

@@ -1,7 +1,6 @@
 import inspect
 import types
 import unittest
-from pathlib import Path
 
 import pipeline
 import publication_contract
@@ -81,14 +80,6 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
             'run226_reader_delight_planning.py',
             publication_contract.PUBLICATION_POLICY_FILES,
         )
-
-    def test_canonical_spec_documents_run226(self):
-        root = Path(__file__).resolve().parents[1]
-        spec = (root / 'AI_Intelligence_Factory_最終仕様書.md').read_text(encoding='utf-8')
-        self.assertIn('Run226', spec)
-        self.assertIn('run226_reader_delight_planning.py', spec)
-        self.assertIn('Reader Tension', spec)
-        self.assertIn('回数ノルマ', spec)
 
 
 if __name__ == '__main__':

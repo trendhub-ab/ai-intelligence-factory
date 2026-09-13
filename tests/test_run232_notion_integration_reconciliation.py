@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import documentation_freshness_guard as freshness
 import member_presentation_identity as identity
 import notion_access_policy_guard as access_guard
 import provision_member_presentation_db as provisioner
+import run271_member_body_delta_sync_guard as member_guard
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,24 +51,9 @@ class Run232NotionIntegrationReconciliationTests(unittest.TestCase):
         self.assertIn("stale_canonical_id: field=database_id", reasons)
         self.assertIn("stale_canonical_id: field=data_source_id", reasons)
 
-    def test_documentation_freshness_rejects_old_ids_as_active_manifest_values(self):
-        stale = json.dumps(
-            {
-                "databases": {
-                    "member_presentation": {
-                        "database_id": OLD_DB,
-                        "data_source_id": OLD_DS,
-                    }
-                }
-            }
-        )
-        errors = freshness.member_audit_manifest_errors(stale)
-        self.assertTrue(any("retired pre-Run220 database_id" in error for error in errors))
-        self.assertTrue(any("retired member data_source_id" in error for error in errors))
-
-    def test_documentation_freshness_accepts_current_manifest(self):
-        manifest = (ROOT / "notion_audit_views.json").read_text(encoding="utf-8")
-        self.assertEqual(freshness.member_audit_manifest_errors(manifest), [])
+    def test_access_guard_accepts_current_manifest(self):
+        manifest = access_guard.load_audit_manifest(ROOT)
+        self.assertEqual(access_guard.validate_audit_manifest(manifest), [])
 
     def test_blank_canonical_title_fails_closed_before_host_validation(self):
         response = _Response(
@@ -102,12 +87,13 @@ class Run232NotionIntegrationReconciliationTests(unittest.TestCase):
             self.assertRegex(member_sync, pattern, key)
             self.assertRegex(cross_db, pattern, key)
 
-    def test_python_identity_source_is_shared_by_provisioner_and_guards(self):
+    def test_python_identity_source_is_shared_by_current_runtime_and_guards(self):
         provision_source = (ROOT / "provision_member_presentation_db.py").read_text(encoding="utf-8")
         access_source = (ROOT / "notion_access_policy_guard.py").read_text(encoding="utf-8")
-        freshness_source = (ROOT / "documentation_freshness_guard.py").read_text(encoding="utf-8")
-        for source in (provision_source, access_source, freshness_source):
+        member_guard_source = (ROOT / "run271_member_body_delta_sync_guard.py").read_text(encoding="utf-8")
+        for source in (provision_source, access_source, member_guard_source):
             self.assertIn("member_presentation_identity", source)
+        self.assertEqual([], member_guard.collect_errors(ROOT))
 
 
 if __name__ == "__main__":

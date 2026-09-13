@@ -42,9 +42,6 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         missing = [name for name in active if not (ROOT / name).is_file()]
         self.assertEqual([], missing)
 
-        # Run231 deliberately makes production_pipeline.py a small orchestrator.  The
-        # canonical historical patch stack now lives in runtime_layers.py; guarding the
-        # canonical module is stricter than requiring duplicated import strings in two files.
         runtime_contract = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         production_entrypoint = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
         self.assertIn("from runtime_layers import install_runtime_layers", production_entrypoint)
@@ -106,22 +103,13 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         missing = [name for name in expected if not (archive / name).is_file()]
         self.assertEqual([], missing)
 
-    def test_current_spec_tracks_live_baseline_and_old_spec_is_preserved(self) -> None:
+    def test_current_spec_declares_current_authority_without_historical_run_lock(self) -> None:
         current = (ROOT / "AI_Intelligence_Factory_最終仕様書.md").read_text(encoding="utf-8")
-        self.assertIn("Core Reliability Baseline: **Run209", current)
-        self.assertIn("Documentation Governance Baseline: **Run267", current)
-        self.assertIn("Article Model Routing Baseline: **Run261", current)
-        self.assertIn("ONE-SHOT Downstream Fan-out Baseline: **Run261", current)
-        self.assertIn("Integration Determinism Baseline: **Run263", current)
-        self.assertIn("Standalone Synthetic Baseline: **Run264", current)
-        self.assertIn("Dependency Compatibility Baseline: **Run266", current)
-        self.assertIn("Required PR Check Governance Baseline: **Run267", current)
-        self.assertIn("Eyecatch Baseline: **Run183", current)
         self.assertIn("Production Source of Truth: **`main`**", current)
-        self.assertNotIn("現行Functional Baseline: **Run209", current)
-        self.assertNotIn("Documentation Governance Baseline: **Run262", current)
-        self.assertNotIn("Eyecatch Baseline: **Run181 current**", current)
-        self.assertNotIn("本パッケージコード基準: **Run 122", current)
+        self.assertIn("PAUSED", current)
+        self.assertIn("Publication", current)
+        self.assertIn("Evidence", current)
+        self.assertTrue("過去" in current or "historical" in current.lower())
 
         historical_path = (
             ROOT
@@ -132,22 +120,18 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("本パッケージコード基準: **Run 122", historical)
         self.assertIn("Run129 Conversational Warmth", historical)
 
-    def test_readme_declares_current_baseline_and_cleanup_safety(self) -> None:
+    def test_readme_declares_current_operational_safety_without_run_number_lock(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("Current functional baseline:** Run209", readme)
-        # README remains a compact operator index. Run210 is the broad documentation
-        # governance origin; the canonical specification carries the narrower Run267
-        # current-contract freshness authority.
-        self.assertIn("Current documentation governance baseline:** Run210", readme)
-        self.assertIn("Current repository organization baseline:** Run246", readme)
-        self.assertIn("falsified repository hygiene cleanup with active/runtime asset protection", readme)
         self.assertIn("Daily:** PAUSED", readme)
         self.assertTrue(
             "Historical `RUN*.md`" in readme
             or "Historical Run implementation notes" in readme
         )
-        self.assertIn("do **not** bulk-delete", readme.lower())
         self.assertIn("docs/archive/", readme)
+        self.assertTrue(
+            "do **not** bulk-delete" in readme.lower()
+            or "do not bulk-delete" in readme.lower()
+        )
 
 
 if __name__ == "__main__":

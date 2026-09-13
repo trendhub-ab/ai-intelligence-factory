@@ -30,12 +30,12 @@ jobs:
       - name: Compile tracked Python contracts
         run: python -m compileall -q *.py tests
 
-      - name: Enforce Run279 canonical runtime layer source of truth
+      - name: Enforce canonical runtime layer source of truth
         run: |
           python run279_runtime_layer_guard.py
           python -m unittest tests.test_run279_runtime_layer_guard -v
 
-      - name: Enforce Run280/281 publication dependency completeness
+      - name: Enforce publication dependency completeness
         run: |
           python run280_publication_dependency_guard.py
           python -m unittest tests.test_run280_publication_dependency_guard -v
@@ -47,57 +47,58 @@ jobs:
       - name: Scan repository-wide executable, workflow, provenance and secret surfaces
         run: python repository_falsification_guard.py
 
-      - name: Enforce Run257 workflow reference integrity inside required check
+      - name: Enforce workflow reference integrity
         run: |
           python workflow_reference_guard.py
           python -m unittest tests.test_workflow_reference_guard -v
 
-      - name: Enforce Run262 canonical Run261 documentation contract
+      - name: Enforce provider routing and ONE-SHOT fan-out safety
         run: |
           python run262_documentation_contract_guard.py
           python -m unittest tests.test_run262_documentation_contract_guard -v
 
-      - name: Enforce Run267 current canonical documentation contract
+      - name: Enforce CI dependency and eyecatch safety
         run: |
           python run267_documentation_contract_guard.py
           python -m unittest tests.test_run267_documentation_contract_guard -v
 
-      - name: Enforce Run268 business/source strategy contract
+      - name: Enforce source acquisition strategy
         run: |
           python run268_business_source_strategy_guard.py
           python -m unittest tests.test_run268_business_source_strategy_guard -v
           python -m unittest tests.test_run268_business_source_strategy -v
 
-      - name: Enforce Run269 live acquisition precision contract
+      - name: Enforce live acquisition precision and zero-model smoke
         run: |
           python run269_acquisition_precision_guard.py
           python -m unittest tests.test_run269_acquisition_precision_guard -v
           python -m unittest tests.test_run269_acquisition_precision -v
           python -m unittest tests.test_run269_vendor_current_state -v
 
-      - name: Enforce Run270 Proposal-First member surface contract
+      - name: Enforce historical member compatibility safety
         run: |
           python run270_proposal_first_member_surface_guard.py
           python -m unittest tests.test_run270_proposal_first_member_surface_guard -v
           python -m unittest tests.test_run270_proposal_first_member_surface -v
 
-      - name: Enforce Run307 generic use-decision product contract
+      - name: Enforce current member use-decision product
         run: |
           python run307_use_decision_product_guard.py
           python -m unittest tests.test_run307_use_decision_product_guard -v
           python -m unittest tests.test_run307_use_decision_member_surface -v
 
-      - name: Enforce Run308 current public-copy alignment
+      - name: Enforce current public-copy alignment
         run: |
           python run308_public_copy_alignment_guard.py
           python -m unittest tests.test_run308_public_copy_alignment -v
 
-      - name: Enforce Run271 member body delta sync contract
+      - name: Enforce member body delta sync safety
         run: |
           python run271_member_body_delta_sync_guard.py
+          python -m unittest tests.test_run271_member_body_delta_sync_guard -v
           python -m unittest tests.test_run271_1_member_body_checkpoint -v
 
-      - name: Enforce Run263 Integration hermeticity and stability
+      - name: Enforce integration hermeticity and stability
         run: |
           python integration_stability_guard.py
           python -m unittest tests.test_integration_stability_guard -v
@@ -137,7 +138,7 @@ jobs:
             -v
           python -m unittest tests.test_run290_quality_workflow_separation -v
 
-      - name: Falsify Run292/293/294/295/296 private-draft and editorial-surface boundaries
+      - name: Falsify private-draft and editorial-surface boundaries
         run: |
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v

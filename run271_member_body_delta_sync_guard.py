@@ -1,23 +1,51 @@
 #!/usr/bin/env python3
-"""Fail closed if Run271 member-body delta sync is partially reverted."""
+"""Fail closed when executable member-sync safety drifts.
+
+Protect current machine-verifiable member contracts only. Historical Run labels,
+canonical-spec wording, reference prose, and past measurements are not CI invariants.
+"""
 from __future__ import annotations
 
 from pathlib import Path
 
+from member_presentation_identity import (
+    ALLOW_CREATE_DEFAULT,
+    API_HOST_PAGE_ID,
+    CANONICAL_DATABASE_ID,
+    CANONICAL_DATA_SOURCE_ID,
+)
 
 ROOT = Path(__file__).resolve().parent
+BODY = "member_ux_body_fast.py"
+CHECKPOINT = "member_body_delta_checkpoint.py"
+WORKFLOW = ".github/workflows/member-presentation-sync.yml"
+SUBSCRIBER_WORKFLOW = ".github/workflows/subscriber-decision-brief.yml"
 
 
-def _require(path: str, markers: tuple[str, ...]) -> None:
-    text = (ROOT / path).read_text(encoding="utf-8")
-    missing = [marker for marker in markers if marker not in text]
-    if missing:
-        raise SystemExit(f"Run271 contract missing in {path}: {missing}")
+def _read(root: Path, relative: str) -> str:
+    return (root / relative).read_text(encoding="utf-8")
 
 
-def main() -> int:
-    _require(
-        "member_ux_body_fast.py",
+def _missing(text: str, markers: tuple[str, ...], prefix: str) -> list[str]:
+    return [f"{prefix}_missing:{marker}" for marker in markers if marker not in text]
+
+
+def _workflow_run_block(text: str) -> str:
+    if "workflow_run:" not in text:
+        return ""
+    tail = text.split("workflow_run:", 1)[1]
+    return tail.split("types: [completed]", 1)[0]
+
+
+def collect_errors(root: Path = ROOT) -> list[str]:
+    body = _read(root, BODY)
+    checkpoint = _read(root, CHECKPOINT)
+    workflow = _read(root, WORKFLOW)
+    subscriber_workflow = _read(root, SUBSCRIBER_WORKFLOW)
+    errors: list[str] = []
+
+    errors += _missing(
+        body,
         (
             "MEMBER_BODY_CHANGED_SINCE",
             "MEMBER_BODY_FORCE_FULL",
@@ -27,9 +55,10 @@ def main() -> int:
             '"scanned_body_pages"',
             '"skipped_by_delta"',
         ),
+        "member_body",
     )
-    _require(
-        "member_body_delta_checkpoint.py",
+    errors += _missing(
+        checkpoint,
         (
             "select_previous_successful_start",
             "fetch_previous_successful_start",
@@ -38,9 +67,10 @@ def main() -> int:
             "conclusion",
             'head_branch") or "") != "main"',
         ),
+        "checkpoint",
     )
-    _require(
-        ".github/workflows/member-presentation-sync.yml",
+    errors += _missing(
+        workflow,
         (
             "force_full_body_sync",
             "actions: read",
@@ -52,37 +82,80 @@ def main() -> int:
             "tests/test_run271_member_body_delta_sync.py",
             "tests/test_run271_1_member_body_checkpoint.py",
         ),
+        "member_workflow",
     )
-    _require(
-        ".github/workflows/repository-falsification.yml",
+
+    # Destination identity is an operational safety invariant, not documentation history.
+    errors += _missing(
+        workflow,
         (
-            "python run271_member_body_delta_sync_guard.py",
-            "python -m unittest tests.test_run271_1_member_body_checkpoint -v",
+            "Resolve canonical member DB",
+            f"MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: '{CANONICAL_DATABASE_ID}'",
+            f"MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '{CANONICAL_DATA_SOURCE_ID}'",
+            f"MEMBER_PRESENTATION_API_HOST_PAGE_ID: '{API_HOST_PAGE_ID}'",
+            f"MEMBER_PRESENTATION_ALLOW_CREATE: '{ALLOW_CREATE_DEFAULT}'",
         ),
+        "member_destination",
     )
-    _require(
-        "AI_Intelligence_Factory_最終仕様書.md",
+
+    # Member-derived Notion writes must serialize, and these deterministic transforms
+    # must not silently acquire a model dependency.
+    errors += _missing(
+        workflow,
         (
-            "Run271 — Member Body Delta Sync",
-            "MEMBER_BODY_CHANGED_SINCE",
-            "前回成功",
-            "sentinel",
+            "group: member-derived-notion-writes",
+            "cancel-in-progress: false",
+            "Subscriber Decision Brief Sync",
         ),
+        "member_execution",
     )
-    _require(
-        "docs/reference/RUN271_MEMBER_BODY_DELTA_SYNC.md",
+    if "GEMINI_API_KEY" in workflow:
+        errors.append("member_execution_forbidden:GEMINI_API_KEY")
+
+    # Inventory plan is read-only. Only successful main apply runs may fan out into
+    # subscriber/member writes, and Member Presentation must follow the brief writer
+    # rather than race Daily or Inventory directly.
+    errors += _missing(
+        subscriber_workflow,
         (
-            "Run271 — Member Body Delta Sync",
-            "last_edited_time",
-            "previous successful",
-            "sentinel",
-            "Production measurement — 2026-09-07",
-            "2.34 seconds",
-            "scanned_body_pages",
-            "343.4x faster",
+            "Subscriber Inventory Bootstrap",
+            "workflow_dispatch:",
+            "github.event.workflow_run.name == 'Subscriber Inventory Bootstrap'",
+            "contains(github.event.workflow_run.display_title, '[apply]')",
+            "group: member-derived-notion-writes",
+            "cancel-in-progress: false",
         ),
+        "subscriber_execution",
     )
-    print("Run271 member body delta sync guard: OK")
+    subscriber_block = _workflow_run_block(subscriber_workflow)
+    for forbidden in (
+        "Daily Intelligence & Content Pipeline [ONE-SHOT]",
+        "Daily Intelligence & Content Pipeline [PAUSED]",
+    ):
+        if forbidden in subscriber_block:
+            errors.append(f"subscriber_execution_forbidden:{forbidden}")
+    if "GEMINI_API_KEY" in subscriber_workflow:
+        errors.append("subscriber_execution_forbidden:GEMINI_API_KEY")
+
+    presentation_block = _workflow_run_block(workflow)
+    for forbidden in (
+        "Daily Intelligence & Content Pipeline",
+        "Subscriber Inventory Bootstrap",
+    ):
+        if forbidden in presentation_block:
+            errors.append(f"member_execution_forbidden_direct_trigger:{forbidden}")
+
+    return list(dict.fromkeys(errors))
+
+
+def main() -> int:
+    errors = collect_errors(ROOT)
+    if errors:
+        print("MEMBER_SYNC_SAFETY_GUARD=FAIL")
+        for error in errors:
+            print(f"- {error}")
+        return 1
+    print("MEMBER_SYNC_SAFETY_GUARD=PASS")
     return 0
 
 
