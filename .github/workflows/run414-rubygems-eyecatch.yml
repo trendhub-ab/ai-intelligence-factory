@@ -6,6 +6,9 @@ permissions:
   actions: write
   contents: read
   issues: read
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
 jobs:
   run414:
     if: >-
