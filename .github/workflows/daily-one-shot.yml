@@ -394,11 +394,16 @@ jobs:
           retention-days: 14
 
       - name: Explicit post-run fan-out with GH_PAT
-        if: ${{ success() && inputs.mode != 'pending_retry_validation' }}
+        if: ${{ success() }}
         env:
+          VALIDATION_MODE: ${{ inputs.mode }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -u
+          if [ "${VALIDATION_MODE:-}" = "pending_retry_validation" ]; then
+            echo "Non-persistent Pending Retry validation: downstream synchronization skipped."
+            exit 0
+          fi
           if [ -z "${GH_TOKEN:-}" ]; then
             echo "::error::GH_PAT is required for authoritative ONE-SHOT downstream fan-out"
             exit 1
