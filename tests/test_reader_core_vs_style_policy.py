@@ -30,8 +30,16 @@ def test_non_engineer_core_access_remains_publication_stopping():
         "reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity)",
         "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)",
     )
-    assert rows[0]["severity"] == GATE_SEVERITY_SOFT
+    assert rows[0]["severity"] == GATE_SEVERITY_REVIEW
     assert rows[1]["severity"] == GATE_SEVERITY_REVIEW
+    assert gate_reason_disposition(rows) == GATE_DISPOSITION_REVIEW
+
+
+def test_multi_axis_with_core_marker_fails_closed_without_companion_reason():
+    rows = _reader(
+        "reader_value_review:multi_axis_reader_weakness (reader_enjoyment/jargon_translation/information_budget/non_engineer_core_clarity)"
+    )
+    assert rows[0]["severity"] == GATE_SEVERITY_REVIEW
     assert gate_reason_disposition(rows) == GATE_DISPOSITION_REVIEW
 
 
