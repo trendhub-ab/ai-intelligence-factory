@@ -51,7 +51,7 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 issues = bridge._material_reader_value_issues(pipeline, article)
                 self.assertTrue(any("dense_report_cluster" in x for x in issues), issues)
 
-    def test_real_run103_ready_articles_are_bridged_to_human_appeal_review(self):
+    def test_real_run103_ready_articles_keep_reader_warning_without_publication_stop(self):
         for name in REAL_READY_FIXTURES:
             with self.subTest(name=name):
                 article = self._article(name)
@@ -60,7 +60,10 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 self.assertTrue(any(bridge.READER_VALUE_MARKER in x for x in issues), issues)
 
                 reason_rows = pipeline.map_gate_reasons("human_appeal", issues)
-                self.assertEqual(pipeline.GATE_DISPOSITION_REVIEW, pipeline.gate_reason_disposition(reason_rows))
+                self.assertEqual(
+                    pipeline.GATE_DISPOSITION_PASS_WITH_WARNINGS,
+                    pipeline.gate_reason_disposition(reason_rows),
+                )
 
     def test_reader_value_only_review_never_spends_gemini_quality_retry(self):
         article = self._article("genai_sophistication.md")
