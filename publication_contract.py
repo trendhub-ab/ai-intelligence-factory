@@ -71,6 +71,7 @@ PUBLICATION_POLICY_FILES = (
     "run227_japanese_surface_integrity.py",
     "run176_scope_fidelity.py",
     "run177_paid_funnel_alignment.py",
+    "editorial_quality_memory.py",
     "run226_reader_delight_planning.py",
     "run228_reader_rhythm_planning.py",
     "run178_eyecatch_editorial_layout_optimizer.py",
