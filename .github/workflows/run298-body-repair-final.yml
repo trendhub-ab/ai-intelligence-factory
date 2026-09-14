@@ -1,0 +1,234 @@
+name: Run298 GenRec Body Repair Final [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/run298-body-repair-final.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run298-genrec-body-repair-final
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: contains(github.event.head_commit.message, 'execute exact GenRec body repair final')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.ready.outputs.should_start_vm }}
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install deterministic preflight dependency
+        run: pip install requests
+      - name: Falsify exact body replacement and Run298 boundaries
+        run: |
+          python -m unittest tests.test_run297_298_genrec_refresh -v
+          python -m unittest tests.test_run298_body_repair_final -v
+      - name: Require exact current target state before VM
+        id: ready
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          import os
+          import publication_contract as contract
+          import run298_genrec_inplace_refresh as r298
+          expected_policy = 'ba997928381a755d5a04bdcee7ea75f45e7cd336a430f16a412a9878a41dc96f'
+          if contract.policy_sha256() != expected_policy:
+              raise SystemExit('Run298 body repair refuses Publication Contract drift')
+          r298._ensure_private_queue_state()
+          article, _ = r298._expected_current_article()
+          if article.get('sync_id') != r298.TARGET_SYNC_ID:
+              raise SystemExit('Run298 body repair target drift')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write('should_start_vm=true\n')
+          print('RUN298_BODY_REPAIR_PREFLIGHT=PASS')
+          print('RUN298_BODY_REPAIR_HEADER_MUTATION=false')
+          print('RUN298_BODY_REPAIR_NEW_DRAFT=false')
+          print('RUN298_BODY_REPAIR_PUBLIC_RELEASE=false')
+          print('RUN298_BODY_REPAIR_MODEL_CALLS=0')
+          PY
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then echo "::error::Missing repository variable: ${name}"; exit 1; fi
+          done
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  repair-and-audit:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Re-run exact repair tests on VM
+        run: |
+          python -m unittest tests.test_run297_298_genrec_refresh -v
+          python -m unittest tests.test_run298_body_repair_final -v
+      - name: Replace duplicated body exactly and perform strict post-save audit
+        env:
+          RUN298_RESULT_FILE: ${{ runner.temp }}/run298-body-repair-result.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: xvfb-run -a python run298_body_repair_final.py
+      - name: Require complete final actual-note audit
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run298-body-repair-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          required_true = [
+              'same_private_draft_route','title_match','new_intro_present','old_intro_absent',
+              'what_row_absent','new_cta_heading_present','new_cta_body_present','cta_link_label_present',
+              'sources_before_cta','expected_contained_in_actual','eyecatch_present',
+              'header_persisted_unchanged_during_body_repair','quality_state_ready',
+              'posting_state_preparing','zero_gemini_calls'
+          ]
+          failed = [k for k in required_true if r.get(k) is not True]
+          if r.get('duplicate_title_prefix') is not False: failed.append('duplicate_title_prefix')
+          if r.get('duplicate_draft_created') is not False: failed.append('duplicate_draft_created')
+          if r.get('public_release') is not False: failed.append('public_release')
+          if r.get('daily_restarted') is not False: failed.append('daily_restarted')
+          if int(r.get('body_h1_count', -1)) != 0: failed.append('body_h1_count')
+          ratio = float(r.get('visible_length_ratio', 0) or 0)
+          if not 0.82 <= ratio <= 1.15: failed.append('visible_length_ratio')
+          if int(r.get('remaining_chars_after_clear', -1)) > 24: failed.append('remaining_chars_after_clear')
+          if failed:
+              raise SystemExit('Run298 body repair final audit failed: ' + ','.join(failed))
+          print('RUN298_BODY_REPAIR_FINAL_AUDIT=PASS')
+          PY
+      - name: Summarize non-content proof only
+        if: always()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run298-body-repair-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RESULT_FILE'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run298 — GenRec body repair final\n')
+              if not path.exists():
+                  fh.write('- result: `FAIL-CLOSED`\n')
+                  raise SystemExit(0)
+              r = json.loads(path.read_text(encoding='utf-8'))
+              keys = [
+                  'status','same_private_draft_route','editor_route_hash','history_candidate_count',
+                  'matched_history_rank','duplicate_ratio_before_repair','remaining_chars_after_clear',
+                  'body_visible_chars','expected_visible_chars','visible_length_ratio','expected_contained_in_actual',
+                  'title_match','new_intro_present','old_intro_absent','what_row_absent','new_cta_heading_present',
+                  'new_cta_body_present','cta_link_label_present','sources_before_cta','duplicate_title_prefix',
+                  'eyecatch_present','eyecatch_proof_mode','header_persisted_unchanged_during_body_repair',
+                  'body_h1_count','quality_state_ready','posting_state_preparing','zero_gemini_calls',
+                  'duplicate_draft_created','public_release','daily_restarted'
+              ]
+              for key in keys:
+                  if key in r: fh.write(f'- {key}: `{r[key]}`\n')
+              fh.write('- private draft URL / unpublished body / image URL exposed: `false`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, repair-and-audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
