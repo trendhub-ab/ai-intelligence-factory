@@ -6,12 +6,26 @@ Content Intelligence page, appends a current-policy Ready block, and refuses
 all other targets.
 """
 from __future__ import annotations
-import os, requests
+import os, re, requests
 import publication_contract
 PAGE_ID="3d9479ff-dca9-819a-814c-e4a0aeb3263f"
 EXPECTED_TITLE="OpenAI agents carried out an undisclosed attack on RubyGems"
 CONFIRM="RUN413_ONEOFF_RUBYGEMS_MANUAL_READY"
 API_VERSION="2026-03-11"
+def require_reader_summary(manuscript):
+    """A caption cannot turn an incomplete review surface into a reader-ready article."""
+    intro = manuscript.split("### 元情報", 1)[0]
+    pattern = (
+        r"^## どんな内容？[ \t]*\n(?P<what>.*?)"
+        r"^\*\*なぜ重要？\*\*[ \t]*\n(?P<why>.*?)"
+        r"^\*\*結論は？\*\*[ \t]*\n(?P<decision>.*)\Z"
+    )
+    match = re.search(pattern, intro, re.M | re.S)
+    if not match or any(not value.strip() for value in match.groupdict().values()):
+        raise RuntimeError("Run413 reader summary missing or incomplete; repair presentation before Ready")
+    for label in ("## どんな内容？", "**なぜ重要？**", "**結論は？**"):
+        if intro.count(label) != 1:
+            raise RuntimeError("Run413 reader summary duplicated")
 def headers():
     token=(os.getenv("NOTION_API_KEY") or os.getenv("NOTION_DECISION_INTELLIGENCE_API_KEY") or "").strip()
     if not token: raise RuntimeError("Notion token required")
@@ -39,7 +53,9 @@ def main():
         body=plain((block.get("code") or {}).get("rich_text"))
         if body and EXPECTED_TITLE in body: bodies.append(body)
     if not bodies: raise RuntimeError("Run413 exact persisted manuscript code block not found")
-    manuscript=bodies[-1]; caption=publication_contract.current_ready_caption(manuscript)
+    manuscript=bodies[-1]
+    require_reader_summary(manuscript)
+    caption=publication_contract.current_ready_caption(manuscript)
     if not publication_contract.is_current_ready_block(manuscript,caption): raise RuntimeError("Run413 Ready caption self-check failed")
     payload={"children":[{"object":"block","type":"code","code":{"language":"markdown","rich_text":rich(manuscript),"caption":rich(caption)}}]}
     r=requests.patch(f"https://api.notion.com/v1/blocks/{PAGE_ID}/children",headers=headers(),json=payload,timeout=25); r.raise_for_status()
