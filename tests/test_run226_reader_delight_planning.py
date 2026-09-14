@@ -55,6 +55,24 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
         self.assertIn('style countだけを新しいHard Gateにしない', text)
         self.assertIn('比喩・問い・scene・会話調は自然に理解を助ける場合だけ任意', text)
         self.assertIn('Blueprintは新しいHard Gateではない', text)
+        self.assertIn('必要な専門概念・制約・判断材料を個数合わせのために削らない', text)
+
+    def test_deconflicts_legacy_fixed_count_writer_rules(self):
+        legacy = '\n'.join(
+            [
+                '記事全体の温度を1〜2個の口語句で済ませず、硬い説明が2段落続いたら次の段落では、追加説明を足さず、既存文を「読者の判断／具体場面／平易な一言」のどれかへ置き換えて人間の言葉へ戻す。',
+                'この無料ARTICLEで読者が本当に覚える専門概念を内部で原則2〜3個に絞る。4個目がないとDecisionを誤解する場合だけ4個まで許す。',
+                'ARTICLE本文で説明する中核概念は原則2〜3個、実装識別子・規格名・コマンド名は意思決定に必要なものだけに限定し、列挙で専門性を演出しない。',
+                '手順・機能・注意点の列挙はそれぞれ最大3項目まで。',
+                '短文を3つ以上連打して広告コピーのように煽らない。',
+            ]
+        )
+        out = run226.deconflict_writer_prompt(legacy)
+        for forbidden in ('原則2〜3個', '4個目', '最大3項目', '2段落続いたら', '3つ以上連打'):
+            self.assertNotIn(forbidden, out)
+        self.assertIn('固定個数の上限で削らず', out)
+        self.assertIn('段落数だけで機械的に切り替えない', out)
+        self.assertIn('個数上限のために落とさない', out)
 
     def test_augment_preserves_base_prompt_and_existing_safety_language(self):
         base = 'BASE\nSOURCE BOUNDARY\nEvidence-to-Decision'
@@ -65,6 +83,14 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
         self.assertEqual(1, augmented.count(run226.RUN226_MARKER))
         self.assertEqual(1, augmented.count(run226.EDITORIAL_BLUEPRINT_MARKER))
         self.assertEqual(1, augmented.count(editorial_quality_memory.QUALITY_MEMORY_MARKER))
+
+    def test_augment_deconflicts_before_appending_current_contract(self):
+        legacy = 'BASE\nこの無料ARTICLEで読者が本当に覚える専門概念を内部で原則2〜3個に絞る。4個目がないとDecisionを誤解する場合だけ4個まで許す。'
+        augmented = run226.augment_prompt(legacy)
+        self.assertNotIn('原則2〜3個', augmented)
+        self.assertNotIn('4個目', augmented)
+        self.assertIn('Central Conclusion / Capability Boundary / Reader Decision', augmented)
+        self.assertEqual(1, augmented.count(run226.RUN226_MARKER))
 
     def test_augment_is_idempotent(self):
         once = run226.augment_prompt('BASE')
