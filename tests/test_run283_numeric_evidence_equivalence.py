@@ -37,6 +37,62 @@ class Run283NumericEquivalenceTests(unittest.TestCase):
             ),
         )
 
+    def test_exact_usd_symbol_and_japanese_dollar_notation_are_equivalent(self):
+        failures = ["unsupported numeric claim: 0.75ドル"]
+        draft = "このAPIの処理コストは1回あたり0.75ドルです。"
+        source = "The API processing cost is $0.75 per request."
+        self.assertEqual(
+            [],
+            run283.filter_numeric_false_positives(
+                failures, draft, source, condition_compatible=_compatible
+            ),
+        )
+
+    def test_arc_prize_man_prefix_tail_is_reconstructed_from_same_claim(self):
+        failures = [
+            "unsupported numeric claim: 6,098ドル",
+            "unsupported numeric claim: 8,817ドル",
+        ]
+        draft = (
+            "Standard harnessの計算コストは約2万6,098ドル。"
+            "Provider Adapter harnessでは約1万8,817ドルだった。"
+        )
+        source = (
+            "Standard harness at max reasoning scored 62.7% at a cost of $26,098. "
+            "Provider Adapter at high reasoning scored 99.9% at a cost of $18,817."
+        )
+        self.assertEqual(
+            [],
+            run283.filter_numeric_false_positives(
+                failures, draft, source, condition_compatible=_compatible
+            ),
+        )
+
+    def test_currency_equivalence_never_invents_or_rounds_an_amount(self):
+        failures = ["unsupported numeric claim: 0.75ドル"]
+        draft = "処理コストは0.75ドルです。"
+        source = "The documented processing cost is $0.70 per request."
+        self.assertEqual(
+            failures,
+            run283.filter_numeric_false_positives(
+                failures, draft, source, condition_compatible=_compatible
+            ),
+        )
+
+    def test_currency_equivalence_still_requires_condition_compatibility(self):
+        failures = ["unsupported numeric claim: 0.75ドル"]
+        draft = "処理コストは0.75ドルです。"
+        source = "A different benchmark reports $0.75."
+        self.assertEqual(
+            failures,
+            run283.filter_numeric_false_positives(
+                failures,
+                draft,
+                source,
+                condition_compatible=lambda _c, _e: False,
+            ),
+        )
+
     def test_same_number_in_wrong_semantic_domain_stays_blocked(self):
         pricing_source = "Cache read tokens are billed at 0.1x the base input token price."
         speed_claim = "キャッシュの処理速度は10分の1です。"
