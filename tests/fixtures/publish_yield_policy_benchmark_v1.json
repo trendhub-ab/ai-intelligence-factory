@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "purpose": "Zero-API golden policy cases. Preserve safety/core holds while eliminating known style-only publication holds.",
+  "cases": [
+    {
+      "id": "run51_fact_numeric",
+      "risk_class": "safety",
+      "expected": "block",
+      "reasons": [
+        {"gate": "fact", "message": "unsupported numeric claim: 44 minutes"}
+      ]
+    },
+    {
+      "id": "evidence_primary_insufficient",
+      "risk_class": "safety",
+      "expected": "block",
+      "reasons": [
+        {"gate": "evidence", "message": "primary_evidence_insufficient"}
+      ]
+    },
+    {
+      "id": "publication_headline_overclaim",
+      "risk_class": "safety",
+      "expected": "block",
+      "reasons": [
+        {"gate": "publication", "message": "headline_overclaim"}
+      ]
+    },
+    {
+      "id": "fabricated_personal_experience",
+      "risk_class": "safety",
+      "expected": "block",
+      "reasons": [
+        {"gate": "human_appeal", "message": "fabricated_personal_experience"}
+      ]
+    },
+    {
+      "id": "run51_reader_core",
+      "risk_class": "core_comprehension",
+      "expected": "review",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity)"},
+        {"gate": "human_appeal", "message": "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"}
+      ]
+    },
+    {
+      "id": "reader_core_without_companion",
+      "risk_class": "core_comprehension",
+      "expected": "review",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:multi_axis_reader_weakness (reader_enjoyment/jargon_translation/information_budget/non_engineer_core_clarity)"}
+      ]
+    },
+    {
+      "id": "final_surface_summary_jargon",
+      "risk_class": "final_surface",
+      "expected": "review",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:final_surface_summary_jargon_cluster (なぜ重要？/結論は？)"}
+      ]
+    },
+    {
+      "id": "unknown_reader_reason",
+      "risk_class": "unknown_fail_closed",
+      "expected": "review",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:future_unclassified_signal"}
+      ]
+    },
+    {
+      "id": "publication_score_narrative_consistency",
+      "risk_class": "repairable_review",
+      "expected": "review",
+      "reasons": [
+        {"gate": "publication", "message": "score_narrative_mismatch"}
+      ]
+    },
+    {
+      "id": "historical_ready_dense_report",
+      "risk_class": "style_only",
+      "expected": "publishable",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"}
+      ]
+    },
+    {
+      "id": "style_only_multi_axis",
+      "risk_class": "style_only",
+      "expected": "publishable",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/information_budget/reader_temperature_rhythm)"}
+      ]
+    },
+    {
+      "id": "repetitive_insight_style_debt",
+      "risk_class": "style_only",
+      "expected": "publishable",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:repetitive_insight"}
+      ]
+    },
+    {
+      "id": "mixed_style_and_fact",
+      "risk_class": "safety",
+      "expected": "block",
+      "reasons": [
+        {"gate": "human_appeal", "message": "reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"},
+        {"gate": "fact", "message": "unsupported named fact: invented API"}
+      ]
+    }
+  ]
+}
