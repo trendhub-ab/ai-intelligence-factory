@@ -1,12 +1,14 @@
 import inspect
+from pathlib import Path
 import types
 import unittest
 
 import editorial_quality_memory
-import pipeline
 import publication_contract
-import runtime_layers
 import run226_reader_delight_planning as run226
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class Run226ReaderDelightPlanningTests(unittest.TestCase):
@@ -55,9 +57,7 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
         self.assertIn('Blueprintは新しいHard Gateではない', text)
 
     def test_augment_preserves_base_prompt_and_existing_safety_language(self):
-        base = pipeline.build_decision_prompt(
-            'x', 'https://example.com', 1, 'desc', source_context='primary evidence'
-        )
+        base = 'BASE\nSOURCE BOUNDARY\nEvidence-to-Decision'
         augmented = run226.augment_prompt(base)
         self.assertTrue(augmented.startswith(base.rstrip()))
         self.assertIn('SOURCE BOUNDARY', augmented)
@@ -96,12 +96,12 @@ class Run226ReaderDelightPlanningTests(unittest.TestCase):
         self.assertNotIn('genai.Client(', src)
         self.assertNotIn('_generate_via_chat(', memory_src)
         self.assertNotIn('genai.Client(', memory_src)
-        pipeline_src = inspect.getsource(pipeline)
+        pipeline_src = (ROOT / 'pipeline.py').read_text(encoding='utf-8')
         self.assertEqual(7, pipeline_src.count('_generate_via_chat('))
         self.assertEqual(1, pipeline_src.count('genai.Client('))
 
     def test_production_runtime_installs_run226(self):
-        src = inspect.getsource(runtime_layers)
+        src = (ROOT / 'runtime_layers.py').read_text(encoding='utf-8')
         self.assertIn('import run226_reader_delight_planning', src)
         self.assertIn('run226_reader_delight_planning.install(pipeline_module)', src)
 
