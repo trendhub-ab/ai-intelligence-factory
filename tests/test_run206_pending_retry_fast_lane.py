@@ -35,6 +35,9 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
         self.assertEqual(env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "3")
         self.assertEqual(env[fast_lane.FAST_LANE_ENV], "1")
 
+    def test_fast_lane_article_attempt_ceiling_is_one(self):
+        self.assertEqual(fast_lane.FAST_LANE_ARTICLE_ATTEMPT_LIMIT, 1)
+
     def test_first_503_remains_fast_lane_cooldown_threshold(self):
         self.assertEqual(fast_lane.FAST_LANE_503_COOLDOWN_THRESHOLD, 1)
 
@@ -48,24 +51,35 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
         ranked = fast_lane.prioritize_pending_items(items)
         self.assertEqual([row["id"] for row in ranked], ["score-90", "old-85", "new-85", "missing"])
 
-    def test_stops_immediately_after_first_success(self):
-        pipeline = self._pipeline([None, {"article": "ready"}, {"article": "should-not-run"}])
+    def test_failed_first_article_never_falls_through_to_second_candidate(self):
+        pipeline = self._pipeline([None, {"article": "must-not-run"}])
         items = [
             {"notion_page_id": "p1", "screening_score": 90, "screening_reason": "a", "repo": {"nameWithOwner": "A"}},
             {"notion_page_id": "p2", "screening_score": 85, "screening_reason": "b", "repo": {"nameWithOwner": "B"}},
-            {"notion_page_id": "p3", "screening_score": 80, "screening_reason": "c", "repo": {"nameWithOwner": "C"}},
         ]
 
         result = fast_lane.run_pending_retry_lane(pipeline, items, success_target=1)
 
-        self.assertEqual(result, {"attempted": 2, "succeeded": 1})
-        self.assertEqual(pipeline.generate_intelligence_report.call_count, 2)
+        self.assertEqual(result, {"attempted": 1, "succeeded": 0})
+        self.assertEqual(pipeline.generate_intelligence_report.call_count, 1)
         first = pipeline.generate_intelligence_report.call_args_list[0]
         self.assertEqual(first.args[0]["nameWithOwner"], "A")
         self.assertEqual(first.kwargs["candidate_origin"], "pending_retry")
 
+    def test_stops_immediately_after_first_success(self):
+        pipeline = self._pipeline([{"article": "ready"}, {"article": "should-not-run"}])
+        items = [
+            {"notion_page_id": "p1", "screening_score": 90, "screening_reason": "a", "repo": {"nameWithOwner": "A"}},
+            {"notion_page_id": "p2", "screening_score": 85, "screening_reason": "b", "repo": {"nameWithOwner": "B"}},
+        ]
+
+        result = fast_lane.run_pending_retry_lane(pipeline, items, success_target=1)
+
+        self.assertEqual(result, {"attempted": 1, "succeeded": 1})
+        self.assertEqual(pipeline.generate_intelligence_report.call_count, 1)
+
     def test_dedicated_pending_budget_blocks_provider_call(self):
-        pipeline = self._pipeline([{ "article": "unexpected" }])
+        pipeline = self._pipeline([{"article": "unexpected"}])
         pipeline.PENDING_RETRY_REQUEST_BUDGET = _Budget(False)
         result = fast_lane.run_pending_retry_lane(
             pipeline,
@@ -75,7 +89,7 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
         pipeline.generate_intelligence_report.assert_not_called()
 
     def test_no_available_model_blocks_provider_call(self):
-        pipeline = self._pipeline([{ "article": "unexpected" }])
+        pipeline = self._pipeline([{"article": "unexpected"}])
         pipeline._model_pool_has_session_candidate = lambda pool: False
         result = fast_lane.run_pending_retry_lane(
             pipeline,
