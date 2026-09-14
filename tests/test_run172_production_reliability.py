@@ -193,6 +193,53 @@ class Run172ProductionReliabilityTests(unittest.TestCase):
         self.assertIn("前回稿は全面再生成の素材ではなく正本", instruction)
         self.assertIn("新しい数値・固有名詞・保証表現・外部知識を追加しない", instruction)
 
+    def test_reader_only_feedback_omits_patch_contract_in_assembled_prompt(self):
+        import run208_reader_value_repair as repair
+        import run284_reader_recovery_precision as preservation
+
+        p = fake_pipeline(
+            build_decision_prompt=lambda *a, **k: k.get("quality_feedback", ""),
+            validate_human_appeal_gate=lambda parsed, peers=None: ("ACCEPTABLE", []),
+            should_attempt_dynamic_retry=lambda rows, evidence, origin="new": (False, "base_denied"),
+            GATE_SEVERITY_HARD="HARD",
+            EVIDENCE_SUFFICIENT="SUFFICIENT",
+        )
+        run172.install(p)
+        reader_value_review_bridge.install(p)
+        repair.install(p)
+        preservation.install(p)
+        rows = [{"message": "reader_value_review:dense_report_cluster", "severity": "REVIEW"}]
+        feedback, sections = p.build_dynamic_retry_instruction(rows)
+        prompt = p.build_decision_prompt(quality_feedback=feedback, previous_article="既存の根拠付き原稿")
+        self.assertNotIn("【Run172 Patch Retry Contract】", prompt)
+        self.assertNotIn(preservation.RETRY_PRESERVATION_CONTRACT, prompt)
+        self.assertIn(repair.READER_REPAIR_CONTRACT, prompt)
+        self.assertIn("省略で推奨強度や対象範囲が変わる場合は必ず残す", prompt)
+        self.assertIn("通らなければReadyにしない", prompt)
+        safe = {"state": "SUFFICIENT", "decision_scope_safe": True}
+        self.assertFalse(p.should_attempt_dynamic_retry(rows, {"state": "INSUFFICIENT"}, "new")[0])
+        self.assertTrue(p.should_attempt_dynamic_retry(rows, safe, "new")[0])
+        self.assertFalse(p.should_attempt_dynamic_retry(rows, safe, "new")[0])
+
+    def test_fact_mixed_hard_unknown_and_empty_rows_keep_patch_contract(self):
+        import run208_reader_value_repair as repair
+
+        reader = {"message": "reader_value_review:dense_report_cluster", "severity": "REVIEW"}
+        fact = {"reason_code": "FACT_UNSUPPORTED_CLAIM", "severity": "HARD"}
+        for rows in ([fact], [reader, fact], [{**reader, "severity": "HARD"}],
+                     [{"message": "reader_value_review:unknown", "severity": "REVIEW"}], []):
+            with self.subTest(rows=rows):
+                p = fake_pipeline(
+                    GATE_SEVERITY_HARD="HARD",
+                    should_attempt_dynamic_retry=lambda reason_rows, evidence, origin="new": (False, "base_denied"),
+                )
+                run172.install(p)
+                repair.install(p)
+                feedback, sections = p.build_dynamic_retry_instruction(rows)
+                self.assertIn("【Run172 Patch Retry Contract】", feedback)
+                self.assertNotIn(repair.READER_REPAIR_CONTRACT, feedback)
+                self.assertIn("新しい数値・固有名詞・保証表現・外部知識を追加しない", feedback)
+
     def test_broad_rewrite_guard_detects_full_recomposition_but_not_local_edit(self):
         base = ("根拠のある説明です。次に試す条件を確認します。" * 80)
         local = base.replace("条件", "前提", 1)
