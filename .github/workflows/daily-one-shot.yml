@@ -307,12 +307,12 @@ jobs:
           EYECATCH_GITHUB_BRANCH: "main"
           GEMINI_35_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
-          GEMINI_36_FLASH_DAILY_BUDGET: "18"
+          GEMINI_36_FLASH_DAILY_BUDGET: "0"
           GEMINI_37_FLASH_DAILY_BUDGET: "18"
           GEMINI_38_FLASH_DAILY_BUDGET: "18"
           GEMINI_35_FLASH_DAILY_BUDGET: "18"
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
-          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash"
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.8-flash,gemini-3.7-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: "2"
@@ -394,7 +394,7 @@ jobs:
           retention-days: 14
 
       - name: Explicit post-run fan-out with GH_PAT
-        if: ${{ success() }}
+        if: ${{ success() && inputs.mode != 'pending_retry_validation' }}
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
