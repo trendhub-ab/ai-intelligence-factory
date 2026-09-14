@@ -35,9 +35,9 @@ class Run345ReaderConceptHierarchyTests(unittest.TestCase):
         p = self._pipeline()
         run208.install(p)
         prompt = p.build_decision_prompt()
-        self.assertIn("中核メカニズムを1つまで", prompt)
+        self.assertIn("複数の仕組みや専門語の比較が必要なら残し", prompt)
         self.assertIn("一次情報に名前があることはARTICLEへ列挙する理由にならない", prompt)
-        self.assertIn("方法名、略語、ベンチマーク、内部部品が3個以上", prompt)
+        self.assertIn("必要な名前は個数にかかわらず残す", prompt)
         self.assertIn("Evidence inventory", prompt)
         self.assertIn("Decisionを支える一次情報・重要数値・反証は残す", prompt)
 
@@ -47,7 +47,7 @@ class Run345ReaderConceptHierarchyTests(unittest.TestCase):
         prompt = p.build_decision_prompt()
         self.assertIn("Human Appealは問いかけや比喩の数ではなく", prompt)
         self.assertIn("親しみのための前置きは増やさない", prompt)
-        self.assertIn("技術説明の次は新しい技術名を足さず", prompt)
+        self.assertIn("段落数で機械的に説明を打ち切らない", prompt)
 
     def test_repair_contract_compresses_name_lists_before_moving_them(self):
         p = self._pipeline()
@@ -56,7 +56,7 @@ class Run345ReaderConceptHierarchyTests(unittest.TestCase):
             {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"}
         ])
         self.assertEqual(["ARTICLE"], sections)
-        self.assertIn("Decision理解 → 重要な制約 → Evidence → 中核メカニズム1つ → 実装名", instruction)
+        self.assertIn("Decision理解 → 重要な制約 → Evidence → 判断に必要な中核メカニズム → 実装名", instruction)
         self.assertIn("まず削除・カテゴリ化を検討", instruction)
         self.assertIn("「複数の既存手法」等へ圧縮", instruction)
         self.assertIn("Human Appealのための会話句・雑談・比喩は追加しない", instruction)

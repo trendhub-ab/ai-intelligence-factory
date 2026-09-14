@@ -12,7 +12,7 @@ def test_density_failure_gets_deletion_not_more_explanation_instruction():
     assert "専門語密度を下げる" in text
     assert "不要な名称を捨てる" in text
     assert "専門語を別の専門語で説明しない" in text
-    assert "3個以上" in text
+    assert "個数にかかわらず" in text
 
 
 def test_final_summary_jargon_targets_source_sentences_not_gate_relaxation():

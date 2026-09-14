@@ -2,8 +2,8 @@
 
 Run274 shortens this contract after real Production proved that more editorial prose is
 not automatically better. Run275 makes the subtractive rule explicit enough for weak-model
-fallback: after two dense explanation paragraphs, advance to meaning/constraint/decision
-instead of stacking a third technical block. The contract remains prompt-only and preserves
+fallback. The current Blueprint supersedes its paragraph-count trigger: advance to
+meaning/constraint/decision when the relationship is unclear, not at a fixed count. The contract remains prompt-only and preserves
 verified decision evidence.
 
 Run368 adds a short last-mile reader check at the very end of the prompt. Run48 showed
@@ -28,9 +28,9 @@ ARTICLEはEvidenceの保管庫ではない。Run226で選んだ1本のDiscovery�
 
 優先順位:
 - Evidence上重要な数値・条件・反証・制約は削らない。
-- ただし、Discovery・重要制約・Decisionのどれにも影響しない実装詳細、周辺仕様、同じ核心の言い換えは削るか1文へ圧縮する。
-- 技術Factを2つ以上続ける前に、それらが読者の理解や判断に本当に必要かを確認する。不要なら次のFactを足さない。
-- 同じ節で長い技術説明が2段落続いたら、3段落目の技術説明を足す前に「それが読者に何を意味するか」「どんな制約が残るか」「何を判断するか」のどれかへ進む。見出しで論点が変わる場合は新しい節として扱う。
+- ただし、Discovery・重要制約・Decisionのどれにも影響しない実装詳細、周辺仕様、同じ核心の言い換えは削るか必要な範囲へ圧縮する。
+- 技術Factを追加する前に、それらが読者の理解や判断に本当に必要かを確認する。不要なら次のFactを足さない。
+- 技術説明と読者判断の関係が見えなくなったら、既存Evidenceの範囲で「それが読者に何を意味するか」「どんな制約が残るか」「何を判断するか」のどれかへ進む。段落数で機械的に切り替えたり、必要な説明を打ち切ったりしない。
 - 正式名称・略語・実装名・フラグ名は、それ自体がDiscovery・制約・Decisionに必要でなければ本文に出さない。必要なら最初の1回だけ普通の言葉で役割を添え、名称紹介を連続させない。
 - 専門語は普通の言葉で役割を先に伝え、正式名称は必要になった時だけ出す。別の未説明専門語で説明しない。
 - 各主要セクションは単なる「次の情報」で終わらず、Discovery・意味・制約・Decisionのどれかへ前進させる。
@@ -52,12 +52,12 @@ def final_reader_check_contract() -> str:
     return f"""
 [{RUN368_FINAL_READER_CHECK_MARKER} — 出力直前の必須チェック]
 ARTICLEを返す直前に、次だけを最後に確認する。満たさない場合は新しい情報を足さず、削る・平易に言い換える・順序を直す。
-1. 冒頭2段落だけで、非エンジニアにも「何が起きた／なぜ自分に関係する」が普通の日本語で分かる。
-2. 読者が覚える中核専門概念は原則2〜3個。略語・実装名・規格名の列挙で専門性を演出しない。
-3. 技術説明だけの長い段落を3つ連続させない。2段落続いたら、意味・制約・判断へ進む。
+1. 冒頭から、非エンジニアにも「何が起きた／なぜ自分に関係する」が普通の日本語で分かる。
+2. 読者が覚える中核専門概念はEditorial Blueprintの核心・制約・Reader Decisionに必要なものを選び、個数で制限しない。略語・実装名・規格名の列挙で専門性を演出しない。
+3. 技術説明が意味・制約・判断へつながっているか確認し、関係が伝わらない箇所だけ順序や表現を直す。段落数による強制切替はしない。
 4. 判断に不要な実装細部、重複、報告書調の前置きは削る。Evidence・重要数値・条件・反証・Decisionは削らない。
 5. 平易化のために新しいFact、因果、数値、利用経験、保証、競合情報を作らない。Source/Evidenceの断定範囲を超えない。
-6. 最後に「要するに何の話か」と「私なら次に何をするか」が、それぞれ1文で説明できる状態にする。
+6. 最後に「要するに何の話か」と「私なら次に何をするか」が、必要な範囲で明確に説明できる状態にする。
 
 Reader要件とFact/Evidence安全境界が衝突する場合は、必ずFact/Evidence安全境界を優先する。読みやすさを理由に根拠を強めたり欠落を埋めたりしない。
 """.strip()

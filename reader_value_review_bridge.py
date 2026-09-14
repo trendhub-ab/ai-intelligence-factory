@@ -90,9 +90,9 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
     alignment and reader-density defects coexist, align the reader-visible urgency first
     across the whole article, then compress repetition/density without changing evidence.
 
-    Run405 makes reader-density repair operational rather than aspirational: preserve the
-    evidence-bearing core, but cap visible technical enumeration and force a short decision
-    bridge after each retained mechanism so a single bounded retry can actually reduce density.
+    Reader-density repair follows the current Editorial Blueprint: retain all mechanisms,
+    terms and conditions needed for a reader's decision; remove irrelevant inventory and
+    repetition without numeric paragraph, concept or enumeration quotas.
     """
     rows = list(reason_rows or [])
     codes = {str(row.get("reason_code") or "") for row in rows}
@@ -124,7 +124,7 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
         )
     if getattr(pipeline_module, "REASON_CODE_APPEAL_DECISION_VOICE_LOSS", "") in codes or "decision_voice_missing" in messages:
         additions.append(
-            "Decision Voice修正では、架空の経験・感情を追加せず、既存Evidenceから導ける編集者自身の判断を1文だけ復元し、"
+            "Decision Voice修正では、架空の経験・感情を追加せず、既存Evidenceから導ける編集者自身の判断を必要な範囲で復元し、"
             "限定検証・比較・待機・見送り等の具体的な次Actionへ接続してください。『注視する』だけへの置換は禁止です。"
         )
     if "repetitive_insight" in messages:
@@ -135,22 +135,22 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
     if "dense_report_cluster" in messages:
         additions.append(
             "Dense report修正では、Evidence・数値・制約を削らず、重複説明・汎用前置き・Decisionに不要な実装列挙だけを"
-            "削除または平易な1文へ置換してください。段落を短くし、同じ論点は1か所だけに置いてください。"
+            "削除または平易な表現へ置換してください。段落を短くし、同じ論点は1か所だけに置いてください。"
             "新しい観点を足して長文化せず、記事全体の意味を変える全面書き換えもしないでください。"
         )
     if reader_density:
         additions.append(
-            "Run405 Reader Density Compression：前稿の技術説明を機械的に保持しないでください。読者のDecisionを変える中核メカニズムは"
-            "1つだけ本文前半で説明し、その具体的挙動・列挙は原則3点以内に圧縮します。正式名称・コメント文字列・内部部品名・"
-            "実装手順が4個以上連続する場合、各名称の違いがDecisionを変えるEvidenceがないものは削除または意味カテゴリへ統合してください。"
+            "Run405 Reader Density Compression：Editorial BlueprintのCentral Conclusion / Capability Boundary / Reader Decisionを基準に、"
+            "読者判断に必要な仕組み・具体的挙動・専門語・条件は残してください。中核メカニズムや列挙を固定個数へ圧縮せず、"
+            "正式名称・コメント文字列・内部部品名・実装手順のうち、核心・重要制約・判断に不要なものだけ削除または意味カテゴリへ統合してください。"
         )
         additions.append(
-            "Run405 Decision Bridge：残した技術段落の直後には、新しい事実を足さず『つまり読者の判断では何が変わるか』を普通の日本語で"
-            "1文だけ置いてください。同じ危険性・重要性を後段でもう一度説明しないでください。本文後半は再説明ではなく、重要制約と次Actionへ進みます。"
+            "Run405 Decision Bridge：技術説明と読者判断の関係が伝わらない箇所だけ、同じEvidenceの意味を普通の日本語で接続してください。"
+            "各段落の直後に説明文を機械的に追加せず、既に伝わる判断は繰り返しません。新しい事実は足さず、重要制約と次Actionへ進みます。"
         )
         additions.append(
-            "Run405 Paragraph Budget：1段落に新規専門概念を2個以上持ち込まないでください。専門語が必要なら初出の役割説明を1回だけ残し、"
-            "以後は同じ語を再定義しません。箇条書きはDecisionに必要な条件または挙動だけにし、4項目以上なら3項目以内へ統合してください。"
+            "Run405 Paragraph Budget：段落の文章量・専門概念・箇条書きの項目数は、読者が核心・制約・判断を理解するために必要かで決めます。"
+            "必要な専門語は初出で役割を平易に示し、不要な再定義や重複は削ります。個数上限のために必要な説明・条件を落とさないでください。"
         )
     if "multi_axis_reader_weakness" in messages or "non_engineer_access_failure" in messages:
         additions.append(

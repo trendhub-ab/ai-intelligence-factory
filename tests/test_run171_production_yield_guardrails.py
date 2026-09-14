@@ -35,7 +35,7 @@ class Run171ProductionYieldGuardrailsTests(unittest.TestCase):
         ]
         guidance = bridge._retry_yield_guardrails(pipeline, rows)
         self.assertIn("Decision整合修正", guidance)
-        self.assertIn("編集者自身の判断を1文だけ復元", guidance)
+        self.assertIn("編集者自身の判断を必要な範囲で復元", guidance)
         self.assertIn("重複文を削除または1箇所へ統合", guidance)
         self.assertIn("新しい説明や比喩を足さず", guidance)
 
