@@ -53,21 +53,41 @@ def test_reader_dense_report_gets_reader_code_not_decision_voice():
     rows = gr.map_gate_reasons("human_appeal", [message])
     assert rows[0]["reason_code"] == gr.REASON_CODE_READER_DENSE_REPORT
     assert rows[0]["reason_code"] != gr.REASON_CODE_APPEAL_DECISION_VOICE_LOSS
-    assert rows[0]["severity"] == gr.GATE_SEVERITY_REVIEW
+    assert rows[0]["severity"] == gr.GATE_SEVERITY_SOFT
+    assert gr.gate_reason_disposition(rows) == gr.GATE_DISPOSITION_PASS_WITH_WARNINGS
 
 
 def test_reader_specific_codes_cover_current_production_labels():
     cases = {
-        "reader_value_review:repetitive_insight": gr.REASON_CODE_READER_REPETITIVE_INSIGHT,
-        "reader_value_review:multi_axis_reader_weakness (accessibility/jargon_translation)": gr.REASON_CODE_READER_MULTI_AXIS_WEAKNESS,
-        "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)": gr.REASON_CODE_READER_NON_ENGINEER_ACCESS,
-        "reader_value_review:final_surface_summary_jargon_cluster (何が出た？/なぜ重要？)": gr.REASON_CODE_READER_FINAL_SURFACE,
-        "reader_value_review:future_reader_signal": gr.REASON_CODE_READER_VALUE_OTHER,
+        "reader_value_review:repetitive_insight": (
+            gr.REASON_CODE_READER_REPETITIVE_INSIGHT,
+            gr.GATE_SEVERITY_SOFT,
+        ),
+        "reader_value_review:multi_axis_reader_weakness (accessibility/jargon_translation)": (
+            gr.REASON_CODE_READER_MULTI_AXIS_WEAKNESS,
+            gr.GATE_SEVERITY_REVIEW,
+        ),
+        "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull/information_budget)": (
+            gr.REASON_CODE_READER_MULTI_AXIS_WEAKNESS,
+            gr.GATE_SEVERITY_SOFT,
+        ),
+        "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)": (
+            gr.REASON_CODE_READER_NON_ENGINEER_ACCESS,
+            gr.GATE_SEVERITY_REVIEW,
+        ),
+        "reader_value_review:final_surface_summary_jargon_cluster (何が出た？/なぜ重要？)": (
+            gr.REASON_CODE_READER_FINAL_SURFACE,
+            gr.GATE_SEVERITY_REVIEW,
+        ),
+        "reader_value_review:future_reader_signal": (
+            gr.REASON_CODE_READER_VALUE_OTHER,
+            gr.GATE_SEVERITY_REVIEW,
+        ),
     }
-    for message, expected in cases.items():
-        assert gr.reason_code(message, "human_appeal") == expected, message
+    for message, (expected_code, expected_severity) in cases.items():
+        assert gr.reason_code(message, "human_appeal") == expected_code, message
         rows = gr.map_gate_reasons("human_appeal", [message])
-        assert rows[0]["severity"] == gr.GATE_SEVERITY_REVIEW, message
+        assert rows[0]["severity"] == expected_severity, message
 
 
 def test_reader_code_round_trip_infers_human_appeal_gate():
@@ -77,7 +97,8 @@ def test_reader_code_round_trip_infers_human_appeal_gate():
     }
     normalized = gr.normalize_gate_reason_rows([row])
     assert normalized[0]["gate"] == "human_appeal"
-    assert normalized[0]["severity"] == gr.GATE_SEVERITY_REVIEW
+    assert normalized[0]["severity"] == gr.GATE_SEVERITY_SOFT
+    assert gr.gate_reason_disposition(normalized) == gr.GATE_DISPOSITION_PASS_WITH_WARNINGS
 
 
 def test_real_decision_voice_still_maps_to_appeal_decision_voice_loss():
