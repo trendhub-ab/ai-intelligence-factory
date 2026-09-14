@@ -90,7 +90,7 @@ ARTICLEは専門知識を見せる順番ではなく、読者が判断できる�
 READER_REPAIR_CONTRACT = r"""
 【Reader Repair｜Factを固定した読者導線修正】
 この修正では新しい調査・新しい事実追加をしない。前稿のFact/Evidenceを正本として、読者導線だけを修正する。
-・Evidence URL、一次情報の意味、Decision/Score/Action、根拠付き数値・単位・固有名詞・条件を変えない。新しい数値、製品名、API名、比較対象、使用経験、感情、因果、保証表現を追加しない。
+・Evidence URL、一次情報の意味、Decision/Score/Action、判断を支える数値・単位・固有名詞・条件を変えない。新しい数値、製品名、API名、比較対象、使用経験、感情、因果、保証表現を追加しない。
 ・修正の優先順位は Decision理解 → 重要な制約 → Evidence → 判断に必要な中核メカニズム → 実装名の順。下位情報を残すために上位の理解を犠牲にしない。
 ・前稿の後半に既に存在するDecision/Actionは意味を変えずに読者が判断を理解できる位置へ前倒ししてよい。問いかけ・比喩がDecision到達を遅らせている場合は削除または必要な範囲へ圧縮する。
 ・Reader Repair後の前半は、①何が変わった ②今どう判断する ③その判断を変えうる重要な制約、の3点を優先する。導入を長くしない。
@@ -98,6 +98,8 @@ READER_REPAIR_CONTRACT = r"""
 ・説明する仕組みはEditorial Blueprintの核心・制約・読者判断に必要かで選ぶ。必要な仕組みを個数や文字数の上限で削らない。Decisionに不要な専門語・実装識別子は後段へ移すのではなく、まず削除・カテゴリ化を検討する。
 ・方法名、略語、ベンチマーク、内部部品の列挙は、各名称がDecisionを変えない限り「複数の既存手法」等へ圧縮する。専門語を説明するための新しい専門語は禁止する。
 ・記事全体で新規概念を増やさず、既存Evidenceを「何を意味するか → なぜ判断に効くか → どんな制約があるか」の順へ並べ替える。Human Appealのための会話句・雑談・比喩は追加しない。
+・保護するのは根拠と判断の意味であり、前稿の文面・段落順・見出し・列挙の全項目ではない。Reader指摘の解消に必要な範囲で段落・見出しを再編し、Decisionを前倒ししてよい。
+・判断・重要制約・比較・反証に不要なベンチマーク名と値は、本文から省略してよい。ただし根拠資料自体は変更せず、残す数値の単位・測定条件・対象を切り離さない。省略で推奨強度や対象範囲が変わる場合は必ず残す。
 ・Evidenceを落とさず、情報の置き場所と粒度を変えて読みやすくする。修正後も事実Gate、Evidence Gate、Publication Gate、Reader Gateをすべて再判定し、通らなければReadyにしない。
 """.strip()
 
@@ -123,6 +125,11 @@ def _reader_only_repairable(rows: list[dict], labels: tuple[str, ...], hard_seve
         if not any(label in message for label in labels):
             return False
     return True
+
+
+def is_reader_only_repair(rows: list[dict], hard_severity: str = "HARD") -> bool:
+    """Shared instruction classification; this does not authorize or spend a retry."""
+    return _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard_severity)
 
 
 def _fresh_evidence_safe(pipeline_module: Any, evidence_result: dict | None) -> bool:
@@ -244,7 +251,7 @@ def install(pipeline_module: Any) -> Any:
         rows = list(reason_rows or [])
         instruction, sections = original_retry_instruction(rows)
         hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
-        reader_only = _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard)
+        reader_only = is_reader_only_repair(rows, hard)
         if reader_only:
             instruction = str(instruction).rstrip() + "\n\n" + READER_REPAIR_CONTRACT
             targeted = _run359_targeted_repair(rows)

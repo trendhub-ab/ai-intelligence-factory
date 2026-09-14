@@ -313,6 +313,13 @@ def install(pipeline_module: Any) -> Any:
 
     def build_retry_with_patch_contract(reason_rows: list[dict]):
         instruction, sections = original_build_retry(reason_rows)
+        # Use the dedicated Reader owner's exact classifier. Fact, mixed and unknown
+        # reasons keep the local-edit contract; classification grants no retry.
+        from run208_reader_value_repair import is_reader_only_repair
+
+        hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
+        if is_reader_only_repair(list(reason_rows or []), hard):
+            return instruction, sections
         instruction = instruction.rstrip() + (
             "\n【Run172 Patch Retry Contract】\n"
             "・前回稿は全面再生成の素材ではなく正本です。指摘対象の文・管理項目だけを置換し、それ以外の段落・見出し・Evidence・"
