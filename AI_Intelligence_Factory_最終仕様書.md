@@ -206,6 +206,12 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 - Provider障害と記事品質不良を分離する。
 - 無料noteの品質を意図的に落として有料転換を作らない。無料記事自体が集客・信頼形成の商品入口である。
 
+Writer前には**Editorial Blueprint**を内部生成し、少なくとも `Target Reader / Reader Question / Why Now / Central Conclusion / Evidence Anchor / Capability Boundary / Terminology Budget / Reader Decision` を固定する。これは本文の固定見出しや新しいHard Gateではなく、Writerを正しい編集方向へ拘束して後段Gate同士の修復競合を減らす生成前契約である。
+
+Capability Boundaryでは「できる / できない / まだ分からない」を分離する。「できない」はSOURCE BOUNDARYに禁止・非対応・制約が明示される場合だけとし、Evidenceがないだけの事項は「未確認 / まだ分からない」と扱う。
+
+**Editorial Quality Memory v1** は、成功/失敗した編集パターンをリポジトリ内の決定論的ルールとして保持する。Production原稿、個人情報、Provider応答を可変DBへ保存せず、追加APIを要求しない。Quality MemoryはHard Gateや事実源ではなく、Fact / Evidence / Decision / Publication Contractを常に優先する。Quality Memory自体はPublication Policy fingerprintの対象に含める。
+
 Eyecatchは現行runtime ordering・emphasis scale・Pillow互換性を実コードとsemantic guardで保護する。過去の描画方式やRun番号を仕様成立条件にしない。
 
 ---
@@ -384,10 +390,11 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 
 ## 12. Current-state summary
 
-2026-09-13時点のFactoryは、次の状態を正式な基準とする。
+2026-09-14時点のFactoryは、次の状態を正式な基準とする。
 
 - **Production:** Geminiベース既存ロジック
 - **Primary / Quality:** Gemini 3.8 / Gemini 3.7の役割分離を維持
+- **Article generation:** Writer前にEditorial Blueprint + deterministic Editorial Quality Memory v1を適用
 - **Groq coexistence:** 終了
 - **X logic:** Productionリポジトリへ統合済み（`x_discovery` / `x_intelligence`、`is_evidence=false`・ゼロプロバイダー安全契約を維持）
 - **Active sources:** GitHub / ArXiv / HackerNews / OfficialVendor
