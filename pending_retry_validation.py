@@ -9,9 +9,11 @@ Safety contract:
 - installs the exact current Production article/runtime/publication stack, including
   current precision/recovery overlays, before applying fast-lane-only controls;
 - proves runtime-state writability before any Gemini reservation;
-- caps this fast lane at three Pending Retry requests so provider/model fallback can
-  still complete the same article; this is an explicit fast-lane cap and does not
-  raise any persistent per-model or global provider safety ceiling;
+- caps this fast lane at four Pending Retry requests: at most three initial-generation
+  sends allow the reproduced 503 -> 503 -> success fallback sequence, and one final
+  request is reserved for a Production-authorized post-generation quality repair;
+  this is an explicit fast-lane cap and does not raise any persistent per-model,
+  full-Daily Deep Dive, or global provider safety ceiling;
 - attempts exactly one Pending Retry article candidate per validation run and never
   advances to a second article when the first candidate fails or a provider is down;
 - cools a model for the rest of this fast-lane run after its first HTTP 503;
@@ -27,13 +29,24 @@ Safety contract:
 Run356 fixes a parity defect proven by live ONE-SHOT #45: this fast lane previously
 installed only the historical runtime stack, so newer Production overlays such as
 Run349/350/351/352 were absent even though this module claimed Production parity.
+
+The 2026-09-15 reserve fix is deliberately narrower than a provider-budget redesign.
+The live one-article validation proved that two transient 503 fallbacks plus one
+successful generation consumed all three dedicated Pending Retry sends before the
+Production quality stack could perform its one justified repair. The minimum bounded
+cap for that reproduced path is therefore four sends. Provider failures still consume
+the existing global, persistent and Deep Dive counters; no failed request is refunded.
 """
 from __future__ import annotations
 
 import os
 from typing import Any, MutableMapping
 
-FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = 3
+FAST_LANE_INITIAL_GENERATION_SEND_CEILING = 3
+FAST_LANE_POST_GENERATION_REPAIR_RESERVE = 1
+FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = (
+    FAST_LANE_INITIAL_GENERATION_SEND_CEILING + FAST_LANE_POST_GENERATION_REPAIR_RESERVE
+)
 FAST_LANE_ARTICLE_ATTEMPT_LIMIT = 1
 FAST_LANE_503_COOLDOWN_THRESHOLD = 1
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
@@ -95,12 +108,14 @@ def run_pending_retry_lane(
         logger = getattr(pipeline_module, "logger", None)
         if logger is not None:
             logger.info(
-                "[PENDING RETRY FAST LANE] rank=%s score=%s candidate=%s article_attempt=%s/%s",
+                "[PENDING RETRY FAST LANE] rank=%s score=%s candidate=%s article_attempt=%s/%s request_cap=%s repair_reserve=%s",
                 rank,
                 item.get("screening_score"),
                 name,
                 attempted + 1,
                 article_attempt_limit,
+                FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
+                FAST_LANE_POST_GENERATION_REPAIR_RESERVE,
             )
 
         attempted += 1
@@ -185,8 +200,13 @@ def main() -> int:
         article_attempt_limit=FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
     )
     pipeline.logger.info(
-        "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s succeeded=%s article_limit=%s",
-        len(items), result["attempted"], result["succeeded"], FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
+        "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s succeeded=%s article_limit=%s request_cap=%s repair_reserve=%s",
+        len(items),
+        result["attempted"],
+        result["succeeded"],
+        FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
+        FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
+        FAST_LANE_POST_GENERATION_REPAIR_RESERVE,
     )
     pipeline.finalize_deep_dive_observability(funnel)
     return 0
