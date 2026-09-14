@@ -28,12 +28,14 @@ class Run207PendingRetryRepairReserveTests(unittest.TestCase):
             recorded=unavailable,
         )
 
-    def test_fast_lane_request_budget_is_bounded_to_three(self):
+    def test_fast_lane_request_budget_is_bounded_to_four_with_one_repair_reserved(self):
         env = {}
         result = fast_lane.prepare_fast_lane_env(env)
         self.assertIs(result, env)
-        self.assertEqual(env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "3")
-        self.assertEqual(fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET, 3)
+        self.assertEqual(env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "4")
+        self.assertEqual(fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET, 4)
+        self.assertEqual(fast_lane.FAST_LANE_INITIAL_GENERATION_SEND_CEILING, 3)
+        self.assertEqual(fast_lane.FAST_LANE_POST_GENERATION_REPAIR_RESERVE, 1)
 
     def test_default_production_503_policy_remains_two_occurrences(self):
         pipeline = self._pipeline()
@@ -100,7 +102,7 @@ class Run207PendingRetryRepairReserveTests(unittest.TestCase):
             clear=True,
         ):
             fast_lane.prepare_fast_lane_env()
-            self.assertEqual(os.environ["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "3")
+            self.assertEqual(os.environ["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "4")
 
 
 if __name__ == "__main__":
