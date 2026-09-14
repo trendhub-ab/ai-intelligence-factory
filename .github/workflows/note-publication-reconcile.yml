@@ -1,0 +1,62 @@
+name: Note Publication Reconcile
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 12:20 JST daily: lightweight read-only note RSS check + Notion bookkeeping.
+    - cron: '20 3 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'note_publication_reconcile.py'
+      - 'note_ready_sync.py'
+      - 'tests/test_note_publication_reconcile.py'
+      - '.github/workflows/note-publication-reconcile.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-publication-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependency
+        run: pip install requests
+
+      - name: Zero-model reconciliation tests
+        run: python -m unittest tests.test_note_publication_reconcile -v
+
+      - name: Reconcile human-published note articles into Notion
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+          NOTE_USER_NAME: 'trendhub_biz'
+        run: |
+          set -euo pipefail
+          result="$(python note_publication_reconcile.py)"
+          echo "$result"
+          {
+            echo '### note publication reconciliation'
+            echo '```json'
+            echo "$result"
+            echo '```'
+            echo '- publication remains human-only'
+            echo '- model calls: 0'
+          } >> "$GITHUB_STEP_SUMMARY"
