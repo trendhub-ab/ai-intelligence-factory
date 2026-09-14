@@ -138,7 +138,7 @@ class Run275ReaderSignalCorrectnessTests(unittest.TestCase):
         rhythm = run228.reader_rhythm_contract()
         self.assertIn("読者の困りごと・迷い・選択", delight)
         self.assertIn("最初の段落を製品名・略語・実装名の説明から始めない", delight)
-        self.assertIn("長い技術説明が2段落続いたら", rhythm)
+        self.assertIn("段落数で機械的に切り替えたり", rhythm)
         self.assertIn("正式名称・略語・実装名・フラグ名", rhythm)
         self.assertIn("回数ノルマを設けない", delight)
         self.assertIn("回数ノルマを設けない", rhythm)

@@ -22,11 +22,11 @@ class Run405ReaderDensityCompressionTests(unittest.TestCase):
         ]
         text = bridge._retry_yield_guardrails(self._pipeline(), rows)
         self.assertIn("Run405 Reader Density Compression", text)
-        self.assertIn("1つだけ本文前半", text)
-        self.assertIn("原則3点以内", text)
+        self.assertIn("読者判断に必要な仕組み・具体的挙動・専門語・条件は残し", text)
+        self.assertIn("中核メカニズムや列挙を固定個数へ圧縮せず", text)
         self.assertIn("Run405 Decision Bridge", text)
         self.assertIn("Run405 Paragraph Budget", text)
-        self.assertIn("新規専門概念を2個以上持ち込まない", text)
+        self.assertIn("個数上限のために必要な説明・条件を落とさない", text)
 
     def test_score_plus_density_keeps_score_fixed_and_orders_repairs(self):
         rows = [

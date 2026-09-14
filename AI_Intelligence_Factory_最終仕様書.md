@@ -208,6 +208,10 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 
 Writer前には**Editorial Blueprint**を内部生成し、少なくとも `Target Reader / Reader Question / Why Now / Central Conclusion / Evidence Anchor / Capability Boundary / Terminology Budget / Reader Decision` を固定する。これは本文の固定見出しや新しいHard Gateではなく、Writerを正しい編集方向へ拘束して後段Gate同士の修復競合を減らす生成前契約である。
 
+Quality Retry / Reader Repair / Reader Rhythm / 出力直前チェックも同じBlueprintに従う。中核メカニズム1つ、列挙3点以内、1段落2概念未満、冒頭600文字、固定段落数での説明切替などの機械的な編集上限は使用しない。文章量・専門語・構成は核心・重要制約・読者判断の理解に必要かで決め、必要な複数の仕組み・比較条件・正式名称を個数合わせで削らない。技術説明と判断の関係が伝わらない箇所だけ接続を直し、各段落への定型的な説明文追加はしない。
+
+この統一はpromptの編集指示に限定する。通常Quality Retryと専用Reader Repairの所有権・回数制限、Evidenceの実行条件、Publication / Fact / Evidence / Reader Gateの判定は変更せず、修正後も全Gateを再判定する。固定ノルマの撤去だけでHuman Appealの改善や実記事の合格を証明したとは扱わない。
+
 Capability Boundaryでは「できる / できない / まだ分からない」を分離する。「できない」はSOURCE BOUNDARYに禁止・非対応・制約が明示される場合だけとし、Evidenceがないだけの事項は「未確認 / まだ分からない」と扱う。
 
 **Editorial Quality Memory v1** は、成功/失敗した編集パターンをリポジトリ内の決定論的ルールとして保持する。Production原稿、個人情報、Provider応答を可変DBへ保存せず、追加APIを要求しない。Quality MemoryはHard Gateや事実源ではなく、Fact / Evidence / Decision / Publication Contractを常に優先する。Quality Memory自体はPublication Policy fingerprintの対象に含める。

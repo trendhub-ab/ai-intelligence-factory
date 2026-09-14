@@ -11,8 +11,9 @@ instructions do not solve the problem. The base prompt already required 2-3 conc
 plain-language bridges and reader proximity, yet three unrelated articles still became
 jargon-heavy. The missing authority was a discard hierarchy: which technical details
 must lose when reader comprehension and evidence depth compete. This layer therefore
-keeps the same gates, but makes Decision comprehension, limitation fidelity and one
-central mechanism outrank implementation-name inventory.
+keeps the same gates, but makes Decision comprehension, limitation fidelity and necessary
+mechanisms outrank implementation-name inventory. Numeric style quotas are superseded
+by the current Editorial Blueprint in both first-pass and repair instructions.
 
 Run354 keeps article_validation semantically aligned with fresh Production for Reader-only
 retry authorization. article_validation remains read-only because persistence is controlled by
@@ -65,22 +66,22 @@ _FRESH_EQUIVALENT_ORIGINS = frozenset({"new", "article_revalidation"})
 
 READER_PATH_CONTRACT = r"""
 【Reader Path Contract｜非エンジニアが迷子にならない順序】
-ARTICLEは専門知識を見せる順番ではなく、読者が判断できる順番で書く。固定見出しや定型句は使わず、次の優先順位を他のReader/Style指示より上位の実行原則として扱う。
+ARTICLEは専門知識を見せる順番ではなく、読者が判断できる順番で書く。固定見出しや定型句は使わず、Editorial Blueprintと同じ読者判断基準で、次の優先順位を適用する。文章量・専門語・構成は個数ではなく理解に必要かで決める。
 
 【実行優先順位】
-1. Decision理解：冒頭3段落以内に①何が変わった ②それが読者の仕事・利用判断にどう関係する ③現時点の暫定判断（試す／比較する／待つ／見送る等）を置く。
-2. 制約保持：重要な制約・対象範囲・例外・未検証条件は削らず、普通の日本語で1〜2文に圧縮してDecisionの近くに残す。制約を脚注扱いで最後へ追いやらない。
+1. Decision理解：冒頭で読者が迷わない位置に①何が変わった ②それが読者の仕事・利用判断にどう関係する ③現時点の暫定判断（試す／比較する／待つ／見送る等）を置く。
+2. 制約保持：重要な制約・対象範囲・例外・未検証条件は削らず、意味を欠落させない普通の日本語でDecisionの近くに残す。制約を脚注扱いで最後へ追いやらない。
 3. Evidence保持：Decisionを支える一次情報・重要数値・反証は残す。ただしEvidenceの深さを技術名の多さで表現しない。
-4. 中核メカニズム：読者が「なぜそうなるか」を理解するための仕組みは原則1つを主役にする。2つ目以降は、それがないとDecisionか重要な制約を誤解する場合だけ本文へ入れる。
+4. 中核メカニズム：読者が「なぜそうなるか」を理解するための仕組みはCentral Conclusion / Capability Boundary / Reader Decisionの理解に必要な範囲で説明する。複数の仕組みや専門語の比較が必要なら残し、個数上限で削らない。
 5. 実装名・略語・ベンチマーク名：Decisionも制約も変えない名前は本文から外すか、「複数の既存手法」「内部の圧縮方式」等の意味カテゴリへ圧縮する。一次情報に名前があることはARTICLEへ列挙する理由にならない。
 
 ・初稿の段階でReader Gateを後工程へ丸投げしない。専門名を残すか迷ったら、Decisionまたは重要制約を変える名前だけを残し、それ以外は削るか意味カテゴリへ圧縮する。
-・読者が前半で覚える中心メッセージは原則3つまで。①変化 ②判断 ③判断を変えうる重要な制約を優先する。
-・冒頭約600文字では中核メカニズムを1つまでに絞り、Decisionに不要なAPI名・内部構造・精度名・ベンチマーク条件・実装識別子を並べない。名称より「何をする仕組みか」を先に書く。
+・読者が前半で必要とするメッセージはReader Questionと判断への関係で選ぶ。①変化 ②判断 ③判断を変えうる重要な制約を優先する。
+・冒頭の説明は核心と判断の理解に必要な範囲にし、Decisionに不要なAPI名・内部構造・精度名・ベンチマーク条件・実装識別子を並べない。名称より「何をする仕組みか」を先に書く。
 ・専門語を説明するために別の未説明専門語を持ち込まない。最初の専門語・略語は同じEvidenceの範囲で一度だけ普通の日本語に言い換える。新事実は足さない。
 ・問いかけや比喩は、それだけではReader Bridgeとみなさない。Human Appealは問いかけや比喩の数ではなく、「自分に関係する理由」「判断の速さ」「具体的な次Action」で作る。親しみのための前置きは増やさない。
-・高密度な技術説明を2段落続けない。技術説明の次は新しい技術名を足さず、その事実が読者の判断・制約・行動のどれを変えるかへ戻る。
-・方法名、略語、ベンチマーク、内部部品が3個以上並びそうなら、その列挙をEvidence inventoryとみなし本文から退避する。例外は、個々の名前の違い自体がDecisionを変える場合だけ。
+・技術説明と読者の判断・制約・行動との関係が見えなくなった箇所は、既存Evidenceの意味へ戻す。段落数で機械的に説明を打ち切らない。
+・方法名、略語、ベンチマーク、内部部品の列挙は、個々の違いが核心・制約・Decisionに必要かを確認する。不要なEvidence inventoryは削除または意味カテゴリへ統合し、必要な名前は個数にかかわらず残す。
 ・「面白さ」は架空の体験・感情・因果で作らない。Evidence内の意外な差分か判断の分かれ目を1つ選び、そこを記事の軸にする。
 ・本文後半でも新しい専門概念を次々追加しない。後半は前半のDecisionを、Evidence・条件・比較・次Actionで精密化する。
 ・タイトルは日本語として閉じた一文にし、引用符を対応させ、専門語だけのタイトルにしない。
@@ -90,11 +91,11 @@ READER_REPAIR_CONTRACT = r"""
 【Reader Repair｜Factを固定した読者導線修正】
 この修正では新しい調査・新しい事実追加をしない。前稿のFact/Evidenceを正本として、読者導線だけを修正する。
 ・Evidence URL、一次情報の意味、Decision/Score/Action、根拠付き数値・単位・固有名詞・条件を変えない。新しい数値、製品名、API名、比較対象、使用経験、感情、因果、保証表現を追加しない。
-・修正の優先順位は Decision理解 → 重要な制約 → Evidence → 中核メカニズム1つ → 実装名の順。下位情報を残すために上位の理解を犠牲にしない。
-・前稿の後半に既に存在するDecision/Actionは意味を変えずに冒頭3段落以内へ前倒ししてよい。問いかけ・比喩がDecision到達を遅らせている場合は削除または1文へ圧縮する。
+・修正の優先順位は Decision理解 → 重要な制約 → Evidence → 判断に必要な中核メカニズム → 実装名の順。下位情報を残すために上位の理解を犠牲にしない。
+・前稿の後半に既に存在するDecision/Actionは意味を変えずに読者が判断を理解できる位置へ前倒ししてよい。問いかけ・比喩がDecision到達を遅らせている場合は削除または必要な範囲へ圧縮する。
 ・Reader Repair後の前半は、①何が変わった ②今どう判断する ③その判断を変えうる重要な制約、の3点を優先する。導入を長くしない。
-・前稿にある重要な制約・対象範囲・例外・未検証条件は平易化のために削除してはいけない。意味を保った普通の日本語へ置換し、Decisionの直後または同じ判断段落に1〜2文で残す。
-・冒頭約600文字では中核メカニズムを1つまでにする。Decisionに不要な専門語・実装識別子は後段へ移すのではなく、まず削除・カテゴリ化を検討する。
+・前稿にある重要な制約・対象範囲・例外・未検証条件は平易化のために削除してはいけない。意味を保った普通の日本語へ置換し、Decisionの直後または同じ判断段落に、意味を欠落させない文章量で残す。
+・説明する仕組みはEditorial Blueprintの核心・制約・読者判断に必要かで選ぶ。必要な仕組みを個数や文字数の上限で削らない。Decisionに不要な専門語・実装識別子は後段へ移すのではなく、まず削除・カテゴリ化を検討する。
 ・方法名、略語、ベンチマーク、内部部品の列挙は、各名称がDecisionを変えない限り「複数の既存手法」等へ圧縮する。専門語を説明するための新しい専門語は禁止する。
 ・記事全体で新規概念を増やさず、既存Evidenceを「何を意味するか → なぜ判断に効くか → どんな制約があるか」の順へ並べ替える。Human Appealのための会話句・雑談・比喩は追加しない。
 ・Evidenceを落とさず、情報の置き場所と粒度を変えて読みやすくする。修正後も事実Gate、Evidence Gate、Publication Gate、Reader Gateをすべて再判定し、通らなければReadyにしない。
@@ -146,12 +147,12 @@ def _run359_targeted_repair(rows: list[dict]) -> str:
     if any(label in messages for label in _READER_DENSITY_LABELS):
         directives.append(
             "【実行必須：専門語密度を下げる】前稿を段落ごとに見直し、Decision・重要制約・一次Evidenceの意味を変えない専門名、略語、内部部品名、方式名は削除する。"
-            "同じ段落に専門名・略語が3個以上残る場合、個々の名称の違いがDecisionを変える根拠を本文中で示せないものは意味カテゴリへ統合する。"
+            "専門名・略語は個数にかかわらず、個々の名称の違いが核心・重要制約・Decisionの理解に必要かを確認し、不要なものだけ意味カテゴリへ統合する。"
             "これは『説明を追加する』作業ではなく『不要な名称を捨てる』作業である。"
         )
         directives.append(
-            "【実行必須：専門語の連鎖を切る】専門語を別の専門語で説明しない。最初に必要な専門概念は普通の日本語1文で意味を置き、その直後は新しい技術名ではなく、"
-            "読者の判断・制約・Actionのどれが変わるかを書く。高密度な技術段落を連続させない。"
+            "【実行必須：専門語の連鎖を切る】専門語を別の専門語で説明しない。必要な専門概念は普通の日本語で役割を示し、関係が伝わらない箇所で、"
+            "読者の判断・制約・Actionのどれが変わるかを書く。段落数による強制切替や説明文の水増しはしない。"
         )
 
     if "final_surface_summary_jargon_cluster" in messages:
