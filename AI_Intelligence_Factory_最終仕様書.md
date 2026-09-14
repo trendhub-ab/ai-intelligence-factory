@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: **2026-09-14**
+最終更新: **2026-09-15**
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**
 
@@ -134,6 +134,19 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 - Provider / runtime / safety layerのインストール順を勝手に分岐させない。
 - 過去Recovery用入口からProductionへ迂回しない。
 
+### 2.4 Pending Retry validation contract
+
+`pending_retry_validation`はProduction品質スタックを使う**非永続の1記事検証レーン**であり、Ready化や記事復旧の一括処理ではない。
+
+- 1回のvalidationで暗黙に2記事目へ進まない。候補順位が変わっても、1記事目の不合格やProvider障害を理由に別記事へ自動代替しない。
+- `persist_results=False`の戻り値は、`accepted` / `rejected` / 未生成 / 未検証を区別する。原稿が返ったというtruthinessだけで品質成功にしない。
+- validationの`quality_passed` / 互換キー` succeeded`は、明示的な`accepted`だけを数える。`rejected`は品質不合格、`None`は未生成、未知の戻り値は未検証として分離する。
+- `accepted`でもNotionへ保存していないため**Ready保存成功ではない**。Ready件数・永続成功へ加算しない。
+- validation専用上限はProvider-visibleな記事送信を最大4回とし、503等のProvider-visible失敗は数える。Persistent/Local Budget等による送信前拒否はProvider送信数と同一視しない。ただし既存の永続・モデル別・Deep Dive・全体Safety Capを緩めない。
+- OperatorがGemini 3.6を除外しているvalidationでは、routing初期値・pool再注入・`models/`表記・3.6派生aliasを含め、最終送信直前でも3.6へ送らない。
+- 記事品質の検証に不要なmodel-assisted eyecatch layoutはこのレーンでは送信しない。不合格原稿の診断・Artifact保存はアイキャッチ送信なしで継続できること。
+- Workflow/jobのsuccessは、記事の品質合格・Ready・永続保存成功と同義ではない。最終報告ではこれらを別状態として扱う。
+
 ---
 
 ## 3. Required CI / Dependency Contract
@@ -215,6 +228,8 @@ Reader専用Repairでは、Run172の局所文面保持契約も適用しない�
 この統一はpromptの編集指示に限定する。通常Quality Retryと専用Reader Repairの所有権・回数制限、Evidenceの実行条件、Publication / Fact / Evidence / Reader Gateの判定は変更せず、修正後も全Gateを再判定する。固定ノルマの撤去だけでHuman Appealの改善や実記事の合格を証明したとは扱わない。
 
 Capability Boundaryでは「できる / できない / まだ分からない」を分離する。「できない」はSOURCE BOUNDARYに禁止・非対応・制約が明示される場合だけとし、Evidenceがないだけの事項は「未確認 / まだ分からない」と扱う。
+
+数値Factの表記同値は、**Evidenceに同じ値が明示され、かつ数値近傍の条件・対象が互換な場合だけ**認める。`$0.75`と`0.75ドル`、または同じ記述内の日本語`万`表記と桁区切り付きUSDのような表記差は機械的に照合してよいが、丸め・推定・別条件の同額・別文脈の数字から値を補完してはならない。条件不一致、根拠のない数値、曖昧量は従来どおりFact停止を維持する。
 
 **Editorial Quality Memory v1** は、成功/失敗した編集パターンをリポジトリ内の決定論的ルールとして保持する。Production原稿、個人情報、Provider応答を可変DBへ保存せず、追加APIを要求しない。Quality MemoryはHard Gateや事実源ではなく、Fact / Evidence / Decision / Publication Contractを常に優先する。Quality Memory自体はPublication Policy fingerprintの対象に含める。
 
@@ -396,7 +411,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 
 ## 12. Current-state summary
 
-2026-09-14時点のFactoryは、次の状態を正式な基準とする。
+2026-09-15時点のFactoryは、次の状態を正式な基準とする。
 
 - **Production:** Geminiベース既存ロジック
 - **Primary / Quality:** Gemini 3.8 / Gemini 3.7の役割分離を維持
@@ -408,6 +423,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 - **45-article Recovery:** 終了、33件未復旧のまま再開しない
 - **Scheduled Daily:** PAUSED
 - **Manual execution:** current ONE-SHOT / explicitly dispatched workflows
+- **Pending Retry validation:** 1記事・非永続。`accepted`だけを品質PASSとして数え、Ready保存と分離。Provider-visible記事送信は最大4回、model-assisted eyecatchは送信しない
 - **Publication safety:** provenance + current policy + Reader/Evidence/Integrity guardsを維持
 - **Paid product:** Generic Use-Decision Intelligence
 - **Repository:** Recovery専用・Groq共存専用surfaceを撤去済み
