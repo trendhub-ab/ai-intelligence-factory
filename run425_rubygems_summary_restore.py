@@ -154,6 +154,9 @@ def run():
             route, _, _ = routes._find_one_existing_route(context, page, row["title"])
             route_key = routes._route_key(route)
             page.goto(route, wait_until="domcontentloaded", timeout=60000)
+            # note's editor hydrates after DOMContentLoaded. Discovery already waits for this;
+            # the selected route must do the same before reading the title or body.
+            page.wait_for_timeout(1200)
             if note._looks_logged_out(page):
                 raise RuntimeError("Existing note login required")
             if routes._route_key(page.url) != route_key or routes._safe_title(page) != row["title"]:
@@ -182,6 +185,7 @@ def run():
                 if routes._route_key(saved) != route_key:
                     raise RuntimeError("Saved draft route changed")
             page.reload(wait_until="domcontentloaded")
+            page.wait_for_timeout(1200)
             field = note._find_title(page)
             _, visible = routes._visible_body(page, field)
             if normalized(visible) != expected_after:
