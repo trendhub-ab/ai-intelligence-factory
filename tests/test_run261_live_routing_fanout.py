@@ -14,7 +14,12 @@ class Run261LiveRoutingFanoutTests(unittest.TestCase):
     def test_one_shot_uses_canonical_run260_article_pool(self):
         text = ONE_SHOT.read_text(encoding="utf-8")
         canonical = 'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash"'
-        self.assertGreaterEqual(text.count(canonical), 2)
+        full, pending = text.split("      - name: Pending Retry fast lane", 1)
+        pending = pending.split("      - name: Portfolio-aware Product Review", 1)[0]
+        self.assertIn(canonical, full)
+        self.assertIn('GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.8-flash,gemini-3.7-flash,gemini-3.5-flash"', pending)
+        self.assertIn('GEMINI_36_FLASH_DAILY_BUDGET: "0"', pending)
+        self.assertNotIn("gemini-3.6-flash", pending)
         self.assertGreaterEqual(text.count('GEMINI_38_FLASH_DAILY_BUDGET: "18"'), 2)
         self.assertIn('GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"', text)
 

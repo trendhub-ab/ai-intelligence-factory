@@ -50,6 +50,7 @@ FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = (
 FAST_LANE_ARTICLE_ATTEMPT_LIMIT = 1
 FAST_LANE_503_COOLDOWN_THRESHOLD = 1
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
+FAST_LANE_EXCLUDED_MODELS = frozenset({"gemini-3.6-flash"})
 
 
 def prepare_fast_lane_env(env: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
@@ -126,6 +127,7 @@ def run_pending_retry_lane(
             item.get("screening_reason", ""),
             candidate_rank=rank,
             candidate_origin="pending_retry",
+            persist_results=False,
         )
         if report:
             succeeded += 1
@@ -162,6 +164,38 @@ def install_current_production_article_stack(pipeline_module, note_manuscript_mo
     return pipeline_module
 
 
+def install_validation_model_exclusions(pipeline_module):
+    """Enforce the operator's quota exclusion after Production routing installs.
+
+    Routing overlays can restore their default pool, so env-only removal is not
+    sufficient. The final sender guard rejects excluded models before reservation.
+    """
+    if getattr(pipeline_module, "_pending_validation_exclusions_installed", False):
+        return pipeline_module
+    original = pipeline_module._generate_via_chat
+    excluded = FAST_LANE_EXCLUDED_MODELS
+    for attr in ("DEEP_DIVE_MODEL_POOL", "DEEP_DIVE_MODEL_CANDIDATES", "SCREENING_MODEL_POOL"):
+        pool = getattr(pipeline_module, attr, None)
+        if pool is not None:
+            setattr(pipeline_module, attr, [m for m in pool if m not in excluded])
+    pipeline_module.SESSION_UNAVAILABLE_MODELS.update(excluded)
+
+    def guarded_send(model_name, *args, **kwargs):
+        if str(model_name).removeprefix("models/") in excluded:
+            raise pipeline_module.NoAvailableModelError(
+                "Operator excluded Gemini 3.6 from validation, including fallback"
+            )
+        return original(model_name, *args, **kwargs)
+
+    pipeline_module._generate_via_chat = guarded_send
+    pipeline_module._pending_validation_exclusions_installed = True
+    pipeline_module.logger.info(
+        "[VALIDATION MODEL EXCLUSIONS] excluded=%s pool=%s",
+        sorted(excluded), pipeline_module.DEEP_DIVE_MODEL_POOL,
+    )
+    return pipeline_module
+
+
 def main() -> int:
     prepare_fast_lane_env()
 
@@ -172,6 +206,7 @@ def main() -> int:
     import run203_runtime_state_channel as runtime_state_channel
 
     install_current_production_article_stack(pipeline, note_manuscript)
+    install_validation_model_exclusions(pipeline)
     gemini_transient_recovery.configure_cooldown_threshold(
         pipeline,
         FAST_LANE_503_COOLDOWN_THRESHOLD,
