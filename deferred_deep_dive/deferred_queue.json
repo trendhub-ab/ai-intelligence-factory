@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-13T10:02:46.545834+00:00",
+  "updated_at": "2026-09-14T12:37:40.880141+00:00",
   "items": [
     {
       "key": "https://news.ycombinator.com/item?id=49548600",
@@ -566,41 +566,41 @@
       "deep_dive_priority_score": 73.05
     },
     {
-      "key": "https://news.ycombinator.com/item?id=49660651",
-      "deferred_at": "2026-09-12T02:07:51.212072+00:00",
-      "expires_at": "2026-09-14T02:07:51.212072+00:00",
+      "key": "https://news.ycombinator.com/item?id=49695409",
+      "deferred_at": "2026-09-14T12:37:40.879887+00:00",
+      "expires_at": "2026-09-28T12:37:40.879887+00:00",
       "repo": {
         "source": "HackerNews",
-        "nameWithOwner": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
-        "originalTitle": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
-        "displayName": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
+        "nameWithOwner": "Apple's Siri AI Can Be Swapped Out for Claude, ChatGPT, Code Shows",
+        "originalTitle": "Apple's Siri AI Can Be Swapped Out for Claude, ChatGPT, Code Shows",
+        "displayName": "Apple's Siri AI Can Be Swapped Out for Claude, ChatGPT, Code Shows",
         "sourceLanguage": "en",
-        "url": "https://www.businessinsider.com/openai-caltech-ai-math-hackathon-backlash-anthropic-2026-9",
-        "description": "OpenAI pulls out of math hackathon after open letter criticizing AI math 'slop'",
-        "stargazerCount": 7,
+        "url": "https://www.macrumors.com/2026/09/14/siri-can-be-swapped-out-for-chatgpt-claude/",
+        "description": "Apple's Siri AI Can Be Swapped Out for Claude, ChatGPT, Code Shows",
+        "stargazerCount": 19,
         "licenseInfo": null,
-        "publishedAt": "2026-09-11T16:02:11Z",
-        "sourceContext": "HN points=7 comments=0 matched_query=OpenAI",
-        "primaryUrl": "https://www.businessinsider.com/openai-caltech-ai-math-hackathon-backlash-anthropic-2026-9",
+        "publishedAt": "2026-09-14T12:01:32Z",
+        "sourceContext": "HN points=19 comments=3 matched_query=Claude",
+        "primaryUrl": "https://www.macrumors.com/2026/09/14/siri-can-be-swapped-out-for-chatgpt-claude/",
         "sourceDetails": {
-          "hn_id": "49660651",
-          "hn_url": "https://news.ycombinator.com/item?id=49660651",
-          "external_url": "https://www.businessinsider.com/openai-caltech-ai-math-hackathon-backlash-anthropic-2026-9",
-          "comments": 0,
-          "matched_query": "OpenAI",
+          "hn_id": "49695409",
+          "hn_url": "https://news.ycombinator.com/item?id=49695409",
+          "external_url": "https://www.macrumors.com/2026/09/14/siri-can-be-swapped-out-for-chatgpt-claude/",
+          "comments": 3,
+          "matched_query": "Claude",
           "source_role": "market_engineer_reaction",
           "lookback_days": 30,
           "run269_precision": true
         }
       },
-      "notion_page_id": "3d9479ff-dca9-810c-bf0e-f26466ad3082",
-      "score": 70,
-      "reason": "ハッカソンを巡る倫理的批判と撤退の動向。",
-      "commercial_score": 55,
-      "shelf_life_score": 30,
-      "shelf_life": "FLASH",
+      "notion_page_id": "3db479ff-dca9-81ee-8937-f28553eb35b0",
+      "score": 62,
+      "reason": "SiriのAIバックエンド切り替え可能性を示すコード発見。",
+      "commercial_score": 70,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
       "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 64.75
+      "deep_dive_priority_score": 64.8
     },
     {
       "key": "https://arxiv.org/abs/2609.11697",
@@ -642,6 +642,80 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 63.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49694097",
+      "deferred_at": "2026-09-14T12:37:40.880015+00:00",
+      "expires_at": "2026-09-28T12:37:40.880015+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Rage4J: Test your LLM apps like the rest of your Java code",
+        "originalTitle": "Rage4J: Test your LLM apps like the rest of your Java code",
+        "displayName": "Rage4J: Test your LLM apps like the rest of your Java code",
+        "sourceLanguage": "en",
+        "url": "https://rage4j.dev/",
+        "description": "Rage4J: Test your LLM apps like the rest of your Java code",
+        "stargazerCount": 6,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-14T09:25:01Z",
+        "sourceContext": "HN points=6 comments=0 matched_query=LLM",
+        "primaryUrl": "https://rage4j.dev/",
+        "sourceDetails": {
+          "hn_id": "49694097",
+          "hn_url": "https://news.ycombinator.com/item?id=49694097",
+          "external_url": "https://rage4j.dev/",
+          "comments": 0,
+          "matched_query": "LLM",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3db479ff-dca9-8131-945a-da2d2094fa0e",
+      "score": 62,
+      "reason": "Java環境におけるLLMアプリのテストフレームワーク。",
+      "commercial_score": 60,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 61.3
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49679685",
+      "deferred_at": "2026-09-14T12:37:40.880074+00:00",
+      "expires_at": "2026-09-16T12:37:40.880074+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic CEO says AI swarm could 'take over the Internet' in 6-12 months",
+        "originalTitle": "Anthropic CEO says AI swarm could 'take over the Internet' in 6-12 months",
+        "displayName": "Anthropic CEO says AI swarm could 'take over the Internet' in 6-12 months",
+        "sourceLanguage": "en",
+        "url": "https://venturebeat.com/security/anthropic-ceo-says-ai-swarm-could-take-over-the-entire-internet-in-6-12-months-commits-to-ai-slowdown-plan",
+        "description": "Anthropic CEO says AI swarm could 'take over the Internet' in 6-12 months",
+        "stargazerCount": 47,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-13T03:25:32Z",
+        "sourceContext": "HN points=47 comments=33 matched_query=Anthropic",
+        "primaryUrl": "https://venturebeat.com/security/anthropic-ceo-says-ai-swarm-could-take-over-the-entire-internet-in-6-12-months-commits-to-ai-slowdown-plan",
+        "sourceDetails": {
+          "hn_id": "49679685",
+          "hn_url": "https://news.ycombinator.com/item?id=49679685",
+          "external_url": "https://venturebeat.com/security/anthropic-ceo-says-ai-swarm-could-take-over-the-entire-internet-in-6-12-months-commits-to-ai-slowdown-plan",
+          "comments": 33,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3db479ff-dca9-8174-8b2d-d3cb29d137a6",
+      "score": 60,
+      "reason": "AIエージェントの急激な進化に伴うセキュリティリスク。",
+      "commercial_score": 55,
+      "shelf_life_score": 20,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 58.25
     }
   ]
 }
