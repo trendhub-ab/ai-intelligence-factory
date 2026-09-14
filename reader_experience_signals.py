@@ -84,8 +84,19 @@ def reader_experience_signals(article: str, article_opening_excerpt_fn) -> dict:
         r"(?:これは|これはつまり|この仕組みは)[^。！？]{4,100}(?:ための|ような)(?:仕組み|ルール|方法|考え方|もの))",
         prose,
     ))
+    # Run356: an inline Japanese↔technical glossary is also a real reader bridge. The previous
+    # detector only rewarded explicit phrases such as "簡単に言えば" or everyday analogies,
+    # which falsely marked clear prose like "職級（Tier）" as inaccessible. This does not excuse
+    # dense jargon: paragraph-level density still has to pass independently below.
+    inline_gloss_re = re.compile(
+        r"(?:[ぁ-んァ-ヴー一-龯々・]{2,28}[（(][A-Za-z][A-Za-z0-9 .+/#_-]{1,40}[）)]|"
+        r"[A-Za-z][A-Za-z0-9 .+/#_-]{1,30}[（(][ぁ-んァ-ヴー一-龯々・]{2,40}[）)])"
+    )
+    inline_gloss_present = bool(inline_gloss_re.search(prose))
     bridge_needed = bool(acronyms) or technical_density >= 26.0
-    plain_language_bridge_present = bool(everyday_terms or scene_present or analogy_used or plain_explanation)
+    plain_language_bridge_present = bool(
+        everyday_terms or scene_present or analogy_used or plain_explanation or inline_gloss_present
+    )
     if plain_language_bridge_present:
         everyday_bridge = "PRESENT"
     elif bridge_needed:
@@ -102,7 +113,10 @@ def reader_experience_signals(article: str, article_opening_excerpt_fn) -> dict:
             continue
         p_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", para)
         p_density = len(p_tokens) * 1000.0 / max(len(pv), 1)
-        has_translation = bool(re.search(r"(?:たとえば|例えば|簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|ようなもの|身近な|スマホ|買い物|恋愛|デート|鍵|学校|旅行|料理|家族)", para))
+        has_translation = bool(
+            re.search(r"(?:たとえば|例えば|簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|ようなもの|身近な|スマホ|買い物|恋愛|デート|鍵|学校|旅行|料理|家族)", para)
+            or inline_gloss_re.search(para)
+        )
         if p_density >= 38.0 and not has_translation:
             jargon_dense_paragraphs += 1
     jargon_translation = "GOOD" if not (bridge_needed and not plain_language_bridge_present) and jargon_dense_paragraphs <= 1 else "REVIEW"
@@ -388,6 +402,7 @@ def reader_experience_signals(article: str, article_opening_excerpt_fn) -> dict:
         "technical_terms_per_1000_chars": round(technical_density, 1),
         "bridge_needed": bridge_needed,
         "plain_language_bridge_present": plain_language_bridge_present,
+        "inline_gloss_present": inline_gloss_present,
         "jargon_dense_paragraph_count": jargon_dense_paragraphs,
         "long_sentence_count": long_sentences,
         "max_explanatory_paragraph_run": max_explanatory_run,
