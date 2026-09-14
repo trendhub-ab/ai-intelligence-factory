@@ -1,39 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-14T12:37:40.880141+00:00",
+  "updated_at": "2026-09-14T12:38:13.806576+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49548600",
-      "deferred_at": "2026-09-04T01:03:15.800568+00:00",
-      "expires_at": "2026-09-18T01:03:15.800568+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Ask HN: Who is using MCP in production?",
-        "originalTitle": "Ask HN: Who is using MCP in production?",
-        "displayName": "Ask HN: Who is using MCP in production?",
-        "sourceLanguage": "en",
-        "url": "https://news.ycombinator.com/item?id=49548600",
-        "description": "Ask HN: Who is using MCP in production?",
-        "stargazerCount": 7,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-03T11:21:18+00:00",
-        "sourceContext": "I’ve been following MCP since it first came out. It got a lot of attention early on, but I haven’t come across many people using it in production. I may simply have missed them. If you’re using MCP in production, what are you using it for? What advantages have you found over a normal API or direct tool integration or just CLI?",
-        "primaryUrl": "https://news.ycombinator.com/item?id=49548600",
-        "sourceDetails": {
-          "hn_id": 49548600,
-          "hn_url": "https://news.ycombinator.com/item?id=49548600",
-          "external_url": ""
-        }
-      },
-      "notion_page_id": "3d1479ff-dca9-81f5-8b96-fd056aec9d38",
-      "score": 77,
-      "reason": "MCPの実運用における知見と需要が高いため",
-      "commercial_score": 80,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 78.05
-    },
     {
       "key": "https://www.producthunt.com/products/fillo-native-forms-without-the-backend",
       "deferred_at": "2026-09-04T01:03:15.800633+00:00",
