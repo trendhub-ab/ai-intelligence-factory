@@ -390,6 +390,7 @@ jobs:
             gate_history/
             regression_cases_pending/
             article_audit/
+            regen_test_outputs/
           if-no-files-found: warn
           retention-days: 14
 
