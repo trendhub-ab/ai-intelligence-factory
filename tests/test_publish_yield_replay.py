@@ -87,9 +87,10 @@ def test_nonready_soft_only_reason_does_not_inflate_recoverable_ceiling():
     assert classify_candidate(record) == CATEGORY_OTHER_REVIEW
 
 
-def test_run51_shape_reports_zero_current_ready_and_sixty_percent_diagnostic_ceiling():
-    # This fixture encodes only the observed final shape of Run #51: two HARD failures and
-    # three Human-Appeal-only reviews.  It does not claim those three are publication-ready.
+def test_run51_shape_reflects_post_split_reason_dispositions():
+    # This generic five-row fixture is intentionally diagnostic only. Under the core-vs-style
+    # split, dense/style-only Reader reasons are SOFT and therefore are not counted as a
+    # recoverable REVIEW ceiling. The one remaining human-appeal REVIEW here is Decision Voice.
     records = [
         {"id": "hard-fact", "final_status": "Hard Block", "reason_rows": [fact()]},
         {"id": "hard-evidence", "final_status": "Hard Block", "reason_rows": [evidence()]},
@@ -112,10 +113,10 @@ def test_run51_shape_reports_zero_current_ready_and_sixty_percent_diagnostic_cei
     assert report["current_ready_count"] == 0
     assert report["current_ready_yield"] == 0.0
     assert report["safety_blocked_count"] == 2
-    assert report["human_appeal_only_count"] == 3
-    assert report["other_review_count"] == 0
-    assert report["recoverable_ceiling_count"] == 3
-    assert report["recoverable_ceiling_yield"] == 0.6
+    assert report["human_appeal_only_count"] == 1
+    assert report["other_review_count"] == 2
+    assert report["recoverable_ceiling_count"] == 1
+    assert report["recoverable_ceiling_yield"] == 0.2
 
 
 def test_empty_input_is_well_defined():
