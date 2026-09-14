@@ -1,4 +1,4 @@
-"""Gate reason-code classification and diagnostic record shaping (Run241/353).
+"""Gate reason-code classification and diagnostic record shaping (Run241/353/354).
 
 This module does not execute quality gates. It only maps already-produced gate messages into
 stable reason codes/severities/dispositions and shapes audit records.
@@ -8,6 +8,11 @@ Run353 fixes two classification defects without relaxing Fact/Evidence safety:
   consistency/presentation issues remain REVIEW while evidence/overclaim failures stay HARD.
 - Reader Value reasons injected through the Human Appeal gate receive dedicated READER_* codes
   instead of falling back to APPEAL_DECISION_VOICE_LOSS.
+
+Run354 separates style/readability debt from core comprehension. Density, repetition and
+style-only multi-axis weakness may pass with warnings, while any multi-axis reason that names
+jargon translation or non-engineer core clarity remains REVIEW even if a companion
+non_engineer_access_failure reason is ever missing. Fact/Evidence safety is unchanged.
 """
 
 GATE_STATUS_NOT_RUN = "NOT_RUN"
@@ -67,16 +72,16 @@ REASON_CODE_NOTION_PERSISTENCE_FAILED = "NOTION_PERSISTENCE_FAILED"
 
 READER_VALUE_MARKER = "reader_value_review:"
 
-# Reader issues are not all publication-safety failures. Density, repetition and a broad
-# multi-axis quality cluster describe style/readability debt. They remain visible as SOFT
-# warnings, but do not spend another model call or stop an otherwise safe article. Explicit
-# non-engineer core-comprehension failures, final-surface failures and unknown Reader classes
-# remain REVIEW/fail-closed below.
+# These Reader classes are always style-only. Multi-axis is intentionally excluded because its
+# payload names the axes that failed; core-comprehension axes are handled fail-closed below.
 _READER_STYLE_ONLY_CODES = {
     REASON_CODE_READER_DENSE_REPORT,
     REASON_CODE_READER_REPETITIVE_INSIGHT,
-    REASON_CODE_READER_MULTI_AXIS_WEAKNESS,
 }
+_READER_CORE_MULTI_AXIS_MARKERS = (
+    "jargon_translation",
+    "non_engineer_core_clarity",
+)
 
 # Publication reasons that represent factual/evidence/public-claim safety failures. These remain
 # fail-closed HARD_BLOCK. Repairable consistency/presentation reasons are intentionally excluded.
@@ -109,6 +114,21 @@ def _reader_reason_code(message: str) -> str:
     if "final_surface_" in text:
         return REASON_CODE_READER_FINAL_SURFACE
     return REASON_CODE_READER_VALUE_OTHER
+
+
+def _reader_multi_axis_is_style_only(message: str) -> bool:
+    """Allow only an explicitly style-only multi-axis cluster to become a warning.
+
+    Run248 normally emits a companion non_engineer_access_failure when the full accessibility /
+    jargon-translation / core-clarity triad fails. This classifier does not rely on that companion
+    invariant: if the multi-axis payload itself names either core-comprehension signal, it remains
+    REVIEW. Unknown or malformed multi-axis payloads also fail closed unless they contain no core
+    marker and are the known multi_axis_reader_weakness class.
+    """
+    text = (message or "").lower()
+    if "multi_axis_reader_weakness" not in text:
+        return False
+    return not any(marker in text for marker in _READER_CORE_MULTI_AXIS_MARKERS)
 
 
 def reason_code(message: str, gate: str) -> str:
@@ -197,6 +217,8 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code_value: st
             return GATE_SEVERITY_HARD
         if code in _READER_STYLE_ONLY_CODES:
             return GATE_SEVERITY_SOFT
+        if code == REASON_CODE_READER_MULTI_AXIS_WEAKNESS:
+            return GATE_SEVERITY_SOFT if _reader_multi_axis_is_style_only(message) else GATE_SEVERITY_REVIEW
         if code.startswith("READER_"):
             return GATE_SEVERITY_REVIEW
         if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
