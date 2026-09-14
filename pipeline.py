@@ -7787,6 +7787,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                         evidence_urls=review_evidence_urls,
                         title_text=parsed.get("title_text", ""),
                         discovery_url=discovery_url,
+                        reader_summary=build_reader_first_summary(parsed),
+                        published_at=published_at,
                     )
                     review_properties = build_notion_properties(
                         name, url, parsed["score"], parsed["score_breakdown_text"], parsed["what_text"],
