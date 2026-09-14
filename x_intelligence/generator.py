@@ -1,0 +1,292 @@
+"""Generate reviewable X drafts from existing Factory intelligence.
+
+Phase 0 constraints:
+- zero Gemini calls;
+- zero X API calls;
+- no automatic posting;
+- no mutation of the article-generation pipeline.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from .persona import CHIP_PERSONA, validate_chip_text
+
+
+DEFAULT_MAX_CHARS = 280
+X_VARIANTS = ("breaking", "curiosity", "decision")
+_TRACKING_KEYS = {
+    "fbclid",
+    "gclid",
+    "mc_cid",
+    "mc_eid",
+    "ref",
+    "referrer",
+    "source",
+}
+
+
+def _first(item: Mapping[str, Any], *keys: str, default: str = "") -> str:
+    for key in keys:
+        value = item.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return default
+
+
+def _clean(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _trim(text: str, limit: int) -> str:
+    text = _clean(text)
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    if limit == 1:
+        return "…"
+    return text[: limit - 1].rstrip("、。,. ") + "…"
+
+
+def _contains_japanese(text: str) -> bool:
+    return bool(re.search(r"[ぁ-んァ-ン一-龯]", text or ""))
+
+
+def _clean_source_url(url: str) -> str:
+    """Strip tracking noise without breaking functional query parameters."""
+
+    value = _clean(url)
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        return value
+
+    if parsed.netloc.lower() == "www.producthunt.com" and parsed.path.startswith("/r/"):
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+    kept = []
+    for key, val in parse_qsl(parsed.query, keep_blank_values=True):
+        lower = key.lower()
+        if lower.startswith("utm_") or lower in _TRACKING_KEYS:
+            continue
+        kept.append((key, val))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(kept), ""))
+
+
+def _source_label(item: Mapping[str, Any]) -> str:
+    raw = _first(item, "source", "Source")
+    aliases = {
+        "HackerNews": "HN",
+        "Hacker News": "HN",
+        "ProductHunt": "Product Hunt",
+        "Product Hunt": "Product Hunt",
+        "ArXiv": "arXiv",
+        "GitHub": "GitHub",
+    }
+    return aliases.get(raw, raw or "AI")
+
+
+def _topic_label(item: Mapping[str, Any]) -> str:
+    topic = _first(item, "portfolio_topic", "raw_portfolio_topic", "Portfolio Topic").upper()
+    return {
+        "AGENT": "AIエージェント",
+        "MODEL": "AIモデル",
+        "DEVTOOLS": "開発ツール",
+        "DATA": "AI・データ",
+        "SECURITY": "AI・セキュリティ",
+        "INFRA": "AIインフラ",
+    }.get(topic, "AI")
+
+
+def _compose(item: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
+    title = _clean(_first(item, "name", "Name", "title", "Title"))
+    summary = _clean(
+        _first(
+            item,
+            "source_summary",
+            "Source Summary",
+            "summary",
+            "screening_reason",
+            "reason",
+            "Reason",
+        )
+    )
+    why = _clean(_first(item, "reason", "Reason", "decision_reason", "Decision Reason"))
+    action = _clean(_first(item, "action", "Action", "recommended_action", "Recommended Action"))
+    url = _clean_source_url(_first(item, "x_primary_url", "url", "URL", "source_url", "primary_url"))
+    return title or "AI最新情報", summary, why, action, url
+
+
+def _signal_line(item: Mapping[str, Any]) -> str:
+    screening = float(item.get("x_screening_score") or 0)
+    engagement = float(_first(item, "engagement", "Engagement", default="0") or 0)
+    shelf_life = _first(item, "shelf_life", "Shelf Life").upper()
+
+    if engagement >= 300:
+        return "海外で大きく反応されている話題です。"
+    if screening >= 75:
+        return "実務への影響が大きい更新として要チェック。"
+    if shelf_life == "FLASH":
+        return "速報性が高く、早めに確認したい話題です。"
+    return "今後の動きを追う価値がある話題です。"
+
+
+def _main_fact(title: str, summary: str) -> str:
+    if summary and _contains_japanese(summary):
+        return summary.rstrip("。")
+    return title.rstrip("。")
+
+
+def _variant_sections(
+    item: Mapping[str, Any],
+    *,
+    variant: str,
+    title: str,
+    summary: str,
+    why: str,
+    action: str,
+) -> list[str]:
+    topic = _topic_label(item)
+    fact = _main_fact(title, summary)
+    signal = _signal_line(item)
+
+    if variant == "breaking":
+        sections = [f"【速報｜{topic}】{fact}", signal]
+        if why and why != summary:
+            sections.append("注目点：" + _trim(why, 58))
+        return sections
+
+    if variant == "curiosity":
+        hook = f"これ、地味に大きな変化かもしれません。{fact}"
+        sections = [f"【{topic}】{hook}"]
+        if signal:
+            sections.append(signal)
+        if title and _contains_japanese(title) and title not in fact:
+            sections.append(_trim(title, 62))
+        return sections
+
+    if variant == "decision":
+        sections = [f"【実務判断｜{topic}】{fact}"]
+        if action:
+            sections.append("いま見るべき点：" + _trim(action, 68))
+        elif why and why != summary:
+            sections.append("判断材料：" + _trim(why, 68))
+        else:
+            sections.append(signal)
+        return sections
+
+    raise ValueError(f"unsupported X variant: {variant}")
+
+
+def build_x_post(
+    item: Mapping[str, Any],
+    *,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    variant: str = "breaking",
+) -> dict[str, Any]:
+    """Build one deterministic Japanese X draft for human review.
+
+    Chip's dog-like flavor is intentionally not injected here. The persona
+    policy keeps normal Japanese as the default and reserves dog metaphors for
+    a future history-aware compositor that can enforce genuinely low frequency.
+    """
+
+    if max_chars < 80:
+        raise ValueError("max_chars must be at least 80")
+    if variant not in X_VARIANTS:
+        raise ValueError(f"unsupported X variant: {variant}")
+
+    title, summary, why, action, url = _compose(item)
+    if not url:
+        raise ValueError("primary source URL is required")
+
+    source = _source_label(item)
+    sections = _variant_sections(
+        item,
+        variant=variant,
+        title=title,
+        summary=summary,
+        why=why,
+        action=action,
+    )
+    sections = [_trim(section, 112) for section in sections if section]
+
+    suffix = f"一次情報（{source}）：{url}"
+    body = "\n".join(sections)
+    candidate = f"{body}\n\n{suffix}"
+
+    if len(candidate) > max_chars:
+        room = max_chars - len(suffix) - 2
+        if room <= 0:
+            raise ValueError("source URL leaves no room for post body")
+        body = _trim(body, room)
+        candidate = f"{body}\n\n{suffix}"
+
+    validate_chip_text(candidate)
+
+    return {
+        "status": "X Pending Review",
+        "character": CHIP_PERSONA["name"],
+        "character_romanized": CHIP_PERSONA["romanized_name"],
+        "dog_endings_enabled": CHIP_PERSONA["voice"]["dog_endings_enabled"],
+        "dog_flavor_mode": "metaphor_only_low_frequency",
+        "variant": variant,
+        "post": candidate,
+        "characters": len(candidate),
+        "max_characters": max_chars,
+        "primary_url": url,
+        "generator_mode": "deterministic_zero_api",
+        "gemini_calls": 0,
+        "x_api_calls": 0,
+        "auto_posted": False,
+    }
+
+
+def build_x_variants(item: Mapping[str, Any], *, max_chars: int = DEFAULT_MAX_CHARS) -> dict[str, dict[str, Any]]:
+    """Build breaking, curiosity, and decision drafts from one Factory item."""
+
+    return {
+        variant: build_x_post(item, max_chars=max_chars, variant=variant)
+        for variant in X_VARIANTS
+    }
+
+
+def render_markdown(draft: Mapping[str, Any]) -> str:
+    return (
+        "# X Pending Review\n\n"
+        f"- Character: `{draft.get('character', CHIP_PERSONA['name'])}`\n"
+        f"- Variant: `{draft.get('variant', 'breaking')}`\n"
+        f"- Generator: `{draft.get('generator_mode', '')}`\n"
+        f"- Characters: {draft.get('characters', 0)} / {draft.get('max_characters', DEFAULT_MAX_CHARS)}\n"
+        f"- Gemini calls: {draft.get('gemini_calls', 0)}\n"
+        f"- X API calls: {draft.get('x_api_calls', 0)}\n"
+        f"- Auto posted: {str(bool(draft.get('auto_posted'))).lower()}\n\n"
+        "## Draft\n\n"
+        f"{draft.get('post', '')}\n"
+    )
+
+
+def save_pending_post(
+    draft: Mapping[str, Any],
+    *,
+    output_dir: str | Path = "artifacts/x_posts/pending",
+    stem: str | None = None,
+) -> tuple[Path, Path]:
+    target = Path(output_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    safe_stem = stem or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", safe_stem).strip("-") or "x-post"
+
+    json_path = target / f"{safe_stem}.json"
+    md_path = target / f"{safe_stem}.md"
+    json_path.write_text(json.dumps(dict(draft), ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path.write_text(render_markdown(draft), encoding="utf-8")
+    return json_path, md_path

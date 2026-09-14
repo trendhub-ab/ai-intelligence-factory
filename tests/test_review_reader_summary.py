@@ -11,7 +11,7 @@ import run413_oneoff_rubygems_manual_ready as recaption
 
 class ReviewSummaryTests(unittest.TestCase):
     def render_review(self):
-        tree = ast.parse(Path("pipeline.py").read_text())
+        tree = ast.parse(Path("pipeline.py").read_text(encoding="utf-8"))
         assignment = next(node for node in ast.walk(tree)
                           if isinstance(node, ast.Assign) and any(
                               isinstance(target, ast.Name) and target.id == "review_manuscript"

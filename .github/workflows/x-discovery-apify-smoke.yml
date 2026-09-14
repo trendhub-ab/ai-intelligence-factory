@@ -1,0 +1,92 @@
+name: X Discovery Apify Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      actor_id:
+        description: 'Apify Actor ID, e.g. username~actor-name'
+        required: true
+        type: string
+      actor_input_json:
+        description: 'Actor input as a JSON object'
+        required: true
+        default: '{}'
+        type: string
+      max_records:
+        description: 'Maximum charged/returned items for this smoke run (1-100)'
+        required: true
+        default: '20'
+        type: string
+      max_charge_usd:
+        description: 'Maximum total Actor charge for this run (must be <= 1.00)'
+        required: true
+        default: '0.25'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apify-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_ACTOR_ID: ${{ inputs.actor_id }}
+      APIFY_INPUT_JSON: ${{ inputs.actor_input_json }}
+      APIFY_MAX_CHARGE_USD: ${{ inputs.max_charge_usd }}
+      MAX_RECORDS: ${{ inputs.max_records }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate live-run guardrails
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          if not os.getenv('APIFY_TOKEN', '').strip():
+              raise SystemExit('APIFY_TOKEN repository secret is required; refusing live run')
+          if not os.getenv('APIFY_ACTOR_ID', '').strip():
+              raise SystemExit('actor_id is required')
+          max_records = int(os.environ['MAX_RECORDS'])
+          max_charge = float(os.environ['APIFY_MAX_CHARGE_USD'])
+          if not 1 <= max_records <= 100:
+              raise SystemExit('max_records must be between 1 and 100')
+          if not 0 < max_charge <= 1.0:
+              raise SystemExit('max_charge_usd must be > 0 and <= 1.00')
+          actor_input = json.loads(os.environ['APIFY_INPUT_JSON'])
+          if not isinstance(actor_input, dict):
+              raise SystemExit('actor_input_json must be a JSON object')
+          print('Live guardrails OK; official X API remains unused.')
+          PY
+      - name: Run isolated Apify smoke ingestion
+        run: |
+          python -m x_discovery.runner \
+            --provider apify \
+            --output-dir /tmp/x-discovery-apify \
+            --max-records "$MAX_RECORDS"
+      - name: Verify no Factory or Evidence writes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/x-discovery-apify')
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          assert manifest['provider'] == 'apify'
+          assert manifest['factory_write'] is False
+          assert manifest['evidence_promoted'] is False
+          assert manifest['x_official_api_calls'] == 0
+          assert manifest['external_provider_calls'] == 1
+          print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-discovery-apify-smoke-${{ github.run_number }}
+          path: /tmp/x-discovery-apify/
+          if-no-files-found: error
+          retention-days: 7

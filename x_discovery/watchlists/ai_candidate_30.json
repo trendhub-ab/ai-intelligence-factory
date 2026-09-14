@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "name": "ai_candidate_30",
+  "purpose": "Candidate-only X accounts for future expansion after the core-20 production connection is proven. This file must not be consumed by acquisition workflows.",
+  "core_watchlist": "ai_core_20.json",
+  "expected_account_count": 30,
+  "monitoring_enabled": false,
+  "activation_policy": {
+    "default": "disabled",
+    "requires_manual_promotion": true,
+    "prerequisites": [
+      "core-20 production connection is verified end-to-end",
+      "one saved discovery candidate safely reaches the bounded Factory validation lane",
+      "Factory persistence remains disabled during validation",
+      "incremental non-duplicate candidate yield is measured",
+      "acquisition cost remains within the approved free-tier budget",
+      "handle identity and recent signal quality are re-verified immediately before activation"
+    ]
+  },
+  "accounts": [
+    {"handle":"simonw","display_name":"Simon Willison","monitoring_enabled":false,"priority":1,"signals":["implementation","tooling","primary-source-links"],"verification_status":"preactivation_review_required"},
+    {"handle":"karpathy","display_name":"Andrej Karpathy","monitoring_enabled":false,"priority":1,"signals":["research-explanation","implementation","model-behavior"],"verification_status":"preactivation_review_required"},
+    {"handle":"emollick","display_name":"Ethan Mollick","monitoring_enabled":false,"priority":1,"signals":["applied-ai","experiments","user-impact"],"verification_status":"preactivation_review_required"},
+    {"handle":"chipro","display_name":"Chip Huyen","monitoring_enabled":false,"priority":1,"signals":["ai-engineering","agents","evaluation"],"verification_status":"preactivation_review_required"},
+    {"handle":"HamelHusain","display_name":"Hamel Husain","monitoring_enabled":false,"priority":1,"signals":["evaluation","agents","production-practice"],"verification_status":"preactivation_review_required"},
+    {"handle":"swyx","display_name":"Shawn Wang","monitoring_enabled":false,"priority":1,"signals":["developer-ecosystem","agents","tooling"],"verification_status":"preactivation_review_required"},
+    {"handle":"eugeneyan","display_name":"Eugene Yan","monitoring_enabled":false,"priority":1,"signals":["production-ml","evaluation","implementation"],"verification_status":"preactivation_review_required"},
+    {"handle":"fchollet","display_name":"François Chollet","monitoring_enabled":false,"priority":1,"signals":["research","reasoning","critical-analysis"],"verification_status":"preactivation_review_required"},
+    {"handle":"rasbt","display_name":"Sebastian Raschka","monitoring_enabled":false,"priority":1,"signals":["research-explanation","benchmarks","implementation"],"verification_status":"preactivation_review_required"},
+    {"handle":"jeremyphoward","display_name":"Jeremy Howard","monitoring_enabled":false,"priority":1,"signals":["open-source","education","implementation"],"verification_status":"preactivation_review_required"},
+    {"handle":"lilianweng","display_name":"Lilian Weng","monitoring_enabled":false,"priority":1,"signals":["research-synthesis","agents","primary-source-links"],"verification_status":"preactivation_review_required"},
+    {"handle":"jxnlco","display_name":"Jason Liu","monitoring_enabled":false,"priority":1,"signals":["structured-generation","evaluation","production-practice"],"verification_status":"preactivation_review_required"},
+    {"handle":"random_walker","display_name":"Arvind Narayanan","monitoring_enabled":false,"priority":1,"signals":["critical-analysis","policy-impact","evidence-checking"],"verification_status":"preactivation_review_required"},
+    {"handle":"GaryMarcus","display_name":"Gary Marcus","monitoring_enabled":false,"priority":2,"signals":["critical-analysis","failure-modes","industry-claims"],"verification_status":"preactivation_review_required"},
+    {"handle":"natolambert","display_name":"Nathan Lambert","monitoring_enabled":false,"priority":1,"signals":["open-models","post-training","research-analysis"],"verification_status":"preactivation_review_required"},
+    {"handle":"Thom_Wolf","display_name":"Thomas Wolf","monitoring_enabled":false,"priority":2,"signals":["open-source","research","ecosystem"],"verification_status":"preactivation_review_required"},
+    {"handle":"hwchase17","display_name":"Harrison Chase","monitoring_enabled":false,"priority":1,"signals":["agents","production-practice","tooling"],"verification_status":"preactivation_review_required"},
+    {"handle":"OfficialLoganK","display_name":"Logan Kilpatrick","monitoring_enabled":false,"priority":2,"signals":["developer-ecosystem","product-signals","implementation"],"verification_status":"preactivation_review_required"},
+    {"handle":"goodside","display_name":"Riley Goodside","monitoring_enabled":false,"priority":1,"signals":["model-behavior","experiments","failure-modes"],"verification_status":"preactivation_review_required"},
+    {"handle":"DrJimFan","display_name":"Jim Fan","monitoring_enabled":false,"priority":2,"signals":["research","robotics","agents"],"verification_status":"preactivation_review_required"},
+    {"handle":"AndrewYNg","display_name":"Andrew Ng","monitoring_enabled":false,"priority":2,"signals":["applied-ai","education","industry-signals"],"verification_status":"preactivation_review_required"},
+    {"handle":"demishassabis","display_name":"Demis Hassabis","monitoring_enabled":false,"priority":2,"signals":["frontier-research","research-direction","primary-source-links"],"verification_status":"preactivation_review_required"},
+    {"handle":"jackclarkSF","display_name":"Jack Clark","monitoring_enabled":false,"priority":1,"signals":["research-synthesis","industry-analysis","policy-impact"],"verification_status":"preactivation_review_required"},
+    {"handle":"GergelyOrosz","display_name":"Gergely Orosz","monitoring_enabled":false,"priority":2,"signals":["software-engineering","developer-tools","industry-analysis"],"verification_status":"preactivation_review_required"},
+    {"handle":"hardmaru","display_name":"David Ha","monitoring_enabled":false,"priority":2,"signals":["research","open-models","experiments"],"verification_status":"preactivation_review_required"},
+    {"handle":"NandoDF","display_name":"Nando de Freitas","monitoring_enabled":false,"priority":2,"signals":["research","agents","critical-analysis"],"verification_status":"preactivation_review_required"},
+    {"handle":"percyliang","display_name":"Percy Liang","monitoring_enabled":false,"priority":2,"signals":["evaluation","foundation-models","research"],"verification_status":"preactivation_review_required"},
+    {"handle":"sleepinyourhat","display_name":"Sam Bowman","monitoring_enabled":false,"priority":2,"signals":["alignment","evaluation","research"],"verification_status":"preactivation_review_required"},
+    {"handle":"johnschulman2","display_name":"John Schulman","monitoring_enabled":false,"priority":2,"signals":["reinforcement-learning","alignment","research"],"verification_status":"preactivation_review_required"},
+    {"handle":"omarsar0","display_name":"Elvis Saravia","monitoring_enabled":false,"priority":2,"signals":["research-synthesis","papers","developer-education"],"verification_status":"preactivation_review_required"}
+  ]
+}
