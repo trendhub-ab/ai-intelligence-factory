@@ -16,8 +16,8 @@ jobs:
       APIFY_MAX_CHARGE_USD: '0.05'
       MAX_RECORDS: '100'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Build fixed bootstrap Actor input
