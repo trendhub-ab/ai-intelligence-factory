@@ -229,7 +229,10 @@ class Run172ProductionReliabilityTests(unittest.TestCase):
         for rows in ([fact], [reader, fact], [{**reader, "severity": "HARD"}],
                      [{"message": "reader_value_review:unknown", "severity": "REVIEW"}], []):
             with self.subTest(rows=rows):
-                p = fake_pipeline(GATE_SEVERITY_HARD="HARD")
+                p = fake_pipeline(
+                    GATE_SEVERITY_HARD="HARD",
+                    should_attempt_dynamic_retry=lambda reason_rows, evidence, origin="new": (False, "base_denied"),
+                )
                 run172.install(p)
                 repair.install(p)
                 feedback, sections = p.build_dynamic_retry_instruction(rows)
