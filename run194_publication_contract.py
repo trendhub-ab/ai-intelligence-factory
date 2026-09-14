@@ -15,6 +15,11 @@ Notion rich_text segmentation is transport-only and must never change manuscript
 legacy paragraph-aware chunker can drop a newline when a chunk boundary is crossed, while Notion
 may merge rich_text segments again on readback.  This overlay therefore rewrites code-block
 rich_text with lossless fixed-size slices before persistence and verifies the in-memory roundtrip.
+
+Run425 installs the mandatory reader-facing intro-summary contract at this final publication
+boundary.  A manuscript may not reach Ready without ``どんな内容？`` / ``なぜ重要？`` /
+``結論は？`` in order and with substantive answers.  The check is zero-provider-call and does
+not synthesize facts or change Decision/Evidence.
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import inspect
 from typing import Any
 
 import publication_contract as contract
+import run425_required_intro_summary as run425
 
 _INSTALLED_ATTR = "_run194_publication_contract_installed"
 _DEFAULT_NOTION_RICH_TEXT_LIMIT = 1900
@@ -128,5 +134,10 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.upgrade_notion_page_with_report = upgrade_with_exact_body_idempotency
     pipeline_module.CURRENT_PUBLICATION_CONTRACT = contract.CONTRACT_ID
     pipeline_module.CURRENT_PUBLICATION_POLICY_SHA256 = contract.policy_sha256()
+
+    # Run425 is deliberately installed last: it validates the actual reader-facing projection
+    # after Run296/249 presentation shaping and before any Ready persistence can be trusted.
+    run425.install(pipeline_module)
+
     setattr(pipeline_module, _INSTALLED_ATTR, True)
     return pipeline_module
