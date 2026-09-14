@@ -58,9 +58,9 @@ Gemini系の安全契約:
 
 ### 1.2 X logic
 
-- X取得・監視・候補化ロジックはRepository cleanupとは別系統として保持する。
-- X系の仕様・コードを、Groq撤去やRecovery整理を理由に変更しない。
-- X系をProductionへ統合・変更する場合は別途検証する。
+- X取得・監視・候補化ロジック（`x_discovery`）およびインテリジェンス層（`x_intelligence`）はProductionリポジトリへ統合済み。
+- 独立したモジュール設計および安全契約（`is_evidence=false`、ゼロプロバイダー/ドライラン安全、無許可の外部API消費防止）を維持する。
+- 自動実行ワークフローは手動（`workflow_dispatch`）または独立した安全実行を前提とする。
 
 ### 1.3 Repository cleanup
 
@@ -389,7 +389,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 - **Production:** Geminiベース既存ロジック
 - **Primary / Quality:** Gemini 3.8 / Gemini 3.7の役割分離を維持
 - **Groq coexistence:** 終了
-- **X logic:** 保持、今回の整理対象外
+- **X logic:** Productionリポジトリへ統合済み（`x_discovery` / `x_intelligence`、`is_evidence=false`・ゼロプロバイダー安全契約を維持）
 - **Active sources:** GitHub / ArXiv / HackerNews / OfficialVendor
 - **Product Hunt:** active Production sourceではない
 - **45-article Recovery:** 終了、33件未復旧のまま再開しない
