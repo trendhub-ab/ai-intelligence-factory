@@ -1,0 +1,63 @@
+name: Groq Quality Contract Sync Offline
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - 'groq_quality_contract_sync.py'
+      - 'tests/test_groq_quality_contract_sync.py'
+      - '.github/workflows/groq-quality-contract-sync-offline.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest jsonschema
+      - name: Run adversarial contract regressions
+        run: python -m pytest tests/test_groq_quality_contract_sync.py -q
+      - name: Prove no provider or Gemini retry mutation is imported
+        shell: python
+        run: |
+          import ast, pathlib
+          src=pathlib.Path('groq_quality_contract_sync.py').read_text(encoding='utf-8')
+          tree=ast.parse(src)
+          imports=[]
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imports.extend(alias.name for alias in node.names)
+              elif isinstance(node, ast.ImportFrom):
+                  imports.append(node.module or '')
+          forbidden=('ai_provider','google','gemini','groq_remote_budget','requests','urllib')
+          bad=[name for name in imports if any(x in name.lower() for x in forbidden)]
+          assert not bad, bad
+          assert 'should_attempt_dynamic_retry' not in src
+          assert 'GROQ_API_KEY' not in src
+          print({'provider_neutral': True, 'forbidden_imports': bad, 'business_writes': 0})
+      - name: Integration smoke against branch pipeline
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import pipeline
+          from groq_quality_contract_sync import install_provider_neutral_quality_contracts
+          original_fact=pipeline.validate_fact_gate
+          original_publication=pipeline.validate_publication_readiness_gate
+          install_provider_neutral_quality_contracts(pipeline)
+          assert pipeline.validate_fact_gate is original_fact
+          assert pipeline.validate_publication_readiness_gate is original_publication
+          assert pipeline.GROQ_SYNC_RUN357_QUALITY_INTERACTION is True
+          assert pipeline.GROQ_SYNC_RUN358_READER_SIGNAL_PRECISION is True
+          print({'fact_gate_unchanged': True, 'publication_gate_unchanged': True, 'business_writes': 0})
+      - name: Assert no live credential
+        run: test -z "${GROQ_API_KEY:-}" && test -z "${GEMINI_API_KEY:-}"

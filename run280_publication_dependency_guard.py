@@ -44,6 +44,7 @@ REQUIRED_PUBLICATION_DEPENDENCIES = (
 
 # Narrow exemptions only. Any newly imported local module is untrusted by default.
 EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
+    "groq_validation.py": "isolated saved-prompt experiment only; returns before production runtime imports; never writes Notion/note or assigns publication status",
     "product_delivery_maintenance.py": "member/product maintenance only",
     "deep_dive_portfolio.py": "candidate selection only",
     "source_roi_policy.py": "source allocation/learning only",

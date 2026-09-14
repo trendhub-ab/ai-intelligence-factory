@@ -1,0 +1,50 @@
+name: Groq Writer v10 Compound Offline
+on:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - 'groq_writer_v10_compound.py'
+      - 'tests/test_groq_writer_v10_compound.py'
+      - '.github/workflows/groq-writer-v10-compound-offline.yml'
+  pull_request:
+    branches: ['main']
+    paths:
+      - 'groq_writer_v10_compound.py'
+      - 'tests/test_groq_writer_v10_compound.py'
+      - '.github/workflows/groq-writer-v10-compound-offline.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run v10 tests
+        run: python -m unittest tests.test_groq_writer_v10_compound -v
+      - name: Preflight real B0049 v10 Compound writer
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json, shutil
+          from groq_two_pass_article import build_writer_fixture
+          from groq_writer_v5_contract import harden_writer_fixture
+          from groq_writer_v7_contract import harden_writer_fixture_v7
+          from groq_writer_v10_compound import route_compound_writer_v10, preflight_compound_writer_v10
+          shutil.copyfile('tests/fixtures/groq/two_pass_v3_plan_safe_report.json','plan.json')
+          build_writer_fixture('tests/fixtures/groq/article_parity_B0049_input.json','plan.json','writer.json')
+          harden_writer_fixture('writer.json'); harden_writer_fixture_v7('writer.json')
+          route_compound_writer_v10('writer.json')
+          pf=preflight_compound_writer_v10('writer.json')
+          assert pf['model']=='groq/compound-mini'
+          assert pf['external_tools']=='disabled'
+          assert pf['reserved_estimate'] <= 60000
+          assert pf['headroom'] >= 10000
+          assert pf['request_bytes'] < 24576
+          print(json.dumps({'v10_compound_offline':'PASS',**pf,'business_writes':0},ensure_ascii=False))
+      - name: Assert no live credential
+        run: test -z "${GROQ_API_KEY:-}"

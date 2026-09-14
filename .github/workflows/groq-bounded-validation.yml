@@ -1,0 +1,64 @@
+name: Groq Bounded Validation
+on:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths: ['.github/workflows/groq-bounded-validation.yml']
+permissions:
+  contents: read
+concurrency:
+  group: groq-bounded-validation
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline provider and reservation tests
+        run: |
+          python -m unittest discover -s tests -p 'test_ai_provider.py' -v
+          python -m unittest discover -s tests -p 'test_groq_*.py' -v
+      - name: Reserve and run one cross-source primary calibration
+        env:
+          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
+          AIIF_GROQ_FIXTURE: tests/fixtures/groq/calibration_cross_source_primary_v1.json
+          AIIF_GROQ_REPORT: groq-validation-result.json
+          AIIF_GROQ_LIVE: 'true'
+          AIIF_GROQ_BUDGET_BACKEND: github
+          AIIF_GROQ_EXPERIMENT: calibration-cross-source-primary-v1
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
+        run: python production_pipeline.py
+      - name: Check candidates, ranking, and bounded scores
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          report = json.loads(Path("groq-validation-result.json").read_text())
+          rows = json.loads(report["result"]["text"])
+          assert isinstance(rows, list) and len(rows) == 3
+          by_id = {row["id"]: row for row in rows}
+          assert set(by_id) == {"B0049", "B0031", "B0086"}
+          for row in rows:
+              for key in ("score", "commercial_score", "shelf_life_score"):
+                  assert type(row[key]) is int and 0 <= row[key] <= 100
+              assert row["topic"] in {"MODEL","AGENT","DEVTOOLS","INFRA","DATA","SECURITY","MULTIMODAL","PRODUCT","OTHER"}
+              assert type(row["tracking_eligible"]) is bool
+              for key in ("reason", "tracking_reason"):
+                  assert isinstance(row[key], str) and 0 < len(row[key]) <= 40
+          historical = {"B0049":82,"B0031":82,"B0086":85}
+          deltas = {k: by_id[k]["score"] - historical[k] for k in historical}
+          ranking = [r["id"] for r in sorted(rows, key=lambda x: (-x["score"], x["id"]))]
+          print(json.dumps({"schema_check":"PASS", "rows":rows, "historical":historical, "decision_deltas":deltas, "ranking":ranking, "usage":{k:v for k,v in report["result"].items() if k != "text"}}, ensure_ascii=False))
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-calibration-cross-source-primary-v1
+          path: groq-validation-result.json
+          if-no-files-found: warn
+          retention-days: 30

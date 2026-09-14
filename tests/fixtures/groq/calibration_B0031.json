@@ -1,0 +1,17 @@
+{
+  "stage": "calibration",
+  "prompt": "以下は一次Batch審査で55点以上だった候補である。候補群を横断比較し、Notion Stock候補としての一貫した最終Decision Scoreを返せ。scoreは技術的新規性、実務インパクト、意思決定への影響、緊急性、情報源の信頼性を評価する。commercial_scoreは品質スコアと独立して、読者需要の見込み、意思決定の緊急性、会員DB転換可能性、継続的な実務需要、商業隣接性をmetadataだけから保守的に再評価する。shelf_life_scoreは情報価値の持続性を0〜100で再評価する。入力にないアクセス数や売上を捏造しない。topicは主テーマを MODEL, AGENT, DEVTOOLS, INFRA, DATA, SECURITY, MULTIMODAL, PRODUCT, OTHER のいずれか1つで再判定する。tracking_eligibleは記事価値と独立したTechnology追跡価値で再判定し、tracking_reasonを40字以内で返す。異Source間でEngagementの絶対値を直接比較してはならない。出力はJSON配列のみ。各要素は id, score, commercial_score, shelf_life_score, topic, tracking_eligible, tracking_reason, reason（40字以内）。\n[{\"id\": \"B0031\", \"source\": \"HackerNews\", \"name\": \"The efficient frontier of LLM inference\", \"description\": \"\", \"raw_score\": 82, \"raw_commercial_score\": 80, \"raw_shelf_life_score\": 75, \"raw_topic\": \"INFRA\", \"tracking_eligible\": false, \"tracking_reason\": \"\", \"engagement\": 112, \"published_at\": \"2026-09-01T23:48:05+00:00\", \"url\": \"https://www.baseten.co/blog/the-efficient-frontier-of-llm-inference/\"}]",
+  "max_output_tokens": 1500,
+  "reasoning_effort": "low",
+  "provenance": {
+    "path": "screening_20260902T083606Z.json",
+    "sha256": "53f4a9c2ae4c84c1e48283ef2b9ca6c66ce7846377404d13e4471bb53158a9e6",
+    "candidate_id": "B0031",
+    "historical_raw": 82,
+    "historical_final": 82,
+    "limitations": [
+      "description and tracking fields absent from archive",
+      "single candidate: not global calibration parity"
+    ]
+  }
+}

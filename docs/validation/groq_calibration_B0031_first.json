@@ -1,0 +1,27 @@
+{
+  "run_id": 34656087894,
+  "experiment": "calibration-B0031-first",
+  "model": "openai/gpt-oss-120b",
+  "fixture_sha256": "495fbb10f047bd726652761dbceca83818824560be81eedf4bb3e5d52dc6f79a",
+  "provider_calls": 1,
+  "prompt_tokens": 516,
+  "completion_tokens": 223,
+  "business_writes": 0,
+  "structural_check": "PASS",
+  "quality_validated": false,
+  "row": {
+    "id": "B0031",
+    "score": 82,
+    "commercial_score": 70,
+    "shelf_life_score": 70,
+    "topic": "INFRA",
+    "tracking_eligible": false,
+    "tracking_reason": "低追跡価値",
+    "reason": "技術新規性高・実務インパクト中"
+  },
+  "limitations": [
+    "Archive lacks description and tracking fields",
+    "Single-candidate result is not Global Calibration parity",
+    "High technical novelty is not established by the supplied title"
+  ]
+}

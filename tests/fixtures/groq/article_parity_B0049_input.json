@@ -1,0 +1,23 @@
+{
+  "candidate_id": "B0049",
+  "source": "HackerNews",
+  "name": "Path to Astra: critical capabilities and frontier safeguards",
+  "url": "https://openai.com/index/path-to-astra/",
+  "stars": 147,
+  "description": "OpenAI一次資料。AstraのCritical級サイバー能力と、その公開に必要なフロンティア安全策を説明。",
+  "source_context": "OpenAI一次資料（2026-09-01）。AstraはPreparedness Framework上のCritical cybersecurity capability thresholdに到達した最初のモデルと説明される。既知脆弱性からexploitを開発するExploitBenchで100%を記録。データ混入懸念から、2026年6〜8月に公開された高深刻度V8脆弱性20件の社内評価も実施し、評価中に2件のzero-day脆弱性を発見してexploit chainの一部として利用した。これらの結果はdefault production configurationではなくDaybreak Blue access条件を反映する。能力向上を理由に一部の開発・公開を遅らせ、安全策を強化。公開時は高度なサイバー能力へのアクセス制限、拒否訓練、system safety classifier、監視、misalignment detectionなど複数の安全策を適用する。",
+  "grounding_status_hint": "PRIMARY_SOURCE",
+  "screening_score": 82,
+  "screening_reason": "OpenAIによる次世代フロンティアセーフガードと機能の方針。",
+  "max_output_tokens": 4000,
+  "reasoning_effort": "medium",
+  "provenance": {
+    "primary_source": "https://openai.com/index/path-to-astra/",
+    "primary_source_date": "2026-09-01",
+    "purpose": "Groq article-generation parity using the current production prompt and current publication gate",
+    "persist_results": false,
+    "notion_writes": 0,
+    "note_writes": 0,
+    "free_plan_tpm_fit": "Compound Mini article lane uses a 60000 TPM Factory safety envelope; output ceiling remains 4000 tokens."
+  }
+}

@@ -1,0 +1,173 @@
+name: Groq Article Parity Live
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/groq-provider-foundation']
+    paths:
+      - '.runtime/groq_article_parity_trigger.txt'
+permissions:
+  contents: write
+concurrency:
+  group: groq-article-parity-live
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install jsonschema
+      - name: Build and preflight current Production article contract
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json
+          import note_manuscript
+          import pipeline
+          import production_pipeline
+          from ai_provider import GenerationRequest, GroqProvider
+          from groq_article_parity import build_production_article_fixture
+          from groq_prompt_compiler import MAX_COMPILED_PROMPT_BYTES
+          from groq_rate_policy import policy_for_model
+          from source_normalization import install as install_source_normalization
+          from run268_business_source_strategy import install as install_run268
+          from run269_business_source_precision import install as install_run269
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from run287_publication_date_provenance import install as install_run287
+          from reader_quality_precision import install as install_reader_quality_precision
+          install_source_normalization(pipeline)
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline)
+          install_run268(pipeline)
+          install_run269(pipeline)
+          install_reader_quality_precision(pipeline)
+          install_run284(pipeline)
+          install_run287(note_manuscript, pipeline)
+          fixture = build_production_article_fixture(
+              pipeline,
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-article-production-prompt.json',
+          )
+          policy = policy_for_model(fixture['model'])
+          provider = GroqProvider(lambda _: None, token_budget=policy.safe_tpm, model=fixture['model'])
+          payload, estimate = provider.prepare(GenerationRequest(
+              fixture['prompt'], fixture['max_output_tokens'], None, fixture['reasoning_effort']
+          ))
+          request_bytes = len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+          canonical_bytes = int(fixture['provenance']['canonical_prompt_bytes'])
+          compiled_bytes = int(fixture['provenance']['compiled_prompt_bytes'])
+          max_request_json_bytes = 24 * 1024
+          assert compiled_bytes == len(fixture['prompt'].encode('utf-8'))
+          assert compiled_bytes <= MAX_COMPILED_PROMPT_BYTES
+          assert compiled_bytes < canonical_bytes
+          assert request_bytes <= max_request_json_bytes, (request_bytes, max_request_json_bytes)
+          assert payload.get('compound_custom', {}).get('tools', {}).get('enabled_tools') == []
+          assert 'tool_choice' not in payload
+          assert payload.get('citation_options') == 'disabled'
+          print(json.dumps({
+              'model': fixture['model'],
+              'rate_policy': fixture['rate_policy'],
+              'reserved_estimate': estimate,
+              'safe_tpm': policy.safe_tpm,
+              'canonical_prompt_bytes': canonical_bytes,
+              'compiled_prompt_bytes': compiled_bytes,
+              'compiler_reduction_pct': round((1 - compiled_bytes / canonical_bytes) * 100, 1),
+              'request_json_bytes': request_bytes,
+              'request_json_guard_bytes': max_request_json_bytes,
+              'transport_compiler': fixture['provenance']['transport_compiler'],
+              'external_tools': 'disabled_via_compound_custom',
+              'business_writes': 0,
+          }, ensure_ascii=False))
+      - name: One guarded Groq article generation call
+        env:
+          AIIF_ONE_SHOT_MODE: groq_saved_prompt_validation
+          AIIF_GROQ_FIXTURE: groq-article-production-prompt.json
+          AIIF_GROQ_REPORT: groq-article-result.json
+          AIIF_GROQ_LIVE: 'true'
+          AIIF_GROQ_BUDGET_BACKEND: github
+          AIIF_GROQ_EXPERIMENT: article-parity-B0049-compound-mini-v6-boundary-reader-v1
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_LEDGER_GITHUB_TOKEN: ${{ github.token }}
+        run: python production_pipeline.py
+      - name: Evaluate with current Production parser and all four quality gates
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+          PYTHONPATH: ${{ github.workspace }}
+        shell: python
+        run: |
+          import json
+          import note_manuscript
+          import pipeline
+          import production_pipeline
+          from groq_article_parity import evaluate_groq_article_output
+          from source_normalization import install as install_source_normalization
+          from run268_business_source_strategy import install as install_run268
+          from run269_business_source_precision import install as install_run269
+          from run283_numeric_evidence_equivalence import install as install_run283
+          from run284_reader_recovery_precision import install as install_run284
+          from run287_publication_date_provenance import install as install_run287
+          from reader_quality_precision import install as install_reader_quality_precision
+          install_source_normalization(pipeline)
+          production_pipeline.install_runtime_layers(pipeline)
+          production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+          install_run283(pipeline)
+          install_run268(pipeline)
+          install_run269(pipeline)
+          install_reader_quality_precision(pipeline)
+          install_run284(pipeline)
+          install_run287(note_manuscript, pipeline)
+          evaluation = evaluate_groq_article_output(
+              pipeline,
+              'groq-article-result.json',
+              'tests/fixtures/groq/article_parity_B0049_input.json',
+              'groq-article-evaluation.json',
+          )
+          assert evaluation['provider_calls'] == 1
+          assert evaluation['business_writes'] == 0
+          assert evaluation['persist_results'] is False
+          assert evaluation['parsed']
+          assert evaluation['article_chars'] > 0
+          print(json.dumps({
+              'candidate_id': evaluation['candidate_id'],
+              'model': evaluation['model'],
+              'evidence_state': evaluation['evidence_state'],
+              'evidence_sufficient': evaluation['evidence_sufficient'],
+              'fact_ok': evaluation['fact_ok'],
+              'fact_failures': evaluation['fact_failures'],
+              'editorial_ok': evaluation['editorial_ok'],
+              'editorial_warnings': evaluation['editorial_warnings'],
+              'publication_state': evaluation['publication_state'],
+              'publication_issues': evaluation['publication_issues'],
+              'human_appeal_state': evaluation['human_appeal_state'],
+              'human_appeal_issues': evaluation['human_appeal_issues'],
+              'gate_disposition': evaluation['gate_disposition'],
+              'quality_validated': evaluation['quality_validated'],
+              'decision_score': evaluation['decision_score'],
+              'article_chars': evaluation['article_chars'],
+              'provider_calls': evaluation['provider_calls'],
+              'prompt_tokens': evaluation['prompt_tokens'],
+              'completion_tokens': evaluation['completion_tokens'],
+              'tokens': evaluation['prompt_tokens'] + evaluation['completion_tokens'],
+              'business_writes': evaluation['business_writes'],
+          }, ensure_ascii=False))
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groq-article-parity-B0049
+          path: |
+            groq-article-production-prompt.json
+            groq-article-result.json
+            groq-article-evaluation.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -208,6 +208,12 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
+    # Groq validation is isolated before Gemini imports or business runtime setup.
+    if _workflow_dispatch_mode() == "groq_saved_prompt_validation":
+        from groq_validation import run_saved_prompt_validation
+        run_saved_prompt_validation()
+        return
+
     # Run305: Product Review is still a child process, but every root executable must
     # enter through this sole production authority. Branch before article imports so
     # product-only execution does not install or initialize article/publication layers.
@@ -332,3 +338,4 @@ def _run_product_review_runtime() -> None:
 
 if __name__ == "__main__":
     main()
+

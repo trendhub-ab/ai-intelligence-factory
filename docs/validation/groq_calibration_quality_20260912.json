@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-12",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "production_provider_unchanged": "gemini",
+  "business_writes": 0,
+  "verdict": {
+    "calibration_replacement_candidate": "PASS",
+    "article_generation_replacement": "NOT_YET_VALIDATED",
+    "reason": "Primary-context single-candidate and cross-source ranking tests stayed within small deltas from historical Factory scores and produced semantically grounded classifications. Article generation remains a separate quality gate."
+  },
+  "runs": [
+    {
+      "run_id": 34656365385,
+      "experiment": "calibration-B0049-primary-v1",
+      "provider_calls": 1,
+      "prompt_tokens": 645,
+      "completion_tokens": 283,
+      "total_tokens": 928,
+      "candidate": "B0049",
+      "historical_final": 82,
+      "groq_score": 85,
+      "decision_delta": 3,
+      "historical_commercial": 85,
+      "groq_commercial": 78,
+      "commercial_delta": -7,
+      "historical_shelf_life": 70,
+      "groq_shelf_life": 75,
+      "shelf_life_delta": 5,
+      "topic": "MODEL",
+      "tracking_eligible": true,
+      "schema_check": "PASS"
+    },
+    {
+      "run_id": 34656482873,
+      "experiment": "calibration-cross-source-primary-v1",
+      "provider_calls": 1,
+      "prompt_tokens": 1110,
+      "completion_tokens": 318,
+      "total_tokens": 1428,
+      "schema_check": "PASS",
+      "ranking": ["B0086", "B0049", "B0031"],
+      "scores": {
+        "B0049": {"historical": 82, "groq": 84, "delta": 2, "topic": "MODEL", "tracking_eligible": true},
+        "B0031": {"historical": 82, "groq": 81, "delta": -1, "topic": "INFRA", "tracking_eligible": true},
+        "B0086": {"historical": 85, "groq": 86, "delta": 1, "topic": "AGENT", "tracking_eligible": true}
+      }
+    }
+  ],
+  "cost_control": {
+    "durable_ledger": true,
+    "rolling_24h_request_cap": 3,
+    "current_validation_window_consumed": 3,
+    "replay_blocked_forever_by_experiment_id": true,
+    "no_more_live_calls_until_rolling_budget_recovers": true
+  },
+  "next_gate": {
+    "name": "article-generation parity",
+    "method": "Use one fully sourced saved candidate and the current production article contract, generate with Groq in persist=false mode, run the existing article quality gates, compare against the best known Gemini/production-format reference, and allow zero Notion/note writes.",
+    "success_condition": "No structural contract regression, no evidence hallucination, reader-first quality acceptable, and quality-gate outcome comparable to production expectations."
+  }
+}
