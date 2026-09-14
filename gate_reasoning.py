@@ -67,6 +67,17 @@ REASON_CODE_NOTION_PERSISTENCE_FAILED = "NOTION_PERSISTENCE_FAILED"
 
 READER_VALUE_MARKER = "reader_value_review:"
 
+# Reader issues are not all publication-safety failures. Density, repetition and a broad
+# multi-axis quality cluster describe style/readability debt. They remain visible as SOFT
+# warnings, but do not spend another model call or stop an otherwise safe article. Explicit
+# non-engineer core-comprehension failures, final-surface failures and unknown Reader classes
+# remain REVIEW/fail-closed below.
+_READER_STYLE_ONLY_CODES = {
+    REASON_CODE_READER_DENSE_REPORT,
+    REASON_CODE_READER_REPETITIVE_INSIGHT,
+    REASON_CODE_READER_MULTI_AXIS_WEAKNESS,
+}
+
 # Publication reasons that represent factual/evidence/public-claim safety failures. These remain
 # fail-closed HARD_BLOCK. Repairable consistency/presentation reasons are intentionally excluded.
 _PUBLICATION_HARD_CODES = {
@@ -184,6 +195,8 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code_value: st
     if gate == "human_appeal":
         if code == REASON_CODE_APPEAL_FABRICATED_EXPERIENCE or "fabricated_personal_experience" in text:
             return GATE_SEVERITY_HARD
+        if code in _READER_STYLE_ONLY_CODES:
+            return GATE_SEVERITY_SOFT
         if code.startswith("READER_"):
             return GATE_SEVERITY_REVIEW
         if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
