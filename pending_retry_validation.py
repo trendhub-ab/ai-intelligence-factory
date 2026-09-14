@@ -9,9 +9,11 @@ Safety contract:
 - installs the exact current Production article/runtime/publication stack, including
   current precision/recovery overlays, before applying fast-lane-only controls;
 - proves runtime-state writability before any Gemini reservation;
-- caps this fast lane at three Pending Retry requests so two provider failures can
-  still leave one cross-model generation opportunity; this is an explicit fast-lane
-  cap and does not raise any persistent per-model or global provider safety ceiling;
+- caps this fast lane at three Pending Retry requests so provider/model fallback can
+  still complete the same article; this is an explicit fast-lane cap and does not
+  raise any persistent per-model or global provider safety ceiling;
+- attempts exactly one Pending Retry article candidate per validation run and never
+  advances to a second article when the first candidate fails or a provider is down;
 - cools a model for the rest of this fast-lane run after its first HTTP 503;
 - permits at most one Reader Value recompose under the same current Production
   recovery policy when factual/evidence blockers are absent;
@@ -32,6 +34,7 @@ import os
 from typing import Any, MutableMapping
 
 FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = 3
+FAST_LANE_ARTICLE_ATTEMPT_LIMIT = 1
 FAST_LANE_503_COOLDOWN_THRESHOLD = 1
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 
@@ -55,13 +58,27 @@ def prioritize_pending_items(items: list[dict[str, Any]] | None) -> list[dict[st
     return sorted(list(items or []), key=_score, reverse=True)
 
 
-def run_pending_retry_lane(pipeline_module, items: list[dict[str, Any]] | None, *, success_target: int = 1) -> dict[str, int]:
+def run_pending_retry_lane(
+    pipeline_module,
+    items: list[dict[str, Any]] | None,
+    *,
+    success_target: int = 1,
+    article_attempt_limit: int = FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
+) -> dict[str, int]:
+    """Attempt a bounded number of *articles*, independently of model-request fallback.
+
+    The validation lane defaults to one article candidate. ``generate_intelligence_report`` may
+    still consume more than one provider request for that same candidate under the Production
+    fallback/recovery policy, but a failed first candidate must never cause the validation run to
+    move on to a second article implicitly.
+    """
     attempted = 0
     succeeded = 0
     success_target = max(1, int(success_target or 1))
+    article_attempt_limit = max(1, int(article_attempt_limit or 1))
 
     for rank, item in enumerate(prioritize_pending_items(items), start=1):
-        if succeeded >= success_target:
+        if succeeded >= success_target or attempted >= article_attempt_limit:
             break
         pending_budget = getattr(pipeline_module, "PENDING_RETRY_REQUEST_BUDGET")
         deep_budget = getattr(pipeline_module, "DEEP_DIVE_MODEL_BUDGET")
@@ -78,10 +95,12 @@ def run_pending_retry_lane(pipeline_module, items: list[dict[str, Any]] | None, 
         logger = getattr(pipeline_module, "logger", None)
         if logger is not None:
             logger.info(
-                "[PENDING RETRY FAST LANE] rank=%s score=%s candidate=%s",
+                "[PENDING RETRY FAST LANE] rank=%s score=%s candidate=%s article_attempt=%s/%s",
                 rank,
                 item.get("screening_score"),
                 name,
+                attempted + 1,
+                article_attempt_limit,
             )
 
         attempted += 1
@@ -159,10 +178,15 @@ def main() -> int:
     if items is None:
         raise RuntimeError("Pending Retry read failed")
 
-    result = run_pending_retry_lane(pipeline, items, success_target=1)
+    result = run_pending_retry_lane(
+        pipeline,
+        items,
+        success_target=1,
+        article_attempt_limit=FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
+    )
     pipeline.logger.info(
-        "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s succeeded=%s",
-        len(items), result["attempted"], result["succeeded"],
+        "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s succeeded=%s article_limit=%s",
+        len(items), result["attempted"], result["succeeded"], FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
     )
     pipeline.finalize_deep_dive_observability(funnel)
     return 0
