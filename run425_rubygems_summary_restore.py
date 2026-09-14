@@ -1,7 +1,7 @@
 """Owner-requested summary-only repair of the existing RubyGems private draft.
 
 Uses the previously accepted, hash-valid manuscript. No model calls, new draft,
-image changes, or publication. The source is appended only after note save audit.
+image changes, or publication. Repairs source provenance before exact queue reconciliation and note save audit.
 """
 from __future__ import annotations
 import json
@@ -76,6 +76,53 @@ def accepted_source(blocks):
     return original, corrected
 
 
+def require_private_queue(page):
+    import note_ready_sync as sync
+    props = page.get("properties") or {}
+    if (str(page.get("id") or "").replace("-", "") != "3da479ffdca981dea182defd98aeb137"
+        or sync._text(props.get("同期ID")) != target.SYNC_ID
+        or sync._text(props.get("記事タイトル")) != target.EXPECTED_NOTE_TITLE
+        or sync._select(props.get("品質状態")) not in {"Ready", "Ready取消"}
+        or sync._select(props.get("投稿状態")) != "投稿準備中"
+        or sync._url(props.get("note公開URL"))
+        or (props.get("投稿日") or {}).get("date")
+        or page.get("archived") or page.get("in_trash")):
+        raise RuntimeError("Exact unpublished repair queue precondition failed")
+
+
+def prepare_source():
+    import note_ready_sync as sync
+    page = target._fetch_exact_target(require_fixed=True)
+    state = sync._source_state(page)
+    if not state or state["sync_id"] != target.SYNC_ID or not state.get("eyecatch_url"):
+        raise RuntimeError("Source is not eligible for exact reconciliation")
+    queue_url = "https://api.notion.com/v1/pages/3da479ffdca981dea182defd98aeb137"
+    queue = sync._request("GET", queue_url)
+    queue.raise_for_status()
+    require_private_queue(queue.json())
+    original, corrected = accepted_source(source.children())
+    legacy = corrected.replace(SUMMARY, "", 1)
+    if restore(legacy) != corrected:
+        raise RuntimeError("Summary transformation is not reversible")
+    if sync._source_current_ready_manuscript(target.SYNC_ID) != corrected:
+        payload = {"children": [{"object": "block", "type": "code", "code": {
+            "language": "markdown", "rich_text": source.rich(corrected),
+            "caption": source.rich(contract.current_ready_caption(corrected))}}]}
+        response = source.requests.patch(
+            f"https://api.notion.com/v1/blocks/{source.PAGE_ID}/children",
+            headers=source.headers(), json=payload, timeout=25)
+        response.raise_for_status()
+    if sync._source_current_ready_manuscript(target.SYNC_ID) != corrected:
+        raise RuntimeError("Current source manuscript readback failed")
+    queue = sync._request("GET", queue_url)
+    queue.raise_for_status()
+    require_private_queue(queue.json())
+    # Same system-property builder used by normal sync; no posting fields or new rows.
+    response = sync._request("PATCH", queue_url, json={"properties": sync._system_props(state)})
+    response.raise_for_status()
+    return legacy, corrected
+
+
 def run():
     if os.environ.get("RUN425_CONFIRM") != CONFIRM:
         raise RuntimeError("Explicit repair confirmation required")
@@ -88,11 +135,10 @@ def run():
     import run300_genrec_final_body_repair as edit
     from playwright.sync_api import sync_playwright
 
-    target._fetch_exact_target(require_fixed=True)
+    original, corrected = prepare_source()
     row = audit._destination_row(target.SYNC_ID)
     if row["title"] != target.EXPECTED_NOTE_TITLE:
         raise RuntimeError("Destination title drift")
-    original, corrected = accepted_source(source.children())
     before = presentation.prepare_note_editor_manuscript(original, row["title"])
     after = presentation.prepare_note_editor_manuscript(corrected, row["title"])
     def normalized(value):

@@ -4,6 +4,23 @@ import run425_rubygems_summary_restore as repair
 
 
 class SummaryRestoreTests(unittest.TestCase):
+    def test_revoked_queue_repair_still_rejects_public_or_other_rows(self):
+        import copy
+        import note_ready_sync as sync
+        page = {"id": "3da479ff-dca9-81de-a182-defd98aeb137", "properties": {
+            "同期ID": sync._rt(repair.target.SYNC_ID),
+            "記事タイトル": sync._title(repair.target.EXPECTED_NOTE_TITLE),
+            "品質状態": sync._sel("Ready取消"), "投稿状態": sync._sel("投稿準備中")}}
+        repair.require_private_queue(page)
+        for key, value in (("投稿状態", sync._sel("投稿済み")),
+                           ("note公開URL", {"url": "https://note.com/example"}),
+                           ("投稿日", {"date": {"start": "2026-09-14"}}),
+                           ("同期ID", sync._rt("a" * 32))):
+            bad = copy.deepcopy(page)
+            bad["properties"][key] = value
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                repair.require_private_queue(bad)
+
     def manuscript(self):
         return ("# " + repair.target.EXPECTED_NOTE_TITLE + "\n\n### 元情報\n"
                 + repair.target.EXPECTED_SOURCE_TITLE + "\n\n## 詳細\n"
