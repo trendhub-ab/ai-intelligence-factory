@@ -77,3 +77,19 @@ class ModelExclusionTests(unittest.TestCase):
 
     def test_nonpersistent(self):
         test_validation_article_never_persists_generated_content()
+
+
+class TotalValidationBudgetTests(unittest.TestCase):
+    def test_fallback_repair_and_eyecatch_share_four_send_ceiling(self):
+        p = make_pipeline()
+        original = p._generate_via_chat
+        original.side_effect = [RuntimeError("503"), RuntimeError("503"), "draft", "repair"]
+        lane.install_validation_model_exclusions(p)
+        for model in ("gemini-3.8-flash", "gemini-3.7-flash"):
+            with self.assertRaisesRegex(RuntimeError, "503"):
+                p._generate_via_chat(model, "prompt", request_kind="deep_dive")
+        self.assertEqual(p._generate_via_chat("gemini-3.5-flash", "prompt"), "draft")
+        self.assertEqual(p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind="quality_retry"), "repair")
+        with self.assertRaisesRegex(RuntimeError, "total send ceiling"):
+            p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind="eyecatch_layout")
+        self.assertEqual(original.call_count, 4)

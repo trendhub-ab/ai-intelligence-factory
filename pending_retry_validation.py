@@ -180,11 +180,17 @@ def install_validation_model_exclusions(pipeline_module):
             setattr(pipeline_module, attr, [m for m in pool if m not in excluded])
     pipeline_module.SESSION_UNAVAILABLE_MODELS.update(excluded)
 
+    sends = 0
+
     def guarded_send(model_name, *args, **kwargs):
+        nonlocal sends
         if str(model_name).removeprefix("models/") in excluded:
             raise pipeline_module.NoAvailableModelError(
                 "Operator excluded Gemini 3.6 from validation, including fallback"
             )
+        if sends >= FAST_LANE_PENDING_RETRY_REQUEST_BUDGET:
+            raise pipeline_module.NoAvailableModelError("Validation total send ceiling reached")
+        sends += 1
         return original(model_name, *args, **kwargs)
 
     pipeline_module._generate_via_chat = guarded_send
