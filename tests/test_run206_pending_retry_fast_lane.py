@@ -28,12 +28,20 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
             logger=Mock(),
         )
 
-    def test_fast_lane_cost_ceiling_stays_three_requests(self):
-        self.assertEqual(fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET, 3)
+    def test_fast_lane_cost_ceiling_is_four_requests_with_one_repair_reserved(self):
+        self.assertEqual(fast_lane.FAST_LANE_INITIAL_GENERATION_SEND_CEILING, 3)
+        self.assertEqual(fast_lane.FAST_LANE_POST_GENERATION_REPAIR_RESERVE, 1)
+        self.assertEqual(fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET, 4)
         env = {}
         fast_lane.prepare_fast_lane_env(env)
-        self.assertEqual(env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "3")
+        self.assertEqual(env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"], "4")
         self.assertEqual(env[fast_lane.FAST_LANE_ENV], "1")
+
+    def test_reproduced_503_503_success_sequence_leaves_exactly_one_repair_request(self):
+        initial_provider_sends = 3
+        remaining = fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET - initial_provider_sends
+        self.assertEqual(remaining, 1)
+        self.assertEqual(remaining, fast_lane.FAST_LANE_POST_GENERATION_REPAIR_RESERVE)
 
     def test_fast_lane_article_attempt_ceiling_is_one(self):
         self.assertEqual(fast_lane.FAST_LANE_ARTICLE_ATTEMPT_LIMIT, 1)

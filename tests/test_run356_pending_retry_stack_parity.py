@@ -40,11 +40,13 @@ def test_fast_lane_installs_current_production_article_overlays_in_same_order():
     assert fast_lane_positions == sorted(fast_lane_positions)
 
 
-def test_fast_lane_budget_is_explicit_three_request_cap():
-    assert fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET == 3
+def test_fast_lane_budget_is_explicit_four_request_cap_with_one_repair_reserved():
+    assert fast_lane.FAST_LANE_INITIAL_GENERATION_SEND_CEILING == 3
+    assert fast_lane.FAST_LANE_POST_GENERATION_REPAIR_RESERVE == 1
+    assert fast_lane.FAST_LANE_PENDING_RETRY_REQUEST_BUDGET == 4
     env = {}
     fast_lane.prepare_fast_lane_env(env)
-    assert env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"] == "3"
+    assert env["GEMINI_PENDING_RETRY_REQUEST_BUDGET"] == "4"
     assert env[fast_lane.FAST_LANE_ENV] == "1"
 
 
