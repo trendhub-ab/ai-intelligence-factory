@@ -6,6 +6,13 @@ Run283 production finding:
 - The same source says prompt cache expires after ``an hour`` on a subscription, while the
   article rendered that as ``1時間``.
 
+2026-09-15 production-artifact finding:
+- ARC Prize explicitly reports ``$26,098`` and ``$18,817`` while the Japanese draft rendered
+  them as ``2万6,098ドル`` and ``1万8,817ドル``. The legacy sensitive-number matcher captured
+  only the trailing ``6,098ドル`` / ``8,817ドル`` and therefore falsely called both unsupported.
+- Currency-symbol notation such as ``$0.75`` and Japanese ``0.75ドル`` are equivalent only when
+  the exact amount exists in the evidence and the surrounding numeric conditions are compatible.
+
 Run350 real-article finding:
 - Run38 DeepSeek was Fact-blocked because ``自社にとって投資対効果が見合うかを見極めて
   いきましょう`` contains the term 投資対効果, even though it proposes measuring/evaluating
@@ -146,6 +153,81 @@ def _one_unit_evidence_windows(source_context: str, token: str) -> list[str]:
     ]
 
 
+def _currency_base_value(token: str) -> Decimal | None:
+    """Parse only explicit USD/dollar notation; bare numbers are never promoted."""
+    text = str(token or "").strip()
+    match = re.fullmatch(r"\$\s*(\d[\d,]*(?:\.\d+)?)", text, re.I)
+    if match is None:
+        match = re.fullmatch(
+            r"(\d[\d,]*(?:\.\d+)?)\s*(?:ドル|usd|us\s*dollars?|dollars?)",
+            text,
+            re.I,
+        )
+    if match is None:
+        return None
+    try:
+        return Decimal(match.group(1).replace(",", ""))
+    except InvalidOperation:
+        return None
+
+
+def _currency_claim_value_windows(draft: str, token: str) -> list[tuple[Decimal, str]]:
+    """Recover a Japanese ``万`` prefix when the legacy matcher captured only its tail.
+
+    Example: the failure token ``6,098ドル`` can occur inside ``2万6,098ドル``. We
+    reconstruct 26,098 only from the immediately adjacent written prefix; no amount is
+    inferred from another sentence or from business context.
+    """
+    base = _currency_base_value(token)
+    if base is None:
+        return []
+    rows: list[tuple[Decimal, str]] = []
+    for match in re.finditer(re.escape(token), draft or "", re.I):
+        claim_window = _window(draft, match.start(), match.end())
+        prefix = (draft or "")[max(0, match.start() - 24):match.start()]
+        man = re.search(r"(\d+(?:\.\d+)?)\s*万\s*$", prefix)
+        if man:
+            try:
+                rows.append((Decimal(man.group(1)) * Decimal(10000) + base, claim_window))
+            except InvalidOperation:
+                pass
+        rows.append((base, claim_window))
+    return rows
+
+
+def _currency_number_variants(value: Decimal) -> tuple[str, ...]:
+    plain = _decimal_variants(value)[0]
+    values = [plain]
+    if value == value.to_integral_value():
+        values.append(f"{int(value):,}")
+    return tuple(dict.fromkeys(values))
+
+
+def _currency_evidence_windows(source_context: str, value: Decimal) -> list[str]:
+    windows: list[str] = []
+    for number in _currency_number_variants(value):
+        pattern = (
+            rf"(?:\$\s*{re.escape(number)}(?!\d)|"
+            rf"(?<!\d){re.escape(number)}\s*(?:USD|US\s*dollars?|dollars?|ドル)(?![A-Za-z]))"
+        )
+        for match in re.finditer(pattern, source_context or "", re.I):
+            windows.append(_window(source_context, match.start(), match.end(), 220, 260))
+    return windows
+
+
+def _currency_numeric_claim_supported(
+    token: str,
+    draft: str,
+    source_context: str,
+    condition_compatible,
+) -> bool:
+    for value, claim_window in _currency_claim_value_windows(draft, token):
+        for evidence_window in _currency_evidence_windows(source_context, value):
+            if condition_compatible(claim_window, evidence_window):
+                return True
+    return False
+
+
 def _tags(text: str, patterns: dict[str, re.Pattern]) -> set[str]:
     return {name for name, pattern in patterns.items() if pattern.search(text or "")}
 
@@ -209,6 +291,13 @@ def filter_numeric_false_positives(
             filtered.append(failure)
             continue
         token = text[len(_UNSUPPORTED_PREFIX):].strip()
+        if _currency_numeric_claim_supported(
+            token,
+            draft,
+            source_context,
+            condition_compatible=condition_compatible,
+        ):
+            continue
         if _equivalent_numeric_claim_supported(
             token,
             draft,

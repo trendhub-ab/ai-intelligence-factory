@@ -9,11 +9,12 @@ Safety contract:
 - installs the exact current Production article/runtime/publication stack, including
   current precision/recovery overlays, before applying fast-lane-only controls;
 - proves runtime-state writability before any Gemini reservation;
-- caps this fast lane at four Pending Retry requests: at most three initial-generation
-  sends allow the reproduced 503 -> 503 -> success fallback sequence, and one final
-  request is reserved for a Production-authorized post-generation quality repair;
-  this is an explicit fast-lane cap and does not raise any persistent per-model,
-  full-Daily Deep Dive, or global provider safety ceiling;
+- caps this fast lane at four provider-visible Pending Retry article requests: at most
+  three initial-generation sends allow the reproduced 503 -> 503 -> success fallback
+  sequence, and one final request is reserved for a Production-authorized
+  post-generation quality repair;
+- model-assisted eyecatch layout is not part of article-quality validation and is
+  rejected before reservation in this lane, so it cannot consume a fifth or spare send;
 - attempts exactly one Pending Retry article candidate per validation run and never
   advances to a second article when the first candidate fails or a provider is down;
 - cools a model for the rest of this fast-lane run after its first HTTP 503;
@@ -22,7 +23,10 @@ Safety contract:
 - reuses the persistent daily counters and all global Deep Dive/provider caps;
 - ranks the fetched Pending Retry backlog by screening score, while preserving the
   core query's stable order as the tie-breaker;
-- stops immediately after the first successful article;
+- counts ``succeeded`` only when the non-persistent Production return explicitly says
+  ``accepted``; ``rejected``, no generation, and unknown return shapes are distinct;
+- an accepted non-persistent manuscript is a quality-pass result only, never a Notion
+  Ready/persistence success;
 - never publishes to note.com; downstream Note Ready Sync remains fail-closed and
   public note release stays human-only.
 
@@ -34,8 +38,10 @@ The 2026-09-15 reserve fix is deliberately narrower than a provider-budget redes
 The live one-article validation proved that two transient 503 fallbacks plus one
 successful generation consumed all three dedicated Pending Retry sends before the
 Production quality stack could perform its one justified repair. The minimum bounded
-cap for that reproduced path is therefore four sends. Provider failures still consume
-the existing global, persistent and Deep Dive counters; no failed request is refunded.
+cap for that reproduced path is therefore four provider-visible article sends.
+Provider failures still consume the existing global, persistent and Deep Dive counters;
+no failed provider-visible request is refunded. Pre-send safety rejection is not a
+provider-visible send and therefore does not consume this validation-only send ceiling.
 """
 from __future__ import annotations
 
@@ -51,6 +57,10 @@ FAST_LANE_ARTICLE_ATTEMPT_LIMIT = 1
 FAST_LANE_503_COOLDOWN_THRESHOLD = 1
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 FAST_LANE_EXCLUDED_MODELS = frozenset({"gemini-3.6-flash"})
+VALIDATION_OUTCOME_ACCEPTED = "accepted"
+VALIDATION_OUTCOME_REJECTED = "rejected"
+VALIDATION_OUTCOME_NOT_GENERATED = "not_generated"
+VALIDATION_OUTCOME_UNVERIFIED = "unverified"
 
 
 def prepare_fast_lane_env(env: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
@@ -72,6 +82,39 @@ def prioritize_pending_items(items: list[dict[str, Any]] | None) -> list[dict[st
     return sorted(list(items or []), key=_score, reverse=True)
 
 
+def classify_nonpersistent_report(report: Any) -> str:
+    """Classify the explicit ``persist_results=False`` Production return fail-closed.
+
+    ``pipeline.generate_intelligence_report`` returns ``(manuscript, status)`` in this
+    mode. A manuscript is intentionally truthy even when status is ``rejected`` so the
+    diagnostic artifact can be saved; truthiness therefore must never mean quality
+    success. Unknown/legacy return shapes remain ``unverified`` rather than being
+    promoted to success.
+    """
+    if report is None:
+        return VALIDATION_OUTCOME_NOT_GENERATED
+    if isinstance(report, tuple) and len(report) >= 2:
+        status = str(report[1] or "").strip().lower()
+        if status == VALIDATION_OUTCOME_ACCEPTED:
+            return VALIDATION_OUTCOME_ACCEPTED
+        if status == VALIDATION_OUTCOME_REJECTED:
+            return VALIDATION_OUTCOME_REJECTED
+    return VALIDATION_OUTCOME_UNVERIFIED
+
+
+def _empty_lane_result() -> dict[str, int]:
+    return {
+        "attempted": 0,
+        # Backward-compatible key. In this non-persistent lane it now means explicit
+        # quality-pass (accepted), never merely "a truthy manuscript was returned".
+        "succeeded": 0,
+        "quality_passed": 0,
+        "quality_failed": 0,
+        "not_generated": 0,
+        "unverified": 0,
+    }
+
+
 def run_pending_retry_lane(
     pipeline_module,
     items: list[dict[str, Any]] | None,
@@ -86,13 +129,12 @@ def run_pending_retry_lane(
     fallback/recovery policy, but a failed first candidate must never cause the validation run to
     move on to a second article implicitly.
     """
-    attempted = 0
-    succeeded = 0
+    result = _empty_lane_result()
     success_target = max(1, int(success_target or 1))
     article_attempt_limit = max(1, int(article_attempt_limit or 1))
 
     for rank, item in enumerate(prioritize_pending_items(items), start=1):
-        if succeeded >= success_target or attempted >= article_attempt_limit:
+        if result["quality_passed"] >= success_target or result["attempted"] >= article_attempt_limit:
             break
         pending_budget = getattr(pipeline_module, "PENDING_RETRY_REQUEST_BUDGET")
         deep_budget = getattr(pipeline_module, "DEEP_DIVE_MODEL_BUDGET")
@@ -113,13 +155,13 @@ def run_pending_retry_lane(
                 rank,
                 item.get("screening_score"),
                 name,
-                attempted + 1,
+                result["attempted"] + 1,
                 article_attempt_limit,
                 FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
                 FAST_LANE_POST_GENERATION_REPAIR_RESERVE,
             )
 
-        attempted += 1
+        result["attempted"] += 1
         report = pipeline_module.generate_intelligence_report(
             repo,
             item.get("notion_page_id"),
@@ -129,10 +171,25 @@ def run_pending_retry_lane(
             candidate_origin="pending_retry",
             persist_results=False,
         )
-        if report:
-            succeeded += 1
+        outcome = classify_nonpersistent_report(report)
+        if outcome == VALIDATION_OUTCOME_ACCEPTED:
+            result["quality_passed"] += 1
+            result["succeeded"] += 1
+        elif outcome == VALIDATION_OUTCOME_REJECTED:
+            result["quality_failed"] += 1
+        elif outcome == VALIDATION_OUTCOME_NOT_GENERATED:
+            result["not_generated"] += 1
+        else:
+            result["unverified"] += 1
+        if logger is not None:
+            logger.info(
+                "[PENDING RETRY VALIDATION OUTCOME] candidate=%s outcome=%s quality_passed=%s ready_persisted=false",
+                name,
+                outcome,
+                outcome == VALIDATION_OUTCOME_ACCEPTED,
+            )
 
-    return {"attempted": attempted, "succeeded": succeeded}
+    return result
 
 
 def install_current_production_article_stack(pipeline_module, note_manuscript_module):
@@ -164,40 +221,88 @@ def install_current_production_article_stack(pipeline_module, note_manuscript_mo
     return pipeline_module
 
 
+def _normalized_model_id(model_name: Any) -> str:
+    value = str(model_name or "").strip().lower()
+    while value.startswith("models/"):
+        value = value[len("models/"):]
+    return value
+
+
+def _model_is_excluded(model_name: Any) -> bool:
+    """Honor the operator ban for every Gemini 3.6 alias, not only one exact ID."""
+    value = _normalized_model_id(model_name)
+    return (
+        value in FAST_LANE_EXCLUDED_MODELS
+        or value == "gemini-3.6"
+        or value.startswith("gemini-3.6-")
+    )
+
+
 def install_validation_model_exclusions(pipeline_module):
-    """Enforce the operator's quota exclusion after Production routing installs.
+    """Enforce operator exclusions and the provider-visible validation send ceiling.
 
     Routing overlays can restore their default pool, so env-only removal is not
-    sufficient. The final sender guard rejects excluded models before reservation.
+    sufficient. The final sender guard rejects Gemini 3.6 aliases before reservation.
+    Its local ceiling follows the pipeline's usage-audit attempt record when available;
+    therefore a local/persistent pre-send rejection does not masquerade as a provider
+    send, while 429/503/provider-visible failures remain counted. Model-assisted
+    eyecatch layout is unnecessary for article-quality validation and is rejected before
+    reservation in this lane.
     """
     if getattr(pipeline_module, "_pending_validation_exclusions_installed", False):
         return pipeline_module
     original = pipeline_module._generate_via_chat
     excluded = FAST_LANE_EXCLUDED_MODELS
+    runtime_excluded: set[str] = set(excluded)
     for attr in ("DEEP_DIVE_MODEL_POOL", "DEEP_DIVE_MODEL_CANDIDATES", "SCREENING_MODEL_POOL"):
         pool = getattr(pipeline_module, attr, None)
         if pool is not None:
-            setattr(pipeline_module, attr, [m for m in pool if m not in excluded])
-    pipeline_module.SESSION_UNAVAILABLE_MODELS.update(excluded)
+            runtime_excluded.update(str(m) for m in pool if _model_is_excluded(m))
+            setattr(pipeline_module, attr, [m for m in pool if not _model_is_excluded(m)])
+    pipeline_module.SESSION_UNAVAILABLE_MODELS.update(runtime_excluded)
 
     sends = 0
 
+    def _audit_attempt_count() -> int | None:
+        audit = getattr(pipeline_module, "GEMINI_USAGE_AUDIT", None)
+        records = getattr(audit, "records", None)
+        return len(records) if isinstance(records, list) else None
+
     def guarded_send(model_name, *args, **kwargs):
         nonlocal sends
-        if str(model_name).removeprefix("models/") in excluded:
+        if _model_is_excluded(model_name):
             raise pipeline_module.NoAvailableModelError(
-                "Operator excluded Gemini 3.6 from validation, including fallback"
+                "Operator excluded Gemini 3.6 from validation, including fallback and aliases"
+            )
+        request_kind = str(kwargs.get("request_kind") or "").strip().lower()
+        if request_kind == "eyecatch_layout":
+            raise pipeline_module.NoAvailableModelError(
+                "Pending Retry validation skips model-assisted eyecatch layout"
             )
         if sends >= FAST_LANE_PENDING_RETRY_REQUEST_BUDGET:
-            raise pipeline_module.NoAvailableModelError("Validation total send ceiling reached")
-        sends += 1
-        return original(model_name, *args, **kwargs)
+            raise pipeline_module.NoAvailableModelError("Validation total provider-send ceiling reached")
+
+        before = _audit_attempt_count()
+        try:
+            return original(model_name, *args, **kwargs)
+        finally:
+            after = _audit_attempt_count()
+            if before is not None and after is not None:
+                # _consume_gemini_request records the attempt only after all pre-send
+                # local/persistent budgets have admitted it. A 429/503 still leaves one
+                # audit record, while a pre-send rejection leaves zero.
+                sends += max(0, after - before)
+            else:
+                # Lightweight tests/legacy adapters may not expose the audit object.
+                # Preserve the previous conservative admission accounting there.
+                sends += 1
 
     pipeline_module._generate_via_chat = guarded_send
     pipeline_module._pending_validation_exclusions_installed = True
     pipeline_module.logger.info(
-        "[VALIDATION MODEL EXCLUSIONS] excluded=%s pool=%s",
-        sorted(excluded), pipeline_module.DEEP_DIVE_MODEL_POOL,
+        "[VALIDATION MODEL EXCLUSIONS] excluded=%s pool=%s model_eyecatch=false send_cap=%s",
+        sorted(runtime_excluded), pipeline_module.DEEP_DIVE_MODEL_POOL,
+        FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
     )
     return pipeline_module
 
@@ -241,10 +346,13 @@ def main() -> int:
         article_attempt_limit=FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
     )
     pipeline.logger.info(
-        "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s succeeded=%s article_limit=%s request_cap=%s repair_reserve=%s",
+        "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s quality_passed=%s quality_failed=%s not_generated=%s unverified=%s ready_persisted=0 article_limit=%s request_cap=%s repair_reserve=%s",
         len(items),
         result["attempted"],
-        result["succeeded"],
+        result["quality_passed"],
+        result["quality_failed"],
+        result["not_generated"],
+        result["unverified"],
         FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
         FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
         FAST_LANE_POST_GENERATION_REPAIR_RESERVE,

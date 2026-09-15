@@ -40,6 +40,17 @@ def _items():
     ]
 
 
+def _result(*, attempted=0, passed=0, failed=0, not_generated=0, unverified=0):
+    return {
+        "attempted": attempted,
+        "succeeded": passed,
+        "quality_passed": passed,
+        "quality_failed": failed,
+        "not_generated": not_generated,
+        "unverified": unverified,
+    }
+
+
 def test_failed_first_article_never_advances_to_second_candidate():
     calls = []
 
@@ -49,11 +60,37 @@ def test_failed_first_article_never_advances_to_second_candidate():
 
     result = prv.run_pending_retry_lane(_pipeline(generate), _items())
 
-    assert result == {"attempted": 1, "succeeded": 0}
+    assert result == _result(attempted=1, not_generated=1)
     assert calls == ["first/high-score"]
 
 
-def test_successful_first_article_stops_after_single_candidate():
+def test_accepted_first_article_stops_after_single_candidate():
+    calls = []
+
+    def generate(repo, *args, **kwargs):
+        calls.append(repo["nameWithOwner"])
+        return ("generated manuscript", "accepted")
+
+    result = prv.run_pending_retry_lane(_pipeline(generate), _items())
+
+    assert result == _result(attempted=1, passed=1)
+    assert calls == ["first/high-score"]
+
+
+def test_rejected_truthy_manuscript_is_failure_and_never_advances():
+    calls = []
+
+    def generate(repo, *args, **kwargs):
+        calls.append(repo["nameWithOwner"])
+        return ("diagnostic rejected manuscript", "rejected")
+
+    result = prv.run_pending_retry_lane(_pipeline(generate), _items())
+
+    assert result == _result(attempted=1, failed=1)
+    assert calls == ["first/high-score"]
+
+
+def test_legacy_truthy_shape_is_unverified_not_success():
     calls = []
 
     def generate(repo, *args, **kwargs):
@@ -62,7 +99,7 @@ def test_successful_first_article_stops_after_single_candidate():
 
     result = prv.run_pending_retry_lane(_pipeline(generate), _items())
 
-    assert result == {"attempted": 1, "succeeded": 1}
+    assert result == _result(attempted=1, unverified=1)
     assert calls == ["first/high-score"]
 
 
@@ -71,11 +108,11 @@ def test_default_article_limit_is_one_even_when_success_target_is_larger():
 
     def generate(repo, *args, **kwargs):
         calls.append(repo["nameWithOwner"])
-        return {"note_draft": "generated"}
+        return ("generated manuscript", "accepted")
 
     result = prv.run_pending_retry_lane(_pipeline(generate), _items(), success_target=2)
 
-    assert result == {"attempted": 1, "succeeded": 1}
+    assert result == _result(attempted=1, passed=1)
     assert calls == ["first/high-score"]
 
 
