@@ -8,6 +8,7 @@ name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 # - article_validation mode skips only the separate Product Review pass, saving up to 3 Gemini requests.
 # - pending_retry_validation runs only the high-value Pending Retry recovery lane and stops after one success.
 # - full/article_validation keep the authoritative production_pipeline.py entrypoint explicit.
+# - X discovery is enabled only for full mode; validation modes never receive X/Apify credentials.
 # - the same Gemini-budget concurrency group as production prevents overlap.
 # - this workflow does NOT resume or schedule the normal Daily workflow.
 # - successful ONE-SHOT completion explicitly fans out zero-model downstream workflows with GH_PAT.
@@ -74,6 +75,12 @@ jobs:
         run: python production_pipeline.py
         env:
           TZ: 'Asia/Tokyo'
+          AIIF_RUN_MODE: ${{ inputs.mode }}
+          AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}
+          APIFY_TOKEN: ${{ inputs.mode == 'full' && secrets.APIFY_TOKEN || '' }}
+          APIFY_ACTOR_ID: "simple.actor~x-profile-posts"
+          APIFY_MAX_CHARGE_USD: "0.05"
+          X_DISCOVERY_MAX_RECORDS: "100"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
@@ -217,7 +224,7 @@ jobs:
           NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
           NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
           ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
-          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
           NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
           EVIDENCE_HEALTH_MAX_CHECKS_PER_RUN: "20"
