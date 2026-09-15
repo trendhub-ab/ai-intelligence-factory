@@ -1,18 +1,17 @@
 """Run408: preserve approved-lane quality fallback across a pre-send model cap.
 
 Real approved Run399 #10 reproduced a routing gap between Run260 and the persistent
-Gemini counter. Run260 intentionally bounds one quality-repair call to two *configured
-models* (3.7 then 3.6), but the persistent counter can reject 3.6 before any provider
-request is sent. In that state the logical repair has consumed only one provider-visible
-attempt, while the bounded list is already exhausted and an available 3.5 fallback is
-never reached.
+Gemini counter. Run260 intentionally bounds a normal quality-repair call to two
+configured models, but the persistent counter can reject one before any provider
+request is sent. In that state the logical repair may have consumed fewer provider-
+visible attempts than configured slots, while a healthy fallback is stranded.
 
 This overlay applies only to candidate_origin=approved_article_apply and only to
-model-based quality/reader repair kinds. It reuses Run260's quality-first ordering but
-passes the full configured production pool to the already-installed provider/budget
+model-based quality/reader repair kinds. It reuses Run260/369 Provider Health ordering
+but passes the full configured production pool to the already-installed provider/budget
 layer. All existing request budgets remain authoritative; a persistent-cap rejection
 still consumes no local Deep Dive slot. Normal Daily/article_validation/pending_retry
-keep Run260's historical two-configured-model bound.
+keep Run260's two-configured-model bound.
 
 Run412 may optionally wrap this approved-only route when the apply workflow provides an
 explicit operator-confirmed available-model pool. That temporary override does not touch
@@ -57,14 +56,15 @@ def install(pipeline_module: Any) -> Any:
             )
 
         configured = list(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
-        quality_pool = routing._quality_first_pool(configured)
+        history = list(getattr(pipeline_module, "_provider_health_history", []) or [])
+        quality_pool = routing._health_ranked_pool(configured, history)
         if not quality_pool:
             raise RuntimeError("Run408 approved quality pool is empty")
 
         logger = getattr(pipeline_module, "logger", None)
         if logger is not None:
             logger.info(
-                "[RUN408 APPROVED QUALITY FALLBACK] kind=%s pool=%s budgets_unchanged=true",
+                "[RUN408 APPROVED QUALITY FALLBACK] kind=%s pool=%s health_aware=true budgets_unchanged=true",
                 kind,
                 ",".join(quality_pool),
             )
