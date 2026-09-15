@@ -36,6 +36,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "full")
 
+    def test_x_discovery_stage2_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run x_discovery_stage2"))
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "x_discovery_stage2")
+
     def test_retired_recovery_commands_fail_closed(self):
         for body in (
             "/aiif run current_policy_ready_recovery",
@@ -61,6 +66,8 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
             "/aiif run article_validation please",
             "/aiif run pending_retry_validation ",
             "/aiif run pending_retry",
+            "/aiif run x_discovery_stage2 ",
+            "/aiif run x_discovery",
             "/aiif run current_policy_ready_recovery ",
             "/aiif run current_policy_ready",
             "/aiif run ready_metadata_rebase ",
@@ -96,13 +103,16 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("/aiif run article_validation", text)
         self.assertIn("/aiif run pending_retry_validation", text)
         self.assertIn("/aiif run full", text)
+        self.assertIn("/aiif run x_discovery_stage2", text)
         self.assertNotIn("/aiif run current_policy_ready_recovery", text)
         self.assertNotIn("/aiif run ready_metadata_rebase", text)
         self.assertIn("daily-one-shot.yml", text)
+        self.assertIn("x-discovery-stage2-smoke.yml", text)
         self.assertNotIn("current-policy-ready-recovery.yml", text)
         self.assertNotIn("current-ready-metadata-rebase.yml", text)
         self.assertIn('"ref":"main"', text)
         self.assertIn('"confirm":"RUN_ONCE"', text)
+        self.assertIn("payload='{\"ref\":\"main\"}'", text)
         self.assertNotIn('"confirm":"RECOVER_ONE_READY"', text)
         self.assertNotIn('"confirm":"REBASE_GENREC_READY"', text)
         self.assertNotIn("production_pipeline.py", text)
@@ -116,7 +126,15 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", text)
         self.assertNotIn("GH_TOKEN: ${{ github.token }}", text)
         self.assertIn('if [ -z "${GH_TOKEN:-}" ]; then', text)
-        self.assertIn("GH_PAT is required for ChatOps ONE-SHOT dispatch", text)
+        self.assertIn("GH_PAT is required for ChatOps workflow dispatch", text)
+
+    def test_x_stage2_dispatch_does_not_pass_production_or_model_credentials(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("x_discovery_stage2)", text)
+        self.assertIn("target='x-discovery-stage2-smoke.yml'", text)
+        self.assertNotIn("GEMINI_API_KEY:", text)
+        self.assertNotIn("NOTION_API_KEY:", text)
+        self.assertNotIn("GOOGLE_API_KEY:", text)
 
 
 if __name__ == "__main__":
