@@ -228,6 +228,7 @@ def main() -> None:
     from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision
     from run287_publication_date_provenance import install as install_run287_publication_date_provenance
     from run346_backlog_budget_reserve import install as install_run346_backlog_budget_reserve
+    from run367_x_daily_discovery import install as install_run367_x_daily_discovery
     from reader_quality_precision import install as install_reader_quality_precision
 
     # Run235 Stage3A structural extraction. These functions are pure and zero-API.
@@ -258,6 +259,11 @@ def main() -> None:
     # live network acquisition surfaces after real smoke testing exposed vendor-nav and
     # HN typo false positives. No provider/model/Notion path is introduced here.
     install_run269_business_source_precision(pipeline)
+
+    # Run367 adds X only as an additive discovery signal for explicit Daily full runs.
+    # Raw X content is never Evidence; only resolved external primary-source candidate
+    # URLs enter the normal candidate pool, and provider failure cannot stop four-source Daily.
+    install_run367_x_daily_discovery(pipeline)
 
     # Run275 is a zero-API publication-quality precision overlay derived from real Run31
     # artifacts. It corrects only reproducible Reader signal false positives (opening
