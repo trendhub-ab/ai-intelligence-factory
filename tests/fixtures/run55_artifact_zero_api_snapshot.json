@@ -1,0 +1,44 @@
+{
+  "artifact": {
+    "name": "private-gate-review-55",
+    "run_id": 34911932766,
+    "zip_sha256": "c756a7edaad0e90883632170245761786a98ce9cfba39957acd8bf792b72c6b9",
+    "accepted_manuscript_sha256": "a0d59240acdc6117feeecdbd2bb64904834a39d6b79485f993f725098d3cb788",
+    "usage_audit_sha256": "f69cd15103231b7af381104a61c83707426fdaeea9b58244bcc58df2a91b7b84"
+  },
+  "usage_audit": {
+    "attempts": 1,
+    "success": 1,
+    "error": 0,
+    "prompt_tokens": 14894,
+    "output_tokens": 1494,
+    "total_tokens": 16388,
+    "records": [
+      {
+        "model": "gemini-3.8-flash",
+        "kind": "deep_dive",
+        "outcome": "success"
+      }
+    ]
+  },
+  "accepted_manuscript": {
+    "title": "安くて賢いAIはどこまで自律的に動けるのか？",
+    "required_fragments": [
+      "前世代（3.7 Flash）からわずか3週間",
+      "入力100万トークンあたり0.75ドル／出力100万トークンあたり3.75ドル",
+      "現行の低価格が「導入記念価格」である点"
+    ],
+    "removed_before_acceptance_fragments": [
+      "1.50ドル"
+    ]
+  },
+  "replay_scope": {
+    "persist_results": false,
+    "quality_outcome": "accepted",
+    "ready_persisted": false,
+    "artifact_contains_pre_rescue_manuscript": false,
+    "artifact_contains_original_primary_source_html": false,
+    "exact_historical_byte_replay_possible": false,
+    "deterministic_regression_required_for_removed_1_50_claim": true
+  }
+}
