@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-15T12:39:21.820543+00:00",
+  "updated_at": "2026-09-15T13:23:20.707234+00:00",
   "items": [
     {
       "key": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/main/DeepSeek_V41_Tech_Report.pdf",
@@ -471,6 +471,43 @@
       "deep_dive_priority_score": 73.05
     },
     {
+      "key": "https://news.ycombinator.com/item?id=49709289",
+      "deferred_at": "2026-09-15T13:23:20.706783+00:00",
+      "expires_at": "2026-09-29T13:23:20.706783+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
+        "originalTitle": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
+        "displayName": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
+        "sourceLanguage": "en",
+        "url": "https://www.geckoboard.com/blog/which-is-the-better-data-analyst-benchmarking-chatgpt-vs-claude/",
+        "description": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-15T08:09:06Z",
+        "sourceContext": "HN points=5 comments=1 matched_query=Claude",
+        "primaryUrl": "https://www.geckoboard.com/blog/which-is-the-better-data-analyst-benchmarking-chatgpt-vs-claude/",
+        "sourceDetails": {
+          "hn_id": "49709289",
+          "hn_url": "https://news.ycombinator.com/item?id=49709289",
+          "external_url": "https://www.geckoboard.com/blog/which-is-the-better-data-analyst-benchmarking-chatgpt-vs-claude/",
+          "comments": 1,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dc479ff-dca9-81f6-8264-ea1d16ca0c09",
+      "score": 70,
+      "reason": "データ分析特化の主要モデル比較で実務的。",
+      "commercial_score": 75,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 71.75
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49697666",
       "deferred_at": "2026-09-15T08:30:31.948584+00:00",
       "expires_at": "2026-11-14T08:30:31.948584+00:00",
@@ -582,6 +619,43 @@
       "deep_dive_priority_score": 68.25
     },
     {
+      "key": "https://news.ycombinator.com/item?id=49701239",
+      "deferred_at": "2026-09-15T13:23:20.706945+00:00",
+      "expires_at": "2026-09-29T13:23:20.706945+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Google tests paying publishers for using its content in AI Mode and Gemini",
+        "originalTitle": "Google tests paying publishers for using its content in AI Mode and Gemini",
+        "displayName": "Google tests paying publishers for using its content in AI Mode and Gemini",
+        "sourceLanguage": "en",
+        "url": "https://searchengineland.com/google-tests-paying-publishers-for-using-its-content-in-ai-mode-ai-overviews-and-gemini-488382",
+        "description": "Google tests paying publishers for using its content in AI Mode and Gemini",
+        "stargazerCount": 3,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-14T18:06:47Z",
+        "sourceContext": "HN points=3 comments=1 matched_query=Gemini",
+        "primaryUrl": "https://searchengineland.com/google-tests-paying-publishers-for-using-its-content-in-ai-mode-ai-overviews-and-gemini-488382",
+        "sourceDetails": {
+          "hn_id": "49701239",
+          "hn_url": "https://news.ycombinator.com/item?id=49701239",
+          "external_url": "https://searchengineland.com/google-tests-paying-publishers-for-using-its-content-in-ai-mode-ai-overviews-and-gemini-488382",
+          "comments": 1,
+          "matched_query": "Gemini",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dc479ff-dca9-819c-b5f6-eabb7c5aafe6",
+      "score": 65,
+      "reason": "AI検索とパブリッシャーの権利に関する動向。",
+      "commercial_score": 70,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 66.75
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49695409",
       "deferred_at": "2026-09-14T12:37:40.879887+00:00",
       "expires_at": "2026-09-28T12:37:40.879887+00:00",
@@ -617,6 +691,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "PRODUCT",
       "deep_dive_priority_score": 64.8
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49702095",
+      "deferred_at": "2026-09-15T13:23:20.707056+00:00",
+      "expires_at": "2026-09-29T13:23:20.707056+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic Disrupts Bioweapons Efforts, Russian Hacking, Chinese Claude Misuse",
+        "originalTitle": "Anthropic Disrupts Bioweapons Efforts, Russian Hacking, Chinese Claude Misuse",
+        "displayName": "Anthropic Disrupts Bioweapons Efforts, Russian Hacking, Chinese Claude Misuse",
+        "sourceLanguage": "en",
+        "url": "https://www.usnews.com/news/world/articles/2026-09-10/anthropic-disrupts-russian-chinese-ai-campaigns-targeting-its-claude-models",
+        "description": "Anthropic Disrupts Bioweapons Efforts, Russian Hacking, Chinese Claude Misuse",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-14T18:56:25Z",
+        "sourceContext": "HN points=4 comments=1 matched_query=Anthropic",
+        "primaryUrl": "https://www.usnews.com/news/world/articles/2026-09-10/anthropic-disrupts-russian-chinese-ai-campaigns-targeting-its-claude-models",
+        "sourceDetails": {
+          "hn_id": "49702095",
+          "hn_url": "https://news.ycombinator.com/item?id=49702095",
+          "external_url": "https://www.usnews.com/news/world/articles/2026-09-10/anthropic-disrupts-russian-chinese-ai-campaigns-targeting-its-claude-models",
+          "comments": 1,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dc479ff-dca9-817b-9d1a-ff44090e613d",
+      "score": 65,
+      "reason": "AIモデルの悪用阻止に関する重要セキュリティ事例。",
+      "commercial_score": 60,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 63.25
     }
   ]
 }
