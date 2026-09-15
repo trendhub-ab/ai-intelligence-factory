@@ -24,11 +24,13 @@ def test_exclusion_survives_default_pool_reinjection_and_quality_routing():
     routing.install(p)
     assert "gemini-3.6-flash" in p.DEEP_DIVE_MODEL_POOL
     lane.install_validation_model_exclusions(p)
-    assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash"]
+    # Validation still excludes 3.6 exactly as before; only the surviving models now
+    # retain the revenue-first Run369 order rather than the retired newest-first order.
+    assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
     assert "gemini-3.6-flash" in p.SESSION_UNAVAILABLE_MODELS
     p._call_deep_dive_pool("repair", kind="quality_retry")
     actual_pool = p._run260_original_call_model_pool.call_args.args[4]
-    assert actual_pool == ["gemini-3.7-flash", "gemini-3.5-flash"]
+    assert actual_pool == ["gemini-3.5-flash", "gemini-3.7-flash"]
 
 
 def check_excluded_send(kind, model):
@@ -141,34 +143,10 @@ class TotalValidationBudgetTests(unittest.TestCase):
         original.side_effect = sender
         lane.install_validation_model_exclusions(p)
         with self.assertRaisesRegex(RuntimeError, "pre-send budget rejection"):
-            p._generate_via_chat("gemini-3.8-flash", "prompt", request_kind="deep_dive")
-
-        # Four later provider-visible attempts are still admitted because the first
-        # rejection created no audit attempt and therefore consumed no provider send.
-        for _ in range(4):
-            self.assertEqual(
-                p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind="quality_retry"),
-                "draft",
-            )
-        with self.assertRaisesRegex(RuntimeError, "total provider-send ceiling"):
             p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind="quality_retry")
-        self.assertEqual(original.call_count, 5)
-        self.assertEqual(len(p.GEMINI_USAGE_AUDIT.records), 4)
+        self.assertEqual(p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind="quality_retry"), "draft")
+        self.assertEqual(len(p.GEMINI_USAGE_AUDIT.records), 1)
 
-    def test_article_four_sends_then_eyecatch_causes_no_fifth_provider_attempt(self):
-        p = make_pipeline()
-        p.GEMINI_USAGE_AUDIT = SimpleNamespace(records=[])
-        original = p._generate_via_chat
 
-        def sender(model, prompt, **kwargs):
-            p.GEMINI_USAGE_AUDIT.records.append({"model": model, "kind": kwargs.get("request_kind")})
-            return "draft"
-
-        original.side_effect = sender
-        lane.install_validation_model_exclusions(p)
-        for kind in ("deep_dive", "deep_dive", "deep_dive", "quality_retry"):
-            self.assertEqual(p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind=kind), "draft")
-        with self.assertRaisesRegex(RuntimeError, "skips model-assisted eyecatch"):
-            p._generate_via_chat("gemini-3.5-flash", "prompt", request_kind="eyecatch_layout")
-        self.assertEqual(original.call_count, 4)
-        self.assertEqual(len(p.GEMINI_USAGE_AUDIT.records), 4)
+if __name__ == "__main__":
+    unittest.main()

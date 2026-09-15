@@ -137,8 +137,8 @@ class Run278QualityRetryBudgetGuardTests(unittest.TestCase):
         self.assertEqual(
             calls,
             [
-                ("gemini-3.7-flash", "quality_retry"),
                 ("gemini-3.6-flash", "quality_retry"),
+                ("gemini-3.5-flash", "quality_retry"),
             ],
         )
 
@@ -148,14 +148,14 @@ class Run278QualityRetryBudgetGuardTests(unittest.TestCase):
 
         def generate(model, prompt, **kwargs):
             calls.append(model)
-            if model == "gemini-3.7-flash":
+            if model == "gemini-3.6-flash":
                 raise FakeAPIError(503)
             return "repaired"
 
         p._generate_via_chat = generate
         response, model = p._call_deep_dive_pool("repair", None, "quality_retry")
-        self.assertEqual((response, model), ("repaired", "gemini-3.6-flash"))
-        self.assertEqual(calls, ["gemini-3.7-flash", "gemini-3.6-flash"])
+        self.assertEqual((response, model), ("repaired", "gemini-3.5-flash"))
+        self.assertEqual(calls, ["gemini-3.6-flash", "gemini-3.5-flash"])
 
     def test_fresh_deep_dive_keeps_four_model_failure_tolerance(self):
         p = self._install_live_order(self._pipeline())
@@ -163,26 +163,26 @@ class Run278QualityRetryBudgetGuardTests(unittest.TestCase):
 
         def generate(model, prompt, **kwargs):
             calls.append(model)
-            if model != "gemini-3.5-flash":
+            if model != "gemini-3.8-flash":
                 raise FakeAPIError(503)
             return "fresh-ok"
 
         p._generate_via_chat = generate
         response, model = p._call_deep_dive_pool("fresh", None, "deep_dive")
-        self.assertEqual((response, model), ("fresh-ok", "gemini-3.5-flash"))
+        self.assertEqual((response, model), ("fresh-ok", "gemini-3.8-flash"))
         self.assertEqual(
             calls,
             [
-                "gemini-3.8-flash",
-                "gemini-3.7-flash",
                 "gemini-3.6-flash",
                 "gemini-3.5-flash",
+                "gemini-3.7-flash",
+                "gemini-3.8-flash",
             ],
         )
 
     def test_existing_session_cooldown_is_still_authoritative_inside_bounded_pool(self):
         p = self._install_live_order(self._pipeline())
-        p.SESSION_UNAVAILABLE_MODELS.add("gemini-3.7-flash")
+        p.SESSION_UNAVAILABLE_MODELS.add("gemini-3.6-flash")
         calls = []
 
         def generate(model, prompt, **kwargs):
@@ -191,8 +191,8 @@ class Run278QualityRetryBudgetGuardTests(unittest.TestCase):
 
         p._generate_via_chat = generate
         response, model = p._call_deep_dive_pool("repair", None, "quality_retry")
-        self.assertEqual((response, model), ("ok", "gemini-3.6-flash"))
-        self.assertEqual(calls, ["gemini-3.6-flash"])
+        self.assertEqual((response, model), ("ok", "gemini-3.5-flash"))
+        self.assertEqual(calls, ["gemini-3.5-flash"])
 
 
 if __name__ == "__main__":
