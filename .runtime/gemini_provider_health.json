@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "purpose": "Gemini article-model availability routing; no prompt/article content",
+  "updated_at": "2026-09-15T08:34:15+00:00",
+  "bootstrap_source": "verified Production ONE-SHOT run 34946306687 and its portfolio review",
+  "attempts": [
+    {
+      "timestamp": "2026-09-15T08:24:22+00:00",
+      "model": "gemini-3.8-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServiceUnavailable"
+    },
+    {
+      "timestamp": "2026-09-15T08:26:42+00:00",
+      "model": "gemini-3.7-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ReadTimeout"
+    },
+    {
+      "timestamp": "2026-09-15T08:27:14+00:00",
+      "model": "gemini-3.6-flash",
+      "kind": "deep_dive",
+      "outcome": "success",
+      "error_type": ""
+    },
+    {
+      "timestamp": "2026-09-15T08:29:34+00:00",
+      "model": "gemini-3.7-flash",
+      "kind": "quality_retry",
+      "outcome": "error",
+      "error_type": "ReadTimeout"
+    },
+    {
+      "timestamp": "2026-09-15T08:30:00+00:00",
+      "model": "gemini-3.6-flash",
+      "kind": "quality_retry",
+      "outcome": "error",
+      "error_type": "ServiceUnavailable"
+    },
+    {
+      "timestamp": "2026-09-15T08:30:31+00:00",
+      "model": "gemini-3.5-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServiceUnavailable"
+    },
+    {
+      "timestamp": "2026-09-15T08:33:01+00:00",
+      "model": "gemini-3.6-flash",
+      "kind": "product_review",
+      "outcome": "success",
+      "error_type": ""
+    },
+    {
+      "timestamp": "2026-09-15T08:34:15+00:00",
+      "model": "gemini-3.6-flash",
+      "kind": "product_review",
+      "outcome": "success",
+      "error_type": ""
+    }
+  ]
+}
