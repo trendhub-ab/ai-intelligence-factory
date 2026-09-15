@@ -508,8 +508,8 @@
       }
     },
     {
-      "run_id": "20260914T123937Z",
-      "recorded_at": "2026-09-14T12:39:37.468565+00:00",
+      "run_id": "20260915T083038Z",
+      "recorded_at": "2026-09-15T08:30:38.477352+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -522,14 +522,14 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 28,
-          "stock_saved": 6,
-          "deep_dive_attempted": 5,
-          "generation_requests": 10,
+          "screened": 32,
+          "stock_saved": 17,
+          "deep_dive_attempted": 0,
+          "generation_requests": 0,
           "ready": 0,
-          "review": 3,
-          "quality_failed": 2,
-          "pending_retry": 0
+          "review": 0,
+          "quality_failed": 0,
+          "pending_retry": 2
         },
         "ArXiv": {
           "screened": 0,
@@ -571,17 +571,17 @@
       "learning_active": true
     },
     "HackerNews": {
-      "screened": 301.4692405267573,
-      "stock_saved": 91.05130904468533,
-      "deep_dive_attempted": 37.10453788691957,
-      "generation_requests": 51.2879993370837,
+      "screened": 305.4692405267573,
+      "stock_saved": 102.05130904468533,
+      "deep_dive_attempted": 32.10453788691957,
+      "generation_requests": 41.2879993370837,
       "ready": 6.889716991659642,
-      "review": 7.0070355527490005,
-      "stock_yield": 0.305,
-      "ready_yield": 0.1946,
-      "generation_efficiency": 0.1391,
-      "roi_score": 22.22,
-      "allocation_weight": 0.245415,
+      "review": 4.0070355527490005,
+      "stock_yield": 0.3351,
+      "ready_yield": 0.2202,
+      "generation_efficiency": 0.1685,
+      "roi_score": 25.01,
+      "allocation_weight": 0.268805,
       "mature": true,
       "learning_active": true
     },
