@@ -37,6 +37,15 @@ def test_vague_rescue_does_not_touch_code_heading_or_url():
     assert changes == []
 
 
+def test_unsafe_bare_vague_phrase_declines_instead_of_damaging_grammar():
+    article = "提供まで数日かかる可能性があります。"
+    repaired, changes = run374.remove_unsupported_vague_quantities(
+        article, ["unsupported vague quantified claim: 数日"]
+    )
+    assert repaired == article
+    assert changes == []
+
+
 def test_unrelated_fact_failure_never_triggers_vague_rescue():
     article = "数日で利用できます。"
     repaired, changes = run374.remove_unsupported_vague_quantities(
@@ -60,7 +69,7 @@ def test_rescue_wrapper_reuses_full_gate_revalidation_path():
     p.logger = None
     run374.install(p)
     repaired, changes = p._apply_deterministic_publication_rescue(
-        {"note_draft": "提供まで数日かかる可能性があります。"},
+        {"note_draft": "提供条件は数日で変わる可能性があります。"},
         [{"message": "unsupported vague quantified claim: 数日"}],
     )
     assert "数日" not in repaired["note_draft"]
