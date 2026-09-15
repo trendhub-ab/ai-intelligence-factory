@@ -23,6 +23,10 @@ telemetry to protected ``main``.
 Run372 installs a requests-compatible Source Stability proxy for Hacker News Algolia,
 OfficialVendor release hosts, and GitHub GraphQL discovery.  It is installed before
 Run268/269 so their later closures inherit the protected transport dynamically.
+
+Run373 closes one Production-proven arXiv gap: once the bounded transport/5xx retry is
+exhausted, the same existing run-local circuit is opened so later phases do not repeat
+the same timeout pair.
 """
 from __future__ import annotations
 
@@ -227,6 +231,13 @@ def _install_arxiv_stability(pipeline_module: Any, branch: str) -> None:
     )
 
 
+def _install_arxiv_exhaustion_circuit(pipeline_module: Any) -> None:
+    """Install Run373 only after Run371 has exposed its controller and bounded helper."""
+    import arxiv_exhaustion_circuit
+
+    arxiv_exhaustion_circuit.install(pipeline_module)
+
+
 def _install_source_stability(pipeline_module: Any) -> None:
     """Install Run372 before later source overlays capture the requests surface."""
     import source_stability_layer
@@ -256,6 +267,7 @@ def install(pipeline_module: Any) -> Any:
 
     _install_observed_history_retry(pipeline_module)
     _install_arxiv_stability(pipeline_module, branch)
+    _install_arxiv_exhaustion_circuit(pipeline_module)
     _install_source_stability(pipeline_module)
     return pipeline_module
 
