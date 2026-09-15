@@ -11,6 +11,8 @@ Evidence/Fact/Publication gates, article content, or Product Review policy.
 Contracts:
 - pace arXiv metadata API network requests at >=4 seconds by default;
 - cache successful metadata responses for 24 hours on ``runtime-state``;
+- bound the entire persisted cache state so GitHub Contents state cannot grow without
+  limit as successful arXiv responses accumulate;
 - share the last-request timestamp and overload circuit across processes in the same
   GitHub Actions run;
 - one 429 or 503 opens the metadata circuit for the rest of that Actions run;
@@ -36,6 +38,7 @@ DEFAULT_MIN_INTERVAL_SECONDS = 4.0
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 DEFAULT_CACHE_MAX_ENTRIES = 40
 DEFAULT_CACHE_BODY_MAX_BYTES = 250_000
+DEFAULT_CACHE_STATE_MAX_BYTES = 700_000
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30
 DEFAULT_TRANSIENT_RETRY_DELAY_SECONDS = 10.0
 OVERLOAD_STATUSES = frozenset({429, 503})
@@ -125,6 +128,9 @@ class ArxivStabilityController:
         )
         self.cache_body_max_bytes = _env_int(
             "AIIF_ARXIV_CACHE_BODY_MAX_BYTES", DEFAULT_CACHE_BODY_MAX_BYTES, 10_000, 900_000
+        )
+        self.cache_state_max_bytes = _env_int(
+            "AIIF_ARXIV_CACHE_STATE_MAX_BYTES", DEFAULT_CACHE_STATE_MAX_BYTES, 100_000, 900_000
         )
         self.timeout = _env_int(
             "AIIF_ARXIV_REQUEST_TIMEOUT_SECONDS", DEFAULT_REQUEST_TIMEOUT_SECONDS, 5, 60
@@ -225,6 +231,16 @@ class ArxivStabilityController:
         self._prune_entries()
         return self._state
 
+    def _state_size_bytes(self) -> int:
+        return len(
+            json.dumps(
+                self._state,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+
     def _prune_entries(self) -> None:
         entries = self._state.setdefault("entries", {})
         if not isinstance(entries, dict):
@@ -240,7 +256,30 @@ class ArxivStabilityController:
                 continue
             valid.append((str(key), row))
         valid.sort(key=lambda item: float(item[1].get("fetched_at_epoch") or 0.0), reverse=True)
-        self._state["entries"] = dict(valid[: self.cache_max_entries])
+        candidates = valid[: self.cache_max_entries]
+        selected: dict[str, dict] = {}
+        dropped_for_size = 0
+        for key, row in candidates:
+            selected[key] = row
+            self._state["entries"] = selected
+            if self._state_size_bytes() > self.cache_state_max_bytes:
+                selected.pop(key, None)
+                dropped_for_size += 1
+                break
+        # Once the next-newest entry does not fit, every older entry is lower priority.
+        # Count and discard the remainder rather than allowing future state growth to
+        # depend on entry ordering or GitHub Contents payload limits.
+        if dropped_for_size:
+            dropped_for_size += max(0, len(candidates) - len(selected) - 1)
+        self._state["entries"] = dict(selected)
+        if dropped_for_size:
+            self._log(
+                "info",
+                "[ARXIV STABILITY CACHE PRUNE] dropped=%s state_bytes=%s max=%s",
+                dropped_for_size,
+                self._state_size_bytes(),
+                self.cache_state_max_bytes,
+            )
 
     def _save_remote_state(self) -> None:
         self._state["schema_version"] = SCHEMA_VERSION
@@ -462,14 +501,16 @@ def install(
     pipeline_module._fetch_arxiv_with_retry = controller.fetch
     pipeline_module.ARXIV_STABILITY_MIN_INTERVAL_SECONDS = controller.min_interval
     pipeline_module.ARXIV_STABILITY_CACHE_TTL_SECONDS = controller.cache_ttl
+    pipeline_module.ARXIV_STABILITY_CACHE_STATE_MAX_BYTES = controller.cache_state_max_bytes
     pipeline_module.ARXIV_STABILITY_STATE_PATH = STATE_PATH
     pipeline_module._ARXIV_STABILITY_CONTROLLER = controller
     setattr(pipeline_module, _INSTALL_FLAG, True)
     if getattr(pipeline_module, "logger", None) is not None:
         pipeline_module.logger.info(
-            "[ARXIV STABILITY INSTALLED] interval=%.1fs cache_ttl=%ss state_branch=%s",
+            "[ARXIV STABILITY INSTALLED] interval=%.1fs cache_ttl=%ss state_max=%sB state_branch=%s",
             controller.min_interval,
             controller.cache_ttl,
+            controller.cache_state_max_bytes,
             controller.runtime_branch or "process-local",
         )
     return pipeline_module
