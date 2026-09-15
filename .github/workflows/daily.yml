@@ -2,7 +2,7 @@ name: Daily Intelligence & Content Pipeline [PAUSED]
 
 # PAUSED by explicit user instruction on 2026-08-30 JST.
 # There is intentionally NO schedule trigger.
-# The only job is hard-disabled, so workflow_dispatch cannot consume Gemini or write production data.
+# The only job is hard-disabled, so workflow_dispatch cannot consume Gemini, Apify, or write production data.
 # The dormant block below is a MINIMUM SAFETY CONTRACT only, not a full copy of production env settings.
 # When Daily is explicitly resumed, restore operational settings from the then-validated ONE-SHOT workflow
 # and keep the zero-API workflow contract tests green; do not infer production defaults from this paused stub.
@@ -38,6 +38,13 @@ jobs:
       - name: Dormant production entrypoint contract
         if: ${{ false }}
         run: python production_pipeline.py
+        env:
+          AIIF_RUN_MODE: "full"
+          AIIF_X_DISCOVERY_ENABLED: "true"
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_ACTOR_ID: "simple.actor~x-profile-posts"
+          APIFY_MAX_CHARGE_USD: "0.05"
+          X_DISCOVERY_MAX_RECORDS: "100"
 
       - name: Dormant portfolio review contract
         if: ${{ false }}
