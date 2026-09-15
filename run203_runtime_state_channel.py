@@ -19,6 +19,10 @@ Run371 reuses the isolated runtime-state channel for arXiv metadata transport st
 Normal Production and the separate Product Review process therefore share cache,
 request pacing, and a same-Actions-run 429/503 circuit without writing operational
 telemetry to protected ``main``.
+
+Run372 installs a requests-compatible Source Stability proxy for Hacker News Algolia,
+OfficialVendor release hosts, and GitHub GraphQL discovery.  It is installed before
+Run268/269 so their later closures inherit the protected transport dynamically.
 """
 from __future__ import annotations
 
@@ -223,6 +227,13 @@ def _install_arxiv_stability(pipeline_module: Any, branch: str) -> None:
     )
 
 
+def _install_source_stability(pipeline_module: Any) -> None:
+    """Install Run372 before later source overlays capture the requests surface."""
+    import source_stability_layer
+
+    source_stability_layer.install(pipeline_module)
+
+
 def install(pipeline_module: Any) -> Any:
     """Redirect every existing mutable GitHub state writer to the runtime-state branch."""
     branch = apply_runtime_state_env()
@@ -245,6 +256,7 @@ def install(pipeline_module: Any) -> Any:
 
     _install_observed_history_retry(pipeline_module)
     _install_arxiv_stability(pipeline_module, branch)
+    _install_source_stability(pipeline_module)
     return pipeline_module
 
 
