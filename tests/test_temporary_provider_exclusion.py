@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import gemini_temporary_exclusion as policy
 import run260_gemini_model_routing as routing
 import article_revalidation
+import ready_rescue_validation
 from tests.test_gemini_provider_resilience import make_pipeline, FakeAPIError
 
 
@@ -28,6 +29,20 @@ class TemporaryExclusionTests(unittest.TestCase):
         for value in ("broken", "2026-09-16T17:00:00"):
             with patch.dict(os.environ, {policy.ENV: value}), self.assertRaises(RuntimeError):
                 policy.allowed_pool([])
+
+    def test_ready_rescue_restores_36_exactly_at_deadline(self):
+        deadline = datetime(2026, 9, 16, 8, tzinfo=timezone.utc)
+        pool = [
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+        ]
+        with patch.dict(os.environ, {policy.ENV: "2026-09-16T17:00:00+09:00"}):
+            before = ready_rescue_validation.validation_pool(pool, now=deadline.replace(hour=7, minute=59))
+            at_deadline = ready_rescue_validation.validation_pool(pool, now=deadline)
+        self.assertNotIn("gemini-3.6-flash", before)
+        self.assertEqual(at_deadline, pool)
 
     def sender(self):
         # Execute the actual production sender body with a fake SDK and quota ledger.
@@ -51,6 +66,13 @@ class TemporaryExclusionTests(unittest.TestCase):
         for model in ("gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"):
             scope["_generate_via_chat"](model, "p")
         self.assertEqual(ledger.call_count, 3)
+
+    def test_real_sender_allows_36_after_expiry(self):
+        scope, sdk, ledger = self.sender()
+        with patch.dict(os.environ, {policy.ENV: "2020-09-16T17:00:00+09:00"}):
+            scope["_generate_via_chat"]("gemini-3.6-flash", "p", request_kind="ready_rescue")
+        self.assertEqual(ledger.call_count, 1)
+        self.assertEqual(sdk.chats.create.call_count, 1)
 
     def test_rescue_sender_cap_also_blocks_non_deep_dive_repairs(self):
         scope, sdk, ledger = self.sender()
