@@ -121,7 +121,7 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 
 成功したONE-SHOTのdownstream fan-outは、受動的な二重起動ではなく**明示的なworkflow dispatch**をAuthorityとする。
 
-- authentication: **`${{ secrets.GH_PAT }}`**
+- authentication: **`${{ secrets.GH_PAT }}`
 - downstream: `note-ready-sync.yml`
 - downstream: `subscriber-decision-brief.yml`
 - downstream: `cross-db-contract-guard.yml`
@@ -230,6 +230,15 @@ Reader専用Repairでは、Run172の局所文面保持契約も適用しない�
 Capability Boundaryでは「できる / できない / まだ分からない」を分離する。「できない」はSOURCE BOUNDARYに禁止・非対応・制約が明示される場合だけとし、Evidenceがないだけの事項は「未確認 / まだ分からない」と扱う。
 
 数値Factの表記同値は、**Evidenceに同じ値が明示され、かつ数値近傍の条件・対象が互換な場合だけ**認める。`$0.75`と`0.75ドル`、または同じ記述内の日本語`万`表記と桁区切り付きUSDのような表記差は機械的に照合してよいが、丸め・推定・別条件の同額・別文脈の数字から値を補完してはならない。条件不一致、根拠のない数値、曖昧量は従来どおりFact停止を維持する。
+
+Primary-sourceの数値Evidenceでは、次の一般契約を追加で守る。
+
+- `$1.50`、`1.50ドル`、`1.5 USD`のように**通貨が明示された表記**は、Decimalとして完全に同じ数値であり、近傍の対象・時点・単位等の条件が互換な場合に限って同値として扱う。末尾ゼロの有無は表記差であり、丸め・許容誤差・近似一致を導入しない。
+- `1.50`のような**通貨表記のない裸の数値**を通貨Claimの根拠へ昇格させない。
+- semantic `<article>` 内の `<footer>` にある脚注、価格改定、期限、但し書き、引用等は、その記事自身のPrimary Evidenceとして保持できる。
+- `<article>` 外のサイト共通footerはナビゲーション・広告・別文脈の数字が混入し得るためEvidenceから除外し、記事Claimの根拠に使わない。
+- Artifact再検証では、保存Artifactに存在するusage audit・accepted manuscript等から証明できる事実と、保存されていないpre-rescue原稿・元HTML等を分離する。欠けた履歴を推測で復元して「完全再生」と報告しない。
+- 過去Artifactに元HTMLや削除前Claimが残っていない場合、そのArtifact自体の監査と、同じ失敗条件を再現する決定論fixtureによる回帰検証を組み合わせる。後者はProvider/APIを使わず、現行Productionロジックが同じ誤判定を再発させないことを証明するためのものとする。
 
 **Editorial Quality Memory v1** は、成功/失敗した編集パターンをリポジトリ内の決定論的ルールとして保持する。Production原稿、個人情報、Provider応答を可変DBへ保存せず、追加APIを要求しない。Quality MemoryはHard Gateや事実源ではなく、Fact / Evidence / Decision / Publication Contractを常に優先する。Quality Memory自体はPublication Policy fingerprintの対象に含める。
 
