@@ -45,6 +45,8 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             },
             PERSISTENT_GEMINI_COUNTER=persistent,
             PROVIDER_HEALTH_HISTORY_OVERRIDE=list(history or []),
+            SESSION_UNAVAILABLE_MODELS=set(),
+            SESSION_EXHAUSTED_MODELS=set(),
         )
         return module, calls, deep_dive_calls
 
@@ -98,7 +100,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(ranked[1], "gemini-3.7-flash")
         self.assertLess(ranked.index("gemini-3.8-flash"), ranked.index("gemini-3.6-flash"))
 
-    def test_health_routing_is_applied_on_live_fresh_deep_dive_path(self):
+    def test_health_routing_survives_later_provider_pool_replacement_on_fresh_deep_dive(self):
         history = [
             self._row("gemini-3.6-flash", "error"),
             self._row("gemini-3.5-flash", "success"),
@@ -106,11 +108,23 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         ]
         module, calls, deep_dive_calls = self._fake_pipeline(history=history)
         run260.install(module)
-        module._call_deep_dive_pool("prompt", None, "deep_dive", request_context="fresh")
-        self.assertEqual(len(deep_dive_calls), 1)
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][0][4][0], "gemini-3.5-flash")
-        self.assertEqual(len(calls[0][0][4]), 4)
+
+        # Mirrors canonical Production order: Run172/303 replace _call_model_pool after
+        # Run260, while Run260's Deep Dive entrypoint remains in the wrapper chain.
+        live_calls = []
+
+        def later_provider_pool(*args, **kwargs):
+            live_calls.append((args, kwargs))
+            return "live-response", "gemini-3.5-flash"
+
+        module._call_model_pool = later_provider_pool
+        result = module._call_deep_dive_pool("prompt", None, "deep_dive", request_context="fresh")
+        self.assertEqual(result, ("live-response", "gemini-3.5-flash"))
+        self.assertEqual(len(deep_dive_calls), 0)
+        self.assertEqual(len(calls), 0)
+        self.assertEqual(len(live_calls), 1)
+        self.assertEqual(live_calls[0][0][4][0], "gemini-3.5-flash")
+        self.assertEqual(len(live_calls[0][0][4]), 4)
 
     def test_live_deep_dive_quality_retry_path_uses_healthiest_two_models(self):
         history = [
@@ -136,6 +150,25 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["request_context"], "live-path")
         self.assertEqual(calls[0][1]["request_origin"], "new")
 
+    def test_run57_unavailable_top_models_do_not_strand_healthy_quality_fallback(self):
+        history = [
+            self._row("gemini-3.6-flash", "success"),
+            self._row("gemini-3.6-flash", "success"),
+            self._row("gemini-3.6-flash", "success"),
+            self._row("gemini-3.6-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.5-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.7-flash", "success"),
+            self._row("gemini-3.8-flash", "error", error_type="ServiceUnavailable"),
+        ]
+        module, calls, _ = self._fake_pipeline(history=history)
+        run260.install(module)
+        module.SESSION_UNAVAILABLE_MODELS.update({"gemini-3.6-flash", "gemini-3.5-flash"})
+
+        result = module._call_deep_dive_pool("repair", None, "quality_retry", request_context="run57")
+        self.assertEqual(result, ("response", "model"))
+        self.assertEqual(calls[0][0][4], ["gemini-3.7-flash", "gemini-3.8-flash"])
+        self.assertEqual(len(calls[0][0][4]), 2)
+
     def test_quality_retry_preserves_a_second_distinct_model_for_rescue(self):
         module, calls, _ = self._fake_pipeline()
         run260.install(module)
@@ -154,6 +187,33 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         with patch.dict(os.environ, {"GEMINI_PROVIDER_HEALTH_RECENT_ATTEMPTS": "4"}, clear=False):
             ranked = run260._health_ranked_pool(list(run260.DEFAULT_DEEP_DIVE_POOL), history)
         self.assertEqual(ranked[0], "gemini-3.5-flash")
+
+    def test_live_deep_dive_captures_real_usage_audit_after_later_pool_replacement(self):
+        module, _, _ = self._fake_pipeline()
+        module.GEMINI_USAGE_AUDIT = types.SimpleNamespace(records=[])
+        run260.install(module)
+
+        def later_provider_pool(*args, **kwargs):
+            module.GEMINI_USAGE_AUDIT.records.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "model": "gemini-3.7-flash",
+                "kind": kwargs.get("request_kind") or (args[2] if len(args) >= 3 else "deep_dive"),
+                "context": "SECRET ARTICLE TITLE MUST NOT PERSIST",
+                "outcome": "success",
+                "error_type": "",
+            })
+            return "ok", "gemini-3.7-flash"
+
+        module._call_model_pool = later_provider_pool
+        with patch.object(run260, "_persist_provider_health_history") as persist:
+            result = module._call_deep_dive_pool("prompt", None, "deep_dive", request_context="live")
+
+        self.assertEqual(result, ("ok", "gemini-3.7-flash"))
+        persisted_rows = module._provider_health_history
+        self.assertEqual(persisted_rows[-1]["model"], "gemini-3.7-flash")
+        self.assertEqual(persisted_rows[-1]["outcome"], "success")
+        self.assertNotIn("context", persisted_rows[-1])
+        persist.assert_called_once_with(module)
 
     def test_normal_non_deep_dive_pool_is_not_reordered(self):
         module, calls, _ = self._fake_pipeline()

@@ -1,4 +1,4 @@
-"""Run260/261/278/369: bounded, health-aware Gemini article routing.
+"""Run260/261/278/369/370: bounded, health-aware Gemini article routing.
 
 Business goal
 -------------
@@ -13,6 +13,13 @@ that window is sparse, the most recent N attempts are used as a backstop. Succes
 models move up and 503/timeout/error outcomes move models down. Existing run-local
 unavailable/exhausted circuits, persistent RPD budgets, retry ceilings, and every
 publication gate remain authoritative.
+
+Run370 closes two defects reproduced by Production ONE-SHOT Run #57. Later provider
+reliability layers replace ``_call_model_pool`` after Run260 is installed, so the live
+Deep Dive entrypoint now owns health ordering and telemetry capture itself and calls
+the *current* provider pool dynamically. Quality repair also removes run-local
+unavailable/exhausted models before applying the two-model ceiling, preventing a
+healthy fallback from being stranded behind two models whose circuits already opened.
 
 Health history is operational state only. It stores no prompt/article text and is
 best-effort persisted on the existing runtime-state branch. Failure to read/write the
@@ -148,6 +155,16 @@ def _normalize_health_record(row: Any) -> dict | None:
     }
 
 
+def _record_identity(row: dict) -> tuple[str, str, str, str, str]:
+    return (
+        str(row.get("timestamp") or ""),
+        str(row.get("model") or ""),
+        str(row.get("kind") or ""),
+        str(row.get("outcome") or ""),
+        str(row.get("error_type") or ""),
+    )
+
+
 def _health_window(history: Iterable[dict], now: datetime | None = None) -> list[dict]:
     """Use all valid attempts in 24h; if sparse, backfill to recent N attempts."""
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -171,9 +188,9 @@ def _health_window(history: Iterable[dict], now: datetime | None = None) -> list
     if len(in_window) >= recent_n:
         return in_window
     selected = list(in_window)
-    selected_ids = {(row["timestamp"], row["model"], row["kind"], row["outcome"], row["error_type"]) for row in selected}
+    selected_ids = {_record_identity(row) for row in selected}
     for _, row in valid:
-        identity = (row["timestamp"], row["model"], row["kind"], row["outcome"], row["error_type"])
+        identity = _record_identity(row)
         if identity in selected_ids:
             continue
         selected.append(row)
@@ -217,8 +234,20 @@ def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datet
     return article + non_article
 
 
-def _bounded_quality_pool(pool: Iterable[str], history: Iterable[dict] = ()) -> list[str]:
-    return _health_ranked_pool(pool, history)[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+def _session_usable_pool(pipeline_module: Any, pool: Iterable[str]) -> list[str]:
+    """Remove only models already blocked by authoritative run-local provider circuits."""
+    unavailable = set(getattr(pipeline_module, "SESSION_UNAVAILABLE_MODELS", set()) or set())
+    exhausted = set(getattr(pipeline_module, "SESSION_EXHAUSTED_MODELS", set()) or set())
+    return [model for model in _dedupe(pool) if model not in unavailable and model not in exhausted]
+
+
+def _bounded_quality_pool(
+    pool: Iterable[str], history: Iterable[dict] = (), pipeline_module: Any | None = None
+) -> list[str]:
+    ranked = _health_ranked_pool(pool, history)
+    if pipeline_module is not None:
+        ranked = _session_usable_pool(pipeline_module, ranked)
+    return ranked[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
 
 
 def _health_state_location(pipeline_module: Any) -> tuple[str, str, str, Any] | None:
@@ -340,6 +369,33 @@ def _audit_length(pipeline_module: Any) -> int:
     return len(records) if isinstance(records, list) else 0
 
 
+def _append_health_rows(pipeline_module: Any, rows: Iterable[dict]) -> bool:
+    normalized = [row for row in (_normalize_health_record(x) for x in rows) if row is not None]
+    if not normalized:
+        return False
+    existing = [
+        row for row in (
+            _normalize_health_record(x)
+            for x in list(getattr(pipeline_module, "_provider_health_history", []) or [])
+        )
+        if row is not None
+    ]
+    seen = {_record_identity(row) for row in existing}
+    added = False
+    for row in normalized:
+        identity = _record_identity(row)
+        if identity in seen:
+            continue
+        existing.append(row)
+        seen.add(identity)
+        added = True
+    if not added:
+        return False
+    pipeline_module._provider_health_history = existing[-PROVIDER_HEALTH_MAX_HISTORY:]
+    _persist_provider_health_history(pipeline_module)
+    return True
+
+
 def _log_route(pipeline_module: Any, kind: str, pool: list[str]) -> None:
     logger = getattr(pipeline_module, "logger", None)
     if logger is None:
@@ -397,6 +453,7 @@ def install(pipeline_module: Any) -> Any:
         history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
         routed_pool = _health_ranked_pool(current_pool, history_now)
         if _is_quality_repair_kind(kind):
+            routed_pool = _session_usable_pool(pipeline_module, routed_pool)
             routed_pool = routed_pool[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
         _log_route(pipeline_module, kind, routed_pool)
         args2, kwargs2 = _replace_pool_argument(args, kwargs, routed_pool)
@@ -404,11 +461,7 @@ def install(pipeline_module: Any) -> Any:
         try:
             return original(*args2, **kwargs2)
         finally:
-            new_rows = _new_audit_rows(pipeline_module, audit_start)
-            if new_rows:
-                merged = list(getattr(pipeline_module, "_provider_health_history", []) or []) + new_rows
-                pipeline_module._provider_health_history = merged[-PROVIDER_HEALTH_MAX_HISTORY:]
-                _persist_provider_health_history(pipeline_module)
+            _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))
 
     pipeline_module._call_model_pool = call_model_pool_run260
 
@@ -419,28 +472,35 @@ def install(pipeline_module: Any) -> Any:
         request_context: str = "",
         request_origin: str = "new",
     ):
-        if not _is_quality_repair_kind(kind):
-            return original_deep_dive(
+        # Run172/303 intentionally replace _call_model_pool after this installer. Route
+        # at the durable Deep Dive entrypoint and call the *current* pool dynamically so
+        # Provider Health remains authoritative in the final Production wrapper stack.
+        history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
+        ranked_pool = _health_ranked_pool(
+            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool), history_now
+        )
+        ranked_pool = _session_usable_pool(pipeline_module, ranked_pool)
+        if _is_quality_repair_kind(kind):
+            ranked_pool = ranked_pool[:QUALITY_RETRY_MAX_DISTINCT_MODELS]
+        _log_route(pipeline_module, kind, ranked_pool)
+
+        audit_start = _audit_length(pipeline_module)
+        try:
+            return pipeline_module._call_model_pool(
                 prompt,
                 config,
                 kind,
+                0,
+                ranked_pool,
+                deep_dive=True,
                 request_context=request_context,
                 request_origin=request_origin,
             )
-        history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
-        quality_pool = _bounded_quality_pool(
-            getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", production_pool), history_now
-        )
-        return pipeline_module._call_model_pool(
-            prompt,
-            config,
-            kind,
-            0,
-            quality_pool,
-            deep_dive=True,
-            request_context=request_context,
-            request_origin=request_origin,
-        )
+        finally:
+            # Capturing here is required in live Production because later provider
+            # reliability layers replace the Run260 _call_model_pool wrapper itself.
+            # The identity merge keeps nested/unit-test wrappers idempotent.
+            _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))
 
     pipeline_module._call_deep_dive_pool = call_deep_dive_pool_run261
     pipeline_module.QUALITY_RETRY_MAX_DISTINCT_MODELS = QUALITY_RETRY_MAX_DISTINCT_MODELS
