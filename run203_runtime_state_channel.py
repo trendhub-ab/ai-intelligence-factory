@@ -14,6 +14,11 @@ observed in Production: HTTP 409 ``Timed out validating rule, please try again``
 that repository-rule timeout receives a bounded retry. Auth/permission and ordinary
 4xx failures remain fail-closed, and Observed-history exhaustion keeps its Telegram
 warning instead of being silently treated as success.
+
+Run371 reuses the isolated runtime-state channel for arXiv metadata transport state.
+Normal Production and the separate Product Review process therefore share cache,
+request pacing, and a same-Actions-run 429/503 circuit without writing operational
+telemetry to protected ``main``.
 """
 from __future__ import annotations
 
@@ -206,6 +211,18 @@ def _install_observed_history_retry(pipeline_module: Any) -> None:
     setattr(pipeline_module, marker, True)
 
 
+def _install_arxiv_stability(pipeline_module: Any, branch: str) -> None:
+    """Install Run371 transport protection through the shared runtime-state channel."""
+    # Lazy import keeps static/falsification imports dependency-light and side-effect free.
+    import arxiv_stability_layer
+
+    arxiv_stability_layer.install(
+        pipeline_module,
+        runtime_branch=branch,
+        put_with_retry=_put_with_runtime_rule_retry,
+    )
+
+
 def install(pipeline_module: Any) -> Any:
     """Redirect every existing mutable GitHub state writer to the runtime-state branch."""
     branch = apply_runtime_state_env()
@@ -227,6 +244,7 @@ def install(pipeline_module: Any) -> Any:
         counter.branch = branch
 
     _install_observed_history_retry(pipeline_module)
+    _install_arxiv_stability(pipeline_module, branch)
     return pipeline_module
 
 
