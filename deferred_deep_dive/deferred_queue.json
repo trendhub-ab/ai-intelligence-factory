@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-15T10:56:56.137021+00:00",
+  "updated_at": "2026-09-15T11:50:20.717148+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49656845",
-      "deferred_at": "2026-09-11T13:50:03.242666+00:00",
-      "expires_at": "2026-09-25T13:50:03.242666+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Make Claude Code Faster and Cheaper with Ory Lumen",
-        "originalTitle": "Make Claude Code Faster and Cheaper with Ory Lumen",
-        "displayName": "Make Claude Code Faster and Cheaper with Ory Lumen",
-        "sourceLanguage": "en",
-        "url": "https://www.ory.com/blog/ory-lumen-semantic-search-claude-code",
-        "description": "Make Claude Code Faster and Cheaper with Ory Lumen",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-11T11:49:51Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=Claude",
-        "primaryUrl": "https://www.ory.com/blog/ory-lumen-semantic-search-claude-code",
-        "sourceDetails": {
-          "hn_id": "49656845",
-          "hn_url": "https://news.ycombinator.com/item?id=49656845",
-          "external_url": "https://www.ory.com/blog/ory-lumen-semantic-search-claude-code",
-          "comments": 0,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d8479ff-dca9-8110-8787-dabb26472100",
-      "score": 78,
-      "reason": "Claude Codeの高速化・コスト削減の具体例として実用的。",
-      "commercial_score": 75,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 76.95
-    },
     {
       "key": "https://arxiv.org/abs/2609.10263",
       "deferred_at": "2026-09-10T05:36:27.083656+00:00",
