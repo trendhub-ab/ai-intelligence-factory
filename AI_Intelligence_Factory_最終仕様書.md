@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: **2026-09-15**
+最終更新: **2026-09-16**
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**
 
@@ -51,7 +51,7 @@ Canonical Specification: **本ファイル**
 
 - ONE-SHOTのjob環境変数`AIIF_GEMINI36_BLOCK_UNTIL=2026-09-16T17:00:00+09:00`により、期限前はGemini 3.6とそのaliasを除外する。Product Review子プロセスにも同じ環境を引き継ぐ。
 - 候補初期化・Provider Health再注入・Quality Retry・共通fallback・独立Product Review poolで除外し、最終SDK送信前にもquota予約より先に拒否する。
-- 期限到達後の実行では除外は無効となる。恒久pool・モデル別RPD上限は変更しない。タイムゾーンなし・不正な期限は送信前に停止する。
+- 期限到達後の実行では除外は無効となり、Gemini 3.6は通常のArticle model setへ自動復帰する。恒久pool・モデル別RPD上限は変更しない。タイムゾーンなし・不正な期限は送信前に停止する。
 
 Gemini系の安全契約:
 
@@ -119,6 +119,7 @@ Gemini系の安全契約:
 
 - `article_validation`
 - `pending_retry_validation`
+- `ready_rescue_validation`
 - `full`
 
 旧Recovery専用command、固定Recovery command、Groq専用commandを復活させない。
@@ -162,7 +163,7 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 - unsupported vague quantified claimは、Fact Gateが診断した該当修飾だけを0-APIで減算修正する。Fact / Evidence / Publication / Reader Gateは維持する。
 - Rescue全体は最大1回のProvider送信。503の同一モデル再試行・連鎖fallbackは行わず、非Deep Dive扱いの追加repairも送信境界で止める。
 - ONE-SHOT `ready_rescue_validation`は通常Production品質スタックと同じRescue関数を使用する。Fresh取得・Screening・Backlog・独立Product Reviewは回さず、既存記事1件を現在のGateで検証し、合格時だけ通常経路で保存する。
-- 実検証のモデルは3.5 / 3.7 / 3.8のみ。結果は`article_audit/ready_rescue_validation.json`と既存監査ログへ保存する。
+- 実検証は通常Article model set（3.5 / 3.6 / 3.7 / 3.8）を使用する。ただし`AIIF_GEMINI36_BLOCK_UNTIL`の期限前だけ3.6を時限除外し、**2026-09-16 17:00 JST以降は3.6を自動復帰**させる。Provider Healthによる並び替えは通常Production契約に従う。結果は`article_audit/ready_rescue_validation.json`と既存監査ログへ保存する。
 - Ready成功が1件以上の場合のみ、既存Note Ready Syncと非公開下書きフローを起動する。同期・下書き成功は別々の実ログで確認し、ONE-SHOT成功だけを達成証拠にしない。
 - Scheduled DailyはPAUSEDを維持する。
 
@@ -437,7 +438,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 
 ## 12. Current-state summary
 
-2026-09-15時点のFactoryは、次の状態を正式な基準とする。
+2026-09-16時点のFactoryは、次の状態を正式な基準とする。
 
 - **Production:** Geminiベース既存ロジック
 - **Primary / Quality:** Gemini 3.8 / Gemini 3.7の役割分離を維持
@@ -449,6 +450,7 @@ Run単位の「仕様追補」「監査結果」「Recovery指示書」は、現
 - **45-article Recovery:** 終了、33件未復旧のまま再開しない
 - **Scheduled Daily:** PAUSED
 - **Manual execution:** current ONE-SHOT / explicitly dispatched workflows
+- **Ready Rescue validation:** 1記事・最大1 Provider送信。3.6の期限付き除外は2026-09-16 17:00 JSTで自動失効し、その後は通常Article model setへ復帰
 - **Pending Retry validation:** 1記事・非永続。`accepted`だけを品質PASSとして数え、Ready保存と分離。Provider-visible記事送信は最大4回、model-assisted eyecatchは送信しない
 - **Publication safety:** provenance + current policy + Reader/Evidence/Integrity guardsを維持
 - **Paid product:** Generic Use-Decision Intelligence

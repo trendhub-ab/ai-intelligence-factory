@@ -8,11 +8,21 @@ from gemini_temporary_exclusion import allowed_pool
 from run374_ready_rescue import run_reserved_ready_rescue
 
 
+APPROVED_MODELS = {
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+}
+
+
+def validation_pool(pool, now=None):
+    """Use the normal article model set; only the time-bounded exclusion may remove 3.6."""
+    return [model for model in allowed_pool(pool, now=now) if model in APPROVED_MODELS]
+
+
 def run(pipeline):
-    approved = {"gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"}
-    pipeline.DEEP_DIVE_MODEL_POOL = [
-        model for model in allowed_pool(pipeline.DEEP_DIVE_MODEL_POOL) if model in approved
-    ]
+    pipeline.DEEP_DIVE_MODEL_POOL = validation_pool(pipeline.DEEP_DIVE_MODEL_POOL)
     pipeline.DEEP_DIVE_MODEL_CANDIDATES = list(pipeline.DEEP_DIVE_MODEL_POOL)
     if not pipeline.DEEP_DIVE_MODEL_POOL:
         raise RuntimeError("Ready Rescue validation has no approved model")
