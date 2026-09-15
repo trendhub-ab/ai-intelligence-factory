@@ -102,16 +102,28 @@ def is_redundant_arxiv_doi(url: str, arxiv_id: str) -> bool:
 
 
 class ReadableHTMLTextParser(HTMLParser):
-    _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "footer", "header", "form", "aside"}
-    _BREAK_TAGS = {"title", "h1", "h2", "h3", "h4", "p", "li", "blockquote", "pre", "article", "main", "br"}
+    _SKIP_TAGS = {"script", "style", "noscript", "svg", "nav", "header", "form", "aside"}
+    _BREAK_TAGS = {"title", "h1", "h2", "h3", "h4", "p", "li", "blockquote", "pre", "article", "main", "footer", "br"}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self._skip_depth = 0
+        self._article_depth = 0
+        self._global_footer_depth = 0
         self._parts: list[str] = []
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
+        # Article-scoped footers can carry authoritative footnotes, pricing expiry
+        # notes, caveats, or citations. Keep those while continuing to discard the
+        # site-wide footer outside an <article>, which is navigation/noise and can
+        # contaminate deterministic Fact matching with unrelated numbers.
+        if tag == "article" and self._skip_depth == 0:
+            self._article_depth += 1
+        if tag == "footer" and self._article_depth == 0:
+            self._skip_depth += 1
+            self._global_footer_depth += 1
+            return
         if tag in self._SKIP_TAGS:
             self._skip_depth += 1
             return
@@ -120,12 +132,19 @@ class ReadableHTMLTextParser(HTMLParser):
 
     def handle_endtag(self, tag):
         tag = tag.lower()
+        if tag == "footer" and self._global_footer_depth > 0:
+            self._global_footer_depth -= 1
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+            return
         if tag in self._SKIP_TAGS:
             if self._skip_depth > 0:
                 self._skip_depth -= 1
             return
         if self._skip_depth == 0 and tag in self._BREAK_TAGS:
             self._parts.append("\n")
+        if tag == "article" and self._skip_depth == 0 and self._article_depth > 0:
+            self._article_depth -= 1
 
     def handle_data(self, data):
         if self._skip_depth == 0 and data:

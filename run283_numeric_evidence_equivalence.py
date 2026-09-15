@@ -12,6 +12,8 @@ Run283 production finding:
   only the trailing ``6,098ドル`` / ``8,817ドル`` and therefore falsely called both unsupported.
 - Currency-symbol notation such as ``$0.75`` and Japanese ``0.75ドル`` are equivalent only when
   the exact amount exists in the evidence and the surrounding numeric conditions are compatible.
+- Explicit currency spellings such as ``$1.50`` and ``1.50ドル`` are compared as exact Decimal
+  values, so harmless trailing-zero formatting cannot create a false unsupported claim.
 
 Run350 real-article finding:
 - Run38 DeepSeek was Fact-blocked because ``自社にとって投資対効果が見合うかを見極めて
@@ -204,14 +206,26 @@ def _currency_number_variants(value: Decimal) -> tuple[str, ...]:
 
 
 def _currency_evidence_windows(source_context: str, value: Decimal) -> list[str]:
+    """Find explicit currency amounts by exact numeric value, not lexical formatting.
+
+    ``Decimal('1.50') == Decimal('1.5')`` is safe equivalence; no rounding or tolerance is
+    introduced. Bare numbers are ignored, and a different explicit amount remains unsupported.
+    """
     windows: list[str] = []
-    for number in _currency_number_variants(value):
-        pattern = (
-            rf"(?:\$\s*{re.escape(number)}(?!\d)|"
-            rf"(?<!\d){re.escape(number)}\s*(?:USD|US\s*dollars?|dollars?|ドル)(?![A-Za-z]))"
-        )
-        for match in re.finditer(pattern, source_context or "", re.I):
-            windows.append(_window(source_context, match.start(), match.end(), 220, 260))
+    pattern = re.compile(
+        r"(?:\$\s*(?P<prefix>\d[\d,]*(?:\.\d+)?)|"
+        r"(?P<suffix>\d[\d,]*(?:\.\d+)?)\s*(?:USD|US\s*dollars?|dollars?|ドル)(?![A-Za-z]))",
+        re.I,
+    )
+    for match in pattern.finditer(source_context or ""):
+        number = match.group("prefix") or match.group("suffix") or ""
+        try:
+            evidence_value = Decimal(number.replace(",", ""))
+        except InvalidOperation:
+            continue
+        if evidence_value != value:
+            continue
+        windows.append(_window(source_context, match.start(), match.end(), 220, 260))
     return windows
 
 
