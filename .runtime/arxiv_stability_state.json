@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-09-15T12:36:26.616526+00:00",
+  "last_request_at_epoch": 1789475786.6165211,
+  "last_status": 0,
+  "last_error_type": "",
+  "circuit_run_id": "",
+  "circuit_status": 0,
+  "circuit_opened_at": "",
+  "entries": {}
+}
