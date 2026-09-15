@@ -17,6 +17,7 @@ def make_pipeline(total=12, pending=2, deferred=1):
     p.DEEP_DIVE_MODEL_BUDGET = Budget(total)
     p.GEMINI_PENDING_RETRY_REQUEST_BUDGET = pending
     p.DEFERRED_DEEP_DIVE_MAX_PER_RUN = deferred
+    p.TOP_N_FOR_DEEP_DIVE = 0
     p.logger = None
     seen = {}
 
@@ -32,17 +33,22 @@ def make_pipeline(total=12, pending=2, deferred=1):
 
 def test_reserves_existing_budget_without_increasing_total(monkeypatch):
     monkeypatch.delenv("GEMINI_BACKLOG_RESERVED_REQUESTS", raising=False)
+    monkeypatch.delenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", raising=False)
     p, seen = make_pipeline(total=12, pending=2, deferred=1)
     run346.install(p)
-    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 9
-    p.DEEP_DIVE_MODEL_BUDGET.used = 9
+    # total 12 = fresh 8 + backlog 3 + Ready Rescue 1
+    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 8
+    assert p._run346_original_deep_dive_budget == 12
+    assert p._run374_ready_rescue_reserved_requests == 1
+    p.DEEP_DIVE_MODEL_BUDGET.used = 8
     p.process_article_backlog([{"repo": {}}], 0, 0)
-    assert seen == {"budget": 12, "used": 9, "pending": 1}
+    assert seen == {"budget": 11, "used": 8, "pending": 1}
     assert p.DEEP_DIVE_MODEL_BUDGET.budget == 12
 
 
 def test_never_resets_used_requests(monkeypatch):
     monkeypatch.delenv("GEMINI_BACKLOG_RESERVED_REQUESTS", raising=False)
+    monkeypatch.delenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", raising=False)
     p, seen = make_pipeline(total=12, pending=2, deferred=1)
     p.DEEP_DIVE_MODEL_BUDGET.used = 5
     run346.install(p)
@@ -52,18 +58,32 @@ def test_never_resets_used_requests(monkeypatch):
 
 def test_reserve_is_capped_by_original_budget(monkeypatch):
     monkeypatch.setenv("GEMINI_BACKLOG_RESERVED_REQUESTS", "99")
-    p, _ = make_pipeline(total=4)
+    monkeypatch.delenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", raising=False)
+    p, seen = make_pipeline(total=4)
     run346.install(p)
     assert p.DEEP_DIVE_MODEL_BUDGET.budget == 0
     p.process_article_backlog([], 0, 0)
+    assert seen["budget"] == 4
     assert p.DEEP_DIVE_MODEL_BUDGET.budget == 4
+
+
+def test_ready_rescue_can_be_disabled_without_changing_total(monkeypatch):
+    monkeypatch.delenv("GEMINI_BACKLOG_RESERVED_REQUESTS", raising=False)
+    monkeypatch.setenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", "0")
+    p, seen = make_pipeline(total=12, pending=2, deferred=1)
+    run346.install(p)
+    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 9
+    p.process_article_backlog([], 0, 0)
+    assert seen["budget"] == 12
+    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 12
 
 
 def test_install_is_idempotent(monkeypatch):
     monkeypatch.delenv("GEMINI_BACKLOG_RESERVED_REQUESTS", raising=False)
+    monkeypatch.delenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", raising=False)
     p, _ = make_pipeline(total=12)
     run346.install(p)
     wrapped = p.process_article_backlog
     run346.install(p)
     assert p.process_article_backlog is wrapped
-    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 9
+    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 8
