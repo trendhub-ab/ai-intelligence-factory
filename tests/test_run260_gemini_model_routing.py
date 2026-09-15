@@ -211,6 +211,23 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertNotIn("context", row)
         self.assertNotIn("prompt", row)
 
+    def test_main_eyecatch_branch_defaults_health_state_to_runtime_state(self):
+        module, _, _ = self._fake_pipeline()
+        module.requests = object()
+        module.EYECATCH_GITHUB_BRANCH = "main"
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_REPOSITORY": "trendhub-ab/ai-intelligence-factory",
+                "GH_PAT": "test-token",
+                "AIIF_RUNTIME_STATE_BRANCH": "",
+            },
+            clear=False,
+        ):
+            location = run260._health_state_location(module)
+        self.assertIsNotNone(location)
+        self.assertEqual(location[2], "runtime-state")
+
     def test_install_is_idempotent_for_both_live_entrypoints(self):
         module, _, _ = self._fake_pipeline()
         run260.install(module)
