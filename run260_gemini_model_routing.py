@@ -108,7 +108,6 @@ def _is_deep_dive_call(args: tuple, kwargs: dict, kind: str) -> bool:
         return True
     if "deep_dive" in kwargs:
         return bool(kwargs.get("deep_dive"))
-    # _call_model_pool positional index 5 is deep_dive when provided.
     return bool(args[5]) if len(args) >= 6 else False
 
 
@@ -194,7 +193,7 @@ def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: dat
         successes = sum(1 for row in rows if row.get("outcome") == "success")
         errors = attempts - successes
         # Beta(1,1) smoothing avoids one lucky request dominating a model with several
-        # real observations while still moving a 503/timeout model below unknown peers.
+        # real observations while still moving a repeatedly failing model below peers.
         score = (successes + 1.0) / (attempts + 2.0)
         stats[model] = {
             "attempts": attempts,
@@ -209,7 +208,6 @@ def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datet
     existing = _dedupe(pool)
     baseline = {model: index for index, model in enumerate(DEFAULT_DEEP_DIVE_POOL)}
     stats = _model_health_stats(existing, history, now=now)
-
     article = [model for model in existing if model in ARTICLE_MODELS]
     non_article = [model for model in existing if model not in ARTICLE_MODELS]
     article.sort(
@@ -252,7 +250,6 @@ def _load_provider_health_history(pipeline_module: Any) -> tuple[list[dict], str
     override = getattr(pipeline_module, "PROVIDER_HEALTH_HISTORY_OVERRIDE", None)
     if isinstance(override, list):
         return [row for row in (_normalize_health_record(x) for x in override) if row is not None], ""
-
     location = _health_state_location(pipeline_module)
     if location is None:
         return [], ""
@@ -356,7 +353,6 @@ def install(pipeline_module: Any) -> Any:
     """Install revenue-first, health-aware article routing without changing any gate budget."""
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
         return pipeline_module
-
     original = getattr(pipeline_module, "_call_model_pool", None)
     original_deep_dive = getattr(pipeline_module, "_call_deep_dive_pool", None)
     if not callable(original):
@@ -365,14 +361,14 @@ def install(pipeline_module: Any) -> Any:
         raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
     configured_pool = _configured_deep_dive_pool(pipeline_module)
-    # Explicit config remains an allowlist, but cold-start order is business-first.
-    allowed = set(configured_pool) | set(DEFAULT_DEEP_DIVE_POOL)
-    production_pool = [model for model in DEFAULT_DEEP_DIVE_POOL if model in allowed]
-    production_pool.extend(model for model in configured_pool if model not in production_pool)
+    # Historical Run260 always made all four article models available. Preserve that
+    # compatibility while changing only their routing order.
+    production_pool = _dedupe(list(DEFAULT_DEEP_DIVE_POOL) + configured_pool)
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
-    # Preserve the existing per-model safety ceiling for the newer Flash models.
+    # Preserve the existing Run260 safety-budget behavior exactly: the operator may
+    # lower the 3.8 ceiling, never raise it, and the same bounded value applies to 3.7.
     try:
         requested_budget = int(os.environ.get("GEMINI_38_FLASH_DAILY_BUDGET", str(DEFAULT_FLASH_SAFETY_BUDGET)))
     except (TypeError, ValueError):
@@ -381,18 +377,15 @@ def install(pipeline_module: Any) -> Any:
     model_budgets = getattr(pipeline_module, "MODEL_DAILY_BUDGETS", None)
     if isinstance(model_budgets, dict):
         model_budgets["gemini-3.8-flash"] = quality_budget
-        model_budgets["gemini-3.7-flash"] = min(
-            int(model_budgets.get("gemini-3.7-flash", DEFAULT_FLASH_SAFETY_BUDGET) or DEFAULT_FLASH_SAFETY_BUDGET),
-            DEFAULT_FLASH_SAFETY_BUDGET,
-        )
+        model_budgets["gemini-3.7-flash"] = quality_budget
     persistent = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if persistent is not None and isinstance(getattr(persistent, "model_budgets", None), dict):
         persistent.model_budgets["gemini-3.8-flash"] = quality_budget
+        persistent.model_budgets["gemini-3.7-flash"] = quality_budget
 
     history, state_sha = _load_provider_health_history(pipeline_module)
     pipeline_module._provider_health_history = list(history)
     pipeline_module._provider_health_state_sha = state_sha
-
     setattr(pipeline_module, _ORIGINAL_CALL_ATTR, original)
     setattr(pipeline_module, _ORIGINAL_DEEP_DIVE_ATTR, original_deep_dive)
 
@@ -401,7 +394,6 @@ def install(pipeline_module: Any) -> Any:
         current_pool = _request_pool(args, kwargs, production_pool)
         if not _is_deep_dive_call(args, kwargs, kind):
             return original(*args, **kwargs)
-
         history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
         routed_pool = _health_ranked_pool(current_pool, history_now)
         if _is_quality_repair_kind(kind):
