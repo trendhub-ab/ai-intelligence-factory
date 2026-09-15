@@ -1,39 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-15T08:30:36.287511+00:00",
+  "updated_at": "2026-09-15T10:56:56.137021+00:00",
   "items": [
-    {
-      "key": "https://www.producthunt.com/products/fillo-native-forms-without-the-backend",
-      "deferred_at": "2026-09-04T01:03:15.800633+00:00",
-      "expires_at": "2026-09-18T01:03:15.800633+00:00",
-      "repo": {
-        "source": "ProductHunt",
-        "nameWithOwner": "Fillo",
-        "originalTitle": "Fillo",
-        "displayName": "Fillo",
-        "sourceLanguage": "en",
-        "url": "https://www.producthunt.com/r/LGOXJJGMRUJD5Q?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
-        "description": "Build forms into your product with your coding agent",
-        "stargazerCount": 90,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-03T07:01:00Z",
-        "sourceContext": "Tagline: Build forms into your product with your coding agent\nDescription: Build forms into your product with your coding agent. Fillo handles the infrastructure behind them: validation, uploads, responses, versions, and delivery.",
-        "primaryUrl": "https://www.producthunt.com/r/LGOXJJGMRUJD5Q?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
-        "sourceDetails": {
-          "producthunt_url": "https://www.producthunt.com/products/fillo-native-forms-without-the-backend?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29",
-          "official_url": "",
-          "website": "https://www.producthunt.com/r/LGOXJJGMRUJD5Q?utm_campaign=producthunt-api&utm_medium=api-v2&utm_source=Application%3A+AI+Intelligence+Pipeline+%28ID%3A+295993%29"
-        }
-      },
-      "notion_page_id": "3d1479ff-dca9-8114-933c-d24ea0c47df4",
-      "score": 76,
-      "reason": "コーディングエージェントのフォーム構築における実用性",
-      "commercial_score": 80,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 77.4
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49656845",
       "deferred_at": "2026-09-11T13:50:03.242666+00:00",
