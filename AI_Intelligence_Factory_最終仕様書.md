@@ -43,9 +43,15 @@ Canonical Specification: **本ファイル**
 現行Article Model Routing:
 
 - live Deep Dive entrypoint: **`_call_deep_dive_pool`**
-- Primary: **`gemini-3.8-flash`**
-- Quality Rescue: **`gemini-3.7-flash`**
+- cold-start順序: **3.6 → 3.5 → 3.7 → 3.8**。実運用はProvider Healthの成功履歴とrun-local circuitで並び替える。
+- Quality Retryは利用可能なモデルを絞った後、最大2モデルとする。
 - fallback: 現行`main`のrouting layerをAuthorityとする
+
+期限付きProvider保護:
+
+- ONE-SHOTのjob環境変数`AIIF_GEMINI36_BLOCK_UNTIL=2026-09-16T17:00:00+09:00`により、期限前はGemini 3.6とそのaliasを除外する。Product Review子プロセスにも同じ環境を引き継ぐ。
+- 候補初期化・Provider Health再注入・Quality Retry・共通fallback・独立Product Review poolで除外し、最終SDK送信前にもquota予約より先に拒否する。
+- 期限到達後の実行では除外は無効となる。恒久pool・モデル別RPD上限は変更しない。タイムゾーンなし・不正な期限は送信前に停止する。
 
 Gemini系の安全契約:
 
@@ -148,6 +154,17 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 - Workflow/jobのsuccessは、記事の品質合格・Ready・永続保存成功と同義ではない。最終報告ではこれらを別状態として扱う。
 
 ---
+
+### 2.5 Ready Rescue / 最小実記事E2E
+
+- Deep Dive総予算12の配分はFresh 8 / Backlog 3 / Ready Rescue 1。使用済みカウンタをリセットせず、追加枠も作らない。
+- Rescue対象は既存Needs Editorial Reviewのみ。Content StatusがQuality FailedまたはPending Retryなら、Article Statusとの混在行も対象外。
+- unsupported vague quantified claimは、Fact Gateが診断した該当修飾だけを0-APIで減算修正する。Fact / Evidence / Publication / Reader Gateは維持する。
+- Rescue全体は最大1回のProvider送信。503の同一モデル再試行・連鎖fallbackは行わず、非Deep Dive扱いの追加repairも送信境界で止める。
+- ONE-SHOT `ready_rescue_validation`は通常Production品質スタックと同じRescue関数を使用する。Fresh取得・Screening・Backlog・独立Product Reviewは回さず、既存記事1件を現在のGateで検証し、合格時だけ通常経路で保存する。
+- 実検証のモデルは3.5 / 3.7 / 3.8のみ。結果は`article_audit/ready_rescue_validation.json`と既存監査ログへ保存する。
+- Ready成功が1件以上の場合のみ、既存Note Ready Syncと非公開下書きフローを起動する。同期・下書き成功は別々の実ログで確認し、ONE-SHOT成功だけを達成証拠にしない。
+- Scheduled DailyはPAUSEDを維持する。
 
 ## 3. Required CI / Dependency Contract
 

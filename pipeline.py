@@ -287,12 +287,21 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     一切持たせず、既存の「呼び出し単位で完結する」という挙動を変えないまま、
     SDK推奨のエントリーポイントへ置き換える。
     """
+    from gemini_temporary_exclusion import assert_allowed
+    assert_allowed(model_name)
+    if globals().get("_READY_RESCUE_ACTIVE", False):
+        if model_name not in {"gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"} and globals().get("_READY_RESCUE_VALIDATION", False):
+            raise NoAvailableModelError("Ready Rescue validation model is outside the approved allowlist")
+        if globals().get("_READY_RESCUE_PROVIDER_SENDS", 0) >= 1:
+            raise DeepDiveRunBudgetExceededError("Ready Rescue permits one provider send, including all repairs")
     if client is None:
         raise NoAvailableModelError("GEMINI_API_KEY が設定されていません")
     audit_id = _consume_gemini_request(
         request_kind, reserve=reserve, model_name=model_name, request_context=request_context,
         count_as_deep_dive=count_as_deep_dive, request_origin=request_origin,
     )
+    if globals().get("_READY_RESCUE_ACTIVE", False):
+        globals()["_READY_RESCUE_PROVIDER_SENDS"] = globals().get("_READY_RESCUE_PROVIDER_SENDS", 0) + 1
     try:
         chat = client.chats.create(model=model_name, config=config) if config else client.chats.create(model=model_name)
         response = chat.send_message(prompt)
@@ -326,12 +335,15 @@ SCREENING_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_SCREENING_MODEL_CANDIDATES",
     "gemini-3.1-flash-lite"
 ).split(",")
+from gemini_temporary_exclusion import allowed_pool as _temporarily_allowed_models
+SCREENING_MODEL_CANDIDATES = _temporarily_allowed_models(SCREENING_MODEL_CANDIDATES)
 SCREENING_MODEL_POOL = [m.strip() for m in SCREENING_MODEL_CANDIDATES if m.strip()]
 
 DEEP_DIVE_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_DEEP_DIVE_MODEL_CANDIDATES",
     "gemini-3.6-flash"
 ).split(",")
+DEEP_DIVE_MODEL_CANDIDATES = _temporarily_allowed_models(DEEP_DIVE_MODEL_CANDIDATES)
 DEEP_DIVE_MODEL_POOL = [m.strip() for m in DEEP_DIVE_MODEL_CANDIDATES if m.strip()]
 
 # 深掘り（Step2フルレポート）に回す件数（Two-Stage化）
@@ -1552,7 +1564,7 @@ def _extract_retry_delay(exc: Exception, default: int = 20) -> int:
 def resolve_model(candidates: list[str], label: str = "Gemini", count_as_deep_dive: bool = False) -> str:
     """候補順=優先順位として軽量pingし、頻繁なGeminiモデル更新へ追随する。"""
     last_error: Exception | None = None
-    for model_name in candidates:
+    for model_name in _temporarily_allowed_models(candidates):
         model_name = model_name.strip()
         if not model_name:
             continue

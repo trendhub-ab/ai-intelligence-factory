@@ -28,6 +28,7 @@ jobs:
       github.actor == 'trendhub-ab' &&
       (github.event.comment.body == '/aiif run article_validation' ||
        github.event.comment.body == '/aiif run pending_retry_validation' ||
+       github.event.comment.body == '/aiif run ready_rescue_validation' ||
        github.event.comment.body == '/aiif run full' ||
        github.event.comment.body == '/aiif run x_discovery_stage2')
     runs-on: ubuntu-latest
@@ -57,7 +58,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|pending_retry_validation|full|x_discovery_stage2) ;;
+            article_validation|pending_retry_validation|ready_rescue_validation|full|x_discovery_stage2) ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -83,6 +84,10 @@ jobs:
             full)
               target='daily-one-shot.yml'
               payload='{"ref":"main","inputs":{"mode":"full","confirm":"RUN_ONCE"}}'
+              ;;
+            ready_rescue_validation)
+              target='daily-one-shot.yml'
+              payload='{"ref":"main","inputs":{"mode":"ready_rescue_validation","confirm":"RUN_ONCE"}}'
               ;;
             x_discovery_stage2)
               target='x-discovery-stage2-smoke.yml'

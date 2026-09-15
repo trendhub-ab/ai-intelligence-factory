@@ -24,6 +24,7 @@ on:
           - full
           - article_validation
           - pending_retry_validation
+          - ready_rescue_validation
       confirm:
         description: 'Type RUN_ONCE to execute exactly one production ONE-SHOT'
         required: true
@@ -42,13 +43,16 @@ jobs:
     if: ${{ inputs.confirm == 'RUN_ONCE' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Expired values are inert. Inherited by Product Review subprocesses as well.
+      AIIF_GEMINI36_BLOCK_UNTIL: '2026-09-16T17:00:00+09:00'
 
     steps:
       - name: One-shot safety contract
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
           case "${{ inputs.mode }}" in
-            full|article_validation|pending_retry_validation) ;;
+            full|article_validation|pending_retry_validation|ready_rescue_validation) ;;
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }}. Automatic triggers are intentionally absent."
@@ -70,8 +74,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Zero-API temporary provider exclusion falsification
+        run: python -m unittest tests.test_temporary_provider_exclusion -v
+
       - name: 通常Production entrypointを1回だけ実行
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' }}
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' }}
         run: python production_pipeline.py
         env:
           TZ: 'Asia/Tokyo'
@@ -417,6 +424,11 @@ jobs:
             exit 1
           fi
           failed=0
+          if [ "${VALIDATION_MODE:-}" = "ready_rescue_validation" ]; then
+            python -c 'import json,sys; sys.exit(0 if json.load(open("article_audit/ready_rescue_validation.json"))["ready"] >= 1 else 1)' || exit 0
+            gh workflow run note-ready-sync.yml --ref main -f create_private_draft=true
+            exit $?
+          fi
           for target in note-ready-sync.yml subscriber-decision-brief.yml cross-db-contract-guard.yml; do
             echo "Dispatching ${target} from successful ONE-SHOT via GH_PAT"
             if ! gh workflow run "${target}" --ref main; then

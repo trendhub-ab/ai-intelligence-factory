@@ -48,6 +48,7 @@ PUBLICATION_POLICY_FILES = (
     "run269_vendor_current_state.py",
     "reader_quality_precision.py",
     "run260_gemini_model_routing.py",
+    "run374_ready_rescue.py",
     "run268_business_source_strategy.py",
     "run269_business_source_precision.py",
     "editorial_eyecatch.py",

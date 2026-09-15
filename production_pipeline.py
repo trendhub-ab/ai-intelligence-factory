@@ -299,6 +299,13 @@ def main() -> None:
 
     mode = _workflow_dispatch_mode()
 
+    if mode == "ready_rescue_validation":
+        from ready_rescue_validation import run
+        from run374_ready_rescue import install
+        install(pipeline)
+        run(pipeline)
+        return
+
     # Run277: article_validation must validate an *existing non-Ready* candidate.
     # Fresh acquisition would be defeated by the authoritative Notion dedupe and would
     # silently change the validation target after every Gate fix. The dedicated lane is

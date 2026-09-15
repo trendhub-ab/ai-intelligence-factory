@@ -31,6 +31,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from gemini_temporary_exclusion import allowed_pool
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
@@ -219,7 +220,7 @@ def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: dat
 
 
 def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datetime | None = None) -> list[str]:
-    existing = _dedupe(pool)
+    existing = allowed_pool(_dedupe(pool))
     baseline = {model: index for index, model in enumerate(DEFAULT_DEEP_DIVE_POOL)}
     stats = _model_health_stats(existing, history, now=now)
     article = [model for model in existing if model in ARTICLE_MODELS]
@@ -421,7 +422,7 @@ def install(pipeline_module: Any) -> Any:
         raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
     configured_pool = _configured_deep_dive_pool(pipeline_module)
-    production_pool = _dedupe(list(DEFAULT_DEEP_DIVE_POOL) + configured_pool)
+    production_pool = allowed_pool(_dedupe(list(DEFAULT_DEEP_DIVE_POOL) + configured_pool))
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
