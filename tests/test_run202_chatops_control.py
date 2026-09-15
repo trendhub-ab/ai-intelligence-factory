@@ -126,7 +126,7 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", text)
         self.assertNotIn("GH_TOKEN: ${{ github.token }}", text)
         self.assertIn('if [ -z "${GH_TOKEN:-}" ]; then', text)
-        self.assertIn("GH_PAT is required for ChatOps workflow dispatch", text)
+        self.assertIn("GH_PAT is required for ChatOps ONE-SHOT dispatch", text)
 
     def test_x_stage2_dispatch_does_not_pass_production_or_model_credentials(self):
         text = WORKFLOW.read_text(encoding="utf-8")
