@@ -47,6 +47,7 @@ PROVIDER_HEALTH_SCHEMA_VERSION = 1
 PROVIDER_HEALTH_LOOKBACK_HOURS = 24
 PROVIDER_HEALTH_RECENT_ATTEMPTS = 20
 PROVIDER_HEALTH_MAX_HISTORY = 200
+DEFAULT_RUNTIME_STATE_BRANCH = "runtime-state"
 
 
 def _dedupe(models: Iterable[str]) -> list[str]:
@@ -61,8 +62,6 @@ def _dedupe(models: Iterable[str]) -> list[str]:
 def _configured_deep_dive_pool(pipeline_module: Any) -> list[str]:
     """Use explicit Production config as an allowlist, with all known article models available."""
     configured = _dedupe(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
-    # The historical code defaulted to a single 3.6 model when no workflow env existed.
-    # Treat that singleton as implicit default, not an operator attempt to disable fallback.
     if configured == ["gemini-3.6-flash"]:
         return list(DEFAULT_DEEP_DIVE_POOL)
     return configured or list(DEFAULT_DEEP_DIVE_POOL)
@@ -192,8 +191,6 @@ def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: dat
         attempts = len(rows)
         successes = sum(1 for row in rows if row.get("outcome") == "success")
         errors = attempts - successes
-        # Beta(1,1) smoothing avoids one lucky request dominating a model with several
-        # real observations while still moving a repeatedly failing model below peers.
         score = (successes + 1.0) / (attempts + 2.0)
         stats[model] = {
             "attempts": attempts,
@@ -229,11 +226,18 @@ def _health_state_location(pipeline_module: Any) -> tuple[str, str, str, Any] | 
     token = str(os.environ.get("GH_PAT") or getattr(pipeline_module, "GH_PAT", "") or "").strip()
     branch = str(
         os.environ.get("AIIF_RUNTIME_STATE_BRANCH")
+        or getattr(pipeline_module, "AIIF_RUNTIME_STATE_BRANCH", "")
         or getattr(pipeline_module, "EYECATCH_GITHUB_BRANCH", "")
-        or ""
+        or DEFAULT_RUNTIME_STATE_BRANCH
     ).strip()
+    # Production ONE-SHOT historically points eyecatch writes at main. Provider-health
+    # telemetry is operational state and must never write to main, so default it to the
+    # existing dedicated runtime-state branch unless an explicit non-main state branch
+    # was supplied.
+    if not branch or branch in {"main", "master"}:
+        branch = DEFAULT_RUNTIME_STATE_BRANCH
     http = getattr(pipeline_module, "requests", None)
-    if not repo or "/" not in repo or not token or not branch or branch in {"main", "master"} or http is None:
+    if not repo or "/" not in repo or not token or not branch or http is None:
         return None
     return repo, token, branch, http
 
@@ -361,14 +365,10 @@ def install(pipeline_module: Any) -> Any:
         raise RuntimeError("pipeline._call_deep_dive_pool is required for Run261")
 
     configured_pool = _configured_deep_dive_pool(pipeline_module)
-    # Historical Run260 always made all four article models available. Preserve that
-    # compatibility while changing only their routing order.
     production_pool = _dedupe(list(DEFAULT_DEEP_DIVE_POOL) + configured_pool)
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
-    # Preserve the existing Run260 safety-budget behavior exactly: the operator may
-    # lower the 3.8 ceiling, never raise it, and the same bounded value applies to 3.7.
     try:
         requested_budget = int(os.environ.get("GEMINI_38_FLASH_DAILY_BUDGET", str(DEFAULT_FLASH_SAFETY_BUDGET)))
     except (TypeError, ValueError):
@@ -419,7 +419,6 @@ def install(pipeline_module: Any) -> Any:
         request_context: str = "",
         request_origin: str = "new",
     ):
-        """Keep the live quality-repair path bounded while letting health choose the two models."""
         if not _is_quality_repair_kind(kind):
             return original_deep_dive(
                 prompt,
