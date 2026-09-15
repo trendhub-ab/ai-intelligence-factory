@@ -9,6 +9,9 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 
+_APIFY_PROVIDER_WIDE_HTTP_CODES = (401, 402, 403, 404, 429, 500, 502, 503, 504)
+
+
 class XDiscoveryProvider(ABC):
     name = "unknown"
     external_calls = 0
@@ -167,6 +170,11 @@ class ApifyProvider(XDiscoveryProvider):
             message += f"; response={body}"
         return RuntimeError(message)
 
+    @staticmethod
+    def _is_provider_wide_error(exc: RuntimeError) -> bool:
+        text = str(exc or "")
+        return any(f"Apify HTTP {code}:" in text for code in _APIFY_PROVIDER_WIDE_HTTP_CODES)
+
     def _request(self, actor_input: Mapping[str, Any], *, paid_item_cap: int, charge_cap_usd: float) -> List[Dict[str, Any]]:
         actor = quote(self.actor_id, safe="~")
         query = urlencode(
@@ -216,7 +224,7 @@ class ApifyProvider(XDiscoveryProvider):
             raise ValueError("invalid per-profile charge cap")
 
         rows: List[Dict[str, Any]] = []
-        for raw_handle in handles:
+        for index, raw_handle in enumerate(handles):
             handle = str(raw_handle).strip().lstrip("@")
             if not handle:
                 self.provider_errors.append({"handle": "unknown", "error": "bad_input"})
@@ -226,7 +234,8 @@ class ApifyProvider(XDiscoveryProvider):
             try:
                 rows.extend(self._request(one_input, paid_item_cap=1, charge_cap_usd=per_call_charge_cap))
             except RuntimeError as exc:
-                # One malformed/unreadable profile must never poison the rest of the watchlist.
+                # Profile-specific actor errors remain isolated. Provider-wide HTTP
+                # failures must not fan out through every remaining paid profile call.
                 self.provider_errors.append(
                     {
                         "handle": handle,
@@ -234,6 +243,16 @@ class ApifyProvider(XDiscoveryProvider):
                         "description": str(exc)[:2000],
                     }
                 )
+                if self._is_provider_wide_error(exc):
+                    self.provider_errors.append(
+                        {
+                            "handle": "*",
+                            "error": "provider_circuit_open",
+                            "description": str(exc)[:2000],
+                            "remaining_profiles_skipped": str(max(0, len(handles) - index - 1)),
+                        }
+                    )
+                    break
         return rows
 
     def fetch(self, *, max_records: int) -> List[Dict[str, Any]]:
