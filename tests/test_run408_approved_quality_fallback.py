@@ -32,20 +32,19 @@ class Run408ApprovedQualityFallbackTests(unittest.TestCase):
                 "origin": request_origin,
                 "reserve": reserve,
             })
-            # Reproduce real Run #10 semantics: 3.7 reaches provider and 503s;
-            # 3.6 is rejected by persistent cap before provider send; 3.5 succeeds.
+            # Run369 cold-start puts 3.6 first. Reproduce the same pre-send-cap
+            # condition as the historical Run408 incident: 3.6 is locally rejected
+            # before provider send and the next healthy model (3.5) must remain reachable.
             provider_visible = []
             for model in pool:
-                if model == "gemini-3.7-flash":
-                    provider_visible.append(model)
-                    continue
                 if model == "gemini-3.6-flash":
                     continue  # persistent cap: zero provider request
                 if model == "gemini-3.5-flash":
                     provider_visible.append(model)
                     p.provider_visible = provider_visible
                     return "ok", model
-            raise RuntimeError("3.5 fallback was stranded")
+                provider_visible.append(model)
+            raise RuntimeError("healthy fallback was stranded")
 
         p._call_deep_dive_pool = historical
         p._call_model_pool = provider_pool
@@ -60,10 +59,10 @@ class Run408ApprovedQualityFallbackTests(unittest.TestCase):
         self.assertEqual("ok", response)
         self.assertEqual("gemini-3.5-flash", model)
         self.assertEqual(
-            ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.8-flash"],
+            ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"],
             p.calls[0]["pool"],
         )
-        self.assertEqual(["gemini-3.7-flash", "gemini-3.5-flash"], p.provider_visible)
+        self.assertEqual(["gemini-3.5-flash"], p.provider_visible)
         self.assertTrue(p.calls[0]["deep_dive"])
         self.assertEqual(0, p.calls[0]["reserve"])
 
