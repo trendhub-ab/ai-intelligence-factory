@@ -3,8 +3,7 @@
 
 The normal ChatGPT chat can post an exact command to one dedicated GitHub Issue.
 This module never runs Production itself. It only validates the GitHub event and
-returns the one allowed ONE-SHOT mode to the workflow, which then dispatches an
-existing reviewed manual workflow on main.
+returns one explicitly allowed manual-workflow mode to the bridge.
 """
 from __future__ import annotations
 
@@ -19,6 +18,7 @@ COMMAND_TO_MODE = {
     "/aiif run article_validation": "article_validation",
     "/aiif run pending_retry_validation": "pending_retry_validation",
     "/aiif run full": "full",
+    "/aiif run x_discovery_stage2": "x_discovery_stage2",
 }
 
 
