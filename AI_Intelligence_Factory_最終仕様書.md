@@ -121,7 +121,7 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 
 成功したONE-SHOTのdownstream fan-outは、受動的な二重起動ではなく**明示的なworkflow dispatch**をAuthorityとする。
 
-- authentication: **`${{ secrets.GH_PAT }}`
+- authentication: **`${{ secrets.GH_PAT }}`**
 - downstream: `note-ready-sync.yml`
 - downstream: `subscriber-decision-brief.yml`
 - downstream: `cross-db-contract-guard.yml`
