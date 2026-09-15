@@ -20,6 +20,23 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Prove zero-Gemini and zero-production-write boundary
+        run: |
+          python - <<'PY'
+          import os
+
+          forbidden = (
+              'GEMINI_API_KEY',
+              'GOOGLE_API_KEY',
+              'NOTION_API_KEY',
+              'NOTION_DECISION_INTELLIGENCE_API_KEY',
+              'TELEGRAM_BOT_TOKEN',
+          )
+          present = [name for name in forbidden if os.getenv(name)]
+          if present:
+              raise SystemExit('forbidden production/model credentials exposed: ' + ','.join(present))
+          print('Zero-Gemini boundary OK; only isolated X/Apify discovery is authorized.')
+          PY
       - name: Build fixed Stage2 Actor input
         run: |
           python - <<'PY'
@@ -41,7 +58,7 @@ jobs:
           }
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as fh:
               fh.write('APIFY_INPUT_JSON=' + json.dumps(payload, separators=(',', ':')) + '\n')
-          print(json.dumps({'handles': len(handles), 'window': '12 hours', 'outputFormat': 'profile', 'isolated': True, 'resolve_tco': True}))
+          print(json.dumps({'handles': len(handles), 'window': '12 hours', 'outputFormat': 'profile', 'isolated': True, 'resolve_tco': True, 'factory_adapter': 'dry_run'}))
           PY
       - name: Validate Stage2 guardrails
         run: |
@@ -75,7 +92,12 @@ jobs:
             --output-dir /tmp/x-discovery-stage2 \
             --max-records "$MAX_RECORDS" \
             --resolve-tco
-      - name: Verify isolation and coverage artifact
+      - name: Exercise Factory handoff boundary in dry-run mode
+        run: |
+          python -m x_discovery.factory_adapter \
+            --queue /tmp/x-discovery-stage2/primary_resolution_queue.json \
+            --output /tmp/x-discovery-stage2/factory_adapter_preview.json
+      - name: Verify isolation, transport, and handoff contract
         run: |
           python - <<'PY'
           import json
@@ -83,16 +105,33 @@ jobs:
 
           root = Path('/tmp/x-discovery-stage2')
           manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          adapter = json.loads((root / 'factory_adapter_preview.json').read_text(encoding='utf-8'))
           assert manifest['provider'] == 'apify'
           assert manifest['requested_profile_count'] == 20
           assert manifest['factory_write'] is False
           assert manifest['evidence_promoted'] is False
+          assert manifest['evidence_status'] == 'discovery_only'
           assert manifest['x_official_api_calls'] == 0
           assert manifest['external_provider_calls'] == 20
           assert manifest['tco_resolution_enabled'] is True
+          assert adapter['mode'] == 'dry_run'
+          assert adapter['source_platform'] == 'x'
+          assert adapter['source_role'] == 'discovery_signal'
+          assert adapter['factory_write'] is False
+          assert adapter['screening_executed'] is False
+          assert adapter['evidence_promoted'] is False
+          assert adapter['evidence_status'] == 'discovery_only'
+          assert adapter['source_item_count'] == manifest['primary_resolution_queue_count']
+          assert adapter['accepted_count'] + adapter['rejected_count'] == adapter['source_item_count']
+          for item in adapter['items']:
+              assert item['factory_write'] is False
+              assert item['is_evidence'] is False
+              assert item['screening_executed'] is False
+              assert item['evidence_promoted'] is False
           assert (root / 'provider_diagnostics.json').exists()
           assert (root / 'provider_raw_items.json').exists()
-          print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          assert (root / 'primary_resolution_queue.json').exists()
+          print(json.dumps({'manifest': manifest, 'factory_adapter': adapter}, ensure_ascii=False, sort_keys=True))
           PY
       - name: Upload Stage2 diagnostic artifact
         uses: actions/upload-artifact@v4
