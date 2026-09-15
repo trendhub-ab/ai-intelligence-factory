@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-09-15T13:18:01.039625+00:00",
+  "updated_at": "2026-09-15T13:18:32.157908+00:00",
   "last_request_at_epoch": 1789478281.039617,
   "last_status": 429,
-  "last_error_type": "",
+  "last_error_type": "ReadTimeout",
   "circuit_run_id": "34969773908",
   "circuit_status": 429,
   "circuit_opened_at": "2026-09-15T12:36:27.868311+00:00",
