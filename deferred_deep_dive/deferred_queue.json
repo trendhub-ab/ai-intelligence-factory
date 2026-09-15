@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-15T11:50:20.717148+00:00",
+  "updated_at": "2026-09-15T12:39:21.820543+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2609.10263",
-      "deferred_at": "2026-09-10T05:36:27.083656+00:00",
-      "expires_at": "2026-11-09T05:36:27.083656+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "What Should an Agent Forget? Separating What Is Stored from What Is Used",
-        "originalTitle": "What Should an Agent Forget? Separating What Is Stored from What Is Used",
-        "displayName": "What Should an Agent Forget? Separating What Is Stored from What Is Used",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.10263v1",
-        "description": "Persistent language agents need stored experience to remain available across time, while each answer requires evidence suited to a particular question. A superseded fact can mislead a current-state answer and still be essential for a historical query. We present RD-Forget, a training-free framework that separates what an agent stores from what it uses. A retained source archive preserves observations, and a query-conditioned memory view controls their influence on the current answer. A frozen la",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-09T14:48:09Z",
-        "sourceContext": "Persistent language agents need stored experience to remain available across time, while each answer requires evidence suited to a particular question. A superseded fact can mislead a current-state answer and still be essential for a historical query. We present RD-Forget, a training-free framework that separates what an agent stores from what it uses. A retained source archive preserves observations, and a query-conditioned memory view controls their influence on the current answer. A frozen language-model curator extracts relevant evidence, groups facts into semantic slots, and preserves the relations needed for multi-hop reasoning. Same-slot replacement links suppress superseded values in current-state contexts, while intent-aware retrieval makes earlier evidence eligible again. A rate-distortion formulation guides construction of the answer-time view within a memory budget. Experiments span conversational memory, knowledge updating, fact consolidation, long-context reasoning, and personalization under a shared answering pipeline. The results associate accurate answers with both query-relevant evidence construction and control over obsolete alternatives. Configurations without forgetting or query conditioning have the largest score deficits, while slot grouping, historical access, and relation preservation contribute complementary functions. Retaining history while selectively controlling its use offers a practical way to accommodate changing facts and future questions.",
-        "primaryUrl": "https://arxiv.org/abs/2609.10263v1",
-        "sourceDetails": {
-          "authors": [
-            "Yuhang Li",
-            "Yuchen Li"
-          ],
-          "categories": [
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3d7479ff-dca9-8120-a32f-cce64b4c58e7",
-      "score": 78,
-      "reason": "エージェントの持続的記憶管理と忘却の分離フレームワーク",
-      "commercial_score": 75,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 76.95
-    },
     {
       "key": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/main/DeepSeek_V41_Tech_Report.pdf",
       "deferred_at": "2026-09-10T10:05:03.627200+00:00",
