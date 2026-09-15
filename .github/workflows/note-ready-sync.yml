@@ -12,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'pipeline.py'
+      - 'run374_ready_rescue.py'
       - 'production_pipeline.py'
       - 'runtime_layers.py'
       - 'source_normalization.py'

@@ -149,6 +149,7 @@ def run_reserved_ready_rescue(pipeline: Any, generated_count: int, next_candidat
     # One request only. A provider failure cannot cascade across several models here.
     budget.budget = min(original_cap, used + READER_RESCUE_REQUESTS)
     pipeline._READY_RESCUE_ACTIVE = True
+    pipeline._READY_RESCUE_PROVIDER_SENDS = 0
     logger = getattr(pipeline, "logger", None)
     if logger:
         logger.info(

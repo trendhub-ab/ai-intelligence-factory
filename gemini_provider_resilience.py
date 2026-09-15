@@ -169,7 +169,8 @@ def install(pipeline_module: Any) -> Any:
     ):
         last_error: Exception | None = None
         effective_config = _deep_dive_generation_config(config, kind) if deep_dive else config
-        for model_name in pool:
+        from gemini_temporary_exclusion import allowed_pool
+        for model_name in allowed_pool(pool):
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
             for attempt in range(2):
@@ -190,6 +191,10 @@ def install(pipeline_module: Any) -> Any:
                 except pipeline_module.APIError as exc:
                     last_error = exc
                     code = _provider_status_code(exc)
+                    if getattr(pipeline_module, "_READY_RESCUE_ACTIVE", False):
+                        raise pipeline_module.NoAvailableModelError(
+                            f"Ready Rescue provider HTTP {code}; no retry or fallback"
+                        ) from exc
                     quota_type = pipeline_module.classify_gemini_quota_error(exc) if code == 429 else ""
                     if code == 503:
                         pipeline_module.logger.warning(
@@ -262,7 +267,8 @@ def install(pipeline_module: Any) -> Any:
         structured_repair = request_kind_base == "product_review_retry"
         thinking_level = "low" if structured_repair else "medium"
         max_output_tokens = 5000 if structured_repair else 8000
-        for model_name in pipeline_module.DEEP_DIVE_MODEL_POOL:
+        from gemini_temporary_exclusion import allowed_pool
+        for model_name in allowed_pool(pipeline_module.DEEP_DIVE_MODEL_POOL):
             if model_name in pipeline_module.SESSION_EXHAUSTED_MODELS or model_name in pipeline_module.SESSION_UNAVAILABLE_MODELS:
                 continue
             for attempt in range(2):

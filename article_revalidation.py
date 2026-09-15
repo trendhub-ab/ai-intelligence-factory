@@ -93,6 +93,8 @@ def select_revalidation_items(
             continue
         if content_status == pipeline.CONTENT_STATUS_PENDING_RETRY:
             continue
+        if not include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
+            continue
 
         selected = dict(item)
         selected["revalidation_article_status"] = article_status
