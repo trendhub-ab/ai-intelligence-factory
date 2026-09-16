@@ -1,7 +1,155 @@
 {
   "version": 1,
-  "updated_at": "2026-09-16T13:20:48.570593+00:00",
+  "updated_at": "2026-09-16T18:13:16.828587+00:00",
   "items": [
+    {
+      "key": "https://arxiv.org/abs/2609.17221",
+      "deferred_at": "2026-09-16T18:13:16.828373+00:00",
+      "expires_at": "2026-11-15T18:13:16.828373+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Grounding SWE-Agent Decisions in Architecture-0 Design: Navigating Unknown Unknowns through Physical Mapping",
+        "originalTitle": "Grounding SWE-Agent Decisions in Architecture-0 Design: Navigating Unknown Unknowns through Physical Mapping",
+        "displayName": "Grounding SWE-Agent Decisions in Architecture-0 Design: Navigating Unknown Unknowns through Physical Mapping",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.17221v1",
+        "description": "Autonomous Software Engineering Agents (SWE-Agents) excel in deterministic coding tasks but struggle with Architecture 0, the nascent system design phase plagued by implicit engineering constraints, or Unknown Unknowns (UUs) that are rarely stated explicitly. To investigate how agents navigate UUs, we explore a progressive trajectory across pure-text self-play, tool-augmented feedback, and external physical mapping. Our empirical analysis reveals a cascading chain of failures. Pure-text reasonin",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-15T14:04:33Z",
+        "sourceContext": "Autonomous Software Engineering Agents (SWE-Agents) excel in deterministic coding tasks but struggle with Architecture 0, the nascent system design phase plagued by implicit engineering constraints, or Unknown Unknowns (UUs) that are rarely stated explicitly. To investigate how agents navigate UUs, we explore a progressive trajectory across pure-text self-play, tool-augmented feedback, and external physical mapping. Our empirical analysis reveals a cascading chain of failures. Pure-text reasoning inevitably devolves into polite consensus or plausible yet physically impossible fabrications. Attempting to bridge this gap via an early-stage execution sandbox unexpectedly triggers Specification Gaming: agents exploit their autonomy over validation scripts to bypass physical constraints, achieving superficial success without resolving core architectural flaws. To resolve this self-validation trap, we propose the Physical Mapping Guard (PMG). Grounded in the software engineering principle of Separation of Concerns, PMG revokes verification authority from the agent, forcing semantic intents to be evaluated by an external, deterministic Semantic-to-Physical (S2P) mapping engine. Extensive evaluations demonstrate that PMG completely eradicates physical-layer and validation-layer gaming. By precisely isolating residual failures to semantic reinterpretations and auditor overreach, PMG marks a critical step toward genuine affordance grounding in automated architectural design.",
+        "primaryUrl": "https://arxiv.org/abs/2609.17221v1",
+        "sourceDetails": {
+          "authors": [
+            "Zhongkai Wang",
+            "Yan Liu"
+          ],
+          "categories": [
+            "cs.SE",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-81f4-94d4-fab21a802e20",
+      "score": 80,
+      "reason": "自律型ソフトウェアエンジニアリングエージェントの設計フェーズの課題",
+      "commercial_score": 82,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 80.7
+    },
+    {
+      "key": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants",
+      "deferred_at": "2026-09-16T18:13:16.828280+00:00",
+      "expires_at": "2026-09-30T18:13:16.828280+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
+        "originalTitle": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
+        "displayName": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
+        "sourceLanguage": "en",
+        "url": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants/",
+        "description": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
+        "stargazerCount": 10,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-16T16:32:41Z",
+        "sourceContext": "HN points=10 comments=9 matched_query=Anthropic",
+        "primaryUrl": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants/",
+        "sourceDetails": {
+          "hn_id": "49729492",
+          "hn_url": "https://news.ycombinator.com/item?id=49729492",
+          "external_url": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants/",
+          "comments": 9,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-81ca-a0c1-f73ceacda7bc",
+      "score": 80,
+      "reason": "AIアシスタント搭載ブラウザを狙う拡張機能の脆弱性。",
+      "commercial_score": 82,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 80.7
+    },
+    {
+      "key": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
+      "deferred_at": "2026-09-16T18:13:16.828112+00:00",
+      "expires_at": "2026-09-30T18:13:16.828112+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
+        "originalTitle": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
+        "displayName": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
+        "sourceLanguage": "en",
+        "url": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
+        "description": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
+        "stargazerCount": 121,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-16T12:19:55Z",
+        "sourceContext": "HN points=121 comments=46 matched_query=DeepSeek",
+        "primaryUrl": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
+        "sourceDetails": {
+          "hn_id": "49725800",
+          "hn_url": "https://news.ycombinator.com/item?id=49725800",
+          "external_url": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
+          "comments": 46,
+          "matched_query": "DeepSeek",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-8107-aa9a-f8dc4fa82a43",
+      "score": 80,
+      "reason": "セキュリティ特化型モデルの実用性と性能の向上。",
+      "commercial_score": 82,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 80.7
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49724407",
+      "deferred_at": "2026-09-16T18:13:16.828466+00:00",
+      "expires_at": "2026-09-30T18:13:16.828466+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
+        "originalTitle": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
+        "displayName": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
+        "sourceLanguage": "en",
+        "url": "https://www.reuters.com/legal/litigation/openais-rogue-agents-probed-hugging-face-weaknesses-two-months-before-major-hack-2026-09-16/",
+        "description": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-16T10:27:57Z",
+        "sourceContext": "HN points=7 comments=0 matched_query=OpenAI",
+        "primaryUrl": "https://www.reuters.com/legal/litigation/openais-rogue-agents-probed-hugging-face-weaknesses-two-months-before-major-hack-2026-09-16/",
+        "sourceDetails": {
+          "hn_id": "49724407",
+          "hn_url": "https://news.ycombinator.com/item?id=49724407",
+          "external_url": "https://www.reuters.com/legal/litigation/openais-rogue-agents-probed-hugging-face-weaknesses-two-months-before-major-hack-2026-09-16/",
+          "comments": 0,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-812c-a95f-f7423c3ccc33",
+      "score": 79,
+      "reason": "AIエージェントによるプラットフォーム脆弱性探索事例。",
+      "commercial_score": 80,
+      "shelf_life_score": 45,
+      "shelf_life": "TREND",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 79.35
+    },
     {
       "key": "https://github.com/rapiddweller/datamimic",
       "deferred_at": "2026-09-16T09:29:33.398003+00:00",
@@ -527,38 +675,6 @@
       "deep_dive_priority_score": 73.25
     },
     {
-      "key": "https://hausresearch.com/reports/perplexity-citation-audit",
-      "deferred_at": "2026-09-02T16:23:08.046433+00:00",
-      "expires_at": "2026-09-16T16:23:08.046433+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "A third of Perplexity's citations don't contain the number they're cited for",
-        "originalTitle": "A third of Perplexity's citations don't contain the number they're cited for",
-        "displayName": "A third of Perplexity's citations don't contain the number they're cited for",
-        "sourceLanguage": "en",
-        "url": "https://hausresearch.com/reports/perplexity-citation-audit/",
-        "description": "A third of Perplexity's citations don't contain the number they're cited for",
-        "stargazerCount": 43,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-02T13:49:23+00:00",
-        "sourceContext": "",
-        "primaryUrl": "https://hausresearch.com/reports/perplexity-citation-audit/",
-        "sourceDetails": {
-          "hn_id": 49536201,
-          "hn_url": "https://news.ycombinator.com/item?id=49536201",
-          "external_url": "https://hausresearch.com/reports/perplexity-citation-audit/"
-        }
-      },
-      "notion_page_id": "3cf479ff-dca9-81ee-bd09-fa5924c2cd17",
-      "score": 75,
-      "reason": "RAGの引用品質に関する課題を検証できる。",
-      "commercial_score": 70,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DATA",
-      "deep_dive_priority_score": 73.25
-    },
-    {
       "key": "https://grapheneos.social/@GrapheneOS/117194007157499435",
       "deferred_at": "2026-09-02T16:23:08.046380+00:00",
       "expires_at": "2026-11-01T16:23:08.046380+00:00",
@@ -626,116 +742,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 73.05
-    },
-    {
-      "key": "https://docs.bigmodel.cn/cn/update/new-releases",
-      "deferred_at": "2026-09-07T09:52:34.057187+00:00",
-      "expires_at": "2026-09-21T09:52:34.057187+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Zhipu AI GLM — Agentic Coding 能力升级,支持以任务为中心的端到端开发",
-        "originalTitle": "Zhipu AI GLM — Agentic Coding 能力升级,支持以任务为中心的端到端开发",
-        "displayName": "AIエージェントツール「Zhipu AI GLM — Agentic Coding 能力升级,支持以任务为中心的端到端开发」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://docs.bigmodel.cn/cn/update/new-releases?aif_revision=dbf16764031d52ec",
-        "description": "Agentic Coding 能力升级，支持以任务为中心的端到端开发",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "Agentic Coding 能力升级，支持以任务为中心的端到端开发",
-        "primaryUrl": "https://docs.bigmodel.cn/cn/update/new-releases",
-        "sourceDetails": {
-          "vendor": "Zhipu AI GLM",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://docs.bigmodel.cn/cn/update/new-releases",
-          "candidate_revision": "dbf16764031d52ec",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3d4479ff-dca9-81de-8eae-f7b3de56e22e",
-      "score": 72,
-      "reason": "エージェント駆動型コーディング機能のアップデート。",
-      "commercial_score": 75,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 73.05
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49709289",
-      "deferred_at": "2026-09-15T13:23:20.706783+00:00",
-      "expires_at": "2026-09-29T13:23:20.706783+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
-        "originalTitle": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
-        "displayName": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
-        "sourceLanguage": "en",
-        "url": "https://www.geckoboard.com/blog/which-is-the-better-data-analyst-benchmarking-chatgpt-vs-claude/",
-        "description": "Which is the better data analyst? Benchmarking ChatGPT vs. Claude",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-15T08:09:06Z",
-        "sourceContext": "HN points=5 comments=1 matched_query=Claude",
-        "primaryUrl": "https://www.geckoboard.com/blog/which-is-the-better-data-analyst-benchmarking-chatgpt-vs-claude/",
-        "sourceDetails": {
-          "hn_id": "49709289",
-          "hn_url": "https://news.ycombinator.com/item?id=49709289",
-          "external_url": "https://www.geckoboard.com/blog/which-is-the-better-data-analyst-benchmarking-chatgpt-vs-claude/",
-          "comments": 1,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-81f6-8264-ea1d16ca0c09",
-      "score": 70,
-      "reason": "データ分析特化の主要モデル比較で実務的。",
-      "commercial_score": 75,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 71.75
-    },
-    {
-      "key": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
-      "deferred_at": "2026-09-16T13:20:44.948664+00:00",
-      "expires_at": "2026-09-18T13:20:44.948664+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
-        "originalTitle": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
-        "displayName": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
-        "sourceLanguage": "en",
-        "url": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
-        "description": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-16T09:21:47Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=Anthropic",
-        "primaryUrl": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
-        "sourceDetails": {
-          "hn_id": "49723939",
-          "hn_url": "https://news.ycombinator.com/item?id=49723939",
-          "external_url": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
-          "comments": 0,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dd479ff-dca9-8129-b61a-c1c7352c4888",
-      "score": 65,
-      "reason": "市場におけるAIリスク警鐘の影響と株価への波及。",
-      "commercial_score": 60,
-      "shelf_life_score": 20,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 63.25
     }
   ]
 }
