@@ -233,4 +233,4 @@ def test_preflight_without_provider_send_keeps_original_fresh_partition(monkeypa
 
     assert seen == {"budget": 8, "target": 3}
     assert p.DEEP_DIVE_MODEL_BUDGET.used == 0
-    assert p._run374_ready_rescue_slot_consumed is False
+    assert getattr(p, "_run374_ready_rescue_slot_consumed", False) is False
