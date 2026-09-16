@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-16T09:30:20.072369+00:00",
+  "updated_at": "2026-09-16T13:20:44.948841+00:00",
   "items": [
     {
       "key": "https://github.com/rapiddweller/datamimic",
@@ -699,6 +699,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 71.75
+    },
+    {
+      "key": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
+      "deferred_at": "2026-09-16T13:20:44.948664+00:00",
+      "expires_at": "2026-09-18T13:20:44.948664+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
+        "originalTitle": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
+        "displayName": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
+        "sourceLanguage": "en",
+        "url": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
+        "description": "AI stocks get drilled because of Anthropic CEO Dario Amodei's 3,800-word warning",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-16T09:21:47Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Anthropic",
+        "primaryUrl": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
+        "sourceDetails": {
+          "hn_id": "49723939",
+          "hn_url": "https://news.ycombinator.com/item?id=49723939",
+          "external_url": "https://finance.yahoo.com/markets/stocks/article/ai-stocks-get-drilled-because-of-anthropic-ceo-dario-amodeis-3800-word-warning-093637548.html",
+          "comments": 0,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-8129-b61a-c1c7352c4888",
+      "score": 65,
+      "reason": "市場におけるAIリスク警鐘の影響と株価への波及。",
+      "commercial_score": 60,
+      "shelf_life_score": 20,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 63.25
     }
   ]
 }
