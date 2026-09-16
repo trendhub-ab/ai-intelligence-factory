@@ -1,42 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-16T09:29:33.398366+00:00",
+  "updated_at": "2026-09-16T09:30:20.072369+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2609.15919",
-      "deferred_at": "2026-09-15T22:15:41.123553+00:00",
-      "expires_at": "2026-11-14T22:15:41.123553+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Pilot Early, Commit Late: A Real-Options Model of Enterprise AI Adoption under Rapid Technological Progress",
-        "originalTitle": "Pilot Early, Commit Late: A Real-Options Model of Enterprise AI Adoption under Rapid Technological Progress",
-        "displayName": "Pilot Early, Commit Late: A Real-Options Model of Enterprise AI Adoption under Rapid Technological Progress",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.15919v1",
-        "description": "Artificial intelligence presents firms with an unusual timing problem. The technology frontier is improving rapidly, implementation is partly irreversible, and organization-specific capabilities are accumulated through action. This paper develops a two-period decision model of AI deployment under uncertainty in which a firm chooses among immediate deployment, a limited pilot, and waiting. Deployment earns current operating value but exposes the firm to architectural obsolescence; waiting preserv",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-14T17:30:37Z",
-        "sourceContext": "Artificial intelligence presents firms with an unusual timing problem. The technology frontier is improving rapidly, implementation is partly irreversible, and organization-specific capabilities are accumulated through action. This paper develops a two-period decision model of AI deployment under uncertainty in which a firm chooses among immediate deployment, a limited pilot, and waiting. Deployment earns current operating value but exposes the firm to architectural obsolescence; waiting preserves the option to adopt after the frontier is observed; a pilot sacrifices current operating value to build organization-specific learning without full commitment. The model yields five central timing results and a sixth comparative result on where learning occurs. First, a mean-preserving increase in frontier uncertainty raises the value of waiting and piloting but leaves immediate deployment unchanged when its payoff is affine in the frontier. Second, faster expected frontier progress can reduce the relative attractiveness of immediate deployment when deployed architecture captures only a limited share of future improvement. Third, a pilot dominates waiting exactly when the expected value of the capability it builds exceeds its cost. Fourth, sufficiently valuable organization-specific learning creates a nonempty region in which \"pilot early, commit late\" is optimal. Fifth, there is a closed-form modularity threshold above which immediate deployment dominates the best outside option. Sixth, production learning and pilot-specific learning affect the timing margin differently. A continuous-time extension recovers the standard result that uncertainty raises the adoption threshold while capability and modularity lower it. The paper separates deploying, experimenting, and waiting, and shows why rapid progress can rationally increase experimentation without justifying irreversible commitment.",
-        "primaryUrl": "https://arxiv.org/abs/2609.15919v1",
-        "sourceDetails": {
-          "authors": [
-            "Gaurav Tewari"
-          ],
-          "categories": [
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-814a-8d7f-f744cb57edaa",
-      "score": 82,
-      "reason": "迅速な技術進展下における企業AI導入の実オプションモデル。",
-      "commercial_score": 80,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 81.3
-    },
     {
       "key": "https://github.com/rapiddweller/datamimic",
       "deferred_at": "2026-09-16T09:29:33.398003+00:00",
