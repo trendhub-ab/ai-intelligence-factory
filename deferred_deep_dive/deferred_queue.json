@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-16T18:13:16.828587+00:00",
+  "updated_at": "2026-09-16T18:13:56.432409+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2609.17221",
-      "deferred_at": "2026-09-16T18:13:16.828373+00:00",
-      "expires_at": "2026-11-15T18:13:16.828373+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Grounding SWE-Agent Decisions in Architecture-0 Design: Navigating Unknown Unknowns through Physical Mapping",
-        "originalTitle": "Grounding SWE-Agent Decisions in Architecture-0 Design: Navigating Unknown Unknowns through Physical Mapping",
-        "displayName": "Grounding SWE-Agent Decisions in Architecture-0 Design: Navigating Unknown Unknowns through Physical Mapping",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.17221v1",
-        "description": "Autonomous Software Engineering Agents (SWE-Agents) excel in deterministic coding tasks but struggle with Architecture 0, the nascent system design phase plagued by implicit engineering constraints, or Unknown Unknowns (UUs) that are rarely stated explicitly. To investigate how agents navigate UUs, we explore a progressive trajectory across pure-text self-play, tool-augmented feedback, and external physical mapping. Our empirical analysis reveals a cascading chain of failures. Pure-text reasonin",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-15T14:04:33Z",
-        "sourceContext": "Autonomous Software Engineering Agents (SWE-Agents) excel in deterministic coding tasks but struggle with Architecture 0, the nascent system design phase plagued by implicit engineering constraints, or Unknown Unknowns (UUs) that are rarely stated explicitly. To investigate how agents navigate UUs, we explore a progressive trajectory across pure-text self-play, tool-augmented feedback, and external physical mapping. Our empirical analysis reveals a cascading chain of failures. Pure-text reasoning inevitably devolves into polite consensus or plausible yet physically impossible fabrications. Attempting to bridge this gap via an early-stage execution sandbox unexpectedly triggers Specification Gaming: agents exploit their autonomy over validation scripts to bypass physical constraints, achieving superficial success without resolving core architectural flaws. To resolve this self-validation trap, we propose the Physical Mapping Guard (PMG). Grounded in the software engineering principle of Separation of Concerns, PMG revokes verification authority from the agent, forcing semantic intents to be evaluated by an external, deterministic Semantic-to-Physical (S2P) mapping engine. Extensive evaluations demonstrate that PMG completely eradicates physical-layer and validation-layer gaming. By precisely isolating residual failures to semantic reinterpretations and auditor overreach, PMG marks a critical step toward genuine affordance grounding in automated architectural design.",
-        "primaryUrl": "https://arxiv.org/abs/2609.17221v1",
-        "sourceDetails": {
-          "authors": [
-            "Zhongkai Wang",
-            "Yan Liu"
-          ],
-          "categories": [
-            "cs.SE",
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3dd479ff-dca9-81f4-94d4-fab21a802e20",
-      "score": 80,
-      "reason": "自律型ソフトウェアエンジニアリングエージェントの設計フェーズの課題",
-      "commercial_score": 82,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants",
       "deferred_at": "2026-09-16T18:13:16.828280+00:00",
