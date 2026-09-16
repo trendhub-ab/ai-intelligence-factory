@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-16T18:13:56.432409+00:00",
+  "updated_at": "2026-09-16T21:07:20.045980+00:00",
   "items": [
     {
       "key": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants",
@@ -705,6 +705,47 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 73.05
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.17376",
+      "deferred_at": "2026-09-16T21:07:20.045843+00:00",
+      "expires_at": "2026-11-15T21:07:20.045843+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Large Language Models Develop Belief State Geometry In-Context",
+        "originalTitle": "Large Language Models Develop Belief State Geometry In-Context",
+        "displayName": "Large Language Models Develop Belief State Geometry In-Context",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.17376v1",
+        "description": "Large language models (LLMs) trained on next-token prediction exhibit remarkable in-context learning (ICL) abilities, yet the representations that support ICL remain poorly understood. We consider such representations in a controlled setting: prompting LLMs with data emitted from hidden Markov models (HMMs) and probing for the corresponding belief state -- the posterior distribution over the HMM's hidden states given the observed token history. Across six open-source LLMs prompted with data from",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-15T16:17:59Z",
+        "sourceContext": "Large language models (LLMs) trained on next-token prediction exhibit remarkable in-context learning (ICL) abilities, yet the representations that support ICL remain poorly understood. We consider such representations in a controlled setting: prompting LLMs with data emitted from hidden Markov models (HMMs) and probing for the corresponding belief state -- the posterior distribution over the HMM's hidden states given the observed token history. Across six open-source LLMs prompted with data from 40 HMMs selected for non-trivial belief structure, we find that belief states are linearly decodable from residual stream activations, with peak probe $R^2$-values from 0.83-0.99 across HMM and LLM combinations, ranging from early to late layers. To establish functional relevance, we intervene directly on the probe-identified subspace via patching and steering, resulting in downstream prediction quality on the order of the untampered model, while controls degrade performance substantially. Together, these results provide representation-level evidence that ICL in open-source LLMs approximates optimal Bayesian prediction over a context-inferred generative model. More broadly, our findings extend prior results linking input-distribution structure to activation geometry: from toy networks trained explicitly on HMM data to production-scale LLMs.",
+        "primaryUrl": "https://arxiv.org/abs/2609.17376v1",
+        "sourceDetails": {
+          "authors": [
+            "Daniel Balcells",
+            "Andrew Jun Lee",
+            "Chirag Rastogi",
+            "Paul M. Riechers",
+            "Adam Shai",
+            "Xavier Poncini"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.CL"
+          ]
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-8198-8385-ec9d1a32b5d9",
+      "score": 60,
+      "reason": "LLMの文脈内学習メカニズムの解明に資する研究。",
+      "commercial_score": 48,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 55.8
     }
   ]
 }
