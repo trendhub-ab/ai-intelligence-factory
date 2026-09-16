@@ -46,6 +46,19 @@ def test_reserves_existing_budget_without_increasing_total(monkeypatch):
     assert p.DEEP_DIVE_MODEL_BUDGET.budget == 12
 
 
+def test_preflight_consumed_rescue_releases_full_backlog_cap(monkeypatch):
+    monkeypatch.delenv("GEMINI_BACKLOG_RESERVED_REQUESTS", raising=False)
+    monkeypatch.delenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", raising=False)
+    p, seen = make_pipeline(total=12, pending=2, deferred=1)
+    run346.install(p)
+    # Simulate the one preflight Ready Rescue provider request plus eight Fresh requests.
+    p._run374_ready_rescue_slot_consumed = True
+    p.DEEP_DIVE_MODEL_BUDGET.used = 9
+    p.process_article_backlog([{"repo": {}}], 0, 0)
+    assert seen == {"budget": 12, "used": 9, "pending": 1}
+    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 12
+
+
 def test_never_resets_used_requests(monkeypatch):
     monkeypatch.delenv("GEMINI_BACKLOG_RESERVED_REQUESTS", raising=False)
     monkeypatch.delenv("GEMINI_READY_RESCUE_RESERVED_REQUESTS", raising=False)
