@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-8797ae7be6332198",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "ArXiv",
+  "source_url": "https://arxiv.org/abs/2609.17274v1",
+  "note_title": "AIエージェントの自律性を高める「スキル」拡張、公開レジストリの急拡大と裏に潜むガバナンスの盲点とは。",
+  "ready_at": "2026-09-17T03:12:19.830040+09:00",
+  "notion_page_id": "3dd479ff-dca9-8156-9d82-ed7f8c6b4265",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-8797ae7be6332198&aif_article_id=aif-8797ae7be6332198",
+  "cta_enabled": true,
+  "decision_score": 74,
+  "screening_score": 85,
+  "commercial_value_score": 88,
+  "shelf_life_score": 65,
+  "shelf_life": "TREND",
+  "portfolio_topic": "SECURITY",
+  "deep_dive_priority_score": 86.05,
+  "measurement_status": "awaiting_external_metrics"
+}
