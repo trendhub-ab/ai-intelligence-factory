@@ -1,11 +1,14 @@
 """Run374: convert near-publishable articles into Ready without weakening gates.
 
-This overlay is intentionally narrow. It adds two protections derived from real Run58
+This overlay is intentionally narrow. It adds protections derived from real production
 failures:
-1. a zero-provider, subtractive repair for unsupported vague temporal quantities such as
-   ``数日``; and
-2. one final Ready Rescue request slot carved out of the existing Deep Dive budget for an
-   already-persisted Needs Editorial Review article.
+1. zero-provider, subtractive repair for unsupported vague temporal quantities such as
+   ``数日``;
+2. deterministic rescue loss accounting that lets one or two unsupported sentences be
+   removed and then judged by the normal Fact/Publication revalidation path; and
+3. one Ready Rescue request slot carved out of the existing Deep Dive budget and offered
+   before fresh generation, with a final fallback opportunity only when that slot was not
+   consumed.
 
 The rescue never raises the per-run Gemini cap, never bypasses Evidence/Fact/Publication/
 Reader gates, and never turns Quality Failed or Pending Retry into an eligible model rescue.
@@ -17,6 +20,9 @@ from functools import wraps
 from typing import Any
 
 _INSTALL_FLAG = "_run374_ready_rescue_installed"
+_MAIN_PREFLIGHT_FLAG = "_run374_ready_rescue_preflight_installed"
+_SLOT_CONSUMED_ATTR = "_run374_ready_rescue_slot_consumed"
+_PREFLIGHT_GENERATED_ATTR = "_run374_ready_rescue_preflight_generated"
 VAGUE_FAILURE_PREFIX = "unsupported vague quantified claim:"
 READER_RESCUE_REQUESTS = 1
 
@@ -110,6 +116,28 @@ def remove_unsupported_vague_quantities(article: str, reason_rows: Any) -> tuple
     return repaired, list(dict.fromkeys(changes))
 
 
+def _normalize_rescue_loss(rescued: dict) -> dict:
+    """Count removed sentences, then let canonical gates decide whether the result is safe.
+
+    Run63 exposed a double penalty: two unsupported numeric sentences were correctly
+    subtracted, but their numeric nature alone forced an LLM retry before the repaired
+    article could be judged by the normal Fact/Publication gates. One or two removals are
+    small enough to revalidate deterministically; three or more remain fail-closed.
+    """
+    out = dict(rescued or {})
+    loss = out.get("_rescue_loss")
+    if not isinstance(loss, dict):
+        return out
+    normalized = dict(loss)
+    try:
+        removed = max(0, int(normalized.get("removed_sentences", 0) or 0))
+    except (TypeError, ValueError):
+        removed = 3
+    normalized["loss_exceeded"] = bool(removed >= 3)
+    out["_rescue_loss"] = normalized
+    return out
+
+
 def _install_deterministic_vague_rescue(pipeline: Any) -> None:
     original = getattr(pipeline, "_apply_deterministic_publication_rescue", None)
     if not callable(original) or getattr(pipeline, "_run374_vague_rescue_installed", False):
@@ -118,7 +146,7 @@ def _install_deterministic_vague_rescue(pipeline: Any) -> None:
     @wraps(original)
     def wrapped(parsed: dict, reason_rows):
         rescued, changes = original(parsed, reason_rows)
-        out = dict(rescued or {})
+        out = _normalize_rescue_loss(dict(rescued or {}))
         article = str(out.get("note_draft") or "")
         repaired, vague_changes = remove_unsupported_vague_quantities(article, reason_rows)
         if vague_changes:
@@ -132,6 +160,8 @@ def _install_deterministic_vague_rescue(pipeline: Any) -> None:
 
 def run_reserved_ready_rescue(pipeline: Any, generated_count: int, next_candidate_rank: int) -> tuple[int, int]:
     """Spend at most one *existing* request on a Needs Editorial Review candidate."""
+    if bool(getattr(pipeline, _SLOT_CONSUMED_ATTR, False)):
+        return generated_count, next_candidate_rank
     target = int(getattr(pipeline, "TOP_N_FOR_DEEP_DIVE", 0) or 0)
     if generated_count >= target:
         return generated_count, next_candidate_rank
@@ -145,7 +175,7 @@ def run_reserved_ready_rescue(pipeline: Any, generated_count: int, next_candidat
 
     from article_revalidation import run_existing_editorial_recovery
 
-    previous_cap = int(getattr(budget, "budget", original_cap) or original_cap)
+    previous_cap = int(getattr(budget, "budget", original_cap) or 0)
     # One request only. A provider failure cannot cascade across several models here.
     budget.budget = min(original_cap, used + READER_RESCUE_REQUESTS)
     pipeline._READY_RESCUE_ACTIVE = True
@@ -161,12 +191,76 @@ def run_reserved_ready_rescue(pipeline: Any, generated_count: int, next_candidat
             pipeline, generated_count, next_candidate_rank, limit=1
         )
     finally:
+        used_after = max(0, int(getattr(budget, "used", used) or 0))
+        if used_after > used:
+            setattr(pipeline, _SLOT_CONSUMED_ATTR, True)
         pipeline._READY_RESCUE_ACTIVE = False
-        budget.budget = max(previous_cap, original_cap)
+        # Restore the caller's partition. Preflight callers need the Fresh cap back;
+        # the historical post-backlog caller already arrives with the full cap.
+        budget.budget = previous_cap
+
+
+def _install_ready_rescue_preflight(pipeline: Any) -> None:
+    """Offer the reserved rescue slot before fresh provider calls.
+
+    If that single request is consumed, shift the Fresh cumulative cap by the same one
+    request so Fresh still owns eight requests. If the rescue produced an article, reduce
+    only the downstream article target for this invocation so the total article target is
+    not inflated.
+    """
+    original_main = getattr(pipeline, "main", None)
+    if not callable(original_main) or getattr(pipeline, _MAIN_PREFLIGHT_FLAG, False):
+        return
+
+    @wraps(original_main)
+    def main_with_ready_rescue(*args, **kwargs):
+        if bool(getattr(pipeline, "PUBLIC_DB_SYNC_MODE", False)) or bool(
+            getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)
+        ):
+            return original_main(*args, **kwargs)
+        reserved = max(0, int(getattr(pipeline, "_run374_ready_rescue_reserved_requests", 0) or 0))
+        budget = getattr(pipeline, "DEEP_DIVE_MODEL_BUDGET", None)
+        original_cap = max(0, int(getattr(pipeline, "_run346_original_deep_dive_budget", 0) or 0))
+        original_target = max(0, int(getattr(pipeline, "TOP_N_FOR_DEEP_DIVE", 0) or 0))
+        if reserved <= 0 or budget is None or original_cap <= 0 or original_target <= 0:
+            return original_main(*args, **kwargs)
+
+        fresh_cap = max(0, int(getattr(budget, "budget", 0) or 0))
+        used_before = max(0, int(getattr(budget, "used", 0) or 0))
+        pre_generated, _ = run_reserved_ready_rescue(pipeline, 0, 0)
+        used_after = max(0, int(getattr(budget, "used", used_before) or 0))
+        consumed = max(0, used_after - used_before)
+        pre_generated = max(0, min(original_target, int(pre_generated or 0)))
+        setattr(pipeline, _PREFLIGHT_GENERATED_ATTR, pre_generated)
+
+        if consumed:
+            # The rescue request came out of the same total-12 envelope. Raising the
+            # cumulative Fresh cap from 8 to 9 restores eight *additional* Fresh requests.
+            budget.budget = min(original_cap, fresh_cap + consumed)
+
+        logger = getattr(pipeline, "logger", None)
+        if logger:
+            logger.info(
+                "[RUN374 READY RESCUE PREFLIGHT] consumed=%s generated=%s fresh_cap=%s downstream_cap=%s target=%s",
+                consumed, pre_generated, fresh_cap, getattr(budget, "budget", 0), original_target,
+            )
+
+        if pre_generated <= 0:
+            return original_main(*args, **kwargs)
+
+        # Count a successful preflight article against the same per-run delivery target.
+        pipeline.TOP_N_FOR_DEEP_DIVE = max(0, original_target - pre_generated)
+        try:
+            return original_main(*args, **kwargs)
+        finally:
+            pipeline.TOP_N_FOR_DEEP_DIVE = original_target
+
+    pipeline.main = main_with_ready_rescue
+    setattr(pipeline, _MAIN_PREFLIGHT_FLAG, True)
 
 
 def install(pipeline: Any) -> Any:
-    """Install deterministic rescue and final orchestration slot idempotently."""
+    """Install deterministic rescue plus preflight/final orchestration idempotently."""
     if getattr(pipeline, _INSTALL_FLAG, False):
         return pipeline
     _install_deterministic_vague_rescue(pipeline)
@@ -182,8 +276,11 @@ def install(pipeline: Any) -> Any:
         generated_count, next_candidate_rank = original_backlog(
             pending_items, generated_count, next_candidate_rank
         )
+        # If preflight already spent the reserved request, this is a no-op. Otherwise it
+        # remains the historical final chance for runs with no eligible preflight candidate.
         return run_reserved_ready_rescue(pipeline, generated_count, next_candidate_rank)
 
     pipeline.process_article_backlog = backlog_with_ready_rescue
+    _install_ready_rescue_preflight(pipeline)
     setattr(pipeline, _INSTALL_FLAG, True)
     return pipeline
