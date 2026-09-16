@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-15T22:15:47.761681+00:00",
+  "updated_at": "2026-09-16T09:29:33.398366+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.15919",
@@ -36,6 +36,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "PRODUCT",
       "deep_dive_priority_score": 81.3
+    },
+    {
+      "key": "https://github.com/rapiddweller/datamimic",
+      "deferred_at": "2026-09-16T09:29:33.398003+00:00",
+      "expires_at": "2026-09-30T09:29:33.398003+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Datamimic – don't let your coding agent invent its own test world",
+        "originalTitle": "Datamimic – don't let your coding agent invent its own test world",
+        "displayName": "Datamimic – don't let your coding agent invent its own test world",
+        "sourceLanguage": "en",
+        "url": "https://github.com/rapiddweller/datamimic",
+        "description": "Datamimic – don't let your coding agent invent its own test world",
+        "stargazerCount": 38,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-16T04:58:36Z",
+        "sourceContext": "HN points=38 comments=5 matched_query=\"coding agent\"",
+        "primaryUrl": "https://github.com/rapiddweller/datamimic",
+        "sourceDetails": {
+          "hn_id": "49722276",
+          "hn_url": "https://news.ycombinator.com/item?id=49722276",
+          "external_url": "https://github.com/rapiddweller/datamimic",
+          "comments": 5,
+          "matched_query": "\"coding agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-81e0-a854-efb769db56c2",
+      "score": 78,
+      "reason": "エージェント開発の実務的課題を解決する",
+      "commercial_score": 75,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 76.95
     },
     {
       "key": "https://arxiv.org/abs/2609.15939",
@@ -414,6 +451,43 @@
       "deep_dive_priority_score": 73.5
     },
     {
+      "key": "https://github.com/Thurbeen/thurbox",
+      "deferred_at": "2026-09-16T09:29:33.398176+00:00",
+      "expires_at": "2026-09-30T09:29:33.398176+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: Thurbox – A tmux-based TUI and CLI for local AI agent orchestration",
+        "originalTitle": "Show HN: Thurbox – A tmux-based TUI and CLI for local AI agent orchestration",
+        "displayName": "Show HN: Thurbox – A tmux-based TUI and CLI for local AI agent orchestration",
+        "sourceLanguage": "en",
+        "url": "https://github.com/Thurbeen/thurbox",
+        "description": "Show HN: Thurbox – A tmux-based TUI and CLI for local AI agent orchestration",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-16T01:25:49Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=\"AI agent\"",
+        "primaryUrl": "https://github.com/Thurbeen/thurbox",
+        "sourceDetails": {
+          "hn_id": "49721082",
+          "hn_url": "https://news.ycombinator.com/item?id=49721082",
+          "external_url": "https://github.com/Thurbeen/thurbox",
+          "comments": 0,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3dd479ff-dca9-8113-aaa3-e0eab58b7500",
+      "score": 75,
+      "reason": "ローカルエージェント管理の実用的なツール",
+      "commercial_score": 70,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 73.25
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49712305",
       "deferred_at": "2026-09-15T22:15:41.123756+00:00",
       "expires_at": "2026-09-29T22:15:41.123756+00:00",
@@ -660,79 +734,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 71.75
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49697666",
-      "deferred_at": "2026-09-15T08:30:31.948584+00:00",
-      "expires_at": "2026-11-14T08:30:31.948584+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "RubyGems Open Source Supply Chain Security and OpenAI",
-        "originalTitle": "RubyGems Open Source Supply Chain Security and OpenAI",
-        "displayName": "RubyGems Open Source Supply Chain Security and OpenAI",
-        "sourceLanguage": "en",
-        "url": "https://rietta.com/blog/rubygems-supply-chain-openai/",
-        "description": "RubyGems Open Source Supply Chain Security and OpenAI",
-        "stargazerCount": 45,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-14T14:39:01Z",
-        "sourceContext": "HN points=45 comments=6 matched_query=OpenAI",
-        "primaryUrl": "https://rietta.com/blog/rubygems-supply-chain-openai/",
-        "sourceDetails": {
-          "hn_id": "49697666",
-          "hn_url": "https://news.ycombinator.com/item?id=49697666",
-          "external_url": "https://rietta.com/blog/rubygems-supply-chain-openai/",
-          "comments": 6,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-812d-8b00-df11d0212645",
-      "score": 70,
-      "reason": "オープンソースエコシステムのサプライチェーン脆弱性。",
-      "commercial_score": 75,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 71.75
-    },
-    {
-      "key": "https://arxiv.org/abs/2609.15903",
-      "deferred_at": "2026-09-15T22:15:41.123823+00:00",
-      "expires_at": "2026-11-14T22:15:41.123823+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Discrete Beckmann Transport Models for One-Step Language Modeling and Reasoning",
-        "originalTitle": "Discrete Beckmann Transport Models for One-Step Language Modeling and Reasoning",
-        "displayName": "Discrete Beckmann Transport Models for One-Step Language Modeling and Reasoning",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.15903v1",
-        "description": "Discrete diffusion and flow models are a promising alternative to autoregressive language models, but compressing many-step sampling into fewer steps typically requires distilling a pretrained teacher model. This caps the student at the teacher's quality and requires a costly two-stage training pipeline. We introduce Discrete Beckmann Transport Models (DBTM), built on a time-independent flow whose autonomous transport map provably carries any point in the ambient space to a fixed point on the ve",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-14T17:19:47Z",
-        "sourceContext": "Discrete diffusion and flow models are a promising alternative to autoregressive language models, but compressing many-step sampling into fewer steps typically requires distilling a pretrained teacher model. This caps the student at the teacher's quality and requires a costly two-stage training pipeline. We introduce Discrete Beckmann Transport Models (DBTM), built on a time-independent flow whose autonomous transport map provably carries any point in the ambient space to a fixed point on the vertices of the simplex in a single step. We show that this fixed-point property is characterized by a conservation equation whose residual can be minimized directly from data, removing the requirement for a teacher flow and time conditioning. Under this construction, a partially trained map corresponds to the flow truncated at finite time, so generation reduces to iterating one map until it reaches a fixed point. We further extend the map to a partial-context interpolant where additional function evaluations act as refinement steps rather than ODE integration steps. On language modeling and reasoning tasks, DBTM enables one- and few-step generation that improves quality and accuracy over discrete diffusion and continuous flow baselines.",
-        "primaryUrl": "https://arxiv.org/abs/2609.15903v1",
-        "sourceDetails": {
-          "authors": [
-            "Sophia Tang",
-            "Shiyi Wang"
-          ],
-          "categories": [
-            "cs.LG"
-          ]
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-816b-8ed7-c8776f35fc86",
-      "score": 74,
-      "reason": "1ステップ言語モデル用の離散ベックマン輸送モデル。",
-      "commercial_score": 65,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 70.85
     }
   ]
 }
