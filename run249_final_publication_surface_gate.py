@@ -17,9 +17,12 @@ Reader gate and are not re-generated here under final_surface_* aliases. This la
 only late title/summary/presentation defects plus high-confidence malformed Japanese on the actual
 assembled projection.
 
-This layer stays zero-provider-call. It also repairs one deterministic presentation-only defect
-(the canonical disclaimer being glued to a supplemental Evidence link). No Evidence, Decision,
-numerical claim, model call, eyecatch background, or public release behavior is changed.
+This layer stays zero-provider-call. It repairs deterministic presentation-only defects: the
+canonical disclaimer being glued to a supplemental Evidence link, and a compact summary fragment
+only when exactly one complete sentence already present in the same Fact-approved article begins
+with that fragment. The repair is verbatim and adds no facts. Ambiguous or missing matches remain
+REVIEW. No Evidence, Decision, numerical claim, model call, eyecatch background, or public release
+behavior is changed.
 """
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ READER_VALUE_MARKER = "reader_value_review:"
 RUN249_ZERO_PROVIDER_CALLS = True
 RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
 RUN354_BODY_READER_DEDUP = True
+RUN249_DETERMINISTIC_SUMMARY_REPAIR = True
 
 _SUMMARY_LABELS = (
     ("what", "何が出た？"),
@@ -136,6 +140,60 @@ def _summary_fragment_issues(summary: dict[str, str] | None) -> list[str]:
                 f"{READER_VALUE_MARKER}final_surface_summary_fragment:{label}"
             )
     return issues
+
+
+def _article_complete_sentences(article: str) -> list[str]:
+    """Return complete prose sentences verbatim from the already-gated article body.
+
+    Markdown headings, fenced code, and list markers are excluded. The returned sentence text is
+    never paraphrased; this helper only identifies candidate source text for a surface repair.
+    """
+    body = re.sub(r"```.*?```", "", str(article or ""), flags=re.S)
+    body = re.sub(r"(?m)^#{1,6}\s+.*$", "", body)
+    candidates: list[str] = []
+    for line in body.splitlines():
+        raw = line.strip()
+        if not raw or re.match(r"^(?:[-*+]\s+|>\s+|\d+[.)、]\s*)", raw):
+            continue
+        for part in re.split(r"(?<=[。！？!?])", raw):
+            sentence = part.strip()
+            if sentence and re.search(r"[。！？!?]$", sentence):
+                candidates.append(sentence)
+    return list(dict.fromkeys(candidates))
+
+
+def repair_summary_fragments_from_article(
+    summary: dict[str, str] | None,
+    article: str,
+) -> tuple[dict[str, str], list[str]]:
+    """Repair an obvious compact-summary fragment from one unique verbatim article sentence.
+
+    A row is eligible only when it already fails the narrow trailing-comma fragment diagnostic.
+    The fragment (minus that comma) must be at least 12 visible characters and must prefix exactly
+    one complete <=220-character sentence from the same article. No partial matches, synthesis,
+    paraphrase, facts, or fallback completion are allowed. Ambiguity is a strict NOOP.
+    """
+    repaired = dict(summary or {})
+    sentences = _article_complete_sentences(article)
+    changes: list[str] = []
+    for key, _label in _SUMMARY_LABELS:
+        value = str(repaired.get(key) or "").strip()
+        if not value or not re.search(r"[、，,]\s*$", value):
+            continue
+        stem = re.sub(r"[、，,]\s*$", "", value).strip()
+        if len(re.sub(r"\s+", "", stem)) < 12:
+            continue
+        matches = [
+            sentence for sentence in sentences
+            if sentence.startswith(stem)
+            and len(sentence) > len(stem)
+            and len(re.sub(r"\s+", "", sentence)) <= 220
+        ]
+        if len(matches) != 1:
+            continue
+        repaired[key] = matches[0]
+        changes.append(f"summary_fragment_verbatim:{key}")
+    return repaired, changes
 
 
 def _summary_row_is_jargon_dense(value: str) -> bool:
@@ -272,13 +330,28 @@ def install(pipeline_module: Any) -> Any:
     original_build_manuscript = pipeline_module.build_clean_note_manuscript
     original_build_summary = pipeline_module.build_reader_first_summary
 
+    def build_reader_first_summary_with_surface_repair(parsed: dict) -> dict[str, str]:
+        try:
+            original = dict(original_build_summary(parsed) or {})
+        except Exception:
+            return {}
+        repaired, changes = repair_summary_fragments_from_article(
+            original,
+            str((parsed or {}).get("note_draft") or ""),
+        )
+        if changes:
+            logger = getattr(pipeline_module, "logger", None)
+            if logger is not None:
+                logger.info("[RUN249 SUMMARY SURFACE REPAIR] changes=%s", changes)
+        return repaired
+
     def validate_human_appeal_gate_with_final_surface(parsed: dict, peer_articles=None):
         state, issues = original_human_appeal(parsed, peer_articles)
         merged = list(issues or [])
         extra, summary, projection = final_surface_issues(
             pipeline_module,
             original_build_manuscript,
-            original_build_summary,
+            build_reader_first_summary_with_surface_repair,
             parsed,
         )
         if extra:
@@ -295,12 +368,24 @@ def install(pipeline_module: Any) -> Any:
         return state, list(dict.fromkeys(merged))
 
     def build_clean_note_manuscript_with_final_presentation_repair(*args: Any, **kwargs: Any) -> str:
-        return repair_final_public_manuscript(original_build_manuscript(*args, **kwargs))
+        call_kwargs = dict(kwargs)
+        if call_kwargs.get("reader_summary"):
+            article = str(args[0] if args else call_kwargs.get("article") or "")
+            repaired_summary, _changes = repair_summary_fragments_from_article(
+                dict(call_kwargs.get("reader_summary") or {}),
+                article,
+            )
+            call_kwargs["reader_summary"] = repaired_summary
+        return repair_final_public_manuscript(
+            original_build_manuscript(*args, **call_kwargs)
+        )
 
     pipeline_module.validate_human_appeal_gate = validate_human_appeal_gate_with_final_surface
+    pipeline_module.build_reader_first_summary = build_reader_first_summary_with_surface_repair
     pipeline_module.build_clean_note_manuscript = build_clean_note_manuscript_with_final_presentation_repair
     pipeline_module.RUN249_ZERO_PROVIDER_CALLS = True
     pipeline_module.RUN249_FINAL_SURFACE_REVALIDATION = True
+    pipeline_module.RUN249_DETERMINISTIC_SUMMARY_REPAIR = True
     pipeline_module.RUN276_SUMMARY_AWARE_FINAL_SURFACE = True
     pipeline_module.RUN354_BODY_READER_DEDUP = True
     setattr(pipeline_module, _INSTALLED_ATTR, True)
