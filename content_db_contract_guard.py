@@ -9,8 +9,9 @@ from typing import Any
 import requests
 
 import pipeline as p
+from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 
-SOURCE_VALUES = {"GitHub", "HackerNews", "ArXiv", "ProductHunt"}
+SOURCE_VALUES = set(ACTIVE_PUBLIC_SOURCES)
 CONTENT_STATUS_VALUES = {
     p.CONTENT_STATUS_STOCKED,
     p.CONTENT_STATUS_DEEP_DIVE,

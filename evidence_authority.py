@@ -21,7 +21,8 @@ AUTHORITY_CLASSES = {
     "PRIMARY_INTERVIEW", "PRIMARY_OTHER", "SECONDARY", "DISCOVERY", "UNKNOWN",
 }
 
-DISCOVERY_HOST_SUFFIXES = ("news.ycombinator.com", "producthunt.com")
+X_DISCOVERY_HOST_SUFFIXES = ("x.com", "twitter.com", "t.co")
+DISCOVERY_HOST_SUFFIXES = ("news.ycombinator.com", "producthunt.com") + X_DISCOVERY_HOST_SUFFIXES
 SECONDARY_NEWS_HOST_SUFFIXES = (
     "reuters.com", "apnews.com", "bloomberg.com", "techcrunch.com", "theverge.com",
     "wired.com", "arstechnica.com", "zdnet.com", "venturebeat.com", "cnbc.com",
@@ -34,11 +35,19 @@ REGULATORY_HOST_SUFFIXES = (
 
 
 def _host(url: str) -> str:
-    return (urlparse(url or "").hostname or "").lower().removeprefix("www.")
+    try:
+        return (urlparse(url or "").hostname or "").lower().rstrip(".").removeprefix("www.")
+    except ValueError:
+        return ""
 
 
 def _host_matches(host: str, suffixes: tuple[str, ...]) -> bool:
     return any(host == suffix or host.endswith("." + suffix) for suffix in suffixes)
+
+
+def is_x_discovery_url(url: str) -> bool:
+    """Raw X/Twitter and unresolved short links cannot supply primary material."""
+    return _host_matches(_host(url), X_DISCOVERY_HOST_SUFFIXES)
 
 
 def _same_site(a: str, b: str) -> bool:

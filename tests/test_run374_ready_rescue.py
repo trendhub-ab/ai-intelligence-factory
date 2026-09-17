@@ -168,7 +168,7 @@ def test_reserved_ready_rescue_never_increases_total_cap(monkeypatch):
     assert p.DEEP_DIVE_MODEL_BUDGET.budget == 12
 
 
-def test_preflight_rescue_runs_before_main_and_preserves_eight_fresh_requests(monkeypatch):
+def test_initialized_preflight_preserves_eight_fresh_requests_and_total_article_target(monkeypatch):
     calls = []
     seen = {}
 
@@ -191,6 +191,7 @@ def test_preflight_rescue_runs_before_main_and_preserves_eight_fresh_requests(mo
     p.process_article_backlog = lambda items, generated, rank: (generated, rank)
 
     def original_main():
+        seen["generated"], seen["rank"] = p._run374_ready_rescue_preflight()
         seen["budget"] = p.DEEP_DIVE_MODEL_BUDGET.budget
         seen["used"] = p.DEEP_DIVE_MODEL_BUDGET.used
         seen["target"] = p.TOP_N_FOR_DEEP_DIVE
@@ -200,7 +201,7 @@ def test_preflight_rescue_runs_before_main_and_preserves_eight_fresh_requests(mo
     p.main()
 
     assert calls == [(1, 1)]
-    assert seen == {"budget": 9, "used": 1, "target": 2}
+    assert seen == {"budget": 9, "used": 1, "target": 3, "generated": 1, "rank": 0}
     assert p.TOP_N_FOR_DEEP_DIVE == 3
     assert p._run374_ready_rescue_slot_consumed is True
     assert p._run374_ready_rescue_preflight_generated == 1
@@ -224,10 +225,11 @@ def test_preflight_without_provider_send_keeps_original_fresh_partition(monkeypa
     )
     p._apply_deterministic_publication_rescue = lambda parsed, reasons: (dict(parsed), [])
     p.process_article_backlog = lambda items, generated, rank: (generated, rank)
-    p.main = lambda: seen.update(
-        budget=p.DEEP_DIVE_MODEL_BUDGET.budget,
-        target=p.TOP_N_FOR_DEEP_DIVE,
-    )
+    def original_main():
+        assert p._run374_ready_rescue_preflight() == (0, 0)
+        seen.update(budget=p.DEEP_DIVE_MODEL_BUDGET.budget, target=p.TOP_N_FOR_DEEP_DIVE)
+
+    p.main = original_main
     run374.install(p)
     p.main()
 

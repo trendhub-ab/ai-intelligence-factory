@@ -185,29 +185,54 @@ def install_run349_score_narrative_negation_precision(pipeline_module):
     return p
 
 
+_ONE_SHOT_MODES = frozenset({
+    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation",
+})
+
+
+def _validated_dispatch_mode(value: object) -> str:
+    if not isinstance(value, str) or value.strip() not in _ONE_SHOT_MODES:
+        raise RuntimeError("Unknown or invalid ONE-SHOT mode")
+    return value.strip()
+
+
 def _workflow_dispatch_mode() -> str:
     """Return the ONE-SHOT workflow mode without changing normal/local execution.
 
     GitHub Actions exposes workflow_dispatch inputs through ``GITHUB_EVENT_PATH``.
     An explicit ``AIIF_ONE_SHOT_MODE`` is accepted for hermetic tests and controlled
-    local validation. Unknown/missing values deliberately fall back to the normal
-    production path; the workflow itself still owns the allowlist/fail-closed check.
+    local validation. An absent mode preserves normal local/synthetic and other
+    controlled workflow execution. Explicit unknown modes or unreadable/malformed
+    event data fail closed before Production setup rather than selecting normal execution.
     """
     explicit = os.environ.get("AIIF_ONE_SHOT_MODE", "").strip()
     if explicit:
-        return explicit
+        return _validated_dispatch_mode(explicit)
     event_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
     if not event_path:
         return ""
     try:
         with open(event_path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
-        return str((payload.get("inputs") or {}).get("mode") or "").strip()
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError) as exc:
+        raise RuntimeError("Cannot read ONE-SHOT dispatch event") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Invalid ONE-SHOT dispatch event")
+    inputs = payload.get("inputs", {})
+    if not isinstance(inputs, dict):
+        raise RuntimeError("Invalid ONE-SHOT dispatch inputs")
+    if "mode" not in inputs:
         return ""
+    return _validated_dispatch_mode(inputs["mode"])
 
 
 def main() -> None:
+    mode = _workflow_dispatch_mode()
+    if mode == "pending_retry_validation":
+        from pending_retry_validation import main as run_pending_retry_validation
+        run_pending_retry_validation()
+        return
+
     # Run305: Product Review is still a child process, but every root executable must
     # enter through this sole production authority. Branch before article imports so
     # product-only execution does not install or initialize article/publication layers.
@@ -297,8 +322,6 @@ def main() -> None:
     # functions without participating in the historical wrapper chain.
     install_performance_telemetry(pipeline)
 
-    mode = _workflow_dispatch_mode()
-
     if mode == "ready_rescue_validation":
         from ready_rescue_validation import run
         from run374_ready_rescue import install
@@ -312,12 +335,6 @@ def main() -> None:
     # read-only (persist_results=False) and bounded.
     if mode == "article_validation":
         run_article_revalidation(pipeline)
-        return
-
-    # Run276: pending_retry_validation must consume a real persisted pending-retry
-    # candidate rather than a fresh candidate. One item max, persist_results=False.
-    if mode == "pending_retry_validation":
-        run_article_revalidation(pipeline, pending_only=True)
         return
 
     # Run277 production repair lane. Outside this explicit mode the historical runtime

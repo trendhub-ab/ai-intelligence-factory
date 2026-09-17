@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: **2026-09-16**
+最終更新: **2026-09-17**
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**
 
@@ -67,6 +67,7 @@ Gemini系の安全契約:
 - X取得・監視・候補化ロジック（`x_discovery`）およびインテリジェンス層（`x_intelligence`）はProductionリポジトリへ統合済み。
 - 独立したモジュール設計および安全契約（`is_evidence=false`、ゼロプロバイダー/ドライラン安全、無許可の外部API消費防止）を維持する。
 - 自動実行ワークフローは手動（`workflow_dispatch`）または独立した安全実行を前提とする。
+- Xは任意の発見経路としてPublication Source契約に含める。投稿・`t.co`の本文はEvidenceに使わず、一次情報取得のリダイレクト先がXである場合も取得境界で遮断する。保存済み根拠のAuthority判定でもXのURLはDiscoveryとして扱う。
 
 ### 1.3 Repository cleanup
 
@@ -140,6 +141,8 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 - `production_pipeline.py` を安定Production entrypointとして扱う。
 - Provider / runtime / safety layerのインストール順を勝手に分岐させない。
 - 過去Recovery用入口からProductionへ迂回しない。
+- 明示されたONE-SHOT modeが未知、またはevent JSON / inputsが不正なら、Production初期化より前に停止する。有効な別Workflowのmodeなしeventと通常ローカル実行は既存契約を維持する。
+- `pending_retry_validation`はこの入口からも専用の`pending_retry_validation.main()`へ委譲し、Workflowと同じ非永続・上限付き検証を行う。
 
 ### 2.4 Pending Retry validation contract
 
@@ -153,18 +156,21 @@ ONE-SHOTはRecovery専用語ではなく、現行の汎用手動実行契約と�
 - OperatorがGemini 3.6を除外しているvalidationでは、routing初期値・pool再注入・`models/`表記・3.6派生aliasを含め、最終送信直前でも3.6へ送らない。
 - 記事品質の検証に不要なmodel-assisted eyecatch layoutはこのレーンでは送信しない。不合格原稿の診断・Artifact保存はアイキャッチ送信なしで継続できること。
 - Workflow/jobのsuccessは、記事の品質合格・Ready・永続保存成功と同義ではない。最終報告ではこれらを別状態として扱う。
+- `article_validation`も同じ非永続戻り値Classifierを使用する。未知の戻り値は`unverified`として記録し、原稿のtruthinessだけで`accepted`に加算しない。
 
 ---
 
 ### 2.5 Ready Rescue / 最小実記事E2E
 
 - Deep Dive総予算12の配分はFresh 8 / Backlog 3 / Ready Rescue 1。使用済みカウンタをリセットせず、追加枠も作らない。
+- 通常ProductionのRescueは監査Artifact・スタイル・Runtime・Funnelの初期化後、Fresh取得前に実行する。RescueのReady件数・候補順位・Artifactを後続処理に引き継ぎ、全体の記事目標を変更せず、FreshとBacklogには残りの枠だけを渡す。
 - Rescue対象は既存Needs Editorial Reviewのみ。Content StatusがQuality FailedまたはPending Retryなら、Article Statusとの混在行も対象外。
 - unsupported vague quantified claimは、Fact Gateが診断した該当修飾だけを0-APIで減算修正する。Fact / Evidence / Publication / Reader Gateは維持する。
 - Rescue全体は最大1回のProvider送信。503の同一モデル再試行・連鎖fallbackは行わず、非Deep Dive扱いの追加repairも送信境界で止める。
 - ONE-SHOT `ready_rescue_validation`は通常Production品質スタックと同じRescue関数を使用する。Fresh取得・Screening・Backlog・独立Product Reviewは回さず、既存記事1件を現在のGateで検証し、合格時だけ通常経路で保存する。
 - 実検証は通常Article model set（3.5 / 3.6 / 3.7 / 3.8）を使用する。ただし`AIIF_GEMINI36_BLOCK_UNTIL`の期限前だけ3.6を時限除外し、**2026-09-16 17:00 JST以降は3.6を自動復帰**させる。Provider Healthによる並び替えは通常Production契約に従う。結果は`article_audit/ready_rescue_validation.json`と既存監査ログへ保存する。
 - Ready成功が1件以上の場合のみ、既存Note Ready Syncと非公開下書きフローを起動する。同期・下書き成功は別々の実ログで確認し、ONE-SHOT成功だけを達成証拠にしない。
+- Rescue fan-outの監査JSONが欠落・破損し、またはReady件数が非負整数でない場合はWorkflowを失敗させる。有効な0件だけを正常な非起動として扱い、booleanを件数として受け入れない。
 - Scheduled DailyはPAUSEDを維持する。
 
 ## 3. Required CI / Dependency Contract
@@ -274,6 +280,8 @@ Productionで同格に扱うactive Source:
 4. **OfficialVendor = 商用利用に直結する一次情報**
 
 **Product HuntはProductionのactive Sourceではない。**
+
+上記4 SourceはFresh取得の必須配分であり、任意の発見経路`X`を追加の必須配分にはしない。Content DBとTechnology / Subscriber / Member DBのSource契約は共通のPublication Source定義を参照する。後者は既存の`Unknown`も許容する。旧ProductHunt等の余剰enumは互換性のため許容するが、存在を必須にしない。
 
 OfficialVendorはベンダーごとにSource枠を分裂させず、1 Sourceとして扱い、metadataでvendor / regionを識別する。
 

@@ -6,16 +6,24 @@ different generations of the contract. This module is deterministic and zero-net
 """
 from __future__ import annotations
 
-ACTIVE_PUBLIC_SOURCES = ("GitHub", "HackerNews", "ArXiv", "OfficialVendor")
+# X is an optional discovery origin, not an additional Evidence authority or a
+# mandatory member of the four-source acquisition/allocation portfolio.
+ACTIVE_PUBLIC_SOURCES = ("GitHub", "HackerNews", "ArXiv", "OfficialVendor", "X")
 
 READER_SOURCE_LABELS = {
     "GitHub": "GitHub",
     "HackerNews": "Hacker News",
     "ArXiv": "arXiv",
     "OfficialVendor": "公式ベンダー",
+    "X": "X（一次情報への発見経路）",
 }
 
 SOURCE_RIGHTS_NOTE = {
+    "X": (
+        "- **出典について**: X投稿自体は根拠に使用しません。本文の技術的な事実・数値は、"
+        "リンク先の一次情報で確認できる範囲を独自に分析・要約したものです。"
+        "一次資料の著作権は原著作者に帰属します。\n"
+    ),
     "HackerNews": (
         "- **出典について**: 本文の技術的な事実・数値は、上記の公式リンクおよび参考情報で確認できる範囲を"
         "独自に分析・要約したものです。リンク先記事本文の著作権は原著作者に帰属します。\n"
