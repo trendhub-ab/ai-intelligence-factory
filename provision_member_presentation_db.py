@@ -27,6 +27,7 @@ from typing import Any
 import requests
 
 import decision_intelligence
+from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 from member_presentation_identity import (
     ALLOW_CREATE_DEFAULT,
     API_HOST_PAGE_ID as DEFAULT_API_HOST_PAGE_ID,
@@ -75,6 +76,17 @@ def _multi_options(items: list[tuple[str, str]]) -> dict[str, Any]:
 
 
 def _properties_schema() -> dict[str, Any]:
+    # Keep historical options/colors for existing rows and derive current
+    # discovery options from the same authority used by the schema guard.
+    source_options = [
+        ("GitHub", "default"), ("HackerNews", "orange"), ("ArXiv", "red"),
+        ("ProductHunt", "blue"), ("Unknown", "gray"),
+    ]
+    known_sources = {name for name, _ in source_options}
+    source_options.extend(
+        (source, "default") for source in ACTIVE_PUBLIC_SOURCES
+        if source not in known_sources
+    )
     return {
         "AI・技術名": {"title": {}},
         "これは何？": {"rich_text": {}},
@@ -104,10 +116,7 @@ def _properties_schema() -> dict[str, Any]:
         "一次情報": {"rich_text": {}},
         "関連記事": {"url": {}},
         "公式ページ": {"url": {}},
-        "情報源": _multi_options([
-            ("GitHub", "default"), ("HackerNews", "orange"), ("ArXiv", "red"),
-            ("ProductHunt", "blue"), ("Unknown", "gray")
-        ]),
+        "情報源": _multi_options(source_options),
         "注目順位": {"number": {}},
         "今月の重要変化": {"checkbox": {}},
         "同期ID": {"rich_text": {}},
