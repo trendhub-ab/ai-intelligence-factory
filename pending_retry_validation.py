@@ -227,10 +227,11 @@ def _model_is_excluded(model_name: Any) -> bool:
     return bool(excluded(model_name))
 
 def install_validation_model_exclusions(pipeline_module):
-    """Enforce operator exclusions and the provider-visible validation send ceiling.
+    """Enforce expiry-bound provider exclusions and the validation send ceiling.
 
-    Routing overlays can restore their default pool, so env-only removal is not
-    sufficient. The final sender guard rejects Gemini 3.6 aliases before reservation.
+    Temporary model exclusions are owned by gemini_temporary_exclusion. Routing
+    overlays can restore their default pool, so this lane mirrors that shared policy
+    both when filtering runtime pools and in the final sender guard before reservation.
     Its local ceiling follows the pipeline's usage-audit attempt record when available;
     therefore a local/persistent pre-send rejection does not masquerade as a provider
     send, while 429/503/provider-visible failures remain counted. Model-assisted
