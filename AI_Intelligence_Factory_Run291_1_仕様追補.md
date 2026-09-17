@@ -1,5 +1,13 @@
 # AI Intelligence Factory Run291.1 仕様追補
 
+## 2026-09-18 現在: 退役済み
+
+この文書はRun291.1実装時点の履歴仕様である。PR #387により、固定GenRec専用の `/aiif note audit` 固定ChatOps入口は退役した。固定sync_idをChatOpsからdispatchする経路も現行mainには存在しない。
+
+現在有効なのは、`.github/workflows/note-private-draft-audit.yml` を手動の `workflow_dispatch` から起動し、監査対象の `exact sync_id` をその都度明示する再利用可能なread-only監査だけである。対象がReady / 投稿準備中などのpreflight条件を満たさない場合はVM起動前にfail-closedする。
+
+以下の記述はRun291.1当時の設計記録として保持し、現行の操作手順としては扱わない。
+
 ## 目的
 
 Run291で実装・全CI検証済みのread-only private draft監査を、現在の接続環境から安全に実行するため、既存のIssue #71専用Note ChatOps Bridgeへ監査専用コマンドを1つ追加する。

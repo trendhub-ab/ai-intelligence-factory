@@ -7,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "chatops-note.yml"
 AUDIT_WORKFLOW = ROOT / ".github" / "workflows" / "note-private-draft-audit.yml"
+RUN2911_SPEC = ROOT / "AI_Intelligence_Factory_Run291_1_仕様追補.md"
+RUN293_SPEC = ROOT / "AI_Intelligence_Factory_Run293_仕様追補.md"
 GENREC_SYNC_ID = "3bd479ffdca9817f926aeaffbb779c4b"
 
 
@@ -15,6 +17,8 @@ class Run2911NoteAuditChatOpsTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.source = WORKFLOW.read_text(encoding="utf-8")
         cls.audit_source = AUDIT_WORKFLOW.read_text(encoding="utf-8")
+        cls.run2911_spec = RUN2911_SPEC.read_text(encoding="utf-8")
+        cls.run293_spec = RUN293_SPEC.read_text(encoding="utf-8")
 
     def test_existing_sync_and_draft_exact_commands_are_preserved(self) -> None:
         self.assertIn("github.event.comment.body == '/aiif note sync'", self.source)
@@ -41,6 +45,14 @@ class Run2911NoteAuditChatOpsTests(unittest.TestCase):
         self.assertIn("AUDIT_NOTE_DRAFT", self.audit_source)
         self.assertNotIn("issue_comment:", self.audit_source)
         self.assertNotIn("schedule:", self.audit_source)
+
+    def test_historical_specs_mark_fixed_chatops_as_retired(self) -> None:
+        self.assertIn("2026-09-18 現在: 退役済み", self.run2911_spec)
+        self.assertIn("固定ChatOps入口は退役", self.run2911_spec)
+        self.assertIn("workflow_dispatch", self.run2911_spec)
+        self.assertIn("exact sync_id", self.run2911_spec)
+        self.assertIn("2026-09-18 現在", self.run293_spec)
+        self.assertIn("固定GenRec監査の再実行は現行工程ではない", self.run293_spec)
 
     def test_bridge_keeps_owner_issue_and_single_run_fail_closed_guards(self) -> None:
         for required in (
