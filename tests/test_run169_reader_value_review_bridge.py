@@ -51,8 +51,7 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 issues = bridge._material_reader_value_issues(pipeline, article)
                 self.assertTrue(any("dense_report_cluster" in x for x in issues), issues)
 
-    def test_real_run103_ready_articles_preserve_soft_debt_but_block_corroborated_access_failure(self):
-        access_review_count = 0
+    def test_real_run103_ready_articles_preserve_soft_debt_and_direct_access_classification(self):
         for name in REAL_READY_FIXTURES:
             with self.subTest(name=name):
                 article = self._article(name)
@@ -61,8 +60,6 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 self.assertTrue(any(bridge.READER_VALUE_MARKER in x for x in issues), issues)
 
                 has_access_block = any("non_engineer_access_failure" in x for x in issues)
-                if has_access_block:
-                    access_review_count += 1
                 expected = (
                     pipeline.GATE_DISPOSITION_REVIEW
                     if has_access_block
@@ -70,11 +67,6 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 )
                 reason_rows = pipeline.map_gate_reasons("human_appeal", issues)
                 self.assertEqual(expected, pipeline.gate_reason_disposition(reason_rows))
-
-        # A historical Ready fixture may still prove a direct access failure, but generic
-        # style debt alone is no longer allowed to manufacture one. The synthetic precision
-        # tests below own the exact access-corroboration contract.
-        self.assertGreaterEqual(access_review_count, 0)
 
     def test_reader_enjoyment_does_not_corroborate_access_failure(self):
         class SignalsOnly:
