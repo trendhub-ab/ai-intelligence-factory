@@ -9,6 +9,12 @@ Run378 closes the Reader Ready gap exposed by the 03:00 real draft with one zero
 corroborated non-engineer-access guard. Retry ownership is intentionally unchanged here:
 this historical bridge still refuses reader-only retry spend, while the later Run208/Run360
 production layer remains the sole bounded Reader Repair owner when Evidence is safe.
+
+The 2026-09-17 17:00 production audit adds a precision correction: Reader Enjoyment is not
+an access diagnostic and must never be used to corroborate a non-engineer access failure.
+Accessibility now requires at least two direct access diagnostics to agree. This keeps true
+multi-axis reader failures blocked while preventing one opening-density warning plus unrelated
+style debt from becoming a publication stop.
 """
 from __future__ import annotations
 
@@ -16,6 +22,14 @@ from typing import Any
 
 READER_VALUE_MARKER = "reader_value_review:"
 _INSTALLED_ATTR = "_run169_reader_value_review_bridge_installed"
+
+_DIRECT_ACCESS_DIAGNOSTICS = (
+    ("opening_non_engineer_access", "Opening"),
+    ("plain_language_bridge", "Plain-Language"),
+    ("information_budget", "Information Budget"),
+    ("jargon_translation", "Jargon Translation"),
+    ("non_engineer_core_clarity", "Non-Engineer Core Clarity"),
+)
 
 
 PRODUCTION_YIELD_CONTRACT = r"""
@@ -52,8 +66,8 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
 
     Run378 adds a corroborated non-engineer-access guard. A specialist article is still free to
     keep necessary terminology; the guard fires only when the canonical Accessibility signal is
-    already REVIEW and at least two independent reader-access diagnostics agree. This catches the
-    observed production failure without turning raw jargon density into a blanket rejection rule.
+    already REVIEW and at least two *direct* reader-access diagnostics agree. Reader Enjoyment is
+    intentionally excluded because style/temperature debt does not prove comprehension failure.
     """
     if not article:
         return []
@@ -74,22 +88,21 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
             + "dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"
         )
 
-    # The Run66/03:00 specimen was READY while Accessibility, opening access, the plain-language
-    # bridge and information budget were all still REVIEW. Require corroboration so one isolated
-    # specialist-density warning cannot by itself become a publication stop.
-    access_corroboration = sum(
-        bool(value)
-        for value in (
-            signals.get("opening_non_engineer_access") == "REVIEW",
-            signals.get("plain_language_bridge") == "REVIEW",
-            signals.get("information_budget") == "REVIEW",
-            signals.get("reader_enjoyment") == "REVIEW",
-        )
-    )
-    if signals.get("accessibility") == "REVIEW" and access_corroboration >= 2:
+    # The original Run378 implementation accidentally counted Reader Enjoyment as access
+    # corroboration. The 17:00 production specimen proved that an otherwise understandable
+    # article could then be blocked by Accessibility + one opening warning + unrelated style
+    # debt. Require two diagnostics that directly describe reader access instead.
+    failed_access_axes = [
+        label
+        for key, label in _DIRECT_ACCESS_DIAGNOSTICS
+        if signals.get(key) == "REVIEW"
+    ]
+    if signals.get("accessibility") == "REVIEW" and len(failed_access_axes) >= 2:
         issues.append(
             READER_VALUE_MARKER
-            + "non_engineer_access_failure (Accessibility/Opening/Plain-Language/Information Budget)"
+            + "non_engineer_access_failure (Accessibility/"
+            + "/".join(failed_access_axes)
+            + ")"
         )
 
     severe_flags = (
