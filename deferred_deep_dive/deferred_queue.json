@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-17T08:23:10.619201+00:00",
+  "updated_at": "2026-09-17T08:23:18.904582+00:00",
   "items": [
-    {
-      "key": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants",
-      "deferred_at": "2026-09-16T18:13:16.828280+00:00",
-      "expires_at": "2026-09-30T18:13:16.828280+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
-        "originalTitle": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
-        "displayName": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
-        "sourceLanguage": "en",
-        "url": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants/",
-        "description": "With 1 Extension: $20K in Bounties from Anthropic, Perplexity, Google, Microsoft",
-        "stargazerCount": 10,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-16T16:32:41Z",
-        "sourceContext": "HN points=10 comments=9 matched_query=Anthropic",
-        "primaryUrl": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants/",
-        "sourceDetails": {
-          "hn_id": "49729492",
-          "hn_url": "https://news.ycombinator.com/item?id=49729492",
-          "external_url": "https://forever.security/blog/bragjack-hijacking-5-browsers-via-built-in-ai-assistants/",
-          "comments": 9,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dd479ff-dca9-81ca-a0c1-f73ceacda7bc",
-      "score": 80,
-      "reason": "AIアシスタント搭載ブラウザを狙う拡張機能の脆弱性。",
-      "commercial_score": 82,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
       "deferred_at": "2026-09-16T18:13:16.828112+00:00",
