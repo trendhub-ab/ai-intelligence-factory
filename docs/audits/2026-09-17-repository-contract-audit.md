@@ -117,16 +117,19 @@ Publication依存ファイルの変更によりpolicy fingerprintは変わる。
 - 未検証: 実生成Provider障害・実記事Gate・note DOM/セッション/下書き保存、Member全行品質、任意の動的import。3 DBのSource enum事後比較は行ったが、disabled Subscriberとevent-skip Memberのlive全行E2E成功を意味しない。
 - 次の最優先: 修復済みSource schemaを前提に、Member/Subscriberのview-first/read-only契約確認をboundedに行い、その後に試行表示をFresh候補・全候補・Provider送信へ明示分離する。旧資産削除を目的として回帰証拠を失わせない。
 
-### 最終main確認と未解決のMember配置境界
+### 最終main確認とMember access境界の訂正
 
-[PR #381](https://github.com/trendhub-ab/ai-intelligence-factory/pull/381)は最新head `8d395816f22c485afea3b7c7cb0f34331a6f97a1`のCI 4系統成功後に統合した。統合main `0e716cd83f1f0c57678fcbd448cb11607b4a5594`はheadと追加ファイル差分0、tree `6af64b8185869972b797a5ed6890d4a7f51499ac`一致。[main regression run 35248808342](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35248808342)のjob `105295714157`でも**2,706 PASS**（19.69秒）、self-test成功。Repository Falsification `35248808297`、Cross DB `35248808361`、Notion Access `35248808393`は成功した。
+[PR #381](https://github.com/trendhub-ab/ai-intelligence-factory/pull/381)は最新head `8d395816f22c485afea3b7c7cb0f34331a6f97a1`のCI成功後にmainへ統合された。統合main `0e716cd83f1f0c57678fcbd448cb11607b4a5594`ではFull Regression **2,706 PASS**、Repository Falsification / Cross DB / Notion Accessも成功した。
 
-しかし、bootstrap fileへのmain pushで既存[Member Presentation Sync run 35248808324](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35248808324)も自動起動し、canonical data source GETの**HTTP 404**で停止した。presentation/body同期はskipされ、記事行やMember本文へのmutationは進んでいない。これは今回のSource enum修正による新規発生ではなく、PR #380統合前の[run 35200542804](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35200542804)（2026-09-17 08:36 UTC、head `f75d3d22fa7e02ddfeb1e83ea6c908a65a2cb9df`）のjob `105133960996`にも同じ404が記録されている。主CIのGreenとこの運用失敗を区別する。
+同main pushで起動したMember Presentation Sync run `35248808324` のattempt 1は、canonical data source `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404` のGETが **HTTP 404** となり、`Resolve canonical member DB` でfail-closed停止した。これはPR #380より前にも同型404が存在しており、Source enum修正による新規障害ではない。
 
-Native Notion readで、現行canonical DB `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / source `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`は存在し、会員ホーム `3c5479ff-dca9-8103-bff0-f2d5f408d35f`の直下に物理配置されていることを確認した。一方、Productionの固定API hostは `3c5479ff-dca9-8178-867c-d9249a3ff5c8`（Subscriber内のmlflowページ）。このhostにあるDB `9430d2a5-b9ce-423a-b76e-d9214f3f6204` / source `ec2ac2b3-89b6-4242-89b9-e94060826fca`はnative titleで**旧版・使用禁止・更新停止**と明示されている。会員ホームの各リンクは現行b278 DBを指す。旧DBへ切り替えて404を回避する修正は行わない。
+その後、**同一run / 同一commit `0e716cd...` / 同一Workflow / 同一canonical database ID `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / 同一data source ID `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404` / 同一API host page ID `3c5479ff-dca9-8178-867c-d9249a3ff5c8`** の再実行attempt 2が成功した。コード差分では説明できないため、attempt 1と2の間にGitHub Actionsで使用するNotion integrationから見える外部access状態が変化したことまでは確定できる。ただし、共有設定変更の具体的操作・実施者・時刻はGitHub Actionsログと現在のNotion readだけでは断定しない。
 
-判明した事実は「GitHub用integrationでは現行sourceをreadできない」「物理配置が固定host契約と異なる」「MCP接続では現行sourceをreadできる」である。404だけで正確な共有設定や移動時期は断定しない。配置変更の意図、GitHub integrationの共有先、会員の継承アクセスを確認せずにDBを移動したりhost固定値を会員ホームへ変更したりしない。既存fail-closedと自動作成禁止は維持する。
+Notion native readでcanonical database `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` のancestorを再取得した結果、**物理親は固定API host `3c5479ff-dca9-8178-867c-d9249a3ff5c8`（mlflow/mlflow）であり、現行コードのhost契約と一致する**。したがって、以前の「canonical DBが会員ホーム直下にあり、物理配置が固定host契約と異なる」という記述は訂正する。会員ホーム側はcanonical DBへのmember-facing導線を持つが、物理DB自体を別hostへ移す必要はない。旧DB `9430d2a5-b9ce-423a-b76e-d9214f3f6204` / source `ec2ac2b3-89b6-4242-89b9-e94060826fca` は引き続き「旧版・使用禁止・更新停止」でありfallback対象にしない。
 
-**次の最優先はMember DB物理配置とGitHub integration共有の人間判断による確定**である。canonical IDは保持する。配置/共有契約を確定した後、Public APIのbounded read-only probeでGETとhost/enum検査を確認し、Member同期の再実行は全行mutationが必要かを判断してから行う。実生成・note DOM・実記事Gate、Member全行E2Eは引き続き未証明。全運用経路Greenという完了条件は未達である。
+attempt 2の実ログではcanonical解決後にpresentation syncとbody syncまで完走した。presentationはsource records **218**、created **8**、updated **20**、unchanged **190**、body syncはtotal **218**、created **14**、unchanged **203**、manual pages preserved **6**。両処理とも `zero_gemini_calls=true`。これはread-only probeではなく実Member DB mutationを伴う再実行であるため、今後の監査では「Member sync成功証拠」と「外部書き込みなしの監査」を混同しない。
 
-上記full SHAは調査対象mainを特定するものとし、文書自身のcommit SHAは自己参照せずGitHubの現行main refと最終統合ログを正とする。
+以上より、以前の「Member DB物理配置とGitHub integration共有の人間判断待ち」という未解決ブロッカーは**現時点では解消**とする。ただし、404から復旧した外部access変更の履歴自体はコード管理外であり、再発防止のためにはGitHub Actions integrationがcanonical data sourceとhostを読み取れることを、mutation前の軽量preflightとして継続監視する価値がある。ID差し替え、旧DB fallback、自動create、Gate緩和は行わない。
+
+現在のmain HEADは `f32a1457de0a8652ce8daf64161e867454dce256`（PR #382統合後）。PR #380 / #381 / #382の変更を含む。全運用経路の最終評価では、実生成Provider障害・実記事Gate・note DOM/セッション/下書き保存は引き続き別の未検証境界として扱う。
+
