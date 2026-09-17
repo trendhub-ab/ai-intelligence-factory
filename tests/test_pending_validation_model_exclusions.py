@@ -1,8 +1,10 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import os
 import unittest
 import pending_retry_validation as lane
 import run260_gemini_model_routing as routing
+import gemini_temporary_exclusion as exclusion_policy
 
 
 def make_pipeline():
@@ -23,22 +25,24 @@ def test_exclusion_survives_default_pool_reinjection_and_quality_routing():
     p = make_pipeline()
     routing.install(p)
     assert "gemini-3.6-flash" in p.DEEP_DIVE_MODEL_POOL
-    lane.install_validation_model_exclusions(p)
-    # Validation still excludes 3.6 exactly as before; only the surviving models now
-    # retain the revenue-first Run369 order rather than the retired newest-first order.
-    assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
-    assert "gemini-3.6-flash" in p.SESSION_UNAVAILABLE_MODELS
-    p._call_deep_dive_pool("repair", kind="quality_retry")
-    actual_pool = p._run260_original_call_model_pool.call_args.args[4]
-    assert actual_pool == ["gemini-3.5-flash", "gemini-3.7-flash"]
+    with patch.dict(os.environ, {exclusion_policy.ENV: "2099-09-16T17:00:00+09:00"}, clear=False):
+        lane.install_validation_model_exclusions(p)
+        # While the temporary exclusion is active, 3.6 remains unavailable even after
+        # Run260 has reinjected its default pool. Surviving models keep revenue-first order.
+        assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
+        assert "gemini-3.6-flash" in p.SESSION_UNAVAILABLE_MODELS
+        p._call_deep_dive_pool("repair", kind="quality_retry")
+        actual_pool = p._run260_original_call_model_pool.call_args.args[4]
+        assert actual_pool == ["gemini-3.5-flash", "gemini-3.7-flash"]
 
 
 def check_excluded_send(kind, model):
     p = make_pipeline()
     original = p._generate_via_chat
-    lane.install_validation_model_exclusions(p)
-    with unittest.TestCase().assertRaisesRegex(RuntimeError, "Operator excluded"):
-        p._generate_via_chat(model, "prompt", request_kind=kind)
+    with patch.dict(os.environ, {exclusion_policy.ENV: "2099-09-16T17:00:00+09:00"}, clear=False):
+        lane.install_validation_model_exclusions(p)
+        with unittest.TestCase().assertRaisesRegex(RuntimeError, "temporarily excluded"):
+            p._generate_via_chat(model, "prompt", request_kind=kind)
     original.assert_not_called()
 
 
