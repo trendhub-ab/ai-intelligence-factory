@@ -28,7 +28,6 @@ jobs:
       github.actor == 'trendhub-ab' &&
       (github.event.comment.body == '/aiif note sync' ||
        github.event.comment.body == '/aiif note draft' ||
-       github.event.comment.body == '/aiif note audit' ||
        github.event.comment.body == '/aiif note lp audit' ||
        github.event.comment.body == '/aiif note lp publish-audit' ||
        github.event.comment.body == '/aiif note lp update' ||
@@ -55,7 +54,6 @@ jobs:
           case "$COMMAND" in
             '/aiif note sync') action='sync' ;;
             '/aiif note draft') action='draft' ;;
-            '/aiif note audit') action='audit' ;;
             '/aiif note lp audit') action='lp_audit' ;;
             '/aiif note lp publish-audit') action='lp_publish_audit' ;;
             '/aiif note lp update') action='lp_update' ;;
@@ -87,10 +85,6 @@ jobs:
             draft)
               workflow='note-create-draft.yml'
               payload='{"ref":"main","inputs":{"confirm":"CREATE_NOTE_DRAFT","sync_id":"","prepare_only":"false"}}'
-              ;;
-            audit)
-              workflow='note-private-draft-audit.yml'
-              payload='{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3bd479ffdca9817f926aeaffbb779c4b"}}'
               ;;
             lp_audit)
               workflow='note-public-lp-audit.yml'
