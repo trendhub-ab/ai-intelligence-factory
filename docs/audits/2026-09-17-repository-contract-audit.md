@@ -133,3 +133,13 @@ attempt 2の実ログではcanonical解決後にpresentation syncとbody syncま
 
 現在のmain HEADは `f32a1457de0a8652ce8daf64161e867454dce256`（PR #382統合後）。PR #380 / #381 / #382の変更を含む。全運用経路の最終評価では、実生成Provider障害・実記事Gate・note DOM/セッション/下書き保存は引き続き別の未検証境界として扱う。
 
+
+### 2026-09-18 Provider routing follow-up
+
+PR #384でRun260のGeminiモデル別日次budget分離を修正した。修正前はGEMINI_38_FLASH_DAILY_BUDGETが3.8と3.7の両方へ流用され、将来2モデルのbudgetを別値にした場合に3.7設定が破壊される状態だった。TDDで3.7=13 / 3.8=7を与え、修正前に7 != 13を再現した。修正後は3.7 / 3.8を各envから独立読込し、双方0..18へclampしてruntime/persistent budgetへ反映する。PR #384はmainへ統合済み。
+
+PR #385では、2026-09-16 17:00 JSTまでの期限付きだったGemini 3.6除外がPending Retryだけ恒久化していた不整合を修正した。共通gemini_temporary_exclusionを唯一の期限付き除外authorityとし、期限内はpool/session/final senderで遮断、期限後は3.6をbudget 18・候補poolへ自動復帰する。4 provider-send上限、1記事上限、503 cooldown、model-assisted eyecatch禁止、nonpersistent validationは維持した。最終headで2,710 PASS、既存Pillow warning 1、Synthetic 30/30 PASS、critical 0、production_write_isolation=true、Workflow Reference / Repository-wide Falsification / Notion Access / Integration ReconciliationすべてSUCCESS。PR #385はmain 0e5381ae2c6457be458f0354336eef97aa6e071cへ統合済み。
+
+現行503契約はRun398を正とする。canonical Flash Deep DiveとPending Retryは1 structured 503で次のdistinct modelへ進み、Ready Rescueはprovider HTTP errorでretry/fallbackしない。Screening、Product Review、noncanonical/custom poolのみboundedなsame-model confirmationを残す。google-genai SDK retryは1 attemptで、Factoryがretry ownerである。旧Run303参照仕様の「全Deep Diveで1回same-model confirmation」は現行契約ではない。
+
+runtime-state/.runtime/gemini_provider_health.jsonの最終更新は2026-09-17T08:25:48Z。直近観測では3.5 / 3.6に成功実績があり、3.7 / 3.8は503/ServerError側の記録が多い。これは過去のoperational telemetryであり、現在時点のGoogle provider availabilityを直接保証するものではない。main統合後のpushではGuard/Synthetic系のみ起動し、Daily / ONE-SHOTの自動起動はなかった。
