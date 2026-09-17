@@ -112,9 +112,21 @@ Publication依存ファイルの変更によりpolicy fingerprintは変わる。
 - Member/Cross DB/監査関連focused: **51 PASS**。Repository Falsification、Workflow Reference、Notion Accessを含む構造Guard **14 / 14 PASS**。compileall / diff check成功。
 - 現行`production_pipeline.py`のSynthetic smoke: **30 / 30 PASS**、critical failures **0**、`production_write_isolation=true`。
 - 継続修正の[PR #381](https://github.com/trendhub-ab/ai-intelligence-factory/pull/381)、コードhead `8898680d310b5d19600acb779e19047ed753e9bb`: CI **4 / 4 SUCCESS**。Workflow Reference単独Workflowはpath条件で起動しないが、Repository Falsification CI内のReference Guardと全件回帰で合格した。[Integration run 35248551079](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35248551079)のjob `105294840248`ログでPython **3.11.16**、**2,706 PASS**（17.22秒）、Production Synthetic **30 / 30 PASS**、critical 0、write isolation trueを確認した。独立レビューもfocused **51 PASS**、Critical/Important指摘なし。文書追記後の最新状態はPR Checksを正とする。
-- 生成Provider / Gemini / Google / Groq / Apify送信 **0**。Notion connector取得 **7回**（接続identity 1 + schema事前3 + 事後3）、schema mutation **3回**（不足option追加のみ）。必要なlive確認はGitHubの失敗schema job再実行**1回**に限定した。CI自身のpublic API schema readはこのconnector7回に含めない。
+- 生成Provider / Gemini / Google / Groq / Apify送信 **0**。Notion connector取得 **11回**（接続identity 1 + schema事前3 + 事後3 + canonical DB / API host / 旧DB / 会員ホームの配置確認4）、schema mutation **3回**（不足option追加のみ）。手動のlive CI再実行は失敗schema jobの**1回**。CI自身のpublic API schema readと通常push triggerはこのconnector11回に含めない。
 - note mutation / 公開 / Daily起動 **0**。Dailyはscheduleなし・job hard-disabledのPAUSEDを維持。過去Run用Pythonは実行しない。
 - 未検証: 実生成Provider障害・実記事Gate・note DOM/セッション/下書き保存、Member全行品質、任意の動的import。3 DBのSource enum事後比較は行ったが、disabled Subscriberとevent-skip Memberのlive全行E2E成功を意味しない。
 - 次の最優先: 修復済みSource schemaを前提に、Member/Subscriberのview-first/read-only契約確認をboundedに行い、その後に試行表示をFresh候補・全候補・Provider送信へ明示分離する。旧資産削除を目的として回帰証拠を失わせない。
 
-継続修正はreview PRで検証してmainへ反映する。上記full SHAは調査対象の統合mainを特定するものとし、文書自身のcommit SHAは自己参照せずGitHubの現行main refと最終統合ログを正とする。
+### 最終main確認と未解決のMember配置境界
+
+[PR #381](https://github.com/trendhub-ab/ai-intelligence-factory/pull/381)は最新head `8d395816f22c485afea3b7c7cb0f34331a6f97a1`のCI 4系統成功後に統合した。統合main `0e716cd83f1f0c57678fcbd448cb11607b4a5594`はheadと追加ファイル差分0、tree `6af64b8185869972b797a5ed6890d4a7f51499ac`一致。[main regression run 35248808342](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35248808342)のjob `105295714157`でも**2,706 PASS**（19.69秒）、self-test成功。Repository Falsification `35248808297`、Cross DB `35248808361`、Notion Access `35248808393`は成功した。
+
+しかし、bootstrap fileへのmain pushで既存[Member Presentation Sync run 35248808324](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35248808324)も自動起動し、canonical data source GETの**HTTP 404**で停止した。presentation/body同期はskipされ、記事行やMember本文へのmutationは進んでいない。これは今回のSource enum修正による新規発生ではなく、PR #380統合前の[run 35200542804](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35200542804)（2026-09-17 08:36 UTC、head `f75d3d22fa7e02ddfeb1e83ea6c908a65a2cb9df`）のjob `105133960996`にも同じ404が記録されている。主CIのGreenとこの運用失敗を区別する。
+
+Native Notion readで、現行canonical DB `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` / source `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`は存在し、会員ホーム `3c5479ff-dca9-8103-bff0-f2d5f408d35f`の直下に物理配置されていることを確認した。一方、Productionの固定API hostは `3c5479ff-dca9-8178-867c-d9249a3ff5c8`（Subscriber内のmlflowページ）。このhostにあるDB `9430d2a5-b9ce-423a-b76e-d9214f3f6204` / source `ec2ac2b3-89b6-4242-89b9-e94060826fca`はnative titleで**旧版・使用禁止・更新停止**と明示されている。会員ホームの各リンクは現行b278 DBを指す。旧DBへ切り替えて404を回避する修正は行わない。
+
+判明した事実は「GitHub用integrationでは現行sourceをreadできない」「物理配置が固定host契約と異なる」「MCP接続では現行sourceをreadできる」である。404だけで正確な共有設定や移動時期は断定しない。配置変更の意図、GitHub integrationの共有先、会員の継承アクセスを確認せずにDBを移動したりhost固定値を会員ホームへ変更したりしない。既存fail-closedと自動作成禁止は維持する。
+
+**次の最優先はMember DB物理配置とGitHub integration共有の人間判断による確定**である。canonical IDは保持する。配置/共有契約を確定した後、Public APIのbounded read-only probeでGETとhost/enum検査を確認し、Member同期の再実行は全行mutationが必要かを判断してから行う。実生成・note DOM・実記事Gate、Member全行E2Eは引き続き未証明。全運用経路Greenという完了条件は未達である。
+
+上記full SHAは調査対象mainを特定するものとし、文書自身のcommit SHAは自己参照せずGitHubの現行main refと最終統合ログを正とする。
