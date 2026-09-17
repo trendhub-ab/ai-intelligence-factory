@@ -56,7 +56,6 @@ FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = (
 FAST_LANE_ARTICLE_ATTEMPT_LIMIT = 1
 FAST_LANE_503_COOLDOWN_THRESHOLD = 1
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
-FAST_LANE_EXCLUDED_MODELS = frozenset({"gemini-3.6-flash"})
 VALIDATION_OUTCOME_ACCEPTED = "accepted"
 VALIDATION_OUTCOME_REJECTED = "rejected"
 VALIDATION_OUTCOME_NOT_GENERATED = "not_generated"
@@ -221,22 +220,11 @@ def install_current_production_article_stack(pipeline_module, note_manuscript_mo
     return pipeline_module
 
 
-def _normalized_model_id(model_name: Any) -> str:
-    value = str(model_name or "").strip().lower()
-    while value.startswith("models/"):
-        value = value[len("models/"):]
-    return value
-
-
 def _model_is_excluded(model_name: Any) -> bool:
-    """Honor the operator ban for every Gemini 3.6 alias, not only one exact ID."""
-    value = _normalized_model_id(model_name)
-    return (
-        value in FAST_LANE_EXCLUDED_MODELS
-        or value == "gemini-3.6"
-        or value.startswith("gemini-3.6-")
-    )
+    """Delegate temporary model exclusions to the shared expiry-bound policy."""
+    from gemini_temporary_exclusion import excluded
 
+    return bool(excluded(model_name))
 
 def install_validation_model_exclusions(pipeline_module):
     """Enforce operator exclusions and the provider-visible validation send ceiling.
@@ -252,8 +240,7 @@ def install_validation_model_exclusions(pipeline_module):
     if getattr(pipeline_module, "_pending_validation_exclusions_installed", False):
         return pipeline_module
     original = pipeline_module._generate_via_chat
-    excluded = FAST_LANE_EXCLUDED_MODELS
-    runtime_excluded: set[str] = set(excluded)
+    runtime_excluded: set[str] = set()
     for attr in ("DEEP_DIVE_MODEL_POOL", "DEEP_DIVE_MODEL_CANDIDATES", "SCREENING_MODEL_POOL"):
         pool = getattr(pipeline_module, attr, None)
         if pool is not None:
@@ -272,7 +259,7 @@ def install_validation_model_exclusions(pipeline_module):
         nonlocal sends
         if _model_is_excluded(model_name):
             raise pipeline_module.NoAvailableModelError(
-                "Operator excluded Gemini 3.6 from validation, including fallback and aliases"
+                "Model is temporarily excluded by the shared expiry-bound provider policy"
             )
         request_kind = str(kwargs.get("request_kind") or "").strip().lower()
         if request_kind == "eyecatch_layout":
@@ -300,7 +287,7 @@ def install_validation_model_exclusions(pipeline_module):
     pipeline_module._generate_via_chat = guarded_send
     pipeline_module._pending_validation_exclusions_installed = True
     pipeline_module.logger.info(
-        "[VALIDATION MODEL EXCLUSIONS] excluded=%s pool=%s model_eyecatch=false send_cap=%s",
+        "[VALIDATION PROVIDER GUARD] temporary_excluded=%s pool=%s model_eyecatch=false send_cap=%s",
         sorted(runtime_excluded), pipeline_module.DEEP_DIVE_MODEL_POOL,
         FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
     )
