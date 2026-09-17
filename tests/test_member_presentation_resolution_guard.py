@@ -2,9 +2,27 @@ import unittest
 from unittest.mock import Mock, patch
 
 import provision_member_presentation_db as provision
+import cross_db_contract_guard as contracts
 
 
 class MemberPresentationResolutionGuardTests(unittest.TestCase):
+    def test_new_member_db_schema_passes_current_source_contract(self):
+        properties = provision._properties_schema()
+        # Notion adds `type` to the schema returned after provisioning.
+        returned_properties = {
+            name: {"type": next(iter(prop)), **prop}
+            for name, prop in properties.items()
+        }
+        contracts.validate_enum_contracts(
+            returned_properties, contracts.MEMBER_ENUM_CONTRACTS, "new Member DB"
+        )
+        source_options = properties["情報源"]["multi_select"]["options"]
+        self.assertEqual(
+            [(option["name"], option["color"]) for option in source_options[:5]],
+            [("GitHub", "default"), ("HackerNews", "orange"), ("ArXiv", "red"),
+             ("ProductHunt", "blue"), ("Unknown", "gray")],
+        )
+
     @staticmethod
     def _search_response(items):
         response = Mock()

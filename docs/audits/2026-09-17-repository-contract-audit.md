@@ -2,6 +2,8 @@
 
 ## 結果
 
+**統合後の最新確認:** PR #380は`merged=true`、承認対象headは`a00bcab4a394a29664929c8a510ab51f4ee4b2bd`。確認したmainは`9296c90a2f4c7953b884800ff3edda177f5cb57a`、treeは`a1056e509930fdef9a2cba102ae673f0da6ffd37`。承認headとmainのtreeは同一、追加ファイル差分0。mainの1,023 blobをローカルと照合した。以下の旧2,702件記録は初回監査時点の履歴であり、最新結果は末尾の「統合後検証」を正とする。
+
 現行mainを取得し、再現できた9件の契約不整合・不具合を修正した。品質Gate、Safety Cap、永続カウンタ、通常のProviderモデル集合、必須4 Source配分は維持した。実APIを使った記事生成、Notion書き込み、note下書き作成、公開は実行していない。したがって、この監査結果は実記事E2Eの成功証明ではない。
 
 基準main: `c6bb452a9ea308b24564a090fb5821e973a1daad`（#379を含む）。Git tree: `160ed9250646740d8ddc046f90d198557fe786d0`。取得した1,029ファイルすべてのGit blob SHAを照合した。Python 591ファイル・6,098関数を静的調査し、Workflowと仕様書も横断した。変更は隔離した監査ブランチに限定した。
@@ -45,7 +47,7 @@ Superpowersのsystematic-debugging / test-driven-development / writing-plans / r
 
 | 優先度 | 指摘 | 判断・次の検証条件 |
 |---|---|---|
-| Medium | 固定Runの手動回復・診断資産が残る。例: Run297–302、413 / 414 / 416 / 418 / 425のWorkflow。Repository cleanupの包括的な読み方と現物が一致しない。 | actor・Issue・command・確認文字列等で限定された個別経路であり、通常Production Authorityには追加しない。本監査では実行せず、旧Recoveryの再開も行わない。依存と必要性を個別確認して廃止する必要があり、推測で一括削除しない。 |
+| Medium | 固定Runの手動回復・診断Python・test・仕様資産が残る。Run297–302の8 WorkflowとRubyGemsの5 WorkflowはPR #380で退役済み。 | 退役理由・trigger・副作用・履歴は`2026-09-18-retired-one-shot-workflows.md`を参照。統合後の全文検索・import graph棚卸しは`2026-09-17-retired-assets-inventory.md`。14専用Pythonすべてにtestまたは別helperから参照があり、削除条件未成立。12専用test・6仕様文書も回帰・履歴資産として保持。追加削除0。 |
 | Low | Acquisitionのtext変換、Notion rich-text helper、CIのPR本文区分、旧note診断に同等helperが複数ある。 | 完全一致だけでは契約の同一性を証明できない。例外・長さ制限・Unicode・公開本文の差異とpolicy hashへの影響を確認するまで統合しない。今回Source集合と非永続Classifierの重複は実証した範囲で解消。 |
 | Low | `pipeline.main`の後段`len(deduped_repos) > MAX_SCREENING_CANDIDATES`は、前段の上限付きround-robinと非増加dedupeを前提とすると通常経路で成立しない。 | 防御的な互換分岐として残した。静的scanで同一scopeの重複defや無条件return後の文は検出しなかったが、動的にinstallされるwrapper全体の到達不能性を証明したものではない。 |
 | Low | Rescue Ready件数は修正後の総Ready通知に含まれるが、Telegramの「試行」件数は従来どおりFresh Deep Diveのみ。Funnelは全試行を保持する。 | 送信数・Ready合否には影響しない表示範囲の相違。運用表示の変更には試行の定義を明示する必要があるため今回は変更しない。 |
@@ -76,3 +78,42 @@ Publication依存ファイルの変更によりpolicy fingerprintは変わる。
 - [Integration CI](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35233406988): Python **3.11.16**、**2,702 PASS**（23.17秒）、Synthetic **30 / 30 PASS**をjob logでも確認。
 - [Run269 acquisition smoke](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35233406852): 公開一次情報の取得のみ。Vendor 11件とHackerNews候補20件を確認して**PASS**。公開changelogのネットワーク読み取りは行うが、生成Provider / Notion / noteにはアクセスしない。
 - 最新headの最終CI状態はPRのChecksを正とする。この検証記録の追記は文書のみで、検証済みProductionコードは変更しない。
+
+## 統合後検証（継続監査）
+
+### GitHub mainとCI
+
+- [PR #380](https://github.com/trendhub-ab/ai-intelligence-factory/pull/380): `merged=true`、`draft=false`、2026-09-17 16:22:17 UTC統合済み。再統合操作は不要だった。
+- 統合main: `9296c90a2f4c7953b884800ff3edda177f5cb57a`。親は基準main `c6bb452…` と承認head `a00bcab…`。承認headとの比較はファイル差分0、tree同一。
+- mainのpush CIは最初5成功 / 1失敗。PRでskipされたlive-schema検査により、Technology DBの`情報源 missing=OfficialVendor,X`を初めて実証した。Content DB検査は成功していた。PRのGreenをlive schema適合の証明としない。
+- [Cross DB CI run 35246162966](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35246162966)のattempt 2は成功。job `105292776611`ログでContent DB enum/type、Technology / Decision History DB enum、Evidence Ledger type/Source healthの合格を確認した。Subscriber/Monthlyは運用設定でdisabled、Member jobはこのeventではskip。disabled/skipをlive E2E成功として扱わない。
+- [main regression run 35246162952](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35246162952): Python 3.11.16、**2,705 PASS**（23.23秒）、既存warning 1。Workflow Reference `35246162976`、Repository Falsification `35246162923`、Notion Access `35246162861`、Note Ready Sync `35246162881`も成功。修復後にmainの6実行すべて成功を確認した。
+
+### A10 — schema移行とMember provisioningの不一致
+
+既存Technology / Subscriber / Memberの3 data sourceを事前取得し、旧Source選択肢だけが存在することを確認した。`OfficialVendor` / `X`を各schemaへ追加した。既存`ProductHunt` / `Unknown`を除去せず、事後取得で全既存option ID・色が維持され、Source以外の全schema定義が同一であることを比較した。記事行、本文、Posting Stateは変更していない。
+
+`provision_member_presentation_db._properties_schema()`も旧Source集合を生成していたため、新規DB作成を許可する明示bootstrap経路で同じGuard不合格を再発させる根本原因が残っていた。`tests/test_member_presentation_resolution_guard.py`へ実schema生成→Notion応答型の付与→既存Cross DB enum検査を通す試験を追加し、修正前に`OfficialVendor,X`欠落で**1 FAIL**を確認した。修正後は`ACTIVE_PUBLIC_SOURCES`から不足Sourceだけを補い、旧option順序・色とUnknownを保持して合格する。通常Productionのcanonical DB固定・自動作成禁止、schema GuardやGateは変更しない。
+
+このbootstrap修正はPublication fingerprint対象外。policy hashは引き続き`31a380dd32b6c6dbeaca77a92cfa08cd330b23dcacbd6833ae2dc7db06071df2`で、既存Readyを再認証しない。
+
+### 残存資産・重複・表示
+
+- 退役済み13 Workflowはmainに存在しない。8 GenRec / 5 RubyGemsの退役GuardとGenRec ingress GuardをFull Regressionで実行した。棚卸し詳細は[残存資産参照調査](2026-09-17-retired-assets-inventory.md)。14専用Python、12専用test、6仕様文書を保持し、追加削除0。Run298 helperはRun418/425からも参照され、Run413は共通Reader Summary testが使用する。参照ゼロを作る目的でtestや仕様を削除しない。
+- Acquisition `_response_text`3種はHTTP例外を伝播し、明示text優先、bytesはUTF-8 replacement decode、文字数制限なし。Unicode/不正bytes/空text等の代表fixtureで同じ結果を確認した。ただし各呼出先のドメイン・材料選別・日付/モデル状態判定は異なり、3 moduleがpolicy hash対象である。実証された不具合がなく、統合によるfingerprint移行コストを避け保持した。
+- context/noteの`_rt`はstrip後2,000 Python文字で切る。Member `_rt`は`_norm`が`<br>`を改行へ、連続space/tabを1 spaceへ、3連以上の改行を2連へ変換してから切る。代表fixtureで差異を確認した。Notion JSON型は同じでも公開表示契約を同一視せず保持する。text読取helperもtitle/rich_text/formulaの優先順は共通だが、schema別の呼出境界を保持する。
+- CI PR本文partitionは同じ正規表現・tuple返却を持ち、代表LF fixtureは一致した。任意YAML/CRLFまで同一契約の改善が必要な根拠はなく、Guardごとの診断を維持する。旧note `_visible_count`はcount例外で0/0、最大40、visibility timeout 250ms、要素例外はskipする。同じ本体でもProductionの永続画像判定と履歴DOM診断の外側判定は異なるため統合しない。
+- Screening capは基底round-robinが上限までしか返さず、Run268/367も最終的に同じlimitへ委譲する。legal filterとdedupeは増加しないため、現在の通常経路では後段capは成立しない。将来wrapperや入力契約変更に備える防御コードとして保持し、静的推測だけで削除しない。
+- 表示定義: Telegramの`Ready`はRescue/Fresh/Backlogの保存済み合計、同文中の`試行`はFresh候補loopへ入った件数。Funnelの`deep_dive_candidates_attempted`はrecordされた全候補処理で、Evidenceで送信を回避した候補を含む。どちらもProvider request回数とは異なる。表示変更は品質不具合修正と混ぜず、定義を記録して保持した。
+
+### 最新offline結果と外部操作
+
+- 継続修正後: **2,706 PASS**（44.79秒）、既存Pillow warning 1。ローカルPython 3.12.3、cached test dependencies、pytestの外部network遮断を使用。統合済みmain snapshotの事前試験は**2,705 PASS**。
+- Member/Cross DB/監査関連focused: **51 PASS**。Repository Falsification、Workflow Reference、Notion Accessを含む構造Guard **14 / 14 PASS**。compileall / diff check成功。
+- 現行`production_pipeline.py`のSynthetic smoke: **30 / 30 PASS**、critical failures **0**、`production_write_isolation=true`。
+- 生成Provider / Gemini / Google / Groq / Apify送信 **0**。Notion connector取得 **7回**（接続identity 1 + schema事前3 + 事後3）、schema mutation **3回**（不足option追加のみ）。必要なlive確認はGitHubの失敗schema job再実行**1回**に限定した。CI自身のpublic API schema readはこのconnector7回に含めない。
+- note mutation / 公開 / Daily起動 **0**。Dailyはscheduleなし・job hard-disabledのPAUSEDを維持。過去Run用Pythonは実行しない。
+- 未検証: 実生成Provider障害・実記事Gate・note DOM/セッション/下書き保存、Member全行品質、任意の動的import。3 DBのSource enum事後比較は行ったが、disabled Subscriberとevent-skip Memberのlive全行E2E成功を意味しない。
+- 次の最優先: 修復済みSource schemaを前提に、Member/Subscriberのview-first/read-only契約確認をboundedに行い、その後に試行表示をFresh候補・全候補・Provider送信へ明示分離する。旧資産削除を目的として回帰証拠を失わせない。
+
+継続修正はreview PRで検証してmainへ反映する。上記full SHAは調査対象の統合mainを特定するものとし、文書自身のcommit SHAは自己参照せずGitHubの現行main refと最終統合ログを正とする。
