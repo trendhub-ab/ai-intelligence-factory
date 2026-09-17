@@ -119,6 +119,31 @@ class TemporaryExclusionTests(unittest.TestCase):
             with patch.object(article_revalidation, "_read_current_statuses", return_value=("Needs Editorial Review", status)):
                 self.assertEqual(article_revalidation.select_revalidation_items(p, include_quality_failed=False), [])
 
+    def test_pending_retry_fast_lane_restores_36_after_temporary_exclusion_expiry(self):
+        import pending_retry_validation as fast_lane
+
+        p, calls, *_ = make_pipeline(["ok"])
+        p.logger = Mock()
+        p.DEEP_DIVE_MODEL_POOL = ["gemini-3.6-flash", "gemini-3.5-flash"]
+        p.DEEP_DIVE_MODEL_CANDIDATES = list(p.DEEP_DIVE_MODEL_POOL)
+        p.SCREENING_MODEL_POOL = ["gemini-3.5-flash-lite"]
+        p.SESSION_UNAVAILABLE_MODELS = set()
+        with patch.dict(os.environ, {policy.ENV: "2020-09-16T17:00:00+09:00"}):
+            fast_lane.install_validation_model_exclusions(p)
+            self.assertIn("gemini-3.6-flash", p.DEEP_DIVE_MODEL_POOL)
+            self.assertNotIn("gemini-3.6-flash", p.SESSION_UNAVAILABLE_MODELS)
+            p._generate_via_chat("gemini-3.6-flash", "p")
+        self.assertEqual([c[0] for c in calls], ["gemini-3.6-flash"])
+
+    def test_pending_retry_workflow_does_not_permanently_zero_or_remove_36(self):
+        text = Path(".github/workflows/daily-one-shot.yml").read_text()
+        start = text.index("      - name: Pending Retry fast laneを1回だけ実行")
+        end = text.index("      - name: Portfolio-aware Product Review", start)
+        block = text[start:end]
+        self.assertIn('GEMINI_36_FLASH_DAILY_BUDGET: "18"', block)
+        self.assertIn('GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash"', block)
+        self.assertNotIn('GEMINI_36_FLASH_DAILY_BUDGET: "0"', block)
+
     def test_workflow_deadline_is_job_scoped_and_rescue_is_explicit(self):
         text = Path(".github/workflows/daily-one-shot.yml").read_text()
         self.assertIn("AIIF_GEMINI36_BLOCK_UNTIL: '2026-09-16T17:00:00+09:00'", text)
