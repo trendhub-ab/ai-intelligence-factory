@@ -1,27 +1,26 @@
-"""Bounded recovery policy for transient Gemini provider outages.
+"""Run-local cooldown helper for transient Gemini provider outages.
 
-HTTP 503 is transient, so a single occurrence must not permanently blacklist a
-model for the whole run. Production evidence from ONE-SHOT #14 also proved the
-opposite extreme is too expensive: repeatedly re-probing the same 503ing model
-can consume scarce daily requests without producing a Ready article.
+This module wraps _mark_model_unavailable for callers that still report a raw
+503 reason. In that compatibility path, the first occurrence may remain eligible
+for a later recovery probe and the second occurrence enters run-local cooldown.
 
-Default Production policy:
-- first 503 for a model -> fallback for the current candidate, keep the model
-  eligible for one later recovery probe in the same run;
-- second 503 for the same model -> place that model in run-local cooldown by
-  delegating to the existing SESSION_UNAVAILABLE_MODELS guard;
-- 404 / unsupported model -> hard session unavailable (unchanged);
-- daily quota / persistent safety cap -> session exhausted (unchanged);
-- repeated transport timeout circuit breaker -> session unavailable (unchanged).
+It is not the primary retry policy for every Production request. The authoritative
+transport owner is gemini_provider_resilience: canonical Flash Deep Dive and
+Pending Retry use the Run398 budget-preserving rule in which one structured 503 is
+enough to move to the next distinct model, while Ready Rescue performs no retry or
+fallback. Screening, Product Review and noncanonical/custom paths may still use the
+bounded confirmation behavior defined by the provider-resilience layer.
 
-Narrow validation entrypoints may lower the run-local 503 cooldown threshold when
-their request budget is intentionally tiny. Lowering it never creates a new request
-path; it only stops spending scarce repair capacity on a model that already returned
-503 during that validation run. The normal Production default remains two occurrences.
+Narrow validation entrypoints may lower this helper's cooldown threshold when a raw
+503 marker reaches it. Lowering the threshold never creates a new request path; all
+request and persistent daily budgets remain authoritative.
 
-This module is operational infrastructure, not publication policy. It is kept
-outside the runNNN publication-layer namespace so transport-only changes do not
-invalidate otherwise-current Ready manuscripts.
+404 / unsupported models, daily quota exhaustion, persistent safety caps and
+transport timeout circuits keep their existing fail-closed behavior.
+
+This module is operational infrastructure, not publication policy. It is kept outside
+the runNNN publication-layer namespace so transport-only changes do not by themselves
+re-authorize otherwise-stale Ready manuscripts.
 """
 from __future__ import annotations
 
