@@ -74,10 +74,6 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
             + "dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"
         )
 
-    # Run378: the 03:00 real article reached Ready although its final diagnostics still reported
-    # Accessibility=REVIEW, Opening Non-Engineer Access=REVIEW, Plain-Language Bridge=REVIEW and
-    # Information Budget=REVIEW. Treat this corroborated combination as a reader-comprehension
-    # review, not a style warning. Technical density alone never triggers this condition.
     access_corroboration = sum(
         bool(value)
         for value in (
