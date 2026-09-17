@@ -59,9 +59,9 @@ class ReaderReadyGuardTests(unittest.TestCase):
             gr.GATE_DISPOSITION_REVIEW,
         )
 
-    def test_specialist_article_with_real_reader_bridges_is_not_blocked(self):
+    def test_specialist_accessibility_review_alone_is_not_blocked(self):
         signals = {
-            "accessibility": "GOOD",
+            "accessibility": "REVIEW",
             "reader_enjoyment": "GOOD",
             "narrative_pull": "GOOD",
             "information_budget": "GOOD",
