@@ -119,6 +119,21 @@ class TemporaryExclusionTests(unittest.TestCase):
             with patch.object(article_revalidation, "_read_current_statuses", return_value=("Needs Editorial Review", status)):
                 self.assertEqual(article_revalidation.select_revalidation_items(p, include_quality_failed=False), [])
 
+    def test_pending_retry_fast_lane_still_blocks_36_while_exclusion_is_active(self):
+        import pending_retry_validation as fast_lane
+
+        p, calls, *_ = make_pipeline(["must not send"])
+        p.logger = Mock()
+        p.DEEP_DIVE_MODEL_POOL = ["gemini-3.6-flash", "gemini-3.5-flash"]
+        p.DEEP_DIVE_MODEL_CANDIDATES = list(p.DEEP_DIVE_MODEL_POOL)
+        p.SCREENING_MODEL_POOL = ["gemini-3.5-flash-lite"]
+        p.SESSION_UNAVAILABLE_MODELS = set()
+        fast_lane.install_validation_model_exclusions(p)
+        self.assertNotIn("gemini-3.6-flash", p.DEEP_DIVE_MODEL_POOL)
+        self.assertIn("gemini-3.6-flash", p.SESSION_UNAVAILABLE_MODELS)
+        with self.assertRaisesRegex(p.NoAvailableModelError, "temporarily excluded"):
+            p._generate_via_chat("gemini-3.6-flash", "p")
+        self.assertEqual(calls, [])
     def test_pending_retry_fast_lane_restores_36_after_temporary_exclusion_expiry(self):
         import pending_retry_validation as fast_lane
 
