@@ -1,3 +1,5 @@
+"""Run378 zero-API regression coverage for the corroborated Reader Ready guard."""
+
 import unittest
 
 import gate_reasoning as gr
