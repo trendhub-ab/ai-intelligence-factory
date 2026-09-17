@@ -61,7 +61,7 @@ Publication依存ファイルの変更によりpolicy fingerprintは変わる。
 - 修正後全件・Guard・Synthetic smoke・self-testの最終結果は下記追記欄に記録する。
 - 独立レビューではさらにRescue 1件 + Fresh 2件の実main経路をofflineで実行し、Ready合計3、候補順位2 / 3、記事目標3、使用数3 / 総上限12、正常な通知を確認した。
 - ローカルはPython **3.12.3**とcached locked dependenciesを使用。Required CIのPython **3.11.16**はGitHub側で確認する。Pillowの既存`getdata()` deprecation warningはbaselineにも存在する。
-- Gemini / Google / Groq / Apify送信0。Notion mutation0、note mutation0。ProductionのDaily / validation workflowは未起動。
+- Gemini / Google / Groqの生成API・Apify送信0。Notion mutation0、note mutation0。ProductionのDaily / validation workflowは未起動。
 
 ### 最終結果
 
@@ -72,4 +72,7 @@ Publication依存ファイルの変更によりpolicy fingerprintは変わる。
 - Regression harness self-test: **PASS**。
 - 最終独立レビュー: **102 focused tests PASS**。末尾dot・不正URL・正常一次情報の追加offline確認を含め、修正差分に新たなCritical / Important指摘なし。
 - Publication policy hash: `31a380dd32b6c6dbeaca77a92cfa08cd330b23dcacbd6833ae2dc7db06071df2`。
-- GitHub側のPython 3.11.16を含む最終CI状態は、この変更を提出したPRのChecksを正とする。ローカル試験をremote CI成功の代用にはしない。
+- [PR #380](https://github.com/trendhub-ab/ai-intelligence-factory/pull/380)のコード変更commit `74febf786e913594cf9b0cb7b25e642a395a7ed0`: GitHub CI **6 / 6 SUCCESS**。実Notionを扱う2 jobはPR条件により**SKIPPED**。
+- [Integration CI](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35233406988): Python **3.11.16**、**2,702 PASS**（23.17秒）、Synthetic **30 / 30 PASS**をjob logでも確認。
+- [Run269 acquisition smoke](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35233406852): 公開一次情報の取得のみ。Vendor 11件とHackerNews候補20件を確認して**PASS**。公開changelogのネットワーク読み取りは行うが、生成Provider / Notion / noteにはアクセスしない。
+- 最新headの最終CI状態はPRのChecksを正とする。この検証記録の追記は文書のみで、検証済みProductionコードは変更しない。

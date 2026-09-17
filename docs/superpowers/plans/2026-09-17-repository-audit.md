@@ -89,4 +89,4 @@ Files: `.github/workflows/daily-one-shot.yml`, audit tests.
 - [x] Full deterministic pytest (2,702 PASS), compileall, 14 structural guards, assembled Production synthetic smoke (30/30), and regression self-test.
 - [x] Independent review of the concrete diff; fix any reproduced review findings.
 - [x] Update canonical spec and audit report with severity, evidence, remaining risks, and validation limits.
-- [ ] Submit fixes on a reviewable PR and confirm remote zero-API CI. Do not claim real API or note E2E success from offline results.
+- [x] Submit fixes on reviewable PR #380 and confirm remote zero-provider CI: 2,702 PASS on Python 3.11.16, smoke 30/30, six successful CI checks on code commit 74febf786e913594cf9b0cb7b25e642a395a7ed0. Live Notion jobs skipped. Do not claim real generation or note E2E success.
