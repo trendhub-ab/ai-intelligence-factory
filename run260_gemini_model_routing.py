@@ -426,19 +426,23 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
 
-    try:
-        requested_budget = int(os.environ.get("GEMINI_38_FLASH_DAILY_BUDGET", str(DEFAULT_FLASH_SAFETY_BUDGET)))
-    except (TypeError, ValueError):
-        requested_budget = DEFAULT_FLASH_SAFETY_BUDGET
-    quality_budget = max(0, min(DEFAULT_FLASH_SAFETY_BUDGET, requested_budget))
+    requested_budgets: dict[str, int] = {}
+    for model_name, env_name in (
+        ("gemini-3.7-flash", "GEMINI_37_FLASH_DAILY_BUDGET"),
+        ("gemini-3.8-flash", "GEMINI_38_FLASH_DAILY_BUDGET"),
+    ):
+        try:
+            requested = int(os.environ.get(env_name, str(DEFAULT_FLASH_SAFETY_BUDGET)))
+        except (TypeError, ValueError):
+            requested = DEFAULT_FLASH_SAFETY_BUDGET
+        requested_budgets[model_name] = max(0, min(DEFAULT_FLASH_SAFETY_BUDGET, requested))
+
     model_budgets = getattr(pipeline_module, "MODEL_DAILY_BUDGETS", None)
     if isinstance(model_budgets, dict):
-        model_budgets["gemini-3.8-flash"] = quality_budget
-        model_budgets["gemini-3.7-flash"] = quality_budget
+        model_budgets.update(requested_budgets)
     persistent = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if persistent is not None and isinstance(getattr(persistent, "model_budgets", None), dict):
-        persistent.model_budgets["gemini-3.8-flash"] = quality_budget
-        persistent.model_budgets["gemini-3.7-flash"] = quality_budget
+        persistent.model_budgets.update(requested_budgets)
 
     history, state_sha = _load_provider_health_history(pipeline_module)
     pipeline_module._provider_health_history = list(history)
