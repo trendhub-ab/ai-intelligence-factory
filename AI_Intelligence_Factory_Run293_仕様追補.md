@@ -1,5 +1,11 @@
 # AI Intelligence Factory Run293 仕様追補
 
+## 2026-09-18 現在
+
+Run293以下に記載するGenRec監査・診断は当時の検証履歴である。固定GenRec監査の再実行は現行工程ではない。PR #387で固定ChatOps入口を退役し、現在は監査対象が存在する場合に限り、手動 `workflow_dispatch` で `exact sync_id` を明示するread-only監査を使用する。
+
+旧GenRec専用の再実行・修復経路を、現在のReady在庫がない状態で再開してはならない。
+
 ## 目的
 Run292で本文比較の期待値生成をnote貼付時と同一レンダラへ統一した後も、既存GenRec private draftのread-only監査は `non_body_guard_failed` でFail-Closedした。
 Run293は監査Gateを緩めず、固定された非本文エラーだけを安全なカテゴリコードへ変換し、どの実画面Gateが停止理由かを未公開本文・タイトル・draft URLを露出せず特定可能にする。
@@ -42,6 +48,6 @@ Run293は以下を変更しない。
 4. VMは監査成否にかかわらず従来どおり`always()`経路で停止する。
 5. Run292のrenderer-faithful本文比較Gateはそのまま維持する。
 
-## 次工程
+## 当時の次工程（履歴）
 Run293をCIで反証後にmainへmergeし、GenRec既存private draftへread-only監査を1回だけ再実行する。
 診断コードが記事内容・表示構造側の修復を要求する場合のみ、その原因に対して最小修正を行う。Gemini APIは必要性が確定した場合に限り使用し、監査原因の特定目的では消費しない。
