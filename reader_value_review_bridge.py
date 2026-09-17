@@ -74,6 +74,9 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
             + "dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"
         )
 
+    # The Run66/03:00 specimen was READY while Accessibility, opening access, the plain-language
+    # bridge and information budget were all still REVIEW. Require corroboration so one isolated
+    # specialist-density warning cannot by itself become a publication stop.
     access_corroboration = sum(
         bool(value)
         for value in (
