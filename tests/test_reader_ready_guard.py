@@ -72,6 +72,19 @@ class ReaderReadyGuardTests(unittest.TestCase):
         p = DummyPipeline(signals=signals)
         self.assertEqual(bridge._material_reader_value_issues(p, "technical article"), [])
 
+    def test_accessibility_plus_only_one_companion_review_is_not_blocked(self):
+        signals = {
+            "accessibility": "REVIEW",
+            "reader_enjoyment": "GOOD",
+            "narrative_pull": "GOOD",
+            "information_budget": "GOOD",
+            "reader_temperature_rhythm": "GOOD",
+            "opening_non_engineer_access": "REVIEW",
+            "plain_language_bridge": "GOOD",
+        }
+        p = DummyPipeline(signals=signals)
+        self.assertEqual(bridge._material_reader_value_issues(p, "technical article"), [])
+
     def test_style_only_human_appeal_weak_stays_warning_not_reader_block(self):
         p = DummyPipeline(human_state="WEAK", human_issues=["headline_flattened"])
         bridge.install(p)
