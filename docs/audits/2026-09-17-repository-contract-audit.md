@@ -111,6 +111,7 @@ Publication依存ファイルの変更によりpolicy fingerprintは変わる。
 - 継続修正後: **2,706 PASS**（44.79秒）、既存Pillow warning 1。ローカルPython 3.12.3、cached test dependencies、pytestの外部network遮断を使用。統合済みmain snapshotの事前試験は**2,705 PASS**。
 - Member/Cross DB/監査関連focused: **51 PASS**。Repository Falsification、Workflow Reference、Notion Accessを含む構造Guard **14 / 14 PASS**。compileall / diff check成功。
 - 現行`production_pipeline.py`のSynthetic smoke: **30 / 30 PASS**、critical failures **0**、`production_write_isolation=true`。
+- 継続修正の[PR #381](https://github.com/trendhub-ab/ai-intelligence-factory/pull/381)、コードhead `8898680d310b5d19600acb779e19047ed753e9bb`: CI **4 / 4 SUCCESS**。Workflow Reference単独Workflowはpath条件で起動しないが、Repository Falsification CI内のReference Guardと全件回帰で合格した。[Integration run 35248551079](https://github.com/trendhub-ab/ai-intelligence-factory/actions/runs/35248551079)のjob `105294840248`ログでPython **3.11.16**、**2,706 PASS**（17.22秒）、Production Synthetic **30 / 30 PASS**、critical 0、write isolation trueを確認した。独立レビューもfocused **51 PASS**、Critical/Important指摘なし。文書追記後の最新状態はPR Checksを正とする。
 - 生成Provider / Gemini / Google / Groq / Apify送信 **0**。Notion connector取得 **7回**（接続identity 1 + schema事前3 + 事後3）、schema mutation **3回**（不足option追加のみ）。必要なlive確認はGitHubの失敗schema job再実行**1回**に限定した。CI自身のpublic API schema readはこのconnector7回に含めない。
 - note mutation / 公開 / Daily起動 **0**。Dailyはscheduleなし・job hard-disabledのPAUSEDを維持。過去Run用Pythonは実行しない。
 - 未検証: 実生成Provider障害・実記事Gate・note DOM/セッション/下書き保存、Member全行品質、任意の動的import。3 DBのSource enum事後比較は行ったが、disabled Subscriberとevent-skip Memberのlive全行E2E成功を意味しない。
