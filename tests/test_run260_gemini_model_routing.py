@@ -246,6 +246,22 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             run260.install(module)
         self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3.8-flash"], 7)
 
+    def test_37_and_38_daily_budgets_are_independent(self):
+        module, _, _ = self._fake_pipeline()
+        with patch.dict(
+            os.environ,
+            {
+                "GEMINI_37_FLASH_DAILY_BUDGET": "13",
+                "GEMINI_38_FLASH_DAILY_BUDGET": "7",
+            },
+            clear=False,
+        ):
+            run260.install(module)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3.7-flash"], 13)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3.8-flash"], 7)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3.7-flash"], 13)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3.8-flash"], 7)
+
     def test_screening_pool_and_gate_surfaces_are_not_touched(self):
         module, _, _ = self._fake_pipeline()
         module.SCREENING_MODEL_POOL = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
