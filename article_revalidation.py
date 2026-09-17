@@ -14,6 +14,8 @@ new source/evidence event. Pending Retry keeps its dedicated operational lane.
 """
 from __future__ import annotations
 
+from pending_retry_validation import classify_nonpersistent_report
+
 import os
 from typing import Any
 
@@ -132,9 +134,9 @@ def run_article_revalidation(pipeline, limit: int | None = None) -> dict[str, An
         raise RuntimeError("Article revalidation candidate read failed")
     if not items:
         pipeline.logger.info("[ARTICLE REVALIDATION] no eligible existing non-Ready Deep Dive candidate")
-        return {"selected": 0, "generated": 0, "accepted": 0, "rejected": 0}
+        return {"selected": 0, "generated": 0, "accepted": 0, "rejected": 0, "unverified": 0}
 
-    result = {"selected": len(items), "generated": 0, "accepted": 0, "rejected": 0}
+    result = {"selected": len(items), "generated": 0, "accepted": 0, "rejected": 0, "unverified": 0}
     for index, item in enumerate(items, start=1):
         repo = item.get("repo") or {}
         name = repo.get("nameWithOwner") or "unknown"
@@ -165,17 +167,20 @@ def run_article_revalidation(pipeline, limit: int | None = None) -> dict[str, An
             break
         if not generated:
             continue
-        manuscript, status = generated if isinstance(generated, tuple) else (generated, "accepted")
+        status = classify_nonpersistent_report(generated)
+        manuscript = generated[0] if isinstance(generated, tuple) and generated else generated
         result["generated"] += 1
         if status == "accepted":
             result["accepted"] += 1
-        else:
+        elif status == "rejected":
             result["rejected"] += 1
+        else:
+            result["unverified"] += 1
         pipeline.logger.info(
             "[ARTICLE REVALIDATION RESULT] %s status=%s chars=%s",
             name,
             status,
-            len(manuscript or ""),
+            len(str(manuscript or "")),
         )
 
     pipeline.logger.info("[ARTICLE REVALIDATION COMPLETE] %s", result)

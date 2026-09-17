@@ -425,7 +425,23 @@ jobs:
           fi
           failed=0
           if [ "${VALIDATION_MODE:-}" = "ready_rescue_validation" ]; then
-            python -c 'import json,sys; sys.exit(0 if json.load(open("article_audit/ready_rescue_validation.json"))["ready"] >= 1 else 1)' || exit 0
+            if ! ready_count="$(python - <<'PY'
+          import json
+          with open("article_audit/ready_rescue_validation.json", encoding="utf-8") as handle:
+              result = json.load(handle)
+          ready = result["ready"]
+          if type(ready) is not int or ready < 0:
+              raise ValueError("Ready Rescue audit requires a nonnegative integer ready count")
+          print(ready)
+          PY
+            )"; then
+              echo "::error::Ready Rescue audit missing or invalid; downstream fan-out refused"
+              exit 1
+            fi
+            if [ "$ready_count" -eq 0 ]; then
+              echo "Ready Rescue produced no Ready article; downstream synchronization skipped."
+              exit 0
+            fi
             gh workflow run note-ready-sync.yml --ref main -f create_private_draft=true
             exit $?
           fi

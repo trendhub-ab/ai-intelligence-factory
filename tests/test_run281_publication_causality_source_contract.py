@@ -51,7 +51,7 @@ class Run281SourceContractTests(unittest.TestCase):
     def test_active_public_source_contract_has_official_vendor_and_no_product_hunt(self) -> None:
         self.assertEqual(
             set(source_contract.ACTIVE_PUBLIC_SOURCES),
-            {"GitHub", "HackerNews", "ArXiv", "OfficialVendor"},
+            {"GitHub", "HackerNews", "ArXiv", "OfficialVendor", "X"},
         )
         self.assertIn("OfficialVendor", source_contract.SOURCE_RIGHTS_NOTE)
         self.assertNotIn("ProductHunt", source_contract.ACTIVE_PUBLIC_SOURCES)

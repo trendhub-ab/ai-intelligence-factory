@@ -71,7 +71,7 @@ else:
     from google.genai.errors import APIError
 import decision_intelligence as decision_intelligence
 import evidence_ledger
-from evidence_authority import classify_evidence, authority_rank
+from evidence_authority import classify_evidence, authority_rank, is_x_discovery_url
 from product_delivery_maintenance import (
     current_month_id as _current_month_id_impl,
     previous_month_id as _previous_month_id_impl,
@@ -2986,6 +2986,9 @@ def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int
     current_url = url
     max_redirects = 4
     for redirect_count in range(max_redirects + 1):
+        if is_x_discovery_url(current_url):
+            logger.warning("[SOURCE FETCH DISCOVERY ONLY] raw X material refused: %s", current_url)
+            return b"", "", current_url
         try:
             _validate_public_http_url(current_url)
         except ValueError as exc:
@@ -3016,6 +3019,9 @@ def _http_get_limited(url: str, accepted_types: tuple[str, ...], byte_limit: int
 
                 content_type = ((getattr(res, "headers", {}) or {}).get("Content-Type") or "").lower()
                 final_url = getattr(res, "url", None) or current_url
+                if is_x_discovery_url(final_url):
+                    logger.warning("[SOURCE FETCH DISCOVERY ONLY] resolved X material refused: %s", final_url)
+                    return b"", content_type, final_url
                 # Adapter/proxy等でurlが変わって返る場合も最終URLを再確認する。
                 try:
                     _validate_public_http_url(final_url)
@@ -9732,6 +9738,10 @@ def main():
         run_regen_test_mode()
         return
     funnel = reset_deep_dive_gate_funnel()
+    # Rescue belongs to this initialized run. Carry its actual persisted Ready count
+    # into acquisition/backlog instead of running before audit/style/funnel resets.
+    rescue_preflight = globals().get("_run374_ready_rescue_preflight")
+    generated_count, next_candidate_rank = rescue_preflight() if callable(rescue_preflight) else (0, 0)
     source_roi_state = load_source_roi_state()
     source_roi_profile = compute_source_roi_profile(source_roi_state)
     source_fetch_limits = allocate_source_fetch_limits(source_roi_profile, MAX_SCREENING_CANDIDATES)
@@ -9742,8 +9752,6 @@ def main():
         # The later full dedupe query remains the authoritative fail-closed check.
         logger.warning("[PENDING RETRY] read failed; skip backlog recovery and continue fresh acquisition")
         pending_items = []
-    next_candidate_rank = 0
-
     check_stale_content()
 
     github_items = fetch_github_trending(source_fetch_limits.get("GitHub", GITHUB_FETCH_LIMIT))
@@ -9800,7 +9808,7 @@ def main():
         deduped_repos.append(repo)
     if not deduped_repos:
         logger.info("本日は新規候補が0件でした。Backlogから公開可能記事を救済します。")
-        generated_count, next_candidate_rank = process_article_backlog(pending_items, 0, next_candidate_rank)
+        generated_count, next_candidate_rank = process_article_backlog(pending_items, generated_count, next_candidate_rank)
         run_product_reviews()
         source_roi_state = update_source_roi_state(source_roi_state, [], funnel)
         run_product_delivery_maintenance()
@@ -9873,7 +9881,6 @@ def main():
         return
 
     # TOP_Nは『候補数』ではなく『最大成功記事数』。失敗時は4位・5位へBackfillする。
-    generated_count = 0
     attempted = 0
     # Deep Diveは3層設計上「Stocked上位」だけを対象にする。Score条件を満たしても
     # Notion Stock永続化に失敗した候補へGeminiを追加消費しない。保存失敗候補はDBに

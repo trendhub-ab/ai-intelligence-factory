@@ -44,6 +44,7 @@ REQUIRED_PUBLICATION_DEPENDENCIES = (
 
 # Narrow exemptions only. Any newly imported local module is untrusted by default.
 EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
+    "pending_retry_validation.py": "bounded nonpersistent validation controller; canonical Production generation owns quality gates and bytes",
     "gemini_temporary_exclusion.py": "expiry-bound provider admission only; no public-byte or quality-gate policy",
     "ready_rescue_validation.py": "bounded ONE-SHOT orchestration only; canonical generation owns gates and persistence",
     "product_delivery_maintenance.py": "member/product maintenance only",

@@ -23,9 +23,10 @@ import requests
 
 import decision_intelligence as di
 import member_presentation_sync as mps
+from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 
 
-SOURCE_OPTIONS = {"GitHub", "HackerNews", "ArXiv", "ProductHunt", "Unknown"}
+SOURCE_OPTIONS = set(ACTIVE_PUBLIC_SOURCES) | {"Unknown"}
 CATEGORY_OPTIONS = {
     "MODEL",
     "AGENT",

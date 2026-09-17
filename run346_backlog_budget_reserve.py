@@ -82,7 +82,7 @@ def install(pipeline):
     pipeline.process_article_backlog = process_article_backlog_with_reserved_budget
 
     # Install after Run346 so Run374 sees the partitioned Fresh cap, can offer its single
-    # preflight slot before main(), and can still wrap the final backlog surface.
+    # preflight slot before fresh acquisition, and can still wrap the final backlog surface.
     import run374_ready_rescue
     run374_ready_rescue.install(pipeline)
 

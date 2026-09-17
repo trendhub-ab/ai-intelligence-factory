@@ -109,7 +109,7 @@ def test_revalidation_is_read_only_and_bounded(monkeypatch):
 
     result = article_revalidation.run_article_revalidation(pipeline, limit=1)
 
-    assert result == {"selected": 1, "generated": 1, "accepted": 1, "rejected": 0}
+    assert result == {"selected": 1, "generated": 1, "accepted": 1, "rejected": 0, "unverified": 0}
     assert pipeline.DEEP_DIVE_MODEL_BUDGET.budget == 4
     assert len(generated_calls) == 1
     kwargs = generated_calls[0][1]

@@ -201,33 +201,27 @@ def run_reserved_ready_rescue(pipeline: Any, generated_count: int, next_candidat
 
 
 def _install_ready_rescue_preflight(pipeline: Any) -> None:
-    """Offer the reserved rescue slot before fresh provider calls.
+    """Offer rescue after run initialization and before fresh provider calls.
 
     If that single request is consumed, shift the Fresh cumulative cap by the same one
-    request so Fresh still owns eight requests. If the rescue produced an article, reduce
-    only the downstream article target for this invocation so the total article target is
-    not inflated.
+    request so Fresh still owns eight requests. Return its Ready count and candidate
+    rank to the normal loop, preserving the total target, audit artifacts and funnel.
+    Wrapping main before its resets erased the rescue's audit and delivery accounting.
     """
-    original_main = getattr(pipeline, "main", None)
-    if not callable(original_main) or getattr(pipeline, _MAIN_PREFLIGHT_FLAG, False):
+    if getattr(pipeline, _MAIN_PREFLIGHT_FLAG, False):
         return
 
-    @wraps(original_main)
-    def main_with_ready_rescue(*args, **kwargs):
-        if bool(getattr(pipeline, "PUBLIC_DB_SYNC_MODE", False)) or bool(
-            getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)
-        ):
-            return original_main(*args, **kwargs)
+    def ready_rescue_preflight() -> tuple[int, int]:
         reserved = max(0, int(getattr(pipeline, "_run374_ready_rescue_reserved_requests", 0) or 0))
         budget = getattr(pipeline, "DEEP_DIVE_MODEL_BUDGET", None)
         original_cap = max(0, int(getattr(pipeline, "_run346_original_deep_dive_budget", 0) or 0))
         original_target = max(0, int(getattr(pipeline, "TOP_N_FOR_DEEP_DIVE", 0) or 0))
         if reserved <= 0 or budget is None or original_cap <= 0 or original_target <= 0:
-            return original_main(*args, **kwargs)
+            return 0, 0
 
         fresh_cap = max(0, int(getattr(budget, "budget", 0) or 0))
         used_before = max(0, int(getattr(budget, "used", 0) or 0))
-        pre_generated, _ = run_reserved_ready_rescue(pipeline, 0, 0)
+        pre_generated, next_rank = run_reserved_ready_rescue(pipeline, 0, 0)
         used_after = max(0, int(getattr(budget, "used", used_before) or 0))
         consumed = max(0, used_after - used_before)
         pre_generated = max(0, min(original_target, int(pre_generated or 0)))
@@ -245,17 +239,9 @@ def _install_ready_rescue_preflight(pipeline: Any) -> None:
                 consumed, pre_generated, fresh_cap, getattr(budget, "budget", 0), original_target,
             )
 
-        if pre_generated <= 0:
-            return original_main(*args, **kwargs)
+        return pre_generated, next_rank
 
-        # Count a successful preflight article against the same per-run delivery target.
-        pipeline.TOP_N_FOR_DEEP_DIVE = max(0, original_target - pre_generated)
-        try:
-            return original_main(*args, **kwargs)
-        finally:
-            pipeline.TOP_N_FOR_DEEP_DIVE = original_target
-
-    pipeline.main = main_with_ready_rescue
+    pipeline._run374_ready_rescue_preflight = ready_rescue_preflight
     setattr(pipeline, _MAIN_PREFLIGHT_FLAG, True)
 
 
