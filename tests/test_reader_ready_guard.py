@@ -97,6 +97,8 @@ class ReaderReadyGuardTests(unittest.TestCase):
         self.assertEqual(gr.gate_reason_disposition(rows), gr.GATE_DISPOSITION_PASS_WITH_WARNINGS)
 
     def test_direct_bridge_keeps_reader_only_review_zero_spend(self):
+        # The later Run208/Run360 production layer owns the bounded Reader Repair. The historical
+        # bridge itself must keep reader-only rows at zero spend so retry ownership is not duplicated.
         p = DummyPipeline()
         bridge.install(p)
         rows = [{
