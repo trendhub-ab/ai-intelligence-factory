@@ -5,10 +5,10 @@ an independent production stack. Direct execution delegates to production_pipeli
 manual/regression callers cannot accidentally run only Run172 + the historical reader bridge
 while bypassing later fact, eyecatch, funnel, and publication-integrity layers.
 
-Run378 closes a production-only Reader Ready gap exposed by the 03:00/06:00 real drafts:
-reader weakness may stay cheap to detect, but it may no longer be silently promoted to Ready.
-The guard remains zero-API. Reader-only REVIEW can use the already-existing bounded retry path;
-SOFT-only style debt still does not spend a model call by itself.
+Run378 closes the Reader Ready gap exposed by the 03:00 real draft with one zero-API,
+corroborated non-engineer-access guard. Retry ownership is intentionally unchanged here:
+this historical bridge still refuses reader-only retry spend, while the later Run208/Run360
+production layer remains the sole bounded Reader Repair owner when Evidence is safe.
 """
 from __future__ import annotations
 
@@ -113,9 +113,9 @@ def _row_is_reader_value(row: dict) -> bool:
 def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> str:
     """Return local repair guidance only for failure classes actually present.
 
-    Reader-value guidance here never creates an unbounded retry. Run378 allows reader-only
-    REVIEW/HARD reasons to use the pipeline's already-existing bounded retry policy, while
-    reader-only SOFT style debt still cannot spend a model call by itself.
+    Reader-value guidance here never authorizes a new retry. It only rides along when the
+    existing quality policy has already decided to spend a retry for another repairable
+    blocking issue, so Reader-first quality improves without increasing model-call count.
 
     Run404 makes a combined retry deterministic in intent: if Decision/Score narrative
     alignment and reader-density defects coexist, align the reader-visible urgency first
@@ -138,7 +138,6 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
         "dense_report_cluster" in messages
         or "multi_axis_reader_weakness" in messages
         or "non_engineer_access_failure" in messages
-        or "human_appeal_weak" in messages
     )
 
     if score_mismatch and reader_density:
@@ -184,7 +183,7 @@ def _retry_yield_guardrails(pipeline_module: Any, reason_rows: list[dict]) -> st
             "Run405 Paragraph Budget：段落の文章量・専門概念・箇条書きの項目数は、読者が核心・制約・判断を理解するために必要かで決めます。"
             "必要な専門語は初出で役割を平易に示し、不要な再定義や重複は削ります。個数上限のために必要な説明・条件を落とさないでください。"
         )
-    if "multi_axis_reader_weakness" in messages or "non_engineer_access_failure" in messages or "human_appeal_weak" in messages:
+    if "multi_axis_reader_weakness" in messages or "non_engineer_access_failure" in messages:
         additions.append(
             "Reader Value修正では、既存Evidence・Decision・数値・制約を変えず、非専門読者が核心へ到達できない箇所だけを"
             "平易化してください。専門語を連続させず、必要なら同じ事実の短い役割説明を初出で1回だけ置き、報告書調の前置き・"
@@ -216,14 +215,6 @@ def install(pipeline_module: Any) -> Any:
             issues.extend(x for x in reader_issues if x not in issues)
             if state == "ACCEPTABLE":
                 state = "WEAK"
-
-        # Run378: WEAK is not publish-ready. Convert the state into an explicit Reader reason so
-        # gate_reasoning classifies it as REVIEW. This does not make style stricter by itself;
-        # it only prevents the contradictory state "Human Appeal=WEAK but article=Ready".
-        if state != "ACCEPTABLE":
-            weak_issue = READER_VALUE_MARKER + "human_appeal_weak"
-            if weak_issue not in issues:
-                issues.append(weak_issue)
         return state, issues
 
     def should_attempt_dynamic_retry_without_reader_only_spend(
@@ -238,23 +229,11 @@ def install(pipeline_module: Any) -> Any:
                 if not _row_is_reader_value(row)
                 and row.get("severity")
                 in {
-                    getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD_BLOCK"),
+                    getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"),
                     getattr(pipeline_module, "GATE_SEVERITY_REVIEW", "REVIEW"),
                 }
             ]
-            reader_blocking = [
-                row
-                for row in reader_rows
-                if row.get("severity")
-                in {
-                    getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD_BLOCK"),
-                    getattr(pipeline_module, "GATE_SEVERITY_REVIEW", "REVIEW"),
-                }
-            ]
-            # Reader-only SOFT warnings remain zero-spend. Reader-only REVIEW/HARD now delegates
-            # to the existing bounded retry owner (Run208/Run360), so no new quota or retry loop
-            # is introduced here.
-            if not non_reader_blocking and not reader_blocking:
+            if not non_reader_blocking:
                 return False, "reader_value_review_no_retry"
         return original_retry_policy(rows, evidence_result, candidate_origin)
 
