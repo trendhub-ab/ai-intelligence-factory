@@ -4,6 +4,11 @@ This module remains an installable editorial layer, but its standalone entrypoin
 an independent production stack. Direct execution delegates to production_pipeline.main so
 manual/regression callers cannot accidentally run only Run172 + the historical reader bridge
 while bypassing later fact, eyecatch, funnel, and publication-integrity layers.
+
+Run378 closes the Reader Ready gap exposed by the 03:00 real draft with one zero-API,
+corroborated non-engineer-access guard. Retry ownership is intentionally unchanged here:
+this historical bridge still refuses reader-only retry spend, while the later Run208/Run360
+production layer remains the sole bounded Reader Repair owner when Evidence is safe.
 """
 from __future__ import annotations
 
@@ -43,7 +48,13 @@ PRODUCTION_YIELD_CONTRACT = r"""
 
 
 def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[str]:
-    """Return only high-confidence reader-value failures from existing 0-API signals."""
+    """Return high-confidence reader-value failures from existing zero-API signals.
+
+    Run378 adds a corroborated non-engineer-access guard. A specialist article is still free to
+    keep necessary terminology; the guard fires only when the canonical Accessibility signal is
+    already REVIEW and at least two independent reader-access diagnostics agree. This catches the
+    observed production failure without turning raw jargon density into a blanket rejection rule.
+    """
     if not article:
         return []
     signals = pipeline_module._reader_experience_signals(article)
@@ -62,6 +73,25 @@ def _material_reader_value_issues(pipeline_module: Any, article: str) -> list[st
             READER_VALUE_MARKER
             + "dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"
         )
+
+    # The Run66/03:00 specimen was READY while Accessibility, opening access, the plain-language
+    # bridge and information budget were all still REVIEW. Require corroboration so one isolated
+    # specialist-density warning cannot by itself become a publication stop.
+    access_corroboration = sum(
+        bool(value)
+        for value in (
+            signals.get("opening_non_engineer_access") == "REVIEW",
+            signals.get("plain_language_bridge") == "REVIEW",
+            signals.get("information_budget") == "REVIEW",
+            signals.get("reader_enjoyment") == "REVIEW",
+        )
+    )
+    if signals.get("accessibility") == "REVIEW" and access_corroboration >= 2:
+        issues.append(
+            READER_VALUE_MARKER
+            + "non_engineer_access_failure (Accessibility/Opening/Plain-Language/Information Budget)"
+        )
+
     severe_flags = (
         ("warm_hook_cold_body", "warm_hook_cold_body"),
         ("analogy_substance_thin", "analogy_substance_thin"),
