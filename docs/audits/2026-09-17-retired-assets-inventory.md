@@ -72,3 +72,83 @@ import closureはAST importとリテラルmodule参照、Workflowのscript/modul
 ### 削除前提ではないもの
 
 branch refの整理と、mainに残るRun297〜302 helper/testの削除可否は別問題である。main側のhelper/testは本監査文書冒頭のとおり、現行テスト・後続helperから参照されるものがあり、branch削除を理由に削除しない。
+
+
+## 2026-09-18 Run300〜399 / legacy branch監査
+
+現行main `612bf0d7dcd93e1edaa37d52ab5ad799346b0ee6` を基準に、Run300〜399系111 branchと、旧Groq/X/cleanup/audit系branchをGitHub PR履歴・現在HEAD・後続superseding PRで照合した。
+
+### Run300〜399
+
+111 branchのうち107本を削除候補、4本を保持と判定した。
+
+削除候補の基本条件:
+- branchに対応する最新PRがmerge済みで、現在branch HEADがそのPR HEADと一致する。
+- または、未merge/PRなしでも後続の正式merge済みPRが同一機能を置換し、main側に主要実装が残ることを確認できる。
+
+特記事項:
+- `run308-public-copy-alignment`: PR #205は未mergeだが、同目的を2 docsだけで再構成したPR #206がmerge済み。削除候補。
+- `run315-exact-body-replace-fix`: PRなし。主要Python `run315_member_onboarding_update.py` はmainとbyte-identical。Workflow/Testはmain側が後続修正済み。削除候補。
+- `run317-onboarding-server-save`: PRなし。主要Python/Workflow/Testはmainとbyte-identical。正式なPR #225もmerge済み。削除候補。
+- `run328-profile-settings-probe`: PR #241は未mergeだが、PR #242が「#241と同一挙動をcurrent mainから再作成したsuperseding PR」と明記してmerge済み。削除候補。
+- `dev/run361-result-contract`: branchはPR #288後も進んだが、最新HEADはPR #289としてmerge済み。削除候補。
+
+保持:
+- `backup/gemini-only-run359-20260912`
+- `backup/gemini-run356-966a0f1`
+- `backup/gemini-only-run360-20260912`
+- `fix/run367-readonly-audit-reader-conflict` — PR #304は未mergeのまま2026-09-18にsupersededとしてclose。53 files / 135 commitsの独自監査・実装を持つため、branch refは履歴保全目的で残す。
+
+したがって、上記4本を除くRun300〜399監査対象branchは削除候補である。branch削除はGitHub connectorにdelete-ref actionがないため、この監査では実行していない。
+
+### 旧Groq branch
+
+現行mainで `GROQ_API_KEY`, `groq_provider`, `groq.com`, `gpt-oss` の実装参照は検出されず、PR #305でGemini-only Productionへ復帰済み。
+
+削除候補:
+- `dev/groq-provider-foundation` — PR #281は未mergeでclose済み。PR diffに履歴が残る。
+
+保持:
+- `dev/hybrid-groq-gemini`
+- `runtime/groq-validation`
+- `safety/groq-screening-shadow-falsification`
+- `validation/groq-screening-ab-run46`
+
+上記4本はPRなしの独自実験branchであり、branch refを消すと唯一の履歴を失う可能性を否定できないため保持する。現行Productionへ戻す候補ではない。
+
+### 旧X branch
+
+現行Xは後続のPR #365〜#367でmain側の正式Daily/ChatOps経路へ統合済み。
+
+削除候補:
+- `chore/x-candidate-watchlist-50` — PR #268 close済み。
+- `feature/x-bounded-factory-validation` — PR #269 close済み。
+- `feat/chatops-x-stage2-zero-gemini-20260915` — PR #366 merge済み。
+- `feat/x-daily-full-integration-20260915` — PR #367 merge済み。
+- `fix/x-workflow-main-hygiene-20260914` — PR #347 merge済み。
+- `test/x-daily-bridge-zero-gemini-20260915` — PR #365 merge済み。
+
+保持:
+- `backup/main-before-x-integration` — X統合前のrollback anchor。
+- `feature/x-discovery-ingestion` — PRなしの旧base branch。
+- `feature/x-intelligence-layer` — PRなしの旧base branch。
+
+PRなし2本は現行mainの実行元ではないが、独自基礎履歴の唯一性を否定できないため保持する。
+
+### merged cleanup / audit branch
+
+以下は対応する最新PRがmerge済みで現在HEADも最新PR HEADと一致するため削除候補。
+
+- `cleanup/gemini-only-repository` — PR #305
+- `cleanup/remove-run366-one-shot-bridge` — PR #303
+- `cleanup/retire-fixed-note-audit-chatops-20260918` — PR #387
+- `cleanup/semantic-guards-20260913` — PR #308
+- `audit/member-access-correction-20260918` — PR #383
+- `audit/pending-retry-36-expiry-20260918` — PR #385
+- `audit/provider-budget-isolation-20260918` — PR #384
+- `audit/repository-contracts-20260917` — 同一branchをPR #380〜#382で再利用し、現在HEADは最新PR #382 HEADと一致
+- `audit/run362-ready-provenance` — PR #298
+
+### 重要な区別
+
+branch refの削除候補判定は、main内のhelper/test/file削除可否とは独立している。branchを削除しても、現行Full Regressionや後続helperから参照されるmainファイルは削除しない。rollback/独自実験の唯一性を否定できないbranchは、現行Productionで使わなくても保持する。
