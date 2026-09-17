@@ -54,6 +54,10 @@ class ReaderReadyGuardTests(unittest.TestCase):
         severity = gr.classify_gate_reason_severity("human_appeal", access_issue, code)
         self.assertEqual(code, gr.REASON_CODE_READER_NON_ENGINEER_ACCESS)
         self.assertEqual(severity, gr.GATE_SEVERITY_REVIEW)
+        self.assertEqual(
+            gr.gate_reason_disposition(gr.map_gate_reasons("human_appeal", issues)),
+            gr.GATE_DISPOSITION_REVIEW,
+        )
 
     def test_specialist_article_with_real_reader_bridges_is_not_blocked(self):
         signals = {
@@ -68,20 +72,16 @@ class ReaderReadyGuardTests(unittest.TestCase):
         p = DummyPipeline(signals=signals)
         self.assertEqual(bridge._material_reader_value_issues(p, "technical article"), [])
 
-    def test_human_appeal_weak_can_never_be_ready_without_review_reason(self):
+    def test_style_only_human_appeal_weak_stays_warning_not_reader_block(self):
         p = DummyPipeline(human_state="WEAK", human_issues=["headline_flattened"])
         bridge.install(p)
         state, issues = p.validate_human_appeal_gate({"note_draft": "article"})
-        weak_issue = "reader_value_review:human_appeal_weak"
         self.assertEqual(state, "WEAK")
-        self.assertIn(weak_issue, issues)
-        code = gr.reason_code(weak_issue, "human_appeal")
-        self.assertEqual(
-            gr.classify_gate_reason_severity("human_appeal", weak_issue, code),
-            gr.GATE_SEVERITY_REVIEW,
-        )
+        self.assertNotIn("reader_value_review:human_appeal_weak", issues)
+        rows = gr.map_gate_reasons("human_appeal", issues)
+        self.assertEqual(gr.gate_reason_disposition(rows), gr.GATE_DISPOSITION_PASS_WITH_WARNINGS)
 
-    def test_reader_review_delegates_to_existing_bounded_retry_policy(self):
+    def test_direct_bridge_keeps_reader_only_review_zero_spend(self):
         p = DummyPipeline()
         bridge.install(p)
         rows = [{
@@ -91,9 +91,9 @@ class ReaderReadyGuardTests(unittest.TestCase):
         }]
         self.assertEqual(
             p.should_attempt_dynamic_retry(rows, {}, "new"),
-            (True, "original_retry_policy"),
+            (False, "reader_value_review_no_retry"),
         )
-        self.assertEqual(p.retry_calls, 1)
+        self.assertEqual(p.retry_calls, 0)
 
     def test_reader_soft_only_stays_zero_spend(self):
         p = DummyPipeline()
