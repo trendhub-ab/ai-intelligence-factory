@@ -32,3 +32,43 @@ Run301/302の2仕様追補、および `docs/RUN413_ONEOFF_RUBYGEMS_MANUAL_READY
 ## 未検証境界
 
 import closureはAST importとリテラルmodule参照、Workflowのscript/module文字列を対象とする。動的に組み立てたimport名、外部運用手順、保存済みGitHub runからの手動実行は未証明。Production共通helper、budget/persistent counter、Reader Summary、Notion/note、Publication/Gate/Safetyは保持した。
+
+
+## 2026-09-18 Run290〜299残存branch監査
+
+現行main `1dec755054b453e51d8c7ff92c43ff911c99ab77` を基準に、`run29*` の残存branch 19本をGitHub上で比較した。全branchはmainより500件以上behindしており、現在の運用branchではない。対応PRのmerge状態と現在のbranch HEADを照合し、merge後にbranchだけで進んだcommitの有無も確認した。
+
+### 削除可能と判定したbranch
+
+以下17本は、対応する変更がmainへmerge済み、または後続のmerge済み修復へ吸収済みであり、現行運用の唯一の参照元ではない。
+
+- `run290-separate-quality-revocation-from-human-posting` — PR #174 merge済み。branch HEADはmerge時headと一致。
+- `run291-private-draft-readonly-audit` — PR #175 merge済み。branch HEADはmerge時headと一致。
+- `run291-1-private-draft-audit-chatops` — PR #176 merge済み。固定ChatOps入口はPR #387で退役済み。
+- `run292-note-rendered-body-audit` — PR #177 merge済み。
+- `run293-private-draft-guard-diagnostics` — PR #178 merge済み。
+- `run294-eyecatch-persistence-diagnostics` — PR #179 merge済み。
+- `run295-shared-eyecatch-persistence-proof` — PR #180 merge済み。
+- `run296-editorial-format-v2` — PR #181 merge済み。
+- `run297-298-genrec-refresh` — PR #182 merge済み。
+- `run297-298-workflow-yaml-fix` — PR #183 merge済み。
+- `run297-asset-branch-fix` — PR #184 merge済み。
+- `run298-skip-unreadable-history` — PR #185 merge済み。
+- `run298-existing-header-replace` — PR #186 merge済み。
+- `run298-header-readonly-diagnostics` — PR #187 merge済み。
+- `run298-header-diagnostic-trigger-fix` — PR #188 merge済み。
+- `run298-hover-header-final` — PR #189 merge後に「note mutation前に1280×670を厳密確認する」1 commitがbranchへ追加されたが、このone-off経路は後続Run300修復へ置換され、現行mainでは当時のone-off Workflow自体が退役済み。現行機能の唯一の実装ではない。
+- `run299-genrec-body-structure-diagnostic` — PR #191 merge済み。
+
+これらの削除はGit履歴・merge済みPRの記録を消すものではない。GitHub connectorにはbranch delete actionがないため、この監査ではref削除そのものは実施していない。
+
+### 保持するbranch
+
+以下2本は現時点では削除しない。
+
+- `run297-assets` — reviewed GenRec eyecatch画像2点を保持するasset branch。過去のNotion/外部raw URL参照がbranch名に依存している可能性を否定できないため、参照切れの実証なしに削除しない。
+- `run298-body-repair-final` — PR #190は2026-09-18にsupersededとしてcloseしたが未merge。後続Run300で修復方針は置換済みとはいえ、このbranchはPR #190の未統合実装そのものを保持するため、履歴保全目的で残す。
+
+### 削除前提ではないもの
+
+branch refの整理と、mainに残るRun297〜302 helper/testの削除可否は別問題である。main側のhelper/testは本監査文書冒頭のとおり、現行テスト・後続helperから参照されるものがあり、branch削除を理由に削除しない。
