@@ -51,8 +51,7 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 issues = bridge._material_reader_value_issues(pipeline, article)
                 self.assertTrue(any("dense_report_cluster" in x for x in issues), issues)
 
-    def test_real_run103_ready_articles_preserve_soft_debt_but_block_corroborated_access_failure(self):
-        access_review_count = 0
+    def test_real_run103_ready_articles_preserve_soft_debt_and_direct_access_classification(self):
         for name in REAL_READY_FIXTURES:
             with self.subTest(name=name):
                 article = self._article(name)
@@ -61,8 +60,6 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 self.assertTrue(any(bridge.READER_VALUE_MARKER in x for x in issues), issues)
 
                 has_access_block = any("non_engineer_access_failure" in x for x in issues)
-                if has_access_block:
-                    access_review_count += 1
                 expected = (
                     pipeline.GATE_DISPOSITION_REVIEW
                     if has_access_block
@@ -71,9 +68,45 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 reason_rows = pipeline.map_gate_reasons("human_appeal", issues)
                 self.assertEqual(expected, pipeline.gate_reason_disposition(reason_rows))
 
-        # Run378 intentionally supersedes the old blanket "all historical Ready fixtures are
-        # warning-only" contract only when current diagnostics corroborate an access failure.
-        self.assertGreaterEqual(access_review_count, 1)
+    def test_reader_enjoyment_does_not_corroborate_access_failure(self):
+        class SignalsOnly:
+            @staticmethod
+            def _reader_experience_signals(_article):
+                return {
+                    "accessibility": "REVIEW",
+                    "opening_non_engineer_access": "REVIEW",
+                    "plain_language_bridge": "GOOD",
+                    "information_budget": "GOOD",
+                    "jargon_translation": "GOOD",
+                    "non_engineer_core_clarity": "GOOD",
+                    "reader_enjoyment": "REVIEW",
+                    "narrative_pull": "GOOD",
+                    "reader_temperature_rhythm": "GOOD",
+                }
+
+        issues = bridge._material_reader_value_issues(SignalsOnly, "production specimen")
+        self.assertFalse(any("non_engineer_access_failure" in issue for issue in issues), issues)
+
+    def test_two_direct_access_diagnostics_still_fail_closed(self):
+        class SignalsOnly:
+            @staticmethod
+            def _reader_experience_signals(_article):
+                return {
+                    "accessibility": "REVIEW",
+                    "opening_non_engineer_access": "REVIEW",
+                    "plain_language_bridge": "GOOD",
+                    "information_budget": "REVIEW",
+                    "jargon_translation": "REVIEW",
+                    "non_engineer_core_clarity": "REVIEW",
+                    "reader_enjoyment": "GOOD",
+                    "narrative_pull": "GOOD",
+                    "reader_temperature_rhythm": "GOOD",
+                }
+
+        issues = bridge._material_reader_value_issues(SignalsOnly, "genuinely difficult specimen")
+        access = [issue for issue in issues if "non_engineer_access_failure" in issue]
+        self.assertEqual(1, len(access), access)
+        self.assertIn("Accessibility/Opening/Information Budget/Jargon Translation/Non-Engineer Core Clarity", access[0])
 
     def test_reader_value_only_review_never_spends_gemini_quality_retry(self):
         article = self._article("genai_sophistication.md")
