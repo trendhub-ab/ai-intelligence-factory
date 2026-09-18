@@ -98,6 +98,54 @@ class Run203RuntimeStateChannelTests(unittest.TestCase):
         self.assertNotEqual(write["branch"], "main")
         self.assertEqual(put.call_args.kwargs["headers"]["Authorization"], "Bearer test-token")
 
+    def test_preflight_prefers_actions_runtime_token_over_operator_pat(self):
+        env = {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_REPOSITORY": "trendhub-ab/ai-intelligence-factory",
+            "GITHUB_RUN_ID": "12345",
+            "GH_PAT": "operator-rate-limited-token",
+            "AIIF_RUNTIME_STATE_GITHUB_TOKEN": "actions-runtime-token",
+            "GEMINI_COUNTER_BRANCH": "main",
+        }
+        get = Mock(side_effect=[_Response(200), _Response(404)])
+        put = Mock(return_value=_Response(201, {"content": {"sha": "new"}}))
+        http = SimpleNamespace(get=get, put=put)
+        with patch.dict(os.environ, env, clear=True), \
+             patch.object(run203, "_http_client", return_value=http):
+            run203.preflight_runtime_state_channel()
+
+        for call in get.call_args_list:
+            self.assertEqual(call.kwargs["headers"]["Authorization"], "Bearer actions-runtime-token")
+        self.assertEqual(put.call_args.kwargs["headers"]["Authorization"], "Bearer actions-runtime-token")
+
+    def test_install_scopes_actions_token_to_persistent_counter_without_replacing_operator_pat(self):
+        counter = SimpleNamespace(
+            branch="main",
+            _headers=lambda: {"Authorization": "Bearer operator-rate-limited-token"},
+        )
+        fake_pipeline = SimpleNamespace(
+            GH_PAT="operator-rate-limited-token",
+            EYECATCH_GITHUB_BRANCH="main",
+            GEMINI_COUNTER_BRANCH="main",
+            PERSISTENT_GEMINI_COUNTER=counter,
+        )
+        env = {
+            "GITHUB_ACTIONS": "true",
+            "GH_PAT": "operator-rate-limited-token",
+            "AIIF_RUNTIME_STATE_GITHUB_TOKEN": "actions-runtime-token",
+            "GEMINI_COUNTER_BRANCH": "main",
+            "EYECATCH_GITHUB_BRANCH": "main",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            run203.install(fake_pipeline)
+        self.assertEqual(counter._headers()["Authorization"], "Bearer actions-runtime-token")
+        self.assertEqual(fake_pipeline.GH_PAT, "operator-rate-limited-token")
+
+    def test_one_shot_exposes_same_repo_actions_token_only_for_runtime_state(self):
+        workflow = Path(".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
+        self.assertIn("AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}", workflow)
+        self.assertIn("GH_PAT: ${{ secrets.GH_PAT }}", workflow)
+
     def test_preflight_fails_before_provider_when_runtime_state_is_not_writable(self):
         env = {
             "GITHUB_ACTIONS": "true",
