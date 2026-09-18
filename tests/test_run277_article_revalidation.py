@@ -101,6 +101,35 @@ def test_selector_includes_only_stale_ready_when_explicitly_enabled():
     assert stale["revalidation_stale_ready"] is True
 
 
+def test_stale_ready_provenance_uncertainty_fails_closed():
+    pipeline, _ = _selector_pipeline()
+    del pipeline._notion_page_has_manuscript_child
+
+    selected = article_revalidation.select_revalidation_items(
+        pipeline,
+        limit=3,
+        include_stale_ready=True,
+    )
+
+    assert [row["notion_page_id"] for row in selected] == ["review", "quality"]
+
+
+def test_stale_ready_provenance_exception_fails_closed():
+    pipeline, _ = _selector_pipeline()
+
+    def broken_proof(page_id, headers):
+        raise RuntimeError("proof unavailable")
+
+    pipeline._notion_page_has_manuscript_child = broken_proof
+    selected = article_revalidation.select_revalidation_items(
+        pipeline,
+        limit=3,
+        include_stale_ready=True,
+    )
+
+    assert [row["notion_page_id"] for row in selected] == ["review", "quality"]
+
+
 def test_existing_recovery_persists_stale_ready_with_dedicated_origin(monkeypatch):
     generated_calls = []
 
