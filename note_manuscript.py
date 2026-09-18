@@ -127,13 +127,20 @@ def _reader_plain_text(text: str) -> str:
 
 
 def _compact_reader_summary(text: str, max_chars: int = 110) -> str:
+    """Select the first sentence without severing its conditions or conclusion.
+
+    The length target must not turn a complete Writer sentence into a comma-ended
+    fragment that the final-surface Gate rejects. A complete first sentence may
+    exceed that target; incomplete input retains the legacy bounded fallback and
+    remains subject to the unchanged Gate.
+    """
     value = _reader_plain_text(text)
     if not value:
         return ""
     sentences = [m.group(0).strip() for m in re.finditer(r"[^。！？!?]+[。！？!?]?", value) if m.group(0).strip()]
     if sentences:
         first = sentences[0]
-        if len(first) <= max_chars:
+        if len(first) <= max_chars or re.search(r"[。！？!?]$", first):
             return first
     if len(value) <= max_chars:
         return value
