@@ -266,6 +266,7 @@ def install(pipeline_module: Any) -> Any:
     if counter is not None:
         counter.branch = branch
     _install_counter_runtime_auth(pipeline_module)
+    _install_provider_health_runtime_auth()
 
     _install_observed_history_retry(pipeline_module)
     _install_arxiv_stability(pipeline_module, branch)
@@ -300,6 +301,46 @@ def _install_counter_runtime_auth(pipeline_module: Any) -> None:
 
     counter._headers = runtime_headers
     counter._aiif_runtime_state_auth_installed = True
+
+
+def _install_provider_health_runtime_auth() -> None:
+    """Route provider-health state through the runtime token without touching policy code."""
+    import run260_gemini_model_routing as routing
+
+    marker = "_aiif_runtime_state_health_auth_installed"
+    if bool(getattr(routing, marker, False)):
+        return
+    original = routing._health_state_location
+
+    def runtime_health_state_location(pipeline_module: Any):
+        location = original(pipeline_module)
+        runtime_token = _runtime_state_token()
+        if location is not None:
+            repo, original_token, branch, http = location
+            return repo, (runtime_token or original_token), branch, http
+        if not runtime_token:
+            return None
+
+        repo = str(
+            os.environ.get("GITHUB_REPOSITORY")
+            or getattr(pipeline_module, "EYECATCH_GITHUB_REPO", "")
+            or ""
+        ).strip()
+        branch = str(
+            os.environ.get("AIIF_RUNTIME_STATE_BRANCH")
+            or getattr(pipeline_module, "AIIF_RUNTIME_STATE_BRANCH", "")
+            or getattr(pipeline_module, "EYECATCH_GITHUB_BRANCH", "")
+            or routing.DEFAULT_RUNTIME_STATE_BRANCH
+        ).strip()
+        if not branch or branch in {"main", "master"}:
+            branch = routing.DEFAULT_RUNTIME_STATE_BRANCH
+        http = getattr(pipeline_module, "requests", None)
+        if not repo or "/" not in repo or not branch or http is None:
+            return None
+        return repo, runtime_token, branch, http
+
+    routing._health_state_location = runtime_health_state_location
+    setattr(routing, marker, True)
 
 
 def _headers(token: str) -> dict[str, str]:
