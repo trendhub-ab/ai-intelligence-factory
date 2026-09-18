@@ -50,6 +50,21 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertEqual(first, (True, "run208_reader_value_fast_lane_repair"))
         self.assertEqual(second, (False, "reader_value_review_no_retry"))
 
+    def test_pending_fast_lane_repairs_current_reader_only_failure_set_once(self):
+        pipeline = self._pipeline()
+        run208.install(pipeline)
+        rows = [
+            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
+            {"message": "reader_value_review:repetitive_insight", "severity": "REVIEW"},
+            {"message": "reader_value_review:multi_axis_reader_weakness", "severity": "REVIEW"},
+            {"message": "reader_value_review:final_surface_summary_fragment:なぜ重要？", "severity": "REVIEW"},
+        ]
+        with patch.dict(os.environ, {run208.FAST_LANE_ENV: "1"}, clear=True):
+            first = pipeline.should_attempt_dynamic_retry(rows, {"evidence": "present"}, "pending_retry")
+            second = pipeline.should_attempt_dynamic_retry(rows, {"evidence": "present"}, "pending_retry")
+        self.assertEqual(first, (True, "run208_reader_value_fast_lane_repair"))
+        self.assertEqual(second, (False, "reader_value_review_no_retry"))
+
     def test_fresh_reader_only_accessibility_failure_gets_exactly_one_reader_repair(self):
         pipeline = self._pipeline()
         run208.install(pipeline)
