@@ -253,12 +253,7 @@ def _bounded_quality_pool(
 
 def _health_state_location(pipeline_module: Any) -> tuple[str, str, str, Any] | None:
     repo = str(os.environ.get("GITHUB_REPOSITORY") or getattr(pipeline_module, "EYECATCH_GITHUB_REPO", "") or "").strip()
-    token = str(
-        os.environ.get("AIIF_RUNTIME_STATE_GITHUB_TOKEN")
-        or os.environ.get("GH_PAT")
-        or getattr(pipeline_module, "GH_PAT", "")
-        or ""
-    ).strip()
+    token = str(os.environ.get("GH_PAT") or getattr(pipeline_module, "GH_PAT", "") or "").strip()
     branch = str(
         os.environ.get("AIIF_RUNTIME_STATE_BRANCH")
         or getattr(pipeline_module, "AIIF_RUNTIME_STATE_BRANCH", "")
