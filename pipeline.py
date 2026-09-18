@@ -2449,20 +2449,45 @@ def _notion_code_caption(block: dict) -> str:
 
 
 def _notion_page_manuscript_blocks(page_id: str, headers: dict) -> list[dict]:
-    """ページ直下のMarkdown manuscript blockを取得。取得失敗時は空配列。"""
-    try:
-        res = requests.get(
-            f"https://api.notion.com/v1/blocks/{page_id}/children",
-            headers=headers, timeout=10,
-        )
+    """ページ直下のMarkdown manuscript blockを全ページ取得する。
+
+    取得不能と「manuscriptが存在しない」を同一視すると、Ready provenance確認で
+    unknown stateをstaleと誤認できてしまうため、HTTP/transport/pagination異常は
+    例外として上位へ伝播させる。
+    """
+    base_url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+    cursor = ""
+    manuscript_blocks: list[dict] = []
+    while True:
+        url = base_url if not cursor else f"{base_url}?{urlencode({'start_cursor': cursor})}"
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Notion manuscript block read failed page={page_id}: transport error"
+            ) from exc
         if res.status_code != 200:
-            return []
-        return [
-            block for block in res.json().get("results", [])
-            if block.get("type") == "code" and (block.get("code") or {}).get("language") == "markdown"
-        ]
-    except Exception:
-        return []
+            raise RuntimeError(
+                f"Notion manuscript block read failed page={page_id}: HTTP {res.status_code}"
+            )
+        try:
+            payload = res.json() or {}
+        except Exception as exc:
+            raise RuntimeError(
+                f"Notion manuscript block read failed page={page_id}: invalid JSON"
+            ) from exc
+        manuscript_blocks.extend(
+            block for block in (payload.get("results") or [])
+            if block.get("type") == "code"
+            and (block.get("code") or {}).get("language") == "markdown"
+        )
+        if not payload.get("has_more"):
+            return manuscript_blocks
+        cursor = str(payload.get("next_cursor") or "").strip()
+        if not cursor:
+            raise RuntimeError(
+                f"Notion manuscript block read failed page={page_id}: missing next_cursor"
+            )
 
 
 def _notion_page_has_manuscript_child(page_id: str, headers: dict) -> bool:
@@ -2554,7 +2579,15 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
     # 冪等性チェック: 前回試行でrollbackに失敗し、既にmanuscript childが
     # 残っている場合はre-appendしない（本文の二重化防止）。
     appended_block_ids: list[str] = []
-    if _notion_page_has_manuscript_child(page_id, headers):
+    try:
+        has_existing_manuscript = _notion_page_has_manuscript_child(page_id, headers)
+    except Exception as exc:
+        logger.error(
+            f"[NOTION UPGRADE PROVENANCE READ FAILED] {repo_name} -> "
+            f"既存manuscript確認不能のためwrite前にFail-Closed: {exc}"
+        )
+        return False
+    if has_existing_manuscript:
         logger.info(f"[NOTION UPGRADE CHILDREN SKIPPED] {repo_name} -> 既にmanuscript childが存在するためre-appendをスキップ")
     else:
         children = build_notion_manuscript_children(clean_manuscript)
@@ -2592,8 +2625,16 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
             _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")
             return False
         logger.info(f"[NOTION READY COMMITTED] {repo_name} -> Deep Diveへアップグレード完了")
-        # Readyへ昇格した後は、過去のNeeds Editorial Review原稿だけをbest-effortで整理する。
-        review_block_ids = _notion_review_manuscript_block_ids(page_id, headers)
+        # Ready commit後の旧Review原稿整理はbest-effort。ここでread不能でも、
+        # 既に成功したReady commitをPending Retryへ巻き戻さない。
+        try:
+            review_block_ids = _notion_review_manuscript_block_ids(page_id, headers)
+        except Exception as cleanup_exc:
+            logger.warning(
+                f"[NOTION REVIEW CLEANUP SKIPPED] {repo_name} -> "
+                f"旧Review manuscript確認不能: {cleanup_exc}"
+            )
+            review_block_ids = []
         if review_block_ids:
             _rollback_notion_manuscript_children(review_block_ids, repo_name, headers)
         return True
@@ -2670,7 +2711,14 @@ def persist_notion_needs_editorial_review(page_id: str, repo_name: str, clean_ma
     if not page_id or not NOTION_API_KEY:
         return False
     headers = _notion_headers()
-    existing_review_ids = _notion_review_manuscript_block_ids(page_id, headers)
+    try:
+        existing_review_ids = _notion_review_manuscript_block_ids(page_id, headers)
+    except Exception as exc:
+        logger.error(
+            f"[NOTION EDITORIAL REVIEW PROVENANCE READ FAILED] {repo_name} -> "
+            f"既存Review manuscript確認不能のためwrite前にFail-Closed: {exc}"
+        )
+        return False
     appended_block_ids: list[str] = []
     # Review再生成では古い本文を使い回さない。新稿を先にappendし、properties commit成功後に
     # 旧Review blockをarchiveすることで、append/commit失敗時にも旧原稿を失わない。
