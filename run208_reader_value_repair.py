@@ -49,8 +49,7 @@ _SPENT_ATTR = "_run208_reader_value_repair_spent"
 _BASE_RETRY_SPENT_ATTR = "_run360_base_quality_retry_spent"
 _READER_REPAIR_SPENT_ATTR = "_run360_reader_repair_spent"
 READER_VALUE_MARKER = "reader_value_review:"
-_PENDING_REPAIRABLE = ("dense_report_cluster", "repetitive_insight")
-_FRESH_REPAIRABLE = (
+_READER_ONLY_REPAIRABLE = (
     "dense_report_cluster",
     "repetitive_insight",
     "multi_axis_reader_weakness",
@@ -62,6 +61,11 @@ _FRESH_REPAIRABLE = (
     "final_surface_summary_jargon_cluster",
     "final_surface_summary_fragment",
 )
+# Pending Retry and fresh/article-revalidation share the same reader-only repair
+# taxonomy. Pending remains cheaper because the fast lane still permits exactly one
+# article and one reserved Reader Repair within its four provider-send ceiling.
+_PENDING_REPAIRABLE = _READER_ONLY_REPAIRABLE
+_FRESH_REPAIRABLE = _READER_ONLY_REPAIRABLE
 _FRESH_EQUIVALENT_ORIGINS = frozenset({"new", "article_revalidation"})
 
 READER_PATH_CONTRACT = r"""
