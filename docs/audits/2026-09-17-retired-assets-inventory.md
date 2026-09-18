@@ -152,3 +152,52 @@ PRなし2本は現行mainの実行元ではないが、独自基礎履歴の唯�
 ### 重要な区別
 
 branch refの削除候補判定は、main内のhelper/test/file削除可否とは独立している。branchを削除しても、現行Full Regressionや後続helperから参照されるmainファイルは削除しない。rollback/独自実験の唯一性を否定できないbranchは、現行Productionで使わなくても保持する。
+
+## 2026-09-18 Run400〜425残存branch監査
+
+現行main `e8d83ff854f9346fc5a414a1bcd24ecaa25226d4` へ再照合し、Run400〜425系31 branchをGitHub上のPR履歴・現在HEAD・mainとの祖先関係で照合した。
+
+### 削除候補: 29本
+
+以下は、対応する最新PRがmerge済みでbranch HEADがそのPR HEADと一致するか、PRなしでもbranch tipが現在mainの祖先で独自未統合commitを持たないため、branch ref削除候補と判定した。
+
+- `fix/run400-approved-reader-repair`
+- `fix/run401-approved-budget-headroom`
+- `fix/run402-exact-approved-target`
+- `fix/run403-pending-target-source`
+- `fix/run404-combined-quality-repair`
+- `fix/run405-reader-density-compression`
+- `fix/run405-reader-repair-specificity`
+- `fix/run406-approved-second-reader-repair`
+- `fix/run407-approved-quality-fallback` — PRなしだがbranch tipは現在mainの祖先。後続PR #323/#324で正式経路がmerge済み。
+- `fix/run408-approved-quality-fallback`
+- `fix/run409-reader-repair-ownership`
+- `fix/run410-approved-page-id-fallback` — PRなしだがbranch tipはPR #326 merge commitと一致し、現在mainの祖先。
+- `fix/run410-quality-failed-exact-target`
+- `fix/run411-fact-retry-specificity`
+- `fix/run412-approved-38-35-routing`
+- `fix/run413-oneoff-rubygems-manual-ready`
+- `fix/run414-rubygems-eyecatch`
+- `fix/run415-rubygems-eyecatch-parser`
+- `fix/run416-zero-model-eyecatch-fallback`
+- `fix/run417-note-body-verification`
+- `fix/run418-japanese-eyecatch-font`
+- `fix/run418-quota-auth`
+- `fix/run419-eyecatch-plan-repair`
+- `fix/run420-job-level-gemini-lock`
+- `fix/run421-zero-model-canonical-layout`
+- `fix/run422-pinned-source-bounded-copy`
+- `fix/run423-preserve-latin-tokens`
+- `fix/run424-current-canonical-replace`
+- `hotfix/run425-editor-readiness`
+
+### 保持: 2本
+
+- `fix/run413-manual-zero-api-rescue` — mainとdivergeし、`.github/workflows/run413-manual-zero-api-rescue.yml`、`run413_manual_zero_api_rescue.py`、専用testの3独自資産を持つ。後続の正式Run413はPR #329で別branchからmerge済みだが、このbranch自体は未merge実験履歴の唯一性を否定できないため保持する。
+- `fix/run425-required-intro-summary` — mainとdivergeし、Publication Contract試作変更、`run425_required_intro_summary.py`、`run425_rubygems_intro_restore.py`、専用testを含む6 commitの独自履歴を持つ。現行Run425はPR #342〜#344の別実装でmerge済みだが、このbranch refは未merge試作の履歴保全として保持する。
+
+### 運用判断
+
+上記保持2本は現行Productionの実行元ではない。再利用・merge候補として扱わず、履歴参照専用とする。削除候補29本についても、branch refを削除してもmerge済みPR/commit履歴は保持される。
+
+GitHub connectorにはdelete-ref actionがないため、この監査ではbranch削除そのものは実施していない。
