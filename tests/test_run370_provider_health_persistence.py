@@ -26,6 +26,20 @@ class Run370ProviderHealthPersistenceTests(unittest.TestCase):
         self.assertNotIn("context", p._provider_health_history[0])
         persist.assert_called_once_with(p)
 
+    def test_provider_health_prefers_runtime_state_actions_token(self):
+        p = types.SimpleNamespace(requests=object())
+        env = {
+            "GITHUB_REPOSITORY": "trendhub-ab/ai-intelligence-factory",
+            "GH_PAT": "operator-rate-limited-token",
+            "AIIF_RUNTIME_STATE_GITHUB_TOKEN": "actions-runtime-token",
+            "AIIF_RUNTIME_STATE_BRANCH": "runtime-state",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            location = run260._health_state_location(p)
+        self.assertIsNotNone(location)
+        self.assertEqual(location[1], "actions-runtime-token")
+        self.assertEqual(location[2], "runtime-state")
+
     def test_actual_usage_audit_shape_is_accepted(self):
         p = types.SimpleNamespace(
             GEMINI_USAGE_AUDIT=types.SimpleNamespace(records=[{
