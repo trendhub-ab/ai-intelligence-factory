@@ -201,3 +201,121 @@ branch refの削除候補判定は、main内のhelper/test/file削除可否と�
 上記保持2本は現行Productionの実行元ではない。再利用・merge候補として扱わず、履歴参照専用とする。削除候補29本についても、branch refを削除してもmerge済みPR/commit履歴は保持される。
 
 GitHub connectorにはdelete-ref actionがないため、この監査ではbranch削除そのものは実施していない。
+
+
+## 2026-09-19 残存branch最終監査
+
+現行main `709c1e219f3b32597fb96344d06920cc1e1d9a71` を基準に、Run290〜425で既に分類したbranch以外の `docs/`、`cleanup/`、`audit/`、`feat/`、`test/`、残存 `fix/`、`dev/`、`validation/`、`runtime/`、`safety/`、`backup/`、旧X/Groq branchを再照合した。
+
+### 追加の削除候補
+
+最新PRがmerge済みでbranch HEADがPR HEADと一致、明示的にsuperseded、またはbranch tipが現在mainの祖先であるものを削除候補とした。
+
+#### docs / cleanup / audit / feat / test
+
+- `docs/audit-followup-20260918` — PR #396 merge済み
+- `docs/current-baseline-20260913` — PR #307は明示的supersededでclose、後続PR #309 merge済み
+- `docs/current-production-baseline-20260913` — PR #306は明示的supersededでclose、後続PR #309 merge済み
+- `docs/current-production-baseline-on-semantic-guards-20260913` — PR #309 merge済み
+- `docs/provider-resilience-contract-20260918` — PR #386 merge済み
+- `docs/retire-fixed-note-audit-contract-20260918` — PR #388 merge済み
+- `docs/retired-run29-branch-inventory-20260918` — PR #389 merge済み
+- `docs/retired-run300-399-legacy-branches-20260918` — PR #390 merge済み
+- `docs/retired-run400-425-branches-20260918` — PR #398はstrict latest-main ruleでclose、PR #399が同内容を最新mainからmerge済み
+- `docs/retired-run400-425-branches-latest-20260919` — PR #399 merge済み
+- `docs/run55-zero-api-revalidation-20260915` — PR #364 merge済み
+- `cleanup/gemini-only-repository` — PR #305 merge済み
+- `cleanup/remove-run366-one-shot-bridge` — PR #303 merge済み
+- `cleanup/retire-fixed-note-audit-chatops-20260918` — PR #387 merge済み
+- `cleanup/semantic-guards-20260913` — PR #308 merge済み
+- `audit/member-access-correction-20260918` — PR #383 merge済み
+- `audit/pending-retry-36-expiry-20260918` — PR #385 merge済み
+- `audit/provider-budget-isolation-20260918` — PR #384 merge済み
+- `audit/repository-contracts-20260917` — PR #380〜#382で再利用、現在HEADは最新PR #382 HEADと一致
+- `audit/run362-ready-provenance` — PR #298 merge済み
+- `feat/chatops-x-stage2-zero-gemini-20260915` — PR #366 merge済み
+- `feat/editorial-blueprint-quality-memory-20260914` — PR #348 merge済み
+- `feat/provider-health-routing-20260915` — PR #368 merge済み
+- `feat/x-daily-full-integration-20260915` — PR #367 merge済み
+- `test/run51-publish-yield-replay-20260915` — PR #357 merge済み
+- `test/x-daily-bridge-zero-gemini-20260915` — PR #365 merge済み
+
+#### 残存 fix
+
+以下はすべて対応PR merge済み・HEAD一致、または明示的後続実装へ吸収済み。
+
+- `fix/arxiv-cache-size-guard-20260915`
+- `fix/arxiv-stability-layer-20260915`
+- `fix/arxiv-timeout-circuit-20260915`
+- `fix/decision-access-reader-gate` — PRなしだが現在mainの祖先。後続 `fix/decision-accessibility-reader-gate` / PR #313が正式実装
+- `fix/decision-accessibility-reader-gate`
+- `fix/editorial-blueprint-writer-deconflict-20260914`
+- `fix/pending-reader-repair-parity-20260918`
+- `fix/pending-retry-one-article-validation-20260915`
+- `fix/pending-retry-owner-orthogonality-20260918`
+- `fix/pending-retry-repair-reserve-20260915`
+- `fix/pending-validation-exclude-gemini36-20260915`
+- `fix/pending-validation-truth-and-numeric-evidence-20260915`
+- `fix/provider-health-live-routing-20260915`
+- `fix/provider-health-runtime-state-20260915`
+- `fix/reader-access-corroboration-20260917`
+- `fix/reader-ready-guard-20260917`
+- `fix/reader-repair-preservation-20260914`
+- `fix/reader-summary-review-path`
+- `fix/ready-rescue-20260915`
+- `fix/restore-gemini36-after-reset`
+- `fix/retry-editorial-blueprint-20260914`
+- `fix/run47-reader-repair-ready-recovery`
+- `fix/run48-observed-reader-reliability`
+- `fix/run55-primary-evidence-precision-20260915`
+- `fix/run63-ready-rescue-order-and-loss-gate`
+- `fix/run226-note-ready-hermetic-test-20260914`
+- `fix/runtime-state-token-isolation-20260918`
+- `fix/stale-ready-recovery-20260918`
+- `fix/stale-ready-rescue-priority-20260918`
+- `fix/summary-repair-queue-reconciliation`
+- `fix/temporary-36-exclusion-ready-rescue-e2e`
+- `fix/validation-total-send-ceiling-20260915`
+- `fix/writer-decision-spine-20260915`
+- `fix/x-workflow-main-hygiene-20260914`
+
+#### その他
+
+- `dev/gemini-retry-single-owner` — PR #285 merge済み
+- `validation/editorial-blueprint-live-20260914` — branch tipは現在mainの祖先
+- `safety/comment-contract-shadow-guard` — PR #295 merge済み
+- `dev/groq-provider-foundation` — PR #281 close済み、現行ProductionはPR #305でGemini-onlyへ復帰
+- `chore/x-candidate-watchlist-50` — PR #268 close済み、後続X統合で置換
+
+### 保持するbranch
+
+以下は削除しない。
+
+- `audit/ready-gate-contracts-20260918` — PR #397がOPEN/Draft。現行作業中のため保護。
+- `fix/run367-readonly-audit-reader-conflict` — PR #304未merge履歴。
+- `fix/run413-manual-zero-api-rescue` — PRなし・mainとdivergeした独自実験履歴。
+- `fix/run425-required-intro-summary` — PRなし・mainとdivergeした独自試作履歴。
+- `dev/hybrid-groq-gemini`
+- `runtime/groq-validation`
+- `safety/groq-screening-shadow-falsification`
+- `validation/groq-screening-ab-run46`
+- `validation/defense-calibration-once-20260911`
+- `validation/defense-deep-dive-once-20260911`
+- `validation/defense-stock-once-20260911`
+- `feature/x-discovery-ingestion`
+- `feature/x-intelligence-layer`
+- 全 `backup/` branch:
+  - `backup/gemini-only-run359-20260912`
+  - `backup/gemini-only-run360-20260912`
+  - `backup/gemini-run356-966a0f1`
+  - `backup/main-before-x-integration`
+  - `backup/pre-publish-yield-redesign-20260914`
+  - `backup/pre-run231-slim-2026-09-05`
+  - `backup/pre-run231-stage2-2026-09-05`
+  - `backup/pre-writer-first-reader-quality-20260914`
+
+上記のPRなし実験・validation・backup branchはmainとdivergeし、branch refを消すと独自履歴またはrollback anchorを失う可能性があるため、現行Productionで非使用でも保持する。
+
+### 現時点の制約
+
+GitHub connectorにはbranch ref削除APIが公開されていないため、この監査は「安全に削除できるbranchの確定」までである。branch削除そのものは実行していない。main内のhelper/test/file削除可否とは独立し、Full Regression等から参照されるmain資産は保持する。
