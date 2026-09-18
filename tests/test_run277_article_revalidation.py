@@ -232,6 +232,7 @@ def test_existing_recovery_persists_stale_ready_with_dedicated_origin(monkeypatc
         legal_safety_gate=lambda repo: (True, "SAFE"),
         generate_intelligence_report=lambda repo, **kwargs: generated_calls.append((repo, kwargs)) or "report",
         DailyQuotaExhaustedError=_DailyQuotaExhaustedError,
+        _READY_RESCUE_ACTIVE=True,
     )
     seen = {}
 
@@ -255,6 +256,41 @@ def test_existing_recovery_persists_stale_ready_with_dedicated_origin(monkeypatc
     kwargs = generated_calls[0][1]
     assert kwargs["persist_results"] is True
     assert kwargs["candidate_origin"] == "existing_stale_ready_recovery"
+
+
+
+def test_existing_recovery_keeps_editorial_priority_outside_ready_rescue(monkeypatch):
+    class _Budget:
+        budget = 12
+        def can_request(self):
+            return True
+
+    pipeline = SimpleNamespace(
+        logger=_Logger(),
+        TOP_N_FOR_DEEP_DIVE=3,
+        NOTION_API_KEY="test",
+        GEMINI_BUDGET=_Budget(),
+        DEEP_DIVE_MODEL_BUDGET=_Budget(),
+        DEEP_DIVE_MODEL_POOL=["m1"],
+        _model_pool_has_session_candidate=lambda pool: True,
+    )
+    seen = {}
+
+    def select(*args, **kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(article_revalidation, "select_revalidation_items", select)
+    generated_count, next_rank = article_revalidation.run_existing_editorial_recovery(
+        pipeline,
+        generated_count=0,
+        next_candidate_rank=4,
+        limit=1,
+    )
+
+    assert (generated_count, next_rank) == (0, 4)
+    assert seen["include_stale_ready"] is True
+    assert seen["prefer_stale_ready"] is False
 
 
 def test_revalidation_is_read_only_and_bounded(monkeypatch):
