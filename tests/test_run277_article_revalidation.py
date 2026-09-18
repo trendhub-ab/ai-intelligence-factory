@@ -86,6 +86,25 @@ def test_selector_bypasses_acquisition_dedup_but_excludes_ready_and_pending():
     assert selected[1]["revalidation_content_status"] == "Quality Failed"
 
 
+def test_editorial_priority_avoids_unneeded_ready_provenance_reads():
+    pipeline, _ = _selector_pipeline()
+    proof_calls = []
+
+    def must_not_run(page_id, headers):
+        proof_calls.append(page_id)
+        raise AssertionError("Ready provenance should not be read when editorial fills the limit")
+
+    pipeline._notion_page_has_manuscript_child = must_not_run
+    selected = article_revalidation.select_revalidation_items(
+        pipeline,
+        limit=1,
+        include_stale_ready=True,
+    )
+
+    assert [row["notion_page_id"] for row in selected] == ["review"]
+    assert proof_calls == []
+
+
 def test_selector_includes_only_stale_ready_when_explicitly_enabled():
     pipeline, calls = _selector_pipeline()
     selected = article_revalidation.select_revalidation_items(
