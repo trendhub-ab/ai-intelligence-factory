@@ -5,6 +5,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+import run203_runtime_state_channel as run203
 import run260_gemini_model_routing as run260
 
 
@@ -35,6 +36,7 @@ class Run370ProviderHealthPersistenceTests(unittest.TestCase):
             "AIIF_RUNTIME_STATE_BRANCH": "runtime-state",
         }
         with patch.dict("os.environ", env, clear=True):
+            run203._install_provider_health_runtime_auth()
             location = run260._health_state_location(p)
         self.assertIsNotNone(location)
         self.assertEqual(location[1], "actions-runtime-token")
