@@ -120,6 +120,58 @@ def test_selector_includes_only_stale_ready_when_explicitly_enabled():
     assert stale["revalidation_stale_ready"] is True
 
 
+def test_stale_ready_can_be_preferred_for_ready_rescue():
+    pipeline, _ = _selector_pipeline()
+    selected = article_revalidation.select_revalidation_items(
+        pipeline,
+        limit=1,
+        include_stale_ready=True,
+        prefer_stale_ready=True,
+    )
+
+    assert [row["notion_page_id"] for row in selected] == ["ready-stale"]
+    assert selected[0]["revalidation_stale_ready"] is True
+
+
+def test_stale_ready_preference_bounds_provenance_probes_before_editorial_fallback():
+    rows = [
+        {"notion_page_id": f"ready-{index}", "repo": {"nameWithOwner": f"ready-{index}"}}
+        for index in range(8)
+    ] + [{"notion_page_id": "review", "repo": {"nameWithOwner": "review"}}]
+
+    class _Requests:
+        @staticmethod
+        def get(url, headers=None, timeout=None):
+            page_id = url.rsplit("/", 1)[-1]
+            article = "Needs Editorial Review" if page_id == "review" else "Ready"
+            return _Response(article, "Deep Dive")
+
+    proof_calls = []
+    pipeline = SimpleNamespace(
+        requests=_Requests,
+        _notion_headers=lambda: {"Authorization": "test"},
+        get_regen_test_items=lambda limit, source: rows,
+        logger=_Logger(),
+        PROP_ARTICLE_STATUS="Article Status",
+        PROP_CONTENT_STATUS="Content Status",
+        ARTICLE_STATUS_READY="Ready",
+        ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW="Needs Editorial Review",
+        CONTENT_STATUS_PENDING_RETRY="Pending Retry",
+        CONTENT_STATUS_QUALITY_FAILED="Quality Failed",
+        _notion_page_has_manuscript_child=lambda page_id, headers: proof_calls.append(page_id) or True,
+    )
+
+    selected = article_revalidation.select_revalidation_items(
+        pipeline,
+        limit=1,
+        include_stale_ready=True,
+        prefer_stale_ready=True,
+    )
+
+    assert [row["notion_page_id"] for row in selected] == ["review"]
+    assert proof_calls == [f"ready-{index}" for index in range(5)]
+
+
 def test_stale_ready_provenance_uncertainty_fails_closed():
     pipeline, _ = _selector_pipeline()
     del pipeline._notion_page_has_manuscript_child
@@ -180,6 +232,7 @@ def test_existing_recovery_persists_stale_ready_with_dedicated_origin(monkeypatc
         legal_safety_gate=lambda repo: (True, "SAFE"),
         generate_intelligence_report=lambda repo, **kwargs: generated_calls.append((repo, kwargs)) or "report",
         DailyQuotaExhaustedError=_DailyQuotaExhaustedError,
+        _READY_RESCUE_ACTIVE=True,
     )
     seen = {}
 
@@ -199,9 +252,45 @@ def test_existing_recovery_persists_stale_ready_with_dedicated_origin(monkeypatc
     assert generated_count == 1
     assert next_rank == 5
     assert seen["include_stale_ready"] is True
+    assert seen["prefer_stale_ready"] is True
     kwargs = generated_calls[0][1]
     assert kwargs["persist_results"] is True
     assert kwargs["candidate_origin"] == "existing_stale_ready_recovery"
+
+
+
+def test_existing_recovery_keeps_editorial_priority_outside_ready_rescue(monkeypatch):
+    class _Budget:
+        budget = 12
+        def can_request(self):
+            return True
+
+    pipeline = SimpleNamespace(
+        logger=_Logger(),
+        TOP_N_FOR_DEEP_DIVE=3,
+        NOTION_API_KEY="test",
+        GEMINI_BUDGET=_Budget(),
+        DEEP_DIVE_MODEL_BUDGET=_Budget(),
+        DEEP_DIVE_MODEL_POOL=["m1"],
+        _model_pool_has_session_candidate=lambda pool: True,
+    )
+    seen = {}
+
+    def select(*args, **kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(article_revalidation, "select_revalidation_items", select)
+    generated_count, next_rank = article_revalidation.run_existing_editorial_recovery(
+        pipeline,
+        generated_count=0,
+        next_candidate_rank=4,
+        limit=1,
+    )
+
+    assert (generated_count, next_rank) == (0, 4)
+    assert seen["include_stale_ready"] is True
+    assert seen["prefer_stale_ready"] is False
 
 
 def test_revalidation_is_read_only_and_bounded(monkeypatch):

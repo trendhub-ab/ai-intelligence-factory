@@ -27,6 +27,7 @@ DEFAULT_LIMIT = 1
 DEFAULT_SCAN_LIMIT = 100
 DEFAULT_REQUEST_BUDGET = 4
 DEFAULT_FULL_RECOVERY_LIMIT = 1
+DEFAULT_STALE_READY_PROBE_LIMIT = 5
 _INSTALLED_ATTR = "_run277_existing_editorial_recovery_installed"
 
 
@@ -67,6 +68,7 @@ def select_revalidation_items(
     *,
     include_quality_failed: bool = True,
     include_stale_ready: bool = False,
+    prefer_stale_ready: bool = False,
 ):
     """Return existing Deep Dive rows that require current-gate revalidation.
 
@@ -76,7 +78,9 @@ def select_revalidation_items(
 
     Ready is included only when explicitly requested and only when the installed
     publication-contract predicate proves that no current-policy Ready manuscript exists.
-    Missing/failed provenance checks fail closed and leave Ready terminal.
+    Missing/failed provenance checks fail closed and leave Ready terminal. When
+    ``prefer_stale_ready`` is enabled, at most five Ready rows are provenance-probed
+    before falling back to Editorial Review, bounding Notion read cost.
     """
     limit = max(0, int(limit))
     if limit == 0:
@@ -119,14 +123,14 @@ def select_revalidation_items(
         selected["revalidation_content_status"] = content_status
         if article_status == pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW:
             editorial.append(selected)
-            if len(editorial) >= limit:
+            if len(editorial) >= limit and not prefer_stale_ready:
                 break
         elif include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
             quality_failed.append(selected)
 
     # Current-policy Ready is terminal. Only prove enough Ready rows to fill capacity
     # not already owned by Editorial Review. Missing/failed provenance proof fails closed.
-    stale_slots = max(0, limit - len(editorial))
+    stale_slots = limit if prefer_stale_ready else max(0, limit - len(editorial))
     if stale_slots and ready_candidates:
         has_current = getattr(pipeline, "_notion_page_has_manuscript_child", None)
         headers_factory = getattr(pipeline, "_notion_headers", None)
@@ -144,7 +148,7 @@ def select_revalidation_items(
                 )
                 headers = None
             if headers is not None:
-                for item, article_status, content_status in ready_candidates:
+                for item, article_status, content_status in ready_candidates[:DEFAULT_STALE_READY_PROBE_LIMIT]:
                     if len(stale_ready) >= stale_slots:
                         break
                     page_id = str(item.get("notion_page_id") or "")
@@ -165,7 +169,12 @@ def select_revalidation_items(
                     selected["revalidation_stale_ready"] = True
                     stale_ready.append(selected)
 
-    return (editorial + stale_ready + quality_failed)[:limit]
+    ordered = (
+        stale_ready + editorial + quality_failed
+        if prefer_stale_ready
+        else editorial + stale_ready + quality_failed
+    )
+    return ordered[:limit]
 
 
 def _cap_validation_budget(pipeline) -> int:
@@ -274,7 +283,9 @@ def run_existing_editorial_recovery(
 ) -> tuple[int, int]:
     """Use leftover full-run capacity to recover one existing article.
 
-    Editorial Review has first priority; stale Ready is second. This is a business-write
+    Normal/full recovery keeps Editorial Review first. During the explicit Run374 Ready
+    Rescue slot only, stale Ready is preferred within a bounded five-row provenance probe
+    because it already passed a previous publication generation. This is a business-write
     lane: the same existing Notion page id is supplied and ``persist_results=True`` is
     explicit. No Stock row is created, no acquisition dedup is weakened, and no separate
     Gemini budget exists.
@@ -290,12 +301,14 @@ def run_existing_editorial_recovery(
         pipeline.logger.info("[EXISTING EDITORIAL RECOVERY] article budget/model capacity exhausted; skip")
         return generated_count, next_candidate_rank
 
+    prefer_stale_ready = bool(getattr(pipeline, "_READY_RESCUE_ACTIVE", False))
     items = select_revalidation_items(
         pipeline,
         limit=limit,
         scan_limit=DEFAULT_SCAN_LIMIT,
         include_quality_failed=False,
         include_stale_ready=True,
+        prefer_stale_ready=prefer_stale_ready,
     )
     if items is None:
         # Unlike authoritative fresh dedup, this optional leftover lane must not stop a
