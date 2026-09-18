@@ -143,3 +143,42 @@ PR #385では、2026-09-16 17:00 JSTまでの期限付きだったGemini 3.6除�
 現行503契約はRun398を正とする。canonical Flash Deep DiveとPending Retryは1 structured 503で次のdistinct modelへ進み、Ready Rescueはprovider HTTP errorでretry/fallbackしない。Screening、Product Review、noncanonical/custom poolのみboundedなsame-model confirmationを残す。google-genai SDK retryは1 attemptで、Factoryがretry ownerである。旧Run303参照仕様の「全Deep Diveで1回same-model confirmation」は現行契約ではない。
 
 runtime-state/.runtime/gemini_provider_health.jsonの最終更新は2026-09-17T08:25:48Z。直近観測では3.5 / 3.6に成功実績があり、3.7 / 3.8は503/ServerError側の記録が多い。これは過去のoperational telemetryであり、現在時点のGoogle provider availabilityを直接保証するものではない。main統合後のpushではGuard/Synthetic系のみ起動し、Daily / ONE-SHOTの自動起動はなかった。
+
+
+### 2026-09-18 実記事回復・runtime-state・note境界の追補
+
+この節は上記の古い「未検証 / 次の最優先」記述のうち、その後に実証・修正された事項を更新する。現在の基準mainは `a180096ff624689f73db68e3d5a9a12f5dd51fee`。
+
+#### 実記事Gate / Pending Retry
+
+PR #392で、実ONE-SHOT Run #70によりPending RetryのReader Repair taxonomy driftを実証した。対象記事はGemini provider-visible 1送信で生成自体は成功し、Fact / Publication ReadinessはPASSしたが、Reader blockers `non_engineer_access_failure / repetitive_insight / multi_axis_reader_weakness / final_surface_summary_fragment` が旧Pending専用taxonomyから漏れ、残り3送信枠があるのにReader Repairへ進めなかった。Reader-only修復taxonomyを共通集合へ統一し、Gate閾値・1記事上限・provider-visible 4送信上限は維持した。PR #392はmainへ統合済み。
+
+PR #393で、実Run #71によりPending Retryだけ通常Fact/Quality retryの所有権管理から外れ、HARD retryが2回走ってReader Repair機会を圧迫する不整合を修正した。Pending Retryも通常retry最大1回のstate ownerへ含め、Reader-only Repairは別枠で最大1回を維持する。最新main追従後の最終headで **2,726 PASS**、Synthetic **30/30 PASS**、critical 0、`production_write_isolation=true`、required 3 CI全SUCCESS。生成retry挙動がPublication-materialのため、policy SHAは `5eedd6393fe31817630979910fe27faf6afb5e3342e29e6c160c559a9dfb53b3` へ更新された。既存Readyを手動再認証せず、下記stale Ready回復契約へ委ねる。PR #393はmain `a180096ff624689f73db68e3d5a9a12f5dd51fee` へ統合済み。
+
+#### stale Ready回復 / Ready Rescue
+
+PR #394で、Publication policy更新後にContent Intelligence上はReadyでもcurrent-policy manuscriptを持たないstale Readyが、正規回復経路へ入れない詰まりを修正した。current-policy Readyはterminalを維持し、stale Readyだけを明示的な回復対象へ追加した。provenance helper欠落・例外はfail-closed。normal/full ProductionではFresh / Deferred / Pending Retryの先行権を維持し、残余1枠のみを使う。
+
+PR #395で、Run374 Ready Rescueの1-request slotに限りstale ReadyをEditorial Reviewより先に試すよう改善した。provenance probeは最大5件に固定し、stale Readyが見つからなければEditorial Reviewへfallbackする。normal/fullとarticle_validationの従来優先順位は変更しない。最終headで **2,725 PASS**、Synthetic **30/30 PASS**、critical 0、write isolation true、required 3 CI全SUCCESS。Gate閾値・総Deep Dive予算・Ready Rescue 1送信上限は変更していない。PR #395はmainへ統合済み。
+
+#### runtime-state認証のoperator PAT分離
+
+実ONE-SHOT #69 article_validationはGemini送信前にGitHub API user rate limitで停止した。根本原因はruntime-state preflight / Persistent Gemini Counter / Provider Healthがoperator GH_PATと同じ認証枠を共有していたことだった。
+
+PR #391でsame-repository `github.token` を `AIIF_RUNTIME_STATE_GITHUB_TOKEN` としてruntime-state用途だけに公開した。runtime-state preflightとPersistent Gemini CounterはActions token優先、GitHub Actions外ではGH_PAT fallbackを維持する。Provider Healthのtoken切替はPublication fingerprint対象のRun260へ残さず、非Publication層Run203からoperational overlayとして注入した。このため最終検証でPublication policy SHAは当時のmain `6d7376139306c6c021830e0577db71fbd86ece911e7fd558403eda733edc0035` のまま不変だった。最終headで **2,722 PASS**、Synthetic **30/30 PASS**、critical 0、write isolation true、Workflow Referenceを含む4 CI全SUCCESS。PR #391はmainへ統合済み。
+
+#### note DOM / session / private draft境界
+
+現行Production draft entrypoint `run194_note_persistent_cloud.py` は、Run190 persistent Chrome/session、current Publication Contract、Run222 presentation transform、Run417 distributed body verification、Run295 shared eyecatch-persistence proofを実際にinstallしている。したがって、旧prefix-only本文確認や旧`count()==0` eyecatch escape hatchがProductionで有効という懸念は反証された。
+
+固定GenRec用 `/aiif note audit` ChatOps入口はPR #387で退役済み。再利用可能な `note-private-draft-audit.yml` はmanual `workflow_dispatch` + exact `sync_id` 必須のread-only監査として残る。
+
+2026-09-18にNotionのnote投稿管理 data source `0b79b64d-4823-4084-be57-8bb11d7d2ce6` をread-only SQLで再確認した結果、`品質状態=Ready / 投稿状態=投稿準備中 / note公開URL空 / 投稿日空` は **0件**。したがって現行DOM/sessionの既存private-draft auditは対象不在で実行しなかった。VM起動、note draft mutation、公開操作は0。これは「監査失敗」ではなく「監査対象0件」である。
+
+#### 現在の残存境界
+
+- Provider 503 routingはコード・回帰・過去実ログでbounded contractを確認済み。現時点のGoogle側availabilityそのものは新規provider送信なしでは保証しない。
+- 実記事GateはRun #70 / #71でProvider成功後のFact / Publication / Reader相互作用まで実証され、そこで見つかったReader taxonomy / retry-owner不整合をPR #392 / #393で修正した。
+- stale Readyをcurrent Publication Contractへ戻す正規経路はPR #394 / #395で整備済み。
+- note private draftの現行DOM/session read-only監査は対象0件のため未実行。次にcurrent Ready / 投稿準備中が生成された時点でexact sync_id監査を行う。
+- この追補までの修正検証では、明記した過去実Runを除き、新規Gemini/provider送信、note mutation、Daily自動再開は行っていない。Scheduled DailyはPAUSEDを維持する。
