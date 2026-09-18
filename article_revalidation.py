@@ -87,6 +87,7 @@ def select_revalidation_items(
         return None
 
     editorial: list[dict] = []
+    ready_candidates: list[tuple[dict, str, str]] = []
     stale_ready: list[dict] = []
     quality_failed: list[dict] = []
     for item in rows:
@@ -98,36 +99,12 @@ def select_revalidation_items(
             continue
         article_status, content_status = statuses
 
-        # Current-policy Ready is terminal. A Ready row whose persisted manuscript
-        # no longer satisfies the checked-out publication contract may be recovered only
-        # when the caller explicitly enables this lane. Provenance uncertainty fails closed.
+        # Delay the more expensive manuscript-provenance read until after higher-priority
+        # Editorial Review rows are known. If Editorial already fills the caller's limit,
+        # no Ready block read is necessary at all.
         if article_status == pipeline.ARTICLE_STATUS_READY:
-            if not include_stale_ready:
-                continue
-            has_current = getattr(pipeline, "_notion_page_has_manuscript_child", None)
-            headers_factory = getattr(pipeline, "_notion_headers", None)
-            if not callable(has_current) or not callable(headers_factory):
-                pipeline.logger.warning(
-                    "[ARTICLE REVALIDATION READY SKIP] current publication-contract proof unavailable page=%s",
-                    page_id,
-                )
-                continue
-            try:
-                current_ready = bool(has_current(page_id, headers_factory()))
-            except Exception as exc:
-                pipeline.logger.warning(
-                    "[ARTICLE REVALIDATION READY SKIP] current publication-contract proof failed page=%s: %s",
-                    page_id,
-                    exc,
-                )
-                continue
-            if current_ready:
-                continue
-            selected = dict(item)
-            selected["revalidation_article_status"] = article_status
-            selected["revalidation_content_status"] = content_status
-            selected["revalidation_stale_ready"] = True
-            stale_ready.append(selected)
+            if include_stale_ready:
+                ready_candidates.append((item, article_status, content_status))
             continue
 
         # Pending Retry belongs to its dedicated operational recovery lane and must never
@@ -142,8 +119,51 @@ def select_revalidation_items(
         selected["revalidation_content_status"] = content_status
         if article_status == pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW:
             editorial.append(selected)
+            if len(editorial) >= limit:
+                break
         elif include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
             quality_failed.append(selected)
+
+    # Current-policy Ready is terminal. Only prove enough Ready rows to fill capacity
+    # not already owned by Editorial Review. Missing/failed provenance proof fails closed.
+    stale_slots = max(0, limit - len(editorial))
+    if stale_slots and ready_candidates:
+        has_current = getattr(pipeline, "_notion_page_has_manuscript_child", None)
+        headers_factory = getattr(pipeline, "_notion_headers", None)
+        if not callable(has_current) or not callable(headers_factory):
+            pipeline.logger.warning(
+                "[ARTICLE REVALIDATION READY SKIP] current publication-contract proof unavailable"
+            )
+        else:
+            try:
+                headers = headers_factory()
+            except Exception as exc:
+                pipeline.logger.warning(
+                    "[ARTICLE REVALIDATION READY SKIP] Notion headers unavailable: %s",
+                    exc,
+                )
+                headers = None
+            if headers is not None:
+                for item, article_status, content_status in ready_candidates:
+                    if len(stale_ready) >= stale_slots:
+                        break
+                    page_id = str(item.get("notion_page_id") or "")
+                    try:
+                        current_ready = bool(has_current(page_id, headers))
+                    except Exception as exc:
+                        pipeline.logger.warning(
+                            "[ARTICLE REVALIDATION READY SKIP] current publication-contract proof failed page=%s: %s",
+                            page_id,
+                            exc,
+                        )
+                        continue
+                    if current_ready:
+                        continue
+                    selected = dict(item)
+                    selected["revalidation_article_status"] = article_status
+                    selected["revalidation_content_status"] = content_status
+                    selected["revalidation_stale_ready"] = True
+                    stale_ready.append(selected)
 
     return (editorial + stale_ready + quality_failed)[:limit]
 
