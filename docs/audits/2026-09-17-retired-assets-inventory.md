@@ -156,7 +156,7 @@ branch refの削除候補判定は、main内のhelper/test/file削除可否と�
 
 ## 2026-09-18 Run400〜425残存branch監査
 
-現行main `c0399c43f6ea6704d405d0841d488b83118f3d9a` を基準に、Run400〜425系31 branchをGitHub上のPR履歴・現在HEAD・mainとの祖先関係で照合した。
+現行main `e8d83ff854f9346fc5a414a1bcd24ecaa25226d4` へ再照合し、Run400〜425系31 branchをGitHub上のPR履歴・現在HEAD・mainとの祖先関係で照合した。
 
 ### 削除候補: 29本
 
