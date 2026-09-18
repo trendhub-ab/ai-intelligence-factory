@@ -82,7 +82,7 @@ def test_article_validation_never_accepts_an_unverified_truthy_return(report, mo
         generate_intelligence_report=lambda *args, **kw: report,
         DailyQuotaExhaustedError=type("DailyQuotaExhaustedError", (Exception,), {}),
     )
-    monkeypatch.setattr(article_revalidation, "select_revalidation_items", lambda *args: [{
+    monkeypatch.setattr(article_revalidation, "select_revalidation_items", lambda *args, **kwargs: [{
         "repo": {"nameWithOwner": "existing candidate"}, "notion_page_id": "existing-page",
     }])
     result = article_revalidation.run_article_revalidation(p, limit=1)
