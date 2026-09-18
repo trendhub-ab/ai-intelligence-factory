@@ -1,16 +1,19 @@
-"""Bounded validation/recovery lanes for existing non-Ready Deep Dive candidates.
+"""Bounded validation/recovery lanes for existing Deep Dive candidates.
 
 A candidate that is already stored in Notion must not need to pass through fresh
-acquisition/dedup again just because a publication gate changed.
+acquisition/dedup again just because a publication gate or policy fingerprint changed.
 
 Two deliberately different contracts live here:
-- ``article_validation`` is read-only and may inspect Editorial Review or Quality Failed;
-- normal/full Production may recover *Editorial Review only*, at most one candidate,
-  after fresh + Deferred + Pending Retry have had first access to article capacity.
+- ``article_validation`` is read-only and may inspect Editorial Review, stale Ready,
+  or Quality Failed;
+- normal/full Production may recover Editorial Review first and then stale Ready,
+  at most one candidate total, after fresh + Deferred + Pending Retry have had first
+  access to article capacity.
 
-Quality Failed is intentionally not auto-recovered because it can represent Fact/Evidence
-HARD BLOCKs. Repeatedly retrying those rows would spend the free API budget without a
-new source/evidence event. Pending Retry keeps its dedicated operational lane.
+A Ready row is recoverable here only when its persisted manuscript no longer satisfies
+the current publication contract. Current-policy Ready remains terminal. Quality Failed
+is intentionally not auto-recovered because it can represent Fact/Evidence HARD BLOCKs.
+Pending Retry keeps its dedicated operational lane.
 """
 from __future__ import annotations
 
@@ -63,12 +66,17 @@ def select_revalidation_items(
     scan_limit: int = DEFAULT_SCAN_LIMIT,
     *,
     include_quality_failed: bool = True,
+    include_stale_ready: bool = False,
 ):
-    """Return existing non-Ready Deep Dive rows, independent of acquisition dedup.
+    """Return existing Deep Dive rows that require current-gate revalidation.
 
     ``get_regen_test_items`` already reconstructs the source/candidate payload from
     Notion without screening or Stock writes. We deliberately scan a larger bounded
     window, then verify the *current* page lifecycle before selecting anything.
+
+    Ready is included only when explicitly requested and only when the installed
+    publication-contract predicate proves that no current-policy Ready manuscript exists.
+    Missing/failed provenance checks fail closed and leave Ready terminal.
     """
     limit = max(0, int(limit))
     if limit == 0:
@@ -79,6 +87,8 @@ def select_revalidation_items(
         return None
 
     editorial: list[dict] = []
+    ready_candidates: list[tuple[dict, str, str]] = []
+    stale_ready: list[dict] = []
     quality_failed: list[dict] = []
     for item in rows:
         page_id = str(item.get("notion_page_id") or "")
@@ -89,10 +99,16 @@ def select_revalidation_items(
             continue
         article_status, content_status = statuses
 
-        # Ready is terminal for this lane. Pending Retry belongs to its dedicated
-        # operational recovery lane and must never be double-consumed here.
+        # Delay the more expensive manuscript-provenance read until after higher-priority
+        # Editorial Review rows are known. If Editorial already fills the caller's limit,
+        # no Ready block read is necessary at all.
         if article_status == pipeline.ARTICLE_STATUS_READY:
+            if include_stale_ready:
+                ready_candidates.append((item, article_status, content_status))
             continue
+
+        # Pending Retry belongs to its dedicated operational recovery lane and must never
+        # be double-consumed here.
         if content_status == pipeline.CONTENT_STATUS_PENDING_RETRY:
             continue
         if not include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
@@ -103,10 +119,53 @@ def select_revalidation_items(
         selected["revalidation_content_status"] = content_status
         if article_status == pipeline.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW:
             editorial.append(selected)
+            if len(editorial) >= limit:
+                break
         elif include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
             quality_failed.append(selected)
 
-    return (editorial + quality_failed)[:limit]
+    # Current-policy Ready is terminal. Only prove enough Ready rows to fill capacity
+    # not already owned by Editorial Review. Missing/failed provenance proof fails closed.
+    stale_slots = max(0, limit - len(editorial))
+    if stale_slots and ready_candidates:
+        has_current = getattr(pipeline, "_notion_page_has_manuscript_child", None)
+        headers_factory = getattr(pipeline, "_notion_headers", None)
+        if not callable(has_current) or not callable(headers_factory):
+            pipeline.logger.warning(
+                "[ARTICLE REVALIDATION READY SKIP] current publication-contract proof unavailable"
+            )
+        else:
+            try:
+                headers = headers_factory()
+            except Exception as exc:
+                pipeline.logger.warning(
+                    "[ARTICLE REVALIDATION READY SKIP] Notion headers unavailable: %s",
+                    exc,
+                )
+                headers = None
+            if headers is not None:
+                for item, article_status, content_status in ready_candidates:
+                    if len(stale_ready) >= stale_slots:
+                        break
+                    page_id = str(item.get("notion_page_id") or "")
+                    try:
+                        current_ready = bool(has_current(page_id, headers))
+                    except Exception as exc:
+                        pipeline.logger.warning(
+                            "[ARTICLE REVALIDATION READY SKIP] current publication-contract proof failed page=%s: %s",
+                            page_id,
+                            exc,
+                        )
+                        continue
+                    if current_ready:
+                        continue
+                    selected = dict(item)
+                    selected["revalidation_article_status"] = article_status
+                    selected["revalidation_content_status"] = content_status
+                    selected["revalidation_stale_ready"] = True
+                    stale_ready.append(selected)
+
+    return (editorial + stale_ready + quality_failed)[:limit]
 
 
 def _cap_validation_budget(pipeline) -> int:
@@ -121,19 +180,24 @@ def _cap_validation_budget(pipeline) -> int:
 
 
 def run_article_revalidation(pipeline, limit: int | None = None) -> dict[str, Any]:
-    """Regenerate current non-Ready candidates under today's gates, read-only."""
+    """Regenerate current revalidation candidates under today's gates, read-only."""
     selected_limit = max(1, int(limit or os.environ.get("ARTICLE_REVALIDATION_LIMIT", str(DEFAULT_LIMIT))))
     request_budget = _cap_validation_budget(pipeline)
     pipeline.logger.warning(
-        "[ARTICLE REVALIDATION] existing non-Ready lane limit=%s request_budget=%s persist=false",
+        "[ARTICLE REVALIDATION] existing current-gate lane limit=%s request_budget=%s persist=false",
         selected_limit,
         request_budget,
     )
-    items = select_revalidation_items(pipeline, selected_limit, DEFAULT_SCAN_LIMIT)
+    items = select_revalidation_items(
+        pipeline,
+        selected_limit,
+        DEFAULT_SCAN_LIMIT,
+        include_stale_ready=True,
+    )
     if items is None:
         raise RuntimeError("Article revalidation candidate read failed")
     if not items:
-        pipeline.logger.info("[ARTICLE REVALIDATION] no eligible existing non-Ready Deep Dive candidate")
+        pipeline.logger.info("[ARTICLE REVALIDATION] no eligible existing current-gate Deep Dive candidate")
         return {"selected": 0, "generated": 0, "accepted": 0, "rejected": 0, "unverified": 0}
 
     result = {"selected": len(items), "generated": 0, "accepted": 0, "rejected": 0, "unverified": 0}
@@ -208,11 +272,12 @@ def run_existing_editorial_recovery(
     next_candidate_rank: int,
     limit: int = DEFAULT_FULL_RECOVERY_LIMIT,
 ) -> tuple[int, int]:
-    """Use leftover full-run capacity to recover one existing Editorial Review row.
+    """Use leftover full-run capacity to recover one existing article.
 
-    This is a business-write lane: the same existing Notion page id is supplied and
-    ``persist_results=True`` is explicit. No Stock row is created, no acquisition dedup
-    is weakened, and no separate Gemini budget exists.
+    Editorial Review has first priority; stale Ready is second. This is a business-write
+    lane: the same existing Notion page id is supplied and ``persist_results=True`` is
+    explicit. No Stock row is created, no acquisition dedup is weakened, and no separate
+    Gemini budget exists.
     """
     target = int(getattr(pipeline, "TOP_N_FOR_DEEP_DIVE", 0) or 0)
     limit = max(0, min(DEFAULT_FULL_RECOVERY_LIMIT, int(limit)))
@@ -230,6 +295,7 @@ def run_existing_editorial_recovery(
         limit=limit,
         scan_limit=DEFAULT_SCAN_LIMIT,
         include_quality_failed=False,
+        include_stale_ready=True,
     )
     if items is None:
         # Unlike authoritative fresh dedup, this optional leftover lane must not stop a
@@ -237,7 +303,7 @@ def run_existing_editorial_recovery(
         pipeline.logger.warning("[EXISTING EDITORIAL RECOVERY] candidate read failed; skip")
         return generated_count, next_candidate_rank
     if not items:
-        pipeline.logger.info("[EXISTING EDITORIAL RECOVERY] no eligible Needs Editorial Review row")
+        pipeline.logger.info("[EXISTING ARTICLE RECOVERY] no eligible Editorial Review or stale Ready row")
         return generated_count, next_candidate_rank
 
     for item in items[:limit]:
@@ -250,7 +316,14 @@ def run_existing_editorial_recovery(
             pipeline.logger.warning("[EXISTING EDITORIAL RECOVERY SKIP: LICENSE] %s -> %s", name, license_status)
             continue
         next_candidate_rank += 1
-        pipeline.logger.info("[EXISTING EDITORIAL RECOVERY] %s", name)
+        is_stale_ready = bool(item.get("revalidation_stale_ready"))
+        origin = "existing_stale_ready_recovery" if is_stale_ready else "existing_editorial_recovery"
+        pipeline.logger.info(
+            "[EXISTING ARTICLE RECOVERY] %s origin=%s prior_article=%s",
+            name,
+            origin,
+            item.get("revalidation_article_status"),
+        )
         try:
             report = pipeline.generate_intelligence_report(
                 repo,
@@ -258,13 +331,13 @@ def run_existing_editorial_recovery(
                 screening_score=item.get("screening_score"),
                 screening_reason=item.get("screening_reason", ""),
                 candidate_rank=next_candidate_rank,
-                candidate_origin="existing_editorial_recovery",
+                candidate_origin=origin,
                 attribution_context=item,
                 persist_results=True,
             )
             if report:
                 generated_count += 1
-                pipeline.logger.info("[EXISTING EDITORIAL RECOVERY READY] %s", name)
+                pipeline.logger.info("[EXISTING ARTICLE RECOVERY READY] %s origin=%s", name, origin)
         except pipeline.DailyQuotaExhaustedError:
             pipeline.logger.warning("[EXISTING EDITORIAL RECOVERY STOP] Gemini daily quota exhausted")
             break
@@ -272,7 +345,7 @@ def run_existing_editorial_recovery(
 
 
 def install_full_recovery(pipeline):
-    """Install the leftover Editorial Review lane around the canonical backlog helper.
+    """Install the leftover Editorial Review / stale Ready lane around the canonical backlog helper.
 
     Production must fail closed if the canonical backlog surface disappears. A handful
     of long-lived orchestration tests intentionally use a file-less ``ModuleType``
@@ -291,8 +364,8 @@ def install_full_recovery(pipeline):
 
     def process_article_backlog_with_existing_editorial(pending_items, generated_count, next_candidate_rank):
         # Preserve the validated order first: fresh acquisition already ran before this helper,
-        # then canonical Deferred -> Pending Retry. Existing Editorial Review receives only
-        # capacity that would otherwise remain unused before Product Review.
+        # then canonical Deferred -> Pending Retry. Existing Editorial Review, followed by
+        # stale Ready, receives only capacity that would otherwise remain unused before Product Review.
         generated_count, next_candidate_rank = original(
             pending_items, generated_count, next_candidate_rank
         )
