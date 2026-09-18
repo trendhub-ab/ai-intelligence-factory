@@ -145,6 +145,31 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         )
         self.assertEqual(pipeline.MAX_QUALITY_RETRIES, 2)
 
+    def test_pending_fast_lane_allows_one_base_retry_then_one_reader_repair(self):
+        def base_retry(rows, evidence, origin="new"):
+            if any("FACT_" in str(row.get("message")) for row in rows):
+                return True, "hard_retry"
+            return False, "reader_value_review_no_retry"
+
+        pipeline = self._pipeline()
+        pipeline.should_attempt_dynamic_retry = base_retry
+        run208.install(pipeline)
+        hard_rows = [{"message": "FACT_UNSUPPORTED_CLAIM", "severity": "HARD"}]
+        reader_rows = [
+            {"message": "reader_value_review:non_engineer_access_failure", "severity": "REVIEW"},
+            {"message": "reader_value_review:multi_axis_reader_weakness", "severity": "REVIEW"},
+            {"message": "reader_value_review:final_surface_summary_fragment:何が出た？", "severity": "REVIEW"},
+        ]
+        with patch.dict(os.environ, {run208.FAST_LANE_ENV: "1"}, clear=True):
+            first_hard = pipeline.should_attempt_dynamic_retry(hard_rows, {"evidence": "present"}, "pending_retry")
+            second_hard = pipeline.should_attempt_dynamic_retry(hard_rows, {"evidence": "present"}, "pending_retry")
+            reader = pipeline.should_attempt_dynamic_retry(reader_rows, {"evidence": "present"}, "pending_retry")
+            second_reader = pipeline.should_attempt_dynamic_retry(reader_rows, {"evidence": "present"}, "pending_retry")
+        self.assertEqual(first_hard, (True, "hard_retry"))
+        self.assertEqual(second_hard, (False, "run360_base_quality_retry_already_spent"))
+        self.assertEqual(reader, (True, "run208_reader_value_fast_lane_repair"))
+        self.assertEqual(second_reader, (False, "reader_value_review_no_retry"))
+
     def test_second_fact_retry_is_blocked(self):
         pipeline = self._pipeline((True, "hard_retry"))
         run208.install(pipeline)

@@ -67,6 +67,7 @@ _READER_ONLY_REPAIRABLE = (
 _PENDING_REPAIRABLE = _READER_ONLY_REPAIRABLE
 _FRESH_REPAIRABLE = _READER_ONLY_REPAIRABLE
 _FRESH_EQUIVALENT_ORIGINS = frozenset({"new", "article_revalidation"})
+_BASE_RETRY_OWNER_ORIGINS = _FRESH_EQUIVALENT_ORIGINS | frozenset({"pending_retry"})
 
 READER_PATH_CONTRACT = r"""
 【Reader Path Contract｜非エンジニアが迷子にならない順序】
@@ -202,7 +203,7 @@ def install(pipeline_module: Any) -> Any:
 
     # The base pipeline loop is bounded by MAX_QUALITY_RETRIES. Run360 raises only the loop
     # ceiling; the owner-specific state below still allows at most one ordinary retry plus
-    # one reader-only repair for a fresh/article-revalidation candidate.
+    # one reader-only repair for fresh/article-revalidation and the bounded Pending fast lane.
     pipeline_module.MAX_QUALITY_RETRIES = max(2, int(getattr(pipeline_module, "MAX_QUALITY_RETRIES", 1) or 1))
 
     def should_attempt_dynamic_retry_with_reader_repair(
@@ -211,7 +212,7 @@ def install(pipeline_module: Any) -> Any:
         allowed, reason = original_retry(reason_rows, evidence_result, candidate_origin)
 
         if allowed:
-            if candidate_origin in _FRESH_EQUIVALENT_ORIGINS:
+            if candidate_origin in _BASE_RETRY_OWNER_ORIGINS:
                 if bool(getattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)):
                     return False, "run360_base_quality_retry_already_spent"
                 setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, True)
