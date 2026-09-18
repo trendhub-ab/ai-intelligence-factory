@@ -202,7 +202,6 @@ def run_article_revalidation(pipeline, limit: int | None = None) -> dict[str, An
         selected_limit,
         DEFAULT_SCAN_LIMIT,
         include_stale_ready=True,
-        prefer_stale_ready=True,
     )
     if items is None:
         raise RuntimeError("Article revalidation candidate read failed")
@@ -284,9 +283,9 @@ def run_existing_editorial_recovery(
 ) -> tuple[int, int]:
     """Use leftover full-run capacity to recover one existing article.
 
-    Stale Ready has first priority within a bounded five-row provenance probe because it
-    already passed a previous publication generation; Editorial Review is the fallback.
-    This is a business-write
+    Normal/full recovery keeps Editorial Review first. During the explicit Run374 Ready
+    Rescue slot only, stale Ready is preferred within a bounded five-row provenance probe
+    because it already passed a previous publication generation. This is a business-write
     lane: the same existing Notion page id is supplied and ``persist_results=True`` is
     explicit. No Stock row is created, no acquisition dedup is weakened, and no separate
     Gemini budget exists.
@@ -302,13 +301,14 @@ def run_existing_editorial_recovery(
         pipeline.logger.info("[EXISTING EDITORIAL RECOVERY] article budget/model capacity exhausted; skip")
         return generated_count, next_candidate_rank
 
+    prefer_stale_ready = bool(getattr(pipeline, "_READY_RESCUE_ACTIVE", False))
     items = select_revalidation_items(
         pipeline,
         limit=limit,
         scan_limit=DEFAULT_SCAN_LIMIT,
         include_quality_failed=False,
         include_stale_ready=True,
-        prefer_stale_ready=True,
+        prefer_stale_ready=prefer_stale_ready,
     )
     if items is None:
         # Unlike authoritative fresh dedup, this optional leftover lane must not stop a
