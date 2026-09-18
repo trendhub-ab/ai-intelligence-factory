@@ -5,9 +5,10 @@ Machine-generated operational state (Gemini quota counter, deferred queue, sourc
 observed history, eyecatches and attribution manifests) is mutable by design, so it is
 written to a dedicated unprotected runtime-state branch instead.
 
-The preflight intentionally performs a tiny idempotent state write with the same GH_PAT
-used by the pipeline. This fails before any Gemini request if the runtime state channel
-is missing, protected, or no longer writable.
+The preflight intentionally performs a tiny idempotent state write with a dedicated
+same-repository Actions token when available, falling back to GH_PAT only outside that
+runtime. This fails before any Gemini request if the state channel is missing, protected,
+or no longer writable, without coupling Production availability to operator-PAT quota.
 
 Run368 hardens the same state channel against one transient GitHub Contents API failure
 observed in Production: HTTP 409 ``Timed out validating rule, please try again``. Only
@@ -264,12 +265,41 @@ def install(pipeline_module: Any) -> Any:
     counter = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if counter is not None:
         counter.branch = branch
+    _install_counter_runtime_auth(pipeline_module)
 
     _install_observed_history_retry(pipeline_module)
     _install_arxiv_stability(pipeline_module, branch)
     _install_arxiv_exhaustion_circuit(pipeline_module)
     _install_source_stability(pipeline_module)
     return pipeline_module
+
+
+def _runtime_state_token() -> str:
+    """Use the same-repository Actions token for mutable runtime state when available.
+
+    Operator GH_PAT remains available to ChatOps, acquisition, and downstream dispatch.
+    Falling back to GH_PAT preserves local/manual compatibility outside GitHub Actions.
+    """
+    return (
+        os.environ.get("AIIF_RUNTIME_STATE_GITHUB_TOKEN", "").strip()
+        or os.environ.get("GH_PAT", "").strip()
+    )
+
+
+def _install_counter_runtime_auth(pipeline_module: Any) -> None:
+    """Scope runtime-state auth to the already-created persistent Gemini counter."""
+    token = _runtime_state_token()
+    counter = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
+    if not token or counter is None or not callable(getattr(counter, "_headers", None)):
+        return
+    if bool(getattr(counter, "_aiif_runtime_state_auth_installed", False)):
+        return
+
+    def runtime_headers() -> dict[str, str]:
+        return _headers(token)
+
+    counter._headers = runtime_headers
+    counter._aiif_runtime_state_auth_installed = True
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -287,11 +317,11 @@ def preflight_runtime_state_channel() -> dict[str, str]:
         raise RuntimeError("Runtime-state preflight requires an explicit production branch")
 
     repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
-    token = os.environ.get("GH_PAT", "").strip()
+    token = _runtime_state_token()
     if not repo or "/" not in repo:
         raise RuntimeError("GITHUB_REPOSITORY is required for runtime-state preflight")
     if not token:
-        raise RuntimeError("GH_PAT is required for runtime-state preflight")
+        raise RuntimeError("Runtime-state GitHub token is required for runtime-state preflight")
 
     http = _http_client()
     headers = _headers(token)
