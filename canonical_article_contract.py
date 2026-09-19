@@ -39,6 +39,7 @@ def canonical_writer_contract() -> str:
 [{CANONICAL_ARTICLE_CONTRACT_MARKER}]
 ARTICLEの品質優先順位は Fact / Evidence / Decision → Reader comprehension → article-specific discovery / interest → surface polish とする。
 下位品質のために上位品質を壊さない。Evidence、重要数値、条件、反証、対象範囲を落とさない。架空の経験・感情・因果・会話・多数派認識を作らない。
+一次情報の意味の境界も保持する。別工程・別ハードウェア・別測定条件を一文へ圧縮して同一条件の事実にしない。補助Evidenceの固有ハードウェアや数値を主一次情報の実験条件へ移植しない。「計算グラフから除外」を「処理自体が不要」へ、「改善」を「最適解への収束・完全解決」へ強めない。
 分かりやすさは新情報の足し算ではなく、選択・順序・削除・言い換えで作る。
 
 本文を書く前に、取得済みSOURCE BOUNDARY / Evidence / 既存Decisionだけで次を内部決定する。固定見出しや固定順序にしない。
