@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import Mock, patch
 
 import member_presentation_sync as mps
 
@@ -175,6 +176,75 @@ class ChangeMonthTests(unittest.TestCase):
             states, now=datetime(2026, 8, 29, tzinfo=timezone.utc)
         )
         self.assertTrue(states[0]["current_month_change"])
+
+
+class DestinationDuplicateRecoveryTests(unittest.TestCase):
+    def test_oldest_destination_row_survives_duplicate_sync_id(self):
+        older = {
+            "page_id": "page-old",
+            "created_time": "2026-09-18T00:00:00.000Z",
+            "sync_id": "arxiv:2609.20614",
+        }
+        newer = {
+            "page_id": "page-new",
+            "created_time": "2026-09-19T00:00:00.000Z",
+            "sync_id": "arxiv:2609.20614",
+        }
+        indexed, duplicates = mps._index_destination_states([newer, older])
+        self.assertEqual("page-old", indexed["arxiv:2609.20614"]["page_id"])
+        self.assertEqual(["page-new"], [row["page_id"] for row in duplicates])
+
+    @patch.object(mps.time, "sleep")
+    @patch.object(mps, "_comparable", return_value={})
+    @patch.object(mps, "assign_home_ranks", return_value=[])
+    @patch.object(mps, "mark_current_month_changes")
+    @patch.object(mps, "_source_state")
+    @patch.object(mps, "_validate_destination_schema")
+    @patch.object(mps, "_write")
+    @patch.object(mps.decision_intelligence, "_query_external_db")
+    def test_sync_archives_extra_destination_row_before_guard(
+        self,
+        query_db,
+        write,
+        _validate_schema,
+        source_state,
+        _mark_changes,
+        _assign_ranks,
+        _comparable,
+        _sleep,
+    ):
+        source_state.return_value = {"sync_id": "arxiv:2609.20614"}
+        query_db.side_effect = [
+            [{"id": "source-page"}],
+            [
+                {
+                    "id": "page-new",
+                    "created_time": "2026-09-19T00:00:00.000Z",
+                    "properties": {"同期ID": {"rich_text": [{"plain_text": "arxiv:2609.20614"}]}},
+                },
+                {
+                    "id": "page-old",
+                    "created_time": "2026-09-18T00:00:00.000Z",
+                    "properties": {"同期ID": {"rich_text": [{"plain_text": "arxiv:2609.20614"}]}},
+                },
+            ],
+        ]
+        response = Mock(status_code=200, text="")
+        write.return_value = response
+
+        with patch.object(mps.decision_intelligence, "NOTION_DECISION_INTELLIGENCE_API_KEY", "test"), \
+             patch.object(mps.decision_intelligence, "NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID", "source-ds"), \
+             patch.object(mps, "NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID", "member-ds"):
+            result = mps.sync_member_presentation()
+
+        self.assertEqual(1, result["duplicates_archived"])
+        self.assertEqual(1, result["archived"])
+        self.assertEqual(1, result["unchanged"])
+        write.assert_called_once_with(
+            "PATCH",
+            "https://api.notion.com/v1/pages/page-new",
+            json={"archived": True},
+        )
 
 
 class MappingTests(unittest.TestCase):
