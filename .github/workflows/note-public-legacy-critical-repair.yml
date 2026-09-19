@@ -1,0 +1,210 @@
+name: Repair two published legacy articles
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: note-public-legacy-critical-repair
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      github.event.comment.body == '/aiif repair public legacy-critical'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependency
+        run: pip install requests
+
+      - name: Prove exact two-article zero-model contract
+        run: python -m unittest tests.test_public_legacy_critical_repair -v
+
+      - name: Authorize exact command
+        id: auth
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMAND" = '/aiif repair public legacy-critical'
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  repair-public-articles:
+    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
+            echo '::error::Google Chrome is not installed on the persistent note VM.'
+            exit 1
+          }
+          command -v xvfb-run >/dev/null 2>&1 || {
+            echo '::error::xvfb-run is not installed on the persistent note VM.'
+            exit 1
+          }
+
+      - name: Reprove exact repair contract on VM
+        run: python -m unittest tests.test_public_legacy_critical_repair -v
+
+      - name: Update and verify the two exact published notes
+        env:
+          PUBLIC_LEGACY_REPAIR_CONFIRM: 'REPAIR_TWO_PUBLIC_LEGACY_ARTICLES'
+          PUBLIC_LEGACY_REPAIR_RESULT_FILE: ${{ runner.temp }}/public-legacy-repair.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run_public_legacy_critical_repair.py
+
+      - name: Verify terminal invariants
+        env:
+          RESULT_FILE: ${{ runner.temp }}/public-legacy-repair.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ["RESULT_FILE"]).read_text(encoding="utf-8"))
+          if result.get("status") != "completed":
+              raise SystemExit("two-article repair did not complete")
+          targets = result.get("targets") or []
+          if {row.get("note_id") for row in targets} != {"nbad7b7a478d3", "n012a6d7edfda"}:
+              raise SystemExit("unexpected public note target set")
+          for row in targets:
+              if row.get("status") not in {"updated_and_verified", "already_current"}:
+                  raise SystemExit(f"target not verified: {row}")
+              if row.get("same_public_url") is not True:
+                  raise SystemExit("public URL identity changed")
+              if row.get("legacy_markers") != 0:
+                  raise SystemExit("legacy overclaim remains on public surface")
+              if row.get("title_current") is not True:
+                  raise SystemExit("public title did not reach reviewed state")
+          for key, expected in (
+              ("new_note_created", False),
+              ("eyecatch_mutation", False),
+              ("zero_gemini_calls", True),
+          ):
+              if result.get(key) is not expected:
+                  raise SystemExit(f"unsafe terminal invariant: {key}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("### Two published legacy articles repaired\n")
+              for row in targets:
+                  fh.write(f"- `{row.get('note_id')}`: `{row.get('status')}`, legacy markers=0, same public URL=true\n")
+              fh.write("- new note created: `false`\n")
+              fh.write("- eyecatch changed: `false`\n")
+              fh.write("- Gemini/model calls: `0`\n")
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, repair-public-articles]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
