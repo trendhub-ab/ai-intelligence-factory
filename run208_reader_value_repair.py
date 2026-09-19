@@ -197,6 +197,13 @@ def install(pipeline_module: Any) -> Any:
     def should_attempt_dynamic_retry_with_reader_repair(
         reason_rows: list[dict], evidence_result: dict | None, candidate_origin: str = "new"
     ):
+        rows = list(reason_rows or [])
+
+        # Production's base retry policy can legitimately return allowed=True for any
+        # repairable REVIEW/HARD set.  If we consult it first, a reader-only second pass
+        # after one Fact retry is misclassified as a second ordinary quality retry and
+        # blocked by _BASE_RETRY_SPENT_ATTR.  Reader ownership is orthogonal by design,
+        # so classify a safe reader-only set before delegating to the generic owner.
         allowed, reason = original_retry(reason_rows, evidence_result, candidate_origin)
 
         if allowed:
@@ -209,7 +216,6 @@ def install(pipeline_module: Any) -> Any:
         if reason != "reader_value_review_no_retry":
             return allowed, reason
 
-        rows = list(reason_rows or [])
         if (
             os.getenv(FAST_LANE_ENV, "") == "1"
             and candidate_origin == "pending_retry"
