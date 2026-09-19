@@ -508,8 +508,8 @@
       }
     },
     {
-      "run_id": "20260917T082551Z",
-      "recorded_at": "2026-09-17T08:25:51.233250+00:00",
+      "run_id": "20260919T005914Z",
+      "recorded_at": "2026-09-19T00:59:14.913689+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -522,24 +522,24 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 21,
-          "stock_saved": 8,
-          "deep_dive_attempted": 5,
-          "generation_requests": 9,
+          "screened": 31,
+          "stock_saved": 22,
+          "deep_dive_attempted": 2,
+          "generation_requests": 5,
           "ready": 0,
-          "review": 2,
-          "quality_failed": 2,
-          "pending_retry": 1
+          "review": 1,
+          "quality_failed": 1,
+          "pending_retry": 2
         },
         "ArXiv": {
-          "screened": 15,
-          "stock_saved": 0,
+          "screened": 47,
+          "stock_saved": 14,
           "deep_dive_attempted": 0,
           "generation_requests": 0,
           "ready": 0,
           "review": 0,
           "quality_failed": 0,
-          "pending_retry": 0
+          "pending_retry": 1
         },
         "OfficialVendor": {
           "screened": 5,
@@ -571,32 +571,32 @@
       "learning_active": true
     },
     "HackerNews": {
-      "screened": 294.4692405267573,
-      "stock_saved": 93.05130904468533,
-      "deep_dive_attempted": 37.10453788691957,
-      "generation_requests": 50.2879993370837,
+      "screened": 304.4692405267573,
+      "stock_saved": 107.05130904468533,
+      "deep_dive_attempted": 34.10453788691957,
+      "generation_requests": 46.2879993370837,
       "ready": 6.889716991659642,
-      "review": 6.0070355527490005,
-      "stock_yield": 0.3182,
-      "ready_yield": 0.1946,
-      "generation_efficiency": 0.1416,
-      "roi_score": 22.73,
-      "allocation_weight": 0.250319,
+      "review": 5.0070355527490005,
+      "stock_yield": 0.3515,
+      "ready_yield": 0.2092,
+      "generation_efficiency": 0.1524,
+      "roi_score": 24.76,
+      "allocation_weight": 0.266837,
       "mature": true,
       "learning_active": true
     },
     "ArXiv": {
-      "screened": 231.07752698395518,
-      "stock_saved": 113.2913841813149,
+      "screened": 263.0775269839552,
+      "stock_saved": 127.2913841813149,
       "deep_dive_attempted": 5.958489303964141,
       "generation_requests": 9.815232368020713,
       "ready": 0.6017008706075703,
       "review": 2.3360578706075703,
-      "stock_yield": 0.4791,
+      "stock_yield": 0.4744,
       "ready_yield": 0.1757,
       "generation_efficiency": 0.1063,
-      "roi_score": 26.8,
-      "allocation_weight": 0.291098,
+      "roi_score": 26.64,
+      "allocation_weight": 0.286379,
       "mature": true,
       "learning_active": true
     },
