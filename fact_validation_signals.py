@@ -291,6 +291,74 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
                 failures.append("source-fidelity stage omission: deployment distillation was dropped")
                 break
 
+    # 6) Do not infer an agent's inner motive, moral state, or hidden reasoning
+    # from observed behavior unless the source explicitly states that interpretation.
+    # This is deliberately narrow and high-confidence: it catches recurring narrative
+    # upgrades reproduced in the 2026-09-19 OpenAI misalignment article without
+    # treating ordinary descriptions of observed actions as mental-state claims.
+    evidence_states_motive = bool(re.search(
+        r"(?:malicious\s+intent|not\s+malicious|without\s+malicious\s+intent|"
+        r"prioriti[sz](?:e|es|ed|ing)\s+(?:the\s+)?(?:goal|objective|task)|"
+        r"view(?:s|ed|ing)?\s+(?:rules?|constraints?)\s+as\s+(?:obstacles?|barriers?))",
+        evidence,
+        re.I,
+    ))
+    if not evidence_states_motive:
+        internal_state_patterns = (
+            r"(?:AI|モデル|エージェント)[^。！？\n]{0,80}(?:悪意|善意)[^。！？\n]{0,40}"
+            r"(?:持っていない|持っているわけではない|ないわけではない|がない|はない)",
+            r"(?:AI|モデル|エージェント)[^。！？\n]{0,100}"
+            r"(?:目的|タスク)[^。！？\n]{0,40}(?:最優先|優先する|優先して)",
+            r"(?:AI|モデル|エージェント)[^。！？\n]{0,100}"
+            r"(?:ルール|制約)[^。！？\n]{0,50}(?:障害物|邪魔|妨げ)[^。！？\n]{0,30}"
+            r"(?:みな|見な|捉え|判断)",
+        )
+        for sent in sentences:
+            if any(re.search(pattern, sent, re.I) for pattern in internal_state_patterns):
+                failures.append("source-fidelity unsupported internal-state inference")
+                break
+
+    # 7) A finite set of observed examples does not establish a broad behavioral law.
+    # Keep the gate narrow to comparative/generalizing claims about smarter/more capable
+    # AI becoming systematically more evasive or deceptive.
+    evidence_states_comparative_evasion = bool(re.search(
+        r"(?:more\s+(?:capable|advanced|intelligent).{0,80}(?:more\s+likely|increasingly).{0,80}"
+        r"(?:evad|deceiv|hide|conceal|circumvent)|"
+        r"(?:evad|deceiv|hide|conceal|circumvent).{0,80}more\s+(?:capable|advanced|intelligent))",
+        evidence,
+        re.I | re.S,
+    ))
+    if not evidence_states_comparative_evasion:
+        for sent in sentences:
+            if re.search(
+                r"(?:賢い|高性能な|高度な|能力の高い)AIほど[^。！？\n]{0,90}"
+                r"(?:人間の目|監視|ルール|制約)[^。！？\n]{0,50}"
+                r"(?:避け|かいくぐ|欺|隠|すり抜け)",
+                sent,
+            ):
+                failures.append("source-fidelity unsupported broad behavioral law")
+                break
+
+    # 8) Observing prompt circumvention does not prove that prompt-level safeguards
+    # are universally incapable of preventing a class of harm.
+    evidence_states_prompt_impossibility = bool(re.search(
+        r"(?:prompt(?:ing)?|instructions?)[^.!?\n]{0,120}"
+        r"(?:cannot|can\s+not|impossible|insufficient)[^.!?\n]{0,100}"
+        r"(?:prevent|stop|block|mitigate)",
+        evidence,
+        re.I,
+    ))
+    if not evidence_states_prompt_impossibility:
+        for sent in sentences:
+            if re.search(
+                r"(?:プロンプト|指示)[^。！？\n]{0,90}(?:だけ|のみ)[^。！？\n]{0,90}"
+                r"(?:防ぐ|防止|止める|阻止)[^。！？\n]{0,35}"
+                r"(?:不可能|できない|できません)",
+                sent,
+            ):
+                failures.append("source-fidelity unsupported prompt-only impossibility")
+                break
+
     # 6) Frequency values need role fidelity as well as lexical equality.
     # A 10 Hz encoder update cannot ground a claim that the entire control/inference
     # loop runs at 10 Hz.

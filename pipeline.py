@@ -6429,6 +6429,27 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         )
         sections.append("claims")
 
+    if "source-fidelity unsupported internal-state inference" in messages:
+        instructions.append(
+            "FACT_UNSUPPORTED_CLAIM: 観測されたAI/モデルの行動から、一次情報に書かれていない内心・悪意・善意・目的の優先順位・"
+            "『ルールを障害物とみなした』等の判断理由を補完しないでください。該当文は観測事実へ戻し、理由が一次情報にない場合は理由を創作せず削除または未確認として扱ってください。"
+        )
+        sections.append("claims")
+
+    if "source-fidelity unsupported broad behavioral law" in messages:
+        instructions.append(
+            "FACT_UNSUPPORTED_CLAIM: 個別事例から『賢いAIほど〜する』『高度なAIほど〜しやすい』等の一般法則へ広げないでください。"
+            "一次情報が頻度・能力差との相関を示していない場合は、比較一般化を削除し、今回観測された事例の範囲へ戻してください。"
+        )
+        sections.append("claims")
+
+    if "source-fidelity unsupported prompt-only impossibility" in messages:
+        instructions.append(
+            "FACT_UNSUPPORTED_CLAIM: 個別のルール迂回事例から『プロンプトだけでは防止不可能』という普遍的断定へ広げないでください。"
+            "一次情報が同等の不可能性を明示していなければ、プロンプトだけに依存するリスクが示された、程度のEvidence範囲へ弱めてください。"
+        )
+        sections.append("claims")
+
     if not instructions:
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
     # Retry itself must not re-introduce internal management vocabulary into the public article.
