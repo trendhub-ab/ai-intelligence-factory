@@ -41,7 +41,7 @@ class SGPSExistingDraftRepairContractTests(unittest.TestCase):
         self.assertIn("計算グラフから外す", body)
         self.assertIn("蒸留", body)
         self.assertIn("制御ループは50Hz", body)
-        self.assertIn("深度エンコーダが10Hz", body)
+        self.assertIn("深度エンコーダ（深度画像を処理する部分）は10Hz", body)
         self.assertIn("微分可能なダイナミクス", body)
 
     def test_current_production_gates_accept_repaired_manuscript(self):
