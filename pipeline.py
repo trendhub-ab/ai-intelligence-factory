@@ -191,6 +191,7 @@ from fact_validation_signals import (
     _find_unsupported_numeric_claims as _find_unsupported_numeric_claims_impl, _claim_is_negated as _claim_is_negated_impl,
     _find_hype_claims as _find_hype_claims_impl, _evidence_has_substantive_coverage as _evidence_has_substantive_coverage_impl,
     _find_false_negative_evidence_claims as _find_false_negative_evidence_claims_impl, _find_unsupported_competitor_claims as _find_unsupported_competitor_claims_impl,
+    _find_source_semantic_fidelity_violations as _find_source_semantic_fidelity_violations_impl,
     _relation_family_for_predicate as _relation_family_for_predicate_impl, _clean_relation_entity as _clean_relation_entity_impl,
     _looks_like_relation_entity as _looks_like_relation_entity_impl, _extract_explicit_relation_claim as _extract_explicit_relation_claim_impl,
     _evidence_supports_relation as _evidence_supports_relation_impl, _find_entity_relation_violations as _find_entity_relation_violations_impl,
@@ -4861,6 +4862,10 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
     _bind_run245_fact_runtime()
     return _find_unsupported_numeric_claims_impl(draft, source_context, evidence_metadata)
 
+def _find_source_semantic_fidelity_violations(draft: str, source_context: str):
+    return _find_source_semantic_fidelity_violations_impl(draft, source_context)
+
+
 
 def _claim_is_negated(text: str, start: int, end: int):
     _bind_run245_fact_runtime()
@@ -5980,6 +5985,8 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
         failures.append("SOURCE_DEPTH_INSUFFICIENT")
 
     failures.extend(_find_unsupported_numeric_claims(draft, source_context, evidence_metadata))
+    claim_surface = "\n".join(part for part in (parsed.get("title_text", ""), draft) if part)
+    failures.extend(_find_source_semantic_fidelity_violations(claim_surface, source_context))
     failures.extend(_find_hype_claims(draft, source_context, evidence_metadata))
     failures.extend(_find_false_negative_evidence_claims(draft, evidence_metadata or {}, source_context))
     failures.extend(_find_final_wording_violations(draft, evidence_metadata or {}, freshness))
