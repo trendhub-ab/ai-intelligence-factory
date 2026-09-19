@@ -92,3 +92,15 @@ def test_canonical_module_has_no_provider_or_network_dependency():
         "NOTION_",
     ):
         assert forbidden not in src
+
+
+def test_final_reader_check_moves_back_to_end_after_later_layer_append():
+    cac = _load()
+    first = cac.ensure_final_reader_check("BASE")
+    displaced = first.rstrip() + "\n\nLATER PRODUCTION YIELD CONTRACT\n"
+    out = cac.ensure_final_reader_check(displaced)
+    assert out.count(cac.CANONICAL_FINAL_READER_CHECK_MARKER) == 1
+    assert "LATER PRODUCTION YIELD CONTRACT" in out
+    assert out.rstrip().endswith(
+        "Fact/Evidence安全境界を優先し、読みやすさを理由に根拠を強めたり欠落を埋めたりしない。"
+    )
