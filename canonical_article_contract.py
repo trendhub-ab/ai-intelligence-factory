@@ -112,6 +112,10 @@ def ensure_writer_contract(prompt: str) -> str:
 
 def ensure_final_reader_check(prompt: str) -> str:
     base = ensure_writer_contract(prompt).rstrip()
-    if CANONICAL_FINAL_READER_CHECK_MARKER in base:
+    check = canonical_final_reader_check()
+    if check in base:
+        base = base.replace(check, "").rstrip()
+    elif CANONICAL_FINAL_READER_CHECK_MARKER in base:
+        # Unknown/modified marker content is preserved fail-closed rather than guessed at.
         return base + "\n"
-    return base + "\n\n" + canonical_final_reader_check() + "\n"
+    return base + "\n\n" + check + "\n"
