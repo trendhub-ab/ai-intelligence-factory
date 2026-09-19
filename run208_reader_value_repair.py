@@ -44,6 +44,7 @@ import os
 from typing import Any
 
 from canonical_article_contract import canonical_reader_repair_contract, ensure_writer_contract
+from gate_reasoning import REASON_CODE_APPEAL_DECISION_VOICE_LOSS
 
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 _INSTALLED_ATTR = "_run208_reader_value_repair_installed"
@@ -123,6 +124,30 @@ def _reader_only_repairable(rows: list[dict], labels: tuple[str, ...], hard_seve
 def is_reader_only_repair(rows: list[dict], hard_severity: str = "HARD") -> bool:
     """Shared instruction classification; this does not authorize or spend a retry."""
     return _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard_severity)
+
+
+_DECISION_VOICE_MESSAGES = frozenset({
+    "decision_voice_missing",
+    "human_appeal_materially_degraded_after_reedit",
+})
+
+
+def _decision_voice_only_repairable(rows: list[dict], hard_severity: str = "HARD") -> bool:
+    """Authorize only the narrow, evidence-safe decision-voice REVIEW class.
+
+    This is not a general Human Appeal retry escape hatch. Every blocker must be the
+    audited APPEAL_DECISION_VOICE_LOSS class and must remain below HARD severity.
+    """
+    if not rows:
+        return False
+    for row in rows:
+        if str((row or {}).get("severity") or "") == hard_severity:
+            return False
+        if str((row or {}).get("reason_code") or "") != REASON_CODE_APPEAL_DECISION_VOICE_LOSS:
+            return False
+        if _message(row) not in _DECISION_VOICE_MESSAGES:
+            return False
+    return True
 
 
 def _fresh_evidence_safe(pipeline_module: Any, evidence_result: dict | None) -> bool:
@@ -217,6 +242,23 @@ def install(pipeline_module: Any) -> Any:
         if allowed:
             if candidate_origin in _BASE_RETRY_OWNER_ORIGINS:
                 if bool(getattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)):
+                    # A real 2026-09-19 article_validation run showed that
+                    # APPEAL_DECISION_VOICE_LOSS can survive the one ordinary Quality
+                    # retry even when Fact/Evidence/Publication are already safe.
+                    # Reuse the existing second bounded repair owner for this one
+                    # audited REVIEW class; do not create a third retry category.
+                    if (
+                        candidate_origin in _FRESH_EQUIVALENT_ORIGINS
+                        and _fresh_evidence_safe(pipeline_module, evidence_result)
+                        and _decision_voice_only_repairable(
+                            rows,
+                            str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD")),
+                        )
+                    ):
+                        if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                            return False, "run360_reader_repair_already_spent"
+                        setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
+                        return True, "run418_decision_voice_second_repair"
                     return False, "run360_base_quality_retry_already_spent"
                 setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, True)
             return allowed, reason
