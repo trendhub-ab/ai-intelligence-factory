@@ -180,6 +180,23 @@ class Run399ApprovedApplyTests(unittest.TestCase):
         self.assertEqual(result["target_source"], "pending_retry")
         self.assertEqual(len(calls), 1)
 
+    def test_exact_pending_retry_page_outside_bounded_queue_is_reconstructed_by_approved_page_id(self):
+        pipeline = self._pipeline()
+        pending_rows = [
+            self._item(name=f"other-{index}", page_id=f"other-{index}")
+            for index in range(100)
+        ]
+        self._install_rows(pipeline, [], pending_rows=pending_rows)
+        self._install_quality_failed_page(pipeline, content="Pending Retry")
+
+        selected = run399._select_exact_approved_target(
+            pipeline, run399.DEFAULT_EXPECTED_NAME, run399.DEFAULT_EXPECTED_PAGE_ID
+        )
+
+        self.assertEqual(selected["notion_page_id"], run399.DEFAULT_EXPECTED_PAGE_ID)
+        self.assertEqual(selected["approved_target_source"], "pending_retry_exact")
+        self.assertEqual(selected["repo"]["nameWithOwner"], run399.DEFAULT_EXPECTED_NAME)
+
     def test_same_page_seen_in_both_sources_is_deduplicated(self):
         pipeline = self._pipeline()
         self._install_rows(pipeline, [self._item()], pending_rows=[self._item()])

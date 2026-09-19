@@ -120,14 +120,15 @@ def _read_exact_quality_failed_target(pipeline, expected: str, expected_page_id:
     evaluation_status = _select_name(props.get(prop_eval))
     ready = str(getattr(pipeline, "ARTICLE_STATUS_READY", "Ready"))
     quality_failed = str(getattr(pipeline, "CONTENT_STATUS_QUALITY_FAILED", "Quality Failed"))
+    pending_retry = str(getattr(pipeline, "CONTENT_STATUS_PENDING_RETRY", "Pending Retry"))
     deep_dive = str(getattr(pipeline, "CONTENT_STATUS_DEEP_DIVE", "Deep Dive"))
     if article_status == ready:
         raise RuntimeError("Run410 refuses an approved page that is already Ready")
-    if content_status != quality_failed:
+    if content_status not in {quality_failed, pending_retry}:
         return None
     if evaluation_status and evaluation_status != deep_dive:
         raise RuntimeError(
-            f"Run410 approved Quality Failed page is not Deep Dive: evaluation={evaluation_status!r}"
+            f"Run410 approved page is not Deep Dive: content={content_status!r} evaluation={evaluation_status!r}"
         )
 
     raw_url = props.get(prop_url) or {}
@@ -152,7 +153,9 @@ def _read_exact_quality_failed_target(pipeline, expected: str, expected_page_id:
         "repo": repo,
         "screening_score": screening_score,
         "screening_reason": screening_reason,
-        "approved_target_source": "quality_failed_exact",
+        "approved_target_source": (
+            "pending_retry_exact" if content_status == pending_retry else "quality_failed_exact"
+        ),
     }
 
 
@@ -242,8 +245,8 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     continuation = content_status == pipeline.CONTENT_STATUS_PENDING_RETRY
     quality_failed_continuation = content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED
     source = str(item.get("approved_target_source") or "")
-    if continuation and source != "pending_retry":
-        raise RuntimeError("Run399 Pending Retry lifecycle must come from canonical pending source")
+    if continuation and source not in {"pending_retry", "pending_retry_exact"}:
+        raise RuntimeError("Run399 Pending Retry lifecycle must come from canonical pending source or exact approved pending source")
     if quality_failed_continuation and source != "quality_failed_exact":
         raise RuntimeError("Run410 Quality Failed lifecycle must come from exact approved page source")
 
