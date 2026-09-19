@@ -6439,8 +6439,9 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
 
     if "source-fidelity unsupported broad behavioral law" in messages:
         instructions.append(
-            "FACT_UNSUPPORTED_CLAIM: 個別事例から『賢いAIほど〜する』『高度なAIほど〜しやすい』等の一般法則へ広げないでください。"
-            "一次情報が頻度・能力差との相関を示していない場合は、比較一般化を削除し、今回観測された事例の範囲へ戻してください。"
+            "FACT_UNSUPPORTED_CLAIM: 個別事例から『賢いAIほど〜する』『高度なAIほど〜しやすい』や"
+            "『モデルは制約を迂回する性質・傾向がある』等の一般法則へ広げないでください。"
+            "一次情報が頻度・能力差・一般的な性質を明示していない場合は、一般化を削除し、今回観測された事例の範囲へ戻してください。"
         )
         sections.append("claims")
 
