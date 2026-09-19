@@ -63,6 +63,24 @@ class Run194PublicationContractTests(unittest.TestCase):
             second = contract.policy_sha256(root)
             self.assertNotEqual(first, second)
 
+
+    def test_canonical_article_contract_is_publication_fingerprinted(self) -> None:
+        self.assertIn(
+            "canonical_article_contract.py",
+            contract.PUBLICATION_POLICY_FILES,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in contract.PUBLICATION_POLICY_FILES:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{name}:v1", encoding="utf-8")
+            first = contract.policy_sha256(root)
+            canonical = root / "canonical_article_contract.py"
+            canonical.write_text("canonical-article-contract:v2", encoding="utf-8")
+            second = contract.policy_sha256(root)
+            self.assertNotEqual(first, second)
+
     def test_missing_manifest_file_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(RuntimeError):
