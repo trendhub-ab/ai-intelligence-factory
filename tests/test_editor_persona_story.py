@@ -54,6 +54,18 @@ def test_writer_uses_system_persona_and_one_send_without_changing_tools(monkeypa
     assert 'SOURCE BOUNDARY' in prompt and 'Evidence-to-Decision' in prompt
 
 
+def test_writer_output_contract_keeps_public_summary_fields_plain():
+    prompt = pipeline.build_decision_prompt(
+        'fixture', 'https://example.com/source', 0, 'fixture',
+        source_context='Primary evidence with verified facts and limits',
+    )
+    assert 'What: 公開面の30秒要約にも使う' in prompt
+    assert '普通の日本語1文' in prompt
+    assert 'Decisionに不要な実装識別子・略語・専門語の列挙を避ける' in prompt
+    assert 'Why Important: 公開面の30秒要約にも使う' in prompt
+    assert '読者の判断・コスト・運用・選択にどう関係するか' in prompt
+
+
 def test_non_writer_sdk_payload_does_not_acquire_persona(monkeypatch):
     payloads = []
     monkeypatch.setattr(pipeline, 'client', SimpleNamespace(chats=SimpleNamespace(
