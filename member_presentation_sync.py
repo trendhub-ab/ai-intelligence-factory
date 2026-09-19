@@ -771,11 +771,11 @@ def sync_member_presentation() -> dict[str, Any]:
         res = _write(
             "PATCH",
             f"https://api.notion.com/v1/pages/{page_id}",
-            json={"archived": True},
+            json={"in_trash": True},
         )
         if res.status_code != 200:
             raise RuntimeError(
-                f"Member presentation duplicate archive failed {sync_id}: "
+                f"Member presentation duplicate trash failed {sync_id}: "
                 f"{res.status_code} {res.text[:500]}"
             )
         archived += 1
@@ -826,11 +826,11 @@ def sync_member_presentation() -> dict[str, Any]:
         res = _write(
             "PATCH",
             f"https://api.notion.com/v1/pages/{current['page_id']}",
-            json={"archived": True},
+            json={"in_trash": True},
         )
         if res.status_code != 200:
             raise RuntimeError(
-                f"Member presentation archive failed {sync_id}: "
+                f"Member presentation trash failed {sync_id}: "
                 f"{res.status_code} {res.text[:500]}"
             )
         archived += 1
