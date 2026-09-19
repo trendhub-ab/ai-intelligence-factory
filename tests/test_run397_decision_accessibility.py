@@ -68,6 +68,42 @@ def test_specialist_density_passes_when_core_decision_and_term_bridge_are_clear(
     assert "plain_language_bridge_missing" not in out["accessibility_issues"]
 
 
+def test_hardware_vendor_and_model_labels_do_not_block_specialist_decision_access():
+    article = """# 単一GPUで視覚方策を学ぶ研究
+
+arXivでロボット学習の研究が公開されました。何が変わるのか。教師モデルなしで視覚から行動を学び、NVIDIA RTX 4080 GPU 1台で検証できる点が重要です。
+
+ただし、実機条件には制約があり、あらゆる環境で同じ性能を保証するものではありません。
+
+私なら、まず限定したシミュレーション環境で検証し、既存手法と比較してから導入判断を進めます。
+"""
+    out = rqp.correct_reader_signals(
+        article,
+        _signals(
+            unexplained_jargon=["NVIDIA", "RTX"],
+            opening_technical_terms_per_1000_chars=30.0,
+            plain_language_bridge_present=True,
+        ),
+    )
+
+    assert out["plainness_requirement"] == "LOW"
+    assert out["unexplained_jargon"] == []
+    assert out["decision_accessibility"] == "GOOD"
+    assert out["jargon_translation"] == "GOOD"
+    assert out["non_engineer_core_clarity"] == "GOOD"
+
+
+def test_bare_hardware_like_acronym_without_model_context_still_reviews():
+    article = _specialist_article(explain_term=True) + "\nRTXを採用する。"
+    out = rqp.correct_reader_signals(
+        article,
+        _signals(unexplained_jargon=["RTX"]),
+    )
+
+    assert "RTX" in out["unexplained_jargon"]
+    assert out["decision_accessibility"] == "REVIEW"
+
+
 def test_unexplained_required_specialist_term_still_reviews():
     article = _specialist_article(explain_term=False)
     out = rqp.correct_reader_signals(
