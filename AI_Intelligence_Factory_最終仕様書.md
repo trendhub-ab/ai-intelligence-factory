@@ -229,9 +229,11 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 
 維持する原則:
 
-- 冒頭は「どんな内容？」の要約、続いて「なぜ重要？」「結論は？」の回答を置き、元情報・詳細本文へ進む。本文固有の見出しとは別の読者向け要約である。
+- タイトル直後は本文固有のNarrative Leadを先に置き、その後にReader Summary（「何が出た？」「なぜ重要？」「結論は？」）を置く。元情報は上部で重複させず、既存のSources / Evidence footerで保持する。
 - 要確認原稿も通常のReady原稿と同じ `build_reader_first_summary` を渡して保存する。要約を省略した原稿を、そのままcaptionだけでReady化しない。
 - 要約は既存の事実・重要性・判断から構成し、追加モデル呼び出しや根拠のない埋め草を使わない。
+- WriterのMANAGEMENT DATAのうち `Source Summary / What / Why Important / Decision Reason / Action` は機械用構造値であると同時に、公開Reader Summaryの入力候補または旧互換fallbackである。各値はEvidenceを保ち、必要な正式名称を除いて略語・技術名を圧縮して詰め込まない。
+- 公開「結論は？」は #430 の契約を正とし、有効な `Decision` がある場合はcanonical Decisionの行動距離を表す決定論的な読者向け文を優先する。実装手順や技術名の羅列をActionから逆流させない。Decisionがない旧互換データだけ、従来のfinal / Action / Decision Reasonを使用する。
 - RubyGemsの依頼済み要約復元では、旧policyと本文hashを確認した対象1件だけに要約を追加する。policy更新で投稿管理がReady取消となった場合は、修正版の現行契約を読み戻してから通常同期と同じsystem propertiesを同一行へ反映する。投稿準備中・公開URLなし・投稿日なしを前提とし、他記事の再認証はしない。
 - 事実・出典・Evidenceを壊さない。
 - 中学生〜非エンジニアでも核心を理解できる日本語を目指す。
@@ -261,7 +263,7 @@ Human Editorial Styleは文体・Reader Experience / Delight / Proximityの補�
 
 QUESTIONは一本の **Narrative Question** として段落間の疑問・意味・判断をつなぐ。疑問文として公開する義務はなく、答えや重要制約を最後まで隠す演出もしない。冒頭は違和感・意外性・問題・疑問、または平易な事実と意味から自然に選び、固定の発表要約型やクリックベイトにしない。
 
-出力直前の **Self-Edit** は同じ生成内で一度行い、弱いタイトル・導入、次を読む理由の欠落、発表の羅列、一般論、AI的説明、重複、不要な専門語、中心疑問からの逸脱、PAYOFF不足を削除・統合・順序変更・言い換えで直す。新しいFact・数字・経験・因果は追加しない。既存局所修正の範囲と重要な意味を守り、完成稿だけを返す。内部ブリーフ・初稿・編集過程は公開出力へ含めない。
+出力直前の **Self-Edit** は同じ生成内で一度行い、弱いタイトル・導入、次を読む理由の欠落、発表の羅列、一般論、AI的説明、重複、不要な専門語、中心疑問からの逸脱、PAYOFF不足を削除・統合・順序変更・言い換えで直す。技術説明だけの段落が連続する場合は、各説明がNarrative Question / Reader Decisionを進めるかを確認し、進めない説明を削る。必要な説明は「だから読者にとって何が変わるか」を既存Evidenceの範囲で普通の日本語へ戻してから次へ進む。一度役割を説明した正式名称・略語は正確な区別に必要な場合だけ繰り返す。新しいFact・数字・経験・因果は追加しない。既存局所修正の範囲と重要な意味を守り、完成稿だけを返す。内部ブリーフ・初稿・編集過程は公開出力へ含めない。
 
 Persona / Story Brief / Self-Edit / Human Appeal専用callは増設しない。Evidence / Source Fidelity / Fact / Publication Readiness / Grounding / Source Integrity / Numeric Evidence / Safety / Notion persistence、および既存Retry・Provider予算は変更しない。
 
