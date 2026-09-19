@@ -29,16 +29,28 @@ def install(note_manuscript_module: Any, pipeline_module: Any | None = None) -> 
         repo_url,
         source="GitHub",
         published_at=None,
+        include_source=True,
     ):
         source_name = str(source or "").strip()
+
+        def render(date_value):
+            # Preserve compatibility with historical header builders while allowing the current
+            # public-manuscript path to suppress duplicated top provenance.
+            if include_source:
+                return original(reader_summary, repo_name, repo_url, source, date_value)
+            return original(
+                reader_summary, repo_name, repo_url, source, date_value,
+                include_source=False,
+            )
+
         if source_name != "HackerNews":
-            return original(reader_summary, repo_name, repo_url, source, published_at)
+            return render(published_at)
 
         # HN `published_at` comes from the Hacker News item timestamp. It is not
         # evidence for when an external primary article itself was published/updated.
-        header = original(reader_summary, repo_name, repo_url, source, None)
+        header = render(None)
         hn_date = date_parser(published_at)
-        if not header or not repo_url or not hn_date:
+        if not include_source or not header or not repo_url or not hn_date:
             return header
         return f"{header}\n- **Hacker News投稿日**: {hn_date}"
 

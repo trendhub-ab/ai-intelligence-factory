@@ -219,9 +219,13 @@ def build_reader_first_summary(
         parsed.get("what_text", ""),
     ])
     why = _compact_reader_summary(parsed.get("why_important_text") or conclusion)
-    decision = _compact_reader_summary(final or parsed.get("action_text") or parsed.get("decision_reason_text"))
-    if not decision:
-        decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
+    # The compact public card should communicate the decision distance, not repeat the
+    # implementation-heavy Action field. When a canonical Decision code exists, translate it
+    # deterministically into reader language; the precise Action remains in the article/metadata.
+    decision_fallback = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
+    decision = decision_fallback or _compact_reader_summary(
+        final or parsed.get("action_text") or parsed.get("decision_reason_text")
+    )
     decision_code_phrases = {
         "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",
         "WAIT": "条件が整うまで待つ", "AVOID": "現時点では採用を見送る",
@@ -249,7 +253,8 @@ def _reader_published_date(value: str | None) -> str:
 
 
 def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_url: str,
-                              source: str = "GitHub", published_at: str | None = None) -> str:
+                              source: str = "GitHub", published_at: str | None = None,
+                              include_source: bool = True) -> str:
     summary = reader_summary or {}
     rows = [
         ("何が出た？", _compact_reader_summary(summary.get("what", ""))),
@@ -266,7 +271,7 @@ def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_
             if idx:
                 lines.append("")
             lines.extend([f"**{label}**  ", value])
-    if repo_url:
+    if include_source and repo_url:
         if lines:
             lines.append("")
         lines.extend(["### 元情報", f"- **主一次情報**: [{repo_name}]({repo_url})"])
@@ -306,6 +311,29 @@ def _prepare_reader_first_body(markdown_text: str, reader_summary: dict | None, 
     return body.strip()
 
 
+def _split_reader_lead(markdown_text: str) -> tuple[str, str]:
+    """Keep the Writer's narrative lead ahead of the deterministic summary card.
+
+    Generated articles normally start with one or more unheaded lead paragraphs. Older
+    reader-first fixtures can start with an H2 instead; in that case the first H2 section is
+    treated as the lead. The function only changes presentation order and never edits claims.
+    """
+    body = str(markdown_text or "").strip()
+    if not body:
+        return "", ""
+
+    first_h2 = re.search(r"(?m)^##\s+", body)
+    if first_h2 and first_h2.start() > 0:
+        return body[:first_h2.start()].strip(), body[first_h2.start():].strip()
+
+    h2_matches = list(re.finditer(r"(?m)^##\s+", body))
+    if len(h2_matches) >= 2:
+        split_at = h2_matches[1].start()
+        return body[:split_at].strip(), body[split_at:].strip()
+
+    return body, ""
+
+
 def build_clean_note_manuscript(
     note_draft: str,
     repo_name: str,
@@ -333,11 +361,23 @@ def build_clean_note_manuscript(
     manuscript_parts: list[str] = []
     if display_title:
         manuscript_parts.append(f"# {display_title}")
-    reader_header = build_reader_first_header(reader_summary, repo_name, repo_url, source, published_at)
+
+    # Let the model-written narrative lead earn the reader's attention before the deterministic
+    # 30-second card. Source provenance is already preserved in the canonical footer, so the
+    # duplicated top "元情報" block is intentionally omitted from the public reading flow.
+    free_lead, free_remainder = (
+        _split_reader_lead(free_clean) if reader_summary else ("", free_clean)
+    )
+    if free_lead:
+        manuscript_parts.append(free_lead)
+
+    reader_header = build_reader_first_header(
+        reader_summary, repo_name, repo_url, source, published_at, include_source=False
+    )
     if reader_header:
         manuscript_parts.append(reader_header)
-    if free_clean:
-        manuscript_parts.append(free_clean)
+    if free_remainder:
+        manuscript_parts.append(free_remainder)
     if paid_clean:
         manuscript_parts.append(paid_clean)
     manuscript = "\n\n".join(manuscript_parts)

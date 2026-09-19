@@ -35,12 +35,14 @@ class ReviewSummaryTests(unittest.TestCase):
         exec(compile(ast.Module(body=[assignment], type_ignores=[]), "pipeline.py", "exec"), context)
         return context["review_manuscript"], body, summary
 
-    def test_review_projection_contains_all_answers_before_source(self):
+    def test_review_projection_keeps_narrative_body_before_summary_and_source_footer(self):
         text, body, summary = self.render_review()
         self.assertIn(body, text)
         positions = [text.index(value) for value in summary.values()]
         self.assertEqual(positions, sorted(positions))
-        self.assertLess(positions[-1], text.index("### 元情報"))
+        self.assertLess(text.index(body), positions[0])
+        self.assertLess(positions[-1], text.index("### Sources / Evidence"))
+        self.assertNotIn("### 元情報", text)
         for value in summary.values():
             self.assertEqual(text.count(value), 1)
 

@@ -18,7 +18,9 @@ def _date_parser(value):
     return match.group(1) if match else ""
 
 
-def _original_header(summary, repo_name, repo_url, source="GitHub", published_at=None):
+def _original_header(summary, repo_name, repo_url, source="GitHub", published_at=None, include_source=True):
+    if not include_source:
+        return "## 30秒でわかるこの記事"
     lines = [
         "### 元情報",
         f"- **主一次情報**: [{repo_name}]({repo_url})",
@@ -59,6 +61,18 @@ class Run287PublicationDateProvenanceTests(unittest.TestCase):
         header = note.build_reader_first_header({}, "Paper", "https://arxiv.org/abs/1", "ArXiv", "2026-08-10")
         self.assertIn("**公開・更新**: 2026-08-10", header)
         self.assertNotIn("Hacker News投稿日", header)
+
+    def test_source_suppression_does_not_reintroduce_hn_date(self):
+        note, pipeline = self._fixture()
+        run287.install(note, pipeline)
+        header = note.build_reader_first_header(
+            {}, "Source", "https://example.com", "HackerNews",
+            "2026-08-15T12:34:56+00:00", include_source=False,
+        )
+        self.assertEqual("## 30秒でわかるこの記事", header)
+        self.assertNotIn("Hacker News投稿日", header)
+        self.assertNotIn("元情報", header)
+
 
     def test_empty_hn_timestamp_adds_no_fabricated_date(self):
         note, _ = self._fixture()

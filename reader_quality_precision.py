@@ -159,6 +159,29 @@ def _token_is_non_jargon_compound(token: str, article: str) -> bool:
     return False
 
 
+def _token_is_hardware_model_context(token: str, article: str) -> bool:
+    """Do not mistake vendor/model labels such as NVIDIA RTX 4080 GPU for concepts.
+
+    The exemption is contextual rather than a vendor allowlist: every occurrence must sit in
+    a hardware model expression containing a model identifier and a hardware class. Bare
+    acronyms still require explanation and remain reviewable.
+    """
+    value = str(article or "")
+    escaped = re.escape(token)
+    matches = list(re.finditer(rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])", value, re.I))
+    if not matches:
+        return False
+
+    hardware_re = re.compile(
+        rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
+        r"[^。！？\n]{0,48}\b[A-Z]{0,4}\d{2,5}[A-Za-z0-9-]*\b"
+        r"[^。！？\n]{0,28}\b(?:GPU|CPU|TPU|NPU)\b",
+        re.I,
+    )
+    return all(hardware_re.search(value, max(0, match.start() - 2), min(len(value), match.end() + 90))
+               for match in matches)
+
+
 def _correct_unexplained_jargon(base: dict[str, Any], article: str) -> list[str]:
     corrected: list[str] = []
     for raw in list(base.get("unexplained_jargon") or []):
@@ -166,6 +189,8 @@ def _correct_unexplained_jargon(base: dict[str, Any], article: str) -> list[str]
         if not token or token == "PC":
             continue
         if _token_is_non_jargon_compound(token, article):
+            continue
+        if _token_is_hardware_model_context(token, article):
             continue
         if _token_explained_anywhere(token, article):
             continue

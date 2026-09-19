@@ -37,7 +37,8 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         summary = pipeline.build_reader_first_summary(self._parsed())
         self.assertEqual("公式リポジトリで新しいOSSが公開されています。", summary["what"])
         self.assertEqual("設定と監視の手作業を減らせる可能性があり、運用負荷の判断材料になります。", summary["why"])
-        self.assertEqual("本番全面導入ではなく、まず限定した環境で確かめるのが妥当です。", summary["decision"])
+        self.assertEqual("まずは限定した環境で小さく試し、条件を確かめる価値があります。", summary["decision"])
+        self.assertNotIn("本番全面導入", summary["decision"])
 
     def test_internal_decision_code_never_leaks_into_reader_header(self):
         parsed = self._parsed()
@@ -75,11 +76,13 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 published_at="2026-08-21T00:00:00+00:00",
             )
         self.assertTrue(manuscript.startswith("# AI運用を軽くするOSSは使える？"))
-        self.assertLess(manuscript.index("## 30秒でわかるこの記事"), manuscript.index("## 現場の困りごとから"))
-        self.assertLess(manuscript.index("### 元情報"), manuscript.index("## 現場の困りごとから"))
+        self.assertLess(manuscript.index("## 現場の困りごとから"), manuscript.index("## 30秒でわかるこの記事"))
+        self.assertLess(manuscript.index("## 30秒でわかるこの記事"), manuscript.index("## なぜ、この問題が残り続けるのか。"))
+        self.assertNotIn("## 先に判断を書くと。", manuscript)
+        self.assertNotIn("### 元情報", manuscript)
         self.assertGreater(manuscript.index("### Sources / Evidence"), manuscript.index("### 結論として、いま取る距離感。"))
         self.assertIn("### 補助Evidence", manuscript)
-        self.assertEqual(2, manuscript.count("https://github.com/acme/repo"))
+        self.assertEqual(1, manuscript.count("https://github.com/acme/repo"))
 
     def test_hackernews_discovery_is_not_duplicated_in_rights_note(self):
         with patch.object(pipeline, "ENABLE_SUBSCRIPTION_ATTRIBUTION", False):
@@ -89,7 +92,7 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 reader_summary={"what": "発表がありました。", "why": "実務判断に関係します。", "decision": "まず確認します。"},
                 discovery_url="https://news.ycombinator.com/item?id=1",
             )
-        self.assertEqual(2, manuscript.count("発見経路"))
+        self.assertEqual(1, manuscript.count("発見経路"))
         self.assertIn("発見元の[HackerNews投稿]", manuscript)
 
     def test_reader_summary_prefers_plain_source_summary_over_jargon_list(self):
