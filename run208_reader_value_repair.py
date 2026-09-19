@@ -125,6 +125,26 @@ def is_reader_only_repair(rows: list[dict], hard_severity: str = "HARD") -> bool
     return _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard_severity)
 
 
+_DECISION_VOICE_MESSAGES = frozenset({
+    "decision_voice_missing",
+    "human_appeal_materially_degraded_after_reedit",
+})
+
+
+def _decision_voice_only_repairable(rows: list[dict], hard_severity: str = "HARD") -> bool:
+    """Authorize only the narrow, evidence-safe Decision Voice REVIEW class."""
+    if not rows:
+        return False
+    for row in rows:
+        if str((row or {}).get("severity") or "") == hard_severity:
+            return False
+        if str((row or {}).get("reason_code") or "") != REASON_CODE_APPEAL_DECISION_VOICE_LOSS:
+            return False
+        if _message(row) not in _DECISION_VOICE_MESSAGES:
+            return False
+    return True
+
+
 def _fresh_evidence_safe(pipeline_module: Any, evidence_result: dict | None) -> bool:
     if not isinstance(evidence_result, dict):
         return False
@@ -217,6 +237,18 @@ def install(pipeline_module: Any) -> Any:
         if allowed:
             if candidate_origin in _BASE_RETRY_OWNER_ORIGINS:
                 if bool(getattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)):
+                    if (
+                        candidate_origin in _FRESH_EQUIVALENT_ORIGINS
+                        and _fresh_evidence_safe(pipeline_module, evidence_result)
+                        and _decision_voice_only_repairable(
+                            rows,
+                            str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD")),
+                        )
+                    ):
+                        if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                            return False, "run360_reader_repair_already_spent"
+                        setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
+                        return True, "run418_decision_voice_second_repair"
                     return False, "run360_base_quality_retry_already_spent"
                 setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, True)
             return allowed, reason
@@ -256,6 +288,8 @@ def install(pipeline_module: Any) -> Any:
             targeted = _run359_targeted_repair(rows)
             if targeted:
                 instruction = instruction.rstrip() + "\n\n" + targeted
+        elif _decision_voice_only_repairable(rows, hard):
+            instruction = str(instruction).rstrip() + "\n\n" + DECISION_VOICE_REPAIR_CONTRACT
         return instruction, sections
 
     pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_reader_repair
