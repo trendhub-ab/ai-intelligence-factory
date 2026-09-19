@@ -44,6 +44,7 @@ import os
 from typing import Any
 
 from canonical_article_contract import canonical_reader_repair_contract, ensure_writer_contract
+from gate_reasoning import REASON_CODE_APPEAL_DECISION_VOICE_LOSS
 
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 _INSTALLED_ATTR = "_run208_reader_value_repair_installed"
@@ -96,6 +97,17 @@ ARTICLEは専門知識を見せる順番ではなく、読者が判断できる�
 
 READER_REPAIR_CONTRACT = canonical_reader_repair_contract()
 
+
+DECISION_VOICE_REPAIR_CONTRACT = r"""
+【Decision Voice Repair｜Factを固定した判断の復元】
+前稿のFact / Evidence / Decision / Score / Actionの意味を一切変えず、読者が「筆者は結局どう判断しているか」を1回で読める自然文へ戻してください。
+・事実の要約だけで終わらせず、既存DecisionとActionの意味を、本文の判断箇所に明示的な1文として置く。
+・「重要です」「注視します」「可能性があります」だけで逃げず、既存Actionが限定検証・比較・待機・見送り・導入判断のどれなのかを普通の日本語で明確にする。
+・新しい施策、数値、経験、感情、因果、保証、利用実績を追加しない。前稿にないPoCやテストを勝手に提案しない。
+・内部管理コード NOW / TRY / WATCH / WAIT / AVOID は出力しない。
+・「私なら」を固定テンプレートとして必須にはしない。記事固有のEvidenceに基づく編集判断として自然に書く。
+""".strip()
+
 _READER_DENSITY_LABELS = (
     "dense_report_cluster", "multi_axis_reader_weakness", "non_engineer_access_failure",
     "final_surface_multi_axis_reader_weakness", "final_surface_non_engineer_access_failure",
@@ -123,6 +135,26 @@ def _reader_only_repairable(rows: list[dict], labels: tuple[str, ...], hard_seve
 def is_reader_only_repair(rows: list[dict], hard_severity: str = "HARD") -> bool:
     """Shared instruction classification; this does not authorize or spend a retry."""
     return _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard_severity)
+
+
+_DECISION_VOICE_MESSAGES = frozenset({
+    "decision_voice_missing",
+    "human_appeal_materially_degraded_after_reedit",
+})
+
+
+def _decision_voice_only_repairable(rows: list[dict], hard_severity: str = "HARD") -> bool:
+    """Authorize only the narrow, evidence-safe Decision Voice REVIEW class."""
+    if not rows:
+        return False
+    for row in rows:
+        if str((row or {}).get("severity") or "") == hard_severity:
+            return False
+        if str((row or {}).get("reason_code") or "") != REASON_CODE_APPEAL_DECISION_VOICE_LOSS:
+            return False
+        if _message(row) not in _DECISION_VOICE_MESSAGES:
+            return False
+    return True
 
 
 def _fresh_evidence_safe(pipeline_module: Any, evidence_result: dict | None) -> bool:
@@ -217,6 +249,18 @@ def install(pipeline_module: Any) -> Any:
         if allowed:
             if candidate_origin in _BASE_RETRY_OWNER_ORIGINS:
                 if bool(getattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)):
+                    if (
+                        candidate_origin in _FRESH_EQUIVALENT_ORIGINS
+                        and _fresh_evidence_safe(pipeline_module, evidence_result)
+                        and _decision_voice_only_repairable(
+                            rows,
+                            str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD")),
+                        )
+                    ):
+                        if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                            return False, "run360_reader_repair_already_spent"
+                        setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
+                        return True, "run418_decision_voice_second_repair"
                     return False, "run360_base_quality_retry_already_spent"
                 setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, True)
             return allowed, reason
@@ -256,6 +300,8 @@ def install(pipeline_module: Any) -> Any:
             targeted = _run359_targeted_repair(rows)
             if targeted:
                 instruction = instruction.rstrip() + "\n\n" + targeted
+        elif _decision_voice_only_repairable(rows, hard):
+            instruction = str(instruction).rstrip() + "\n\n" + DECISION_VOICE_REPAIR_CONTRACT
         return instruction, sections
 
     pipeline_module.should_attempt_dynamic_retry = should_attempt_dynamic_retry_with_reader_repair
