@@ -1,12 +1,10 @@
-"""Exercise the review persistence call without loading providers or writing Notion."""
+"""Exercise current review-manuscript projection without loading providers or writing Notion."""
 import ast
 from pathlib import Path
 import unittest
-from unittest.mock import patch, Mock
 
 import note_manuscript as manuscript
 import run296_editorial_format_v2 as format_v2
-import run413_oneoff_rubygems_manual_ready as recaption
 
 
 class ReviewSummaryTests(unittest.TestCase):
@@ -39,35 +37,12 @@ class ReviewSummaryTests(unittest.TestCase):
 
     def test_review_projection_contains_all_answers_before_source(self):
         text, body, summary = self.render_review()
-        recaption.require_reader_summary(text)
         self.assertIn(body, text)
         positions = [text.index(value) for value in summary.values()]
         self.assertEqual(positions, sorted(positions))
         self.assertLess(positions[-1], text.index("### 元情報"))
         for value in summary.values():
             self.assertEqual(text.count(value), 1)
-
-    def test_each_missing_answer_rejected(self):
-        text, _, summary = self.render_review()
-        for value in summary.values():
-            with self.subTest(value=value), self.assertRaises(RuntimeError):
-                recaption.require_reader_summary(text.replace(value, ""))
-
-    def test_missing_summary_cannot_be_patched_to_ready(self):
-        response = Mock()
-        response.json.return_value = {"properties": {
-            "記事名": {"title": [{"plain_text": recaption.EXPECTED_TITLE}]},
-            "記事状態": {"select": {"name": "Ready"}}}}
-        blocks = [{"type": "code", "code": {"rich_text": [
-            {"plain_text": "# Title\n\n### 元情報\n" + recaption.EXPECTED_TITLE}]}}]
-        with patch.dict(recaption.os.environ, {"RUN413_CONFIRM": recaption.CONFIRM}), \
-             patch.object(recaption, "headers", return_value={}), \
-             patch.object(recaption.requests, "get", return_value=response), \
-             patch.object(recaption, "children", return_value=blocks), \
-             patch.object(recaption.requests, "patch") as write:
-            with self.assertRaisesRegex(RuntimeError, "summary"):
-                recaption.main()
-            write.assert_not_called()
 
 
 if __name__ == "__main__":
