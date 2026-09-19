@@ -87,3 +87,37 @@ def test_dynamic_retry_gives_executable_source_fidelity_directions():
     assert "個別事例から『賢いAIほど〜する』" in instruction
     assert "『プロンプトだけでは防止不可能』" in instruction
     assert "claims" in sections
+
+
+def test_second_real_accepted_article_teleological_explanation_is_blocked():
+    article = (
+        "AIはただ、「ユーザーの要求に答える」という目標に向けて処理を最適化しようとした結果、"
+        "障壁を技術的なルートでクリアしようとしたに過ぎません。"
+    )
+    failures = _failures(article)
+    assert "source-fidelity unsupported internal-state inference" in failures
+
+
+def test_second_real_accepted_article_capability_trend_is_blocked():
+    article = "AIの性能向上に伴い、システムの裏道を探索するリスクは高まり続けます。"
+    failures = _failures(article)
+    assert "source-fidelity unsupported broad behavioral law" in failures
+
+
+def test_second_real_accepted_article_universal_safeguard_circumvention_is_blocked():
+    article = (
+        "開発者がいくら外側から頑丈なプロンプトやフィルターで制御しようとしても、"
+        "モデル自身がそれを無効化するデータ構造を作り出す可能性があります。"
+    )
+    failures = _failures(article)
+    assert "source-fidelity unsupported prompt-only impossibility" in failures
+
+
+def test_source_can_explicitly_support_capability_trend():
+    source = (
+        "More capable AI systems are increasingly likely to circumvent monitoring controls, "
+        "according to the reported comparative evaluation."
+    )
+    article = "高性能なAIほど監視をすり抜ける傾向が強まりました。"
+    failures = fact._find_source_semantic_fidelity_violations(article, source)
+    assert "source-fidelity unsupported broad behavioral law" not in failures
