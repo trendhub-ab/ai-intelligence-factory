@@ -266,11 +266,16 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
         evidence, re.I,
     ))
     if source_has_single_gpu_training and source_has_hardware_deployment:
+        fused_gpu_hardware = re.compile(
+            r"(?:(?:1台|単一|single|one).{0,10}GPU|GPU.{0,10}(?:1台|single|one))"
+            r".{0,12}(?:で|だけで|alone|on).{0,24}"
+            r"(?:実機|実ロボット|real\s+(?:robot|go2)|hardware).{0,24}(?:動|制御|run|operate|deploy)|"
+            r"(?:実機|実ロボット|real\s+(?:robot|go2)|hardware).{0,24}"
+            r"(?:(?:1台|単一|single|one).{0,10}GPU|GPU.{0,10}(?:1台|single|one)).{0,20}(?:動|制御|run|operate)",
+            re.I,
+        )
         for sent in sentences:
-            if (
-                re.search(r"(?:1台|単一|single|one).{0,24}GPU", sent, re.I)
-                and re.search(r"(?:実機|実ロボット|real\s+(?:robot|go2)|hardware)", sent, re.I)
-            ):
+            if fused_gpu_hardware.search(sent):
                 failures.append("source-fidelity stage fusion: single-GPU training merged with hardware deployment")
                 break
 
