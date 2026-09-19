@@ -3,6 +3,7 @@ from __future__ import annotations
 import types
 import unittest
 
+import canonical_article_contract as cac
 import run284_reader_recovery_precision as run284
 
 
@@ -34,6 +35,13 @@ class Run360RetryOwnerOrthogonalityTests(unittest.TestCase):
         out = wrapped(quality_feedback=feedback, previous_article="old")
         self.assertEqual(out, feedback)
         self.assertNotIn(run284.RETRY_PRESERVATION_CONTRACT, out)
+
+
+    def test_canonical_reader_repair_marker_skips_run352_paragraph_lock(self):
+        feedback = cac.canonical_reader_repair_contract()
+        out = run284.retry_feedback_with_preservation(feedback, "before article")
+        self.assertEqual(out, feedback)
+        self.assertNotIn("指摘対象でない見出し、段落順", out)
 
 
 if __name__ == "__main__":

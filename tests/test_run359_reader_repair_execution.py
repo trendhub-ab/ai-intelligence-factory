@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import canonical_article_contract as cac
 import run208_reader_value_repair as r208
 
 
@@ -76,3 +77,42 @@ def test_reader_retry_budget_and_evidence_safety_remain_authoritative():
     assert pipeline.should_attempt_dynamic_retry(rows, {"state": "INSUFFICIENT", "decision_scope_safe": False}, "new") == (False, "reader_value_review_no_retry")
     assert pipeline.should_attempt_dynamic_retry(rows, {"state": "SUFFICIENT", "decision_scope_safe": True}, "new") == (True, "run341_production_reader_repair")
     assert calls["count"] == 2
+
+
+def test_reader_repair_uses_canonical_contract_once():
+    pipeline = SimpleNamespace(
+        should_attempt_dynamic_retry=lambda rows, evidence, origin="new": (
+            False, "reader_value_review_no_retry"
+        ),
+        build_decision_prompt=lambda *a, **k: "BASE",
+        build_dynamic_retry_instruction=lambda rows: ("BASE RETRY", ["reader"]),
+        GATE_SEVERITY_HARD="HARD",
+        EVIDENCE_SUFFICIENT="SUFFICIENT",
+    )
+    r208.install(pipeline)
+    instruction, _ = pipeline.build_dynamic_retry_instruction(
+        [_row("non_engineer_access_failure")]
+    )
+    assert r208.READER_REPAIR_CONTRACT == cac.canonical_reader_repair_contract()
+    assert instruction.count("Reader Repair｜Factを固定した読者導線修正") == 1
+    assert "段落・見出しを再編" in instruction
+    assert "新しい数値、製品名、API名、比較対象" in instruction
+
+
+def test_mixed_publication_and_reader_failure_never_gets_reader_only_contract():
+    pipeline = SimpleNamespace(
+        should_attempt_dynamic_retry=lambda rows, evidence, origin="new": (
+            True, "base_quality_retry"
+        ),
+        build_decision_prompt=lambda *a, **k: "BASE",
+        build_dynamic_retry_instruction=lambda rows: ("BASE RETRY", ["ARTICLE"]),
+        GATE_SEVERITY_HARD="HARD",
+        EVIDENCE_SUFFICIENT="SUFFICIENT",
+    )
+    r208.install(pipeline)
+    rows = [
+        _row("non_engineer_access_failure"),
+        {"message": "score_narrative_mismatch", "severity": "REVIEW"},
+    ]
+    instruction, _ = pipeline.build_dynamic_retry_instruction(rows)
+    assert "Reader Repair｜Factを固定した読者導線修正" not in instruction

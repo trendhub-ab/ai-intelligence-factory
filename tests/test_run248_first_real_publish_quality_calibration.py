@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import tempfile
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
 
 from PIL import Image
 
+import canonical_article_contract as cac
 import publication_contract
 import run181_eyecatch_visual_balance as r181
 import run248_first_real_publish_quality_calibration as r248
@@ -81,6 +83,21 @@ class Run248FirstRealPublishQualityCalibrationTests(unittest.TestCase):
         self.assertIn('particle_collision_wo_ni', joined)
         self.assertIn('duplicated_primary_modifier', joined)
         self.assertIn('malformed_lexeme_ganpou', joined)
+
+
+    def test_prompt_wrapper_uses_canonical_final_reader_check(self):
+        pipe = SimpleNamespace(
+            generate_note_editorial_eyecatch=lambda *a, **k: "unused.png",
+            build_clean_note_manuscript=lambda *a, **k: "",
+            validate_human_appeal_gate=lambda parsed, peers=None: ("ACCEPTABLE", []),
+            validate_fact_gate=lambda *a, **k: (True, []),
+            build_decision_prompt=lambda *a, **k: "BASE",
+        )
+        r248.install(pipe)
+        prompt = pipe.build_decision_prompt()
+        self.assertEqual(prompt.count(cac.CANONICAL_ARTICLE_CONTRACT_MARKER), 1)
+        self.assertEqual(prompt.count(cac.CANONICAL_FINAL_READER_CHECK_MARKER), 1)
+        self.assertNotIn(r248.PROMPT_MARKER, prompt)
 
     def test_runtime_and_publication_contract_include_run248(self):
         self.assertIn(

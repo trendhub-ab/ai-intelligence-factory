@@ -2,38 +2,26 @@ from __future__ import annotations
 
 import unittest
 
+import canonical_article_contract as cac
 import run228_reader_rhythm_planning as run228
 
 
 class Run228ReaderRhythmPlanningTests(unittest.TestCase):
-    def test_contract_preserves_evidence_and_reduces_report_stacking(self):
+    def test_contract_is_only_a_compatibility_layer(self):
         contract = run228.reader_rhythm_contract()
+        self.assertIn(run228.RUN228_MARKER, contract)
+        self.assertIn("canonical article contract V1", contract)
+        self.assertIn("no independent article philosophy", contract)
         self.assertIn("報告書の塊", contract)
-        self.assertIn("理解→意味→判断", contract)
-        self.assertIn("Evidence上重要な数値・条件・反証・制約は削らない", contract)
-        self.assertIn("新しいFact、数字、人物、会話、利用実績、因果、競合情報を作る", contract)
 
-    def test_contract_avoids_style_count_quotas_and_fixed_template(self):
-        contract = run228.reader_rhythm_contract()
-        forbidden = (
-            "問いかけを1回",
-            "問いかけを2回",
-            "1段落3",
-            "箇条書き2",
-            "比喩を1回",
-            "問題提起→比喩→3点列挙→私なら の順序へ揃える",
-        )
-        for token in forbidden:
-            with self.subTest(token=token):
-                self.assertNotIn(token, contract)
-        self.assertIn("回数ノルマを設けない", contract)
-        self.assertIn("全記事を同じ", contract)
-
-    def test_augment_prompt_is_idempotent(self):
+    def test_augment_prompt_installs_canonical_writer_and_final_check_once(self):
         first = run228.augment_prompt("BASE")
         second = run228.augment_prompt(first)
         self.assertEqual(first, second)
-        self.assertEqual(second.count(run228.RUN228_MARKER), 1)
+        self.assertEqual(1, second.count(run228.RUN228_MARKER))
+        self.assertEqual(1, second.count(cac.CANONICAL_ARTICLE_CONTRACT_MARKER))
+        self.assertEqual(1, second.count(cac.CANONICAL_FINAL_READER_CHECK_MARKER))
+        self.assertIn("Evidence・重要数値・条件・反証・Decisionは削らない", second)
 
     def test_install_adds_no_call_site_and_is_idempotent(self):
         class DummyPipeline:
@@ -51,6 +39,8 @@ class Run228ReaderRhythmPlanningTests(unittest.TestCase):
         second = pipe.build_decision_prompt()
         self.assertEqual(first, second)
         self.assertEqual(first.count(run228.RUN228_MARKER), 1)
+        self.assertEqual(first.count(cac.CANONICAL_ARTICLE_CONTRACT_MARKER), 1)
+        self.assertEqual(first.count(cac.CANONICAL_FINAL_READER_CHECK_MARKER), 1)
         self.assertEqual(DummyPipeline.calls, 2)
 
 

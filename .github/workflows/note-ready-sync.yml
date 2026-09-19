@@ -44,6 +44,7 @@ on:
       - 'evidence_authority.py'
       - 'evidence_ledger.py'
       - 'subscription_attribution.py'
+      - 'canonical_article_contract.py'
       - 'reader_value_review_bridge.py'
       - 'run208_reader_value_repair.py'
       - 'run172_production_reliability.py'

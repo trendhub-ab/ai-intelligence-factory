@@ -1,78 +1,47 @@
-"""Run228 — evidence-preserving reader rhythm planning for free note articles.
+"""Run228 compatibility layer for canonical reader rhythm planning.
 
-Run274 shortens this contract after real Production proved that more editorial prose is
-not automatically better. Run275 makes the subtractive rule explicit enough for weak-model
-fallback. The current Blueprint supersedes its paragraph-count trigger: advance to
-meaning/constraint/decision when the relationship is unclear, not at a fixed count. The contract remains prompt-only and preserves
-verified decision evidence.
-
-Run368 adds a short last-mile reader check at the very end of the prompt. Run48 showed
-that a fallback model could receive the full Reader Experience contract yet still produce
-a dense report-like ARTICLE after the higher-priority models were unavailable. Repeating a
-small set of non-negotiable reader constraints at the prompt tail improves instruction
-salience without adding a model call, lowering a gate, or changing Evidence/Fact authority.
+The independent long-form Reader Rhythm policy was folded into
+canonical_article_contract.py so Fresh Writer prompts have one article-quality source.
+This layer keeps its historical installation marker and ensures the canonical last-mile
+Reader check without adding a provider call.
 """
 from __future__ import annotations
 
 from typing import Any
 
+from canonical_article_contract import (
+    CANONICAL_ARTICLE_CONTRACT_MARKER,
+    CANONICAL_FINAL_READER_CHECK_MARKER,
+    ensure_final_reader_check,
+)
+
+
 RUN228_MARKER = "RUN228_READER_RHYTHM_PLANNING"
-RUN368_FINAL_READER_CHECK_MARKER = "RUN368_FINAL_READER_CHECK"
+RUN368_FINAL_READER_CHECK_MARKER = CANONICAL_FINAL_READER_CHECK_MARKER
 _INSTALL_FLAG = "_run228_reader_rhythm_planning_installed"
 
 
 def reader_rhythm_contract() -> str:
     return f"""
-[{RUN228_MARKER} — 無料note記事 / READER RHYTHM]
-ARTICLEはEvidenceの保管庫ではない。Run226で選んだ1本のDiscoveryとDecisionへ、読者の理解が「理解→意味→判断」と前進するよう編集する。
-
-優先順位:
-- Evidence上重要な数値・条件・反証・制約は削らない。
-- ただし、Discovery・重要制約・Decisionのどれにも影響しない実装詳細、周辺仕様、同じ核心の言い換えは削るか必要な範囲へ圧縮する。
-- 技術Factを追加する前に、それらが読者の理解や判断に本当に必要かを確認する。不要なら次のFactを足さない。
-- 技術説明と読者判断の関係が見えなくなったら、既存Evidenceの範囲で「それが読者に何を意味するか」「どんな制約が残るか」「何を判断するか」のどれかへ進む。段落数で機械的に切り替えたり、必要な説明を打ち切ったりしない。
-- 正式名称・略語・実装名・フラグ名は、それ自体がDiscovery・制約・Decisionに必要でなければ本文に出さない。必要なら最初の1回だけ普通の言葉で役割を添え、名称紹介を連続させない。
-- 専門語は普通の言葉で役割を先に伝え、正式名称は必要になった時だけ出す。別の未説明専門語で説明しない。
-- 各主要セクションは単なる「次の情報」で終わらず、Discovery・意味・制約・Decisionのどれかへ前進させる。
-- dense_report_clusterやrepetitive_insightを避けるため、親しみ文を追加するのではなく、重複・汎用前置き・判断に不要な列挙を先に引く。
-- non_engineer_access_failureを避けるため、核心理解に不要な専門語を残さず、必要な専門語はその場で一度だけ平易化する。
-
-安全境界:
-- Reader Rhythmのために新しいFact、数字、人物、会話、利用実績、因果、競合情報を作ることは禁止。
-- Evidence条件・留保を省いて軽く見せない。安全性・重大リスクのテーマを無理に娯楽化しない。
-- scene、比喩、問い、短文、会話調は理解を助ける時だけ使い、回数ノルマを設けない。
-- 全記事を同じ問題提起→比喩→列挙→私なら、のテンプレートへ揃えない。
-
-完成時は、新しい説明を足す前に削れるものを探す。「報告書の塊」が残っているなら、Evidenceを落とすのではなく周辺列挙と重複を減らし、記事固有のDiscoveryとDecisionが前に見える状態で終える。
+[{RUN228_MARKER} — compatibility layer]
+Reader Rhythm is governed by the canonical article contract V1; this layer adds no independent article philosophy.
+Historical reader diagnostics remain mapped to that contract: dense_report_cluster, repetitive_insight, non_engineer_access_failure.
+The intended flow remains 理解→意味→判断, without leaving a 報告書の塊.
+Evidence上重要な数値・条件・反証・制約は削らない。新しいFact、数字、人物、会話、利用実績、因果、競合情報を作ることは禁止する。
+正式名称・略語・実装名・フラグ名は判断に必要な場合だけ残し、段落数で機械的に切り替えたりしない。回数ノルマを設けない。
 """.strip()
-
 
 def final_reader_check_contract() -> str:
-    """Short tail contract that weak-model fallback cannot easily lose in a long prompt."""
-    return f"""
-[{RUN368_FINAL_READER_CHECK_MARKER} — 出力直前の必須チェック]
-ARTICLEを返す直前に、次だけを最後に確認する。満たさない場合は新しい情報を足さず、削る・平易に言い換える・順序を直す。
-1. 冒頭から、非エンジニアにも「何が起きた／なぜ自分に関係する」が普通の日本語で分かる。
-2. 読者が覚える中核専門概念はEditorial Blueprintの核心・制約・Reader Decisionに必要なものを選び、個数で制限しない。略語・実装名・規格名の列挙で専門性を演出しない。
-3. 技術説明が意味・制約・判断へつながっているか確認し、関係が伝わらない箇所だけ順序や表現を直す。段落数による強制切替はしない。
-4. 判断に不要な実装細部、重複、報告書調の前置きは削る。Evidence・重要数値・条件・反証・Decisionは削らない。
-5. 平易化のために新しいFact、因果、数値、利用経験、保証、競合情報を作らない。Source/Evidenceの断定範囲を超えない。
-6. 最後に「要するに何の話か」と「私なら次に何をするか」が、必要な範囲で明確に説明できる状態にする。
-
-Reader要件とFact/Evidence安全境界が衝突する場合は、必ずFact/Evidence安全境界を優先する。読みやすさを理由に根拠を強めたり欠落を埋めたりしない。
-""".strip()
+    """Compatibility API for callers that used the historical Run368 helper."""
+    from canonical_article_contract import canonical_final_reader_check
+    return canonical_final_reader_check()
 
 
 def augment_prompt(prompt: str) -> str:
-    base = str(prompt or "")
-    parts = [base.rstrip()]
+    base = str(prompt or "").rstrip()
     if RUN228_MARKER not in base:
-        parts.append(reader_rhythm_contract())
-    # Keep this block last even when Run228 was already present: the purpose is salience
-    # at the final edge of long evidence-heavy prompts and quality-retry prompts.
-    if RUN368_FINAL_READER_CHECK_MARKER not in base:
-        parts.append(final_reader_check_contract())
-    return "\n\n".join(part for part in parts if part).rstrip() + "\n"
+        base += "\n\n" + reader_rhythm_contract()
+    return ensure_final_reader_check(base)
 
 
 def install(pipeline_module: Any) -> None:
