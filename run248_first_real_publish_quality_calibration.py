@@ -393,10 +393,7 @@ def install(pipeline_module: Any) -> Any:
         return bool(ok) and not extra, merged
 
     def build_decision_prompt(*args: Any, **kwargs: Any) -> str:
-        prompt = original_prompt(*args, **kwargs)
-        if PROMPT_MARKER in prompt:
-            return prompt
-        return prompt.rstrip() + "\n\n" + _quality_prompt_suffix() + "\n"
+        return ensure_final_reader_check(original_prompt(*args, **kwargs))
 
     pipeline_module.generate_note_editorial_eyecatch = generate_note_editorial_eyecatch
     pipeline_module.build_clean_note_manuscript = build_clean_note_manuscript
