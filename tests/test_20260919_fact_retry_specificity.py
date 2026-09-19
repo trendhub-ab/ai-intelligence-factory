@@ -62,7 +62,7 @@ def test_hard_retry_names_vague_quantity_and_market_standard_actions_explicitly(
 def test_writer_contract_preserves_quantity_and_standardization_scope():
     text = contract.canonical_writer_contract()
     assert "曖昧な数量" in text
-    assert "『しばらく』『数ヶ月』『数倍』" in text
+    assert "「しばらく」「数ヶ月」「数倍」" in text
     assert "将来の業界標準になればよい" in text
     assert "現在の確立済み事実へ強めない" in text
     assert "見出しでも同じSource Boundary" in text
