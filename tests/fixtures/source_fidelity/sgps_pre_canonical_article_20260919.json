@@ -1,0 +1,37 @@
+{
+  "benchmark_id": "sgps-pre-canonical-article-20260919",
+  "source_url": "https://arxiv.org/abs/2609.20575v1",
+  "source_context": "For visual policy training, we use a decoupled FoPG formulation that excludes rendering from the computation graph, enabling direct learning from depth observations without a state-policy teacher.\nOn a single GPU, SGPS learns policies for locomotion, obstacle traversal, crate pushing, and bimanual carrying on simulated Unitree Go2 and G1 robots.\nOur experiments further show that refinement improves policy learning beyond initialization and tracking alone.\nFor hardware deployment, the distilled policy transfers zero-shot to a real Go2 and uses onboard depth to autonomously trot, crawl, clear hurdles, and switch between these behaviors.\nDepth is rendered from detached simulator states while physics remains differentiable, training the visual encoder and actor without renderer derivatives.",
+  "regressions": [
+    {
+      "id": "auxiliary_hardware_promoted_to_primary_fact",
+      "claim": "研究チームは、このSGPSをNVIDIA RTX 4080 GPUが1台だけの環境で実行し、その実用性を証明しました。",
+      "expected_reason": "source-fidelity unsupported hardware model: RTX 4080"
+    },
+    {
+      "id": "computation_graph_exclusion_became_rendering_removal",
+      "claim": "これにより、シミュレータ内で重たい3Dグラフィックスを一枚一枚描画して学習に載せる必要がなくなりました。",
+      "expected_reason": "source-fidelity mechanism scope distortion"
+    },
+    {
+      "id": "improvement_became_optimality",
+      "claim": "ロボットは意図しない接触パターンに陥ることなく、極めて効率的に最適な動きへと収束していきます。",
+      "expected_reason": "source-fidelity evidence-strength upgrade"
+    },
+    {
+      "id": "single_gpu_training_fused_with_real_hardware",
+      "claim": "1台のGPUで実機が動く。ロボットAIの学習コストを激変させる「SGPS」の衝撃。",
+      "expected_reason": "source-fidelity stage fusion"
+    },
+    {
+      "id": "distillation_dropped_from_deployment",
+      "claim": "学習を終えた制御ポリシーは、そのまま実機Go2にデプロイされました。",
+      "expected_reason": "source-fidelity stage omission"
+    }
+  ],
+  "safe_rewrites": [
+    "SGPSは単一GPUで、シミュレーション上のUnitree Go2とG1の方策を学習します。実機Go2への展開では、蒸留した方策をゼロショット転送します。",
+    "レンダリング自体をなくすのではなく、レンダリングを計算グラフから外し、renderer derivativesを使わない構成です。",
+    "実験ではrefinementがinitializationとtrackingだけの場合よりpolicy learningを改善しました。"
+  ]
+}
