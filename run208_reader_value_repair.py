@@ -44,6 +44,7 @@ import os
 from typing import Any
 
 from canonical_article_contract import canonical_reader_repair_contract, ensure_writer_contract
+from gate_reasoning import REASON_CODE_APPEAL_DECISION_VOICE_LOSS
 
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 _INSTALLED_ATTR = "_run208_reader_value_repair_installed"
