@@ -97,6 +97,17 @@ ARTICLEは専門知識を見せる順番ではなく、読者が判断できる�
 
 READER_REPAIR_CONTRACT = canonical_reader_repair_contract()
 
+
+DECISION_VOICE_REPAIR_CONTRACT = r"""
+【Decision Voice Repair｜Factを固定した判断の復元】
+前稿のFact / Evidence / Decision / Score / Actionの意味を一切変えず、読者が「筆者は結局どう判断しているか」を1回で読める自然文へ戻してください。
+・事実の要約だけで終わらせず、既存DecisionとActionの意味を、本文の判断箇所に明示的な1文として置く。
+・「重要です」「注視します」「可能性があります」だけで逃げず、既存Actionが限定検証・比較・待機・見送り・導入判断のどれなのかを普通の日本語で明確にする。
+・新しい施策、数値、経験、感情、因果、保証、利用実績を追加しない。前稿にないPoCやテストを勝手に提案しない。
+・内部管理コード NOW / TRY / WATCH / WAIT / AVOID は出力しない。
+・「私なら」を固定テンプレートとして必須にはしない。記事固有のEvidenceに基づく編集判断として自然に書く。
+""".strip()
+
 _READER_DENSITY_LABELS = (
     "dense_report_cluster", "multi_axis_reader_weakness", "non_engineer_access_failure",
     "final_surface_multi_axis_reader_weakness", "final_surface_non_engineer_access_failure",
