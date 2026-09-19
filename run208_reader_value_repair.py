@@ -250,7 +250,7 @@ def install(pipeline_module: Any) -> Any:
             setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)
             setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)
         prompt = str(original_prompt(*args, **kwargs) or "")
-        return prompt.rstrip() + "\n\n" + READER_PATH_CONTRACT + "\n"
+        return ensure_writer_contract(prompt)
 
     def build_dynamic_retry_instruction_with_reader_repair(reason_rows: list[dict]):
         rows = list(reason_rows or [])
