@@ -1445,6 +1445,72 @@ class ProductReviewRequestBudget:
 PRODUCT_REVIEW_REQUEST_BUDGET = ProductReviewRequestBudget(GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET)
 
 
+_TELEGRAM_JA_REPLACEMENTS = (
+    ("⚠️ Needs Editorial Review Persistence Failed / Pending Retry", "⚠️ 編集確認原稿のNotion保存失敗 / 再試行待ち"),
+    ("📊 Deep Dive Gate Summary", "📊 Deep Diveゲート集計"),
+    ("📊 Gemini API Usage", "📊 Gemini API使用状況"),
+    ("Source Integrity Failed:", "ソース整合性チェック不合格:"),
+    ("Grounding Failed:", "根拠確認不合格:"),
+    ("Notion Persistence Failed:", "Notion保存失敗:"),
+    ("Quality Failed:", "品質チェック不合格:"),
+    ("Gemini Budget 80%到達:", "Gemini API予算 80%到達:"),
+    ("Gemini Requests Used:", "Gemini API使用回数:"),
+    ("Gemini API Attempts:", "Gemini API試行回数:"),
+    ("Persistent Gemini Daily Counter: unavailable (stable scope missing)", "Gemini日次永続カウンター: 利用不可（安定スコープ未設定）"),
+    ("Persistent Gemini Daily Counter: unavailable", "Gemini日次永続カウンター: 利用不可"),
+    ("Persistent Gemini Daily Counter: disabled", "Gemini日次永続カウンター: 無効"),
+    ("Persistent Gemini Daily Counter(scope=", "Gemini日次永続カウンター(scope="),
+    ("Deep Dive Model Requests Used (per-run):", "Deep DiveモデルAPI使用回数（今回）:"),
+    ("Pending Retry Gemini Requests Used:", "再試行待ちGemini API使用回数:"),
+    ("Product Review Gemini Requests Used:", "Product Review Gemini API使用回数:"),
+    ("Deep Dive Attempted:", "Deep Dive試行:"),
+    ("Needs Editorial Review:", "編集確認が必要:"),
+    ("Candidate Publish Yield:", "候補→Ready生成率:"),
+    ("Generated Publish Yield:", "生成稿→Ready生成率:"),
+    ("Retry Avoided (SOFT only):", "再試行回避（SOFTのみ）:"),
+    ("Deep Dive Calls Avoided:", "Deep Dive API呼び出し回避:"),
+    ("Review Candidates Saved:", "確認候補保存数:"),
+    ("Top Gate:", "最多停止ゲート:"),
+    ("Primary Evidence Failed", "一次根拠不合格"),
+    ("Publication Readiness", "公開準備"),
+    ("Fact Gate", "事実確認ゲート"),
+    ("Human Appeal", "読者訴求"),
+    ("MAX_TOKENS", "出力上限超過"),
+    ("Pending Retry:", "再試行待ち:"),
+    ("Ready:", "公開準備完了:"),
+    ("Models:", "モデル:"),
+    ("Contexts:", "処理内訳:"),
+    ("Private Artifact:", "非公開Artifact:"),
+    ("Deep Dive Ready ", "Deep Dive公開準備完了 "),
+    ("Screening API Calls ", "スクリーニングAPI呼び出し "),
+    ("Calibration ", "補正 "),
+    ("Collected ", "収集 "),
+    (" / Screened ", " / スクリーニング "),
+    ("Stock ", "Stock保存 "),
+    ("Models: none", "モデル: なし"),
+    ("Contexts: none", "処理内訳: なし"),
+    ("(none)", "(なし)"),
+)
+
+
+def _localize_telegram_message(message: str) -> str:
+    """Geminiを使わず、運用通知の既知ラベルだけを決定論的に日本語化する。"""
+    localized = str(message or "")
+    for source, target in _TELEGRAM_JA_REPLACEMENTS:
+        localized = localized.replace(source, target)
+    localized = re.sub(r"\bsuccess=(\d+)", r"成功=\1", localized)
+    localized = re.sub(r"\berror=(\d+)", r"失敗=\1", localized)
+    localized = re.sub(r"\bok:(\d+)", r"成功:\1", localized)
+    localized = re.sub(r"\berr:(\d+)", r"失敗:\1", localized)
+    localized = re.sub(
+        r"tokens\(prompt=(\d+), output=(\d+), total=(\d+)\)",
+        r"トークン（入力=\1、出力=\2、合計=\3）",
+        localized,
+    )
+    localized = re.sub(r"\btokens:(\d+)", r"トークン:\1", localized)
+    return localized
+
+
 def send_telegram_alert(message: str):
     """運用者(自分)宛のアラート通知。購読者向けではない。"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -1453,7 +1519,7 @@ def send_telegram_alert(message: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message[:4000],
+        "text": _localize_telegram_message(message)[:4000],
         "disable_web_page_preview": True,
     }
     try:
@@ -10053,7 +10119,7 @@ def main():
     run_product_reviews()
 
     if generated_count == 0:
-        reason = "daily quota" if daily_quota_stop else "source/quality/API/budget"
+        reason = "日次クォータ" if daily_quota_stop else "ソース・品質・API・予算"
         send_telegram_alert(f"⚠️ 本日のDeep Dive記事生成は0件でした。原因区分: {reason}")
 
     if generated_count > 0 or stocked_count > 0:
