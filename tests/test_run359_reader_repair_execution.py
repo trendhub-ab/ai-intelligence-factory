@@ -76,8 +76,7 @@ def test_reader_retry_budget_and_evidence_safety_remain_authoritative():
     rows = [_row("non_engineer_access_failure")]
     assert pipeline.should_attempt_dynamic_retry(rows, {"state": "INSUFFICIENT", "decision_scope_safe": False}, "new") == (False, "reader_value_review_no_retry")
     assert pipeline.should_attempt_dynamic_retry(rows, {"state": "SUFFICIENT", "decision_scope_safe": True}, "new") == (True, "run341_production_reader_repair")
-    assert calls["count"] == 2
-
+    # Unsafe evidence still delegates to the base policy; safe reader-only repair is\n    # claimed directly by the dedicated Reader owner and must not consume/query base retry.\n    assert calls["count"] == 1\n
 
 def test_reader_repair_uses_canonical_contract_once():
     pipeline = SimpleNamespace(
