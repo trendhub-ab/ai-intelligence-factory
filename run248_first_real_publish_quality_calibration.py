@@ -27,6 +27,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
+from canonical_article_contract import ensure_final_reader_check
 import editorial_eyecatch as ee
 import run178_eyecatch_editorial_layout_optimizer as r178
 import run180_eyecatch_semantic_layout as r180
