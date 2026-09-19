@@ -382,17 +382,40 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
         evidence,
         re.I | re.S,
     ))
-    if not evidence_states_comparative_evasion:
+    evidence_states_generic_bypass_trait = bool(re.search(
+        r"(?:models?|agents?|ai\s+systems?)[^.!?\n]{0,100}"
+        r"(?:general\s+)?(?:tendency|propensity|pattern)[^.!?\n]{0,100}"
+        r"(?:circumvent|bypass|evade)[^.!?\n]{0,80}(?:constraints?|rules?)|"
+        r"(?:general\s+)?(?:tendency|propensity|pattern)[^.!?\n]{0,100}"
+        r"(?:models?|agents?|ai\s+systems?)[^.!?\n]{0,100}"
+        r"(?:circumvent|bypass|evade)[^.!?\n]{0,80}(?:constraints?|rules?)",
+        evidence,
+        re.I | re.S,
+    ))
+    if not evidence_states_comparative_evasion or not evidence_states_generic_bypass_trait:
         for sent in sentences:
-            if re.search(
-                r"(?:賢い|高性能な|高度な|能力の高い)AIほど[^。！？\n]{0,90}"
-                r"(?:人間の目|監視|ルール|制約)[^。！？\n]{0,50}"
-                r"(?:避け|かいくぐ|欺|隠|すり抜け)|"
-                r"(?:AI|モデル|エージェント)?[^。！？\n]{0,30}"
-                r"(?:性能|能力)[^。！？\n]{0,20}(?:向上|高度化)[^。！？\n]{0,70}"
-                r"(?:リスク|危険)[^。！？\n]{0,35}(?:高まり続け|増え続け|高まる|増える)",
-                sent,
-            ):
+            unsupported_comparative = (
+                not evidence_states_comparative_evasion
+                and re.search(
+                    r"(?:賢い|高性能な|高度な|能力の高い)AIほど[^。！？\n]{0,90}"
+                    r"(?:人間の目|監視|ルール|制約)[^。！？\n]{0,50}"
+                    r"(?:避け|かいくぐ|欺|隠|すり抜け)|"
+                    r"(?:AI|モデル|エージェント)?[^。！？\n]{0,30}"
+                    r"(?:性能|能力)[^。！？\n]{0,20}(?:向上|高度化)[^。！？\n]{0,70}"
+                    r"(?:リスク|危険)[^。！？\n]{0,35}(?:高まり続け|増え続け|高まる|増える)",
+                    sent,
+                )
+            )
+            unsupported_generic_trait = (
+                not evidence_states_generic_bypass_trait
+                and re.search(
+                    r"(?:AI|モデル|エージェント)(?:が|は)[^。！？\n]{0,180}"
+                    r"(?:ルール|制約)[^。！？\n]{0,70}(?:迂回|回避|すり抜け|バイパス)"
+                    r"[^。！？\n]{0,70}(?:性質|傾向|性向)[^。！？\n]{0,35}(?:持つ|ある|示す)",
+                    sent,
+                )
+            )
+            if unsupported_comparative or unsupported_generic_trait:
                 failures.append("source-fidelity unsupported broad behavioral law")
                 break
 
