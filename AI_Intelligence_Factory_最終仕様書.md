@@ -229,9 +229,11 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 
 維持する原則:
 
-- 冒頭は「どんな内容？」の要約、続いて「なぜ重要？」「結論は？」の回答を置き、元情報・詳細本文へ進む。本文固有の見出しとは別の読者向け要約である。
+- 冒頭はReader Summary（「どんな内容？」「なぜ重要？」「結論は？」）を置き、元情報・詳細本文へ進む。本文固有のNarrative Leadとは別の読者向け要約である。
 - 要確認原稿も通常のReady原稿と同じ `build_reader_first_summary` を渡して保存する。要約を省略した原稿を、そのままcaptionだけでReady化しない。
 - 要約は既存の事実・重要性・判断から構成し、追加モデル呼び出しや根拠のない埋め草を使わない。
+- WriterのMANAGEMENT DATAのうち `Source Summary / What / Why Important / Decision Reason / Action` は機械用構造値であると同時に、公開Reader Summaryの入力候補である。各値はEvidenceを保った短い非専門向け日本語とし、略語・技術名を圧縮して詰め込まない。
+- 公開「結論は？」は有効な `Decision` がある場合、canonical Decisionの行動距離を表す決定論的な読者向け文を優先する。実装手順や技術名の羅列を結論へ逆流させない。Decisionがない旧互換データだけ、従来のfinal / Action / Decision Reasonを使用する。
 - RubyGemsの依頼済み要約復元では、旧policyと本文hashを確認した対象1件だけに要約を追加する。policy更新で投稿管理がReady取消となった場合は、修正版の現行契約を読み戻してから通常同期と同じsystem propertiesを同一行へ反映する。投稿準備中・公開URLなし・投稿日なしを前提とし、他記事の再認証はしない。
 - 事実・出典・Evidenceを壊さない。
 - 中学生〜非エンジニアでも核心を理解できる日本語を目指す。

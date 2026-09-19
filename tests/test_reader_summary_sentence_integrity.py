@@ -83,3 +83,41 @@ def test_final_surface_and_notion_payload_preserve_complete_summary():
     assert body == projection
     assert COMPLETE_CONDITIONAL_SENTENCE in body
     assert publication_contract.is_current_ready_block(body, caption)
+
+
+def test_public_summary_prefers_plain_decision_distance_over_technical_action():
+    parsed = {
+        "source_summary_text": "ロボット学習の新しい手法が公開された。",
+        "why_important_text": "学習に必要な計算環境を小さくできる可能性があり、導入前の検証方法を見直す材料になる。",
+        "action_text": (
+            "微分可能シミュレータ上でサンプリングベースMPCとFoPGを交互に実行する"
+            "パイプラインを構築し、既存の強化学習手法と比較検証する。"
+        ),
+        "decision_reason_text": "単一GPU環境での結果とゼロショット転送を確認する。",
+        "decision_text": "TRY",
+    }
+    summary = manuscript.build_reader_first_summary(
+        parsed,
+        extract_section=lambda *_: "",
+        display_heading_aliases=lambda _: (),
+        replace_public_decision_code_leaks=lambda text, _: (text, []),
+    )
+    assert summary["decision"] == "まずは限定した環境で小さく試し、条件を確かめる価値があります。"
+    assert "MPC" not in summary["decision"]
+    assert "FoPG" not in summary["decision"]
+    assert surface._summary_reader_value_issues(summary) == []
+
+
+def test_public_summary_without_canonical_decision_keeps_legacy_action_fallback():
+    parsed = {
+        "source_summary_text": "新しい仕組みが公開された。",
+        "why_important_text": "運用時の確認手順に影響する。",
+        "action_text": "まず公開資料を比較します。",
+    }
+    summary = manuscript.build_reader_first_summary(
+        parsed,
+        extract_section=lambda *_: "",
+        display_heading_aliases=lambda _: (),
+        replace_public_decision_code_leaks=lambda text, _: (text, []),
+    )
+    assert summary["decision"] == "まず公開資料を比較します。"

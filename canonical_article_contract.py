@@ -134,6 +134,7 @@ Self-Editで新しいFact・数字・経験・因果を追加しない。不足�
 4. Evidence・重要数値・条件・反証・Decisionは削らない。
 5. 新しいFact、因果、数値、利用経験、保証、競合情報を作らない。
 6. 行動から内心・悪意・目的・判断理由を推測していない。一次情報に理由がなければ、理由を創作せず観測事実だけに戻す。
+7. 公開Reader Summaryへ再利用されるMANAGEMENT DATAの Source Summary / What / Why Important / Decision Reason / Action も確認する。略語・技術名の塊にせず、各項目だけで「何が起きた／なぜ重要／どう動く」が普通の日本語で分かるようにする。新しいFactは足さない。
 Fact/Evidence安全境界を優先し、読みやすさを理由に根拠を強めたり欠落を埋めたりしない。
 """.strip()
 

@@ -219,9 +219,14 @@ def build_reader_first_summary(
         parsed.get("what_text", ""),
     ])
     why = _compact_reader_summary(parsed.get("why_important_text") or conclusion)
-    decision = _compact_reader_summary(final or parsed.get("action_text") or parsed.get("decision_reason_text"))
+    # Public "結論は？" represents the already-decided action distance, not an
+    # implementation recipe. When a canonical Decision exists, prefer its deterministic
+    # reader wording so machine-oriented Action details cannot leak a jargon cluster back
+    # into the first public screen. Legacy rows without a Decision keep the historical
+    # final/action/reason fallback.
+    decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
     if not decision:
-        decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
+        decision = _compact_reader_summary(final or parsed.get("action_text") or parsed.get("decision_reason_text"))
     decision_code_phrases = {
         "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",
         "WAIT": "条件が整うまで待つ", "AVOID": "現時点では採用を見送る",
