@@ -177,6 +177,79 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         )
         self.assertEqual(calls["n"], 1)
 
+
+    def test_article_validation_gets_one_second_repair_for_persistent_decision_voice_only(self):
+        def permissive_base(rows, evidence, origin="new"):
+            return True, "repairable"
+
+        pipeline = self._pipeline()
+        pipeline.should_attempt_dynamic_retry = permissive_base
+        run208.install(pipeline)
+        rows = [{
+            "reason_code": "APPEAL_DECISION_VOICE_LOSS",
+            "message": "decision_voice_missing",
+            "severity": "REVIEW",
+        }]
+
+        first = pipeline.should_attempt_dynamic_retry(
+            rows, self._fresh_safe_evidence(), "article_revalidation"
+        )
+        second = pipeline.should_attempt_dynamic_retry(
+            rows, self._fresh_safe_evidence(), "article_revalidation"
+        )
+        third = pipeline.should_attempt_dynamic_retry(
+            rows, self._fresh_safe_evidence(), "article_revalidation"
+        )
+
+        self.assertEqual(first, (True, "repairable"))
+        self.assertEqual(second, (True, "run418_decision_voice_second_repair"))
+        self.assertEqual(third, (False, "run360_reader_repair_already_spent"))
+        self.assertEqual(pipeline.MAX_QUALITY_RETRIES, 2)
+
+    def test_second_decision_voice_repair_refuses_mixed_or_hard_rows(self):
+        def permissive_base(rows, evidence, origin="new"):
+            return True, "repairable"
+
+        cases = [
+            [
+                {
+                    "reason_code": "APPEAL_DECISION_VOICE_LOSS",
+                    "message": "decision_voice_missing",
+                    "severity": "REVIEW",
+                },
+                {
+                    "reason_code": "READER_NON_ENGINEER_ACCESS",
+                    "message": "reader_value_review:non_engineer_access_failure",
+                    "severity": "REVIEW",
+                },
+            ],
+            [{
+                "reason_code": "APPEAL_DECISION_VOICE_LOSS",
+                "message": "decision_voice_missing",
+                "severity": "HARD",
+            }],
+            [{
+                "reason_code": "APPEAL_FABRICATED_EXPERIENCE",
+                "message": "fabricated_personal_experience",
+                "severity": "HARD",
+            }],
+        ]
+        for rows in cases:
+            pipeline = self._pipeline()
+            pipeline.should_attempt_dynamic_retry = permissive_base
+            run208.install(pipeline)
+            self.assertTrue(
+                pipeline.should_attempt_dynamic_retry(
+                    rows, self._fresh_safe_evidence(), "article_revalidation"
+                )[0]
+            )
+            self.assertEqual(
+                pipeline.should_attempt_dynamic_retry(
+                    rows, self._fresh_safe_evidence(), "article_revalidation"
+                ),
+                (False, "run360_base_quality_retry_already_spent"),
+            )
+
     def test_pending_fast_lane_allows_one_base_retry_then_one_reader_repair(self):
         def base_retry(rows, evidence, origin="new"):
             if any("FACT_" in str(row.get("message")) for row in rows):
