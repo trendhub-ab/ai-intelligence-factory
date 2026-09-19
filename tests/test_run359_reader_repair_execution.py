@@ -76,7 +76,9 @@ def test_reader_retry_budget_and_evidence_safety_remain_authoritative():
     rows = [_row("non_engineer_access_failure")]
     assert pipeline.should_attempt_dynamic_retry(rows, {"state": "INSUFFICIENT", "decision_scope_safe": False}, "new") == (False, "reader_value_review_no_retry")
     assert pipeline.should_attempt_dynamic_retry(rows, {"state": "SUFFICIENT", "decision_scope_safe": True}, "new") == (True, "run341_production_reader_repair")
-    assert calls["count"] == 2
+    # Safe reader-only residual is owned directly by Reader Repair; the generic retry owner
+    # is consulted only for the unsafe case.
+    assert calls["count"] == 1
 
 
 def test_reader_repair_uses_canonical_contract_once():
@@ -116,3 +118,37 @@ def test_mixed_publication_and_reader_failure_never_gets_reader_only_contract():
     ]
     instruction, _ = pipeline.build_dynamic_retry_instruction(rows)
     assert "Reader Repair｜Factを固定した読者導線修正" not in instruction
+
+
+def test_reader_repair_remains_reachable_after_base_fact_retry_is_spent():
+    calls = {"count": 0}
+
+    def retry(rows, evidence, origin="new"):
+        calls["count"] += 1
+        return True, "repairable"
+
+    pipeline = SimpleNamespace(
+        should_attempt_dynamic_retry=retry,
+        build_decision_prompt=lambda *a, **k: "BASE",
+        build_dynamic_retry_instruction=lambda rows: ("RETRY", []),
+        GATE_SEVERITY_HARD="HARD",
+        EVIDENCE_SUFFICIENT="SUFFICIENT",
+    )
+    r208.install(pipeline)
+    safe = {"state": "SUFFICIENT", "decision_scope_safe": True}
+
+    fact_rows = [{"message": "unsupported market-standard claim: 業界標準", "severity": "HARD"}]
+    assert pipeline.should_attempt_dynamic_retry(fact_rows, safe, "article_revalidation") == (True, "repairable")
+
+    reader_rows = [
+        _row("non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"),
+        _row("multi_axis_reader_weakness (accessibility/reader_enjoyment/narrative_pull)"),
+    ]
+    assert pipeline.should_attempt_dynamic_retry(reader_rows, safe, "article_revalidation") == (
+        True, "run341_production_reader_repair"
+    )
+    assert calls["count"] == 1
+
+    assert pipeline.should_attempt_dynamic_retry(reader_rows, safe, "article_revalidation") == (
+        False, "run360_reader_repair_already_spent"
+    )
