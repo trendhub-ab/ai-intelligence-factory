@@ -442,8 +442,8 @@ _BENCHMARK_FALSE_NEGATIVE_CUE_RE = re.compile(
     r"性能評価(?:結果|データ|指標|スコア)?|"
     r"評価(?:結果|データ|指標|スコア|性能)|"
     r"実験結果|テスト結果|"
-    r"benchmark(?:\\s+(?:results?|data|scores?|evaluation))?|"
-    r"evaluation\\s+(?:results?|data|scores?)"
+    r"benchmark(?:\s+(?:results?|data|scores?|evaluation))?|"
+    r"evaluation\s+(?:results?|data|scores?)"
     r")",
     re.I,
 )
@@ -461,8 +461,8 @@ def _sentence_claims_missing_evidence(sentence: str, key: str) -> bool:
         uncertainty = bool(
             _FALSE_NEGATIVE_UNCERTAINTY_RE.search(value)
             or re.search(
-                r"(?:ベンチマーク|benchmark)[^。！？\\n]{0,32}未確認|"
-                r"未確認[^。！？\\n]{0,32}(?:ベンチマーク|benchmark)",
+                r"(?:ベンチマーク|benchmark)[^。！？\n]{0,32}未確認|"
+                r"未確認[^。！？\n]{0,32}(?:ベンチマーク|benchmark)",
                 value,
                 re.I,
             )
@@ -485,7 +485,7 @@ def _find_false_negative_evidence_claims(draft: str, evidence_metadata: dict, so
     text = draft or ""
     if not (
         _FALSE_NEGATIVE_UNCERTAINTY_RE.search(text)
-        or re.search(r"(?:ベンチマーク|benchmark)[^。！？\\n]{0,32}未確認|未確認[^。！？\\n]{0,32}(?:ベンチマーク|benchmark)", text, re.I)
+        or re.search(r"(?:ベンチマーク|benchmark)[^。！？\n]{0,32}未確認|未確認[^。！？\n]{0,32}(?:ベンチマーク|benchmark)", text, re.I)
     ):
         return []
 
