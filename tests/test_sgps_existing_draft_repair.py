@@ -40,7 +40,7 @@ class SGPSExistingDraftRepairContractTests(unittest.TestCase):
         self.assertNotIn("10Hzの処理サイクル", body)
         self.assertIn("計算グラフから外す", body)
         self.assertIn("蒸留", body)
-        self.assertIn("制御ループが50Hz", body)
+        self.assertIn("制御ループは50Hz", body)
         self.assertIn("深度エンコーダが10Hz", body)
         self.assertIn("微分可能なダイナミクス", body)
 
