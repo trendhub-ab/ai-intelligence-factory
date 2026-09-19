@@ -98,6 +98,29 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         }
         self.assertIsNone(run180._validate_layout_plan(source_title, "要約", plan))
 
+
+    def test_sgps_bounded_title_fallback_preserves_every_character(self):
+        title = "1台のGPUで実機が動く。ロボットAIの学習コストを激変させる「SGPS」の衝撃。"
+        plan = run180._deterministic_complete_title_plan(
+            title,
+            "SGPSは視覚方策学習の計算負荷を下げる研究手法です。",
+        )
+        self.assertIsNotNone(plan)
+        self.assertEqual(title, plan["eyecatch_title"])
+        self.assertEqual(title, "".join(plan["title_lines"]))
+        self.assertNotIn("…", "".join(plan["title_lines"]))
+        self.assertLessEqual(len(plan["title_lines"]), 3)
+
+    def test_complete_fallback_is_used_before_legacy_truncating_renderer(self):
+        source = inspect.getsource(run180.install)
+        complete_pos = source.index("_deterministic_complete_title_plan(title, summary)")
+        legacy_pos = source.index("return deterministic_fallback(")
+        self.assertLess(complete_pos, legacy_pos)
+
+    def test_complete_fallback_does_not_semantically_shorten_overlong_titles(self):
+        title = "長いタイトル" * 12
+        self.assertIsNone(run180._deterministic_complete_title_plan(title, "要約"))
+
     def test_request_is_one_call_minimal_thinking_and_not_deep_dive(self):
         source = inspect.getsource(run180._request_layout_plan)
         self.assertEqual(1, source.count("_generate_via_chat("))

@@ -245,6 +245,64 @@ def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dic
     }
 
 
+
+def _ascii_token_split(lines: list[str]) -> bool:
+    """Return True when a line break cuts through one ASCII product/model token."""
+    for left, right in zip(lines, lines[1:]):
+        if not left or not right:
+            continue
+        if re.search(r"[A-Za-z0-9_.+\-/]$", left) and re.match(r"^[A-Za-z0-9_.+\-/]", right):
+            return True
+    return False
+
+
+def _deterministic_complete_title_plan(title: str, summary: str) -> dict[str, Any] | None:
+    """Build a zero-provider fallback that never truncates a bounded eyecatch title.
+
+    The historical renderer clips the public headline to 34 characters with an ellipsis.
+    For any cleaned title that already fits the Run180 hard semantic budget, preserve every
+    character and solve the problem only with line breaks/font fitting. Longer titles keep
+    the legacy fallback until they receive a validated semantic compression.
+    """
+    clean = ee._clean_public_copy(title)
+    clean = re.sub(r"^【[^】]{1,28}】\s*", "", clean).strip()
+    canonical = r178._canonical_partition_text(clean)
+    if not canonical or len(canonical) > EYECATCH_TITLE_HARD_MAX_CHARS:
+        return None
+
+    probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
+    draw = ImageDraw.Draw(probe)
+    fitted_font, title_lines = ee._fit_headline(
+        draw,
+        clean,
+        max_width=TITLE_MAX_WIDTH,
+        max_lines=3,
+    )
+    if not title_lines:
+        return None
+    if r178._canonical_partition_text("".join(title_lines)) != canonical:
+        return None
+    if not r178._kinsoku_ok(title_lines) or _ascii_token_split(title_lines):
+        return None
+
+    title_size = int(getattr(fitted_font, "size", 48))
+    subheadline = ee.editorial_subheadline(summary, clean)
+    sub_size = 24
+    sub_font = ee._jp_font(sub_size, bold=True)
+    sub_lines = ee._wrap_chars(draw, subheadline, sub_font, SUB_MAX_WIDTH, 2)
+    if not sub_lines:
+        sub_lines = ["難しい変化を、仕事と暮らしの目線で読み解く。"]
+
+    return {
+        "eyecatch_title": clean,
+        "title_lines": title_lines,
+        "title_font_size": title_size,
+        "title_line_gap": 10 if len(title_lines) >= 3 else 12,
+        "subheadline_lines": sub_lines,
+        "subheadline_font_size": sub_size,
+        "highlight_text": "",
+    }
+
 def _request_layout_plan(
     pipeline_module: Any, source_title: str, subheadline: str
 ) -> dict[str, Any] | None:
@@ -313,8 +371,25 @@ def install(pipeline_module: Any) -> Any:
             if logger is not None:
                 logger.warning("[RUN180 EYECATCH LAYOUT FALLBACK] invalid semantic title plan")
 
-        # Safety invariant: no second model request. All existing visual elements and the
-        # deterministic fallback renderer remain unchanged.
+        # Safety invariant: no second model request. Before the historical renderer,
+        # use a provider-free complete-title plan for bounded titles so fallback never
+        # turns a valid 35-52 character headline into a visibly cut-off ellipsis.
+        complete_plan = _deterministic_complete_title_plan(title, summary)
+        if complete_plan is not None:
+            try:
+                return r178._render_with_validated_plan(
+                    title,
+                    summary,
+                    output_path,
+                    complete_plan,
+                    category=category,
+                    date_label=date_label,
+                )
+            except Exception as exc:
+                logger = getattr(pipeline_module, "logger", None)
+                if logger is not None:
+                    logger.warning("[RUN180 EYECATCH COMPLETE FALLBACK] render error: %s", exc)
+
         return deterministic_fallback(
             title,
             summary,
