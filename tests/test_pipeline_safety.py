@@ -98,6 +98,43 @@ class TestPipelineSafety(unittest.TestCase):
         self.assertIsNone(pipeline.SELECTED_SCREENING_MODEL)
         self.assertIsNone(pipeline.SELECTED_DEEP_DIVE_MODEL)
 
+    def test_telegram_localizer_translates_operational_labels_deterministically(self):
+        source = (
+            "📊 Deep Dive Gate Summary\n"
+            "Ready: 2\n"
+            "Needs Editorial Review: 1\n"
+            "Quality Failed: 3\n"
+            "Candidate Publish Yield: 25.0%\n"
+            "Top Gate: Fact Gate\n"
+            "Gemini API Attempts: 0 (success=0, error=0)"
+        )
+        localized = pipeline._localize_telegram_message(source)
+        self.assertIn("📊 Deep Diveゲート集計", localized)
+        self.assertIn("公開準備完了: 2", localized)
+        self.assertIn("編集確認が必要: 1", localized)
+        self.assertIn("品質チェック不合格: 3", localized)
+        self.assertIn("候補→Ready生成率: 25.0%", localized)
+        self.assertIn("最多停止ゲート: 事実確認ゲート", localized)
+        self.assertIn("Gemini API試行回数: 0 (成功=0, 失敗=0)", localized)
+
+    def test_send_telegram_localizes_without_calling_gemini(self):
+        response = FakeResponse(200)
+        with patch.object(pipeline, "TELEGRAM_BOT_TOKEN", "token"), \
+             patch.object(pipeline, "TELEGRAM_CHAT_ID", "chat"), \
+             patch.object(pipeline.requests, "post", return_value=response) as post, \
+             patch.object(pipeline, "_generate_via_chat") as gemini_call:
+            pipeline.send_telegram_alert(
+                "✅ 【AI note事業】Collected 10 / Screened 8件、Screening API Calls 2、"
+                "Calibration 1回、Stock 5件、Deep Dive Ready 2件。"
+            )
+        gemini_call.assert_not_called()
+        sent = post.call_args.kwargs["json"]["text"]
+        self.assertIn("収集 10 / スクリーニング 8件", sent)
+        self.assertIn("スクリーニングAPI呼び出し 2", sent)
+        self.assertIn("補正 1回", sent)
+        self.assertIn("Stock保存 5件", sent)
+        self.assertIn("Deep Dive公開準備完了 2件", sent)
+
     def test_ssrf_rejects_private_address(self):
         with patch.object(pipeline.socket, "getaddrinfo", return_value=[(2, 1, 6, "", ("127.0.0.1", 80))]):
             with self.assertRaises(ValueError):
