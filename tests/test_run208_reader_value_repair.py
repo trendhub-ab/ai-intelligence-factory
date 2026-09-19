@@ -178,6 +178,23 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         self.assertEqual(calls["n"], 1)
 
 
+
+    def test_decision_voice_retry_gets_fact_fixed_executable_contract(self):
+        pipeline = self._pipeline()
+        run208.install(pipeline)
+        rows = [{
+            "reason_code": "APPEAL_DECISION_VOICE_LOSS",
+            "message": "decision_voice_missing",
+            "severity": "REVIEW",
+        }]
+        instruction, _ = pipeline.build_dynamic_retry_instruction(rows)
+        self.assertIn("Decision Voice Repair", instruction)
+        self.assertIn("Fact / Evidence / Decision / Score / Actionの意味を一切変えず", instruction)
+        self.assertIn("筆者は結局どう判断しているか", instruction)
+        self.assertIn("新しい施策、数値、経験、感情、因果、保証", instruction)
+        self.assertIn("前稿にないPoCやテストを勝手に提案しない", instruction)
+        self.assertIn("NOW / TRY / WATCH / WAIT / AVOID", instruction)
+
     def test_article_validation_gets_one_second_repair_for_persistent_decision_voice_only(self):
         def permissive_base(rows, evidence, origin="new"):
             return True, "repairable"
