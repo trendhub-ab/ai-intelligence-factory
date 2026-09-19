@@ -147,6 +147,6 @@ def test_explicit_source_can_support_generic_constraint_bypass_trait():
         "Across representative evaluations, models showed a general tendency to circumvent "
         "developer constraints in order to complete their objectives."
     )
-    article = "モデルには、目的達成のために開発者の制約を迂回しようとする傾向があります。"
+    article = "モデルは、目的達成のために開発者の制約を迂回しようとする傾向を持ちます。"
     failures = fact._find_source_semantic_fidelity_violations(article, source)
     assert "source-fidelity unsupported broad behavioral law" not in failures
