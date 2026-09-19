@@ -108,6 +108,56 @@ def _is_protocol_cardinality_expression(text: str, start: int, end: int, token: 
     )
     return not performance_cue.search(window)
 
+_COUNT_ENTITY_PATTERNS = {
+    "summary": r"要約|サマリー|summar(?:y|ies)",
+    "example": r"事例|ケース|例(?:示)?|instances?|examples?|cases?",
+    "report": r"報告(?:書)?|reports?",
+    "package": r"パッケージ|packages?",
+    "file": r"ファイル|files?",
+    "model": r"モデル|models?",
+    "user": r"ユーザー|users?",
+}
+
+
+def _count_entity_tags(text: str) -> set[str]:
+    value = str(text or "")
+    return {
+        name for name, pattern in _COUNT_ENTITY_PATTERNS.items()
+        if re.search(pattern, value, re.I)
+    }
+
+
+def _generic_count_claim_supported(token: str, claim_window: str, source_context: str) -> bool:
+    """Ground Japanese generic counters such as 27件 by number plus local entity semantics.
+
+    Stripping 件 globally would allow an unrelated 27 elsewhere in the evidence to
+    legalize the claim. This helper is fail-closed: it only applies to an exact generic
+    count token, requires a meaningful entity near the claim, and requires the same entity
+    near the same number in the primary source.
+    """
+    match = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s*件\s*", str(token or ""))
+    if not match:
+        return False
+    number = match.group(1).replace(",", "")
+    claim_tags = _count_entity_tags(claim_window)
+    if not claim_tags:
+        return False
+
+    source = str(source_context or "")
+    numeric_matches = list(re.finditer(r"(?<![\d.])\d[\d,]*(?:\.\d+)?(?![\d.])", source))
+    for idx, em in enumerate(numeric_matches):
+        if em.group(0).replace(",", "") != number:
+            continue
+        prev_end = numeric_matches[idx - 1].end() if idx > 0 else 0
+        next_start = numeric_matches[idx + 1].start() if idx + 1 < len(numeric_matches) else len(source)
+        left = max(prev_end, em.start() - 140)
+        right = min(next_start, em.end() + 180)
+        window = source[left:right]
+        if claim_tags & _count_entity_tags(window):
+            return True
+    return False
+
+
 def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_metadata: dict | None = None) -> list[str]:
     """記事中のセンシティブな具体値を一次情報の値+近傍条件で照合する。"""
     evidence_raw = source_context + "\n" + json.dumps(evidence_metadata or {}, ensure_ascii=False)
@@ -132,14 +182,15 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
             token = m.group(0).strip()
             if _is_protocol_cardinality_expression(scrubbed, m.start(), m.end(), token):
                 continue
+            claim_window = scrubbed[max(0, m.start() - 100): min(len(scrubbed), m.end() + 120)]
             normalized_token = _normalize_numeric_evidence_text(token)
-            if normalized_token not in evidence:
+            generic_count_supported = _generic_count_claim_supported(token, claim_window, source_context)
+            if normalized_token not in evidence and not generic_count_supported:
                 failures.append(f"unsupported numeric claim: {token}")
                 continue
 
             # 同じ数値が別条件にだけ存在する事故を防ぐ。数値本体を手掛かりにEvidence近傍を比較。
             numbers = re.findall(r"\d+(?:\.\d+)?", token.replace(",", ""))
-            claim_window = scrubbed[max(0, m.start() - 100): min(len(scrubbed), m.end() + 120)]
             evidence_windows: list[str] = []
             if numbers:
                 anchor = numbers[-1]
