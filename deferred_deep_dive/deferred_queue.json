@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-19T00:57:51.223125+00:00",
+  "updated_at": "2026-09-19T00:59:12.155033+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49755468",
-      "deferred_at": "2026-09-19T00:57:51.222957+00:00",
-      "expires_at": "2026-09-21T00:57:51.222957+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI 'ethically hacked' with help of Anthropic's Claude chatbot",
-        "originalTitle": "OpenAI 'ethically hacked' with help of Anthropic's Claude chatbot",
-        "displayName": "OpenAI 'ethically hacked' with help of Anthropic's Claude chatbot",
-        "sourceLanguage": "en",
-        "url": "https://www.theguardian.com/technology/2026/sep/18/openai-hacked-anthropic-claude-chatbot",
-        "description": "OpenAI 'ethically hacked' with help of Anthropic's Claude chatbot",
-        "stargazerCount": 12,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-18T15:07:08Z",
-        "sourceContext": "HN points=12 comments=2 matched_query=OpenAI",
-        "primaryUrl": "https://www.theguardian.com/technology/2026/sep/18/openai-hacked-anthropic-claude-chatbot",
-        "sourceDetails": {
-          "hn_id": "49755468",
-          "hn_url": "https://news.ycombinator.com/item?id=49755468",
-          "external_url": "https://www.theguardian.com/technology/2026/sep/18/openai-hacked-anthropic-claude-chatbot",
-          "comments": 2,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e0479ff-dca9-8192-94eb-d497e165f6c2",
-      "score": 85,
-      "reason": "AIを活用した脆弱性監査の実例を報じる主要メディア報道",
-      "commercial_score": 90,
-      "shelf_life_score": 25,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 86.75
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49758749",
       "deferred_at": "2026-09-19T00:57:51.222869+00:00",
