@@ -144,7 +144,9 @@ def _generic_count_claim_supported(token: str, claim_window: str, source_context
         return False
 
     source = str(source_context or "")
-    for em in re.finditer(rf"(?<![\d.]){re.escape(number)}(?![\d.])", source):
+    for em in re.finditer(r"(?<![\d.])\d[\d,]*(?:\.\d+)?(?![\d.])", source):
+        if em.group(0).replace(",", "") != number:
+            continue
         window = source[max(0, em.start() - 140): min(len(source), em.end() + 180)]
         if claim_tags & _count_entity_tags(window):
             return True
