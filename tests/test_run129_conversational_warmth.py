@@ -19,10 +19,10 @@ import pipeline
 class Run129ConversationalWarmthTests(unittest.TestCase):
     def test_prompt_allows_conversation_but_does_not_make_catchphrases_mandatory(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
-        self.assertIn('AIやITに詳しい友人が隣で', prompt)
-        self.assertIn('「ですよね。」「やっぱり、」「なんですよ。」', prompt)
-        self.assertIn('使用可能な例であり必須語ではない', prompt)
-        self.assertIn('説明は親しみやすく、Evidenceは冷静に、Decisionは頼れる温度', prompt)
+        self.assertIn('読者を一人の人として扱う', prompt)
+        self.assertNotIn('原則1〜3箇所', prompt)
+        self.assertIn('回数ノルマや必須の語尾は設けない', prompt)
+        self.assertIn('事実・数値・重要制約は会話調でぼかさない', prompt)
         self.assertIn('読者に同意を強要', prompt)
 
     def test_natural_single_conversational_marker_is_good(self):

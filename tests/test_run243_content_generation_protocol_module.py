@@ -68,7 +68,6 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
         expected_minimums = {
             "build_monthly_digest_markdown": 60,
             "_source_fact_discipline": 55,
-            "_human_editorial_style_rules": 65,
             "_parse_gemini_response": 90,
             "_promote_plaintext_section_titles": 55,
         }
@@ -76,6 +75,13 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
             self.assertIn(name, funcs)
             size = funcs[name].end_lineno - funcs[name].lineno + 1
             self.assertGreaterEqual(size, minimum, name)
+
+    def test_style_is_focused_and_delegates_canonical_responsibilities(self):
+        rules = protocol._human_editorial_style_rules()
+        for owner in ('System Instruction', 'SOURCE BOUNDARY', 'Editorial Story', 'Final Reader Check', 'Output Contract'):
+            self.assertIn(owner, rules)
+        for quota in ('原則1〜3箇所', '原則2〜3個', '3,200字はSoft Ceiling'):
+            self.assertNotIn(quota, rules)
 
     def test_self_contained_prompt_functions_have_no_runtime_globals(self):
         source = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")

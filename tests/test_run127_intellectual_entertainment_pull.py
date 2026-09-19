@@ -1,3 +1,4 @@
+import canonical_article_contract as canonical
 import os, sys, types, unittest, tempfile
 from pathlib import Path
 os.environ.setdefault('GEMINI_API_KEY','test-key')
@@ -18,13 +19,13 @@ import pipeline
 
 class Run127IntellectualEntertainmentPullTests(unittest.TestCase):
     def test_prompt_adds_pull_without_weakening_evidence(self):
-        prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
+        prompt = canonical.ensure_final_reader_check(pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence'))
         self.assertIn('SOURCE BOUNDARY', prompt)
-        self.assertIn('次の段落へ進む理由', prompt)
-        self.assertIn('なぜ今日・今週・今回', prompt)
-        self.assertIn('中盤で企業ホワイトペーパーへ戻らない', prompt)
-        self.assertIn('30秒でわかるこの記事', prompt)
-        self.assertIn('本文の段落順・見出し順・導入文型を固定するテンプレートではない', prompt)
+        self.assertIn('次の段落を読む理由', prompt)
+        self.assertIn('時点や読む理由は根拠の範囲で示し', prompt)
+        self.assertIn('本文全体の発見と理解の進展', prompt)
+        self.assertIn('Reader-first summary', prompt)
+        self.assertIn('本文テンプレートにしない', prompt)
 
     def test_H_clear_but_boring_is_softly_detected(self):
         article = '''MCPはAIと外部ツールを接続する仕組みです。\n\n## 詳細\nMCPでは接続方式を定義します。クライアントとサーバーがあります。仕様ではメッセージを扱います。これは接続方法です。\n\n## なぜ重要なのか\n企業では外部ツールとの接続が必要です。導入には設計が必要です。確認事項があります。運用にも注意が必要です。\n\n## 今後どうなるのか\n今後は対応状況を確認します。仕様を確認します。実装を確認します。比較します。\n\n## 最終判断\n導入前に比較検証します。'''
@@ -49,7 +50,7 @@ class Run127IntellectualEntertainmentPullTests(unittest.TestCase):
         evergreen='''MCPはAIと外部ツールを接続する共通ルールです。初心者でも意味から理解できます。\n\n## AIが道具を使うための共通口\n仕組みを説明します。\n\n## 小さく比較して決める\n導入前に検証します。'''
         sig=pipeline._reader_experience_signals(evergreen)
         self.assertEqual('REVIEW',sig['news_relevance'])
-        prompt=pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
+        prompt=canonical.ensure_final_reader_check(pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence'))
         self.assertIn('確認できない「最新」「急速に普及」「業界が注目」は作らない',prompt)
 
     def test_L_over_entertainment_and_serious_mismatch(self):

@@ -15,6 +15,7 @@
 - **Current paid member DB hosting baseline:** Run221 — API-host isolation / member-view separation
 - **Current stock lifecycle baseline:** Run225 — zero-model Fresh/Aging/Evergreen/Archive active-stock management
 - **Current free article editorial planning baseline:** Run226 — evidence-bounded human editorial planning / reader delight without template quotas
+- **Writer editorial policy:** [AIIF Editor Persona / same-call Story Brief / Self-Edit](docs/reference/EDITOR_PERSONA_STORY_20260920.md); offline comparison: `python tools/editorial_ab.py` (no provider calls).
 - **Current article Japanese surface integrity baseline:** Run227 — zero-model high-confidence broken-Japanese fail-closed gate
 - **Current free article reader rhythm baseline:** Run228 — evidence-preserving reader rhythm / dense-report prevention without style quotas
 - **Current pipeline modularization baseline:** Run245 — deterministic Fact/Evidence validation + source-boundary validation extraction layered on prior modularized domains

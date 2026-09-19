@@ -23,9 +23,11 @@ class Run133ReaderFirstEditorialCompressionTests(unittest.TestCase):
             'example/project','https://example.com/project',123,'desc',source='GitHub',
             source_context='official evidence context', evidence_metadata={}, freshness={}
         )
-        self.assertIn('原則2〜3個に絞る', prompt)
+        self.assertNotIn('原則2〜3個に絞る', prompt)
+        self.assertIn('専門語の固定個数制限は設けない', prompt)
         self.assertIn('一次情報に存在する技術名を全部ARTICLEへ転記することは禁止', prompt)
-        self.assertIn('硬い説明が2段落続いたら次の段落', prompt)
+        self.assertNotIn('硬い説明が2段落続いたら次の段落', prompt)
+        self.assertIn('硬い説明の置換であり追記ではない', prompt)
         self.assertIn('有料会員向けProduct Review / Notion DBの情報密度をARTICLE圧縮に合わせて削らない', prompt)
 
     def test_reader_signals_detect_dense_cold_technical_article(self):

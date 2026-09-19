@@ -1,0 +1,203 @@
+{
+  "scope": "Hand-authored synthetic old/new article fixtures for comparator validation; NOT model-generated A/B outcomes. Frozen old prompt kernel from Git main baseline; current prompt uses identical evidence and conditions.",
+  "base_sha": "d2b763833569311b64a23764447dc581542c45e3",
+  "model_calls": 0,
+  "network_calls": 0,
+  "production_quality_improvement_proven": false,
+  "limitations": [
+    "Synthetic authored fixtures are not outputs sampled from old/new models.",
+    "All editorial scores are lexical proxies; continuity, interest and completion require reader review.",
+    "Retention uses exact source anchors, not semantic entailment; no Ready/publication decision is made."
+  ],
+  "results": [
+    {
+      "id": "reader_flow",
+      "old": {
+        "metrics": {
+          "Human Appeal": 0.0,
+          "Opening pull": 50.0,
+          "Narrative continuity": 50.0,
+          "Reader Proximity": 50.0,
+          "Term comprehension": 100.0,
+          "Completion motivation": 100.0,
+          "Decision clarity": 0.0,
+          "Low AI odor": 0,
+          "Evidence retention": 100.0,
+          "Fact retention": 100.0,
+          "Low unnecessary prose": 85.0
+        },
+        "eligible": true,
+        "editorial_proxy_mean": 48.33,
+        "characters": 161,
+        "duplicate_characters": 0,
+        "unsupported_number_tokens": [],
+        "fabricated_experience_signals": [],
+        "article_sha256": "a46082dd2f226509d58daee692fe9c3a056ec472a7b7de9e2998b338e9b4c572",
+        "diagnostic_scope": "Exact fixture anchors and lexical proxies only; semantic fact review and Production gates still required."
+      },
+      "new": {
+        "metrics": {
+          "Human Appeal": 100.0,
+          "Opening pull": 100.0,
+          "Narrative continuity": 100.0,
+          "Reader Proximity": 100.0,
+          "Term comprehension": 100.0,
+          "Completion motivation": 100.0,
+          "Decision clarity": 50.0,
+          "Low AI odor": 100,
+          "Evidence retention": 100.0,
+          "Fact retention": 100.0,
+          "Low unnecessary prose": 100.0
+        },
+        "eligible": true,
+        "editorial_proxy_mean": 94.44,
+        "characters": 438,
+        "duplicate_characters": 0,
+        "unsupported_number_tokens": [],
+        "fabricated_experience_signals": [],
+        "article_sha256": "2aec64fbd6a57a1e52094f7f5a81a7ac7001ab6015a4dfc602a95c51c572e37e",
+        "diagnostic_scope": "Exact fixture anchors and lexical proxies only; semantic fact review and Production gates still required."
+      },
+      "winner": "new",
+      "shared_input_sha256": "0acb1bf3f08a10e9a9b0dd97bfcaf819cd6d36c562b4300b712791c0c5389a9a",
+      "prompts": {
+        "old": {
+          "sha256": "58fc4380038e73642618c3a9c818110b6cf22e6a2a0317c8674adaa0b45c319b",
+          "characters": 16083,
+          "system_characters": 0
+        },
+        "new": {
+          "sha256": "7c54123c483a770652aa0c818cfe3484c523c1f9889861ddf76f362a1e161df9",
+          "characters": 12017,
+          "system_characters": 416
+        }
+      }
+    },
+    {
+      "id": "sober_old_wins",
+      "old": {
+        "metrics": {
+          "Human Appeal": 100.0,
+          "Opening pull": 100.0,
+          "Narrative continuity": 100.0,
+          "Reader Proximity": 100.0,
+          "Term comprehension": 100.0,
+          "Completion motivation": 100.0,
+          "Decision clarity": 50.0,
+          "Low AI odor": 100,
+          "Evidence retention": 100.0,
+          "Fact retention": 100.0,
+          "Low unnecessary prose": 100.0
+        },
+        "eligible": true,
+        "editorial_proxy_mean": 94.44,
+        "characters": 438,
+        "duplicate_characters": 0,
+        "unsupported_number_tokens": [],
+        "fabricated_experience_signals": [],
+        "article_sha256": "2aec64fbd6a57a1e52094f7f5a81a7ac7001ab6015a4dfc602a95c51c572e37e",
+        "diagnostic_scope": "Exact fixture anchors and lexical proxies only; semantic fact review and Production gates still required."
+      },
+      "new": {
+        "metrics": {
+          "Human Appeal": 0.0,
+          "Opening pull": 50.0,
+          "Narrative continuity": 50.0,
+          "Reader Proximity": 50.0,
+          "Term comprehension": 100.0,
+          "Completion motivation": 100.0,
+          "Decision clarity": 0.0,
+          "Low AI odor": 0,
+          "Evidence retention": 100.0,
+          "Fact retention": 100.0,
+          "Low unnecessary prose": 85.0
+        },
+        "eligible": true,
+        "editorial_proxy_mean": 48.33,
+        "characters": 161,
+        "duplicate_characters": 0,
+        "unsupported_number_tokens": [],
+        "fabricated_experience_signals": [],
+        "article_sha256": "a46082dd2f226509d58daee692fe9c3a056ec472a7b7de9e2998b338e9b4c572",
+        "diagnostic_scope": "Exact fixture anchors and lexical proxies only; semantic fact review and Production gates still required."
+      },
+      "winner": "old",
+      "shared_input_sha256": "0acb1bf3f08a10e9a9b0dd97bfcaf819cd6d36c562b4300b712791c0c5389a9a",
+      "prompts": {
+        "old": {
+          "sha256": "fb522e4b1670a60afcacd30e7853bd4b71671c0a97c218dd866d3e0ee0771c9c",
+          "characters": 16086,
+          "system_characters": 0
+        },
+        "new": {
+          "sha256": "5d1113768122aaa281e159627ca15d8567d37878811995adfbc26e3acad5b628",
+          "characters": 12020,
+          "system_characters": 416
+        }
+      }
+    },
+    {
+      "id": "identical_control",
+      "old": {
+        "metrics": {
+          "Human Appeal": 100.0,
+          "Opening pull": 100.0,
+          "Narrative continuity": 100.0,
+          "Reader Proximity": 100.0,
+          "Term comprehension": 100.0,
+          "Completion motivation": 100.0,
+          "Decision clarity": 50.0,
+          "Low AI odor": 100,
+          "Evidence retention": 100.0,
+          "Fact retention": 100.0,
+          "Low unnecessary prose": 100.0
+        },
+        "eligible": true,
+        "editorial_proxy_mean": 94.44,
+        "characters": 438,
+        "duplicate_characters": 0,
+        "unsupported_number_tokens": [],
+        "fabricated_experience_signals": [],
+        "article_sha256": "2aec64fbd6a57a1e52094f7f5a81a7ac7001ab6015a4dfc602a95c51c572e37e",
+        "diagnostic_scope": "Exact fixture anchors and lexical proxies only; semantic fact review and Production gates still required."
+      },
+      "new": {
+        "metrics": {
+          "Human Appeal": 100.0,
+          "Opening pull": 100.0,
+          "Narrative continuity": 100.0,
+          "Reader Proximity": 100.0,
+          "Term comprehension": 100.0,
+          "Completion motivation": 100.0,
+          "Decision clarity": 50.0,
+          "Low AI odor": 100,
+          "Evidence retention": 100.0,
+          "Fact retention": 100.0,
+          "Low unnecessary prose": 100.0
+        },
+        "eligible": true,
+        "editorial_proxy_mean": 94.44,
+        "characters": 438,
+        "duplicate_characters": 0,
+        "unsupported_number_tokens": [],
+        "fabricated_experience_signals": [],
+        "article_sha256": "2aec64fbd6a57a1e52094f7f5a81a7ac7001ab6015a4dfc602a95c51c572e37e",
+        "diagnostic_scope": "Exact fixture anchors and lexical proxies only; semantic fact review and Production gates still required."
+      },
+      "winner": "tie",
+      "shared_input_sha256": "0acb1bf3f08a10e9a9b0dd97bfcaf819cd6d36c562b4300b712791c0c5389a9a",
+      "prompts": {
+        "old": {
+          "sha256": "351f372abcb8d6a8cb9a2204670043a0ea6ff09163ed6005770ab81afb3cd9da",
+          "characters": 16089,
+          "system_characters": 0
+        },
+        "new": {
+          "sha256": "729c5044347cf7dc8413b3176a32f3ec3bc26d9eb4a56e6739d71fcc69855a56",
+          "characters": 12023,
+          "system_characters": 416
+        }
+      }
+    }
+  ]
+}

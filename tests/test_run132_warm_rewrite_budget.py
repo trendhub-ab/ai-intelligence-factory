@@ -20,8 +20,8 @@ class Run132WarmRewriteBudgetTests(unittest.TestCase):
     def test_prompt_makes_proximity_a_generation_completion_condition(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
         self.assertIn('無料note記事の完成条件として扱う', prompt)
-        self.assertIn('硬い説明が2段落続いたら次の段落', prompt)
-        self.assertIn('人間の言葉へ戻す', prompt)
+        self.assertNotIn('硬い説明が2段落続いたら次の段落', prompt)
+        self.assertIn('平易な判断の言葉へ戻す', prompt)
         self.assertIn('置換であり追記ではない', prompt)
 
     def test_prompt_protects_evidence_before_editorial_compression(self):

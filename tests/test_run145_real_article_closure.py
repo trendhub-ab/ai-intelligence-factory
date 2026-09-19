@@ -1,3 +1,4 @@
+import canonical_article_contract as canonical
 import inspect
 import unittest
 import pipeline
@@ -27,9 +28,9 @@ class Run145RealArticleClosureTests(unittest.TestCase):
         self.assertTrue(changes)
 
     def test_prompt_closes_real_article_defects(self):
-        prompt = pipeline._human_editorial_style_rules()
-        self.assertIn('Roadmap、protocol、SDK、仕様変更', prompt)
-        self.assertIn('何をしてもPCへ影響しない', prompt)
+        prompt = canonical.ensure_final_reader_check(pipeline.build_decision_prompt('fixture', 'https://example.com', 0, 'fixture'))
+        self.assertIn('Roadmapやprotocolの話でも', prompt)
+        self.assertIn('隔離機構を無条件の安全保証にしない', prompt)
 
     def test_no_new_gemini_call_site(self):
         src = inspect.getsource(pipeline)
