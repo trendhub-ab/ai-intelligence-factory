@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -42,7 +45,22 @@ class SGPSExistingDraftRepairContractTests(unittest.TestCase):
         self.assertIn("微分可能なダイナミクス", body)
 
     def test_current_production_gates_accept_repaired_manuscript(self):
-        result = repair.validate_repaired_manuscript()
+        # Runtime-layer installation intentionally mutates the pipeline module. Execute this
+        # proof in an isolated interpreter so it cannot change unrelated full-suite tests.
+        code = (
+            "import json; import run_sgps_existing_draft_repair as r; "
+            "print(json.dumps(r.validate_repaired_manuscript(), ensure_ascii=False))"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=90,
+        )
+        self.assertEqual(0, proc.returncode, proc.stdout + "\n" + proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertTrue(result["fact_ok"], result)
         self.assertTrue(result["editorial_ok"], result)
         self.assertEqual("PASS", result["publication_state"], result)
