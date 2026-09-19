@@ -1,0 +1,44 @@
+[
+  {
+    "name": "ZCode",
+    "rows": [
+      {
+        "gate": "publication",
+        "message": "score_narrative_mismatch"
+      },
+      {
+        "gate": "human_appeal",
+        "message": "reader_value_review:dense_report_cluster (Reader Enjoyment/Narrative Pull/Information Budget/Reader Temperature Rhythm)"
+      },
+      {
+        "gate": "human_appeal",
+        "message": "reader_value_review:non_engineer_access_failure (Accessibility/Opening/Information Budget/Jargon Translation/Non-Engineer Core Clarity)"
+      }
+    ],
+    "reader_only": false
+  },
+  {
+    "name": "Claude Code AGENTS.md",
+    "rows": [
+      {
+        "gate": "human_appeal",
+        "message": "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+      },
+      {
+        "gate": "human_appeal",
+        "message": "reader_value_review:final_surface_summary_jargon_cluster (何が出た？/結論は？)"
+      }
+    ],
+    "reader_only": true
+  },
+  {
+    "name": "Inference Engine Fingerprinting",
+    "rows": [
+      {
+        "gate": "fact",
+        "message": "conditional scope lost from primary evidence"
+      }
+    ],
+    "reader_only": false
+  }
+]
