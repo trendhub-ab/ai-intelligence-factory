@@ -24,7 +24,7 @@ _INSTALL_FLAG = "_run228_reader_rhythm_planning_installed"
 def reader_rhythm_contract() -> str:
     return f"""
 [{RUN228_MARKER} — compatibility layer]
-Reader Rhythm is governed by {CANONICAL_ARTICLE_CONTRACT_MARKER}; this layer adds no independent article philosophy.
+Reader Rhythm is governed by the canonical article contract V1; this layer adds no independent article philosophy.
 Historical reader diagnostics remain mapped to that contract: dense_report_cluster, repetitive_insight, non_engineer_access_failure.
 The intended flow remains 理解→意味→判断, without leaving a 報告書の塊.
 Evidence上重要な数値・条件・反証・制約は削らない。新しいFact、数字、人物、会話、利用実績、因果、競合情報を作ることは禁止する。
