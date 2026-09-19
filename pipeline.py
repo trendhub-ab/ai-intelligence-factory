@@ -6399,6 +6399,36 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
             instruction, section = rules[code]
             instructions.append(f"{code}: {instruction}")
             sections.append(section)
+    messages = "\n".join(str((row or {}).get("message") or "") for row in reason_rows or [])
+    vague_tokens = list(dict.fromkeys(
+        token.strip()
+        for token in re.findall(r"unsupported vague quantified claim:\s*([^,\n/]+)", messages)
+        if token.strip()
+    ))
+    if vague_tokens:
+        quoted = "、".join(f"『{token}』" for token in vague_tokens)
+        instructions.append(
+            f"FACT_UNSUPPORTED_CLAIM: 一次Evidenceに直接ない曖昧な数量表現 {quoted} を必ず解消してください。"
+            "同義の期間・件数・倍率が一次情報に明示されていない場合は、その数量表現を削除し、数量を含まない事実範囲の文へ戻してください。"
+            "別の期間や数量を推測して置き換えてはいけません。"
+        )
+        sections.append("claims")
+
+    market_tokens = list(dict.fromkeys(
+        token.strip()
+        for token in re.findall(r"unsupported market-standard claim:\s*([^,\n/]+)", messages)
+        if token.strip()
+    ))
+    if market_tokens:
+        quoted = "、".join(f"『{token}』" for token in market_tokens)
+        instructions.append(
+            f"FACT_UNSUPPORTED_CLAIM: 現在の標準として裏付けられていない表現 {quoted} を必ず解消してください。"
+            "一次情報が『将来そのような標準の第一歩になればよい』『標準化を期待する』という段階なら、"
+            "現在すでに業界標準であるように読める見出し・本文を削除または将来の期待／仮定として明確に限定してください。"
+            "標準化の事実を新しく作ってはいけません。"
+        )
+        sections.append("claims")
+
     if not instructions:
         instructions.append("既存原稿の根拠付き判断を保ち、Quality Gateが示した該当箇所だけを修正してください。")
     # Retry itself must not re-introduce internal management vocabulary into the public article.
