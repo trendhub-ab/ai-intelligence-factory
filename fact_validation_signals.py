@@ -426,23 +426,76 @@ def _evidence_has_substantive_coverage(key: str, source_context: str, evidence_m
         return bool(re.search(r"github\.com|source code|repository|repo\b|コード|リポジトリ", text, re.I))
     return meta_found
 
+_FALSE_NEGATIVE_UNCERTAINTY_RE = re.compile(
+    r"確認できない|記載されていない|不明|未公開|未評価|データがない"
+)
+
+# Hard contradiction checks must identify the *missing evidence category*, not merely see
+# an adjacent generic word.  In the 2026-09-19 Production specimen, the sentence
+# 「未公開の検証モデル…ユーザー（評価者）…」 was incorrectly treated as a claim that
+# benchmark evidence was unavailable because the old cue was simply 「評価」.
+# Keep benchmark detection semantic and precision-first: evaluator/person wording and an
+# unreleased model are not benchmark-availability claims.
+_BENCHMARK_FALSE_NEGATIVE_CUE_RE = re.compile(
+    r"(?:"
+    r"ベンチマーク(?:結果|データ|比較|評価|スコア|指標)?|"
+    r"性能評価(?:結果|データ|指標|スコア)?|"
+    r"評価(?:結果|データ|指標|スコア|性能)|"
+    r"実験結果|テスト結果|"
+    r"benchmark(?:\s+(?:results?|data|scores?|evaluation))?|"
+    r"evaluation\s+(?:results?|data|scores?)"
+    r")",
+    re.I,
+)
+
+
+def _sentence_claims_missing_evidence(sentence: str, key: str) -> bool:
+    """Return True only for an explicit sentence-level claim that one evidence class is missing.
+
+    This helper is intentionally precision-first because its result feeds a Hard Fact failure.
+    Generic nouns such as 「評価者」 must never be promoted into benchmark claims.
+    """
+    value = str(sentence or "")
+    if key == "benchmark":
+        # Run99's intended contract also covers explicit 「ベンチマーク未確認」 wording.
+        uncertainty = bool(
+            _FALSE_NEGATIVE_UNCERTAINTY_RE.search(value)
+            or re.search(
+                r"(?:ベンチマーク|benchmark)[^。！？\n]{0,32}未確認|"
+                r"未確認[^。！？\n]{0,32}(?:ベンチマーク|benchmark)",
+                value,
+                re.I,
+            )
+        )
+        return uncertainty and bool(_BENCHMARK_FALSE_NEGATIVE_CUE_RE.search(value))
+
+    if not _FALSE_NEGATIVE_UNCERTAINTY_RE.search(value):
+        return False
+    mapping = {
+        "hardware": r"GPU|ハードウェア|環境",
+        "runtime": r"処理時間|runtime|速度|秒",
+        "code_availability": r"コード|ソースコード",
+    }
+    cue = mapping.get(key)
+    return bool(cue and re.search(cue, value, re.I))
+
+
 def _find_false_negative_evidence_claims(draft: str, evidence_metadata: dict, source_context: str = "") -> list[str]:
     """Stop a false 'unknown/not published' statement only when the source concretely proves otherwise."""
     text = draft or ""
-    if not re.search(r"確認できない|記載されていない|不明|未公開|未評価|データがない", text):
+    if not (
+        _FALSE_NEGATIVE_UNCERTAINTY_RE.search(text)
+        or re.search(r"(?:ベンチマーク|benchmark)[^。！？\n]{0,32}未確認|未確認[^。！？\n]{0,32}(?:ベンチマーク|benchmark)", text, re.I)
+    ):
         return []
-    mapping = {
-        "GPU|ハードウェア|環境": "hardware",
-        "処理時間|runtime|速度|秒": "runtime",
-        "コード|ソースコード": "code_availability",
-        "評価|ベンチマーク": "benchmark",
-    }
+
     failures = []
     for sentence in re.split(r"(?<=[。！？])", text):
-        if not re.search(r"確認できない|記載されていない|不明|未公開|未評価|データがない", sentence):
-            continue
-        for cue, key in mapping.items():
-            if re.search(cue, sentence, re.I) and _evidence_has_substantive_coverage(key, source_context, evidence_metadata):
+        for key in ("hardware", "runtime", "code_availability", "benchmark"):
+            if (
+                _sentence_claims_missing_evidence(sentence, key)
+                and _evidence_has_substantive_coverage(key, source_context, evidence_metadata)
+            ):
                 failures.append("FALSE_NEGATIVE_EVIDENCE_CLAIM: " + key)
     return list(dict.fromkeys(failures))
 
