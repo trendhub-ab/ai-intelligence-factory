@@ -1456,7 +1456,10 @@ _TELEGRAM_JA_REPLACEMENTS = (
     ("Gemini Budget 80%到達:", "Gemini API予算 80%到達:"),
     ("Gemini Requests Used:", "Gemini API使用回数:"),
     ("Gemini API Attempts:", "Gemini API試行回数:"),
-    ("Persistent Gemini Daily Counter", "Gemini日次永続カウンター"),
+    ("Persistent Gemini Daily Counter: unavailable (stable scope missing)", "Gemini日次永続カウンター: 利用不可（安定スコープ未設定）"),
+    ("Persistent Gemini Daily Counter: unavailable", "Gemini日次永続カウンター: 利用不可"),
+    ("Persistent Gemini Daily Counter: disabled", "Gemini日次永続カウンター: 無効"),
+    ("Persistent Gemini Daily Counter(scope=", "Gemini日次永続カウンター(scope="),
     ("Deep Dive Model Requests Used (per-run):", "Deep DiveモデルAPI使用回数（今回）:"),
     ("Pending Retry Gemini Requests Used:", "再試行待ちGemini API使用回数:"),
     ("Product Review Gemini Requests Used:", "Product Review Gemini API使用回数:"),
@@ -1484,10 +1487,9 @@ _TELEGRAM_JA_REPLACEMENTS = (
     ("Collected ", "収集 "),
     (" / Screened ", " / スクリーニング "),
     ("Stock ", "Stock保存 "),
-    ("unavailable (stable scope missing)", "利用不可（安定スコープ未設定）"),
-    ("unavailable", "利用不可"),
-    ("disabled", "無効"),
-    ("none", "なし"),
+    ("Models: none", "モデル: なし"),
+    ("Contexts: none", "処理内訳: なし"),
+    ("(none)", "(なし)"),
 )
 
 
