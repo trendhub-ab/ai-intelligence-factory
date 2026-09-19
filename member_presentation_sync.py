@@ -584,6 +584,7 @@ def _destination_state(page: dict) -> dict[str, Any]:
     p = page.get("properties") or {}
     return {
         "page_id": str(page.get("id") or ""),
+        "created_time": str(page.get("created_time") or "").strip(),
         "sync_id": _text(p.get("同期ID")),
         "name": _text(p.get("AI・技術名")),
         "plain_summary": _text(p.get("これは何？")),
@@ -611,6 +612,33 @@ def _destination_state(page: dict) -> dict[str, Any]:
         "rank": _number(p.get("注目順位")),
         "current_month_change": _checkbox(p.get("今月の重要変化")),
     }
+
+
+def _destination_survivor_key(state: dict[str, Any]) -> tuple[int, str, str]:
+    """Prefer the oldest known row so existing member links remain stable."""
+    created_time = str(state.get("created_time") or "").strip()
+    page_id = str(state.get("page_id") or "").strip()
+    return (0 if created_time else 1, created_time, page_id)
+
+
+def _index_destination_states(
+    states: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Index one canonical row per sync ID and surface accidental duplicates."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for state in states:
+        sync_id = str(state.get("sync_id") or "").strip()
+        if not sync_id:
+            continue
+        grouped.setdefault(sync_id, []).append(state)
+
+    canonical: dict[str, dict[str, Any]] = {}
+    duplicates: list[dict[str, Any]] = []
+    for sync_id, group in grouped.items():
+        ordered = sorted(group, key=_destination_survivor_key)
+        canonical[sync_id] = ordered[0]
+        duplicates.extend(ordered[1:])
+    return canonical, duplicates
 
 
 def _comparable(state: dict[str, Any]) -> dict[str, Any]:
@@ -731,13 +759,29 @@ def sync_member_presentation() -> dict[str, Any]:
         NOTION_MEMBER_PRESENTATION_DATABASE_ID,
         max_records=5000,
     )
-    dest_by_id: dict[str, dict[str, Any]] = {}
-    for page in destination_pages:
-        state = _destination_state(page)
-        if state.get("sync_id") and state["sync_id"] not in dest_by_id:
-            dest_by_id[state["sync_id"]] = state
+    destination_states = [_destination_state(page) for page in destination_pages]
+    dest_by_id, duplicate_destinations = _index_destination_states(destination_states)
 
-    created = updated = unchanged = archived = 0
+    created = updated = unchanged = archived = duplicates_archived = 0
+    for duplicate in duplicate_destinations:
+        sync_id = str(duplicate.get("sync_id") or "").strip()
+        page_id = str(duplicate.get("page_id") or "").strip()
+        if not page_id:
+            raise ValueError(f"Duplicate member presentation row has no page id: {sync_id}")
+        res = _write(
+            "PATCH",
+            f"https://api.notion.com/v1/pages/{page_id}",
+            json={"archived": True},
+        )
+        if res.status_code != 200:
+            raise RuntimeError(
+                f"Member presentation duplicate archive failed {sync_id}: "
+                f"{res.status_code} {res.text[:500]}"
+            )
+        archived += 1
+        duplicates_archived += 1
+        time.sleep(0.34)
+
     source_ids: set[str] = set()
     for state in states:
         sync_id = state["sync_id"]
@@ -801,6 +845,7 @@ def sync_member_presentation() -> dict[str, Any]:
         "updated": updated,
         "unchanged": unchanged,
         "archived": archived,
+        "duplicates_archived": duplicates_archived,
         "destination_data_source_id": NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID,
     }
 
