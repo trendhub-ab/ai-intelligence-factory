@@ -85,6 +85,7 @@ def test_dynamic_retry_gives_executable_source_fidelity_directions():
     instruction, sections = pipeline.build_dynamic_retry_instruction(rows)
     assert "内心・悪意・善意・目的の優先順位" in instruction
     assert "個別事例から『賢いAIほど〜する』" in instruction
+    assert "制約を迂回する性質" in instruction
     assert "『プロンプトだけでは防止不可能』" in instruction
     assert "claims" in sections
 
