@@ -364,6 +364,32 @@ def _claim_is_negated(text: str, start: int, end: int) -> bool:
         sentence, re.IGNORECASE
     ))
 
+def _market_standard_mention_is_nonassertive(text: str, start: int, end: int) -> bool:
+    """Do not hard-fail clearly hypothetical/aspirational standardization language.
+
+    A sentence saying a framework *could become* an industry standard is materially
+    different from claiming that it already *is* the industry standard.  This helper
+    is intentionally narrow: present/past assertions such as 「業界標準です」 or
+    「業界標準となった」 remain eligible for the hard Fact gate.
+    """
+    body = str(text or "")
+    left_candidates = [body.rfind(mark, 0, start) for mark in ("。", "！", "？", "\n")]
+    left = max(left_candidates) + 1
+    rights = [pos for mark in ("。", "！", "？", "\n") if (pos := body.find(mark, end)) >= 0]
+    right = min(rights) + 1 if rights else min(len(body), end + 180)
+    sentence = body[left:right]
+    return bool(re.search(
+        r"(?:業界標準|デファクト(?:スタンダード)?)"
+        r"(?:"
+        r"(?:に|と)?な(?:れば|った場合|る場合|り得る|りうる|る可能性)|"
+        r"(?:を)?目指(?:す|して|した)|"
+        r"(?:へ|に向けた|への)(?:第一歩|動き|試み)"
+        r")",
+        sentence,
+        re.I,
+    ))
+
+
 def _find_hype_claims(draft: str, source_context: str = "", evidence_metadata: dict | None = None) -> list[str]:
     failures: list[str] = []
     text = draft or ""
@@ -372,6 +398,10 @@ def _find_hype_claims(draft: str, source_context: str = "", evidence_metadata: d
     for pattern, label in _HYPE_PATTERNS:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             if _claim_is_negated(text, m.start(), m.end()):
+                continue
+            if label == "unsupported market-standard claim" and _market_standard_mention_is_nonassertive(
+                text, m.start(), m.end()
+            ):
                 continue
             strong_word = re.search(r"保証|完全|必ず|安全|ゼロコスト|準拠|最速|state-of-the-art", m.group(0), re.I)
             # 強い語自体ではなく、公式の同等保証があるかで判断する。
