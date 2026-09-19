@@ -178,6 +178,143 @@ def _find_unsupported_numeric_claims(draft: str, source_context: str, evidence_m
                 failures.append(f"unsupported vague quantified claim: {token}")
     return list(dict.fromkeys(failures))[:8]
 
+
+def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -> list[str]:
+    """Catch high-confidence semantic upgrades that lexical grounding can miss.
+
+    This guard is intentionally narrow. It does not try to understand arbitrary prose.
+    It blocks only recurring publication failures where a supported source statement is
+    rewritten into a materially stronger or differently-scoped claim.
+    """
+    article = draft or ""
+    evidence = source_context or ""
+    if not article or not evidence:
+        return []
+
+    failures: list[str] = []
+    evidence_norm = _normalized_evidence_text(evidence)
+    sentences = [s.strip() for s in re.split(r"(?<=[。！？.!?])\s*|\n+", article) if s.strip()]
+
+    # 1) A concrete accelerator/model name must exist in the source context. This
+    # prevents a related paper or supplemental page from donating its hardware spec
+    # to the primary experiment.
+    hardware_pattern = re.compile(
+        r"(?<![A-Za-z0-9])(?:RTX\s*\d{3,5}|[AHVLT]\d{2,5}|"
+        r"Jetson(?:\s+(?:AGX|Orin|Nano|Xavier)){1,3})(?![A-Za-z0-9])",
+        re.I,
+    )
+    for match in hardware_pattern.finditer(article):
+        token = match.group(0).strip()
+        if _normalized_evidence_text(token) not in evidence_norm:
+            failures.append(f"source-fidelity unsupported hardware model: {token}")
+
+    # 2) Excluding rendering from the computation/gradient graph is not equivalent
+    # to eliminating rendering itself.
+    evidence_detaches_rendering = bool(re.search(
+        r"(?:exclud(?:e|es|ed|ing).{0,45}render(?:ing|er).{0,45}(?:computation|gradient)\s*graph|"
+        r"without\s+renderer\s+derivatives|rendered?\s+from\s+detached|"
+        r"render(?:ing|er).{0,35}(?:excluded|decoupled).{0,35}(?:gradient|computation))",
+        evidence, re.I,
+    ))
+    if evidence_detaches_rendering:
+        rendering_removed = re.compile(
+            r"(?:描画|レンダリング).{0,42}(?:不要|必要.{0,10}なく|しなくてよ|行わ(?:ない|ず)|"
+            r"省略でき|なくな(?:る|り|った)|取り除(?:く|いた)|完全に外す)",
+            re.I,
+        )
+        for sent in sentences:
+            if rendering_removed.search(sent) and not re.search(
+                r"(?:計算グラフ|勾配|微分).{0,30}(?:から|を).{0,20}(?:外|除外)|"
+                r"(?:外す|除外).{0,25}(?:計算グラフ|勾配|微分)",
+                sent, re.I,
+            ):
+                failures.append("source-fidelity mechanism scope distortion: detached rendering upgraded to rendering removal")
+                break
+
+    # 3) Evidence that reports improvement does not establish optimal/global
+    # convergence or complete resolution.
+    source_claims_improvement = bool(re.search(
+        r"\bimprov(?:e|es|ed|ement|ing)\b|address(?:es|ed|ing)?\s+(?:this|the)\s+(?:shortfall|issue|problem)|"
+        r"reduce(?:s|d)?\s+(?:training|compute|cost)",
+        evidence, re.I,
+    ))
+    source_claims_optimality = bool(re.search(
+        r"\b(?:global(?:ly)?\s+optimal|global\s+optimum|guarantee(?:d|s)?\s+optimal|"
+        r"converge(?:s|d)?\s+to\s+(?:the\s+)?(?:global\s+)?optimum)\b",
+        evidence, re.I,
+    ))
+    if source_claims_improvement and not source_claims_optimality:
+        for sent in sentences:
+            if re.search(
+                r"(?:最適(?:な|の)?(?:動き|方策|解|軌跡)).{0,24}(?:収束|到達)|"
+                r"(?:必ず|完全に).{0,30}(?:局所解|問題|課題).{0,16}(?:回避|解消|解決)",
+                sent,
+            ):
+                failures.append("source-fidelity evidence-strength upgrade: improvement upgraded to optimality/solution")
+                break
+
+    # 4) Preserve stage boundaries. "single GPU" in simulation/training and a
+    # separate real-hardware deployment statement cannot be fused into "one GPU
+    # runs the real robot".
+    source_has_single_gpu_training = bool(re.search(
+        r"(?:single\s+gpu|one\s+gpu).{0,180}(?:simulat|train|learn)|"
+        r"(?:simulat|train|learn).{0,180}(?:single\s+gpu|one\s+gpu)",
+        evidence, re.I | re.S,
+    ))
+    source_has_hardware_deployment = bool(re.search(
+        r"(?:hardware\s+deployment|real\s+(?:unitree\s+)?go2|real[- ]world|zero[- ]shot.{0,100}(?:real|hardware))",
+        evidence, re.I,
+    ))
+    if source_has_single_gpu_training and source_has_hardware_deployment:
+        for sent in sentences:
+            if (
+                re.search(r"(?:1台|単一|single|one).{0,24}GPU", sent, re.I)
+                and re.search(r"(?:実機|実ロボット|real\s+(?:robot|go2)|hardware)", sent, re.I)
+            ):
+                failures.append("source-fidelity stage fusion: single-GPU training merged with hardware deployment")
+                break
+
+    # 5) When the source explicitly says the deployed policy is distilled, do not
+    # describe the pre-distillation learned policy as being shipped "as-is".
+    if re.search(r"(?:distilled\s+policy|distill(?:ed|ation).{0,80}(?:policy|deployment))", evidence, re.I):
+        for sent in sentences:
+            if re.search(
+                r"(?:学習(?:を|が)?終えた|学習済み|trained).{0,90}(?:そのまま|直接).{0,40}(?:実機|デプロイ|転送)|"
+                r"(?:そのまま|直接).{0,35}(?:実機|ハードウェア).{0,25}(?:デプロイ|転送|動か)",
+                sent, re.I,
+            ) and not re.search(r"distill|蒸留", sent, re.I):
+                failures.append("source-fidelity stage omission: deployment distillation was dropped")
+                break
+
+    # 6) Frequency values need role fidelity as well as lexical equality.
+    # A 10 Hz encoder update cannot ground a claim that the entire control/inference
+    # loop runs at 10 Hz.
+    role_patterns = {
+        "control": r"control(?:\s+loop)?|controller|制御(?:ループ)?",
+        "encoder": r"encoder|encoding|エンコーダ|符号化",
+        "inference": r"inference|policy\s+(?:evaluation|inference)|推論",
+        "depth": r"depth|camera|image|深度|カメラ|画像",
+    }
+    for sent in sentences:
+        for hm in re.finditer(r"(\d+(?:\.\d+)?)\s*Hz\b", sent, re.I):
+            value = hm.group(1)
+            evidence_windows = []
+            for em in re.finditer(rf"(?<![\d.]){re.escape(value)}\s*Hz\b", evidence, re.I):
+                evidence_windows.append(evidence[max(0, em.start()-140):min(len(evidence), em.end()+180)])
+            if not evidence_windows:
+                failures.append(f"source-fidelity unsupported cadence: {value} Hz")
+                continue
+            claim_roles = {name for name, pat in role_patterns.items() if re.search(pat, sent, re.I)}
+            evidence_role_sets = [
+                {name for name, pat in role_patterns.items() if re.search(pat, window, re.I)}
+                for window in evidence_windows
+            ]
+            if claim_roles and any(roles for roles in evidence_role_sets):
+                if not any(claim_roles & roles for roles in evidence_role_sets):
+                    failures.append(f"source-fidelity cadence role mismatch: {value} Hz")
+
+    return list(dict.fromkeys(failures))[:10]
+
 def _claim_is_negated(text: str, start: int, end: int) -> bool:
     """Judge negation in the same sentence, not an arbitrary short character window.
 
