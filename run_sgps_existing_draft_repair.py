@@ -39,6 +39,10 @@ MANUSCRIPT_PATH = Path(__file__).resolve().parent / "repairs" / "sgps_publishabl
 # Source-native facts used by the deterministic publication gates. This deliberately
 # includes the method/deployment/limitations boundaries that the historical article blurred.
 SOURCE_CONTEXT = """
+Primary source: Accelerating Visual Policy Learning with Sampling-Based Model Predictive Control.
+Published 2026-09-17 (2026年9月17日). The proposed method is Sampling-Guided Policy Search (SGPS).
+The paper's single-GPU training statement is equivalent to 単一GPU / GPU 1台でのシミュレーション学習.
+
 Learning visual policies for locomotion and manipulation can incur substantial computation
 and GPU memory costs. First-order policy gradients (FoPG) reduce training cost through
 differentiable simulation, but local optimization can converge to unintended contact patterns.
@@ -133,12 +137,26 @@ def _article_core_for_gates(manuscript: str) -> str:
 def validate_repaired_manuscript(manuscript: str | None = None) -> dict[str, Any]:
     """Run the current deterministic Production publication gates, with zero provider calls."""
     import pipeline
+    import reader_value_review_bridge
+    import run175_semantic_fact_precision
+    import run223_technical_claim_precision
+    import run227_japanese_surface_integrity
+    import run176_scope_fidelity
+    import run248_first_real_publish_quality_calibration
+    import run249_final_publication_surface_gate
     import runtime_layers
 
-    # Installing current layers changes only local deterministic gate surfaces here.
-    # No generation/provider method is invoked. This function runs in a standalone process
-    # in CI/preflight so those patches cannot leak into unrelated regression tests.
-    runtime_layers.install_runtime_layers(pipeline)
+    # Install only the deterministic gate layers that can change Fact/Reader publication
+    # decisions, in their canonical Production order. Provider-routing/health layers are
+    # intentionally excluded: this repair proof must perform zero provider/network reads.
+    run175_semantic_fact_precision.install(pipeline)
+    run223_technical_claim_precision.install(pipeline)
+    run227_japanese_surface_integrity.install(pipeline)
+    run176_scope_fidelity.install(pipeline)
+    reader_value_review_bridge.install(pipeline)
+    runtime_layers.install_reader_signal_precision_contract(pipeline)
+    run248_first_real_publish_quality_calibration.install(pipeline)
+    run249_final_publication_surface_gate.install(pipeline)
     body = manuscript if manuscript is not None else load_manuscript()
     parsed = build_parsed(_article_core_for_gates(body))
 
