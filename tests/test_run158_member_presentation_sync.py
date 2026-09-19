@@ -243,7 +243,47 @@ class DestinationDuplicateRecoveryTests(unittest.TestCase):
         write.assert_called_once_with(
             "PATCH",
             "https://api.notion.com/v1/pages/page-new",
-            json={"archived": True},
+            json={"in_trash": True},
+        )
+
+    @patch.object(mps.time, "sleep")
+    @patch.object(mps, "assign_home_ranks", return_value=[])
+    @patch.object(mps, "mark_current_month_changes")
+    @patch.object(mps, "_validate_destination_schema")
+    @patch.object(mps, "_write")
+    @patch.object(mps.decision_intelligence, "_query_external_db")
+    def test_sync_trashes_destination_row_missing_from_source_with_current_api(
+        self,
+        query_db,
+        write,
+        _validate_schema,
+        _mark_changes,
+        _assign_ranks,
+        _sleep,
+    ):
+        query_db.side_effect = [
+            [],
+            [
+                {
+                    "id": "page-stale",
+                    "created_time": "2026-09-18T00:00:00.000Z",
+                    "properties": {"同期ID": {"rich_text": [{"plain_text": "github:stale/tool"}]}},
+                }
+            ],
+        ]
+        write.return_value = Mock(status_code=200, text="")
+
+        with patch.object(mps.decision_intelligence, "NOTION_DECISION_INTELLIGENCE_API_KEY", "test"), \
+             patch.object(mps.decision_intelligence, "NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID", "source-ds"), \
+             patch.object(mps, "NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID", "member-ds"):
+            result = mps.sync_member_presentation()
+
+        self.assertEqual(1, result["archived"])
+        self.assertEqual(0, result["duplicates_archived"])
+        write.assert_called_once_with(
+            "PATCH",
+            "https://api.notion.com/v1/pages/page-stale",
+            json={"in_trash": True},
         )
 
 
