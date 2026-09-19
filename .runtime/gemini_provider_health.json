@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "purpose": "Gemini article-model availability routing; no prompt/article content",
-  "updated_at": "2026-09-19T12:30:07.529668+00:00",
+  "updated_at": "2026-09-19T12:33:07.308771+00:00",
   "attempts": [
     {
       "timestamp": "2026-09-15T08:24:22+00:00",
@@ -835,6 +835,13 @@
       "kind": "deep_dive",
       "outcome": "error",
       "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-19T12:32:35.601999+00:00",
+      "model": "gemini-3.5-flash",
+      "kind": "deep_dive",
+      "outcome": "success",
+      "error_type": ""
     }
   ]
 }
