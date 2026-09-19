@@ -126,3 +126,6 @@ def test_writer_prompt_marks_public_summary_dual_use():
     assert "公開Reader Summaryの入力候補" in prompt
     assert "Source Summary / What / Why Important / Decision Reason / Action" in prompt
     assert "公開Reader Summaryへ再利用されるMANAGEMENT DATA" in prompt
+    assert "だから読者にとって何が変わるか" in prompt
+    assert "技術説明だけの段落が連続" in prompt
+    assert "正確な区別に不要なのに繰り返していない" in prompt

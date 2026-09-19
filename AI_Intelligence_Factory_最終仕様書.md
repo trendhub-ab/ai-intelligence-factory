@@ -263,7 +263,7 @@ Human Editorial Styleは文体・Reader Experience / Delight / Proximityの補�
 
 QUESTIONは一本の **Narrative Question** として段落間の疑問・意味・判断をつなぐ。疑問文として公開する義務はなく、答えや重要制約を最後まで隠す演出もしない。冒頭は違和感・意外性・問題・疑問、または平易な事実と意味から自然に選び、固定の発表要約型やクリックベイトにしない。
 
-出力直前の **Self-Edit** は同じ生成内で一度行い、弱いタイトル・導入、次を読む理由の欠落、発表の羅列、一般論、AI的説明、重複、不要な専門語、中心疑問からの逸脱、PAYOFF不足を削除・統合・順序変更・言い換えで直す。新しいFact・数字・経験・因果は追加しない。既存局所修正の範囲と重要な意味を守り、完成稿だけを返す。内部ブリーフ・初稿・編集過程は公開出力へ含めない。
+出力直前の **Self-Edit** は同じ生成内で一度行い、弱いタイトル・導入、次を読む理由の欠落、発表の羅列、一般論、AI的説明、重複、不要な専門語、中心疑問からの逸脱、PAYOFF不足を削除・統合・順序変更・言い換えで直す。技術説明だけの段落が連続する場合は、各説明がNarrative Question / Reader Decisionを進めるかを確認し、進めない説明を削る。必要な説明は「だから読者にとって何が変わるか」を既存Evidenceの範囲で普通の日本語へ戻してから次へ進む。一度役割を説明した正式名称・略語は正確な区別に必要な場合だけ繰り返す。新しいFact・数字・経験・因果は追加しない。既存局所修正の範囲と重要な意味を守り、完成稿だけを返す。内部ブリーフ・初稿・編集過程は公開出力へ含めない。
 
 Persona / Story Brief / Self-Edit / Human Appeal専用callは増設しない。Evidence / Source Fidelity / Fact / Publication Readiness / Grounding / Source Integrity / Numeric Evidence / Safety / Notion persistence、および既存Retry・Provider予算は変更しない。
 
