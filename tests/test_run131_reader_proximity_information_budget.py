@@ -19,11 +19,12 @@ import pipeline
 class Run131ReaderProximityInformationBudgetTests(unittest.TestCase):
     def test_prompt_requires_functional_proximity_without_fixed_catchphrase(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
-        self.assertIn('原則1〜3箇所', prompt)
+        self.assertNotIn('原則1〜3箇所', prompt)
         self.assertIn('「読者との距離が近くなる一文」', prompt)
         self.assertIn('固定語でもない', prompt)
         self.assertIn('親しみやすさのために文章を足し算しない', prompt)
-        self.assertIn('原則2〜3個に絞る', prompt)
+        self.assertNotIn('原則2〜3個に絞る', prompt)
+        self.assertIn('専門語の固定個数制限は設けない', prompt)
         self.assertIn('Evidence、数値、制約、比較、反証、Decisionは先に削らない', prompt)
         self.assertIn('Fact Gate / Source Boundaryの表面積を増やさない', prompt)
 

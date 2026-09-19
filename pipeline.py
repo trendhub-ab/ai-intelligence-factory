@@ -7476,7 +7476,11 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
     if not source_info.get("sufficient") and not use_url:
         raise ValueError("一次情報不足: source-native不十分かつURL Context利用不可")
 
-    config = {"max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS}
+    from canonical_article_contract import aiif_editor_persona
+    config = {
+        "max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS,
+        "system_instruction": aiif_editor_persona(),
+    }
     if tools:
         config["tools"] = tools
     logger.info("[GEMINI DEEP DIVE CALL] kind=%s timeout=%ss", request_kind, GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS)

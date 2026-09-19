@@ -1,3 +1,4 @@
+import canonical_article_contract as canonical
 import inspect
 import unittest
 import pipeline
@@ -5,10 +6,10 @@ import pipeline
 
 class Run142NarrativeUnderstandingTests(unittest.TestCase):
     def test_prompt_requires_understanding_progression(self):
-        prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
-        self.assertIn('読者の疑問 → 普通の言葉で理解 → なぜそうなるか → 何が面白い／困るか → 自分ならどう見る・判断するか', prompt)
-        self.assertIn('比喩だけで分かった気にさせず', prompt)
-        self.assertIn('技術的な芯や因果が薄ければ完成としない', prompt)
+        prompt = canonical.ensure_final_reader_check(pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence'))
+        self.assertIn('各段落が前段落の疑問・意味・判断を受け、理解を一歩進める', prompt)
+        self.assertIn('技術上の対応と限界へ戻す', prompt)
+        self.assertIn('かわいい比喩や口語で技術的な芯を代替しない', prompt)
 
     def test_keyword_gamed_dry_report_is_review(self):
         article='''スマホで困ったことはありませんか。Superpositionも、実は私たちに関係するAIの仕組みです。\n\n## Superpositionで何が変わる？\nSuperpositionは複数の特徴を非直交方向へ表現する方式です。Polysemanticityが発生します。特徴量は活性化空間に分布します。Sparse Autoencoderで辞書表現を抽出します。\n\n## 仕組み\nモデル内部の重みと活性化を解析します。特徴方向を同定します。介入実験で因果関係を評価します。一次資料を確認します。\n\n## 判断\n私なら導入前に一次資料を確認します。'''

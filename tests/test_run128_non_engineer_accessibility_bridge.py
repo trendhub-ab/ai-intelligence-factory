@@ -20,8 +20,8 @@ class Run128NonEngineerAccessibilityBridgeTests(unittest.TestCase):
     def test_prompt_targets_non_engineer_without_dropping_specialist_terms(self):
         prompt = pipeline.build_decision_prompt('x','https://example.com',1,'desc',source_context='primary evidence')
         self.assertIn('中学生〜非エンジニアが一読後に核心を自分の言葉で1文説明', prompt)
-        self.assertIn('未知語を、説明なしで2個以上', prompt)
-        self.assertIn('恋愛、買い物、スマホの権限、鍵、学校、旅行、料理、家族、趣味', prompt)
+        self.assertIn('未知語を未説明のまま積み重ねず', prompt)
+        self.assertIn('生活の例は理解が速くなる時だけ選び', prompt)
         self.assertIn('比喩は概念理解の補助でありEvidenceではない', prompt)
         self.assertIn('正式名称', prompt)
         self.assertIn('SOURCE BOUNDARY', prompt)

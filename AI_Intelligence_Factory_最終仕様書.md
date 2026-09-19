@@ -1,6 +1,6 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: **2026-09-17**
+最終更新: **2026-09-20**
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**
 
@@ -243,7 +243,29 @@ Readyは単なるステータスではなく、**現行Publication Policyを満�
 - Provider障害と記事品質不良を分離する。
 - 無料noteの品質を意図的に落として有料転換を作らない。無料記事自体が集客・信頼形成の商品入口である。
 
-Writer前には**Editorial Blueprint**を内部生成し、少なくとも `Target Reader / Reader Question / Why Now / Central Conclusion / Evidence Anchor / Capability Boundary / Terminology Budget / Reader Decision` を固定する。これは本文の固定見出しや新しいHard Gateではなく、Writerを正しい編集方向へ拘束して後段Gate同士の修復競合を減らす生成前契約である。
+Production Writerの編集思想は **AIIF Editor Persona** として、既存 `call_gemini_grounded_deep_dive` の `system_instruction` に渡す。初回・既存Quality Retryとも同じ入口を使う。Personaは専属編集者としての人格・事実への姿勢・発見と読者判断を重視する思想のみを持ち、出力形式や細かいノルマを持たない。Screening / Product Review等へは適用しない。
+
+Writer指示の責務は次の5つに分ける。
+
+| 責務 | 正本 |
+|---|---|
+| Persona | `canonical_article_contract.aiif_editor_persona` → WriterのSystem Instruction |
+| Evidence / Fact制約 | `content_generation_protocol` のSOURCE BOUNDARY / source別Fact Discipline / Structured Evidence、およびcanonicalの意味境界 |
+| Editorial Story設計 | `canonical_article_contract.canonical_writer_contract` 内のEditorial Story Brief |
+| Output Contract | `content_generation_protocol.build_decision_prompt` の既存MANAGEMENT DATA＋ARTICLE形式 |
+| Final Reader Check | `canonical_article_contract.canonical_final_reader_check` 内の一度の内部Self-Edit |
+
+Human Editorial Styleは文体・Reader Experience / Delight / Proximityの補助に限定し、上記責務を繰り返さない。専門語数・呼びかけ回数・一定段落ごとの文体切替・固定文字数を完成条件にしない。
+
+従来の**Editorial Blueprint**は別計画を増設せず、同一Writer call内の **Editorial Story Brief** に統合する。`SURPRISE / Discovery`、`TENSION / Capability Boundary`、`HUMAN STAKE / Why Now`、`QUESTION / Reader Question`、`PAYOFF / Central Conclusion / Reader Decision` を内部形成し、Target Reader・Evidence Anchor・必要な専門語の選択を引き継ぐ。Evidenceに意外性・矛盾がなければ「なし」とし、架空の緊張・動機・人間的影響を作らない。
+
+QUESTIONは一本の **Narrative Question** として段落間の疑問・意味・判断をつなぐ。疑問文として公開する義務はなく、答えや重要制約を最後まで隠す演出もしない。冒頭は違和感・意外性・問題・疑問、または平易な事実と意味から自然に選び、固定の発表要約型やクリックベイトにしない。
+
+出力直前の **Self-Edit** は同じ生成内で一度行い、弱いタイトル・導入、次を読む理由の欠落、発表の羅列、一般論、AI的説明、重複、不要な専門語、中心疑問からの逸脱、PAYOFF不足を削除・統合・順序変更・言い換えで直す。新しいFact・数字・経験・因果は追加しない。既存局所修正の範囲と重要な意味を守り、完成稿だけを返す。内部ブリーフ・初稿・編集過程は公開出力へ含めない。
+
+Persona / Story Brief / Self-Edit / Human Appeal専用callは増設しない。Evidence / Source Fidelity / Fact / Publication Readiness / Grounding / Source Integrity / Numeric Evidence / Safety / Notion persistence、および既存Retry・Provider予算は変更しない。
+
+オフライン比較は `tools/editorial_ab.py`。同一Evidence・記事条件で凍結旧promptと現行promptを比較でき、手書きfixtureの11軸診断と新旧入替・旧稿勝利・同文引き分け・根拠欠落の対照を持つ。これは新旧モデルの実出力比較ではなく、評価経路と契約の検証である。語彙ベースの点数やfixture保持率を実際の読了率・意味的Fact保証・Production品質改善の実証として扱わない。Gemini / Google APIの実消費、Daily、note公開、Notion実更新は別途明示許可が必要。
 
 Quality Retry / Reader Repair / Reader Rhythm / 出力直前チェックも同じBlueprintに従う。中核メカニズム1つ、列挙3点以内、1段落2概念未満、冒頭600文字、固定段落数での説明切替などの機械的な編集上限は使用しない。文章量・専門語・構成は核心・重要制約・読者判断の理解に必要かで決め、必要な複数の仕組み・比較条件・正式名称を個数合わせで削らない。技術説明と判断の関係が伝わらない箇所だけ接続を直し、各段落への定型的な説明文追加はしない。
 
