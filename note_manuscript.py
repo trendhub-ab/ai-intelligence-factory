@@ -219,14 +219,19 @@ def build_reader_first_summary(
         parsed.get("what_text", ""),
     ])
     why = _compact_reader_summary(parsed.get("why_important_text") or conclusion)
-    # Public "結論は？" represents the already-decided action distance, not an
-    # implementation recipe. When a canonical Decision exists, prefer its deterministic
-    # reader wording so machine-oriented Action details cannot leak a jargon cluster back
-    # into the first public screen. Legacy rows without a Decision keep the historical
-    # final/action/reason fallback.
-    decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
-    if not decision:
-        decision = _compact_reader_summary(final or parsed.get("action_text") or parsed.get("decision_reason_text"))
+    # Public "結論は？" should preserve a plain, specific Writer conclusion when one
+    # already exists, while preventing machine-oriented implementation detail from
+    # becoming the first-screen answer. Compare the specific conclusion with the
+    # deterministic canonical Decision wording using the existing zero-API complexity
+    # selector. Legacy rows without a Decision keep the historical specific fallback.
+    specific_decision = _compact_reader_summary(
+        final or parsed.get("action_text") or parsed.get("decision_reason_text")
+    )
+    canonical_decision = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
+    decision = (
+        _pick_reader_summary_candidate([specific_decision, canonical_decision])
+        if canonical_decision else specific_decision
+    )
     decision_code_phrases = {
         "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",
         "WAIT": "条件が整うまで待つ", "AVOID": "現時点では採用を見送る",
