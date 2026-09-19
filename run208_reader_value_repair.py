@@ -43,6 +43,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from canonical_article_contract import ensure_writer_contract
+
 FAST_LANE_ENV = "AIIF_PENDING_RETRY_FAST_LANE"
 _INSTALLED_ATTR = "_run208_reader_value_repair_installed"
 _SPENT_ATTR = "_run208_reader_value_repair_spent"
