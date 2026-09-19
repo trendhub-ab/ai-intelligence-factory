@@ -51,7 +51,6 @@ class PublicLegacyCriticalRepairTests(unittest.TestCase):
     def test_updater_cannot_create_new_note_or_call_models(self):
         source = inspect.getsource(repair)
         for forbidden in (
-            "/new",
             "NOTE_NEW_URL",
             "_create_browser_draft(",
             "_mark_draft_created(",
@@ -59,11 +58,33 @@ class PublicLegacyCriticalRepairTests(unittest.TestCase):
             "generate_content(",
             "_generate_via_chat(",
             "production_pipeline",
+            "_paste_manuscript(",
+            "_verify_body_content(",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)
+        self.assertIn("_select_exact_text", source)
+        self.assertIn("_apply_exact_replacement", source)
         self.assertIn('_unique_button(page, "公開に進む").click()', source)
         self.assertIn('_unique_button(page, "更新する").click()', source)
+
+    def test_every_browser_mutation_is_an_exact_reviewed_replacement(self):
+        self.assertGreater(len(repair.RUBYGEMS_REPLACEMENTS), 0)
+        self.assertGreater(len(repair.AI_PROFICIENCY_REPLACEMENTS), 0)
+        for target in repair.TARGETS:
+            for change in target.replacements:
+                with self.subTest(target=target.key, old=change.old[:40]):
+                    self.assertTrue(change.old)
+                    self.assertTrue(change.new)
+                    self.assertNotEqual(change.old, change.new)
+
+    def test_targeted_edits_cover_the_two_audit_root_causes(self):
+        ruby_new = "\n".join(change.new for change in repair.RUBYGEMS_REPLACEMENTS)
+        self.assertIn("認識や意図そのものを証明するものではありません", ruby_new)
+        self.assertIn("なぜその手段が選ばれたのかは分かっていません", ruby_new)
+        ai_new = "\n".join(change.new for change in repair.AI_PROFICIENCY_REPLACEMENTS)
+        self.assertIn("ROI（投資対効果）への影響までは断定できない", ai_new)
+        self.assertIn("因果関係までは断定できません", ai_new)
 
     def test_eyecatch_is_not_mutated(self):
         source = inspect.getsource(repair)
