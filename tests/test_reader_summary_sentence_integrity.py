@@ -83,3 +83,22 @@ def test_final_surface_and_notion_payload_preserve_complete_summary():
     assert body == projection
     assert COMPLETE_CONDITIONAL_SENTENCE in body
     assert publication_contract.is_current_ready_block(body, caption)
+
+def test_public_summary_preserves_plain_specific_final_over_generic_decision():
+    sections = {
+        "intro": "",
+        "conclusion": "",
+        "final": "まず社内の小規模環境で試す。",
+    }
+    parsed = {
+        "source_summary_text": "新しい仕組みが公開された。",
+        "why_important_text": "導入前の検証方法を見直す材料になる。",
+        "decision_text": "TRY",
+    }
+    summary = manuscript.build_reader_first_summary(
+        parsed,
+        extract_section=lambda _draft, headings: sections.get(headings[0], ""),
+        display_heading_aliases=lambda key: (key,),
+        replace_public_decision_code_leaks=lambda text, _: (text, []),
+    )
+    assert summary["decision"] == "まず社内の小規模環境で試す。"
