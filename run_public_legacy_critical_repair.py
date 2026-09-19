@@ -9,7 +9,7 @@ Targets:
 Safety:
 - hard-bound to two exact note IDs and exact public URLs;
 - no Gemini/model calls and no Production pipeline;
-- never opens /new and never creates another note;
+- never opens a new-note creation route and never creates another note;
 - does not change eyecatches, tags, magazines, memberships, or any other note;
 - accepts only the expected legacy or already-staged corrected surface;
 - publishes changes via the observed published-note update route: 公開に進む -> 更新する;
