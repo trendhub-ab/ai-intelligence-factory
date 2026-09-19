@@ -26,6 +26,13 @@ class Run247ChatOpsNoteBridgeTests(unittest.TestCase):
         self.assertNotIn('publish-note', text.lower())
         self.assertNotIn('production_pipeline.py', text)
 
+    def test_exact_sgps_repair_command_dispatches_only_exact_repair_workflow(self):
+        text = self.workflow
+        self.assertIn("github.event.comment.body == '/aiif note repair sgps'", text)
+        self.assertIn("'/aiif note repair sgps') action='sgps_repair'", text)
+        self.assertIn("workflow='sgps-existing-draft-repair.yml'", text)
+        self.assertIn('"confirm":"REPAIR_SGPS_EXISTING_DRAFT"', text)
+
     def test_bridge_is_zero_model_and_no_public_release(self):
         text = self.workflow
         self.assertIn('Gemini calls performed by bridge: `0`', text)
