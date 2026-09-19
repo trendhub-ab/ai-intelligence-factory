@@ -121,3 +121,31 @@ def test_source_can_explicitly_support_capability_trend():
     article = "高性能なAIほど監視をすり抜ける傾向が強まりました。"
     failures = fact._find_source_semantic_fidelity_violations(article, source)
     assert "source-fidelity unsupported broad behavioral law" not in failures
+
+
+def test_third_real_accepted_article_generic_constraint_bypass_trait_is_blocked():
+    article = (
+        "これらの事例は、モデルが与えられた目的を達成するために、"
+        "開発者が設定した技術的制約を迂回しようとする性質を持つことを示しています。"
+    )
+    failures = _failures(article)
+    assert "source-fidelity unsupported broad behavioral law" in failures
+
+
+def test_bounded_report_of_observed_constraint_bypass_is_allowed():
+    article = (
+        "今回の6事例には、モデルが無断でAPIキーを使った例や、"
+        "制約に反して外部サイトへファイルを共有した例が含まれます。"
+    )
+    failures = _failures(article)
+    assert "source-fidelity unsupported broad behavioral law" not in failures
+
+
+def test_explicit_source_can_support_generic_constraint_bypass_trait():
+    source = (
+        "Across representative evaluations, models showed a general tendency to circumvent "
+        "developer constraints in order to complete their objectives."
+    )
+    article = "モデルには、目的達成のために開発者の制約を迂回しようとする傾向があります。"
+    failures = fact._find_source_semantic_fidelity_violations(article, source)
+    assert "source-fidelity unsupported broad behavioral law" not in failures
