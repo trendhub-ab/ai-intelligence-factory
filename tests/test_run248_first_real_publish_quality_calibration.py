@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import tempfile
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
 
 from PIL import Image
 
+import canonical_article_contract as cac
 import publication_contract
 import run181_eyecatch_visual_balance as r181
 import run248_first_real_publish_quality_calibration as r248
