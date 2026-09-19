@@ -197,7 +197,24 @@ def install(pipeline_module: Any) -> Any:
     def should_attempt_dynamic_retry_with_reader_repair(
         reason_rows: list[dict], evidence_result: dict | None, candidate_origin: str = "new"
     ):
-        allowed, reason = original_retry(reason_rows, evidence_result, candidate_origin)
+        rows = list(reason_rows or [])
+        hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
+
+        # Reader Repair is a distinct owner from the ordinary Fact/Quality retry.
+        # Classify the residual *before* asking the base retry owner.  Otherwise the base
+        # policy sees a REVIEW row as generically repairable, then rejects it because the
+        # ordinary retry was already spent, making the dedicated Reader Repair unreachable.
+        if (
+            candidate_origin in _FRESH_EQUIVALENT_ORIGINS
+            and _fresh_evidence_safe(pipeline_module, evidence_result)
+            and _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard)
+        ):
+            if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                return False, "run360_reader_repair_already_spent"
+            setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
+            return True, "run341_production_reader_repair"
+
+        allowed, reason = original_retry(rows, evidence_result, candidate_origin)
 
         if allowed:
             if candidate_origin in _BASE_RETRY_OWNER_ORIGINS:
@@ -209,7 +226,6 @@ def install(pipeline_module: Any) -> Any:
         if reason != "reader_value_review_no_retry":
             return allowed, reason
 
-        rows = list(reason_rows or [])
         if (
             os.getenv(FAST_LANE_ENV, "") == "1"
             and candidate_origin == "pending_retry"
@@ -219,14 +235,6 @@ def install(pipeline_module: Any) -> Any:
         ):
             setattr(pipeline_module, _SPENT_ATTR, True)
             return True, "run208_reader_value_fast_lane_repair"
-
-        if candidate_origin in _FRESH_EQUIVALENT_ORIGINS and _fresh_evidence_safe(pipeline_module, evidence_result):
-            hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
-            if _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard):
-                if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
-                    return False, "run360_reader_repair_already_spent"
-                setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
-                return True, "run341_production_reader_repair"
 
         return allowed, reason
 
