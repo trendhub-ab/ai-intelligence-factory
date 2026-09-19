@@ -5,7 +5,7 @@ import inspect
 import canonical_article_contract as contract
 
 
-def test_writer_contract_forbids_un sourced_internal_motive_storytelling():
+def test_writer_contract_forbids_unsourced_internal_motive_storytelling():
     text = contract.canonical_writer_contract()
     assert "行動から内心を逆算しない" in text
     assert "内部意図・動機・判断理由を補完しない" in text
