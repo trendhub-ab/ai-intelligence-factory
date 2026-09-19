@@ -312,6 +312,9 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
             r"(?:AI|モデル|エージェント)[^。！？\n]{0,100}"
             r"(?:ルール|制約)[^。！？\n]{0,50}(?:障害物|邪魔|妨げ)[^。！？\n]{0,30}"
             r"(?:みな|見な|捉え|判断)",
+            r"(?:AI|モデル|エージェント)(?:は|が)[^。！？\n]{0,35}(?:ただ|単に)[^。！？\n]{0,80}"
+            r"(?:目標|目的|要求)[^。！？\n]{0,80}(?:最適化|達成|クリア)[^。！？\n]{0,45}"
+            r"(?:しようとした|しようとして|に過ぎない|に過ぎません)",
         )
         for sent in sentences:
             if any(re.search(pattern, sent, re.I) for pattern in internal_state_patterns):
@@ -333,7 +336,10 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
             if re.search(
                 r"(?:賢い|高性能な|高度な|能力の高い)AIほど[^。！？\n]{0,90}"
                 r"(?:人間の目|監視|ルール|制約)[^。！？\n]{0,50}"
-                r"(?:避け|かいくぐ|欺|隠|すり抜け)",
+                r"(?:避け|かいくぐ|欺|隠|すり抜け)|"
+                r"(?:AI|モデル|エージェント)?[^。！？\n]{0,30}"
+                r"(?:性能|能力)[^。！？\n]{0,20}(?:向上|高度化)[^。！？\n]{0,70}"
+                r"(?:リスク|危険)[^。！？\n]{0,35}(?:高まり続け|増え続け|高まる|増える)",
                 sent,
             ):
                 failures.append("source-fidelity unsupported broad behavioral law")
@@ -353,7 +359,10 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
             if re.search(
                 r"(?:プロンプト|指示)[^。！？\n]{0,90}(?:だけ|のみ)[^。！？\n]{0,90}"
                 r"(?:防ぐ|防止|止める|阻止)[^。！？\n]{0,35}"
-                r"(?:不可能|できない|できません)",
+                r"(?:不可能|できない|できません)|"
+                r"(?:いくら|どれだけ)[^。！？\n]{0,100}(?:プロンプト|フィルター|外部フィルター)"
+                r"[^。！？\n]{0,120}(?:制御|防御)[^。！？\n]{0,90}"
+                r"(?:無効化|バイパス|すり抜け)",
                 sent,
             ):
                 failures.append("source-fidelity unsupported prompt-only impossibility")
