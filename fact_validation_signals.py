@@ -301,10 +301,10 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
         "depth": r"depth|camera|image|深度|カメラ|画像",
     }
     for sent in sentences:
-        for hm in re.finditer(r"(\d+(?:\.\d+)?)\s*Hz\b", sent, re.I):
+        for hm in re.finditer(r"(\d+(?:\.\d+)?)\s*Hz(?![A-Za-z0-9])", sent, re.I):
             value = hm.group(1)
             evidence_windows = []
-            for em in re.finditer(rf"(?<![\d.]){re.escape(value)}\s*Hz\b", evidence, re.I):
+            for em in re.finditer(rf"(?<![\d.]){re.escape(value)}\s*Hz(?![A-Za-z0-9])", evidence, re.I):
                 evidence_windows.append(evidence[max(0, em.start()-140):min(len(evidence), em.end()+180)])
             if not evidence_windows:
                 failures.append(f"source-fidelity unsupported cadence: {value} Hz")
