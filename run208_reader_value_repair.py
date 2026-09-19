@@ -199,11 +199,19 @@ def install(pipeline_module: Any) -> Any:
     ):
         rows = list(reason_rows or [])
 
-        # Production's base retry policy can legitimately return allowed=True for any
-        # repairable REVIEW/HARD set.  If we consult it first, a reader-only second pass
-        # after one Fact retry is misclassified as a second ordinary quality retry and
-        # blocked by _BASE_RETRY_SPENT_ATTR.  Reader ownership is orthogonal by design,
-        # so classify a safe reader-only set before delegating to the generic owner.
+        # Reader Repair owns safe reader-only blockers independently from the generic
+        # Fact/Quality retry. Production's base policy can return allowed=True even for
+        # reader-only REVIEW rows, so this classification must happen before delegating
+        # to the generic owner; otherwise a post-Fact Reader pass is mistaken for a
+        # second base retry and blocked by _BASE_RETRY_SPENT_ATTR.
+        if candidate_origin in _FRESH_EQUIVALENT_ORIGINS and _fresh_evidence_safe(pipeline_module, evidence_result):
+            hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
+            if _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard):
+                if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                    return False, "run360_reader_repair_already_spent"
+                setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
+                return True, "run341_production_reader_repair"
+
         allowed, reason = original_retry(reason_rows, evidence_result, candidate_origin)
 
         if allowed:
@@ -225,14 +233,6 @@ def install(pipeline_module: Any) -> Any:
         ):
             setattr(pipeline_module, _SPENT_ATTR, True)
             return True, "run208_reader_value_fast_lane_repair"
-
-        if candidate_origin in _FRESH_EQUIVALENT_ORIGINS and _fresh_evidence_safe(pipeline_module, evidence_result):
-            hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
-            if _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard):
-                if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
-                    return False, "run360_reader_repair_already_spent"
-                setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
-                return True, "run341_production_reader_repair"
 
         return allowed, reason
 
