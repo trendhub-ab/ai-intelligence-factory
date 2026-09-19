@@ -37,11 +37,12 @@ def deconflict_legacy_writer_rules(prompt: str) -> str:
 def canonical_writer_contract() -> str:
     return f"""
 [{CANONICAL_ARTICLE_CONTRACT_MARKER}]
-ARTICLEの品質優先順位は Fact / Evidence integrity → Decision fidelity → Reader comprehension → article-specific discovery / interest → surface polish とする。
+ARTICLEの品質優先順位は Fact / Evidence / Decision → Reader comprehension → article-specific discovery / interest → surface polish とする。
 下位品質のために上位品質を壊さない。Evidence、重要数値、条件、反証、対象範囲を落とさない。架空の経験・感情・因果・会話・多数派認識を作らない。
+分かりやすさは新情報の足し算ではなく、選択・順序・削除・言い換えで作る。
 
 本文を書く前に、取得済みSOURCE BOUNDARY / Evidence / 既存Decisionだけで次を内部決定する。固定見出しや固定順序にしない。
-- Reader Question — 読者のどの疑問・迷い・選択を解消するか。
+- Reader Question — 読者の困りごと・迷い・選択のどれを解消するか。
 - Why Now — なぜ今読む価値があるか。取得済みEvidenceだけで示す。
 - Central Conclusion — 記事全体の中心判断。既存Decisionと一致させる。
 - Discovery — 発表要約ではなく「そういうことだったのか」と残る記事固有の核心。
@@ -50,10 +51,23 @@ ARTICLEの品質優先順位は Fact / Evidence integrity → Decision fidelity 
 - Evidence Integrity — 結論と判断を支える一次情報、重要数値、条件、対象範囲、反証を保持する。
 
 Writerの中心原則は「記事を全部説明するな。読者が正しく判断するために必要な情報を選び、最も自然な順番で渡す」。
-Reader Question、Central Conclusion、Capability Boundary、Reader Decision、重要Evidenceのどれにも不要な周辺仕様、内部実装名、コマンド名、規格番号、重複説明、名称紹介は削除または意味カテゴリへ圧縮する。
+Reader Question、Central Conclusion、Capability Boundary、Reader Decision、重要Evidenceのどれにも不要な周辺仕様・実装列挙・重複説明・名称紹介は削除または意味カテゴリへ圧縮する。
 
-専門語の固定個数制限は設けない。必要な専門語は残すが、初出では可能な限り普通の言葉で役割を先に示し、その後で正式名称を出す。専門語を別の未説明専門語で説明しない。
-Human Appealは会話句の数ではなく、記事固有の意外性、読者との関係、比較、因果、判断の分かれ目、具体的な意味から作る。Security / Risk等は落ち着いた文章でもよい。
+【Reader Path Contract｜非エンジニアが迷子にならない順序】
+固定見出しや定型句は使わず、初稿の段階でReader Gateを後工程へ丸投げしない。
+【実行優先順位】
+1. Decision理解：前半のメッセージはReader Questionと判断への関係で選ぶ。必要なら①何が変わった ②読者にどう関係する ③現時点の暫定判断を早い位置へ置く。最初の段落を製品名・略語・実装名の説明から始めない。
+2. 制約保持：重要な制約・対象範囲・例外・未検証条件は削らず、意味を欠落させない普通の日本語でDecisionの近くに残す。制約を脚注扱いで最後へ追いやらない。
+3. Evidence保持：Decisionを支える一次情報・重要数値・反証は残す。Evidenceの深さを名称の多さで表現しない。
+4. 中核メカニズム：Central Conclusion / Capability Boundary / Reader Decisionの理解に必要な仕組みを説明する。複数の仕組みや専門語の比較が必要なら残し、個数上限で削らない。
+5. 実装名・略語・ベンチマーク名：Decisionも制約も変えない名称は削除または意味カテゴリへ圧縮する。一次情報に名前があることはARTICLEへ列挙する理由にならない。
+
+冒頭の説明は核心と判断の理解に必要な範囲にし、専門語を別の未説明専門語で説明しない。新事実は足さない。
+必要な名前は個数にかかわらず残す一方、判断に不要なEvidence inventoryは削除または意味カテゴリへ統合する。
+問いかけや比喩は、それだけではReader Bridgeとみなさない。Human Appealは問いかけや比喩の数ではなく、記事固有の意外性、読者との関係、比較、因果、判断の分かれ目、具体的な意味から作る。親しみのための前置きは増やさない。
+架空の体験・感情・因果で面白さを作らない。段落数で機械的に説明を打ち切らない。
+専門語の固定個数制限は設けない。必要な専門語は残すが、初出では可能な限り普通の言葉で役割を先に示し、その後で正式名称を出す。
+「ですよね」「実は」「つまり」、問い、比喩、短文等に回数ノルマを設けない。
 です・ます調を土台にし、教師の講義や監査報告書ではなく、AI・ITに詳しい人が面白いところを順番に見せる距離感にする。
 Reader-first summaryの「何が出た？／なぜ重要？／結論は？」を本文テンプレートにしない。
 """.strip()
@@ -79,9 +93,9 @@ def canonical_final_reader_check() -> str:
 1. 非エンジニアにも何が起きたか、なぜ自分に関係するか、現時点の判断が分かる。
 2. 判断に不要な実装細部、重複、報告書調の前置きを削る。
 3. 必要な専門語は役割が普通の日本語で分かり、別の未説明専門語で説明していない。
-4. Evidence、重要数値、条件、反証、Decisionは削らない。
-5. 「要するに何の話か」と「自分なら次に何をするか」が説明できる。
-Fact/Evidence安全境界がReader要件と衝突する場合はFact/Evidenceを優先する。
+4. Evidence・重要数値・条件・反証・Decisionは削らない。
+5. 新しいFact、因果、数値、利用経験、保証、競合情報を作らない。
+Fact/Evidence安全境界を優先し、読みやすさを理由に根拠を強めたり欠落を埋めたりしない。
 """.strip()
 
 
