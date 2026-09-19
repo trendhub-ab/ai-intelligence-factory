@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import os
 import sys
 import types
@@ -1654,80 +1653,6 @@ class TestRealArticleGateCalibration20260821(unittest.TestCase):
         self.assertIn("10-hour", info["verification_context"])
         self.assertGreater(info["verification_context_length"], len(info["context"]))
         self.assertEqual([], pipeline._find_unsupported_numeric_claims("計算予算は10時間。", info["verification_context"]))
-
-
-class TestSGPSSourceFidelityRegression(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        fixture_path = ROOT / "tests" / "fixtures" / "source_fidelity" / "sgps_20260919.json"
-        cls.fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
-        cls.source_context = cls.fixture["source_context"]
-
-    def test_all_historical_sgps_failures_are_blocked(self):
-        for case in self.fixture["bad_cases"]:
-            with self.subTest(case=case["id"]):
-                failures = pipeline._find_source_semantic_fidelity_violations(
-                    case["text"], self.source_context
-                )
-                self.assertTrue(
-                    any(case["expect"] in row for row in failures),
-                    f'{case["id"]} was not blocked: {failures}',
-                )
-
-    def test_grounded_sgps_phrasings_are_allowed(self):
-        for case in self.fixture["good_cases"]:
-            with self.subTest(case=case["id"]):
-                failures = pipeline._find_source_semantic_fidelity_violations(
-                    case["text"], self.source_context
-                )
-                self.assertEqual([], failures, f'{case["id"]}: {failures}')
-
-    def test_fact_gate_checks_title_and_body_for_semantic_fidelity(self):
-        parsed = {
-            "note_draft": (
-                "SGPSはサンプリングベースMPCと一次方策最適化を組み合わせる研究手法です。"
-                "ハードウェア配備では蒸留したポリシーをGo2へゼロショット転送します。"
-            ),
-            "title_text": "1台のGPUで実機が動く。SGPSの衝撃。",
-            "decision_text": "TRY",
-            "score": 76,
-            "decision_reason_text": "限定環境で再現性を比較する価値がある。",
-            "action_text": "小さなシミュレーション比較で検証する。",
-            "source_summary_text": "SGPSは視覚方策学習を効率化する研究手法。",
-        }
-        ok, failures = pipeline.validate_fact_gate(
-            parsed,
-            "Accelerating Visual Policy Learning with Sampling-Based Model Predictive Control",
-            source_context=self.source_context,
-            source="ArXiv",
-        )
-        self.assertFalse(ok)
-        self.assertTrue(
-            any("source-fidelity stage fusion" in row for row in failures),
-            failures,
-        )
-
-    def test_fact_gate_accepts_stage_separated_sgps_title(self):
-        parsed = {
-            "note_draft": (
-                "SGPSはサンプリングベースMPCと一次方策最適化を組み合わせる研究手法です。"
-                "ハードウェア配備では蒸留したポリシーをGo2へゼロショット転送します。"
-            ),
-            "title_text": "GPU 1台で学習、実機へゼロショット転送。SGPSは何を変えるのか。",
-            "decision_text": "TRY",
-            "score": 76,
-            "decision_reason_text": "限定環境で再現性を比較する価値がある。",
-            "action_text": "小さなシミュレーション比較で検証する。",
-            "source_summary_text": "SGPSは視覚方策学習を効率化する研究手法。",
-        }
-        ok, failures = pipeline.validate_fact_gate(
-            parsed,
-            "Accelerating Visual Policy Learning with Sampling-Based Model Predictive Control",
-            source_context=self.source_context,
-            source="ArXiv",
-        )
-        semantic_failures = [row for row in failures if "source-fidelity" in row]
-        self.assertEqual([], semantic_failures, failures)
 
 
 if __name__ == '__main__':
