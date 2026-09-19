@@ -300,20 +300,43 @@ def _find_source_semantic_fidelity_violations(draft: str, source_context: str) -
         "inference": r"inference|policy\s+(?:evaluation|inference)|推論",
         "depth": r"depth|camera|image|深度|カメラ|画像",
     }
+    def cadence_roles_near(text: str, start: int, end: int) -> set[str]:
+        # Bind a cadence to the nearest semantic role inside the same sentence.
+        # Broad character windows can accidentally attach "controller 50 Hz" to a
+        # later "encoder 10 Hz" and legalize a role swap.
+        left = max(text.rfind(mark, 0, start) for mark in (".", "。", "!", "！", "?", "？", "\n", ";"))
+        right_candidates = [pos for mark in (".", "。", "!", "！", "?", "？", "\n", ";")
+                            if (pos := text.find(mark, end)) >= 0]
+        right = min(right_candidates) if right_candidates else len(text)
+        lo = left + 1
+        segment = text[lo:right]
+        local_start = start - lo
+        local_end = end - lo
+        hits: list[tuple[str, int]] = []
+        for name, pat in role_patterns.items():
+            for role_match in re.finditer(pat, segment, re.I):
+                if role_match.end() <= local_start:
+                    distance = local_start - role_match.end()
+                elif role_match.start() >= local_end:
+                    distance = role_match.start() - local_end
+                else:
+                    distance = 0
+                hits.append((name, distance))
+        if not hits:
+            return set()
+        nearest = min(distance for _, distance in hits)
+        return {name for name, distance in hits if distance <= nearest + 18}
+
     for sent in sentences:
         for hm in re.finditer(r"(\d+(?:\.\d+)?)\s*Hz(?![A-Za-z0-9])", sent, re.I):
             value = hm.group(1)
-            evidence_windows = []
+            claim_roles = cadence_roles_near(sent, hm.start(), hm.end())
+            evidence_role_sets = []
             for em in re.finditer(rf"(?<![\d.]){re.escape(value)}\s*Hz(?![A-Za-z0-9])", evidence, re.I):
-                evidence_windows.append(evidence[max(0, em.start()-140):min(len(evidence), em.end()+180)])
-            if not evidence_windows:
+                evidence_role_sets.append(cadence_roles_near(evidence, em.start(), em.end()))
+            if not evidence_role_sets:
                 failures.append(f"source-fidelity unsupported cadence: {value} Hz")
                 continue
-            claim_roles = {name for name, pat in role_patterns.items() if re.search(pat, sent, re.I)}
-            evidence_role_sets = [
-                {name for name, pat in role_patterns.items() if re.search(pat, window, re.I)}
-                for window in evidence_windows
-            ]
             if claim_roles and any(roles for roles in evidence_role_sets):
                 if not any(claim_roles & roles for roles in evidence_role_sets):
                     failures.append(f"source-fidelity cadence role mismatch: {value} Hz")
