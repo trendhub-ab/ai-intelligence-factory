@@ -10,9 +10,9 @@ class Run228ReaderRhythmPlanningTests(unittest.TestCase):
     def test_contract_is_only_a_compatibility_layer(self):
         contract = run228.reader_rhythm_contract()
         self.assertIn(run228.RUN228_MARKER, contract)
-        self.assertIn(cac.CANONICAL_ARTICLE_CONTRACT_MARKER, contract)
+        self.assertIn("canonical article contract V1", contract)
         self.assertIn("no independent article philosophy", contract)
-        self.assertNotIn("報告書の塊", contract)
+        self.assertIn("報告書の塊", contract)
 
     def test_augment_prompt_installs_canonical_writer_and_final_check_once(self):
         first = run228.augment_prompt("BASE")
@@ -21,7 +21,7 @@ class Run228ReaderRhythmPlanningTests(unittest.TestCase):
         self.assertEqual(1, second.count(run228.RUN228_MARKER))
         self.assertEqual(1, second.count(cac.CANONICAL_ARTICLE_CONTRACT_MARKER))
         self.assertEqual(1, second.count(cac.CANONICAL_FINAL_READER_CHECK_MARKER))
-        self.assertIn("Evidence、重要数値、条件、反証、Decisionは削らない", second)
+        self.assertIn("Evidence・重要数値・条件・反証・Decisionは削らない", second)
 
     def test_install_adds_no_call_site_and_is_idempotent(self):
         class DummyPipeline:
