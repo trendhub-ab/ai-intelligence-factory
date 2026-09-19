@@ -246,7 +246,7 @@ def run_approved_article_apply(pipeline, limit: int | None = None) -> dict[str, 
     quality_failed_continuation = content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED
     source = str(item.get("approved_target_source") or "")
     if continuation and source not in {"pending_retry", "pending_retry_exact"}:
-        raise RuntimeError("Run399 Pending Retry lifecycle must come from canonical or exact approved pending source")
+        raise RuntimeError("Run399 Pending Retry lifecycle must come from canonical pending source or exact approved pending source")
     if quality_failed_continuation and source != "quality_failed_exact":
         raise RuntimeError("Run410 Quality Failed lifecycle must come from exact approved page source")
 
