@@ -125,6 +125,56 @@ def is_reader_only_repair(rows: list[dict], hard_severity: str = "HARD") -> bool
     return _reader_only_repairable(rows, _FRESH_REPAIRABLE, hard_severity)
 
 
+def _is_decision_voice_row(pipeline_module: Any, row: dict) -> bool:
+    """Allow only the audited Human Appeal decision-voice repair to travel with Reader repair."""
+    message = _message(row)
+    code = str((row or {}).get("reason_code") or "")
+    expected = str(getattr(
+        pipeline_module,
+        "REASON_CODE_APPEAL_DECISION_VOICE_LOSS",
+        "APPEAL_DECISION_VOICE_LOSS",
+    ))
+    return (
+        code == expected
+        or message in {"decision_voice_missing", "human_appeal_materially_degraded_after_reedit"}
+    )
+
+
+def _dedicated_reader_repairable(
+    pipeline_module: Any,
+    rows: list[dict],
+    labels: tuple[str, ...],
+    hard_severity: str | None = None,
+) -> bool:
+    """Classify the bounded Reader owner without turning arbitrary REVIEW debt into Reader work.
+
+    A real 2026-09-19 article_validation exposed an owner-ordering gap: after the one HARD
+    Fact retry, the remaining bundle contained Reader accessibility defects plus
+    decision_voice_missing. Both are repaired from the same fixed Evidence/Decision surface,
+    but the historical every-row-must-be-reader rule prevented the dedicated Reader owner
+    from claiming its already-budgeted second slot.
+
+    At least one canonical Reader row is still required. The only non-Reader companion allowed
+    is the audited Decision Voice loss. HARD rows and every other REVIEW class remain ineligible.
+    """
+    if not rows:
+        return False
+    has_reader = False
+    for row in rows:
+        if hard_severity and str((row or {}).get("severity") or "") == hard_severity:
+            return False
+        message = _message(row)
+        if READER_VALUE_MARKER in message:
+            if not any(label in message for label in labels):
+                return False
+            has_reader = True
+            continue
+        if _is_decision_voice_row(pipeline_module, row):
+            continue
+        return False
+    return has_reader
+
+
 def _fresh_evidence_safe(pipeline_module: Any, evidence_result: dict | None) -> bool:
     if not isinstance(evidence_result, dict):
         return False
@@ -172,6 +222,14 @@ def _run359_targeted_repair(rows: list[dict]) -> str:
             "【実行必須：要約候補文を完結させる】冒頭・why・conclusion・final/actionの候補文を読点で切れた断片にせず、短い完結文にする。"
         )
 
+    if "decision_voice_missing" in messages or "human_appeal_materially_degraded_after_reedit" in messages:
+        directives.append(
+            "【実行必須：Decision Voiceを復元する】MANAGEMENT DATAの既存Decision / Decision Score / Decision Reason / Actionと、"
+            "前稿に残る一次Evidenceだけを使い、編集者自身の判断を自然な日本語で1箇所に戻す。"
+            "『私なら小さく試す／比較する／待つ／見送る』等の距離感は既存Decisionと一致させる。"
+            "新しいFact、利用経験、感情、因果、保証、緊急度を作らず、Reader導線の修正と同じ1回で完了する。"
+        )
+
     if not directives:
         return ""
     return "\n".join(["【RUN359 Reader Repair Execution Contract】", *directives])
@@ -197,11 +255,26 @@ def install(pipeline_module: Any) -> Any:
     def should_attempt_dynamic_retry_with_reader_repair(
         reason_rows: list[dict], evidence_result: dict | None, candidate_origin: str = "new"
     ):
-        allowed, reason = original_retry(reason_rows, evidence_result, candidate_origin)
+        rows = list(reason_rows or [])
+        allowed, reason = original_retry(rows, evidence_result, candidate_origin)
 
         if allowed:
             if candidate_origin in _BASE_RETRY_OWNER_ORIGINS:
                 if bool(getattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, False)):
+                    # The live base policy returns allowed=True for repairable REVIEW rows.
+                    # Evaluate the already-budgeted Reader owner before returning base-spent.
+                    if (
+                        candidate_origin in _FRESH_EQUIVALENT_ORIGINS
+                        and _fresh_evidence_safe(pipeline_module, evidence_result)
+                    ):
+                        hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
+                        if _dedicated_reader_repairable(
+                            pipeline_module, rows, _FRESH_REPAIRABLE, hard
+                        ):
+                            if bool(getattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, False)):
+                                return False, "run360_reader_repair_already_spent"
+                            setattr(pipeline_module, _READER_REPAIR_SPENT_ATTR, True)
+                            return True, "run341_production_reader_repair"
                     return False, "run360_base_quality_retry_already_spent"
                 setattr(pipeline_module, _BASE_RETRY_SPENT_ATTR, True)
             return allowed, reason
@@ -209,7 +282,6 @@ def install(pipeline_module: Any) -> Any:
         if reason != "reader_value_review_no_retry":
             return allowed, reason
 
-        rows = list(reason_rows or [])
         if (
             os.getenv(FAST_LANE_ENV, "") == "1"
             and candidate_origin == "pending_retry"
@@ -244,7 +316,9 @@ def install(pipeline_module: Any) -> Any:
         rows = list(reason_rows or [])
         instruction, sections = original_retry_instruction(rows)
         hard = str(getattr(pipeline_module, "GATE_SEVERITY_HARD", "HARD"))
-        reader_only = is_reader_only_repair(rows, hard)
+        reader_only = _dedicated_reader_repairable(
+            pipeline_module, rows, _FRESH_REPAIRABLE, hard
+        )
         if reader_only:
             instruction = str(instruction).rstrip() + "\n\n" + READER_REPAIR_CONTRACT
             targeted = _run359_targeted_repair(rows)
