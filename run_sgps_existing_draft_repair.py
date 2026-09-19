@@ -121,16 +121,26 @@ def build_parsed(manuscript: str) -> dict[str, Any]:
     }
 
 
+def _article_core_for_gates(manuscript: str) -> str:
+    """Mirror Production ordering: gate the article before Sources/CTA presentation is appended."""
+    marker = "\n---\n\n### Sources / Evidence"
+    core = str(manuscript or "").split(marker, 1)[0].strip()
+    if not core:
+        raise SGPSRepairError("SGPS article core is empty")
+    return core
+
+
 def validate_repaired_manuscript(manuscript: str | None = None) -> dict[str, Any]:
     """Run the current deterministic Production publication gates, with zero provider calls."""
     import pipeline
     import runtime_layers
 
     # Installing current layers changes only local deterministic gate surfaces here.
-    # No generation/provider method is invoked.
+    # No generation/provider method is invoked. This function runs in a standalone process
+    # in CI/preflight so those patches cannot leak into unrelated regression tests.
     runtime_layers.install_runtime_layers(pipeline)
     body = manuscript if manuscript is not None else load_manuscript()
-    parsed = build_parsed(body)
+    parsed = build_parsed(_article_core_for_gates(body))
 
     fact_ok, fact_failures = pipeline.validate_fact_gate(
         parsed,
