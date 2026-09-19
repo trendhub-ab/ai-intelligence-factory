@@ -1,113 +1,45 @@
-"""Run226 — evidence-bounded Editorial Blueprint for free note articles.
+"""Run226 compatibility layer for the canonical AIIF article contract.
 
-The layer began as Human Editorial Planning and remains prompt-only: no provider/API call,
-no output-schema change, and no gate relaxation.  The current contract makes the planning
-step explicit enough to prevent a technically correct manuscript from drifting into the
-wrong editorial emphasis.  Existing five editorial lenses remain compatible, but they now
-sit inside a concrete Blueprint that fixes the reader question, central conclusion, evidence
-boundary, terminology budget, and decision before the Writer drafts prose.
-
-Run226 also reconciles a small set of older fixed-count Writer instructions that conflict
-with the current Blueprint.  It removes the known mechanical quotas from the assembled
-prompt before appending the current contract; this is prompt deconfliction, not a gate change.
+Run226 remains the historical installation point for Editorial Blueprint behavior, but the
+article-quality policy itself now lives in canonical_article_contract.py.  This module adds
+no provider call, changes no output schema, and relaxes no gate.
 """
-
 from __future__ import annotations
 
 from typing import Any
 
+from canonical_article_contract import (
+    CANONICAL_ARTICLE_CONTRACT_MARKER,
+    canonical_writer_contract,
+    deconflict_legacy_writer_rules,
+    ensure_writer_contract,
+)
 from editorial_quality_memory import QUALITY_MEMORY_MARKER, quality_memory_contract
 
 
 RUN226_MARKER = "RUN226_READER_DELIGHT_PLANNING"
-EDITORIAL_BLUEPRINT_MARKER = "AIIF_EDITORIAL_BLUEPRINT_V1"
+EDITORIAL_BLUEPRINT_MARKER = CANONICAL_ARTICLE_CONTRACT_MARKER
 _INSTALL_FLAG = "_run226_reader_delight_planning_installed"
 
 
-_LEGACY_WRITER_REPLACEMENTS: tuple[tuple[str, str], ...] = (
-    (
-        "記事全体の温度を1〜2個の口語句で済ませず、硬い説明が2段落続いたら次の段落では、追加説明を足さず、既存文を「読者の判断／具体場面／平易な一言」のどれかへ置き換えて人間の言葉へ戻す。",
-        "記事全体の温度を固定個数の口語句で作らない。硬い説明が続いてReader QuestionやReader Decisionとの関係が見えなくなった場合は、追加説明を足さず、既存文を「読者の判断／具体場面／平易な一言」のどれかへ置き換えて人間の言葉へ戻す。段落数だけで機械的に切り替えない。",
-    ),
-    (
-        "この無料ARTICLEで読者が本当に覚える専門概念を内部で原則2〜3個に絞る。4個目がないとDecisionを誤解する場合だけ4個まで許す。",
-        "この無料ARTICLEで読者が本当に覚える専門概念は、Central Conclusion / Capability Boundary / Reader Decisionの理解に必要なものだけを残す。固定個数の上限で削らず、不要な略語・規格番号・内部実装名を優先して外す。",
-    ),
-    (
-        "ARTICLE本文で説明する中核概念は原則2〜3個、実装識別子・規格名・コマンド名は意思決定に必要なものだけに限定し、列挙で専門性を演出しない。",
-        "ARTICLE本文で説明する中核概念は固定個数で制限せず、Reader Decisionに必要なものだけに絞る。実装識別子・規格名・コマンド名は意思決定に必要なものだけに限定し、列挙で専門性を演出しない。",
-    ),
-    (
-        "手順・機能・注意点の列挙はそれぞれ最大3項目まで。",
-        "手順・機能・注意点の列挙は必要最小限にする。Decisionや重要な制約に不可欠な項目を個数上限のために落とさない。",
-    ),
-    (
-        "短文を3つ以上連打して広告コピーのように煽らない。",
-        "短文の連打で広告コピーのように煽らない。",
-    ),
-)
-
-
 def deconflict_writer_prompt(prompt: str) -> str:
-    """Replace known legacy numeric style quotas with Blueprint-aligned guidance."""
-    text = str(prompt or "")
-    for legacy, current in _LEGACY_WRITER_REPLACEMENTS:
-        text = text.replace(legacy, current)
-    return text
+    """Compatibility wrapper around the canonical legacy-quota deconflicter."""
+    return deconflict_legacy_writer_rules(prompt)
 
 
 def editorial_planning_contract() -> str:
-    """Return the internal Editorial Blueprint used before article generation."""
-    return f"""
-[{RUN226_MARKER} — 無料note記事 / {EDITORIAL_BLUEPRINT_MARKER}]
-本文を書く前に、取得済みSOURCE BOUNDARY / Evidence / 既存DecisionだけでEDITORIAL BLUEPRINTを内部決定する。これは思考用メモであり、本文の固定見出し・出力schema・新しい事実源ではない。
-
-EDITORIAL BLUEPRINT:
-A. Target Reader — 今回の記事で最優先する読者像を1つに絞る。原則は非エンジニアでも核心と判断を追える読者設計とし、専門家だけに通じる前提知識を暗黙に要求しない。
-B. Reader Question — 読者がこの記事で本当に答えを得たい疑問・困りごと・迷い・選択を1つに固定する。
-C. Why Now — なぜ今この話を読む価値があるかを、取得済みEvidenceの範囲だけで1文にする。新規性・緊急性・普及をEvidenceなしで演出しない。
-D. Central Conclusion — 記事全体で最も重要な結論を1文に固定する。発表要約ではなく、既存Decisionと整合した読者向けの中心判断にする。
-E. Evidence Anchor — Central Conclusionを支える必要最小限のEvidenceを選ぶ。周辺仕様を網羅するためにEvidenceを増やさない。
-F. Capability Boundary — 「できる」「できない」「まだ分からない」を分離する。「できない」は禁止・非対応・制約がSOURCE BOUNDARYで明示される場合だけ使い、単にEvidenceがない場合は「未確認/まだ分からない」とする。
-G. Terminology Budget — Discovery / 制約 / Decisionの理解に必要な専門語だけを残す。正式名称・略語・実装名は最初の1回で役割を平易に示し、不要な名称紹介は削る。専門語を固定個数に押し込めず、必要性で判断する。
-H. Reader Decision — 既存Decisionを、読者が次に何をするか分かる具体的な言葉へ翻訳する。新しいDecisionを作らず、試す/待つ/見送る等の表現は既存DecisionとEvidenceに従う。
-
-既存の5 editorial lensesは、上のBlueprintを文章へ落とすために使う:
-1. Reader Tension — Reader Questionを冒頭の読者文脈へ変換する。冒頭は「読者の困りごと・迷い・選択」→普通の言葉で何が変わるか→必要な場合だけ正式な技術名、の順で入る。最初の段落を製品名・略語・実装名の説明から始めない。
-2. Discovery — 読後に「そういうことだったのか」と残る記事固有の核心を1つ選ぶ。発表要約だけを核心にしない。
-3. Concrete Consequence — その核心が読者の選択・使い方・導入判断に何を意味するかをEvidenceの範囲で示す。
-4. Explanation Bridge — 核心を理解するのに本当に必要な専門概念だけを、普通の言葉から説明する。正式名称・略語・実装名は、それ自体がDiscovery・制約・Decisionに必要な時だけ出し、最初の1回で役割を平易に示す。比喩・問い・scene・会話調は自然に理解を助ける場合だけ任意で使う。
-5. Editorial Point of View — EvidenceとDecisionから編集者としてどこを重要と見るかを1本の視点として通す。Central Conclusionと矛盾する別の主張を後段で増やさない。
-
-最終優先順位:
-- Fact / Evidence / Decision / required qualifier / 重要な制約は絶対に落とさない。
-- そのうえで、DiscoveryまたはDecisionを理解するために不要な周辺仕様・実装列挙・重複説明・名称紹介はARTICLEへ詰め込まない。
-- 分かりやすさは新情報の足し算ではなく、選択・順序・削除・言い換えで作る。
-- Blueprintは新しいHard Gateではない。Writerを正しい編集方向へ固定し、後段Gate同士の修復競合を減らすための生成前契約である。
-
-安全境界:
-- Evidenceにない数値baseline、時間、金額、日付、人物、会話、引用、利用実績、普及/トレンド、競合roadmap、因果関係を作らず、「多くの人は〜」等の多数派認識を創作しない。
-- 一次情報の倍率や%を具体値へ換算するのはbaselineと換算後の値の双方がSOURCE BOUNDARYで直接確認できる場合だけ。暗算で分かりやすい例を捏造しない。
-- 比喩はEvidenceではない。対応関係が弱い比喩や、比喩だけで技術的な芯を置き換える文章は禁止する。
-- 「ですよね」「実は」「つまり」、問い、短文、箇条書き、比喩に回数ノルマを設けない。固定Hook分類を均等配分しない。5項目やBlueprint 8項目を本文の固定順序にしない。style countだけを新しいHard Gateにしない。
-- 旧Writer側の固定個数ルールとBlueprintが衝突する場合はBlueprintを優先する。必要な専門概念・制約・判断材料を個数合わせのために削らない。
-- 既存の出力schema、SOURCE BOUNDARY、Evidence-to-Decision、Decision Score、URL、Publication Contractを変更しない。
-
-目標は、正確な技術レポートを親しみ語で飾ることではない。読者が自分の疑問からDiscoveryへ進み、核心を理解できた快感と自分の判断を持って読み終える記事にする。
-""".strip()
+    """Return the canonical article contract through the historical Run226 API."""
+    return canonical_writer_contract()
 
 
 def augment_prompt(prompt: str) -> str:
-    """Deconflict legacy Writer quotas, then append Blueprint/memory exactly once."""
-    base = deconflict_writer_prompt(prompt)
-    additions: list[str] = []
+    """Install the canonical Writer contract plus compact historical compatibility markers."""
+    base = ensure_writer_contract(prompt).rstrip()
     if RUN226_MARKER not in base:
-        additions.append(editorial_planning_contract())
+        base += f"\n\n[{RUN226_MARKER} — compatibility layer]"
     if QUALITY_MEMORY_MARKER not in base:
-        additions.append(quality_memory_contract())
-    if not additions:
-        return base
-    return f"{base.rstrip()}\n\n" + "\n\n".join(additions) + "\n"
+        base += "\n\n" + quality_memory_contract()
+    return base.rstrip() + "\n"
 
 
 def install(pipeline_module: Any) -> None:
