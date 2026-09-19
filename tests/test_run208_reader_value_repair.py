@@ -145,6 +145,38 @@ class Run208ReaderValueRepairTests(unittest.TestCase):
         )
         self.assertEqual(pipeline.MAX_QUALITY_RETRIES, 2)
 
+
+    def test_article_validation_reader_only_uses_dedicated_owner_even_if_base_policy_allows_retry(self):
+        calls = {"n": 0}
+
+        def permissive_base(rows, evidence, origin="new"):
+            calls["n"] += 1
+            return True, "repairable"
+
+        pipeline = self._pipeline()
+        pipeline.should_attempt_dynamic_retry = permissive_base
+        run208.install(pipeline)
+
+        # Spend the ordinary Fact/Quality owner first, matching the real 2026-09-19 run.
+        hard_rows = [{"message": "FACT_UNSUPPORTED_CLAIM", "severity": "HARD"}]
+        self.assertEqual(
+            pipeline.should_attempt_dynamic_retry(hard_rows, self._fresh_safe_evidence(), "article_revalidation"),
+            (True, "repairable"),
+        )
+
+        # The next Reader-only set must claim the independent Reader Repair owner
+        # before the permissive generic base policy can misclassify it as retry #2.
+        reader_rows = self._reader_rows()
+        self.assertEqual(
+            pipeline.should_attempt_dynamic_retry(reader_rows, self._fresh_safe_evidence(), "article_revalidation"),
+            (True, "run341_production_reader_repair"),
+        )
+        self.assertEqual(
+            pipeline.should_attempt_dynamic_retry(reader_rows, self._fresh_safe_evidence(), "article_revalidation"),
+            (False, "run360_reader_repair_already_spent"),
+        )
+        self.assertEqual(calls["n"], 1)
+
     def test_pending_fast_lane_allows_one_base_retry_then_one_reader_repair(self):
         def base_retry(rows, evidence, origin="new"):
             if any("FACT_" in str(row.get("message")) for row in rows):
