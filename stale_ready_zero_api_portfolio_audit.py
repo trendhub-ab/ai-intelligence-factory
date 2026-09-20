@@ -41,6 +41,19 @@ def classify_state(state: dict, *, recoverable: bool, current: bool=False, publi
     return "retire_candidate", [f"decision_score={decision:g}", f"article_value={value:g}"]
 
 
+def fast_path_priority(state: dict) -> tuple[float, str]:
+    """Zero-API priority; persisted value dominates, source authority only breaks ties."""
+    decision=_num(state.get("decision_score"))
+    value=_num(state.get("article_value"))
+    if decision is None or value is None:
+        return (-1.0, "manual_unknown")
+    source=str(state.get("source") or "")
+    authority={"OfficialVendor":3.0,"ArXiv":2.5,"GitHub":2.0,"HackerNews":0.0}.get(source,-1.0)
+    score=0.55*decision+0.45*value+authority
+    flag="source_primary_or_research" if source in {"OfficialVendor","ArXiv"} else ("source_repository" if source=="GitHub" else "source_discovery_needs_primary_check")
+    return (round(score,2),flag)
+
+
 def run():
     pages=nrs._query_db(nrs.SOURCE_DATA_SOURCE_ID,nrs.SOURCE_DATABASE_ID,payload={"filter":{"property":nrs.SOURCE_ARTICLE_STATUS,"select":{"equals":nrs.SOURCE_READY}}})
     out={"mode":"stale_ready_zero_api_portfolio_audit","model_calls":0,"writes":0,"ready_rows":len(pages),
@@ -56,9 +69,11 @@ def run():
             recoverable=bool(rehydrate_recovery_repo(pipeline,item))
             bucket,reasons=classify_state(state,recoverable=recoverable,current=current,published=False)
         out["buckets"][bucket]+=1
+        priority,priority_flag=fast_path_priority(state or {}) if bucket=="keep_fast_path" else (None,"")
         out["items"].append({"page_id":page.get("id") or "","title":(state or {}).get("title") or "","source":(state or {}).get("source") or "",
-            "decision_score":(state or {}).get("decision_score"),"article_value":(state or {}).get("article_value"),"recoverable":recoverable,"bucket":bucket,"reasons":reasons})
-    out["items"].sort(key=lambda x:(x["bucket"],-(x["decision_score"] or -1),-(x["article_value"] or -1),x["title"]))
+            "decision_score":(state or {}).get("decision_score"),"article_value":(state or {}).get("article_value"),"recoverable":recoverable,"bucket":bucket,"reasons":reasons,
+            "fast_path_priority":priority,"priority_flag":priority_flag})
+    out["items"].sort(key=lambda x:(x["bucket"],-(x["fast_path_priority"] if x["fast_path_priority"] is not None else -1),-(x["decision_score"] or -1),-(x["article_value"] or -1),x["title"]))
     dest=Path("article_audit/stale_ready_zero_api_portfolio_audit.json");dest.parent.mkdir(parents=True,exist_ok=True)
     dest.write_text(json.dumps(out,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     pipeline.logger.info("[STALE READY ZERO API PORTFOLIO AUDIT] %s",{k:v for k,v in out.items() if k!="items"})
