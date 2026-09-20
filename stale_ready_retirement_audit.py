@@ -8,7 +8,7 @@ from article_revalidation import select_revalidation_items, rehydrate_recovery_r
 
 def run():
     pipeline.initialize_runtime()
-    rows=select_revalidation_items(pipeline,limit=100,scan_limit=100,include_quality_failed=False,include_stale_ready=True,prefer_stale_ready=True)
+    rows=select_revalidation_items(pipeline,limit=100,scan_limit=100,include_quality_failed=False,include_stale_ready=True,prefer_stale_ready=True,stale_ready_probe_limit=100)
     out={"mode":"stale_ready_retirement_audit","model_calls":0,"writes":0,"scanned":len(rows or []),"recoverable":0,"unrecoverable":0,"items":[]}
     for item in rows or []:
         if not item.get("revalidation_stale_ready"): continue
