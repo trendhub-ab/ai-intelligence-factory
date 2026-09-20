@@ -1,14 +1,16 @@
 """Run180: production semantic title direction for public note eyecatches.
 
 The public eyecatch keeps the existing deterministic illustration, brand, tags and
-subheadline renderer. Gemini 3.5 Flash is used exactly once as a title/typography director:
-it may compress the article title into a shorter eyecatch title, choose semantic line
-breaks, bounded font sizes and one exact emphasis phrase. It may not introduce new facts,
-render pixels, change the visual motif, or trigger a second provider request.
+subheadline renderer. Gemini 3.6 Flash is the primary title/typography director and
+Gemini 3.5 Flash is the single provider fallback. Either model may compress the article
+title into a shorter eyecatch title, choose semantic line breaks, bounded font sizes and
+one exact emphasis phrase. Neither may introduce new facts, render pixels, or change the
+visual motif.
 
-Provider, JSON, semantic-guard, kinsoku or geometry failure falls back directly to the
-already-approved deterministic renderer. This preserves the zero-image-generation and
-one-layout-call production contracts while making the title larger and more readable.
+If 3.6 is unavailable, the layout request falls back once to 3.5. If both provider sends
+fail, or the returned plan fails the existing semantic/kinsoku/geometry guards, rendering
+falls back to the already-approved deterministic path. This preserves zero image
+generation while reserving 3.5 capacity for actual fallback use.
 """
 from __future__ import annotations
 
@@ -22,7 +24,8 @@ import editorial_eyecatch as ee
 import run178_eyecatch_editorial_layout_optimizer as r178
 
 
-EYECATCH_LAYOUT_MODEL = "gemini-3.5-flash"
+EYECATCH_LAYOUT_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
+EYECATCH_LAYOUT_MODEL = EYECATCH_LAYOUT_MODELS[0]
 EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = 1400
 TITLE_MIN_FONT = 52
 TITLE_MAX_FONT = 76
@@ -308,32 +311,39 @@ def _request_layout_plan(
 ) -> dict[str, Any] | None:
     if bool(getattr(pipeline_module, "SYNTHETIC_REGRESSION_MODE", False)):
         return None
-    try:
-        response = pipeline_module._generate_via_chat(
-            EYECATCH_LAYOUT_MODEL,
-            _layout_prompt(source_title, subheadline),
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": _LAYOUT_RESPONSE_SCHEMA,
-                "max_output_tokens": EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS,
-                "thinking_config": {"thinking_level": "minimal"},
-            },
-            request_kind="eyecatch_layout",
-            reserve=0,
-            request_context="public_eyecatch_semantic_title_layout",
-            count_as_deep_dive=False,
-            request_origin="new",
-        )
-    except Exception as exc:
-        logger = getattr(pipeline_module, "logger", None)
-        if logger is not None:
-            logger.warning("[RUN180 EYECATCH LAYOUT FALLBACK] provider error: %s", exc)
-        return None
-    return _parse_plan_response(response)
+
+    prompt = _layout_prompt(source_title, subheadline)
+    logger = getattr(pipeline_module, "logger", None)
+    for model_name in EYECATCH_LAYOUT_MODELS:
+        try:
+            response = pipeline_module._generate_via_chat(
+                model_name,
+                prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": _LAYOUT_RESPONSE_SCHEMA,
+                    "max_output_tokens": EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS,
+                    "thinking_config": {"thinking_level": "minimal"},
+                },
+                request_kind="eyecatch_layout",
+                reserve=0,
+                request_context="public_eyecatch_semantic_title_layout",
+                count_as_deep_dive=False,
+                request_origin="new",
+            )
+            return _parse_plan_response(response)
+        except Exception as exc:
+            if logger is not None:
+                logger.warning(
+                    "[RUN180 EYECATCH LAYOUT PROVIDER FALLBACK] model=%s error=%s",
+                    model_name,
+                    exc,
+                )
+    return None
 
 
 def install(pipeline_module: Any) -> Any:
-    """Replace the public renderer alias with the validated one-call title direction path."""
+    """Replace the public renderer alias with validated 3.6 -> 3.5 title direction."""
     if getattr(pipeline_module, "_RUN180_EYECATCH_SEMANTIC_LAYOUT_INSTALLED", False):
         return pipeline_module
 
@@ -371,8 +381,8 @@ def install(pipeline_module: Any) -> Any:
             if logger is not None:
                 logger.warning("[RUN180 EYECATCH LAYOUT FALLBACK] invalid semantic title plan")
 
-        # Safety invariant: no second model request. Before the historical renderer,
-        # use a provider-free complete-title plan for bounded titles so fallback never
+        # After the bounded 3.6 -> 3.5 provider route, use a provider-free complete-title
+        # plan for bounded titles before the historical renderer so fallback never
         # turns a valid 35-52 character headline into a visibly cut-off ellipsis.
         complete_plan = _deterministic_complete_title_plan(title, summary)
         if complete_plan is not None:
@@ -401,6 +411,7 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.generate_note_editorial_eyecatch = semantic_generate
     pipeline_module._RUN180_EYECATCH_SEMANTIC_LAYOUT_INSTALLED = True
     pipeline_module.RUN180_EYECATCH_LAYOUT_MODEL = EYECATCH_LAYOUT_MODEL
+    pipeline_module.RUN180_EYECATCH_LAYOUT_MODELS = EYECATCH_LAYOUT_MODELS
     pipeline_module.RUN180_EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS
     pipeline_module.RUN180_EYECATCH_TITLE_MIN_FONT = TITLE_MIN_FONT
     pipeline_module.RUN180_EYECATCH_TITLE_TARGET_MAX_CHARS = EYECATCH_TITLE_TARGET_MAX_CHARS
