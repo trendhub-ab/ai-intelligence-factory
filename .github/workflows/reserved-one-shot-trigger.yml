@@ -1,0 +1,64 @@
+name: Reserved ONE-SHOT Trigger
+
+# Bridge for ChatGPT reservations.
+# A reservation fires by creating one owner-authored, labeled GitHub issue at the requested time.
+# This workflow validates the request and dispatches the existing guarded ONE-SHOT workflow.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  dispatch:
+    if: >-
+      github.event.issue.author_association == 'OWNER' &&
+      contains(github.event.issue.labels.*.name, 'aiif-reserved-run') &&
+      startsWith(github.event.issue.title, '[AIIF RESERVED RUN]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Parse and validate reservation
+        id: request
+        env:
+          BODY: ${{ github.event.issue.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="$(printf '%s\n' "$BODY" | sed -n 's/^mode=//p' | head -1)"
+          style="$(printf '%s\n' "$BODY" | sed -n 's/^editorial_style=//p' | head -1)"
+          case "$mode" in
+            full|article_validation|pending_retry_validation|ready_rescue_validation) ;;
+            *) echo "::error::Invalid reserved mode"; exit 1 ;;
+          esac
+          case "$style" in
+            classic|human_narrative|duo_narrative) ;;
+            *) echo "::error::Invalid reserved editorial_style"; exit 1 ;;
+          esac
+          printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+          printf 'style=%s\n' "$style" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch guarded ONE-SHOT
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          MODE: ${{ steps.request.outputs.mode }}
+          STYLE: ${{ steps.request.outputs.style }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" || { echo "::error::GH_PAT is required"; exit 1; }
+          gh workflow run daily-one-shot.yml --repo "${GITHUB_REPOSITORY}" --ref main \
+            -f mode="$MODE" \
+            -f editorial_style="$STYLE" \
+            -f confirm=RUN_ONCE
+
+      - name: Mark reservation consumed
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --repo "${GITHUB_REPOSITORY}" --body "Reservation consumed and ONE-SHOT dispatch accepted."
+          gh issue close "$ISSUE" --repo "${GITHUB_REPOSITORY}" --reason completed

@@ -1,6 +1,6 @@
 name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 
-# Manual production escape hatch while the scheduled Daily workflow remains PAUSED.
+# Manual production ONE-SHOT. Future execution times are supplied by an external reservation mechanism.
 # Important safety contract:
 # - workflow_dispatch only: pipeline self-commits can never start another run.
 # - explicit RUN_ONCE confirmation is required.
@@ -10,7 +10,7 @@ name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 # - full/article_validation keep the authoritative production_pipeline.py entrypoint explicit.
 # - X discovery is enabled only for full mode; validation modes never receive X/Apify credentials.
 # - the same Gemini-budget concurrency group as production prevents overlap.
-# - this workflow does NOT resume or schedule the normal Daily workflow.
+# - this workflow has no fixed schedule; the legacy normal Daily workflow remains PAUSED.
 # - successful ONE-SHOT completion explicitly fans out zero-model downstream workflows with GH_PAT.
 on:
   workflow_dispatch:
