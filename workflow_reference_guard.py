@@ -182,6 +182,36 @@ def _without_unittest_discover_patterns(run_block: str) -> str:
     return _UNITTEST_DISCOVER_PATTERN_RE.sub(lambda match: match.group("flag") + "<pattern>", run_block)
 
 
+
+def _literal_newline_escape_errors(text: str, rel: str) -> list[str]:
+    """Reject accidental literal backslash-n in YAML structure, but allow block scalar bodies.
+
+    Shell commands and other block scalars may intentionally contain \\n (for example
+    printf format strings). Structural YAML must use real line breaks so choice values,
+    artifact paths, env values, and step keys cannot be silently fused.
+    """
+    errors: list[str] = []
+    block_indent: int | None = None
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if block_indent is not None:
+            if line.strip():
+                indent = len(line) - len(line.lstrip(" "))
+                if indent > block_indent:
+                    continue
+                block_indent = None
+            else:
+                continue
+        stripped = line.strip()
+        scalar_head = stripped.split("#", 1)[0].rstrip()
+        if ":" in scalar_head and scalar_head.endswith(("|", ">", "|-", "|+", ">-", ">+")):
+            block_indent = len(line) - len(line.lstrip(" "))
+            continue
+        if "\\n" in line:
+            errors.append(
+                f"{rel}:{lineno}: literal backslash-n in workflow YAML structure; use a real line break"
+            )
+    return errors
+
 def validate(root: str | Path = ".") -> list[str]:
     root_path = Path(root)
     workflow_dir = root_path / WORKFLOW_DIR
@@ -207,6 +237,7 @@ def validate(root: str | Path = ".") -> list[str]:
 
     for workflow_path, text in texts.items():
         rel = workflow_path.relative_to(root_path).as_posix()
+        errors.extend(_literal_newline_escape_errors(text, rel))
 
         for local_action in _LOCAL_USES_RE.finditer(text):
             target = _resolve_local(root_path, local_action.group("path"))
