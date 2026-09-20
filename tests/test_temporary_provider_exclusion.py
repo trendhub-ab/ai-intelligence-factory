@@ -19,6 +19,15 @@ class TemporaryExclusionTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def test_operator_exclusion_blocks_35_without_permanently_removing_other_models(self):
+        with patch.dict(os.environ, {policy.EXCLUDED_MODELS_ENV: "gemini-3.5-flash", policy.ENV: ""}):
+            pool = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
+            self.assertEqual(policy.allowed_pool(pool), pool[1:])
+            self.assertTrue(policy.excluded("models/gemini-3.5-flash"))
+            self.assertFalse(policy.excluded("gemini-3.6-flash"))
+        with patch.dict(os.environ, {policy.EXCLUDED_MODELS_ENV: "", policy.ENV: ""}):
+            self.assertFalse(policy.excluded("gemini-3.5-flash"))
+
     def test_expiry_boundary_and_no_permanent_exclusion(self):
         deadline = datetime(2026, 9, 16, 8, tzinfo=timezone.utc)
         with patch.dict(os.environ, {policy.ENV: "2026-09-16T17:00:00+09:00"}):

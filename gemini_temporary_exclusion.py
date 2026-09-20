@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timezone
 
 ENV = "AIIF_GEMINI36_BLOCK_UNTIL"
+EXCLUDED_MODELS_ENV = "AIIF_GEMINI_TEMP_EXCLUDED_MODELS"
 
 
 def active(now=None):
@@ -23,6 +24,9 @@ def active(now=None):
 
 def excluded(model, now=None):
     name = str(model or "").strip().lower().removeprefix("models/")
+    configured = {x.strip().lower().removeprefix("models/") for x in os.environ.get(EXCLUDED_MODELS_ENV, "").split(",") if x.strip()}
+    if any(name == item or name.startswith(item + "-") or name.startswith(item + "/") for item in configured):
+        return True
     return active(now) and bool(re.match(r"^gemini-3\.6(?:$|[-/])", name))
 
 
@@ -34,4 +38,4 @@ def allowed_pool(pool, now=None):
 
 def assert_allowed(model):
     if excluded(model):
-        raise RuntimeError("Gemini 3.6 temporarily excluded before quota reservation and SDK send")
+        raise RuntimeError(f"{model} temporarily excluded before quota reservation and SDK send")
