@@ -175,9 +175,11 @@ Editorial Story設計とFinal Reader CheckはCanonical Article Contract、出力
 
 EDITORIAL_STYLE_CLASSIC = "classic"
 EDITORIAL_STYLE_HUMAN_NARRATIVE = "human_narrative"
+EDITORIAL_STYLE_DUO_NARRATIVE = "duo_narrative"
 EDITORIAL_STYLE_CHOICES = (
     EDITORIAL_STYLE_CLASSIC,
     EDITORIAL_STYLE_HUMAN_NARRATIVE,
+    EDITORIAL_STYLE_DUO_NARRATIVE,
 )
 
 
@@ -212,6 +214,52 @@ def _human_narrative_editorial_style_rules() -> str:
 """
 
 
+
+def _duo_narrative_editorial_style_rules() -> str:
+    """Character-guided narrative style layered on top of Human Narrative."""
+    return _human_narrative_editorial_style_rules() + """
+
+[AIIF_DUO_NARRATIVE_EDITORIAL_STYLE_V1]
+【Duo Narrative Editorial Style｜フェルンとクレハで理解していく知的エンタメ】
+このスタイルはHuman Narrative Editorial Styleの読みやすさを継承し、フェルンとクレハの短い掛け合いを
+「理解を進める橋」として追加する。Fact / Evidence / Decision / Publication Gate、Provider回数、Retry所有権は変更しない。
+
+【ナビゲーター】
+・フェルン — 名前は fetch（行って持ってくる）を連想する。最新技術や論文の面白い点を拾ってきて、
+  ユーモアを交えながら技術のキモを考察する。少し理屈っぽく、斜に構えた視点や軽い毒のあるツッコミも使える。
+  ただしキャラクター性を理由に断定を強めない。
+・クレハ — clever（賢い）を連想する響き。AIの専門家ではないが、頭の回転が速い。
+  単なる初心者役ではなく、「それって要するにどういうこと？」「それ、本当にすごいの？」「誰が得するの？」と、
+  読者が抱く本質的な疑問、過大評価への疑い、実務上の意味を先回りして確かめる。
+
+【会話の使い方】
+・記事全体を台本形式にしない。導入・難所の説明・話題の転換・結びなど、本文の理解を進める場合だけ掛け合いを使う。
+・通常の解説・エッセイ本文を主軸とし、会話比率を固定ノルマにしない。会話がなくても理解が進む箇所には無理に入れない。
+・フェルンが難しく言いすぎたらクレハが意味を聞き直す、クレハが単純化しすぎたらフェルンが条件を戻す、という
+  相互補正を使える。ボケとツッコミの固定役にはしない。
+・会話で説明した概念は、必要なら直後の通常本文で正式名称・条件・限界へ戻す。掛け合いだけで技術説明を完結させない。
+・毎記事で同じ口癖、同じ会話順、同じ会社員ネタを再利用しない。キャラクターを新しいAIテンプレートにしない。
+
+【Fact Disciplineを会話でも守る】
+・キャラクターは事実源ではない。フェルンやクレハの台詞を使って、根拠のない数値・性能・価格・市場評価・競合優位を追加しない。
+・架空の利用経験、実機を試した経験、失敗談、成功談、取材経験をキャラクターへ背負わせない。
+・「会話だから許される」という例外はない。すべてSOURCE BOUNDARY / Evidence / Fact Disciplineに従う。
+・むしろFact Disciplineを読者に見せる装置として使う。たとえば「GPU 1台＝安い？」という短絡をクレハが問い、
+  フェルンが「1台で学習したことと総コストが安いことは別」とEvidenceの境界へ戻すような使い方を優先する。
+・研究者、企業、AI、製品の内心や動機を勝手に台詞化しない。一次情報の発言でない文を引用符付きの本人発言として作らない。
+
+【ユーモアと着地】
+・大人がクスッとする程度の知的なユーモアを優先し、悪口、過度な毒、下品さ、連続するネットスラングに頼らない。
+・PowerPointのフォント、会議、Slack、Excel、充電、冷蔵庫、ロボット掃除機、床の靴下など日常例は、
+  記事固有の技術を理解しやすくする時だけ使える。毎回同じ日常ネタや靴下へ戻らない。
+・結びは壮大な技術から記事テーマとつながる身近な現実へ着地してよいが、固定オチにしない。
+  新しいFactや架空の実体験を足して笑いを作らず、記事の中心判断とつながる余韻を優先する。
+
+完成稿の目標は「フェルンとクレハの会話を読むための記事」ではなく、
+二人と一緒に考えていたら、難しい技術の核心と限界を自然に理解できていた記事である。
+"""
+
+
 def editorial_style_rules(style_name: str | None = None) -> str:
     """Return one deterministic editorial style contract; unknown styles fail closed."""
     normalized = (style_name or EDITORIAL_STYLE_CLASSIC).strip().lower()
@@ -219,6 +267,8 @@ def editorial_style_rules(style_name: str | None = None) -> str:
         return _human_editorial_style_rules()
     if normalized == EDITORIAL_STYLE_HUMAN_NARRATIVE:
         return _human_narrative_editorial_style_rules()
+    if normalized == EDITORIAL_STYLE_DUO_NARRATIVE:
+        return _duo_narrative_editorial_style_rules()
     raise ValueError(f"unknown editorial style: {style_name!r}")
 
 
