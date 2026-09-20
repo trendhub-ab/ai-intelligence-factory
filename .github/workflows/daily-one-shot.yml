@@ -1,8 +1,8 @@
 name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 
-# Manual production escape hatch while the scheduled Daily workflow remains PAUSED.
+# Production ONE-SHOT: automatic Daily at 17:05 JST plus a guarded manual escape hatch.
 # Important safety contract:
-# - workflow_dispatch only: pipeline self-commits can never start another run.
+# - schedule (17:05 JST) or workflow_dispatch only: pipeline self-commits can never start another run.
 # - explicit RUN_ONCE confirmation is required.
 # - full mode preserves the normal one-shot contract.
 # - article_validation mode skips only the separate Product Review pass, saving up to 3 Gemini requests.
@@ -10,9 +10,12 @@ name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 # - full/article_validation keep the authoritative production_pipeline.py entrypoint explicit.
 # - X discovery is enabled only for full mode; validation modes never receive X/Apify credentials.
 # - the same Gemini-budget concurrency group as production prevents overlap.
-# - this workflow does NOT resume or schedule the normal Daily workflow.
+# - this workflow owns the Daily schedule; the legacy normal Daily workflow remains PAUSED.
 # - successful ONE-SHOT completion explicitly fans out zero-model downstream workflows with GH_PAT.
 on:
+  schedule:
+    # GitHub cron is UTC. 08:05 UTC = 17:05 JST.
+    - cron: '5 8 * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -49,26 +52,30 @@ permissions:
 
 jobs:
   run-pipeline:
-    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    if: ${{ github.event_name == 'schedule' || inputs.confirm == 'RUN_ONCE' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
-      AIIF_EDITORIAL_STYLE: ${{ inputs.editorial_style }}
+      AIIF_EDITORIAL_STYLE: ${{ github.event_name == 'schedule' && 'duo_narrative' || inputs.editorial_style }}
 
     steps:
       - name: One-shot safety contract
         run: |
-          test "${{ inputs.confirm }}" = "RUN_ONCE"
-          case "${{ inputs.mode }}" in
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Scheduled Daily authorized: 17:05 JST, full, duo_narrative."
+          else
+            test "${{ inputs.confirm }}" = "RUN_ONCE"
+          fi
+          case "${{ github.event_name == 'schedule' && 'full' || inputs.mode }}" in
             full|article_validation|pending_retry_validation|ready_rescue_validation) ;;
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
-          case "${{ inputs.editorial_style }}" in
+          case "${{ github.event_name == 'schedule' && 'duo_narrative' || inputs.editorial_style }}" in
             classic|human_narrative|duo_narrative) ;;
             *) echo "::error::Unknown editorial style"; exit 1 ;;
           esac
-          echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }}. Automatic triggers are intentionally absent."
+          echo "Run authorized. trigger=${{ github.event_name }} mode=${{ github.event_name == 'schedule' && 'full' || inputs.mode }} editorial_style=${{ github.event_name == 'schedule' && 'duo_narrative' || inputs.editorial_style }}."
 
       - name: リポジトリのチェックアウト
         uses: actions/checkout@v6
@@ -91,13 +98,13 @@ jobs:
         run: python -m unittest tests.test_temporary_provider_exclusion -v
 
       - name: 通常Production entrypointを1回だけ実行
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' }}
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' }}
         run: python production_pipeline.py
         env:
           TZ: 'Asia/Tokyo'
-          AIIF_RUN_MODE: ${{ inputs.mode }}
-          AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}
-          APIFY_TOKEN: ${{ inputs.mode == 'full' && secrets.APIFY_TOKEN || '' }}
+          AIIF_RUN_MODE: ${{ github.event_name == 'schedule' && 'full' || inputs.mode }}
+          AIIF_X_DISCOVERY_ENABLED: ${{ github.event_name == 'schedule' || inputs.mode == 'full' }}
+          APIFY_TOKEN: ${{ (github.event_name == 'schedule' || inputs.mode == 'full') && secrets.APIFY_TOKEN || '' }}
           APIFY_ACTOR_ID: "simple.actor~x-profile-posts"
           APIFY_MAX_CHARGE_USD: "0.05"
           X_DISCOVERY_MAX_RECORDS: "100"
@@ -222,7 +229,7 @@ jobs:
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
 
       - name: Pending Retry fast laneを1回だけ実行
-        if: ${{ inputs.mode == 'pending_retry_validation' }}
+        if: ${{ github.event_name != 'schedule' && inputs.mode == 'pending_retry_validation' }}
         run: python pending_retry_validation.py
         env:
           TZ: 'Asia/Tokyo'
@@ -347,7 +354,7 @@ jobs:
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
 
       - name: Portfolio-aware Product Review
-        if: ${{ inputs.mode == 'full' }}
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'full' }}
         run: python daily_portfolio_review.py
         env:
           TZ: 'Asia/Tokyo'
@@ -393,7 +400,7 @@ jobs:
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3.5-flash"
 
       - name: API-saving mode guard
-        if: ${{ inputs.mode != 'full' }}
+        if: ${{ github.event_name != 'schedule' && inputs.mode != 'full' }}
         run: |
           echo "${{ inputs.mode }} mode: separate Product Review intentionally skipped."
 
@@ -424,7 +431,7 @@ jobs:
       - name: Explicit post-run fan-out with GH_PAT
         if: ${{ success() }}
         env:
-          VALIDATION_MODE: ${{ inputs.mode }}
+          VALIDATION_MODE: ${{ github.event_name == 'schedule' && 'full' || inputs.mode }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -u
