@@ -124,3 +124,18 @@ print('production prompt assembly verified')
     result = subprocess.run([sys.executable, '-c', code], env=env, text=True, capture_output=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'production prompt assembly verified' in result.stdout
+
+def test_writer_prompt_covers_all_public_summary_candidates_and_reader_rhythm():
+    prompt = pipeline.build_decision_prompt(
+        "fixture",
+        "https://example.com/source",
+        0,
+        "fixture",
+        source_context="Evidence: primary facts and limits",
+    )
+    prompt = cac.ensure_final_reader_check(prompt)
+    assert "Source Summary / What / Why Important / Decision Reason / Action" in prompt
+    assert "公開Reader Summaryへ再利用されるMANAGEMENT DATA" in prompt
+    assert "だから読者にとって何が変わるか" in prompt
+    assert "技術説明だけの段落が連続" in prompt
+    assert "正確な区別に不要なのに繰り返していない" in prompt
