@@ -216,9 +216,9 @@ def recover_primary_url(token:str, *, tech_page_id:str="", entity_id:str="")->st
         authority=state.get("authority_class") or ""
         health=state.get("source_health") or ""
         url=state.get("resolved_url") or state.get("url") or ""
-        if role!="PRIMARY_SOURCE" or binding not in {"EXACT","STRONG"}:
+        if role!="PRIMARY_SOURCE" or binding not in {"IDENTITY_ANCHOR","SAME_PRIMARY_SITE","LEGACY_RESOLVED_PRIMARY","OFFICIAL_METADATA","CLAIM_BOUND"}:
             continue
-        if authority not in {"FIRST_PARTY","PRIMARY_RESEARCH","OFFICIAL"}:
+        if authority not in {"PRIMARY_FIRST_PARTY","PRIMARY_REGULATORY","PRIMARY_AUTHOR","PRIMARY_INTERVIEW","PRIMARY_OTHER"}:
             continue
         if health in {"MISSING","FETCH_ERROR"} or not url.startswith(("http://","https://")):
             continue
