@@ -30,7 +30,8 @@ jobs:
        github.event.comment.body == '/aiif run pending_retry_validation' ||
        github.event.comment.body == '/aiif run ready_rescue_validation' ||
        github.event.comment.body == '/aiif run full' ||
-       github.event.comment.body == '/aiif run x_discovery_stage2')
+       github.event.comment.body == '/aiif run x_discovery_stage2' ||
+       github.event.comment.body == '/aiif run stale_ready_portfolio_audit')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -58,7 +59,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|pending_retry_validation|ready_rescue_validation|full|x_discovery_stage2) ;;
+            article_validation|pending_retry_validation|ready_rescue_validation|full|x_discovery_stage2|stale_ready_portfolio_audit) ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -93,6 +94,10 @@ jobs:
               target='x-discovery-stage2-smoke.yml'
               payload='{"ref":"main"}'
               ;;
+            stale_ready_portfolio_audit)
+              target='stale-ready-retirement-audit.yml'
+              payload='{"ref":"main"}'
+              ;;
             *)
               echo "::error::Refusing unknown mode"
               exit 1
@@ -114,7 +119,7 @@ jobs:
             echo '- control issue: #71'
             echo "- requested mode: \`$MODE\`"
             echo "- target: \`${DISPATCH_TARGET}\` on \`main\`"
-            if [ "$MODE" = 'x_discovery_stage2' ]; then
+            if [ "$MODE" = 'x_discovery_stage2' ] || [ "$MODE" = 'stale_ready_portfolio_audit' ]; then
               echo '- Gemini/Google model credentials passed: `false`'
               echo '- Factory/Notion writes authorized: `false`'
             else
