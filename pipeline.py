@@ -4405,6 +4405,15 @@ def resolve_recovery_primary_url(repo: dict) -> str:
         except Exception as exc:
             logger.warning("[RECOVERY EVIDENCE LEDGER] lookup failed closed: %s", exc)
             ledger_url = ""
+        try:
+            recovery_audit = evidence_ledger.diagnose_primary_recovery(
+                NOTION_API_KEY,
+                tech_page_id=str(repo.get("notion_page_id") or ""),
+                entity_id=str(repo.get("canonicalEntityId") or ""),
+            )
+            logger.info("[RECOVERY EVIDENCE AUDIT] %s", recovery_audit)
+        except Exception as exc:
+            logger.warning("[RECOVERY EVIDENCE AUDIT] failed closed: %s", exc)
         candidates = [
             ledger_url,
             details.get("external_url"),
