@@ -121,13 +121,47 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         title = "長いタイトル" * 12
         self.assertIsNone(run180._deterministic_complete_title_plan(title, "要約"))
 
-    def test_request_is_one_call_minimal_thinking_and_not_deep_dive(self):
+    def test_request_uses_36_then_35_fallback_and_not_deep_dive(self):
+        calls = []
+        plan = {
+            "eyecatch_title": "AIは重要。",
+            "title_lines": ["AIは重要。"],
+            "title_font_size": 60,
+            "title_line_gap": 12,
+            "subheadline_lines": ["必要な変化だけを見る。"],
+            "subheadline_font_size": 24,
+            "highlight_text": "",
+        }
+
+        def provider(model_name, prompt, **kwargs):
+            calls.append((model_name, kwargs))
+            if model_name == "gemini-3.6-flash":
+                raise RuntimeError("primary unavailable")
+            return _ParsedResponse(plan)
+
+        class Logger:
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        fake = type("FakePipeline", (), {
+            "SYNTHETIC_REGRESSION_MODE": False,
+            "_generate_via_chat": staticmethod(provider),
+            "logger": Logger(),
+        })()
+
+        parsed = run180._request_layout_plan(fake, "AIは重要。", "必要な変化だけを見る。")
+        self.assertEqual(plan, parsed)
+        self.assertEqual(
+            ["gemini-3.6-flash", "gemini-3.5-flash"],
+            [model for model, _kwargs in calls],
+        )
+        for _model, kwargs in calls:
+            self.assertEqual("eyecatch_layout", kwargs["request_kind"])
+            self.assertFalse(kwargs["count_as_deep_dive"])
+
         source = inspect.getsource(run180._request_layout_plan)
         self.assertEqual(1, source.count("_generate_via_chat("))
         self.assertIn('"thinking_config": {"thinking_level": "minimal"}', source)
-        self.assertIn('request_kind="eyecatch_layout"', source)
-        self.assertIn("count_as_deep_dive=False", source)
-        self.assertNotIn("retry", source.lower())
 
     def test_title_contract_uses_fuller_source_and_52px_floor(self):
         source = inspect.getsource(run180.install)
