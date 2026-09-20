@@ -161,6 +161,60 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
             self.assertTrue(any(".github/actions/deleted" in error for error in errors), errors)
             self.assertTrue(any("gh workflow run" in error and "Deleted Workflow" in error for error in errors), errors)
 
+    def test_literal_backslash_n_in_choice_value_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._base_repo(root)
+            self._write(root, ".github/workflows/bad-choice.yml", r"""
+            name: Bad Choice
+            on:
+              workflow_dispatch:
+                inputs:
+                  mode:
+                    type: choice
+                    options:
+                      - full\\n          - stale_ready_batch_revalidation
+            jobs:
+              noop:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: echo ok
+            """)
+            errors = guard.validate(root)
+            self.assertTrue(any("literal backslash-n" in error for error in errors), errors)
+
+    def test_literal_backslash_n_in_artifact_path_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._base_repo(root)
+            self._write(root, ".github/workflows/bad-path.yml", r"""
+            name: Bad Artifact Path
+            jobs:
+              noop:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/upload-artifact@v4
+                    with:
+                      path: article_audit/a.json\\n          article_audit/b.json
+            """)
+            errors = guard.validate(root)
+            self.assertTrue(any("literal backslash-n" in error for error in errors), errors)
+
+    def test_literal_backslash_n_is_allowed_inside_run_block_scalar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._base_repo(root)
+            self._write(root, ".github/workflows/good-shell.yml", r"""
+            name: Good Shell Newline
+            jobs:
+              noop:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: |
+                      printf '%s\\n' ok
+            """)
+            self.assertEqual([], guard.validate(root))
+
     def test_current_repository_has_no_dangling_static_workflow_references(self):
         self.assertEqual([], guard.validate(ROOT))
 
