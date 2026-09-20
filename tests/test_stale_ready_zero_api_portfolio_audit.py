@@ -23,3 +23,17 @@ def test_module_contract_is_zero_provider_and_read_only():
     assert 'model_calls":0' in text
     assert 'writes":0' in text
     assert "PATCH" not in text and "POST" not in text
+
+
+def test_fast_path_priority_is_transparent_and_source_only_breaks_value_score():
+    vendor={"decision_score":80,"article_value":80,"source":"OfficialVendor"}
+    hn={"decision_score":80,"article_value":80,"source":"HackerNews"}
+    vscore,vflag=audit.fast_path_priority(vendor)
+    hscore,hflag=audit.fast_path_priority(hn)
+    assert vscore > hscore
+    assert vflag=="source_primary_or_research"
+    assert hflag=="source_discovery_needs_primary_check"
+
+
+def test_fast_path_priority_fails_closed_without_scores():
+    assert audit.fast_path_priority({"source":"OfficialVendor"}) == (-1.0,"manual_unknown")
