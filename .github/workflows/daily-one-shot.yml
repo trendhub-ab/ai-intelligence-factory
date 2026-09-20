@@ -56,6 +56,7 @@ jobs:
     env:
       AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
       AIIF_EDITORIAL_STYLE: ${{ inputs.editorial_style }}
+      AIIF_GEMINI_TEMP_EXCLUDED_MODELS: "gemini-3.5-flash"
 
     steps:
       - name: One-shot safety contract
