@@ -1,6 +1,8 @@
 name: Stale Ready Retirement Audit
 on:
   workflow_dispatch:
+  push:
+    branches: [ops/run-exact-ready-audit]
 permissions:
   contents: read
 jobs:
