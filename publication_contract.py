@@ -209,9 +209,10 @@ def is_current_ready_caption(value: str, *, root: Path | None = None) -> bool:
     manuscript = fields.get("manuscript_sha256", "")
     if fields.get("contract") != CONTRACT_ID or not _SHA_RE.fullmatch(policy) or not _SHA_RE.fullmatch(manuscript):
         return False
+    style = fields.get("style", DEFAULT_EDITORIAL_STYLE)
     try:
-        return policy == policy_sha256(root)
-    except RuntimeError:
+        return policy == policy_sha256(root, style_name=style)
+    except (RuntimeError, ValueError):
         return False
 
 
