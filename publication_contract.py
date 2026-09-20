@@ -171,10 +171,17 @@ def policy_sha256(root: Path | None = None, *, style_name: str | None = None) ->
     return digest.hexdigest()
 
 
-def current_ready_caption(manuscript: str, *, root: Path | None = None) -> str:
+def current_ready_caption(
+    manuscript: str,
+    *,
+    root: Path | None = None,
+    style_name: str | None = None,
+) -> str:
+    style = _normalized_style(style_name)
     return (
         f"{READY_CAPTION_PREFIX}contract={CONTRACT_ID}"
-        f"|policy_sha256={policy_sha256(root)}"
+        f"|style={style}"
+        f"|policy_sha256={policy_sha256(root, style_name=style)}"
         f"|manuscript_sha256={manuscript_sha256(manuscript)}"
     )
 
