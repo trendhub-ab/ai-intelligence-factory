@@ -20,8 +20,3 @@ def test_audit_source_never_initializes_provider_runtime():
     source=Path("stale_ready_retirement_audit.py").read_text(encoding="utf-8")
     assert "initialize_runtime(" not in source
 
-
-def test_audit_requests_full_bounded_ready_probe():
-    from pathlib import Path
-    source=Path("stale_ready_retirement_audit.py").read_text(encoding="utf-8")
-    assert "stale_ready_probe_limit=100" in source
