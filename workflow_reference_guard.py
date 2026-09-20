@@ -205,7 +205,7 @@ def _literal_newline_escape_errors(text: str, rel: str) -> list[str]:
         if re.search(r":\\s*[|>]\\s*(?:#.*)?$", stripped):
             block_indent = len(line) - len(line.lstrip(" "))
             continue
-        if "\\\\n" in line:
+        if "\\n" in line:
             errors.append(
                 f"{rel}:{lineno}: literal backslash-n in workflow YAML structure; use a real line break"
             )
