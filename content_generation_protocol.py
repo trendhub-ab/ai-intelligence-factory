@@ -173,6 +173,55 @@ Editorial Story設計とFinal Reader CheckはCanonical Article Contract、出力
 ・親しみ不足だけを理由とする再生成callは追加しない。完成稿への内部編集はcanonical Final Reader Checkで一度行う。
 """
 
+EDITORIAL_STYLE_CLASSIC = "classic"
+EDITORIAL_STYLE_HUMAN_NARRATIVE = "human_narrative"
+EDITORIAL_STYLE_CHOICES = (
+    EDITORIAL_STYLE_CLASSIC,
+    EDITORIAL_STYLE_HUMAN_NARRATIVE,
+)
+
+
+def _human_narrative_editorial_style_rules() -> str:
+    """Narrative-forward surface guidance layered on top of the classic contract."""
+    return _human_editorial_style_rules() + """
+
+[AIIF_HUMAN_NARRATIVE_EDITORIAL_STYLE_V1]
+【Human Narrative Editorial Style｜記事を最後まで読ませる編集】
+このスタイルはFact / Evidence / Decision / Publication Gateを変更しない。既存のHuman Editorial Styleを土台に、
+無料noteの記事本文だけを「正しい説明」から「人間が続きを読みたくなる説明」へ寄せる。追加Provider callは使わない。
+
+・冒頭は製品名・論文名・機能一覧から始めず、Evidenceの範囲で人間が頭の中で場面を描ける入口を優先する。
+  ただし架空の会話、架空の失敗、架空の利用経験を事実のように置かない。
+・難しい仕組みは、役割や因果が理解しやすくなる場合だけ、仕事・日常・人の動きへ一度置き換えてよい。
+  比喩やツッコミの直後は、何を説明している比喩かを明確にし、専門内容へ必ず戻る。
+・ユーモアは理解の報酬として使う。強い語・悪口・擬人化・ネットスラングを重ねず、
+  「1セクションに必ず1回笑わせる」をノルマにしない。笑いがなくても読者の理解が前進するならそれでよい。
+・同じ比喩・会社員ネタ・擬人化を別記事へ使い回さない。記事固有のEvidence、制約、意外性から自然な表現を選ぶ。
+・技術説明 → 人間にとっての意味 → 軽い一言、の流れは使えるが固定テンプレートにしない。
+  段落の長短や見出しの温度を揃えず、記事固有のリズムを作る。
+・事実・数値・制約・反証・Decisionを笑いのために弱めない。重要な条件や限界をオチ扱いにせず、
+  読者が誤解しやすい箇所では「ただし」「ここは勘違いしない方がよい」等、自然な言葉で現実へ戻す。
+・タイトルは面白さだけでなく「何の記事か」が分かることを優先する。一次情報で確認できない成功体験や、
+  「うちの〜」「やってみた」「ビビった」等の実体験のように見える一人称を作らない。
+・一人称は編集上の判断に限定する。「私なら比較する」「私なら小さく試す」はDecisionとして使えるが、
+  実際に使った・壊した・驚いた・困った等の経験を創作しない。
+・終盤は要約の言い直しだけで閉じず、Evidenceから導ける読者の現実的な判断へ着地する。
+  日常への短い回帰や余韻は使えるが、新しい事実や架空の体験をオチとして追加しない。
+・完成稿は「詳しい人が難しいことを面白く説明してくれ、気づけば核心を理解していた」距離感を目指す。
+  面白さのために情報量を増やさず、説明文を人間の理解順へ置き換える。
+"""
+
+
+def editorial_style_rules(style_name: str | None = None) -> str:
+    """Return one deterministic editorial style contract; unknown styles fail closed."""
+    normalized = (style_name or EDITORIAL_STYLE_CLASSIC).strip().lower()
+    if normalized == EDITORIAL_STYLE_CLASSIC:
+        return _human_editorial_style_rules()
+    if normalized == EDITORIAL_STYLE_HUMAN_NARRATIVE:
+        return _human_narrative_editorial_style_rules()
+    raise ValueError(f"unknown editorial style: {style_name!r}")
+
+
 
 def _parse_gemini_response(full_text: str, *, SECTION_SPLIT_TOKEN, _display_heading_aliases, _extract_any_markdown_section, _extract_note_title, _is_meaningful_field, _normalize_decision, _strip_internal_note_control_lines) -> dict:
     """
