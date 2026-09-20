@@ -137,5 +137,18 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("GOOGLE_API_KEY:", text)
 
 
+    def test_zero_api_portfolio_audit_command_is_authorized(self):
+        event = self._event("/aiif run stale_ready_portfolio_audit")
+        result = control.authorize_event(event)
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "stale_ready_portfolio_audit")
+
+    def test_zero_api_portfolio_audit_dispatches_read_only_workflow(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("/aiif run stale_ready_portfolio_audit", text)
+        self.assertIn("target='stale-ready-retirement-audit.yml'", text)
+        self.assertNotIn("GEMINI_API_KEY:", text)
+
+
 if __name__ == "__main__":
     unittest.main()
