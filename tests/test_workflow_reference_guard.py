@@ -165,21 +165,8 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._base_repo(root)
-            self._write(root, ".github/workflows/bad-choice.yml", r"""
-            name: Bad Choice
-            on:
-              workflow_dispatch:
-                inputs:
-                  mode:
-                    type: choice
-                    options:
-                      - full\\n          - stale_ready_batch_revalidation
-            jobs:
-              noop:
-                runs-on: ubuntu-latest
-                steps:
-                  - run: echo ok
-            """)
+            bad = "name: Bad Choice\\non:\\n  workflow_dispatch:\\n    inputs:\\n      mode:\\n        type: choice\\n        options:\\n          - full" + chr(92) + "n          - stale_ready_batch_revalidation\\njobs:\\n  noop:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - run: echo ok\\n"
+            self._write(root, ".github/workflows/bad-choice.yml", bad)
             errors = guard.validate(root)
             self.assertTrue(any("literal backslash-n" in error for error in errors), errors)
 
@@ -187,16 +174,8 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._base_repo(root)
-            self._write(root, ".github/workflows/bad-path.yml", r"""
-            name: Bad Artifact Path
-            jobs:
-              noop:
-                runs-on: ubuntu-latest
-                steps:
-                  - uses: actions/upload-artifact@v4
-                    with:
-                      path: article_audit/a.json\\n          article_audit/b.json
-            """)
+            bad = "name: Bad Artifact Path\\njobs:\\n  noop:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - uses: actions/upload-artifact@v4\\n        with:\\n          path: article_audit/a.json" + chr(92) + "n          article_audit/b.json\\n"
+            self._write(root, ".github/workflows/bad-path.yml", bad)
             errors = guard.validate(root)
             self.assertTrue(any("literal backslash-n" in error for error in errors), errors)
 
@@ -204,15 +183,8 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._base_repo(root)
-            self._write(root, ".github/workflows/good-shell.yml", r"""
-            name: Good Shell Newline
-            jobs:
-              noop:
-                runs-on: ubuntu-latest
-                steps:
-                  - run: |
-                      printf '%s\\n' ok
-            """)
+            good = "name: Good Shell Newline\\njobs:\\n  noop:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - run: |\\n          printf '%s" + chr(92) + "n' ok\\n"
+            self._write(root, ".github/workflows/good-shell.yml", good)
             self.assertEqual([], guard.validate(root))
 
     def test_current_repository_has_no_dangling_static_workflow_references(self):
