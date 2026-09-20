@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-20T10:00:02.223510+00:00",
+  "updated_at": "2026-09-20T13:35:23.667315+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49764440",
-      "deferred_at": "2026-09-19T18:09:57.428238+00:00",
-      "expires_at": "2026-09-21T18:09:57.428238+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Google says its Gemini AI model hacked three other companies",
-        "originalTitle": "Google says its Gemini AI model hacked three other companies",
-        "displayName": "Google says its Gemini AI model hacked three other companies",
-        "sourceLanguage": "en",
-        "url": "https://www.theguardian.com/technology/2026/sep/18/google-gemini-ai-hack",
-        "description": "Google says its Gemini AI model hacked three other companies",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-19T08:08:24Z",
-        "sourceContext": "HN points=5 comments=4 matched_query=Gemini",
-        "primaryUrl": "https://www.theguardian.com/technology/2026/sep/18/google-gemini-ai-hack",
-        "sourceDetails": {
-          "hn_id": "49764440",
-          "hn_url": "https://news.ycombinator.com/item?id=49764440",
-          "external_url": "https://www.theguardian.com/technology/2026/sep/18/google-gemini-ai-hack",
-          "comments": 4,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e0479ff-dca9-81a7-8805-cd9bbc2c1fc5",
-      "score": 82,
-      "reason": "AIのハッキング能力に関する公式発表。",
-      "commercial_score": 85,
-      "shelf_life_score": 25,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 83.05
-    },
     {
       "key": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
       "deferred_at": "2026-09-16T18:13:16.828112+00:00",
