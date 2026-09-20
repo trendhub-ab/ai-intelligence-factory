@@ -4379,6 +4379,31 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] 
     return items
 
 
+def _resolve_hn_story_external_url(discovery_url: str) -> str:
+    """Resolve one canonical HN story's explicit external URL, zero-model and fail-closed."""
+    from urllib.parse import urlparse, parse_qs
+    try:
+        parsed=urlparse(str(discovery_url or "").strip())
+        if parsed.scheme not in {"http","https"} or (parsed.hostname or "").lower()!="news.ycombinator.com" or parsed.path!="/item":
+            return ""
+        values=parse_qs(parsed.query).get("id") or []
+        if len(values)!=1 or not values[0].isdigit():
+            return ""
+        story_id=values[0]
+        response=requests.get(f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json",timeout=10)
+        response.raise_for_status()
+        data=response.json() or {}
+        if str(data.get("id") or "")!=story_id or data.get("type")!="story":
+            return ""
+        external=str(data.get("url") or "").strip()
+        if not external.startswith(("http://","https://")) or "news.ycombinator.com/" in external.lower():
+            return ""
+        return external
+    except Exception as exc:
+        logger.warning("[HN RECOVERY] canonical item lookup failed closed: %s", exc)
+        return ""
+
+
 def resolve_recovery_primary_url(repo: dict) -> str:
     """Resolve first-party evidence for legacy discovery rows without a model call.
 
@@ -4414,8 +4439,11 @@ def resolve_recovery_primary_url(repo: dict) -> str:
             logger.info("[RECOVERY EVIDENCE AUDIT] %s", recovery_audit)
         except Exception as exc:
             logger.warning("[RECOVERY EVIDENCE AUDIT] failed closed: %s", exc)
+        hn_discovery = next((str(v or "").strip() for v in (details.get("hn_url"), details.get("external_url"), primary, url) if "news.ycombinator.com/item?" in str(v or "")), "")
+        hn_external = _resolve_hn_story_external_url(hn_discovery) if not ledger_url and hn_discovery else ""
         candidates = [
             ledger_url,
+            hn_external,
             details.get("external_url"),
             details.get("official_url"),
             details.get("primary_url"),
