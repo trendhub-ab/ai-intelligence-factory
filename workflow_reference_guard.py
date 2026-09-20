@@ -236,6 +236,7 @@ def validate(root: str | Path = ".") -> list[str]:
 
     for workflow_path, text in texts.items():
         rel = workflow_path.relative_to(root_path).as_posix()
+        errors.extend(_literal_newline_escape_errors(text, rel))
 
         for local_action in _LOCAL_USES_RE.finditer(text):
             target = _resolve_local(root_path, local_action.group("path"))
