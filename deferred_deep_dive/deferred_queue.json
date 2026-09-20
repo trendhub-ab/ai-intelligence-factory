@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-20T13:35:23.667315+00:00",
+  "updated_at": "2026-09-20T13:58:08.606748+00:00",
   "items": [
     {
       "key": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
@@ -636,6 +636,121 @@
       "shelf_life": "FLASH",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 73.05
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.20761",
+      "deferred_at": "2026-09-20T13:58:08.606041+00:00",
+      "expires_at": "2026-11-19T13:58:08.606041+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
+        "originalTitle": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
+        "displayName": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.20761v1",
+        "description": "World Action Models (WAMs) advance beyond conventional visuomotor policies by jointly predicting future world states and robot actions, enabling the policy to learn physical dynamics that support effective control. However, recent tactile WAMs often rely on large-scale pretrained generative backbones to capture contact-rich physical dynamics, which limit their inference efficiency and flexible deployment. In this paper, we present \\ABBR{}, an agile tactile World Action Model for contact-rich rob",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-17T17:43:51Z",
+        "sourceContext": "World Action Models (WAMs) advance beyond conventional visuomotor policies by jointly predicting future world states and robot actions, enabling the policy to learn physical dynamics that support effective control. However, recent tactile WAMs often rely on large-scale pretrained generative backbones to capture contact-rich physical dynamics, which limit their inference efficiency and flexible deployment. In this paper, we present \\ABBR{}, an agile tactile World Action Model for contact-rich robot control. \\ABBR{} encodes visual and tactile observations into a shared latent that serves as the source of a direct vision-tactile-to-action flow-matching process, which can jointly generate latent representations of action chunks and future visual/tactile latents. A key observation is that vision and tactile signals evolve at inherently different timescales: adjacent visual frames are often highly similar, whereas tactile signals can change abruptly upon contact. We therefore introduce multi-horizon multimodal prediction in \\ABBR{}, which provides supervision for visual latent at a larger temporal offset while predicting the tactile latent in the next frame to capture fine-grained contact dynamics. Across nine simulated and five real-world contact-rich manipulation tasks, \\ABBR{} demonstrates strong and robust performance, outperforming the strongest baseline in success rate while maintaining low inference latency. In particular, in five real-world experiments, \\ABBR{} yields a relative gain of $\\textbf{29.4\\%}$ in overall success rates while achieving inference latency of $\\textbf{11.9 ms}$. These results demonstrate that multimodal WAM can be achieved with an agile architecture suitable for precise and high-frequency robot control. More details are available on our project page: https://hanchuzhou.github.io/TARO_project_page/.",
+        "primaryUrl": "https://arxiv.org/abs/2609.20761v1",
+        "sourceDetails": {
+          "authors": [
+            "Hanchu Zhou",
+            "Brendan Lynch",
+            "Raman Goyal",
+            "Dechen Gao",
+            "Begum Kasap",
+            "Boqi Zhao",
+            "Junshan Zhang"
+          ],
+          "categories": [
+            "cs.RO",
+            "cs.LG"
+          ]
+        }
+      },
+      "notion_page_id": "3e1479ff-dca9-8130-b804-d38cd5a1e555",
+      "score": 70,
+      "reason": "接触検知を伴うロボット制御の効率化モデル。",
+      "commercial_score": 55,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 64.75
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.20732",
+      "deferred_at": "2026-09-20T13:58:08.606425+00:00",
+      "expires_at": "2026-10-04T13:58:08.606425+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Q&A on Any Spreadsheet Requires Interpreting Its Grid Structure",
+        "originalTitle": "Q&A on Any Spreadsheet Requires Interpreting Its Grid Structure",
+        "displayName": "Q&A on Any Spreadsheet Requires Interpreting Its Grid Structure",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.20732v1",
+        "description": "Semantic cell annotation improves chunking interpretability for spreadsheets in LLM-driven RAG systems, aiding answer generation through enriched context rather than improved retrieval accuracy. We propose a novel framework of splitting any spreadsheet into interpretable chunks using cell role annotation. Our framework beats the state of the art, yet it faces a hard ceiling. Spreadsheets are fundamentally two-dimensional unstructured data with continuous relationships and infinite potential cell",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-17T17:22:43Z",
+        "sourceContext": "Semantic cell annotation improves chunking interpretability for spreadsheets in LLM-driven RAG systems, aiding answer generation through enriched context rather than improved retrieval accuracy. We propose a novel framework of splitting any spreadsheet into interpretable chunks using cell role annotation. Our framework beats the state of the art, yet it faces a hard ceiling. Spreadsheets are fundamentally two-dimensional unstructured data with continuous relationships and infinite potential cell roles. Because classification models are restricted to finite, pre-defined classes, they cannot perfectly capture this structural nuance, even with human-level annotation. We show that addressing the spreadsheet-to-LLM bottleneck requires moving beyond discrete cell classification. Instead, the field must develop dimensionality-reduction techniques to directly flatten 2D unstructured spreadsheets into 1D unstructured text. Text chunks would be easier for downstream RAG to interpret and generate from.",
+        "primaryUrl": "https://arxiv.org/abs/2609.20732v1",
+        "sourceDetails": {
+          "authors": [
+            "Zofia Smoleń"
+          ],
+          "categories": [
+            "cs.AI",
+            "cs.SE"
+          ]
+        }
+      },
+      "notion_page_id": "3e1479ff-dca9-8107-85e1-ed32ed269263",
+      "score": 60,
+      "reason": "LLMによるスプレッドシート解析の精度改善。",
+      "commercial_score": 55,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DATA",
+      "deep_dive_priority_score": 58.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49761584",
+      "deferred_at": "2026-09-20T13:58:08.606300+00:00",
+      "expires_at": "2026-09-22T13:58:08.606300+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "US gov website used AI search tool from China that FBI said copied Anthropic",
+        "originalTitle": "US gov website used AI search tool from China that FBI said copied Anthropic",
+        "displayName": "US gov website used AI search tool from China that FBI said copied Anthropic",
+        "sourceLanguage": "en",
+        "url": "https://www.reuters.com/legal/litigation/us-government-website-used-ai-search-tool-china-that-fbi-said-copied-anthropic-2026-09-17/",
+        "description": "US gov website used AI search tool from China that FBI said copied Anthropic",
+        "stargazerCount": 9,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-18T23:22:05Z",
+        "sourceContext": "HN points=9 comments=0 matched_query=Anthropic",
+        "primaryUrl": "https://www.reuters.com/legal/litigation/us-government-website-used-ai-search-tool-china-that-fbi-said-copied-anthropic-2026-09-17/",
+        "sourceDetails": {
+          "hn_id": "49761584",
+          "hn_url": "https://news.ycombinator.com/item?id=49761584",
+          "external_url": "https://www.reuters.com/legal/litigation/us-government-website-used-ai-search-tool-china-that-fbi-said-copied-anthropic-2026-09-17/",
+          "comments": 0,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e1479ff-dca9-81d6-a49c-dc6529e16597",
+      "score": 60,
+      "reason": "AIツールにおけるサプライチェーンの権利侵害問題。",
+      "commercial_score": 55,
+      "shelf_life_score": 30,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 58.25
     }
   ]
 }
