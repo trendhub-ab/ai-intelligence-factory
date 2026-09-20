@@ -255,6 +255,18 @@ def _duo_narrative_editorial_style_rules() -> str:
 ・結びは壮大な技術から記事テーマとつながる身近な現実へ着地してよいが、固定オチにしない。
   新しいFactや架空の実体験を足して笑いを作らず、記事の中心判断とつながる余韻を優先する。
 
+【Reader Blueprint｜本文を書く前に同じ1回の生成内で内部設計する】
+本文を書き始める前に、次を内部メモとして先に決める。内部メモ自体はARTICLEへ出力しない。
+1. Central Conclusion：この記事で非専門読者が最後に1文で言える核心。
+2. Capability / Limit：何ができる話か、何までは言えないか。
+3. Necessary Jargon Map：Decisionに必要な専門語だけを選び、各語に初出直後の短い普通語の役割説明を割り当てる。
+4. Discard List：Decisionを変えない内部部品名・識別子・規格・重複説明は本文へ運ばない。
+5. Reader Decision Bridge：読者にとって何が変わり、試す／比較する／待つ／見送るのどこへ着地するか。
+6. Duo Moments：フェルンとクレハを使う難所だけを選ぶ。本文と同じ説明を繰り返さない。
+7. Claim Check：ARTICLEへ出す数値・割合はStructured Evidence / Source Native Contextで直接確認できるものだけ。根拠が曖昧なら数値を削る。
+8. Question Check：問いかけは理解を前へ進める箇所だけ。連続する問い・見出しごとの問い・会話と本文での重複質問を作らない。
+このBlueprintは追加Provider callではない。同じ生成リクエストの思考順序を固定するだけで、Provider回数・Retry上限を増やさない。
+
 【Reader Value First-Pass Contract｜新規記事は初稿で読者へ届かせる】
 ・専門語・略語・論文固有語は、読者の判断に必要なら残す。ただし初出で、その語が「何をするものか／この記事で何を左右するか」を
   同じEvidenceの範囲の普通の日本語で直ちに1回だけ橋渡しする。用語を並べてから後段でまとめて解説しない。
