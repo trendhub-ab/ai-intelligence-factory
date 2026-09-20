@@ -34,5 +34,5 @@ jobs:
           name: stale-ready-retirement-audit
           path: |
             article_audit/stale_ready_retirement_audit.json
-            article_audit/stale_ready_zero_api_portfolio_audit.json
+            article_audit/stale_ready_zero_api_portfolio_audit.json\n          article_audit/stale_ready_top_fast_path_preflight.json
           retention-days: 7
