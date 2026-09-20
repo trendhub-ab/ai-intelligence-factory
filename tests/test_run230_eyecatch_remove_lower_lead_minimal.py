@@ -21,8 +21,9 @@ class Run230EyecatchRemoveLowerLeadMinimalTests(unittest.TestCase):
         self.assertNotIn("sub_y =", source)
         self.assertNotIn("draw.rectangle((48, sub_y + 2, 53, sub_y + 42)", source)
 
-    def test_run229_gemini_title_contract_is_untouched(self):
-        self.assertEqual("gemini-3.5-flash", run180.EYECATCH_LAYOUT_MODEL)
+    def test_run229_gemini_title_contract_uses_36_then_35(self):
+        self.assertEqual("gemini-3.6-flash", run180.EYECATCH_LAYOUT_MODEL)
+        self.assertEqual(("gemini-3.6-flash", "gemini-3.5-flash"), run180.EYECATCH_LAYOUT_MODELS)
         self.assertEqual(1400, run180.EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS)
         self.assertIn("subheadline_lines", run180._LAYOUT_RESPONSE_SCHEMA["properties"])
         self.assertIn("subheadline_font_size", run180._LAYOUT_RESPONSE_SCHEMA["properties"])
