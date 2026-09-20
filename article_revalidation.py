@@ -191,7 +191,9 @@ def rehydrate_recovery_repo(pipeline, item: dict) -> dict | None:
         if logger:
             logger.warning("[STALE READY REHYDRATE SKIP] canonical primary resolver unavailable")
         return None
-    recovery_repo = dict(repo)\n    recovery_repo["notion_page_id"] = item.get("notion_page_id") or ""\n    primary = str(resolver(recovery_repo) or "").strip()
+    recovery_repo = dict(repo)
+    recovery_repo["notion_page_id"] = item.get("notion_page_id") or ""
+    primary = str(resolver(recovery_repo) or "").strip()
     if not primary or not primary.startswith(("http://", "https://")):
         if logger:
             logger.warning(
