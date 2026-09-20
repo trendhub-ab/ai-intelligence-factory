@@ -15,7 +15,7 @@ from tests.test_gemini_provider_resilience import make_pipeline, FakeAPIError
 
 class TemporaryExclusionTests(unittest.TestCase):
     def setUp(self):
-        self.env = patch.dict(os.environ, {policy.ENV: "2099-09-16T17:00:00+09:00"})
+        self.env = patch.dict(os.environ, {policy.ENV: "2099-09-16T17:00:00+09:00", policy.EXCLUDED_MODELS_ENV: ""})
         self.env.start()
         self.addCleanup(self.env.stop)
 
