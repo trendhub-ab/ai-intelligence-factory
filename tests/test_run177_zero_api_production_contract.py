@@ -71,7 +71,10 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
         self.assertLess(article_step, review_step)
         self.assertLess(review_step, guard_step)
         article_block = text[article_step:review_step]
-        self.assertIn("if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' }}", article_block)
+        self.assertIn("inputs.mode == 'full'", article_block)
+        self.assertIn("inputs.mode == 'article_validation'", article_block)
+        self.assertIn("inputs.mode == 'ready_rescue_validation'", article_block)
+        self.assertIn("inputs.mode == 'stale_ready_batch_revalidation'", article_block)
         self.assertIn("if: ${{ inputs.mode == 'full' }}", text[review_step:guard_step])
         self.assertIn("if: ${{ inputs.mode != 'full' }}", text[guard_step:])
 

@@ -31,7 +31,7 @@ jobs:
           mode="$(printf '%s\n' "$BODY" | sed -n 's/^mode=//p' | head -1)"
           style="$(printf '%s\n' "$BODY" | sed -n 's/^editorial_style=//p' | head -1)"
           case "$mode" in
-            full|article_validation|pending_retry_validation|ready_rescue_validation) ;;
+            full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation) ;;
             *) echo "::error::Invalid reserved mode"; exit 1 ;;
           esac
           case "$style" in

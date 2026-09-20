@@ -24,7 +24,7 @@ on:
           - full
           - article_validation
           - pending_retry_validation
-          - ready_rescue_validation
+          - ready_rescue_validation\n          - stale_ready_batch_revalidation
       editorial_style:
         description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone; duo_narrative = フェルン×クレハ'
         required: true
@@ -61,7 +61,7 @@ jobs:
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
           case "${{ inputs.mode }}" in
-            full|article_validation|pending_retry_validation|ready_rescue_validation) ;;
+            full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation) ;;
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
           case "${{ inputs.editorial_style }}" in
@@ -91,7 +91,7 @@ jobs:
         run: python -m unittest tests.test_temporary_provider_exclusion -v
 
       - name: 通常Production entrypointを1回だけ実行
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' }}
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'stale_ready_batch_revalidation' }}
         run: python production_pipeline.py
         env:
           TZ: 'Asia/Tokyo'

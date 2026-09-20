@@ -186,7 +186,7 @@ def install_run349_score_narrative_negation_precision(pipeline_module):
 
 
 _ONE_SHOT_MODES = frozenset({
-    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation",
+    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation", "stale_ready_batch_revalidation",
 })
 
 
@@ -321,6 +321,11 @@ def main() -> None:
     # Zero-API, observational only. Installed last so timers see the final production
     # functions without participating in the historical wrapper chain.
     install_performance_telemetry(pipeline)
+
+    if mode == "stale_ready_batch_revalidation":
+        from stale_ready_batch_revalidation import run
+        run(pipeline)
+        return
 
     if mode == "ready_rescue_validation":
         from ready_rescue_validation import run
