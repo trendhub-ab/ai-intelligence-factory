@@ -196,35 +196,52 @@ def page_to_state(page:dict)->dict:
             "document_hash":_rich(p.get(P_DOC_HASH,{})),"extract_hash":_rich(p.get(P_EXTRACT_HASH,{})),"extract":_rich(p.get(P_EXTRACT,{}))}
 
 
+def diagnose_primary_recovery(token:str, *, tech_page_id:str="", entity_id:str="")->dict:
+    """Read-only recovery diagnosis. Returns counts/reasons only; no evidence extracts."""
+    audit={"identity":"tech_page_id" if tech_page_id else ("entity_id" if entity_id else "none"),"matched":0,"accepted":0,"rejected":{},"unique_candidates":0}
+    if not ENABLE_EVIDENCE_LEDGER or not token or not (tech_page_id or entity_id):
+        audit["rejected"]["preflight"]=1
+        return audit
+    identity_filter=({"property":P_TECH_PAGE,"rich_text":{"equals":tech_page_id}} if tech_page_id else {"property":P_ENTITY,"rich_text":{"equals":entity_id}})
+    payload={"filter":{"and":[identity_filter,{"property":P_ACTIVE,"checkbox":{"equals":True}}]},"page_size":20}
+    r=requests.post(_query_url(),headers=_headers(token),json=payload,timeout=15); r.raise_for_status()
+    candidates=[]
+    for page in r.json().get("results",[]) or []:
+        audit["matched"]+=1
+        state=page_to_state(page); props=page.get("properties",{})
+        role=_rich(props.get(P_ROLE,{})).upper(); binding=state.get("entity_binding") or ""; authority=state.get("authority_class") or ""; health=state.get("source_health") or ""; eligible=bool(state.get("decision_eligible")); url=state.get("resolved_url") or state.get("url") or ""
+        reason=""
+        if not eligible: reason="not_decision_eligible"
+        elif role!="PRIMARY_SOURCE": reason="not_primary_role"
+        elif binding not in {"IDENTITY_ANCHOR","SAME_PRIMARY_SITE","LEGACY_RESOLVED_PRIMARY","OFFICIAL_METADATA","CLAIM_BOUND"}: reason="binding"
+        elif authority not in {"PRIMARY_FIRST_PARTY","PRIMARY_REGULATORY","PRIMARY_AUTHOR","PRIMARY_INTERVIEW","PRIMARY_OTHER"}: reason="authority"
+        elif health in {"MISSING","FETCH_ERROR"}: reason="health"
+        elif not url.startswith(("http://","https://")): reason="url"
+        if reason:
+            audit["rejected"][reason]=audit["rejected"].get(reason,0)+1
+            continue
+        candidates.append(url); audit["accepted"]+=1
+    audit["unique_candidates"]=len(set(candidates))
+    return audit
+
 def recover_primary_url(token:str, *, tech_page_id:str="", entity_id:str="")->str:
     """Return one proven active primary-evidence URL for legacy recovery, or empty fail-closed."""
     if not ENABLE_EVIDENCE_LEDGER or not token or not (tech_page_id or entity_id):
         return ""
-    identity_filter = (
-        {"property":P_TECH_PAGE,"rich_text":{"equals":tech_page_id}}
-        if tech_page_id else {"property":P_ENTITY,"rich_text":{"equals":entity_id}}
-    )
-    payload={"filter":{"and":[identity_filter,{"property":P_ACTIVE,"checkbox":{"equals":True}},{"property":P_ELIGIBLE,"checkbox":{"equals":True}}]},"page_size":20}
-    r=requests.post(_query_url(),headers=_headers(token),json=payload,timeout=15)
-    r.raise_for_status()
+    identity_filter=({"property":P_TECH_PAGE,"rich_text":{"equals":tech_page_id}} if tech_page_id else {"property":P_ENTITY,"rich_text":{"equals":entity_id}})
+    payload={"filter":{"and":[identity_filter,{"property":P_ACTIVE,"checkbox":{"equals":True}}]},"page_size":20}
+    r=requests.post(_query_url(),headers=_headers(token),json=payload,timeout=15); r.raise_for_status()
     candidates=[]
     for page in r.json().get("results",[]) or []:
-        state=page_to_state(page)
-        props=page.get("properties",{})
-        role=_rich(props.get(P_ROLE,{})).upper()
-        binding=state.get("entity_binding") or ""
-        authority=state.get("authority_class") or ""
-        health=state.get("source_health") or ""
-        url=state.get("resolved_url") or state.get("url") or ""
-        if role!="PRIMARY_SOURCE" or binding not in {"IDENTITY_ANCHOR","SAME_PRIMARY_SITE","LEGACY_RESOLVED_PRIMARY","OFFICIAL_METADATA","CLAIM_BOUND"}:
-            continue
-        if authority not in {"PRIMARY_FIRST_PARTY","PRIMARY_REGULATORY","PRIMARY_AUTHOR","PRIMARY_INTERVIEW","PRIMARY_OTHER"}:
-            continue
-        if health in {"MISSING","FETCH_ERROR"} or not url.startswith(("http://","https://")):
-            continue
+        state=page_to_state(page); props=page.get("properties",{})
+        role=_rich(props.get(P_ROLE,{})).upper(); binding=state.get("entity_binding") or ""; authority=state.get("authority_class") or ""; health=state.get("source_health") or ""; url=state.get("resolved_url") or state.get("url") or ""
+        if not state.get("decision_eligible") or role!="PRIMARY_SOURCE": continue
+        if binding not in {"IDENTITY_ANCHOR","SAME_PRIMARY_SITE","LEGACY_RESOLVED_PRIMARY","OFFICIAL_METADATA","CLAIM_BOUND"}: continue
+        if authority not in {"PRIMARY_FIRST_PARTY","PRIMARY_REGULATORY","PRIMARY_AUTHOR","PRIMARY_INTERVIEW","PRIMARY_OTHER"}: continue
+        if health in {"MISSING","FETCH_ERROR"} or not url.startswith(("http://","https://")): continue
         candidates.append(url)
-    return candidates[0] if len(set(candidates))==1 else ""
-
+    unique=list(dict.fromkeys(candidates))
+    return unique[0] if len(unique)==1 else ""
 
 def check_health(state:dict, fetcher)->dict:
     """Fetcher(url)->(status_code, text, final_url).  Never calls Gemini."""

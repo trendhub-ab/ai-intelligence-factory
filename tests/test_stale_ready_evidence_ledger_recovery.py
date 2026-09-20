@@ -23,3 +23,14 @@ def test_recover_primary_url_requires_proven_active_primary(monkeypatch):
 def test_recover_primary_url_fails_closed_without_identity(monkeypatch):
     monkeypatch.setattr(evidence_ledger,"ENABLE_EVIDENCE_LEDGER",True)
     assert evidence_ledger.recover_primary_url("token")==""
+
+
+def test_diagnose_primary_recovery_reports_rejection_without_content(monkeypatch):
+    monkeypatch.setattr(evidence_ledger,"ENABLE_EVIDENCE_LEDGER",True)
+    monkeypatch.setattr(evidence_ledger,"NOTION_EVIDENCE_DATA_SOURCE_ID","ds")
+    monkeypatch.setattr(evidence_ledger.requests,"post",lambda *a,**k:R())
+    audit=evidence_ledger.diagnose_primary_recovery("token",tech_page_id="tech-1")
+    assert audit["matched"]==1
+    assert audit["accepted"]==1
+    assert audit["unique_candidates"]==1
+    assert "url" not in audit and "extract" not in audit
