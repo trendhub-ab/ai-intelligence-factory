@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-20T08:37:42.656433+00:00",
+  "updated_at": "2026-09-20T10:00:02.223510+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49758250",
-      "deferred_at": "2026-09-19T00:57:51.223036+00:00",
-      "expires_at": "2026-11-18T00:57:51.223036+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Anthropic finally adds AGENTS.md support to Claude Code",
-        "originalTitle": "Anthropic finally adds AGENTS.md support to Claude Code",
-        "displayName": "Anthropic finally adds AGENTS.md support to Claude Code",
-        "sourceLanguage": "en",
-        "url": "https://twitter.com/trq212/status/2101009392611278961",
-        "description": "Anthropic finally adds AGENTS.md support to Claude Code",
-        "stargazerCount": 43,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-18T18:26:34Z",
-        "sourceContext": "HN points=43 comments=8 matched_query=Anthropic",
-        "primaryUrl": "https://twitter.com/trq212/status/2101009392611278961",
-        "sourceDetails": {
-          "hn_id": "49758250",
-          "hn_url": "https://news.ycombinator.com/item?id=49758250",
-          "external_url": "https://twitter.com/trq212/status/2101009392611278961",
-          "comments": 8,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e0479ff-dca9-8124-8f4d-e400be2ad99e",
-      "score": 84,
-      "reason": "B0003を裏付ける開発支援ツールの公式仕様追加",
-      "commercial_score": 88,
-      "shelf_life_score": 80,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 85.4
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49764440",
       "deferred_at": "2026-09-19T18:09:57.428238+00:00",
