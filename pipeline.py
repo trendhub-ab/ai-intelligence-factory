@@ -4379,6 +4379,48 @@ def get_regen_test_items(limit: int = 3, source_filter: str = "") -> list[dict] 
     return items
 
 
+def resolve_recovery_primary_url(repo: dict) -> str:
+    """Resolve first-party evidence for legacy discovery rows without a model call.
+
+    This is intentionally narrower than general web discovery: only canonical URLs already
+    carried by the row or the existing Product Hunt official resolver are accepted. Hacker
+    News item URLs are discovery-only and never promoted to primary evidence.
+    """
+    source = str(repo.get("source") or "")
+    primary = str(repo.get("primaryUrl") or "").strip()
+    url = str(repo.get("url") or "").strip()
+    details = dict(repo.get("sourceDetails") or {})
+
+    def is_hn(value: str) -> bool:
+        return "news.ycombinator.com/" in value.lower()
+
+    if source == "HackerNews":
+        candidates = [
+            details.get("external_url"),
+            details.get("official_url"),
+            details.get("primary_url"),
+            primary,
+            url,
+        ]
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if value.startswith(("http://", "https://")) and not is_hn(value):
+                return value
+        return ""
+
+    if source == "ProductHunt":
+        candidates = [details.get("official_url"), details.get("external_url")]
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if value.startswith(("http://", "https://")) and "producthunt.com/" not in value.lower():
+                return value
+        redirect = primary or url
+        resolved = _resolve_producthunt_official_url(redirect) if redirect else ""
+        return str(resolved or "").strip()
+
+    return primary or url
+
+
 def _fresh_regen_candidate_score(repo: dict) -> tuple[float, int, str]:
     """0-API ranking for fresh regression candidates.
 

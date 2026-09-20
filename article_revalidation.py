@@ -177,6 +177,35 @@ def select_revalidation_items(
     return ordered[:limit]
 
 
+def rehydrate_recovery_repo(pipeline, item: dict) -> dict | None:
+    """Restore a durable primary URL for legacy stale-Ready discovery rows."""
+    repo = dict(item.get("repo") or {})
+    if not item.get("revalidation_stale_ready"):
+        return repo
+    source = str(repo.get("source") or "")
+    if source not in {"HackerNews", "ProductHunt"}:
+        return repo
+    logger = getattr(pipeline, "logger", None)
+    resolver = getattr(pipeline, "resolve_recovery_primary_url", None)
+    if not callable(resolver):
+        if logger:
+            logger.warning("[STALE READY REHYDRATE SKIP] canonical primary resolver unavailable")
+        return None
+    primary = str(resolver(repo) or "").strip()
+    if not primary or not primary.startswith(("http://", "https://")):
+        if logger:
+            logger.warning(
+                "[STALE READY REHYDRATE SKIP] no durable first-party primary source: %s",
+                repo.get("nameWithOwner") or "unknown",
+            )
+        return None
+    repo["primaryUrl"] = primary
+    details = dict(repo.get("sourceDetails") or {})
+    details["external_url"] = primary
+    details["recovery_primary_rehydrated"] = True
+    repo["sourceDetails"] = details
+    return repo
+
 def _cap_validation_budget(pipeline) -> int:
     requested = max(1, int(os.environ.get("ARTICLE_REVALIDATION_REQUEST_BUDGET", str(DEFAULT_REQUEST_BUDGET))))
     budget = getattr(pipeline, "DEEP_DIVE_MODEL_BUDGET", None)
@@ -211,7 +240,9 @@ def run_article_revalidation(pipeline, limit: int | None = None) -> dict[str, An
 
     result = {"selected": len(items), "generated": 0, "accepted": 0, "rejected": 0, "unverified": 0}
     for index, item in enumerate(items, start=1):
-        repo = item.get("repo") or {}
+        repo = rehydrate_recovery_repo(pipeline, item)
+        if repo is None:
+            continue
         name = repo.get("nameWithOwner") or "unknown"
         pipeline.logger.info(
             "[ARTICLE REVALIDATION %s/%s] %s prior_article=%s prior_content=%s",
@@ -322,7 +353,9 @@ def run_existing_editorial_recovery(
     for item in items[:limit]:
         if generated_count >= target or not _full_recovery_budget_available(pipeline):
             break
-        repo = item.get("repo") or {}
+        repo = rehydrate_recovery_repo(pipeline, item)
+        if repo is None:
+            continue
         name = repo.get("nameWithOwner") or "unknown"
         is_safe, license_status = pipeline.legal_safety_gate(repo)
         if not is_safe:
