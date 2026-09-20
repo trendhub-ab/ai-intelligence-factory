@@ -21,8 +21,18 @@ jobs:
           NOTION_EVIDENCE_LEDGER_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_LEDGER_DATABASE_ID }}
           NOTION_EVIDENCE_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_LEDGER_DATA_SOURCE_ID }}
         run: python stale_ready_retirement_audit.py
+      - name: Run zero-API portfolio audit
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_EVIDENCE_LEDGER_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_LEDGER_DATABASE_ID }}
+          NOTION_EVIDENCE_LEDGER_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_LEDGER_DATA_SOURCE_ID }}
+        run: python stale_ready_zero_api_portfolio_audit.py
       - uses: actions/upload-artifact@v4
         with:
           name: stale-ready-retirement-audit
-          path: article_audit/stale_ready_retirement_audit.json
+          path: |
+            article_audit/stale_ready_retirement_audit.json
+            article_audit/stale_ready_zero_api_portfolio_audit.json
           retention-days: 7
