@@ -12,14 +12,19 @@ set or eyecatch from being paired with an older body after a regeneration/retry.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
+import os
 import re
 from pathlib import Path
 
-CONTRACT_ID = "run195-auto-policy-fingerprint-v1"
+CONTRACT_ID = "run438-semantic-style-policy-v2"
 LEGACY_READY_CAPTION = "AIIF_MANUSCRIPT:READY"
 READY_CAPTION_PREFIX = "AIIF_MANUSCRIPT:READY|"
 ROOT = Path(__file__).resolve().parent
+DEFAULT_EDITORIAL_STYLE = "classic"
+STYLE_PROTOCOL_FILE = "content_generation_protocol.py"
+_STYLE_FUNCTIONS = {"classic": {"_human_editorial_style_rules"}, "human_narrative": {"_human_editorial_style_rules", "_human_narrative_editorial_style_rules"}, "duo_narrative": {"_human_editorial_style_rules", "_human_narrative_editorial_style_rules", "_duo_narrative_editorial_style_rules"}}
 
 # Only code that can materially change persisted public bytes, public-source attribution, or
 # publication acceptance belongs here. Run280/281 repository guards recursively audit local
@@ -97,24 +102,86 @@ def manuscript_sha256(manuscript: str) -> str:
     return hashlib.sha256(str(manuscript or "").encode("utf-8")).hexdigest()
 
 
-def policy_sha256(root: Path | None = None) -> str:
+def _normalized_style(style_name: str | None = None) -> str:
+    style = str(style_name or os.environ.get("AIIF_EDITORIAL_STYLE") or DEFAULT_EDITORIAL_STYLE).strip().lower()
+    if style not in _STYLE_FUNCTIONS:
+        raise ValueError(f"unknown editorial style: {style_name!r}")
+    return style
+
+
+class _SemanticNormalizer(ast.NodeTransformer):
+    def _without_docstring(self, node):
+        self.generic_visit(node)
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+            node.body = body[1:]
+        return node
+    def visit_Module(self, node): return self._without_docstring(node)
+    def visit_FunctionDef(self, node): return self._without_docstring(node)
+    def visit_AsyncFunctionDef(self, node): return self._without_docstring(node)
+    def visit_ClassDef(self, node): return self._without_docstring(node)
+
+
+def _assignment_names(node: ast.AST) -> set[str]:
+    targets = node.targets if isinstance(node, ast.Assign) else ([node.target] if isinstance(node, ast.AnnAssign) else [])
+    return {target.id for target in targets if isinstance(target, ast.Name)}
+
+
+def _semantic_python_bytes(path: Path, *, style_name: str) -> bytes:
+    source = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError:
+        return path.read_bytes()
+    if path.name == STYLE_PROTOCOL_FILE:
+        selected = _STYLE_FUNCTIONS[style_name]
+        style_functions = set().union(*_STYLE_FUNCTIONS.values())
+        filtered = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.name == "editorial_style_rules":
+                    continue
+                if node.name in style_functions and node.name not in selected:
+                    continue
+            names = _assignment_names(node)
+            if names and all(name.startswith("EDITORIAL_STYLE_") for name in names):
+                continue
+            filtered.append(node)
+        tree.body = filtered
+    tree = _SemanticNormalizer().visit(tree)
+    ast.fix_missing_locations(tree)
+    return ast.dump(tree, annotate_fields=True, include_attributes=False).encode("utf-8")
+
+
+def policy_sha256(root: Path | None = None, *, style_name: str | None = None) -> str:
     base = root or ROOT
+    style = _normalized_style(style_name)
     digest = hashlib.sha256()
+    digest.update(b"AIIF_PUBLICATION_SEMANTIC_POLICY_V2\0")
+    digest.update(style.encode("utf-8"))
+    digest.update(b"\0")
     for relative in PUBLICATION_POLICY_FILES:
         path = base / relative
         if not path.is_file():
             raise RuntimeError(f"publication policy file is missing: {relative}")
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(_semantic_python_bytes(path, style_name=style) if path.suffix == ".py" else path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
 
 
-def current_ready_caption(manuscript: str, *, root: Path | None = None) -> str:
+def current_ready_caption(
+    manuscript: str,
+    *,
+    root: Path | None = None,
+    style_name: str | None = None,
+) -> str:
+    style = _normalized_style(style_name)
     return (
         f"{READY_CAPTION_PREFIX}contract={CONTRACT_ID}"
-        f"|policy_sha256={policy_sha256(root)}"
+        f"|style={style}"
+        f"|policy_sha256={policy_sha256(root, style_name=style)}"
         f"|manuscript_sha256={manuscript_sha256(manuscript)}"
     )
 
@@ -142,9 +209,10 @@ def is_current_ready_caption(value: str, *, root: Path | None = None) -> bool:
     manuscript = fields.get("manuscript_sha256", "")
     if fields.get("contract") != CONTRACT_ID or not _SHA_RE.fullmatch(policy) or not _SHA_RE.fullmatch(manuscript):
         return False
+    style = fields.get("style", DEFAULT_EDITORIAL_STYLE)
     try:
-        return policy == policy_sha256(root)
-    except RuntimeError:
+        return policy == policy_sha256(root, style_name=style)
+    except (RuntimeError, ValueError):
         return False
 
 
