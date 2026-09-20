@@ -32,8 +32,8 @@ def test_duo_narrative_builds_on_human_narrative_and_adds_character_contract(mon
     prompt = _prompt()
     assert "[AIIF_HUMAN_NARRATIVE_EDITORIAL_STYLE_V1]" in prompt
     assert "[AIIF_DUO_NARRATIVE_EDITORIAL_STYLE_V1]" in prompt
-    assert "ふぇるん" in prompt
-    assert "くれは" in prompt
+    assert "フェルン" in prompt
+    assert "クレハ" in prompt
     assert "fetch" in prompt
     assert "clever" in prompt
 
