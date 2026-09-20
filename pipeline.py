@@ -4696,10 +4696,7 @@ def generate_monthly_digest(target_date=None):
 _source_fact_discipline = _source_fact_discipline_impl
 
 
-def _human_editorial_style_rules() -> str:
-    """Resolve the selected article surface style without changing writer ownership."""
-    return _editorial_style_rules_impl(AIIF_EDITORIAL_STYLE)
-
+_human_editorial_style_rules = _human_editorial_style_rules_impl
 
 def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", source: str = "GitHub",
                           source_context: str = "", grounding_status_hint: str = GROUNDING_METADATA_ONLY,
@@ -4715,7 +4712,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
         max_evidence_total_chars=MAX_EVIDENCE_TOTAL_CHARS,
         truncate_source_context=_truncate_source_context,
         source_fact_discipline=_source_fact_discipline,
-        human_editorial_style_rules=_human_editorial_style_rules,
+        human_editorial_style_rules=lambda: _editorial_style_rules_impl(AIIF_EDITORIAL_STYLE),
         article_display_variant=_article_display_variant,
         section_split_token=SECTION_SPLIT_TOKEN,
         datetime_cls=datetime,
