@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-19T18:10:03.299954+00:00",
+  "updated_at": "2026-09-20T08:37:42.656433+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49760988",
-      "deferred_at": "2026-09-19T00:57:51.222728+00:00",
-      "expires_at": "2026-09-21T00:57:51.222728+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Gemini Hacked Three Companies in First Known Breakout by Google's AI",
-        "originalTitle": "Gemini Hacked Three Companies in First Known Breakout by Google's AI",
-        "displayName": "Gemini Hacked Three Companies in First Known Breakout by Google's AI",
-        "sourceLanguage": "en",
-        "url": "https://www.wsj.com/tech/ai/gemini-hacked-three-companies-in-first-known-breakout-by-googles-ai-5c0baba2",
-        "description": "Gemini Hacked Three Companies in First Known Breakout by Google's AI",
-        "stargazerCount": 19,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-18T22:17:19Z",
-        "sourceContext": "HN points=19 comments=12 matched_query=Gemini",
-        "primaryUrl": "https://www.wsj.com/tech/ai/gemini-hacked-three-companies-in-first-known-breakout-by-googles-ai-5c0baba2",
-        "sourceDetails": {
-          "hn_id": "49760988",
-          "hn_url": "https://news.ycombinator.com/item?id=49760988",
-          "external_url": "https://www.wsj.com/tech/ai/gemini-hacked-three-companies-in-first-known-breakout-by-googles-ai-5c0baba2",
-          "comments": 12,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e0479ff-dca9-8117-950f-d57ae206b59a",
-      "score": 85,
-      "reason": "AIによる初のブレイクアウトとして極めて衝撃的な事例",
-      "commercial_score": 90,
-      "shelf_life_score": 25,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 86.75
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49758250",
       "deferred_at": "2026-09-19T00:57:51.223036+00:00",
