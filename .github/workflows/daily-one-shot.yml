@@ -24,7 +24,8 @@ on:
           - full
           - article_validation
           - pending_retry_validation
-          - ready_rescue_validation\n          - stale_ready_batch_revalidation
+          - ready_rescue_validation
+          - stale_ready_batch_revalidation
       editorial_style:
         description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone; duo_narrative = フェルン×クレハ'
         required: true
