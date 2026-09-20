@@ -4395,7 +4395,18 @@ def resolve_recovery_primary_url(repo: dict) -> str:
         return "news.ycombinator.com/" in value.lower()
 
     if source == "HackerNews":
+        try:
+            import evidence_ledger
+            ledger_url = evidence_ledger.recover_primary_url(
+                NOTION_API_KEY,
+                tech_page_id=str(repo.get("notion_page_id") or ""),
+                entity_id=str(repo.get("canonicalEntityId") or ""),
+            )
+        except Exception as exc:
+            logger.warning("[RECOVERY EVIDENCE LEDGER] lookup failed closed: %s", exc)
+            ledger_url = ""
         candidates = [
+            ledger_url,
             details.get("external_url"),
             details.get("official_url"),
             details.get("primary_url"),
