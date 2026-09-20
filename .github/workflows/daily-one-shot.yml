@@ -44,8 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      # Expired values are inert. Inherited by Product Review subprocesses as well.
-      AIIF_GEMINI36_BLOCK_UNTIL: '2026-09-16T17:00:00+09:00'
       AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
 
     steps:

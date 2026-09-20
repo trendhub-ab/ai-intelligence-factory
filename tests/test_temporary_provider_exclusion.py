@@ -159,10 +159,9 @@ class TemporaryExclusionTests(unittest.TestCase):
         self.assertIn('GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash"', block)
         self.assertNotIn('GEMINI_36_FLASH_DAILY_BUDGET: "0"', block)
 
-    def test_workflow_deadline_is_job_scoped_and_rescue_is_explicit(self):
+    def test_workflow_has_no_expired_gemini36_block_and_rescue_is_explicit(self):
         text = Path(".github/workflows/daily-one-shot.yml").read_text()
-        self.assertIn("AIIF_GEMINI36_BLOCK_UNTIL: '2026-09-16T17:00:00+09:00'", text)
-        self.assertLess(text.index("AIIF_GEMINI36_BLOCK_UNTIL"), text.index("    steps:"))
+        self.assertNotIn("AIIF_GEMINI36_BLOCK_UNTIL", text)
         import run202_chatops_control as chatops
         self.assertEqual(chatops.COMMAND_TO_MODE.get("/aiif run ready_rescue_validation"), "ready_rescue_validation")
 
