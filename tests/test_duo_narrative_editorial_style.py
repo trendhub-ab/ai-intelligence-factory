@@ -97,3 +97,14 @@ def test_duo_reader_value_contract_keeps_accuracy_and_avoids_fixed_quotas():
     assert "Evidence・重要な数値・能力境界・反証・Decisionは残し" in rules
     assert "新しいFactを足さず" in rules
     assert "固定文字数・固定個数ルールではなく" in rules
+
+
+def test_duo_reader_blueprint_precedes_prose_and_targets_real_production_failure():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Reader Blueprint" in rules
+    assert rules.index("Reader Blueprint") < rules.index("Reader Value First-Pass Contract")
+    for phrase in ("Central Conclusion", "Capability / Limit", "Necessary Jargon Map", "Discard List", "Reader Decision Bridge", "Duo Moments", "Claim Check", "Question Check"):
+        assert phrase in rules
+    assert "根拠が曖昧なら数値を削る" in rules
+    assert "連続する問い" in rules
+    assert "追加Provider callではない" in rules
