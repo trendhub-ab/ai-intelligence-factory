@@ -178,30 +178,26 @@ def select_revalidation_items(
 
 
 def rehydrate_recovery_repo(pipeline, item: dict) -> dict | None:
-    """Restore a durable primary URL for legacy stale-Ready discovery rows.
-
-    Old HN/Product Hunt rows can have their discovery URL persisted as Primary URL. Current
-    Evidence Gate correctly refuses that as first-party evidence. Recovery may resolve a
-    first-party URL with the canonical zero-model resolver, but must fail closed when it
-    cannot prove one. Source/discovery identity is preserved.
-    """
+    """Restore a durable primary URL for legacy stale-Ready discovery rows."""
     repo = dict(item.get("repo") or {})
     if not item.get("revalidation_stale_ready"):
         return repo
     source = str(repo.get("source") or "")
     if source not in {"HackerNews", "ProductHunt"}:
         return repo
-
+    logger = getattr(pipeline, "logger", None)
     resolver = getattr(pipeline, "resolve_recovery_primary_url", None)
     if not callable(resolver):
-        logger = getattr(pipeline, "logger", None)\n        if logger:\n            logger.warning("[STALE READY REHYDRATE SKIP] canonical primary resolver unavailable")
+        if logger:
+            logger.warning("[STALE READY REHYDRATE SKIP] canonical primary resolver unavailable")
         return None
     primary = str(resolver(repo) or "").strip()
     if not primary or not primary.startswith(("http://", "https://")):
-        pipeline.logger.warning(
-            "[STALE READY REHYDRATE SKIP] no durable first-party primary source: %s",
-            repo.get("nameWithOwner") or "unknown",
-        )
+        if logger:
+            logger.warning(
+                "[STALE READY REHYDRATE SKIP] no durable first-party primary source: %s",
+                repo.get("nameWithOwner") or "unknown",
+            )
         return None
     repo["primaryUrl"] = primary
     details = dict(repo.get("sourceDetails") or {})
@@ -209,7 +205,6 @@ def rehydrate_recovery_repo(pipeline, item: dict) -> dict | None:
     details["recovery_primary_rehydrated"] = True
     repo["sourceDetails"] = details
     return repo
-
 
 def _cap_validation_budget(pipeline) -> int:
     requested = max(1, int(os.environ.get("ARTICLE_REVALIDATION_REQUEST_BUDGET", str(DEFAULT_REQUEST_BUDGET))))
