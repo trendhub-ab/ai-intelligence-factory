@@ -201,11 +201,7 @@ def _literal_newline_escape_errors(text: str, rel: str) -> list[str]:
                 block_indent = None
             else:
                 continue
-        stripped = line.strip()
-        if re.search(r":\\s*[|>]\\s*(?:#.*)?$", stripped):
-            block_indent = len(line) - len(line.lstrip(" "))
-            continue
-        if "\\n" in line:
+        stripped = line.strip()\n        scalar_head = stripped.split("#", 1)[0].rstrip()\n        if ":" in scalar_head and scalar_head.endswith(("|", ">", "|-", "|+", ">-", ">+")):\n            block_indent = len(line) - len(line.lstrip(" "))\n            continue\n        if "\\n" in line:
             errors.append(
                 f"{rel}:{lineno}: literal backslash-n in workflow YAML structure; use a real line break"
             )
