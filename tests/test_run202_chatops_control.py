@@ -42,7 +42,7 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertEqual(result["mode"], "x_discovery_stage2")
 
     def test_zero_api_portfolio_audit_is_authorized(self):
-        result = control.authorize_event(self._event("/aiif run stale_ready_portfolio_audit"))
+        result = chatops.authorize_event(event(body="/aiif run stale_ready_portfolio_audit"))
         self.assertEqual(result, {"authorized": True, "mode": "stale_ready_portfolio_audit", "reason": "authorized"})
 
     def test_retired_recovery_commands_fail_closed(self):
