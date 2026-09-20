@@ -259,12 +259,13 @@ Writer指示の責務は次の5つに分ける。
 
 Human Editorial Styleは文体・Reader Experience / Delight / Proximityの補助に限定し、上記責務を繰り返さない。専門語数・呼びかけ回数・一定段落ごとの文体切替・固定文字数を完成条件にしない。
 
-**AIIF Editorial Style Engine v1** は同じWriter / Evidence / Fact / Decision / Publication契約の上で、公開ARTICLEの表現だけを選択可能にする。現行Productionの選択肢は次の2つに限定する。
+**AIIF Editorial Style Engine v1** は同じWriter / Evidence / Fact / Decision / Publication契約の上で、公開ARTICLEの表現だけを選択可能にする。現行Productionの選択肢は次の3つに限定する。
 
 - `classic` — 既存Human Editorial Style。互換性のため既定値とし、従来の文体契約を変更しない。
 - `human_narrative` — Human Narrative Editorial Style。人間が場面を想像できる入口、理解を助ける比喩、軽いユーモア、現実的なツッコミ、読後の余韻を使える。ただし架空の体験・会話・成功談を事実化せず、比喩の後は専門内容へ戻り、Evidence・数値・制約・反証・Decisionを弱めない。同じ会社員ネタや擬人化を記事間テンプレートとして使い回さない。
+- `duo_narrative` — Duo Narrative Editorial Style。`human_narrative` を土台に、ナビゲーター **フェルン** と **クレハ** の短い掛け合いを導入・難所・転換・結び等に使い、読者と一緒に技術を理解していく。フェルンは技術のキモを拾って考察する少し理屈っぽい役、クレハは専門家ではないが頭の回転が速く「それ、本当にすごいの？」「誰が得するの？」と本質を確かめる役。記事全体を台本化せず、キャラクターをFactの出典にせず、会話でもSOURCE BOUNDARY / Evidence / Fact Disciplineを守る。日常ネタやオチは固定化しない。
 
-選択は `AIIF_EDITORIAL_STYLE` で行い、未知の値はfail-closedとする。Manual ONE-SHOTでは `editorial_style` inputとして `classic` / `human_narrative` を選べる。Style切替のために別Provider call、別Persona call、別Self-Edit callを追加しない。Quality Retryも同一runの選択Styleを引き継ぐ。
+選択は `AIIF_EDITORIAL_STYLE` で行い、未知の値はfail-closedとする。Manual ONE-SHOTでは `editorial_style` inputとして `classic` / `human_narrative` / `duo_narrative` を選べる。Style切替のために別Provider call、別Persona call、別Self-Edit callを追加しない。Quality Retryも同一runの選択Styleを引き継ぐ。
 
 従来の**Editorial Blueprint**は別計画を増設せず、同一Writer call内の **Editorial Story Brief** に統合する。`SURPRISE / Discovery`、`TENSION / Capability Boundary`、`HUMAN STAKE / Why Now`、`QUESTION / Reader Question`、`PAYOFF / Central Conclusion / Reader Decision` を内部形成し、Target Reader・Evidence Anchor・必要な専門語の選択を引き継ぐ。Evidenceに意外性・矛盾がなければ「なし」とし、架空の緊張・動機・人間的影響を作らない。
 
