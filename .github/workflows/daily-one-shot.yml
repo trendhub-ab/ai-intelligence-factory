@@ -25,6 +25,14 @@ on:
           - article_validation
           - pending_retry_validation
           - ready_rescue_validation
+      editorial_style:
+        description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone'
+        required: true
+        default: 'classic'
+        type: choice
+        options:
+          - classic
+          - human_narrative
       confirm:
         description: 'Type RUN_ONCE to execute exactly one production ONE-SHOT'
         required: true
@@ -45,6 +53,7 @@ jobs:
     timeout-minutes: 45
     env:
       AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+      AIIF_EDITORIAL_STYLE: ${{ inputs.editorial_style }}
 
     steps:
       - name: One-shot safety contract
@@ -54,7 +63,11 @@ jobs:
             full|article_validation|pending_retry_validation|ready_rescue_validation) ;;
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
-          echo "Manual one-shot confirmed. mode=${{ inputs.mode }}. Automatic triggers are intentionally absent."
+          case "${{ inputs.editorial_style }}" in
+            classic|human_narrative) ;;
+            *) echo "::error::Unknown editorial style"; exit 1 ;;
+          esac
+          echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }}. Automatic triggers are intentionally absent."
 
       - name: リポジトリのチェックアウト
         uses: actions/checkout@v6
