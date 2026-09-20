@@ -194,7 +194,7 @@ def rehydrate_recovery_repo(pipeline, item: dict) -> dict | None:
 
     resolver = getattr(pipeline, "resolve_recovery_primary_url", None)
     if not callable(resolver):
-        pipeline.logger.warning("[STALE READY REHYDRATE SKIP] canonical primary resolver unavailable")
+        logger = getattr(pipeline, "logger", None)\n        if logger:\n            logger.warning("[STALE READY REHYDRATE SKIP] canonical primary resolver unavailable")
         return None
     primary = str(resolver(repo) or "").strip()
     if not primary or not primary.startswith(("http://", "https://")):
