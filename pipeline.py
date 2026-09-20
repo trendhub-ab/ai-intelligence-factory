@@ -167,6 +167,7 @@ from deferred_queue_policy import (
 from content_generation_protocol import (
     _source_fact_discipline as _source_fact_discipline_impl,
     _human_editorial_style_rules as _human_editorial_style_rules_impl,
+    editorial_style_rules as _editorial_style_rules_impl,
     _parse_gemini_response as _parse_gemini_response_impl,
     _promote_plaintext_section_titles as _promote_plaintext_section_titles_impl,
     build_monthly_digest_markdown as _build_monthly_digest_markdown_impl,
@@ -232,6 +233,7 @@ NOTION_PUBLIC_DATABASE_ID = os.environ.get("NOTION_PUBLIC_DATABASE_ID")
 NOTION_PUBLIC_DATA_SOURCE_ID = os.environ.get("NOTION_PUBLIC_DATA_SOURCE_ID")
 NOTION_API_VERSION = os.environ.get("NOTION_API_VERSION", "2026-03-11")
 ARTICLE_PUBLICATION_MODE = os.environ.get("ARTICLE_PUBLICATION_MODE", "free").strip().lower()
+AIIF_EDITORIAL_STYLE = os.environ.get("AIIF_EDITORIAL_STYLE", "classic").strip().lower()
 
 # ---- Free Article -> Subscription Attribution ----
 # 無料noteは集客チャネル、有料商品は「会員向け意思決定DB + 月次サマリー」。
@@ -4710,7 +4712,7 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
         max_evidence_total_chars=MAX_EVIDENCE_TOTAL_CHARS,
         truncate_source_context=_truncate_source_context,
         source_fact_discipline=_source_fact_discipline,
-        human_editorial_style_rules=_human_editorial_style_rules,
+        human_editorial_style_rules=lambda: _editorial_style_rules_impl(AIIF_EDITORIAL_STYLE),
         article_display_variant=_article_display_variant,
         section_split_token=SECTION_SPLIT_TOKEN,
         datetime_cls=datetime,

@@ -259,6 +259,13 @@ Writer指示の責務は次の5つに分ける。
 
 Human Editorial Styleは文体・Reader Experience / Delight / Proximityの補助に限定し、上記責務を繰り返さない。専門語数・呼びかけ回数・一定段落ごとの文体切替・固定文字数を完成条件にしない。
 
+**AIIF Editorial Style Engine v1** は同じWriter / Evidence / Fact / Decision / Publication契約の上で、公開ARTICLEの表現だけを選択可能にする。現行Productionの選択肢は次の2つに限定する。
+
+- `classic` — 既存Human Editorial Style。互換性のため既定値とし、従来の文体契約を変更しない。
+- `human_narrative` — Human Narrative Editorial Style。人間が場面を想像できる入口、理解を助ける比喩、軽いユーモア、現実的なツッコミ、読後の余韻を使える。ただし架空の体験・会話・成功談を事実化せず、比喩の後は専門内容へ戻り、Evidence・数値・制約・反証・Decisionを弱めない。同じ会社員ネタや擬人化を記事間テンプレートとして使い回さない。
+
+選択は `AIIF_EDITORIAL_STYLE` で行い、未知の値はfail-closedとする。Manual ONE-SHOTでは `editorial_style` inputとして `classic` / `human_narrative` を選べる。Style切替のために別Provider call、別Persona call、別Self-Edit callを追加しない。Quality Retryも同一runの選択Styleを引き継ぐ。
+
 従来の**Editorial Blueprint**は別計画を増設せず、同一Writer call内の **Editorial Story Brief** に統合する。`SURPRISE / Discovery`、`TENSION / Capability Boundary`、`HUMAN STAKE / Why Now`、`QUESTION / Reader Question`、`PAYOFF / Central Conclusion / Reader Decision` を内部形成し、Target Reader・Evidence Anchor・必要な専門語の選択を引き継ぐ。Evidenceに意外性・矛盾がなければ「なし」とし、架空の緊張・動機・人間的影響を作らない。
 
 QUESTIONは一本の **Narrative Question** として段落間の疑問・意味・判断をつなぐ。疑問文として公開する義務はなく、答えや重要制約を最後まで隠す演出もしない。冒頭は違和感・意外性・問題・疑問、または平易な事実と意味から自然に選び、固定の発表要約型やクリックベイトにしない。
