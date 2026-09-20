@@ -69,6 +69,7 @@ def select_revalidation_items(
     include_quality_failed: bool = True,
     include_stale_ready: bool = False,
     prefer_stale_ready: bool = False,
+    stale_ready_probe_limit: int = DEFAULT_STALE_READY_PROBE_LIMIT,
 ):
     """Return existing Deep Dive rows that require current-gate revalidation.
 
@@ -148,7 +149,7 @@ def select_revalidation_items(
                 )
                 headers = None
             if headers is not None:
-                for item, article_status, content_status in ready_candidates[:DEFAULT_STALE_READY_PROBE_LIMIT]:
+                for item, article_status, content_status in ready_candidates[:max(0, int(stale_ready_probe_limit))]:
                     if len(stale_ready) >= stale_slots:
                         break
                     page_id = str(item.get("notion_page_id") or "")
