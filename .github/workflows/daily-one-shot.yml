@@ -26,13 +26,14 @@ on:
           - pending_retry_validation
           - ready_rescue_validation
       editorial_style:
-        description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone'
+        description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone; duo_narrative = フェルン×クレハ'
         required: true
         default: 'classic'
         type: choice
         options:
           - classic
           - human_narrative
+          - duo_narrative
       confirm:
         description: 'Type RUN_ONCE to execute exactly one production ONE-SHOT'
         required: true
@@ -64,7 +65,7 @@ jobs:
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
           case "${{ inputs.editorial_style }}" in
-            classic|human_narrative) ;;
+            classic|human_narrative|duo_narrative) ;;
             *) echo "::error::Unknown editorial style"; exit 1 ;;
           esac
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }}. Automatic triggers are intentionally absent."
