@@ -77,3 +77,23 @@ def test_one_shot_workflow_exposes_duo_narrative_choice():
     text = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
     assert "- duo_narrative" in text
     assert "classic|human_narrative|duo_narrative" in text
+
+
+def test_duo_first_pass_targets_actual_reader_value_failures_without_extra_retry():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Reader Value First-Pass Contract" in rules
+    assert "初出で" in rules and "普通の日本語" in rules
+    assert "一つの説明段落" in rules and "理解順序" in rules
+    assert "実装在庫だけを圧縮" in rules
+    assert "それで使う側には何が変わる？" in rules
+    assert "同じ内容を本文と会話で二重説明" in rules
+    assert "Accessibility / Information Budget / Jargon Translation" in rules
+    assert "Non-Engineer Core Clarity / Narrative Pull / Reader Temperature-Rhythm" in rules
+    assert "Reader Valueだけの追加Provider Retryは要求しない" in rules
+
+
+def test_duo_reader_value_contract_keeps_accuracy_and_avoids_fixed_quotas():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Evidence・重要な数値・能力境界・反証・Decisionは残し" in rules
+    assert "新しいFactを足さず" in rules
+    assert "固定文字数・固定個数ルールではなく" in rules
