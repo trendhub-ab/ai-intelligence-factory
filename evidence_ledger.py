@@ -196,6 +196,36 @@ def page_to_state(page:dict)->dict:
             "document_hash":_rich(p.get(P_DOC_HASH,{})),"extract_hash":_rich(p.get(P_EXTRACT_HASH,{})),"extract":_rich(p.get(P_EXTRACT,{}))}
 
 
+def recover_primary_url(token:str, *, tech_page_id:str="", entity_id:str="")->str:
+    """Return one proven active primary-evidence URL for legacy recovery, or empty fail-closed."""
+    if not ENABLE_EVIDENCE_LEDGER or not token or not (tech_page_id or entity_id):
+        return ""
+    identity_filter = (
+        {"property":P_TECH_PAGE,"rich_text":{"equals":tech_page_id}}
+        if tech_page_id else {"property":P_ENTITY,"rich_text":{"equals":entity_id}}
+    )
+    payload={"filter":{"and":[identity_filter,{"property":P_ACTIVE,"checkbox":{"equals":True}},{"property":P_ELIGIBLE,"checkbox":{"equals":True}}]},"page_size":20}
+    r=requests.post(_query_url(),headers=_headers(token),json=payload,timeout=15)
+    r.raise_for_status()
+    candidates=[]
+    for page in r.json().get("results",[]) or []:
+        state=page_to_state(page)
+        props=page.get("properties",{})
+        role=_rich(props.get(P_ROLE,{})).upper()
+        binding=state.get("entity_binding") or ""
+        authority=state.get("authority_class") or ""
+        health=state.get("source_health") or ""
+        url=state.get("resolved_url") or state.get("url") or ""
+        if role!="PRIMARY_SOURCE" or binding not in {"EXACT","STRONG"}:
+            continue
+        if authority not in {"FIRST_PARTY","PRIMARY_RESEARCH","OFFICIAL"}:
+            continue
+        if health in {"MISSING","FETCH_ERROR"} or not url.startswith(("http://","https://")):
+            continue
+        candidates.append(url)
+    return candidates[0] if len(set(candidates))==1 else ""
+
+
 def check_health(state:dict, fetcher)->dict:
     """Fetcher(url)->(status_code, text, final_url).  Never calls Gemini."""
     try: status,text,final_url=fetcher(state['url'])
