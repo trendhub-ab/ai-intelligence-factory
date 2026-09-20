@@ -9,8 +9,8 @@ class R:
             evidence_ledger.P_RESOLVED:{"url":"https://netflixtechblog.com/genrec"},
             evidence_ledger.P_ROLE:{"rich_text":[{"plain_text":"PRIMARY_SOURCE"}]},
             evidence_ledger.P_ACTIVE:{"checkbox":True}, evidence_ledger.P_ELIGIBLE:{"checkbox":True},
-            evidence_ledger.P_AUTHORITY:{"rich_text":[{"plain_text":"FIRST_PARTY"}]},
-            evidence_ledger.P_BINDING:{"rich_text":[{"plain_text":"EXACT"}]},
+            evidence_ledger.P_AUTHORITY:{"rich_text":[{"plain_text":"PRIMARY_FIRST_PARTY"}]},
+            evidence_ledger.P_BINDING:{"rich_text":[{"plain_text":"LEGACY_RESOLVED_PRIMARY"}]},
             evidence_ledger.P_HEALTH:{"select":{"name":"VERIFIED"}},
         }}]}
 
