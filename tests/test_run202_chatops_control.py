@@ -41,6 +41,10 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "x_discovery_stage2")
 
+    def test_zero_api_portfolio_audit_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run stale_ready_portfolio_audit"))
+        self.assertEqual(result, {"authorized": True, "mode": "stale_ready_portfolio_audit", "reason": "authorized"})
+
     def test_retired_recovery_commands_fail_closed(self):
         for body in (
             "/aiif run current_policy_ready_recovery",
@@ -135,6 +139,13 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("GEMINI_API_KEY:", text)
         self.assertNotIn("NOTION_API_KEY:", text)
         self.assertNotIn("GOOGLE_API_KEY:", text)
+
+
+    def test_zero_api_portfolio_audit_dispatches_read_only_workflow(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("/aiif run stale_ready_portfolio_audit", text)
+        self.assertIn("target='stale-ready-retirement-audit.yml'", text)
+        self.assertNotIn("GEMINI_API_KEY:", text)
 
 
 if __name__ == "__main__":

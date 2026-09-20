@@ -20,6 +20,7 @@ COMMAND_TO_MODE = {
     "/aiif run pending_retry_validation": "pending_retry_validation",
     "/aiif run full": "full",
     "/aiif run x_discovery_stage2": "x_discovery_stage2",
+    "/aiif run stale_ready_portfolio_audit": "stale_ready_portfolio_audit",
 }
 
 
