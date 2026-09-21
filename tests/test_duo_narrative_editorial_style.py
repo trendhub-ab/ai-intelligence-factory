@@ -146,3 +146,15 @@ def test_duo_canonical_pattern_removes_unsupported_certainty_and_makes_dialogue_
     assert "違和感 → 検証 → 判断" in rules
     assert "説明の挿入" in rules
     assert "追加Provider callを使わない" in rules
+
+
+def test_duo_intro_claim_ceiling_is_source_native_and_same_call():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Intro Claim Ceiling" in rules
+    assert "導入・タイトル・冒頭フック" in rules
+    assert "Source Native Context" in rules
+    assert "Evidenceより強い未来予測" in rules
+    assert "Evidenceより強い因果" in rules
+    assert "削除または弱化" in rules
+    assert "同一生成call" in rules
+    assert "追加Provider callを使わない" in rules
