@@ -199,3 +199,13 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_one_shot_run_scoped_model_exclusion_is_strict_and_forwarded():
+    one_shot = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
+    reserved = (ROOT / ".github/workflows/reserved-one-shot-trigger.yml").read_text(encoding="utf-8")
+    assert "excluded_models:" in one_shot
+    assert "AIIF_GEMINI_TEMP_EXCLUDED_MODELS: ${{ inputs.excluded_models }}" in one_shot
+    assert '""|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash' in one_shot
+    assert "excluded_models=" in reserved
+    assert '-f excluded_models="$EXCLUDED_MODELS"' in reserved
