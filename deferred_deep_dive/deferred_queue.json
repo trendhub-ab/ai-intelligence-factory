@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-20T13:58:13.519677+00:00",
+  "updated_at": "2026-09-21T08:45:22.717632+00:00",
   "items": [
     {
       "key": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
@@ -453,41 +453,76 @@
       "deep_dive_priority_score": 75.0
     },
     {
-      "key": "https://news.ycombinator.com/item?id=49583675",
-      "deferred_at": "2026-09-07T02:19:53.309463+00:00",
-      "expires_at": "2026-09-21T02:19:53.309463+00:00",
+      "key": "https://arxiv.org/abs/2609.21894",
+      "deferred_at": "2026-09-21T08:45:22.717462+00:00",
+      "expires_at": "2026-11-20T08:45:22.717462+00:00",
       "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Anthropic IPO launch shifts toward mid-October",
-        "originalTitle": "Anthropic IPO launch shifts toward mid-October",
-        "displayName": "Anthropic IPO launch shifts toward mid-October",
+        "source": "ArXiv",
+        "nameWithOwner": "LLMs as Feature Engineers for Text-and-Tabular Prediction",
+        "originalTitle": "LLMs as Feature Engineers for Text-and-Tabular Prediction",
+        "displayName": "LLMs as Feature Engineers for Text-and-Tabular Prediction",
         "sourceLanguage": "en",
-        "url": "https://www.cnbc.com/2026/09/05/anthropic-ipo-launch-shifts-toward-mid-october-reuters.html",
-        "description": "Anthropic IPO launch shifts toward mid-October",
-        "stargazerCount": 4,
+        "url": "https://arxiv.org/abs/2609.21894v1",
+        "description": "We introduce an iterative framework that automates the extraction of interpretable, schema-bound categorical features from unstructured text for tabular prediction models. To navigate the feature space, a generator LLM proposes semantic definitions, a separate extractor LLM materializes the features, and a downstream tabular model evaluates their predictive performance. We optimize this search by translating explicit model errors, such as AUC ranking inversions, into natural-language feedback, s",
+        "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": "2026-09-06T05:45:31Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=Anthropic",
-        "primaryUrl": "https://www.cnbc.com/2026/09/05/anthropic-ipo-launch-shifts-toward-mid-october-reuters.html",
+        "publishedAt": "2026-09-18T15:22:15Z",
+        "sourceContext": "We introduce an iterative framework that automates the extraction of interpretable, schema-bound categorical features from unstructured text for tabular prediction models. To navigate the feature space, a generator LLM proposes semantic definitions, a separate extractor LLM materializes the features, and a downstream tabular model evaluates their predictive performance. We optimize this search by translating explicit model errors, such as AUC ranking inversions, into natural-language feedback, steering the LLM to resolve specific predictive failures. Evaluated across three public datasets, this error-driven loop accelerates feature discovery by up to $3\\times$ compared to unguided search. Empirically, the generated features demonstrate strong multi-view complementarity, strictly outperforming any subset when combined with TF-IDF and dense embeddings. Finally, the framework guarantees instance-level interpretability: the discovered features dominate SHAP importance rankings and provide a fully transparent, semantic audit trail for every prediction.",
+        "primaryUrl": "https://arxiv.org/abs/2609.21894v1",
         "sourceDetails": {
-          "hn_id": "49583675",
-          "hn_url": "https://news.ycombinator.com/item?id=49583675",
-          "external_url": "https://www.cnbc.com/2026/09/05/anthropic-ipo-launch-shifts-toward-mid-october-reuters.html",
-          "comments": 0,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
+          "authors": [
+            "Merwan Barlier",
+            "Blaz Skrlj"
+          ],
+          "categories": [
+            "cs.LG"
+          ]
         }
       },
-      "notion_page_id": "3d4479ff-dca9-8122-8f22-f63310490001",
-      "score": 70,
-      "reason": "AnthropicのIPOスケジュールに関する報道。",
-      "commercial_score": 80,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "OTHER",
-      "deep_dive_priority_score": 73.5
+      "notion_page_id": "3e2479ff-dca9-8124-8087-f3926e4e5a81",
+      "score": 75,
+      "reason": "テキスト・表データ予測のためのLLM特徴量エンジニアリング",
+      "commercial_score": 70,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.22005",
+      "deferred_at": "2026-09-21T08:45:22.717339+00:00",
+      "expires_at": "2026-11-20T08:45:22.717339+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Abstention and Noise Filtering: Two Missing Primitives of Softmax Attention",
+        "originalTitle": "Abstention and Noise Filtering: Two Missing Primitives of Softmax Attention",
+        "displayName": "Abstention and Noise Filtering: Two Missing Primitives of Softmax Attention",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.22005v1",
+        "description": "Gating the value pathway of attention reportedly improves language model pretraining, and prior studies disagree on why. We argue and provide experimental evidence that such gates supply two different things that softmax attention lacks: abstention and noise filtering. The first is abstention, which allows an attention head to output nothing, bypassing the requirement that attention weights must sum to one. The second is noise filtering, which allows the value pathway of an attention head to sup",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-18T17:03:58Z",
+        "sourceContext": "Gating the value pathway of attention reportedly improves language model pretraining, and prior studies disagree on why. We argue and provide experimental evidence that such gates supply two different things that softmax attention lacks: abstention and noise filtering. The first is abstention, which allows an attention head to output nothing, bypassing the requirement that attention weights must sum to one. The second is noise filtering, which allows the value pathway of an attention head to suppress interference from superposed features in the residual stream. In our experiments in matched models from 10M to 350M parameters, we supply abstention through a learned per-head sink logit in the softmax and noise filtering through a gate on each value. We report three empirical findings. First, the benefit of abstention, measured as the reduction in validation loss relative to a matched baseline, declines as models grow, whereas the benefit of noise filtering increases with scale. In particular, abstention accounts for nearly all of the gain from gating at 10M and filtering for most of it at 350M. Second, the best model at every scale is the one with both primitives built in. Third, injecting controlled interference into the values a head reads confirms that the gate removes such interference, and reveals that each of the two gate forms we study has a characteristic blind spot. Supplying both primitives adds negligible parameters and remains compatible with the key-value cache.",
+        "primaryUrl": "https://arxiv.org/abs/2609.22005v1",
+        "sourceDetails": {
+          "authors": [
+            "Richard Zhe Wang"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.CL"
+          ]
+        }
+      },
+      "notion_page_id": "3e2479ff-dca9-81ed-8ea9-c9d1e8934a8b",
+      "score": 75,
+      "reason": "アテンション機構への放棄とノイズフィルタリング機能の付与",
+      "commercial_score": 70,
+      "shelf_life_score": 90,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 73.25
     },
     {
       "key": "https://github.com/Thurbeen/thurbox",
@@ -638,119 +673,78 @@
       "deep_dive_priority_score": 73.05
     },
     {
-      "key": "https://arxiv.org/abs/2609.20761",
-      "deferred_at": "2026-09-20T13:58:08.606041+00:00",
-      "expires_at": "2026-11-19T13:58:08.606041+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
-        "originalTitle": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
-        "displayName": "Agile-WAM: An Agile Tactile World Action Model for Contact-Rich Robot Control",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.20761v1",
-        "description": "World Action Models (WAMs) advance beyond conventional visuomotor policies by jointly predicting future world states and robot actions, enabling the policy to learn physical dynamics that support effective control. However, recent tactile WAMs often rely on large-scale pretrained generative backbones to capture contact-rich physical dynamics, which limit their inference efficiency and flexible deployment. In this paper, we present \\ABBR{}, an agile tactile World Action Model for contact-rich rob",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-17T17:43:51Z",
-        "sourceContext": "World Action Models (WAMs) advance beyond conventional visuomotor policies by jointly predicting future world states and robot actions, enabling the policy to learn physical dynamics that support effective control. However, recent tactile WAMs often rely on large-scale pretrained generative backbones to capture contact-rich physical dynamics, which limit their inference efficiency and flexible deployment. In this paper, we present \\ABBR{}, an agile tactile World Action Model for contact-rich robot control. \\ABBR{} encodes visual and tactile observations into a shared latent that serves as the source of a direct vision-tactile-to-action flow-matching process, which can jointly generate latent representations of action chunks and future visual/tactile latents. A key observation is that vision and tactile signals evolve at inherently different timescales: adjacent visual frames are often highly similar, whereas tactile signals can change abruptly upon contact. We therefore introduce multi-horizon multimodal prediction in \\ABBR{}, which provides supervision for visual latent at a larger temporal offset while predicting the tactile latent in the next frame to capture fine-grained contact dynamics. Across nine simulated and five real-world contact-rich manipulation tasks, \\ABBR{} demonstrates strong and robust performance, outperforming the strongest baseline in success rate while maintaining low inference latency. In particular, in five real-world experiments, \\ABBR{} yields a relative gain of $\\textbf{29.4\\%}$ in overall success rates while achieving inference latency of $\\textbf{11.9 ms}$. These results demonstrate that multimodal WAM can be achieved with an agile architecture suitable for precise and high-frequency robot control. More details are available on our project page: https://hanchuzhou.github.io/TARO_project_page/.",
-        "primaryUrl": "https://arxiv.org/abs/2609.20761v1",
-        "sourceDetails": {
-          "authors": [
-            "Hanchu Zhou",
-            "Brendan Lynch",
-            "Raman Goyal",
-            "Dechen Gao",
-            "Begum Kasap",
-            "Boqi Zhao",
-            "Junshan Zhang"
-          ],
-          "categories": [
-            "cs.RO",
-            "cs.LG"
-          ]
-        }
-      },
-      "notion_page_id": "3e1479ff-dca9-8130-b804-d38cd5a1e555",
-      "score": 70,
-      "reason": "接触検知を伴うロボット制御の効率化モデル。",
-      "commercial_score": 55,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 64.75
-    },
-    {
-      "key": "https://arxiv.org/abs/2609.20732",
-      "deferred_at": "2026-09-20T13:58:08.606425+00:00",
-      "expires_at": "2026-10-04T13:58:08.606425+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Q&A on Any Spreadsheet Requires Interpreting Its Grid Structure",
-        "originalTitle": "Q&A on Any Spreadsheet Requires Interpreting Its Grid Structure",
-        "displayName": "Q&A on Any Spreadsheet Requires Interpreting Its Grid Structure",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.20732v1",
-        "description": "Semantic cell annotation improves chunking interpretability for spreadsheets in LLM-driven RAG systems, aiding answer generation through enriched context rather than improved retrieval accuracy. We propose a novel framework of splitting any spreadsheet into interpretable chunks using cell role annotation. Our framework beats the state of the art, yet it faces a hard ceiling. Spreadsheets are fundamentally two-dimensional unstructured data with continuous relationships and infinite potential cell",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-17T17:22:43Z",
-        "sourceContext": "Semantic cell annotation improves chunking interpretability for spreadsheets in LLM-driven RAG systems, aiding answer generation through enriched context rather than improved retrieval accuracy. We propose a novel framework of splitting any spreadsheet into interpretable chunks using cell role annotation. Our framework beats the state of the art, yet it faces a hard ceiling. Spreadsheets are fundamentally two-dimensional unstructured data with continuous relationships and infinite potential cell roles. Because classification models are restricted to finite, pre-defined classes, they cannot perfectly capture this structural nuance, even with human-level annotation. We show that addressing the spreadsheet-to-LLM bottleneck requires moving beyond discrete cell classification. Instead, the field must develop dimensionality-reduction techniques to directly flatten 2D unstructured spreadsheets into 1D unstructured text. Text chunks would be easier for downstream RAG to interpret and generate from.",
-        "primaryUrl": "https://arxiv.org/abs/2609.20732v1",
-        "sourceDetails": {
-          "authors": [
-            "Zofia Smoleń"
-          ],
-          "categories": [
-            "cs.AI",
-            "cs.SE"
-          ]
-        }
-      },
-      "notion_page_id": "3e1479ff-dca9-8107-85e1-ed32ed269263",
-      "score": 60,
-      "reason": "LLMによるスプレッドシート解析の精度改善。",
-      "commercial_score": 55,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DATA",
-      "deep_dive_priority_score": 58.25
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49761584",
-      "deferred_at": "2026-09-20T13:58:08.606300+00:00",
-      "expires_at": "2026-09-22T13:58:08.606300+00:00",
+      "key": "https://news.ycombinator.com/item?id=49783477",
+      "deferred_at": "2026-09-21T08:45:22.717502+00:00",
+      "expires_at": "2026-09-23T08:45:22.717502+00:00",
       "repo": {
         "source": "HackerNews",
-        "nameWithOwner": "US gov website used AI search tool from China that FBI said copied Anthropic",
-        "originalTitle": "US gov website used AI search tool from China that FBI said copied Anthropic",
-        "displayName": "US gov website used AI search tool from China that FBI said copied Anthropic",
+        "nameWithOwner": "OpenAI Degrading Their Models, Also for Paid Users",
+        "originalTitle": "OpenAI Degrading Their Models, Also for Paid Users",
+        "displayName": "OpenAI Degrading Their Models, Also for Paid Users",
         "sourceLanguage": "en",
-        "url": "https://www.reuters.com/legal/litigation/us-government-website-used-ai-search-tool-china-that-fbi-said-copied-anthropic-2026-09-17/",
-        "description": "US gov website used AI search tool from China that FBI said copied Anthropic",
-        "stargazerCount": 9,
+        "url": "https://old.reddit.com/r/codex/comments/1wkwdfl/the_end_of_the_codex_era_ive_completely_lost/",
+        "description": "OpenAI Degrading Their Models, Also for Paid Users",
+        "stargazerCount": 5,
         "licenseInfo": null,
-        "publishedAt": "2026-09-18T23:22:05Z",
-        "sourceContext": "HN points=9 comments=0 matched_query=Anthropic",
-        "primaryUrl": "https://www.reuters.com/legal/litigation/us-government-website-used-ai-search-tool-china-that-fbi-said-copied-anthropic-2026-09-17/",
+        "publishedAt": "2026-09-21T05:52:36Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=OpenAI",
+        "primaryUrl": "https://old.reddit.com/r/codex/comments/1wkwdfl/the_end_of_the_codex_era_ive_completely_lost/",
         "sourceDetails": {
-          "hn_id": "49761584",
-          "hn_url": "https://news.ycombinator.com/item?id=49761584",
-          "external_url": "https://www.reuters.com/legal/litigation/us-government-website-used-ai-search-tool-china-that-fbi-said-copied-anthropic-2026-09-17/",
+          "hn_id": "49783477",
+          "hn_url": "https://news.ycombinator.com/item?id=49783477",
+          "external_url": "https://old.reddit.com/r/codex/comments/1wkwdfl/the_end_of_the_codex_era_ive_completely_lost/",
           "comments": 0,
-          "matched_query": "Anthropic",
+          "matched_query": "OpenAI",
           "source_role": "market_engineer_reaction",
           "lookback_days": 30,
           "run269_precision": true
         }
       },
-      "notion_page_id": "3e1479ff-dca9-81d6-a49c-dc6529e16597",
-      "score": 60,
-      "reason": "AIツールにおけるサプライチェーンの権利侵害問題。",
-      "commercial_score": 55,
+      "notion_page_id": "3e2479ff-dca9-8167-bbe0-dd6962bc4f31",
+      "score": 70,
+      "reason": "商用モデルの性能劣化に関するユーザー側の実体験報告",
+      "commercial_score": 75,
       "shelf_life_score": 30,
       "shelf_life": "FLASH",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 58.25
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 71.75
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.22056",
+      "deferred_at": "2026-09-21T08:45:22.717570+00:00",
+      "expires_at": "2026-11-20T08:45:22.717570+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Predictable Failure in Multi-Hop Retrieval: Score-Distributional Confidence Scoring and Abstention",
+        "originalTitle": "Predictable Failure in Multi-Hop Retrieval: Score-Distributional Confidence Scoring and Abstention",
+        "displayName": "Predictable Failure in Multi-Hop Retrieval: Score-Distributional Confidence Scoring and Abstention",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.22056v1",
+        "description": "Multi-hop retrieval failures are not uniformly distributed across queries: they cluster in structurally predictable subpopulations. We prove two results formalizing this structure. First (CWAR Reducibility): confident-failure reduction is achievable if and only if retrieval features carry mutual information about success, a condition satisfied by LLM-judge pipelines but substantially weaker in dense-only settings, explaining the AUC-AC gap between regimes. Second (Feature Regime Complementarity)",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-18T17:48:15Z",
+        "sourceContext": "Multi-hop retrieval failures are not uniformly distributed across queries: they cluster in structurally predictable subpopulations. We prove two results formalizing this structure. First (CWAR Reducibility): confident-failure reduction is achievable if and only if retrieval features carry mutual information about success, a condition satisfied by LLM-judge pipelines but substantially weaker in dense-only settings, explaining the AUC-AC gap between regimes. Second (Feature Regime Complementarity): no single ANN score feature achieves best predictive performance across all failure regimes; the dominant feature differs between datasets (query length on MuSiQue, hop-1 concentration on HoVer), and a constructive witness pair shows each is necessary in one regime and non-contributory in the other. We instantiate these principles in RegimeAbstain, which computes a Retrieval Confidence Score (RCS), a logistic function of up to nine query-ANN structural features, all available without any additional LLM call, and uses it to implement a calibrated abstention policy. We define the Confident-Wrong-Answer Rate (CWAR) metric and evaluate across three multi-hop benchmarks (MuSiQue, 2WikiMultiHopQA, HoVer) and two retrieval architectures (LLM-judge and dense-only), covering five failure regimes with CWAR from 14.5% to 62.1%. RCS achieves best or co-best AUC-AC in all five conditions against eight confidence baselines. On MuSiQue (LLM-judge), RCS reduces CWAR from 39.5% to 20.6% at 50% coverage (47.8% relative reduction), with ECE=0.035. A model trained on MuSiQue transfers to 2WikiMultiHopQA with only -0.5pp AUC loss, confirming the domain-agnostic structure of regime features.",
+        "primaryUrl": "https://arxiv.org/abs/2609.22056v1",
+        "sourceDetails": {
+          "authors": [
+            "Andre Bacellar"
+          ],
+          "categories": [
+            "cs.IR",
+            "cs.CL",
+            "cs.LG"
+          ]
+        }
+      },
+      "notion_page_id": "3e2479ff-dca9-819b-9294-caf7fff5937c",
+      "score": 72,
+      "reason": "マルチホップ検索の失敗予測と信頼度スコアリングの理論",
+      "commercial_score": 68,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "DATA",
+      "deep_dive_priority_score": 70.6
     }
   ]
 }
