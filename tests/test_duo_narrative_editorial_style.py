@@ -128,3 +128,21 @@ def test_duo_final_surface_check_blocks_claim_amplification_before_output():
     assert "削除・弱化" in rules
     assert "新しいFactを追加しない" in rules
     assert "追加Provider callを使わない" in rules
+
+
+def test_duo_canonical_pattern_compresses_implementation_inventory_and_unifies_action():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Canonical Reader Pattern" in rules
+    assert "1〜2個" in rules
+    assert "Decision / Action Spine" in rules
+    assert "最終Decisionと矛盾" in rules
+
+
+def test_duo_canonical_pattern_removes_unsupported_certainty_and_makes_dialogue_advance_reasoning():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "断定強度" in rules
+    assert "間違いない" in rules
+    assert "確実" in rules
+    assert "違和感 → 検証 → 判断" in rules
+    assert "説明の挿入" in rules
+    assert "追加Provider callを使わない" in rules
