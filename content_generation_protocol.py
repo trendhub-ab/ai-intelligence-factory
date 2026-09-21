@@ -301,6 +301,13 @@ def _duo_narrative_editorial_style_rules() -> str:
 ・キャラクターの個性は新しいFactや架空体験ではなく、問いの角度・Evidenceへの戻し方・判断の温度差で出す。
 ・このPatternは同一生成call内の編集順序であり、追加Provider callを使わない。Fact / Evidence / Publication / Reader GateとRetry上限は変更しない。
 
+【Intro Claim Ceiling｜導入の断定を一次情報以下に固定】
+・導入・タイトル・冒頭フックは、本文より先に読者へ結論を強く印象づけるため、Source Native Context / Structured Evidenceが直接支える断定強度を上限にする。
+・「〜になる」「〜を変える」「標準になる」「終わる」「置き換える」「確実に進む」など、Evidenceより強い未来予測は削除または弱化し、「〜を示す」「〜を試す」「〜の可能性を検証する」等、一次情報が実際に示す範囲へ戻す。
+・観察・相関・ベンチマーク・研究提案を、導入だけでEvidenceより強い因果へ格上げしない。因果が一次情報で直接立証されていなければ、因果語を削除または弱化する。
+・タイトル／導入で使う数字・比較・最上級・唯一性・緊急性も、Source Native Contextに同じ条件付きで存在するものだけ残す。
+・このIntro Claim CeilingはFinal Claim + Reader Surface Checkの前に同一生成call内で実行する。新しいFactを追加せず、追加Provider callを使わない。
+
 【Final Claim + Reader Surface Check｜出力直前の同一call内セルフ編集】
 ・ARTICLEに残る具体的な数値、割合、時間、価格、性能比較をSource Native Context / Structured Evidenceへ一つずつ戻し、直接支えられないものは削除・弱化する。
 ・観測、相関、ベンチマーク結果、研究者の示唆を因果へ格上げしない。「示した」から「実現する」「改善する」への増幅も、根拠がなければ戻す。
