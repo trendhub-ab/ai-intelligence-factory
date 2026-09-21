@@ -30,6 +30,7 @@ jobs:
           set -euo pipefail
           mode="$(printf '%s\n' "$BODY" | sed -n 's/^mode=//p' | head -1)"
           style="$(printf '%s\n' "$BODY" | sed -n 's/^editorial_style=//p' | head -1)"
+          excluded_models="$(printf '%s\n' "$BODY" | sed -n 's/^excluded_models=//p' | head -1)"
           case "$mode" in
             full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation) ;;
             *) echo "::error::Invalid reserved mode"; exit 1 ;;
@@ -39,19 +40,26 @@ jobs:
             *) echo "::error::Invalid reserved editorial_style"; exit 1 ;;
           esac
           printf 'mode=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+          case "$excluded_models" in
+            ""|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
+            *) echo "::error::Invalid run-scoped excluded_models"; exit 1 ;;
+          esac
           printf 'style=%s\n' "$style" >> "$GITHUB_OUTPUT"
+          printf 'excluded_models=%s\n' "$excluded_models" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch guarded ONE-SHOT
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           MODE: ${{ steps.request.outputs.mode }}
           STYLE: ${{ steps.request.outputs.style }}
+          EXCLUDED_MODELS: ${{ steps.request.outputs.excluded_models }}
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo "::error::GH_PAT is required"; exit 1; }
           gh workflow run daily-one-shot.yml --repo "${GITHUB_REPOSITORY}" --ref main \
             -f mode="$MODE" \
             -f editorial_style="$STYLE" \
+            -f excluded_models="$EXCLUDED_MODELS" \
             -f confirm=RUN_ONCE
 
       - name: Mark reservation consumed
