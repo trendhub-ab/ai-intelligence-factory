@@ -108,3 +108,23 @@ def test_duo_reader_blueprint_precedes_prose_and_targets_real_production_failure
     assert "根拠が曖昧なら数値を削る" in rules
     assert "連続する問い" in rules
     assert "追加Provider callではない" in rules
+
+
+def test_duo_reader_spine_contract_prevents_report_inventory_and_duplicate_exposition():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Single Reader Spine" in rules
+    assert "普通語を先、正式名称を後" in rules
+    assert "会話で置換" in rules
+    assert "Decisionを変えない実装名" in rules
+    assert "本文へ持ち込まない" in rules
+    assert "一つの主張、一つの意味、一つの制約" in rules
+
+
+def test_duo_final_surface_check_blocks_claim_amplification_before_output():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Final Claim + Reader Surface Check" in rules
+    assert "因果へ格上げ" in rules
+    assert "Source Native Context" in rules
+    assert "削除・弱化" in rules
+    assert "新しいFactを追加しない" in rules
+    assert "追加Provider callを使わない" in rules
