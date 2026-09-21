@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-21T08:45:22.717632+00:00",
+  "updated_at": "2026-09-21T08:47:43.359088+00:00",
   "items": [
-    {
-      "key": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
-      "deferred_at": "2026-09-16T18:13:16.828112+00:00",
-      "expires_at": "2026-09-30T18:13:16.828112+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
-        "originalTitle": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
-        "displayName": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
-        "sourceLanguage": "en",
-        "url": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
-        "description": "DeepSeek v4.1 Flash Is Now Our Best Hacking Model",
-        "stargazerCount": 121,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-16T12:19:55Z",
-        "sourceContext": "HN points=121 comments=46 matched_query=DeepSeek",
-        "primaryUrl": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
-        "sourceDetails": {
-          "hn_id": "49725800",
-          "hn_url": "https://news.ycombinator.com/item?id=49725800",
-          "external_url": "https://enclave.ai/blog/deepseek-v41-flash-is-now-our-best-hacking-model",
-          "comments": 46,
-          "matched_query": "DeepSeek",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dd479ff-dca9-8107-aa9a-f8dc4fa82a43",
-      "score": 80,
-      "reason": "セキュリティ特化型モデルの実用性と性能の向上。",
-      "commercial_score": 82,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49724407",
       "deferred_at": "2026-09-16T18:13:16.828466+00:00",
