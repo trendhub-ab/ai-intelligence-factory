@@ -40,6 +40,11 @@ on:
         required: false
         default: ''
         type: string
+      exact_target:
+        description: 'Optional exact existing article name; article_validation only; fail closed on miss'
+        required: false
+        default: ''
+        type: string
       confirm:
         description: 'Type RUN_ONCE to execute exactly one production ONE-SHOT'
         required: true
@@ -62,6 +67,7 @@ jobs:
       AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
       AIIF_EDITORIAL_STYLE: ${{ inputs.editorial_style }}
       AIIF_GEMINI_TEMP_EXCLUDED_MODELS: ${{ inputs.excluded_models }}
+      ARTICLE_REVALIDATION_EXACT_TARGET: ${{ inputs.exact_target }}
 
     steps:
       - name: One-shot safety contract
@@ -79,6 +85,7 @@ jobs:
             ""|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
           esac
+          if [ -n "${{ inputs.exact_target }}" ] && [ "${{ inputs.mode }}" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }} excluded_models=${{ inputs.excluded_models }}. Automatic triggers are intentionally absent."
 
       - name: リポジトリのチェックアウト
