@@ -315,6 +315,14 @@ def _duo_narrative_editorial_style_rules() -> str:
 ・最後に非専門読者の視点で、未説明の略語、固有名詞の列、実装在庫、本文と会話の重複、同じ結論の言い換えを削る。
 ・このチェックでは新しいFactを追加しない。削除・弱化・順序変更・普通語への置換だけを使い、追加Provider callを使わない。
 
+
+【Publishable Duo Ready Contract｜機械Readyと公開品質を一致させる】
+・Duo Presence Check: duo_narrativeでは、完成稿から二人を削除した時に「違和感 → 検証 → 判断」の理解経路が実質的に変わらないなら、会話は説明の挿入に留まっている。本文と重複する台詞を削り、フェルンはEvidenceの境界・技術のキモ、クレハは読者の疑問・過大評価への反証・実務上の意味を担当して、推論を前へ進める。固定会話数・固定比率は設けない。
+・Character Evidence Boundary: キャラクターの台詞にもEvidence例外はない。企業の公式文書・一次情報、コミュニティ投稿、モデレーターや第三者の分析、筆者の推論を区別する。コミュニティやモデレーターの説明を「OpenAIが確認した」「公式見解である」等の公式確認済みの事実へ格上げしない。帰属が必要な主張はキャラクターの台詞でも帰属を残す。
+・Reader Review Ceiling: Accessibility / Jargon Translation / Non-Engineer Core Clarity / Information Budget / Implementation Detail Load の主要読者面で複数のREVIEW相当が残る完成稿を、表面的なPublication PASSだけで公開可能とみなさない。Evidence・数値・制約を削らず、Decisionに不要な専門語・実装在庫・重複説明を同一生成call内で圧縮し、非専門読者が核心を一文で説明できる表面へ戻す。
+・Decision-linked CTA: CTAは最終Decisionと同じ温度で接続する。WATCHは継続監視するEvidence/変化点、WAITは判断を急がず次に確認すべき条件、TRYは小さく試すための判断材料、ADOPTは導入時に継続確認するリスクと運用情報へつなぐ。記事がWAITなのに「今すぐ使えるAIを選ぶ」等、最終Decisionと矛盾する一般CTAへ飛ばさない。
+・このContractは生成・同一call内セルフ編集の品質条件であり、新しいFact、固定会話数、追加Provider callを使わない。Fact / Evidence / Publication GateとRetry上限は一切緩和しない。
+
 完成稿の目標は「フェルンとクレハの会話を読むための記事」ではなく、
 二人と一緒に考えていたら、難しい技術の核心と限界を自然に理解できていた記事である。
 """
