@@ -339,7 +339,14 @@ def main() -> None:
     # silently change the validation target after every Gate fix. The dedicated lane is
     # read-only (persist_results=False) and bounded.
     if mode == "article_validation":
-        run_article_revalidation(pipeline)
+        result = run_article_revalidation(pipeline)
+        # Fail closed when a selected validation target produces no manuscript.
+        # The non-zero process exit also blocks the workflow success-only post-run fan-out.
+        if int(result.get("selected", 0) or 0) > 0 and int(result.get("generated", 0) or 0) == 0:
+            raise RuntimeError(
+                "article_validation selected a target but generated no manuscript; "
+                "refusing successful ONE-SHOT completion and downstream fan-out"
+            )
         return
 
     # Run277 production repair lane. Outside this explicit mode the historical runtime
