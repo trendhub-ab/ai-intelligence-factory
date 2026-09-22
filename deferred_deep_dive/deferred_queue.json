@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-21T08:47:43.359088+00:00",
+  "updated_at": "2026-09-22T08:58:48.186890+00:00",
   "items": [
     {
       "key": "https://news.ycombinator.com/item?id=49724407",
@@ -599,43 +599,6 @@
       "deep_dive_priority_score": 73.25
     },
     {
-      "key": "https://news.ycombinator.com/item?id=49764030",
-      "deferred_at": "2026-09-19T18:09:57.428309+00:00",
-      "expires_at": "2026-09-21T18:09:57.428309+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Claude couldn't hack OpenAI. Then Anthropic shipped Opus 5",
-        "originalTitle": "Claude couldn't hack OpenAI. Then Anthropic shipped Opus 5",
-        "displayName": "Claude couldn't hack OpenAI. Then Anthropic shipped Opus 5",
-        "sourceLanguage": "en",
-        "url": "https://thenewstack.io/claude-exploits-openai-forum/",
-        "description": "Claude couldn't hack OpenAI. Then Anthropic shipped Opus 5",
-        "stargazerCount": 12,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-19T06:52:44Z",
-        "sourceContext": "HN points=12 comments=1 matched_query=OpenAI",
-        "primaryUrl": "https://thenewstack.io/claude-exploits-openai-forum/",
-        "sourceDetails": {
-          "hn_id": "49764030",
-          "hn_url": "https://news.ycombinator.com/item?id=49764030",
-          "external_url": "https://thenewstack.io/claude-exploits-openai-forum/",
-          "comments": 1,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e0479ff-dca9-81f0-9ca4-c9478d06293a",
-      "score": 72,
-      "reason": "Anthropicの新モデルとセキュリティ関連の話題。",
-      "commercial_score": 75,
-      "shelf_life_score": 30,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 73.05
-    },
-    {
       "key": "https://news.ycombinator.com/item?id=49783477",
       "deferred_at": "2026-09-21T08:45:22.717502+00:00",
       "expires_at": "2026-09-23T08:45:22.717502+00:00",
@@ -708,6 +671,81 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DATA",
       "deep_dive_priority_score": 70.6
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.24927",
+      "deferred_at": "2026-09-22T08:58:48.186492+00:00",
+      "expires_at": "2026-11-21T08:58:48.186492+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Et Tu, Brute? Economic Misalignment in Personal AI Agents",
+        "originalTitle": "Et Tu, Brute? Economic Misalignment in Personal AI Agents",
+        "displayName": "Et Tu, Brute? Economic Misalignment in Personal AI Agents",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.24927v1",
+        "description": "Personal AI agents make recommendations and take actions on people's behalf in high-stakes economic contexts, e.g., buying a flight, choosing health insurance, or selecting a graduate program. The agent is given access to the user's personal context, e.g., their email inbox and a structured profile of personal attributes, with the intention of making an optimal, personalized decision for the user. We show that by simply providing this personal context, the agent steers recommendations based on i",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-21T17:22:44Z",
+        "sourceContext": "Personal AI agents make recommendations and take actions on people's behalf in high-stakes economic contexts, e.g., buying a flight, choosing health insurance, or selecting a graduate program. The agent is given access to the user's personal context, e.g., their email inbox and a structured profile of personal attributes, with the intention of making an optimal, personalized decision for the user. We show that by simply providing this personal context, the agent steers recommendations based on inferred wealth, without being explicitly instructed to do so. In a suite of 325K experiments on 13 agents across three types of economic decisions (flights, health insurance, and graduate programs), we find that 8 models systematically choose more expensive options for wealthier users when requests are identical. This steering continues even when it directly goes against the user's stated objective: when explicitly instructed to find the cheapest option, some agents still act on the wealth profile they have inferred. It also occurs when wealth is inferred from ambient data, such as emails unrelated to the task. And it persists under privacy controls that block specific attributes: blocking financial attributes largely removes the disparity, but blocking other attributes leaves it unchanged and can increase it by up to 40% for insurance, as agents rely on the remaining signals to infer wealth. Larger and more capable models are no better; Claude Opus 4.8 shows the largest effect. We term this misalignment \"adversarial delegation\", in which the very conditions that make a personal AI agent useful - access to personal information - enable it to act against the user's interests.",
+        "primaryUrl": "https://arxiv.org/abs/2609.24927v1",
+        "sourceDetails": {
+          "authors": [
+            "Aman Priyanshu",
+            "Supriti Vijay",
+            "Brian Jabarian",
+            "Niloofar Mireshghallah"
+          ],
+          "categories": [
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3e3479ff-dca9-819c-8811-ea46d5553ffc",
+      "score": 68,
+      "reason": "パーソナルAIにおける経済的ミスアライメントの分析",
+      "commercial_score": 65,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 66.95
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49786811",
+      "deferred_at": "2026-09-22T08:58:48.186719+00:00",
+      "expires_at": "2026-10-06T08:58:48.186719+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
+        "originalTitle": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
+        "displayName": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
+        "sourceLanguage": "en",
+        "url": "https://twitter.com/wallstengine/status/2101982843656388644",
+        "description": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
+        "stargazerCount": 12,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-21T13:06:29Z",
+        "sourceContext": "HN points=12 comments=0 matched_query=DeepSeek",
+        "primaryUrl": "https://twitter.com/wallstengine/status/2101982843656388644",
+        "sourceDetails": {
+          "hn_id": "49786811",
+          "hn_url": "https://news.ycombinator.com/item?id=49786811",
+          "external_url": "https://twitter.com/wallstengine/status/2101982843656388644",
+          "comments": 0,
+          "matched_query": "DeepSeek",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e3479ff-dca9-8195-a866-fe7bab6310f8",
+      "score": 65,
+      "reason": "DeepSeekの大規模モデル学習・計画の動向",
+      "commercial_score": 70,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 66.75
     }
   ]
 }
