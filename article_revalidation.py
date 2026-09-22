@@ -70,6 +70,7 @@ def select_revalidation_items(
     include_stale_ready: bool = False,
     prefer_stale_ready: bool = False,
     stale_ready_probe_limit: int = DEFAULT_STALE_READY_PROBE_LIMIT,
+    exact_target: str = "",
 ):
     """Return existing Deep Dive rows that require current-gate revalidation.
 
@@ -90,6 +91,12 @@ def select_revalidation_items(
     rows = pipeline.get_regen_test_items(scan_limit, "")
     if rows is None:
         return None
+    exact_target = str(exact_target or "").strip()
+    if exact_target:
+        rows = [row for row in rows if str((row.get("repo") or {}).get("nameWithOwner") or "").strip() == exact_target]
+        if not rows:
+            pipeline.logger.warning("[ARTICLE REVALIDATION EXACT TARGET MISS] %s", exact_target)
+            return []
 
     editorial: list[dict] = []
     ready_candidates: list[tuple[dict, str, str]] = []
@@ -229,11 +236,13 @@ def run_article_revalidation(pipeline, limit: int | None = None) -> dict[str, An
         selected_limit,
         request_budget,
     )
+    exact_target = str(os.environ.get("ARTICLE_REVALIDATION_EXACT_TARGET", "") or "").strip()
     items = select_revalidation_items(
         pipeline,
         selected_limit,
         DEFAULT_SCAN_LIMIT,
         include_stale_ready=True,
+        exact_target=exact_target,
     )
     if items is None:
         raise RuntimeError("Article revalidation candidate read failed")

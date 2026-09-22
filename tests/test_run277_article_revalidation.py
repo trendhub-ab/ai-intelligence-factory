@@ -349,3 +349,34 @@ def test_normal_execution_does_not_accidentally_enter_validation(monkeypatch):
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
 
     assert production_pipeline._workflow_dispatch_mode() == ""
+
+
+def test_exact_target_selects_only_exact_existing_name_and_fails_closed(monkeypatch):
+    pipeline, _ = _selector_pipeline()
+    rows = [
+        {"notion_page_id": "a", "repo": {"nameWithOwner": "OpenAI doesn't cryptographically sign its API responses"}},
+        {"notion_page_id": "b", "repo": {"nameWithOwner": "NemotronLabs VoiceChat"}},
+    ]
+    pipeline.get_regen_test_items = lambda limit, source: rows
+    pipeline.requests.get = lambda url, headers=None, timeout=None: _Response("Needs Editorial Review", "Deep Dive")
+    selected = article_revalidation.select_revalidation_items(
+        pipeline, limit=1, exact_target="OpenAI doesn't cryptographically sign its API responses"
+    )
+    assert [x["notion_page_id"] for x in selected] == ["a"]
+    assert article_revalidation.select_revalidation_items(
+        pipeline, limit=1, exact_target="OpenAI"
+    ) == []
+
+
+def test_exact_target_env_is_forwarded_by_revalidation(monkeypatch):
+    class DailyQuotaExhaustedError(Exception):
+        pass
+    pipeline = SimpleNamespace(logger=_Logger(), DEEP_DIVE_MODEL_BUDGET=SimpleNamespace(budget=12))
+    seen = {}
+    def select(*args, **kwargs):
+        seen.update(kwargs)
+        return []
+    monkeypatch.setattr(article_revalidation, "select_revalidation_items", select)
+    monkeypatch.setenv("ARTICLE_REVALIDATION_EXACT_TARGET", "target-name")
+    article_revalidation.run_article_revalidation(pipeline, limit=1)
+    assert seen["exact_target"] == "target-name"
