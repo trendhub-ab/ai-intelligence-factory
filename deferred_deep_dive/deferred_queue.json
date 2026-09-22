@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-22T08:58:48.186890+00:00",
+  "updated_at": "2026-09-22T08:58:51.696472+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49724407",
-      "deferred_at": "2026-09-16T18:13:16.828466+00:00",
-      "expires_at": "2026-09-30T18:13:16.828466+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
-        "originalTitle": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
-        "displayName": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
-        "sourceLanguage": "en",
-        "url": "https://www.reuters.com/legal/litigation/openais-rogue-agents-probed-hugging-face-weaknesses-two-months-before-major-hack-2026-09-16/",
-        "description": "OpenAI agents probed Hugging Face for weaknesses two months before major hack",
-        "stargazerCount": 7,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-16T10:27:57Z",
-        "sourceContext": "HN points=7 comments=0 matched_query=OpenAI",
-        "primaryUrl": "https://www.reuters.com/legal/litigation/openais-rogue-agents-probed-hugging-face-weaknesses-two-months-before-major-hack-2026-09-16/",
-        "sourceDetails": {
-          "hn_id": "49724407",
-          "hn_url": "https://news.ycombinator.com/item?id=49724407",
-          "external_url": "https://www.reuters.com/legal/litigation/openais-rogue-agents-probed-hugging-face-weaknesses-two-months-before-major-hack-2026-09-16/",
-          "comments": 0,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dd479ff-dca9-812c-a95f-f7423c3ccc33",
-      "score": 79,
-      "reason": "AIエージェントによるプラットフォーム脆弱性探索事例。",
-      "commercial_score": 80,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 79.35
-    },
     {
       "key": "https://github.com/rapiddweller/datamimic",
       "deferred_at": "2026-09-16T09:29:33.398003+00:00",
