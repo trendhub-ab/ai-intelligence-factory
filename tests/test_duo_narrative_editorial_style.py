@@ -158,3 +158,32 @@ def test_duo_intro_claim_ceiling_is_source_native_and_same_call():
     assert "削除または弱化" in rules
     assert "同一生成call" in rules
     assert "追加Provider callを使わない" in rules
+
+
+def test_duo_publishable_ready_contract_requires_reasoning_presence_without_dialogue_quota():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Publishable Duo Ready Contract" in rules
+    assert "Duo Presence Check" in rules
+    assert "二人を削除" in rules
+    assert "違和感 → 検証 → 判断" in rules
+    assert "固定会話数" in rules
+
+
+def test_duo_publishable_ready_contract_preserves_evidence_boundary_inside_character_speech():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Character Evidence Boundary" in rules
+    assert "コミュニティ" in rules
+    assert "公式確認済みの事実" in rules
+    assert "キャラクターの台詞" in rules
+    assert "Evidence例外" in rules
+
+
+def test_duo_publishable_ready_contract_has_reader_review_ceiling_and_decision_linked_cta():
+    rules = cgp.editorial_style_rules("duo_narrative")
+    assert "Reader Review Ceiling" in rules
+    for phrase in ("Accessibility", "Jargon Translation", "Non-Engineer Core Clarity", "Information Budget", "Implementation Detail Load"):
+        assert phrase in rules
+    assert "Decision-linked CTA" in rules
+    for decision in ("WATCH", "WAIT", "TRY", "ADOPT"):
+        assert decision in rules
+    assert "追加Provider callを使わない" in rules
