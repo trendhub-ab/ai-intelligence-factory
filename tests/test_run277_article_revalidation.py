@@ -380,3 +380,13 @@ def test_exact_target_env_is_forwarded_by_revalidation(monkeypatch):
     monkeypatch.setenv("ARTICLE_REVALIDATION_EXACT_TARGET", "target-name")
     article_revalidation.run_article_revalidation(pipeline, limit=1)
     assert seen["exact_target"] == "target-name"
+
+
+def test_article_validation_main_fails_closed_when_selected_target_generates_zero(monkeypatch):
+    source = production_pipeline.__file__
+    # Contract-level regression: the production entrypoint must turn selected=1/generated=0
+    # into a non-zero failure so GitHub's success-only fan-out cannot run.
+    text = open(source, encoding="utf-8").read()
+    assert 'int(result.get("selected", 0) or 0) > 0' in text
+    assert 'int(result.get("generated", 0) or 0) == 0' in text
+    assert "refusing successful ONE-SHOT completion and downstream fan-out" in text
