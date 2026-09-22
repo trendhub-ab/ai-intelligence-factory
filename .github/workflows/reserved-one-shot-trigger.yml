@@ -60,7 +60,6 @@ jobs:
           STYLE: ${{ steps.request.outputs.style }}
           EXCLUDED_MODELS: ${{ steps.request.outputs.excluded_models }}
           EXACT_TARGET: ${{ steps.request.outputs.exact_target }}
-          EXACT_TARGET: ${{ steps.request.outputs.exact_target }}
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo "::error::GH_PAT is required"; exit 1; }
