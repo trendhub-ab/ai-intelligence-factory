@@ -31,7 +31,6 @@ jobs:
           mode="$(printf '%s\n' "$BODY" | sed -n 's/^mode=//p' | head -1)"
           style="$(printf '%s\n' "$BODY" | sed -n 's/^editorial_style=//p' | head -1)"
           exact_target="$(printf '%s\n' "$BODY" | sed -n 's/^exact_target=//p' | head -1)"
-          exact_target="$(printf '%s\n' "$BODY" | sed -n 's/^exact_target=//p' | head -1)"
           excluded_models="$(printf '%s\n' "$BODY" | sed -n 's/^excluded_models=//p' | head -1)"
           case "$mode" in
             full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation) ;;
@@ -47,8 +46,6 @@ jobs:
             *) echo "::error::Invalid run-scoped excluded_models"; exit 1 ;;
           esac
           printf 'style=%s\n' "$style" >> "$GITHUB_OUTPUT"
-          if [ -n "$exact_target" ] && [ "$mode" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
-          printf 'exact_target=%s\n' "$exact_target" >> "$GITHUB_OUTPUT"
           if [ -n "$exact_target" ] && [ "$mode" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
           printf 'exact_target=%s\n' "$exact_target" >> "$GITHUB_OUTPUT"
           printf 'excluded_models=%s\n' "$excluded_models" >> "$GITHUB_OUTPUT"
