@@ -186,7 +186,7 @@ def install_run349_score_narrative_negation_precision(pipeline_module):
 
 
 _ONE_SHOT_MODES = frozenset({
-    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation", "stale_ready_batch_revalidation",
+    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation", "production_e2e_validation", "stale_ready_batch_revalidation",
 })
 
 
@@ -331,6 +331,11 @@ def main() -> None:
         from ready_rescue_validation import run
         from run374_ready_rescue import install
         install(pipeline)
+        run(pipeline)
+        return
+
+    if mode == "production_e2e_validation":
+        from production_e2e_validation import run
         run(pipeline)
         return
 

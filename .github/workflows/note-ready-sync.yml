@@ -8,6 +8,11 @@ on:
         required: true
         default: true
         type: boolean
+      target_sync_id:
+        description: 'Optional exact Content Intelligence sync_id to keep Production E2E causality pinned'
+        required: false
+        default: ''
+        type: string
   push:
     branches: [main]
     paths:
@@ -167,11 +172,12 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+          TARGET_SYNC_ID: ${{ inputs.target_sync_id }}
         run: |
           python - <<'PY'
           import os
           import run199_note_vm_preflight as preflight
-          result = preflight.preflight("")
+          result = preflight.preflight(os.environ.get("TARGET_SYNC_ID", ""))
           eligible = result.get("status") == "eligible_ready" and result.get("should_start_vm") is True
           selected = str(result.get("selected_sync_id") or "").strip()
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
