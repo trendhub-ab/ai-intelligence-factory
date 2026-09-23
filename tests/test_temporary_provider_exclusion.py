@@ -85,9 +85,9 @@ class TemporaryExclusionTests(unittest.TestCase):
 
     def test_rescue_sender_cap_also_blocks_non_deep_dive_repairs(self):
         scope, sdk, ledger = self.sender()
-        scope.update(_READY_RESCUE_ACTIVE=True, _READY_RESCUE_PROVIDER_SENDS=0)
+        scope.update(_READY_RESCUE_ACTIVE=True, _READY_RESCUE_PROVIDER_SENDS=0, _READY_RESCUE_PROVIDER_SEND_LIMIT=1)
         scope["_generate_via_chat"]("gemini-3.5-flash", "p")
-        with self.assertRaisesRegex(RuntimeError, "one provider send"):
+        with self.assertRaisesRegex(RuntimeError, "provider-send limit exhausted"):
             scope["_generate_via_chat"]("gemini-3.7-flash", "p", request_kind="eyecatch_layout")
         self.assertEqual(ledger.call_count, 1)
         self.assertEqual(sdk.chats.create.call_count, 1)
@@ -111,13 +111,17 @@ class TemporaryExclusionTests(unittest.TestCase):
             p._call_product_review_pool("p", "test")
         self.assertEqual([c[0] for c in calls], ["gemini-3.5-flash"])
 
-    def test_rescue_503_never_confirms_or_falls_back(self):
-        p, calls, *_ = make_pipeline([FakeAPIError("503", code=503), "must not send"])
+    def test_rescue_503_skips_excluded_model_and_falls_back_once(self):
+        p, calls, unavailable, *_ = make_pipeline([FakeAPIError("503", code=503), "ok"])
         p._READY_RESCUE_ACTIVE = True
-        with patch("gemini_provider_resilience.time.sleep"), self.assertRaisesRegex(p.NoAvailableModelError, "no retry or fallback"):
-            p._call_model_pool("p", None, "deep_dive", 0,
-                               ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash"], deep_dive=True)
-        self.assertEqual([c[0] for c in calls], ["gemini-3.5-flash"])
+        with patch("gemini_provider_resilience.time.sleep"):
+            response, model = p._call_model_pool(
+                "p", None, "deep_dive", 0,
+                ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash"], deep_dive=True
+            )
+        self.assertEqual((response, model), ("ok", "gemini-3.7-flash"))
+        self.assertEqual([c[0] for c in calls], ["gemini-3.5-flash", "gemini-3.7-flash"])
+        self.assertEqual(unavailable, [("gemini-3.5-flash", "ready_rescue_transient_http_503")])
 
     def test_mixed_quality_failed_and_editorial_status_is_ineligible(self):
         p = SimpleNamespace(get_regen_test_items=lambda *a: [{"notion_page_id": "x"}],
