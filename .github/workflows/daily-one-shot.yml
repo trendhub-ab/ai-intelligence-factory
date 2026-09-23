@@ -25,6 +25,7 @@ on:
           - article_validation
           - pending_retry_validation
           - ready_rescue_validation
+          - production_e2e_validation
           - stale_ready_batch_revalidation
       editorial_style:
         description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone; duo_narrative = フェルン×クレハ'
@@ -74,7 +75,7 @@ jobs:
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
           case "${{ inputs.mode }}" in
-            full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation) ;;
+            full|article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|stale_ready_batch_revalidation) ;;
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
           case "${{ inputs.editorial_style }}" in
@@ -109,7 +110,7 @@ jobs:
         run: python -m unittest tests.test_temporary_provider_exclusion -v
 
       - name: 通常Production entrypointを1回だけ実行
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'stale_ready_batch_revalidation' }}
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'production_e2e_validation' || inputs.mode == 'stale_ready_batch_revalidation' }}
         run: python production_pipeline.py
         env:
           TZ: 'Asia/Tokyo'
@@ -474,6 +475,32 @@ jobs:
               exit 0
             fi
             gh workflow run note-ready-sync.yml --ref main -f create_private_draft=true
+            exit $?
+          fi
+          if [ "${VALIDATION_MODE:-}" = "production_e2e_validation" ]; then
+            if ! read -r ready_count sync_id < <(python - <<'PY'
+          import json
+          with open("article_audit/production_e2e_validation.json", encoding="utf-8") as handle:
+              result = json.load(handle)
+          ready = result.get("ready")
+          sync_id = str(result.get("sync_id") or "").strip()
+          if type(ready) is not int or ready not in {0, 1}:
+              raise ValueError("Production E2E audit requires ready=0 or 1")
+          if ready == 1 and (len(sync_id) != 32 or any(ch not in "0123456789abcdef" for ch in sync_id.lower())):
+              raise ValueError("Production E2E Ready requires an exact 32-hex sync_id")
+          print(ready, sync_id)
+          PY
+            ); then
+              echo "::error::Production E2E audit missing or invalid; downstream fan-out refused"
+              exit 1
+            fi
+            if [ "$ready_count" -eq 0 ]; then
+              echo "Production E2E produced no Ready article; downstream synchronization skipped."
+              exit 0
+            fi
+            gh workflow run note-ready-sync.yml --ref main \
+              -f create_private_draft=true \
+              -f target_sync_id="$sync_id"
             exit $?
           fi
           for target in note-ready-sync.yml subscriber-decision-brief.yml cross-db-contract-guard.yml; do
