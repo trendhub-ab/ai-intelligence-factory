@@ -121,7 +121,7 @@ Run249の最終面検査は日本語・括弧・要約断片等を確認して�
 
 独立レビューはGRA-5を指摘し、修正後に同じprojectionを使用することと正常な評価意図の例外が維持されることを確認した。再レビューでは追加の具体的不具合指摘はなかった。
 
-最終検証: `python -m pytest -q tests test_run360_gemini_retry_owner.py` → **2,897 passed, 1 warning（179.07秒）**。追加した19件を含む。warningは既存画像テストのPillow `getdata()`非推奨通知。実行環境はPython 3.12.14 / pytest 8.4.2 / Pillow 12.3.0。GitHub CIのPython 3.11環境での結果はPR上で別途確認する。
+最終検証: `python -m pytest -q tests test_run360_gemini_retry_owner.py` → **2,897 passed, 1 warning（179.07秒）**。追加した19件を含む。warningは既存画像テストのPillow `getdata()`非推奨通知。実行環境はPython 3.12.14 / pytest 8.4.2 / Pillow 12.3.0。GitHub ActionsのPython 3.11.16でも同一範囲を再実行し、**2,897 passed, 1 warning（107.01秒）**を確認した。Synthetic smokeも30/30、critical_failures=0、production_write_isolation=trueでPASSした。
 
 ## 維持した条件
 
