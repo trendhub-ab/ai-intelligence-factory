@@ -18,6 +18,7 @@ COMMAND_TO_MODE = {
     "/aiif run article_validation": "article_validation",
     "/aiif run ready_rescue_validation": "ready_rescue_validation",
     "/aiif run production_e2e_validation": "production_e2e_validation",
+    "/aiif run production_e2e_preflight": "production_e2e_preflight",
     "/aiif run pending_retry_validation": "pending_retry_validation",
     "/aiif run full": "full",
     "/aiif run x_discovery_stage2": "x_discovery_stage2",

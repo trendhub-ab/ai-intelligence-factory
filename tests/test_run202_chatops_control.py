@@ -36,6 +36,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "production_e2e_validation")
 
+    def test_production_e2e_preflight_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run production_e2e_preflight"))
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "production_e2e_preflight")
+
     def test_full_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run full"))
         self.assertTrue(result["authorized"])
@@ -112,6 +117,8 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("/aiif run article_validation", text)
         self.assertIn("/aiif run pending_retry_validation", text)
         self.assertIn("/aiif run production_e2e_validation", text)
+        self.assertIn("/aiif run production_e2e_preflight", text)
+        self.assertIn('"e2e_prepare_only":"true"', text)
         self.assertIn("/aiif run full", text)
         self.assertIn("/aiif run x_discovery_stage2", text)
         self.assertNotIn("/aiif run current_policy_ready_recovery", text)

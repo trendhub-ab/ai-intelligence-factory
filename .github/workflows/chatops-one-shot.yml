@@ -30,6 +30,7 @@ jobs:
        github.event.comment.body == '/aiif run pending_retry_validation' ||
        github.event.comment.body == '/aiif run ready_rescue_validation' ||
        github.event.comment.body == '/aiif run production_e2e_validation' ||
+       github.event.comment.body == '/aiif run production_e2e_preflight' ||
        github.event.comment.body == '/aiif run full' ||
        github.event.comment.body == '/aiif run x_discovery_stage2' ||
        github.event.comment.body == '/aiif run stale_ready_portfolio_audit')
@@ -60,7 +61,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|full|x_discovery_stage2|stale_ready_portfolio_audit) ;;
+            article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|x_discovery_stage2|stale_ready_portfolio_audit) ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -94,6 +95,10 @@ jobs:
             production_e2e_validation)
               target='daily-one-shot.yml'
               payload='{"ref":"main","inputs":{"mode":"production_e2e_validation","confirm":"RUN_ONCE"}}'
+              ;;
+            production_e2e_preflight)
+              target='daily-one-shot.yml'
+              payload='{"ref":"main","inputs":{"mode":"production_e2e_validation","e2e_prepare_only":"true","confirm":"RUN_ONCE"}}'
               ;;
             x_discovery_stage2)
               target='x-discovery-stage2-smoke.yml'
