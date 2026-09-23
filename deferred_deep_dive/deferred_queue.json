@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-22T08:58:51.696472+00:00",
+  "updated_at": "2026-09-23T08:15:01.804664+00:00",
   "items": [
     {
       "key": "https://github.com/rapiddweller/datamimic",
@@ -562,6 +562,83 @@
       "deep_dive_priority_score": 73.25
     },
     {
+      "key": "https://www.volcengine.com/docs/ark/migrate-ark-runtime-sdk?lang=zh",
+      "deferred_at": "2026-09-23T08:15:01.804393+00:00",
+      "expires_at": "2026-11-22T08:15:01.804393+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "ByteDance Doubao/Seed — 迁移到方舟官方 SDK",
+        "originalTitle": "ByteDance Doubao/Seed — 迁移到方舟官方 SDK",
+        "displayName": "海外技術情報「ByteDance Doubao/Seed — 迁移到方舟官方 SDK」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://www.volcengine.com/docs/ark/migrate-ark-runtime-sdk?lang=zh",
+        "description": "迁移到方舟官方 SDK",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "迁移到方舟官方 SDK",
+        "primaryUrl": "https://www.volcengine.com/docs/ark/migrate-ark-runtime-sdk?lang=zh",
+        "sourceDetails": {
+          "vendor": "ByteDance Doubao/Seed",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://www.volcengine.com/docs/82379/1799865?lang=zh",
+          "candidate_revision": "e4f274c3655ba45c",
+          "vendor_record_kind": "structured_current_state",
+          "run269_precision": true,
+          "current_state_page": true,
+          "current_state_timestamp_observed": false,
+          "current_state_model_markers_observed": true,
+          "current_state_transport": "official_page_html"
+        }
+      },
+      "notion_page_id": "3e4479ff-dca9-81d1-8844-dd7e70a27d62",
+      "score": 70,
+      "reason": "公式SDK移行に関する実務的な運用変更管理。",
+      "commercial_score": 75,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 71.75
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49807413",
+      "deferred_at": "2026-09-23T08:15:01.804237+00:00",
+      "expires_at": "2026-10-07T08:15:01.804237+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Ask HN: When is fine-tuning a small LLM worth it?",
+        "originalTitle": "Ask HN: When is fine-tuning a small LLM worth it?",
+        "displayName": "Ask HN: When is fine-tuning a small LLM worth it?",
+        "sourceLanguage": "en",
+        "url": "https://news.ycombinator.com/item?id=49807413",
+        "description": "Ask HN: When is fine-tuning a small LLM worth it?",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-22T20:11:30Z",
+        "sourceContext": "HN points=7 comments=9 matched_query=LLM",
+        "primaryUrl": "https://news.ycombinator.com/item?id=49807413",
+        "sourceDetails": {
+          "hn_id": "49807413",
+          "hn_url": "https://news.ycombinator.com/item?id=49807413",
+          "external_url": "",
+          "comments": 9,
+          "matched_query": "LLM",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e4479ff-dca9-817c-9983-f007cce3bb80",
+      "score": 70,
+      "reason": "小規模LLMのファインチューニング費用対効果。",
+      "commercial_score": 75,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 71.75
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49783477",
       "deferred_at": "2026-09-21T08:45:22.717502+00:00",
       "expires_at": "2026-09-23T08:45:22.717502+00:00",
@@ -636,79 +713,40 @@
       "deep_dive_priority_score": 70.6
     },
     {
-      "key": "https://arxiv.org/abs/2609.24927",
-      "deferred_at": "2026-09-22T08:58:48.186492+00:00",
-      "expires_at": "2026-11-21T08:58:48.186492+00:00",
+      "key": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
+      "deferred_at": "2026-09-23T08:15:01.804455+00:00",
+      "expires_at": "2026-10-07T08:15:01.804455+00:00",
       "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Et Tu, Brute? Economic Misalignment in Personal AI Agents",
-        "originalTitle": "Et Tu, Brute? Economic Misalignment in Personal AI Agents",
-        "displayName": "Et Tu, Brute? Economic Misalignment in Personal AI Agents",
+        "source": "OfficialVendor",
+        "nameWithOwner": "Anthropic — What's new in Claude Opus 5.5",
+        "originalTitle": "Anthropic — What's new in Claude Opus 5.5",
+        "displayName": "Anthropic — What's new in Claude Opus 5.5",
         "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.24927v1",
-        "description": "Personal AI agents make recommendations and take actions on people's behalf in high-stakes economic contexts, e.g., buying a flight, choosing health insurance, or selecting a graduate program. The agent is given access to the user's personal context, e.g., their email inbox and a structured profile of personal attributes, with the intention of making an optimal, personalized decision for the user. We show that by simply providing this personal context, the agent steers recommendations based on i",
+        "url": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
+        "description": "What's new in Claude Opus 5.5",
         "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": "2026-09-21T17:22:44Z",
-        "sourceContext": "Personal AI agents make recommendations and take actions on people's behalf in high-stakes economic contexts, e.g., buying a flight, choosing health insurance, or selecting a graduate program. The agent is given access to the user's personal context, e.g., their email inbox and a structured profile of personal attributes, with the intention of making an optimal, personalized decision for the user. We show that by simply providing this personal context, the agent steers recommendations based on inferred wealth, without being explicitly instructed to do so. In a suite of 325K experiments on 13 agents across three types of economic decisions (flights, health insurance, and graduate programs), we find that 8 models systematically choose more expensive options for wealthier users when requests are identical. This steering continues even when it directly goes against the user's stated objective: when explicitly instructed to find the cheapest option, some agents still act on the wealth profile they have inferred. It also occurs when wealth is inferred from ambient data, such as emails unrelated to the task. And it persists under privacy controls that block specific attributes: blocking financial attributes largely removes the disparity, but blocking other attributes leaves it unchanged and can increase it by up to 40% for insurance, as agents rely on the remaining signals to infer wealth. Larger and more capable models are no better; Claude Opus 4.8 shows the largest effect. We term this misalignment \"adversarial delegation\", in which the very conditions that make a personal AI agent useful - access to personal information - enable it to act against the user's interests.",
-        "primaryUrl": "https://arxiv.org/abs/2609.24927v1",
+        "publishedAt": "September 22, 2026",
+        "sourceContext": "What's new in Claude Opus 5.5",
+        "primaryUrl": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
         "sourceDetails": {
-          "authors": [
-            "Aman Priyanshu",
-            "Supriti Vijay",
-            "Brian Jabarian",
-            "Niloofar Mireshghallah"
-          ],
-          "categories": [
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3e3479ff-dca9-819c-8811-ea46d5553ffc",
-      "score": 68,
-      "reason": "パーソナルAIにおける経済的ミスアライメントの分析",
-      "commercial_score": 65,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 66.95
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49786811",
-      "deferred_at": "2026-09-22T08:58:48.186719+00:00",
-      "expires_at": "2026-10-06T08:58:48.186719+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
-        "originalTitle": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
-        "displayName": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
-        "sourceLanguage": "en",
-        "url": "https://twitter.com/wallstengine/status/2101982843656388644",
-        "description": "DeepSeek is training a 2T-parameter model and plans to build an 8T-parameter one",
-        "stargazerCount": 12,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-21T13:06:29Z",
-        "sourceContext": "HN points=12 comments=0 matched_query=DeepSeek",
-        "primaryUrl": "https://twitter.com/wallstengine/status/2101982843656388644",
-        "sourceDetails": {
-          "hn_id": "49786811",
-          "hn_url": "https://news.ycombinator.com/item?id=49786811",
-          "external_url": "https://twitter.com/wallstengine/status/2101982843656388644",
-          "comments": 0,
-          "matched_query": "DeepSeek",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
+          "vendor": "Anthropic",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "candidate_revision": "dcb7214e7b2afe0d",
+          "vendor_record_kind": "structured_html",
           "run269_precision": true
         }
       },
-      "notion_page_id": "3e3479ff-dca9-8195-a866-fe7bab6310f8",
-      "score": 65,
-      "reason": "DeepSeekの大規模モデル学習・計画の動向",
-      "commercial_score": 70,
-      "shelf_life_score": 40,
+      "notion_page_id": "3e4479ff-dca9-812d-a232-eab352b65554",
+      "score": 68,
+      "reason": "最先端商用モデルの新機能と進化追跡。",
+      "commercial_score": 75,
+      "shelf_life_score": 50,
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 66.75
+      "deep_dive_priority_score": 70.45
     }
   ]
 }
