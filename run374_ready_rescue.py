@@ -116,7 +116,18 @@ def remove_unsupported_vague_quantities(article: str, reason_rows: Any) -> tuple
     return repaired, list(dict.fromkeys(changes))
 
 
-def _normalize_rescue_loss(rescued: dict) -> dict:
+def _unsupported_numeric_tokens(reason_rows: Any) -> list[str]:
+    """Return distinct numeric claims already diagnosed by the canonical Fact Gate."""
+    text = _reason_text(reason_rows)
+    tokens: list[str] = []
+    for match in re.finditer(r"unsupported numeric claim:\s*([^\s,，。;；\]|}]+)", text):
+        token = match.group(1).strip("`'\"()（）[]【】")
+        if token and token not in tokens:
+            tokens.append(token)
+    return tokens[:8]
+
+
+def _normalize_rescue_loss(rescued: dict, reason_rows: Any = None) -> dict:
     """Count removed sentences, then let canonical gates decide whether the result is safe.
 
     Run63 exposed a double penalty: two unsupported numeric sentences were correctly
@@ -133,7 +144,14 @@ def _normalize_rescue_loss(rescued: dict) -> dict:
         removed = max(0, int(normalized.get("removed_sentences", 0) or 0))
     except (TypeError, ValueError):
         removed = 3
-    normalized["loss_exceeded"] = bool(removed >= 3)
+    # Run118 exposed a second double-penalty: the same two unsupported numeric
+    # claims can be repeated in prose, so subtractive rescue may remove 3+ sentences
+    # even though it repairs only one or two distinct factual defects. Counting
+    # sentences then blocks an article whose canonical gates all pass.
+    numeric_tokens = _unsupported_numeric_tokens(reason_rows)
+    narrow_repeated_numeric_repair = bool(numeric_tokens) and len(numeric_tokens) <= 2
+    normalized["loss_exceeded"] = bool(removed >= 3 and not narrow_repeated_numeric_repair)
+    normalized["distinct_unsupported_numeric_claims"] = len(numeric_tokens)
     out["_rescue_loss"] = normalized
     return out
 
@@ -146,7 +164,7 @@ def _install_deterministic_vague_rescue(pipeline: Any) -> None:
     @wraps(original)
     def wrapped(parsed: dict, reason_rows):
         rescued, changes = original(parsed, reason_rows)
-        out = _normalize_rescue_loss(dict(rescued or {}))
+        out = _normalize_rescue_loss(dict(rescued or {}), reason_rows)
         article = str(out.get("note_draft") or "")
         repaired, vague_changes = remove_unsupported_vague_quantities(article, reason_rows)
         if vague_changes:

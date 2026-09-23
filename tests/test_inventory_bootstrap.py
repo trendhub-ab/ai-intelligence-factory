@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 
 import inventory_bootstrap as ib
 
-NOW = datetime(2026, 8, 23, tzinfo=timezone.utc)
+NOW = datetime.now(timezone.utc)
 
 
 def rec(**kw):
@@ -144,8 +144,14 @@ class InventoryBootstrapTests(unittest.TestCase):
         for i in range(30):
             rows.append(rec(page_id=str(i), canonical_entity_id=f"e:{i}", assessment_state="ASSESSED",
                             tracking_eligibility=True, adoption_score=80, adoption_status=statuses[i%4],
-                            category=cats[i%4], source=("GitHub",) if i%2 else ("ArXiv",),
-                            evidence_confidence="HIGH", production_readiness="HIGH", last_reviewed=NOW.isoformat()))
+                            category=cats[i%4], source=[("GitHub",), ("ArXiv",), ("HackerNews",)][i%3],
+                            source_summary=f"Evidence-backed production assessment for technology {i} with concrete implementation tradeoffs.",
+                            evidence_confidence="HIGH", production_readiness="HIGH",
+                            main_risk=f"Operational risk {i} requires explicit mitigation before production rollout.",
+                            best_for=f"Teams evaluating production use case {i} with clear ownership and monitoring.",
+                            avoid_for=f"Teams without operational capacity for dependency {i} and its maintenance burden.",
+                            short_rationale=f"Evidence supports a bounded adoption decision for technology {i} under stated constraints.",
+                            last_reviewed=NOW.isoformat()))
         class FakeClient:
             def __init__(self, *a, **k): pass
             def query_data_source(self, ds):
@@ -155,9 +161,11 @@ class InventoryBootstrapTests(unittest.TestCase):
         class A:
             confirm=ib.CONFIRM_TEXT; pipeline=__file__; target=30; min_sellable=24; max_reviews=4; product_request_budget=6; timeout=10
         env = {"NOTION_DECISION_INTELLIGENCE_API_KEY":"x","NOTION_TECH_DATA_SOURCE_ID":"tech","NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID":"sub"}
-        with patch.dict(os.environ, env, clear=False), patch.object(ib, "NotionClient", FakeClient), tempfile.TemporaryDirectory() as td, patch.object(ib, "ARTIFACT_DIR", Path(td)), redirect_stdout(io.StringIO()):
+        with patch.dict(os.environ, env, clear=False), patch.object(ib, "NotionClient", FakeClient), tempfile.TemporaryDirectory() as td, patch.object(ib, "ARTIFACT_DIR", Path(td)), patch.object(ib, "should_skip_apply", wraps=ib.should_skip_apply) as should_skip, patch.object(ib.subprocess, "run", side_effect=AssertionError("pipeline must not run once target and launch readiness are reached")) as run, redirect_stdout(io.StringIO()):
             out = ib.run_apply(A())
         self.assertTrue(out["skipped"])
+        should_skip.assert_called_once()
+        run.assert_not_called()
 
     def test_product_only_environment_disables_acquisition_and_sets_product_caps(self):
         env = ib.product_only_environment(4, 6)

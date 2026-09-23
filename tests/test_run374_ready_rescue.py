@@ -236,3 +236,51 @@ def test_preflight_without_provider_send_keeps_original_fresh_partition(monkeypa
     assert seen == {"budget": 8, "target": 3}
     assert p.DEEP_DIVE_MODEL_BUDGET.used == 0
     assert getattr(p, "_run374_ready_rescue_slot_consumed", False) is False
+
+
+def test_run118_repeated_two_numeric_defects_do_not_double_penalize_rescue_loss():
+    p = types.SimpleNamespace()
+
+    def base(parsed, reason_rows):
+        out = dict(parsed)
+        out["_rescue_loss"] = {
+            "removed_sentences": 4,
+            "important_numeric_removed": True,
+            "loss_exceeded": True,
+        }
+        return out, ["remove_unsupported_sentence:2倍", "remove_unsupported_sentence:1件"]
+
+    p._apply_deterministic_publication_rescue = base
+    p.process_article_backlog = lambda items, generated, rank: (generated, rank)
+    p.TOP_N_FOR_DEEP_DIVE = 0
+    p.DEEP_DIVE_MODEL_BUDGET = Budget(12)
+    p._run346_original_deep_dive_budget = 12
+    p.logger = None
+    run374.install(p)
+
+    reasons = [
+        {"message": "unsupported numeric claim: 2倍"},
+        {"message": "unsupported numeric claim: 1件"},
+    ]
+    repaired, _ = p._apply_deterministic_publication_rescue({"note_draft": "本文"}, reasons)
+    assert repaired["_rescue_loss"]["removed_sentences"] == 4
+    assert repaired["_rescue_loss"]["distinct_unsupported_numeric_claims"] == 2
+    assert repaired["_rescue_loss"]["loss_exceeded"] is False
+
+
+def test_three_distinct_numeric_defects_remain_fail_closed_even_when_repeated():
+    rescued = {
+        "_rescue_loss": {
+            "removed_sentences": 4,
+            "important_numeric_removed": True,
+            "loss_exceeded": False,
+        }
+    }
+    reasons = [
+        {"message": "unsupported numeric claim: 2倍"},
+        {"message": "unsupported numeric claim: 1件"},
+        {"message": "unsupported numeric claim: 390秒"},
+    ]
+    repaired = run374._normalize_rescue_loss(rescued, reasons)
+    assert repaired["_rescue_loss"]["distinct_unsupported_numeric_claims"] == 3
+    assert repaired["_rescue_loss"]["loss_exceeded"] is True
