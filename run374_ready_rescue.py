@@ -24,7 +24,7 @@ _MAIN_PREFLIGHT_FLAG = "_run374_ready_rescue_preflight_installed"
 _SLOT_CONSUMED_ATTR = "_run374_ready_rescue_slot_consumed"
 _PREFLIGHT_GENERATED_ATTR = "_run374_ready_rescue_preflight_generated"
 VAGUE_FAILURE_PREFIX = "unsupported vague quantified claim:"
-READER_RESCUE_REQUESTS = 1
+READER_RESCUE_REQUESTS = 2
 
 
 def _reason_text(reason_rows: Any) -> str:
@@ -194,10 +194,13 @@ def run_reserved_ready_rescue(pipeline: Any, generated_count: int, next_candidat
     from article_revalidation import run_existing_editorial_recovery
 
     previous_cap = int(getattr(budget, "budget", original_cap) or 0)
-    # One request only. A provider failure cannot cascade across several models here.
+    # At most two provider-visible sends: one semantic rescue request plus one distinct-model
+    # transport fallback when the first send fails transiently. Both remain inside the
+    # existing total Deep Dive envelope; no extra semantic retry is granted.
     budget.budget = min(original_cap, used + READER_RESCUE_REQUESTS)
     pipeline._READY_RESCUE_ACTIVE = True
     pipeline._READY_RESCUE_PROVIDER_SENDS = 0
+    pipeline._READY_RESCUE_PROVIDER_SEND_LIMIT = READER_RESCUE_REQUESTS
     logger = getattr(pipeline, "logger", None)
     if logger:
         logger.info(

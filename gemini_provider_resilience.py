@@ -191,11 +191,24 @@ def install(pipeline_module: Any) -> Any:
                 except pipeline_module.APIError as exc:
                     last_error = exc
                     code = _provider_status_code(exc)
-                    if getattr(pipeline_module, "_READY_RESCUE_ACTIVE", False):
-                        raise pipeline_module.NoAvailableModelError(
-                            f"Ready Rescue provider HTTP {code}; no retry or fallback"
-                        ) from exc
+                    ready_rescue = bool(getattr(pipeline_module, "_READY_RESCUE_ACTIVE", False))
                     quota_type = pipeline_module.classify_gemini_quota_error(exc) if code == 429 else ""
+                    if ready_rescue:
+                        # Ready Rescue owns one semantic generation attempt. A structured
+                        # transient provider failure may consume one additional provider send
+                        # on the next distinct healthy model, but never a same-model retry.
+                        if code == 503 or (code == 429 and quota_type in {"RPM", "TPM"}):
+                            pipeline_module.logger.warning(
+                                "[READY RESCUE TRANSIENT FALLBACK] model=%s kind=%s http=%s; preserve semantic attempt and try next distinct model",
+                                model_name, kind, code,
+                            )
+                            pipeline_module._mark_model_unavailable(
+                                model_name, f"ready_rescue_transient_http_{code}"
+                            )
+                            break
+                        raise pipeline_module.NoAvailableModelError(
+                            f"Ready Rescue provider HTTP {code}; non-transient or unsupported fallback"
+                        ) from exc
                     if code == 503:
                         pipeline_module.logger.warning(
                             "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s verified=structured_status",

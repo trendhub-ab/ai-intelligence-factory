@@ -204,3 +204,21 @@ class ProviderResilienceTests(unittest.TestCase):
         self.assertEqual((response, model), ("ok", "m1"))
         self.assertEqual([c[0] for c in calls], ["m1", "m1"])
         self.assertEqual(unavailable, [])
+
+    def test_ready_rescue_503_falls_back_once_to_distinct_model(self):
+        pipeline, calls, unavailable, _, logger = make_pipeline([FakeAPIError("provider unavailable", code=503), "fallback-ok"])
+        pipeline._READY_RESCUE_ACTIVE = True
+        with mock.patch.object(resilience.time, "sleep", return_value=None):
+            response, model = pipeline._call_model_pool("p", None, "quality_retry", 0, ["gemini-3.5-flash", "gemini-3.7-flash"], deep_dive=True)
+        self.assertEqual((response, model), ("fallback-ok", "gemini-3.7-flash"))
+        self.assertEqual([x[0] for x in calls], ["gemini-3.5-flash", "gemini-3.7-flash"])
+        self.assertEqual(unavailable, [("gemini-3.5-flash", "ready_rescue_transient_http_503")])
+        self.assertTrue(any("READY RESCUE TRANSIENT FALLBACK" in row for row in logger.rows))
+
+    def test_ready_rescue_nontransient_error_does_not_fallback(self):
+        pipeline, calls, _, _, _ = make_pipeline([FakeAPIError("bad request", code=400), "must-not-run"])
+        pipeline._READY_RESCUE_ACTIVE = True
+        with mock.patch.object(resilience.time, "sleep", return_value=None):
+            with self.assertRaises(NoAvailableModelError):
+                pipeline._call_model_pool("p", None, "quality_retry", 0, ["gemini-3.5-flash", "gemini-3.7-flash"], deep_dive=True)
+        self.assertEqual([x[0] for x in calls], ["gemini-3.5-flash"])

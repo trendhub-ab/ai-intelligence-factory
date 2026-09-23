@@ -125,7 +125,7 @@ def test_three_removed_sentences_remain_fail_closed():
     assert repaired["_rescue_loss"]["loss_exceeded"] is True
 
 
-def test_reserved_ready_rescue_spends_at_most_one_existing_request(monkeypatch):
+def test_reserved_ready_rescue_reserves_at_most_two_existing_provider_sends(monkeypatch):
     calls = []
 
     def fake_recovery(pipeline, generated_count, next_candidate_rank, limit=1):
@@ -200,7 +200,7 @@ def test_initialized_preflight_preserves_eight_fresh_requests_and_total_article_
     run374.install(p)
     p.main()
 
-    assert calls == [(1, 1)]
+    assert calls == [(2, 1)]
     assert seen == {"budget": 9, "used": 1, "target": 3, "generated": 1, "rank": 0}
     assert p.TOP_N_FOR_DEEP_DIVE == 3
     assert p._run374_ready_rescue_slot_consumed is True
