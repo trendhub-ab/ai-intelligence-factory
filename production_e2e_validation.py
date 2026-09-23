@@ -178,10 +178,26 @@ def select_candidate(pipeline: Any, limit: int = DEFAULT_CANDIDATE_LIMIT):
         diagnostics.append(row)
         if is_eligible:
             checks = evidence_view.get("checks") or {}
+            # E2E is a publishability proof, not a ranking contest. Prefer the candidate
+            # with the most complete current evidence before using the historical
+            # Screening score. This avoids spending the one live generation attempt on
+            # a slightly higher-score article whose limitations/attribution are missing.
+            evidence_completeness = sum(
+                int(bool(checks.get(key)))
+                for key in (
+                    "limitations_or_constraints_available",
+                    "actor_attribution_available",
+                    "conditions_for_numbers_available",
+                    "comparison_support_available_if_comparison_is_needed",
+                    "freshness_status_available_if_time_sensitive",
+                )
+            )
             score = (
-                int(item.get("screening_score") or 0),
+                int(not evidence_view.get("optional_missing")),
+                evidence_completeness,
+                int(not evidence_view.get("freshness_scope_limited")),
                 int(evidence_view.get("documents_checked") or 0),
-                int(bool(checks.get("limitations_or_constraints_available"))),
+                int(item.get("screening_score") or 0),
             )
             eligible.append((score, item, repo, evidence_view))
 

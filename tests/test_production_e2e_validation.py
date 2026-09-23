@@ -90,6 +90,49 @@ def test_select_candidate_uses_zero_provider_preflight_and_highest_screening(mon
     assert p.DEEP_DIVE_MODEL_BUDGET.used == 0
 
 
+def test_select_candidate_prefers_complete_evidence_over_slightly_higher_screening(monkeypatch):
+    p = _pipeline()
+    items = [
+        {"notion_page_id": "11111111-1111-1111-1111-111111111111", "screening_score": 80, "repo": {"nameWithOwner": "Higher score / incomplete", "source": "OfficialVendor"}},
+        {"notion_page_id": "22222222-2222-2222-2222-222222222222", "screening_score": 78, "repo": {"nameWithOwner": "Lower score / complete", "source": "OfficialVendor"}},
+    ]
+    monkeypatch.setattr(e2e, "select_revalidation_items", lambda *args, **kwargs: items)
+    monkeypatch.setattr(e2e, "rehydrate_recovery_repo", lambda pipeline, item: dict(item["repo"]))
+
+    calls = {"n": 0}
+    def assess(_info):
+        calls["n"] += 1
+        complete = calls["n"] == 2
+        return {
+            "state": "SUFFICIENT",
+            "checks": {
+                "primary_source_resolved": True,
+                "technical_claims_available": True,
+                "limitations_or_constraints_available": complete,
+                "conditions_for_numbers_available": True,
+                "actor_attribution_available": complete,
+                "action_support_available": True,
+                "comparison_support_available_if_comparison_is_needed": True,
+                "freshness_status_available_if_time_sensitive": True,
+            },
+            "core_missing": [],
+            "optional_missing": [] if complete else ["limitations_or_constraints_available"],
+            "blocking_missing": [],
+            "documents_checked": 3 if complete else 2,
+            "decision_scope_safe": True,
+            "action_risk_tier": "LOW",
+            "action_supported_at_current_tier": True,
+            "numeric_claims_allowed": True,
+            "freshness_scope_limited": False,
+        }
+    p.assess_evidence_sufficiency = assess
+
+    selected, diagnostics = e2e.select_candidate(p, limit=8)
+    assert selected["repo"]["nameWithOwner"] == "Lower score / complete"
+    assert selected["item"]["screening_score"] == 78
+    assert len(diagnostics) == 2
+
+
 def test_run_persists_exactly_one_selected_article_and_emits_sync_id(monkeypatch, tmp_path):
     p = _pipeline()
     page_id = "12345678-1234-1234-1234-1234567890ab"
