@@ -145,7 +145,13 @@ class InventoryBootstrapTests(unittest.TestCase):
             rows.append(rec(page_id=str(i), canonical_entity_id=f"e:{i}", assessment_state="ASSESSED",
                             tracking_eligibility=True, adoption_score=80, adoption_status=statuses[i%4],
                             category=cats[i%4], source=[("GitHub",), ("ArXiv",), ("HackerNews",)][i%3],
-                            evidence_confidence="HIGH", production_readiness="HIGH", last_reviewed=NOW.isoformat()))
+                            source_summary=f"Evidence-backed production assessment for technology {i} with concrete implementation tradeoffs.",
+                            evidence_confidence="HIGH", production_readiness="HIGH",
+                            main_risk=f"Operational risk {i} requires explicit mitigation before production rollout.",
+                            best_for=f"Teams evaluating production use case {i} with clear ownership and monitoring.",
+                            avoid_for=f"Teams without operational capacity for dependency {i} and its maintenance burden.",
+                            short_rationale=f"Evidence supports a bounded adoption decision for technology {i} under stated constraints.",
+                            last_reviewed=NOW.isoformat()))
         class FakeClient:
             def __init__(self, *a, **k): pass
             def query_data_source(self, ds):
