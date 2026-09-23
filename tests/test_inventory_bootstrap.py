@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 
 import inventory_bootstrap as ib
 
-NOW = datetime(2026, 8, 23, tzinfo=timezone.utc)
+NOW = datetime.now(timezone.utc)
 
 
 def rec(**kw):
