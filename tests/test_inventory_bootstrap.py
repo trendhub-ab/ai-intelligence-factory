@@ -144,7 +144,7 @@ class InventoryBootstrapTests(unittest.TestCase):
         for i in range(30):
             rows.append(rec(page_id=str(i), canonical_entity_id=f"e:{i}", assessment_state="ASSESSED",
                             tracking_eligibility=True, adoption_score=80, adoption_status=statuses[i%4],
-                            category=cats[i%4], source=("GitHub",) if i%2 else ("ArXiv",),
+                            category=cats[i%4], source=[("GitHub",), ("ArXiv",), ("HackerNews",)][i%3],
                             evidence_confidence="HIGH", production_readiness="HIGH", last_reviewed=NOW.isoformat()))
         class FakeClient:
             def __init__(self, *a, **k): pass
