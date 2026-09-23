@@ -46,6 +46,11 @@ on:
         required: false
         default: ''
         type: string
+      e2e_prepare_only:
+        description: 'Production E2E only: select and audit one candidate, then stop before any provider generation request'
+        required: true
+        default: false
+        type: boolean
       confirm:
         description: 'Type RUN_ONCE to execute exactly one production ONE-SHOT'
         required: true
@@ -87,6 +92,7 @@ jobs:
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
           esac
           if [ -n "${{ inputs.exact_target }}" ] && [ "${{ inputs.mode }}" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
+          if [ "${{ inputs.e2e_prepare_only }}" = "true" ] && [ "${{ inputs.mode }}" != "production_e2e_validation" ]; then echo "::error::e2e_prepare_only is production_e2e_validation-only"; exit 1; fi
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }} excluded_models=${{ inputs.excluded_models }}. Automatic triggers are intentionally absent."
 
       - name: リポジトリのチェックアウト
@@ -115,6 +121,7 @@ jobs:
         env:
           TZ: 'Asia/Tokyo'
           AIIF_RUN_MODE: ${{ inputs.mode }}
+          PRODUCTION_E2E_PREPARE_ONLY: ${{ inputs.e2e_prepare_only }}
           AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}
           APIFY_TOKEN: ${{ inputs.mode == 'full' && secrets.APIFY_TOKEN || '' }}
           APIFY_ACTOR_ID: "simple.actor~x-profile-posts"
@@ -486,6 +493,9 @@ jobs:
           sync_id = str(result.get("sync_id") or "").strip()
           if type(ready) is not int or ready not in {0, 1}:
               raise ValueError("Production E2E audit requires ready=0 or 1")
+          prepare_only = result.get("prepare_only") is True
+          if prepare_only and ready != 0:
+              raise ValueError("Production E2E prepare-only must never report Ready")
           if ready == 1 and (len(sync_id) != 32 or any(ch not in "0123456789abcdef" for ch in sync_id.lower())):
               raise ValueError("Production E2E Ready requires an exact 32-hex sync_id")
           print(ready, sync_id)
