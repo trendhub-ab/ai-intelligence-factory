@@ -125,7 +125,7 @@ def test_three_removed_sentences_remain_fail_closed():
     assert repaired["_rescue_loss"]["loss_exceeded"] is True
 
 
-def test_reserved_ready_rescue_spends_at_most_one_existing_request(monkeypatch):
+def test_reserved_ready_rescue_reserves_at_most_two_existing_provider_sends(monkeypatch):
     calls = []
 
     def fake_recovery(pipeline, generated_count, next_candidate_rank, limit=1):
