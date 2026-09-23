@@ -295,8 +295,8 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
     if globals().get("_READY_RESCUE_ACTIVE", False):
         if model_name not in {"gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"} and globals().get("_READY_RESCUE_VALIDATION", False):
             raise NoAvailableModelError("Ready Rescue validation model is outside the approved allowlist")
-        if globals().get("_READY_RESCUE_PROVIDER_SENDS", 0) >= 1:
-            raise DeepDiveRunBudgetExceededError("Ready Rescue permits one provider send, including all repairs")
+        if globals().get("_READY_RESCUE_PROVIDER_SENDS", 0) >= int(globals().get("_READY_RESCUE_PROVIDER_SEND_LIMIT", 1) or 1):
+            raise DeepDiveRunBudgetExceededError("Ready Rescue provider-send limit exhausted")
     if client is None:
         raise NoAvailableModelError("GEMINI_API_KEY が設定されていません")
     audit_id = _consume_gemini_request(
