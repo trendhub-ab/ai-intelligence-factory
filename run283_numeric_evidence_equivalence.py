@@ -390,6 +390,12 @@ def install(pipeline_module: Any) -> Any:
             ok, failures = original_fact_gate(*args, **kwargs)
             rows = list(failures or [])
             parsed = args[0] if args else kwargs.get("parsed", {})
+            # Run249 may have found this failure in the public summary/title. An
+            # evaluation-only body cannot authorize removing a different surface's
+            # unsupported outcome. Use the exact same projection as the inner gate.
+            projection = getattr(pipeline_module, "_publication_fact_projection", None)
+            if callable(projection):
+                parsed = projection(parsed)
             filtered = filter_roi_evaluation_intent_false_positive(rows, parsed)
             if len(filtered) != len(rows):
                 logger = getattr(pipeline_module, "logger", None)

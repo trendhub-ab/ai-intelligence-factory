@@ -71,6 +71,7 @@ def select_revalidation_items(
     prefer_stale_ready: bool = False,
     stale_ready_probe_limit: int = DEFAULT_STALE_READY_PROBE_LIMIT,
     exact_target: str = "",
+    exclude_page_ids: set[str] | None = None,
 ):
     """Return existing Deep Dive rows that require current-gate revalidation.
 
@@ -104,7 +105,7 @@ def select_revalidation_items(
     quality_failed: list[dict] = []
     for item in rows:
         page_id = str(item.get("notion_page_id") or "")
-        if not page_id:
+        if not page_id or page_id in (exclude_page_ids or set()):
             continue
         statuses = _read_current_statuses(pipeline, page_id)
         if statuses is None:
@@ -345,6 +346,7 @@ def run_existing_editorial_recovery(
         return generated_count, next_candidate_rank
 
     prefer_stale_ready = bool(getattr(pipeline, "_READY_RESCUE_ACTIVE", False))
+    attempted_ids = set(getattr(pipeline, "_existing_article_recovery_attempted_ids", set()))
     items = select_revalidation_items(
         pipeline,
         limit=limit,
@@ -352,6 +354,7 @@ def run_existing_editorial_recovery(
         include_quality_failed=False,
         include_stale_ready=True,
         prefer_stale_ready=prefer_stale_ready,
+        exclude_page_ids=attempted_ids,
     )
     if items is None:
         # Unlike authoritative fresh dedup, this optional leftover lane must not stop a
@@ -382,6 +385,10 @@ def run_existing_editorial_recovery(
             origin,
             item.get("revalidation_article_status"),
         )
+        # Preflight and leftover recovery share the same run. A rejected manuscript
+        # can remain Editorial Review, so lifecycle status alone cannot deduplicate it.
+        attempted_ids.add(str(item.get("notion_page_id") or ""))
+        pipeline._existing_article_recovery_attempted_ids = attempted_ids
         try:
             report = pipeline.generate_intelligence_report(
                 repo,
