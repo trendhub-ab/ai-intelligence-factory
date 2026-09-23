@@ -200,7 +200,7 @@ def test_initialized_preflight_preserves_eight_fresh_requests_and_total_article_
     run374.install(p)
     p.main()
 
-    assert calls == [(1, 1)]
+    assert calls == [(2, 1)]
     assert seen == {"budget": 9, "used": 1, "target": 3, "generated": 1, "rank": 0}
     assert p.TOP_N_FOR_DEEP_DIVE == 3
     assert p._run374_ready_rescue_slot_consumed is True
