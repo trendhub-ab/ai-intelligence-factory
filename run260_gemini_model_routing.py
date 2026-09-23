@@ -55,6 +55,7 @@ PROVIDER_HEALTH_SCHEMA_VERSION = 1
 PROVIDER_HEALTH_LOOKBACK_HOURS = 24
 PROVIDER_HEALTH_RECENT_ATTEMPTS = 20
 PROVIDER_HEALTH_MAX_HISTORY = 200
+PROVIDER_HEALTH_RECENCY_HALF_LIFE_HOURS = 3
 DEFAULT_RUNTIME_STATE_BRANCH = "runtime-state"
 
 
@@ -209,11 +210,36 @@ def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: dat
         attempts = len(rows)
         successes = sum(1 for row in rows if row.get("outcome") == "success")
         errors = attempts - successes
-        score = (successes + 1.0) / (attempts + 2.0)
+        # Availability is time-sensitive: a success many hours ago must not cancel a
+        # provider 503 observed minutes ago. Exponential decay keeps history useful
+        # without letting stale successes dominate the next ONE-SHOT route.
+        half_life_hours = _env_int(
+            "GEMINI_PROVIDER_HEALTH_RECENCY_HALF_LIFE_HOURS",
+            PROVIDER_HEALTH_RECENCY_HALF_LIFE_HOURS,
+            1,
+            24,
+        )
+        reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        weighted_success = 0.0
+        weighted_error = 0.0
+        for row in rows:
+            ts = _parse_timestamp(row.get("timestamp"))
+            if ts is None:
+                continue
+            age_hours = max(0.0, (reference - ts).total_seconds() / 3600.0)
+            weight = 0.5 ** (age_hours / float(half_life_hours))
+            if row.get("outcome") == "success":
+                weighted_success += weight
+            else:
+                weighted_error += weight
+        weighted_attempts = weighted_success + weighted_error
+        score = (weighted_success + 1.0) / (weighted_attempts + 2.0)
         stats[model] = {
             "attempts": attempts,
             "success": successes,
             "error": errors,
+            "weighted_success": weighted_success,
+            "weighted_error": weighted_error,
             "score": score,
         }
     return stats

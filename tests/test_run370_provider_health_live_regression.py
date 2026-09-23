@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import types
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -108,16 +109,17 @@ class Run370ProviderHealthLiveRegressionTests(unittest.TestCase):
         run172.install(p)
 
         # 3.7 is the healthiest known model; Run172 must not erase that ordering.
+        now = datetime.now(timezone.utc).isoformat()
         p._provider_health_history = [
             {
-                "timestamp": "2026-09-15T10:00:00+00:00",
+                "timestamp": now,
                 "model": "gemini-3.7-flash",
                 "kind": "deep_dive",
                 "outcome": "success",
                 "error_type": "",
             },
             {
-                "timestamp": "2026-09-15T10:00:01+00:00",
+                "timestamp": now,
                 "model": "gemini-3.6-flash",
                 "kind": "deep_dive",
                 "outcome": "error",
