@@ -169,6 +169,38 @@ def test_run_persists_exactly_one_selected_article_and_emits_sync_id(monkeypatch
     assert saved["candidate"] == "Vendor / release"
 
 
+
+def test_prepare_only_pins_candidate_and_spends_zero_provider_budget(monkeypatch, tmp_path):
+    p = _pipeline()
+    page_id = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+    item = {
+        "notion_page_id": page_id,
+        "screening_score": 86,
+        "screening_reason": "preflight",
+        "repo": {"nameWithOwner": "Vendor / preflight", "source": "OfficialVendor"},
+    }
+    selected = {
+        "item": item,
+        "repo": dict(item["repo"]),
+        "evidence": {"state": "SUFFICIENT"},
+    }
+    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: (selected, [{"eligible": True}]))
+    monkeypatch.setenv("PRODUCTION_E2E_PREPARE_ONLY", "true")
+    e2e.AUDIT_PATH = tmp_path / "audit.json"
+    p.generate_intelligence_report = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("prepare-only must stop before provider generation")
+    )
+
+    result = e2e.run(p)
+    assert result["prepare_only"] is True
+    assert result["ready"] == 0
+    assert result["provider_requests"] == 0
+    assert result["sync_id"] == "abcdefabcdefabcdefabcdefabcdefab"
+    saved = json.loads(e2e.AUDIT_PATH.read_text(encoding="utf-8"))
+    assert saved["prepare_only"] is True
+    assert saved["candidate"] == "Vendor / preflight"
+
+
 def test_run_with_no_preflight_candidate_spends_no_provider_budget(monkeypatch, tmp_path):
     p = _pipeline()
     monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: (None, [{"eligible": False}]))
@@ -187,6 +219,8 @@ def test_one_shot_workflow_exposes_production_e2e_and_exact_note_target():
     assert 'VALIDATION_MODE:-}" = "production_e2e_validation"' in source
     assert 'article_audit/production_e2e_validation.json' in source
     assert '-f target_sync_id="$sync_id"' in source
+    assert "e2e_prepare_only:" in source
+    assert "PRODUCTION_E2E_PREPARE_ONLY: ${{ inputs.e2e_prepare_only }}" in source
 
 
 def test_note_ready_sync_accepts_and_preflights_exact_target_sync_id():

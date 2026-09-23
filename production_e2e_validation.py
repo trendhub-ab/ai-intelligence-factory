@@ -12,6 +12,7 @@ Evidence/Fact/Publication/Human Appeal/Reader policies are not changed here.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -217,14 +218,16 @@ def _write_audit(result: dict[str, Any]) -> None:
 
 
 def run(pipeline: Any) -> dict[str, Any]:
-    """Run one exact existing article through normal Production and persist only if Ready."""
+    """Select one exact article, optionally stopping before the first provider request."""
     pipeline.initialize_runtime()
+    prepare_only = os.environ.get("PRODUCTION_E2E_PREPARE_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
     budget = getattr(pipeline, "DEEP_DIVE_MODEL_BUDGET", None)
     used_before = int(getattr(budget, "used", 0) or 0)
     total_cap = int(getattr(budget, "budget", 0) or 0)
 
     result: dict[str, Any] = {
         "mode": "production_e2e_validation",
+        "prepare_only": prepare_only,
         "ready": 0,
         "sync_id": "",
         "candidate": "",
@@ -261,6 +264,11 @@ def run(pipeline: Any) -> dict[str, Any]:
             "[PRODUCTION E2E SELECTED] %s source=%s sync_id=%s",
             result["candidate"], result["source"], normalized_sync_id,
         )
+        if prepare_only:
+            pipeline.logger.info(
+                "[PRODUCTION E2E PREPARE ONLY] candidate pinned; provider generation intentionally not started"
+            )
+            return result
 
         report = pipeline.generate_intelligence_report(
             repo,
