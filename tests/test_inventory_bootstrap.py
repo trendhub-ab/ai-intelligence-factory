@@ -161,9 +161,10 @@ class InventoryBootstrapTests(unittest.TestCase):
         class A:
             confirm=ib.CONFIRM_TEXT; pipeline=__file__; target=30; min_sellable=24; max_reviews=4; product_request_budget=6; timeout=10
         env = {"NOTION_DECISION_INTELLIGENCE_API_KEY":"x","NOTION_TECH_DATA_SOURCE_ID":"tech","NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID":"sub"}
-        with patch.dict(os.environ, env, clear=False), patch.object(ib, "NotionClient", FakeClient), tempfile.TemporaryDirectory() as td, patch.object(ib, "ARTIFACT_DIR", Path(td)), redirect_stdout(io.StringIO()):
+        with patch.dict(os.environ, env, clear=False), patch.object(ib, "NotionClient", FakeClient), tempfile.TemporaryDirectory() as td, patch.object(ib, "ARTIFACT_DIR", Path(td)), patch.object(ib.subprocess, "run") as run, redirect_stdout(io.StringIO()):
             out = ib.run_apply(A())
         self.assertTrue(out["skipped"])
+        run.assert_not_called()
 
     def test_product_only_environment_disables_acquisition_and_sets_product_caps(self):
         env = ib.product_only_environment(4, 6)
