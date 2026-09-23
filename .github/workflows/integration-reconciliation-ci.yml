@@ -42,7 +42,7 @@ jobs:
         run: python repository_falsification_guard.py
 
       - name: Run full deterministic regression once
-        run: python -m pytest -q tests
+        run: python -m pytest -q tests test_run360_gemini_retry_owner.py
 
       - name: Run synthetic smoke through current Production stack
         env:

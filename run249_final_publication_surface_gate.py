@@ -269,8 +269,27 @@ def install(pipeline_module: Any) -> Any:
         return pipeline_module
 
     original_human_appeal = pipeline_module.validate_human_appeal_gate
+    original_fact_gate = getattr(pipeline_module, "validate_fact_gate", None)
     original_build_manuscript = pipeline_module.build_clean_note_manuscript
     original_build_summary = pipeline_module.build_reader_first_summary
+
+    def public_fact_projection(parsed: dict) -> dict:
+        # These exact summary values are inserted only after the body's gates. Feed
+        # them through the complete Fact stack before approval, including Rescue.
+        # Do not mutate the body or run long-form Reader metrics on the compact card.
+        summary = pipeline_module.build_reader_first_summary(parsed)
+        projected = dict(parsed or {})
+        projected["note_draft"] = "\n\n".join(
+            str(value) for value in (
+                projected.get("title_text", ""),
+                *(summary.get(key, "") for key in ("what", "why", "decision")),
+                projected.get("note_draft", ""),
+            ) if value
+        )
+        return projected
+
+    def validate_fact_gate_with_public_summary(parsed: dict, *args: Any, **kwargs: Any):
+        return original_fact_gate(public_fact_projection(parsed), *args, **kwargs)
 
     def validate_human_appeal_gate_with_final_surface(parsed: dict, peer_articles=None):
         state, issues = original_human_appeal(parsed, peer_articles)
@@ -298,6 +317,9 @@ def install(pipeline_module: Any) -> Any:
         return repair_final_public_manuscript(original_build_manuscript(*args, **kwargs))
 
     pipeline_module.validate_human_appeal_gate = validate_human_appeal_gate_with_final_surface
+    if callable(original_fact_gate):
+        pipeline_module._publication_fact_projection = public_fact_projection
+        pipeline_module.validate_fact_gate = validate_fact_gate_with_public_summary
     pipeline_module.build_clean_note_manuscript = build_clean_note_manuscript_with_final_presentation_repair
     pipeline_module.RUN249_ZERO_PROVIDER_CALLS = True
     pipeline_module.RUN249_FINAL_SURFACE_REVALIDATION = True

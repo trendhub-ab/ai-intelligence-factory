@@ -6143,6 +6143,17 @@ def validate_fact_gate(parsed: dict, repo_name: str, source_context: str = "", s
     if source_info and source_info.get("deep_source_required") and not source_info.get("deep_source_scanned") and not source_info.get("decision_scope_safe"):
         failures.append("SOURCE_DEPTH_INSUFFICIENT")
 
+    # Action authorization belongs to the Fact contract, including direct Rescue
+    # revalidation. Evaluate the current action, never a previous draft's downgrade.
+    if source_info:
+        action_evidence = assess_evidence_sufficiency({
+            **source_info,
+            "requested_action_risk_tier": classify_action_risk_tier(parsed.get("action_text", "")),
+        })
+        downgraded_from = action_evidence.get("action_risk_downgraded_from")
+        if downgraded_from:
+            failures.append(f"{downgraded_from}_RISK_ACTION_UNSUPPORTED: downgrade to LOW required")
+
     failures.extend(_find_unsupported_numeric_claims(draft, source_context, evidence_metadata))
     claim_surface = "\n".join(part for part in (parsed.get("title_text", ""), draft) if part)
     failures.extend(_find_source_semantic_fidelity_violations(claim_surface, source_context))
@@ -7848,7 +7859,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             # 生成稿のActionが、事前に許可したLOW RISKの範囲を超えていないかを確認する。
             # HIGH RISKへ強まった場合は同じ一次情報で再判定し、弱いEvidenceのまま通さない。
             actual_action_tier = classify_action_risk_tier(parsed.get("action_text", ""))
-            if actual_action_tier != evidence_result.get("action_risk_tier", "LOW"):
+            if actual_action_tier != source_info.get("requested_action_risk_tier", "LOW"):
                 source_info["requested_action_risk_tier"] = actual_action_tier
                 article_evidence_result = assess_evidence_sufficiency(source_info)
                 if article_evidence_result["state"] == EVIDENCE_SUPPLEMENT_REQUIRED:
@@ -7868,6 +7879,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 evidence_result = article_evidence_result
                 source_info["evidence_result"] = evidence_result
                 source_info["decision_scope_safe"] = evidence_result.get("decision_scope_safe", False)
+                source_info["evidence_sufficiency"] = evidence_result["state"]
+                source_info["evidence_sufficient"] = evidence_result["state"] == EVIDENCE_SUFFICIENT
+                source_info["sufficient"] = source_info["evidence_sufficient"]
 
             # Article Quality Retry and subscriber-facing Adoption Assessment are independent.
             # Capture the newest independently valid DI snapshot before the article gates can
@@ -7897,9 +7911,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 evidence_metadata=source_info.get("evidence_metadata", {}), source_info=source_info,
                 freshness=freshness, output_truncated=output_truncated,
             )
-            if evidence_result.get("action_risk_downgraded_from"):
-                fact_failures.append(f"{evidence_result['action_risk_downgraded_from']}_RISK_ACTION_UNSUPPORTED: downgrade to LOW required")
-                fact_ok = False
             editorial_ok, editorial_warnings = validate_editorial_gate(parsed, name)
             publication_state, publication_issues = validate_publication_readiness_gate(
                 parsed, verification_context, source_info,
@@ -10003,6 +10014,7 @@ def main():
     # 今回の本番Readyとして誤認しないよう、Production開始時に必ず初期化する。
     reset_article_audit_for_production_run()
     reset_article_style_memory()
+    globals()["_existing_article_recovery_attempted_ids"] = set()
     initialize_runtime()
     if REGEN_TEST_MODE:
         run_regen_test_mode()
