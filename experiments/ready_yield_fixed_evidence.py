@@ -159,6 +159,12 @@ def main():
     parser.add_argument("--in-dir", type=Path)
     parser.add_argument("--out-dir", type=Path, required=True)
     args = parser.parse_args()
+    if args.phase != "preflight":
+        # The first live run bypassed Production's 20-second request pacing and
+        # hit the observed free-tier 5 RPM limit. Keep the canceled harness
+        # unusable until the shared project/model RPM reservation is implemented
+        # and exercised by zero-provider tests. An env flag cannot override this.
+        raise RuntimeError("RPM_SAFE_EXPERIMENT_DISABLED: live Gemini phases are canceled")
     if args.phase != "preflight" and not os.environ.get("GEMINI_API_KEY"):
         raise RuntimeError("GEMINI_API_KEY missing: zero provider sends")
     p = install_production_gates()
