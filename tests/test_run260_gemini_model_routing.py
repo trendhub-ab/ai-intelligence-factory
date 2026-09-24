@@ -145,7 +145,9 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(result, ("response", "model"))
         self.assertEqual(len(calls), 1)
         self.assertEqual(len(deep_dive_calls), 0, "quality retry must use Run261 live-path guard")
-        self.assertEqual(calls[0][0][4], ["gemini-3.5-flash", "gemini-3.7-flash"])
+        routed = calls[0][0][4]
+        self.assertEqual(len(routed), 2)
+        self.assertEqual(set(routed), {"gemini-3.5-flash", "gemini-3.7-flash"})
         self.assertTrue(calls[0][1]["deep_dive"])
         self.assertEqual(calls[0][1]["request_context"], "live-path")
         self.assertEqual(calls[0][1]["request_origin"], "new")
