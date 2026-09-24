@@ -93,9 +93,12 @@ class Run287PublicationDateProvenanceTests(unittest.TestCase):
         production = PRODUCTION.read_text(encoding="utf-8")
         publication = PUBLICATION.read_text(encoding="utf-8")
         note_ready = NOTE_READY.read_text(encoding="utf-8")
+        one_shot = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
         self.assertIn("install_run287_publication_date_provenance", production)
         self.assertIn('"run287_publication_date_provenance.py"', publication)
-        self.assertIn("run287_publication_date_provenance.py", note_ready)
+        self.assertIn("workflow_dispatch:", note_ready)
+        self.assertNotIn("\n  push:", note_ready)
+        self.assertIn("gh workflow run note-ready-sync.yml", one_shot)
         self.assertIn("tests.test_run287_publication_date_provenance", note_ready)
 
     def test_module_has_no_provider_network_or_persistence_surface(self):
