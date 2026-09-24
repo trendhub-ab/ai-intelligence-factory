@@ -133,7 +133,7 @@ jobs:
       - name: Falsify Note Ready policy-change reconciliation contract
         run: |
           python -m unittest \
-            tests.test_run197_note_ready_policy_reconciliation.Run197NoteReadyPolicyReconciliationTests.test_every_publication_policy_file_triggers_main_queue_reconciliation \
+            tests.test_run197_note_ready_policy_reconciliation.Run197NoteReadyPolicyReconciliationTests.test_publication_policy_reconciliation_is_explicit_only \
             tests.test_run197_note_ready_policy_reconciliation.Run197NoteReadyPolicyReconciliationTests.test_policy_change_reconciliation_remains_zero_model_and_never_opens_note_browser \
             -v
           python -m unittest tests.test_run290_quality_workflow_separation -v

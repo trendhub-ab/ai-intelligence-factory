@@ -20,6 +20,17 @@ import shlex
 WORKFLOW_DIR = Path(".github/workflows")
 _WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 
+# Production/operational execution must be explicit. Persistent cron is forbidden
+# repository-wide; these writer workflows additionally have a narrow trigger allowlist.
+_OPERATIONAL_TRIGGER_POLICY = {
+    "daily-one-shot.yml": {"workflow_dispatch"},
+    "daily.yml": {"workflow_dispatch"},
+    "note-publication-reconcile.yml": {"workflow_dispatch"},
+    "note-ready-sync.yml": {"workflow_dispatch"},
+    "subscriber-decision-brief.yml": {"workflow_dispatch", "workflow_run", "pull_request"},
+    "member-presentation-sync.yml": {"workflow_dispatch", "workflow_run"},
+}
+
 _RUN_RE = re.compile(r"^(?P<indent>\s*)(?:-\s*)?run:\s*(?P<rest>.*)$")
 _NAME_RE = re.compile(r"^name:\s*(?P<value>.+?)\s*$")
 _LOCAL_USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?(?P<path>\./[^\s#'\"]+)", re.MULTILINE)
@@ -51,6 +62,24 @@ def _workflow_name(text: str) -> str | None:
         if match:
             return _strip_yaml_scalar(match.group("value"))
     return None
+
+
+def _top_level_on_triggers(text: str) -> set[str]:
+    """Return conventional top-level keys under the workflow `on:` block."""
+    lines = text.splitlines()
+    triggers: set[str] = set()
+    in_on = False
+    for line in lines:
+        if not in_on:
+            if line == "on:":
+                in_on = True
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^  ([A-Za-z_]+):", line)
+        if match:
+            triggers.add(match.group(1))
+    return triggers
 
 
 def _run_blocks(text: str) -> list[str]:
@@ -238,6 +267,19 @@ def validate(root: str | Path = ".") -> list[str]:
     for workflow_path, text in texts.items():
         rel = workflow_path.relative_to(root_path).as_posix()
         errors.extend(_literal_newline_escape_errors(text, rel))
+
+        triggers = _top_level_on_triggers(text)
+        if "schedule" in triggers:
+            errors.append(
+                f"{rel}: fixed schedule trigger is forbidden; use an explicit reservation/dispatch"
+            )
+        allowed = _OPERATIONAL_TRIGGER_POLICY.get(workflow_path.name)
+        if allowed is not None:
+            disallowed = sorted(triggers - allowed)
+            if disallowed:
+                errors.append(
+                    f"{rel}: disallowed automatic trigger(s): {', '.join(disallowed)}"
+                )
 
         for local_action in _LOCAL_USES_RE.finditer(text):
             target = _resolve_local(root_path, local_action.group("path"))

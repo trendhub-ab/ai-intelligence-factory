@@ -198,8 +198,11 @@ class Run283NumericEquivalenceTests(unittest.TestCase):
     def test_publication_provenance_and_reconciliation_track_run283(self):
         contract = (ROOT / "publication_contract.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/note-ready-sync.yml").read_text(encoding="utf-8")
+        one_shot = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
         self.assertIn('"run283_numeric_evidence_equivalence.py"', contract)
-        self.assertIn("- 'run283_numeric_evidence_equivalence.py'", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("gh workflow run note-ready-sync.yml", one_shot)
 
 
 if __name__ == "__main__":

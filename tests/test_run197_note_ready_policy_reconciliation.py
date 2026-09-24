@@ -27,23 +27,14 @@ def destination(page_id: str, sync_id: str, posting: str, quality: str = "Ready"
 
 
 class Run197NoteReadyPolicyReconciliationTests(unittest.TestCase):
-    def test_every_publication_policy_file_triggers_main_queue_reconciliation(self) -> None:
+    def test_publication_policy_reconciliation_is_explicit_only(self) -> None:
         source = WORKFLOW.read_text(encoding="utf-8")
+        one_shot = (ROOT / ".github" / "workflows" / "daily-one-shot.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:\n", source)
-        self.assertIn("push:\n", source)
-        self.assertIn("branches: [main]", source)
-        for relative in contract.PUBLICATION_POLICY_FILES:
-            self.assertIn(
-                f"- '{relative}'",
-                source,
-                msg=f"publication policy change would leave Note Ready queue stale: {relative}",
-            )
-        for operational in (
-            "note_ready_sync.py",
-            ".github/workflows/note-ready-sync.yml",
-            "tests/test_run197_note_ready_policy_reconciliation.py",
-        ):
-            self.assertIn(f"- '{operational}'", source)
+        self.assertNotIn("\n  push:", source)
+        self.assertNotIn("\n  schedule:", source)
+        self.assertTrue(contract.PUBLICATION_POLICY_FILES)
+        self.assertIn("gh workflow run note-ready-sync.yml", one_shot)
 
     def test_policy_change_reconciliation_remains_zero_model_and_never_opens_note_browser(self) -> None:
         source = WORKFLOW.read_text(encoding="utf-8")

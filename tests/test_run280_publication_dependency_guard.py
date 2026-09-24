@@ -21,9 +21,12 @@ class Run280PublicationDependencyGuardTests(unittest.TestCase):
         )
         for name in ("pipeline.py", "production_pipeline.py", "runtime_layers.py"):
             (root / name).write_text("", encoding="utf-8")
-        tracked = "\n".join(f"      - '{item}'" for item in policy)
         (root / ".github/workflows/note-ready-sync.yml").write_text(
-            "on:\n  push:\n    paths:\n" + tracked + "\n",
+            "on:\n  workflow_dispatch:\n",
+            encoding="utf-8",
+        )
+        (root / ".github/workflows/daily-one-shot.yml").write_text(
+            "name: Daily ONE-SHOT\non:\n  workflow_dispatch:\njobs:\n  sync:\n    runs-on: ubuntu-latest\n    steps:\n      - run: gh workflow run note-ready-sync.yml --ref main\n",
             encoding="utf-8",
         )
         return tmp, root
@@ -60,16 +63,27 @@ class Run280PublicationDependencyGuardTests(unittest.TestCase):
              mock.patch.object(guard, "EXPLICIT_NON_PUBLICATION_DEPENDENCIES", {"telemetry_only.py": "observational only"}):
             self.assertEqual(guard.validate_repository(root), [])
 
-    def test_every_policy_file_must_trigger_note_ready_reconciliation(self):
+    def test_note_ready_reconciliation_must_not_auto_trigger_from_push(self):
         tmp, root = self._fixture()
         self.addCleanup(tmp.cleanup)
         workflow = root / ".github/workflows/note-ready-sync.yml"
         workflow.write_text(
-            "on:\n  push:\n    paths:\n      - 'pipeline.py'\n      - 'production_pipeline.py'\n",
+            "on:\n  workflow_dispatch:\n  push:\n    branches: [main]\n",
             encoding="utf-8",
         )
         failures = self._validate_minimal(root)
-        self.assertTrue(any("runtime_layers.py" in row and "does not trigger" in row for row in failures), failures)
+        self.assertTrue(any("must not auto-run from push" in row for row in failures), failures)
+
+    def test_one_shot_must_explicitly_dispatch_note_ready_reconciliation(self):
+        tmp, root = self._fixture()
+        self.addCleanup(tmp.cleanup)
+        workflow = root / ".github/workflows/daily-one-shot.yml"
+        workflow.write_text(
+            "name: Daily ONE-SHOT\non:\n  workflow_dispatch:\njobs:\n  noop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo no\n",
+            encoding="utf-8",
+        )
+        failures = self._validate_minimal(root)
+        self.assertTrue(any("does not explicitly dispatch Note Ready reconciliation" in row for row in failures), failures)
 
     def test_duplicate_policy_entries_fail_closed(self):
         tmp, root = self._fixture(policy=("pipeline.py", "production_pipeline.py", "runtime_layers.py", "runtime_layers.py"))

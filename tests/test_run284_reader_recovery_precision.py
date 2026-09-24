@@ -141,6 +141,7 @@ class Run284RepositoryContractTests(unittest.TestCase):
         production = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
         contract = (ROOT / "publication_contract.py").read_text(encoding="utf-8")
         ready = (ROOT / ".github/workflows/note-ready-sync.yml").read_text(encoding="utf-8")
+        one_shot = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
 
         self.assertIn(
             "from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision",
@@ -148,7 +149,9 @@ class Run284RepositoryContractTests(unittest.TestCase):
         )
         self.assertIn("install_run284_reader_recovery_precision(pipeline)", production)
         self.assertIn('"run284_reader_recovery_precision.py"', contract)
-        self.assertIn("- 'run284_reader_recovery_precision.py'", ready)
+        self.assertIn("workflow_dispatch:", ready)
+        self.assertNotIn("\n  push:", ready)
+        self.assertIn("gh workflow run note-ready-sync.yml", one_shot)
         self.assertIn("python -m unittest tests.test_run284_reader_recovery_precision -v", ready)
 
     def test_retired_run282_route_is_absent_from_active_production_and_chatops(self):
