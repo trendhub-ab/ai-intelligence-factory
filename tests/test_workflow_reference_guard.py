@@ -79,6 +79,51 @@ class WorkflowReferenceGuardTests(unittest.TestCase):
             )
             self.assertEqual([], guard.validate(root))
 
+    def test_schedule_trigger_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._base_repo(root)
+            self._write(
+                root,
+                ".github/workflows/scheduled.yml",
+                """
+                name: Scheduled Workflow
+                on:
+                  schedule:
+                    - cron: '20 3 * * *'
+                jobs:
+                  noop:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo no
+                """,
+            )
+            errors = guard.validate(root)
+            self.assertTrue(any("fixed schedule trigger is forbidden" in error for error in errors), errors)
+
+    def test_operational_writer_push_trigger_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._base_repo(root)
+            self._write(
+                root,
+                ".github/workflows/note-ready-sync.yml",
+                """
+                name: Note Ready Article Sync
+                on:
+                  workflow_dispatch:
+                  push:
+                    branches: [main]
+                jobs:
+                  noop:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo no
+                """,
+            )
+            errors = guard.validate(root)
+            self.assertTrue(any("disallowed automatic trigger(s): push" in error for error in errors), errors)
+
     def test_missing_script_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
