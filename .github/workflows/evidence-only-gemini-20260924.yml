@@ -5,6 +5,7 @@ on:
       - exp/evidence-only-gemini-20260924
     paths:
       - .github/workflows/evidence-only-gemini-20260924.yml
+      - experiments/evidence_only_gemini_experiment.py
 permissions:
   contents: read
 concurrency:
