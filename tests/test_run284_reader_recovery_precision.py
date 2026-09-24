@@ -141,6 +141,7 @@ class Run284RepositoryContractTests(unittest.TestCase):
         production = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
         contract = (ROOT / "publication_contract.py").read_text(encoding="utf-8")
         ready = (ROOT / ".github/workflows/note-ready-sync.yml").read_text(encoding="utf-8")
+        one_shot = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
 
         self.assertIn(
             "from run284_reader_recovery_precision import install as install_run284_reader_recovery_precision",
