@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 # GitHub Actions executes this file by path from experiments/, whereas production
 # modules live at repository root.
@@ -34,7 +35,7 @@ REPO = {
     "licenseInfo": {"spdxId": "MIT"},
     "description": "Python package and project manager written in Rust.",
 }
-MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
+MODELS = ("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash")
 STYLES = ("classic", "human_narrative", "duo_narrative", "minimal")
 
 
@@ -184,7 +185,7 @@ def main():
         if not args.in_dir:
             parser.error("--in-dir required for feedback phase")
         records = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(args.in_dir.rglob("*.json"))]
-        failures = [r for r in records if r.get("phase") == "initial" and not r.get("error")
+        failures = [r for r in records if r.get("id") and r.get("phase") == "initial" and not r.get("error")
                     and not r["initial"]["gate"]["ready_eligible_before_persistence"]]
         conditions = []
         for row in failures[:8]:
@@ -192,7 +193,11 @@ def main():
                        if r.get("severity") in {p.GATE_SEVERITY_HARD, p.GATE_SEVERITY_REVIEW}]
             if reasons:
                 conditions.append((row["style"], row["repeat"], row["model"], " / ".join(reasons), row["initial"]["body_after_polish"]))
-    for style, repeat, model, feedback, previous in conditions:
+    for index, (style, repeat, model, feedback, previous) in enumerate(conditions):
+        if index:
+            # Free-tier RPM is 5 for some models; the first run's unpaced
+            # requests reached 429 after provider-wide 503s.
+            time.sleep(15)
         ident = f"{model}_{style}_{repeat}"
         row = {"id": ident, "model": model, "style": style, "repeat": repeat,
                "phase": args.phase, "evidence_url": EVIDENCE_URL, "evidence_sha256": sha(EVIDENCE)}
@@ -212,6 +217,10 @@ def main():
             row["error"] = {"type": type(exc).__name__, "message": str(exc)[:1000]}
         (args.out_dir / f"{ident}.json").write_text(json.dumps(row, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         rows.append(row)
+        if row.get("error") and any(code in row["error"]["message"] for code in ("503 UNAVAILABLE", "429 RESOURCE_EXHAUSTED")):
+            # Stop instead of burning the remaining matrix on a provider outage
+            # or a short-window rate limit. Failed cells remain explicitly missing.
+            break
     (args.out_dir / "summary.json").write_text(json.dumps({
         "phase": args.phase, "count": len(rows), "provider_errors": sum("error" in r for r in rows),
         "ready_eligible": sum(r.get(args.phase, {}).get("gate", {}).get("ready_eligible_before_persistence", False) for r in rows),
