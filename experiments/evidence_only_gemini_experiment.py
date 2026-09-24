@@ -75,7 +75,7 @@ try:
     }
     if evidence_result['state'] != pipeline.EVIDENCE_SUFFICIENT or not evidence.get('primary_source_resolved'):
         raise RuntimeError('Evidence preflight did not resolve sufficient primary source')
-    (OUT/'evidence.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2))
+    (OUT/'evidence.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2, default=lambda o: sorted(o) if isinstance(o, set) else str(o)))
     frozen = copy.deepcopy(evidence)
     pipeline.prepare_source_context = lambda repo: copy.deepcopy(frozen)
     wrap('_apply_deterministic_structure_polish', pipeline, save_parsed)
