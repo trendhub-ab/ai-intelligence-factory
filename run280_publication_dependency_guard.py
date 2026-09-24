@@ -4,8 +4,9 @@ Run280 introduced dependency classification. Run281 strengthens it from selected
 checking to full recursive closure: every local import of every fingerprinted policy module
 must itself be fingerprinted or carry a narrow documented non-publication exemption.
 
-This prevents later module extraction from silently changing public bytes or publication gates
-without invalidating historical Ready manuscripts.
+Operational policy is explicit-only: publication policy changes must never auto-run a live
+Note Ready reconciliation from push. Instead, every authorized Daily ONE-SHOT must explicitly
+dispatch Note Ready reconciliation after the production run.
 """
 from __future__ import annotations
 
@@ -116,15 +117,35 @@ def _local_import_files(root: Path, relative: str) -> set[str]:
     return modules
 
 
-def _workflow_tracked_paths(root: Path) -> set[str]:
-    workflow = root / ".github/workflows/note-ready-sync.yml"
+def _workflow_trigger_keys(text: str) -> set[str]:
+    triggers: set[str] = set()
+    in_on = False
+    for line in text.splitlines():
+        if not in_on:
+            if line == "on:":
+                in_on = True
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^  ([A-Za-z_]+):", line)
+        if match:
+            triggers.add(match.group(1))
+    return triggers
+
+
+def _one_shot_dispatches_note_ready(root: Path) -> bool:
+    workflow = root / ".github/workflows/daily-one-shot.yml"
     text = workflow.read_text(encoding="utf-8")
-    return set(re.findall(r"^\s*-\s*['\"]([^'\"]+)['\"]\s*$", text, flags=re.MULTILINE))
+    return re.search(r"\bgh\s+workflow\s+run\s+note-ready-sync\.yml\b", text) is not None
 
 
 def validate_repository(root: Path = ROOT) -> list[str]:
     failures: list[str] = []
-    for relative in ("publication_contract.py", ".github/workflows/note-ready-sync.yml"):
+    for relative in (
+        "publication_contract.py",
+        ".github/workflows/note-ready-sync.yml",
+        ".github/workflows/daily-one-shot.yml",
+    ):
         if not (root / relative).is_file():
             failures.append(f"required publication surface missing: {relative}")
     if failures:
@@ -166,13 +187,25 @@ def validate_repository(root: Path = ROOT) -> list[str]:
                 )
 
     try:
-        tracked = _workflow_tracked_paths(root)
+        note_ready_text = (root / ".github/workflows/note-ready-sync.yml").read_text(encoding="utf-8")
+        note_ready_triggers = _workflow_trigger_keys(note_ready_text)
     except OSError as exc:
         failures.append(f"cannot read note-ready-sync workflow: {exc}")
-        tracked = set()
-    for relative in policy:
-        if relative not in tracked:
-            failures.append(f"policy file does not trigger Note Ready reconciliation: {relative}")
+        note_ready_triggers = set()
+
+    forbidden = sorted(note_ready_triggers & {"push", "schedule"})
+    if forbidden:
+        failures.append(
+            "Note Ready reconciliation must not auto-run from "
+            + ", ".join(forbidden)
+            + "; use explicit ONE-SHOT/manual dispatch"
+        )
+
+    try:
+        if not _one_shot_dispatches_note_ready(root):
+            failures.append("Daily ONE-SHOT does not explicitly dispatch Note Ready reconciliation")
+    except OSError as exc:
+        failures.append(f"cannot read daily-one-shot workflow: {exc}")
 
     return failures
 
@@ -187,7 +220,7 @@ def main() -> int:
     print("Publication Dependency Completeness: PASS")
     print(f"- fingerprinted policy files: {len(_literal_string_sequence(ROOT, 'publication_contract.py', 'PUBLICATION_POLICY_FILES'))}")
     print("- every fingerprinted module local import: classified")
-    print("- Note Ready reconciliation paths: synchronized")
+    print("- Note Ready reconciliation: explicit ONE-SHOT dispatch only")
     return 0
 
 
