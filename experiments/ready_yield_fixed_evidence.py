@@ -9,7 +9,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from types import SimpleNamespace
+import sys
+
+# GitHub Actions executes this file by path from experiments/, whereas production
+# modules live at repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 EVIDENCE_URL = "https://github.com/astral-sh/uv/blob/dd965a276182e2d46d80439feecd03216cc6643a/README.md"
