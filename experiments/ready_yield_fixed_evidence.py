@@ -179,8 +179,9 @@ def main():
     else:
         if not args.in_dir:
             parser.error("--in-dir required for feedback phase")
-        records = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(args.in_dir.glob("*.json"))]
-        failures = [r for r in records if not r.get("error") and not r["initial"]["gate"]["ready_eligible_before_persistence"]]
+        records = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(args.in_dir.rglob("*.json"))]
+        failures = [r for r in records if r.get("phase") == "initial" and not r.get("error")
+                    and not r["initial"]["gate"]["ready_eligible_before_persistence"]]
         conditions = []
         for row in failures[:8]:
             reasons = [r["message"] for r in row["initial"]["gate"]["reason_rows"]
@@ -213,7 +214,7 @@ def main():
         "evidence_sha256": sha(EVIDENCE), "note_writes": 0, "notion_writes": 0,
         "actual_ready_persisted": 0,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
-    if not rows:
+    if not rows and args.phase != "feedback":
         raise RuntimeError("No eligible cases; zero provider sends")
 
 
