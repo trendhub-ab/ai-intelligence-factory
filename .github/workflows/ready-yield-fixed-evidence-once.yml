@@ -48,7 +48,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        model: [gemini-3.6-flash, gemini-3.5-flash]
+        model: [gemini-3.7-flash, gemini-3.8-flash]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -71,7 +71,7 @@ jobs:
         run: |
           test -n "$GEMINI_API_KEY"
           test -n "$GH_PAT"
-      - name: Generate eight drafts using pinned Evidence
+      - name: Generate up to eight drafts, stop on first 503 or 429
         run: python experiments/ready_yield_fixed_evidence.py --phase initial --model ${{ matrix.model }} --out-dir experiment-results/${{ matrix.model }}
       - uses: actions/upload-artifact@v7
         if: always()
