@@ -1,29 +1,51 @@
-# Ready到達率の固定Evidence反証実験（準備記録）
+# 固定Evidence実験のRPM安全設計 v2（送信停止中）
 
-基準main: `f59a59d191c24bfaff8019d1b647ee7a6435c606`（2026-09-24 14:10:49 UTC）
-実験ブランチ: `experiment/ready-yield-fixed-evidence-20260924`
-状態: 静的実装監査まで。Gemini API実送信0件。実測Ready率・阻害原因は未確定。
+対象: `trendhub-ab/ai-intelligence-factory` の実験ブランチ `experiment/ready-yield-fixed-evidence-20260924`。本番mainは未変更。本設計はGemini送信を再開する指示ではない。
 
-## 読み取った現行契約
+## 実測と原因
 
-- Writerの基準プロンプトは `content_generation_protocol.py`、Productionの重ね合わせは `production_pipeline.py` の `install_runtime_layers`。編集スタイルは `classic`、`human_narrative`、`duo_narrative`。
-- 記事モデル集合は `gemini-3.6-flash`、`gemini-3.5-flash`、`gemini-3.7-flash`、`gemini-3.8-flash`。現行cold-start順序は3.6、3.5、3.7、3.8で、実送信後はprovider healthによって変わる。
-- `generate_intelligence_report` はEvidence preflightのあとWriterを呼び、生成原文の解析、Japanese polish、structure polish、Fact、Editorial、Publication、Human Appeal、reason disposition、deterministic rescue、dynamic retry、最終原稿整形を経る。
-- Evidence不足はGemini送信前に停止する。Actionが強まるとEvidenceを再判定する。
-- Quality Gate PASS後もNotion persistenceが失敗すればReadyにならない。さらにContent DB Readyとnote同期可能状態は別契約。
-- `persist_results=False` は非永続A/B比較の入口で、Notion更新を避けるがReadyの実保存成功を証明しない。
-- 直近mainのWorkflow Reference Guard、Repository-wide Falsification Guard、Synthetic Regression Suite、Notion Access Policy GuardはSUCCESS。
+2026-09-24の実験では、3.5と3.6に各8回を短時間で送った。各モデル7回のHTTP 503のあと、8回目はHTTP 429となった。429の構造化エラーは `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`、`limit: 5` を明示した。3.7と3.8は初回がそれぞれ503となり停止した。全モデルで成功レスポンスは0、原稿0、Gate率は未測定。
 
-## 実験プロトコル
+原因は実験コードが本番の `_call_deep_dive_pool` を通らず、`_generate_via_chat` を直接反復したこと。本番のDeep Dive送信間隔（現在20秒）と503後のモデル制御を迂回した。RPDのpersistent counterはRPMの代用ではない。503と429は別のエラーとして記録し、503自体の原因をRPMと断定しない。
 
-1. 一次情報と利用可能な原稿対象を読み取りで取得し、Evidence本文、URL、取得時刻、SHA-256、source_infoとmetadataを凍結する。Evidence Gateを変更せず、十分性を確認する。一次資料不足ならAPIを使用せず別の対象を選ぶ。
-2. 最初の条件は4 Writer（classic、human_narrative、duo_narrative、Evidence中心の最小Writer）×2モデル（空き枠の多い3.6と3.5を優先）×2反復、計16初稿を上限とする。モデルごとの実際の利用可能枠と503を送信前に確かめ、対象を縮小する場合は事前に記録する。
-3. 原稿のAPI生レスポンス、parse結果、polish後本文、各GateのPASS/FAILとreason、reason disposition、postprocess後の本文hashを原稿IDごとに保存する。Gateと閾値はmainの現行コードのまま使う。
-4. FAIL条件ではGateの実reasonだけを用い、同じEvidenceで原則1回のfeedback再生成。再生成本数は最大8を初期上限とし、評価可能なFAILの分布を見て割り振る。APIを自己採点に使用しない。
-5. Retryとdeterministic rescueの前後にGate再評価を掛け、救済前のfailure解消、別Gate破壊、Evidence・Factの劣化、本文の削除量を記録する。
-6. Notion、note、GitHub公開への書込みを遮断した実行で、現行Ready保存経路の外部保存結果のみ明示的にstub化する。計測値を「Gate到達率」と「保存成功を仮定したReady適格率」に分け、実際の本番Ready到達率と混同しない。
-7. 原因が再現した場合に限りfailing test→最小修正→対象・全回帰→CIを実施する。mainへ直接変更しない。
+## 目標と非目標
 
-## 停止理由
+- **目標**: 実験自身による5 RPM超過を防ぎ、同一projectのDailyと実験の送信を協調させる。Quotaに余裕がない時は原稿を減らして停止する。
+- 5 RPMは今回の3.5/3.6の実測値。他モデル・tierには固定適用しない。AI Studioの現行表示と実際の429 quotaIdを優先し、未確認モデルはAPI送信を停止する。
+- 外部アプリやAI Studioなど、同じprojectを使う制御外の送信までは保証できない。「429を絶対に出さない」という約束はしない。
+- Evidence / Fact / Publication / Reader Value のGate、閾値、Notion・noteの状態は変更しない。
 
-この実行環境に`GEMINI_API_KEY`は渡されていない。GitHub連携はrepo読取り・ブランチ作成に対応する一方、Actionsのworkflow_dispatch操作は提供していない。ブラウザーのGitHubログイン要求は自動承認審査により却下された。現段階でAPI実験を実行したと装うことはできない。認証経路が解決するまで生成本数・Gate率・阻害原因は未測定である。
+## 送信を許す条件
+
+1. 実験開始前にproject scopeとモデルごとの実効RPMを確認し、今回5 RPMだったモデルは**共有の保守的上限3件/直近60秒**とする。実効RPMが3未満なら送信を停止し、より高い場合も実験上限を勝手に引き上げない。
+2. 直近60秒の**全モデル合計**についても、project当たり25秒に1件以下の送信間隔を設ける。3.5/3.6を交互に呼んでも実験は最大約2.4件/分となる。待機は各provider試行の直前に行い、Retry・fallback・feedbackも例外にしない。
+3. `runtime-state`上にproject scope・model・送信予約時刻・run ID・request IDを置く。GitHub blob SHAを使う条件付き更新と競合再読込みにより、**予約はprovider送信より前に原子的に確定**させる。予約失敗・状態読み取り失敗・scope不一致・古い状態が解釈不能なら送信しない。プロセス再起動でも直近の予約履歴を引き継ぐ。
+4. Daily、本番Retry/Rescue、実験のすべてが**同じ予約入口**を使う。GitHub Actionsでは既存の `ai-intelligence-gemini-budget` concurrency groupも共有するが、それだけをRPM制御とみなさない。Gemini送信を行う他の入口が未接続なら「project全体で安全」と判定しない。
+5. 一次情報固定、Evidence十分、モデル許可、既存RPD/TPM予算、共通RPM予約、provider送信の順とする。RPD上限やGate閾値は引き上げない。503を含め**送信済み予約は消さない**。提供側がカウントしたか不明な試行も、直近60秒の枠を保守的に占有させる。
+6. 実験では本番の `_call_deep_dive_pool` と同一のprovider所有者を使い、比較対象モデルだけにpoolを絞る。直接 `_generate_via_chat` を呼び回す経路を廃止する。SDK内部とアプリ側で重複Retryを持たない。
+
+## エラー時の扱い
+
+| 応答 | 処理 | 記録 |
+|---|---|---|
+| 成功 | 原稿、parse前後、全Gateを保存。次の試行も共有予約を通す | provider成功本数 |
+| 429 / RPM | 同一モデルの実験を直ちに中断。quotaIdとRetryInfoを記録。少なくとも `max(RetryInfo, 最古予約+65秒)` までは再開しない。自動的な即時Retryは禁止 | RPM制限で未生成 |
+| 429 / RPD | モデルを当日停止。既存persistent budgetに従う | 日次上限で未生成 |
+| 429 / TPM | Token制限として分離し、指定待機・token budgetを確認するまで停止 | Token制限で未生成 |
+| 503 | 当該モデルの実験を初回で中断し、他モデルを試す場合も共有予約を通す。同一モデルの連続連射は禁止 | provider unavailable、Ready分母には入れない |
+| 不明・状態書込み失敗 | Fail closed。自動fallbackによる追加送信をしない | operational stop |
+
+## 実験配分
+
+1. まず各モデル1回だけprobeする。503/429ならそのモデルの残りのセルは**未実施**と記録して止める。probeが原稿生成に成功した場合のみ、同一EvidenceでWriterごとに2反復する。
+2. 同じモデルの連続送信を予約キューで平準化する。待機中にQuota・別実行の予約を再読込みし、古い事前チェック結果で送らない。
+3. 失敗理由がある原稿に限りfeedbackを最大1回。再生成も同じ共有予約を通す。503/429には本文修正を依頼しない。
+4. 初稿のAPI成功率、Gate通過率、Ready適格率、feedback改善率を**別の分母**で報告する。原稿が0本ならGate/Ready率を0%と表示せず「測定不能」とする。Notionを更新しない試験での実Ready到達率は主張しない。
+
+## 検証と再開条件
+
+- 偽時計で `0, 25, 50, 75秒` の送信予約が直近60秒で3件を超えないこと、異なるモデル間も25秒未満で送らないこと。
+- 同時2ジョブのCAS競合、プロセス再起動、状態欠落、503予約の保持、429 RetryInfo、RPD/TPM誤分類、モデルquota低下でfail closedするテスト。
+- provider mockで実験の初稿・feedback・fallbackの全経路が共有予約入口を通ることを確認する。実際のGemini APIはテストに使わない。
+- 対象テスト、全回帰、CIが成功するまでライブ送信は無効。送信ワークフローは現在削除済みで、実験スクリプトのlive phaseも `RPM_SAFE_EXPERIMENT_DISABLED` で停止する。
+- 別途、明示的な実験実行指示があった時だけone-shot入口を用意する。PR状態変更やpushで自動発火させない。
