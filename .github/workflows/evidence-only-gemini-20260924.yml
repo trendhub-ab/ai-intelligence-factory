@@ -1,0 +1,67 @@
+name: Private Evidence-only Gemini Falsification
+on:
+  push:
+    branches:
+      - exp/evidence-only-gemini-20260924
+    paths:
+      - .github/workflows/evidence-only-gemini-20260924.yml
+permissions:
+  contents: read
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt cryptography > /tmp/install.log 2>&1 || { tail -20 /tmp/install.log; exit 1; }
+      - name: Generate and compare without production persistence
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'false'
+          GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.7-flash,gemini-3.8-flash'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '2'
+          AIIF_EDITORIAL_STYLE: 'classic'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python experiments/evidence_only_gemini_experiment.py > experiment_stdout.log 2>&1 || true
+          echo 'Generation attempt finished; plaintext output suppressed.'
+      - name: Encrypt entire private result before upload
+        if: always()
+        run: |
+          python - <<'PY'
+          import base64, json, os, tarfile
+          from pathlib import Path
+          from cryptography.hazmat.primitives import hashes, serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          source = Path('evidence_only_private_result')
+          with tarfile.open('experiment_private.tar.gz', 'w:gz') as archive:
+              if source.exists(): archive.add(source)
+              if Path('experiment_stdout.log').exists(): archive.add('experiment_stdout.log')
+          plain = Path('experiment_private.tar.gz').read_bytes()
+          key, nonce = os.urandom(32), os.urandom(12)
+          ciphertext = AESGCM(key).encrypt(nonce, plain, b'aiif-evidence-only-20260924')
+          public = serialization.load_pem_public_key(Path('experiments/evidence_only_public.pem').read_bytes())
+          wrapped = public.encrypt(key, padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+          payload = {'version': 1, 'wrapped_key': base64.b64encode(wrapped).decode(), 'nonce': base64.b64encode(nonce).decode(), 'ciphertext': base64.b64encode(ciphertext).decode()}
+          Path('sealed_experiment.json').write_text(json.dumps(payload))
+          Path('experiment_private.tar.gz').unlink()
+          print('Encrypted result prepared; no article text in workflow log.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: encrypted-evidence-only-comparison
+          path: sealed_experiment.json
+          if-no-files-found: error
+          retention-days: 7
