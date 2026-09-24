@@ -1,10 +1,10 @@
 name: Fixed Evidence Ready Yield Experiment
 
 # One explicitly authorized experiment on this named same-repository branch.
-# Opening its draft PR triggers this once. Synchronize/reopen do not send API calls.
+# Explicit transition from draft to ready triggers this once. Synchronize/reopen do not send API calls.
 on:
   pull_request:
-    types: [opened]
+    types: [ready_for_review]
 
 permissions:
   contents: read
