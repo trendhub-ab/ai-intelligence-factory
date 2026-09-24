@@ -87,9 +87,10 @@ class Run273PrivateDraftAutoflowTests(unittest.TestCase):
         self.assertIn('sync_id="$SELECTED_SYNC_ID"', source)
         self.assertIn("prepare_only=false", source)
 
-    def test_push_policy_reconciliation_cannot_enter_private_draft_dispatch_step(self) -> None:
+    def test_automatic_policy_reconciliation_cannot_enter_private_draft_dispatch_step(self) -> None:
         source = READY_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("push:\n", source)
+        self.assertNotIn("\n  push:", source)
+        self.assertNotIn("\n  schedule:", source)
         preflight_step = source.index("- name: Resolve exact private-draft fan-out eligibility")
         preflight_condition = source.index("if: ${{ github.event_name == 'workflow_dispatch'", preflight_step)
         dispatch_step = source.index("- name: Dispatch private note draft flow only for an exact eligible Ready")
