@@ -105,6 +105,8 @@ class Run281FanoutCausalityTests(unittest.TestCase):
         source = READY_WORKFLOW.read_text(encoding="utf-8")
         self.assertGreaterEqual(source.count("github.event_name == 'workflow_dispatch'"), 2)
         self.assertNotIn("workflow_run:", source)
+        self.assertNotIn("\n  push:", source)
+        self.assertNotIn("\n  schedule:", source)
 
 
 class Run281RecursiveDependencyTests(unittest.TestCase):
@@ -119,7 +121,11 @@ class Run281RecursiveDependencyTests(unittest.TestCase):
             (root / "policy_leaf.py").write_text("import hidden_public_helper\n", encoding="utf-8")
             (root / "hidden_public_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
             (root / ".github/workflows/note-ready-sync.yml").write_text(
-                "on:\n  push:\n    paths:\n      - 'policy_leaf.py'\n",
+                "on:\n  workflow_dispatch:\n",
+                encoding="utf-8",
+            )
+            (root / ".github/workflows/daily-one-shot.yml").write_text(
+                "name: Daily ONE-SHOT\non:\n  workflow_dispatch:\njobs:\n  sync:\n    runs-on: ubuntu-latest\n    steps:\n      - run: gh workflow run note-ready-sync.yml --ref main\n",
                 encoding="utf-8",
             )
             with mock.patch.object(dependency_guard, "REQUIRED_PUBLICATION_DEPENDENCIES", ()):
