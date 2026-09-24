@@ -58,6 +58,13 @@ try:
     if not os.environ.get('GEMINI_API_KEY'):
         raise RuntimeError('GEMINI_API_KEY is absent in runner')
     production_pipeline.install_runtime_layers(pipeline)
+    # Run260 prepends its default pool even when the env lists only two models.
+    # Keep this isolated run to the user-selected non-3.6 fallback pool.
+    pipeline.DEEP_DIVE_MODEL_POOL = ['gemini-3.7-flash', 'gemini-3.8-flash']
+    pipeline.DEEP_DIVE_MODEL_CANDIDATES = list(pipeline.DEEP_DIVE_MODEL_POOL)
+    pipeline.DEEP_DIVE_MODEL_BUDGET.budget = 4  # two models plus at most one quality retry
+    trace['model_pool'] = list(pipeline.DEEP_DIVE_MODEL_POOL)
+    trace['api_send_cap'] = 4
     # Resolve all Evidence once; both paths use the same frozen in-memory snapshot.
     evidence = pipeline.prepare_source_context(REPO)
     evidence_result = pipeline.assess_evidence_sufficiency(evidence)
