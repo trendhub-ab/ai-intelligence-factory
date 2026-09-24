@@ -1,17 +1,8 @@
 name: Note Publication Reconcile
 
 on:
+  # Operational reconciliation is explicit-only. No cron or push trigger is permitted.
   workflow_dispatch:
-  schedule:
-    # 12:20 JST daily: lightweight read-only note RSS check + Notion bookkeeping.
-    - cron: '20 3 * * *'
-  push:
-    branches: [main]
-    paths:
-      - 'note_publication_reconcile.py'
-      - 'note_ready_sync.py'
-      - 'tests/test_note_publication_reconcile.py'
-      - '.github/workflows/note-publication-reconcile.yml'
 
 permissions:
   contents: read
