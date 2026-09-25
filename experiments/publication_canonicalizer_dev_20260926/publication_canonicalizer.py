@@ -262,8 +262,9 @@ def _preserve_multiplier_scope(snapshot: Mapping[str, Any], out: dict[str, Any])
     - the numeric lexeme sequence must remain byte-semantically identical;
     - only a non-numeric scope marker and a conservative variability sentence may be added.
     """
+    before = deepcopy(out)
     before_numeric = _numeric_lexemes("\n".join(
-        _clean(snapshot.get(key)) for key in ("name",) + PUBLICATION_TEXT_FIELDS
+        _clean(before.get(key)) for key in ("name",) + PUBLICATION_TEXT_FIELDS
     ))
     changed = False
 
@@ -301,8 +302,8 @@ def _preserve_multiplier_scope(snapshot: Mapping[str, Any], out: dict[str, Any])
         _clean(out.get(key)) for key in ("name",) + PUBLICATION_TEXT_FIELDS
     ))
     if before_numeric != after_numeric:
-        # Fail closed: Canonicalizer must never mutate or invent a number here.
-        return deepcopy(dict(snapshot))
+        # Fail closed only this v4 transform; preserve all earlier canonicalization.
+        return before
     return out
 
 
