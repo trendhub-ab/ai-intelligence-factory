@@ -99,7 +99,7 @@ summary = {
     "results": results,
 }
 print("LOCAL_WRITER_BATCH_BASELINE_JSON=" + json.dumps(summary, ensure_ascii=False, sort_keys=True))
-assert len(results) == 5
+raise AssertionError('EXPERIMENT_DIAGNOSTIC_ONLY:' + json.dumps(summary, ensure_ascii=False, sort_keys=True))
 """
     env = dict(
         os.environ,
