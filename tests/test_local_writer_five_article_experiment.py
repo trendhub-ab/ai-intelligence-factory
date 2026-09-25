@@ -117,6 +117,6 @@ assert len(results) == 5
         capture_output=True,
         timeout=90,
     )
-    print(result.stdout)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "LOCAL_WRITER_BATCH_BASELINE_JSON=" in result.stdout
+    raise AssertionError("BASELINE_CAPTURE::" + result.stdout)
