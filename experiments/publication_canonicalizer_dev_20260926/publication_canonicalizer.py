@@ -12,7 +12,9 @@ Responsibilities are limited to publication contracts:
   are already present in the structured record;
 - make low-score/WATCH/WAIT/AVOID actions explicitly limited verification;
 - provide a stable presentation-only case key so the frozen writer can diversify
-  layouts without changing canonical entity identity.
+  layouts without changing canonical entity identity;
+- preserve attribution/condition scope for source-side performance multipliers
+  without changing the multiplier or inventing benchmark conditions.
 
 The original structured snapshot remains the evidence context for validation.
 """
@@ -195,6 +197,115 @@ def _canonicalize_action(value: str, decision: str, score: int) -> str:
     return text
 
 
+_MULTIPLIER_RE = re.compile(r"(?<![0-9.])(\d+(?:\.\d+)?)\s*(?:倍|x\s+(?:faster|speedup))", re.I)
+_MULTIPLIER_SPEED_RE = re.compile(r"(?:高速|速(?:い|く|さ)|速度|性能|performance|faster|speedup)", re.I)
+_MULTIPLIER_EXPECTATION_RE = re.compile(
+    r"(?:expect(?:ed|s|ation)?|estimate|estimated|benchmark|measurement|measured|trial|example|"
+    r"期待|見込|試算|ベンチマーク|測定|計測|事例|例)",
+    re.I,
+)
+_MULTIPLIER_SCOPE_RE = re.compile(
+    r"(?:一次情報|ベンチマーク|測定|試算|期待|条件|ワークロード|"
+    r"source|benchmark|measured|estimated|expect|condition|workload)",
+    re.I,
+)
+_MULTIPLIER_VARIABILITY_RE = re.compile(
+    r"(?:実際|実運用|現実)[^。！？\n]{0,40}(?:変わ|異な|依存)|"
+    r"(?:処理内容|実行環境|環境|条件|ワークロード)[^。！？\n]{0,40}(?:変わ|異な|依存)|"
+    r"(?:vary|depend)[^.?!\n]{0,40}(?:workload|condition|environment)|"
+    r"(?:workload|condition|environment)[^.?!\n]{0,40}(?:vary|depend)",
+    re.I,
+)
+_MULTIPLIER_SCOPE_MARKER = "（一次情報で示された特定条件下の目安）"
+_MULTIPLIER_VARIABILITY_SENTENCE = "実際の改善幅は処理内容・条件・実行環境によって変わります。"
+_NUMERIC_LEXEME_RE = re.compile(r"[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+
+def _local_window(text: str, start: int, end: int, radius: int = 280) -> str:
+    value = str(text or "")
+    return value[max(0, start - radius): min(len(value), end + radius)]
+
+
+def _snapshot_evidence_text(snapshot: Mapping[str, Any]) -> str:
+    keys = (
+        "reader_title", "name", "source_summary", "what", "why_important",
+        "decision_reason", "action", "primary_risk", "best_for", "avoid_for",
+    )
+    return "\n".join(_clean(snapshot.get(key)) for key in keys)
+
+
+def _numeric_lexemes(text: str) -> list[str]:
+    return _NUMERIC_LEXEME_RE.findall(str(text or ""))
+
+
+def _performance_multiplier_is_source_scoped(snapshot: Mapping[str, Any], field: str, match: re.Match[str]) -> bool:
+    original = _clean(snapshot.get(field))
+    local = _local_window(original, match.start(), match.end(), 160)
+    if not _MULTIPLIER_SPEED_RE.search(local):
+        return False
+
+    number = match.group(1)
+    evidence = _snapshot_evidence_text(snapshot)
+    source_match = re.search(rf"(?<![0-9.]){re.escape(number)}\s*(?:x|倍)", evidence, re.I)
+    if not source_match:
+        return False
+    evidence_local = _local_window(evidence, source_match.start(), source_match.end(), 280)
+    return bool(_MULTIPLIER_EXPECTATION_RE.search(evidence_local))
+
+
+def _preserve_multiplier_scope(snapshot: Mapping[str, Any], out: dict[str, Any]) -> dict[str, Any]:
+    """Preserve Run223/224 scope before prose generation.
+
+    This is intentionally narrower than a general numeric rewrite:
+    - the multiplier must already exist in the original structured record;
+    - the same source-side neighborhood must carry benchmark/expectation/example modality;
+    - the numeric lexeme sequence must remain byte-semantically identical;
+    - only a non-numeric scope marker and a conservative variability sentence may be added.
+    """
+    before_numeric = _numeric_lexemes("\n".join(
+        _clean(snapshot.get(key)) for key in ("name",) + PUBLICATION_TEXT_FIELDS
+    ))
+    changed = False
+
+    for key in ("name",) + PUBLICATION_TEXT_FIELDS:
+        original = _clean(snapshot.get(key))
+        current = _clean(out.get(key, original))
+        matches = list(_MULTIPLIER_RE.finditer(original))
+        if not matches:
+            continue
+
+        # Process from the end so offsets from the original string stay valid.
+        for match in reversed(matches):
+            if not _performance_multiplier_is_source_scoped(snapshot, key, match):
+                continue
+            token = match.group(0)
+            if _MULTIPLIER_SCOPE_MARKER in current:
+                changed = True
+                continue
+            current_match = re.search(re.escape(token), current, re.I)
+            if not current_match:
+                continue
+            end = current_match.end()
+            current = current[:end] + _MULTIPLIER_SCOPE_MARKER + current[end:]
+            changed = True
+        out[key] = current
+
+    if changed:
+        article_surface = "\n".join(_clean(out.get(key)) for key in ("name",) + PUBLICATION_TEXT_FIELDS)
+        if not _MULTIPLIER_VARIABILITY_RE.search(article_surface):
+            risk = _clean(out.get("primary_risk"))
+            if _MULTIPLIER_VARIABILITY_SENTENCE not in risk:
+                out["primary_risk"] = (risk + " " + _MULTIPLIER_VARIABILITY_SENTENCE).strip()
+
+    after_numeric = _numeric_lexemes("\n".join(
+        _clean(out.get(key)) for key in ("name",) + PUBLICATION_TEXT_FIELDS
+    ))
+    if before_numeric != after_numeric:
+        # Fail closed: Canonicalizer must never mutate or invent a number here.
+        return deepcopy(dict(snapshot))
+    return out
+
+
 def _presentation_case_id(snapshot: Mapping[str, Any]) -> str:
     """Create a presentation-only seed without changing canonical identity.
 
@@ -233,6 +344,10 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     out["reader_title"] = _normalize_title(out.get("reader_title", ""))
     out["action"] = _canonicalize_action(out.get("action", ""), decision, score)
 
+    # Stage 6 / v4: proactively preserve source-side multiplier scope before the
+    # frozen Local Writer copies a performance multiplier into reader-facing prose.
+    out = _preserve_multiplier_scope(snapshot, out)
+
     # Second pass follows Local Writer's body-consumption order. Summary/title
     # state is deliberately separate: a term explained only in the 30-second card
     # must still receive a first-use explanation in the article body.
@@ -259,5 +374,5 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     out["why_important"] = _add_summary_plain_bridge(out.get("why_important", ""))
 
     out["publication_canonicalized"] = True
-    out["publication_canonicalizer_version"] = "stage4-v3"
+    out["publication_canonicalizer_version"] = "stage6-v4"
     return out
