@@ -176,7 +176,7 @@ def _critical_numeric_evidence(snapshot: Mapping[str, Any]) -> str:
     """
     reason = _clean(snapshot["decision_reason"])
     numeric = re.compile(
-        r"(?:\\d+\\.\\d+|\\d+(?:\\.\\d+)?\\s*(?:%|倍|ms|秒|分|時間|日|週|週間|月|年|GB|MB|TB|GPU|件|人|台))"
+        r"(?:\d+\.\d+|\d+(?:\.\d+)?\s*(?:%|倍|ms|秒|分|時間|日|週|週間|月|年|GB|MB|TB|GPU|件|人|台))"
     )
     return _reader_surface(reason) if numeric.search(reason) else ""
 
