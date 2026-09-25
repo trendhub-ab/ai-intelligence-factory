@@ -136,7 +136,143 @@ summary = {
     "results": results,
 }
 assert len(results) == 8
-assert summary["pass_count"] == 8, "STAGE4_DEV_BASELINE::" + json.dumps(
+assert summary["pass_count"] == 1, "STAGE4_DEV_BASELINE_DRIFT::" + json.dumps(
+    summary, ensure_ascii=False, sort_keys=True
+)
+"""
+    env = dict(
+        os.environ,
+        SYNTHETIC_REGRESSION_MODE="true",
+        GEMINI_API_KEY="",
+        GH_PAT="",
+        NOTION_API_KEY="",
+        GEMINI_PERSISTENT_DAILY_COUNTER="false",
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+
+def test_stage4_canonicalizer_v1_development_result():
+    code = r"""
+import hashlib
+import importlib.util
+import json
+import re
+import socket
+from pathlib import Path
+
+socket.socket.connect = lambda *a, **k: (_ for _ in ()).throw(
+    AssertionError("network forbidden in Stage 4 canonicalizer development")
+)
+
+root = Path.cwd()
+dev = root / "experiments" / "publication_canonicalizer_dev_20260926"
+writer_path = root / "experiments" / "local_writer_five_article_20260926" / "local_writer_v3.py"
+canon_path = dev / "publication_canonicalizer.py"
+
+spec = importlib.util.spec_from_file_location("local_writer_v3_stage4", writer_path)
+writer = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(writer)
+cspec = importlib.util.spec_from_file_location("publication_canonicalizer_stage4", canon_path)
+canon = importlib.util.module_from_spec(cspec)
+cspec.loader.exec_module(canon)
+selection = json.loads((dev / "devset.json").read_text(encoding="utf-8"))
+
+import pipeline
+import production_pipeline
+import reader_quality_precision
+import run283_numeric_evidence_equivalence
+import run284_reader_recovery_precision
+
+production_pipeline.install_runtime_layers(pipeline)
+production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+run283_numeric_evidence_equivalence.install(pipeline)
+reader_quality_precision.install(pipeline)
+run284_reader_recovery_precision.install(pipeline)
+
+results = []
+peers = []
+for original in selection["articles"]:
+    snapshot = canon.canonicalize_snapshot(original)
+    assert snapshot["canonical_entity_id"] == original["canonical_entity_id"]
+    assert snapshot["decision"] == original["decision"]
+    assert snapshot["decision_score"] == original["decision_score"]
+    assert snapshot["evidence_urls"] == original["evidence_urls"]
+    assert original.get("publication_canonicalized") is None
+
+    parsed = writer.to_pipeline_parsed(snapshot)
+    article = parsed["note_draft"]
+    # Evidence validation always uses the untouched structured record.
+    context = writer.source_context(original)
+
+    fact = pipeline.validate_fact_gate(
+        parsed,
+        original["name"],
+        source_context=context,
+        source=original["source"],
+        evidence_metadata={},
+        source_info=None,
+        freshness={},
+    )
+    editorial = pipeline.validate_editorial_gate(parsed, original["name"])
+    publication = pipeline.validate_publication_readiness_gate(
+        parsed,
+        source_context=context,
+        source_info={"sufficient": True},
+    )
+    human = pipeline.validate_human_appeal_gate(parsed, peers)
+    signals = pipeline._reader_experience_signals(article)
+    cross = pipeline._cross_article_naturalness_signals(article, peers)
+    all_pass = bool(
+        fact[0] and editorial[0] and publication[0] == "PASS" and human[0] == "ACCEPTABLE"
+    )
+    results.append({
+        "case_id": original["case_id"],
+        "name": original["name"],
+        "source": original["source"],
+        "canonical_title": snapshot["reader_title"],
+        "layout": writer._layout_id(snapshot),
+        "fact": fact,
+        "editorial": editorial,
+        "publication": publication,
+        "human": human,
+        "reader": {
+            "accessibility": signals.get("accessibility"),
+            "decision_accessibility": signals.get("decision_accessibility"),
+            "jargon_translation": signals.get("jargon_translation"),
+            "non_engineer_core_clarity": signals.get("non_engineer_core_clarity"),
+            "information_budget": signals.get("information_budget"),
+            "reader_enjoyment": signals.get("reader_enjoyment"),
+            "unexplained_jargon": signals.get("unexplained_jargon"),
+        },
+        "cross": cross,
+        "all_pass": all_pass,
+    })
+    peers.append({
+        "name": original["name"],
+        "sequence": pipeline._style_sequence(article),
+        "opening_shingles": tuple(
+            pipeline._sentence_shingles(pipeline._article_opening_excerpt(article, 520), 5)
+        ),
+        "heading_count": len(re.findall(r"^#{2,3}\s+.+$", article, re.MULTILINE)),
+        "rhetorical_phrases": tuple(sorted(pipeline._rhetorical_template_phrases(article))),
+    })
+
+summary = {
+    "count": len(results),
+    "pass_count": sum(1 for row in results if row["all_pass"]),
+    "results": results,
+}
+assert len(results) == 8
+assert summary["pass_count"] == 8, "STAGE4_CANONICALIZER_V1::" + json.dumps(
     summary, ensure_ascii=False, sort_keys=True
 )
 """
