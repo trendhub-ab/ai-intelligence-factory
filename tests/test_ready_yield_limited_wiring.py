@@ -78,6 +78,21 @@ class LimitedWiringTests(unittest.TestCase):
             self.assertEqual(rows[0]["provider_attempted"], False)
             self.assertEqual(json.loads((Path(out) / "summary.json").read_text())["provider_attempts"], 0)
 
+    def test_recovery_tries_each_model_once_without_feedback(self):
+        calls = []
+        pipeline = SimpleNamespace(
+            _generate_via_chat=lambda model, *a, **kw: (calls.append(model) or SimpleNamespace(text="ARTICLE")),
+            GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=4096,
+        )
+        with TemporaryDirectory() as out, \
+             patch.object(experiment, "prompt_for", return_value="prompt"), \
+             patch.object(experiment, "evaluate", return_value={
+                 "gate": {"ready_eligible_before_persistence": False}, "body_after_polish": "ARTICLE"}):
+            rows = experiment.execute_limited(pipeline, {}, Path(out), self._shared([]),
+                max_attempts=2, initial_only=True, clock=self._clock(), sleep=lambda seconds: None)
+        self.assertEqual(calls, ["gemini-3.6-flash", "gemini-3.5-flash"])
+        self.assertEqual(len(rows), 2)
+
     @staticmethod
     def _clock():
         # 25 seconds apart, avoiding real waits in a zero-provider test.

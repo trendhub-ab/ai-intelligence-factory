@@ -117,3 +117,33 @@ class SharedRPMTests(unittest.TestCase):
         store.data["campaigns"]["old"] = {"run_id": "old", "used": 4}
         with self.assertRaises(RPMUnavailable):
             SharedRPM(store, "project", campaign_id="new", run_id="new").claim_campaign()
+
+    def test_recovery_campaign_adds_two_only_after_exact_prior_history(self):
+        store = MemoryStore()
+        old = {
+            "ready-yield-fixed-evidence-20260925": {"run_id": "first", "used": 1},
+            "ready-yield-fixed-evidence-20260925-continuation": {"run_id": "second", "used": 3},
+        }
+        store.data["campaigns"] = old.copy()
+        campaign = SharedRPM(store, "project", campaign_id=SharedRPM.RECOVERY_CAMPAIGN,
+                             run_id="recovery")
+        campaign.claim_campaign()
+        self.assertEqual(campaign.reserve("gemini-3.6-flash", 100), 0)
+        self.assertEqual(campaign.reserve("gemini-3.5-flash", 125), 0)
+        self.assertEqual({k: store.data["campaigns"][k] for k in old}, old)
+        self.assertEqual(store.data["campaigns"][SharedRPM.RECOVERY_CAMPAIGN]["used"], 2)
+        with self.assertRaises(RPMUnavailable):
+            campaign.reserve("gemini-3.6-flash", 150)
+        with self.assertRaises(RPMUnavailable):
+            SharedRPM(store, "project", campaign_id="another", run_id="x").claim_campaign()
+        with self.assertRaises(RPMUnavailable):
+            campaign.claim_campaign()
+
+    def test_recovery_rejects_incorrect_prior_history(self):
+        for old in ({"old": {"run_id": "x", "used": 4}},
+                    {"ready-yield-fixed-evidence-20260925": {"run_id": "first", "used": 1}}):
+            store = MemoryStore()
+            store.data["campaigns"] = old
+            with self.assertRaises(RPMUnavailable):
+                SharedRPM(store, "project", campaign_id=SharedRPM.RECOVERY_CAMPAIGN,
+                          run_id="recovery").claim_campaign()

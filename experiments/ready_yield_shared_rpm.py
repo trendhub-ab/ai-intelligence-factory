@@ -66,6 +66,11 @@ class GitHubRPMStore:
 
 class SharedRPM:
     ALLOWED_MODELS = frozenset(("gemini-3.6-flash", "gemini-3.5-flash"))
+    RECOVERY_CAMPAIGN = "ready-yield-fixed-evidence-20260926-recovery"
+    PRIOR_CAMPAIGNS = {
+        "ready-yield-fixed-evidence-20260925": 1,
+        "ready-yield-fixed-evidence-20260925-continuation": 3,
+    }
 
     def __init__(self, store, project_scope: str, *, campaign_id: str = "", run_id: str = ""):
         self.store = store
@@ -87,6 +92,18 @@ class SharedRPM:
             total += used
         return total
 
+    def _ceiling(self, campaigns: dict) -> int:
+        """Only the named recovery campaign may extend the audited four sends."""
+        if self.campaign_id != self.RECOVERY_CAMPAIGN:
+            return 4
+        if set(campaigns) - {self.RECOVERY_CAMPAIGN} != set(self.PRIOR_CAMPAIGNS):
+            raise RPMUnavailable("Recovery requires the exact historical campaigns")
+        for name, expected in self.PRIOR_CAMPAIGNS.items():
+            row = campaigns[name]
+            if not isinstance(row, dict) or row.get("used") != expected:
+                raise RPMUnavailable("Recovery historical reservations changed")
+        return 6
+
     def claim_campaign(self) -> None:
         """Spend the sole live entrypoint before any provider request."""
         if not self.campaign_id or not self.run_id or not self.project_scope:
@@ -97,8 +114,8 @@ class SharedRPM:
                 raise RPMUnavailable("Uninitialized campaign ledger or project mismatch")
             if self.campaign_id in data["campaigns"]:
                 raise RPMUnavailable("Campaign already claimed; no further provider sends")
-            if self._total_reserved(data["campaigns"]) >= 4:
-                raise RPMUnavailable("Four cumulative campaign reservations reached")
+            if self._total_reserved(data["campaigns"]) >= self._ceiling(data["campaigns"]):
+                raise RPMUnavailable("Cumulative campaign reservations reached")
             updated = dict(data)
             updated["campaigns"] = {**data["campaigns"], self.campaign_id: {
                 "run_id": self.run_id, "used": 0}}
@@ -129,10 +146,12 @@ class SharedRPM:
                 if not isinstance(campaign, dict) or campaign.get("run_id") != self.run_id:
                     raise RPMUnavailable("Campaign was not claimed by this run")
                 used = campaign.get("used")
-                if isinstance(used, bool) or not isinstance(used, int) or not 0 <= used < 4:
-                    raise RPMUnavailable("Campaign four-attempt ceiling reached")
-                if self._total_reserved(campaigns) >= 4:
-                    raise RPMUnavailable("Four cumulative campaign reservations reached")
+                ceiling = self._ceiling(campaigns)
+                campaign_limit = 2 if self.campaign_id == self.RECOVERY_CAMPAIGN else 4
+                if isinstance(used, bool) or not isinstance(used, int) or not 0 <= used < campaign_limit:
+                    raise RPMUnavailable("Campaign attempt ceiling reached")
+                if self._total_reserved(campaigns) >= ceiling:
+                    raise RPMUnavailable("Cumulative campaign reservations reached")
             attempts = data.get("attempts", [])
             if not isinstance(attempts, list):
                 raise RPMUnavailable("Unparseable RPM attempt ledger")

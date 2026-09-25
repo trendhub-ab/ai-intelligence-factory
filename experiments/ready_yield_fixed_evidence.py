@@ -161,7 +161,7 @@ def evaluate(p, raw: str, info):
 
 
 def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
-                    max_attempts: int = 4,
+                    max_attempts: int = 4, initial_only: bool = False,
                     clock=time.monotonic, wall_clock=time.time,
                     sleep=time.sleep) -> list[dict]:
     """One bounded probe; every initial and feedback request uses one limiter.
@@ -177,6 +177,8 @@ def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
         for style in ("classic", "human_narrative")
         for model in ("gemini-3.6-flash", "gemini-3.5-flash")
     ]
+    if initial_only:
+        cases = cases[:2]
 
     def send(case):
         from canonical_article_contract import aiif_editor_persona
@@ -198,7 +200,7 @@ def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
     def assess(case, raw):
         result = evaluate(p, raw, info)
         assessment = {"article": result, "feedback": None}
-        if case["phase"] != "initial" or result["gate"]["ready_eligible_before_persistence"]:
+        if initial_only or case["phase"] != "initial" or result["gate"]["ready_eligible_before_persistence"]:
             return assessment
         reasons = [r["message"] for r in result["gate"]["reason_rows"]
                    if r.get("severity") in {p.GATE_SEVERITY_HARD, p.GATE_SEVERITY_REVIEW}]
@@ -308,14 +310,14 @@ def main():
             raise RuntimeError("Unknown Gemini project scope; zero provider sends")
         store = GitHubRPMStore(os.environ["GITHUB_REPOSITORY"], os.environ["GH_PAT"],
                                branch="runtime-state")
-        shared = SharedRPM(store, scope, campaign_id="ready-yield-fixed-evidence-20260925-continuation",
+        shared = SharedRPM(store, scope, campaign_id=SharedRPM.RECOVERY_CAMPAIGN,
                            run_id=os.environ["GITHUB_RUN_ID"])
         prepare_isolated_probe_budget(p)
         shared.claim_campaign()
         # All in-repo Gemini Actions share ai-intelligence-gemini-budget.
         # Drain any sends from the job that owned it immediately before us.
         time.sleep(65)
-        execute_limited(p, info, args.out_dir, shared, max_attempts=3)
+        execute_limited(p, info, args.out_dir, shared, max_attempts=2, initial_only=True)
         return
     rows = []
     if args.phase == "initial":
