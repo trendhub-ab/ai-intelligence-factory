@@ -249,9 +249,9 @@ SUBSCRIPTION_ATTRIBUTION_GITHUB_DIR = os.environ.get("SUBSCRIPTION_ATTRIBUTION_G
 # This mode uses only the Notion API.  It never calls Gemini or source APIs.
 PUBLIC_DB_SYNC_MODE = os.environ.get("PUBLIC_DB_SYNC_MODE", "false").lower() in {"1", "true", "yes", "on"}
 
-# GitHub / Hacker News / arXiv / Product Hunt は日次観測の同格な必須4 Source。
-# Product Huntだけ認証Tokenが必要なため、欠落はproduction preflightでGemini消費前に検出する。
-# これはtransport上の要件であり、Source ROI・優先順位・最低枠・最大枠で特別扱いしない。
+# Legacy Product Hunt names below are compatibility-only for the pre-Run268 core.
+# Production installs Run268 before pipeline.main(): OfficialVendor owns this slot,
+# and normal ONE-SHOT execution performs no Product Hunt transport or token access.
 PRODUCTHUNT_DEVELOPER_TOKEN = os.environ.get("PRODUCTHUNT_DEVELOPER_TOKEN")
 PRODUCTHUNT_LOOKBACK_HOURS = max(24, int(os.environ.get("PRODUCTHUNT_LOOKBACK_HOURS", "72")))
 
@@ -10039,15 +10039,19 @@ def main():
     github_items = fetch_github_trending(source_fetch_limits.get("GitHub", GITHUB_FETCH_LIMIT))
     hackernews_items = fetch_hackernews_top(source_fetch_limits.get("HackerNews", HN_FETCH_LIMIT))
     arxiv_items = fetch_arxiv_ai_ml(source_fetch_limits.get("ArXiv", ARXIV_FETCH_LIMIT))
-    producthunt_items = fetch_producthunt_trending(source_fetch_limits.get("ProductHunt", PRODUCTHUNT_FETCH_LIMIT))
+    official_vendor_items = fetch_producthunt_trending(
+        source_fetch_limits.get("OfficialVendor", source_fetch_limits.get("ProductHunt", PRODUCTHUNT_FETCH_LIMIT))
+    )
+    # "ProductHunt" remains only as the legacy call-slot key. Run268 rewrites this
+    # bucket to OfficialVendor before dedupe, Screening, attribution, and ROI metrics.
     source_groups = {
         "GitHub": github_items, "HackerNews": hackernews_items,
-        "ArXiv": arxiv_items, "ProductHunt": producthunt_items,
+        "ArXiv": arxiv_items, "ProductHunt": official_vendor_items,
     }
     repos = round_robin_candidates(source_groups, MAX_SCREENING_CANDIDATES)
     logger.info(
         f"[MULTI-SOURCE] GitHub:{len(github_items)} HN:{len(hackernews_items)} "
-        f"ArXiv:{len(arxiv_items)} PH:{len(producthunt_items)} 合計:{len(repos)}"
+        f"ArXiv:{len(arxiv_items)} OfficialVendor:{len(official_vendor_items)} 合計:{len(repos)}"
     )
 
     safe_repos = []
