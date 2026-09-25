@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import sys
 import time
+from unittest.mock import patch
 
 # GitHub Actions executes this file by path from experiments/, whereas production
 # modules live at repository root.
@@ -46,13 +47,19 @@ def sha(value: str) -> str:
 def install_production_gates():
     import pipeline as p
     import production_pipeline
+    import run203_runtime_state_channel
+    import run179_eyecatch_font_refinement
 
     # The same installer order as the production entrypoint, while bypassing its
     # operational main, runtime-state writes, and all production persistence.
     original = p.main
     p.main = lambda: None
     try:
-        production_pipeline.main()
+        # Install the actual production layers while excluding two startup I/O
+        # checks that require a production branch/font asset during local QA.
+        with patch.object(run203_runtime_state_channel, "preflight_runtime_state_channel"), \
+             patch.object(run179_eyecatch_font_refinement, "ensure_google_font_assets"):
+            production_pipeline.main()
     finally:
         p.main = original
     return p
