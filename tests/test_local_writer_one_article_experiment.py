@@ -183,3 +183,84 @@ print(json.dumps({
     assert result.returncode == 0, result.stdout + result.stderr
     assert '"publication": ["PASS", []]' in result.stdout
     assert '"human": ["ACCEPTABLE", []]' in result.stdout
+
+
+def test_production_reader_value_stack_accepts_local_writer_output_without_provider():
+    code = r"""
+import importlib.util
+import json
+import socket
+from pathlib import Path
+
+socket.socket.connect = lambda *a, **k: (_ for _ in ()).throw(
+    AssertionError("network access forbidden in Local Writer production-stack validation")
+)
+
+root = Path.cwd()
+exp = root / "experiments" / "local_writer_one_article_20260926"
+spec = importlib.util.spec_from_file_location("local_writer_production_check", exp / "local_writer.py")
+writer = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(writer)
+snapshot = json.loads((exp / "snapshot.json").read_text(encoding="utf-8"))
+
+import pipeline
+import production_pipeline
+import reader_quality_precision
+import run283_numeric_evidence_equivalence
+import run284_reader_recovery_precision
+
+production_pipeline.install_runtime_layers(pipeline)
+production_pipeline.install_run349_score_narrative_negation_precision(pipeline)
+run283_numeric_evidence_equivalence.install(pipeline)
+reader_quality_precision.install(pipeline)
+run284_reader_recovery_precision.install(pipeline)
+
+parsed = writer.to_pipeline_parsed(snapshot)
+context = writer.source_context(snapshot)
+
+fact = pipeline.validate_fact_gate(
+    parsed,
+    snapshot["name"],
+    source_context=context,
+    source=snapshot["source"],
+    evidence_metadata={},
+    source_info=None,
+    freshness={},
+)
+editorial = pipeline.validate_editorial_gate(parsed, snapshot["name"])
+publication = pipeline.validate_publication_readiness_gate(
+    parsed,
+    source_context=context,
+    source_info={"sufficient": True},
+)
+human = pipeline.validate_human_appeal_gate(parsed, [])
+
+print(json.dumps({
+    "fact": fact,
+    "editorial": editorial,
+    "publication": publication,
+    "human": human,
+}, ensure_ascii=False))
+
+assert fact[0], fact
+assert editorial[0], editorial
+assert publication[0] == "PASS", publication
+assert human[0] == "ACCEPTABLE", human
+"""
+    env = dict(
+        os.environ,
+        SYNTHETIC_REGRESSION_MODE="true",
+        GEMINI_API_KEY="",
+        GH_PAT="",
+        NOTION_API_KEY="",
+        GEMINI_PERSISTENT_DAILY_COUNTER="false",
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
