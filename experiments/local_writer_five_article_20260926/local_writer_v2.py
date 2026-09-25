@@ -168,6 +168,19 @@ def _decision_phrase(snapshot: Mapping[str, Any]) -> str:
     return DECISION_PHRASES[str(snapshot["decision"]).upper()]
 
 
+def _critical_numeric_evidence(snapshot: Mapping[str, Any]) -> str:
+    """Keep decision-material measured values on the reader surface.
+
+    Plain list numbering is ignored. Decimal values, percentages and explicitly
+    unit-bearing measurements in the stored decision reason are retained.
+    """
+    reason = _clean(snapshot["decision_reason"])
+    numeric = re.compile(
+        r"(?:\\d+\\.\\d+|\\d+(?:\\.\\d+)?\\s*(?:%|倍|ms|秒|分|時間|日|週|週間|月|年|GB|MB|TB|GPU|件|人|台))"
+    )
+    return _reader_surface(reason) if numeric.search(reason) else ""
+
+
 def _opening(snapshot: Mapping[str, Any], core: str, importance: str, profile: int) -> list[str]:
     name = _clean(snapshot["name"])
     openings = {
@@ -210,10 +223,15 @@ def _layout(snapshot: Mapping[str, Any]) -> list[str]:
     avoid_for = _reader_surface(snapshot["avoid_for"])
     action = _reader_surface(snapshot["action"])
     decision = _decision_phrase(snapshot)
+    numeric_evidence = _critical_numeric_evidence(snapshot)
 
     intro = _opening(snapshot, core, importance, profile)
     source = _clean(snapshot["source"])
     evidence = [f"- {url}" for url in snapshot["evidence_urls"]]
+    numeric_block = (
+        ["", "判断に効く測定値も残します。", "", numeric_evidence]
+        if numeric_evidence else []
+    )
 
     # Five intentionally different article rhythms. The structure selection is deterministic
     # from source/score, not from a pre-existing manuscript.
@@ -222,6 +240,8 @@ def _layout(snapshot: Mapping[str, Any]) -> list[str]:
             *intro, "",
             "## 研究コードは「製品」と同じ条件では読まない", "",
             f"ただし、判断には次の制約があります。{risk}", "",
+            *numeric_block,
+            *numeric_block,
             f"向いているのは、{best_for}", "",
             "## 私なら、使う場所を限定する", "",
             f"現時点の判断は「{decision}」です。", "",
@@ -238,6 +258,8 @@ def _layout(snapshot: Mapping[str, Any]) -> list[str]:
             f"私なら「{decision}」とします。使える範囲を確かめてから広げる判断です。", "",
             "## 便利さと限界を同時に見る", "",
             f"ただし、次の制約があります。{risk}", "",
+            *numeric_block,
+            *numeric_block,
             "## 誰に向く話か", "",
             f"向いているのは、{best_for}", "",
             f"逆に、{avoid_for}", "",
@@ -268,6 +290,7 @@ def _layout(snapshot: Mapping[str, Any]) -> list[str]:
             *intro, "",
             "## 変えるのはモデルだけではない", "",
             f"ただし、現時点では次の制約があります。{risk}", "",
+            *numeric_block,
             "## 使う価値があるのはどこか", "",
             f"向いているのは、{best_for}", "",
             "## 使わなくてよいケース", "",
