@@ -264,6 +264,7 @@ def main():
             "key": bool(os.environ.get("GEMINI_API_KEY")),
             "token": bool(os.environ.get("GH_PAT")),
             "repository": os.environ.get("GITHUB_REPOSITORY") == "trendhub-ab/ai-intelligence-factory",
+            "run_id": bool(os.environ.get("GITHUB_RUN_ID", "").isdigit()),
             "project": bool(os.environ.get("GEMINI_QUOTA_PROJECT_ID")),
             "counter_branch": os.environ.get("GEMINI_COUNTER_BRANCH") == "runtime-state",
         }
@@ -294,10 +295,13 @@ def main():
             raise RuntimeError("Unknown Gemini project scope; zero provider sends")
         store = GitHubRPMStore(os.environ["GITHUB_REPOSITORY"], os.environ["GH_PAT"],
                                branch="runtime-state")
+        shared = SharedRPM(store, scope, campaign_id="ready-yield-fixed-evidence-20260925",
+                           run_id=os.environ["GITHUB_RUN_ID"])
+        shared.claim_campaign()
         # All in-repo Gemini Actions share ai-intelligence-gemini-budget.
         # Drain any sends from the job that owned it immediately before us.
         time.sleep(65)
-        execute_limited(p, info, args.out_dir, SharedRPM(store, scope))
+        execute_limited(p, info, args.out_dir, shared)
         return
     rows = []
     if args.phase == "initial":

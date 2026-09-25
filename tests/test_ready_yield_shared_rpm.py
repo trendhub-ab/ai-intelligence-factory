@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 class MemoryStore:
     def __init__(self):
-        self.data = {}
+        self.data = {"scope": "project", "attempts": [], "campaigns": {}}
         self.version = 0
         self.inject_conflict = False
 
@@ -18,7 +18,7 @@ class MemoryStore:
     def write(self, data, sha):
         if self.inject_conflict:
             self.inject_conflict = False
-            self.data = {"scope": "project", "attempts": [{"model": "gemini-3.5-flash", "at": 0}]}
+            self.data = {"scope": "project", "attempts": [{"model": "gemini-3.5-flash", "at": 0}], "campaigns": {}}
             self.version += 1
         if sha != str(self.version):
             raise RPMConflict("stale SHA")
@@ -70,3 +70,32 @@ class SharedRPMTests(unittest.TestCase):
         store.data = {"scope": "project", "attempts": [{"model": "gemini-3.5-flash", "at": "bad"}]}
         with self.assertRaises(RPMUnavailable):
             SharedRPM(store, "project").reserve("gemini-3.6-flash", 100)
+
+    def test_campaign_claim_is_durable_and_single_use(self):
+        store = MemoryStore()
+        store.data = {"scope": "project", "attempts": [], "campaigns": {}}
+        guard = SharedRPM(store, "project", campaign_id="fixed-evidence-20260925", run_id="123")
+        guard.claim_campaign()
+        self.assertEqual(guard.reserve("gemini-3.6-flash", 100), 0)
+        self.assertEqual(store.data["campaigns"]["fixed-evidence-20260925"]["used"], 1)
+        with self.assertRaises(RPMUnavailable):
+            SharedRPM(store, "project", campaign_id="fixed-evidence-20260925", run_id="456").claim_campaign()
+        with self.assertRaises(RPMUnavailable):
+            guard.claim_campaign()
+
+    def test_campaign_persistent_four_attempt_limit(self):
+        store = MemoryStore()
+        store.data = {"scope": "project", "attempts": [], "campaigns": {}}
+        guard = SharedRPM(store, "project", campaign_id="fixed-evidence-20260925", run_id="123")
+        guard.claim_campaign()
+        for index in range(4):
+            self.assertEqual(guard.reserve("gemini-3.6-flash", 100 + index * 25), 0)
+        with self.assertRaises(RPMUnavailable):
+            guard.reserve("gemini-3.6-flash", 200)
+
+    def test_missing_ledger_fails_closed(self):
+        store = GitHubRPMStore("owner/repo", "dummy", branch="runtime-state")
+        with patch("experiments.ready_yield_shared_rpm.requests.get",
+                   return_value=SimpleNamespace(status_code=404)):
+            with self.assertRaises(RPMUnavailable):
+                store.read()

@@ -33,7 +33,7 @@ class GitHubRPMStore:
             response = requests.get(self.url, headers=self.headers,
                                     params={"ref": self.branch}, timeout=12)
             if response.status_code == 404:
-                return {}, None
+                raise RPMUnavailable("RPM ledger missing; bootstrap required before any send")
             if response.status_code != 200:
                 raise RPMUnavailable(f"RPM state read failed: HTTP {response.status_code}")
             payload = response.json()
@@ -67,9 +67,31 @@ class GitHubRPMStore:
 class SharedRPM:
     ALLOWED_MODELS = frozenset(("gemini-3.6-flash", "gemini-3.5-flash"))
 
-    def __init__(self, store, project_scope: str):
+    def __init__(self, store, project_scope: str, *, campaign_id: str = "", run_id: str = ""):
         self.store = store
         self.project_scope = str(project_scope or "").strip()
+        self.campaign_id = str(campaign_id or "").strip()
+        self.run_id = str(run_id or "").strip()
+
+    def claim_campaign(self) -> None:
+        """Spend the sole live entrypoint before any provider request."""
+        if not self.campaign_id or not self.run_id or not self.project_scope:
+            raise RPMUnavailable("Campaign identity, run ID, or project scope missing")
+        for _ in range(3):
+            data, sha = self.store.read()
+            if data.get("scope") != self.project_scope or not isinstance(data.get("campaigns"), dict):
+                raise RPMUnavailable("Uninitialized campaign ledger or project mismatch")
+            if self.campaign_id in data["campaigns"]:
+                raise RPMUnavailable("Campaign already claimed; no further provider sends")
+            updated = dict(data)
+            updated["campaigns"] = {**data["campaigns"], self.campaign_id: {
+                "run_id": self.run_id, "used": 0}}
+            try:
+                self.store.write(updated, sha)
+                return
+            except RPMConflict:
+                continue
+        raise RPMUnavailable("Campaign claim contention did not settle")
 
     def reserve(self, model: str, now: float) -> float:
         """Return seconds to wait, or 0 after an atomic pre-send reservation."""
@@ -81,8 +103,18 @@ class SharedRPM:
             data, sha = self.store.read()
             if not isinstance(data, dict):
                 raise RPMUnavailable("Unparseable RPM state")
-            if data and data.get("scope") != self.project_scope:
+            if data.get("scope") != self.project_scope:
                 raise RPMUnavailable("RPM project scope mismatch")
+            campaigns = data.get("campaigns")
+            if self.campaign_id:
+                if not self.run_id or not isinstance(campaigns, dict):
+                    raise RPMUnavailable("Campaign ledger unavailable")
+                campaign = campaigns.get(self.campaign_id)
+                if not isinstance(campaign, dict) or campaign.get("run_id") != self.run_id:
+                    raise RPMUnavailable("Campaign was not claimed by this run")
+                used = campaign.get("used")
+                if isinstance(used, bool) or not isinstance(used, int) or not 0 <= used < 4:
+                    raise RPMUnavailable("Campaign four-attempt ceiling reached")
             attempts = data.get("attempts", [])
             if not isinstance(attempts, list):
                 raise RPMUnavailable("Unparseable RPM attempt ledger")
@@ -102,8 +134,10 @@ class SharedRPM:
                 delay = max(delay, min(row["at"] for row in by_model) + 60 - now)
             if delay > 0:
                 return delay
-            updated = {"scope": self.project_scope,
-                       "attempts": clean + [{"model": model, "at": now}]}
+            updated = {**data, "attempts": clean + [{"model": model, "at": now}]}
+            if self.campaign_id:
+                updated["campaigns"] = {**campaigns, self.campaign_id: {
+                    **campaign, "used": used + 1}}
             try:
                 self.store.write(updated, sha)
                 return 0
