@@ -45,7 +45,7 @@ SUPPLEMENTAL_GLOSSARY = {
     "GCC": "C/C++コンパイラ群",
     "NX": "メモリ領域を実行不可にする保護属性",
     "OS": "オペレーティングシステム",
-    "MSVC": "Windows向けC/C++コンパイラ",
+    "MSVC": "C/C++コンパイラ",
     "DNS": "ドメイン名と接続先を対応づける仕組み",
     "QA": "品質保証",
     "IT": "情報技術",
@@ -233,12 +233,12 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     out["reader_title"] = _normalize_title(out.get("reader_title", ""))
     out["action"] = _canonicalize_action(out.get("action", ""), decision, score)
 
-    # Second pass follows Local Writer's section-consumption order so a term gets
-    # one concise first-use bridge across the article.
-    seen: set[str] = set()
+    # Second pass follows Local Writer's body-consumption order. Summary/title
+    # state is deliberately separate: a term explained only in the 30-second card
+    # must still receive a first-use explanation in the article body.
+    body_seen: set[str] = set()
     for key in (
         "name",
-        "source_summary",
         "what",
         "why_important",
         "primary_risk",
@@ -246,9 +246,12 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "avoid_for",
         "decision_reason",
         "action",
-        "reader_title",
     ):
-        out[key] = _explain_supplemental_terms(out.get(key, ""), seen)
+        out[key] = _explain_supplemental_terms(out.get(key, ""), body_seen)
+
+    summary_seen: set[str] = set()
+    out["source_summary"] = _explain_supplemental_terms(out.get("source_summary", ""), summary_seen)
+    out["reader_title"] = _explain_supplemental_terms(out.get("reader_title", ""), set())
 
     # Fields that feed the deterministic 30-second summary need a reader bridge
     # only when their compact form would otherwise be jargon-dense.
@@ -256,5 +259,5 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     out["why_important"] = _add_summary_plain_bridge(out.get("why_important", ""))
 
     out["publication_canonicalized"] = True
-    out["publication_canonicalizer_version"] = "stage4-v2"
+    out["publication_canonicalizer_version"] = "stage4-v3"
     return out
