@@ -52,6 +52,8 @@ def test_writer_uses_system_persona_and_one_send_without_changing_tools(monkeypa
     assert 'SURPRISE' in prompt and 'TENSION' in prompt and 'HUMAN STAKE' in prompt
     assert 'QUESTION' in prompt and 'PAYOFF' in prompt
     assert 'SOURCE BOUNDARY' in prompt and 'Evidence-to-Decision' in prompt
+    assert '記事の主役となる製品・サービス・技術・研究等' in prompt
+    assert 'タイトルに名前を出しても本文で役割を示す' in prompt
 
 
 def test_writer_output_contract_keeps_public_summary_fields_plain():
