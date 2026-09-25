@@ -243,13 +243,13 @@ def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
     return rows
 
 
-def prepare_isolated_probe_budget(p):
+def prepare_isolated_probe_budget(p, *, max_attempts: int = 3):
     """Use the original per-run cap in a probe that has no backlog or rescue work."""
     original = getattr(p, "_run346_original_deep_dive_budget", None)
     budget = getattr(p, "DEEP_DIVE_MODEL_BUDGET", None)
-    if not isinstance(original, int) or original < 3 or budget is None or budget.used != 0:
+    if not isinstance(original, int) or original < max_attempts or budget is None or budget.used != 0:
         raise RuntimeError("Cannot establish remaining isolated Deep Dive budget")
-    budget.budget = min(original, 3)
+    budget.budget = max_attempts
     if not budget.can_request():
         raise RuntimeError("No Deep Dive request capacity before provider reservation")
 
@@ -310,14 +310,14 @@ def main():
             raise RuntimeError("Unknown Gemini project scope; zero provider sends")
         store = GitHubRPMStore(os.environ["GITHUB_REPOSITORY"], os.environ["GH_PAT"],
                                branch="runtime-state")
-        shared = SharedRPM(store, scope, campaign_id=SharedRPM.RECOVERY_CAMPAIGN,
+        shared = SharedRPM(store, scope, campaign_id=SharedRPM.CAMPAIGN_0400,
                            run_id=os.environ["GITHUB_RUN_ID"])
-        prepare_isolated_probe_budget(p)
+        prepare_isolated_probe_budget(p, max_attempts=4)
         shared.claim_campaign()
         # All in-repo Gemini Actions share ai-intelligence-gemini-budget.
         # Drain any sends from the job that owned it immediately before us.
         time.sleep(65)
-        execute_limited(p, info, args.out_dir, shared, max_attempts=2, initial_only=True)
+        execute_limited(p, info, args.out_dir, shared, max_attempts=4)
         return
     rows = []
     if args.phase == "initial":

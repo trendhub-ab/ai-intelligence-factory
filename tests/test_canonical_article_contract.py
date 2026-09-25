@@ -81,6 +81,20 @@ def test_reader_repair_keeps_fact_fixed_and_allows_reordering():
     assert "通らなければReadyにしない" in text
 
 
+def test_unfamiliar_main_subject_gets_a_plain_role_on_first_mention():
+    cac = _load()
+    writer = cac.ensure_final_reader_check("BASE")
+    repair = cac.canonical_reader_repair_contract()
+    for prompt in (writer, repair):
+        assert "記事の主役" in prompt
+        assert "本文の初出" in prompt
+        assert "何をするものか" in prompt
+        assert "Evidenceで確認" in prompt
+        assert "推測で補わない" in prompt
+    assert "タイトルに名前を出しても" in writer
+    assert "『○○とは』で始める" in writer
+
+
 def test_canonical_module_has_no_provider_or_network_dependency():
     cac = _load()
     src = inspect.getsource(cac)

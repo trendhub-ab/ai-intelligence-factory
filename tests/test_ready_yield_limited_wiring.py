@@ -18,6 +18,14 @@ class LimitedWiringTests(unittest.TestCase):
         experiment.prepare_isolated_probe_budget(pipeline)
         self.assertEqual(pipeline.DEEP_DIVE_MODEL_BUDGET.budget, 3)
 
+    def test_scheduled_probe_requests_no_more_than_original_budget(self):
+        budget = SimpleNamespace(budget=0, used=0)
+        budget.can_request = lambda: budget.used + 1 <= budget.budget
+        pipeline = SimpleNamespace(_run346_original_deep_dive_budget=4,
+                                   DEEP_DIVE_MODEL_BUDGET=budget)
+        experiment.prepare_isolated_probe_budget(pipeline, max_attempts=4)
+        self.assertEqual(budget.budget, 4)
+
     @staticmethod
     def _shared(reservations):
         return SimpleNamespace(reserve=lambda model, now: reservations.append(model) or 0)

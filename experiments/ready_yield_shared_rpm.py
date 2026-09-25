@@ -67,6 +67,7 @@ class GitHubRPMStore:
 class SharedRPM:
     ALLOWED_MODELS = frozenset(("gemini-3.6-flash", "gemini-3.5-flash"))
     RECOVERY_CAMPAIGN = "ready-yield-fixed-evidence-20260926-recovery"
+    CAMPAIGN_0400 = "ready-yield-fixed-evidence-20260926-0400"
     PRIOR_CAMPAIGNS = {
         "ready-yield-fixed-evidence-20260925": 1,
         "ready-yield-fixed-evidence-20260925-continuation": 3,
@@ -93,16 +94,19 @@ class SharedRPM:
         return total
 
     def _ceiling(self, campaigns: dict) -> int:
-        """Only the named recovery campaign may extend the audited four sends."""
-        if self.campaign_id != self.RECOVERY_CAMPAIGN:
+        """Each specifically authorized one-shot extends only audited history."""
+        if self.campaign_id not in (self.RECOVERY_CAMPAIGN, self.CAMPAIGN_0400):
             return 4
-        if set(campaigns) - {self.RECOVERY_CAMPAIGN} != set(self.PRIOR_CAMPAIGNS):
-            raise RPMUnavailable("Recovery requires the exact historical campaigns")
-        for name, expected in self.PRIOR_CAMPAIGNS.items():
+        previous = dict(self.PRIOR_CAMPAIGNS)
+        if self.campaign_id == self.CAMPAIGN_0400:
+            previous[self.RECOVERY_CAMPAIGN] = 2
+        if set(campaigns) - {self.campaign_id} != set(previous):
+            raise RPMUnavailable("Campaign requires the exact historical campaigns")
+        for name, expected in previous.items():
             row = campaigns[name]
             if not isinstance(row, dict) or row.get("used") != expected:
-                raise RPMUnavailable("Recovery historical reservations changed")
-        return 6
+                raise RPMUnavailable("Historical reservations changed")
+        return sum(previous.values()) + (4 if self.campaign_id == self.CAMPAIGN_0400 else 2)
 
     def claim_campaign(self) -> None:
         """Spend the sole live entrypoint before any provider request."""
