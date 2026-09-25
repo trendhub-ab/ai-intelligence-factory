@@ -10,6 +10,16 @@ SCRIPT = Path(__file__).resolve().parents[1] / "experiments" / "ready_yield_fixe
 
 
 class RpmSafetyTests(unittest.TestCase):
+    def test_limited_live_phase_requires_explicit_one_shot_and_verified_quota(self):
+        env = {**os.environ, "GEMINI_API_KEY": "dummy-for-zero-network-test"}
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--phase", "limited",
+             "--out-dir", "/tmp/aiif-rpm-limited-test"],
+            env=env, text=True, capture_output=True, timeout=10,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("RPM_SAFE_EXPERIMENT_DISABLED", result.stderr)
+
     def test_offline_preflight_checks_evidence_without_production_state(self):
         import tempfile
         with tempfile.TemporaryDirectory() as out:

@@ -160,7 +160,8 @@ def evaluate(p, raw: str, info):
     }
 
 
-def execute_limited(p, info: dict, out_dir: Path, *, clock=time.monotonic,
+def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
+                    clock=time.monotonic, wall_clock=time.time,
                     sleep=time.sleep) -> list[dict]:
     """One bounded probe; every initial and feedback request uses one limiter.
 
@@ -213,10 +214,21 @@ def execute_limited(p, info: dict, out_dir: Path, *, clock=time.monotonic,
             json.dumps(row, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
 
+    def reserve_shared(case):
+        # The persistent reservation is committed before the provider call.
+        # Never proceed when remote state, scope, or CAS cannot be established.
+        for _ in range(5):
+            delay = shared_rpm.reserve(case["model"], wall_clock())
+            if delay <= 0:
+                return
+            sleep(delay + 0.01)
+        raise RuntimeError("Shared RPM reservation remained unavailable")
+
     rows = run_bounded_cases(cases, send=send, assess=assess,
-                             on_result=save, clock=clock, sleep=sleep)
+                             before_send=reserve_shared, on_result=save,
+                             clock=clock, sleep=sleep)
     (out_dir / "summary.json").write_text(json.dumps({
-        "provider_attempts": len(rows),
+        "provider_attempts": sum(r.get("provider_attempted", False) for r in rows),
         "successful_responses": sum(r["outcome"] == "success" for r in rows),
         "ready_eligible_before_persistence": sum(
             r.get("assessment", {}).get("article", {}).get("gate", {}).get(
@@ -229,19 +241,35 @@ def execute_limited(p, info: dict, out_dir: Path, *, clock=time.monotonic,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=("preflight", "initial", "feedback"), required=True)
+    parser.add_argument("--phase", choices=("preflight", "limited", "initial", "feedback"), required=True)
+    parser.add_argument("--confirm", default="")
     parser.add_argument("--model", choices=MODELS)
     parser.add_argument("--in-dir", type=Path)
     parser.add_argument("--out-dir", type=Path, required=True)
     args = parser.parse_args()
-    if args.phase != "preflight":
+    if args.phase in ("initial", "feedback"):
         # The first live run bypassed Production's 20-second request pacing and
         # hit the observed free-tier 5 RPM limit. Keep the canceled harness
         # unusable until the shared project/model RPM reservation is implemented
         # and exercised by zero-provider tests. An env flag cannot override this.
         raise RuntimeError("RPM_SAFE_EXPERIMENT_DISABLED: live Gemini phases are canceled")
-    if args.phase != "preflight" and not os.environ.get("GEMINI_API_KEY"):
-        raise RuntimeError("GEMINI_API_KEY missing: zero provider sends")
+    if args.phase == "limited":
+        required = {
+            "confirm": args.confirm == "RUN_ONCE",
+            "github_actions": os.environ.get("GITHUB_ACTIONS") == "true",
+            "event": os.environ.get("GITHUB_EVENT_NAME") == "pull_request",
+            "manual_rerun": os.environ.get("GITHUB_RUN_ATTEMPT") == "2",
+            "branch": os.environ.get("GITHUB_HEAD_REF") == "experiment/ready-yield-fixed-evidence-20260924",
+            "workflow": os.environ.get("AIIF_EXPERIMENT_SHARED_GROUP") == "true",
+            "key": bool(os.environ.get("GEMINI_API_KEY")),
+            "token": bool(os.environ.get("GH_PAT")),
+            "repository": os.environ.get("GITHUB_REPOSITORY") == "trendhub-ab/ai-intelligence-factory",
+            "project": bool(os.environ.get("GEMINI_QUOTA_PROJECT_ID")),
+            "counter_branch": os.environ.get("GEMINI_COUNTER_BRANCH") == "runtime-state",
+        }
+        if not all(required.values()):
+            raise RuntimeError("RPM_SAFE_EXPERIMENT_DISABLED: missing explicit one-shot or quota prerequisites: "
+                               + ",".join(k for k, ok in required.items() if not ok))
     p = install_production_gates()
     info = source_info(p)
     evidence = p.assess_evidence_sufficiency(info)
@@ -256,6 +284,20 @@ def main():
             "evidence_state": evidence["state"], "evidence_sha256": sha(EVIDENCE),
             "evidence_url": EVIDENCE_URL, "provider_sends": 0,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
+        return
+    if args.phase == "limited":
+        from experiments.ready_yield_shared_rpm import GitHubRPMStore, SharedRPM
+        if getattr(p, "GEMINI_SDK_RETRY_ATTEMPTS", None) != 1:
+            raise RuntimeError("SDK retries not disabled; zero provider sends")
+        scope = p.PERSISTENT_GEMINI_COUNTER.provider_project_scope
+        if not scope:
+            raise RuntimeError("Unknown Gemini project scope; zero provider sends")
+        store = GitHubRPMStore(os.environ["GITHUB_REPOSITORY"], os.environ["GH_PAT"],
+                               branch="runtime-state")
+        # All in-repo Gemini Actions share ai-intelligence-gemini-budget.
+        # Drain any sends from the job that owned it immediately before us.
+        time.sleep(65)
+        execute_limited(p, info, args.out_dir, SharedRPM(store, scope))
         return
     rows = []
     if args.phase == "initial":

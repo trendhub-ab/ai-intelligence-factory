@@ -62,6 +62,7 @@ class ProbePolicy:
 def run_bounded_cases(
     cases: list[dict], *, send: Callable[[dict], str],
     assess: Callable[[dict, str], dict],
+    before_send: Callable[[dict], None] | None = None,
     on_result: Callable[[dict], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
@@ -89,6 +90,17 @@ def run_bounded_cases(
         except ProbeStopped:
             break
         try:
+            if before_send is not None:
+                before_send(case)
+        except Exception as exc:
+            limiter.record("error")
+            row = {"case": case, "outcome": "error", "provider_attempted": False,
+                   "error": {"type": type(exc).__name__, "message": str(exc)[:1000]}}
+            results.append(row)
+            if on_result is not None:
+                on_result(row)
+            break
+        try:
             raw = send(case)
         except Exception as exc:
             code = getattr(exc, "code", None)
@@ -96,7 +108,7 @@ def run_bounded_cases(
                 code = getattr(exc.response, "status_code", None)
             outcome = str(code) if code in (429, 503) else "error"
             limiter.record(outcome)
-            row = {"case": case, "outcome": outcome,
+            row = {"case": case, "outcome": outcome, "provider_attempted": True,
                    "error": {"type": type(exc).__name__, "message": str(exc)[:1000]}}
         else:
             limiter.record("success")
@@ -107,7 +119,8 @@ def run_bounded_cases(
                 # because a local parser/Gate/postprocessor failed.
                 limiter.stopped = True
                 raise
-            row = {"case": case, "outcome": "success", "assessment": assessment}
+            row = {"case": case, "outcome": "success", "provider_attempted": True,
+                   "assessment": assessment}
             feedback = assessment.get("feedback")
             if feedback and len(limiter.attempts) < limiter.max_attempts:
                 queue.insert(0, feedback)

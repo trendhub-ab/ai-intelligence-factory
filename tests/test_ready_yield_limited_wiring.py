@@ -10,8 +10,13 @@ from experiments import ready_yield_fixed_evidence as experiment
 
 
 class LimitedWiringTests(unittest.TestCase):
+    @staticmethod
+    def _shared(reservations):
+        return SimpleNamespace(reserve=lambda model, now: reservations.append(model) or 0)
+
     def test_two_503s_stop_without_fallback_or_hidden_retry(self):
         calls = []
+        reservations = []
         def generate(model, prompt, **kwargs):
             calls.append(model)
             error = RuntimeError("503 UNAVAILABLE")
@@ -24,14 +29,16 @@ class LimitedWiringTests(unittest.TestCase):
         )
         with TemporaryDirectory() as out, \
              patch.object(experiment, "prompt_for", return_value="prompt"):
-            rows = experiment.execute_limited(pipeline, {}, Path(out),
+            rows = experiment.execute_limited(pipeline, {}, Path(out), self._shared(reservations),
                 clock=self._clock(), sleep=lambda seconds: None)
             self.assertEqual(calls, ["gemini-3.6-flash", "gemini-3.5-flash"])
+            self.assertEqual(reservations, calls)
             self.assertEqual([r["outcome"] for r in rows], ["503", "503"])
             self.assertEqual(json.loads((Path(out) / "summary.json").read_text())["provider_attempts"], 2)
 
     def test_saves_raw_before_gate_evaluation(self):
         with TemporaryDirectory() as out:
+            reservations = []
             def evaluate(p, raw, info):
                 self.assertTrue(list(Path(out).glob("*.raw.txt")))
                 return {"gate": {"ready_eligible_before_persistence": True}}
@@ -41,10 +48,27 @@ class LimitedWiringTests(unittest.TestCase):
             )
             with patch.object(experiment, "prompt_for", return_value="prompt"), \
                  patch.object(experiment, "evaluate", side_effect=evaluate):
-                rows = experiment.execute_limited(pipeline, {}, Path(out),
+                rows = experiment.execute_limited(pipeline, {}, Path(out), self._shared(reservations),
                     clock=self._clock(), sleep=lambda seconds: None)
             self.assertEqual(len(rows), 4)
+            self.assertEqual(len(reservations), 4)
             self.assertEqual(len(list(Path(out).glob("*.raw.txt"))), 4)
+
+    def test_unavailable_shared_ledger_prevents_provider_send(self):
+        calls = []
+        pipeline = SimpleNamespace(
+            _generate_via_chat=lambda *a, **kw: calls.append(1),
+            GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS=4096,
+        )
+        def blocked(model, now):
+            raise RuntimeError("ledger unavailable")
+        with TemporaryDirectory() as out:
+            with patch.object(experiment, "prompt_for", return_value="prompt"):
+                rows = experiment.execute_limited(pipeline, {}, Path(out),
+                    SimpleNamespace(reserve=blocked), clock=self._clock(), sleep=lambda seconds: None)
+            self.assertEqual(calls, [])
+            self.assertEqual(rows[0]["provider_attempted"], False)
+            self.assertEqual(json.loads((Path(out) / "summary.json").read_text())["provider_attempts"], 0)
 
     @staticmethod
     def _clock():

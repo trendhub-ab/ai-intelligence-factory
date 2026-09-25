@@ -8,6 +8,7 @@ class ProbePolicyTests(unittest.TestCase):
     def test_bounded_runner_paces_every_provider_attempt_including_feedback(self):
         now = [0.0]
         calls = []
+        reservations = []
         def send(case):
             calls.append((case["id"], now[0]))
             return "draft"
@@ -19,8 +20,10 @@ class ProbePolicyTests(unittest.TestCase):
              {"id": "second", "model": "gemini-3.5-flash"}],
             send=send, assess=assess, clock=lambda: now[0],
             sleep=lambda seconds: now.__setitem__(0, now[0] + seconds),
+            before_send=lambda case: reservations.append(case["id"]),
         )
         self.assertEqual([c[0] for c in calls], ["first", "feedback", "second"])
+        self.assertEqual(reservations, ["first", "feedback", "second"])
         self.assertEqual([c[1] for c in calls], [0, 25, 50])
         self.assertEqual(len(results), 3)
 
@@ -54,6 +57,17 @@ class ProbePolicyTests(unittest.TestCase):
         )
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["outcome"], "429")
+
+    def test_failed_shared_reservation_stops_before_provider(self):
+        calls = []
+        results = run_bounded_cases(
+            [{"id": "a", "model": "gemini-3.6-flash"}],
+            send=lambda case: calls.append(case), assess=lambda case, raw: {},
+            before_send=lambda case: (_ for _ in ()).throw(RuntimeError("reservation unavailable")),
+            clock=lambda: 0, sleep=lambda seconds: None,
+        )
+        self.assertEqual(calls, [])
+        self.assertEqual(results[0]["outcome"], "error")
 
     def test_four_attempt_cap_includes_errors_and_feedback(self):
         policy = ProbePolicy()

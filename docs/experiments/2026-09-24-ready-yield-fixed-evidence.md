@@ -58,6 +58,22 @@ APIを使わないテストで、この実行経路の送信回数と原文保�
 これは**同一プロセス内の制御**であり、別ジョブやDailyと共有する原子的予約には
 まだ接続していない。そのためCLIからのライブ送信拒否は維持する。
 
+2026-09-25追加実装: `limited` のみ、GitHub Actions同一リポジトリPRの
+**1回目の明示的なjob再実行 (`run_attempt == 2`)** で有効化する。
+PR作成・更新による初回jobはAPIなしのEvidence preflightだけを実行する。
+初稿とfeedbackを合わせて最大4回とし、SDK内部Retryは1試行に固定する。
+共有concurrency group取得後に65秒待ち、直前のDaily送信があっても
+60秒窓を空ける。`runtime-state` 上の別ファイルへGitHub blob SHAのCASで
+モデル別3回/60秒・全モデル25秒間隔を送信**前**に予約する。
+CAS、状態読み取り、project scope照合に失敗したらproviderへ送らない。
+本番mainのコードやnote/Notionの状態は変更しない。
+
+この予約が観測できるのは、同じLedgerを使う実験ジョブだけである。
+本番DailyとはActions concurrency groupと開始時65秒待機で競合を避ける。
+同一Google projectを使う外部アプリやAI Studioの未観測送信による429は
+保証外であり、実際に429が来たら1回で全停止する。未公開の原文は
+Actions artifactに1日だけ保存し、結果確認後に長期保管先へ移す。
+
 - 偽時計で `0, 25, 50, 75秒` の送信予約が直近60秒で3件を超えないこと、異なるモデル間も25秒未満で送らないこと。
 - 同時2ジョブのCAS競合、プロセス再起動、状態欠落、503予約の保持、429 RetryInfo、RPD/TPM誤分類、モデルquota低下でfail closedするテスト。
 - provider mockで実験の初稿・feedback・fallbackの全経路が共有予約入口を通ることを確認する。実際のGemini APIはテストに使わない。
