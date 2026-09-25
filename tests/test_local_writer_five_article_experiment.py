@@ -1,7 +1,9 @@
 import ast
+import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -162,3 +164,56 @@ def test_v2_is_provider_free_and_existing_prose_cannot_enter():
         '"existing_article"', '"note_draft"', '"previous_article"',
     ):
         assert body_key in source
+
+
+def _load_v2():
+    path = EXP2 / "local_writer_v2.py"
+    spec = importlib.util.spec_from_file_location("local_writer_v2_direct", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_v2_preserves_numbers_and_varies_reader_surface_deterministically():
+    writer = _load_v2()
+    batch = json.loads((EXP2 / "snapshots.json").read_text(encoding="utf-8"))
+    headings = []
+    for snapshot in batch["articles"]:
+        article = writer.render_article(snapshot)
+        assert article == writer.render_article(snapshot)
+        context = writer.source_context(snapshot)
+
+        number_pattern = r"\d[\d,]*(?:\.\d+)?"
+        article_numbers = set(re.findall(number_pattern, article))
+        context_numbers = set(re.findall(number_pattern, context))
+        assert article_numbers <= context_numbers, snapshot["case_id"]
+
+        for url in snapshot["evidence_urls"]:
+            assert url in article
+        assert writer._reader_surface(snapshot["what"]) in article
+        assert writer._reader_surface(snapshot["primary_risk"]) in article
+        assert writer._decision_phrase(snapshot) in article
+
+        decision_reason = snapshot["decision_reason"]
+        decimals = re.findall(r"\d+\.\d+", decision_reason)
+        for value in decimals:
+            assert value in article, (snapshot["case_id"], value)
+
+        headings.append(len(re.findall(r"^#{2,3}\s+.+$", article, re.MULTILINE)))
+
+    assert len(set(headings)) == 5
+
+
+def test_v2_rejects_existing_article_prose_for_every_case():
+    writer = _load_v2()
+    batch = json.loads((EXP2 / "snapshots.json").read_text(encoding="utf-8"))
+    for snapshot in batch["articles"]:
+        contaminated = dict(snapshot)
+        contaminated["note_draft"] = "forbidden old manuscript"
+        try:
+            writer.validate_snapshot(contaminated)
+        except writer.SnapshotError:
+            pass
+        else:
+            raise AssertionError(snapshot["case_id"])
