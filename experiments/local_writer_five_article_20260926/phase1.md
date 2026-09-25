@@ -14,3 +14,5 @@ The goal is to expose generalization failures, especially:
 - prior Needs Editorial Review cases.
 
 Results are read from CI logs before any experiment-only repair is introduced.
+
+Experiment runner installed on this branch; this commit triggers the isolated probe.
