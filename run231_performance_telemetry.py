@@ -29,7 +29,7 @@ TARGETS = (
     ("fetch_github_trending", "source.github"),
     ("fetch_hackernews_top", "source.hackernews"),
     ("fetch_arxiv_ai_ml", "source.arxiv"),
-    ("fetch_producthunt_trending", "source.producthunt"),
+    ("fetch_producthunt_trending", "source.official_vendor"),
     ("get_existing_repo_urls", "notion.dedupe_read"),
     ("repair_existing_multilingual_notion_titles", "notion.title_repair"),
     ("screen_candidates_in_batches", "screening.batch"),

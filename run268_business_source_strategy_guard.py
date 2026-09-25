@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parent
 ACQUISITION = "business_source_acquisition.py"
 LAYER = "run268_business_source_strategy.py"
 ENTRYPOINT = "production_pipeline.py"
+CORE = "pipeline.py"
+WORKFLOW = ".github/workflows/daily-one-shot.yml"
+TELEMETRY = "run231_performance_telemetry.py"
 
 REQUIRED_VENDORS = (
     "OpenAI",
@@ -41,9 +44,12 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     acquisition = _read(root, ACQUISITION)
     layer = _read(root, LAYER)
     entrypoint = _read(root, ENTRYPOINT)
+    core = _read(root, CORE)
+    workflow = _read(root, WORKFLOW)
+    telemetry = _read(root, TELEMETRY)
     errors: list[str] = []
 
-    for name, text in ((ACQUISITION, acquisition), (LAYER, layer), (ENTRYPOINT, entrypoint)):
+    for name, text in ((ACQUISITION, acquisition), (LAYER, layer), (ENTRYPOINT, entrypoint), (CORE, core), (TELEMETRY, telemetry)):
         try:
             ast.parse(text, filename=name)
         except SyntaxError as exc:
@@ -104,6 +110,32 @@ def collect_errors(root: Path = ROOT) -> list[str]:
     if all(marker in entrypoint for marker in ("install_runtime_layers(pipeline)", "install_run268_business_source_strategy(pipeline)")):
         if entrypoint.index("install_runtime_layers(pipeline)") > entrypoint.index("install_run268_business_source_strategy(pipeline)"):
             errors.append("source_strategy_must_install_after_runtime_layers")
+
+    errors += _require(
+        workflow,
+        ('OFFICIAL_VENDOR_FETCH_LIMIT: "50"',),
+        "workflow",
+    )
+    for forbidden in (
+        "PRODUCTHUNT_DEVELOPER_TOKEN",
+        "PRODUCTHUNT_FETCH_LIMIT",
+        "PRODUCTHUNT_LOOKBACK_HOURS",
+    ):
+        if forbidden in workflow:
+            errors.append(f"workflow_retired_producthunt_surface:{forbidden}")
+
+    errors += _require(
+        telemetry,
+        ('("fetch_producthunt_trending", "source.official_vendor"),',),
+        "telemetry",
+    )
+    if "source.producthunt" in telemetry:
+        errors.append("telemetry_retired_producthunt_label")
+
+    if "OfficialVendor:{len(official_vendor_items)}" not in core:
+        errors.append("core_official_vendor_log_missing")
+    if "PH:{len(producthunt_items)}" in core:
+        errors.append("core_retired_producthunt_log_label")
 
     return list(dict.fromkeys(errors))
 

@@ -10,7 +10,7 @@ import run268_business_source_strategy_guard as guard
 
 class Run268BusinessSourceStrategyGuardTests(unittest.TestCase):
     def _copy_contract(self, root: Path) -> None:
-        for relative in (guard.ACQUISITION, guard.LAYER, guard.ENTRYPOINT):
+        for relative in (guard.ACQUISITION, guard.LAYER, guard.ENTRYPOINT, guard.CORE, guard.WORKFLOW, guard.TELEMETRY):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(guard.ROOT / relative, target)
@@ -46,6 +46,32 @@ class Run268BusinessSourceStrategyGuardTests(unittest.TestCase):
             acquisition = root / guard.ACQUISITION
             acquisition.write_text(acquisition.read_text(encoding="utf-8") + '\nPRODUCTHUNT_ENDPOINT = "https://api.producthunt.com/v2/api/graphql"\n', encoding="utf-8")
             self.assertTrue(any("api.producthunt.com" in e for e in guard.collect_errors(root)))
+
+    def test_guard_fails_if_retired_producthunt_workflow_env_returns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            workflow = root / guard.WORKFLOW
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8") + "\nPRODUCTHUNT_FETCH_LIMIT: \"50\"\n",
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "workflow_retired_producthunt_surface:PRODUCTHUNT_FETCH_LIMIT",
+                guard.collect_errors(root),
+            )
+
+    def test_guard_fails_if_retired_producthunt_telemetry_label_returns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            telemetry = root / guard.TELEMETRY
+            text = telemetry.read_text(encoding="utf-8").replace(
+                '("fetch_producthunt_trending", "source.official_vendor"),',
+                '("fetch_producthunt_trending", "source.producthunt"),',
+            )
+            telemetry.write_text(text, encoding="utf-8")
+            self.assertIn("telemetry_retired_producthunt_label", guard.collect_errors(root))
 
     def test_guard_fails_if_source_layer_installs_before_runtime_layers(self):
         with tempfile.TemporaryDirectory() as tmp:
