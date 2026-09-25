@@ -26,6 +26,7 @@ from typing import Any, Mapping
 
 PUBLICATION_TEXT_FIELDS = (
     "reader_title",
+    "source_summary",
     "what",
     "why_important",
     "decision_reason",
@@ -37,12 +38,14 @@ PUBLICATION_TEXT_FIELDS = (
 
 SUPPLEMENTAL_GLOSSARY = {
     "PDF": "文書ファイル形式",
-    "MLX": "Apple Silicon向け機械学習フレームワーク",
+    "MLX": "特定環境向けの機械学習フレームワーク",
     "TTS": "文字を音声に変換する技術",
-    "GCC": "GNU系C/C++コンパイラ群",
+    "VAD": "発話区間を検出する処理",
+    "STT": "音声を文字に変換する技術",
+    "GCC": "C/C++コンパイラ群",
     "NX": "メモリ領域を実行不可にする保護属性",
     "OS": "オペレーティングシステム",
-    "MSVC": "MicrosoftのC/C++コンパイラ",
+    "MSVC": "Windows向けC/C++コンパイラ",
     "DNS": "ドメイン名と接続先を対応づける仕組み",
     "QA": "品質保証",
     "IT": "情報技術",
@@ -149,6 +152,41 @@ def _explain_supplemental_terms(value: str, seen: set[str]) -> str:
     return text
 
 
+_SUMMARY_COMMON_ACRONYMS = {
+    "AI", "API", "LLM", "OSS", "URL", "UI", "UX", "DB", "CPU", "GPU", "ID", "PC",
+}
+_SUMMARY_PLAIN_BRIDGE_RE = re.compile(
+    r"(?:簡単に言えば|ひと言で言えば|一言で言えば|平たく言えば|要するに|つまり|"
+    r"言葉を変えると|たとえば|例えば|ようなもの|という意味|を指します|のことです)"
+)
+
+
+def _summary_needs_plain_bridge(value: str) -> bool:
+    """Mirror the final-surface compact-summary risk at high precision.
+
+    This does not delete technical detail. It only marks dense compact fields with
+    an explicit reader bridge so the same evidence remains readable in the 30-second card.
+    """
+    text = _clean(value)
+    compact = re.sub(r"\s+", "", text)
+    if len(compact) < 45 or _SUMMARY_PLAIN_BRIDGE_RE.search(text):
+        return False
+    acronyms = {
+        token for token in re.findall(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9-]{1,8})(?![A-Za-z0-9])", text)
+        if token not in _SUMMARY_COMMON_ACRONYMS
+    }
+    technical = {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_.+/#-]{2,}|[ァ-ヴー]{5,}", text)
+    }
+    return len(acronyms) >= 2 or len(technical) >= 5
+
+
+def _add_summary_plain_bridge(value: str) -> str:
+    text = _clean(value)
+    return "簡単に言えば、" + text if _summary_needs_plain_bridge(text) else text
+
+
 def _canonicalize_action(value: str, decision: str, score: int) -> str:
     text = _clean(value)
     if decision in {"WATCH", "WAIT", "AVOID"} or score <= 69:
@@ -199,6 +237,8 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     # one concise first-use bridge across the article.
     seen: set[str] = set()
     for key in (
+        "name",
+        "source_summary",
         "what",
         "why_important",
         "primary_risk",
@@ -210,6 +250,11 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     ):
         out[key] = _explain_supplemental_terms(out.get(key, ""), seen)
 
+    # Fields that feed the deterministic 30-second summary need a reader bridge
+    # only when their compact form would otherwise be jargon-dense.
+    out["source_summary"] = _add_summary_plain_bridge(out.get("source_summary", ""))
+    out["why_important"] = _add_summary_plain_bridge(out.get("why_important", ""))
+
     out["publication_canonicalized"] = True
-    out["publication_canonicalizer_version"] = "stage4-v1"
+    out["publication_canonicalizer_version"] = "stage4-v2"
     return out
