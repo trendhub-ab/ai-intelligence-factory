@@ -183,7 +183,7 @@ def render_body(snapshot: Mapping[str, Any]) -> str:
         "",
         decision_heading,
         "",
-        f"AIIFの保存済み判断を読者向けに直すと、現時点では「{decision_phrase}」です。",
+        f"保存済みの判断を読者向けに直すと、現時点では「{decision_phrase}」です。",
         "",
         reason,
         "",
@@ -191,7 +191,7 @@ def render_body(snapshot: Mapping[str, Any]) -> str:
         "",
         (
             "全面的な結論を急ぐより、まず限定した範囲で確かめる。"
-            "結果が揃ってから広げるか、待つかを決める。この順番なら、保存済みEvidenceの範囲を越えません。"
+            "結果が揃ってから広げるか、待つかを決める。この順番なら、保存済みの根拠の範囲を越えません。"
         ),
         "",
         "## 結局、この記事から何を持ち帰るか",
@@ -204,7 +204,7 @@ def render_body(snapshot: Mapping[str, Any]) -> str:
         (
             "この研究だけで全社導入の答えを出すのではなく、社内で何を観察し、"
             "どんな小さな検証から始めるかを決める材料として使う。"
-            "保存済みのEvidenceとActionをつなぐなら、その距離感がちょうどよいでしょう。"
+            "保存済みの根拠と次の行動をつなぐなら、その距離感がちょうどよいでしょう。"
         ),
         "",
         "### Sources / Evidence",
