@@ -73,6 +73,20 @@ class SharedRPM:
         self.campaign_id = str(campaign_id or "").strip()
         self.run_id = str(run_id or "").strip()
 
+    @staticmethod
+    def _total_reserved(campaigns: dict) -> int:
+        if not isinstance(campaigns, dict):
+            raise RPMUnavailable("Campaign ledger unavailable")
+        total = 0
+        for row in campaigns.values():
+            if not isinstance(row, dict) or not isinstance(row.get("run_id"), str):
+                raise RPMUnavailable("Invalid campaign record")
+            used = row.get("used")
+            if isinstance(used, bool) or not isinstance(used, int) or not 0 <= used <= 4:
+                raise RPMUnavailable("Invalid campaign usage")
+            total += used
+        return total
+
     def claim_campaign(self) -> None:
         """Spend the sole live entrypoint before any provider request."""
         if not self.campaign_id or not self.run_id or not self.project_scope:
@@ -83,6 +97,8 @@ class SharedRPM:
                 raise RPMUnavailable("Uninitialized campaign ledger or project mismatch")
             if self.campaign_id in data["campaigns"]:
                 raise RPMUnavailable("Campaign already claimed; no further provider sends")
+            if self._total_reserved(data["campaigns"]) >= 4:
+                raise RPMUnavailable("Four cumulative campaign reservations reached")
             updated = dict(data)
             updated["campaigns"] = {**data["campaigns"], self.campaign_id: {
                 "run_id": self.run_id, "used": 0}}
@@ -115,6 +131,8 @@ class SharedRPM:
                 used = campaign.get("used")
                 if isinstance(used, bool) or not isinstance(used, int) or not 0 <= used < 4:
                     raise RPMUnavailable("Campaign four-attempt ceiling reached")
+                if self._total_reserved(campaigns) >= 4:
+                    raise RPMUnavailable("Four cumulative campaign reservations reached")
             attempts = data.get("attempts", [])
             if not isinstance(attempts, list):
                 raise RPMUnavailable("Unparseable RPM attempt ledger")

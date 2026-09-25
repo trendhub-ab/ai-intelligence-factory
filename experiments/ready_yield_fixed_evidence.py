@@ -16,7 +16,7 @@ from unittest.mock import patch
 # GitHub Actions executes this file by path from experiments/, whereas production
 # modules live at repository root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from experiments.ready_yield_send_policy import run_bounded_cases
+from experiments.ready_yield_send_policy import ProbePolicy, run_bounded_cases
 
 
 EVIDENCE_URL = "https://github.com/astral-sh/uv/blob/dd965a276182e2d46d80439feecd03216cc6643a/README.md"
@@ -161,6 +161,7 @@ def evaluate(p, raw: str, info):
 
 
 def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
+                    max_attempts: int = 4,
                     clock=time.monotonic, wall_clock=time.time,
                     sleep=time.sleep) -> list[dict]:
     """One bounded probe; every initial and feedback request uses one limiter.
@@ -226,7 +227,8 @@ def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
 
     rows = run_bounded_cases(cases, send=send, assess=assess,
                              before_send=reserve_shared, on_result=save,
-                             clock=clock, sleep=sleep)
+                             clock=clock, sleep=sleep,
+                             policy=ProbePolicy(max_attempts=max_attempts))
     (out_dir / "summary.json").write_text(json.dumps({
         "provider_attempts": sum(r.get("provider_attempted", False) for r in rows),
         "successful_responses": sum(r["outcome"] == "success" for r in rows),
@@ -237,6 +239,17 @@ def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
         "evidence_sha256": sha(EVIDENCE),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return rows
+
+
+def prepare_isolated_probe_budget(p):
+    """Use the original per-run cap in a probe that has no backlog or rescue work."""
+    original = getattr(p, "_run346_original_deep_dive_budget", None)
+    budget = getattr(p, "DEEP_DIVE_MODEL_BUDGET", None)
+    if not isinstance(original, int) or original < 3 or budget is None or budget.used != 0:
+        raise RuntimeError("Cannot establish remaining isolated Deep Dive budget")
+    budget.budget = min(original, 3)
+    if not budget.can_request():
+        raise RuntimeError("No Deep Dive request capacity before provider reservation")
 
 
 def main():
@@ -295,13 +308,14 @@ def main():
             raise RuntimeError("Unknown Gemini project scope; zero provider sends")
         store = GitHubRPMStore(os.environ["GITHUB_REPOSITORY"], os.environ["GH_PAT"],
                                branch="runtime-state")
-        shared = SharedRPM(store, scope, campaign_id="ready-yield-fixed-evidence-20260925",
+        shared = SharedRPM(store, scope, campaign_id="ready-yield-fixed-evidence-20260925-continuation",
                            run_id=os.environ["GITHUB_RUN_ID"])
+        prepare_isolated_probe_budget(p)
         shared.claim_campaign()
         # All in-repo Gemini Actions share ai-intelligence-gemini-budget.
         # Drain any sends from the job that owned it immediately before us.
         time.sleep(65)
-        execute_limited(p, info, args.out_dir, shared)
+        execute_limited(p, info, args.out_dir, shared, max_attempts=3)
         return
     rows = []
     if args.phase == "initial":

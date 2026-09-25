@@ -10,6 +10,14 @@ from experiments import ready_yield_fixed_evidence as experiment
 
 
 class LimitedWiringTests(unittest.TestCase):
+    def test_isolated_probe_restores_partitioned_budget_without_exceeding_original(self):
+        budget = SimpleNamespace(budget=0, used=0)
+        budget.can_request = lambda: budget.used + 1 <= budget.budget
+        pipeline = SimpleNamespace(_run346_original_deep_dive_budget=4,
+                                   DEEP_DIVE_MODEL_BUDGET=budget)
+        experiment.prepare_isolated_probe_budget(pipeline)
+        self.assertEqual(pipeline.DEEP_DIVE_MODEL_BUDGET.budget, 3)
+
     @staticmethod
     def _shared(reservations):
         return SimpleNamespace(reserve=lambda model, now: reservations.append(model) or 0)

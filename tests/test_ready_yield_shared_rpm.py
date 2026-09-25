@@ -99,3 +99,21 @@ class SharedRPMTests(unittest.TestCase):
                    return_value=SimpleNamespace(status_code=404)):
             with self.assertRaises(RPMUnavailable):
                 store.read()
+
+    def test_continuation_uses_only_campaign_remaining_slots(self):
+        store = MemoryStore()
+        store.data["campaigns"]["ready-yield-fixed-evidence-20260925"] = {
+            "run_id": "old", "used": 1}
+        guard = SharedRPM(store, "project", campaign_id="ready-yield-fixed-evidence-20260925-continuation",
+                          run_id="new")
+        guard.claim_campaign()
+        for index in range(3):
+            self.assertEqual(guard.reserve("gemini-3.5-flash", 100 + index * 25), 0)
+        with self.assertRaises(RPMUnavailable):
+            guard.reserve("gemini-3.5-flash", 200)
+
+    def test_second_continuation_cannot_claim_after_four_reserved_slots(self):
+        store = MemoryStore()
+        store.data["campaigns"]["old"] = {"run_id": "old", "used": 4}
+        with self.assertRaises(RPMUnavailable):
+            SharedRPM(store, "project", campaign_id="new", run_id="new").claim_campaign()
