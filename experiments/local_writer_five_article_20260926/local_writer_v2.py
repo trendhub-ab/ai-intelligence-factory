@@ -170,11 +170,11 @@ def _sections(snapshot: Mapping[str, Any], layout: int) -> list[tuple[str, list[
         return [
             ("何が確認されたのか", [what, why]),
             ("ここで広げすぎない", [risk, f"向いているのは、{best}", f"逆に、{avoid}"]),
-            ("私なら次にこうする", [f"保存済みの判断は「{phrase}」。判断スコアは{score}。", reason, f"まず行うのは、{action}"]),
+            ("私なら次にこうする", [f"保存済みの判断は「{phrase}」。", reason, f"まず行うのは、{action}"]),
         ]
     if layout == 1:
         return [
-            ("先に判断を置く", [f"結論から言えば「{phrase}」。判断スコアは{score}。", reason]),
+            ("先に判断を置く", [f"結論から言えば「{phrase}」。", reason]),
             ("その判断の根拠", [what, why]),
             ("使う場所を選ぶ", [f"相性がよいのは、{best}", f"一方で、{avoid}", risk]),
             ("次の検証", [action]),
@@ -185,21 +185,21 @@ def _sections(snapshot: Mapping[str, Any], layout: int) -> list[tuple[str, list[
             ("なぜ見る価値があるのか", [why]),
             ("誰に効くのか", [best, avoid]),
             ("ただし、ここが境界", [risk]),
-            ("最終的な距離感", [f"私なら「{phrase}」を選びます。判断スコアは{score}。", reason, action]),
+            ("最終的な距離感", [f"私なら「{phrase}」を選びます。", reason, action]),
         ]
     if layout == 3:
         return [
             ("自社の判断に何が変わるか", [why]),
             ("仕組みを必要な分だけ見る", [what]),
             ("本番へ急がない理由", [risk]),
-            ("試すならここまで", [f"判断は「{phrase}」、スコアは{score}。", reason, action]),
+            ("試すならここまで", [f"判断は「{phrase}」。", reason, action]),
         ]
     return [
         ("数字や主張より先に見ること", [what, why]),
         ("研究結果と実運用は分ける", [risk]),
         ("向く組織、向かない組織", [f"向いているのは、{best}", f"向いていないのは、{avoid}"]),
         ("持ち帰る設計判断", [reason]),
-        ("次の一手", [f"現時点の距離感は「{phrase}」。判断スコアは{score}。", action]),
+        ("次の一手", [f"現時点の距離感は「{phrase}」。", action]),
     ]
 
 
