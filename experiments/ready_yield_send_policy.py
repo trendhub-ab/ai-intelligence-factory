@@ -5,6 +5,8 @@ This local policy is not a substitute for a shared project reservation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
+from typing import Callable
 
 
 class ProbeStopped(RuntimeError):
@@ -55,3 +57,61 @@ class ProbePolicy:
             self.consecutive_503 = 0
         else:
             self.stopped = True
+
+
+def run_bounded_cases(
+    cases: list[dict], *, send: Callable[[dict], str],
+    assess: Callable[[dict, str], dict],
+    on_result: Callable[[dict], None] | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+    policy: ProbePolicy | None = None,
+) -> list[dict]:
+    """Consume at most four provider attempts with one owner for all sends.
+
+    ``send`` must perform exactly one provider-visible attempt, without fallback
+    or SDK retry. A feedback case returned by ``assess`` reenters this same queue.
+    """
+    limiter = policy or ProbePolicy()
+    queue = list(cases)
+    results: list[dict] = []
+    while queue and not limiter.stopped and len(limiter.attempts) < limiter.max_attempts:
+        case = queue.pop(0)
+        model = case["model"]
+        if model in limiter.failed_models:
+            continue
+        if limiter.attempts:
+            remaining = limiter.project_spacing - (clock() - limiter.attempts[-1][1])
+            if remaining > 0:
+                sleep(remaining)
+        try:
+            limiter.reserve(model, clock())
+        except ProbeStopped:
+            break
+        try:
+            raw = send(case)
+        except Exception as exc:
+            code = getattr(exc, "code", None)
+            if code is None and getattr(exc, "response", None) is not None:
+                code = getattr(exc.response, "status_code", None)
+            outcome = str(code) if code in (429, 503) else "error"
+            limiter.record(outcome)
+            row = {"case": case, "outcome": outcome,
+                   "error": {"type": type(exc).__name__, "message": str(exc)[:1000]}}
+        else:
+            limiter.record("success")
+            try:
+                assessment = assess(case, raw)
+            except Exception:
+                # The provider request already consumed quota. Never retry it
+                # because a local parser/Gate/postprocessor failed.
+                limiter.stopped = True
+                raise
+            row = {"case": case, "outcome": "success", "assessment": assessment}
+            feedback = assessment.get("feedback")
+            if feedback and len(limiter.attempts) < limiter.max_attempts:
+                queue.insert(0, feedback)
+        results.append(row)
+        if on_result is not None:
+            on_result(row)
+    return results

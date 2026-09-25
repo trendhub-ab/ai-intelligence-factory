@@ -16,6 +16,7 @@ from unittest.mock import patch
 # GitHub Actions executes this file by path from experiments/, whereas production
 # modules live at repository root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from experiments.ready_yield_send_policy import run_bounded_cases
 
 
 EVIDENCE_URL = "https://github.com/astral-sh/uv/blob/dd965a276182e2d46d80439feecd03216cc6643a/README.md"
@@ -157,6 +158,73 @@ def evaluate(p, raw: str, info):
         "polish_changes": jp_changes, "structure_changes": structure_changes,
         "gate": result, "rescue": rescue,
     }
+
+
+def execute_limited(p, info: dict, out_dir: Path, *, clock=time.monotonic,
+                    sleep=time.sleep) -> list[dict]:
+    """One bounded probe; every initial and feedback request uses one limiter.
+
+    The CLI keeps this unavailable until shared quota and an explicit one-shot
+    execution path have been verified. In particular this function does not
+    publish, create note drafts, or change Notion status.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cases = [
+        {"id": f"{model}_{style}_initial", "model": model, "style": style,
+         "phase": "initial", "feedback": "", "previous": ""}
+        for style in ("classic", "human_narrative")
+        for model in ("gemini-3.6-flash", "gemini-3.5-flash")
+    ]
+
+    def send(case):
+        from canonical_article_contract import aiif_editor_persona
+        prompt = prompt_for(p, case["style"], case["feedback"], case["previous"])
+        case["prompt_sha256"] = sha(prompt)
+        config = {"max_output_tokens": p.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS,
+                  "system_instruction": aiif_editor_persona()}
+        response = p._generate_via_chat(
+            case["model"], prompt, config=config,
+            request_kind="deep_dive" if case["phase"] == "initial" else "quality_retry",
+            request_context="experiment:ready-yield-fixed-evidence",
+            count_as_deep_dive=True,
+        )
+        raw = response.text or ""
+        # Write the unmodified provider text before parsing, polish, or Gate.
+        (out_dir / f"{case['id']}.raw.txt").write_text(raw, encoding="utf-8")
+        return raw
+
+    def assess(case, raw):
+        result = evaluate(p, raw, info)
+        assessment = {"article": result, "feedback": None}
+        if case["phase"] != "initial" or result["gate"]["ready_eligible_before_persistence"]:
+            return assessment
+        reasons = [r["message"] for r in result["gate"]["reason_rows"]
+                   if r.get("severity") in {p.GATE_SEVERITY_HARD, p.GATE_SEVERITY_REVIEW}]
+        if reasons:
+            assessment["feedback"] = {
+                **case, "id": case["id"].replace("_initial", "_feedback"),
+                "phase": "feedback", "feedback": " / ".join(reasons),
+                "previous": result["body_after_polish"],
+            }
+        return assessment
+
+    def save(row):
+        (out_dir / f"{row['case']['id']}.json").write_text(
+            json.dumps(row, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+
+    rows = run_bounded_cases(cases, send=send, assess=assess,
+                             on_result=save, clock=clock, sleep=sleep)
+    (out_dir / "summary.json").write_text(json.dumps({
+        "provider_attempts": len(rows),
+        "successful_responses": sum(r["outcome"] == "success" for r in rows),
+        "ready_eligible_before_persistence": sum(
+            r.get("assessment", {}).get("article", {}).get("gate", {}).get(
+                "ready_eligible_before_persistence", False) for r in rows),
+        "note_writes": 0, "notion_writes": 0, "actual_ready_persisted": 0,
+        "evidence_sha256": sha(EVIDENCE),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return rows
 
 
 def main():
