@@ -7,7 +7,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CANON_PATH = ROOT / "experiments" / "publication_canonicalizer_dev_20260926" / "publication_canonicalizer.py"
+CANON_PATH = ROOT / "experiments" / "publication_canonicalizer_dev_20260926" / "publication_canonicalizer_v4.py"
 WRITER_PATH = ROOT / "experiments" / "local_writer_five_article_20260926" / "local_writer_v3.py"
 STAGE4 = ROOT / "experiments" / "publication_canonicalizer_dev_20260926" / "devset.json"
 STAGE5 = ROOT / "experiments" / "canonicalizer_writer_holdout_4_20260926" / "selection.json"
@@ -39,7 +39,7 @@ socket.socket.connect = lambda *a, **k: (_ for _ in ()).throw(
 )
 
 root = Path.cwd()
-canon_path = root / "experiments" / "publication_canonicalizer_dev_20260926" / "publication_canonicalizer.py"
+canon_path = root / "experiments" / "publication_canonicalizer_dev_20260926" / "publication_canonicalizer_v4.py"
 writer_path = root / "experiments" / "local_writer_five_article_20260926" / "local_writer_v3.py"
 stage4_path = root / "experiments" / "publication_canonicalizer_dev_20260926" / "devset.json"
 stage5_path = root / "experiments" / "canonicalizer_writer_holdout_4_20260926" / "selection.json"
