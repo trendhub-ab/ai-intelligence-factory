@@ -1,0 +1,389 @@
+{
+  "schema": "aiif_publication_canonicalizer_dev_baseline_v1",
+  "run_id": 36180678866,
+  "job_id": 108221965534,
+  "writer_blob": "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2",
+  "canonicalizer": "none",
+  "result": {
+    "count": 8,
+    "pass_count": 1,
+    "results": [
+      {
+        "all_pass": false,
+        "case_id": "3be479ffdca981c5b481db943b1e3d7b",
+        "cross": {
+          "heading_count_match": false,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "",
+          "score": 0,
+          "sequence_similarity": 0,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+          ]
+        ],
+        "name": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "PDF"
+          ]
+        },
+        "source": "HackerNews"
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca9816e8ba6e8a1bc6109c9",
+        "cross": {
+          "heading_count_match": true,
+          "high": true,
+          "opening_similarity": 0.8877551020408163,
+          "peer": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization",
+          "score": 5,
+          "sequence_similarity": 0.8444444444444444,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "cross_article_fingerprint_high"
+          ]
+        ],
+        "name": "\"Solving a largely imaginary user goal\"",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "GOOD",
+          "information_budget": "GOOD",
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": []
+        },
+        "source": "HackerNews"
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca9812db8f3da1d3223ef55",
+        "cross": {
+          "heading_count_match": false,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "",
+          "score": 0,
+          "sequence_similarity": 0,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported hype: 劇的"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "name": "Google is making private AI practical with homomorphic encryption",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "REVIEW",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": []
+        },
+        "source": "HackerNews"
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca98143a09edc60bd660fa7",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.015873015873015872,
+          "peer": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization",
+          "score": 1,
+          "sequence_similarity": 0.5555555555555556,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported market-standard claim: 業界標準"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Opening/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:final_surface_summary_jargon_cluster (何が出た？/なぜ重要？)"
+          ]
+        ],
+        "name": "huggingface/speech-to-speech",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "MLX",
+            "TTS"
+          ]
+        },
+        "source": "GitHub"
+      },
+      {
+        "all_pass": false,
+        "case_id": "3be479ffdca9817cbdbdee4ab04ee306",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.15950920245398773,
+          "peer": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization",
+          "score": 1,
+          "sequence_similarity": 0.5333333333333333,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Opening/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+          ]
+        ],
+        "name": "Using GCC's Nested Functions with Wide Pointers and No Trampolines II",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "GCC",
+            "II",
+            "NX",
+            "OS",
+            "C11",
+            "C17",
+            "C23",
+            "MSVC"
+          ]
+        },
+        "source": "HackerNews"
+      },
+      {
+        "all_pass": true,
+        "case_id": "3be479ffdca9819982eecc4c15f47ea2",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.16352201257861634,
+          "peer": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization",
+          "score": 1,
+          "sequence_similarity": 0.5333333333333333,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "name": "AI in drug discovery – what it is, where we stand and the path forward",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "GOOD",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "IT"
+          ]
+        },
+        "source": "HackerNews"
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca98192b69fd8bb7735f474",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.9270833333333334,
+          "peer": "AI in drug discovery – what it is, where we stand and the path forward",
+          "score": 3,
+          "sequence_similarity": 0.7777777777777778,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported exclusivity/hype: 最後の砦"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+          ]
+        ],
+        "name": "Firefox is now the last major browser that still supports uBlock Origin",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "V3",
+            "DNS",
+            "V2",
+            "QA",
+            "IT"
+          ]
+        },
+        "source": "HackerNews"
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca981198037db6ac056a51d",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "2D Gaussian Splatting for Bézier Spline Line Art Vectorization",
+          "score": 1,
+          "sequence_similarity": 0.5555555555555556,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "name": "Equivariant learning of a transferable three-dimensional classical density functional",
+        "publication": [
+          "REVIEW",
+          [
+            "score_narrative_mismatch"
+          ]
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "GOOD",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": []
+        },
+        "source": "ArXiv"
+      }
+    ]
+  }
+}
