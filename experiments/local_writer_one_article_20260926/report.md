@@ -81,7 +81,7 @@ Draft PR #529 で既存CIを実行し、3 workflowすべてSUCCESS。
 - Notion Access Policy Guard: SUCCESS
 - Repository-wide Falsification Guard: SUCCESS
 - Integration Reconciliation CI: SUCCESS
-- full deterministic regression: 2,922 passed / 1 warning / 0 failed
+- full deterministic regression: 2,923 passed / 1 warning / 0 failed
 - Production synthetic smoke: 30 / 30 passed, critical failures 0, production write isolation true
 
 Local Writer固有テストも上記2,922件に含まれ、次のassertionをすべて通過した。
@@ -90,6 +90,7 @@ Local Writer固有テストも上記2,922件に含まれ、次のassertionをす
 - Editorial Gate: PASS / blocking warning 0
 - Publication Readiness Gate: PASS / issue 0
 - Human Appeal Gate: ACCEPTABLE / issue 0
+- Production Reader Value stack（reader_value_review_bridge / Reader Value repair / first-real-publish calibration / final publication surface / publication contract）: ACCEPTABLE / issue 0
 - checked-in articleとpure Python再生成結果: byte-identical
 - reader-facing内部Decision code leak: 0
 - 入力に存在しない数値追加: 0
@@ -102,10 +103,42 @@ Local Writer固有テストも上記2,922件に含まれ、次のassertionをす
 
 **この1記事については成功。**
 
-AIIFがすでに保持しているStructured Evidence / Decision / Action / Riskが十分に揃っていれば、外部生成AI APIを使わず、純PythonのLocal Writerだけで、現行Fact / Editorial / Publication / Human Appeal Gateを通るnote記事を生成できることを実証した。
+AIIFがすでに保持しているStructured Evidence / Decision / Action / Riskが十分に揃っていれば、外部生成AI APIを使わず、純PythonのLocal Writerだけで、現行Fact / Editorial / Publication / Human Appealに加え、Production Reader Value系オーバーレイまで通るnote記事を生成できることを実証した。
 
 これは「既存記事を手直しした」結果ではない。既存記事本文は入力経路そのものを禁止し、構造化データから再構成した。
 
 ただし、この1件だけで全トピックへの一般化は証明しない。Evidenceが薄い案件、複数論点が競合する案件、記事固有の意外性をルールだけで抽出しにくい案件は別途検証が必要。
 
 したがって現段階の意味は、**Gemini依存をゼロにできる可能性が机上論ではなくなった**こと。全面実装ではなく、次は性質の異なる少数記事で再現率を測る段階である。
+
+
+## Production Reader Value 追加反証
+
+コアGateだけの成功を過大評価しないため、同じ記事をProductionのReader Value系ランタイムをインストールした状態でも再検証した。
+
+検証head: `7f9628c571fabdc12e55bd398547ce91c500fee1`
+
+導入した主な品質レイヤー:
+
+- canonical runtime_layers
+- reader_value_review_bridge
+- run208_reader_value_repair
+- run248_first_real_publish_quality_calibration
+- run249_final_publication_surface_gate
+- run194_publication_contract
+- reader_quality_precision
+- run284_reader_recovery_precision
+- run283_numeric_evidence_equivalence
+- Run349 score/narrative negation precision
+
+外部通信をsocketレベルで禁止したsubprocess内で実行し、Fact / Editorial / Publication / Human Appealを再評価。すべてassertionを通過した。
+
+この追加commitのCI:
+
+- Notion Access Policy Guard: SUCCESS
+- Repository-wide Falsification Guard: SUCCESS
+- Integration Reconciliation CI: SUCCESS
+- full deterministic regression: **2,923 passed / 1 warning / 0 failed**
+- Production synthetic smoke: **30 / 30 passed / critical_failures 0 / production_write_isolation true**
+
+したがって、今回の成功は「ベースGateだけなら通る」という限定結果ではない。現行ProductionのReader Value品質層を含めても、この1記事はLocal Writerのみで成立した。
