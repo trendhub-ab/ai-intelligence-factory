@@ -250,7 +250,7 @@ SUBSCRIPTION_ATTRIBUTION_GITHUB_DIR = os.environ.get("SUBSCRIPTION_ATTRIBUTION_G
 PUBLIC_DB_SYNC_MODE = os.environ.get("PUBLIC_DB_SYNC_MODE", "false").lower() in {"1", "true", "yes", "on"}
 
 # Legacy Product Hunt names below are compatibility-only for the pre-Run268 core.
-# Production installs Run268 before pipeline.main(): OfficialVendor owns this slot,
+# Production installs Run268 before the production body executes; OfficialVendor owns this slot,
 # and normal ONE-SHOT execution performs no Product Hunt transport or token access.
 PRODUCTHUNT_DEVELOPER_TOKEN = os.environ.get("PRODUCTHUNT_DEVELOPER_TOKEN")
 PRODUCTHUNT_LOOKBACK_HOURS = max(24, int(os.environ.get("PRODUCTHUNT_LOOKBACK_HOURS", "72")))
