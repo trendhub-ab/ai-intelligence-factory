@@ -138,13 +138,16 @@ def _gloss(text: str, seen: set[str]) -> str:
 
 
 def _safe_why(text: str, seen: set[str]) -> str:
-    value = _gloss(text, seen)
-    if ROI_OUTCOME_RE.search(value):
+    raw = _clean(text)
+    # If an unsupported outcome sentence is replaced, do not mark terminology
+    # that disappears with that sentence as already explained. Later surviving
+    # occurrences must still receive their first-use bridge.
+    if ROI_OUTCOME_RE.search(raw):
         return (
             "この情報は、導入価値を判断する背景材料として扱います。"
             "成果を先に決めつけず、実際の比較で使える判断材料が増えるかを確かめます。"
         )
-    return value
+    return _gloss(raw, seen)
 
 
 def _source_role(snapshot: Mapping[str, Any]) -> str:
