@@ -56,7 +56,7 @@
       "evidence_confidence": "Source Native",
       "production_readiness": "HOLDOUT",
       "evidence_urls": [
-        "https://arxiv.org/ab"
+        "https://arxiv.org/abs/2608.13505v1"
       ],
       "selection_hash": 14443593
     },
@@ -82,7 +82,7 @@
       "evidence_confidence": "Source Native",
       "production_readiness": "HOLDOUT",
       "evidence_urls": [
-        "https://huggingface.co/Qwen/Qwen3.8-27B-FP8\nhttp"
+        "https://huggingface.co/Qwen/Qwen3.8-27B-FP8"
       ],
       "selection_hash": 1981239558
     },
@@ -107,7 +107,9 @@
       "avoid_for": "既存の標準ライブラリ（PyTorch標準など）の利用でパフォーマンス要件を満たしており、独自のGPUカーネル開発を行わないチーム。",
       "evidence_confidence": "Source Native",
       "production_readiness": "HOLDOUT",
-      "evidence_urls": [],
+      "evidence_urls": [
+        "https://sankalp.bearblog.dev/autoresearch/"
+      ],
       "selection_hash": 2074751000
     },
     {
@@ -132,9 +134,14 @@
       "evidence_confidence": "Source Native",
       "production_readiness": "HOLDOUT",
       "evidence_urls": [
-        "https://arxiv.org/ab"
+        "https://arxiv.org/abs/2608.13521v1"
       ],
       "selection_hash": 2303177686
     }
-  ]
+  ],
+  "snapshot_repair": {
+    "reason": "Initial preregistration URL extractor malformed evidence_urls before any Gate measurement. Repair copies the exact Notion primary/source URL without changing record inclusion, order, structured claims, Canonicalizer, or Writer.",
+    "invalid_run_id": 36183206952,
+    "quality_measurement_valid": false
+  }
 }
