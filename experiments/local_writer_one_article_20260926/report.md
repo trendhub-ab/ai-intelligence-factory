@@ -74,10 +74,38 @@ Notionは実験用snapshotを確定するための読み取りにのみ使用し
 - reader-facing本文へ内部Decisionコードを漏らさない。
 - 現行 Fact / Editorial / Publication / Human Appeal Gate を外部通信なしで実行する。
 
-## 現時点の判定
+## CI / Gate 実測結果
 
-実装上は、**「構造化Evidenceが十分に揃っている1記事」については、外部生成AIなしで記事本文を組み立てる経路を作れる**ところまで到達した。
+Draft PR #529 で既存CIを実行し、3 workflowすべてSUCCESS。
 
-ただし、この1件だけで全トピックへの一般化は証明しない。特に、Evidenceが薄い案件、複数論点が競合する案件、記事固有の意外性をルールだけで抽出しにくい案件は別途検証が必要。
+- Notion Access Policy Guard: SUCCESS
+- Repository-wide Falsification Guard: SUCCESS
+- Integration Reconciliation CI: SUCCESS
+- full deterministic regression: 2,922 passed / 1 warning / 0 failed
+- Production synthetic smoke: 30 / 30 passed, critical failures 0, production write isolation true
 
-最終判定はPR上の自動テスト結果を記録して確定する。
+Local Writer固有テストも上記2,922件に含まれ、次のassertionをすべて通過した。
+
+- Fact Gate: PASS / failure 0
+- Editorial Gate: PASS / blocking warning 0
+- Publication Readiness Gate: PASS / issue 0
+- Human Appeal Gate: ACCEPTABLE / issue 0
+- checked-in articleとpure Python再生成結果: byte-identical
+- reader-facing内部Decision code leak: 0
+- 入力に存在しない数値追加: 0
+- 既存記事本文入力: fail-closedで拒否
+- 本文: 1,301 visible chars
+- H2見出し: 4
+- Evidence URL: 3本保持
+
+## 最終判定
+
+**この1記事については成功。**
+
+AIIFがすでに保持しているStructured Evidence / Decision / Action / Riskが十分に揃っていれば、外部生成AI APIを使わず、純PythonのLocal Writerだけで、現行Fact / Editorial / Publication / Human Appeal Gateを通るnote記事を生成できることを実証した。
+
+これは「既存記事を手直しした」結果ではない。既存記事本文は入力経路そのものを禁止し、構造化データから再構成した。
+
+ただし、この1件だけで全トピックへの一般化は証明しない。Evidenceが薄い案件、複数論点が競合する案件、記事固有の意外性をルールだけで抽出しにくい案件は別途検証が必要。
+
+したがって現段階の意味は、**Gemini依存をゼロにできる可能性が机上論ではなくなった**こと。全面実装ではなく、次は性質の異なる少数記事で再現率を測る段階である。
