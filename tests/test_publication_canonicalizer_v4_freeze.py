@@ -81,7 +81,7 @@ assert "232" in after_numbers
 # A multiplier with no benchmark/expectation/example modality must stay untouched.
 control = dict(failed)
 control["name"] = "Control 7x Faster Kernel"
-control["source_summary"] = "A neutral project description with no benchmark, measurement, expectation, trial, or example framing."
+control["source_summary"] = "A neutral project description with implementation notes only."
 control["what"] = "A kernel implementation."
 control["why_important"] = "It is a technical artifact."
 control["decision_reason"] = "The available description is limited."
