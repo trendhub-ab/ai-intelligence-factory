@@ -39,6 +39,71 @@ def ready_page(page_id, *, source="GitHub", article_title="article"):
 
 
 class NoteReadySyncTests(unittest.TestCase):
+    def test_exact_target_sync_only_writes_matching_ready_and_never_revokes_others(self):
+        from unittest.mock import MagicMock
+
+        target = "3d4479ffdca981a2880bf46d5c02403d"
+        other = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        pages = [ready_page(target), ready_page(other)]
+        for page in pages:
+            page["properties"]["アイキャッチ"] = {
+                "files": [{"type": "external", "external": {"url": "https://example.com/image.png"}}]
+            }
+        old_dest = {"id": "old-page", "properties": {"同期ID": rt(other), "品質状態": {"select": {"name": "Ready"}}}}
+        response = MagicMock(status_code=200)
+        with patch.object(sync, "NOTION_API_KEY", "token"), \
+             patch.object(sync, "SOURCE_DATA_SOURCE_ID", "source"), \
+             patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_validate_destination_schema"), \
+             patch.object(sync, "_query_db", side_effect=[pages, [old_dest]]), \
+             patch.object(sync, "_source_current_ready_manuscript", return_value="manuscript") as manuscript, \
+             patch.object(sync, "_request", return_value=response) as request, \
+             patch.object(sync.time, "sleep"):
+            result = sync.sync_note_ready_db(target_sync_id=target)
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(result["revoked"], 0)
+        manuscript.assert_called_once_with(target)
+        writes = [call for call in request.call_args_list if call.args and call.args[0] in ("POST", "PATCH")]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0].kwargs["json"]["properties"]["同期ID"]["rich_text"][0]["text"]["content"], target)
+
+    def test_exact_target_sync_fails_closed_when_ready_missing_or_invalid(self):
+        target = "3d4479ffdca981a2880bf46d5c02403d"
+        with patch.object(sync, "NOTION_API_KEY", "token"), \
+             patch.object(sync, "SOURCE_DATA_SOURCE_ID", "source"), \
+             patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_validate_destination_schema"), \
+             patch.object(sync, "_query_db", side_effect=[[], []]), \
+             patch.object(sync, "_request") as request:
+            with self.assertRaisesRegex(ValueError, "Exact Ready target"):
+                sync.sync_note_ready_db(target_sync_id=target)
+            request.assert_not_called()
+        with self.assertRaisesRegex(ValueError, "Invalid target_sync_id"):
+            sync.sync_note_ready_db(target_sync_id="wrong")
+
+    def test_exact_target_updates_existing_hyphenated_sync_id_without_duplicate(self):
+        from unittest.mock import MagicMock
+
+        target = "3d4479ffdca981a2880bf46d5c02403d"
+        page = ready_page(target)
+        page["properties"]["アイキャッチ"] = {
+            "files": [{"type": "external", "external": {"url": "https://example.com/image.png"}}]
+        }
+        hyphenated = "3d4479ff-dca9-81a2-880b-f46d5c02403d"
+        existing = {"id": "existing", "properties": {"同期ID": rt(hyphenated), "品質状態": {"select": {"name": "Ready"}}}}
+        with patch.object(sync, "NOTION_API_KEY", "token"), \
+             patch.object(sync, "SOURCE_DATA_SOURCE_ID", "source"), \
+             patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_validate_destination_schema"), \
+             patch.object(sync, "_query_db", side_effect=[[page], [existing]]), \
+             patch.object(sync, "_source_current_ready_manuscript", return_value="manuscript"), \
+             patch.object(sync, "_request", return_value=MagicMock(status_code=200)) as request, \
+             patch.object(sync.time, "sleep"):
+            result = sync.sync_note_ready_db(target_sync_id=target)
+        self.assertEqual((result["created"], result["updated"], result["revoked"]), (0, 1, 0))
+        self.assertEqual([call.args[0] for call in request.call_args_list], ["PATCH"])
+
     def test_source_state_accepts_only_ready_uses_first_primary_url_and_reads_eyecatch(self):
         page = {
             "id": "12345678-1234-1234-1234-1234567890ab",

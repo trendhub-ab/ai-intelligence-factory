@@ -347,7 +347,10 @@ def _validate_destination_schema() -> None:
         raise ValueError(f"note Ready DB schema incompatible: missing={missing} wrong={wrong}")
 
 
-def sync_note_ready_db() -> dict[str, Any]:
+def sync_note_ready_db(*, target_sync_id: str = "") -> dict[str, Any]:
+    target = _normalize_page_id(target_sync_id) if target_sync_id else ""
+    if target_sync_id and (len(target) != 32 or not re.fullmatch(r"[0-9a-f]{32}", target)):
+        raise ValueError("Invalid target_sync_id")
     if not NOTION_API_KEY:
         raise ValueError("NOTION_API_KEY (or NOTION_NOTE_READY_API_KEY) is required")
     if not (SOURCE_DATA_SOURCE_ID or SOURCE_DATABASE_ID):
@@ -366,6 +369,10 @@ def sync_note_ready_db() -> dict[str, Any]:
             }
         },
     )
+    if target:
+        source_pages = [page for page in source_pages if _normalize_page_id(page.get("id") or "") == target]
+        if len(source_pages) != 1:
+            raise ValueError("Exact Ready target is missing or ambiguous")
 
     states: list[dict[str, Any]] = []
     stale_contract = 0
@@ -393,13 +400,17 @@ def sync_note_ready_db() -> dict[str, Any]:
         state["publication_policy_sha256"] = publication_contract.policy_sha256()
         states.append(state)
     source_by_id = {s["sync_id"]: s for s in states}
+    if target and target not in source_by_id:
+        raise ValueError("Exact Ready target failed current publication contract or asset checks")
 
     dest_pages = _query_db(DEST_DATA_SOURCE_ID, DEST_DATABASE_ID)
+    if target:
+        dest_pages = [page for page in dest_pages if _normalize_page_id(_destination_state(page)["sync_id"]) == target]
     dest_by_id: dict[str, dict[str, Any]] = {}
     duplicates: set[str] = set()
     for page in dest_pages:
         current = _destination_state(page)
-        sid = current["sync_id"]
+        sid = _normalize_page_id(current["sync_id"]) if target else current["sync_id"]
         if not sid:
             continue
         if sid in dest_by_id:
@@ -474,7 +485,7 @@ def sync_note_ready_db() -> dict[str, Any]:
 
 
 def main() -> None:
-    print(sync_note_ready_db())
+    print(sync_note_ready_db(target_sync_id=os.environ.get("TARGET_SYNC_ID", "")))
 
 
 if __name__ == "__main__":
