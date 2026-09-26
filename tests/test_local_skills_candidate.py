@@ -151,7 +151,7 @@ def test_explicit_production_evidence_context_is_kept_separate_from_structured_r
 def test_evidence_boundary_requires_compatible_unit_not_only_same_number():
     snapshot = _snapshot()
     snapshot["decision_reason"] = "約0.02円のコストです。"
-    result = compile_snapshot(snapshot, evidence_context="The measured latency was 0.02 seconds and cost was $0.02.")
+    result = compile_snapshot(snapshot, evidence_context="The benchmark measured 7x on the fixed workload. The measured latency was 0.02 seconds and cost was $0.02.")
     assert "0.02円" not in result["parsed"]["note_draft"]
     assert result["evidence_boundary"]["removed_count"] == 1
 
