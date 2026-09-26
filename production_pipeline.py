@@ -186,7 +186,8 @@ def install_run349_score_narrative_negation_precision(pipeline_module):
 
 
 _ONE_SHOT_MODES = frozenset({
-    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation", "production_e2e_validation", "stale_ready_batch_revalidation",
+    "full", "article_validation", "pending_retry_validation", "ready_rescue_validation",
+    "production_e2e_validation", "stale_ready_batch_revalidation", "local_skills_canary_validation",
 })
 
 
@@ -337,6 +338,13 @@ def main() -> None:
     if mode == "production_e2e_validation":
         from production_e2e_validation import run
         run(pipeline)
+        return
+
+    if mode == "local_skills_canary_validation":
+        from local_skills_daily_canary import run
+        result = run(pipeline)
+        if result.get("outcome") not in {"accepted", "rejected"}:
+            raise RuntimeError("Local Skills Daily canary produced no valid fresh measurement")
         return
 
     # Run277: article_validation must validate an *existing non-Ready* candidate.
