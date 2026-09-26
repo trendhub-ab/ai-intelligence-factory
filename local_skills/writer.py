@@ -165,7 +165,7 @@ def _source_role(snapshot: Mapping[str, Any]) -> str:
 def _subject_label(snapshot: Mapping[str, Any]) -> str:
     """Return a short display label without asserting what the subject does."""
     name = _clean(snapshot["name"])
-    parts = re.split(r"\\s+[–—]\\s+|[：:]", name, maxsplit=1)
+    parts = re.split(r"\s+[–—]\s+|[：:]", name, maxsplit=1)
     subject = _clean(parts[0] if parts else name)
     if not subject or len(subject) > 48:
         return "この対象"
