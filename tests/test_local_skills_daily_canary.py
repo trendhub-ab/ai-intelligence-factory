@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import local_skills_daily_canary as daily_canary
 import production_pipeline
@@ -20,13 +21,9 @@ def _parsed() -> dict:
         "source_summary_text": "A benchmark example measured a 7x faster kernel on a fixed workload.",
         "what_text": "A kernel implementation evaluated with a benchmark example.",
         "why_important_text": "It provides a bounded engineering result that can be reproduced.",
-        # These three fields may be article-body fallbacks in the Production parser.
-        # The Local Skills adapter must ignore them.
         "why_not_important_text": "PROVIDER ARTICLE RISK MUST NOT LEAK",
         "who_should_use_text": "PROVIDER ARTICLE BEST FOR MUST NOT LEAK",
         "who_should_not_use_text": "PROVIDER ARTICLE AVOID FOR MUST NOT LEAK",
-        # Management-only legacy fields are intentionally absent, matching the
-        # current eight-field Free Article management contract.
         "main_risk_text": "",
         "best_for_text": "",
         "avoid_for_text": "",
@@ -102,7 +99,7 @@ def test_completeness_adapter_prefers_management_only_values_when_present():
     assert "PROVIDER ARTICLE TITLE MUST BE DISCARDED" not in snapshot["reader_title"]
 
 
-def test_first_observed_canary_record_is_excluded_from_next_fresh_measurement():
+def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
     assert daily_canary._already_observed({
         "nameWithOwner": "LLM Agents Can Easily Tamper With Their Own Traces",
         "url": "https://arxiv.org/abs/2609.30266",
@@ -111,7 +108,23 @@ def test_first_observed_canary_record_is_excluded_from_next_fresh_measurement():
         "nameWithOwner": "different title",
         "url": "https://arxiv.org/abs/2609.30266v1",
     })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "U.S. appeals court upholds designation of Anthropic as supply chain risk",
+        "url": "https://example.invalid/news",
+    })
     assert not daily_canary._already_observed(_repo())
+
+
+def test_deep_dive_attempt_counter_ignores_screening_and_calibration():
+    pipeline = SimpleNamespace(
+        GEMINI_USAGE_AUDIT=SimpleNamespace(records=[
+            {"kind": "screening_batch"},
+            {"kind": "global_calibration"},
+            {"kind": "deep_dive"},
+            {"kind": "screening_batch"},
+        ])
+    )
+    assert daily_canary._deep_dive_attempt_count(pipeline) == 1
 
 
 def test_canary_is_an_explicit_one_shot_mode():
@@ -136,10 +149,13 @@ def test_pipeline_canary_fails_closed_on_persistence_attempt():
     assert 'Local Skills canary forbids provider quality retries' in source
 
 
-def test_canary_runner_disables_rewrite_and_rescue_for_measurement():
+def test_canary_runner_disables_rewrite_rescue_and_second_deep_dive():
     source = (ROOT / "local_skills_daily_canary.py").read_text(encoding="utf-8")
     assert "pipeline.MAX_QUALITY_RETRIES = 0" in source
     assert "pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False" in source
     assert "persist_results=False" in source
     assert 'result["outcome"] not in {"accepted", "rejected"}' in source
     assert "OBSERVED_CANARY_NAMES" in source
+    assert "pre_deep_dive_backfill" in source
+    assert "deep_dive_without_measurement" in source
+    assert "after_deep_dive > before_deep_dive" in source
