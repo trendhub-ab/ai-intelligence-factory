@@ -652,13 +652,30 @@ def _sentence_claims_missing_evidence(sentence: str, key: str) -> bool:
 
     if not _FALSE_NEGATIVE_UNCERTAINTY_RE.search(value):
         return False
-    mapping = {
-        "hardware": r"GPU|ハードウェア|環境",
-        "runtime": r"処理時間|runtime|速度|秒",
-        "code_availability": r"コード|ソースコード",
+
+    # Hard Fact failures must prove that the uncertainty actually targets the
+    # evidence category itself.  Run151 exposed a scope bug: a sentence could
+    # state a supported GPU fact and later say that *operational constraints*
+    # were not confirmed.  Mere same-sentence co-occurrence of "GPU" and
+    # "確認できない" must not be promoted into "hardware evidence is missing".
+    target_patterns = {
+        "hardware": (
+            r"(?:GPU|ハードウェア|(?:実行|動作|計算|検証)?環境)"
+            r"(?:要件|仕様|構成|情報|条件|詳細|について|に関して)?"
+        ),
+        "runtime": r"(?:処理時間|runtime|実行時間|速度|レイテンシ|遅延)",
+        "code_availability": r"(?:コード|ソースコード|実装コード|リポジトリ)",
     }
-    cue = mapping.get(key)
-    return bool(cue and re.search(cue, value, re.I))
+    target = target_patterns.get(key)
+    if not target:
+        return False
+    uncertainty = _FALSE_NEGATIVE_UNCERTAINTY_RE.pattern
+    return bool(re.search(
+        rf"(?:{target})(?:は|が|については|に関しては|の記載は|の情報は)?[^。！？\n]{{0,20}}(?:{uncertainty})"
+        rf"|(?:{uncertainty})[^。！？\n]{{0,20}}(?:{target})",
+        value,
+        re.I,
+    ))
 
 
 def _find_false_negative_evidence_claims(draft: str, evidence_metadata: dict, source_context: str = "") -> list[str]:
