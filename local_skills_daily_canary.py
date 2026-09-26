@@ -2,9 +2,12 @@
 
 The lane reuses current Production acquisition, dedupe, legal, Screening,
 Calibration, Evidence and Gate functions, but intentionally does not persist
-Stock/article state or dispatch note publication.  Exactly one fresh candidate
+Stock/article state or dispatch note publication. Exactly one fresh candidate
 is sent through Deep Dive structured analysis, then its provider-generated
-article body is replaced by Local Skills before the unchanged Gates run.
+article body is discarded and Local Skills is measured through unchanged Gates.
+
+Candidates already observed by a Local Skills canary are excluded from later
+fresh measurements once their result has informed adapter development.
 """
 from __future__ import annotations
 
@@ -17,6 +20,16 @@ AUDIT_PATH = Path("article_audit/local_skills_daily_canary.json")
 FETCH_PER_SOURCE = 20
 MAX_SCREENING = 60
 
+# Run 36207549802 exposed a structured-input compatibility gap before the frozen
+# compiler ran. That record is now contaminated for adapter development and must
+# never be reused as a fresh validation claim.
+OBSERVED_CANARY_NAMES = frozenset({
+    "LLM Agents Can Easily Tamper With Their Own Traces",
+})
+OBSERVED_CANARY_URL_MARKERS = frozenset({
+    "2609.30266",
+})
+
 
 def _write(result: dict[str, Any]) -> None:
     AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -25,11 +38,28 @@ def _write(result: dict[str, Any]) -> None:
     )
 
 
+def _already_observed(repo: dict) -> bool:
+    name = str(repo.get("nameWithOwner") or repo.get("name") or "").strip()
+    if name in OBSERVED_CANARY_NAMES:
+        return True
+    values = [
+        str(repo.get("url") or ""),
+        str(repo.get("primaryUrl") or ""),
+        str(repo.get("canonical_entity_id") or ""),
+    ]
+    details = repo.get("sourceDetails") or {}
+    if isinstance(details, dict):
+        values.extend(str(value or "") for value in details.values() if isinstance(value, str))
+    joined = "\n".join(values)
+    return any(marker in joined for marker in OBSERVED_CANARY_URL_MARKERS)
+
+
 def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
     groups = {
         "GitHub": pipeline.fetch_github_trending(FETCH_PER_SOURCE),
         "HackerNews": pipeline.fetch_hackernews_top(FETCH_PER_SOURCE),
         "ArXiv": pipeline.fetch_arxiv_ai_ml(FETCH_PER_SOURCE),
+        # Run268 rewrites the retired Product Hunt call slot to OfficialVendor.
         "ProductHunt": pipeline.fetch_producthunt_trending(FETCH_PER_SOURCE),
     }
     repos = pipeline.round_robin_candidates(groups, MAX_SCREENING)
@@ -47,6 +77,7 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
     deduped: list[dict] = []
     local_identity_urls: set[str] = set()
     local_fallback_keys: set[str] = set()
+    observed_excluded = 0
     for repo in safe:
         identity_urls = pipeline.candidate_identity_urls(repo)
         title_key = pipeline._normalize_title_for_match(repo.get("nameWithOwner", ""))
@@ -58,6 +89,9 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
         )
         if duplicate:
             continue
+        if _already_observed(repo):
+            observed_excluded += 1
+            continue
         local_identity_urls.update(identity_urls)
         if not identity_urls:
             local_fallback_keys.add(fallback_key)
@@ -66,6 +100,7 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
     return deduped[:MAX_SCREENING], {
         "collected": len(repos),
         "safe": len(safe),
+        "observed_canary_excluded": observed_excluded,
         "fresh_after_dedupe": len(deduped),
     }
 
@@ -123,6 +158,8 @@ def run(pipeline: Any) -> dict[str, Any]:
 
         candidate = candidates[0]
         repo = candidate["repo"]
+        if _already_observed(repo):
+            raise RuntimeError("Previously observed Local Skills canary candidate reached selection")
         result.update({
             "selected": str(repo.get("nameWithOwner") or ""),
             "source": str(repo.get("source") or ""),
