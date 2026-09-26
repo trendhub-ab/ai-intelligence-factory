@@ -310,11 +310,15 @@ def test_local_skills_precompiler_source_failure_returns_not_ready_without_contr
         "screening_reason": "source unavailable before generation",
         "repo": {"nameWithOwner": "OpenAI Model Misalignment Report", "source": "HackerNews"},
     }
-    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: ({
-        "item": item,
-        "repo": dict(item["repo"]),
-        "evidence": {"state": "SUFFICIENT"},
-    }, [{"eligible": True}]))
+    def select_once(_pipeline, limit=e2e.DEFAULT_CANDIDATE_LIMIT, exclude_page_ids=None):
+        if item["notion_page_id"] in set(exclude_page_ids or set()):
+            return None, [{"eligible": False, "reason": "excluded_after_precompiler_failure"}]
+        return ({
+            "item": item,
+            "repo": dict(item["repo"]),
+            "evidence": {"state": "SUFFICIENT"},
+        }, [{"eligible": True}])
+    monkeypatch.setattr(e2e, "select_candidate", select_once)
     monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
     e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "local-skills-production.json"
     p.generate_intelligence_report = lambda *args, **kwargs: None
