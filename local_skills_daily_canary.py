@@ -27,8 +27,10 @@ MAX_SCREENING = 60
 # orchestration. The later PASS article and Jevmem FAIL are also now observed:
 # Jevmem directly informed the evidence/accessibility repair and may be used only
 # as contaminated repair regression. Build Plugins validated the repaired v4 stack,
-# then informed v4.1 hardening. "Yes, Claude can do nine loops" is the first fresh
-# all-Gate PASS for v4.1. All observed records are excluded from future fresh claims.
+# then informed v4.1 hardening. "Yes, Claude can do nine loops" was the first fresh
+# all-Gate PASS for v4.1. The later DeepSeek biopharma article exposed a remaining
+# non-engineer accessibility defect and is contaminated repair evidence as well.
+# All observed records are excluded from future fresh claims.
 OBSERVED_CANARY_NAMES = frozenset({
     "LLM Agents Can Easily Tamper With Their Own Traces",
     "U.S. appeals court upholds designation of Anthropic as supply chain risk",
@@ -36,6 +38,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Jevmem – automatic project memory for Claude Code, built on Jev",
     "Build Plugins for Claude",
     "Yes, Claude can do nine loops",
+    "DeepSeek beats GPT-6 Sol in autonomous drug development",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -43,6 +46,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "Avinash-jetwani/jevmem",
     "claude.com/blog/build-plugins-for-claude",
     "anthropic.com/research/yes-claude-can-do-nine-loops",
+    "eval.raycaster.ai/benchmarks/biopharma-bench",
 })
 
 

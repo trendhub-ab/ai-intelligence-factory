@@ -15,8 +15,8 @@ from . import writer
 from .evidence_boundary import EVIDENCE_BOUNDARY_VERSION, apply_evidence_boundary
 
 CANONICALIZER_BLOB_SHA = "414089a14c238f104b2866507ddf8521c2baf420"
-WRITER_BLOB_SHA = "31061577d6d8c0ee8dbdb45d10e68e718e14c6a3"
-CANDIDATE_STATUS = "FRESH_CANARY_PASS_AWAITING_BROADER_VALIDATION"
+WRITER_BLOB_SHA = "2f29b425b56e9974572c62b62f9c400017afffeb"
+CANDIDATE_STATUS = "DEVELOPMENT_REPAIR_AWAITING_FRESH_HOLDOUT"
 
 
 def compile_snapshot(snapshot: Mapping[str, Any], *, evidence_context: str | None = None) -> dict[str, Any]:

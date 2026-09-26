@@ -173,15 +173,46 @@ def _subject_label(snapshot: Mapping[str, Any]) -> str:
     parts = re.split(r"\s+[–—]\s+|[：:]", name, maxsplit=1)
     subject = _clean(parts[0] if parts else name)
     if not subject or len(subject) > 48:
-        return "この対象"
+        return ""
     return subject
+
+
+_MODEL_GENERATION_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])(GPT-\d+)(?![A-Za-z0-9])", re.I)
+_VERSION_LABEL_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])(V\d+)(?=\.\d|\b)", re.I)
+
+
+def _technical_label_bridge(snapshot: Mapping[str, Any]) -> str:
+    """Explain compact model/version labels without inventing subject-specific facts."""
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("name", "source_summary", "what", "decision_reason", "action")
+    )
+    model_tokens: list[str] = []
+    version_tokens: list[str] = []
+    for match in _MODEL_GENERATION_TOKEN_RE.finditer(surface):
+        token = match.group(1)
+        if token not in model_tokens:
+            model_tokens.append(token)
+    for match in _VERSION_LABEL_TOKEN_RE.finditer(surface):
+        token = match.group(1)
+        if token not in version_tokens:
+            version_tokens.append(token)
+
+    labels: list[str] = []
+    labels.extend(f"{token}（AIモデルの世代名）" for token in model_tokens[:3])
+    labels.extend(f"{token}（名称中のバージョン表記）" for token in version_tokens[:3])
+    if not labels:
+        return ""
+    return "名称を読むための補足として、" + "、".join(labels) + "です。"
 
 
 def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
     """Give non-engineers a first-use foothold using only stored structured text."""
     subject = _subject_label(snapshot)
     summary = _gloss(snapshot["source_summary"], set())
-    if re.search(r"[A-Za-z]", subject):
+    if not subject:
+        label = "今回の話"
+    elif re.search(r"[A-Za-z]", subject):
         label = f"今回の検証対象（{subject}）"
     else:
         label = f"今回の検証対象である{subject}"
@@ -192,40 +223,66 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
         "ここで「何の話？」と思いませんか。",
         "最初に「何のためのもの？」から確認したくなりますよね。",
     ]
-    return f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+    base = f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+    technical_bridge = _technical_label_bridge(snapshot)
+    return base if not technical_bridge else f"{base}{technical_bridge}"
 
 
 def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
-    name = _clean(snapshot["name"])
+    subject = _subject_label(snapshot)
+    name = subject or "この話題"
     role = _source_role(snapshot)
     subject_bridge = _reader_subject_bridge(snapshot, layout)
+
+    first_lines = {
+        0: (
+            f"{name}を自社で使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。"
+            if subject
+            else "この話題を自社で検討するなら、最初に決めたいのは「採用するか」ではなく「どこまで確かめるか」です。"
+        ),
+        1: f"仕事で{name}を検討するとき、知りたいのは機能の数より、任せてよい範囲です。",
+        2: (
+            f"{name}。名前は少し難しく見えても、使う側の問いは単純です。"
+            if subject
+            else "この話題は、見出しだけでは少し難しく見えても、判断したいことは単純です。"
+        ),
+        3: (
+            f"でも、{name}で先に見るべきなのは、自社の判断が本当に変わるかです。"
+        ),
+        4: (
+            f"もし{name}を明日から使うなら、どこを最初に確認するでしょうか。"
+            if subject
+            else "もしこの話題を自社の判断材料にするなら、どこを最初に確認するでしょうか。"
+        ),
+    }
+
     openings = {
         0: [
-            f"{name}を自社で使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。",
+            first_lines[0],
             f"簡単に言えば、今回は{role}です。",
             "機能名を追う前に、判断に必要な事実と制約を分けて見ます。",
             subject_bridge,
         ],
         1: [
-            f"仕事で{name}を検討するとき、知りたいのは機能の数より、任せてよい範囲です。",
+            first_lines[1],
             f"要するに、今回は{role}です。",
             "ここでは、使える点と、まだ確かめるべき点を同じ重さで扱います。",
             subject_bridge,
         ],
         2: [
-            f"{name}。名前は少し難しく見えても、使う側の問いは単純です。",
+            first_lines[2],
             "自社の判断が何か変わるのか。それとも、まだ様子を見るべきなのか。",
             f"平たく言えば、今回は{role}です。",
             subject_bridge,
         ],
         3: [
             "新しい技術やサービスを見ると、つい機能一覧から読み始めたくなります。",
-            f"でも、{name}で先に見るべきなのは、自社の判断が本当に変わるかです。",
+            first_lines[3],
             f"一言で言えば、{role}です。",
             subject_bridge,
         ],
         4: [
-            f"もし{name}を明日から使うなら、どこを最初に確認するでしょうか。",
+            first_lines[4],
             f"簡単に言えば、{role}です。",
             "そこで、できること、制約、次の一手の順に整理します。",
             subject_bridge,
