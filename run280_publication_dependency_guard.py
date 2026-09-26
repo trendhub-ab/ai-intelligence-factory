@@ -49,6 +49,7 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "gemini_temporary_exclusion.py": "expiry-bound provider admission only; no public-byte or quality-gate policy",
     "ready_rescue_validation.py": "bounded ONE-SHOT orchestration only; canonical generation owns gates and persistence",
     "production_e2e_validation.py": "bounded single-article E2E orchestration/preflight only; canonical pipeline owns public bytes, gates, persistence, and note publication contract",
+    "local_skills_daily_canary.py": "bounded nonpersistent fresh-record validation controller; persist_results=False is mandatory, downstream publication fan-out is forbidden, and no Ready/public bytes can be persisted",
     "stale_ready_batch_revalidation.py": "bounded ONE-SHOT stale Ready controller only; canonical generate_intelligence_report owns public bytes, gates, and persistence",
     "product_delivery_maintenance.py": "member/product maintenance only",
     "deep_dive_portfolio.py": "candidate selection only",
