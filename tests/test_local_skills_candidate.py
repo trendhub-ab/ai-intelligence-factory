@@ -106,7 +106,7 @@ def test_evidence_boundary_removes_derived_currency_but_keeps_supported_latency(
     )
     result = compile_snapshot(
         snapshot,
-        evidence_context="The measured latency was 0.30 seconds per operation.",
+        evidence_context="The benchmark measured 7x on the fixed workload. The measured latency was 0.30 seconds per operation.",
     )
 
     bounded = result["canonicalized_snapshot"]["decision_reason"]
