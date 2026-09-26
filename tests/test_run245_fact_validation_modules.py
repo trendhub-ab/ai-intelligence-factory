@@ -80,6 +80,20 @@ class Run245FactValidationModuleTests(unittest.TestCase):
         expanded = boundary._expand_evidence_aliases("RAG system documentation")
         self.assertIn("Retrieval Augmented Generation", expanded)
 
+    def test_source_boundary_template_evidence_word_is_not_a_named_product(self):
+        boundary.bind_runtime(
+            _EVIDENCE_ALIAS_GROUPS=(),
+            _normalized_evidence_text=_norm,
+            _normalized_named_fact=_norm,
+            _expand_evidence_aliases=boundary._expand_evidence_aliases,
+            classify_action_risk_tier=lambda _text: "LOW",
+        )
+        failures = boundary._find_source_boundary_violations(
+            "今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。",
+            "RAPID is a robot agentic programming framework from demonstrations.",
+        )
+        self.assertEqual([], failures)
+
     def test_source_boundary_unknown_named_product_remains_blocked(self):
         boundary.bind_runtime(
             _EVIDENCE_ALIAS_GROUPS=(),
