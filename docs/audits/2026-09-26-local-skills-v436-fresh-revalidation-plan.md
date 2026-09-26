@@ -3,7 +3,7 @@
 Date: 2026-09-26
 Base main: `bfc02da7fc0dd4a1d9766e26d9ac061cbfb3e9eb`
 
-Status: **PREREGISTERED / MEASUREMENT-ONLY / 0 OF 4**
+Status: **COMPLETE / MEASUREMENT-ONLY / 4 OF 4 PASS**
 
 ## Purpose
 
@@ -115,3 +115,31 @@ Local Skills. It establishes validation evidence for a separate reviewed
 Production-integration decision.
 
 No Gate or threshold may be weakened to obtain 4/4.
+
+
+## Completion record
+
+Fresh measurements completed on 2026-09-26:
+
+- Run154: PASS
+- Run155: PASS
+- Run156: PASS
+- Run159: PASS
+
+Run157 and Run158 do not count toward the four measurements because provider failure occurred before compiler/Gate measurement, as allowed by the preregistered execution boundary.
+
+Run159 measured:
+- candidate: `DeepSeek Elastic Compute:A Sandbox Infrastructure for Effective Agentic Training`
+- canonical source: ArXiv `2609.22978`
+- Fact: PASS
+- Editorial: PASS
+- Publication: PASS
+- Human Appeal: ACCEPTABLE
+- final disposition: PASS
+- `persist_results=false`
+- Local Skills article-generation provider calls: 0
+- Editorial Eyecatch provider calls: 0
+
+Operational note: the Deep Dive provider request succeeded on `gemini-3-flash-preview` after Provider Health Routing, while the generated provider article surface remained discarded and was not reused by the Local Skills compiler.
+
+This completes the preregistered v4.3.6 Fresh series at 4/4. Production integration remains a separate reviewed decision.
