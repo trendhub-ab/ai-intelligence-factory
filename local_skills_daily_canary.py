@@ -58,6 +58,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Rolling-WAM: World Action Models with Rolling Imagination",
     "The Advisory Group on Mathematics and Artificial Intelligence",
     "To Trust or Not to Trust: Retrieval-Augmented Fact Checking in Speech",
+    "Anthropic's AI biolab finds 'CRISPR-like' DNA in viruses. What's next?",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -82,6 +83,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30247",
     "terrytao.wordpress.com/2026/09/21/advisory-group-on-mathematics-and-artificial-intelligence",
     "2609.30227",
+    "d41586-026-03039-6",
 })
 
 
