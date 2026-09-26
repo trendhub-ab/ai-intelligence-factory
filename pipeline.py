@@ -2475,10 +2475,6 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         return None
 
-    local_skills_canary = os.environ.get("AIIF_LOCAL_SKILLS_CANARY", "false").strip().lower() in {"1", "true", "yes", "on"}
-    if local_skills_canary and persist_results:
-        raise RuntimeError("Local Skills canary is measurement-only and forbids Production persistence")
-
     name = repo.get("nameWithOwner")
     display_name = _notion_display_name(repo)
     repo_url = repo.get("url")
@@ -7624,6 +7620,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     実行するが、Notionの新規作成/更新・Quality Failed更新・GitHub eyecatch uploadを
     行わず、生成稿だけをローカルへ返す。
     """
+    local_skills_canary = os.environ.get("AIIF_LOCAL_SKILLS_CANARY", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if local_skills_canary and persist_results:
+        raise RuntimeError("Local Skills canary is measurement-only and forbids Production persistence")
+
     name = repo.get("nameWithOwner")
     desc = repo.get("description", "説明なし")
     url = repo.get("url")
