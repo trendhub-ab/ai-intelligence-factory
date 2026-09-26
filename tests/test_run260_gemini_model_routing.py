@@ -316,5 +316,45 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertIs(module._call_deep_dive_pool, wrapped_deep_dive)
 
 
+    def test_extended_flash_models_join_default_health_routing_pool(self):
+        module, _, _ = self._fake_pipeline()
+        run260.install(module)
+        self.assertEqual(len(module.DEEP_DIVE_MODEL_POOL), 6)
+        self.assertIn("gemini-3-flash-preview", module.DEEP_DIVE_MODEL_POOL)
+        self.assertIn("gemini-2.5-flash", module.DEEP_DIVE_MODEL_POOL)
+        self.assertIn("gemini-3-flash-preview", run260.ARTICLE_MODELS)
+        self.assertIn("gemini-2.5-flash", run260.ARTICLE_MODELS)
+
+    def test_extended_flash_models_compete_by_health_not_fixed_fallback_position(self):
+        history = [
+            self._row("gemini-3-flash-preview", "success"),
+            self._row("gemini-3-flash-preview", "success"),
+            self._row("gemini-2.5-flash", "success"),
+            self._row("gemini-3.6-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.5-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.7-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.8-flash", "error", error_type="ServiceUnavailable"),
+        ]
+        ranked = run260._health_ranked_pool(list(run260.DEFAULT_DEEP_DIVE_POOL), history)
+        self.assertEqual(ranked[0], "gemini-3-flash-preview")
+        self.assertEqual(ranked[1], "gemini-2.5-flash")
+
+    def test_extended_flash_models_receive_bounded_persistent_budgets(self):
+        module, _, _ = self._fake_pipeline()
+        with patch.dict(
+            os.environ,
+            {
+                "GEMINI_3_FLASH_DAILY_BUDGET": "999",
+                "GEMINI_25_FLASH_DAILY_BUDGET": "999",
+            },
+            clear=False,
+        ):
+            run260.install(module)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3-flash-preview"], 18)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-2.5-flash"], 18)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3-flash-preview"], 18)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-2.5-flash"], 18)
+
+
 if __name__ == "__main__":
     unittest.main()
