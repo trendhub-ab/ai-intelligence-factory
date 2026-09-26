@@ -8301,7 +8301,14 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         # invoked from the publication path.  If Editorial generation/upload fails, publish no
         # image rather than falling back to an internal score card.
         note_eyecatch_path = ""
+        if local_skills_canary:
+            logger.info(
+                "[LOCAL SKILLS CANARY] Editorial Eyecatch generation skipped; "
+                "the measurement is article/Gate-only and must not spend eyecatch provider quota"
+            )
         try:
+            if local_skills_canary:
+                raise RuntimeError("local_skills_canary_skip_eyecatch")
             note_output_dir = NOTE_EYECATCH_OUTPUT_DIR if persist_results else os.path.join(REGEN_TEST_OUTPUT_DIR, "eyecatch")
             os.makedirs(note_output_dir, exist_ok=True)
             note_eyecatch_filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__note.png"
