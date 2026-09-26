@@ -2,12 +2,14 @@
 
 The lane reuses current Production acquisition, dedupe, legal, Screening,
 Calibration, Evidence and Gate functions, but intentionally does not persist
-Stock/article state or dispatch note publication. Exactly one fresh candidate
-is sent through Deep Dive structured analysis, then its provider-generated
-article body is discarded and Local Skills is measured through unchanged Gates.
+Stock/article state or dispatch note publication. Production-style pre-Deep-Dive
+backfill is allowed when a candidate fails Evidence/Source preconditions, but the
+measurement permits at most one actual Deep Dive provider attempt. Its generated
+article surface is then discarded and Local Skills is measured through unchanged
+Gates.
 
 Candidates already observed by a Local Skills canary are excluded from later
-fresh measurements once their result has informed adapter development.
+fresh measurements once their result has informed adapter/canary development.
 """
 from __future__ import annotations
 
@@ -21,10 +23,12 @@ FETCH_PER_SOURCE = 20
 MAX_SCREENING = 60
 
 # Run 36207549802 exposed a structured-input compatibility gap before the frozen
-# compiler ran. That record is now contaminated for adapter development and must
-# never be reused as a fresh validation claim.
+# compiler ran. Run 36208127057 then exposed that a Production evidence backfill
+# must continue to the next ranked candidate. Both records informed canary
+# development and are therefore excluded from later fresh validation claims.
 OBSERVED_CANARY_NAMES = frozenset({
     "LLM Agents Can Easily Tamper With Their Own Traces",
+    "U.S. appeals court upholds designation of Anthropic as supply chain risk",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -52,6 +56,13 @@ def _already_observed(repo: dict) -> bool:
         values.extend(str(value or "") for value in details.values() if isinstance(value, str))
     joined = "\n".join(values)
     return any(marker in joined for marker in OBSERVED_CANARY_URL_MARKERS)
+
+
+def _deep_dive_attempt_count(pipeline: Any) -> int:
+    """Count actual article-analysis provider sends already attempted this run."""
+    audit = getattr(pipeline, "GEMINI_USAGE_AUDIT", None)
+    records = list(getattr(audit, "records", []) or [])
+    return sum(1 for row in records if str(row.get("kind") or "") == "deep_dive")
 
 
 def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
@@ -124,6 +135,7 @@ def run(pipeline: Any) -> dict[str, Any]:
         "outcome": "",
         "compile": {},
         "gates": {},
+        "candidate_attempts": [],
         "error": "",
     }
 
@@ -156,51 +168,101 @@ def run(pipeline: Any) -> dict[str, Any]:
         if not candidates:
             raise RuntimeError("No fresh candidate met the current Production Deep Dive threshold")
 
-        candidate = candidates[0]
-        repo = candidate["repo"]
-        if _already_observed(repo):
-            raise RuntimeError("Previously observed Local Skills canary candidate reached selection")
-        result.update({
-            "selected": str(repo.get("nameWithOwner") or ""),
-            "source": str(repo.get("source") or ""),
-            "screening_score": int(candidate.get("score") or 0),
-        })
-
-        # Measure the frozen Local Skills manuscript itself: one Deep Dive structured
-        # response, no Gemini quality rewrite, no deterministic rescue after Gate failure.
+        # Measure the frozen Local Skills manuscript itself: allow Production's
+        # normal evidence/source backfill before the provider send, but permit at
+        # most one actual Deep Dive. No Gemini quality rewrite or deterministic
+        # publication rescue is allowed after that send.
         pipeline.MAX_QUALITY_RETRIES = 0
         pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False
 
-        report = pipeline.generate_intelligence_report(
-            repo,
-            notion_page_id=None,
-            screening_score=candidate.get("score"),
-            screening_reason=candidate.get("reason", ""),
-            persist_results=False,
-            candidate_rank=1,
-            candidate_origin="local_skills_canary_validation",
-            attribution_context=candidate,
-        )
+        for rank, candidate in enumerate(candidates, start=1):
+            repo = candidate["repo"]
+            if _already_observed(repo):
+                raise RuntimeError("Previously observed Local Skills canary candidate reached selection")
 
-        result["compile"] = dict(
-            getattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_COMPILE", {}) or {}
-        )
-        result["gates"] = dict(
-            getattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_RESULT", {}) or {}
-        )
-        if not result["compile"] or not result["gates"]:
-            raise RuntimeError("Local Skills canary did not reach the frozen compiler and Gate measurement")
+            name = str(repo.get("nameWithOwner") or "")
+            source = str(repo.get("source") or "")
+            score = int(candidate.get("score") or 0)
+            setattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_COMPILE", {})
+            setattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_RESULT", {})
 
-        if isinstance(report, tuple) and len(report) == 2:
-            result["outcome"] = str(report[1])
-        elif report:
-            result["outcome"] = "accepted"
-        else:
-            result["outcome"] = "rejected"
+            before_deep_dive = _deep_dive_attempt_count(pipeline)
+            report = pipeline.generate_intelligence_report(
+                repo,
+                notion_page_id=None,
+                screening_score=candidate.get("score"),
+                screening_reason=candidate.get("reason", ""),
+                persist_results=False,
+                candidate_rank=rank,
+                candidate_origin="local_skills_canary_validation",
+                attribution_context=candidate,
+            )
+            after_deep_dive = _deep_dive_attempt_count(pipeline)
+            provider_send_attempted = after_deep_dive > before_deep_dive
 
-        if result["outcome"] not in {"accepted", "rejected"}:
-            raise RuntimeError("Local Skills canary produced an invalid measurement outcome")
-        return result
+            compile_meta = dict(
+                getattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_COMPILE", {}) or {}
+            )
+            gates = dict(
+                getattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_RESULT", {}) or {}
+            )
+            attempt = {
+                "rank": rank,
+                "name": name,
+                "source": source,
+                "screening_score": score,
+                "deep_dive_provider_attempted": provider_send_attempted,
+                "compiler_reached": bool(compile_meta),
+                "gates_measured": bool(gates),
+            }
+
+            if compile_meta and gates:
+                result.update({
+                    "selected": name,
+                    "source": source,
+                    "screening_score": score,
+                    "compile": compile_meta,
+                    "gates": gates,
+                })
+                attempt["disposition"] = "measured"
+                result["candidate_attempts"].append(attempt)
+
+                if isinstance(report, tuple) and len(report) == 2:
+                    result["outcome"] = str(report[1])
+                elif report:
+                    result["outcome"] = "accepted"
+                else:
+                    result["outcome"] = "rejected"
+
+                if result["outcome"] not in {"accepted", "rejected"}:
+                    raise RuntimeError("Local Skills canary produced an invalid measurement outcome")
+                return result
+
+            if not provider_send_attempted:
+                # Production rejected/backfilled the candidate before any Deep Dive
+                # send (e.g. Evidence Insufficient or Source Integrity). Continue
+                # without spending the single article-analysis provider attempt.
+                attempt["disposition"] = "pre_deep_dive_backfill"
+                result["candidate_attempts"].append(attempt)
+                continue
+
+            # Once one article-analysis provider call has happened, never try a
+            # second candidate. This keeps the fresh measurement single-send and
+            # prevents integration bugs from multiplying API cost.
+            attempt["disposition"] = "deep_dive_without_measurement"
+            result["candidate_attempts"].append(attempt)
+            result.update({
+                "selected": name,
+                "source": source,
+                "screening_score": score,
+            })
+            raise RuntimeError(
+                "Local Skills canary spent its single Deep Dive but did not reach compiler/Gate measurement"
+            )
+
+        raise RuntimeError(
+            "No ranked fresh candidate reached an evidence-sufficient Deep Dive before backfill candidates were exhausted"
+        )
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         raise
