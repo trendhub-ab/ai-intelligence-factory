@@ -56,6 +56,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Self-hosting DeepSeek V4 for a software engineering org",
     "TrackEverything: Long Horizon Dense Tracking via De-Duplicating 3D Scene Representations",
     "Rolling-WAM: World Action Models with Rolling Imagination",
+    "The Advisory Group on Mathematics and Artificial Intelligence",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -78,6 +79,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "parity.io/blog/self-hosted-ai-software-engineering",
     "2609.30222",
     "2609.30247",
+    "terrytao.wordpress.com/2026/09/21/advisory-group-on-mathematics-and-artificial-intelligence",
 })
 
 
