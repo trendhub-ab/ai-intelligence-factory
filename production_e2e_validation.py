@@ -21,6 +21,7 @@ from article_revalidation import rehydrate_recovery_repo, select_revalidation_it
 
 DEFAULT_CANDIDATE_LIMIT = 8
 AUDIT_PATH = Path("article_audit/production_e2e_validation.json")
+LOCAL_SKILLS_AUDIT_PATH = Path("article_audit/local_skills_production_validation.json")
 
 
 def _sync_id(page_id: object) -> str:
@@ -209,9 +210,9 @@ def select_candidate(pipeline: Any, limit: int = DEFAULT_CANDIDATE_LIMIT):
     return {"item": item, "repo": repo, "evidence": evidence_view}, diagnostics
 
 
-def _write_audit(result: dict[str, Any]) -> None:
-    AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    AUDIT_PATH.write_text(
+def _write_audit(result: dict[str, Any], path: Path = AUDIT_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -220,13 +221,15 @@ def _write_audit(result: dict[str, Any]) -> None:
 def run(pipeline: Any) -> dict[str, Any]:
     """Select one exact article, optionally stopping before the first provider request."""
     pipeline.initialize_runtime()
+    local_skills_production = os.environ.get("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "").strip().lower() in {"1", "true", "yes", "on"}
     prepare_only = os.environ.get("PRODUCTION_E2E_PREPARE_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
     budget = getattr(pipeline, "DEEP_DIVE_MODEL_BUDGET", None)
     used_before = int(getattr(budget, "used", 0) or 0)
     total_cap = int(getattr(budget, "budget", 0) or 0)
 
     result: dict[str, Any] = {
-        "mode": "production_e2e_validation",
+        "mode": "local_skills_production_validation" if local_skills_production else "production_e2e_validation",
+        "local_skills": local_skills_production,
         "prepare_only": prepare_only,
         "ready": 0,
         "sync_id": "",
@@ -270,7 +273,13 @@ def run(pipeline: Any) -> dict[str, Any]:
             )
             return result
 
-        report = pipeline.generate_intelligence_report(
+        old_retries = pipeline.MAX_QUALITY_RETRIES
+        old_rescue = pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE
+        if local_skills_production:
+            pipeline.MAX_QUALITY_RETRIES = 0
+            pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False
+        try:
+            report = pipeline.generate_intelligence_report(
             repo,
             notion_page_id=page_id,
             screening_score=item.get("screening_score"),
@@ -278,8 +287,11 @@ def run(pipeline: Any) -> dict[str, Any]:
             candidate_rank=1,
             candidate_origin="production_e2e_validation",
             attribution_context=item,
-            persist_results=True,
-        )
+                persist_results=True,
+            )
+        finally:
+            pipeline.MAX_QUALITY_RETRIES = old_retries
+            pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = old_rescue
         result["ready"] = 1 if report else 0
         if not report:
             result["sync_id"] = ""
@@ -290,5 +302,5 @@ def run(pipeline: Any) -> dict[str, Any]:
     finally:
         used_after = int(getattr(budget, "used", used_before) or 0)
         result["provider_requests"] = max(0, used_after - used_before)
-        _write_audit(result)
+        _write_audit(result, LOCAL_SKILLS_AUDIT_PATH if local_skills_production else AUDIT_PATH)
         pipeline.logger.info("[PRODUCTION E2E VALIDATION] %s", result)
