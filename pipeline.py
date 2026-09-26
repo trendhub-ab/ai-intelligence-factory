@@ -7838,6 +7838,10 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     source=source,
                     primary_url=primary_url,
                     grounding=grounding,
+                    evidence_context=(
+                        source_info.get("verification_context")
+                        or source_info.get("context", "")
+                    ),
                 )
                 globals()["_LOCAL_SKILLS_CANARY_LAST_COMPILE"] = dict(local_compile_meta)
                 logger.info(
