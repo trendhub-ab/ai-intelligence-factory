@@ -1,0 +1,51 @@
+{
+  "schema": "aiif_publication_canonicalizer_stage4_result_v1",
+  "measured_at": "2026-09-26",
+  "development_set_size": 8,
+  "stage3_holdout_reused": false,
+  "frozen_writer_blob": "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2",
+  "baseline": {
+    "pass_count": 1,
+    "total": 8,
+    "run_id": 36180678866
+  },
+  "canonicalizer_progress": [
+    {
+      "version": "stage4-v2",
+      "pass_count": 6,
+      "total": 8,
+      "run_id": 36181702384
+    },
+    {
+      "version": "stage4-v3",
+      "pass_count": 8,
+      "total": 8,
+      "run_id": 36182081140
+    }
+  ],
+  "final": {
+    "pass_count": 8,
+    "total": 8,
+    "integration_run_id": 36182081140,
+    "regression": {
+      "passed": 2931,
+      "warning": 1,
+      "failed": 0
+    },
+    "synthetic_smoke": {
+      "passed": 30,
+      "total": 30,
+      "critical_failures": 0,
+      "production_write_isolation": true
+    }
+  },
+  "constraints": {
+    "provider_llm_api_calls": 0,
+    "production_changes": false,
+    "gate_changes": false,
+    "notion_writes": false,
+    "note_publication": false,
+    "stage3_holdout_tuning": false
+  },
+  "next_validation": "Freeze canonicalizer v3 and test on a new untouched holdout. Do not use Stage 3 or Stage 4 development records for tuning."
+}

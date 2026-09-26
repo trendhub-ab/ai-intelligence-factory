@@ -1,0 +1,221 @@
+{
+  "schema": "aiif_stage5_canonicalizer_writer_blind_result_v1",
+  "valid_blind_run_id": 36183623639,
+  "valid_blind_job_id": 108231633643,
+  "invalid_pre_gate_run_id": 36183206952,
+  "invalid_pre_gate_run_excluded": true,
+  "canonicalizer_blob": "6030016136e905d3c611fe93425a7f11133c3028",
+  "writer_blob": "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2",
+  "primary_success_criterion": "4/4 all-Gate pass",
+  "result": {
+    "by_source": {
+      "ArXiv": {
+        "count": 2,
+        "pass_count": 2
+      },
+      "HackerNews": {
+        "count": 2,
+        "pass_count": 1
+      }
+    },
+    "count": 4,
+    "pass_count": 3,
+    "pass_rate": 0.75,
+    "results": [
+      {
+        "all_pass": true,
+        "canonical_title": "科学探究の自動化を目指す「Intern-S2-Preview」の技術的ポテンシャルと商用化への壁。",
+        "canonicalizer_version": "stage4-v3",
+        "case_id": "3bc479ffdca981109cfaed2cb7411b75",
+        "cross": {
+          "heading_count_match": false,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "",
+          "score": 0,
+          "sequence_similarity": 0,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 3,
+        "name": "Intern-S2-Preview: Scientific Agentic Foundation Model",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "GOOD",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "S2"
+          ]
+        },
+        "source": "ArXiv",
+        "visible_chars": 951
+      },
+      {
+        "all_pass": true,
+        "canonical_title": "Qwen 3.8 27B：中規模モデルによる「エージェントAI」実用化の現実解。",
+        "canonicalizer_version": "stage4-v3",
+        "case_id": "3bc479ffdca98129abbdc65e25b62dfd",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.4728682170542636,
+          "peer": "Intern-S2-Preview: Scientific Agentic Foundation Model",
+          "score": 1,
+          "sequence_similarity": 0.8,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 3,
+        "name": "Qwen 3.8 27B",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "GOOD",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": [
+            "FP8"
+          ]
+        },
+        "source": "HackerNews",
+        "visible_chars": 848
+      },
+      {
+        "all_pass": false,
+        "canonical_title": "LLMと自動評価ループがもたらすGPUカーネル最適化の進展：コンテスト事例から見る実用性。",
+        "canonicalizer_version": "stage4-v3",
+        "case_id": "3bd479ffdca98153b692dcc51926615a",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "Intern-S2-Preview: Scientific Agentic Foundation Model",
+          "score": 1,
+          "sequence_similarity": 0.6222222222222222,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "performance_multiplier_scope_lost: a source expectation/benchmark multiplier is presented without preserving attribution/modality and workload-or-condition variability"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 0,
+        "name": "Auto-research with codex: How I achieved a 232x Faster Kernel",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "GOOD",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": []
+        },
+        "source": "HackerNews",
+        "visible_chars": 921
+      },
+      {
+        "all_pass": true,
+        "canonical_title": "単一量子ビットによる信号処理の革命：指数関数的な測定効率化の衝撃。",
+        "canonicalizer_version": "stage4-v3",
+        "case_id": "3bc479ffdca981c3a54fd1cc418f3359",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.20606060606060606,
+          "peer": "Intern-S2-Preview: Scientific Agentic Foundation Model",
+          "score": 1,
+          "sequence_similarity": 0.6,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 1,
+        "name": "Exponential quantum advantage for learning signals with a single qubit",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "GOOD",
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "unexplained_jargon": []
+        },
+        "source": "ArXiv",
+        "visible_chars": 1085
+      }
+    ]
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema": "aiif_publication_canonicalizer_freeze_v1",
+  "frozen_at": "2026-09-26",
+  "status": "FROZEN_CANDIDATE_AWAITING_FRESH_HOLDOUT",
+  "production_ready": false,
+  "canonicalizer": {
+    "version": "stage6-v4",
+    "path": "experiments/publication_canonicalizer_dev_20260926/publication_canonicalizer_v4.py",
+    "blob_sha": "414089a14c238f104b2866507ddf8521c2baf420"
+  },
+  "writer": {
+    "version": "local-writer-v3",
+    "path": "experiments/local_writer_five_article_20260926/local_writer_v3.py",
+    "blob_sha": "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2"
+  },
+  "historical_artifacts": {
+    "canonicalizer_v3_blob_sha": "6030016136e905d3c611fe93425a7f11133c3028",
+    "stage5_primary_blind_result": "3/4",
+    "stage5_primary_blind_result_must_not_be_rewritten": true
+  },
+  "validated_code_head": "f4925ee2d930330676b9e35162faa0cf2cad82a0",
+  "validation": {
+    "integration_run_id": 36186090527,
+    "stage4_development_set": {
+      "pass_count": 8,
+      "total": 8
+    },
+    "stage5_contaminated_development_regression": {
+      "pass_count": 4,
+      "total": 4,
+      "validation_claim": false
+    },
+    "deterministic_regression": {
+      "passed": 2935,
+      "warning": 1,
+      "failed": 0
+    },
+    "production_synthetic_smoke": {
+      "passed": 30,
+      "total": 30,
+      "critical_failures": 0,
+      "production_write_isolation": true
+    }
+  },
+  "v4_contract": {
+    "performance_multiplier_scope_preservation": true,
+    "multiplier_value_preserved": true,
+    "all_numeric_lexemes_preserved": true,
+    "source_side_modality_required": true,
+    "conservative_variability_caveat": true,
+    "idempotent": true,
+    "unsupported_named_facts_added": false,
+    "evidence_decision_score_urls_preserved": true
+  },
+  "constraints": {
+    "provider_llm_api_calls": 0,
+    "production_code_changes": false,
+    "gate_changes": false,
+    "notion_writes": false,
+    "note_publication": false
+  },
+  "next_step": {
+    "required": "Fresh untouched holdout using records created after this freeze or otherwise never used in Stages 1-6.",
+    "do_not_reuse_for_validation": [
+      "Stage 3 holdout",
+      "Stage 4 development set",
+      "Stage 5 holdout"
+    ],
+    "do_not_weaken_evidence_eligibility": true
+  }
+}
