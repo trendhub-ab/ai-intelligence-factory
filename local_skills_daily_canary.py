@@ -22,16 +22,21 @@ AUDIT_PATH = Path("article_audit/local_skills_daily_canary.json")
 FETCH_PER_SOURCE = 20
 MAX_SCREENING = 60
 
-# Run 36207549802 exposed a structured-input compatibility gap before the frozen
-# compiler ran. Run 36208127057 then exposed that a Production evidence backfill
-# must continue to the next ranked candidate. Both records informed canary
-# development and are therefore excluded from later fresh validation claims.
+# Every record observed by a Local Skills canary is excluded once its result has
+# informed validation or repair. Runs 36207549802 / 36208127057 informed canary
+# orchestration. The later PASS article and Jevmem FAIL are also now observed:
+# Jevmem directly informed the evidence/accessibility repair and may be used only
+# as contaminated repair regression, never as a new fresh-validation claim.
 OBSERVED_CANARY_NAMES = frozenset({
     "LLM Agents Can Easily Tamper With Their Own Traces",
     "U.S. appeals court upholds designation of Anthropic as supply chain risk",
+    "My coding agent pushed a commit deleting every file on main",
+    "Jevmem – automatic project memory for Claude Code, built on Jev",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
+    "dev.karakun.com/2026/08/28/coding-agent-pushed-deletion-to-main.html",
+    "Avinash-jetwani/jevmem",
 })
 
 
