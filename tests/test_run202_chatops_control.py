@@ -51,6 +51,11 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "local_skills_canary_validation")
 
+    def test_local_skills_production_validation_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run local_skills_production_validation"))
+        self.assertTrue(result["authorized"])
+        self.assertEqual(result["mode"], "local_skills_production_validation")
+
     def test_x_discovery_stage2_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run x_discovery_stage2"))
         self.assertTrue(result["authorized"])
@@ -87,6 +92,7 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
             "/aiif run pending_retry",
             "/aiif run x_discovery_stage2 ",
             "/aiif run local_skills_canary_validation ",
+            "/aiif run local_skills_production_validation ",
             "/aiif run x_discovery",
             "/aiif run current_policy_ready_recovery ",
             "/aiif run current_policy_ready",
@@ -128,6 +134,8 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("/aiif run full", text)
         self.assertIn("/aiif run local_skills_canary_validation", text)
         self.assertIn('"mode":"local_skills_canary_validation"', text)
+        self.assertIn("/aiif run local_skills_production_validation", text)
+        self.assertIn('"mode":"local_skills_production_validation"', text)
         self.assertIn("/aiif run x_discovery_stage2", text)
         self.assertNotIn("/aiif run current_policy_ready_recovery", text)
         self.assertNotIn("/aiif run ready_metadata_rebase", text)

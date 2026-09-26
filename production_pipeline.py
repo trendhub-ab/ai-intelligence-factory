@@ -188,6 +188,7 @@ def install_run349_score_narrative_negation_precision(pipeline_module):
 _ONE_SHOT_MODES = frozenset({
     "full", "article_validation", "pending_retry_validation", "ready_rescue_validation",
     "production_e2e_validation", "stale_ready_batch_revalidation", "local_skills_canary_validation",
+    "local_skills_production_validation",
 })
 
 
@@ -335,7 +336,9 @@ def main() -> None:
         run(pipeline)
         return
 
-    if mode == "production_e2e_validation":
+    if mode in {"production_e2e_validation", "local_skills_production_validation"}:
+        if mode == "local_skills_production_validation":
+            os.environ["AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION"] = "true"
         from production_e2e_validation import run
         run(pipeline)
         return

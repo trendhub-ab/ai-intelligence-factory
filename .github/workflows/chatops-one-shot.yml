@@ -33,6 +33,7 @@ jobs:
        github.event.comment.body == '/aiif run production_e2e_preflight' ||
        github.event.comment.body == '/aiif run full' ||
        github.event.comment.body == '/aiif run local_skills_canary_validation' ||
+       github.event.comment.body == '/aiif run local_skills_production_validation' ||
        github.event.comment.body == '/aiif run x_discovery_stage2' ||
        github.event.comment.body == '/aiif run stale_ready_portfolio_audit')
     runs-on: ubuntu-latest
@@ -62,7 +63,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|x_discovery_stage2|stale_ready_portfolio_audit) ;;
+            article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|local_skills_production_validation|x_discovery_stage2|stale_ready_portfolio_audit) ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -92,6 +93,10 @@ jobs:
             local_skills_canary_validation)
               target='daily-one-shot.yml'
               payload='{"ref":"main","inputs":{"mode":"local_skills_canary_validation","confirm":"RUN_ONCE"}}'
+              ;;
+            local_skills_production_validation)
+              target='daily-one-shot.yml'
+              payload='{"ref":"main","inputs":{"mode":"local_skills_production_validation","confirm":"RUN_ONCE"}}'
               ;;
             ready_rescue_validation)
               target='daily-one-shot.yml'

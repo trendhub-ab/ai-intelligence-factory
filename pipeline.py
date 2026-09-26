@@ -7638,6 +7638,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
     行わず、生成稿だけをローカルへ返す。
     """
     local_skills_canary = os.environ.get("AIIF_LOCAL_SKILLS_CANARY", "false").strip().lower() in {"1", "true", "yes", "on"}
+    local_skills_production = os.environ.get("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "false").strip().lower() in {"1", "true", "yes", "on"}
+    local_skills_enabled = local_skills_canary or local_skills_production
     if local_skills_canary and persist_results:
         raise RuntimeError("Local Skills canary is measurement-only and forbids Production persistence")
 
@@ -7845,9 +7847,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             parsed, structure_changes = _apply_deterministic_structure_polish(parsed)
             if structure_changes:
                 logger.info("[DETERMINISTIC STRUCTURE POLISH] %s changes=%s", name, structure_changes)
-            if local_skills_canary:
+            if local_skills_enabled:
                 if attempt != 0:
-                    raise RuntimeError("Local Skills canary forbids provider quality retries")
+                    if local_skills_canary:
+                        raise RuntimeError("Local Skills canary forbids provider quality retries")
+                    raise RuntimeError("Local Skills Production validation forbids provider quality retries")
                 from local_skills.production_canary import apply_to_production_parsed
                 parsed, local_compile_meta = apply_to_production_parsed(
                     repo,
@@ -7861,6 +7865,8 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     ),
                 )
                 globals()["_LOCAL_SKILLS_CANARY_LAST_COMPILE"] = dict(local_compile_meta)
+                if local_skills_production:
+                    globals()["_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE"] = dict(local_compile_meta)
                 logger.info(
                     "[LOCAL SKILLS CANARY COMPILED] %s writer=%s canonicalizer=%s",
                     name,
