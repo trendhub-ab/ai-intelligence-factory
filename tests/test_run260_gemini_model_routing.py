@@ -157,7 +157,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(len(calls), 0)
         self.assertEqual(len(live_calls), 1)
         self.assertEqual(live_calls[0][0][4][0], "gemini-3.5-flash")
-        self.assertEqual(len(live_calls[0][0][4]), 4)
+        self.assertEqual(len(live_calls[0][0][4]), 6)
 
     def test_live_deep_dive_quality_retry_path_uses_healthiest_two_models(self):
         history = [
@@ -201,7 +201,8 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
 
         result = module._call_deep_dive_pool("repair", None, "quality_retry", request_context="run57")
         self.assertEqual(result, ("response", "model"))
-        self.assertEqual(calls[0][0][4], ["gemini-3.7-flash", "gemini-3.8-flash"])
+        self.assertEqual(calls[0][0][4], ["gemini-3.7-flash", "gemini-3-flash-preview"])
+        self.assertNotIn("gemini-3.8-flash", calls[0][0][4])
         self.assertEqual(len(calls[0][0][4]), 2)
 
     def test_quality_retry_preserves_a_second_distinct_model_for_rescue(self):
