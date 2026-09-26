@@ -44,7 +44,7 @@ def _snapshot() -> dict:
     }
 
 
-def test_frozen_candidate_blobs_are_byte_identical_to_stage6_freeze():
+def test_candidate_blobs_match_declared_repair_versions():
     assert _git_blob_sha(WRITER_PATH) == WRITER_BLOB_SHA
     assert _git_blob_sha(CANON_PATH) == CANONICALIZER_BLOB_SHA
 
@@ -97,3 +97,52 @@ def test_local_skills_wiring_is_canary_only_and_fail_closed():
     assert 'if local_skills_canary and persist_results:' in pipeline_text
     assert 'local_skills_canary_validation' in production_text
     assert 'from local_skills_daily_canary import run' in production_text
+
+
+def test_evidence_boundary_removes_derived_currency_but_keeps_supported_latency():
+    snapshot = _snapshot()
+    snapshot["decision_reason"] = (
+        "1回あたり0.30秒・約0.02円という低い遅延とコストで動作します。"
+    )
+    result = compile_snapshot(
+        snapshot,
+        evidence_context="The benchmark measured 7x on the fixed workload. The measured latency was 0.30 seconds per operation.",
+    )
+
+    bounded = result["canonicalized_snapshot"]["decision_reason"]
+    assert "0.30秒" in bounded
+    assert "0.02" not in bounded
+    assert "約0.02円" not in result["parsed"]["note_draft"]
+    assert result["evidence_boundary_version"] == "stage8-v1"
+    assert result["evidence_boundary"]["removed_count"] == 1
+    assert result["evidence_boundary"]["removed_unsupported_numeric_claims"] == [
+        {"field": "decision_reason", "claim": "約0.02円"}
+    ]
+
+
+def test_writer_adds_first_use_non_engineer_subject_bridge_without_new_source_fact():
+    snapshot = _snapshot()
+    snapshot.update({
+        "name": "Jevmem – automatic project memory for Claude Code, built on Jev",
+        "reader_title": "Jevmem：いま何を判断材料にするべきか",
+        "source_summary": (
+            "開発AIとのチャットから意思決定や制約を記録し、"
+            "次回の作業時に必要な文脈を再利用する構成です。"
+        ),
+        "what": "開発AIとのチャット内容をプロジェクト履歴として扱うツールです。",
+    })
+    result = compile_snapshot(snapshot)
+    article = result["parsed"]["note_draft"]
+
+    assert "今回の検証対象（Jevmem）" in article
+    assert "一次情報で確認できる説明はこうです。" in article
+    assert re.search(r"(?:ですよね|ませんか)", article)
+    assert snapshot["source_summary"] in result["evidence_context"]
+
+
+def test_explicit_production_evidence_context_is_kept_separate_from_structured_record():
+    snapshot = _snapshot()
+    evidence = "Primary source evidence: benchmark measured 7x on the fixed workload."
+    result = compile_snapshot(snapshot, evidence_context=evidence)
+    assert result["evidence_context"] == evidence
+    assert "reader_title:" not in result["evidence_context"]

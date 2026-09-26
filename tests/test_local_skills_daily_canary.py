@@ -53,6 +53,7 @@ def test_production_adapter_discards_all_provider_article_surfaces():
         source="HackerNews",
         primary_url="https://example.invalid/fresh",
         grounding={"evidence_urls": ["https://example.invalid/fresh"]},
+        evidence_context="A benchmark example measured a 7x faster kernel on a fixed workload.",
     )
 
     assert original["note_draft"] == "THIS PROVIDER ARTICLE BODY MUST BE DISCARDED"
@@ -74,8 +75,10 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     assert meta["completeness_adapter_fallback_fields"] == [
         "avoid_for", "best_for", "primary_risk"
     ]
-    assert meta["writer_blob_sha"] == "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2"
+    assert meta["writer_blob_sha"] == "0fafb7c878d26cd4eb4f4293c76e6d5bcbdb6ec8"
     assert meta["canonicalizer_blob_sha"] == "414089a14c238f104b2866507ddf8521c2baf420"
+    assert meta["evidence_boundary_version"] == "stage8-v1"
+    assert meta["removed_unsupported_numeric_claims"] == 0
 
 
 def test_completeness_adapter_prefers_management_only_values_when_present():
@@ -112,6 +115,15 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
         "nameWithOwner": "U.S. appeals court upholds designation of Anthropic as supply chain risk",
         "url": "https://example.invalid/news",
     })
+
+    assert daily_canary._already_observed({
+        "nameWithOwner": "My coding agent pushed a commit deleting every file on main",
+        "url": "https://dev.karakun.com/2026/08/28/coding-agent-pushed-deletion-to-main.html",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Jevmem – automatic project memory for Claude Code, built on Jev",
+        "url": "https://github.com/Avinash-jetwani/jevmem",
+    })
     assert not daily_canary._already_observed(_repo())
 
 
@@ -147,6 +159,8 @@ def test_pipeline_canary_fails_closed_on_persistence_attempt():
     assert 'if local_skills_canary and persist_results:' in source
     assert 'Local Skills canary is measurement-only and forbids Production persistence' in source
     assert 'Local Skills canary forbids provider quality retries' in source
+    assert 'source_info.get("verification_context")' in source
+    assert 'evidence_context=(' in source
 
 
 def test_canary_runner_disables_rewrite_rescue_and_second_deep_dive():

@@ -1,4 +1,4 @@
-"""Run-scoped adapter from current Production structured fields to frozen Local Skills.
+"""Run-scoped adapter from current Production structured fields to Local Skills.
 
 This module is canary-only. It does not write to Notion, publish to note, call a
 provider, or alter Gate policy. The Gemini Deep Dive may still produce its normal
@@ -123,12 +123,13 @@ def apply_to_production_parsed(
     source: str,
     primary_url: str,
     grounding: Mapping[str, Any] | None,
+    evidence_context: str = "",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     completion, completion_sources = _completion_boundary(parsed)
     snapshot = build_snapshot(
         repo, parsed, source=source, primary_url=primary_url, grounding=grounding
     )
-    compiled = compile_snapshot(snapshot)
+    compiled = compile_snapshot(snapshot, evidence_context=evidence_context)
     out = dict(parsed)
     out["title_text"] = compiled["parsed"]["title_text"]
     out["note_draft"] = compiled["parsed"]["note_draft"]
@@ -139,6 +140,10 @@ def apply_to_production_parsed(
         "canonicalizer_version": compiled["canonicalizer_version"],
         "canonicalizer_blob_sha": compiled["canonicalizer_blob_sha"],
         "writer_blob_sha": compiled["writer_blob_sha"],
+        "evidence_boundary_version": compiled["evidence_boundary_version"],
+        "removed_unsupported_numeric_claims": int(
+            compiled["evidence_boundary"].get("removed_count", 0)
+        ),
         "source": snapshot["source"],
         "evidence_url_count": len(snapshot["evidence_urls"]),
         "provider_article_surface_reused": False,

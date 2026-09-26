@@ -1,14 +1,15 @@
-"""Frozen provider-free Local Skills publication candidate.
+"""Provider-free Local Skills publication candidate.
 
-This package is intentionally not wired into Production.  It exposes the exact
-frozen Stage 6 Canonicalizer v4 + Local Writer v3 through a small deterministic
-compiler interface so a future untouched holdout can validate the same code.
+The Stage 8 repair keeps Canonicalizer v4, adds a verified-evidence numeric
+boundary, and advances the deterministic writer to v4. It remains canary-only
+until a new untouched holdout validates the repaired bytes.
 """
 
 from .compiler import (
     CANONICALIZER_BLOB_SHA,
     WRITER_BLOB_SHA,
     CANDIDATE_STATUS,
+    EVIDENCE_BOUNDARY_VERSION,
     compile_snapshot,
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     "CANONICALIZER_BLOB_SHA",
     "WRITER_BLOB_SHA",
     "CANDIDATE_STATUS",
+    "EVIDENCE_BOUNDARY_VERSION",
     "compile_snapshot",
 ]

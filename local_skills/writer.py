@@ -1,17 +1,16 @@
-"""Second-experiment Local Writer v3.
+"""Local Writer v4 — evidence-safe reader accessibility repair.
 
 Pure Python, zero network/provider calls. This version tests whether a small,
 general set of deterministic editorial/compiler rules can generalize across the
 five heterogeneous snapshots without changing any Production Gate.
 
-Compared with v2:
-- keep a source-type reader bridge in the opening;
-- reduce implementation-syntax leakage from structured Action/Reason fields;
-- explain bounded acronyms/terms with a general glossary;
-- keep an explicit limitation adjacent to the decision;
-- do not promote unsupported ROI/outcome language from a structured field into
-  reader-facing prose;
-- add plain decision bridges without adding new factual claims.
+Compared with the frozen v3:
+- keep the same deterministic source-role and decision structure;
+- add a first-use subject bridge sourced only from the stored source_summary;
+- add one layout-varied conversational foothold so a non-engineer can identify
+  what the named subject is before technical detail;
+- keep bounded glossary handling, limitation adjacency, and ROI safety;
+- add no provider calls and no new source facts.
 
 No Evidence, Decision, Score, URL, Production code, or Gate rule is changed.
 """
@@ -163,34 +162,68 @@ def _source_role(snapshot: Mapping[str, Any]) -> str:
     return "一次情報から、次に何を試すかを決める話"
 
 
+def _subject_label(snapshot: Mapping[str, Any]) -> str:
+    """Return a short display label without asserting what the subject does."""
+    name = _clean(snapshot["name"])
+    parts = re.split(r"\s+[–—]\s+|[：:]", name, maxsplit=1)
+    subject = _clean(parts[0] if parts else name)
+    if not subject or len(subject) > 48:
+        return "この対象"
+    return subject
+
+
+def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
+    """Give non-engineers a first-use foothold using only stored structured text."""
+    subject = _subject_label(snapshot)
+    summary = _gloss(snapshot["source_summary"], set())
+    if re.search(r"[A-Za-z]", subject):
+        label = f"今回の検証対象（{subject}）"
+    else:
+        label = f"今回の検証対象である{subject}"
+    leads = [
+        "名前だけでは少し分かりにくいですよね。",
+        "まず「結局、何をするもの？」と感じませんか。",
+        "名前だけで役割まで想像するのは難しいですよね。",
+        "ここで「何の話？」と思いませんか。",
+        "最初に「何のためのもの？」から確認したくなりますよね。",
+    ]
+    return f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+
+
 def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
     name = _clean(snapshot["name"])
     role = _source_role(snapshot)
+    subject_bridge = _reader_subject_bridge(snapshot, layout)
     openings = {
         0: [
             f"{name}を自社で使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。",
             f"簡単に言えば、今回は{role}です。",
             "機能名を追う前に、判断に必要な事実と制約を分けて見ます。",
+            subject_bridge,
         ],
         1: [
             f"仕事で{name}を検討するとき、知りたいのは機能の数より、任せてよい範囲です。",
             f"要するに、今回は{role}です。",
             "ここでは、使える点と、まだ確かめるべき点を同じ重さで扱います。",
+            subject_bridge,
         ],
         2: [
             f"{name}。名前は少し難しく見えても、使う側の問いは単純です。",
             "自社の判断が何か変わるのか。それとも、まだ様子を見るべきなのか。",
             f"平たく言えば、今回は{role}です。",
+            subject_bridge,
         ],
         3: [
             "新しい技術やサービスを見ると、つい機能一覧から読み始めたくなります。",
             f"でも、{name}で先に見るべきなのは、自社の判断が本当に変わるかです。",
             f"一言で言えば、{role}です。",
+            subject_bridge,
         ],
         4: [
             f"もし{name}を明日から使うなら、どこを最初に確認するでしょうか。",
             f"簡単に言えば、{role}です。",
             "そこで、できること、制約、次の一手の順に整理します。",
+            subject_bridge,
         ],
     }
     return openings[layout]
