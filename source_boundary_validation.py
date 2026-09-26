@@ -57,7 +57,7 @@ def _find_source_boundary_violations(draft: str, source_context: str, repo_name:
     # 固有製品名ではない一般用語・略語・記事テンプレート語。
     ignore = {
         "ARTICLE","MANAGEMENT","DATA","WATCH","TRY","NOW","WAIT","AVOID","What","Decision","Score",
-        "GitHub","HackerNews","ProductHunt","ArXiv","Source","Summary","Action","Future","Scenario",
+        "GitHub","HackerNews","ProductHunt","ArXiv","Source","Summary","Action","Future","Scenario","Evidence",
         "API","AI","LLM","MCP","GPU","CPU","OSS","URL","HTTP","HTTPS","PDF","HTML","JSON","XML",
         "Linux","Wayland","Python","Markdown","VAE","RAG","RLHF","SFT","PR","PoC","POC","CTO","PM",
         "SaaS","Web API","RPA","UI","UX","DOM","Webhook","Webhooks","Cookie","Cookies","ID","ACL","2FA","MFA",
