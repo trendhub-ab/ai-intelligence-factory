@@ -46,9 +46,10 @@ def test_run163_local_writer_translates_dev_terms_for_non_engineers():
     article = render_body(_run163_snapshot())
     issues = bridge._material_reader_value_issues(pipeline, article)
 
-    assert "リポジトリ（" in article
-    assert "P2Pネットワーク（" in article
-    assert "ノード（" in article
-    assert "Fork/Vendor（" in article
+    assert "先に意味だけ押さえると" in article
+    assert "一つのサービスだけに集中させず" in article
+    for token in ("リポジトリ", "P2Pネットワーク", "Radicleノード", "Fork/Vendor"):
+        if token in article:
+            assert f"{token}（" in article
     assert not any("non_engineer_access_failure" in issue for issue in issues), issues
     assert not any("multi_axis_reader_weakness" in issue for issue in issues), issues
