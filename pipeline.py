@@ -7849,7 +7849,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 logger.info("[DETERMINISTIC STRUCTURE POLISH] %s changes=%s", name, structure_changes)
             if local_skills_enabled:
                 if attempt != 0:
-                    raise RuntimeError("Local Skills frozen validation forbids provider quality retries")
+                    if local_skills_canary:
+                        raise RuntimeError("Local Skills canary forbids provider quality retries")
+                    raise RuntimeError("Local Skills Production validation forbids provider quality retries")
                 from local_skills.production_canary import apply_to_production_parsed
                 parsed, local_compile_meta = apply_to_production_parsed(
                     repo,
