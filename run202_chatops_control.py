@@ -21,6 +21,7 @@ COMMAND_TO_MODE = {
     "/aiif run production_e2e_preflight": "production_e2e_preflight",
     "/aiif run pending_retry_validation": "pending_retry_validation",
     "/aiif run full": "full",
+    "/aiif run local_skills_canary_validation": "local_skills_canary_validation",
     "/aiif run x_discovery_stage2": "x_discovery_stage2",
     "/aiif run stale_ready_portfolio_audit": "stale_ready_portfolio_audit",
 }
