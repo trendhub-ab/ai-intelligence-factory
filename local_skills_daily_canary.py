@@ -31,8 +31,9 @@ MAX_SCREENING = 60
 # all-Gate PASS for v4.1. The later DeepSeek biopharma article exposed a remaining
 # non-engineer accessibility defect and is contaminated repair evidence as well.
 # The later Cockpit / Show HN article exposed discovery-label and reader-bridge
-# weaknesses and is contaminated repair evidence as well.
-# All observed records are excluded from future fresh claims.
+# weaknesses and is contaminated repair evidence as well. The v4.3 fresh ArXiv
+# holdout then passed all unchanged Gates and now advances the candidate to broader
+# validation. All observed records are excluded from future fresh claims.
 OBSERVED_CANARY_NAMES = frozenset({
     "LLM Agents Can Easily Tamper With Their Own Traces",
     "U.S. appeals court upholds designation of Anthropic as supply chain risk",
@@ -51,6 +52,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "anthropic.com/research/yes-claude-can-do-nine-loops",
     "eval.raycaster.ai/benchmarks/biopharma-bench",
     "aidash.dev",
+    "2609.30217",
 })
 
 
