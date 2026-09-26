@@ -75,7 +75,7 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     assert meta["completeness_adapter_fallback_fields"] == [
         "avoid_for", "best_for", "primary_risk"
     ]
-    assert meta["writer_blob_sha"] == "2f29b425b56e9974572c62b62f9c400017afffeb"
+    assert meta["writer_blob_sha"] == "f3076ab88316cf9ada97067aa9af21480dff6459"
     assert meta["canonicalizer_blob_sha"] == "414089a14c238f104b2866507ddf8521c2baf420"
     assert meta["evidence_boundary_version"] == "stage8-v3"
     assert meta["removed_unsupported_numeric_claims"] == 0
@@ -135,6 +135,10 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
     assert daily_canary._already_observed({
         "nameWithOwner": "DeepSeek beats GPT-6 Sol in autonomous drug development",
         "url": "https://eval.raycaster.ai/benchmarks/biopharma-bench/",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Show HN: I couldn't deal with another Claude Code tab",
+        "url": "https://aidash.dev/",
     })
     assert not daily_canary._already_observed(_repo())
 
