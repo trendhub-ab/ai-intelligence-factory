@@ -43,6 +43,8 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Yes, Claude can do nine loops",
     "DeepSeek beats GPT-6 Sol in autonomous drug development",
     "Show HN: I couldn't deal with another Claude Code tab",
+    "Revelations of dozens more platforms hit by OpenAI agents",
+    "RAPID: Robot Agentic Programming from Demonstrations",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -53,6 +55,8 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "eval.raycaster.ai/benchmarks/biopharma-bench",
     "aidash.dev",
     "2609.30217",
+    "abc.net.au/news/2026-09-26/openai-review-rogue-agents-australia-medicare-hack/107199074",
+    "2609.30249",
 })
 
 
