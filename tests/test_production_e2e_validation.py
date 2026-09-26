@@ -25,6 +25,8 @@ def _pipeline(evidence_state="SUFFICIENT"):
     p.EVIDENCE_SUFFICIENT = "SUFFICIENT"
     p.EVIDENCE_SUPPLEMENT_REQUIRED = "SUPPLEMENT_REQUIRED"
     p.DEEP_DIVE_MODEL_BUDGET = _Budget()
+    p.MAX_QUALITY_RETRIES = 1
+    p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = True
     p.logger = _Logger()
     p.initialize_runtime = lambda: None
     p.legal_safety_gate = lambda repo: (True, "N/A")
@@ -229,3 +231,72 @@ def test_note_ready_sync_accepts_and_preflights_exact_target_sync_id():
     assert "target_sync_id:" in source
     assert "TARGET_SYNC_ID: ${{ inputs.target_sync_id }}" in source
     assert 'preflight.preflight(os.environ.get("TARGET_SYNC_ID", ""))' in source
+
+
+def test_local_skills_production_validation_uses_frozen_stack_and_persists_without_retry(monkeypatch, tmp_path):
+    p = _pipeline()
+    page_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    item = {
+        "notion_page_id": page_id,
+        "screening_score": 91,
+        "screening_reason": "local-skills-production",
+        "repo": {"nameWithOwner": "Vendor / local skills production", "source": "OfficialVendor"},
+    }
+    selected = {
+        "item": item,
+        "repo": dict(item["repo"]),
+        "evidence": {"state": "SUFFICIENT"},
+    }
+    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: (selected, [{"eligible": True}]))
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
+    e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "local-skills-production.json"
+
+    observed = {}
+    def generate(repo, **kwargs):
+        observed["retries"] = p.MAX_QUALITY_RETRIES
+        observed["rescue"] = p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE
+        observed["kwargs"] = kwargs
+        p._LOCAL_SKILLS_PRODUCTION_LAST_COMPILE = {
+            "writer_blob_sha": "204cce30ab838e0d6dac9cbe762d0a82ff02f1aa",
+            "canonicalizer_blob_sha": "414089a14c238f104b2866507ddf8521c2baf420",
+            "evidence_boundary_version": "stage8-v4",
+        }
+        return "ready local skills manuscript"
+
+    p.generate_intelligence_report = generate
+    result = e2e.run(p)
+
+    assert result["mode"] == "local_skills_production_validation"
+    assert result["local_skills"] is True
+    assert result["ready"] == 1
+    assert observed["retries"] == 0
+    assert observed["rescue"] is False
+    assert observed["kwargs"]["persist_results"] is True
+    assert observed["kwargs"]["candidate_origin"] == "local_skills_production_validation"
+    assert p.MAX_QUALITY_RETRIES == 1
+    assert p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE is True
+    assert result["local_skills_compile"]["writer_blob_sha"] == "204cce30ab838e0d6dac9cbe762d0a82ff02f1aa"
+    saved = json.loads(e2e.LOCAL_SKILLS_AUDIT_PATH.read_text(encoding="utf-8"))
+    assert saved["ready"] == 1
+
+
+def test_local_skills_production_validation_fails_closed_without_compile_proof(monkeypatch, tmp_path):
+    p = _pipeline()
+    item = {
+        "notion_page_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "screening_score": 91,
+        "screening_reason": "local-skills-production",
+        "repo": {"nameWithOwner": "Vendor / missing compile", "source": "OfficialVendor"},
+    }
+    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: ({
+        "item": item,
+        "repo": dict(item["repo"]),
+        "evidence": {"state": "SUFFICIENT"},
+    }, [{"eligible": True}]))
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
+    e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "local-skills-production.json"
+    p.generate_intelligence_report = lambda *args, **kwargs: "unexpected ready"
+
+    import pytest
+    with pytest.raises(RuntimeError, match="without frozen compiler metadata"):
+        e2e.run(p)
