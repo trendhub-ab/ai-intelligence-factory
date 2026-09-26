@@ -77,7 +77,7 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     ]
     assert meta["writer_blob_sha"] == "31061577d6d8c0ee8dbdb45d10e68e718e14c6a3"
     assert meta["canonicalizer_blob_sha"] == "414089a14c238f104b2866507ddf8521c2baf420"
-    assert meta["evidence_boundary_version"] == "stage8-v2"
+    assert meta["evidence_boundary_version"] == "stage8-v3"
     assert meta["removed_unsupported_numeric_claims"] == 0
 
 
