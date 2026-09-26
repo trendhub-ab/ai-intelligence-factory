@@ -52,7 +52,22 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         parsed = {"decision_text": "WAIT"}
         summary = pipeline.build_reader_first_summary(parsed)
         self.assertNotIn("WAIT", summary["decision"])
+        self.assertNotIn("Evidence", summary["decision"])
+        self.assertIn("根拠", summary["decision"])
         self.assertIn("待つ", summary["decision"])
+
+    def test_watch_fallback_does_not_create_unsupported_evidence_named_fact(self):
+        summary = pipeline.build_reader_first_summary({"decision_text": "WATCH"})
+        self.assertNotIn("Evidence", summary["decision"])
+        self.assertIn("根拠", summary["decision"])
+        self.assertEqual(
+            [],
+            pipeline._find_source_boundary_violations(
+                summary["decision"],
+                "RAPID is a robot programming method described by the primary research source.",
+                "RAPID",
+            ),
+        )
 
     def test_reader_header_places_summary_before_primary_source(self):
         header = pipeline.build_reader_first_header(
