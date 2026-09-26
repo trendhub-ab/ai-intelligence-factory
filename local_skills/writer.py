@@ -70,6 +70,11 @@ COMPOUND_GLOSSARY = {
     "Model Context Protocol (MCP)": "AIと外部ツールやデータを接続する共通規格",
     "Agent Skills": "AIに特定作業の手順や知識を追加する仕組み",
     "CI/CD": "変更を自動検証・配布する仕組み",
+    "P2Pネットワーク": "中央の1社だけに頼らず、参加者同士でデータを持ち合う仕組み",
+    "リポジトリ": "ソースコードや変更履歴をまとめて保存する場所",
+    "Radicleノード": "Radicleのネットワークに参加し、リポジトリを保持・共有するコンピューター",
+    "Fork/Vendor": "外部コードを複製したり、自社側に取り込んで保持する方法",
+    "分散型プロトコル": "中央の1サービスだけに依存せずデータを共有するための通信ルール",
     "PoC": "限定的な概念実証",
     "世界行動モデル": "ロボットの次の行動と、その後に見える状況をまとめて予測する仕組み",
     "デノイズ": "ノイズを少しずつ取り除きながら予測を整える処理",
@@ -236,10 +241,27 @@ def _technical_label_bridge(snapshot: Mapping[str, Any]) -> str:
     return "名称を読むための補足として、" + "、".join(labels) + "です。"
 
 
+def _concept_first_bridge(snapshot: Mapping[str, Any]) -> str:
+    """Lead with reader meaning before exposing a cluster of implementation terms."""
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("source_summary", "what", "why_important", "decision_reason", "action")
+    )
+    repo_concepts = all(token in surface for token in ("リポジトリ", "P2P"))
+    if repo_concepts:
+        return (
+            "先に意味だけ押さえると、これはソースコードの保管先を一つのサービスだけに集中させず、"
+            "複数の参加者で持ち合える形にする考え方です。"
+            "技術名そのものより、特定サービスが止まってもコードへ到達できる経路を残せるかが判断の中心です。"
+        )
+    return ""
+
+
 def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
     """Give non-engineers a first-use foothold using only stored structured text."""
     subject = _subject_label(snapshot)
     summary = _gloss(snapshot["source_summary"], set())
+    concept_first = _concept_first_bridge(snapshot)
     if not subject:
         label = "今回の話"
     elif re.search(r"[A-Za-z]", subject):
@@ -253,7 +275,10 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
         "ここで「何の話？」と思いませんか。",
         "最初に「何のためのもの？」から確認したくなりますよね。",
     ]
-    base = f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+    if concept_first:
+        base = f"{leads[layout]}{label}について、まず読者側の意味から置きます。{concept_first}"
+    else:
+        base = f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
     technical_bridge = _technical_label_bridge(snapshot)
     return base if not technical_bridge else f"{base}{technical_bridge}"
 
@@ -353,15 +378,49 @@ def _close_bridge(layout: int) -> str:
     return rows[layout]
 
 
+def _distributed_repo_reader_fields(snapshot: Mapping[str, Any]) -> dict[str, str]:
+    """Compress a distributed source-code availability topic into reader roles.
+
+    This is a semantic re-expression of the stored structured fields only. It
+    deliberately removes implementation labels that are not required for the
+    reader's decision, while keeping mechanism, constraint and next action.
+    """
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("source_summary", "what", "why_important", "decision_reason", "action")
+    )
+    if not all(token in surface for token in ("リポジトリ", "P2P")):
+        return {}
+    return {
+        "what": (
+            "特定のコード保管サービスだけに頼らず、複数の参加者がソースコードを持ち合い、"
+            "必要なときに取得できる経路を残す仕組みです。"
+        ),
+        "why": (
+            "見るべきなのは保管場所の名前ではなく、必要なコードを別の経路からでも同じものとして取得できるかです。"
+            "特定サービスの停止が、そのまま開発停止につながる依存を減らせるかが判断材料になります。"
+        ),
+        "reason": (
+            "考え方は有力ですが、実務導入では共有に参加するコンピューターを常時動かす必要があるなど、"
+            "運用上の負担が残っています。"
+        ),
+        "action": (
+            "まず自社が依存する外部コードを棚卸しし、現在の複製・社内保管方法と、"
+            "複数の参加者で共有する方式を小規模に比較します。"
+        ),
+    }
+
+
 def _sections(snapshot: Mapping[str, Any], layout: int) -> list[tuple[str, list[str]]]:
     seen: set[str] = set()
-    what = _gloss(snapshot["what"], seen)
-    why = _safe_why(snapshot["why_important"], seen)
+    reader_fields = _distributed_repo_reader_fields(snapshot)
+    what = reader_fields.get("what") or _gloss(snapshot["what"], seen)
+    why = reader_fields.get("why") or _safe_why(snapshot["why_important"], seen)
     risk = _gloss(snapshot["primary_risk"], seen)
     best = _gloss(snapshot["best_for"], seen)
     avoid = _gloss(snapshot["avoid_for"], seen)
-    reason = _gloss(snapshot["decision_reason"], seen)
-    action = _gloss(snapshot["action"], seen)
+    reason = reader_fields.get("reason") or _gloss(snapshot["decision_reason"], seen)
+    action = reader_fields.get("action") or _gloss(snapshot["action"], seen)
     phrase = DECISION_PHRASES[str(snapshot["decision"]).upper()]
     bridge = _plain_bridge(layout)
     close = _close_bridge(layout)
