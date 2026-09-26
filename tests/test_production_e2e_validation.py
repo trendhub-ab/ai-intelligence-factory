@@ -300,3 +300,28 @@ def test_local_skills_production_validation_fails_closed_without_compile_proof(m
     import pytest
     with pytest.raises(RuntimeError, match="without frozen compiler metadata"):
         e2e.run(p)
+
+
+def test_local_skills_precompiler_source_failure_returns_not_ready_without_contract_error(monkeypatch, tmp_path):
+    p = _pipeline()
+    item = {
+        "notion_page_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "screening_score": 75,
+        "screening_reason": "source unavailable before generation",
+        "repo": {"nameWithOwner": "OpenAI Model Misalignment Report", "source": "HackerNews"},
+    }
+    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: ({
+        "item": item,
+        "repo": dict(item["repo"]),
+        "evidence": {"state": "SUFFICIENT"},
+    }, [{"eligible": True}]))
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
+    e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "local-skills-production.json"
+    p.generate_intelligence_report = lambda *args, **kwargs: None
+
+    result = e2e.run(p)
+
+    assert result["ready"] == 0
+    assert result["sync_id"] == ""
+    assert result["local_skills_compile"] == {}
+    assert result["error"] == ""
