@@ -257,7 +257,7 @@ def test_local_skills_production_validation_uses_frozen_stack_and_persists_witho
         observed["rescue"] = p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE
         observed["kwargs"] = kwargs
         p._LOCAL_SKILLS_PRODUCTION_LAST_COMPILE = {
-            "writer_blob_sha": "caaeecb15341213ffdffb2a2fc8bbe9073b40409",
+            "writer_blob_sha": "508dd3a3be8492142bdc617996d7f1fb6f84a4da",
             "canonicalizer_blob_sha": "414089a14c238f104b2866507ddf8521c2baf420",
             "evidence_boundary_version": "stage8-v4",
         }
@@ -275,7 +275,7 @@ def test_local_skills_production_validation_uses_frozen_stack_and_persists_witho
     assert observed["kwargs"]["candidate_origin"] == "local_skills_production_validation"
     assert p.MAX_QUALITY_RETRIES == 1
     assert p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE is True
-    assert result["local_skills_compile"]["writer_blob_sha"] == "caaeecb15341213ffdffb2a2fc8bbe9073b40409"
+    assert result["local_skills_compile"]["writer_blob_sha"] == "508dd3a3be8492142bdc617996d7f1fb6f84a4da"
     saved = json.loads(e2e.LOCAL_SKILLS_AUDIT_PATH.read_text(encoding="utf-8"))
     assert saved["ready"] == 1
 
