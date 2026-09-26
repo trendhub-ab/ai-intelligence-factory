@@ -116,7 +116,7 @@ def test_evidence_boundary_removes_derived_currency_but_keeps_supported_latency(
     assert "0.30秒" in bounded
     assert "0.02" not in bounded
     assert "約0.02円" not in result["parsed"]["note_draft"]
-    assert result["evidence_boundary_version"] == "stage8-v4"
+    assert result["evidence_boundary_version"] == "stage9-v4"
     assert result["evidence_boundary"]["removed_count"] == 1
     assert result["evidence_boundary"]["removed_unsupported_numeric_claims"] == [
         {"field": "decision_reason", "claim": "約0.02円"}
