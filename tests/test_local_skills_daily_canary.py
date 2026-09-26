@@ -128,6 +128,10 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
         "nameWithOwner": "Build Plugins for Claude",
         "url": "https://claude.com/blog/build-plugins-for-claude",
     })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Yes, Claude can do nine loops",
+        "url": "https://www.anthropic.com/research/yes-claude-can-do-nine-loops",
+    })
     assert not daily_canary._already_observed(_repo())
 
 
