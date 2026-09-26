@@ -1,0 +1,147 @@
+{
+  "schema": "aiif_canonicalizer_writer_holdout_v1",
+  "selected_at": "2026-09-26",
+  "canonicalizer_frozen_head": "f3331c8268c904efd22b516998642ea04ecd061d",
+  "canonicalizer_blob_sha": "6030016136e905d3c611fe93425a7f11133c3028",
+  "writer_blob_sha": "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2",
+  "article_body_used_for_selection": false,
+  "selection_seed": "canonicalizer-writer-holdout-v1|",
+  "eligibility": {
+    "sources": [
+      "GitHub",
+      "HackerNews",
+      "ArXiv",
+      "OfficialVendor",
+      "X"
+    ],
+    "evidence_states": [
+      "Source Native",
+      "URL Context",
+      "URL + Search"
+    ],
+    "required_structured_fields": true,
+    "excluded_stage1_2_3_4_records": 24,
+    "producthunt_excluded": true
+  },
+  "rule": "Use every currently eligible structured record not used in Stages 1-4. Order only by seeded FNV-1a for deterministic execution. No outcome-based filtering.",
+  "eligible_total": 27,
+  "unused_eligible_count": 4,
+  "source_counts": {
+    "GitHub": 0,
+    "HackerNews": 2,
+    "ArXiv": 2,
+    "OfficialVendor": 0,
+    "X": 0
+  },
+  "articles": [
+    {
+      "schema": "aiif_local_writer_snapshot_v1",
+      "case_id": "3bc479ffdca981109cfaed2cb7411b75",
+      "notion_url": "https://app.notion.com/3bc479ffdca981109cfaed2cb7411b75",
+      "prior_article_status": "Ready",
+      "canonical_entity_id": "arxiv:2608.13505",
+      "name": "Intern-S2-Preview: Scientific Agentic Foundation Model",
+      "reader_title": "科学探究の自動化を目指す「Intern-S2-Preview」の技術的ポテンシャルと商用化への壁",
+      "source": "ArXiv",
+      "source_summary": "Intern-S2-Previewは、科学的な推論、マルチモーダルな理解、および長期間のタスク遂行能力を備えた科学エージェント基盤モデルです。397Bの巨大な基盤モデルを凍結したまま、メモリ拡張（Intern-MemDec-4B）による特化や時系列データへの適応が可能という柔軟なアーキテクチャを採用しています。",
+      "what": "科学文書や画像、時系列データを統合的に処理し、自律的なエージェントとして振る舞うことを目的とした397Bパラメータ規模の基盤モデル群です。強化学習（RL）とオフライン推論、オンライン推論を組み合わせた高度なトレーニングパイプラインを実装しています。",
+      "why_important": "創薬や材料科学など、マルチモーダルかつ長時間の検証が必要な専門領域において、既存のLLMでは難しかった「専門知識への迅速な適応」と「外部ツールとの長期的連携」を、モデル本体を再学習せずに実現できる可能性があります。",
+      "decision": "WATCH",
+      "decision_score": 60,
+      "decision_reason": "397Bという規模は商用利用において膨大なインフラコストを要求するため、PoC以前にROIの検証が必要だから。科学推論への適応手法自体は非常に強力であり、将来的なインダストリーAIの標準となり得るため、動向を注視すべき。",
+      "action": "本モデルの公開リポジトリ等のGitHub動向をフォローし、メモリ拡張（Intern-MemDec）の技術論文を詳細に読み込み、自社の専門データセットでどの程度の推論精度が出そうかシミュレーションを行う。",
+      "primary_risk": "汎用的なチャットボットや社内事務効率化を目的としているチームには、モデル規模が過剰であり、APIモデルの方がコストパフォーマンスと開発速度で圧倒的に優れる。",
+      "best_for": "創薬、材料科学、高精度な時系列解析が必要なR&D部門を持つ大企業、および専門的な科学AIエージェントの開発に取り組む研究組織。",
+      "avoid_for": "中小規模のソフトウェアベンダー、UI/UX主体のSaaS開発チーム、一般的なLLMアプリケーション開発者。",
+      "evidence_confidence": "Source Native",
+      "production_readiness": "HOLDOUT",
+      "evidence_urls": [
+        "https://arxiv.org/abs/2608.13505v1"
+      ],
+      "selection_hash": 14443593
+    },
+    {
+      "schema": "aiif_local_writer_snapshot_v1",
+      "case_id": "3bc479ffdca98129abbdc65e25b62dfd",
+      "notion_url": "https://app.notion.com/3bc479ffdca98129abbdc65e25b62dfd",
+      "prior_article_status": "Ready",
+      "canonical_entity_id": "url:https://huggingface.co/Qwen/Qwen3.8-27B-FP8",
+      "name": "Qwen 3.8 27B",
+      "reader_title": "Qwen 3.8 27B：中規模モデルによる「エージェントAI」実用化の現実解",
+      "source": "HackerNews",
+      "source_summary": "Qwen 3.8 27Bは、コーディング、エージェント実行、マルチモーダル（画像・動画理解）能力を大幅に強化した次世代のオープンウェイトモデルです。FP8量子化版が公開され、効率的な推論と推論プロセスの制御（Thinking Mode）が可能になっています。",
+      "what": "27Bパラメータ規模で、エージェントタスクや複雑な推論をネイティブにサポートした最新モデル。従来のQwen3.5/3.6をベースに、アーキテクチャの刷新と学習データ量の増加が図られています。",
+      "why_important": "エンジニアリング領域でのエージェント性能向上により、リポジトリレベルのコーディングやマルチステップの複雑な業務を、中規模モデル（27B）で内製・オンプレミス運用できる可能性が広がりました。",
+      "decision": "TRY",
+      "decision_score": 81,
+      "decision_reason": "1. 27Bという「中規模」で最高峰のコーディング・エージェント性能を示しているため、GPUリソース効率が良い。2. Thinkingモードの制御（reasoning_effort）により、コストと精度のトレードオフをビジネスロジックで制御可能。3. マルチモーダル対応により、画像や動画を含めた業務自動化のPoCに即座に利用できるため。",
+      "action": "SGLang環境を構築し、自社の代表的なタスク（プロンプト）をThinkingモードの`medium`と`xhigh`で比較する。",
+      "primary_risk": "単純なQ&Aチャットボットしか作らない場合、より軽量な7Bクラスで十分であり、過剰なスペックとなる。",
+      "best_for": "自社リポジトリを活用したAIコーディング支援ツールを開発したいチーム、画像認識を伴う業務自動化エージェントを構築したいPM。",
+      "avoid_for": "APIの安定性・保守性を最優先する企業、大規模な学習インフラを持たず、思考プロセス制御の検証にリソースを割けないチーム。",
+      "evidence_confidence": "Source Native",
+      "production_readiness": "HOLDOUT",
+      "evidence_urls": [
+        "https://huggingface.co/Qwen/Qwen3.8-27B-FP8"
+      ],
+      "selection_hash": 1981239558
+    },
+    {
+      "schema": "aiif_local_writer_snapshot_v1",
+      "case_id": "3bd479ffdca98153b692dcc51926615a",
+      "notion_url": "https://app.notion.com/3bd479ffdca98153b692dcc51926615a",
+      "prior_article_status": "Ready",
+      "canonical_entity_id": "url:https://sankalp.bearblog.dev/autoresearch/",
+      "name": "Auto-research with codex: How I achieved a 232x Faster Kernel",
+      "reader_title": "LLMと自動評価ループがもたらすGPUカーネル最適化の進展：コンテスト事例から見る実用性",
+      "source": "HackerNews",
+      "source_summary": "GPU Mode主催のコンテストにおいて、CodexなどのLLMを活用した自動リサーチ（ループエンジニアリング）手法を用いてCUDA/Triton上のバッチQR分解カーネルを最適化し、ベースラインからの大幅な高速化を達成した事例報告。14日間で1500回以上の自動試行・評価ループを回すことで、183名中12位の成績を得た。",
+      "what": "LLMと評価用CLI（popcorn CLI）を連結させた密なフィードバックループによる、GPUカーネルコードの自動探索・最適化手法。",
+      "why_important": "ドメイン知識に基づくプロンプティングと自動評価環境を組み合わせることで、手動での試行錯誤を大幅に削減し、GPUカーネルの最適化を高速に実行できる可能性を示した点。",
+      "decision": "WATCH",
+      "decision_score": 71,
+      "decision_reason": "特定コンテスト課題における有効性は示されているが、一般的なプロダクションコードや複雑なパイプライン全体への自動適用性については今後の追試・実証を注視する必要があるため。",
+      "action": "自社のカーネル開発基盤において、自動ベンチマークとLLMを組み合わせた試行ループの構築が実現可能か技術検証を行う。",
+      "primary_risk": "コンテストという限定的な課題環境（入力サイズや正誤判定が明確）における成果であり、本番環境の多種多様な制約下での汎用性が担保されているわけではない点。",
+      "best_for": "独自GPUカーネルの開発・最適化を行っており、自動評価・ベンチマーク環境を構築可能な機械学習基盤チーム。",
+      "avoid_for": "既存の標準ライブラリ（PyTorch標準など）の利用でパフォーマンス要件を満たしており、独自のGPUカーネル開発を行わないチーム。",
+      "evidence_confidence": "Source Native",
+      "production_readiness": "HOLDOUT",
+      "evidence_urls": [
+        "https://sankalp.bearblog.dev/autoresearch/"
+      ],
+      "selection_hash": 2074751000
+    },
+    {
+      "schema": "aiif_local_writer_snapshot_v1",
+      "case_id": "3bc479ffdca981c3a54fd1cc418f3359",
+      "notion_url": "https://app.notion.com/3bc479ffdca981c3a54fd1cc418f3359",
+      "prior_article_status": "Ready",
+      "canonical_entity_id": "arxiv:2608.13521",
+      "name": "Exponential quantum advantage for learning signals with a single qubit",
+      "reader_title": "単一量子ビットによる信号処理の革命：指数関数的な測定効率化の衝撃",
+      "source": "ArXiv",
+      "source_summary": "超伝導量子ビットを既存のセンサーに結合させることで、古典的な信号から情報を学習する際に必要な測定回数を指数関数的に削減する手法が提案された。量子位相空間推論（QΨ）という新理論を用い、フーリエ係数の推定や暗黒物質検出、無線通信などのタスクで10の7乗倍もの測定効率向上を実験的に実証している。",
+      "what": "単一の量子ビットを従来のセンサーデバイスと組み合わせて信号処理を行う「量子特徴センシング」の枠組み。大規模な量子コンピュータが不要な「小規模量子デバイス」での優位性を証明した。",
+      "why_important": "測定リソースや時間がボトルネックとなっている高精度な信号処理分野において、劇的なコストダウンと高効率化をもたらす可能性がある。",
+      "decision": "WATCH",
+      "decision_score": 55,
+      "decision_reason": "1. 指数関数的な効率化（10の7乗倍）が実験レベルで実証されており、技術的ポテンシャルは極めて高い。2. 一方で、超伝導量子ビットというハードウェア環境の制約があり、汎用的なソフトウェア実装としての普及はまだ先である。3. 物理学・センシング領域の研究開発チームにとってはブレイクスルーの端緒となるが、一般的なSaaS/ソフトウェア開発者が即座に実装できる段階ではない。",
+      "action": "論文（arXiv:2608.13521v1）の「QΨ」フレームワークの数学的要件を自社の技術スタックと比較検討する。特に「自社の信号処理パイプラインで測定回数がボトルネックになっている箇所があるか」を特定する。",
+      "primary_risk": "一般的なウェブサービスやバックオフィス効率化、既存のLLM応用など、古典的な計算で十分なタスクを行っている開発者や企業にとっては、現時点で直接的な影響はない。",
+      "best_for": "暗黒物質検出や無線通信の高度化に携わる研究開発機関、高精度センシング技術を扱うハードウェア開発メーカー、量子情報理論を用いた信号処理の研究者。",
+      "avoid_for": "汎用的なソフトウェアプロダクトを開発しているPM、スタートアップのCTO、古典的なビッグデータ解析をメインとするエンジニア。",
+      "evidence_confidence": "Source Native",
+      "production_readiness": "HOLDOUT",
+      "evidence_urls": [
+        "https://arxiv.org/abs/2608.13521v1"
+      ],
+      "selection_hash": 2303177686
+    }
+  ],
+  "snapshot_repair": {
+    "reason": "Initial preregistration URL extractor malformed evidence_urls before any Gate measurement. Repair copies the exact Notion primary/source URL without changing record inclusion, order, structured claims, Canonicalizer, or Writer.",
+    "invalid_run_id": 36183206952,
+    "quality_measurement_valid": false
+  }
+}
