@@ -49,6 +49,8 @@ OBSERVED_CANARY_NAMES = frozenset({
     "PoEM: Predicting RL Outcomes from Existing Policies",
     "OpenAI says agents leaked 53 images from ChatGPT users",
     "Coding Agents for Generalized Task and Motion Planning Problems",
+    "AD-WM: Action-Discriminative World Models for Counterfactual Model Predictive Control",
+    "The same bug fix costs 0.4¢ or $2, depending on which coding agent you ask",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -64,6 +66,8 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30226",
     "theguardian.com/technology/2026/sep/25/openai-agents-leaked-53-images-chatgpt",
     "2609.30233",
+    "2609.30264",
+    "ariwilson.com/writing/bakeoff-results",
 })
 
 
