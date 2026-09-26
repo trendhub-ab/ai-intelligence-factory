@@ -227,6 +227,17 @@ def run(pipeline: Any) -> dict[str, Any]:
     prepare_only = os.environ.get("PRODUCTION_E2E_PREPARE_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
     budget = getattr(pipeline, "DEEP_DIVE_MODEL_BUDGET", None)
     used_before = int(getattr(budget, "used", 0) or 0)
+    gemini_budget = getattr(pipeline, "GEMINI_BUDGET", None)
+    gemini_before = int(getattr(gemini_budget, "request_count", 0) or 0)
+    original_deep_cap = int(getattr(budget, "budget", 0) or 0)
+    original_gemini_cap = int(getattr(gemini_budget, "daily_budget", 0) or 0)
+    if local_skills_production:
+        if budget is None or gemini_budget is None:
+            raise RuntimeError("Local Skills Production requires both provider budgets")
+        # Cap every Gemini request, including the separate eyecatch layout call.
+        # An unsuccessful Deep Dive may not use a transport/model fallback send.
+        budget.budget = min(original_deep_cap, used_before + 1)
+        gemini_budget.daily_budget = min(original_gemini_cap, gemini_before + 1)
     total_cap = int(getattr(budget, "budget", 0) or 0)
 
     result: dict[str, Any] = {
@@ -238,6 +249,7 @@ def run(pipeline: Any) -> dict[str, Any]:
         "candidate": "",
         "source": "",
         "provider_requests": 0,
+        "total_provider_requests": 0,
         "total_cap": total_cap,
         "preflight_candidates": [],
         "error": "",
@@ -345,5 +357,9 @@ def run(pipeline: Any) -> dict[str, Any]:
     finally:
         used_after = int(getattr(budget, "used", used_before) or 0)
         result["provider_requests"] = max(0, used_after - used_before)
+        result["total_provider_requests"] = max(0, int(getattr(gemini_budget, "request_count", gemini_before) or 0) - gemini_before)
+        if local_skills_production:
+            budget.budget = original_deep_cap
+            gemini_budget.daily_budget = original_gemini_cap
         _write_audit(result, LOCAL_SKILLS_AUDIT_PATH if local_skills_production else AUDIT_PATH)
         pipeline.logger.info("[PRODUCTION E2E VALIDATION] %s", result)
