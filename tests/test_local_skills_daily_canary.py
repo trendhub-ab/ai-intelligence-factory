@@ -241,3 +241,14 @@ def test_canary_runner_disables_rewrite_rescue_and_second_deep_dive():
     assert "pre_deep_dive_backfill" in source
     assert "deep_dive_without_measurement" in source
     assert "after_deep_dive > before_deep_dive" in source
+
+
+def test_v433_observed_candidates_are_excluded():
+    assert canary._already_observed({
+        "nameWithOwner": "AD-WM: Action-Discriminative World Models for Counterfactual Model Predictive Control",
+        "url": "https://arxiv.org/abs/2609.30264v1",
+    })
+    assert canary._already_observed({
+        "nameWithOwner": "The same bug fix costs 0.4¢ or $2, depending on which coding agent you ask",
+        "url": "https://www.ariwilson.com/writing/bakeoff-results/",
+    })
