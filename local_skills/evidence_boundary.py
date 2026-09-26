@@ -184,6 +184,21 @@ def _evidence_claim_keys(evidence_context: str) -> set[tuple[str, str]]:
     return keys
 
 
+def _repair_numeric_deletion_residue(text: str) -> str:
+    """Repair grammar fragments created only by deleting unsupported numeric spans.
+
+    This never restores or invents a number. It removes dangling comparative particles
+    such as 「からへ」 and normalizes possessive fragments such as 「上でからへの高速化」
+    that can remain after both endpoints of a comparison are evidence-bounded away.
+    """
+    value = str(text or "")
+    value = re.sub(r"上で\s*から\s*へ\s*の", "上での", value)
+    value = re.sub(r"から\s*へ(?=(?:約|およそ|概ね|ほぼ)?\s*\d|\s*(?:高速|改善|短縮|増加|減少|低下|向上|変化))", "", value)
+    value = re.sub(r"から\s*へ\s*の", "の", value)
+    value = re.sub(r"\s{2,}", " ", value)
+    return value.strip()
+
+
 def _remove_span_with_delimiter(text: str, start: int, end: int) -> str:
     """Remove one unsupported numeric expression without leaving broken separators."""
     left = start
@@ -223,7 +238,7 @@ def _sanitize_field(
         removed.append(match.group(0).strip())
         text = _remove_span_with_delimiter(text, match.start(), match.end())
 
-    text = _clean(text)
+    text = _repair_numeric_deletion_residue(_clean(text))
     if removed and not text:
         text = _FIELD_FALLBACKS[field]
     return text, list(reversed(removed))
@@ -257,7 +272,7 @@ def apply_evidence_boundary(
                 sanitized = _remove_span_with_delimiter(
                     sanitized, match.start(), match.end()
                 )
-        sanitized = _clean(sanitized)
+        sanitized = _repair_numeric_deletion_residue(_clean(sanitized))
 
         # Fact Gate also treats vague temporal quantities as factual claims.
         # If Deep Dive introduces one that primary-source evidence does not support,
@@ -272,7 +287,7 @@ def apply_evidence_boundary(
             sanitized = _FIELD_FALLBACKS[field]
             break
 
-        sanitized = _clean(sanitized)
+        sanitized = _repair_numeric_deletion_residue(_clean(sanitized))
         if removed and not sanitized:
             sanitized = _FIELD_FALLBACKS[field]
         out[field] = sanitized
