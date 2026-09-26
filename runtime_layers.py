@@ -132,7 +132,12 @@ _READER_PRECISION_COMMON_ACRONYMS = {
 }
 _READER_PRECISION_ACRONYM_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9-]{1,8})(?![A-Za-z0-9])")
 _READER_PRECISION_COMPOUND_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/.+-")
-_READER_PRECISION_REPEAT_FRAGMENT_LEN = 9
+_READER_PRECISION_REPEAT_FRAGMENT_LEN = 7
+_READER_PRECISION_REPETITION_PREDICATE_RE = re.compile(
+    r"(?:です|ます|した|して|する|され|でき|ない|なる|なり|ある|あり|いる|"
+    r"べき|必要|重要|可能|難し|高止まり|減衰|収縮|改善|悪化|増加|減少|変化|"
+    r"超え|引き継|選ぶ|選択|試す|検証|導入|見送|待つ|推奨|勧め|価値)"
+)
 
 
 def _reader_precision_prose(article: str) -> str:
@@ -182,12 +187,13 @@ def _reader_precision_unexplained_acronyms(article: str) -> list[str]:
 
 
 def _reader_precision_repetitive_insight(article: str) -> bool:
-    """Detect repeated wording without treating short topic nouns as repeated insight.
+    """Detect repeated predicate-bearing meaning, not recurring topic nouns.
 
-    The historical 7-character detector was shorter than common Japanese topic phrases.
-    Nine characters keeps the zero-API behavior while requiring a more distinctive span.
-    We still require multiple overlapping long fragments to recur in at least three distinct
-    paragraphs, so genuinely duplicated explanation remains detectable.
+    Run142 proved that the older nine-character heuristic could still classify long
+    topic phrases such as coding-agent/planner names as repeated *insight*. Run397
+    already established the stricter semantic contract: a repeated fragment counts
+    only when it also carries a predicate/action meaning. Keep that same zero-API
+    precision here so the canonical runtime and the promoted Reader policy agree.
     """
     prose = _reader_precision_prose(article)
     paragraphs = [x.strip() for x in re.split(r"\n\s*\n", prose) if x.strip()]
@@ -206,7 +212,11 @@ def _reader_precision_repetitive_insight(article: str) -> bool:
         for fragment in seen:
             fragment_paragraphs.setdefault(fragment, set()).add(paragraph_index)
     repeated = [fragment for fragment, owners in fragment_paragraphs.items() if len(owners) >= 3]
-    return len(repeated) >= 2
+    semantic = [
+        fragment for fragment in repeated
+        if _READER_PRECISION_REPETITION_PREDICATE_RE.search(fragment)
+    ]
+    return len(semantic) >= 2
 
 
 def install_reader_signal_precision_contract(pipeline_module):

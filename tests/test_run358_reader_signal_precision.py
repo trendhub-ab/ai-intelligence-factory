@@ -30,6 +30,19 @@ AIエージェントの群れが大量のパッケージを投稿しました。
     assert runtime_layers._reader_precision_repetitive_insight(article) is False
 
 
+
+def test_run142_topic_repetition_is_not_semantic_repetition():
+    article = """
+コーディングエージェントにシミュレータを試行錯誤させ、ロボットの動作計画コードを生成する研究です。既存の専用プランナーを上回る成功率を示しました。
+
+AIコーディングエージェントが、タスクとモーションプランニング問題に対する方策コードを生成し、専用プランナーを上回る成果を出したと報告されています。
+
+重要なのは、既存のコーディングAIをロボット制御へ流用できる可能性が示された点です。ただし実機への一般化は未確認です。
+
+自社のロボットやシミュレータAPIを与え、既存のコーディングエージェントに試行錯誤させる限定PoCで再現性を検証します。
+"""
+    assert runtime_layers._reader_precision_repetitive_insight(article) is False
+
 def test_genuinely_repeated_long_wording_is_still_detected():
     repeated = "同じ判断根拠を繰り返して説明しているため読者の理解が進みません"
     article = f"""
