@@ -29,7 +29,7 @@ PUBLICATION_FIELDS = (
 )
 
 _NUMBER_RE = re.compile(
-    r"(?<![A-Za-z0-9])([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![A-Za-z0-9])"
+    r"([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
 )
 
 # Only claims with an explicit sensitive unit are filtered here. Bare version
