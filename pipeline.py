@@ -6281,7 +6281,7 @@ def validate_publication_readiness_gate(parsed: dict, source_context: str = "", 
     visible_chars = len(re.sub(r"\s+", "", article))
     if visible_chars >= 1200 and heading_count < 2:
         issues.append("article_structure_needs_edit")
-    strong = r"(?:革命的|圧倒的|ゲームチェンジャー|世界初|世界最速|必ず|完全に|従来技術を終わらせ|開発を変える)"
+    strong = r"(?:革命的|圧倒的|ゲームチェンジャー|世界初|世界最速|必ず|従来技術を終わらせ|開発を変える|完全に(?:解決|防止|防げ|保証|排除|置き換|代替|自動化|克服|解消|不要|安全(?:に|性)|成功))"
     weak_evidence = re.search(r"(?:abstract|要旨|experimental|prototype|proof of concept|demo|予備的|本番未検証|研究環境)", context, re.I)
     if re.search(strong, title) and weak_evidence:
         issues.append("headline_overclaim")
