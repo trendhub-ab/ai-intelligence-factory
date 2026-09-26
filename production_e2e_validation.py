@@ -102,7 +102,7 @@ def _eligible_evidence(pipeline: Any, evidence: dict) -> bool:
     )
 
 
-def select_candidate(pipeline: Any, limit: int = DEFAULT_CANDIDATE_LIMIT):
+def select_candidate(pipeline: Any, limit: int = DEFAULT_CANDIDATE_LIMIT, exclude_page_ids: set[str] | None = None):
     """Choose one existing candidate only after bounded zero-provider Evidence preflight."""
     items = select_revalidation_items(
         pipeline,
@@ -111,6 +111,7 @@ def select_candidate(pipeline: Any, limit: int = DEFAULT_CANDIDATE_LIMIT):
         include_quality_failed=False,
         include_stale_ready=True,
         prefer_stale_ready=False,
+        exclude_page_ids=set(exclude_page_ids or set()),
     )
     if items is None:
         raise RuntimeError("Production E2E candidate read failed")
@@ -243,65 +244,101 @@ def run(pipeline: Any) -> dict[str, Any]:
     }
 
     try:
-        selected, diagnostics = select_candidate(pipeline)
-        result["preflight_candidates"] = diagnostics
-        if selected is None:
-            pipeline.logger.warning(
-                "[PRODUCTION E2E VALIDATION] no candidate passed zero-provider Evidence preflight"
-            )
-            return result
+        excluded_page_ids: set[str] = set()
+        attempt_rank = 0
+        while True:
+            if excluded_page_ids:
+                selected, diagnostics = select_candidate(
+                    pipeline,
+                    exclude_page_ids=excluded_page_ids,
+                )
+            else:
+                selected, diagnostics = select_candidate(pipeline)
+            result["preflight_candidates"].extend(diagnostics)
+            if selected is None:
+                pipeline.logger.warning(
+                    "[PRODUCTION E2E VALIDATION] no candidate passed zero-provider Evidence preflight"
+                )
+                return result
 
-        item = selected["item"]
-        repo = selected["repo"]
-        page_id = str(item.get("notion_page_id") or "")
-        normalized_sync_id = _sync_id(page_id)
-        if len(normalized_sync_id) != 32:
-            raise RuntimeError("Production E2E requires an existing 32-hex Notion sync_id")
+            item = selected["item"]
+            repo = selected["repo"]
+            page_id = str(item.get("notion_page_id") or "")
+            normalized_sync_id = _sync_id(page_id)
+            if len(normalized_sync_id) != 32:
+                raise RuntimeError("Production E2E requires an existing 32-hex Notion sync_id")
 
-        result.update({
-            "candidate": str(repo.get("nameWithOwner") or "unknown"),
-            "source": str(repo.get("source") or ""),
-            "sync_id": normalized_sync_id,
-            "evidence_preflight": selected["evidence"],
-        })
-        pipeline.logger.info(
-            "[PRODUCTION E2E SELECTED] %s source=%s sync_id=%s",
-            result["candidate"], result["source"], normalized_sync_id,
-        )
-        if prepare_only:
+            result.update({
+                "candidate": str(repo.get("nameWithOwner") or "unknown"),
+                "source": str(repo.get("source") or ""),
+                "sync_id": normalized_sync_id,
+                "evidence_preflight": selected["evidence"],
+            })
             pipeline.logger.info(
-                "[PRODUCTION E2E PREPARE ONLY] candidate pinned; provider generation intentionally not started"
+                "[PRODUCTION E2E SELECTED] %s source=%s sync_id=%s",
+                result["candidate"], result["source"], normalized_sync_id,
             )
-            return result
+            if prepare_only:
+                pipeline.logger.info(
+                    "[PRODUCTION E2E PREPARE ONLY] candidate pinned; provider generation intentionally not started"
+                )
+                return result
 
-        old_retries = pipeline.MAX_QUALITY_RETRIES
-        old_rescue = pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE
-        if local_skills_production:
-            pipeline.MAX_QUALITY_RETRIES = 0
-            pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False
-        try:
-            report = pipeline.generate_intelligence_report(
-            repo,
-            notion_page_id=page_id,
-            screening_score=item.get("screening_score"),
-            screening_reason=item.get("screening_reason", ""),
-            candidate_rank=1,
-            candidate_origin=("local_skills_production_validation" if local_skills_production else "production_e2e_validation"),
-            attribution_context=item,
-                persist_results=True,
-            )
-        finally:
-            pipeline.MAX_QUALITY_RETRIES = old_retries
-            pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = old_rescue
-        if local_skills_production:
-            compile_meta = dict(getattr(pipeline, "_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE", {}) or {})
-            result["local_skills_compile"] = compile_meta
-            if report and not compile_meta:
-                raise RuntimeError("Local Skills Production validation reached persistence path without frozen compiler metadata")
-        result["ready"] = 1 if report else 0
-        if not report:
+            attempt_rank += 1
+            attempt_used_before = int(getattr(budget, "used", 0) or 0)
+            if local_skills_production and hasattr(pipeline, "_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE"):
+                delattr(pipeline, "_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE")
+
+            old_retries = pipeline.MAX_QUALITY_RETRIES
+            old_rescue = pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE
+            if local_skills_production:
+                pipeline.MAX_QUALITY_RETRIES = 0
+                pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False
+            try:
+                report = pipeline.generate_intelligence_report(
+                    repo,
+                    notion_page_id=page_id,
+                    screening_score=item.get("screening_score"),
+                    screening_reason=item.get("screening_reason", ""),
+                    candidate_rank=attempt_rank,
+                    candidate_origin=("local_skills_production_validation" if local_skills_production else "production_e2e_validation"),
+                    attribution_context=item,
+                    persist_results=True,
+                )
+            finally:
+                pipeline.MAX_QUALITY_RETRIES = old_retries
+                pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = old_rescue
+
+            attempt_used_after = int(getattr(budget, "used", attempt_used_before) or 0)
+            attempt_provider_requests = max(0, attempt_used_after - attempt_used_before)
+
+            if local_skills_production:
+                compile_meta = dict(getattr(pipeline, "_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE", {}) or {})
+                result["local_skills_compile"] = compile_meta
+                if report and not compile_meta:
+                    raise RuntimeError("Local Skills Production validation reached persistence path without frozen compiler metadata")
+
+            if report:
+                result["ready"] = 1
+                return result
+
+            if not local_skills_production or attempt_provider_requests > 0:
+                result["ready"] = 0
+                result["sync_id"] = ""
+                return result
+
+            result.setdefault("precompiler_skips", []).append({
+                "candidate": result["candidate"],
+                "sync_id": normalized_sync_id,
+                "reason": "no_report_before_provider_or_compiler",
+            })
+            excluded_page_ids.add(page_id)
             result["sync_id"] = ""
-        return result
+            pipeline.logger.info(
+                "[LOCAL SKILLS PRODUCTION PRECOMPILER SKIP] candidate=%s sync_id=%s; trying next eligible candidate",
+                result["candidate"],
+                normalized_sync_id,
+            )
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
         raise

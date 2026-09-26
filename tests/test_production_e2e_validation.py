@@ -310,11 +310,15 @@ def test_local_skills_precompiler_source_failure_returns_not_ready_without_contr
         "screening_reason": "source unavailable before generation",
         "repo": {"nameWithOwner": "OpenAI Model Misalignment Report", "source": "HackerNews"},
     }
-    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: ({
-        "item": item,
-        "repo": dict(item["repo"]),
-        "evidence": {"state": "SUFFICIENT"},
-    }, [{"eligible": True}]))
+    def select_once(_pipeline, limit=e2e.DEFAULT_CANDIDATE_LIMIT, exclude_page_ids=None):
+        if item["notion_page_id"] in set(exclude_page_ids or set()):
+            return None, [{"eligible": False, "reason": "excluded_after_precompiler_failure"}]
+        return ({
+            "item": item,
+            "repo": dict(item["repo"]),
+            "evidence": {"state": "SUFFICIENT"},
+        }, [{"eligible": True}])
+    monkeypatch.setattr(e2e, "select_candidate", select_once)
     monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
     e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "local-skills-production.json"
     p.generate_intelligence_report = lambda *args, **kwargs: None
@@ -325,3 +329,64 @@ def test_local_skills_precompiler_source_failure_returns_not_ready_without_contr
     assert result["sync_id"] == ""
     assert result["local_skills_compile"] == {}
     assert result["error"] == ""
+
+
+def test_local_skills_skips_precompiler_failure_and_uses_next_candidate(monkeypatch, tmp_path):
+    p = _pipeline()
+    first = {
+        "item": {
+            "notion_page_id": "11111111-1111-1111-1111-111111111111",
+            "screening_score": 90,
+            "screening_reason": "source unavailable",
+            "repo": {"nameWithOwner": "Unavailable source", "source": "HackerNews"},
+        },
+        "repo": {"nameWithOwner": "Unavailable source", "source": "HackerNews"},
+        "evidence": {"state": "SUFFICIENT"},
+    }
+    second = {
+        "item": {
+            "notion_page_id": "22222222-2222-2222-2222-222222222222",
+            "screening_score": 80,
+            "screening_reason": "next eligible",
+            "repo": {"nameWithOwner": "Reachable source", "source": "ArXiv"},
+        },
+        "repo": {"nameWithOwner": "Reachable source", "source": "ArXiv"},
+        "evidence": {"state": "SUFFICIENT"},
+    }
+
+    def select(_pipeline, limit=e2e.DEFAULT_CANDIDATE_LIMIT, exclude_page_ids=None):
+        excluded = set(exclude_page_ids or set())
+        if first["item"]["notion_page_id"] not in excluded:
+            return first, [{"name": "Unavailable source", "eligible": True}]
+        return second, [{"name": "Reachable source", "eligible": True}]
+
+    monkeypatch.setattr(e2e, "select_candidate", select)
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
+    e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "local-skills-production.json"
+
+    calls = []
+    def generate(repo, **kwargs):
+        calls.append(repo["nameWithOwner"])
+        if repo["nameWithOwner"] == "Unavailable source":
+            return None
+        p.DEEP_DIVE_MODEL_BUDGET.used += 1
+        p._LOCAL_SKILLS_PRODUCTION_LAST_COMPILE = {
+            "writer_blob_sha": "writer",
+            "canonicalizer_blob_sha": "canonicalizer",
+            "evidence_boundary_version": "stage9-v4",
+        }
+        return "ready manuscript"
+
+    p.generate_intelligence_report = generate
+    result = e2e.run(p)
+
+    assert calls == ["Unavailable source", "Reachable source"]
+    assert result["ready"] == 1
+    assert result["provider_requests"] == 1
+    assert result["candidate"] == "Reachable source"
+    assert result["sync_id"] == "22222222222222222222222222222222"
+    assert result["precompiler_skips"] == [{
+        "candidate": "Unavailable source",
+        "sync_id": "11111111111111111111111111111111",
+        "reason": "no_report_before_provider_or_compiler",
+    }]
