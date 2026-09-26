@@ -58,9 +58,15 @@ GLOSSARY = {
     "B2B": "法人向け",
     "PR": "変更提案",
     "MCP": "AIと外部ツールやデータを接続する共通規格",
+    "CLI": "文字でコマンドを入力して操作する方式",
 }
 
 COMPOUND_GLOSSARY = {
+    "コーディングAIエージェント": "つまり、コード作業を複数の手順に分けて進めるAI",
+    "AIエージェント": "つまり、AIが複数の手順を自律的に進める仕組み",
+    "ターミナル": "つまり、文字でコマンドを操作する画面",
+    "セッション": "つまり、一続きの作業単位",
+    "ベンチマーク": "つまり、条件をそろえて性能や結果を比べる評価テスト",
     "Model Context Protocol (MCP)": "AIと外部ツールやデータを接続する共通規格",
     "Agent Skills": "AIに特定作業の手順や知識を追加する仕組み",
     "CI/CD": "変更を自動検証・配布する仕組み",
@@ -167,13 +173,30 @@ def _source_role(snapshot: Mapping[str, Any]) -> str:
     return "一次情報から、次に何を試すかを決める話"
 
 
+def _quoted_subject_label(snapshot: Mapping[str, Any]) -> str:
+    """Recover an explicitly named product/project from structured source text."""
+    for key in ("source_summary", "what"):
+        value = _clean(snapshot.get(key, ""))
+        for pattern in (
+            r"[「『“\"]([A-Za-z][A-Za-z0-9 .+/_-]{1,31})[」』”\"]",
+            r"(?<![A-Za-z0-9])([A-Z][A-Za-z0-9.+_-]{2,24})(?:という|と呼ばれる)",
+        ):
+            match = re.search(pattern, value)
+            if match:
+                return _clean(match.group(1))
+    return ""
+
+
 def _subject_label(snapshot: Mapping[str, Any]) -> str:
-    """Return a short display label without asserting what the subject does."""
+    """Return a short display label without mistaking a discovery-site prefix for the subject."""
     name = _clean(snapshot["name"])
+    if re.match(r"^(?:Show|Ask)\s+HN\s*:", name, re.I):
+        return _quoted_subject_label(snapshot)
+
     parts = re.split(r"\s+[–—]\s+|[：:]", name, maxsplit=1)
     subject = _clean(parts[0] if parts else name)
     if not subject or len(subject) > 48:
-        return ""
+        return _quoted_subject_label(snapshot)
     return subject
 
 
@@ -236,53 +259,63 @@ def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
 
     first_lines = {
         0: (
-            f"{name}を自社で使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。"
+            f"{name}を自社やチームで使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。"
             if subject
-            else "この話題を自社で検討するなら、最初に決めたいのは「採用するか」ではなく「どこまで確かめるか」です。"
+            else "この話題を会社やチームで検討するなら、最初に決めたいのは「採用するか」ではなく「どこまで確かめるか」です。"
         ),
         1: f"仕事で{name}を検討するとき、知りたいのは機能の数より、任せてよい範囲です。",
         2: (
-            f"{name}。名前は少し難しく見えても、使う側の問いは単純です。"
+            f"{name}。名前は少し難しく見えても、チームで使う側の問いは単純です。"
             if subject
-            else "この話題は、見出しだけでは少し難しく見えても、判断したいことは単純です。"
+            else "この話題は、見出しだけでは少し難しく見えても、チームで判断したいことは単純です。"
         ),
-        3: (
-            f"でも、{name}で先に見るべきなのは、自社の判断が本当に変わるかです。"
-        ),
+        3: f"でも、会社やチームで{name}を見るなら、先に確かめたいのは判断が本当に変わるかです。",
         4: (
-            f"もし{name}を明日から使うなら、どこを最初に確認するでしょうか。"
+            f"もしチームで{name}を使うなら、どこを最初に確認するでしょうか。"
             if subject
-            else "もしこの話題を自社の判断材料にするなら、どこを最初に確認するでしょうか。"
+            else "もしこの話題をチームの判断材料にするなら、どこを最初に確認するでしょうか。"
         ),
+    }
+
+    curiosity_lines = {
+        0: "では、使う側の何が変わるのでしょうか。",
+        1: "そこで気になるのは、実際に何が変わるかです。",
+        2: "自社の判断が何か変わるのか。それとも、まだ様子を見るべきなのか。",
+        3: "では、何が変われば試す価値が出るのでしょうか。",
+        4: "見るべきなのは、便利そうかではなく、判断材料が何に変わるかです。",
     }
 
     openings = {
         0: [
             first_lines[0],
+            curiosity_lines[0],
             f"簡単に言えば、今回は{role}です。",
             "機能名を追う前に、判断に必要な事実と制約を分けて見ます。",
             subject_bridge,
         ],
         1: [
             first_lines[1],
+            curiosity_lines[1],
             f"要するに、今回は{role}です。",
             "ここでは、使える点と、まだ確かめるべき点を同じ重さで扱います。",
             subject_bridge,
         ],
         2: [
             first_lines[2],
-            "自社の判断が何か変わるのか。それとも、まだ様子を見るべきなのか。",
+            curiosity_lines[2],
             f"平たく言えば、今回は{role}です。",
             subject_bridge,
         ],
         3: [
             "新しい技術やサービスを見ると、つい機能一覧から読み始めたくなります。",
             first_lines[3],
+            curiosity_lines[3],
             f"一言で言えば、{role}です。",
             subject_bridge,
         ],
         4: [
             first_lines[4],
+            curiosity_lines[4],
             f"簡単に言えば、{role}です。",
             "そこで、できること、制約、次の一手の順に整理します。",
             subject_bridge,
