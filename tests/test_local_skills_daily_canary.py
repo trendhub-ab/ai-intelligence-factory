@@ -159,6 +159,8 @@ def test_pipeline_canary_fails_closed_on_persistence_attempt():
     assert 'if local_skills_canary and persist_results:' in source
     assert 'Local Skills canary is measurement-only and forbids Production persistence' in source
     assert 'Local Skills canary forbids provider quality retries' in source
+    assert 'source_info.get("verification_context")' in source
+    assert 'evidence_context=(' in source
 
 
 def test_canary_runner_disables_rewrite_rescue_and_second_deep_dive():
