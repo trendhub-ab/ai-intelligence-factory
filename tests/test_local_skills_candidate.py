@@ -4,6 +4,9 @@ import hashlib
 import re
 from pathlib import Path
 
+from reader_experience_signals import reader_experience_signals
+from reader_quality_precision import correct_reader_signals
+
 from local_skills import (
     CANONICALIZER_BLOB_SHA,
     WRITER_BLOB_SHA,
@@ -216,3 +219,60 @@ def test_writer_explains_model_generation_and_version_labels_in_long_news_title(
     assert "GPT-5（AIモデルの世代名）" in article
     assert "V0（名称中のバージョン表記）" in article
     assert "V4（名称中のバージョン表記）" in article
+
+
+
+def test_writer_cockpit_case_has_product_label_and_reader_accessibility():
+    snapshot = _snapshot()
+    snapshot.update({
+        "case_id": "observed-cockpit-reader-regression",
+        "canonical_entity_id": "url:https://aidash.dev/",
+        "name": "Show HN: I couldn't deal with another Claude Code tab",
+        "reader_title": "Show HN: I couldn't deal with another Claude Code tab：いま何を判断材料にするべきか。",
+        "source_summary": (
+            "簡単に言えば、コーディングAIエージェントであるClaude CodeやCodexが"
+            "ローカルに書き出す対話ログを自動で読み込み、開発状況を一つの画面で"
+            "並行管理できるmacOS向けデスクトップアプリ「Cockpit」が公開されました。"
+        ),
+        "what": (
+            "ターミナルのタブに散らばりがちな複数のAIエージェント実行セッションを"
+            "監視・整理し、人間の承認待ち状態を検知して一元的に返答できる"
+            "軽量なローカル管理ツールが登場しました。"
+        ),
+        "why_important": (
+            "AIエージェントに自律的なコーディングを任せる際、どのタブが処理を終えたか、"
+            "どこで承認待ちで止まっているかを把握する手間を減らし、"
+            "開発者のマルチタスク管理を助けます。"
+        ),
+        "decision": "TRY",
+        "decision_score": 66,
+        "decision_reason": (
+            "Claude CodeやCodexをCLIで動かしている環境で、既存セッションを"
+            "並行管理できるか限定的に確認します。"
+        ),
+        "action": (
+            "開発マシンにCockpitを導入し、既存セッションの読み込みと"
+            "画面上からの指示・承認を限定環境でテストします。"
+        ),
+        "primary_risk": "一次情報の対象範囲を越えて一般化せず、限定した検証で条件差を確認する必要があります。",
+        "best_for": "AIコーディング作業を複数並行で扱い、小さく検証できる開発チーム。",
+        "avoid_for": "検証条件を確認せず、本番適用を広く一般化したいチーム。",
+        "evidence_urls": ["https://aidash.dev/"],
+    })
+    result = compile_snapshot(snapshot)
+    article = result["parsed"]["note_draft"]
+
+    assert "Show HNを自社" not in article
+    assert "今回の検証対象（Cockpit）" in article
+    assert "CLI（文字でコマンドを入力して操作する方式）" in article
+    assert "AIエージェント（つまり、AIが複数の手順を自律的に進める仕組み）" in article
+    assert "何が変わる" in article
+    assert "チーム" in article
+
+    base = reader_experience_signals(article, lambda value, limit: value[:limit])
+    signals = correct_reader_signals(article, base)
+    assert signals["accessibility"] == "GOOD"
+    assert signals["curiosity_pull"] == "GOOD"
+    assert signals["reader_enjoyment"] == "GOOD"
+    assert signals["jargon_translation"] == "GOOD"
+    assert signals["non_engineer_core_clarity"] == "GOOD"
