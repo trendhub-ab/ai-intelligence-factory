@@ -25,6 +25,7 @@ def _pipeline(evidence_state="SUFFICIENT"):
     p.EVIDENCE_SUFFICIENT = "SUFFICIENT"
     p.EVIDENCE_SUPPLEMENT_REQUIRED = "SUPPLEMENT_REQUIRED"
     p.DEEP_DIVE_MODEL_BUDGET = _Budget()
+    p.GEMINI_BUDGET = types.SimpleNamespace(daily_budget=50, request_count=0)
     p.MAX_QUALITY_RETRIES = 1
     p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = True
     p.logger = _Logger()
@@ -276,8 +277,42 @@ def test_local_skills_production_validation_uses_frozen_stack_and_persists_witho
     assert p.MAX_QUALITY_RETRIES == 1
     assert p.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE is True
     assert result["local_skills_compile"]["writer_blob_sha"] == "acc3cf20d337fd7294af8fe660d0b37390e97b1f"
+    assert result["total_provider_requests"] == 0
     saved = json.loads(e2e.LOCAL_SKILLS_AUDIT_PATH.read_text(encoding="utf-8"))
     assert saved["ready"] == 1
+
+
+def test_local_skills_production_caps_all_provider_requests_to_one(monkeypatch, tmp_path):
+    p = _pipeline()
+    p.GEMINI_BUDGET.request_count = 3
+    p.DEEP_DIVE_MODEL_BUDGET.used = 2
+    item = {
+        "notion_page_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "screening_score": 90,
+        "repo": {"nameWithOwner": "Another source", "source": "ArXiv"},
+    }
+    monkeypatch.setattr(e2e, "select_candidate", lambda pipeline: ({
+        "item": item, "repo": dict(item["repo"]), "evidence": {"state": "SUFFICIENT"},
+    }, [{"eligible": True}]))
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION", "true")
+    e2e.LOCAL_SKILLS_AUDIT_PATH = tmp_path / "audit.json"
+
+    def generate(repo, **kwargs):
+        assert p.GEMINI_BUDGET.daily_budget == 4
+        assert p.DEEP_DIVE_MODEL_BUDGET.budget == 3
+        p.GEMINI_BUDGET.request_count += 1
+        p.DEEP_DIVE_MODEL_BUDGET.used += 1
+        assert p.GEMINI_BUDGET.request_count < p.GEMINI_BUDGET.daily_budget + 1
+        p._LOCAL_SKILLS_PRODUCTION_LAST_COMPILE = {"writer_blob_sha": "writer"}
+        return "ready"
+
+    p.generate_intelligence_report = generate
+    result = e2e.run(p)
+    assert result["ready"] == 1
+    assert result["provider_requests"] == 1
+    assert result["total_provider_requests"] == 1
+    assert p.GEMINI_BUDGET.daily_budget == 50
+    assert p.DEEP_DIVE_MODEL_BUDGET.budget == 12
 
 
 def test_local_skills_production_validation_fails_closed_without_compile_proof(monkeypatch, tmp_path):
