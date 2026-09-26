@@ -108,7 +108,7 @@ def build_subscription_cta(article_id: str, tracking_url: str = "") -> str:
         f"{DIVIDER_LINE}"
         "### 調査と判断の時間を減らしたい方へ\n\n"
         "無料記事では重要テーマを最後まで公開しています。会員向けには、"
-        "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
+        "意思決定DBと月次サマリーで、追うべき情報・根拠・Actionを継続的に整理します。\n\n"
         f"[会員向け意思決定DB＋月次サマリーを見る]({tracking_url})\n"
     )
 
@@ -195,8 +195,8 @@ def _reader_decision_fallback(decision_text: str) -> str:
     return {
         "NOW": "現時点で、具体的な導入・検証判断を進める価値があります。",
         "TRY": "まずは限定した環境で小さく試し、条件を確かめる価値があります。",
-        "WATCH": "今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。",
-        "WAIT": "現時点では導入を急がず、条件とEvidenceが整うまで待つのが妥当です。",
+        "WATCH": "今は導入を急がず、追加の根拠と今後の動きを追うのが妥当です。",
+        "WAIT": "現時点では導入を急がず、条件と根拠が整うまで待つのが妥当です。",
         "AVOID": "現時点では採用を見送り、代替手段を優先するのが妥当です。",
     }.get((decision_text or "").strip().upper(), "")
 
