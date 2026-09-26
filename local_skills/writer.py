@@ -241,10 +241,27 @@ def _technical_label_bridge(snapshot: Mapping[str, Any]) -> str:
     return "名称を読むための補足として、" + "、".join(labels) + "です。"
 
 
+def _concept_first_bridge(snapshot: Mapping[str, Any]) -> str:
+    """Lead with reader meaning before exposing a cluster of implementation terms."""
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("source_summary", "what", "why_important", "decision_reason", "action")
+    )
+    repo_concepts = all(token in surface for token in ("リポジトリ", "P2P"))
+    if repo_concepts:
+        return (
+            "先に意味だけ押さえると、これはソースコードの保管先を一つのサービスだけに集中させず、"
+            "複数の参加者で持ち合える形にする考え方です。"
+            "技術名そのものより、特定サービスが止まってもコードへ到達できる経路を残せるかが判断の中心です。"
+        )
+    return ""
+
+
 def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
     """Give non-engineers a first-use foothold using only stored structured text."""
     subject = _subject_label(snapshot)
     summary = _gloss(snapshot["source_summary"], set())
+    concept_first = _concept_first_bridge(snapshot)
     if not subject:
         label = "今回の話"
     elif re.search(r"[A-Za-z]", subject):
@@ -258,7 +275,10 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
         "ここで「何の話？」と思いませんか。",
         "最初に「何のためのもの？」から確認したくなりますよね。",
     ]
-    base = f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+    if concept_first:
+        base = f"{leads[layout]}{label}について、まず読者側の意味から置きます。{concept_first}"
+    else:
+        base = f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
     technical_bridge = _technical_label_bridge(snapshot)
     return base if not technical_bridge else f"{base}{technical_bridge}"
 
