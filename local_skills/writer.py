@@ -57,9 +57,12 @@ GLOSSARY = {
     "GIN": "複合値検索向けインデックス",
     "B2B": "法人向け",
     "PR": "変更提案",
+    "MCP": "AIと外部ツールやデータを接続する共通規格",
 }
 
 COMPOUND_GLOSSARY = {
+    "Model Context Protocol (MCP)": "AIと外部ツールやデータを接続する共通規格",
+    "Agent Skills": "AIに特定作業の手順や知識を追加する仕組み",
     "CI/CD": "変更を自動検証・配布する仕組み",
     "PoC": "限定的な概念実証",
 }
@@ -126,6 +129,8 @@ def _gloss(text: str, seen: set[str]) -> str:
         if token in value and token not in seen:
             value = value.replace(token, f"{token}（{explanation}）", 1)
             seen.add(token)
+            if token == "Model Context Protocol (MCP)":
+                seen.add("MCP")
     for token, explanation in sorted(GLOSSARY.items(), key=lambda item: -len(item[0])):
         if token in seen:
             continue
@@ -270,7 +275,7 @@ def _sections(snapshot: Mapping[str, Any], layout: int) -> list[tuple[str, list[
     if layout == 0:
         return [
             ("何が確認されたのか", [what, bridge, why]),
-            ("使える場所を先に絞る", [f"向いているのは、{best}", f"一方で、{avoid}"]),
+            ("使える場所を先に絞る", [f"向いているのは、{best}", f"一方で、向いていないのは、{avoid}"]),
             ("判断と制約をセットで置く", [f"現時点の判断は「{phrase}」。", reason, limitation]),
             ("次にすること", [action, close]),
         ]
@@ -278,7 +283,7 @@ def _sections(snapshot: Mapping[str, Any], layout: int) -> list[tuple[str, list[
         return [
             ("先に判断を置く", [f"結論から言えば「{phrase}」。", reason, limitation]),
             ("その判断の根拠", [what, bridge, why]),
-            ("使う場所を選ぶ", [f"相性がよいのは、{best}", f"逆に、{avoid}"]),
+            ("使う場所を選ぶ", [f"相性がよいのは、{best}", f"逆に、向いていないのは、{avoid}"]),
             ("次の検証", [action, close]),
         ]
     if layout == 2:
