@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Mapping
 
-EVIDENCE_BOUNDARY_VERSION = "stage8-v3"
+EVIDENCE_BOUNDARY_VERSION = "stage8-v4"
 
 PUBLICATION_FIELDS = (
     "source_summary",
@@ -75,6 +75,26 @@ _FIELD_FALLBACKS = {
     "best_for": "一次情報の範囲を守って限定検証できるチーム。",
     "avoid_for": "未確認の数値や効果を前提に本番適用したいチーム。",
 }
+
+_VAGUE_TEMPORAL_RE = re.compile(r"半年|数日|数週間|数週|数ヶ月|数か月|数月|数年")
+_VAGUE_TEMPORAL_EVIDENCE = {
+    "半年": r"(?:half\s+(?:a\s+)?year|six\s+months|6\s+months)",
+    "数日": r"(?:several|a\s+few)\s+days",
+    "数週間": r"(?:several|a\s+few)\s+weeks",
+    "数週": r"(?:several|a\s+few)\s+weeks",
+    "数ヶ月": r"(?:coming|next|several|a\s+few)\s+months",
+    "数か月": r"(?:coming|next|several|a\s+few)\s+months",
+    "数月": r"(?:several|a\s+few)\s+months",
+    "数年": r"(?:several|a\s+few)\s+years",
+}
+
+
+def _vague_temporal_supported(token: str, evidence_context: str) -> bool:
+    evidence = str(evidence_context or "")
+    if token in evidence:
+        return True
+    pattern = _VAGUE_TEMPORAL_EVIDENCE.get(token)
+    return bool(pattern and re.search(pattern, evidence, re.I))
 
 
 def _clean(value: Any) -> str:
@@ -237,6 +257,21 @@ def apply_evidence_boundary(
                 sanitized = _remove_span_with_delimiter(
                     sanitized, match.start(), match.end()
                 )
+        sanitized = _clean(sanitized)
+
+        # Fact Gate also treats vague temporal quantities as factual claims.
+        # If Deep Dive introduces one that primary-source evidence does not support,
+        # fail closed before publication by replacing only that derived field with
+        # its deterministic evidence-bounded fallback. This preserves the Gate
+        # threshold while preventing malformed prose from token-level deletion.
+        for vague_match in _VAGUE_TEMPORAL_RE.finditer(sanitized):
+            token = vague_match.group(0)
+            if _vague_temporal_supported(token, evidence_context):
+                continue
+            removed.append(token)
+            sanitized = _FIELD_FALLBACKS[field]
+            break
+
         sanitized = _clean(sanitized)
         if removed and not sanitized:
             sanitized = _FIELD_FALLBACKS[field]

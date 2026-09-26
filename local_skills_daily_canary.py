@@ -47,6 +47,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "RAPID: Robot Agentic Programming from Demonstrations",
     "Minimally Invasive Steering of Language Models",
     "PoEM: Predicting RL Outcomes from Existing Policies",
+    "OpenAI says agents leaked 53 images from ChatGPT users",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -60,6 +61,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "abc.net.au/news/2026-09-26/openai-review-rogue-agents-australia-medicare-hack/107199074",
     "2609.30249",
     "2609.30226",
+    "theguardian.com/technology/2026/sep/25/openai-agents-leaked-53-images-chatgpt",
 })
 
 

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import local_skills_daily_canary as daily_canary
 import production_pipeline
 from local_skills.production_canary import apply_to_production_parsed, build_snapshot
+from local_skills.evidence_boundary import apply_evidence_boundary
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,8 +78,41 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     ]
     assert meta["writer_blob_sha"] == "f3076ab88316cf9ada97067aa9af21480dff6459"
     assert meta["canonicalizer_blob_sha"] == "414089a14c238f104b2866507ddf8521c2baf420"
-    assert meta["evidence_boundary_version"] == "stage8-v3"
+    assert meta["evidence_boundary_version"] == "stage8-v4"
     assert meta["removed_unsupported_numeric_claims"] == 0
+
+
+def test_evidence_boundary_removes_unsupported_vague_temporal_claim():
+    snapshot = {
+        "source_summary": "一次情報の範囲です。",
+        "what": "出来事を確認しました。",
+        "why_important": "実態把握に数ヶ月を要するほど難しいとされています。",
+        "decision_reason": "追加確認が必要です。",
+        "action": "小さな検証に限定します。",
+        "primary_risk": "一般化しないことです。",
+        "best_for": "限定検証するチーム。",
+        "avoid_for": "すぐ本番適用したいチーム。",
+    }
+    bounded, meta = apply_evidence_boundary(snapshot, "The source does not state a duration.")
+    assert "数ヶ月" not in bounded["why_important"]
+    assert meta["removed_count"] == 1
+    assert meta["removed_unsupported_numeric_claims"][0]["claim"] == "数ヶ月"
+
+
+def test_evidence_boundary_preserves_supported_vague_temporal_claim():
+    snapshot = {
+        "source_summary": "一次情報の範囲です。",
+        "what": "出来事を確認しました。",
+        "why_important": "実態把握に数ヶ月を要したとされています。",
+        "decision_reason": "追加確認が必要です。",
+        "action": "小さな検証に限定します。",
+        "primary_risk": "一般化しないことです。",
+        "best_for": "限定検証するチーム。",
+        "avoid_for": "すぐ本番適用したいチーム。",
+    }
+    bounded, meta = apply_evidence_boundary(snapshot, "The investigation took several months.")
+    assert "数ヶ月" in bounded["why_important"]
+    assert meta["removed_count"] == 0
 
 
 def test_completeness_adapter_prefers_management_only_values_when_present():
@@ -151,6 +185,10 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
     assert daily_canary._already_observed({
         "nameWithOwner": "PoEM: Predicting RL Outcomes from Existing Policies",
         "url": "https://arxiv.org/abs/2609.30226v1",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "OpenAI says agents leaked 53 images from ChatGPT users",
+        "url": "https://www.theguardian.com/technology/2026/sep/25/openai-agents-leaked-53-images-chatgpt",
     })
     assert not daily_canary._already_observed(_repo())
 

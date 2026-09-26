@@ -57,6 +57,11 @@ class Run245FactValidationIntegrationTests(unittest.TestCase):
         finally:
             pipeline._EVIDENCE_ALIAS_GROUPS = old
 
+    def test_action_risk_classifier_does_not_escalate_explicit_rejection(self):
+        rejected = "限定的な検証として、自律型エージェントの業務への本格導入・本番移行は見送り、追加確認します。"
+        self.assertEqual("LOW", pipeline.classify_action_risk_tier(rejected))
+        self.assertEqual("HIGH", pipeline.classify_action_risk_tier("検証後に本番移行します。"))
+
     def test_source_boundary_wrapper_reads_live_action_risk_classifier(self):
         old = pipeline.classify_action_risk_tier
         old_alias = pipeline._EVIDENCE_ALIAS_GROUPS
