@@ -337,6 +337,8 @@ def main() -> None:
         return
 
     if mode in {"production_e2e_validation", "local_skills_production_validation"}:
+        if mode == "local_skills_production_validation":
+            os.environ["AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION"] = "true"
         from production_e2e_validation import run
         run(pipeline)
         return
