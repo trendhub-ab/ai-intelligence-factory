@@ -214,7 +214,7 @@ def test_writer_explains_model_generation_and_version_labels_in_long_news_title(
     article = result["parsed"]["note_draft"]
 
     assert "今回の検証対象であるこの対象" not in article
-    assert "今回の話について" in article
+    assert "Biopharma Bench V0.1" in article
     assert "GPT-6（AIモデルの世代名）" in article
     assert "GPT-5（AIモデルの世代名）" in article
     assert "V0（名称中のバージョン表記）" in article
