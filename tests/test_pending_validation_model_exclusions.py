@@ -29,7 +29,13 @@ def test_exclusion_survives_default_pool_reinjection_and_quality_routing():
         lane.install_validation_model_exclusions(p)
         # While the temporary exclusion is active, 3.6 remains unavailable even after
         # Run260 has reinjected its default pool. Surviving models keep revenue-first order.
-        assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
+        assert p.DEEP_DIVE_MODEL_POOL == [
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash",
+        ]
         assert "gemini-3.6-flash" in p.SESSION_UNAVAILABLE_MODELS
         p._call_deep_dive_pool("repair", kind="quality_retry")
         actual_pool = p._run260_original_call_model_pool.call_args.args[4]
