@@ -97,9 +97,16 @@ jobs:
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }} excluded_models=${{ inputs.excluded_models }}. Automatic triggers are intentionally absent."
 
       - name: リポジトリのチェックアウト
+        if: ${{ inputs.mode != 'local_skills_canary_validation' }}
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.mode == 'local_skills_canary_validation' && github.ref_name || 'main' }}
+          ref: main
+
+      - name: Local Skills canary branchをチェックアウト
+        if: ${{ inputs.mode == 'local_skills_canary_validation' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Python環境のセットアップ
         uses: actions/setup-python@v6
