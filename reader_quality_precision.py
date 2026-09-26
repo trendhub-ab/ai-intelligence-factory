@@ -159,9 +159,10 @@ def _token_is_non_jargon_compound(token: str, article: str) -> bool:
         matches = list(re.finditer(r"(?<![A-Za-z0-9])MIT(?![A-Za-z0-9])", value, re.I))
         return bool(matches) and all(re.match(r"\s*(?:ライセンス|License)", value[m.end():m.end() + 18], re.I) for m in matches)
     if token in {"DNA", "RNA"}:
-        matches = list(re.finditer(rf"(?<![A-Za-z0-9]){token}(?![A-Za-z0-9])", value, re.I))
+        prose = re.sub(r"^#{1,6}\s+.*$", "", value, flags=re.MULTILINE)
+        matches = list(re.finditer(rf"(?<![A-Za-z0-9]){token}(?![A-Za-z0-9])", prose, re.I))
         return bool(matches) and all(
-            re.match(r"\s*(?:配列|解析|ゲノム|分子|鎖)", value[m.end():m.end() + 16])
+            re.match(r"\s*(?:配列|解析|ゲノム|分子|鎖)", prose[m.end():m.end() + 16])
             for m in matches
         )
     return False
