@@ -13,6 +13,7 @@ source facts, names, numbers, performance claims, or outcomes.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any, Mapping
 
 from .compiler import compile_snapshot
@@ -20,6 +21,20 @@ from .compiler import compile_snapshot
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+_GENERIC_MONITORING_ACTION_RE = re.compile(
+    r"(?:注視|様子(?:を)?見|動き(?:を)?追|進捗(?:を)?追|進捗(?:を)?注視|今後(?:を)?追)",
+    re.I,
+)
+
+
+def _decision_bounded_action(decision: str, action: str) -> str:
+    """Keep WATCH/WAIT reader actions concrete without adding source facts."""
+    value = _text(action)
+    if str(decision or "").upper() in {"WATCH", "WAIT"} and _GENERIC_MONITORING_ACTION_RE.search(value):
+        return "新しい一次情報が出るまで待ち、出た時点で再評価します。"
+    return value
 
 
 def _evidence_urls(primary_url: str, grounding: Mapping[str, Any] | None) -> list[str]:
@@ -108,7 +123,10 @@ def build_snapshot(
         "decision": _text(parsed.get("decision_text")).upper(),
         "decision_score": int(parsed.get("score") or 0),
         "decision_reason": _text(parsed.get("decision_reason_text")),
-        "action": _text(parsed.get("action_text")),
+        "action": _decision_bounded_action(
+            _text(parsed.get("decision_text")).upper(),
+            _text(parsed.get("action_text")),
+        ),
         "primary_risk": completion["primary_risk"],
         "best_for": completion["best_for"],
         "avoid_for": completion["avoid_for"],

@@ -153,3 +153,32 @@ def test_install_appends_contract_to_fresh_and_retry_prompts_without_touching_fa
     assert "Decision Accessibility Contract" in retry
     assert sections == ["reader"]
     assert module.RUN397_DECISION_ACCESSIBILITY is True
+
+
+
+def test_life_science_article_accepts_real_japanese_term_bridges():
+    article = """# AIでウイルスDNAから新しい候補を探す研究
+
+Anthropicの研究チームがゲノム言語モデルを用いて、細菌の免疫システム「CRISPR」に似た特徴的なDNA配列を巨大ウイルスから発見しました。何が変わるのか。AIで新しいバイオツール候補を探索できる可能性が示された点が重要です。
+
+ただし、発見された配列の具体的な機能は未解明で、実用化を保証するものではありません。
+
+私なら、新しい一次情報が出るまで待ち、出た時点で再評価します。
+"""
+    out = rqp.correct_reader_signals(
+        article,
+        _signals(
+            unexplained_jargon=["CRISPR", "DNA"],
+            plain_language_bridge_present=True,
+            opening_technical_terms_per_1000_chars=34.0,
+            technical_terms_per_1000_chars=44.0,
+            jargon_dense_paragraph_count=3,
+            implementation_identifier_count=0,
+        ),
+    )
+
+    assert out["plainness_requirement"] == "LOW"
+    assert out["unexplained_jargon"] == []
+    assert out["decision_accessibility"] == "GOOD"
+    assert out["jargon_translation"] == "GOOD"
+    assert out["non_engineer_core_clarity"] == "GOOD"

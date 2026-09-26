@@ -252,3 +252,33 @@ def test_v433_observed_candidates_are_excluded():
         "nameWithOwner": "The same bug fix costs 0.4¢ or $2, depending on which coding agent you ask",
         "url": "https://www.ariwilson.com/writing/bakeoff-results/",
     })
+
+
+
+def test_watch_action_is_not_left_as_generic_monitoring():
+    parsed = _parsed()
+    parsed["decision_text"] = "WATCH"
+    parsed["action_text"] = "技術検証の進捗を注視する。"
+
+    snapshot = build_snapshot(
+        _repo(),
+        parsed,
+        source="ArXiv",
+        primary_url="https://arxiv.org/abs/2609.30219v1",
+        grounding={"evidence_urls": ["https://arxiv.org/abs/2609.30219v1"]},
+    )
+
+    assert "注視" not in snapshot["action"]
+    assert "待" in snapshot["action"]
+    assert "再評価" in snapshot["action"]
+
+
+def test_run147_and_run148_candidates_are_observed():
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Requirement-Bound Verified Commissioning: A Frozen Four-Billion-Parameter Local Model as a Candidate Generator under an External Acceptance Layer with Verification and Release Authority",
+        "url": "https://arxiv.org/abs/2609.30219v1",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Anthropic's AI biolab finds 'CRISPR-like' DNA in viruses. What's next?",
+        "url": "https://www.nature.com/articles/d41586-026-03039-6",
+    })

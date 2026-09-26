@@ -51,6 +51,8 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Coding Agents for Generalized Task and Motion Planning Problems",
     "AD-WM: Action-Discriminative World Models for Counterfactual Model Predictive Control",
     "The same bug fix costs 0.4¢ or $2, depending on which coding agent you ask",
+    "Requirement-Bound Verified Commissioning: A Frozen Four-Billion-Parameter Local Model as a Candidate Generator under an External Acceptance Layer with Verification and Release Authority",
+    "Anthropic's AI biolab finds 'CRISPR-like' DNA in viruses. What's next?",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -68,6 +70,8 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30233",
     "2609.30264",
     "ariwilson.com/writing/bakeoff-results",
+    "2609.30219",
+    "nature.com/articles/d41586-026-03039-6",
 })
 
 
