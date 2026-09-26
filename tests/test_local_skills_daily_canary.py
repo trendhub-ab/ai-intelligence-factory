@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import local_skills_daily_canary as daily_canary
 import production_pipeline
+import pipeline
 from local_skills.production_canary import apply_to_production_parsed, build_snapshot
 from local_skills.evidence_boundary import apply_evidence_boundary
 
@@ -80,6 +81,29 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     assert meta["canonicalizer_blob_sha"] == "414089a14c238f104b2866507ddf8521c2baf420"
     assert meta["evidence_boundary_version"] == "stage8-v4"
     assert meta["removed_unsupported_numeric_claims"] == 0
+
+
+
+def test_production_adapter_syncs_canonicalized_action_for_human_appeal_gate():
+    parsed = _parsed()
+    parsed["score"] = 56
+    parsed["decision_text"] = "WATCH"
+    parsed["action_text"] = "検証結果を注視します。"
+
+    out, meta = apply_to_production_parsed(
+        _repo(),
+        parsed,
+        source="HackerNews",
+        primary_url="https://example.invalid/fresh",
+        grounding={"evidence_urls": ["https://example.invalid/fresh"]},
+        evidence_context="The source supports a bounded verification-only decision.",
+    )
+
+    assert out["action_text"].startswith("限定的な検証として、")
+    assert out["action_text"] in out["note_draft"]
+    _state, issues = pipeline.validate_human_appeal_gate(out)
+    assert "action_collapsed_to_generic_monitoring" not in issues
+    assert meta["compiled_structured_surface_synced"] is True
 
 
 def test_evidence_boundary_removes_unsupported_vague_temporal_claim():
@@ -191,6 +215,14 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
         "url": "https://www.theguardian.com/technology/2026/sep/25/openai-agents-leaked-53-images-chatgpt",
     })
     assert not daily_canary._already_observed(_repo())
+
+
+
+def test_run147_contaminated_holdout_is_excluded():
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Requirement-Bound Verified Commissioning: A Frozen Four-Billion-Parameter Local Model as a Candidate Generator under an External Acceptance Layer with Verification and Release Authority",
+        "url": "https://arxiv.org/abs/2609.30219v1",
+    })
 
 
 def test_deep_dive_attempt_counter_ignores_screening_and_calibration():
