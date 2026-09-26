@@ -229,36 +229,61 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
 
 
 def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
-    name = _clean(snapshot["name"])
+    raw_name = _clean(snapshot["name"])
+    subject = _subject_label(snapshot)
+    name = subject or "この話題"
     role = _source_role(snapshot)
     subject_bridge = _reader_subject_bridge(snapshot, layout)
+
+    first_lines = {
+        0: (
+            f"{name}を自社で使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。"
+            if subject
+            else "この話題を自社で検討するなら、最初に決めたいのは「採用するか」ではなく「どこまで確かめるか」です。"
+        ),
+        1: f"仕事で{name}を検討するとき、知りたいのは機能の数より、任せてよい範囲です。",
+        2: (
+            f"{name}。名前は少し難しく見えても、使う側の問いは単純です。"
+            if subject
+            else "この話題は、見出しだけでは少し難しく見えても、判断したいことは単純です。"
+        ),
+        3: (
+            f"でも、{name}で先に見るべきなのは、自社の判断が本当に変わるかです。"
+        ),
+        4: (
+            f"もし{name}を明日から使うなら、どこを最初に確認するでしょうか。"
+            if subject
+            else "もしこの話題を自社の判断材料にするなら、どこを最初に確認するでしょうか。"
+        ),
+    }
+
     openings = {
         0: [
-            f"{name}を自社で使うなら、最初に決めたいのは「採用するか」ではなく「どこまで試すか」です。",
+            first_lines[0],
             f"簡単に言えば、今回は{role}です。",
             "機能名を追う前に、判断に必要な事実と制約を分けて見ます。",
             subject_bridge,
         ],
         1: [
-            f"仕事で{name}を検討するとき、知りたいのは機能の数より、任せてよい範囲です。",
+            first_lines[1],
             f"要するに、今回は{role}です。",
             "ここでは、使える点と、まだ確かめるべき点を同じ重さで扱います。",
             subject_bridge,
         ],
         2: [
-            f"{name}。名前は少し難しく見えても、使う側の問いは単純です。",
+            first_lines[2],
             "自社の判断が何か変わるのか。それとも、まだ様子を見るべきなのか。",
             f"平たく言えば、今回は{role}です。",
             subject_bridge,
         ],
         3: [
             "新しい技術やサービスを見ると、つい機能一覧から読み始めたくなります。",
-            f"でも、{name}で先に見るべきなのは、自社の判断が本当に変わるかです。",
+            first_lines[3],
             f"一言で言えば、{role}です。",
             subject_bridge,
         ],
         4: [
-            f"もし{name}を明日から使うなら、どこを最初に確認するでしょうか。",
+            first_lines[4],
             f"簡単に言えば、{role}です。",
             "そこで、できること、制約、次の一手の順に整理します。",
             subject_bridge,
