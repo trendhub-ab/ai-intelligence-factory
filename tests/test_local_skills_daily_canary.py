@@ -144,6 +144,14 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
         "nameWithOwner": "Instrumental Monitor Evasion Emerges Under Ordinary Task Pressure",
         "url": "https://arxiv.org/abs/2609.30217v1",
     })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Minimally Invasive Steering of Language Models",
+        "url": "https://arxiv.org/abs/2609.30248v1",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "PoEM: Predicting RL Outcomes from Existing Policies",
+        "url": "https://arxiv.org/abs/2609.30226v1",
+    })
     assert not daily_canary._already_observed(_repo())
 
 
