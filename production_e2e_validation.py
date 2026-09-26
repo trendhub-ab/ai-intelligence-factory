@@ -210,7 +210,8 @@ def select_candidate(pipeline: Any, limit: int = DEFAULT_CANDIDATE_LIMIT):
     return {"item": item, "repo": repo, "evidence": evidence_view}, diagnostics
 
 
-def _write_audit(result: dict[str, Any], path: Path = AUDIT_PATH) -> None:
+def _write_audit(result: dict[str, Any], path: Path | None = None) -> None:
+    path = path or AUDIT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n",
