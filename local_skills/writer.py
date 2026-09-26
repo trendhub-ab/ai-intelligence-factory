@@ -178,7 +178,7 @@ def _subject_label(snapshot: Mapping[str, Any]) -> str:
 
 
 _MODEL_GENERATION_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])(GPT-\d+)(?![A-Za-z0-9])", re.I)
-_VERSION_LABEL_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9-])(V\d+)(?=\.\d|\b)", re.I)
+_VERSION_LABEL_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])(V\d+)(?=\.\d|\b)", re.I)
 
 
 def _technical_label_bridge(snapshot: Mapping[str, Any]) -> str:
