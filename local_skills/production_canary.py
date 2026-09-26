@@ -131,8 +131,11 @@ def apply_to_production_parsed(
     )
     compiled = compile_snapshot(snapshot, evidence_context=evidence_context)
     out = dict(parsed)
-    out["title_text"] = compiled["parsed"]["title_text"]
-    out["note_draft"] = compiled["parsed"]["note_draft"]
+    # The canary must send one internally-consistent Local Skills surface to every Gate.
+    # Previously only title/note_draft were replaced, so Human Appeal could inspect the
+    # stale provider action_text while the visible article contained the canonicalized
+    # Local Skills action. Synchronize every compiler-owned reader/decision field.
+    out.update(dict(compiled["parsed"]))
     meta = {
         "status": compiled["status"],
         "case_id": snapshot["case_id"],
@@ -148,6 +151,7 @@ def apply_to_production_parsed(
         "evidence_url_count": len(snapshot["evidence_urls"]),
         "provider_article_surface_reused": False,
         "deterministic_title": True,
+        "compiled_structured_surface_synced": True,
         "completeness_adapter_sources": dict(completion_sources),
         "completeness_adapter_fallback_fields": sorted(
             key for key, value in completion_sources.items()
