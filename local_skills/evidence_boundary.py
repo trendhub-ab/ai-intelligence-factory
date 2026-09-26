@@ -197,6 +197,16 @@ def _remove_span_with_delimiter(text: str, start: int, end: int) -> str:
     out = text[:left] + text[right:]
     out = re.sub(r"・{2,}", "・", out)
     out = re.sub(r"([、,，])\s*([、,，])", r"\1", out)
+    # Numeric removal must not leave a syntactically broken comparison shell.
+    # Run152 exposed "（特定測定例でからへ）" after unsupported latency
+    # endpoints were removed.  Remove only the now-empty comparative parenthetical;
+    # never invent replacement numbers or conditions.
+    out = re.sub(
+        r"[（(][^（）()\n]{0,96}(?:から\s*へ|from\s+to)[^（）()\n]{0,96}[）)]",
+        "",
+        out,
+        flags=re.I,
+    )
     out = re.sub(r"\s{2,}", " ", out)
     return out.strip()
 
