@@ -190,3 +190,29 @@ def test_evidence_boundary_keeps_fact_gate_equivalent_seconds_surface():
         evidence_context="The benchmark measured 7x and latency was 0.30 seconds.",
     )
     assert "0.30秒" in result["parsed"]["note_draft"]
+
+
+
+def test_writer_explains_model_generation_and_version_labels_in_long_news_title():
+    snapshot = _snapshot()
+    snapshot.update({
+        "name": "DeepSeek beats GPT-6 Sol in autonomous drug development",
+        "reader_title": "DeepSeek benchmark：いま何を判断材料にするべきか",
+        "source_summary": (
+            "製薬・バイオテック分野の実務を模擬した新ベンチマーク"
+            "「Biopharma Bench V0.1」において、DeepSeek-V4.1 Flashが"
+            "GPT-5.6 Solの平均スコアを上回る結果を示した。"
+        ),
+        "what": "規制の厳しいバイオ医薬品開発プロセスを模した評価テストです。",
+        "decision_reason": "GPT-6 Astraも含め、実務投入前に追加確認が必要です。",
+        "action": "ベンチマーク動向を確認し、限定的な評価を続けます。",
+    })
+    result = compile_snapshot(snapshot)
+    article = result["parsed"]["note_draft"]
+
+    assert "今回の検証対象であるこの対象" not in article
+    assert "今回の話について" in article
+    assert "GPT-6（AIモデルの世代名）" in article
+    assert "GPT-5（AIモデルの世代名）" in article
+    assert "V0（名称中のバージョン表記）" in article
+    assert "V4（名称中のバージョン表記）" in article
