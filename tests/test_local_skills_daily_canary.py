@@ -140,6 +140,10 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
         "nameWithOwner": "Show HN: I couldn't deal with another Claude Code tab",
         "url": "https://aidash.dev/",
     })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Instrumental Monitor Evasion Emerges Under Ordinary Task Pressure",
+        "url": "https://arxiv.org/abs/2609.30217v1",
+    })
     assert not daily_canary._already_observed(_repo())
 
 
