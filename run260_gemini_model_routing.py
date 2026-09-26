@@ -44,7 +44,8 @@ _ORIGINAL_DEEP_DIVE_ATTR = "_run261_original_call_deep_dive_pool"
 PRIMARY_MODEL = "gemini-3.6-flash"
 QUALITY_MODEL = "gemini-3.5-flash"
 FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-3.8-flash")
-DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
+EXTENDED_FLASH_MODELS = ("gemini-3-flash-preview", "gemini-2.5-flash")
+DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS, *EXTENDED_FLASH_MODELS)
 DEFAULT_QUALITY_POOL = DEFAULT_DEEP_DIVE_POOL
 ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)
 DEFAULT_FLASH_SAFETY_BUDGET = 18
@@ -456,6 +457,8 @@ def install(pipeline_module: Any) -> Any:
     for model_name, env_name in (
         ("gemini-3.7-flash", "GEMINI_37_FLASH_DAILY_BUDGET"),
         ("gemini-3.8-flash", "GEMINI_38_FLASH_DAILY_BUDGET"),
+        ("gemini-3-flash-preview", "GEMINI_3_FLASH_DAILY_BUDGET"),
+        ("gemini-2.5-flash", "GEMINI_25_FLASH_DAILY_BUDGET"),
     ):
         try:
             requested = int(os.environ.get(env_name, str(DEFAULT_FLASH_SAFETY_BUDGET)))
