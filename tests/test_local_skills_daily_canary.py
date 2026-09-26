@@ -165,6 +165,8 @@ def test_pipeline_canary_fails_closed_on_persistence_attempt():
     assert 'Local Skills canary forbids provider quality retries' in source
     assert 'source_info.get("verification_context")' in source
     assert 'evidence_context=(' in source
+    assert 'local_skills_canary_skip_eyecatch' in source
+    assert 'must not spend eyecatch provider quota' in source
 
 
 def test_canary_runner_disables_rewrite_rescue_and_second_deep_dive():
