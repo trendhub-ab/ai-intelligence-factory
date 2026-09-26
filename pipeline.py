@@ -2475,6 +2475,10 @@ def save_screening_metadata_to_notion(repo, score: int, reason: str) -> str | No
     if not NOTION_API_KEY or not (NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID):
         return None
 
+    local_skills_canary = os.environ.get("AIIF_LOCAL_SKILLS_CANARY", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if local_skills_canary and persist_results:
+        raise RuntimeError("Local Skills canary is measurement-only and forbids Production persistence")
+
     name = repo.get("nameWithOwner")
     display_name = _notion_display_name(repo)
     repo_url = repo.get("url")
@@ -7824,6 +7828,24 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             parsed, structure_changes = _apply_deterministic_structure_polish(parsed)
             if structure_changes:
                 logger.info("[DETERMINISTIC STRUCTURE POLISH] %s changes=%s", name, structure_changes)
+            if local_skills_canary:
+                if attempt != 0:
+                    raise RuntimeError("Local Skills canary forbids provider quality retries")
+                from local_skills.production_canary import apply_to_production_parsed
+                parsed, local_compile_meta = apply_to_production_parsed(
+                    repo,
+                    parsed,
+                    source=source,
+                    primary_url=primary_url,
+                    grounding=grounding,
+                )
+                globals()["_LOCAL_SKILLS_CANARY_LAST_COMPILE"] = dict(local_compile_meta)
+                logger.info(
+                    "[LOCAL SKILLS CANARY COMPILED] %s writer=%s canonicalizer=%s",
+                    name,
+                    local_compile_meta.get("writer_blob_sha"),
+                    local_compile_meta.get("canonicalizer_blob_sha"),
+                )
             if attempt == 0 and parsed.get("note_draft"):
                 article_audit_snapshots["generated_original"] = parsed.get("note_draft", "")
             elif attempt > 0 and parsed.get("note_draft"):
@@ -7939,6 +7961,25 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                                + map_gate_reasons("publication", publication_issues)
                                + map_gate_reasons("human_appeal", human_appeal_issues))
             disposition = gate_reason_disposition(all_reason_rows)
+            if local_skills_canary:
+                globals()["_LOCAL_SKILLS_CANARY_LAST_RESULT"] = {
+                    "name": name,
+                    "source": source,
+                    "decision_score": int(parsed.get("score") or 0),
+                    "fact": {"pass": bool(fact_ok), "issues": list(fact_failures)},
+                    "editorial": {"pass": bool(editorial_ok), "issues": list(editorial_warnings)},
+                    "publication": {"state": str(publication_state), "issues": list(publication_issues)},
+                    "human_appeal": {"state": str(human_appeal), "issues": list(human_appeal_issues)},
+                    "disposition": str(disposition),
+                    "all_gate_pass": bool(
+                        fact_ok
+                        and editorial_ok
+                        and publication_state == "PASS"
+                        and human_appeal == "ACCEPTABLE"
+                    ),
+                    "visible_chars": len(str(parsed.get("note_draft") or "")),
+                    "compile": dict(globals().get("_LOCAL_SKILLS_CANARY_LAST_COMPILE", {}) or {}),
+                }
             final_reason_rows = list(all_reason_rows)
             final_quality_failures = [str(row.get("message", "")) for row in all_reason_rows if row.get("message")]
             failures = list(final_quality_failures)
