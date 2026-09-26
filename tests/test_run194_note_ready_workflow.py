@@ -34,6 +34,14 @@ class Run194NoteReadyWorkflowTests(unittest.TestCase):
         self.assertIn("confirm=CREATE_NOTE_DRAFT", source)
         self.assertNotIn("workflow_run:", source)
 
+    def test_exact_target_is_passed_to_sync_and_private_draft(self) -> None:
+        source = WORKFLOW.read_text(encoding="utf-8")
+        bridge = (ROOT / ".github/workflows/chatops-note.yml").read_text(encoding="utf-8")
+        self.assertIn("TARGET_SYNC_ID: ${{ inputs.target_sync_id }}", source)
+        self.assertIn("'/aiif note vtcode draft'", bridge)
+        self.assertIn('"target_sync_id":"3d4479ffdca981a2880bf46d5c02403d"', bridge)
+        self.assertIn('"create_private_draft":"true"', bridge)
+
 
 if __name__ == "__main__":
     unittest.main()
