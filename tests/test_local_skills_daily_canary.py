@@ -75,9 +75,9 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     assert meta["completeness_adapter_fallback_fields"] == [
         "avoid_for", "best_for", "primary_risk"
     ]
-    assert meta["writer_blob_sha"] == "0fafb7c878d26cd4eb4f4293c76e6d5bcbdb6ec8"
+    assert meta["writer_blob_sha"] == "31061577d6d8c0ee8dbdb45d10e68e718e14c6a3"
     assert meta["canonicalizer_blob_sha"] == "414089a14c238f104b2866507ddf8521c2baf420"
-    assert meta["evidence_boundary_version"] == "stage8-v1"
+    assert meta["evidence_boundary_version"] == "stage8-v2"
     assert meta["removed_unsupported_numeric_claims"] == 0
 
 
@@ -123,6 +123,10 @@ def test_observed_canary_records_are_excluded_from_later_fresh_measurements():
     assert daily_canary._already_observed({
         "nameWithOwner": "Jevmem – automatic project memory for Claude Code, built on Jev",
         "url": "https://github.com/Avinash-jetwani/jevmem",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Build Plugins for Claude",
+        "url": "https://claude.com/blog/build-plugins-for-claude",
     })
     assert not daily_canary._already_observed(_repo())
 

@@ -32,11 +32,13 @@ OBSERVED_CANARY_NAMES = frozenset({
     "U.S. appeals court upholds designation of Anthropic as supply chain risk",
     "My coding agent pushed a commit deleting every file on main",
     "Jevmem – automatic project memory for Claude Code, built on Jev",
+    "Build Plugins for Claude",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
     "dev.karakun.com/2026/08/28/coding-agent-pushed-deletion-to-main.html",
     "Avinash-jetwani/jevmem",
+    "claude.com/blog/build-plugins-for-claude",
 })
 
 

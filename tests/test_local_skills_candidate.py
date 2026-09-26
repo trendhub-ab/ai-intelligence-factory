@@ -106,14 +106,14 @@ def test_evidence_boundary_removes_derived_currency_but_keeps_supported_latency(
     )
     result = compile_snapshot(
         snapshot,
-        evidence_context="The benchmark measured 7x on the fixed workload. The measured latency was 0.30 seconds per operation.",
+        evidence_context="The benchmark measured 7x on the fixed workload. The measured latency was 0.30 seconds and the source also mentioned $0.02.",
     )
 
     bounded = result["canonicalized_snapshot"]["decision_reason"]
     assert "0.30秒" in bounded
     assert "0.02" not in bounded
     assert "約0.02円" not in result["parsed"]["note_draft"]
-    assert result["evidence_boundary_version"] == "stage8-v1"
+    assert result["evidence_boundary_version"] == "stage8-v2"
     assert result["evidence_boundary"]["removed_count"] == 1
     assert result["evidence_boundary"]["removed_unsupported_numeric_claims"] == [
         {"field": "decision_reason", "claim": "約0.02円"}
@@ -146,3 +146,21 @@ def test_explicit_production_evidence_context_is_kept_separate_from_structured_r
     result = compile_snapshot(snapshot, evidence_context=evidence)
     assert result["evidence_context"] == evidence
     assert "reader_title:" not in result["evidence_context"]
+
+
+def test_evidence_boundary_requires_compatible_unit_not_only_same_number():
+    snapshot = _snapshot()
+    snapshot["decision_reason"] = "約0.02円のコストです。"
+    result = compile_snapshot(snapshot, evidence_context="The benchmark measured 7x on the fixed workload. The measured latency was 0.02 seconds and cost was $0.02.")
+    assert "0.02円" not in result["parsed"]["note_draft"]
+    assert result["evidence_boundary"]["removed_count"] == 1
+
+
+def test_writer_explains_mcp_and_agent_skills_and_uses_complete_negative_fit_sentence():
+    snapshot = _snapshot()
+    snapshot["action"] = "Model Context Protocol (MCP) サーバーとAgent Skillsを限定環境で試す。"
+    result = compile_snapshot(snapshot)
+    article = result["parsed"]["note_draft"]
+    assert "Model Context Protocol (MCP)（AIと外部ツールやデータを接続する共通規格）" in article
+    assert "Agent Skills（AIに特定作業の手順や知識を追加する仕組み）" in article
+    assert "向いていないのは、" in article
