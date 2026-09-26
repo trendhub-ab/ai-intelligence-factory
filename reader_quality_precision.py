@@ -48,7 +48,8 @@ _REPETITION_PREDICATE_RE = re.compile(
 
 _SPECIALIST_TOPIC_RE = re.compile(
     r"(?:arXiv|論文|数理|定理|証明|モデル構造|アーキテクチャ|認証|認可|セキュリティ|"
-    r"暗号|脆弱性|攻撃|DPoP|OAuth|OIDC|microVM|仮想化|RAG|MCP|ベンチマーク)",
+    r"暗号|脆弱性|攻撃|DPoP|OAuth|OIDC|microVM|仮想化|RAG|MCP|ベンチマーク|"
+    r"CRISPR|ゲノム|遺伝子|DNA|RNA|バイオ|創薬|生命科学|タンパク質)",
     re.I,
 )
 _DEVELOPER_TOPIC_RE = re.compile(
@@ -125,6 +126,7 @@ def _token_explained_anywhere(token: str, article: str) -> bool:
         rf"{ascii_token}\s*[（(][^）)\n]{{2,90}}[）)]",
         rf"[（(][^）)\n]{{2,90}}[）)]\s*{ascii_token}",
         rf"[^。！？\n]{{3,90}}[（(]{escaped}[）)]",
+        rf"[ぁ-んァ-ヴー一-龯々・]{{2,40}}(?:システム|仕組み|方式|モデル|規格|標準|手法|方法|配列|技術|機構|構造)[「『]{escaped}[」』]",
         rf"{ascii_token}(?:とは|は、|は)[^。！？\n]{{4,110}}(?:仕組み|方式|規格|標準|ツール|モデル|プロトコル|ルール|方法|役割)",
     )
     return any(re.search(pattern, value, re.I) for pattern in patterns)
@@ -156,6 +158,12 @@ def _token_is_non_jargon_compound(token: str, article: str) -> bool:
     if token == "MIT":
         matches = list(re.finditer(r"(?<![A-Za-z0-9])MIT(?![A-Za-z0-9])", value, re.I))
         return bool(matches) and all(re.match(r"\s*(?:ライセンス|License)", value[m.end():m.end() + 18], re.I) for m in matches)
+    if token in {"DNA", "RNA"}:
+        matches = list(re.finditer(rf"(?<![A-Za-z0-9]){token}(?![A-Za-z0-9])", value, re.I))
+        return bool(matches) and all(
+            re.match(r"\s*(?:配列|解析|ゲノム|分子|鎖)", value[m.end():m.end() + 16])
+            for m in matches
+        )
     return False
 
 
