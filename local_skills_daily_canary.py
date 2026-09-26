@@ -30,6 +30,8 @@ MAX_SCREENING = 60
 # then informed v4.1 hardening. "Yes, Claude can do nine loops" was the first fresh
 # all-Gate PASS for v4.1. The later DeepSeek biopharma article exposed a remaining
 # non-engineer accessibility defect and is contaminated repair evidence as well.
+# The later Cockpit / Show HN article exposed discovery-label and reader-bridge
+# weaknesses and is contaminated repair evidence as well.
 # All observed records are excluded from future fresh claims.
 OBSERVED_CANARY_NAMES = frozenset({
     "LLM Agents Can Easily Tamper With Their Own Traces",
@@ -39,6 +41,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Build Plugins for Claude",
     "Yes, Claude can do nine loops",
     "DeepSeek beats GPT-6 Sol in autonomous drug development",
+    "Show HN: I couldn't deal with another Claude Code tab",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -47,6 +50,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "claude.com/blog/build-plugins-for-claude",
     "anthropic.com/research/yes-claude-can-do-nine-loops",
     "eval.raycaster.ai/benchmarks/biopharma-bench",
+    "aidash.dev",
 })
 
 
