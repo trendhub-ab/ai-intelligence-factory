@@ -47,6 +47,8 @@ Netflixが推薦基盤の新しい方向性を公開しました。
         self.assertIn("**結論は？**", out)
         self.assertIn("### 有料サブスクのご案内", out)
         self.assertIn(r296.CTA_BODY, out)
+        self.assertIn("一次情報と根拠付き", r296.CTA_BODY)
+        self.assertNotIn("Evidence付き", r296.CTA_BODY)
         self.assertIn("Decision Brief", out)
         self.assertIn("このAI、使える！", out)
         self.assertIn("[月額1,980円の内容を見る](https://note.com/example?utm_source=note)", out)
