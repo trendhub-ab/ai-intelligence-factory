@@ -173,15 +173,46 @@ def _subject_label(snapshot: Mapping[str, Any]) -> str:
     parts = re.split(r"\s+[–—]\s+|[：:]", name, maxsplit=1)
     subject = _clean(parts[0] if parts else name)
     if not subject or len(subject) > 48:
-        return "この対象"
+        return ""
     return subject
+
+
+_MODEL_GENERATION_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])(GPT-\d+)(?![A-Za-z0-9])", re.I)
+_VERSION_LABEL_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9-])(V\d+)(?=\.\d|\b)", re.I)
+
+
+def _technical_label_bridge(snapshot: Mapping[str, Any]) -> str:
+    """Explain compact model/version labels without inventing subject-specific facts."""
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("name", "source_summary", "what", "decision_reason", "action")
+    )
+    model_tokens: list[str] = []
+    version_tokens: list[str] = []
+    for match in _MODEL_GENERATION_TOKEN_RE.finditer(surface):
+        token = match.group(1)
+        if token not in model_tokens:
+            model_tokens.append(token)
+    for match in _VERSION_LABEL_TOKEN_RE.finditer(surface):
+        token = match.group(1)
+        if token not in version_tokens:
+            version_tokens.append(token)
+
+    labels: list[str] = []
+    labels.extend(f"{token}（AIモデルの世代名）" for token in model_tokens[:3])
+    labels.extend(f"{token}（名称中のバージョン表記）" for token in version_tokens[:3])
+    if not labels:
+        return ""
+    return "名称を読むための補足として、" + "、".join(labels) + "です。"
 
 
 def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
     """Give non-engineers a first-use foothold using only stored structured text."""
     subject = _subject_label(snapshot)
     summary = _gloss(snapshot["source_summary"], set())
-    if re.search(r"[A-Za-z]", subject):
+    if not subject:
+        label = "今回の話"
+    elif re.search(r"[A-Za-z]", subject):
         label = f"今回の検証対象（{subject}）"
     else:
         label = f"今回の検証対象である{subject}"
@@ -192,7 +223,9 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
         "ここで「何の話？」と思いませんか。",
         "最初に「何のためのもの？」から確認したくなりますよね。",
     ]
-    return f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+    base = f"{leads[layout]}{label}について、一次情報で確認できる説明はこうです。{summary}"
+    technical_bridge = _technical_label_bridge(snapshot)
+    return base if not technical_bridge else f"{base}{technical_bridge}"
 
 
 def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
