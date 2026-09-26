@@ -285,13 +285,18 @@ def run(pipeline: Any) -> dict[str, Any]:
             screening_score=item.get("screening_score"),
             screening_reason=item.get("screening_reason", ""),
             candidate_rank=1,
-            candidate_origin="production_e2e_validation",
+            candidate_origin=("local_skills_production_validation" if local_skills_production else "production_e2e_validation"),
             attribution_context=item,
                 persist_results=True,
             )
         finally:
             pipeline.MAX_QUALITY_RETRIES = old_retries
             pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = old_rescue
+        if local_skills_production:
+            compile_meta = dict(getattr(pipeline, "_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE", {}) or {})
+            result["local_skills_compile"] = compile_meta
+            if not compile_meta:
+                raise RuntimeError("Local Skills Production validation reached persistence path without frozen compiler metadata")
         result["ready"] = 1 if report else 0
         if not report:
             result["sync_id"] = ""
