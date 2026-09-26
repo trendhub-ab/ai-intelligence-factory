@@ -247,10 +247,13 @@ def run(pipeline: Any) -> dict[str, Any]:
         excluded_page_ids: set[str] = set()
         attempt_rank = 0
         while True:
-            selected, diagnostics = select_candidate(
-                pipeline,
-                exclude_page_ids=excluded_page_ids,
-            )
+            if excluded_page_ids:
+                selected, diagnostics = select_candidate(
+                    pipeline,
+                    exclude_page_ids=excluded_page_ids,
+                )
+            else:
+                selected, diagnostics = select_candidate(pipeline)
             result["preflight_candidates"].extend(diagnostics)
             if selected is None:
                 pipeline.logger.warning(
