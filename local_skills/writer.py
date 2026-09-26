@@ -229,7 +229,6 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
 
 
 def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
-    raw_name = _clean(snapshot["name"])
     subject = _subject_label(snapshot)
     name = subject or "この話題"
     role = _source_role(snapshot)
