@@ -7,8 +7,9 @@ without increasing the existing Deep Dive request ceiling.
 
 Run369 replaces static "newest model first" routing with Provider Health Routing for
 article generation and model-based quality repair. The normal cold-start order is
-3.6 -> 3.5 -> 3.7 -> 3.8. After real provider attempts exist, the four article models
-are re-ordered by smoothed success rate using attempts from the last 24 hours; when
+3.6 -> 3.5 -> 3.7 -> 3.8 -> 3 Flash Preview -> 2.5 Flash. After real provider attempts
+exist, the article models are re-ordered by smoothed success rate using attempts from
+the last 24 hours; when
 that window is sparse, the most recent N attempts are used as a backstop. Successful
 models move up and 503/timeout/error outcomes move models down. Existing run-local
 unavailable/exhausted circuits, persistent RPD budgets, retry ceilings, and every
@@ -43,7 +44,12 @@ _ORIGINAL_DEEP_DIVE_ATTR = "_run261_original_call_deep_dive_pool"
 # recent Production before spending attempts on the newer/high-contention models.
 PRIMARY_MODEL = "gemini-3.6-flash"
 QUALITY_MODEL = "gemini-3.5-flash"
-FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-3.8-flash")
+FALLBACK_MODELS = (
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+)
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = DEFAULT_DEEP_DIVE_POOL
 ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)
@@ -456,6 +462,8 @@ def install(pipeline_module: Any) -> Any:
     for model_name, env_name in (
         ("gemini-3.7-flash", "GEMINI_37_FLASH_DAILY_BUDGET"),
         ("gemini-3.8-flash", "GEMINI_38_FLASH_DAILY_BUDGET"),
+        ("gemini-3-flash-preview", "GEMINI_3_FLASH_DAILY_BUDGET"),
+        ("gemini-2.5-flash", "GEMINI_25_FLASH_DAILY_BUDGET"),
     ):
         try:
             requested = int(os.environ.get(env_name, str(DEFAULT_FLASH_SAFETY_BUDGET)))
