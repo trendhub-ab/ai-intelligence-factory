@@ -53,6 +53,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "The same bug fix costs 0.4¢ or $2, depending on which coding agent you ask",
     "Requirement-Bound Verified Commissioning: A Frozen Four-Billion-Parameter Local Model as a Candidate Generator under an External Acceptance Layer with Verification and Release Authority",
     "Temporal Gradient Inversion for Private Trajectory Reconstruction in Embodied Reinforcement Learning",
+    "Self-hosting DeepSeek V4 for a software engineering org",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -72,6 +73,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "ariwilson.com/writing/bakeoff-results",
     "2609.30219",
     "2609.30258",
+    "parity.io/blog/self-hosted-ai-software-engineering",
 })
 
 
