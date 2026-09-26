@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Mapping
 
-EVIDENCE_BOUNDARY_VERSION = "stage8-v2"
+EVIDENCE_BOUNDARY_VERSION = "stage8-v3"
 
 PUBLICATION_FIELDS = (
     "source_summary",
@@ -121,6 +121,39 @@ def _unit_class(symbol: str, unit: str) -> str:
     return ""
 
 
+
+
+def _fact_numeric_normalize(text: str) -> str:
+    """Mirror Fact Gate numeric surface normalization without changing Gate policy."""
+    value = __import__("unicodedata").normalize("NFKC", str(text or "")).lower()
+    value = re.sub(r"(\\d+)\\s*分の\\s*(\\d+)", lambda m: f"{m.group(2)}/{m.group(1)}", value)
+    value = value.replace("ミリ秒", "ms").replace("秒", "s")
+    value = re.sub(r"\\bseconds?\\b|\\bsec\\b", "s", value)
+    value = value.replace("トークン", "tokens").replace("リクエスト", "requests")
+    value = re.sub(r"\\btoken\\b", "tokens", value)
+    value = re.sub(r"\\brequest\\b", "requests", value)
+    value = re.sub(r"(?<=\\d)分(?!\\s*(?:野|割|布|類|岐|析))", "minutes", value)
+    value = re.sub(r"(?<=\\d)日", "days", value)
+    value = value.replace("時間", "hours").replace("週間", "weeks").replace("週", "weeks")
+    value = re.sub(r"\\bminutes?\\b|\\bmins?\\b", "minutes", value)
+    value = re.sub(r"\\bdays?\\b", "days", value)
+    value = value.replace("ヶ月", "months").replace("か月", "months")
+    value = re.sub(r"\\bhours?\\b", "hours", value)
+    value = re.sub(r"\\bweeks?\\b", "weeks", value)
+    value = re.sub(r"\\bmonths?\\b", "months", value)
+    value = value.replace("ドル", "usd")
+    value = re.sub(r"\\busd\\b", "usd", value)
+    value = value.replace("×", "x").replace("倍", "x")
+    value = value.replace("パーセント", "%")
+    value = re.sub(r"\\bpercent(?:age)?\\b", "%", value)
+    value = value.replace("〜", "-").replace("～", "-").replace("–", "-").replace("—", "-").replace("−", "-")
+    value = re.sub(r"\\bto\\b", "-", value)
+    value = re.sub(r"(?<=\\d)-(?=(?:hours|minutes|days|weeks|months|ms|s|tokens|requests)\\b)", "", value)
+    value = re.sub(r"%(?=-\\d)", "", value)
+    value = value.replace("約", "")
+    return re.sub(r"[\\s,，]", "", value)
+
+
 def _evidence_claim_keys(evidence_context: str) -> set[tuple[str, str]]:
     keys: set[tuple[str, str]] = set()
     for match in _EVIDENCE_NUMERIC_RE.finditer(str(evidence_context or "")):
@@ -183,10 +216,30 @@ def apply_evidence_boundary(
     """Return a publication snapshot bounded by actual verification evidence."""
     out = deepcopy(dict(snapshot))
     evidence_claims = _evidence_claim_keys(evidence_context)
+    fact_normalized_evidence = _fact_numeric_normalize(evidence_context)
     removed_rows: list[dict[str, str]] = []
 
     for field in PUBLICATION_FIELDS:
-        sanitized, removed = _sanitize_field(field, out.get(field, ""), evidence_claims)
+        raw_value = out.get(field, "")
+        sanitized, removed = _sanitize_field(field, raw_value, evidence_claims)
+        # Unit-class compatibility is necessary but not sufficient: Fact Gate
+        # intentionally does not equate every semantically similar currency
+        # notation (for example "$100" and "100ドル"). Fail closed here so the
+        # deterministic compiler cannot emit a token the unchanged Fact Gate
+        # will reject.
+        for match in reversed(list(_SENSITIVE_NUMERIC_RE.finditer(sanitized))):
+            unit_class = _unit_class(match.group("symbol"), match.group("unit"))
+            if not unit_class:
+                continue
+            token = match.group(0).strip()
+            if _fact_numeric_normalize(token) not in fact_normalized_evidence:
+                removed.append(token)
+                sanitized = _remove_span_with_delimiter(
+                    sanitized, match.start(), match.end()
+                )
+        sanitized = _clean(sanitized)
+        if removed and not sanitized:
+            sanitized = _FIELD_FALLBACKS[field]
         out[field] = sanitized
         for claim in removed:
             removed_rows.append({"field": field, "claim": claim})
