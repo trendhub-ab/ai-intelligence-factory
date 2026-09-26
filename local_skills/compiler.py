@@ -12,13 +12,14 @@ from typing import Any, Mapping
 
 from . import publication_canonicalizer
 from . import writer
+from .evidence_boundary import EVIDENCE_BOUNDARY_VERSION, apply_evidence_boundary
 
 CANONICALIZER_BLOB_SHA = "414089a14c238f104b2866507ddf8521c2baf420"
-WRITER_BLOB_SHA = "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2"
-CANDIDATE_STATUS = "FROZEN_CANDIDATE_AWAITING_FRESH_HOLDOUT"
+WRITER_BLOB_SHA = "49d72510d89dc11a7b37e6d12c51cfb266543eaf"
+CANDIDATE_STATUS = "DEVELOPMENT_REPAIR_AWAITING_FRESH_HOLDOUT"
 
 
-def compile_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+def compile_snapshot(snapshot: Mapping[str, Any], *, evidence_context: str | None = None) -> dict[str, Any]:
     """Compile one structured record without mutating the caller's object.
 
     Returns both surfaces required for a future shadow/fresh-holdout evaluation:
@@ -31,15 +32,24 @@ def compile_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     writer.validate_snapshot(original)
 
     canonicalized = publication_canonicalizer.canonicalize_snapshot(original)
-    parsed = writer.to_pipeline_parsed(canonicalized)
-    evidence_context = writer.source_context(original)
+    gate_evidence_context = (
+        writer.source_context(original)
+        if evidence_context is None
+        else str(evidence_context or "")
+    )
+    bounded, evidence_boundary = apply_evidence_boundary(
+        canonicalized, gate_evidence_context
+    )
+    parsed = writer.to_pipeline_parsed(bounded)
 
     return {
         "status": CANDIDATE_STATUS,
         "original_snapshot": original,
-        "canonicalized_snapshot": canonicalized,
+        "canonicalized_snapshot": bounded,
         "parsed": parsed,
-        "evidence_context": evidence_context,
+        "evidence_context": gate_evidence_context,
+        "evidence_boundary": evidence_boundary,
+        "evidence_boundary_version": EVIDENCE_BOUNDARY_VERSION,
         "canonicalizer_version": canonicalized.get("publication_canonicalizer_version"),
         "canonicalizer_blob_sha": CANONICALIZER_BLOB_SHA,
         "writer_blob_sha": WRITER_BLOB_SHA,
