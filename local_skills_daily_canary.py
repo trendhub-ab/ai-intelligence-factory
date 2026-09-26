@@ -45,6 +45,8 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Show HN: I couldn't deal with another Claude Code tab",
     "Revelations of dozens more platforms hit by OpenAI agents",
     "RAPID: Robot Agentic Programming from Demonstrations",
+    "Minimally Invasive Steering of Language Models",
+    "PoEM: Predicting RL Outcomes from Existing Policies",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -57,6 +59,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30217",
     "abc.net.au/news/2026-09-26/openai-review-rogue-agents-australia-medicare-hack/107199074",
     "2609.30249",
+    "2609.30226",
 })
 
 
