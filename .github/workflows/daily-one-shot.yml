@@ -28,6 +28,7 @@ on:
           - production_e2e_validation
           - stale_ready_batch_revalidation
           - local_skills_canary_validation
+          - local_skills_production_validation
       editorial_style:
         description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone; duo_narrative = フェルン×クレハ'
         required: true
@@ -81,7 +82,7 @@ jobs:
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
           case "${{ inputs.mode }}" in
-            full|article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|stale_ready_batch_revalidation|local_skills_canary_validation) ;;
+            full|article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|stale_ready_batch_revalidation|local_skills_canary_validation|local_skills_production_validation) ;;
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
           case "${{ inputs.editorial_style }}" in
@@ -124,12 +125,13 @@ jobs:
         run: python -m unittest tests.test_temporary_provider_exclusion -v
 
       - name: 通常Production entrypointを1回だけ実行
-        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'production_e2e_validation' || inputs.mode == 'stale_ready_batch_revalidation' || inputs.mode == 'local_skills_canary_validation' }}
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'production_e2e_validation' || inputs.mode == 'stale_ready_batch_revalidation' || inputs.mode == 'local_skills_canary_validation' || inputs.mode == 'local_skills_production_validation' }}
         run: python production_pipeline.py
         env:
           TZ: 'Asia/Tokyo'
           AIIF_RUN_MODE: ${{ inputs.mode }}
           AIIF_LOCAL_SKILLS_CANARY: ${{ inputs.mode == 'local_skills_canary_validation' }}
+          AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION: ${{ inputs.mode == 'local_skills_production_validation' }}
           PRODUCTION_E2E_PREPARE_ONLY: ${{ inputs.e2e_prepare_only }}
           AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}
           APIFY_TOKEN: ${{ inputs.mode == 'full' && secrets.APIFY_TOKEN || '' }}
@@ -464,6 +466,10 @@ jobs:
           fi
           if [ "${VALIDATION_MODE:-}" = "local_skills_canary_validation" ]; then
             echo "Local Skills fresh canary is measurement-only: downstream synchronization skipped."
+            exit 0
+          fi
+          if [ "${VALIDATION_MODE:-}" = "local_skills_production_validation" ]; then
+            echo "Local Skills Production validation persists the article/Ready state but forbids downstream note synchronization in this stage."
             exit 0
           fi
           if [ -z "${GH_TOKEN:-}" ]; then
