@@ -113,7 +113,7 @@ def test_evidence_boundary_removes_derived_currency_but_keeps_supported_latency(
     assert "0.30秒" in bounded
     assert "0.02" not in bounded
     assert "約0.02円" not in result["parsed"]["note_draft"]
-    assert result["evidence_boundary_version"] == "stage8-v2"
+    assert result["evidence_boundary_version"] == "stage8-v3"
     assert result["evidence_boundary"]["removed_count"] == 1
     assert result["evidence_boundary"]["removed_unsupported_numeric_claims"] == [
         {"field": "decision_reason", "claim": "約0.02円"}
@@ -164,3 +164,29 @@ def test_writer_explains_mcp_and_agent_skills_and_uses_complete_negative_fit_sen
     assert "Model Context Protocol (MCP)（AIと外部ツールやデータを接続する共通規格）" in article
     assert "Agent Skills（AIに特定作業の手順や知識を追加する仕組み）" in article
     assert "向いていないのは、" in article
+
+
+
+def test_evidence_boundary_matches_fact_gate_currency_surface_fail_closed():
+    snapshot = _snapshot()
+    snapshot["why_important"] = "計算費用は約100ドルから2000ドルです。"
+    result = compile_snapshot(
+        snapshot,
+        evidence_context=(
+            "The benchmark measured 7x. The reported cost range was $100 to $2,000."
+        ),
+    )
+    article = result["parsed"]["note_draft"]
+    assert "100ドル" not in article
+    assert "2000ドル" not in article
+    assert result["evidence_boundary"]["removed_count"] == 2
+
+
+def test_evidence_boundary_keeps_fact_gate_equivalent_seconds_surface():
+    snapshot = _snapshot()
+    snapshot["decision_reason"] = "処理時間は0.30秒です。"
+    result = compile_snapshot(
+        snapshot,
+        evidence_context="The benchmark measured 7x and latency was 0.30 seconds.",
+    )
+    assert "0.30秒" in result["parsed"]["note_draft"]
