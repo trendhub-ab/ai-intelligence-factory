@@ -296,7 +296,7 @@ def run(pipeline: Any) -> dict[str, Any]:
         if local_skills_production:
             compile_meta = dict(getattr(pipeline, "_LOCAL_SKILLS_PRODUCTION_LAST_COMPILE", {}) or {})
             result["local_skills_compile"] = compile_meta
-            if not compile_meta:
+            if report and not compile_meta:
                 raise RuntimeError("Local Skills Production validation reached persistence path without frozen compiler metadata")
         result["ready"] = 1 if report else 0
         if not report:
