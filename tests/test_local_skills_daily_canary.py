@@ -65,7 +65,10 @@ def test_workflow_canary_is_measurement_only_and_never_fans_out():
     assert "- local_skills_canary_validation" in workflow
     assert "AIIF_LOCAL_SKILLS_CANARY:" in workflow
     assert "Local Skills fresh canary is measurement-only: downstream synchronization skipped." in workflow
-    assert "inputs.mode == 'local_skills_canary_validation' && github.ref_name || 'main'" in workflow
+    assert "if: ${{ inputs.mode != 'local_skills_canary_validation' }}" in workflow
+    assert "ref: main" in workflow
+    assert "if: ${{ inputs.mode == 'local_skills_canary_validation' }}" in workflow
+    assert "ref: ${{ github.ref_name }}" in workflow
 
 
 def test_pipeline_canary_fails_closed_on_persistence_attempt():
