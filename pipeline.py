@@ -3573,11 +3573,28 @@ EVIDENCE_INSUFFICIENT = "INSUFFICIENT"
 
 
 def classify_action_risk_tier(action_text: str) -> str:
-    """記事に実際に書かれたActionをLOW/MEDIUM/HIGHへ意味ベースで分類する。"""
+    """記事に実際に書かれたActionをLOW/MEDIUM/HIGHへ意味ベースで分類する。
+
+    「本番移行は見送る」のように高リスク行為を明示的に否定する文は、
+    その行為を要求していないためHIGHへ昇格させない。
+    """
     text = action_text or ""
-    if re.search(r"全面(?:導入|移行|改修)|全社(?:導入|展開)|本番(?:移行|全面導入)|大規模(?:投資|導入)|セキュリティ境界.{0,12}(?:変更|改修)", text, re.I):
+
+    def _has_positive(pattern: str) -> bool:
+        for match in re.finditer(pattern, text, re.I):
+            window = text[match.start(): min(len(text), match.end() + 24)]
+            if re.search(
+                r"(?:見送|行わない|実施しない|導入しない|移行しない|避け|控え|禁止|停止|保留|延期|急がない|しない)",
+                window,
+                re.I,
+            ):
+                continue
+            return True
+        return False
+
+    if _has_positive(r"全面(?:導入|移行|改修)|全社(?:導入|展開)|本番(?:移行|全面導入)|大規模(?:投資|導入)|セキュリティ境界.{0,12}(?:変更|改修)"):
         return "HIGH"
-    if re.search(r"既存設計.{0,12}(?:変更|改修)|限定(?:ユーザー|利用者).{0,12}導入|運用プロセス.{0,12}変更|小規模(?:本番|導入)", text, re.I):
+    if _has_positive(r"既存設計.{0,12}(?:変更|改修)|限定(?:ユーザー|利用者).{0,12}導入|運用プロセス.{0,12}変更|小規模(?:本番|導入)"):
         return "MEDIUM"
     return "LOW"
 
