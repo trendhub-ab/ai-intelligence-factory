@@ -88,9 +88,12 @@ def test_candidate_is_idempotent():
     assert second["canonicalized_snapshot"] == first["canonicalized_snapshot"]
 
 
-def test_production_is_not_wired_to_local_skills_candidate():
-    # Stage 7 packages the frozen candidate only.  Production behavior must stay
-    # byte-semantically independent until a fresh untouched holdout validates it.
-    for path in (ROOT / "pipeline.py", ROOT / "production_pipeline.py"):
-        text = path.read_text(encoding="utf-8")
-        assert "local_skills" not in text
+def test_local_skills_wiring_is_canary_only_and_fail_closed():
+    # Stage 8 deliberately wires the frozen candidate only behind the explicit
+    # measurement-only canary. Normal Production must not enable it implicitly.
+    pipeline_text = (ROOT / "pipeline.py").read_text(encoding="utf-8")
+    production_text = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+    assert 'os.environ.get("AIIF_LOCAL_SKILLS_CANARY", "false")' in pipeline_text
+    assert 'if local_skills_canary and persist_results:' in pipeline_text
+    assert 'local_skills_canary_validation' in production_text
+    assert 'from local_skills_daily_canary import run' in production_text
