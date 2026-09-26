@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Mapping
 
-EVIDENCE_BOUNDARY_VERSION = "stage8-v4"
+EVIDENCE_BOUNDARY_VERSION = "stage9-v4"
 
 PUBLICATION_FIELDS = (
     "source_summary",
@@ -87,6 +87,68 @@ _VAGUE_TEMPORAL_EVIDENCE = {
     "数月": r"(?:several|a\s+few)\s+months",
     "数年": r"(?:several|a\s+few)\s+years",
 }
+
+_STAGE_SINGLE_GPU_TRAINING_EVIDENCE_RE = re.compile(
+    r"(?:single\s+gpu|one\s+gpu).{0,180}(?:simulat|train|learn)|"
+    r"(?:simulat|train|learn).{0,180}(?:single\s+gpu|one\s+gpu)",
+    re.I | re.S,
+)
+_STAGE_HARDWARE_DEPLOYMENT_EVIDENCE_RE = re.compile(
+    r"(?:hardware\s+deployment|real\s+(?:unitree\s+)?go2|real[- ]world|"
+    r"zero[- ]shot.{0,100}(?:real|hardware))",
+    re.I | re.S,
+)
+_STAGE_DISTILLATION_EVIDENCE_RE = re.compile(
+    r"(?:distilled\s+policy|distill(?:ed|ation).{0,100}(?:policy|deployment|transfer))",
+    re.I | re.S,
+)
+_STAGE_ZERO_SHOT_EVIDENCE_RE = re.compile(
+    r"zero[- ]shot.{0,120}(?:real|hardware|unitree|go2|transfer|deployment)",
+    re.I | re.S,
+)
+_STAGE_FUSED_SENTENCE_RE = re.compile(
+    r"(?:(?:1台|単一|single|one).{0,10}GPU|GPU.{0,10}(?:1台|single|one))"
+    r"[^。！？!?\n]{0,120}(?:実機|実ロボット|real\s+(?:robot|go2)|hardware)"
+    r"[^。！？!?\n]{0,80}|"
+    r"(?:実機|実ロボット|real\s+(?:robot|go2)|hardware)"
+    r"[^。！？!?\n]{0,120}(?:(?:1台|単一|single|one).{0,10}GPU|GPU.{0,10}(?:1台|single|one))",
+    re.I,
+)
+
+
+def _repair_stage_boundary(value: str, evidence_context: str) -> tuple[str, int]:
+    """Restore a proven training/deployment boundary before publication."""
+    text = _clean(value)
+    evidence = str(evidence_context or "")
+    if not text:
+        return text, 0
+    if not _STAGE_SINGLE_GPU_TRAINING_EVIDENCE_RE.search(evidence):
+        return text, 0
+    if not _STAGE_HARDWARE_DEPLOYMENT_EVIDENCE_RE.search(evidence):
+        return text, 0
+
+    replacement = "一次情報では、単一GPUはシミュレーション上の学習条件として示されています。"
+    if _STAGE_DISTILLATION_EVIDENCE_RE.search(evidence):
+        if _STAGE_ZERO_SHOT_EVIDENCE_RE.search(evidence):
+            replacement += "実機へのゼロショット転移は、蒸留したポリシーを用いる別工程として報告されています。"
+        else:
+            replacement += "実機展開は、蒸留したポリシーを用いる別工程として報告されています。"
+    elif _STAGE_ZERO_SHOT_EVIDENCE_RE.search(evidence):
+        replacement += "実機へのゼロショット転移は、学習とは別工程として報告されています。"
+    else:
+        replacement += "実機展開は、学習とは別工程として報告されています。"
+
+    repaired = 0
+    pieces = re.split(r"(?<=[。！？!?])", text)
+    out: list[str] = []
+    for piece in pieces:
+        if _STAGE_FUSED_SENTENCE_RE.search(piece):
+            out.append(replacement)
+            repaired += 1
+        else:
+            out.append(piece)
+    return _clean("".join(out)), repaired
+
 
 
 def _vague_temporal_supported(token: str, evidence_context: str) -> bool:
@@ -253,10 +315,19 @@ def apply_evidence_boundary(
     evidence_claims = _evidence_claim_keys(evidence_context)
     fact_normalized_evidence = _fact_numeric_normalize(evidence_context)
     removed_rows: list[dict[str, str]] = []
+    repaired_stage_fusion_rows: list[dict[str, str]] = []
 
     for field in PUBLICATION_FIELDS:
         raw_value = out.get(field, "")
-        sanitized, removed = _sanitize_field(field, raw_value, evidence_claims)
+        stage_repaired, stage_repair_count = _repair_stage_boundary(
+            _clean(raw_value), evidence_context
+        )
+        if stage_repair_count:
+            repaired_stage_fusion_rows.append({
+                "field": field,
+                "repair": "training_and_hardware_deployment_separated",
+            })
+        sanitized, removed = _sanitize_field(field, stage_repaired, evidence_claims)
         # Unit-class compatibility is necessary but not sufficient: Fact Gate
         # intentionally does not equate every semantically similar currency
         # notation (for example "$100" and "100ドル"). Fail closed here so the
@@ -298,4 +369,6 @@ def apply_evidence_boundary(
         "version": EVIDENCE_BOUNDARY_VERSION,
         "removed_unsupported_numeric_claims": removed_rows,
         "removed_count": len(removed_rows),
+        "repaired_stage_fusion": repaired_stage_fusion_rows,
+        "repaired_stage_fusion_count": len(repaired_stage_fusion_rows),
     }
