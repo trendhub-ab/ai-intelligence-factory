@@ -26,19 +26,23 @@ MAX_SCREENING = 60
 # informed validation or repair. Runs 36207549802 / 36208127057 informed canary
 # orchestration. The later PASS article and Jevmem FAIL are also now observed:
 # Jevmem directly informed the evidence/accessibility repair and may be used only
-# as contaminated repair regression, never as a new fresh-validation claim.
+# as contaminated repair regression. Build Plugins validated the repaired v4 stack,
+# then informed v4.1 hardening. "Yes, Claude can do nine loops" is the first fresh
+# all-Gate PASS for v4.1. All observed records are excluded from future fresh claims.
 OBSERVED_CANARY_NAMES = frozenset({
     "LLM Agents Can Easily Tamper With Their Own Traces",
     "U.S. appeals court upholds designation of Anthropic as supply chain risk",
     "My coding agent pushed a commit deleting every file on main",
     "Jevmem – automatic project memory for Claude Code, built on Jev",
     "Build Plugins for Claude",
+    "Yes, Claude can do nine loops",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
     "dev.karakun.com/2026/08/28/coding-agent-pushed-deletion-to-main.html",
     "Avinash-jetwani/jevmem",
     "claude.com/blog/build-plugins-for-claude",
+    "anthropic.com/research/yes-claude-can-do-nine-loops",
 })
 
 
