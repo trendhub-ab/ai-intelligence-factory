@@ -60,18 +60,51 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             "error_type": error_type,
         }
 
-    def test_cold_start_is_36_then_35_then_37_then_38(self):
+    def test_cold_start_contains_all_six_health_routed_article_models(self):
         module, _, _ = self._fake_pipeline()
         run260.install(module)
         self.assertEqual(
-            module.DEEP_DIVE_MODEL_POOL[:4],
+            module.DEEP_DIVE_MODEL_POOL[:6],
             [
                 "gemini-3.6-flash",
                 "gemini-3.5-flash",
                 "gemini-3.7-flash",
                 "gemini-3.8-flash",
+                "gemini-3-flash-preview",
+                "gemini-2.5-flash",
             ],
         )
+        self.assertEqual(set(module.DEEP_DIVE_MODEL_POOL[:6]), set(run260.ARTICLE_MODELS))
+
+    def test_new_models_participate_in_health_ranking(self):
+        history = [
+            self._row("gemini-3.6-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.5-flash", "error", error_type="ReadTimeout"),
+            self._row("gemini-3.7-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3.8-flash", "error", error_type="ServiceUnavailable"),
+            self._row("gemini-3-flash-preview", "success"),
+            self._row("gemini-3-flash-preview", "success"),
+            self._row("gemini-2.5-flash", "success"),
+        ]
+        ranked = run260._health_ranked_pool(list(run260.DEFAULT_DEEP_DIVE_POOL), history)
+        self.assertEqual(ranked[0], "gemini-3-flash-preview")
+        self.assertEqual(ranked[1], "gemini-2.5-flash")
+
+    def test_new_model_budgets_are_explicit_and_capped_at_18(self):
+        module, _, _ = self._fake_pipeline()
+        with patch.dict(
+            os.environ,
+            {
+                "GEMINI_3_FLASH_DAILY_BUDGET": "999",
+                "GEMINI_25_FLASH_DAILY_BUDGET": "999",
+            },
+            clear=False,
+        ):
+            run260.install(module)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3-flash-preview"], 18)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-2.5-flash"], 18)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3-flash-preview"], 18)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-2.5-flash"], 18)
 
     def test_quality_retry_cold_start_prefers_36_then_35_and_stays_bounded(self):
         module, calls, _ = self._fake_pipeline()
