@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import local_skills_daily_canary as daily_canary
 import production_pipeline
-from local_skills.production_canary import apply_to_production_parsed, build_snapshot\nfrom local_skills.evidence_boundary import apply_evidence_boundary
+from local_skills.production_canary import apply_to_production_parsed, build_snapshot
+from local_skills.evidence_boundary import apply_evidence_boundary
 
 
 ROOT = Path(__file__).resolve().parents[1]
