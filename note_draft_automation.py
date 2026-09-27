@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import base64
 import html
+import hashlib
 import json
 import os
 import re
@@ -32,6 +33,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 import note_ready_sync as ready_sync
+import eyecatch_publication_contract as eyecatch_contract
 
 
 NOTE_NEW_URL = os.environ.get("NOTE_NEW_URL", "https://note.com/new").strip() or "https://note.com/new"
@@ -233,7 +235,23 @@ def _eyecatch_url(source_page: dict) -> str:
     return ""
 
 
-def _download_eyecatch(url: str, sync_id: str) -> Path:
+def _download_eyecatch(url: str, sync_id: str, public_title: str) -> Path:
+    try:
+        eyecatch_contract.require_current_asset_url(url, public_title)
+        sidecar_url = eyecatch_contract.manifest_url(url)
+    except eyecatch_contract.EyecatchContractError as exc:
+        raise NoteDraftError(str(exc)) from exc
+
+    manifest_response = requests.get(sidecar_url, timeout=20)
+    if manifest_response.status_code != 200:
+        raise NoteDraftError(f"Eyecatch manifest download failed: HTTP {manifest_response.status_code}")
+    try:
+        manifest = manifest_response.json()
+    except Exception as exc:
+        raise NoteDraftError("Eyecatch manifest is not valid JSON") from exc
+    if not eyecatch_contract.validate_manifest_metadata(manifest, public_title):
+        raise NoteDraftError("Eyecatch manifest is stale or belongs to another public title")
+
     parsed = urlparse(url)
     if parsed.scheme != "https":
         raise NoteDraftError("Eyecatch URL must use HTTPS")
@@ -255,6 +273,11 @@ def _download_eyecatch(url: str, sync_id: str) -> Path:
     if total < 1024:
         target.unlink(missing_ok=True)
         raise NoteDraftError("Downloaded eyecatch is unexpectedly small")
+    expected_sha = str(manifest.get("image_sha256") or "")
+    actual_sha = eyecatch_contract.image_sha256(target)
+    if not hashlib.compare_digest(expected_sha, actual_sha):
+        target.unlink(missing_ok=True)
+        raise NoteDraftError("Eyecatch image bytes do not match the current manifest")
     return target
 
 
@@ -788,7 +811,9 @@ def run(*, confirm: str, requested_sync_id: str = "", prepare_only: bool = False
     if prepare_only:
         return result
 
-    eyecatch_path = _download_eyecatch(article["eyecatch_url"], article["sync_id"])
+    eyecatch_path = _download_eyecatch(
+        article["eyecatch_url"], article["sync_id"], article["title"]
+    )
     storage_path = _decode_storage_state()
     try:
         draft_url = _create_browser_draft(article["title"], article["manuscript"], eyecatch_path, storage_path)
