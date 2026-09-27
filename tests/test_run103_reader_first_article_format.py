@@ -138,6 +138,23 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         self.assertIn("### 結論として、いま取る距離感。", manuscript)
         self.assertIn("最終判断は限定検証です。", manuscript)
 
+    def test_human_appeal_opening_skips_title_and_fixed_reader_summary(self):
+        article = (
+            "# 記事タイトル\n\n"
+            "## どんな内容？\n\n要約です。\n\n"
+            "## なぜ重要？\n\n重要性です。\n\n"
+            "## 結論は？\n\n判断です。\n\n"
+            "### 元情報\n"
+            "- **主一次情報**: [Source](https://example.com)\n"
+            "- **発見経路**: Hacker News\n\n"
+            "もしAIにコード修正を任せたとき、何が変わったか追えなければ困ります。\n\n"
+            "## 詳細\n本文です。"
+        )
+        opening = pipeline._article_opening_excerpt(article)
+        self.assertTrue(opening.startswith("もしAIにコード修正を任せたとき"))
+        self.assertNotIn("どんな内容？", opening)
+        self.assertNotIn("主一次情報", opening)
+
     def test_reader_summary_compaction_does_not_create_new_claims(self):
         source = "確認できた事実です。これは二文目です。"
         compact = pipeline._compact_reader_summary(source)
