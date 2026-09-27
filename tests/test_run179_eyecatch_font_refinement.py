@@ -57,16 +57,17 @@ class Run179EyecatchFontRefinementTests(unittest.TestCase):
 
     def test_install_patches_only_font_resolution_contract(self):
         class FakePipeline:
-            pass
+            SYNTHETIC_REGRESSION_MODE = True
 
         original_jp = ee._jp_font
         original_latin = ee._latin_font
         fake = FakePipeline()
         try:
             run179.install(fake)
-            self.assertIs(ee._jp_font, run179._jp_font_by_role)
+            self.assertIsNot(ee._jp_font, run179._jp_font_by_role)
             self.assertIs(ee._latin_font, run179.latin_ui_font)
             self.assertTrue(fake._RUN179_EYECATCH_FONT_REFINEMENT_INSTALLED)
+            self.assertTrue(fake.RUN179_EYECATCH_JP_FONT_FAIL_CLOSED)
             self.assertEqual(fake.RUN179_EYECATCH_TITLE_FONT, "Noto Sans JP Black (wght=900)")
             self.assertEqual(fake.RUN179_EYECATCH_SUBTITLE_FONT, "Noto Sans JP Medium (wght=500)")
             self.assertEqual(fake.RUN179_EYECATCH_LATIN_FONT, "Inter Bold (wght=700)")
@@ -74,9 +75,44 @@ class Run179EyecatchFontRefinementTests(unittest.TestCase):
             ee._jp_font = original_jp
             ee._latin_font = original_latin
 
+    def test_production_font_resolution_fails_closed_without_japanese_assets(self):
+        class FakePipeline:
+            SYNTHETIC_REGRESSION_MODE = False
+
+        original_jp = ee._jp_font
+        original_latin = ee._latin_font
+        fake = FakePipeline()
+        try:
+            with patch.object(run179, "_jp_font_assets_available", return_value=False):
+                run179.install(fake)
+                with self.assertRaisesRegex(RuntimeError, "Japanese eyecatch font is unavailable"):
+                    ee._jp_font(64, bold=True)
+        finally:
+            ee._jp_font = original_jp
+            ee._latin_font = original_latin
+
+    def test_production_font_resolution_uses_noto_when_available(self):
+        class FakePipeline:
+            SYNTHETIC_REGRESSION_MODE = False
+
+        original_jp = ee._jp_font
+        original_latin = ee._latin_font
+        fake = FakePipeline()
+        marker = object()
+        try:
+            with patch.object(run179, "_jp_font_assets_available", return_value=True), patch.object(
+                run179, "_jp_font_by_role", return_value=marker
+            ) as router:
+                run179.install(fake)
+                self.assertIs(ee._jp_font(64, bold=True), marker)
+                router.assert_called_once_with(64, bold=True)
+        finally:
+            ee._jp_font = original_jp
+            ee._latin_font = original_latin
+
     def test_renderer_contract_remains_1280x670_rgb_without_network(self):
         class FakePipeline:
-            pass
+            SYNTHETIC_REGRESSION_MODE = True
 
         original_jp = ee._jp_font
         original_latin = ee._latin_font
