@@ -288,6 +288,55 @@ def _ascii_token_split(lines: list[str]) -> bool:
     return False
 
 
+COMPLETE_FALLBACK_TITLE_MIN_FONT = 44
+
+
+def _fit_complete_title_lines(draw: ImageDraw.ImageDraw, clean: str) -> tuple[int, list[str]] | None:
+    """Fit the complete bounded public title without rewriting, ellipsis, or ASCII token splits."""
+    canonical = r178._canonical_partition_text(clean)
+    if not canonical:
+        return None
+
+    length = len(clean)
+    for size in range(50, COMPLETE_FALLBACK_TITLE_MIN_FONT - 1, -2):
+        font = ee._jp_font(size, bold=True)
+        best: tuple[float, list[str]] | None = None
+
+        def consider(lines: list[str]) -> None:
+            nonlocal best
+            if not 1 <= len(lines) <= 3 or any(not line for line in lines):
+                return
+            if r178._canonical_partition_text("".join(lines)) != canonical:
+                return
+            if not r178._kinsoku_ok(lines) or _ascii_token_split(lines):
+                return
+            widths = [ee._text_width(draw, line, font) for line in lines]
+            if any(width > TITLE_MAX_WIDTH for width in widths):
+                return
+            # Prefer visually balanced rows while mildly penalizing a very short final row.
+            balance = max(widths) - min(widths)
+            last_penalty = max(0.0, (sum(widths) / len(widths)) * 0.55 - widths[-1])
+            score = balance + last_penalty
+            if best is None or score < best[0]:
+                best = (score, lines)
+
+        consider([clean.strip()])
+        for i in range(2, max(2, length - 1)):
+            left = clean[:i].strip()
+            right = clean[i:].strip()
+            consider([left, right])
+        for i in range(2, max(2, length - 3)):
+            for j in range(i + 2, length - 1):
+                first = clean[:i].strip()
+                second = clean[i:j].strip()
+                third = clean[j:].strip()
+                consider([first, second, third])
+
+        if best is not None:
+            return size, best[1]
+    return None
+
+
 def _deterministic_complete_title_plan(title: str, summary: str) -> dict[str, Any] | None:
     """Build a zero-provider fallback that never truncates a bounded eyecatch title.
 
@@ -304,20 +353,10 @@ def _deterministic_complete_title_plan(title: str, summary: str) -> dict[str, An
 
     probe = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (255, 255, 255))
     draw = ImageDraw.Draw(probe)
-    fitted_font, title_lines = ee._fit_headline(
-        draw,
-        clean,
-        max_width=TITLE_MAX_WIDTH,
-        max_lines=3,
-    )
-    if not title_lines:
+    fitted = _fit_complete_title_lines(draw, clean)
+    if fitted is None:
         return None
-    if r178._canonical_partition_text("".join(title_lines)) != canonical:
-        return None
-    if not r178._kinsoku_ok(title_lines) or _ascii_token_split(title_lines):
-        return None
-
-    title_size = int(getattr(fitted_font, "size", 48))
+    title_size, title_lines = fitted
     subheadline = ee.editorial_subheadline(summary, clean)
     sub_size = 24
     sub_font = ee._jp_font(sub_size, bold=True)
