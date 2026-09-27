@@ -103,7 +103,9 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: xvfb-run -a python run_vtcode_body_only_draft_update.py | tee "${RUNNER_TEMP}/vtcode-body-update.json"
+        run: |
+          set -o pipefail
+          xvfb-run -a python run_vtcode_body_only_draft_update.py | tee "${RUNNER_TEMP}/vtcode-body-update.json"
       - name: Verify body-only result
         env:
           RESULT_FILE: ${{ runner.temp }}/vtcode-body-update.json
