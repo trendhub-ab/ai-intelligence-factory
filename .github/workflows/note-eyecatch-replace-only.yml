@@ -1,9 +1,7 @@
 name: Verify existing note eyecatch replacement only
 
 on:
-  push:
-    branches:
-      - test/note-eyecatch-replace-only-20260927
+  workflow_dispatch:
 
 permissions:
   contents: read
