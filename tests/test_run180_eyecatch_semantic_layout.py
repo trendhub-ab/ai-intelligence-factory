@@ -68,6 +68,36 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertEqual("データ開発を変える。", validated["highlight_text"])
         self.assertGreaterEqual(validated["title_font_size"], 52)
 
+    def test_validation_rejects_openai_title_cut_off_at_comma(self):
+        source_title = "AIの巨人はどこから生まれたのか。2015年、非営利スタートアップ「OpenAI」が掲げた理想と出発点。"
+        bad_title = "AIの巨人はどこから生まれたのか。2015年、"
+        plan = {
+            "eyecatch_title": bad_title,
+            "title_lines": ["AIの巨人は", "どこから生まれたのか。", "2015年、"],
+            "title_font_size": 60,
+            "title_line_gap": 12,
+            "subheadline_lines": ["原点を読む。"],
+            "subheadline_font_size": 24,
+            "highlight_text": "2015年、",
+        }
+        self.assertIsNone(run180._validate_layout_plan(source_title, "原点を読む。", plan))
+
+    def test_validation_accepts_complete_openai_visual_copy(self):
+        source_title = "AIの巨人はどこから生まれたのか。2015年、非営利スタートアップ「OpenAI」が掲げた理想と出発点。"
+        good_title = "OpenAI、2015年の原点。"
+        plan = {
+            "eyecatch_title": good_title,
+            "title_lines": ["OpenAI、", "2015年の原点。"],
+            "title_font_size": 68,
+            "title_line_gap": 12,
+            "subheadline_lines": ["原点を読む。"],
+            "subheadline_font_size": 24,
+            "highlight_text": "2015年の原点。",
+        }
+        validated = run180._validate_layout_plan(source_title, "原点を読む。", plan)
+        self.assertIsNotNone(validated)
+        self.assertEqual(good_title, validated["eyecatch_title"])
+
     def test_validation_rejects_title_lines_that_rewrite_eyecatch_title(self):
         source_title = "AIは重要。でも正直、もう追いきれない。"
         subheadline = "必要な変化だけを見る。"
@@ -203,6 +233,8 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertIn("理想15〜45文字", prompt)
         self.assertIn("SEO用の記事タイトルとアイキャッチ用タイトルは同一でなくてよい", prompt)
         self.assertIn("52〜76px", prompt)
+        self.assertIn("自然な独立コピーとして意味が完結", prompt)
+        self.assertIn("元タイトルの前半を文字数で切り取っただけの断片は禁止", prompt)
         self.assertIn("画像、イラスト、背景、カテゴリ、日付、ロゴ、ビジュアル構造には一切触れない", prompt)
 
     def test_subheadline_and_visual_fallback_paths_remain_existing_contract(self):
