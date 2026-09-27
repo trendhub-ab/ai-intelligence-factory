@@ -85,6 +85,42 @@ def _find_header_add_control(page: Any) -> Any:
     hovered = run186._candidate_header_control(page)
     if hovered is not None:
         return hovered
+    # When a cover already exists, note may place its image control at the
+    # top of the cover, hundreds of pixels above the title. Anchor it inside
+    # the unique large cover image rather than widening title-only geometry.
+    title = base._find_title(page)
+    title_box = title.bounding_box()
+    if title_box:
+        cover_images = page.locator('img')
+        covers: list[dict[str, float]] = []
+        for index in range(min(cover_images.count(), 70)):
+            item = cover_images.nth(index)
+            try:
+                box = item.bounding_box()
+                if item.is_visible(timeout=120) and box and float(box['width']) >= 420 and float(box['height']) >= 140 and float(box['y']) < float(title_box['y']):
+                    covers.append(box)
+            except Exception:
+                continue
+        if len(covers) == 1:
+            cover = covers[0]
+            candidates = page.locator('button[aria-label*="画像"], [role="button"][aria-label*="画像"]')
+            matched = []
+            for index in range(min(candidates.count(), 30)):
+                item = candidates.nth(index)
+                try:
+                    box = item.bounding_box()
+                    semantic = _semantic_text(item)
+                    if not item.is_visible(timeout=120) or not box or any(token in semantic for token in _REJECT_CONTROL_TERMS):
+                        continue
+                    center_x = float(box['x']) + float(box['width']) / 2
+                    center_y = float(box['y']) + float(box['height']) / 2
+                    if (float(cover['x']) <= center_x <= float(cover['x']) + float(cover['width'])
+                            and float(cover['y']) <= center_y <= float(cover['y']) + float(cover['height'])):
+                        matched.append(item)
+                except Exception:
+                    continue
+            if len(matched) == 1:
+                return matched[0]
     title = base._find_title(page)
     try:
         title_box = title.bounding_box()
