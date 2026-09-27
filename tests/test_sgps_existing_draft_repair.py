@@ -107,6 +107,7 @@ class SGPSExistingDraftRepairContractTests(unittest.TestCase):
                 self.assertNotIn(forbidden, source)
         self.assertIn("_recent_private_edit_urls", source)
         self.assertIn("_same_edit_route(existing_url, saved_url)", source)
+        self.assertIn("_body_manuscript_for_note", source)
 
     def test_repair_artifact_contains_sources_before_cta(self):
         body = repair.load_manuscript()
