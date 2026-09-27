@@ -53,9 +53,12 @@ _LAYOUT_RESPONSE_SCHEMA = {
 }
 
 _STOP_LATIN_TOKENS = {
-    "a", "an", "and", "are", "at", "by", "for", "from", "how", "in", "into", "is",
+    "a", "an", "and", "are", "at", "before", "by", "for", "from", "how", "in", "into", "is",
     "new", "now", "of", "on", "or", "the", "to", "with", "what", "why", "introducing",
 }
+_ELLIPSIS_RE = re.compile(r"(?:\.\.\.|…)")
+_LATIN_HIGHLIGHT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.+\-/]*")
+_JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 
 
 def _parse_plan_response(response: Any) -> dict[str, Any] | None:
@@ -168,7 +171,7 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
 
 
 def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value: Any) -> str:
-    """Allow one exact, restrained contiguous emphasis phrase; otherwise disable color only."""
+    """Allow one exact semantic emphasis phrase; weak fragments silently stay navy."""
     if not isinstance(value, str):
         return ""
     highlight = value.strip()
@@ -183,6 +186,30 @@ def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value:
         return ""
     if len(canonical) / len(total) > 0.70:
         return ""
+    if _ELLIPSIS_RE.search(highlight):
+        return ""
+
+    if not _JAPANESE_RE.search(highlight):
+        tokens = _LATIN_HIGHLIGHT_TOKEN_RE.findall(highlight)
+        lowered = [token.casefold() for token in tokens]
+        if not tokens:
+            return ""
+        if lowered[0] in _STOP_LATIN_TOKENS or lowered[-1] in _STOP_LATIN_TOKENS:
+            return ""
+        if len(tokens) == 1:
+            return ""
+        looks_name_only = all(
+            token.isupper() or (token[:1].isupper() and token[1:].isalnum())
+            for token in tokens
+        )
+        if looks_name_only:
+            return ""
+        meaningful = [
+            token for token in tokens
+            if token.casefold() not in _STOP_LATIN_TOKENS and len(token) >= 4
+        ]
+        if not meaningful:
+            return ""
     return highlight
 
 
