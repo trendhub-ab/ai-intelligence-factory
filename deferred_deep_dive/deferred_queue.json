@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-27T10:02:33.413828+00:00",
+  "updated_at": "2026-09-27T11:17:27.249688+00:00",
   "items": [
     {
       "key": "https://github.com/rapiddweller/datamimic",
@@ -160,6 +160,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 76.55
+    },
+    {
+      "key": "https://blog.nilesh.io/post/llms-and-jobs",
+      "deferred_at": "2026-09-27T11:17:27.249397+00:00",
+      "expires_at": "2026-10-11T11:17:27.249397+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "The LLM Job Paradox",
+        "originalTitle": "The LLM Job Paradox",
+        "displayName": "The LLM Job Paradox",
+        "sourceLanguage": "en",
+        "url": "https://blog.nilesh.io/post/llms-and-jobs",
+        "description": "The LLM Job Paradox",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-27T07:42:19Z",
+        "sourceContext": "HN points=5 comments=2 matched_query=LLM",
+        "primaryUrl": "https://blog.nilesh.io/post/llms-and-jobs",
+        "sourceDetails": {
+          "hn_id": "49864319",
+          "hn_url": "https://news.ycombinator.com/item?id=49864319",
+          "external_url": "https://blog.nilesh.io/post/llms-and-jobs",
+          "comments": 2,
+          "matched_query": "LLM",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e8479ff-dca9-81a1-9d07-ebb3034d556c",
+      "score": 75,
+      "reason": "エンジニアのキャリアや雇用に関する時流を捉えた議論",
+      "commercial_score": 78,
+      "shelf_life_score": 35,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 76.05
     },
     {
       "key": "https://aisle.com/blog/aisle-discovered-six-curl-cves-after-openai-and-anthropic-found-zero",
@@ -412,6 +449,42 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "INFRA",
       "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp",
+      "deferred_at": "2026-09-27T11:17:27.249536+00:00",
+      "expires_at": "2026-09-29T11:17:27.249536+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Baidu ERNIE — Anthropic API 返回参数input_tokens含义更新",
+        "originalTitle": "Baidu ERNIE — Anthropic API 返回参数input_tokens含义更新",
+        "displayName": "開発支援ツール「Baidu ERNIE — Anthropic API 返回参数input_tokens含义更新」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp?aif_revision=512f5ee2d601b476",
+        "description": "Anthropic API 返回参数input_tokens含义更新",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "Anthropic API 返回参数input_tokens含义更新",
+        "primaryUrl": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp",
+        "sourceDetails": {
+          "vendor": "Baidu ERNIE",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp",
+          "candidate_revision": "512f5ee2d601b476",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e8479ff-dca9-81cf-88ec-ee0fbcb0e118",
+      "score": 70,
+      "reason": "実務上のコスト計算に直結する重要な仕様変更情報",
+      "commercial_score": 75,
+      "shelf_life_score": 30,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 71.75
     },
     {
       "key": "https://github.com/kiritbasu/causal-analyst",
