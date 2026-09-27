@@ -248,10 +248,6 @@ def browser_repair(manuscript: str, *, expected_route: str) -> dict[str, Any]:
         try:
             url = _open_exact_draft(page, profile, expected_route=expected_route)
             old_media = _header_media_identity(page)
-            # Upload through note's official visible header-image control; never use a
-            # hidden posting API or navigate to /new.
-            official_image._upload_header_image(page, IMAGE_PATH,
-                media_changed=lambda: _cover_changed(page, old_media))
             title_field = note_base._set_title(page, NEW_TITLE)
             body = note_base._find_body(page, title_field)
             note_base._paste_manuscript(page, body, manuscript)
@@ -260,6 +256,13 @@ def browser_repair(manuscript: str, *, expected_route: str) -> dict[str, Any]:
             saved = note_base._save_draft_and_verify(page, NEW_TITLE, manuscript, image_required=True)
             if not _same_edit_route(url, saved):
                 raise VTCodeRepairError("Save escaped the existing VT Code private draft")
+            # The title/body are durable before a separate cover replacement. Never
+            # use a hidden posting API or navigate to /new.
+            official_image._upload_header_image(page, IMAGE_PATH,
+                media_changed=lambda: _cover_changed(page, old_media))
+            saved = note_base._save_draft_and_verify(page, NEW_TITLE, manuscript, image_required=True)
+            if not _same_edit_route(url, saved):
+                raise VTCodeRepairError("Cover save escaped the existing VT Code draft")
             metrics = eyecatch.collect_eyecatch_metrics(page, title_locator=note_base._find_title(page))
             if not eyecatch.eyecatch_persistence_confirmed(metrics):
                 raise VTCodeRepairError("Repaired VT Code eyecatch did not persist")

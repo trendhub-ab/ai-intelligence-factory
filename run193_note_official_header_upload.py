@@ -162,7 +162,10 @@ def _find_header_add_control(page: Any) -> Any:
                     }),
                 fileInputs: document.querySelectorAll('input[type="file"]').length,
                 largeMediaAboveTitle: [...document.querySelectorAll('img')]
-                    .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 420 && r.top < titleY; }).length
+                    .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 420 && r.top < titleY; })
+                    .slice(0, 3).map(el => { const r = el.getBoundingClientRect();
+                        return {relativeY: Math.round(r.top - titleY), relativeX: Math.round(r.left),
+                                width: Math.round(r.width), height: Math.round(r.height)}; })
             })""", float(title_box["y"]))
         except Exception:
             diagnostic = {}
