@@ -12,6 +12,7 @@ from typing import Any
 import note_draft_automation as note_base
 import note_ready_sync as ready_sync
 import note_eyecatch_persistence as eyecatch
+import eyecatch_publication_contract as eyecatch_contract
 import publication_contract
 import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as official_image
@@ -26,8 +27,6 @@ CONFIRM_TOKEN = "REPAIR_VTCODE_EXISTING_DRAFT"
 OLD_TITLE = "Show HN: VT Code – My attempt at building a coding-agent harness：いま何を判断材料にするべきか。"
 NEW_TITLE = "VT Code：AIのコード変更をどう確認する？"
 MANUSCRIPT_PATH = Path(__file__).resolve().parent / "repairs/vtcode_publishable_20260927.md"
-IMAGE_PATH = Path(__file__).resolve().parent / "repairs/vtcode_eyecatch_20260927.png"
-IMAGE_URL = "https://raw.githubusercontent.com/trendhub-ab/ai-intelligence-factory/main/repairs/vtcode_eyecatch_20260927.png"
 PRIMARY_URL = "https://github.com/vinhnx/VTCode"
 SOURCE_REVIEW_PATH = Path(__file__).resolve().parent / "repairs/vtcode_source_review_20260927.json"
 
@@ -42,8 +41,6 @@ def load_manuscript() -> str:
         raise VTCodeRepairError("Exact repaired manuscript is missing or malformed")
     if text.count("### Sources / Evidence") != 1 or "※本記事に含まれる見解・提案は" not in text:
         raise VTCodeRepairError("Repaired article lacks complete provenance")
-    if not IMAGE_PATH.is_file() or IMAGE_PATH.stat().st_size < 10000:
-        raise VTCodeRepairError("Repaired eyecatch is missing")
     return text
 
 
@@ -139,13 +136,15 @@ def _source_preflight() -> dict:
 
 
 def sync_corrected_source(manuscript: str) -> None:
-    """Replace only exact article title/eyecatch and append a byte-valid Ready manuscript."""
+    """Replace only the exact public title and append a byte-valid Ready manuscript.
+
+    Eyecatch ownership is separate: this repair must never inject a local/static PNG.
+    """
     page = _source_preflight()
     current = ready_sync._source_current_ready_manuscript(SYNC_ID)
     props = page.get("properties") or {}
-    desired = {"note記事タイトル": {"rich_text": [{"text": {"content": NEW_TITLE}}]},
-               "アイキャッチ": {"files": [{"type": "external", "name": "VT Code corrected eyecatch", "external": {"url": IMAGE_URL}}]}}
-    if ready_sync._text(props.get("note記事タイトル")) != NEW_TITLE or ready_sync._files_url(props.get("アイキャッチ")) != IMAGE_URL:
+    desired = {"note記事タイトル": {"rich_text": [{"text": {"content": NEW_TITLE}}]}}
+    if ready_sync._text(props.get("note記事タイトル")) != NEW_TITLE:
         response = ready_sync._request("PATCH", f"https://api.notion.com/v1/pages/{SYNC_ID}", json={"properties": desired})
         if response.status_code != 200:
             raise VTCodeRepairError("Exact source metadata update failed")
@@ -160,6 +159,19 @@ def sync_corrected_source(manuscript: str) -> None:
     ready_sync.sync_note_ready_db(target_sync_id=SYNC_ID)
     if ready_sync._source_current_ready_manuscript(SYNC_ID) != manuscript:
         raise VTCodeRepairError("Corrected manuscript did not survive current-policy verification")
+
+
+def _current_source_eyecatch_path(source_page: dict) -> Path:
+    props = source_page.get("properties") or {}
+    url = ready_sync._files_url(props.get("アイキャッチ"))
+    try:
+        eyecatch_contract.require_current_asset_url(url, NEW_TITLE)
+    except eyecatch_contract.EyecatchContractError as exc:
+        raise VTCodeRepairError("VT Code eyecatch is stale under the current contract") from exc
+    try:
+        return note_base._download_eyecatch(url, SYNC_ID, NEW_TITLE)
+    except note_base.NoteDraftError as exc:
+        raise VTCodeRepairError("VT Code current eyecatch could not be verified") from exc
 
 
 def _find_exact_existing_draft(page: Any, profile: Path) -> str:
@@ -236,7 +248,7 @@ def draft_preflight() -> str:
             context.close()
 
 
-def browser_repair(manuscript: str, *, expected_route: str) -> dict[str, Any]:
+def browser_repair(manuscript: str, *, expected_route: str, eyecatch_path: Path) -> dict[str, Any]:
     from playwright.sync_api import sync_playwright
     body_manuscript = note_base._body_manuscript_for_note(NEW_TITLE, manuscript)
     run190.install()
@@ -259,7 +271,7 @@ def browser_repair(manuscript: str, *, expected_route: str) -> dict[str, Any]:
                 raise VTCodeRepairError("Save escaped the existing VT Code private draft")
             # The title/body are durable before a separate cover replacement. Never
             # use a hidden posting API or navigate to /new.
-            official_image._upload_header_image(page, IMAGE_PATH,
+            official_image._upload_header_image(page, eyecatch_path,
                 media_changed=lambda: _cover_changed(page, old_media))
             saved = note_base._save_draft_and_verify(page, NEW_TITLE, body_manuscript, image_required=True)
             if not _same_edit_route(url, saved):
@@ -284,7 +296,15 @@ def run(*, confirm: str, prepare_only: bool = False) -> dict[str, Any]:
     manuscript = load_manuscript()
     gates = validate_repaired_manuscript(manuscript)
     state = destination_preflight()
-    _source_preflight()
+    source_page = _source_preflight()
+    # Even prepare-only must prove the source eyecatch belongs to the current public-title
+    # and eyecatch-policy contract. This stops stale/static assets before a VM is started.
+    props = source_page.get("properties") or {}
+    source_eyecatch_url = ready_sync._files_url(props.get("アイキャッチ"))
+    try:
+        eyecatch_contract.require_current_asset_url(source_eyecatch_url, NEW_TITLE)
+    except eyecatch_contract.EyecatchContractError as exc:
+        raise VTCodeRepairError("VT Code eyecatch is stale under the current contract") from exc
     result = {"status": "repair_ready" if prepare_only else "existing_draft_repaired",
               "sync_id": SYNC_ID, "zero_gemini_calls": True, "new_draft_created": False,
               "public_release": False, "publication_gates_passed": True,
@@ -295,7 +315,14 @@ def run(*, confirm: str, prepare_only: bool = False) -> dict[str, Any]:
         route = draft_preflight()
         sync_corrected_source(manuscript)
         destination_preflight()
-        result.update(browser_repair(manuscript, expected_route=route))
+        source_page = _source_preflight()
+        eyecatch_path = _current_source_eyecatch_path(source_page)
+        try:
+            result.update(browser_repair(
+                manuscript, expected_route=route, eyecatch_path=eyecatch_path
+            ))
+        finally:
+            eyecatch_path.unlink(missing_ok=True)
     return result
 
 

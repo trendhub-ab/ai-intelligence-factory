@@ -53,9 +53,12 @@ _LAYOUT_RESPONSE_SCHEMA = {
 }
 
 _STOP_LATIN_TOKENS = {
-    "a", "an", "and", "are", "at", "by", "for", "from", "how", "in", "into", "is",
+    "a", "an", "and", "are", "at", "before", "by", "for", "from", "how", "in", "into", "is",
     "new", "now", "of", "on", "or", "the", "to", "with", "what", "why", "introducing",
 }
+_ELLIPSIS_RE = re.compile(r"(?:\.\.\.|…)")
+_LATIN_HIGHLIGHT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.+\-/]*")
+_JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 
 
 def _parse_plan_response(response: Any) -> dict[str, Any] | None:
@@ -86,14 +89,12 @@ def _parse_plan_response(response: Any) -> dict[str, Any] | None:
 
 
 def _source_title_for_direction(title: str) -> str:
-    """Return clean public source copy without applying the old 34/48-char hook truncation."""
+    """Return the complete approved public title; never manufacture an ellipsis upstream."""
     clean = ee._clean_public_copy(title)
     clean = re.sub(r"^【[^】]{1,28}】\s*", "", clean).strip()
     if not clean:
         return "AIの変化を、わかりやすく。"
-    if len(clean) <= SOURCE_TITLE_MAX_CHARS:
-        return clean
-    return clean[:SOURCE_TITLE_MAX_CHARS].rstrip("、。！？!? ") + "…"
+    return clean
 
 
 def _layout_prompt(source_title: str, subheadline: str) -> str:
@@ -114,6 +115,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - eyecatch_titleはsource_titleの意味を圧縮するだけ。新しい事実、数値、性能、因果、評価、固有名詞を発明しない。
 - 製品名、モデル名、バージョン番号など記事識別に必要な固有情報は維持する。
 - eyecatch_titleは理想15〜45文字、最大52文字。元タイトルがすでに短く強ければ変更しなくてよい。
+- source_titleに存在しない「...」「…」を追加して省略表示にしない。入り切らない場合は意味を保って短く言い換える。
 - 「徹底解説」「完全ガイド」「まとめ」「最新情報」などSEOブログ的な煽り語を新規追加しない。
 - 疑問形・断定形・変化提示のいずれも可。ただしsource_title以上に強い断定へ変えない。
 - title_linesはeyecatch_titleを改行で分割したものだけ。文字の追加・削除・言い換えをtitle_lines側では行わない。
@@ -126,6 +128,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - 短い1文字だけの行を作らない。
 - 行長を機械的に均等化せず、意味のまとまりと視覚的重心を両立する。
 - highlight_textにはeyecatch_title内で最も読者の目を止める「結論・問い・含意」の連続した1フレーズを完全一致で抜き出す。言い換えない。
+- 製品名・モデル名だけ、英文の前置詞/接続詞で始まる断片、省略記号を含む断片はhighlight_textにしない。
 - highlight_textは短すぎる単語だけ、製品名だけ、タイトル全体を避ける。原則として後半の意味ブロックを優先する。
 - 画像、イラスト、背景、カテゴリ、日付、ロゴ、ビジュアル構造には一切触れない。
 - JSON以外は返さない。
@@ -156,6 +159,8 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
         return None
     if re.search(r"https?://|[#*_`>]", title):
         return None
+    if _ELLIPSIS_RE.search(title) and not _ELLIPSIS_RE.search(source_title):
+        return None
 
     # Compression may remove English connective words, but obvious model/product/version
     # identifiers from the source must survive. This catches the most damaging title rewrite
@@ -168,7 +173,7 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
 
 
 def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value: Any) -> str:
-    """Allow one exact, restrained contiguous emphasis phrase; otherwise disable color only."""
+    """Allow one exact semantic emphasis phrase; weak fragments silently stay navy."""
     if not isinstance(value, str):
         return ""
     highlight = value.strip()
@@ -183,6 +188,30 @@ def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value:
         return ""
     if len(canonical) / len(total) > 0.70:
         return ""
+    if _ELLIPSIS_RE.search(highlight):
+        return ""
+
+    if not _JAPANESE_RE.search(highlight):
+        tokens = _LATIN_HIGHLIGHT_TOKEN_RE.findall(highlight)
+        lowered = [token.casefold() for token in tokens]
+        if not tokens:
+            return ""
+        if lowered[0] in _STOP_LATIN_TOKENS or lowered[-1] in _STOP_LATIN_TOKENS:
+            return ""
+        if len(tokens) == 1:
+            return ""
+        looks_name_only = all(
+            token.isupper() or (token[:1].isupper() and token[1:].isalnum())
+            for token in tokens
+        )
+        if looks_name_only:
+            return ""
+        meaningful = [
+            token for token in tokens
+            if token.casefold() not in _STOP_LATIN_TOKENS and len(token) >= 4
+        ]
+        if not meaningful:
+            return ""
     return highlight
 
 

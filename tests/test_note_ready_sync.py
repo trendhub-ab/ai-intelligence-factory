@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import note_ready_sync as sync
 import publication_contract as contract
+import eyecatch_publication_contract as eye_contract
 
 
 def rt(value):
@@ -11,6 +12,11 @@ def rt(value):
 
 def title(value):
     return {"title": [{"type": "text", "plain_text": value, "text": {"content": value}}]}
+
+
+def current_eyecatch_url(public_title):
+    filename = eye_contract.versioned_image_filename("test.png", public_title)
+    return "https://example.com/" + filename
 
 
 def code_block(body, caption):
@@ -47,7 +53,7 @@ class NoteReadySyncTests(unittest.TestCase):
         pages = [ready_page(target), ready_page(other)]
         for page in pages:
             page["properties"]["アイキャッチ"] = {
-                "files": [{"type": "external", "external": {"url": "https://example.com/image.png"}}]
+                "files": [{"type": "external", "external": {"url": current_eyecatch_url("article")}}]
             }
         old_dest = {"id": "old-page", "properties": {"同期ID": rt(other), "品質状態": {"select": {"name": "Ready"}}}}
         response = MagicMock(status_code=200)
@@ -88,7 +94,7 @@ class NoteReadySyncTests(unittest.TestCase):
         target = "3d4479ffdca981a2880bf46d5c02403d"
         page = ready_page(target)
         page["properties"]["アイキャッチ"] = {
-            "files": [{"type": "external", "external": {"url": "https://example.com/image.png"}}]
+            "files": [{"type": "external", "external": {"url": current_eyecatch_url("article")}}]
         }
         hyphenated = "3d4479ff-dca9-81a2-880b-f46d5c02403d"
         existing = {"id": "existing", "properties": {"同期ID": rt(hyphenated), "品質状態": {"select": {"name": "Ready"}}}}
@@ -119,7 +125,7 @@ class NoteReadySyncTests(unittest.TestCase):
                 "元情報URL": {"url": "https://example.com/source"},
                 "一次情報URL": rt("https://example.com/primary\nhttps://example.com/secondary"),
                 "アイキャッチ": {
-                    "files": [{"type": "external", "external": {"url": "https://example.com/current.png"}}]
+                    "files": [{"type": "external", "external": {"url": current_eyecatch_url("note title")}}]
                 },
             },
         }
@@ -128,10 +134,31 @@ class NoteReadySyncTests(unittest.TestCase):
         self.assertEqual(state["sync_id"], "123456781234123412341234567890ab")
         self.assertEqual(state["title"], "note title")
         self.assertEqual(state["primary_url"], "https://example.com/primary")
-        self.assertEqual(state["eyecatch_url"], "https://example.com/current.png")
+        self.assertEqual(state["eyecatch_url"], current_eyecatch_url("note title"))
+
+        page["properties"]["アイキャッチ"] = {
+            "files": [{"type": "external", "external": {"url": "https://example.com/legacy.png"}}]
+        }
+        self.assertIsNotNone(sync._source_state(page))
 
         page["properties"]["記事状態"] = {"select": {"name": "Needs Editorial Review"}}
         self.assertIsNone(sync._source_state(page))
+
+    def test_stale_eyecatch_is_counted_as_incomplete_publication_asset(self):
+        page = ready_page("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", article_title="Public title")
+        page["properties"]["アイキャッチ"] = {
+            "files": [{"type": "external", "external": {"url": "https://example.com/legacy.png"}}]
+        }
+        with patch.object(sync, "NOTION_API_KEY", "token"), \
+             patch.object(sync, "SOURCE_DATA_SOURCE_ID", "source"), \
+             patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_validate_destination_schema"), \
+             patch.object(sync, "_query_db", side_effect=[[page], []]), \
+             patch.object(sync, "_source_current_ready_manuscript", return_value="manuscript"):
+            result = sync.sync_note_ready_db()
+        self.assertEqual(result["source_ready"], 0)
+        self.assertEqual(result["incomplete_publication_assets"], 1)
+        self.assertEqual(result["invalid_source_state"], 0)
 
     def test_source_publishability_requires_body_hash_and_current_policy(self):
         body = "article" * 50

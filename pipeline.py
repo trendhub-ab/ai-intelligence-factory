@@ -41,6 +41,7 @@ from PIL import Image, ImageDraw, ImageFont
 from editorial_eyecatch import (
     NOTE_EYECATCH_OUTPUT_DIR, generate_note_editorial_eyecatch, infer_editorial_category,
 )
+import eyecatch_publication_contract as eyecatch_contract
 # Synthetic regression is intentionally provider-free. On an offline CI/dev machine the
 # regression re-imports pipeline.py as a module, so allow a minimal SDK stub only in that mode.
 # Production still fails loudly if google-genai is missing.
@@ -8360,12 +8361,12 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             note_eyecatch_filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__note.png"
             note_eyecatch_path = os.path.join(note_output_dir, note_eyecatch_filename)
             editorial_category = infer_editorial_category(
-                parsed.get("title_text", ""),
+                eyecatch_contract.require_public_title(parsed),
                 parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
                 source,
             )
             generate_note_editorial_eyecatch(
-                parsed.get("title_text", "") or name,
+                eyecatch_contract.require_public_title(parsed),
                 parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
                 note_eyecatch_path,
                 category=editorial_category,
@@ -8389,16 +8390,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 try:
                     # Keep the existing public URL namespace for backward compatibility, but upload
                     # the Editorial bytes.  Notion and note/audit therefore reference the same visual.
-                    eyecatch_filename = f"{_sanitize_filename(name)}.png"
-                    eyecatch_url = upload_eyecatch_to_github(note_eyecatch_path, eyecatch_filename) or ""
+                    eyecatch_url = eyecatch_contract.upload_current_asset_pair(upload_eyecatch_to_github, note_eyecatch_path, f"{_sanitize_filename(name)}.png", eyecatch_contract.require_public_title(parsed))
                     if eyecatch_url:
                         logger.info(
-                            "[PUBLIC EDITORIAL EYECATCH] %s -> %s (source=%s)",
+                            "[PUBLIC EDITORIAL EYECATCH] %s -> %s (source=%s, contract=current)",
                             name, eyecatch_url, note_eyecatch_path,
                         )
                     else:
                         logger.warning(
-                            "[PUBLIC EDITORIAL EYECATCH UPLOAD FAILED] %s: 旧Decision Cardへフォールバックしません",
+                            "[PUBLIC EDITORIAL EYECATCH UPLOAD FAILED] %s: current image/manifest pair unavailable",
                             name,
                         )
                 except Exception as e:
