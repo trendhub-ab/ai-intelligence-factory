@@ -77,14 +77,17 @@ class APlusEditorialOrchestrationTests(unittest.TestCase):
         self.assertFalse(meta["provider_article_surface_reused"])
         self.assertEqual(a_plus.LOCAL_FALLBACK_ID, meta["contract"])
 
-    def test_pipeline_wires_a_plus_before_provider_and_after_bounded_editing(self):
+    def test_runtime_layer_wires_a_plus_without_growing_pipeline_core(self):
         pipeline = (ROOT / "pipeline.py").read_text(encoding="utf-8")
-        protocol = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")
-        self.assertIn("build_prewrite_contract", pipeline)
-        self.assertIn("local_prewrite_contract=local_prewrite_contract", pipeline)
-        self.assertIn("try_a_plus_local_fallback", pipeline)
-        self.assertIn("[A+ LOCAL FALLBACK]", pipeline)
-        self.assertIn("A+ Local Skills Pre-Write Contract", protocol)
+        runtime = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
+        layer = (ROOT / "a_plus_editorial_orchestration.py").read_text(encoding="utf-8")
+        self.assertNotIn("A+ LOCAL FALLBACK", pipeline)
+        self.assertIn('"a_plus_editorial_orchestration.install"', runtime)
+        self.assertIn("a_plus_editorial_orchestration.install(pipeline_module)", runtime)
+        self.assertIn("build_prewrite_contract", layer)
+        self.assertIn("should_attempt_dynamic_retry_a_plus", layer)
+        self.assertIn("call_gemini_grounded_deep_dive_a_plus", layer)
+        self.assertIn("[A+ LOCAL FALLBACK]", layer)
 
 
 if __name__ == "__main__":
