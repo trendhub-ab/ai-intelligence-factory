@@ -114,11 +114,20 @@ def _find_header_add_control(page: Any) -> Any:
             ranked.append((score, index, control))
     if not ranked:
         try:
-            diagnostic = page.evaluate("""() => ({
-                imageLabeledControls: document.querySelectorAll('button[aria-label*="画像"], [role="button"][aria-label*="画像"]').length,
-                changeLabeledControls: document.querySelectorAll('button[aria-label*="変更"], [role="button"][aria-label*="変更"]').length,
-                fileInputs: document.querySelectorAll('input[type="file"]').length
-            })""")
+            diagnostic = page.evaluate("""(titleY) => ({
+                imageControls: [...document.querySelectorAll('button[aria-label*="画像"], [role="button"][aria-label*="画像"]')]
+                    .slice(0, 8).map(el => {
+                        const r = el.getBoundingClientRect();
+                        const label = el.getAttribute('aria-label') || '';
+                        return {kind: label.includes('削除') ? 'delete' : label.includes('変更') ? 'change' :
+                                label.includes('追加') ? 'add' : label.includes('見出し') ? 'header' : 'other',
+                                visible: r.width > 0 && r.height > 0,
+                                relativeY: Math.round(r.top - titleY), width: Math.round(r.width), height: Math.round(r.height)};
+                    }),
+                fileInputs: document.querySelectorAll('input[type="file"]').length,
+                largeMediaAboveTitle: [...document.querySelectorAll('img')]
+                    .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 420 && r.top < titleY; }).length
+            })""", float(title_box["y"]))
         except Exception:
             diagnostic = {}
         raise base.NoteDraftError(f"note official header-image icon was not found above the title; control_counts={diagnostic}")
