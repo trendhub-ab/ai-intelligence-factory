@@ -59,7 +59,10 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
             {"what": "何が出たか。", "why": "なぜ重要か。", "decision": "まず試す。"},
             "acme/repo", "https://github.com/acme/repo", "GitHub", "2026-08-21T18:00:00Z",
         )
-        self.assertLess(header.index("## 30秒でわかるこの記事"), header.index("### 元情報"))
+        self.assertLess(header.index("## どんな内容？"), header.index("## なぜ重要？"))
+        self.assertLess(header.index("## なぜ重要？"), header.index("## 結論は？"))
+        self.assertLess(header.index("## 結論は？"), header.index("### 元情報"))
+        self.assertNotIn("30秒でわかるこの記事", header)
         self.assertIn("**主一次情報**: [acme/repo](https://github.com/acme/repo)", header)
         self.assertIn("**発見経路**: GitHub", header)
         self.assertIn("**公開・更新**: 2026-08-22", header)
@@ -76,10 +79,13 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 published_at="2026-08-21T00:00:00+00:00",
             )
         self.assertTrue(manuscript.startswith("# AI運用を軽くするOSSは使える？"))
-        self.assertLess(manuscript.index("## 現場の困りごとから"), manuscript.index("## 30秒でわかるこの記事"))
-        self.assertLess(manuscript.index("## 30秒でわかるこの記事"), manuscript.index("## なぜ、この問題が残り続けるのか。"))
+        self.assertLess(manuscript.index("## どんな内容？"), manuscript.index("## なぜ重要？"))
+        self.assertLess(manuscript.index("## なぜ重要？"), manuscript.index("## 結論は？"))
+        self.assertLess(manuscript.index("## 結論は？"), manuscript.index("### 元情報"))
+        self.assertLess(manuscript.index("### 元情報"), manuscript.index("## 現場の困りごとから"))
+        self.assertLess(manuscript.index("## 現場の困りごとから"), manuscript.index("## なぜ、この問題が残り続けるのか。"))
         self.assertNotIn("## 先に判断を書くと。", manuscript)
-        self.assertNotIn("### 元情報", manuscript)
+        self.assertEqual(1, manuscript.count("### 元情報"))
         self.assertGreater(manuscript.index("### Sources / Evidence"), manuscript.index("### 結論として、いま取る距離感。"))
         self.assertIn("### 補助Evidence", manuscript)
         self.assertEqual(1, manuscript.count("https://github.com/acme/repo"))
