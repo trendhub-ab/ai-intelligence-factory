@@ -81,6 +81,15 @@ class VTCodeExistingDraftRepairTests(unittest.TestCase):
         self.assertEqual(changed.call_count, 2)
         page.wait_for_timeout.assert_called_once()
 
+    def test_existing_cover_change_button_is_preferred_before_geometry(self):
+        from unittest.mock import Mock
+        import run193_note_official_header_upload as upload
+        existing = Mock()
+        with patch.object(upload.base, "_first_visible", return_value=existing) as controls:
+            self.assertIs(upload._find_header_add_control(Mock()), existing)
+        selectors = controls.call_args.args[1]
+        self.assertIn('button[aria-label="画像を変更"]', selectors)
+
     def test_preflight_is_zero_model_and_does_not_open_note(self):
         with patch.object(repair, "validate_repaired_manuscript", return_value={"fact_ok": True, "editorial_ok": True, "publication_state": "PASS", "human_state": "ACCEPTABLE"}), \
              patch.object(repair, "destination_preflight", return_value={"posting_state": "投稿準備中", "quality_state": "Ready"}), \

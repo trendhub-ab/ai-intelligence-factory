@@ -73,6 +73,7 @@ def _header_button_score(meta: dict[str, Any], title_box: dict[str, float]) -> f
 
 def _find_header_add_control(page: Any) -> Any:
     explicit = base._first_visible(page, [
+        'button[aria-label="画像を変更"]', 'button[aria-label*="見出し画像を変更"]',
         'button[aria-label*="見出し画像"]', '[role="button"][aria-label*="見出し画像"]',
         'button[title*="見出し画像"]', '[role="button"][title*="見出し画像"]', 'button[aria-label="画像を追加"]',
     ], timeout_ms=900)
