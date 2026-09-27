@@ -11,6 +11,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 import note_draft_automation as note_base
+import editorial_eyecatch as editorial
 import run180_eyecatch_semantic_layout as run180
 import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as upload
@@ -101,35 +102,25 @@ def _wait_cover_gone(page: Any, old_identity: str) -> None:
 
 
 def _generate_replacement() -> dict[str, Any]:
-    # Provider-free current policy rendering. This validates the full public title and
-    # intentionally avoids the Gemini layout request because this experiment targets UI replacement.
-    import pipeline
-    import production_pipeline
-    pipeline.SYNTHETIC_REGRESSION_MODE = True
-    production_pipeline.install_runtime_layers(pipeline)
-    plan = run180._deterministic_complete_title_plan(repair.NEW_TITLE, SUMMARY)
-    if plan is None or plan.get("eyecatch_title") != repair.NEW_TITLE:
-        raise ReplaceError("current deterministic eyecatch plan did not preserve the public title")
-    rendered = "".join(plan.get("title_lines") or [])
-    if "..." in rendered or "…" in rendered:
-        raise ReplaceError("replacement image plan contains an accidental ellipsis")
+    """Create a provider-free test cover; this experiment tests replacement UI only."""
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    category = pipeline.infer_editorial_category(repair.NEW_TITLE, SUMMARY, "HackerNews")
-    pipeline.generate_note_editorial_eyecatch(
-        repair.NEW_TITLE, SUMMARY, str(NEW_IMAGE), category=category
+    clean_title = repair.NEW_TITLE.strip()
+    if not clean_title or "..." in clean_title or "…" in clean_title:
+        raise ReplaceError("test cover title is invalid")
+    category = editorial.infer_editorial_category(clean_title, SUMMARY, "HackerNews")
+    editorial.generate_note_editorial_eyecatch(
+        clean_title, SUMMARY, str(NEW_IMAGE), category=category
     )
     with Image.open(NEW_IMAGE) as image:
         if image.size != (1280, 670):
             raise ReplaceError(f"replacement image has wrong size: {image.size}")
     return {
-        "eyecatch_title": plan["eyecatch_title"],
-        "title_lines": plan["title_lines"],
-        "highlight_text": plan.get("highlight_text") or "",
+        "eyecatch_title": clean_title,
         "category": category,
         "size": [1280, 670],
         "zero_provider_calls": True,
+        "purpose": "replacement_ui_only",
     }
-
 
 def _restore_backup(page: Any, title: str, body_manuscript: str, old_identity: str) -> bool:
     try:
