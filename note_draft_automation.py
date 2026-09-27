@@ -535,11 +535,53 @@ def _body_manuscript_for_note(title: str, manuscript: str) -> str:
     return text
 
 
+def _editor_visible_text(body: Any) -> str:
+    try:
+        value = str(body.inner_text(timeout=3000) or "")
+    except Exception as exc:
+        raise NoteDraftError("Could not inspect note body during replacement") from exc
+    return re.sub(r"\\s+", " ", value).strip()
+
+
+def _clear_body_for_replacement(page: Any, body: Any) -> None:
+    """Fail closed unless the existing editor body is actually empty before paste.
+
+    note's block editor can intercept one Ctrl+A as a block-local selection.  A single
+    select/delete therefore cannot prove that a stale prefix or sibling block disappeared.
+    Repeat the selection, then fall back to an explicit DOM Range over the already-proven
+    editable body.  The replacement is allowed to continue only when visible body text is
+    empty.  This uses the normal editor DOM and keyboard path; no private note API is used.
+    """
+    body.click()
+    for _ in range(3):
+        page.keyboard.press("Control+A")
+        page.wait_for_timeout(80)
+    page.keyboard.press("Backspace")
+    page.wait_for_timeout(300)
+
+    if _editor_visible_text(body):
+        body.evaluate(
+            """el => {
+                el.focus();
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }"""
+        )
+        page.keyboard.press("Backspace")
+        page.wait_for_timeout(300)
+
+    if _editor_visible_text(body):
+        raise NoteDraftError(
+            "note body could not be cleared completely; refusing to paste over stale content"
+        )
+
+
 def _paste_manuscript(page: Any, body: Any, manuscript: str) -> None:
     safe_html = _markdown_to_safe_html(manuscript)
-    body.click()
-    page.keyboard.press("Control+A")
-    page.keyboard.press("Backspace")
+    _clear_body_for_replacement(page, body)
     body.evaluate(
         """(el, payload) => {
             el.focus();
