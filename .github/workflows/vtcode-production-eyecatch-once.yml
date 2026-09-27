@@ -1,9 +1,7 @@
 name: Generate VT Code production eyecatch once
 
 on:
-  push:
-    branches:
-      - test/vtcode-production-eyecatch-run-20260927
+  workflow_dispatch:
 
 permissions:
   contents: read
