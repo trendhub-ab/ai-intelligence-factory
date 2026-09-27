@@ -114,8 +114,12 @@ def _find_header_add_control(page: Any) -> Any:
                         continue
                     center_x = float(box['x']) + float(box['width']) / 2
                     center_y = float(box['y']) + float(box['height']) / 2
+                    # Existing-cover UI can render its image toolbar just above the
+                    # media itself. Accept only the unique image-labeled control whose
+                    # center stays horizontally inside the unique cover and no more than
+                    # 180px above its top; never widen this to arbitrary title controls.
                     if (float(cover['x']) <= center_x <= float(cover['x']) + float(cover['width'])
-                            and float(cover['y']) <= center_y <= float(cover['y']) + float(cover['height'])):
+                            and float(cover['y']) - 180.0 <= center_y <= float(cover['y']) + float(cover['height'])):
                         matched.append(item)
                 except Exception:
                     continue
