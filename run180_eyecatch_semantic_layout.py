@@ -89,14 +89,12 @@ def _parse_plan_response(response: Any) -> dict[str, Any] | None:
 
 
 def _source_title_for_direction(title: str) -> str:
-    """Return clean public source copy without applying the old 34/48-char hook truncation."""
+    """Return the complete approved public title; never manufacture an ellipsis upstream."""
     clean = ee._clean_public_copy(title)
     clean = re.sub(r"^【[^】]{1,28}】\s*", "", clean).strip()
     if not clean:
         return "AIの変化を、わかりやすく。"
-    if len(clean) <= SOURCE_TITLE_MAX_CHARS:
-        return clean
-    return clean[:SOURCE_TITLE_MAX_CHARS].rstrip("、。！？!? ") + "…"
+    return clean
 
 
 def _layout_prompt(source_title: str, subheadline: str) -> str:
@@ -117,6 +115,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - eyecatch_titleはsource_titleの意味を圧縮するだけ。新しい事実、数値、性能、因果、評価、固有名詞を発明しない。
 - 製品名、モデル名、バージョン番号など記事識別に必要な固有情報は維持する。
 - eyecatch_titleは理想15〜45文字、最大52文字。元タイトルがすでに短く強ければ変更しなくてよい。
+- source_titleに存在しない「...」「…」を追加して省略表示にしない。入り切らない場合は意味を保って短く言い換える。
 - 「徹底解説」「完全ガイド」「まとめ」「最新情報」などSEOブログ的な煽り語を新規追加しない。
 - 疑問形・断定形・変化提示のいずれも可。ただしsource_title以上に強い断定へ変えない。
 - title_linesはeyecatch_titleを改行で分割したものだけ。文字の追加・削除・言い換えをtitle_lines側では行わない。
@@ -129,6 +128,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - 短い1文字だけの行を作らない。
 - 行長を機械的に均等化せず、意味のまとまりと視覚的重心を両立する。
 - highlight_textにはeyecatch_title内で最も読者の目を止める「結論・問い・含意」の連続した1フレーズを完全一致で抜き出す。言い換えない。
+- 製品名・モデル名だけ、英文の前置詞/接続詞で始まる断片、省略記号を含む断片はhighlight_textにしない。
 - highlight_textは短すぎる単語だけ、製品名だけ、タイトル全体を避ける。原則として後半の意味ブロックを優先する。
 - 画像、イラスト、背景、カテゴリ、日付、ロゴ、ビジュアル構造には一切触れない。
 - JSON以外は返さない。
