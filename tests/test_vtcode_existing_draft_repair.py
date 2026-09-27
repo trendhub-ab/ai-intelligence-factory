@@ -38,11 +38,11 @@ class VTCodeExistingDraftRepairTests(unittest.TestCase):
         self.assertEqual(result["publication_state"], "PASS")
         self.assertEqual(result["human_state"], "ACCEPTABLE")
 
-    def test_eyecatch_is_full_size_and_has_no_duplicate_draft_path(self):
-        from PIL import Image
-        with Image.open(repair.IMAGE_PATH) as image:
-            self.assertEqual(image.size, (1280, 670))
+    def test_repair_has_no_static_legacy_eyecatch_bypass(self):
         source = Path('run_vtcode_existing_draft_repair.py').read_text()
+        self.assertNotIn('repairs/vtcode_eyecatch_20260927.png', source)
+        self.assertIn('require_current_asset_url', source)
+        self.assertIn('_current_source_eyecatch_path', source)
         self.assertNotIn('"/new"', source)
         self.assertIn('same_edit_route', source)
 
@@ -134,7 +134,8 @@ class VTCodeExistingDraftRepairTests(unittest.TestCase):
     def test_preflight_is_zero_model_and_does_not_open_note(self):
         with patch.object(repair, "validate_repaired_manuscript", return_value={"fact_ok": True, "editorial_ok": True, "publication_state": "PASS", "human_state": "ACCEPTABLE"}), \
              patch.object(repair, "destination_preflight", return_value={"posting_state": "投稿準備中", "quality_state": "Ready"}), \
-             patch.object(repair, "_source_preflight", return_value={}), \
+             patch.object(repair, "_source_preflight", return_value={"properties": {"アイキャッチ": {"files": []}}}), \
+             patch.object(repair.eyecatch_contract, "require_current_asset_url", return_value="https://example.com/current.png"), \
              patch.object(repair, "browser_repair") as browser, \
              patch.object(repair, "sync_corrected_source") as source:
             result = repair.run(confirm=repair.CONFIRM_TOKEN, prepare_only=True)
