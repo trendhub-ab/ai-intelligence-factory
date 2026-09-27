@@ -83,6 +83,13 @@ def _prop_date(prop: dict | None) -> str:
     return str((((prop or {}).get("date") or {}).get("start")) or "").strip()
 
 
+def _prop_number(prop: dict | None) -> float:
+    value = (prop or {}).get("number")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return 0.0
+
+
 def _normalize_sync_id(value: str) -> str:
     return re.sub(r"[^0-9a-fA-F]", "", str(value or "")).lower()
 
@@ -103,6 +110,8 @@ def _candidate_from_page(page: dict) -> dict[str, Any] | None:
         "title": title,
         "scheduled_date": _prop_date(props.get("投稿予定日")),
         "created_time": str(page.get("created_time") or ""),
+        "decision_score": _prop_number(props.get("判断スコア")),
+        "article_value": _prop_number(props.get("記事価値")),
     }
 
 
@@ -113,6 +122,26 @@ def _parse_iso_date(value: str) -> date | None:
         return date.fromisoformat(value[:10])
     except ValueError:
         return None
+
+
+def _freshness_score(created_time: str, today: date) -> float:
+    created = _parse_iso_date(created_time)
+    if created is None:
+        return 0.0
+    age_days = max(0, (today - created).days)
+    return float(max(0, 100 - (age_days * 10)))
+
+
+def _publication_priority_score(item: dict[str, Any], today: date) -> float:
+    """Rank competing unsent Ready articles without changing schedule semantics.
+
+    Article value leads, decision score confirms business relevance, and freshness
+    prevents an old backlog item from winning forever on a small score advantage.
+    """
+    article_value = max(0.0, min(100.0, float(item.get("article_value") or 0.0)))
+    decision_score = max(0.0, min(100.0, float(item.get("decision_score") or 0.0)))
+    freshness = _freshness_score(str(item.get("created_time") or ""), today)
+    return (article_value * 0.50) + (decision_score * 0.35) + (freshness * 0.15)
 
 
 def _select_candidate(pages: list[dict], requested_sync_id: str = "", today: date | None = None) -> dict[str, Any]:
@@ -134,11 +163,19 @@ def _select_candidate(pages: list[dict], requested_sync_id: str = "", today: dat
     if not eligible:
         raise NoteDraftError("No eligible Ready / 投稿待ち article is available")
 
-    def sort_key(item: dict[str, Any]) -> tuple[int, str, str]:
+    def sort_key(item: dict[str, Any]) -> tuple[int, str, float, float, float, str]:
         scheduled = _parse_iso_date(item["scheduled_date"])
-        if scheduled is not None:
-            return (0, scheduled.isoformat(), item["created_time"])
-        return (1, "9999-12-31", item["created_time"])
+        schedule_group = 0 if scheduled is not None else 1
+        schedule_date = scheduled.isoformat() if scheduled is not None else "9999-12-31"
+        priority = _publication_priority_score(item, today)
+        return (
+            schedule_group,
+            schedule_date,
+            -priority,
+            -float(item.get("article_value") or 0.0),
+            -float(item.get("decision_score") or 0.0),
+            str(item.get("created_time") or ""),
+        )
 
     eligible.sort(key=sort_key)
     return eligible[0]
