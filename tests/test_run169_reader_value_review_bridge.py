@@ -45,7 +45,7 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
                 article = self._article(name)
                 sig = pipeline._reader_experience_signals(article)
                 self.assertEqual("REVIEW", sig["reader_enjoyment"])
-                self.assertEqual("REVIEW", sig["narrative_pull"])
+                self.assertEqual("GOOD", sig["narrative_pull"])  # deterministic Reader Summary is excluded from narrative scoring
                 self.assertEqual("REVIEW", sig["information_budget"])
                 self.assertEqual("REVIEW", sig["reader_temperature_rhythm"])
                 issues = bridge._material_reader_value_issues(pipeline, article)
