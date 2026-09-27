@@ -50,6 +50,49 @@ def _semantic_text(control: Any) -> str:
     return " ".join(parts).strip().lower()
 
 
+def _cover_toolbar_score(
+    meta: dict[str, Any],
+    cover_box: dict[str, float],
+    title_box: dict[str, float],
+) -> float | None:
+    """Score one explicitly image-labeled toolbar control anchored to a unique cover.
+
+    Current note can render the existing-cover toolbar above the media rectangle rather
+    than inside it.  Geometry alone is never enough: callers pass only aria/title-labeled
+    image controls, and the next step must still expose the explicit upload menu.
+    """
+    try:
+        x = float(meta["x"]); y = float(meta["y"])
+        width = float(meta["width"]); height = float(meta["height"])
+        cover_y = float(cover_box["y"]); cover_h = float(cover_box["height"])
+        title_y = float(title_box["y"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if width < 22 or width > 82 or height < 22 or height > 82:
+        return None
+    cx, cy = x + width / 2.0, y + height / 2.0
+    if cy >= title_y or cy < cover_y - 180.0 or cy > cover_y + cover_h:
+        return None
+    semantic = str(meta.get("semantic") or "").lower()
+    if not any(term in semantic for term in ("画像", "image", "cover", "見出し")):
+        return None
+    if any(term in semantic for term in _REJECT_CONTROL_TERMS):
+        return None
+    return abs(cy - (cover_y - 90.0))
+
+
+def _explicit_control_label(control: Any) -> str:
+    parts: list[str] = []
+    for attr in ("aria-label", "title", "data-testid", "name"):
+        try:
+            value = control.get_attribute(attr)
+        except Exception:
+            value = None
+        if value:
+            parts.append(str(value).strip())
+    return " ".join(parts).strip().lower()
+
+
 def _header_button_score(meta: dict[str, Any], title_box: dict[str, float]) -> float | None:
     try:
         x = float(meta["x"]); y = float(meta["y"]); width = float(meta["width"]); height = float(meta["height"])
@@ -104,23 +147,26 @@ def _find_header_add_control(page: Any) -> Any:
         if len(covers) == 1:
             cover = covers[0]
             candidates = page.locator('button[aria-label*="画像"], [role="button"][aria-label*="画像"]')
-            matched = []
+            matched: list[tuple[float, Any]] = []
             for index in range(min(candidates.count(), 30)):
                 item = candidates.nth(index)
                 try:
-                    box = item.bounding_box()
-                    semantic = _semantic_text(item)
-                    if not item.is_visible(timeout=120) or not box or any(token in semantic for token in _REJECT_CONTROL_TERMS):
+                    if not item.is_visible(timeout=120):
                         continue
-                    center_x = float(box['x']) + float(box['width']) / 2
-                    center_y = float(box['y']) + float(box['height']) / 2
-                    if (float(cover['x']) <= center_x <= float(cover['x']) + float(cover['width'])
-                            and float(cover['y']) <= center_y <= float(cover['y']) + float(cover['height'])):
-                        matched.append(item)
+                    box = item.bounding_box()
+                    if not box:
+                        continue
+                    score = _cover_toolbar_score(
+                        {**box, "semantic": _explicit_control_label(item)}, cover, title_box
+                    )
+                    if score is not None:
+                        matched.append((score, item))
                 except Exception:
                     continue
             if len(matched) == 1:
-                return matched[0]
+                return matched[0][1]
+            if len(matched) > 1:
+                raise base.NoteDraftError("note existing-cover image toolbar is ambiguous; refusing to click")
     title = base._find_title(page)
     try:
         title_box = title.bounding_box()
