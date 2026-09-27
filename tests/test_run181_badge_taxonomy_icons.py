@@ -24,6 +24,7 @@ class Run181BadgeTaxonomyIconTests(unittest.TestCase):
         cases = (
             ("PandasとPolarsを比較。違いは？", "", "AI & TECH", "比較で理解"),
             ("Prompt Injectionの新しい攻撃", "安全性を確認する", "SECURITY", "安全性を確認"),
+            ("OpenAI設立の原点を読む", "2015年の出発点を確認する", "AI BUSINESS", "原点を知る"),
             ("arXiv論文を読む", "研究の要点", "RESEARCH", "論文をやさしく"),
             ("GitHub CLIを開発で使う", "", "DEV TOOLS", "開発で使う"),
             ("RAGデータベースの設計", "", "DATA", "データを理解"),
@@ -46,7 +47,17 @@ class Run181BadgeTaxonomyIconTests(unittest.TestCase):
             pixels = image.get_flattened_data()
             self.assertTrue(any(pixel != (255, 255, 255) for pixel in pixels), label)
             icon_fingerprints.add(hash(pixels))
-        self.assertGreaterEqual(len(icon_fingerprints), 9)
+        self.assertGreaterEqual(len(icon_fingerprints), 10)
+
+    def test_generic_research_word_does_not_misclassify_historical_business_article(self):
+        self.assertEqual(
+            taxonomy.classify_badge(
+                "OpenAIは2015年に設立された",
+                "研究成果の公開を掲げた非営利AI研究企業の出発点",
+                "AI BUSINESS",
+            ),
+            "原点を知る",
+        )
 
     def test_badge_layer_adds_no_provider_or_network_callsite(self):
         source = inspect.getsource(taxonomy) + "\n" + inspect.getsource(run181)
