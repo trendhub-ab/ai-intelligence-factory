@@ -122,6 +122,23 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertNotIn("…", "".join(plan["title_lines"]))
         self.assertLessEqual(len(plan["title_lines"]), 3)
 
+    def test_run169_ready_title_complete_fallback_preserves_full_title(self):
+        title = "AIが「目的のために手段を選ばず」セキュリティを突破した日。OpenAIが直面した自律モデルの暴走。"
+        plan = run180._deterministic_complete_title_plan(
+            title,
+            "AIエージェントの自律的な攻撃行動と、企業が考えるべき安全境界を整理します。",
+        )
+        self.assertIsNotNone(plan)
+        self.assertEqual(title, plan["eyecatch_title"])
+        self.assertEqual(
+            run180.r178._canonical_partition_text(title),
+            run180.r178._canonical_partition_text("".join(plan["title_lines"])),
+        )
+        self.assertLessEqual(len(plan["title_lines"]), 3)
+        self.assertGreaterEqual(plan["title_font_size"], 44)
+        self.assertFalse(run180._ascii_token_split(plan["title_lines"]))
+        self.assertNotRegex("".join(plan["title_lines"]), r"[.…]{2,}|…")
+
     def test_complete_fallback_is_used_before_legacy_truncating_renderer(self):
         source = inspect.getsource(run180.install)
         complete_pos = source.index("_deterministic_complete_title_plan(title, summary)")
