@@ -1,9 +1,7 @@
 name: Update VT Code private draft body only
 
 on:
-  push:
-    branches:
-      - ops/vtcode-body-only-draft-update-20260927
+  workflow_dispatch:
 
 permissions:
   contents: read
