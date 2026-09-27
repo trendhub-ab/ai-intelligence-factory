@@ -51,6 +51,12 @@ class RepairError(RuntimeError):
     pass
 
 
+def _lossless_chunks(text: str, limit: int = 1800) -> list[str]:
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    return [text[i:i + limit] for i in range(0, len(text), limit)]
+
+
 def render_current_eyecatch() -> Path:
     run183.install(pipeline)
     plan = {
