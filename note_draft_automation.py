@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import base64
 import html
-import hashlib
+import hmac
 import json
 import os
 import re
@@ -275,7 +275,7 @@ def _download_eyecatch(url: str, sync_id: str, public_title: str) -> Path:
         raise NoteDraftError("Downloaded eyecatch is unexpectedly small")
     expected_sha = str(manifest.get("image_sha256") or "")
     actual_sha = eyecatch_contract.image_sha256(target)
-    if not hashlib.compare_digest(expected_sha, actual_sha):
+    if not hmac.compare_digest(expected_sha, actual_sha):
         target.unlink(missing_ok=True)
         raise NoteDraftError("Eyecatch image bytes do not match the current manifest")
     return target
