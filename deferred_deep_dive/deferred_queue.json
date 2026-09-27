@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-27T10:02:31.343749+00:00",
+  "updated_at": "2026-09-27T10:02:33.413828+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49845977",
-      "deferred_at": "2026-09-27T07:53:59.994360+00:00",
-      "expires_at": "2026-11-26T07:53:59.994360+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "U.S. appeals court upholds designation of Anthropic as supply chain risk",
-        "originalTitle": "U.S. appeals court upholds designation of Anthropic as supply chain risk",
-        "displayName": "U.S. appeals court upholds designation of Anthropic as supply chain risk",
-        "sourceLanguage": "en",
-        "url": "https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html",
-        "description": "U.S. appeals court upholds designation of Anthropic as supply chain risk",
-        "stargazerCount": 491,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-25T15:29:25Z",
-        "sourceContext": "HN points=491 comments=863 matched_query=Anthropic",
-        "primaryUrl": "https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html",
-        "sourceDetails": {
-          "hn_id": "49845977",
-          "hn_url": "https://news.ycombinator.com/item?id=49845977",
-          "external_url": "https://www.cnbc.com/2026/09/25/pentagon-anthropic-ai-risk-appeals-court.html",
-          "comments": 863,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e8479ff-dca9-81bc-b359-de9c1b586a1c",
-      "score": 85,
-      "reason": "AI規制とサプライチェーンの重要判例",
-      "commercial_score": 80,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "OTHER",
-      "deep_dive_priority_score": 83.25
-    },
     {
       "key": "https://github.com/rapiddweller/datamimic",
       "deferred_at": "2026-09-16T09:29:33.398003+00:00",
