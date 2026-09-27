@@ -4,16 +4,19 @@
 Live Run192 screenshot evidence showed that the previous drag/drop path never opened note's
 crop UI. The only role=dialog on screen was the unrelated note AI assistant toast (with only a
 "閉じる" control), while the real circular header-image button was visibly present above the
-title. Current note help also documents the normal PC flow as header image icon ->
-"画像をアップロード" -> choose file.
+title. Current note help documents the normal PC flow as header image icon ->
+"画像をアップロード" -> choose file, and replacement of an uploaded header as
+remove the existing header with its X control, then add the replacement image again.
 
 Safety contract:
 - zero Gemini/model calls;
 - no public-release/post action;
 - use the normal visible note editor UI, not a private/internal posting API;
 - identify the header icon only above/near the proven title field;
+- when a header already exists, remove only the unique official X anchored to that cover;
+- never treat a generic "change" guess as the replacement contract;
 - ignore unrelated dialogs such as the AI assistant toast;
-- fail closed on ambiguous header controls, upload controls, or crop completion controls.
+- fail closed on ambiguous cover, remove, upload, or crop completion controls.
 """
 from __future__ import annotations
 
@@ -113,6 +116,112 @@ def _header_button_score(meta: dict[str, Any], title_box: dict[str, float]) -> f
     if not bool(meta.get("has_graphic")) and not any(term in semantic for term in ("画像", "image", "cover", "見出し")):
         return None
     return abs(cx - (title_x + 20.0)) + abs(cy - (title_y - 100.0))
+
+
+def _find_existing_cover(page: Any) -> tuple[Any, dict[str, float]] | None:
+    """Return the unique visible note header image above the title, if present.
+
+    A replacement must be anchored to an actual existing cover. Multiple large
+    images above the title are ambiguous and must fail closed before any delete.
+    """
+    title = base._find_title(page)
+    try:
+        title_box = title.bounding_box()
+    except Exception:
+        title_box = None
+    if not title_box:
+        raise base.NoteDraftError("note title geometry unavailable for header replacement")
+
+    images = page.locator("img")
+    matched: list[tuple[Any, dict[str, float]]] = []
+    try:
+        count = min(images.count(), 80)
+    except Exception:
+        count = 0
+    for index in range(count):
+        item = images.nth(index)
+        try:
+            if not item.is_visible(timeout=120):
+                continue
+            box = item.bounding_box()
+            if not box:
+                continue
+            if (
+                float(box["width"]) >= 420
+                and float(box["height"]) >= 140
+                and float(box["y"]) < float(title_box["y"])
+            ):
+                matched.append((item, box))
+        except Exception:
+            continue
+    if len(matched) > 1:
+        raise base.NoteDraftError(
+            f"note existing header image is ambiguous; found {len(matched)} large images above title"
+        )
+    return matched[0] if matched else None
+
+
+def _find_existing_cover_remove_control(page: Any, cover_box: dict[str, float]) -> Any:
+    """Find note's official X control anchored to the top-right of an existing cover.
+
+    Live replacement proof on 2026-09-27 showed the current editor exposes the X
+    as a small SVG button without a reliable semantic label. Geometry is therefore
+    accepted only relative to one already-proven unique cover, with unsafe controls
+    explicitly rejected. Any ambiguity fails closed before clicking.
+    """
+    try:
+        left = float(cover_box["x"])
+        top = float(cover_box["y"])
+        right = left + float(cover_box["width"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise base.NoteDraftError("note existing header geometry is invalid") from exc
+
+    controls = page.locator('button, [role="button"]')
+    matched: list[Any] = []
+    try:
+        count = min(controls.count(), 140)
+    except Exception:
+        count = 0
+
+    for index in range(count):
+        item = controls.nth(index)
+        try:
+            if not item.is_visible(timeout=120):
+                continue
+            box = item.bounding_box()
+            if not box:
+                continue
+            width = float(box["width"])
+            height = float(box["height"])
+            if not (20 <= width <= 56 and 20 <= height <= 56):
+                continue
+            cx = float(box["x"]) + width / 2.0
+            cy = float(box["y"]) + height / 2.0
+            if not (right - 90 <= cx <= right + 8 and top - 8 <= cy <= top + 88):
+                continue
+            semantic = _semantic_text(item)
+            if any(term in semantic for term in _REJECT_CONTROL_TERMS if term not in ("削除", "delete")):
+                continue
+            if not bool(item.locator("svg").count()):
+                continue
+            matched.append(item)
+        except Exception:
+            continue
+
+    if len(matched) != 1:
+        raise base.NoteDraftError(
+            f"note existing header remove control is ambiguous; found {len(matched)} candidates"
+        )
+    return matched[0]
+
+
+def _wait_existing_cover_removed(page: Any, *, timeout_seconds: float = 12.0) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if _find_existing_cover(page) is None:
+            return
+        page.wait_for_timeout(250)
+    raise base.NoteDraftError("note existing header image did not disappear after official X")
 
 
 def _find_header_add_control(page: Any) -> Any:
@@ -358,8 +467,8 @@ def _finish_real_crop_or_preview(page: Any, *, media_changed: Any = None) -> Non
     raise base.NoteDraftError("note official header upload produced neither a verified header preview nor a completable crop UI; " + _post_upload_diagnostics(page))
 
 
-def _upload_header_image(page: Any, image_path: Path, *, media_changed: Any = None) -> None:
-    run189._ensure_editor_route(page)
+def _upload_new_header_image(page: Any, image_path: Path, *, media_changed: Any = None) -> None:
+    """Use note's proven add/upload flow after the header slot is empty."""
     add_control = _find_header_add_control(page)
     try:
         add_control.click()
@@ -368,6 +477,25 @@ def _upload_header_image(page: Any, image_path: Path, *, media_changed: Any = No
     upload_control = _find_upload_menu_control(page)
     _set_file_from_official_menu(page, upload_control, image_path)
     _finish_real_crop_or_preview(page, media_changed=media_changed)
+
+
+def _upload_header_image(page: Any, image_path: Path, *, media_changed: Any = None) -> None:
+    """Set or replace a note header image through the visible official editor UI.
+
+    New header: add -> upload.
+    Existing header: unique cover -> official top-right X -> prove removal -> add -> upload.
+    """
+    run189._ensure_editor_route(page)
+    existing = _find_existing_cover(page)
+    if existing is not None:
+        _, cover_box = existing
+        remove_control = _find_existing_cover_remove_control(page, cover_box)
+        try:
+            remove_control.click()
+        except Exception as exc:
+            raise base.NoteDraftError("note official existing-header X could not be clicked") from exc
+        _wait_existing_cover_removed(page)
+    _upload_new_header_image(page, image_path, media_changed=media_changed)
 
 
 def install() -> None:
