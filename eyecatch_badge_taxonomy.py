@@ -11,6 +11,7 @@ from typing import Any
 
 
 BADGE_LABELS = (
+    "原点を知る",
     "初心者向け",
     "比較で理解",
     "安全性を確認",
@@ -35,7 +36,18 @@ _SECURITY_CUES = (
     "prompt injection",
     "リスク",
 )
-_RESEARCH_CUES = ("論文", "研究", "arxiv", "paper", "benchmark", "ベンチマーク")
+_HISTORY_CUES = (
+    "設立",
+    "創設",
+    "創業",
+    "原点",
+    "出発点",
+    "founding",
+    "founded",
+    "history",
+    "historical",
+)
+_RESEARCH_CUES = ("論文", "arxiv", "paper", "benchmark", "ベンチマーク")
 _BEGINNER_CUES = (
     "初心者",
     "入門",
@@ -135,6 +147,8 @@ def classify_badge(title: str, summary: str, category: str) -> str:
 
     if any(token in text for token in _COMPARE_CUES):
         return "比較で理解"
+    if any(token in text for token in _HISTORY_CUES):
+        return "原点を知る"
     if category == "SECURITY" or any(token in text for token in _SECURITY_CUES):
         return "安全性を確認"
     if category == "RESEARCH" or any(token in text for token in _RESEARCH_CUES):
@@ -174,6 +188,15 @@ def draw_badge_icon(
     right = x + s
     bottom = y + s
     stroke = max(2, s // 12)
+
+    if label == "原点を知る":
+        # Timeline/origin mark: emphasize the starting point without implying recency.
+        cy = y + mid
+        draw.line((x + 4, cy, right - 3, cy), fill=navy, width=stroke)
+        draw.ellipse((x + 2, cy - 5, x + 12, cy + 5), fill=accent, outline=navy, width=max(1, stroke - 1))
+        draw.ellipse((x + 14, cy - 3, x + 20, cy + 3), fill=navy)
+        draw.ellipse((right - 8, cy - 3, right - 2, cy + 3), fill=navy)
+        return
 
     if label == "初心者向け":
         # Japanese beginner-mark inspired shield. Fixed geometry, no external SVG asset.
