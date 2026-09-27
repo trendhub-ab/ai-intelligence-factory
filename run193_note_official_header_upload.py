@@ -223,10 +223,10 @@ def _post_upload_diagnostics(page: Any) -> str:
     return f"visible_modals={len(roots)}; crop_like_modals={crop_like}; images={images}"
 
 
-def _finish_real_crop_or_preview(page: Any) -> None:
+def _finish_real_crop_or_preview(page: Any, *, media_changed: Any = None) -> None:
     deadline = time.time() + 22.0
     while time.time() < deadline:
-        if run188._header_preview_present(page):
+        if run188._header_preview_present(page) and (media_changed is None or media_changed()):
             return
         crop_roots = [root for root in _visible_modal_roots(page) if _root_looks_crop_related(root)]
         candidates: list[tuple[int, Any, Any]] = []
@@ -249,7 +249,7 @@ def _finish_real_crop_or_preview(page: Any) -> None:
     raise base.NoteDraftError("note official header upload produced neither a verified header preview nor a completable crop UI; " + _post_upload_diagnostics(page))
 
 
-def _upload_header_image(page: Any, image_path: Path) -> None:
+def _upload_header_image(page: Any, image_path: Path, *, media_changed: Any = None) -> None:
     run189._ensure_editor_route(page)
     add_control = _find_header_add_control(page)
     try:
@@ -258,7 +258,7 @@ def _upload_header_image(page: Any, image_path: Path) -> None:
         raise base.NoteDraftError("note official header-image icon could not be clicked") from exc
     upload_control = _find_upload_menu_control(page)
     _set_file_from_official_menu(page, upload_control, image_path)
-    _finish_real_crop_or_preview(page)
+    _finish_real_crop_or_preview(page, media_changed=media_changed)
 
 
 def install() -> None:

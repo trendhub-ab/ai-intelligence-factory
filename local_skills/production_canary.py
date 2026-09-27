@@ -13,6 +13,7 @@ source facts, names, numbers, performance claims, or outcomes.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any, Mapping
 
 from .compiler import compile_snapshot
@@ -36,7 +37,9 @@ def _evidence_urls(primary_url: str, grounding: Mapping[str, Any] | None) -> lis
 
 def _deterministic_reader_title(name: str) -> str:
     """Build an article title without reusing provider-generated article prose."""
-    return f"{name}：いま何を判断材料にするべきか"
+    topic = re.sub(r"^Show HN:\s*", "", name, flags=re.I).strip()
+    topic = re.sub(r"\s+[–—-]\s+My attempt at\b.*$", "", topic, flags=re.I).strip()
+    return f"{topic}：いま何を判断材料にするべきか"
 
 
 def _completion_boundary(parsed: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
@@ -136,6 +139,12 @@ def apply_to_production_parsed(
     # stale provider action_text while the visible article contained the canonicalized
     # Local Skills action. Synchronize every compiler-owned reader/decision field.
     out.update(dict(compiled["parsed"]))
+    # The canonical manuscript builder owns the complete Sources / Evidence footer,
+    # including rights provenance and the article disclaimer. Keeping this short
+    # Writer footer ahead of the CTA makes later CTA normalization drop that block.
+    body, marker, _footer = str(out.get("note_draft") or "").rpartition("\n### Sources / Evidence")
+    if marker:
+        out["note_draft"] = body.rstrip() + "\n"
     meta = {
         "status": compiled["status"],
         "case_id": snapshot["case_id"],

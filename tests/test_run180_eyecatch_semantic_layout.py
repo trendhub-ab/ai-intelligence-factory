@@ -21,6 +21,17 @@ class _TextResponse:
 
 
 class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
+    def test_long_title_without_valid_plan_never_renders_truncated_fallback(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+
+        source = "Show HN: VT Code – My attempt at building a coding-agent harness：いま何を判断材料にするべきか"
+        module = SimpleNamespace(SYNTHETIC_REGRESSION_MODE=True)
+        with patch.object(run180.ee, "generate_note_editorial_eyecatch") as legacy:
+            run180.install(module)
+            with self.assertRaisesRegex(ValueError, "complete eyecatch title"):
+                module.generate_note_editorial_eyecatch(source, "概要", "/tmp/not-written.png")
+            legacy.assert_not_called()
     def test_schema_parser_prefers_response_parsed(self):
         plan = {
             "eyecatch_title": "AIは重要。でも追いきれない。",

@@ -400,6 +400,12 @@ def install(pipeline_module: Any) -> Any:
                 if logger is not None:
                     logger.warning("[RUN180 EYECATCH COMPLETE FALLBACK] render error: %s", exc)
 
+        # The legacy renderer truncates long public headlines with an ellipsis.
+        # An invalid or unavailable semantic plan must never produce a cut-off
+        # image that can be mistaken for a publication-ready eyecatch.
+        clean_title = ee._clean_public_copy(title).strip()
+        if len(r178._canonical_partition_text(clean_title)) > 34:
+            raise ValueError("Cannot render a complete eyecatch title with the legacy fallback")
         return deterministic_fallback(
             title,
             summary,
