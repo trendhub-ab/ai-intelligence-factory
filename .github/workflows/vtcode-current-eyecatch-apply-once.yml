@@ -1,9 +1,7 @@
 name: Apply VT Code current production eyecatch once
 
 on:
-  push:
-    branches:
-      - ops/vtcode-current-eyecatch-apply-20260927
+  workflow_dispatch:
 
 permissions:
   contents: read
