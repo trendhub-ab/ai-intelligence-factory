@@ -51,6 +51,7 @@ RUNTIME_LAYER_ORDER = (
     "run183_eyecatch_emphasis_scale.install",
     "reader_value_review_bridge.install",
     "run208_reader_value_repair.install",
+    "a_plus_editorial_orchestration.install",
     "run222_note_presentation_integrity.install_pipeline",
     "run296_editorial_format_v2.install",
     "run248_first_real_publish_quality_calibration.install",
@@ -290,6 +291,7 @@ def install_runtime_layers(pipeline_module):
     import run183_eyecatch_emphasis_scale
     import reader_value_review_bridge
     import run208_reader_value_repair
+    import a_plus_editorial_orchestration
     import run222_note_presentation_integrity
     import run296_editorial_format_v2
     import run248_first_real_publish_quality_calibration
@@ -345,6 +347,11 @@ def install_runtime_layers(pipeline_module):
     # Reader-only dynamic repair is installed after the historical bridge so it can
     # selectively override only the bridge's reader_value_review_no_retry decision.
     run208_reader_value_repair.install(pipeline_module)
+
+    # A+ keeps Local Skills in control of the deterministic article skeleton while Gemini
+    # remains the expressive writer. It also provides a zero-provider fallback only after
+    # safe management data exists and the ordinary bounded retry path is unavailable.
+    a_plus_editorial_orchestration.install(pipeline_module)
 
     # Presentation-only but publication-material: keep CTA ordering after evidence and
     # disclaimer without changing Evidence/Decision semantics.
