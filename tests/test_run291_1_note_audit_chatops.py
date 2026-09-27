@@ -33,8 +33,14 @@ class Run2911NoteAuditChatOpsTests(unittest.TestCase):
         self.assertNotIn("github.event.comment.body == '/aiif note audit'", self.source)
         self.assertNotIn("'/aiif note audit') action='audit'", self.source)
         self.assertNotIn("            audit)\n", self.source)
-        self.assertNotIn("workflow='note-private-draft-audit.yml'", self.source)
         self.assertNotIn(GENREC_SYNC_ID, self.source)
+
+    def test_openai2015_exact_read_only_audit_chatops_is_narrow(self) -> None:
+        self.assertIn("github.event.comment.body == '/aiif note audit openai2015'", self.source)
+        self.assertIn("'/aiif note audit openai2015') action='openai2015_audit'", self.source)
+        self.assertIn("workflow='note-private-draft-audit.yml'", self.source)
+        self.assertIn('"confirm":"AUDIT_NOTE_DRAFT"', self.source)
+        self.assertIn('"sync_id":"3e8479ffdca9812e9661f337a84b1df4"', self.source)
 
     def test_manual_exact_sync_audit_workflow_remains_available(self) -> None:
         self.assertTrue(AUDIT_WORKFLOW.is_file())
