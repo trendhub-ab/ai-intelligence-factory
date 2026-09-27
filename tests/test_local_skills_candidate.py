@@ -13,9 +13,38 @@ from local_skills import (
     CANDIDATE_STATUS,
     compile_snapshot,
 )
+from local_skills.production_canary import build_snapshot, apply_to_production_parsed
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_hacker_news_show_hn_prefix_and_personal_subtitle_are_not_public_title():
+    repo = {"name": "Show HN: VT Code – My attempt at building a coding-agent harness", "url": "https://github.com/vinhnx/VTCode"}
+    parsed = {"score": 70, "decision_text": "TRY", "source_summary_text": "公開済みのツール。", "what_text": "コード変更の確認に使う仕組み。", "why_important_text": "小さく試せる。", "decision_reason_text": "検証する価値がある。", "action_text": "コード変更を確認する。"}
+    snapshot = build_snapshot(repo, parsed, source="HackerNews", primary_url=repo["url"], grounding=None)
+    assert snapshot["name"] == repo["name"]
+    assert snapshot["reader_title"] == "VT Code：いま何を判断材料にするべきか"
+    assert len(snapshot["reader_title"]) <= 52
+
+
+def test_production_adapter_leaves_provenance_footer_to_canonical_manuscript_builder():
+    from note_manuscript import ARTICLE_DISCLAIMER, build_clean_note_manuscript
+    repo = {"name": "Show HN: VT Code – My attempt at building a coding-agent harness", "url": "https://github.com/vinhnx/VTCode"}
+    parsed = {"score": 70, "decision_text": "TRY", "source_summary_text": "公開済みのツール。", "what_text": "コード変更の確認に使う仕組み。", "why_important_text": "小さく試せる。", "decision_reason_text": "検証する価値がある。", "action_text": "コード変更を確認する。"}
+    out, _ = apply_to_production_parsed(repo, parsed, source="HackerNews", primary_url=repo["url"], grounding=None)
+    assert "### Sources / Evidence" not in out["note_draft"]
+    manuscript = build_clean_note_manuscript(
+        out["note_draft"], repo["name"], repo["url"], "N/A", "HackerNews",
+        evidence_urls=[repo["url"]], title_text=out["title_text"],
+        split_free_paid=lambda draft, name: (draft, ""),
+        display_heading_aliases=lambda heading: [], subscription_enabled=False,
+        subscription_landing_url="", subscription_campaign_id="",
+    )
+    assert manuscript.count("### Sources / Evidence") == 1
+    assert f"- **主一次情報**: [{repo['name']}]({repo['url']})" in manuscript
+    assert "- **出典について**:" in manuscript
+    assert ARTICLE_DISCLAIMER.strip() in manuscript
 WRITER_PATH = ROOT / "local_skills" / "writer.py"
 CANON_PATH = ROOT / "local_skills" / "publication_canonicalizer.py"
 

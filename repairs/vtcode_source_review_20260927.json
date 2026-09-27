@@ -1,0 +1,16 @@
+{
+  "primary_url": "https://github.com/vinhnx/VTCode",
+  "primary_sections": ["Quick start / Configure", "Why VT Code", "Commands"],
+  "checked_utc_date": "2026-09-27",
+  "observations": [
+    "The official project describes VT Code as an open-source Rust terminal coding agent.",
+    "The Configure example shows vtcode init scaffolding project configuration and AGENTS.md, with a reminder to review before committing.",
+    "The Commands list defines vtcode review as an agent review of uncommitted changes.",
+    "Why VT Code describes command policy and sandboxing at the execution boundary, and inspecting edits with turn diffs."
+  ],
+  "limits": [
+    "The README describes features; it does not prove every deployment forces human review or prevents data leaks.",
+    "No benchmark, runtime measurement, or hardware claim is made in this article.",
+    "The Hacker News posting date is discovery metadata, not the official source update date."
+  ]
+}
