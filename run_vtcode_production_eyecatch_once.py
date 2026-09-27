@@ -11,6 +11,7 @@ from PIL import Image
 import eyecatch_publication_contract as contract
 import pipeline
 import production_pipeline
+import run179_eyecatch_font_refinement as run179
 import run_vtcode_existing_draft_repair as repair
 
 OUTPUT = Path(".runtime/vtcode-production-eyecatch.png")
@@ -37,7 +38,17 @@ def main() -> None:
     # Keep execution code and generated publication asset on separate branches.
     pipeline.EYECATCH_GITHUB_BRANCH = target_branch
 
+    font_status = run179.ensure_google_font_assets(
+        enabled=True,
+        logger=getattr(pipeline, "logger", None),
+    )
+    if not font_status.get(str(run179.NOTO_SANS_JP_PATH)):
+        raise RuntimeError("Noto Sans JP production font bootstrap failed")
     production_pipeline.install_runtime_layers(pipeline)
+    title_font = run179.title_jp_font(64)
+    font_name = tuple(title_font.getname()) if hasattr(title_font, "getname") else ()
+    if not font_name or "Noto Sans JP" not in " ".join(map(str, font_name)):
+        raise RuntimeError(f"unexpected production Japanese title font: {font_name!r}")
 
     title = repair.NEW_TITLE
     manuscript = repair.load_manuscript()
@@ -77,6 +88,8 @@ def main() -> None:
         "category": category,
         "size": [1280, 670],
         "current_asset": True,
+        "font_bootstrap": True,
+        "font_name": list(font_name),
         "asset_branch": target_branch,
         "asset_filename": expected_filename,
         "manifest_filename": contract.manifest_filename(expected_filename),
