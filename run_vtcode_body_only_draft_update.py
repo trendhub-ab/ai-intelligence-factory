@@ -5,9 +5,9 @@ from typing import Any
 from playwright.sync_api import sync_playwright
 
 import note_draft_automation as note_base
-import run190_note_existing_draft_repair as run190
-import run417_note_draft_text_persistence as run417
-import run103_note_ready_rescue as audit_base
+import run190_note_persistent_cloud as run190
+import run417_note_body_verification as run417
+import run291_note_private_draft_audit as audit_base
 import run_vtcode_existing_draft_repair as repair
 
 def update_body_only() -> dict[str, Any]:
