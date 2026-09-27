@@ -202,6 +202,7 @@ def _establish_editor(page: Any, context: Any) -> None:
 
 def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, storage_path: Path) -> str:
     """Run the existing draft mutation/verification logic inside persistent real Chrome."""
+    body_manuscript = base._body_manuscript_for_note(title, manuscript)
     del storage_path
     try:
         from playwright.sync_api import sync_playwright
@@ -224,10 +225,10 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
             base._upload_header_image(page, eyecatch_path)
             title_field = base._set_title(page, title)
             body = base._find_body(page, title_field)
-            base._paste_manuscript(page, body, manuscript)
+            base._paste_manuscript(page, body, body_manuscript)
             body = base._find_body(page, title_field)
-            base._verify_body_content(body, manuscript)
-            return base._save_draft_and_verify(page, title, manuscript, image_required=True)
+            base._verify_body_content(body, body_manuscript)
+            return base._save_draft_and_verify(page, title, body_manuscript, image_required=True)
         except Exception:
             try:
                 page.screenshot(path=str(base.ARTIFACT_DIR / "failure.png"), full_page=False)
