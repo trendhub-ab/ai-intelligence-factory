@@ -195,7 +195,7 @@ def _reader_decision_fallback(decision_text: str) -> str:
     """Translate Decision distance without assuming every topic is an adoption decision."""
     return {
         "NOW": "現時点で、具体的な次の判断へ進む価値があります。",
-        "TRY": "まずは限定した範囲で確かめ、条件を見極める価値があります。",
+        "TRY": "まずは限定した範囲で試し、条件を見極める価値があります。",
         "WATCH": "今は結論を急がず、追加Evidenceと今後の変化を確認するのが妥当です。",
         "WAIT": "現時点では判断を急がず、条件とEvidenceが整うまで待つのが妥当です。",
         "AVOID": "現時点では進めず、代替案を優先するのが妥当です。",
