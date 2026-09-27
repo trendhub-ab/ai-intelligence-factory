@@ -17,6 +17,7 @@ from typing import Any
 CTA_HEADINGS = {
     "「自分はどうする？」まで判断したい方へ",
     "調査と判断の時間を減らしたい方へ",
+    "有料サブスクのご案内",
 }
 SOURCE_HEADING = "Sources / Evidence"
 
