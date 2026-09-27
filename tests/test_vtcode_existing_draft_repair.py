@@ -68,7 +68,8 @@ class VTCodeExistingDraftRepairTests(unittest.TestCase):
     def test_route_preflight_precedes_notional_source_write(self):
         with patch.object(repair, "validate_repaired_manuscript", return_value={"fact_ok": True, "editorial_ok": True, "publication_state": "PASS", "human_state": "ACCEPTABLE"}), \
              patch.object(repair, "destination_preflight", return_value={"posting_state": "投稿準備中", "quality_state": "Ready"}), \
-             patch.object(repair, "_source_preflight", return_value={}), \
+             patch.object(repair, "_source_preflight", return_value={"properties": {"アイキャッチ": {"files": [{"type": "external", "external": {"url": "https://example.com/current__ecv1_deadbeefdeadbeef.png"}}]}}}), \
+             patch.object(repair.eyecatch_contract, "require_current_asset_url", return_value="https://example.com/current__ecv1_deadbeefdeadbeef.png"), \
              patch.object(repair, "draft_preflight", side_effect=repair.VTCodeRepairError("ambiguous route")), \
              patch.object(repair, "sync_corrected_source") as source:
             with self.assertRaisesRegex(repair.VTCodeRepairError, "ambiguous route"):
