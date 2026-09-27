@@ -104,6 +104,7 @@ class Run290QualityWorkflowSeparationTests(unittest.TestCase):
              patch.object(sync, "_query_db", side_effect=[[source_page], []]), \
              patch.object(sync, "_source_state", return_value=state), \
              patch.object(sync, "_source_current_ready_manuscript", return_value="body"), \
+             patch.object(sync.eyecatch_contract, "current_asset_url", return_value=True), \
              patch.object(sync, "_request", return_value=response) as request, \
              patch.object(sync.time, "sleep"):
             result = sync.sync_note_ready_db()
