@@ -17,8 +17,6 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from playwright.sync_api import sync_playwright
-
 import eyecatch_publication_contract as eyecatch_contract
 import note_draft_automation as note_base
 import note_eyecatch_persistence as eyecatch_persistence
@@ -181,6 +179,8 @@ def cover_changed(page: Any, old_identity: str) -> bool:
 
 
 def browser_resync(manuscript: str, image_path: Path, *, expected_route: str) -> dict[str, Any]:
+    from playwright.sync_api import sync_playwright
+
     body_manuscript = note_base._body_manuscript_for_note(repair.TITLE, manuscript)
     run190.install()
     run417.install(note_base)
