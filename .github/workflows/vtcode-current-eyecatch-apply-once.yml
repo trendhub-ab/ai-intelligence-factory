@@ -1,0 +1,145 @@
+name: Apply VT Code current production eyecatch once
+
+on:
+  push:
+    branches:
+      - ops/vtcode-current-eyecatch-apply-20260927
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vtcode-current-eyecatch-apply-once
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    outputs:
+      start_vm: ${{ steps.ok.outputs.start_vm }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate exact current asset and source state
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          import eyecatch_publication_contract as c
+          import run_vtcode_existing_draft_repair as r
+          url="https://raw.githubusercontent.com/trendhub-ab/ai-intelligence-factory/runtime-state/eyecatch_images/vtcode-production-eyecatch__ecv1_988cce2b4aaaded6.png"
+          c.require_current_asset_url(url, r.NEW_TITLE)
+          r._source_preflight()
+          r.destination_preflight()
+          print("preflight_ok")
+          PY
+      - id: ok
+        run: echo "start_vm=true" >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  apply:
+    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright
+      - name: Apply current production eyecatch only
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          set -o pipefail
+          xvfb-run -a python run_vtcode_current_eyecatch_apply_once.py | tee "${RUNNER_TEMP}/apply.json"
+      - name: Verify safe result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/apply.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads(Path(os.environ["RESULT_FILE"]).read_text(encoding="utf-8").splitlines()[-1])
+          required_true=("same_edit_route","title_unchanged","body_unchanged","eyecatch_identity_changed","persisted_after_reload","current_asset_url","notion_source_eyecatch_updated","zero_gemini_calls")
+          if r.get("status")!="vtcode_current_eyecatch_applied":
+              raise SystemExit("current eyecatch apply did not complete")
+          for k in required_true:
+              if r.get(k) is not True:
+                  raise SystemExit(f"invariant failed: {k}")
+          if r.get("new_draft_created") is not False or r.get("public_release") is not False:
+              raise SystemExit("draft/publication boundary crossed")
+          if r.get("quality_state_preserved")!="Ready" or r.get("posting_state_preserved")!="投稿準備中":
+              raise SystemExit("posting state changed unexpectedly")
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, apply]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
