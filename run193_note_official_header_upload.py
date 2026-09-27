@@ -125,6 +125,26 @@ def _find_header_add_control(page: Any) -> Any:
                     continue
             if len(matched) == 1:
                 return matched[0]
+            # Live note can place the existing-cover image toolbar outside the
+            # cover rectangle. Fall back only when there is exactly one visible
+            # image-labeled control on the page, it is above the title, and there
+            # is exactly one large cover. The next step must still expose the
+            # explicit "画像をアップロード" menu or the repair fails closed.
+            unique_image_controls = page.locator('button[aria-label*="画像"], [role="button"][aria-label*="画像"]')
+            visible_image_controls = []
+            for index in range(min(unique_image_controls.count(), 30)):
+                item = unique_image_controls.nth(index)
+                try:
+                    box = item.bounding_box()
+                    semantic = _semantic_text(item)
+                    if (item.is_visible(timeout=120) and box
+                            and float(box['y']) + float(box['height']) / 2 < float(title_box['y'])
+                            and not any(token in semantic for token in _REJECT_CONTROL_TERMS)):
+                        visible_image_controls.append(item)
+                except Exception:
+                    continue
+            if len(visible_image_controls) == 1:
+                return visible_image_controls[0]
     title = base._find_title(page)
     try:
         title_box = title.bounding_box()
