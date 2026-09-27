@@ -1,0 +1,66 @@
+name: Run169 Ready Eyecatch Repair [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/run169-ready-eyecatch-repair-20260927
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run169-ready-eyecatch-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+      GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+      GEMINI_COUNTER_BRANCH: 'runtime-state'
+      EYECATCH_GITHUB_BRANCH: 'runtime-state'
+      GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install production dependencies and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Repair exact Ready eyecatch without regenerating article
+        run: python run169_ready_eyecatch_repair_once.py
+
+      - name: Dispatch exact private note draft sync
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          gh workflow run note-ready-sync.yml --repo "${GITHUB_REPOSITORY}" --ref main             -f create_private_draft=true             -f target_sync_id=3e8479ffdca9811db058ccf7d711dd88
+          {
+            echo "### Run169 eyecatch repair"
+            echo "- article regeneration: false"
+            echo "- exact Ready sync_id: 3e8479ffdca9811db058ccf7d711dd88"
+            echo "- private draft requested: true"
+            echo "- public release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
