@@ -142,6 +142,22 @@ def validate_manifest(
     return all(str(manifest.get(key) or "") == value for key, value in expected.items())
 
 
+def validate_manifest_metadata(
+    manifest: Any,
+    public_title: str,
+    *,
+    root: Path | None = None,
+) -> bool:
+    if not isinstance(manifest, dict):
+        return False
+    return (
+        str(manifest.get("contract_id") or "") == CONTRACT_ID
+        and str(manifest.get("policy_sha256") or "") == policy_sha256(root)
+        and str(manifest.get("public_title_sha256") or "") == title_sha256(public_title)
+        and bool(re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("image_sha256") or "")))
+    )
+
+
 def current_asset_url(url: str, public_title: str, *, root: Path | None = None) -> bool:
     """Prove URL naming is bound to the current title/policy before any download."""
     parsed = urlparse(str(url or "").strip())
