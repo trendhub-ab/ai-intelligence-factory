@@ -48,6 +48,24 @@ CTA
 """
         self.assertEqual(run222.move_subscription_cta_after_evidence(manuscript), manuscript.strip())
 
+    def test_current_subscription_cta_heading_is_recognized(self):
+        manuscript = """本文
+
+---
+
+### Sources / Evidence
+- source
+
+免責
+
+---
+
+### 有料サブスクのご案内
+CTA
+"""
+        self.assertIn("有料サブスクのご案内", run222.CTA_HEADINGS)
+        self.assertEqual(run222.move_subscription_cta_after_evidence(manuscript), manuscript.strip())
+
     def test_note_editor_removes_duplicate_h1_and_never_exposes_raw_body_h1(self):
         title = "Polars 2.0が目指す「静かな進化」は、なぜ重要か。"
         manuscript = f"""# {title}
