@@ -45,6 +45,12 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
         self.assertIn("Reader Experience｜知的エンタメ × Decision Intelligence", rules)
         self.assertIn("架空の経験", rules)
 
+    def test_prompt_reserves_fixed_summary_for_final_assembly(self):
+        source = (ROOT / "content_generation_protocol.py").read_text(encoding="utf-8")
+        self.assertIn("どんな内容？ → なぜ重要？ → 結論は？ → 元情報", source)
+        self.assertIn("ARTICLE本文側ではこの4見出しを重複出力しない", source)
+        self.assertIn("それ以降の見出しは記事固有", source)
+
     def test_plaintext_heading_repair_is_conservative_for_short_text(self):
         body = "短い本文です。\n\n見出し候補\n\nまだ短い本文です。"
         repaired, promoted = protocol._promote_plaintext_section_titles(body)
