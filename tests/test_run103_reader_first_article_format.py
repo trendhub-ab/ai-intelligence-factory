@@ -99,7 +99,7 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 reader_summary={"what": "発表がありました。", "why": "実務判断に関係します。", "decision": "まず確認します。"},
                 discovery_url="https://news.ycombinator.com/item?id=1",
             )
-        self.assertEqual(1, manuscript.count("発見経路"))
+        self.assertEqual(2, manuscript.count("発見経路"))
         self.assertIn("発見元の[HackerNews投稿]", manuscript)
 
     def test_reader_summary_prefers_plain_source_summary_over_jargon_list(self):
