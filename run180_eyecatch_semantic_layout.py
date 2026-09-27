@@ -118,6 +118,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - source_titleに存在しない「...」「…」を追加して省略表示にしない。入り切らない場合は意味を保って短く言い換える。
 - 「徹底解説」「完全ガイド」「まとめ」「最新情報」などSEOブログ的な煽り語を新規追加しない。
 - 疑問形・断定形・変化提示のいずれも可。ただしsource_title以上に強い断定へ変えない。
+- eyecatch_titleは画像だけを見ても自然な独立コピーとして意味が完結していること。「、」「，」「,」「：」「:」や接続途中の助詞・接続表現で終えない。元タイトルの前半を文字数で切り取っただけの断片は禁止。
 - title_linesはeyecatch_titleを改行で分割したものだけ。文字の追加・削除・言い換えをtitle_lines側では行わない。
 - headline相当のtitle_linesは1〜3行。2行を第一選択とし、2行では固有名詞・意味のまとまり・十分な文字サイズを守れない場合のみ3行を使う。必要な場合のみ3行とし、3行は正常なfallbackであり公開不可理由にしない。
 - Noto Sans JP Blackを使う。headlineは52〜76px。760pxを超えない範囲でできるだけ大きくする。
@@ -160,6 +161,16 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
     if re.search(r"https?://|[#*_`>]", title):
         return None
     if _ELLIPSIS_RE.search(title) and not _ELLIPSIS_RE.search(source_title):
+        return None
+    # A visual headline must stand alone. Reject the exact failure mode where semantic
+    # compression simply cuts the article title at a comma/colon or leaves a dangling
+    # connective phrase such as "〜だが" / "〜では". Provider fallback can then try again.
+    if re.search(r"[、，,:：]$", title):
+        return None
+    if re.search(
+        r"(?:だが|ですが|しかし|けれど|けれども|ものの|一方で|ため|ので|のに|では|とは|なら|ながら|そして|また)$",
+        title,
+    ):
         return None
 
     # Compression may remove English connective words, but obvious model/product/version
