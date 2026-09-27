@@ -24,7 +24,8 @@ class Run160PublicEyecatchUnificationTests(unittest.TestCase):
         self.assertNotIn("generated_path =", self.publication)
 
     def test_no_fallback_to_internal_score_card(self):
-        self.assertGreaterEqual(self.publication.count("旧Decision Cardへフォールバック"), 2)\n        self.assertIn("current image/manifest pair unavailable", self.publication)
+        self.assertGreaterEqual(self.publication.count("旧Decision Cardへフォールバック"), 2)
+        self.assertIn("current image/manifest pair unavailable", self.publication)
         self.assertIn("if not note_eyecatch_path:", self.publication)
 
     def test_legacy_renderer_is_retained_only_for_internal_compatibility(self):
