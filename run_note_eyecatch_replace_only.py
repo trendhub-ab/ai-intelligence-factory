@@ -64,29 +64,53 @@ def _backup_cover(page: Any, cover: Any) -> str:
 
 
 def _cover_delete_control(page: Any, cover_box: dict[str, float]) -> Any:
-    # Current note official replacement flow removes an uploaded cover first.
-    # Live evidence exposes that action as aria-label=削除 in the cover toolbar.
-    controls = page.locator('button[aria-label="削除"], [role="button"][aria-label="削除"]')
+    """Find note's official X control at the top-right of the existing cover.
+
+    The official help specifies X -> remove -> re-add for uploaded covers. Live DOM
+    evidence shows this X as an unlabeled 32x32 SVG button inset in the cover's top-right.
+    """
+    left = float(cover_box["x"])
+    top = float(cover_box["y"])
+    right = left + float(cover_box["width"])
+    controls = page.locator('button, [role="button"]')
     matched: list[Any] = []
-    top = float(cover_box["y"]) - 180.0
-    bottom = float(cover_box["y"]) + float(cover_box["height"])
-    for i in range(min(controls.count(), 20)):
+    diagnostics: list[dict[str, Any]] = []
+    for i in range(min(controls.count(), 140)):
         item = controls.nth(i)
         try:
-            if not item.is_visible(timeout=150):
+            if not item.is_visible(timeout=120):
                 continue
             box = item.bounding_box()
             if not box:
                 continue
-            cy = float(box["y"]) + float(box["height"]) / 2.0
-            if top <= cy <= bottom and 20 <= float(box["width"]) <= 90 and 20 <= float(box["height"]) <= 90:
+            w = float(box["width"]); h = float(box["height"])
+            cx = float(box["x"]) + w / 2.0
+            cy = float(box["y"]) + h / 2.0
+            if not (20 <= w <= 56 and 20 <= h <= 56):
+                continue
+            if not (right - 90 <= cx <= right + 8 and top - 8 <= cy <= top + 88):
+                continue
+            aria = str(item.get_attribute("aria-label") or "")
+            title = str(item.get_attribute("title") or "")
+            text = str(item.inner_text(timeout=200) or "").strip()
+            has_svg = bool(item.locator("svg").count())
+            diagnostics.append({
+                "aria": aria, "title": title, "text": text,
+                "x": round(float(box["x"])), "y": round(float(box["y"])),
+                "w": round(w), "h": round(h), "has_svg": has_svg,
+            })
+            semantic = f"{aria} {title} {text}".lower()
+            if any(bad in semantic for bad in ("公開", "投稿", "保存", "publish", "post", "save")):
+                continue
+            if has_svg:
                 matched.append(item)
         except Exception:
             continue
     if len(matched) != 1:
-        raise ReplaceError(f"cover delete control is ambiguous; found {len(matched)}")
+        raise ReplaceError(
+            f"official cover X control is ambiguous; found {len(matched)} candidates={diagnostics}"
+        )
     return matched[0]
-
 
 def _wait_cover_gone(page: Any, old_identity: str) -> None:
     deadline = time.time() + 12
@@ -166,15 +190,8 @@ def replace_existing_cover_only() -> dict[str, Any]:
             old_identity = repair._header_media_identity(page)
             _backup_cover(page, cover)
 
-            # Current note exposes the cover delete control while the existing cover
-            # context is already active. Clicking the image can dismiss that toolbar, so
-            # prefer the visible control and use hover only as a reveal fallback.
-            try:
-                delete = _cover_delete_control(page, cover_box)
-            except ReplaceError:
-                cover.hover()
-                page.wait_for_timeout(350)
-                delete = _cover_delete_control(page, cover_box)
+            # Official note flow uses the X control in the existing cover's top-right.
+            delete = _cover_delete_control(page, cover_box)
             delete.click()
             deleted = True
             _wait_cover_gone(page, old_identity)
