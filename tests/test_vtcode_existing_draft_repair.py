@@ -90,6 +90,15 @@ class VTCodeExistingDraftRepairTests(unittest.TestCase):
         selectors = controls.call_args.args[1]
         self.assertIn('button[aria-label="画像を変更"]', selectors)
 
+    def test_existing_cover_hover_reveals_change_control(self):
+        from unittest.mock import Mock
+        import run193_note_official_header_upload as upload
+        button = Mock()
+        with patch.object(upload.base, "_first_visible", return_value=None), \
+             patch.object(upload.run186, "_candidate_header_control", return_value=button) as hover:
+            self.assertIs(upload._find_header_add_control(Mock()), button)
+        hover.assert_called_once()
+
     def test_preflight_is_zero_model_and_does_not_open_note(self):
         with patch.object(repair, "validate_repaired_manuscript", return_value={"fact_ok": True, "editorial_ok": True, "publication_state": "PASS", "human_state": "ACCEPTABLE"}), \
              patch.object(repair, "destination_preflight", return_value={"posting_state": "投稿準備中", "quality_state": "Ready"}), \
