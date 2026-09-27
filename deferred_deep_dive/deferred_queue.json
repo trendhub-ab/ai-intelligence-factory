@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-27T07:55:12.173154+00:00",
+  "updated_at": "2026-09-27T10:02:31.343749+00:00",
   "items": [
     {
       "key": "https://news.ycombinator.com/item?id=49845977",
@@ -451,6 +451,43 @@
       "deep_dive_priority_score": 73.25
     },
     {
+      "key": "https://github.com/kiritbasu/causal-analyst",
+      "deferred_at": "2026-09-27T10:02:31.343415+00:00",
+      "expires_at": "2026-10-11T10:02:31.343415+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: Causal analyst agent skill for Claude",
+        "originalTitle": "Show HN: Causal analyst agent skill for Claude",
+        "displayName": "Show HN: Causal analyst agent skill for Claude",
+        "sourceLanguage": "en",
+        "url": "https://github.com/kiritbasu/causal-analyst",
+        "description": "Show HN: Causal analyst agent skill for Claude",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-26T10:24:33Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Claude",
+        "primaryUrl": "https://github.com/kiritbasu/causal-analyst",
+        "sourceDetails": {
+          "hn_id": "49855115",
+          "hn_url": "https://news.ycombinator.com/item?id=49855115",
+          "external_url": "https://github.com/kiritbasu/causal-analyst",
+          "comments": 0,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e8479ff-dca9-811e-a3c8-cf90ad8bff09",
+      "score": 70,
+      "reason": "Claude向け因果分析エージェントスキルの公開。",
+      "commercial_score": 75,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 71.75
+    },
+    {
       "key": "https://www.volcengine.com/docs/ark/migrate-ark-runtime-sdk?lang=zh",
       "deferred_at": "2026-09-23T08:15:01.804393+00:00",
       "expires_at": "2026-11-22T08:15:01.804393+00:00",
@@ -599,6 +636,79 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 70.45
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49835073",
+      "deferred_at": "2026-09-27T10:02:31.343583+00:00",
+      "expires_at": "2026-10-11T10:02:31.343583+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic resumes charging for requests blocked by safeguards",
+        "originalTitle": "Anthropic resumes charging for requests blocked by safeguards",
+        "displayName": "Anthropic resumes charging for requests blocked by safeguards",
+        "sourceLanguage": "en",
+        "url": "https://twitter.com/ClaudeDevs/status/2103170368794185758",
+        "description": "Anthropic resumes charging for requests blocked by safeguards",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-24T18:42:33Z",
+        "sourceContext": "HN points=5 comments=2 matched_query=Anthropic",
+        "primaryUrl": "https://twitter.com/ClaudeDevs/status/2103170368794185758",
+        "sourceDetails": {
+          "hn_id": "49835073",
+          "hn_url": "https://news.ycombinator.com/item?id=49835073",
+          "external_url": "https://twitter.com/ClaudeDevs/status/2103170368794185758",
+          "comments": 2,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e8479ff-dca9-8164-a6bb-dd9f82de9557",
+      "score": 65,
+      "reason": "セーフガードでブロックされたリクエストの課金再開。",
+      "commercial_score": 75,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 68.5
+    },
+    {
+      "key": "https://platform.minimaxi.com/docs/release-notes/models",
+      "deferred_at": "2026-09-27T10:02:31.343673+00:00",
+      "expires_at": "2026-09-29T10:02:31.343673+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "MiniMax — MiniMax M2 模型 API 限时免费调用!活动截止时间:2025年11月7日 上午 08:00",
+        "originalTitle": "MiniMax — MiniMax M2 模型 API 限时免费调用!活动截止时间:2025年11月7日 上午 08:00",
+        "displayName": "開発支援ツール「MiniMax — MiniMax M2 模型 API 限时免费调用!活动截止时间:2025年11月7日 上午 08:00」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://platform.minimaxi.com/docs/release-notes/models?aif_revision=57a74c8868b63587",
+        "description": "MiniMax M2 模型 API 限时免费调用！活动截止时间：2025年11月7日 上午 08:00",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2025年11月7日",
+        "sourceContext": "MiniMax M2 模型 API 限时免费调用！活动截止时间：2025年11月7日 上午 08:00",
+        "primaryUrl": "https://platform.minimaxi.com/docs/release-notes/models",
+        "sourceDetails": {
+          "vendor": "MiniMax",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://platform.minimaxi.com/docs/release-notes/models",
+          "candidate_revision": "57a74c8868b63587",
+          "vendor_record_kind": "structured_embedded",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e8479ff-dca9-817e-b1d2-d9247c977d41",
+      "score": 65,
+      "reason": "APIの期間限定無料化のプロモーション情報。",
+      "commercial_score": 70,
+      "shelf_life_score": 20,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 66.75
     }
   ]
 }
