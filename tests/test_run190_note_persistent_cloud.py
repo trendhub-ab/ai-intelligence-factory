@@ -50,6 +50,7 @@ class Run190PersistentCloudTests(unittest.TestCase):
         self.assertIn("base._upload_header_image", source)
         self.assertIn("base._verify_body_content", source)
         self.assertIn("base._save_draft_and_verify", source)
+        self.assertIn("base._body_manuscript_for_note", source)
         self.assertNotIn("Gemini", source)
 
     def test_run190_installs_latest_official_header_upload_overlay(self) -> None:
