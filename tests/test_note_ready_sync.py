@@ -139,10 +139,26 @@ class NoteReadySyncTests(unittest.TestCase):
         page["properties"]["アイキャッチ"] = {
             "files": [{"type": "external", "external": {"url": "https://example.com/legacy.png"}}]
         }
-        self.assertIsNone(sync._source_state(page))
+        self.assertIsNotNone(sync._source_state(page))
 
         page["properties"]["記事状態"] = {"select": {"name": "Needs Editorial Review"}}
         self.assertIsNone(sync._source_state(page))
+
+    def test_stale_eyecatch_is_counted_as_incomplete_publication_asset(self):
+        page = ready_page("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", article_title="Public title")
+        page["properties"]["アイキャッチ"] = {
+            "files": [{"type": "external", "external": {"url": "https://example.com/legacy.png"}}]
+        }
+        with patch.object(sync, "NOTION_API_KEY", "token"), \
+             patch.object(sync, "SOURCE_DATA_SOURCE_ID", "source"), \
+             patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_validate_destination_schema"), \
+             patch.object(sync, "_query_db", side_effect=[[page], []]), \
+             patch.object(sync, "_source_current_ready_manuscript", return_value="manuscript"):
+            result = sync.sync_note_ready_db()
+        self.assertEqual(result["source_ready"], 0)
+        self.assertEqual(result["incomplete_publication_assets"], 1)
+        self.assertEqual(result["invalid_source_state"], 0)
 
     def test_source_publishability_requires_body_hash_and_current_policy(self):
         body = "article" * 50
