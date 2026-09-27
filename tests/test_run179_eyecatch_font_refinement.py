@@ -136,6 +136,31 @@ class Run179EyecatchFontRefinementTests(unittest.TestCase):
             ee._jp_font = original_jp
             ee._latin_font = original_latin
 
+    def test_production_japanese_font_ready_accepts_downloaded_noto(self):
+        with patch.object(run179, "_valid_font_file", return_value=True), \
+             patch.object(Path, "is_file", return_value=False):
+            self.assertTrue(run179.production_japanese_font_ready())
+
+    def test_production_japanese_font_ready_accepts_system_noto(self):
+        with patch.object(run179, "_valid_font_file", return_value=False), \
+             patch.object(Path, "is_file", return_value=True), \
+             patch.object(Path, "stat") as stat:
+            stat.return_value.st_size = 2_000_000
+            self.assertTrue(run179.production_japanese_font_ready())
+
+    def test_require_production_japanese_font_fails_closed_without_japanese_font(self):
+        with patch.object(run179, "production_japanese_font_ready", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "Japanese eyecatch font is unavailable"):
+                run179.require_production_japanese_font()
+
+    def test_production_entrypoint_requires_japanese_font_after_bootstrap(self):
+        source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
+        bootstrap = source.index("run179_eyecatch_font_refinement.ensure_google_font_assets(")
+        require = source.index("run179_eyecatch_font_refinement.require_production_japanese_font()")
+        self.assertLess(bootstrap, require)
+        nearby = source[bootstrap:require + 200]
+        self.assertIn('if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):', nearby)
+
     def test_production_entrypoint_installs_run179_after_run178(self):
         runtime_source = (ROOT / "runtime_layers.py").read_text(encoding="utf-8")
         entrypoint_source = (ROOT / "production_pipeline.py").read_text(encoding="utf-8")
