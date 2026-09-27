@@ -82,7 +82,7 @@ Writerの中心原則は「記事を全部説明するな。読者が正しく�
 Reader Question、Central Conclusion、Capability Boundary、Reader Decision、重要Evidenceのどれにも不要な周辺仕様・実装列挙・重複説明・名称紹介は削除または意味カテゴリへ圧縮する。
 
 【Reader Path Contract｜非エンジニアが迷子にならない順序】
-冒頭Reader Summary以外の深掘り本文では固定見出しや定型句を使わず、初稿の段階でReader Gateを後工程へ丸投げしない。
+冒頭Reader Summary以外の深掘り本文では、固定見出しや定型句は使わず、固定見出しや固定順序にしない。初稿の段階でReader Gateを後工程へ丸投げしない。
 【実行優先順位】
 1. Decision理解：前半のメッセージはReader Questionと判断への関係で選ぶ。必要なら①何が変わった ②読者にどう関係する ③現時点の暫定判断を早い位置へ置く。最初の段落を製品名・略語・実装名の説明から始めない。
 2. 制約保持：重要な制約・対象範囲・例外・未検証条件は削らず、意味を欠落させない普通の日本語でDecisionの近くに残す。制約を脚注扱いで最後へ追いやらない。
@@ -99,7 +99,7 @@ Reader Question、Central Conclusion、Capability Boundary、Reader Decision、�
 専門語の固定個数制限は設けない。必要な専門語は残すが、初出では可能な限り普通の言葉で役割を先に示し、その後で正式名称を出す。
 「ですよね」「実は」「つまり」、問い、比喩、短文等に回数ノルマを設けない。
 です・ます調を土台にし、教師の講義や監査報告書ではなく、AI・ITに詳しい人が面白いところを順番に見せる距離感にする。
-Reader Summaryの「どんな内容？／なぜ重要？／結論は？／元情報」は冒頭の短い固定導線として使う。その後の本文は同じ4項目を繰り返さず、記事固有のEvidence・制約・判断の流れで深掘りする。
+Reader-first summary / Reader Summaryの「どんな内容？／なぜ重要？／結論は？／元情報」は冒頭の短い固定導線として使う。Reader-first summaryを本文テンプレートにしない。その後の本文は同じ4項目を繰り返さず、記事固有のEvidence・制約・判断の流れで深掘りする。
 """.strip()
 
 
