@@ -151,8 +151,11 @@ def sync_corrected_source(manuscript: str) -> None:
             raise VTCodeRepairError("Exact source metadata update failed")
     if current != manuscript:
         caption = publication_contract.current_ready_caption(manuscript)
-        children = build_notion_manuscript_children(manuscript, caption,
-            chunker=lambda text: safe_chunk_text(text, 1800))
+        # Ready provenance is byte-exact: rich_text chunks are concatenated without
+        # separators when read back, so preserve every character across chunk boundaries.
+        children = build_notion_manuscript_children(
+            manuscript, caption, chunker=lambda text: [text[i:i + 1800] for i in range(0, len(text), 1800)]
+        )
         response = ready_sync._request("PATCH", f"https://api.notion.com/v1/blocks/{SYNC_ID}/children", json={"children": children})
         if response.status_code != 200:
             raise VTCodeRepairError("Corrected manuscript append failed")
