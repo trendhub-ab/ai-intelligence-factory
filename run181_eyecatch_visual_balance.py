@@ -194,6 +194,8 @@ def _editorial_hook(title: str, summary: str, category: str) -> str:
     text = f"{title}\n{summary}".lower()
     if any(token in text for token in (" vs ", "vs.", "比較", "違い", "どちら")):
         return "結局、どこが違うのか？"
+    if any(token in text for token in ("設立", "創設", "創業", "原点", "出発点", "founding", "founded", "history", "historical")):
+        return "原点から、何が見えるのか？"
     if category == "SECURITY" or any(token in text for token in ("脆弱", "攻撃", "security", "安全性")):
         return "まず、何が危ないのか？"
     if any(token in text for token in ("速い", "高速", "強い", "高性能", "性能")):
