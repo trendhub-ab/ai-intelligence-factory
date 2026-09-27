@@ -14,6 +14,9 @@ from typing import Any
 import note_draft_automation as base
 
 
+_READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？", "元情報")
+
+
 def _visible_body_source(manuscript: str) -> str:
     text = str(manuscript or "").replace("\r\n", "\n").replace("\r", "\n")
     # note already has a separate title field. Ignore exactly one leading Markdown H1 only.
@@ -57,7 +60,17 @@ def verify_body_content(body: Any, manuscript: str) -> None:
     anchors = _anchors(expected)
     matched = sum(1 for anchor in anchors if anchor in actual)
     required = min(2, len(anchors))
-    if len(actual) < minimum or matched < required:
+    ratio = len(actual) / max(1, len(expected))
+    heading_cardinality_ok = all(
+        actual.count(label) == expected.count(label)
+        for label in _READER_FIRST_LABELS
+    )
+    if (
+        len(actual) < minimum
+        or matched < required
+        or not 0.90 <= ratio <= 1.12
+        or not heading_cardinality_ok
+    ):
         raise base.NoteDraftError(
             "note body insertion verification failed; refusing to save a malformed draft"
         )

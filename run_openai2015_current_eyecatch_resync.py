@@ -23,6 +23,7 @@ import note_eyecatch_persistence as eyecatch_persistence
 import note_ready_sync as ready_sync
 import pipeline
 import publication_contract
+import run179_eyecatch_font_refinement as run179
 import run181_eyecatch_visual_balance as run181
 import run183_eyecatch_emphasis_scale as run183
 import run190_note_persistent_cloud as run190
@@ -58,6 +59,12 @@ def _lossless_chunks(text: str, limit: int = 1800) -> list[str]:
 
 
 def render_current_eyecatch() -> Path:
+    run179.ensure_google_font_assets(
+        enabled=True,
+        logger=getattr(pipeline, "logger", None),
+    )
+    run179.require_production_japanese_font()
+    run179.install(pipeline)
     run183.install(pipeline)
     plan = {
         "eyecatch_title": EYECATCH_TITLE,

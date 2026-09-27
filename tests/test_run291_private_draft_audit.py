@@ -98,6 +98,25 @@ class Run291BodyAuditTests(unittest.TestCase):
         with self.assertRaises(audit.PrivateDraftAuditError):
             audit._body_text_metrics(actual, manuscript, "タイトル")
 
+    def test_stale_reader_summary_plus_current_body_fails_closed(self) -> None:
+        manuscript = (
+            "## どんな内容？\n現行内容です。\n\n"
+            "## なぜ重要？\n現行理由です。\n\n"
+            "## 結論は？\n現行結論です。\n\n"
+            "### 元情報\nsource\n\n"
+            "## 本論\n" + ("詳細です。" * 80) + "\n\n"
+            "### Sources / Evidence\nsource A\n\n"
+            "### 調査と判断の時間を減らしたい方へ\nCTAです。"
+        )
+        expected = audit.note_base._plain_manuscript_text(manuscript)
+        stale = (
+            "どんな内容？ 古い要約です。 なぜ重要？ 古い理由です。 "
+            "結論は？ 今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。 "
+            "元情報 "
+        )
+        with self.assertRaises(audit.PrivateDraftAuditError):
+            audit._body_text_metrics(stale + expected, manuscript, "タイトル")
+
     def test_duplicate_title_at_body_start_fails_closed(self) -> None:
         title = "Netflixの推薦"
         manuscript = (

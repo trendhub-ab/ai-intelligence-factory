@@ -58,6 +58,12 @@ class OpenAI2015CurrentEyecatchResyncTests(unittest.TestCase):
         self.assertGreater(len(chunks), 1)
         self.assertEqual("".join(chunks), sample)
 
+    def test_one_off_eyecatch_requires_run179_japanese_font_contract(self):
+        source = inspect.getsource(repair.render_current_eyecatch)
+        self.assertIn("ensure_google_font_assets", source)
+        self.assertIn("require_production_japanese_font", source)
+        self.assertIn("run179.install", source)
+
     def test_runtime_state_asset_contract_is_explicit(self):
         self.assertEqual(repair.ASSET_BRANCH, "runtime-state")
         self.assertEqual(repair.ASSET_BASE, "OpenAI_2015.png")

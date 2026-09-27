@@ -66,3 +66,43 @@ def test_run417_is_zero_model_and_no_public_release_surface():
     assert "generativelanguage.googleapis.com" not in source
     assert "publish" not in source
     assert "release" not in source
+
+
+def test_run417_rejects_stale_reader_summary_prefixed_to_current_body():
+    expected = run417._normalize_visible_text(run417._visible_body_source(manuscript()))
+    stale = (
+        "どんな内容？ 古い要約です。 なぜ重要？ 古い判断です。 "
+        "結論は？ 今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。 "
+        "元情報 "
+    )
+    try:
+        run417.verify_body_content(Body(stale + expected), manuscript())
+    except base.NoteDraftError as exc:
+        assert "malformed draft" in str(exc)
+    else:
+        raise AssertionError("stale prefixed body must fail closed")
+
+
+def test_run417_rejects_duplicate_reader_first_headings():
+    source = """## どんな内容？
+本文。
+
+## なぜ重要？
+理由。
+
+## 結論は？
+結論。
+
+### 元情報
+source
+
+## 本論
+十分に長い本文です。""" + (" 詳細。" * 80)
+    expected = run417._normalize_visible_text(run417._visible_body_source(source))
+    duplicated = "どんな内容？ 古い本文 なぜ重要？ 古い理由 結論は？ 古い結論 元情報 " + expected
+    try:
+        run417.verify_body_content(Body(duplicated), source)
+    except base.NoteDraftError as exc:
+        assert "malformed draft" in str(exc)
+    else:
+        raise AssertionError("duplicate reader-first headings must fail closed")

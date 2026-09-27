@@ -36,6 +36,7 @@ PREPARING_STATUS = "投稿準備中"
 READY_STATUS = "Ready"
 MAX_HISTORY_CANDIDATES = 24
 _EDIT_PATH = re.compile(r"^/notes/[^/?#]+/edit/?$", re.I)
+_READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？", "元情報")
 
 
 class PrivateDraftAuditError(RuntimeError):
@@ -189,7 +190,16 @@ def _body_text_metrics(actual_text: str, expected_markdown: str, title: str) -> 
     ratio = len(actual) / max(1, len(expected))
     prefix_ok = prefix in actual
     suffix_ok = suffix in actual
-    if not prefix_ok or not suffix_ok or not 0.82 <= ratio <= 1.30:
+    heading_cardinality_ok = all(
+        actual.count(label) == expected.count(label)
+        for label in _READER_FIRST_LABELS
+    )
+    if (
+        not prefix_ok
+        or not suffix_ok
+        or not 0.88 <= ratio <= 1.12
+        or not heading_cardinality_ok
+    ):
         raise PrivateDraftAuditError("Private draft visible body does not match the approved presentation")
 
     source_index = actual.find(run222.SOURCE_HEADING)
