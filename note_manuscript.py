@@ -192,12 +192,13 @@ def _find_reader_intro_fact_sentence(intro: str) -> str:
 
 
 def _reader_decision_fallback(decision_text: str) -> str:
+    """Translate Decision distance without assuming every topic is an adoption decision."""
     return {
-        "NOW": "現時点で、具体的な導入・検証判断を進める価値があります。",
-        "TRY": "まずは限定した環境で小さく試し、条件を確かめる価値があります。",
-        "WATCH": "今は導入を急がず、追加Evidenceと今後の動きを追うのが妥当です。",
-        "WAIT": "現時点では導入を急がず、条件とEvidenceが整うまで待つのが妥当です。",
-        "AVOID": "現時点では採用を見送り、代替手段を優先するのが妥当です。",
+        "NOW": "現時点で、具体的な次の判断へ進む価値があります。",
+        "TRY": "まずは限定した範囲で試し、条件を見極める価値があります。",
+        "WATCH": "今は結論を急がず、追加Evidenceと今後の変化を確認するのが妥当です。",
+        "WAIT": "現時点では判断を急がず、条件とEvidenceが整うまで待つのが妥当です。",
+        "AVOID": "現時点では進めず、代替案を優先するのが妥当です。",
     }.get((decision_text or "").strip().upper(), "")
 
 
@@ -219,12 +220,16 @@ def build_reader_first_summary(
         parsed.get("what_text", ""),
     ])
     why = _compact_reader_summary(parsed.get("why_important_text") or conclusion)
-    # The compact public card should communicate the decision distance, not repeat the
-    # implementation-heavy Action field. When a canonical Decision code exists, translate it
-    # deterministically into reader language; the precise Action remains in the article/metadata.
+    # Prefer an already-gated Action when it is readable enough for the public card. This keeps
+    # historical, legal, research and incident articles in their own decision vocabulary instead
+    # of forcing every WATCH/WAIT item into "導入" language. If Action is implementation-heavy,
+    # fall back to a topic-neutral translation of the canonical Decision distance.
+    action_decision = _compact_reader_summary(parsed.get("action_text") or "")
+    action_complexity = _reader_summary_complexity(action_decision)[0] if action_decision else 10_000
     decision_fallback = _reader_decision_fallback(str(parsed.get("decision_text") or ""))
-    decision = decision_fallback or _compact_reader_summary(
-        final or parsed.get("action_text") or parsed.get("decision_reason_text")
+    decision = (
+        action_decision if action_decision and action_complexity <= 8
+        else decision_fallback or _compact_reader_summary(final or parsed.get("decision_reason_text"))
     )
     decision_code_phrases = {
         "NOW": "今すぐ着手する", "TRY": "限定的に試す", "WATCH": "今後の動きを注視する",

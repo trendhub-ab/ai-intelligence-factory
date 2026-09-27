@@ -37,8 +37,33 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         summary = pipeline.build_reader_first_summary(self._parsed())
         self.assertEqual("公式リポジトリで新しいOSSが公開されています。", summary["what"])
         self.assertEqual("設定と監視の手作業を減らせる可能性があり、運用負荷の判断材料になります。", summary["why"])
-        self.assertEqual("まずは限定した環境で小さく試し、条件を確かめる価値があります。", summary["decision"])
-        self.assertNotIn("本番全面導入", summary["decision"])
+        self.assertEqual("検証環境で既存手順と比較テストします。", summary["decision"])
+        self.assertNotIn("導入", summary["decision"])
+
+    def test_historical_watch_uses_gated_action_instead_of_fake_adoption_language(self):
+        parsed = {
+            "note_draft": "",
+            "decision_text": "WATCH",
+            "action_text": (
+                "2015年時点の設立趣旨が、その後の組織構造の変化に伴って"
+                "どう変遷したかを歴史的な事実経過として整理・比較します。"
+            ),
+            "decision_reason_text": "歴史的な起点として比較する価値があります。",
+        }
+        summary = pipeline.build_reader_first_summary(parsed)
+        self.assertIn("整理・比較", summary["decision"])
+        self.assertNotIn("導入", summary["decision"])
+        self.assertNotIn("採用", summary["decision"])
+
+    def test_watch_fallback_is_topic_neutral_when_action_is_too_technical(self):
+        parsed = {
+            "note_draft": "",
+            "decision_text": "WATCH",
+            "action_text": "RFC-1234 /v2/internal-control endpoint compatibility matrix を確認する。",
+        }
+        summary = pipeline.build_reader_first_summary(parsed)
+        self.assertIn("結論を急がず", summary["decision"])
+        self.assertNotIn("導入", summary["decision"])
 
     def test_internal_decision_code_never_leaks_into_reader_header(self):
         parsed = self._parsed()

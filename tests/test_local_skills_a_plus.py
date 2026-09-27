@@ -37,6 +37,8 @@ class APlusEditorialOrchestrationTests(unittest.TestCase):
         self.assertIn("What / Why Important / Decision / Decision Reason / Action", first)
         self.assertIn("追加Provider callを要求しない", first)
         self.assertIn("required_qualifiers（2件）", first)
+        self.assertIn("Decisionコードを『導入する／導入しない』へ固定変換しない", first)
+        self.assertIn("歴史・設立・判決・事件・制度・研究・ベンチマーク", first)
 
     def test_local_fallback_requires_safe_management_and_blocks_fact_failures(self):
         parsed = self._parsed()
