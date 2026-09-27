@@ -24,6 +24,34 @@ class ApplyError(RuntimeError):
     pass
 
 
+def _restamp_current_manuscript_bytes() -> None:
+    """Re-stamp the exact approved manuscript under the current publication policy.
+
+    This changes provenance only. The manuscript bytes are preserved exactly; the
+    historical newline-aware chunker is deliberately not used here because it can
+    mutate bytes at chunk boundaries.
+    """
+    manuscript = repair.load_manuscript()
+    if ready_sync._source_current_ready_manuscript(repair.SYNC_ID) == manuscript:
+        return
+    caption = repair.publication_contract.current_ready_caption(manuscript)
+    chunks = lambda text: [text[i:i + 1800] for i in range(0, len(text), 1800)]
+    children = repair.build_notion_manuscript_children(
+        manuscript,
+        caption,
+        chunker=chunks,
+    )
+    response = ready_sync._request(
+        "PATCH",
+        f"https://api.notion.com/v1/blocks/{repair.SYNC_ID}/children",
+        json={"children": children},
+    )
+    if response.status_code != 200:
+        raise ApplyError(f"current manuscript provenance restamp failed: HTTP {response.status_code}")
+    if ready_sync._source_current_ready_manuscript(repair.SYNC_ID) != manuscript:
+        raise ApplyError("current manuscript bytes did not survive provenance restamp")
+
+
 def _patch_source_eyecatch() -> None:
     page = repair._source_preflight()
     props = page.get("properties") or {}
@@ -168,7 +196,8 @@ def main() -> None:
     image_path = note_base._download_eyecatch(IMAGE_URL, repair.SYNC_ID, repair.NEW_TITLE)
     try:
         _patch_source_eyecatch()
-        # Keep the posting row's quality contract synchronized after the source eyecatch change.
+        _restamp_current_manuscript_bytes()
+        # Keep the posting row's quality contract synchronized after current asset/provenance updates.
         ready_sync.sync_note_ready_db(target_sync_id=repair.SYNC_ID)
         state = repair.destination_preflight()
         result = _apply_to_existing_draft(image_path)
