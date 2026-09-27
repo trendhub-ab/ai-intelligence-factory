@@ -29,7 +29,7 @@ import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as official_image
 import run417_note_body_verification as run417
 import run_openai2015_existing_draft_resync as repair
-from notion_payloads import build_notion_manuscript_children, safe_chunk_text
+from notion_payloads import build_notion_manuscript_children
 from run_sgps_existing_draft_repair import _route_key, _same_edit_route
 
 CONFIRM_TOKEN = "REPAIR_OPENAI2015_CURRENT_EYECATCH_RESYNC"
@@ -92,6 +92,17 @@ def upload_current_eyecatch(image_path: Path) -> str:
     return image_url
 
 
+def exact_chunks(text: str, limit: int = 1800) -> list[str]:
+    """Split only by byte-preserving character slices; concatenation must equal input."""
+    value = str(text or "")
+    if limit <= 0:
+        raise ValueError("chunk limit must be positive")
+    chunks = [value[i:i + limit] for i in range(0, len(value), limit)]
+    if "".join(chunks) != value:
+        raise RepairError("exact manuscript chunking changed persisted bytes")
+    return chunks
+
+
 def ensure_current_manuscript(manuscript: str) -> None:
     current = ready_sync._source_current_ready_manuscript(repair.SYNC_ID)
     if current == manuscript:
@@ -102,7 +113,7 @@ def ensure_current_manuscript(manuscript: str) -> None:
     children = build_notion_manuscript_children(
         manuscript,
         caption,
-        chunker=lambda text: safe_chunk_text(text, 1800),
+        chunker=lambda text: exact_chunks(text, 1800),
     )
     response = ready_sync._request(
         "PATCH",
