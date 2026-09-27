@@ -14,10 +14,8 @@ class Run160PublicEyecatchUnificationTests(unittest.TestCase):
 
     def test_editorial_is_single_public_image_source(self):
         self.assertIn("generate_note_editorial_eyecatch(", self.publication)
-        self.assertIn(
-            "eyecatch_url = upload_eyecatch_to_github(note_eyecatch_path, eyecatch_filename)",
-            self.publication,
-        )
+        self.assertIn("eyecatch_url = eyecatch_contract.upload_current_asset_pair(", self.publication)
+        self.assertIn("upload_eyecatch_to_github, note_eyecatch_path", self.publication)
         self.assertIn("[PUBLIC EDITORIAL EYECATCH]", self.publication)
 
     def test_legacy_decision_card_is_not_called_by_publication_path(self):
@@ -26,7 +24,7 @@ class Run160PublicEyecatchUnificationTests(unittest.TestCase):
         self.assertNotIn("generated_path =", self.publication)
 
     def test_no_fallback_to_internal_score_card(self):
-        self.assertGreaterEqual(self.publication.count("旧Decision Cardへフォールバック"), 3)
+        self.assertGreaterEqual(self.publication.count("旧Decision Cardへフォールバック"), 2)\n        self.assertIn("current image/manifest pair unavailable", self.publication)
         self.assertIn("if not note_eyecatch_path:", self.publication)
 
     def test_legacy_renderer_is_retained_only_for_internal_compatibility(self):
