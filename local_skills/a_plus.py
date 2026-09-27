@@ -101,7 +101,11 @@ def can_use_local_fallback(
     if not bool(evidence_result.get("decision_scope_safe", True)):
         return False
     for row in reason_rows or []:
-        if _text(row.get("gate")).lower() == "fact":
+        gate = _text(row.get("gate")).lower()
+        code = _text(row.get("reason_code")).upper()
+        if gate == "fact":
+            return False
+        if any(token in code for token in ("FACT_", "EVIDENCE_", "SOURCE_", "GROUNDING")):
             return False
     return True
 
@@ -145,3 +149,62 @@ def compile_provider_free_fallback(
     }
     out["_a_plus_local_fallback"] = dict(meta)
     return out, meta
+
+
+def render_provider_compatible_fallback(
+    pipeline_module,
+    repo: Mapping[str, Any],
+    parsed: Mapping[str, Any],
+    *,
+    source_info: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Compile Local Skills and serialize it into the existing provider response contract."""
+    source = _text(repo.get("source")) or "Unknown"
+    primary_url = _text(source_info.get("primary_url")) or _text(repo.get("url"))
+    evidence_urls = []
+    for value in list(source_info.get("evidence_urls") or []):
+        url = _text(value)
+        if url and url not in evidence_urls:
+            evidence_urls.append(url)
+    if primary_url and primary_url not in evidence_urls:
+        evidence_urls.append(primary_url)
+    grounding = {
+        "grounding_status": _text(source_info.get("method")) or "Source Native",
+        "evidence_urls": evidence_urls,
+    }
+    evidence_context = _text(source_info.get("verification_context")) or _text(source_info.get("context"))
+    fallback, meta = compile_provider_free_fallback(
+        repo,
+        parsed,
+        source=source,
+        primary_url=primary_url,
+        grounding=grounding,
+        evidence_context=evidence_context,
+    )
+
+    score = int(fallback.get("score") or parsed.get("score") or 0)
+    breakdown = _text(parsed.get("score_breakdown_text"))
+    if not breakdown:
+        breakdown = (
+            f"Business Impact 0/25; Technical Impact 0/25; Urgency 0/20; "
+            f"Market Impact 0/15; Reliability 0/15; 合計 {score}/100"
+        )
+    article_value = int(parsed.get("article_value") or score)
+    token = _text(getattr(pipeline_module, "SECTION_SPLIT_TOKEN", "=== ARTICLE ==="))
+    response_text = "\n".join([
+        "=== MANAGEMENT DATA ===",
+        f"・Source Summary: {_text(fallback.get('source_summary_text'))}",
+        f"・What: {_text(fallback.get('what_text'))}",
+        f"・Why Important: {_text(fallback.get('why_important_text'))}",
+        f"・Decision: {_text(fallback.get('decision_text')).upper()}",
+        f"・Decision Reason: {_text(fallback.get('decision_reason_text'))}",
+        f"・Decision Score: {breakdown}",
+        f"・Action: {_text(fallback.get('action_text'))}",
+        f"・Article Value: {max(0, min(100, article_value))}",
+        "",
+        token,
+        _text(fallback.get("title_text")),
+        "",
+        str(fallback.get("note_draft") or "").strip(),
+    ]).strip() + "\n"
+    return response_text, meta
