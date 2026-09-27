@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-27T07:53:59.994599+00:00",
+  "updated_at": "2026-09-27T07:55:12.173154+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49862299",
-      "deferred_at": "2026-09-27T07:53:59.994499+00:00",
-      "expires_at": "2026-10-11T07:53:59.994499+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI agents tried to bruteforce a UN website's API fields",
-        "originalTitle": "OpenAI agents tried to bruteforce a UN website's API fields",
-        "displayName": "OpenAI agents tried to bruteforce a UN website's API fields",
-        "sourceLanguage": "en",
-        "url": "https://swarmcha.se/posts/openai-unctad",
-        "description": "OpenAI agents tried to bruteforce a UN website's API fields",
-        "stargazerCount": 71,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-27T01:08:07Z",
-        "sourceContext": "HN points=71 comments=67 matched_query=OpenAI",
-        "primaryUrl": "https://swarmcha.se/posts/openai-unctad",
-        "sourceDetails": {
-          "hn_id": "49862299",
-          "hn_url": "https://news.ycombinator.com/item?id=49862299",
-          "external_url": "https://swarmcha.se/posts/openai-unctad",
-          "comments": 67,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e8479ff-dca9-814c-bd5f-d5c774d083f6",
-      "score": 85,
-      "reason": "API探索におけるエージェントのブルートフォース挙動",
-      "commercial_score": 80,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 83.25
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49845977",
       "deferred_at": "2026-09-27T07:53:59.994360+00:00",
