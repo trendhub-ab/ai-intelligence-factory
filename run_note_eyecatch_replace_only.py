@@ -166,10 +166,15 @@ def replace_existing_cover_only() -> dict[str, Any]:
             old_identity = repair._header_media_identity(page)
             _backup_cover(page, cover)
 
-            # Activate the existing cover context before selecting its explicit delete action.
-            cover.click()
-            page.wait_for_timeout(350)
-            delete = _cover_delete_control(page, cover_box)
+            # Current note exposes the cover delete control while the existing cover
+            # context is already active. Clicking the image can dismiss that toolbar, so
+            # prefer the visible control and use hover only as a reveal fallback.
+            try:
+                delete = _cover_delete_control(page, cover_box)
+            except ReplaceError:
+                cover.hover()
+                page.wait_for_timeout(350)
+                delete = _cover_delete_control(page, cover_box)
             delete.click()
             deleted = True
             _wait_cover_gone(page, old_identity)
