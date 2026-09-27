@@ -65,7 +65,7 @@ Security / Sandbox / Isolationの隔離機構を無条件の安全保証にし�
 
 【Editorial Story設計｜同一Writer call内の内部編集】
 [AIIF_EDITORIAL_STORY_BRIEF_V1]
-本文を書く前に、取得済みSOURCE BOUNDARY / Evidence / 既存Decisionだけで次の短い編集軸を内部形成する。固定見出しや固定順序にしない。
+本文を書く前に、取得済みSOURCE BOUNDARY / Evidence / 既存Decisionだけで次の短い編集軸を内部形成する。冒頭のReader Summary（どんな内容？→なぜ重要？→結論は？→元情報）は公開面の固定導線として別工程で組み立てる。本文の深掘り見出しや順序は記事固有にする。
 - SURPRISE / Discovery — 最も意外な事実や差分。Evidenceに意外性がなければ「なし」とし、重要な事実を選ぶ。
 - TENSION / Capability Boundary — Evidenceが示す期待と制約、できることとできないことの緊張。衝突が確認できなければ「なし」。対立・動機・困りごとを創作しない。
 - HUMAN STAKE / Why Now — この事実がどの読者の理解・選択に関係するか。時点や読む理由は根拠の範囲で示し、影響のない人に関係を強制しない。
@@ -82,7 +82,7 @@ Writerの中心原則は「記事を全部説明するな。読者が正しく�
 Reader Question、Central Conclusion、Capability Boundary、Reader Decision、重要Evidenceのどれにも不要な周辺仕様・実装列挙・重複説明・名称紹介は削除または意味カテゴリへ圧縮する。
 
 【Reader Path Contract｜非エンジニアが迷子にならない順序】
-固定見出しや定型句は使わず、初稿の段階でReader Gateを後工程へ丸投げしない。
+冒頭Reader Summary以外の深掘り本文では、固定見出しや定型句は使わず、固定見出しや固定順序にしない。初稿の段階でReader Gateを後工程へ丸投げしない。
 【実行優先順位】
 1. Decision理解：前半のメッセージはReader Questionと判断への関係で選ぶ。必要なら①何が変わった ②読者にどう関係する ③現時点の暫定判断を早い位置へ置く。最初の段落を製品名・略語・実装名の説明から始めない。
 2. 制約保持：重要な制約・対象範囲・例外・未検証条件は削らず、意味を欠落させない普通の日本語でDecisionの近くに残す。制約を脚注扱いで最後へ追いやらない。
@@ -99,7 +99,7 @@ Reader Question、Central Conclusion、Capability Boundary、Reader Decision、�
 専門語の固定個数制限は設けない。必要な専門語は残すが、初出では可能な限り普通の言葉で役割を先に示し、その後で正式名称を出す。
 「ですよね」「実は」「つまり」、問い、比喩、短文等に回数ノルマを設けない。
 です・ます調を土台にし、教師の講義や監査報告書ではなく、AI・ITに詳しい人が面白いところを順番に見せる距離感にする。
-Reader-first summaryの「何が出た？／なぜ重要？／結論は？」を本文テンプレートにしない。
+Reader-first summary / Reader Summaryの「どんな内容？／なぜ重要？／結論は？／元情報」は冒頭の短い固定導線として使う。Reader-first summaryを本文テンプレートにしない。その後の本文は同じ4項目を繰り返さず、記事固有のEvidence・制約・判断の流れで深掘りする。
 """.strip()
 
 

@@ -59,7 +59,10 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
             {"what": "何が出たか。", "why": "なぜ重要か。", "decision": "まず試す。"},
             "acme/repo", "https://github.com/acme/repo", "GitHub", "2026-08-21T18:00:00Z",
         )
-        self.assertLess(header.index("## 30秒でわかるこの記事"), header.index("### 元情報"))
+        self.assertLess(header.index("## どんな内容？"), header.index("## なぜ重要？"))
+        self.assertLess(header.index("## なぜ重要？"), header.index("## 結論は？"))
+        self.assertLess(header.index("## 結論は？"), header.index("### 元情報"))
+        self.assertNotIn("30秒でわかるこの記事", header)
         self.assertIn("**主一次情報**: [acme/repo](https://github.com/acme/repo)", header)
         self.assertIn("**発見経路**: GitHub", header)
         self.assertIn("**公開・更新**: 2026-08-22", header)
@@ -76,13 +79,17 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 published_at="2026-08-21T00:00:00+00:00",
             )
         self.assertTrue(manuscript.startswith("# AI運用を軽くするOSSは使える？"))
-        self.assertLess(manuscript.index("## 現場の困りごとから"), manuscript.index("## 30秒でわかるこの記事"))
-        self.assertLess(manuscript.index("## 30秒でわかるこの記事"), manuscript.index("## なぜ、この問題が残り続けるのか。"))
+        self.assertLess(manuscript.index("## どんな内容？"), manuscript.index("## なぜ重要？"))
+        self.assertLess(manuscript.index("## なぜ重要？"), manuscript.index("## 結論は？"))
+        self.assertLess(manuscript.index("## 結論は？"), manuscript.index("### 元情報"))
+        self.assertLess(manuscript.index("### 元情報"), manuscript.index("## 現場の困りごとから"))
+        self.assertLess(manuscript.index("## 現場の困りごとから"), manuscript.index("## なぜ、この問題が残り続けるのか。"))
         self.assertNotIn("## 先に判断を書くと。", manuscript)
-        self.assertNotIn("### 元情報", manuscript)
+        self.assertEqual(1, manuscript.count("### 元情報"))
         self.assertGreater(manuscript.index("### Sources / Evidence"), manuscript.index("### 結論として、いま取る距離感。"))
         self.assertIn("### 補助Evidence", manuscript)
-        self.assertEqual(1, manuscript.count("https://github.com/acme/repo"))
+        # Recent published notes show the primary source once in the opening 元情報 and once again in the audit footer.
+        self.assertEqual(2, manuscript.count("https://github.com/acme/repo"))
 
     def test_hackernews_discovery_is_not_duplicated_in_rights_note(self):
         with patch.object(pipeline, "ENABLE_SUBSCRIPTION_ATTRIBUTION", False):
@@ -92,7 +99,7 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
                 reader_summary={"what": "発表がありました。", "why": "実務判断に関係します。", "decision": "まず確認します。"},
                 discovery_url="https://news.ycombinator.com/item?id=1",
             )
-        self.assertEqual(1, manuscript.count("発見経路"))
+        self.assertEqual(2, manuscript.count("発見経路"))
         self.assertIn("発見元の[HackerNews投稿]", manuscript)
 
     def test_reader_summary_prefers_plain_source_summary_over_jargon_list(self):
@@ -130,6 +137,23 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         self.assertNotIn("## 先に判断を書くと。", manuscript)
         self.assertIn("### 結論として、いま取る距離感。", manuscript)
         self.assertIn("最終判断は限定検証です。", manuscript)
+
+    def test_human_appeal_opening_skips_title_and_fixed_reader_summary(self):
+        article = (
+            "# 記事タイトル\n\n"
+            "## どんな内容？\n\n要約です。\n\n"
+            "## なぜ重要？\n\n重要性です。\n\n"
+            "## 結論は？\n\n判断です。\n\n"
+            "### 元情報\n"
+            "- **主一次情報**: [Source](https://example.com)\n"
+            "- **発見経路**: Hacker News\n\n"
+            "もしAIにコード修正を任せたとき、何が変わったか追えなければ困ります。\n\n"
+            "## 詳細\n本文です。"
+        )
+        opening = pipeline._article_opening_excerpt(article)
+        self.assertTrue(opening.startswith("もしAIにコード修正を任せたとき"))
+        self.assertNotIn("どんな内容？", opening)
+        self.assertNotIn("主一次情報", opening)
 
     def test_reader_summary_compaction_does_not_create_new_claims(self):
         source = "確認できた事実です。これは二文目です。"

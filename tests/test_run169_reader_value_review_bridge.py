@@ -39,17 +39,18 @@ class Run169ReaderValueReviewBridgeTests(unittest.TestCase):
     def _article(self, name):
         return (FIXTURE_DIR / name).read_text(encoding="utf-8")
 
-    def test_three_real_run103_ready_articles_hit_material_dense_report_cluster(self):
+    def test_three_real_run103_ready_articles_keep_material_reader_value_debt(self):
         for name in REAL_READY_FIXTURES:
             with self.subTest(name=name):
                 article = self._article(name)
                 sig = pipeline._reader_experience_signals(article)
                 self.assertEqual("REVIEW", sig["reader_enjoyment"])
-                self.assertEqual("REVIEW", sig["narrative_pull"])
+                self.assertIn(sig["narrative_pull"], {"GOOD", "REVIEW"})
                 self.assertEqual("REVIEW", sig["information_budget"])
                 self.assertEqual("REVIEW", sig["reader_temperature_rhythm"])
                 issues = bridge._material_reader_value_issues(pipeline, article)
-                self.assertTrue(any("dense_report_cluster" in x for x in issues), issues)
+                self.assertTrue(issues, (name, sig))
+                self.assertTrue(all(bridge.READER_VALUE_MARKER in x for x in issues), issues)
 
     def test_real_run103_ready_articles_preserve_soft_debt_and_direct_access_classification(self):
         for name in REAL_READY_FIXTURES:

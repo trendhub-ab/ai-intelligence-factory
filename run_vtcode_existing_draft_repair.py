@@ -238,6 +238,7 @@ def draft_preflight() -> str:
 
 def browser_repair(manuscript: str, *, expected_route: str) -> dict[str, Any]:
     from playwright.sync_api import sync_playwright
+    body_manuscript = note_base._body_manuscript_for_note(NEW_TITLE, manuscript)
     run190.install()
     run417.install(note_base)
     profile = run190._profile_dir()
@@ -250,17 +251,17 @@ def browser_repair(manuscript: str, *, expected_route: str) -> dict[str, Any]:
             old_media = _header_media_identity(page)
             title_field = note_base._set_title(page, NEW_TITLE)
             body = note_base._find_body(page, title_field)
-            note_base._paste_manuscript(page, body, manuscript)
+            note_base._paste_manuscript(page, body, body_manuscript)
             body = note_base._find_body(page, title_field)
-            note_base._verify_body_content(body, manuscript)
-            saved = note_base._save_draft_and_verify(page, NEW_TITLE, manuscript, image_required=True)
+            note_base._verify_body_content(body, body_manuscript)
+            saved = note_base._save_draft_and_verify(page, NEW_TITLE, body_manuscript, image_required=True)
             if not _same_edit_route(url, saved):
                 raise VTCodeRepairError("Save escaped the existing VT Code private draft")
             # The title/body are durable before a separate cover replacement. Never
             # use a hidden posting API or navigate to /new.
             official_image._upload_header_image(page, IMAGE_PATH,
                 media_changed=lambda: _cover_changed(page, old_media))
-            saved = note_base._save_draft_and_verify(page, NEW_TITLE, manuscript, image_required=True)
+            saved = note_base._save_draft_and_verify(page, NEW_TITLE, body_manuscript, image_required=True)
             if not _same_edit_route(url, saved):
                 raise VTCodeRepairError("Cover save escaped the existing VT Code draft")
             metrics = eyecatch.collect_eyecatch_metrics(page, title_locator=note_base._find_title(page))

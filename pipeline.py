@@ -6383,8 +6383,32 @@ def reset_article_style_memory() -> None:
 
 
 def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
-    """Return the actual reader-facing lead even when Run108 uses a content-specific heading."""
-    body = article or ""
+    """Return narrative prose, excluding canonical title/Reader Summary/source chrome."""
+    body = (article or "").strip()
+    body = re.sub(r"^#(?!#)\s+[^\n]+\n*", "", body, count=1).lstrip()
+
+    # Skip the three deterministic H2 summary sections when they are present.
+    for label in ("どんな内容？", "なぜ重要？", "結論は？"):
+        match = re.match(rf"^##\s*{re.escape(label)}\s*\n", body)
+        if not match:
+            break
+        remainder = body[match.end():]
+        next_heading = re.search(r"^#{2,3}\s+.+$", remainder, re.MULTILINE)
+        body = (remainder[next_heading.start():] if next_heading else "").lstrip()
+
+    # Strip 元情報 list metadata while preserving the following unheaded narrative lead.
+    source_heading = re.match(r"^###\s*元情報\s*\n", body)
+    if source_heading:
+        lines = body[source_heading.end():].splitlines()
+        idx = 0
+        while idx < len(lines):
+            line = lines[idx].strip()
+            if not line or line.startswith("- "):
+                idx += 1
+                continue
+            break
+        body = "\n".join(lines[idx:]).lstrip()
+
     first_heading = re.search(r"^#{2,3}\s+.+$", body, re.MULTILINE)
     if first_heading and first_heading.start() > 0:
         lead = body[:first_heading.start()].strip()
@@ -6393,7 +6417,6 @@ def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
     legacy = _extract_any_markdown_section(body, _display_heading_aliases("intro"))
     if legacy:
         return legacy[:max_chars]
-    # If the article starts with a content-specific heading, inspect its first section instead.
     if first_heading:
         start = first_heading.end()
         next_heading = re.search(r"^#{2,3}\s+.+$", body[start:], re.MULTILINE)

@@ -452,6 +452,29 @@ def _find_body(page: Any, title_field: Any | None = None) -> Any:
     return options[0][1]
 
 
+def _body_manuscript_for_note(title: str, manuscript: str) -> str:
+    """Return body-only Markdown for note's separate title/body editor.
+
+    Canonical AIIF manuscripts may keep one leading H1 for storage and audit.
+    note already has a dedicated title field, so pasting that same H1 into the
+    body creates a duplicate title. Strip only an exact title-matching leading
+    H1; reject mismatches or any later H1.
+    """
+    text = str(manuscript or "").strip()
+    if not text:
+        raise NoteDraftError("Prepared manuscript is empty")
+    lines = text.splitlines()
+    if lines and re.match(r"^#(?!#)\s+", lines[0]):
+        h1 = re.sub(r"\s+", " ", re.sub(r"^#(?!#)\s+", "", lines[0])).strip()
+        expected = re.sub(r"\s+", " ", str(title or "")).strip()
+        if h1 != expected:
+            raise NoteDraftError("canonical manuscript H1 does not match note title")
+        text = "\n".join(lines[1:]).lstrip()
+    if re.search(r"(?m)^#(?!#)\s+\S", text):
+        raise NoteDraftError("note body contains an unexpected H1 heading")
+    return text
+
+
 def _paste_manuscript(page: Any, body: Any, manuscript: str) -> None:
     safe_html = _markdown_to_safe_html(manuscript)
     body.click()
@@ -667,6 +690,7 @@ def _decode_storage_state() -> Path:
 
 
 def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, storage_path: Path) -> str:
+    body_manuscript = _body_manuscript_for_note(title, manuscript)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -691,10 +715,10 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
             _upload_header_image(page, eyecatch_path)
             title_field = _set_title(page, title)
             body = _find_body(page, title_field)
-            _paste_manuscript(page, body, manuscript)
+            _paste_manuscript(page, body, body_manuscript)
             body = _find_body(page, title_field)
-            _verify_body_content(body, manuscript)
-            return _save_draft_and_verify(page, title, manuscript, image_required=True)
+            _verify_body_content(body, body_manuscript)
+            return _save_draft_and_verify(page, title, body_manuscript, image_required=True)
         except Exception:
             try:
                 page.screenshot(path=str(ARTIFACT_DIR / "failure.png"), full_page=False)

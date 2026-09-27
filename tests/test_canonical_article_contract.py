@@ -31,7 +31,8 @@ def test_writer_contract_contains_canonical_dimensions_and_priority():
         "Reader Decision",
         "Evidence Integrity",
         "記事を全部説明するな",
-        "固定見出しや固定順序にしない",
+        "どんな内容？→なぜ重要？→結論は？→元情報",
+        "本文の深掘り見出しや順序は記事固有",
     ):
         assert token in text
 

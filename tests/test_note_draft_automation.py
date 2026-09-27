@@ -100,6 +100,18 @@ class NoteDraftAutomationTests(unittest.TestCase):
         self.assertNotIn("<script>", rendered)
         self.assertIn("&lt;script&gt;", rendered)
 
+    def test_note_body_strips_only_matching_canonical_h1(self):
+        manuscript = "# 記事タイトル\n\n## どんな内容？\n本文です。"
+        body = draft._body_manuscript_for_note("記事タイトル", manuscript)
+        self.assertTrue(body.startswith("## どんな内容？"))
+        self.assertNotIn("# 記事タイトル", body)
+
+    def test_note_body_rejects_mismatched_or_nested_h1(self):
+        with self.assertRaisesRegex(draft.NoteDraftError, "does not match"):
+            draft._body_manuscript_for_note("正しいタイトル", "# 別タイトル\n\n本文")
+        with self.assertRaisesRegex(draft.NoteDraftError, "unexpected H1"):
+            draft._body_manuscript_for_note("正しいタイトル", "本文\n\n# 別タイトル")
+
     def test_persistence_check_is_read_only_for_title(self):
         source = inspect.getsource(draft._save_draft_and_verify)
         self.assertNotIn("_set_title(page, title)", source)

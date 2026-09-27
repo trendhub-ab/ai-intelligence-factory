@@ -273,6 +273,7 @@ def _find_exact_existing_draft(page: Any, profile_dir: Path) -> tuple[str, int]:
 
 
 def _browser_repair(manuscript: str) -> dict[str, Any]:
+    body_manuscript = note_base._body_manuscript_for_note(NEW_TITLE, manuscript)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -303,12 +304,12 @@ def _browser_repair(manuscript: str) -> dict[str, Any]:
 
             title_field = note_base._set_title(page, NEW_TITLE)
             body = note_base._find_body(page, title_field)
-            note_base._paste_manuscript(page, body, manuscript)
+            note_base._paste_manuscript(page, body, body_manuscript)
             body = note_base._find_body(page, title_field)
-            note_base._verify_body_content(body, manuscript)
+            note_base._verify_body_content(body, body_manuscript)
 
             saved_url = note_base._save_draft_and_verify(
-                page, NEW_TITLE, manuscript, image_required=False
+                page, NEW_TITLE, body_manuscript, image_required=False
             )
             if not _same_edit_route(existing_url, saved_url):
                 raise SGPSRepairError("Save escaped the existing SGPS draft route; refusing duplicate draft")
