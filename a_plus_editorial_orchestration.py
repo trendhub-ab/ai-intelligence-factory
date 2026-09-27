@@ -18,8 +18,7 @@ from local_skills.a_plus import (
 
 
 _MARKER = "_a_plus_editorial_orchestration_installed"
-_OUTPUT_MARKER = "
-【Output Contract｜完成稿のみ】"
+_OUTPUT_MARKER = "\n【Output Contract｜完成稿のみ】"
 
 
 def _provider_unavailable(exc: Exception) -> bool:
@@ -83,14 +82,10 @@ def install(pipeline_module):
         evidence_result = kwargs.get("evidence_result") or {}
         evidence_metadata = kwargs.get("evidence_metadata") or {}
         contract = build_prewrite_contract(evidence_result, evidence_metadata)
-        block = "
-【A+ Local Skills Pre-Write Contract】
-" + contract + "
-"
+        block = "\n【A+ Local Skills Pre-Write Contract】\n" + contract + "\n"
         if _OUTPUT_MARKER in prompt:
             return prompt.replace(_OUTPUT_MARKER, block + _OUTPUT_MARKER, 1)
-        return prompt.rstrip() + "
-" + block
+        return prompt.rstrip() + "\n" + block
 
     @wraps(original_parse)
     def parse_gemini_response_a_plus(*args, **kwargs):
@@ -129,7 +124,11 @@ def install(pipeline_module):
         def local_result(cause: str):
             seed = state.get("last_parsed")
             rows = list(state.get("last_retry_rows") or [])
-            evidence = dict(state.get("last_evidence_result") or source_info.get("evidence_result") or {})
+            evidence = dict(
+                state.get("last_evidence_result")
+                or source_info.get("evidence_result")
+                or {}
+            )
             if request_kind != "quality_retry" or not can_use_local_fallback(seed, rows, evidence):
                 return None
             response_text, meta = render_provider_compatible_fallback(
@@ -147,7 +146,10 @@ def install(pipeline_module):
                     meta.get("writer_blob_sha"),
                     meta.get("provider_article_surface_reused"),
                 )
-            return SimpleNamespace(text=response_text, candidates=[]), _fallback_grounding(source_info)
+            return (
+                SimpleNamespace(text=response_text, candidates=[]),
+                _fallback_grounding(source_info),
+            )
 
         if request_kind == "quality_retry" and bool(state.get("force_local_fallback")):
             result = local_result("retry_policy_unavailable")
@@ -166,7 +168,9 @@ def install(pipeline_module):
             )
         except Exception as exc:
             if request_kind == "quality_retry" and _provider_unavailable(exc):
-                result = local_result(f"provider_unavailable:{exc.__class__.__name__}")
+                result = local_result(
+                    f"provider_unavailable:{exc.__class__.__name__}"
+                )
                 if result is not None:
                     state["force_local_fallback"] = False
                     return result
