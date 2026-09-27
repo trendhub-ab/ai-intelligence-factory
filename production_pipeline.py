@@ -85,6 +85,7 @@ def install_runtime_layers(pipeline_module):
     import run183_eyecatch_emphasis_scale
     import reader_value_review_bridge
     import run208_reader_value_repair
+    import a_plus_editorial_orchestration
     import run222_note_presentation_integrity
     import run296_editorial_format_v2
     import run248_first_real_publish_quality_calibration
