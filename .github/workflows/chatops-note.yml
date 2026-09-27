@@ -29,6 +29,7 @@ jobs:
       (github.event.comment.body == '/aiif note sync' ||
        github.event.comment.body == '/aiif note draft' ||
        github.event.comment.body == '/aiif note vtcode draft' ||
+       github.event.comment.body == '/aiif note audit openai2015' ||
        github.event.comment.body == '/aiif note lp audit' ||
        github.event.comment.body == '/aiif note lp publish-audit' ||
        github.event.comment.body == '/aiif note lp update' ||
@@ -58,6 +59,7 @@ jobs:
             '/aiif note sync') action='sync' ;;
             '/aiif note draft') action='draft' ;;
             '/aiif note vtcode draft') action='vtcode_draft' ;;
+            '/aiif note audit openai2015') action='openai2015_audit' ;;
             '/aiif note lp audit') action='lp_audit' ;;
             '/aiif note lp publish-audit') action='lp_publish_audit' ;;
             '/aiif note lp update') action='lp_update' ;;
@@ -95,6 +97,10 @@ jobs:
             vtcode_draft)
               workflow='note-ready-sync.yml'
               payload='{"ref":"main","inputs":{"create_private_draft":"true","target_sync_id":"3d4479ffdca981a2880bf46d5c02403d"}}'
+              ;;
+            openai2015_audit)
+              workflow='note-private-draft-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3e8479ffdca9812e9661f337a84b1df4"}}'
               ;;
             lp_audit)
               workflow='note-public-lp-audit.yml'
