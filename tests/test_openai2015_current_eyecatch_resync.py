@@ -31,6 +31,12 @@ class OpenAI2015CurrentEyecatchResyncTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, combined)
 
+    def test_exact_chunking_round_trips_manuscript_bytes(self):
+        sample = "A\nB\n" + ("日本語テキスト" * 800) + "\nEND"
+        chunks = repair.exact_chunks(sample, 1800)
+        self.assertEqual("".join(chunks), sample)
+        self.assertTrue(all(0 < len(chunk) <= 1800 for chunk in chunks))
+
     def test_one_off_resync_contains_no_model_or_new_draft_path(self):
         source = inspect.getsource(repair)
         forbidden = (
