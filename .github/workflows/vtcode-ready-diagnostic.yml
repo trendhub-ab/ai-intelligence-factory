@@ -1,0 +1,76 @@
+name: Diagnose VT Code Ready contract
+
+on:
+  push:
+    branches:
+      - ops/vtcode-private-repair-once-20260927
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Read-only Ready contract diagnosis
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          python - <<'PY'
+          import json
+          import note_ready_sync as r
+          import publication_contract as p
+          from run_vtcode_existing_draft_repair import SYNC_ID, load_manuscript
+          from run285_operational_accounting import classify_note_ready_source_row
+
+          expected = load_manuscript()
+          page_res = r._request("GET", f"https://api.notion.com/v1/pages/{SYNC_ID}")
+          page_res.raise_for_status()
+          page = page_res.json()
+          props = page.get("properties") or {}
+          raw_source = r._select(props.get("情報源"))
+          state = r._source_state(page)
+          classification = classify_note_ready_source_row(raw_source, state, r.ALLOWED_SOURCES)
+          blocks = r._block_children(SYNC_ID)
+          code_blocks = []
+          for block in blocks:
+              body = r._code_body(block)
+              caption = r._code_caption(block)
+              if not body:
+                  continue
+              code_blocks.append({
+                  "ready_family": p.is_ready_family_caption(caption),
+                  "current_ready": p.is_current_ready_block(body, caption),
+                  "matches_expected": p.manuscript_sha256(body) == p.manuscript_sha256(expected),
+                  "caption_policy_current": p.is_current_ready_caption(caption),
+                  "body_len": len(body),
+              })
+          current = r._source_current_ready_manuscript(SYNC_ID)
+          out = {
+              "classification": classification,
+              "state_exists": state is not None,
+              "eyecatch_present": bool((state or {}).get("eyecatch_url")),
+              "raw_source": raw_source,
+              "allowed_source": raw_source in r.ALLOWED_SOURCES,
+              "code_block_count": len(code_blocks),
+              "current_ready_count": sum(1 for x in code_blocks if x["current_ready"]),
+              "expected_match_count": sum(1 for x in code_blocks if x["matches_expected"]),
+              "current_expected_match": bool(current) and p.manuscript_sha256(current) == p.manuscript_sha256(expected),
+              "blocks": code_blocks,
+          }
+          print(json.dumps(out, ensure_ascii=False, sort_keys=True))
+          PY
