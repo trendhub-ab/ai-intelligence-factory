@@ -1,9 +1,7 @@
 name: Diagnose existing note eyecatch replacement UI
 
 on:
-  push:
-    branches:
-      - test/note-eyecatch-replace-only-20260927
+  workflow_dispatch:
 
 permissions:
   contents: read
