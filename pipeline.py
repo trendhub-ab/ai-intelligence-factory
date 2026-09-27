@@ -6383,12 +6383,7 @@ def reset_article_style_memory() -> None:
 
 
 def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
-    """Return the actual narrative lead, not title/source/summary chrome.
-
-    Canonical stored manuscripts can contain a leading H1 plus the deterministic
-    reader summary (どんな内容？/なぜ重要？/結論は？/元情報). Human Appeal must
-    judge the article's prose lead rather than those presentation blocks.
-    """
+    """Return narrative prose, excluding canonical title/Reader Summary/source chrome."""
     body = (article or "").strip()
     body = re.sub(r"^#(?!#)\s+[^\n]+\n*", "", body, count=1).lstrip()
 
@@ -6401,8 +6396,7 @@ def _article_opening_excerpt(article: str, max_chars: int = 700) -> str:
         next_heading = re.search(r"^#{2,3}\s+.+$", remainder, re.MULTILINE)
         body = (remainder[next_heading.start():] if next_heading else "").lstrip()
 
-    # 元情報 is followed by bullets, then the unheaded narrative lead in recent
-    # published note articles. Strip only the heading and list metadata, not that lead.
+    # Strip 元情報 list metadata while preserving the following unheaded narrative lead.
     source_heading = re.match(r"^###\s*元情報\s*\n", body)
     if source_heading:
         lines = body[source_heading.end():].splitlines()
