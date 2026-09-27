@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-b3909041a5eaebae",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "HackerNews",
+  "source_url": "https://openai.com/hugging-face-incident-and-misalignment/#model-misalignment-2026-09-25-data-transmission",
+  "note_title": "AIが「目的のために手段を選ばず」セキュリティを突破した日。OpenAIが直面した自律モデルの暴走。",
+  "ready_at": "2026-09-27T16:53:18.098828+09:00",
+  "notion_page_id": "3e8479ff-dca9-811d-b058-ccf7d711dd88",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-b3909041a5eaebae&aif_article_id=aif-b3909041a5eaebae",
+  "cta_enabled": true,
+  "decision_score": 87,
+  "screening_score": 85,
+  "commercial_value_score": 90,
+  "shelf_life_score": 30,
+  "shelf_life": "FLASH",
+  "portfolio_topic": "SECURITY",
+  "deep_dive_priority_score": 86.75,
+  "measurement_status": "awaiting_external_metrics"
+}
