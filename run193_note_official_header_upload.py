@@ -136,10 +136,10 @@ def _find_header_add_control(page: Any) -> Any:
                 item = unique_image_controls.nth(index)
                 try:
                     box = item.bounding_box()
-                    semantic = _semantic_text(item)
+                    control_label = " ".join(str(item.get_attribute(attr) or "") for attr in ("aria-label", "title")).lower()
                     if (item.is_visible(timeout=120) and box
                             and float(box['y']) + float(box['height']) / 2 < float(title_box['y'])
-                            and not any(token in semantic for token in _REJECT_CONTROL_TERMS)):
+                            and not any(token in control_label for token in _REJECT_CONTROL_TERMS)):
                         visible_image_controls.append(item)
                 except Exception:
                     continue
