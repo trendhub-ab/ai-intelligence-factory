@@ -175,6 +175,28 @@ def require_current_asset_url(url: str, public_title: str, *, root: Path | None 
     return value
 
 
+def upload_current_asset_pair(
+    uploader: Any,
+    image_path: str | Path,
+    base_filename: str,
+    public_title: str,
+    *,
+    root: Path | None = None,
+) -> str:
+    """Upload image + current manifest atomically from the caller's perspective.
+
+    The transport may leave an orphan image if the manifest upload fails, but the returned
+    public URL stays empty so Notion/note can never consume an unproven asset.
+    """
+    image_filename = versioned_image_filename(base_filename, public_title, root=root)
+    sidecar_path = write_manifest(public_title, image_path, root=root)
+    image_url = str(uploader(str(image_path), image_filename) or "")
+    if not image_url:
+        return ""
+    sidecar_url = str(uploader(str(sidecar_path), manifest_filename(image_filename)) or "")
+    return image_url if sidecar_url else ""
+
+
 def manifest_url(image_url: str) -> str:
     parsed = urlparse(str(image_url or "").strip())
     if parsed.scheme != "https" or not parsed.path.endswith(".png"):
