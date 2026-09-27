@@ -8348,8 +8348,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
         # invoked from the publication path.  If Editorial generation/upload fails, publish no
         # image rather than falling back to an internal score card.
         note_eyecatch_path = ""
-        note_eyecatch_manifest_path = ""
-        public_eyecatch_title = ""
         if local_skills_canary:
             logger.info(
                 "[LOCAL SKILLS CANARY] Editorial Eyecatch generation skipped; "
@@ -8360,22 +8358,18 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 raise RuntimeError("local_skills_canary_skip_eyecatch")
             note_output_dir = NOTE_EYECATCH_OUTPUT_DIR if persist_results else os.path.join(REGEN_TEST_OUTPUT_DIR, "eyecatch")
             os.makedirs(note_output_dir, exist_ok=True)
-            public_eyecatch_title = eyecatch_contract.require_public_title(parsed)
             note_eyecatch_filename = f"{_sanitize_filename(source)}__{_sanitize_filename(name)}__note.png"
             note_eyecatch_path = os.path.join(note_output_dir, note_eyecatch_filename)
             editorial_category = infer_editorial_category(
-                public_eyecatch_title,
+                eyecatch_contract.require_public_title(parsed),
                 parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
                 source,
             )
             generate_note_editorial_eyecatch(
-                public_eyecatch_title,
+                eyecatch_contract.require_public_title(parsed),
                 parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
                 note_eyecatch_path,
                 category=editorial_category,
-            )
-            note_eyecatch_manifest_path = str(
-                eyecatch_contract.write_manifest(public_eyecatch_title, note_eyecatch_path)
             )
             logger.info(
                 "[NOTE EDITORIAL EYECATCH] %s -> %s category=%s",
@@ -8396,25 +8390,15 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 try:
                     # Keep the existing public URL namespace for backward compatibility, but upload
                     # the Editorial bytes.  Notion and note/audit therefore reference the same visual.
-                    eyecatch_filename = eyecatch_contract.versioned_image_filename(
-                        f"{_sanitize_filename(name)}.png", public_eyecatch_title
-                    )
-                    eyecatch_url = upload_eyecatch_to_github(note_eyecatch_path, eyecatch_filename) or ""
-                    manifest_url = ""
-                    if eyecatch_url and note_eyecatch_manifest_path:
-                        manifest_url = upload_eyecatch_to_github(
-                            note_eyecatch_manifest_path,
-                            eyecatch_contract.manifest_filename(eyecatch_filename),
-                        ) or ""
-                    if eyecatch_url and manifest_url:
+                    eyecatch_url = eyecatch_contract.upload_current_asset_pair(upload_eyecatch_to_github, note_eyecatch_path, f"{_sanitize_filename(name)}.png", eyecatch_contract.require_public_title(parsed))
+                    if eyecatch_url:
                         logger.info(
                             "[PUBLIC EDITORIAL EYECATCH] %s -> %s (source=%s, contract=current)",
                             name, eyecatch_url, note_eyecatch_path,
                         )
                     else:
-                        eyecatch_url = ""
                         logger.warning(
-                            "[PUBLIC EDITORIAL EYECATCH UPLOAD FAILED] %s: image/manifest pair is incomplete; no public eyecatch URL",
+                            "[PUBLIC EDITORIAL EYECATCH UPLOAD FAILED] %s: current image/manifest pair unavailable",
                             name,
                         )
                 except Exception as e:
