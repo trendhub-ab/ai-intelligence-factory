@@ -67,7 +67,7 @@ class Run150EditorialEyecatchTests(unittest.TestCase):
         self.assertNotIn("generate_eyecatch_image(", publication)
         self.assertNotIn("technical_impact, urgency", publication)
         # The exact Editorial image generated for note/audit is also the image uploaded for Notion.
-        self.assertIn("eyecatch_url = upload_eyecatch_to_github(note_eyecatch_path, eyecatch_filename)", publication)
+        self.assertIn("eyecatch_url = eyecatch_contract.upload_current_asset_pair(", publication)\n        self.assertIn("upload_eyecatch_to_github, note_eyecatch_path", publication)
         self.assertIn("旧Decision Cardへフォールバックしません", publication)
         # Human audit / note delivery continue to receive the Editorial image.
         self.assertGreaterEqual(source.count("eyecatch_path=note_eyecatch_path"), 2)
