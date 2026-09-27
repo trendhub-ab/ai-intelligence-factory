@@ -206,6 +206,21 @@ def latin_ui_font(size: int, bold: bool = True):
     )
 
 
+def _jp_font_assets_available() -> bool:
+    """Return whether a Japanese-capable Noto font is available without network."""
+    if _valid_font_file(NOTO_SANS_JP_PATH, 5_000_000):
+        return True
+    for path in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ):
+        if Path(path).is_file():
+            return True
+    return False
+
+
 def _jp_font_by_role(size: int, bold: bool = True):
     # Run150/178 title sizes are >= 46/48px while subheadline sizes are <=30px.
     # This keeps both the deterministic fallback and the Gemini-directed renderer
@@ -220,7 +235,16 @@ def install(pipeline_module: Any) -> Any:
     if getattr(pipeline_module, "_RUN179_EYECATCH_FONT_REFINEMENT_INSTALLED", False):
         return pipeline_module
 
-    ee._jp_font = _jp_font_by_role
+    synthetic = bool(getattr(pipeline_module, "SYNTHETIC_REGRESSION_MODE", True))
+
+    def production_safe_jp_font(size: int, bold: bool = True):
+        if not synthetic and not _jp_font_assets_available():
+            raise RuntimeError(
+                "Japanese eyecatch font is unavailable; refusing unsafe DejaVu/default fallback"
+            )
+        return _jp_font_by_role(size, bold=bold)
+
+    ee._jp_font = production_safe_jp_font
     ee._latin_font = latin_ui_font
 
     pipeline_module._RUN179_EYECATCH_FONT_REFINEMENT_INSTALLED = True
@@ -228,4 +252,5 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN179_EYECATCH_SUBTITLE_FONT = "Noto Sans JP Medium (wght=500)"
     pipeline_module.RUN179_EYECATCH_LATIN_FONT = "Inter Bold (wght=700)"
     pipeline_module.RUN179_GOOGLE_FONTS_COMMIT = GOOGLE_FONTS_COMMIT
+    pipeline_module.RUN179_EYECATCH_JP_FONT_FAIL_CLOSED = True
     return pipeline_module
