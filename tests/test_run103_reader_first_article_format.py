@@ -88,7 +88,8 @@ class ReaderFirstArticleFormatTests(unittest.TestCase):
         self.assertEqual(1, manuscript.count("### 元情報"))
         self.assertGreater(manuscript.index("### Sources / Evidence"), manuscript.index("### 結論として、いま取る距離感。"))
         self.assertIn("### 補助Evidence", manuscript)
-        self.assertEqual(1, manuscript.count("https://github.com/acme/repo"))
+        # Recent published notes show the primary source once in the opening 元情報 and once again in the audit footer.
+        self.assertEqual(2, manuscript.count("https://github.com/acme/repo"))
 
     def test_hackernews_discovery_is_not_duplicated_in_rights_note(self):
         with patch.object(pipeline, "ENABLE_SUBSCRIPTION_ATTRIBUTION", False):
