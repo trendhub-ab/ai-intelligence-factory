@@ -52,6 +52,34 @@ _SUBTITLE_WEIGHT = 500
 _LATIN_BOLD_WEIGHT = 700
 _TITLE_ROLE_MIN_SIZE = 40
 
+_SYSTEM_JP_FONT_PATHS = (
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+)
+
+
+def production_japanese_font_ready() -> bool:
+    """Return True only when a real Japanese-capable production font is available."""
+    if _valid_font_file(NOTO_SANS_JP_PATH, 5_000_000):
+        return True
+    return any(path.is_file() and path.stat().st_size > 1_000_000 for path in _SYSTEM_JP_FONT_PATHS)
+
+
+def require_production_japanese_font() -> None:
+    """Fail closed before public eyecatch rendering can fall back to Latin-only fonts.
+
+    This guard is intentionally Production-only; synthetic tests may keep using Pillow's
+    lightweight fallback, but publication assets must never be rendered without Japanese glyphs.
+    """
+    if not production_japanese_font_ready():
+        raise RuntimeError(
+            "Japanese eyecatch font is unavailable; refusing production rendering "
+            "instead of falling back to a Latin-only font"
+        )
+
+
 
 def _valid_font_file(path: Path, min_bytes: int) -> bool:
     try:

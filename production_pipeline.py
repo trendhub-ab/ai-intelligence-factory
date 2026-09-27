@@ -315,6 +315,8 @@ def main() -> None:
         enabled=not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)),
         logger=getattr(pipeline, "logger", None),
     )
+    if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
+        run179_eyecatch_font_refinement.require_production_japanese_font()
 
     # The direct-import compatibility bridge in pipeline.py owns the legacy/internal
     # renderer installation. Do not import legacy_eyecatch_renderer again here: the live

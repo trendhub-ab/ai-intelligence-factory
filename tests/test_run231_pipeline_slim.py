@@ -203,6 +203,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
 
         font = types.ModuleType("run179_eyecatch_font_refinement")
         font.ensure_google_font_assets = lambda **kwargs: events.append(("font", kwargs["enabled"]))
+        font.require_production_japanese_font = lambda: events.append("font.require")
 
         telemetry = types.ModuleType("run231_performance_telemetry")
         telemetry.install = lambda pipeline_module: events.append("telemetry")
@@ -239,6 +240,7 @@ class Run231PipelineSlimTests(unittest.TestCase):
                 "run284",
                 "preflight",
                 ("font", True),
+                "font.require",
                 "telemetry",
                 "pipeline.main",
             ],
