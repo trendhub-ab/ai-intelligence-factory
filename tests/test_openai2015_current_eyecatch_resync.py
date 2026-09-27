@@ -52,6 +52,12 @@ class OpenAI2015CurrentEyecatchResyncTests(unittest.TestCase):
         self.assertIn("public_release", source)
         self.assertIn("zero_gemini_calls", source)
 
+    def test_lossless_recaption_chunking_preserves_exact_bytes(self):
+        sample = "A\n" + ("本文。\n" * 700) + "END"
+        chunks = repair._lossless_chunks(sample, 1800)
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual("".join(chunks), sample)
+
     def test_runtime_state_asset_contract_is_explicit(self):
         self.assertEqual(repair.ASSET_BRANCH, "runtime-state")
         self.assertEqual(repair.ASSET_BASE, "OpenAI_2015.png")
