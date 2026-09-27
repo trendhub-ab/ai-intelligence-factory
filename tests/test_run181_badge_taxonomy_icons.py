@@ -59,6 +59,16 @@ class Run181BadgeTaxonomyIconTests(unittest.TestCase):
             "原点を知る",
         )
 
+    def test_historical_hook_is_not_generic_or_research_framing(self):
+        self.assertEqual(
+            run181._editorial_hook(
+                "OpenAIは2015年に設立された",
+                "非営利AI研究企業としての出発点を確認する",
+                "AI BUSINESS",
+            ),
+            "原点から、何が見えるのか？",
+        )
+
     def test_badge_layer_adds_no_provider_or_network_callsite(self):
         source = inspect.getsource(taxonomy) + "\n" + inspect.getsource(run181)
         forbidden = (
