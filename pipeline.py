@@ -7836,6 +7836,56 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             content_status=content_status, article_status=article_status,
         )
 
+    def try_a_plus_local_fallback(seed_parsed: dict | None, trigger_rows: list[dict], cause: str):
+        """Provider-free last resort after Gemini established safe management data."""
+        from local_skills.a_plus import can_use_local_fallback, compile_provider_free_fallback
+
+        if not can_use_local_fallback(seed_parsed, trigger_rows, evidence_result):
+            return None
+        verification_context = source_info.get("verification_context") or source_info.get("context", "")
+        try:
+            fallback_parsed, fallback_meta = compile_provider_free_fallback(
+                repo,
+                seed_parsed or {},
+                source=source,
+                primary_url=primary_url,
+                grounding=last_grounding,
+                evidence_context=verification_context,
+            )
+            fallback_ready, fallback_diag = _publication_rescue_can_be_ready(
+                fallback_parsed,
+                verification_context,
+                source,
+                source_info.get("evidence_metadata", {}),
+                source_info,
+                freshness,
+                output_truncated=False,
+                peer_articles=_RUN_ARTICLE_STYLE_MEMORY if persist_results else [],
+            )
+        except Exception as fallback_exc:
+            logger.warning("[A+ LOCAL FALLBACK FAILED] %s cause=%s error=%s", name, cause, fallback_exc)
+            return None
+
+        if fallback_parsed.get("note_draft"):
+            article_audit_snapshots["a_plus_local_fallback"] = fallback_parsed.get("note_draft", "")
+        logger.info(
+            "[A+ LOCAL FALLBACK] %s cause=%s ready=%s fact=%s publication=%s human=%s writer=%s",
+            name,
+            cause,
+            fallback_ready,
+            fallback_diag.get("fact_ok"),
+            fallback_diag.get("publication_state"),
+            fallback_diag.get("human_state"),
+            fallback_meta.get("writer_blob_sha"),
+        )
+        return {
+            "ready": bool(fallback_ready),
+            "parsed": fallback_parsed,
+            "diag": fallback_diag,
+            "meta": fallback_meta,
+            "cause": cause,
+        }
+
     try:
         parsed = None
         for attempt in range(MAX_QUALITY_RETRIES + 1):
@@ -7850,10 +7900,44 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             )
             deep_dive_generation_called = True
             candidate_generation_request_count += 1
-            response, grounding = call_gemini_grounded_deep_dive(
-                prompt, repo, source_info, request_kind=request_kind,
-                request_context=f"{source}:{name}", request_origin=candidate_origin,
-            )
+            try:
+                response, grounding = call_gemini_grounded_deep_dive(
+                    prompt, repo, source_info, request_kind=request_kind,
+                    request_context=f"{source}:{name}", request_origin=candidate_origin,
+                )
+            except (GeminiCallTimeoutError, NoAvailableModelError, APIError, GeminiBudgetExceededError) as provider_exc:
+                # A+ does not invent a Decision when the initial Deep Dive never returned.
+                # After one valid management snapshot exists, however, a failed editorial retry
+                # may fall back to the provider-free Local Writer and must pass the same Gates.
+                if attempt > 0 and isinstance(parsed, dict):
+                    fallback = try_a_plus_local_fallback(
+                        dict(parsed),
+                        list(retry_diagnostics.get("trigger_reason_codes") or []),
+                        f"provider_retry_unavailable:{provider_exc.__class__.__name__}",
+                    )
+                    if fallback and fallback["ready"]:
+                        parsed = fallback["parsed"]
+                        fallback_diag = fallback["diag"]
+                        quality_gate_passed = True
+                        fact_ok = bool(fallback_diag.get("fact_ok"))
+                        editorial_ok = bool(fallback_diag.get("editorial_ok"))
+                        publication_state = str(fallback_diag.get("publication_state"))
+                        human_appeal = str(fallback_diag.get("human_state"))
+                        fact_failures = list(fallback_diag.get("fact_failures") or [])
+                        editorial_warnings = list(fallback_diag.get("editorial_warnings") or [])
+                        publication_issues = list(fallback_diag.get("publication_issues") or [])
+                        human_appeal_issues = list(fallback_diag.get("human_issues") or [])
+                        final_reason_rows = list(fallback_diag.get("reason_rows") or [])
+                        final_quality_failures = [
+                            str(row.get("message", "")) for row in final_reason_rows if row.get("message")
+                        ]
+                        retry_diagnostics = dict(retry_diagnostics or {})
+                        retry_diagnostics.update({
+                            "a_plus_local_fallback": fallback["meta"],
+                            "a_plus_fallback_cause": fallback["cause"],
+                        })
+                        break
+                raise
             if funnel:
                 funnel.incr("generation_api_completed")
             stage_grounding = grounding.get("grounding_status", GROUNDING_FAILED)
@@ -8139,6 +8223,38 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     else:
                         funnel.incr("retry_skipped_nonrepairable")
                 logger.warning("[QUALITY RETRY SKIPPED] %s: %s", name, retry_skip_reason)
+
+            # A+ last resort: Gemini gets first right of repair. If that bounded path is
+            # exhausted/unavailable, Local Skills may render from the already-established
+            # management fields. It never bypasses Fact/Evidence and must pass the same Gates.
+            if final_attempt:
+                fallback = try_a_plus_local_fallback(
+                    dict(parsed) if isinstance(parsed, dict) else None,
+                    list(reason_rows),
+                    "quality_path_exhausted",
+                )
+                if fallback and fallback["ready"]:
+                    parsed = fallback["parsed"]
+                    fallback_diag = fallback["diag"]
+                    quality_gate_passed = True
+                    fact_ok = bool(fallback_diag.get("fact_ok"))
+                    editorial_ok = bool(fallback_diag.get("editorial_ok"))
+                    publication_state = str(fallback_diag.get("publication_state"))
+                    human_appeal = str(fallback_diag.get("human_state"))
+                    fact_failures = list(fallback_diag.get("fact_failures") or [])
+                    editorial_warnings = list(fallback_diag.get("editorial_warnings") or [])
+                    publication_issues = list(fallback_diag.get("publication_issues") or [])
+                    human_appeal_issues = list(fallback_diag.get("human_issues") or [])
+                    final_reason_rows = list(fallback_diag.get("reason_rows") or [])
+                    final_quality_failures = [
+                        str(row.get("message", "")) for row in final_reason_rows if row.get("message")
+                    ]
+                    retry_diagnostics = dict(retry_diagnostics or {})
+                    retry_diagnostics.update({
+                        "a_plus_local_fallback": fallback["meta"],
+                        "a_plus_fallback_cause": fallback["cause"],
+                    })
+                    break
 
             # Fact Gate FAILは事実誤認/根拠外主張なのでReviewへ降格してはいけない。
             # Fact PASS後にHARD/REVIEWが残る場合は、公開せず人間レビューへ。
