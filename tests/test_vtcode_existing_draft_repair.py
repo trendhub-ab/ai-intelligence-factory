@@ -99,6 +99,32 @@ class VTCodeExistingDraftRepairTests(unittest.TestCase):
             self.assertIs(upload._find_header_add_control(Mock()), button)
         hover.assert_called_once()
 
+    def test_existing_cover_button_can_be_far_above_title_when_inside_cover(self):
+        from unittest.mock import Mock
+        import run193_note_official_header_upload as upload
+        page = Mock()
+        title = Mock()
+        title.bounding_box.return_value = {"x": 100, "y": 700, "width": 800, "height": 60}
+        cover = Mock()
+        cover.bounding_box.return_value = {"x": 100, "y": 100, "width": 800, "height": 500}
+        cover.is_visible.return_value = True
+        button = Mock()
+        button.bounding_box.return_value = {"x": 130, "y": 152, "width": 48, "height": 40}
+        button.is_visible.return_value = True
+        button.inner_text.return_value = ""
+        button.get_attribute.side_effect = lambda key: "画像を編集" if key == "aria-label" else None
+        images = Mock()
+        images.count.return_value = 1
+        images.nth.return_value = cover
+        buttons = Mock()
+        buttons.count.return_value = 1
+        buttons.nth.return_value = button
+        page.locator.side_effect = lambda selector: images if selector == "img" else buttons
+        with patch.object(upload.base, "_first_visible", return_value=None), \
+             patch.object(upload.base, "_find_title", return_value=title), \
+             patch.object(upload.run186, "_candidate_header_control", return_value=None):
+            self.assertIs(upload._find_header_add_control(page), button)
+
     def test_preflight_is_zero_model_and_does_not_open_note(self):
         with patch.object(repair, "validate_repaired_manuscript", return_value={"fact_ok": True, "editorial_ok": True, "publication_state": "PASS", "human_state": "ACCEPTABLE"}), \
              patch.object(repair, "destination_preflight", return_value={"posting_state": "投稿準備中", "quality_state": "Ready"}), \
