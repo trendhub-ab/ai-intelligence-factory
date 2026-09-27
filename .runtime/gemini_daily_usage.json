@@ -24,10 +24,10 @@
           "budget": 18,
           "by_kind": {
             "eyecatch_layout": 1,
-            "product_review": 1
+            "product_review": 2
           },
           "exhausted": false,
-          "used": 2
+          "used": 3
         }
       }
     }
@@ -36,5 +36,5 @@
   "quota_date": "2026-09-27",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-27T07:56:39.346662+00:00"
+  "updated_at": "2026-09-27T07:57:20.533838+00:00"
 }
