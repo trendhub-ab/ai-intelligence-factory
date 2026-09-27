@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import note_draft_automation as base
+import run186_note_header_image_resilience as run186
 import run188_note_header_upload_fallback as run188
 import run189_note_editor_route_gate as run189
 import run191_note_crop_dialog_resilience as run191
@@ -79,6 +80,11 @@ def _find_header_add_control(page: Any) -> Any:
     ], timeout_ms=900)
     if explicit is not None:
         return explicit
+    # Existing covers commonly reveal their change control only on hover.
+    # Run186 anchors this hover and the resulting labeled control above the title.
+    hovered = run186._candidate_header_control(page)
+    if hovered is not None:
+        return hovered
     title = base._find_title(page)
     try:
         title_box = title.bounding_box()
@@ -107,7 +113,15 @@ def _find_header_add_control(page: Any) -> Any:
         if score is not None:
             ranked.append((score, index, control))
     if not ranked:
-        raise base.NoteDraftError("note official header-image icon was not found above the title")
+        try:
+            diagnostic = page.evaluate("""() => ({
+                imageLabeledControls: document.querySelectorAll('button[aria-label*="画像"], [role="button"][aria-label*="画像"]').length,
+                changeLabeledControls: document.querySelectorAll('button[aria-label*="変更"], [role="button"][aria-label*="変更"]').length,
+                fileInputs: document.querySelectorAll('input[type="file"]').length
+            })""")
+        except Exception:
+            diagnostic = {}
+        raise base.NoteDraftError(f"note official header-image icon was not found above the title; control_counts={diagnostic}")
     ranked.sort(key=lambda row: (row[0], row[1]))
     if len(ranked) > 1 and abs(ranked[1][0] - ranked[0][0]) < 12:
         raise base.NoteDraftError("note header-image icon geometry was ambiguous; refusing to click")
