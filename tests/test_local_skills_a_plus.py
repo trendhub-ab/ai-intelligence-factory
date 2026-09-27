@@ -39,6 +39,21 @@ class APlusEditorialOrchestrationTests(unittest.TestCase):
         self.assertIn("required_qualifiers（2件）", first)
         self.assertIn("Decisionコードを『導入する／導入しない』へ固定変換しない", first)
         self.assertIn("歴史・設立・判決・事件・制度・研究・ベンチマーク", first)
+        self.assertIn("Why Important・タイトル・リード・本文・見出し", first)
+        self.assertIn("技術選定へ話を曲げない", first)
+        self.assertIn("後年の公式発表と比較する基準点", first)
+
+    def test_unbalanced_japanese_title_quotes_are_repaired_without_rewriting_words(self):
+        broken = "人類全体の利益」を掲げるAI研究機関、OpenAI設立。"
+        repaired = a_plus.repair_unbalanced_japanese_quotes(broken)
+        self.assertEqual("人類全体の利益を掲げるAI研究機関、OpenAI設立。", repaired)
+
+        open_broken = "OpenAIの「原点を読み直す。"
+        repaired_open = a_plus.repair_unbalanced_japanese_quotes(open_broken)
+        self.assertEqual("OpenAIの原点を読み直す。", repaired_open)
+
+        balanced = "OpenAIの「原点」を読み直す。"
+        self.assertEqual(balanced, a_plus.repair_unbalanced_japanese_quotes(balanced))
 
     def test_local_fallback_requires_safe_management_and_blocks_fact_failures(self):
         parsed = self._parsed()

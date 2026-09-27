@@ -14,6 +14,7 @@ from local_skills.a_plus import (
     build_prewrite_contract,
     can_use_local_fallback,
     render_provider_compatible_fallback,
+    repair_unbalanced_japanese_quotes,
 )
 
 
@@ -91,6 +92,14 @@ def install(pipeline_module):
     def parse_gemini_response_a_plus(*args, **kwargs):
         parsed = original_parse(*args, **kwargs)
         if isinstance(parsed, dict):
+            original_title = str(parsed.get("title_text") or "")
+            repaired_title = repair_unbalanced_japanese_quotes(original_title)
+            if repaired_title and repaired_title != original_title:
+                parsed = dict(parsed)
+                parsed["title_text"] = repaired_title
+                logger = getattr(p, "logger", None)
+                if logger:
+                    logger.info("[A+ TITLE PUNCTUATION REPAIR] unmatched Japanese quote removed")
             state["last_parsed"] = dict(parsed)
         return parsed
 

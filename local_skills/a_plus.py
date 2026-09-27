@@ -13,7 +13,7 @@ from .compiler import compile_snapshot
 from .production_canary import build_snapshot
 
 
-PREWRITE_CONTRACT_ID = "a-plus-local-skeleton-v1"
+PREWRITE_CONTRACT_ID = "a-plus-local-skeleton-v2"
 LOCAL_FALLBACK_ID = "a-plus-local-fallback-v1"
 
 
@@ -45,6 +45,9 @@ def build_prewrite_contract(
         "専門用語は登場時に普通の日本語で役割を説明し、説明のためだけの専門語を増やさない。",
         "最終判断はDecisionと意味一致させ、Actionは『注視』だけへ潰さず、根拠範囲内の具体的な次の一手にする。",
         "Decisionコードを『導入する／導入しない』へ固定変換しない。導入・採用・本番移行という語は、読者が実際に採用できる製品・機能・仕組みが対象で、Actionも採用や試用を扱う場合だけ使う。歴史・設立・判決・事件・制度・研究・ベンチマーク等では、確認・比較・検証・評価・追跡・基準点にする等、その記事固有のActionに合わせる。",
+        "上の語彙制約は結論だけでなく、Why Important・タイトル・リード・本文・見出しにも適用する。対象が『導入するもの』ではないのに、実務性を出すためだけに導入・採用・PoC・本番移行・技術選定へ話を曲げない。",
+        "歴史・設立・宣言を扱う記事では、一次情報から確認できる『当時何を掲げたか／何を約束したか／どこが不確実だったか』を中心にし、後年との比較は別の一次情報がある場合だけ事実として書く。比較根拠がない場合は『後年の公式発表と比較する基準点にする』というActionに留める。",
+        "非専門読者に不要な人名・肩書き・略語の列挙を減らす。CTO、LLM、API等を残す必要がある場合は、初出で役割が普通の日本語で分かるようにする。",
         "Human Appealのために架空の体験談・感情・会話・新しい事実を足さない。面白さは事実の意外性、緊張、比較、判断の声から作る。",
     ]
     if limitations:
@@ -66,6 +69,31 @@ def build_prewrite_contract(
         f"{body}\n"
         "このContractは追加Provider callを要求しない。"
     )
+
+
+def repair_unbalanced_japanese_quotes(value: Any) -> str:
+    """Remove only unmatched Japanese quote marks; never rewrite title words."""
+    text = _text(value)
+    if not text:
+        return ""
+    chars = list(text)
+    remove: set[int] = set()
+    for opener, closer in (("「", "」"), ("『", "』")):
+        stack: list[int] = []
+        for index, char in enumerate(chars):
+            if index in remove:
+                continue
+            if char == opener:
+                stack.append(index)
+            elif char == closer:
+                if stack:
+                    stack.pop()
+                else:
+                    remove.add(index)
+        remove.update(stack)
+    if not remove:
+        return text
+    return "".join(char for index, char in enumerate(chars) if index not in remove).strip()
 
 
 def _management_fields_complete(parsed: Mapping[str, Any]) -> bool:
