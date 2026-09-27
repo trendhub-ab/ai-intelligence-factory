@@ -288,6 +288,7 @@ def _ascii_token_split(lines: list[str]) -> bool:
     return False
 
 
+# Emergency floor only for complete-title preservation after semantic-plan validation fails.
 COMPLETE_FALLBACK_TITLE_MIN_FONT = 44
 
 
