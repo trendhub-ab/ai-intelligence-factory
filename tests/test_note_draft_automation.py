@@ -17,7 +17,17 @@ def title(value):
     return {"title": [{"type": "text", "plain_text": value, "text": {"content": value}}]}
 
 
-def queue_page(sync_id, article_title, *, status="投稿待ち", quality="Ready", scheduled="", created="2026-08-01T00:00:00.000Z"):
+def queue_page(
+    sync_id,
+    article_title,
+    *,
+    status="投稿待ち",
+    quality="Ready",
+    scheduled="",
+    created="2026-08-01T00:00:00.000Z",
+    decision_score=0,
+    article_value=0,
+):
     return {
         "id": "dest-" + sync_id[-6:],
         "created_time": created,
@@ -27,6 +37,8 @@ def queue_page(sync_id, article_title, *, status="投稿待ち", quality="Ready"
             "同期ID": rt(sync_id),
             "記事タイトル": title(article_title),
             "投稿予定日": {"date": {"start": scheduled} if scheduled else None},
+            "判断スコア": {"number": decision_score},
+            "記事価値": {"number": article_value},
         },
     }
 
@@ -59,6 +71,76 @@ class NoteDraftAutomationTests(unittest.TestCase):
         ]
         selected = draft._select_candidate(pages, today=date(2026, 9, 2))
         self.assertEqual(b, selected["sync_id"])
+
+    def test_competing_unscheduled_ready_prefers_publication_priority(self):
+        a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        pages = [
+            queue_page(
+                a,
+                "older higher raw value",
+                created="2026-08-20T00:00:00.000Z",
+                decision_score=92,
+                article_value=95,
+            ),
+            queue_page(
+                b,
+                "fresh strong candidate",
+                created="2026-09-02T00:00:00.000Z",
+                decision_score=89,
+                article_value=92,
+            ),
+        ]
+        selected = draft._select_candidate(pages, today=date(2026, 9, 2))
+        self.assertEqual(b, selected["sync_id"])
+
+    def test_same_due_date_prefers_higher_publication_priority(self):
+        a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        pages = [
+            queue_page(
+                a,
+                "lower priority",
+                scheduled="2026-09-02",
+                created="2026-09-02T00:00:00.000Z",
+                decision_score=70,
+                article_value=75,
+            ),
+            queue_page(
+                b,
+                "higher priority",
+                scheduled="2026-09-02",
+                created="2026-09-02T01:00:00.000Z",
+                decision_score=90,
+                article_value=95,
+            ),
+        ]
+        selected = draft._select_candidate(pages, today=date(2026, 9, 2))
+        self.assertEqual(b, selected["sync_id"])
+
+    def test_earlier_due_date_still_beats_higher_priority_later_due_date(self):
+        a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        pages = [
+            queue_page(
+                a,
+                "earlier due",
+                scheduled="2026-09-01",
+                created="2026-09-01T00:00:00.000Z",
+                decision_score=65,
+                article_value=65,
+            ),
+            queue_page(
+                b,
+                "later due but higher score",
+                scheduled="2026-09-02",
+                created="2026-09-02T00:00:00.000Z",
+                decision_score=99,
+                article_value=99,
+            ),
+        ]
+        selected = draft._select_candidate(pages, today=date(2026, 9, 2))
+        self.assertEqual(a, selected["sync_id"])
 
     def test_explicit_sync_id_is_exact_and_still_requires_ready_waiting(self):
         a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
