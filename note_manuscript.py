@@ -255,9 +255,15 @@ def _reader_published_date(value: str | None) -> str:
 def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_url: str,
                               source: str = "GitHub", published_at: str | None = None,
                               include_source: bool = True) -> str:
+    """Render the fixed reader-first summary used by recent published note articles.
+
+    Only this opening summary is fixed. The narrative sections that follow remain
+    article-specific so Polars, GenRec, security incidents, and other topics can
+    develop in the order their evidence requires.
+    """
     summary = reader_summary or {}
     rows = [
-        ("何が出た？", _compact_reader_summary(summary.get("what", ""))),
+        ("どんな内容？", _compact_reader_summary(summary.get("what", ""))),
         ("なぜ重要？", _compact_reader_summary(summary.get("why", ""))),
         ("結論は？", _compact_reader_summary(summary.get("decision", ""))),
     ]
@@ -265,12 +271,10 @@ def build_reader_first_header(reader_summary: dict | None, repo_name: str, repo_
     if not rows and not repo_url:
         return ""
     lines: list[str] = []
-    if rows:
-        lines.extend(["## 30秒でわかるこの記事", ""])
-        for idx, (label, value) in enumerate(rows):
-            if idx:
-                lines.append("")
-            lines.extend([f"**{label}**  ", value])
+    for idx, (label, value) in enumerate(rows):
+        if idx:
+            lines.append("")
+        lines.extend([f"## {label}", "", value])
     if include_source and repo_url:
         if lines:
             lines.append("")
@@ -307,6 +311,12 @@ def _prepare_reader_first_body(markdown_text: str, reader_summary: dict | None, 
     if not reader_summary:
         return body
     body = _remove_reader_redundant_provenance(body)
+    # The deterministic reader-first summary owns these labels. Remove legacy or
+    # model-generated duplicates before assembling the final manuscript.
+    body = _remove_markdown_sections(
+        body,
+        ["30秒でわかるこの記事", "どんな内容？", "なぜ重要？", "結論は？", "元情報"],
+    )
     body = _remove_markdown_sections(body, display_heading_aliases("conclusion"))
     return body.strip()
 
@@ -362,22 +372,16 @@ def build_clean_note_manuscript(
     if display_title:
         manuscript_parts.append(f"# {display_title}")
 
-    # Let the model-written narrative lead earn the reader's attention before the deterministic
-    # 30-second card. Source provenance is already preserved in the canonical footer, so the
-    # duplicated top "元情報" block is intentionally omitted from the public reading flow.
-    free_lead, free_remainder = (
-        _split_reader_lead(free_clean) if reader_summary else ("", free_clean)
-    )
-    if free_lead:
-        manuscript_parts.append(free_lead)
-
+    # Recent published AIIF note articles share one stable opening contract:
+    # summary -> source -> article-specific narrative. Keep the summary fixed while
+    # leaving all following headings to the article's own evidence and story.
     reader_header = build_reader_first_header(
-        reader_summary, repo_name, repo_url, source, published_at, include_source=False
+        reader_summary, repo_name, repo_url, source, published_at, include_source=True
     )
     if reader_header:
         manuscript_parts.append(reader_header)
-    if free_remainder:
-        manuscript_parts.append(free_remainder)
+    if free_clean:
+        manuscript_parts.append(free_clean)
     if paid_clean:
         manuscript_parts.append(paid_clean)
     manuscript = "\n\n".join(manuscript_parts)
