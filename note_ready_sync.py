@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 import requests
 
 import publication_contract
+import eyecatch_publication_contract as eyecatch_contract
 from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 from run285_operational_accounting import classify_note_ready_source_row
 
@@ -196,6 +197,9 @@ def _source_state(page: dict) -> dict[str, Any] | None:
     if source not in ALLOWED_SOURCES:
         return None
     decision = _select(p.get("判断"))
+    eyecatch_url = _files_url(p.get(SOURCE_EYECATCH))
+    if eyecatch_url and not eyecatch_contract.current_asset_url(eyecatch_url, title):
+        return None
     return {
         "sync_id": sync_id,
         "title": title,
@@ -206,7 +210,7 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         "original_url": original_url,
         "primary_url": primary_url,
         "content_page_url": str(page.get("url") or "").strip(),
-        "eyecatch_url": _files_url(p.get(SOURCE_EYECATCH)),
+        "eyecatch_url": eyecatch_url,
     }
 
 
