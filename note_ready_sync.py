@@ -198,8 +198,6 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         return None
     decision = _select(p.get("判断"))
     eyecatch_url = _files_url(p.get(SOURCE_EYECATCH))
-    if eyecatch_url and not eyecatch_contract.current_asset_url(eyecatch_url, title):
-        return None
     return {
         "sync_id": sync_id,
         "title": title,
@@ -398,6 +396,9 @@ def sync_note_ready_db(*, target_sync_id: str = "") -> dict[str, Any]:
             stale_contract += 1
             continue
         if not state.get("eyecatch_url"):
+            incomplete_assets += 1
+            continue
+        if not eyecatch_contract.current_asset_url(state["eyecatch_url"], state["title"]):
             incomplete_assets += 1
             continue
         state["publication_contract"] = publication_contract.CONTRACT_ID
