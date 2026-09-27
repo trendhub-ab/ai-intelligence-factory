@@ -273,6 +273,7 @@ def _find_exact_existing_draft(page: Any, profile_dir: Path) -> tuple[str, int]:
 
 
 def _browser_repair(manuscript: str) -> dict[str, Any]:
+    body_manuscript = note_base._body_manuscript_for_note(NEW_TITLE, manuscript)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
