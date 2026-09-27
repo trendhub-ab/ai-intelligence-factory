@@ -159,6 +159,8 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
         return None
     if re.search(r"https?://|[#*_`>]", title):
         return None
+    if _ELLIPSIS_RE.search(title) and not _ELLIPSIS_RE.search(source_title):
+        return None
 
     # Compression may remove English connective words, but obvious model/product/version
     # identifiers from the source must survive. This catches the most damaging title rewrite
