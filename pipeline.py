@@ -4811,11 +4811,18 @@ def build_decision_prompt(name, url, stars, desc, quality_feedback: str = "", so
                           evidence_metadata: dict | None = None, freshness: dict | None = None,
                           previous_article: str = "", evidence_result: dict | None = None):
     """Bind canonical decision prompt shaping to live pipeline editorial/evidence settings."""
+    from local_skills.a_plus import build_prewrite_contract
+
+    local_prewrite_contract = build_prewrite_contract(
+        evidence_result=evidence_result,
+        evidence_metadata=evidence_metadata,
+    )
     return _build_decision_prompt_impl(
         name, url, stars, desc,
         quality_feedback=quality_feedback, source=source, source_context=source_context,
         grounding_status_hint=grounding_status_hint, evidence_metadata=evidence_metadata,
         freshness=freshness, previous_article=previous_article, evidence_result=evidence_result,
+        local_prewrite_contract=local_prewrite_contract,
         engagement_labels=ENGAGEMENT_LABELS,
         max_evidence_total_chars=MAX_EVIDENCE_TOTAL_CHARS,
         truncate_source_context=_truncate_source_context,
