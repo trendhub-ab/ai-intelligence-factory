@@ -33,9 +33,16 @@ import note_ready_sync as ready_sync
 import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as official_image
 import run291_note_private_draft_audit as audit_base
+import run295_note_private_draft_audit as current_audit
 import run417_note_body_verification as run417
 
 CONFIRM_TOKEN = "RESYNC_READY_NOTE_BODY"
+
+
+def _audit_current_private_draft(page: Any, title: str, manuscript: str) -> dict[str, Any]:
+    """Use Run295 shared eyecatch proof while preserving Run291 body/title checks."""
+    wrapped = current_audit._audit_wrapper(audit_base._audit_current_page)
+    return wrapped(page, title, manuscript)
 
 
 class ReadyNoteBodyResyncError(RuntimeError):
@@ -252,7 +259,7 @@ def _apply_existing_body(article: dict[str, Any]) -> dict[str, Any]:
             if not _same_edit_route(route, str(page.url or "")):
                 raise ReadyNoteBodyResyncError("draft route changed after persistence reload")
 
-            audit = audit_base._audit_current_page(
+            audit = _audit_current_private_draft(
                 page,
                 str(article["title"]),
                 str(article["manuscript"]),
