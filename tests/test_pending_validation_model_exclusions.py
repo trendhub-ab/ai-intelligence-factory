@@ -34,7 +34,7 @@ def test_exclusion_survives_default_pool_reinjection_and_quality_routing():
             "gemini-3.7-flash",
             "gemini-3.8-flash",
             "gemini-3-flash-preview",
-            "gemini-2.5-flash",
+            "gemini-3.5-flash-lite",
         ]
         assert "gemini-3.6-flash" in p.SESSION_UNAVAILABLE_MODELS
         p._call_deep_dive_pool("repair", kind="quality_retry")
