@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-28T13:56:47.572735+00:00",
+  "updated_at": "2026-09-28T22:44:03.990570+00:00",
   "items": [
     {
       "key": "https://news.ycombinator.com/item?id=49875725",
@@ -38,6 +38,117 @@
       "shelf_life": "FLASH",
       "portfolio_topic": "OTHER",
       "deep_dive_priority_score": 86.75
+    },
+    {
+      "key": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
+      "deferred_at": "2026-09-28T22:44:03.990193+00:00",
+      "expires_at": "2026-10-12T22:44:03.990193+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
+        "originalTitle": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
+        "displayName": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
+        "sourceLanguage": "en",
+        "url": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
+        "description": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
+        "stargazerCount": 3,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-28T20:13:03Z",
+        "sourceContext": "HN points=3 comments=0 matched_query=\"AI agent\"",
+        "primaryUrl": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
+        "sourceDetails": {
+          "hn_id": "49883698",
+          "hn_url": "https://news.ycombinator.com/item?id=49883698",
+          "external_url": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
+          "comments": 0,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-8186-b4f8-ebfe7f3233f3",
+      "score": 82,
+      "reason": "MetaのMuse AIエージェントの権限無視問題。",
+      "commercial_score": 80,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 81.3
+    },
+    {
+      "key": "https://github.com/totally-tim/effort-router",
+      "deferred_at": "2026-09-28T22:44:03.990359+00:00",
+      "expires_at": "2026-10-12T22:44:03.990359+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
+        "originalTitle": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
+        "displayName": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
+        "sourceLanguage": "en",
+        "url": "https://github.com/totally-tim/effort-router",
+        "description": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
+        "stargazerCount": 2,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-28T15:56:46Z",
+        "sourceContext": "HN points=2 comments=1 matched_query=Claude",
+        "primaryUrl": "https://github.com/totally-tim/effort-router",
+        "sourceDetails": {
+          "hn_id": "49880075",
+          "hn_url": "https://news.ycombinator.com/item?id=49880075",
+          "external_url": "https://github.com/totally-tim/effort-router",
+          "comments": 1,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-8196-bde6-f33dc150ea5e",
+      "score": 80,
+      "reason": "Claude Code用JEVベースのeffort-routerツール。",
+      "commercial_score": 82,
+      "shelf_life_score": 35,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 80.7
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49878806",
+      "deferred_at": "2026-09-28T22:44:03.990453+00:00",
+      "expires_at": "2026-11-27T22:44:03.990453+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic: Emergent Misalignment from Reward Hacking",
+        "originalTitle": "Anthropic: Emergent Misalignment from Reward Hacking",
+        "displayName": "Anthropic: Emergent Misalignment from Reward Hacking",
+        "sourceLanguage": "en",
+        "url": "https://www.anthropic.com/research/emergent-misalignment-reward-hacking",
+        "description": "Anthropic: Emergent Misalignment from Reward Hacking",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-28T14:43:41Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Anthropic",
+        "primaryUrl": "https://www.anthropic.com/research/emergent-misalignment-reward-hacking",
+        "sourceDetails": {
+          "hn_id": "49878806",
+          "hn_url": "https://news.ycombinator.com/item?id=49878806",
+          "external_url": "https://www.anthropic.com/research/emergent-misalignment-reward-hacking",
+          "comments": 0,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-8182-a236-c90d6dbb214b",
+      "score": 82,
+      "reason": "報酬ハッキングによるアライメント崩壊の研究レポート。",
+      "commercial_score": 75,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 79.55
     },
     {
       "key": "https://news.ycombinator.com/item?id=49873255",
@@ -642,116 +753,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 73.25
-    },
-    {
-      "key": "https://arxiv.org/abs/2609.12551",
-      "deferred_at": "2026-09-15T08:30:31.948318+00:00",
-      "expires_at": "2026-11-14T08:30:31.948318+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "RoofLang: Enabling AI-Driven Architecting of LLM Inference Systems",
-        "originalTitle": "RoofLang: Enabling AI-Driven Architecting of LLM Inference Systems",
-        "displayName": "RoofLang: Enabling AI-Driven Architecting of LLM Inference Systems",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.12551",
-        "description": "RoofLang: Enabling AI-Driven Architecting of LLM Inference Systems",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-14T21:06:23Z",
-        "sourceContext": "HN points=5 comments=0 matched_query=LLM",
-        "primaryUrl": "https://arxiv.org/abs/2609.12551",
-        "sourceDetails": {
-          "hn_id": "49704018",
-          "hn_url": "https://news.ycombinator.com/item?id=49704018",
-          "external_url": "https://arxiv.org/abs/2609.12551",
-          "comments": 0,
-          "matched_query": "LLM",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-8182-803f-e2ccb8427151",
-      "score": 75,
-      "reason": "LLM推論システムのAI駆動型アーキテクチャ設計手法。",
-      "commercial_score": 70,
-      "shelf_life_score": 80,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 73.25
-    },
-    {
-      "key": "https://platform.kimi.com/docs/models",
-      "deferred_at": "2026-09-28T01:59:46.026346+00:00",
-      "expires_at": "2026-10-12T01:59:46.026346+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Moonshot AI Kimi — kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ,不再维护和支持。请使用最新模型 kimi-k3 ,以获得持续支持和更强推理能力。",
-        "originalTitle": "Moonshot AI Kimi — kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ,不再维护和支持。请使用最新模型 kimi-k3 ,以获得持续支持和更强推理能力。",
-        "displayName": "海外技術情報「Moonshot AI Kimi — kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ,不再维护和支持。请使用最新模型 kimi-k3 ,以获得持续支持和更强推理能力。」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://platform.kimi.com/docs/models?aif_revision=35139eefdffcce6f",
-        "description": "kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ，不再维护和支持。请使用最新模型 kimi-k3 ，以获得持续支持和更强推理能力。",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026 年 5 月 25 日",
-        "sourceContext": "kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ，不再维护和支持。请使用最新模型 kimi-k3 ，以获得持续支持和更强推理能力。",
-        "primaryUrl": "https://platform.kimi.com/docs/models",
-        "sourceDetails": {
-          "vendor": "Moonshot AI Kimi",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://platform.kimi.com/docs/models",
-          "candidate_revision": "35139eefdffcce6f",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8115-9954-f1f1bdedbbe2",
-      "score": 70,
-      "reason": "Moonshot AIの旧モデル終了と移行への公式アナウンス。",
-      "commercial_score": 75,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 71.75
-    },
-    {
-      "key": "https://github.com/Colton-z/AstraBox",
-      "deferred_at": "2026-09-28T01:59:46.026253+00:00",
-      "expires_at": "2026-10-12T01:59:46.026253+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
-        "originalTitle": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
-        "displayName": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
-        "sourceLanguage": "en",
-        "url": "https://github.com/Colton-z/AstraBox",
-        "description": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
-        "stargazerCount": 3,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-27T20:31:39Z",
-        "sourceContext": "HN points=3 comments=0 matched_query=Claude",
-        "primaryUrl": "https://github.com/Colton-z/AstraBox",
-        "sourceDetails": {
-          "hn_id": "49870517",
-          "hn_url": "https://news.ycombinator.com/item?id=49870517",
-          "external_url": "https://github.com/Colton-z/AstraBox",
-          "comments": 0,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8181-aaf8-e7dd5db0dc9f",
-      "score": 70,
-      "reason": "マネージドエージェントのオープンソース代替実装。",
-      "commercial_score": 75,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 71.75
     }
   ]
 }
