@@ -315,6 +315,11 @@ def _download_eyecatch(url: str, sync_id: str, public_title: str) -> Path:
     if not hmac.compare_digest(expected_sha, actual_sha):
         target.unlink(missing_ok=True)
         raise NoteDraftError("Eyecatch image bytes do not match the current manifest")
+    try:
+        eyecatch_contract.verify_image_headline(target, public_title)
+    except eyecatch_contract.EyecatchContractError as exc:
+        target.unlink(missing_ok=True)
+        raise NoteDraftError("Eyecatch main headline failed final inspection") from exc
     return target
 
 

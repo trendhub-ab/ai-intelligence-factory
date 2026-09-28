@@ -15,6 +15,7 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 import editorial_eyecatch as ee
+import eyecatch_publication_contract as headline_contract
 
 
 ENABLE_EYECATCH_LAYOUT_OPTIMIZER = os.environ.get(
@@ -200,6 +201,8 @@ def _render_with_validated_plan(
     category: str | None = None,
     date_label: str | None = None,
 ) -> str:
+    expected = str(validated.get("eyecatch_title") or ee.editorial_hook_from_title(title))
+    proof = headline_contract.headline_pnginfo(title, expected, validated["title_lines"])
     category = (category or ee.infer_editorial_category(title, summary)).strip() or "AI & TECH"
     accent = ee._CATEGORY_ACCENTS.get(category, ee._CATEGORY_ACCENTS["AI & TECH"])
     date_label = date_label or ee.datetime.now(ee.ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
@@ -215,9 +218,12 @@ def _render_with_validated_plan(
     headline_font = ee._jp_font(validated["title_font_size"], bold=True)
     navy = (7, 30, 66)
     y = 160
+    ink_runs = []
     for line_text in validated["title_lines"]:
         bbox = draw.textbbox((0, 0), line_text, font=headline_font)
-        draw.text((48, y - bbox[1]), line_text, font=headline_font, fill=navy)
+        position = (48, y - bbox[1])
+        draw.text(position, line_text, font=headline_font, fill=navy)
+        ink_runs.append((line_text, headline_font, *position, navy))
         y += (bbox[3] - bbox[1]) + validated["title_line_gap"]
 
     sub_y = min(535, max(485, y + 18))
@@ -227,7 +233,8 @@ def _render_with_validated_plan(
     for index, line_text in enumerate(validated["subheadline_lines"]):
         draw.text((72, sub_y + index * sub_step), line_text, font=sub_font, fill=(18, 42, 79))
 
-    img.save(output_path, "PNG", optimize=True)
+    headline_contract.bind_headline_pixels(img, proof, ink_runs)
+    img.save(output_path, "PNG", optimize=True, pnginfo=proof)
     return output_path
 
 

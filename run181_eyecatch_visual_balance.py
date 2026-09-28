@@ -21,6 +21,7 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 import editorial_eyecatch as ee
+import eyecatch_publication_contract as headline_contract
 import eyecatch_badge_taxonomy as badge_taxonomy
 import run178_eyecatch_editorial_layout_optimizer as r178
 
@@ -166,6 +167,7 @@ def _draw_mixed_title_line(
     runs: list[tuple[str, bool]],
     normal_font: Any,
     highlight_font: Any,
+    ink_runs: list | None = None,
 ) -> int:
     _width, line_height = _mixed_line_metrics(draw, runs, normal_font, highlight_font)
     cursor_x = x
@@ -176,6 +178,8 @@ def _draw_mixed_title_line(
         draw_y = top_y + (line_height - visible_height) - bbox[1]
         color = HIGHLIGHT_ORANGE if emphasized else TITLE_NAVY
         draw.text((cursor_x, draw_y), text, font=font, fill=color)
+        if ink_runs is not None:
+            ink_runs.append((text, font, cursor_x, draw_y, color))
         cursor_x += ee._text_width(draw, text, font)
     return line_height
 
@@ -383,8 +387,9 @@ def _render_balanced_plan(
 
     title_lines = [str(line) for line in validated.get("title_lines", []) if str(line).strip()]
     if not title_lines:
-        fallback = ee.editorial_hook_from_title(title, max_chars=48)
-        _font, title_lines = ee._fit_headline(draw, fallback, max_width=TITLE_MAX_WIDTH, max_lines=3)
+        raise ValueError("eyecatch title lines are required")
+    expected_headline = str(validated.get("eyecatch_title") or ee.editorial_hook_from_title(title))
+    proof = headline_contract.headline_pnginfo(title, expected_headline, title_lines)
     requested_gap = max(8, min(18, int(validated.get("title_line_gap", 12))))
     profile = _impact_layout_profile(title_lines, requested_gap)
     line_gap = int(profile["line_gap"])
@@ -394,9 +399,10 @@ def _render_balanced_plan(
     highlight_font = ee._jp_font(highlight_size, bold=True)
 
     y = int(profile["title_top"])
+    ink_runs = []
     for index, _line_text in enumerate(title_lines):
         runs = _split_line_for_highlight(title_lines, index, highlight_text)
-        line_height = _draw_mixed_title_line(draw, IMPACT_LEFT, y, runs, normal_font, highlight_font)
+        line_height = _draw_mixed_title_line(draw, IMPACT_LEFT, y, runs, normal_font, highlight_font, ink_runs)
         y += line_height + line_gap
     title_bottom = y - line_gap
 
@@ -419,7 +425,8 @@ def _render_balanced_plan(
         )
 
     _draw_footer(draw, category, date_label)
-    img.save(output_path, "PNG", optimize=True)
+    headline_contract.bind_headline_pixels(img, proof, ink_runs)
+    img.save(output_path, "PNG", optimize=True, pnginfo=proof)
     return output_path
 
 
