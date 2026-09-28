@@ -127,7 +127,7 @@ jobs:
               ;;
             ready_eyecatch_finalize)
               target='ready-eyecatch-finalize-once.yml'
-              payload="$(printf '{\"ref\":\"main\",\"inputs\":{\"sync_id\":\"%s\",\"confirm\":\"RUN_ONCE\"}}' \"$TARGET_SYNC_ID\")"
+              payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$TARGET_SYNC_ID")"
               ;;
             ready_note_cover_apply)
               target='ready-note-cover-apply-once.yml'
