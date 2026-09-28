@@ -208,7 +208,7 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
 
 
 _GENERAL_AVAILABILITY_RE = re.compile(
-    r"^(?P<subject>.+?)\s+is\s+now\s+generally\s+available[.!。]?$",
+    r"^(?P<subject>.+?)\s+is\s+(?:now\s+)?generally\s+available[.!。]?$",
     re.IGNORECASE,
 )
 
