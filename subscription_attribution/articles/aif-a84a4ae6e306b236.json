@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-a84a4ae6e306b236",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "OfficialVendor",
+  "source_url": "https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5",
+  "note_title": "Claude Sonnet 5.5への移行でアプリが止まる？見落とせない5つの破壊的変更。",
+  "ready_at": "2026-09-29T07:38:33.963389+09:00",
+  "notion_page_id": "3e9479ff-dca9-8113-85c7-d1a8ffcb3d4a",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-a84a4ae6e306b236&aif_article_id=aif-a84a4ae6e306b236",
+  "cta_enabled": true,
+  "decision_score": 80,
+  "screening_score": 90,
+  "commercial_value_score": 92,
+  "shelf_life_score": 50,
+  "shelf_life": "TREND",
+  "portfolio_topic": "MODEL",
+  "deep_dive_priority_score": 90.7,
+  "measurement_status": "awaiting_external_metrics"
+}
