@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-28T01:59:54.993768+00:00",
+  "updated_at": "2026-09-28T06:51:26.308274+00:00",
   "items": [
     {
       "key": "https://github.com/rapiddweller/datamimic",
@@ -84,42 +84,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 76.95
-    },
-    {
-      "key": "https://cloud.tencent.com/document/product/1729/97765",
-      "deferred_at": "2026-09-28T01:59:46.026084+00:00",
-      "expires_at": "2026-10-12T01:59:46.026084+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Tencent Hunyuan — Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线,下线模型不再提供服务,建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
-        "originalTitle": "Tencent Hunyuan — Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线,下线模型不再提供服务,建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
-        "displayName": "海外技術情報「Tencent Hunyuan — Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线,下线模型不再提供服务,建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://cloud.tencent.com/document/product/1729/97765?aif_revision=1d9b9e659f82a5d3",
-        "description": "Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线，下线模型不再提供服务，建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-06-22",
-        "sourceContext": "Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线，下线模型不再提供服务，建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
-        "primaryUrl": "https://cloud.tencent.com/document/product/1729/97765",
-        "sourceDetails": {
-          "vendor": "Tencent Hunyuan",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://cloud.tencent.com/document/product/1729/97765",
-          "candidate_revision": "1d9b9e659f82a5d3",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8107-8660-e8f36500e0f7",
-      "score": 75,
-      "reason": "Tencent Hunyuan旧モデルの終了と移行案内。",
-      "commercial_score": 80,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://arxiv.org/abs/2608.31017",
@@ -745,6 +709,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DATA",
       "deep_dive_priority_score": 70.6
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49873289",
+      "deferred_at": "2026-09-28T06:51:26.308044+00:00",
+      "expires_at": "2026-09-30T06:51:26.308044+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI pauses training of latest models",
+        "originalTitle": "OpenAI pauses training of latest models",
+        "displayName": "OpenAI pauses training of latest models",
+        "sourceLanguage": "en",
+        "url": "https://www.nbcnews.com/tech/tech-news/openai-pauses-training-latest-models-agents-searched-us-government-sit-rcna600098",
+        "description": "OpenAI pauses training of latest models",
+        "stargazerCount": 2,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-28T03:33:26Z",
+        "sourceContext": "HN points=2 comments=2 matched_query=OpenAI",
+        "primaryUrl": "https://www.nbcnews.com/tech/tech-news/openai-pauses-training-latest-models-agents-searched-us-government-sit-rcna600098",
+        "sourceDetails": {
+          "hn_id": "49873289",
+          "hn_url": "https://news.ycombinator.com/item?id=49873289",
+          "external_url": "https://www.nbcnews.com/tech/tech-news/openai-pauses-training-latest-models-agents-searched-us-government-sit-rcna600098",
+          "comments": 2,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-81ab-91b0-fc6549fa347e",
+      "score": 65,
+      "reason": "トップ企業の開発一時停止という大きな方針変化。",
+      "commercial_score": 60,
+      "shelf_life_score": 25,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 63.25
     }
   ]
 }
