@@ -12,6 +12,7 @@ browser, Notion, or note mutation.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ def _safe_default(reason: str) -> dict[str, Any]:
         "create_private_draft": False,
         "run_note_reconciliation": True,
         "target_source_url": "",
+        "target_source_urls": [],
         "reason": str(reason or "").strip(),
     }
 
@@ -81,13 +83,15 @@ def delivery_decision(gate_history_path: str | Path) -> dict[str, Any]:
         )
 
     ready_rows.sort(key=lambda row: (row[0], row[1]))
-    target_source_url = ready_rows[0][1] if ready_rows else ""
+    target_source_urls = [source_url for _, source_url in ready_rows]
+    target_source_url = target_source_urls[0] if target_source_urls else ""
     return {
         "audit_valid": True,
         "ready_count": observed_ready,
         "create_private_draft": bool(ready_rows),
         "run_note_reconciliation": True,
         "target_source_url": target_source_url,
+        "target_source_urls": target_source_urls,
         "reason": "current-run Ready pinned" if ready_rows else "current run produced no Ready article",
     }
 
@@ -128,6 +132,9 @@ def _write_github_output(path: str, result: dict[str, Any]) -> None:
         fh.write(f"ready_count={int(result.get('ready_count') or 0)}\n")
         fh.write(f"create_private_draft={'true' if result.get('create_private_draft') else 'false'}\n")
         fh.write(f"target_source_url={str(result.get('target_source_url') or '').strip()}\n")
+        urls = result.get("target_source_urls") or []
+        encoded = base64.b64encode(json.dumps(urls, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        fh.write(f"target_source_urls_b64={encoded}\n")
 
 
 def main() -> None:

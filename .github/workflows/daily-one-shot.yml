@@ -470,6 +470,7 @@ jobs:
           DELIVERY_READY_COUNT: ${{ steps.delivery.outputs.ready_count }}
           DELIVERY_CREATE_PRIVATE_DRAFT: ${{ steps.delivery.outputs.create_private_draft }}
           DELIVERY_TARGET_SOURCE_URL: ${{ steps.delivery.outputs.target_source_url }}
+          DELIVERY_TARGET_SOURCE_URLS_B64: ${{ steps.delivery.outputs.target_source_urls_b64 }}
         run: |
           set -u
           if [ "${VALIDATION_MODE:-}" = "pending_retry_validation" ]; then
@@ -489,6 +490,72 @@ jobs:
             exit 1
           fi
           failed=0
+          dispatch_all_current_run_ready() {
+            local expected_count="$1"
+            local create_private_draft="$2"
+            local encoded="${DELIVERY_TARGET_SOURCE_URLS_B64:-}"
+            if [ "$expected_count" -eq 0 ]; then
+              gh workflow run note-ready-sync.yml --ref main -f create_private_draft=false
+              return $?
+            fi
+            if [ "$create_private_draft" != "true" ]; then
+              echo "::error::Current-run Ready fan-out is disabled despite Ready output"
+              return 1
+            fi
+            if [ -z "$encoded" ] && [ "$expected_count" -eq 1 ] && [ -n "${DELIVERY_TARGET_SOURCE_URL:-}" ]; then
+              echo "Using legacy single-target causality transport for one Ready article."
+              local -a target_source_urls=("${DELIVERY_TARGET_SOURCE_URL}")
+              gh workflow run note-ready-sync.yml --ref main \
+                -f create_private_draft=true \
+                -f target_source_url="${target_source_urls[0]}"
+              return $?
+            fi
+            if [ -z "$encoded" ]; then
+              echo "::error::Current-run Ready fan-out is missing its complete exact target set"
+              return 1
+            fi
+            local decoded_targets
+            if ! decoded_targets="$(TARGETS_B64="$encoded" python - <<'PY'
+          import base64
+          import json
+          import os
+          from urllib.parse import urlparse
+
+          raw = os.environ.get("TARGETS_B64", "")
+          urls = json.loads(base64.b64decode(raw).decode("utf-8"))
+          if not isinstance(urls, list) or not urls:
+              raise ValueError("target source URL list is empty or invalid")
+          if len(urls) != len(set(urls)):
+              raise ValueError("target source URL list contains duplicates")
+          for url in urls:
+              parsed = urlparse(str(url))
+              if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                  raise ValueError(f"invalid target source URL: {url!r}")
+              print(url)
+          PY
+            )"; then
+              echo "::error::Could not decode exact current-run Ready target set"
+              return 1
+            fi
+            local -a target_source_urls=()
+            mapfile -t target_source_urls <<< "$decoded_targets"
+            if [ "${#target_source_urls[@]}" -ne "$expected_count" ]; then
+              echo "::error::Current-run Ready target count mismatch: expected=$expected_count actual=${#target_source_urls[@]}"
+              return 1
+            fi
+            local dispatch_failed=0
+            for target_source_url in "${target_source_urls[@]}"; do
+              echo "Dispatching note-ready-sync.yml for exact current-run Ready source: $target_source_url"
+              if ! gh workflow run note-ready-sync.yml --ref main \
+                -f create_private_draft=true \
+                -f target_source_url="$target_source_url"; then
+                echo "::error::Failed to dispatch note-ready-sync.yml for $target_source_url"
+                dispatch_failed=1
+              fi
+            done
+            return "$dispatch_failed"
+          }
+
           if [ "${VALIDATION_MODE:-}" = "ready_rescue_validation" ]; then
             if ! ready_count="$(python - <<'PY'
           import json
@@ -508,16 +575,13 @@ jobs:
               exit 0
             fi
             create_private_draft="${DELIVERY_CREATE_PRIVATE_DRAFT:-false}"
-            target_source_url="${DELIVERY_TARGET_SOURCE_URL:-}"
             audit_valid="${DELIVERY_AUDIT_VALID:-false}"
             delivery_ready_count="${DELIVERY_READY_COUNT:-0}"
-            if [ "$audit_valid" != "true" ] || [ "$create_private_draft" != "true" ] || [ -z "$target_source_url" ] || [ "$delivery_ready_count" -lt 1 ]; then
-              echo "::error::Ready Rescue reported Ready but current-run delivery causality could not pin its exact source"
+            if [ "$audit_valid" != "true" ] || [ "$create_private_draft" != "true" ] || [ "$delivery_ready_count" -ne "$ready_count" ]; then
+              echo "::error::Ready Rescue reported Ready but current-run delivery causality did not preserve the complete exact target set"
               exit 1
             fi
-            gh workflow run note-ready-sync.yml --ref main \
-              -f create_private_draft=true \
-              -f target_source_url="$target_source_url"
+            dispatch_all_current_run_ready "$delivery_ready_count" "$create_private_draft"
             exit $?
           fi
           if [ "${VALIDATION_MODE:-}" = "production_e2e_validation" ]; then
@@ -550,17 +614,15 @@ jobs:
             exit $?
           fi
           create_private_draft="${DELIVERY_CREATE_PRIVATE_DRAFT:-false}"
-          target_source_url="${DELIVERY_TARGET_SOURCE_URL:-}"
           ready_count="${DELIVERY_READY_COUNT:-0}"
           audit_valid="${DELIVERY_AUDIT_VALID:-false}"
           create_private_draft="${create_private_draft:-false}"
-          target_source_url="${target_source_url:-}"
 
-          echo "Dispatching note-ready-sync.yml with current-run causality: ready_count=${ready_count:-0} create_private_draft=${create_private_draft} audit_valid=${audit_valid:-false}"
-          if ! gh workflow run note-ready-sync.yml --ref main \
-            -f create_private_draft="$create_private_draft" \
-            -f target_source_url="$target_source_url"; then
-            echo "::error::Failed to dispatch note-ready-sync.yml"
+          echo "Dispatching note-ready-sync.yml with complete current-run causality: ready_count=${ready_count:-0} create_private_draft=${create_private_draft} audit_valid=${audit_valid:-false}"
+          if [ "$audit_valid" != "true" ]; then
+            echo "::error::Current-run delivery causality audit is invalid; note draft fan-out refused"
+            failed=1
+          elif ! dispatch_all_current_run_ready "$ready_count" "$create_private_draft"; then
             failed=1
           fi
 
@@ -578,7 +640,7 @@ jobs:
             echo "- current-run audit valid: ${audit_valid:-false}"
             echo "- current-run Ready count: ${ready_count:-0}"
             echo "- private draft enabled: ${create_private_draft}"
-            echo "- private draft candidate source pinned: $([ -n "$target_source_url" ] && echo yes || echo no)"
+            echo "- private draft current-run targets preserved: ${ready_count:-0}"
             echo "- targets: note-ready-sync.yml, subscriber-decision-brief.yml, cross-db-contract-guard.yml"
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$failed"
