@@ -46,7 +46,7 @@ jobs:
             *) echo "::error::Invalid run-scoped excluded_models"; exit 1 ;;
           esac
           printf 'style=%s\n' "$style" >> "$GITHUB_OUTPUT"
-          if [ -n "$exact_target" ] && [ "$mode" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
+          if [ -n "$exact_target" ] && [ "$mode" != "article_validation" ] && [ "$mode" != "stale_ready_batch_revalidation" ]; then echo "::error::exact_target is article_validation/stale_ready_batch_revalidation-only"; exit 1; fi
           printf 'exact_target=%s\n' "$exact_target" >> "$GITHUB_OUTPUT"
           printf 'excluded_models=%s\n' "$excluded_models" >> "$GITHUB_OUTPUT"
 
