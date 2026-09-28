@@ -33,7 +33,7 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
     def test_full_mode_must_gate_and_pin_private_draft_to_current_run_candidate(self) -> None:
         source = ONE_SHOT.read_text(encoding="utf-8")
         self.assertIn("run624_delivery_causality.py", source)
-        self.assertIn('create_private_draft="$create_private_draft"', source)
+        self.assertIn('dispatch_all_current_run_ready "$ready_count" "$create_private_draft"', source)
         self.assertIn('target_source_urls_b64', source)
         self.assertIn('for target_source_url in "${target_source_urls[@]}"', source)
 
