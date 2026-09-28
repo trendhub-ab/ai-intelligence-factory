@@ -160,7 +160,7 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
         return None
     if re.search(r"https?://|[#*_`>]", title):
         return None
-    if _ELLIPSIS_RE.search(title) and not _ELLIPSIS_RE.search(source_title):
+    if _ELLIPSIS_RE.search(title):
         return None
     # A visual headline must stand alone. Reject the exact failure mode where semantic
     # compression simply cuts the article title at a comma/colon or leaves a dangling
@@ -411,7 +411,11 @@ def _request_layout_plan(
                 count_as_deep_dive=False,
                 request_origin="new",
             )
-            return _parse_plan_response(response)
+            plan = _parse_plan_response(response)
+            if _validate_layout_plan(source_title, subheadline, plan) is not None:
+                return plan
+            if logger is not None:
+                logger.warning("[RUN180 EYECATCH LAYOUT RETRY] model=%s invalid headline or geometry", model_name)
         except Exception as exc:
             if logger is not None:
                 logger.warning(

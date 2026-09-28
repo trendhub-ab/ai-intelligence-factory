@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
+import eyecatch_publication_contract as headline_contract
 
 NOTE_EYECATCH_OUTPUT_DIR = os.environ.get("NOTE_EYECATCH_OUTPUT_DIR", "note_eyecatch_images")
 WIDTH = 1280
@@ -292,6 +293,9 @@ def generate_note_editorial_eyecatch(title: str, summary: str, output_path: str,
     accent = _CATEGORY_ACCENTS.get(category, _CATEGORY_ACCENTS["AI & TECH"])
     date_label = date_label or datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
     headline = editorial_hook_from_title(title)
+    full_headline = re.sub(r"^【[^】]{1,28}】\s*", "", _clean_public_copy(title))
+    if headline != full_headline or "..." in headline or "…" in headline:
+        raise ValueError("Cannot render a complete eyecatch title with the legacy fallback")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     img = Image.new("RGB", (WIDTH, HEIGHT), (252, 253, 255))
@@ -302,13 +306,18 @@ def generate_note_editorial_eyecatch(title: str, summary: str, output_path: str,
     _draw_tags(draw, category, date_label, accent)
 
     headline_font, headline_lines = _fit_headline(draw, headline, max_width=760, max_lines=3)
+    proof = headline_contract.headline_pnginfo(title, headline, headline_lines)
     navy = (7, 30, 66)
     y = 160
     line_gap = 10
+    ink_runs = []
     for line_text in headline_lines:
         bbox = draw.textbbox((0, 0), line_text, font=headline_font)
-        draw.text((48, y - bbox[1]), line_text, font=headline_font, fill=navy)
+        position = (48, y - bbox[1])
+        draw.text(position, line_text, font=headline_font, fill=navy)
+        ink_runs.append((line_text, headline_font, *position, navy))
         y += (bbox[3] - bbox[1]) + line_gap
 
-    img.save(output_path, "PNG", optimize=True)
+    headline_contract.bind_headline_pixels(img, proof, ink_runs)
+    img.save(output_path, "PNG", optimize=True, pnginfo=proof)
     return output_path
