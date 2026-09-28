@@ -334,17 +334,22 @@ def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dic
 
 
 
+_ASCII_TOKEN_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+/-"
+)
+
+
 def _ascii_token_split(lines: list[str], source_text: str = "") -> bool:
     """Return True only when a line break cuts through one ASCII product/model token."""
     source = str(source_text or "")
     for left, right in zip(lines, lines[1:]):
         if not left or not right:
             continue
-        if not (re.search(r"[A-Za-z0-9_.+\\-/]$", left) and re.match(r"^[A-Za-z0-9_.+\\-/]", right)):
+        if left[-1] not in _ASCII_TOKEN_CHARS or right[0] not in _ASCII_TOKEN_CHARS:
             continue
         # A real whitespace boundary in the approved source is a safe place to wrap:
         # "Live | with" is not the same as splitting "OpenAI" into "Open | AI".
-        if source and re.search(re.escape(left) + r"\\s+" + re.escape(right), source):
+        if source and re.search(re.escape(left) + r"\s+" + re.escape(right), source):
             continue
         return True
     return False
