@@ -44,7 +44,7 @@ on:
         default: ''
         type: string
       exact_target:
-        description: 'Optional exact existing article name; article_validation only; fail closed on miss'
+        description: 'Optional exact existing article name; article_validation or stale_ready_batch_revalidation only; fail closed on miss'
         required: false
         default: ''
         type: string
@@ -93,7 +93,7 @@ jobs:
             ""|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
           esac
-          if [ -n "${{ inputs.exact_target }}" ] && [ "${{ inputs.mode }}" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
+          if [ -n "${{ inputs.exact_target }}" ] && [ "${{ inputs.mode }}" != "article_validation" ] && [ "${{ inputs.mode }}" != "stale_ready_batch_revalidation" ]; then echo "::error::exact_target is article_validation/stale_ready_batch_revalidation-only"; exit 1; fi
           if [ "${{ inputs.e2e_prepare_only }}" = "true" ] && [ "${{ inputs.mode }}" != "production_e2e_validation" ]; then echo "::error::e2e_prepare_only is production_e2e_validation-only"; exit 1; fi
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }} excluded_models=${{ inputs.excluded_models }}. Automatic triggers are intentionally absent."
 
