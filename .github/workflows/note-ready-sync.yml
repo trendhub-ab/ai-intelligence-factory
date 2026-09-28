@@ -70,19 +70,7 @@ jobs:
 
       - name: Sync complete current-policy Ready articles to note posting DB
         id: sync
-        run: |
-          python - <<'PY'
-          import os
-          import note_ready_sync
-          result = note_ready_sync.sync_note_ready_db(
-              target_sync_id=os.environ.get("TARGET_SYNC_ID", ""),
-              target_source_url=os.environ.get("TARGET_SOURCE_URL", ""),
-          )
-          print("[RUN624 NOTE READY SYNC] " + str(result))
-          resolved = str(result.get("target_sync_id") or "").strip()
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"resolved_sync_id={resolved}\n")
-          PY
+        run: python note_ready_sync.py
         env:
           TARGET_SYNC_ID: ${{ inputs.target_sync_id }}
           TARGET_SOURCE_URL: ${{ inputs.target_source_url }}
