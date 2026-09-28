@@ -138,11 +138,11 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 
 def _required_source_tokens(source_title: str) -> set[str]:
     """Protect product/model/version identifiers without freezing ordinary English prose."""
-    raw_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+\\-/]*|\\d+(?:\\.\\d+)+", source_title)
+    raw_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/\-]*|\d+(?:\.\d+)+", source_title)
     required: set[str] = set()
 
     def distinctive(token: str) -> bool:
-        if re.fullmatch(r"\\d+(?:\\.\\d+)+", token):
+        if re.fullmatch(r"\d+(?:\.\d+)+", token):
             return True
         if any(mark in token for mark in ("_", ".", "+", "/", "-")):
             return True
@@ -160,7 +160,7 @@ def _required_source_tokens(source_title: str) -> set[str]:
     # Version numbers often anchor multi-word product/model names. Preserve nearby
     # title-cased words while allowing ordinary English sentence words to be compressed.
     for index, token in enumerate(raw_tokens):
-        if not re.fullmatch(r"\\d+(?:\\.\\d+)+", token):
+        if not re.fullmatch(r"\d+(?:\.\d+)+", token):
             continue
         start = max(0, index - 1)
         end = min(len(raw_tokens), index + 5)
@@ -208,7 +208,7 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
 
 
 _GENERAL_AVAILABILITY_RE = re.compile(
-    r"^(?P<subject>.+?)\\s+is\\s+now\\s+generally\\s+available[.!。]?$",
+    r"^(?P<subject>.+?)\s+is\s+now\s+generally\s+available[.!。]?$",
     re.IGNORECASE,
 )
 
