@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-27T11:17:31.022638+00:00",
+  "updated_at": "2026-09-28T00:12:04.876229+00:00",
   "items": [
     {
       "key": "https://github.com/rapiddweller/datamimic",
@@ -712,37 +712,37 @@
     },
     {
       "key": "https://platform.minimaxi.com/docs/release-notes/models",
-      "deferred_at": "2026-09-27T10:02:31.343673+00:00",
-      "expires_at": "2026-09-29T10:02:31.343673+00:00",
+      "deferred_at": "2026-09-28T00:12:04.875989+00:00",
+      "expires_at": "2026-10-12T00:12:04.875989+00:00",
       "repo": {
         "source": "OfficialVendor",
-        "nameWithOwner": "MiniMax — MiniMax M2 模型 API 限时免费调用!活动截止时间:2025年11月7日 上午 08:00",
-        "originalTitle": "MiniMax — MiniMax M2 模型 API 限时免费调用!活动截止时间:2025年11月7日 上午 08:00",
-        "displayName": "開発支援ツール「MiniMax — MiniMax M2 模型 API 限时免费调用!活动截止时间:2025年11月7日 上午 08:00」",
+        "nameWithOwner": "MiniMax — type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态,覆盖语言、视频、声音、图像、音乐等模",
+        "originalTitle": "MiniMax — type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态,覆盖语言、视频、声音、图像、音乐等模",
+        "displayName": "海外技術情報「MiniMax — type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态,覆盖语言、视频、声音、图像、音乐等模」",
         "sourceLanguage": "zh-CN",
-        "url": "https://platform.minimaxi.com/docs/release-notes/models?aif_revision=57a74c8868b63587",
-        "description": "MiniMax M2 模型 API 限时免费调用！活动截止时间：2025年11月7日 上午 08:00",
+        "url": "https://platform.minimaxi.com/docs/release-notes/models?aif_revision=7b229bb43e5a3d3b",
+        "description": "type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"dateModified\":\"2026-09-18T07:13:48.114Z\",\"isPartOf\": \"@id\":\"https://platform.minimax.cn/docs#website\" , \"@type\": \"Article\",\"TechArticle\" ,\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#article\",\"headline\":\"模型发布\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"mainEntityOfPage\": \"@id\":\"https://platform.minimax.cn/docs/release-not",
         "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": "2025年11月7日",
-        "sourceContext": "MiniMax M2 模型 API 限时免费调用！活动截止时间：2025年11月7日 上午 08:00",
+        "publishedAt": "2026-09-18",
+        "sourceContext": "type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"dateModified\":\"2026-09-18T07:13:48.114Z\",\"isPartOf\": \"@id\":\"https://platform.minimax.cn/docs#website\" , \"@type\": \"Article\",\"TechArticle\" ,\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#article\",\"headline\":\"模型发布\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"mainEntityOfPage\": \"@id\":\"https://platform.minimax.cn/docs/release-not",
         "primaryUrl": "https://platform.minimaxi.com/docs/release-notes/models",
         "sourceDetails": {
           "vendor": "MiniMax",
           "vendor_region": "CN",
           "source_role": "commercial_primary_source",
           "official_release_url": "https://platform.minimaxi.com/docs/release-notes/models",
-          "candidate_revision": "57a74c8868b63587",
+          "candidate_revision": "7b229bb43e5a3d3b",
           "vendor_record_kind": "structured_embedded",
           "run269_precision": true
         }
       },
-      "notion_page_id": "3e8479ff-dca9-817e-b1d2-d9247c977d41",
+      "notion_page_id": "3e9479ff-dca9-8159-90fe-f1c6b673b624",
       "score": 65,
-      "reason": "APIの期間限定無料化のプロモーション情報。",
+      "reason": "オープンAPIプラットフォームにおけるマルチモーダル更新。",
       "commercial_score": 70,
-      "shelf_life_score": 20,
-      "shelf_life": "FLASH",
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 66.75
     }
