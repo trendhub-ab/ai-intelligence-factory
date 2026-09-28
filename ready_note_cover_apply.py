@@ -80,19 +80,86 @@ def _source_current_asset(sync_id: str, title: str) -> tuple[str, str]:
     return image_url, manuscript
 
 
+def _destination_private_row(sync_id: str) -> dict[str, Any]:
+    """Read the exact existing queue row without requiring automated quality=Ready yet."""
+    pages = ready_sync._query_db(
+        ready_sync.DEST_DATA_SOURCE_ID,
+        ready_sync.DEST_DATABASE_ID,
+        payload={"filter": {"property": "同期ID", "rich_text": {"equals": sync_id}}},
+    )
+    exact = [
+        page for page in pages
+        if ready_sync._normalize_page_id(
+            ready_sync._text((page.get("properties") or {}).get("同期ID"))
+        ) == sync_id
+    ]
+    if len(exact) != 1:
+        raise ReadyNoteCoverError("expected exactly one existing note Ready destination row")
+    page = exact[0]
+    props = page.get("properties") or {}
+    posting = ready_sync._select(props.get("投稿状態"))
+    quality = ready_sync._select(props.get("品質状態"))
+    title = ready_sync._text(props.get("記事タイトル"))
+    published = str((((props.get("投稿日") or {}).get("date") or {}).get("start")) or "").strip()
+    if posting != "投稿準備中":
+        raise ReadyNoteCoverError(f"existing destination is not 投稿準備中: {posting!r}")
+    if quality not in {"Ready", "Ready取消"}:
+        raise ReadyNoteCoverError(f"unexpected destination quality state: {quality!r}")
+    if ready_sync._url(props.get("note公開URL")) or published:
+        raise ReadyNoteCoverError("destination has public-post evidence; cover-only apply refuses it")
+    if not title:
+        raise ReadyNoteCoverError("destination title is missing")
+    return {
+        "destination_page_id": str(page.get("id") or ""),
+        "sync_id": sync_id,
+        "title": title,
+        "quality_state": quality,
+        "posting_state": posting,
+    }
+
+
 def preflight(sync_id: str) -> dict[str, Any]:
     sync_id = _normalize_sync_id(sync_id)
+
+    # Require an already-existing private-draft queue row before any synchronization.
+    # This prevents an eyecatch apply request from creating a new publication candidate.
+    destination_before = _destination_private_row(sync_id)
+
+    # Prove the source manuscript and eyecatch are already current. Only after those
+    # publication prerequisites pass may the exact destination's automated quality
+    # status be reconciled. Human posting fields are preserved by note_ready_sync.
+    source_response = ready_sync._request("GET", f"https://api.notion.com/v1/pages/{sync_id}")
+    if source_response.status_code != 200:
+        raise ReadyNoteCoverError(
+            f"Content Intelligence source fetch failed: HTTP {source_response.status_code}"
+        )
+    source_state = ready_sync._source_state(source_response.json())
+    if source_state is None or source_state.get("sync_id") != sync_id:
+        raise ReadyNoteCoverError("Content Intelligence source is not an exact active Ready row")
+    source_title = str(source_state.get("title") or "").strip()
+    if source_title != str(destination_before["title"]).strip():
+        raise ReadyNoteCoverError("source and destination titles do not match")
+
+    image_url, canonical_manuscript = _source_current_asset(sync_id, source_title)
+
+    sync_result = ready_sync.sync_note_ready_db(target_sync_id=sync_id)
+    if int(sync_result.get("source_ready") or 0) != 1:
+        raise ReadyNoteCoverError("exact note Ready reconciliation did not preserve one current source")
+
     article = audit_base._expected_article(sync_id)
-    image_url, canonical_manuscript = _source_current_asset(sync_id, str(article["title"]))
-    destination = audit_base._destination_row(sync_id)
+    destination_after = _destination_private_row(sync_id)
+    if destination_after["quality_state"] != "Ready":
+        raise ReadyNoteCoverError("exact destination reconciliation did not restore quality=Ready")
     return {
         **article,
         "sync_id": sync_id,
         "eyecatch_url": image_url,
         "canonical_body_sha256": hashlib.sha256(canonical_manuscript.encode("utf-8")).hexdigest(),
         "quality_state": "Ready",
-        "posting_state": "投稿準備中",
-        "destination_page_id": destination["destination_page_id"],
+        "quality_state_before": destination_before["quality_state"],
+        "posting_state": destination_after["posting_state"],
+        "destination_page_id": destination_after["destination_page_id"],
+        "destination_exact_resync": True,
     }
 
 

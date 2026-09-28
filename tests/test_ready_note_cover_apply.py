@@ -19,7 +19,7 @@ class ReadyNoteCoverApplyTests(TestCase):
         with patch.object(target.audit_base, "_is_note_edit_url", side_effect=lambda v: "/notes/abc123/edit" in v):
             self.assertTrue(target._same_edit_route(left, right))
 
-    def test_preflight_requires_current_ready_asset_and_manuscript(self):
+    def test_preflight_reconciles_exact_revoked_destination_only_after_current_source_proof(self):
         article = {
             "sync_id": SYNC_ID,
             "title": TITLE,
@@ -33,22 +33,47 @@ class ReadyNoteCoverApplyTests(TestCase):
             "source": "HackerNews",
             "eyecatch_url": "https://example.invalid/current.png",
         }
-        destination = {
+        before = {
             "destination_page_id": "dest",
             "sync_id": SYNC_ID,
             "title": TITLE,
+            "quality_state": "Ready取消",
+            "posting_state": "投稿準備中",
         }
-        with patch.object(target.audit_base, "_expected_article", return_value=article), \
-             patch.object(target.audit_base, "_destination_row", return_value=destination), \
+        after = dict(before, quality_state="Ready")
+        with patch.object(target, "_destination_private_row", side_effect=[before, after]), \
              patch.object(target.ready_sync, "_request", return_value=page_response), \
              patch.object(target.ready_sync, "_source_state", return_value=state), \
-             patch.object(target.ready_sync, "_source_current_ready_manuscript", return_value=MANUSCRIPT), \
-             patch.object(target.eyecatch_contract, "require_current_asset_url", return_value=state["eyecatch_url"]):
+             patch.object(target, "_source_current_asset", return_value=(state["eyecatch_url"], MANUSCRIPT)), \
+             patch.object(target.ready_sync, "sync_note_ready_db", return_value={"source_ready": 1}) as sync, \
+             patch.object(target.audit_base, "_expected_article", return_value=article):
             result = target.preflight(SYNC_ID)
         self.assertEqual(result["sync_id"], SYNC_ID)
         self.assertEqual(result["quality_state"], "Ready")
+        self.assertEqual(result["quality_state_before"], "Ready取消")
         self.assertEqual(result["posting_state"], "投稿準備中")
+        self.assertTrue(result["destination_exact_resync"])
         self.assertEqual(result["eyecatch_url"], state["eyecatch_url"])
+        sync.assert_called_once_with(target_sync_id=SYNC_ID)
+
+    def test_preflight_never_reconciles_before_current_source_asset_proof(self):
+        before = {
+            "destination_page_id": "dest",
+            "sync_id": SYNC_ID,
+            "title": TITLE,
+            "quality_state": "Ready取消",
+            "posting_state": "投稿準備中",
+        }
+        page_response = types.SimpleNamespace(status_code=200, json=lambda: {"id": SYNC_ID})
+        state = {"sync_id": SYNC_ID, "title": TITLE, "source": "HackerNews", "eyecatch_url": ""}
+        with patch.object(target, "_destination_private_row", return_value=before), \
+             patch.object(target.ready_sync, "_request", return_value=page_response), \
+             patch.object(target.ready_sync, "_source_state", return_value=state), \
+             patch.object(target, "_source_current_asset", side_effect=target.ReadyNoteCoverError("stale asset")), \
+             patch.object(target.ready_sync, "sync_note_ready_db") as sync:
+            with self.assertRaisesRegex(target.ReadyNoteCoverError, "stale asset"):
+                target.preflight(SYNC_ID)
+        sync.assert_not_called()
 
     def test_prepare_only_never_mutates_note_or_source(self):
         article = {
