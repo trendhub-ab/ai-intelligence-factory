@@ -113,6 +113,18 @@ class Run194NoteCurrentContractTests(unittest.TestCase):
         self.assertEqual(contract.CONTRACT_ID, prepared["publication_contract"])
         self.assertEqual(contract.manuscript_sha256(self.current_body), prepared["manuscript_sha256"])
 
+    def test_zero_vm_preflight_rejects_stale_eyecatch_contract(self) -> None:
+        sid = "6" * 32
+        candidate = self._candidate(sid)
+        stale_url = "https://assets.example/eyecatch__ecv1_0000000000000000.png"
+        with (
+            patch.object(base, "_fetch_source_page", return_value={"image": stale_url}),
+            patch.object(base, "_fetch_block_children", return_value=[self.current_block(self.current_body)]),
+            patch.object(base, "_eyecatch_url", return_value=stale_url),
+        ):
+            with self.assertRaises(run194.IncompletePublicationAsset):
+                run194._prepare_one(candidate)
+
     def test_explicit_missing_eyecatch_never_silently_switches(self) -> None:
         sid = "4" * 32
         candidate = self._candidate(sid)
