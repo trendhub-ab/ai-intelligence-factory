@@ -1,0 +1,170 @@
+name: Ready Note Cover Apply [ONE-SHOT]
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_id:
+        description: Exact Content Intelligence Ready sync_id
+        required: true
+        type: string
+      confirm:
+        description: Literal confirmation token
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ready-note-cover-apply-${{ inputs.sync_id }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    outputs:
+      start_vm: ${{ steps.ok.outputs.start_vm }}
+    env:
+      NOTE_TARGET_SYNC_ID: ${{ inputs.sync_id }}
+      NOTE_COVER_APPLY_CONFIRM: APPLY_READY_NOTE_COVER
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate exact Ready source, current asset, and private queue state
+        run: |
+          set -o pipefail
+          python ready_note_cover_apply.py \
+            --sync-id "$NOTE_TARGET_SYNC_ID" \
+            --confirm "$NOTE_COVER_APPLY_CONFIRM" \
+            --prepare-only | tee "${RUNNER_TEMP}/cover-preflight.json"
+      - id: ok
+        run: echo "start_vm=true" >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  apply:
+    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    env:
+      NOTE_TARGET_SYNC_ID: ${{ inputs.sync_id }}
+      NOTE_COVER_APPLY_CONFIRM: APPLY_READY_NOTE_COVER
+      NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+      NOTE_CHROME_CHANNEL: 'chrome'
+      NOTE_CHROME_HEADLESS: 'false'
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright
+      - name: Apply current production eyecatch to existing private draft only
+        run: |
+          set -o pipefail
+          xvfb-run -a python ready_note_cover_apply.py \
+            --sync-id "$NOTE_TARGET_SYNC_ID" \
+            --confirm "$NOTE_COVER_APPLY_CONFIRM" | tee "${RUNNER_TEMP}/cover-apply.json"
+      - name: Verify mutation stayed cover-only
+        env:
+          RESULT_FILE: ${{ runner.temp }}/cover-apply.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result=json.loads(Path(os.environ["RESULT_FILE"]).read_text(encoding="utf-8").splitlines()[-1])
+          if result.get("status") != "ready_note_cover_applied":
+              raise SystemExit("note cover apply did not complete")
+          for key in (
+              "current_asset_url",
+              "same_edit_route",
+              "title_unchanged",
+              "body_unchanged",
+              "eyecatch_identity_changed",
+              "persisted_after_reload",
+              "zero_gemini_calls",
+          ):
+              if result.get(key) is not True:
+                  raise SystemExit(f"invariant failed: {key}")
+          if result.get("new_draft_created") is not False:
+              raise SystemExit("new draft boundary crossed")
+          if result.get("public_release") is not False:
+              raise SystemExit("public release boundary crossed")
+          if result.get("article_regeneration") is not False:
+              raise SystemExit("article regeneration boundary crossed")
+          if result.get("source_manuscript_mutation") is not False:
+              raise SystemExit("source manuscript mutation boundary crossed")
+          if result.get("quality_state_preserved") != "Ready":
+              raise SystemExit("quality state changed")
+          if result.get("posting_state_preserved") != "投稿準備中":
+              raise SystemExit("posting state changed")
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, apply]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
