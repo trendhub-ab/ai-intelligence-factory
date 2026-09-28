@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "purpose": "Gemini article-model availability routing; no prompt/article content",
-  "updated_at": "2026-09-28T06:51:24.104941+00:00",
+  "updated_at": "2026-09-28T08:32:16.403830+00:00",
   "attempts": [
     {
       "timestamp": "2026-09-20T08:40:35.929534+00:00",
@@ -1194,13 +1194,6 @@
       "error_type": "ServerError"
     },
     {
-      "timestamp": "2026-09-27T10:03:25.316746+00:00",
-      "model": "gemini-2.5-flash",
-      "kind": "deep_dive",
-      "outcome": "error",
-      "error_type": "ClientError"
-    },
-    {
       "timestamp": "2026-09-27T11:10:08.245780+00:00",
       "model": "gemini-3.5-flash",
       "kind": "deep_dive",
@@ -1255,13 +1248,6 @@
       "kind": "deep_dive",
       "outcome": "error",
       "error_type": "ServerError"
-    },
-    {
-      "timestamp": "2026-09-27T11:17:24.806846+00:00",
-      "model": "gemini-2.5-flash",
-      "kind": "deep_dive",
-      "outcome": "error",
-      "error_type": "ClientError"
     },
     {
       "timestamp": "2026-09-27T11:48:24.745206+00:00",
@@ -1334,13 +1320,6 @@
       "error_type": "ServerError"
     },
     {
-      "timestamp": "2026-09-28T00:09:20.606778+00:00",
-      "model": "gemini-2.5-flash",
-      "kind": "quality_retry",
-      "outcome": "error",
-      "error_type": "ClientError"
-    },
-    {
       "timestamp": "2026-09-28T00:54:57.443752+00:00",
       "model": "gemini-3.7-flash",
       "kind": "deep_dive",
@@ -1376,13 +1355,6 @@
       "error_type": "ServerError"
     },
     {
-      "timestamp": "2026-09-28T01:59:42.475283+00:00",
-      "model": "gemini-2.5-flash",
-      "kind": "deep_dive",
-      "outcome": "error",
-      "error_type": "ClientError"
-    },
-    {
       "timestamp": "2026-09-28T06:47:36.182906+00:00",
       "model": "gemini-3.7-flash",
       "kind": "deep_dive",
@@ -1397,11 +1369,11 @@
       "error_type": "ServerError"
     },
     {
-      "timestamp": "2026-09-28T06:51:23.946704+00:00",
-      "model": "gemini-2.5-flash",
+      "timestamp": "2026-09-28T08:32:05.077481+00:00",
+      "model": "gemini-3.6-flash",
       "kind": "deep_dive",
-      "outcome": "error",
-      "error_type": "ClientError"
+      "outcome": "success",
+      "error_type": ""
     }
   ]
 }
