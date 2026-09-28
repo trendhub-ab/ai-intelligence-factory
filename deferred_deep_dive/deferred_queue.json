@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-28T00:12:13.218464+00:00",
+  "updated_at": "2026-09-28T01:59:46.026659+00:00",
   "items": [
     {
       "key": "https://github.com/rapiddweller/datamimic",
@@ -84,6 +84,42 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 76.95
+    },
+    {
+      "key": "https://cloud.tencent.com/document/product/1729/97765",
+      "deferred_at": "2026-09-28T01:59:46.026084+00:00",
+      "expires_at": "2026-10-12T01:59:46.026084+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Tencent Hunyuan — Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线,下线模型不再提供服务,建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
+        "originalTitle": "Tencent Hunyuan — Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线,下线模型不再提供服务,建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
+        "displayName": "海外技術情報「Tencent Hunyuan — Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线,下线模型不再提供服务,建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://cloud.tencent.com/document/product/1729/97765?aif_revision=1d9b9e659f82a5d3",
+        "description": "Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线，下线模型不再提供服务，建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-06-22",
+        "sourceContext": "Tencent HY 文生文旧版本模型下线 混元旧版本模型正式下线，下线模型不再提供服务，建议迁移至 TokenHub 使用最新版本模型。详见 TokenHub 迁移指南 。 2026-06-22 ﻿ 查看详情 ﻿",
+        "primaryUrl": "https://cloud.tencent.com/document/product/1729/97765",
+        "sourceDetails": {
+          "vendor": "Tencent Hunyuan",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://cloud.tencent.com/document/product/1729/97765",
+          "candidate_revision": "1d9b9e659f82a5d3",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-8107-8660-e8f36500e0f7",
+      "score": 75,
+      "reason": "Tencent Hunyuan旧モデルの終了と移行案内。",
+      "commercial_score": 80,
+      "shelf_life_score": 40,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://arxiv.org/abs/2608.31017",
@@ -451,6 +487,79 @@
       "deep_dive_priority_score": 73.25
     },
     {
+      "key": "https://platform.kimi.com/docs/models",
+      "deferred_at": "2026-09-28T01:59:46.026346+00:00",
+      "expires_at": "2026-10-12T01:59:46.026346+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Moonshot AI Kimi — kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ,不再维护和支持。请使用最新模型 kimi-k3 ,以获得持续支持和更强推理能力。",
+        "originalTitle": "Moonshot AI Kimi — kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ,不再维护和支持。请使用最新模型 kimi-k3 ,以获得持续支持和更强推理能力。",
+        "displayName": "海外技術情報「Moonshot AI Kimi — kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ,不再维护和支持。请使用最新模型 kimi-k3 ,以获得持续支持和更强推理能力。」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://platform.kimi.com/docs/models?aif_revision=35139eefdffcce6f",
+        "description": "kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ，不再维护和支持。请使用最新模型 kimi-k3 ，以获得持续支持和更强推理能力。",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026 年 5 月 25 日",
+        "sourceContext": "kimi-k2 系列模型已于 2026 年 5 月 25 日下线 ，不再维护和支持。请使用最新模型 kimi-k3 ，以获得持续支持和更强推理能力。",
+        "primaryUrl": "https://platform.kimi.com/docs/models",
+        "sourceDetails": {
+          "vendor": "Moonshot AI Kimi",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://platform.kimi.com/docs/models",
+          "candidate_revision": "35139eefdffcce6f",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-8115-9954-f1f1bdedbbe2",
+      "score": 70,
+      "reason": "Moonshot AIの旧モデル終了と移行への公式アナウンス。",
+      "commercial_score": 75,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 71.75
+    },
+    {
+      "key": "https://github.com/Colton-z/AstraBox",
+      "deferred_at": "2026-09-28T01:59:46.026253+00:00",
+      "expires_at": "2026-10-12T01:59:46.026253+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
+        "originalTitle": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
+        "displayName": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
+        "sourceLanguage": "en",
+        "url": "https://github.com/Colton-z/AstraBox",
+        "description": "Show HN: AstraBox – an open-source alternative to Claude Managed Agents",
+        "stargazerCount": 3,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-27T20:31:39Z",
+        "sourceContext": "HN points=3 comments=0 matched_query=Claude",
+        "primaryUrl": "https://github.com/Colton-z/AstraBox",
+        "sourceDetails": {
+          "hn_id": "49870517",
+          "hn_url": "https://news.ycombinator.com/item?id=49870517",
+          "external_url": "https://github.com/Colton-z/AstraBox",
+          "comments": 0,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3e9479ff-dca9-8181-aaf8-e7dd5db0dc9f",
+      "score": 70,
+      "reason": "マネージドエージェントのオープンソース代替実装。",
+      "commercial_score": 75,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 71.75
+    },
+    {
       "key": "https://cloud.baidu.com/doc/qianfan/s/Kmh4stnjp",
       "deferred_at": "2026-09-27T11:17:27.249536+00:00",
       "expires_at": "2026-09-29T11:17:27.249536+00:00",
@@ -636,115 +745,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DATA",
       "deep_dive_priority_score": 70.6
-    },
-    {
-      "key": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
-      "deferred_at": "2026-09-23T08:15:01.804455+00:00",
-      "expires_at": "2026-10-07T08:15:01.804455+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Anthropic — What's new in Claude Opus 5.5",
-        "originalTitle": "Anthropic — What's new in Claude Opus 5.5",
-        "displayName": "Anthropic — What's new in Claude Opus 5.5",
-        "sourceLanguage": "en",
-        "url": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
-        "description": "What's new in Claude Opus 5.5",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "September 22, 2026",
-        "sourceContext": "What's new in Claude Opus 5.5",
-        "primaryUrl": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5",
-        "sourceDetails": {
-          "vendor": "Anthropic",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://platform.claude.com/docs/en/release-notes/overview",
-          "candidate_revision": "dcb7214e7b2afe0d",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e4479ff-dca9-812d-a232-eab352b65554",
-      "score": 68,
-      "reason": "最先端商用モデルの新機能と進化追跡。",
-      "commercial_score": 75,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 70.45
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49835073",
-      "deferred_at": "2026-09-27T10:02:31.343583+00:00",
-      "expires_at": "2026-10-11T10:02:31.343583+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Anthropic resumes charging for requests blocked by safeguards",
-        "originalTitle": "Anthropic resumes charging for requests blocked by safeguards",
-        "displayName": "Anthropic resumes charging for requests blocked by safeguards",
-        "sourceLanguage": "en",
-        "url": "https://twitter.com/ClaudeDevs/status/2103170368794185758",
-        "description": "Anthropic resumes charging for requests blocked by safeguards",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-24T18:42:33Z",
-        "sourceContext": "HN points=5 comments=2 matched_query=Anthropic",
-        "primaryUrl": "https://twitter.com/ClaudeDevs/status/2103170368794185758",
-        "sourceDetails": {
-          "hn_id": "49835073",
-          "hn_url": "https://news.ycombinator.com/item?id=49835073",
-          "external_url": "https://twitter.com/ClaudeDevs/status/2103170368794185758",
-          "comments": 2,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e8479ff-dca9-8164-a6bb-dd9f82de9557",
-      "score": 65,
-      "reason": "セーフガードでブロックされたリクエストの課金再開。",
-      "commercial_score": 75,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 68.5
-    },
-    {
-      "key": "https://platform.minimaxi.com/docs/release-notes/models",
-      "deferred_at": "2026-09-28T00:12:04.875989+00:00",
-      "expires_at": "2026-10-12T00:12:04.875989+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "MiniMax — type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态,覆盖语言、视频、声音、图像、音乐等模",
-        "originalTitle": "MiniMax — type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态,覆盖语言、视频、声音、图像、音乐等模",
-        "displayName": "海外技術情報「MiniMax — type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态,覆盖语言、视频、声音、图像、音乐等模」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://platform.minimaxi.com/docs/release-notes/models?aif_revision=7b229bb43e5a3d3b",
-        "description": "type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"dateModified\":\"2026-09-18T07:13:48.114Z\",\"isPartOf\": \"@id\":\"https://platform.minimax.cn/docs#website\" , \"@type\": \"Article\",\"TechArticle\" ,\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#article\",\"headline\":\"模型发布\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"mainEntityOfPage\": \"@id\":\"https://platform.minimax.cn/docs/release-not",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-18",
-        "sourceContext": "type\":\"WebPage\",\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#webpage\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"dateModified\":\"2026-09-18T07:13:48.114Z\",\"isPartOf\": \"@id\":\"https://platform.minimax.cn/docs#website\" , \"@type\": \"Article\",\"TechArticle\" ,\"@id\":\"https://platform.minimax.cn/docs/release-notes/models#article\",\"headline\":\"模型发布\",\"name\":\"模型发布\",\"description\":\"本文档汇总MiniMax开放平台最新模型发布动态，覆盖语言、视频、声音、图像、音乐等模态模型信息，帮助开发者了解平台最新模型能力。\",\"url\":\"https://platform.minimax.cn/docs/release-notes/models\",\"mainEntityOfPage\": \"@id\":\"https://platform.minimax.cn/docs/release-not",
-        "primaryUrl": "https://platform.minimaxi.com/docs/release-notes/models",
-        "sourceDetails": {
-          "vendor": "MiniMax",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://platform.minimaxi.com/docs/release-notes/models",
-          "candidate_revision": "7b229bb43e5a3d3b",
-          "vendor_record_kind": "structured_embedded",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8159-90fe-f1c6b673b624",
-      "score": 65,
-      "reason": "オープンAPIプラットフォームにおけるマルチモーダル更新。",
-      "commercial_score": 70,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 66.75
     }
   ]
 }
