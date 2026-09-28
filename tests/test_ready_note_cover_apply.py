@@ -13,6 +13,17 @@ MANUSCRIPT = "## どんな内容？\nOpenAIの設立時点を確認します。\
 
 
 class ReadyNoteCoverApplyTests(TestCase):
+    def test_current_audit_uses_run295_shared_eyecatch_proof(self):
+        sentinel = {"eyecatch_present": True, "eyecatch_proof_mode": "eyecatch_present_header_media"}
+        def wrapped(page, title, manuscript):
+            self.assertEqual(title, TITLE)
+            self.assertEqual(manuscript, MANUSCRIPT)
+            return sentinel
+        with patch.object(target.current_audit, "_audit_wrapper", return_value=wrapped) as wrapper:
+            result = target._audit_current_private_draft(object(), TITLE, MANUSCRIPT)
+        self.assertIs(result, sentinel)
+        wrapper.assert_called_once_with(target.audit_base._audit_current_page)
+
     def test_route_comparison_ignores_query_but_requires_note_edit_route(self):
         left = "https://note.com/notes/abc123/edit?foo=1"
         right = "https://note.com/notes/abc123/edit"
