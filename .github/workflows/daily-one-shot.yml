@@ -429,6 +429,14 @@ jobs:
         run: |
           echo "${{ inputs.mode }} mode: separate Product Review intentionally skipped."
 
+      - name: Resolve current-run delivery causality
+        id: delivery
+        if: ${{ success() && inputs.mode != 'pending_retry_validation' && inputs.mode != 'production_e2e_validation' && inputs.mode != 'local_skills_canary_validation' && inputs.mode != 'local_skills_production_validation' }}
+        run: |
+          python run624_delivery_causality.py \
+            --gate-history-dir gate_history \
+            --github-output "$GITHUB_OUTPUT"
+
       - name: 月次ダイジェストをPrivate Artifactとして保存
         if: always()
         uses: actions/upload-artifact@v7
@@ -495,7 +503,15 @@ jobs:
               echo "Ready Rescue produced no Ready article; downstream synchronization skipped."
               exit 0
             fi
-            gh workflow run note-ready-sync.yml --ref main -f create_private_draft=true
+            create_private_draft="${{ steps.delivery.outputs.create_private_draft }}"
+            target_source_url="${{ steps.delivery.outputs.target_source_url }}"
+            if [ "$create_private_draft" != "true" ] || [ -z "$target_source_url" ]; then
+              echo "::error::Ready Rescue reported Ready but current-run delivery causality could not pin its exact source"
+              exit 1
+            fi
+            gh workflow run note-ready-sync.yml --ref main \
+              -f create_private_draft="$create_private_draft" \
+              -f target_source_url="$target_source_url"
             exit $?
           fi
           if [ "${VALIDATION_MODE:-}" = "production_e2e_validation" ]; then
@@ -527,7 +543,22 @@ jobs:
               -f target_sync_id="$sync_id"
             exit $?
           fi
-          for target in note-ready-sync.yml subscriber-decision-brief.yml cross-db-contract-guard.yml; do
+          create_private_draft="${{ steps.delivery.outputs.create_private_draft }}"
+          target_source_url="${{ steps.delivery.outputs.target_source_url }}"
+          ready_count="${{ steps.delivery.outputs.ready_count }}"
+          audit_valid="${{ steps.delivery.outputs.audit_valid }}"
+          create_private_draft="${create_private_draft:-false}"
+          target_source_url="${target_source_url:-}"
+
+          echo "Dispatching note-ready-sync.yml with current-run causality: ready_count=${ready_count:-0} create_private_draft=${create_private_draft} audit_valid=${audit_valid:-false}"
+          if ! gh workflow run note-ready-sync.yml --ref main \
+            -f create_private_draft="$create_private_draft" \
+            -f target_source_url="$target_source_url"; then
+            echo "::error::Failed to dispatch note-ready-sync.yml"
+            failed=1
+          fi
+
+          for target in subscriber-decision-brief.yml cross-db-contract-guard.yml; do
             echo "Dispatching ${target} from successful ONE-SHOT via GH_PAT"
             if ! gh workflow run "${target}" --ref main; then
               echo "::error::Failed to dispatch ${target}"
@@ -535,9 +566,13 @@ jobs:
             fi
           done
           {
-            echo "### Run261 post-run fan-out"
+            echo "### Run624 post-run fan-out"
             echo "- auth: GH_PAT"
             echo "- source: Daily Intelligence & Content Pipeline [ONE-SHOT]"
+            echo "- current-run audit valid: ${audit_valid:-false}"
+            echo "- current-run Ready count: ${ready_count:-0}"
+            echo "- private draft enabled: ${create_private_draft}"
+            echo "- private draft candidate source pinned: $([ -n "$target_source_url" ] && echo yes || echo no)"
             echo "- targets: note-ready-sync.yml, subscriber-decision-brief.yml, cross-db-contract-guard.yml"
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$failed"
