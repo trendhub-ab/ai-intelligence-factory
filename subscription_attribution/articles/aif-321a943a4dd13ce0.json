@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-321a943a4dd13ce0",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "HackerNews",
+  "source_url": "https://cloud.google.com/blog/products/ai-machine-learning/gemini-3-8-live-with-live-avatar-is-now-generally-available",
+  "note_title": "Power your agents: Gemini 3.8 Live with Live Avatar is now generally available：いま何を判断材料にするべきか。",
+  "ready_at": "2026-09-28T09:12:00.528088+09:00",
+  "notion_page_id": "3e9479ff-dca9-81c8-b49a-cae7d8659999",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-321a943a4dd13ce0&aif_article_id=aif-321a943a4dd13ce0",
+  "cta_enabled": true,
+  "decision_score": 80,
+  "screening_score": 70,
+  "commercial_value_score": 75,
+  "shelf_life_score": 60,
+  "shelf_life": "TREND",
+  "portfolio_topic": "MULTIMODAL",
+  "deep_dive_priority_score": 71.75,
+  "measurement_status": "awaiting_external_metrics"
+}
