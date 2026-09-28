@@ -40,9 +40,20 @@ def _fetch_page(page_id: str) -> dict | None:
 
 def run(pipeline):
     pipeline.initialize_runtime()
+    exact_target=os.environ.get("ARTICLE_REVALIDATION_EXACT_TARGET","").strip()
     batch=max(1,min(MAX_BATCH_SIZE,int(os.environ.get("STALE_READY_REVALIDATION_BATCH_SIZE",DEFAULT_BATCH_SIZE))))
     pages=nrs._query_db(nrs.SOURCE_DATA_SOURCE_ID,nrs.SOURCE_DATABASE_ID,payload={"filter":{"property":nrs.SOURCE_ARTICLE_STATUS,"select":{"equals":nrs.SOURCE_READY}}})
-    result={"mode":"stale_ready_batch_revalidation","batch_limit":batch,"ready_rows":len(pages),"attempted":0,"passed":0,"failed_or_review":0,"skipped_current":0,"skipped_published":0,"skipped_invalid":0,"provider_cap":int(getattr(pipeline.DEEP_DIVE_MODEL_BUDGET,"budget",0) or 0),"items":[]}
+    if exact_target:
+        matches=[]
+        for candidate in pages:
+            state=nrs._source_state(candidate)
+            if state is not None and str(state.get("title") or "").strip()==exact_target:
+                matches.append(candidate)
+        if len(matches)!=1:
+            raise RuntimeError(f"stale Ready exact target count mismatch: target={exact_target!r} matches={len(matches)}")
+        pages=matches
+        batch=1
+    result={"mode":"stale_ready_batch_revalidation","exact_target":exact_target,"batch_limit":batch,"ready_rows":len(pages),"attempted":0,"passed":0,"failed_or_review":0,"skipped_current":0,"skipped_published":0,"skipped_invalid":0,"provider_cap":int(getattr(pipeline.DEEP_DIVE_MODEL_BUDGET,"budget",0) or 0),"items":[]}
     rank=0
     for candidate in pages:
         if result["attempted"]>=batch: break
@@ -54,6 +65,8 @@ def run(pipeline):
         state=nrs._source_state(page)
         if state is None:
             result["skipped_invalid"]+=1; continue
+        if exact_target and str(state.get("title") or "").strip()!=exact_target:
+            raise RuntimeError("stale Ready exact target changed during TOCTOU recheck")
         if nrs._source_has_current_ready_manuscript(state["sync_id"]):
             result["skipped_current"]+=1; continue
         if _is_posted(state["sync_id"]):
@@ -70,4 +83,6 @@ def run(pipeline):
     result["provider_used"]=int(getattr(pipeline.DEEP_DIVE_MODEL_BUDGET,"used",0) or 0)
     dest=Path("article_audit/stale_ready_batch_revalidation.json");dest.parent.mkdir(parents=True,exist_ok=True);dest.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     pipeline.logger.info("[STALE READY BATCH REVALIDATION] %s",{k:v for k,v in result.items() if k!="items"})
+    if exact_target and not (result["attempted"]==1 and result["passed"]==1):
+        raise RuntimeError(f"stale Ready exact target did not persist as Ready: {result}")
     return result
