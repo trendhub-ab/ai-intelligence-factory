@@ -43,10 +43,10 @@ class ReadyNoteBodyResyncError(RuntimeError):
 
 
 def _normalize_sync_id(value: str) -> str:
-    sync_id = re.sub(r"[^0-9a-fA-F]", "", str(value or "")).lower()
-    if len(sync_id) != 32:
+    raw = str(value or "")
+    if re.fullmatch(r"[0-9a-fA-F]{32}", raw) is None:
         raise ReadyNoteBodyResyncError("sync_id must be exactly 32 hex characters")
-    return sync_id
+    return raw.lower()
 
 
 def _route_key(url: str) -> str:
