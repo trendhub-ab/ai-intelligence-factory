@@ -1,0 +1,82 @@
+name: Ready Eyecatch Finalize [ONE-SHOT]
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_id:
+        description: Exact Content Intelligence Ready sync_id
+        required: true
+        type: string
+      confirm:
+        description: Literal confirmation token
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ready-eyecatch-finalize-${{ inputs.sync_id }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TARGET_SYNC_ID: ${{ inputs.sync_id }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+      GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+      GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+      GEMINI_COUNTER_BRANCH: 'runtime-state'
+      EYECATCH_GITHUB_BRANCH: 'runtime-state'
+      GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
+      GH_PAT: ${{ secrets.GH_PAT }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install production dependencies and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Finalize exact Ready eyecatch only
+        run: |
+          set -o pipefail
+          python ready_eyecatch_finalize.py --sync-id "$TARGET_SYNC_ID" | tee "${RUNNER_TEMP}/ready-eyecatch.json"
+
+      - name: Verify zero-article-mutation result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/ready-eyecatch.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ["RESULT_FILE"]).read_text(encoding="utf-8").splitlines()[-1])
+          if result.get("status") not in {"ready_eyecatch_finalized", "ready_eyecatch_already_current"}:
+              raise SystemExit("Ready eyecatch finalization did not complete safely")
+          required_true = ("current_asset", "body_unchanged", "title_unchanged")
+          for key in required_true:
+              if result.get(key) is not True:
+                  raise SystemExit(f"invariant failed: {key}")
+          if result.get("article_regeneration") is not False:
+              raise SystemExit("article regeneration boundary crossed")
+          if result.get("note_mutation") is not False or result.get("public_release") is not False:
+              raise SystemExit("note/publication boundary crossed")
+          PY
