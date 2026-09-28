@@ -13,6 +13,11 @@ on:
         required: false
         default: ''
         type: string
+      target_source_url:
+        description: 'Optional exact current-run source URL; resolves fail-closed to one Content Intelligence sync_id'
+        required: false
+        default: ''
+        type: string
 
 # This workflow writes Notion and may fan out a private note draft.
 # It must run only from an explicit ONE-SHOT/manual dispatch.
@@ -61,11 +66,14 @@ jobs:
           python -m unittest tests.test_run280_publication_dependency_guard -v
           python -m unittest tests.test_run281_publication_causality_source_contract -v
           python -m unittest tests.test_run296_editorial_format_v2 -v
+          python -m unittest tests.test_run624_delivery_causality -v
 
       - name: Sync complete current-policy Ready articles to note posting DB
+        id: sync
         run: python note_ready_sync.py
         env:
           TARGET_SYNC_ID: ${{ inputs.target_sync_id }}
+          TARGET_SOURCE_URL: ${{ inputs.target_source_url }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
@@ -85,12 +93,14 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-          TARGET_SYNC_ID: ${{ inputs.target_sync_id }}
+          TARGET_SYNC_ID: ${{ inputs.target_sync_id || steps.sync.outputs.resolved_sync_id }}
         run: |
           python - <<'PY'
+          import json
           import os
           import run199_note_vm_preflight as preflight
           result = preflight.preflight(os.environ.get("TARGET_SYNC_ID", ""))
+          print("[RUN624 NOTE DRAFT PREFLIGHT] " + json.dumps(result, ensure_ascii=False, sort_keys=True))
           eligible = result.get("status") == "eligible_ready" and result.get("should_start_vm") is True
           selected = str(result.get("selected_sync_id") or "").strip()
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:

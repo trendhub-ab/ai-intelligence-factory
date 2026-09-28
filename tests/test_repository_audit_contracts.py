@@ -303,7 +303,7 @@ def test_malformed_fetch_url_remains_an_empty_result():
     assert p._http_get_limited("https://[broken", ("text/plain",), 100) == (b"", "", "")
 
 
-def _run_fanout(tmp_path, body):
+def _run_fanout(tmp_path, body, delivery_env=None):
     script = (ROOT / ".github/workflows/daily-one-shot.yml").read_text().split(
         "      - name: Explicit post-run fan-out with GH_PAT\n", 1)[1].split("        run: |\n", 1)[1]
     script = textwrap.dedent(script)
@@ -319,6 +319,7 @@ def _run_fanout(tmp_path, body):
     gh.chmod(0o755)
     env = dict(os.environ, VALIDATION_MODE="ready_rescue_validation", GH_TOKEN="test-only",
                GH_CALL_LOG=str(tmp_path / "calls"), GITHUB_STEP_SUMMARY=str(tmp_path / "summary"))
+    env.update(delivery_env or {})
     env["PATH"] = str(bin_dir) + os.pathsep + os.path.dirname(sys.executable) + os.pathsep + env["PATH"]
     result = subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True)
     calls = (tmp_path / "calls").read_text() if (tmp_path / "calls").exists() else ""
@@ -332,8 +333,32 @@ def test_rescue_fanout_rejects_invalid_audit_instead_of_reporting_noop_success(b
     assert calls == ""
 
 
-@pytest.mark.parametrize("ready", [0, 1])
-def test_rescue_fanout_distinguishes_valid_zero_from_ready_success(ready, tmp_path):
-    result, calls = _run_fanout(tmp_path, json.dumps({"ready": ready}))
+def test_rescue_fanout_valid_zero_is_noop(tmp_path):
+    result, calls = _run_fanout(tmp_path, json.dumps({"ready": 0}))
     assert result.returncode == 0, result.stderr
-    assert calls == ("workflow run note-ready-sync.yml --ref main -f create_private_draft=true\n" if ready else "")
+    assert calls == ""
+
+
+def test_rescue_fanout_ready_without_current_run_causality_fails_closed(tmp_path):
+    result, calls = _run_fanout(tmp_path, json.dumps({"ready": 1}))
+    assert result.returncode != 0
+    assert calls == ""
+
+
+def test_rescue_fanout_ready_pins_exact_current_run_source(tmp_path):
+    source_url = "https://example.com/current-run-ready"
+    result, calls = _run_fanout(
+        tmp_path,
+        json.dumps({"ready": 1}),
+        {
+            "DELIVERY_AUDIT_VALID": "true",
+            "DELIVERY_READY_COUNT": "1",
+            "DELIVERY_CREATE_PRIVATE_DRAFT": "true",
+            "DELIVERY_TARGET_SOURCE_URL": source_url,
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert calls == (
+        "workflow run note-ready-sync.yml --ref main "
+        f"-f create_private_draft=true -f target_source_url={source_url}\n"
+    )
