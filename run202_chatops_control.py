@@ -9,11 +9,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 CONTROL_ISSUE_NUMBER = 71
 ALLOWED_LOGIN = "trendhub-ab"
+TARGET_COMMANDS = (
+    (re.compile(r"^/aiif eyecatch finalize ([0-9a-fA-F]{32})$"), "ready_eyecatch_finalize"),
+    (re.compile(r"^/aiif note cover_apply ([0-9a-fA-F]{32})$"), "ready_note_cover_apply"),
+)
+
 COMMAND_TO_MODE = {
     "/aiif run article_validation": "article_validation",
     "/aiif run ready_rescue_validation": "ready_rescue_validation",
@@ -52,10 +58,20 @@ def authorize_event(event: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(body, str):
         return {"authorized": False, "mode": "", "reason": "invalid_comment_body"}
     mode = COMMAND_TO_MODE.get(body)
-    if not mode:
-        return {"authorized": False, "mode": "", "reason": "command_not_allowed"}
+    if mode:
+        return {"authorized": True, "mode": mode, "target_sync_id": "", "reason": "authorized"}
 
-    return {"authorized": True, "mode": mode, "reason": "authorized"}
+    for pattern, target_mode in TARGET_COMMANDS:
+        match = pattern.fullmatch(body)
+        if match is not None:
+            return {
+                "authorized": True,
+                "mode": target_mode,
+                "target_sync_id": match.group(1).lower(),
+                "reason": "authorized",
+            }
+
+    return {"authorized": False, "mode": "", "target_sync_id": "", "reason": "command_not_allowed"}
 
 
 def _write_github_output(result: dict[str, Any]) -> None:
@@ -65,6 +81,7 @@ def _write_github_output(result: dict[str, Any]) -> None:
     with Path(output_path).open("a", encoding="utf-8") as fh:
         fh.write(f"authorized={'true' if result.get('authorized') else 'false'}\n")
         fh.write(f"mode={str(result.get('mode') or '')}\n")
+        fh.write(f"target_sync_id={str(result.get('target_sync_id') or '')}\n")
         fh.write(f"reason={str(result.get('reason') or '')}\n")
 
 

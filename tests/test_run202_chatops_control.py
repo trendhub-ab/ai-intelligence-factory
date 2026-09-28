@@ -63,7 +63,35 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
 
     def test_zero_api_portfolio_audit_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run stale_ready_portfolio_audit"))
-        self.assertEqual(result, {"authorized": True, "mode": "stale_ready_portfolio_audit", "reason": "authorized"})
+        self.assertEqual(
+            result,
+            {"authorized": True, "mode": "stale_ready_portfolio_audit", "target_sync_id": "", "reason": "authorized"},
+        )
+
+    def test_exact_ready_eyecatch_finalize_is_authorized(self):
+        sync_id = "3e8479ffdca9812e9661f337a84b1df4"
+        result = chatops.authorize_event(event(body=f"/aiif eyecatch finalize {sync_id}"))
+        self.assertEqual(result["mode"], "ready_eyecatch_finalize")
+        self.assertEqual(result["target_sync_id"], sync_id)
+        self.assertTrue(result["authorized"])
+
+    def test_exact_note_cover_apply_is_authorized(self):
+        sync_id = "3e8479ffdca9812e9661f337a84b1df4"
+        result = chatops.authorize_event(event(body=f"/aiif note cover_apply {sync_id}"))
+        self.assertEqual(result["mode"], "ready_note_cover_apply")
+        self.assertEqual(result["target_sync_id"], sync_id)
+        self.assertTrue(result["authorized"])
+
+    def test_target_commands_reject_malformed_or_extra_text(self):
+        for body in (
+            "/aiif eyecatch finalize 3e8479ff-dca9-812e-9661-f337a84b1df4",
+            "/aiif eyecatch finalize 3e8479ffdca9812e9661f337a84b1df4 ",
+            "/aiif eyecatch finalize 3e8479ffdca9812e9661f337a84b1df4 please",
+            "/aiif note cover_apply 3e8479ffdca9812e9661f337a84b1df4 ",
+            "/aiif note cover_apply ../../etc/passwd",
+        ):
+            with self.subTest(body=body):
+                self.assertFalse(chatops.authorize_event(event(body=body))["authorized"])
 
     def test_retired_recovery_commands_fail_closed(self):
         for body in (
@@ -145,6 +173,11 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("/aiif run local_skills_production_validation", text)
         self.assertIn('"mode":"local_skills_production_validation"', text)
         self.assertIn("/aiif run x_discovery_stage2", text)
+        self.assertIn("/aiif eyecatch finalize ", text)
+        self.assertIn("/aiif note cover_apply ", text)
+        self.assertIn("ready-eyecatch-finalize-once.yml", text)
+        self.assertIn("ready-note-cover-apply-once.yml", text)
+        self.assertIn("TARGET_SYNC_ID", text)
         self.assertNotIn("/aiif run current_policy_ready_recovery", text)
         self.assertNotIn("/aiif run ready_metadata_rebase", text)
         self.assertIn("daily-one-shot.yml", text)

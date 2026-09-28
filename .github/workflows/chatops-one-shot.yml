@@ -35,7 +35,9 @@ jobs:
        github.event.comment.body == '/aiif run local_skills_canary_validation' ||
        github.event.comment.body == '/aiif run local_skills_production_validation' ||
        github.event.comment.body == '/aiif run x_discovery_stage2' ||
-       github.event.comment.body == '/aiif run stale_ready_portfolio_audit')
+       github.event.comment.body == '/aiif run stale_ready_portfolio_audit' ||
+       startsWith(github.event.comment.body, '/aiif eyecatch finalize ') ||
+       startsWith(github.event.comment.body, '/aiif note cover_apply '))
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -59,11 +61,15 @@ jobs:
         env:
           AUTHORIZED: ${{ steps.auth.outputs.authorized }}
           MODE: ${{ steps.auth.outputs.mode }}
+          TARGET_SYNC_ID: ${{ steps.auth.outputs.target_sync_id }}
         run: |
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
             article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|local_skills_production_validation|x_discovery_stage2|stale_ready_portfolio_audit) ;;
+            ready_eyecatch_finalize|ready_note_cover_apply)
+              [[ "$TARGET_SYNC_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "::error::Invalid exact sync_id"; exit 1; }
+              ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
           esac
 
@@ -71,6 +77,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           MODE: ${{ steps.auth.outputs.mode }}
+          TARGET_SYNC_ID: ${{ steps.auth.outputs.target_sync_id }}
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
@@ -118,6 +125,14 @@ jobs:
               target='stale-ready-retirement-audit.yml'
               payload='{"ref":"main"}'
               ;;
+            ready_eyecatch_finalize)
+              target='ready-eyecatch-finalize-once.yml'
+              payload="$(printf '{\"ref\":\"main\",\"inputs\":{\"sync_id\":\"%s\",\"confirm\":\"RUN_ONCE\"}}' \"$TARGET_SYNC_ID\")"
+              ;;
+            ready_note_cover_apply)
+              target='ready-note-cover-apply-once.yml'
+              payload="$(printf '{\"ref\":\"main\",\"inputs\":{\"sync_id\":\"%s\",\"confirm\":\"RUN_ONCE\"}}' \"$TARGET_SYNC_ID\")"
+              ;;
             *)
               echo "::error::Refusing unknown mode"
               exit 1
@@ -133,12 +148,14 @@ jobs:
       - name: Record safe dispatch
         env:
           MODE: ${{ steps.auth.outputs.mode }}
+          TARGET_SYNC_ID: ${{ steps.auth.outputs.target_sync_id }}
         run: |
           {
             echo '### AIIF ChatOps dispatch'
             echo '- control issue: #71'
             echo "- requested mode: \`$MODE\`"
             echo "- target: \`${DISPATCH_TARGET}\` on \`main\`"
+            if [ -n "$TARGET_SYNC_ID" ]; then echo "- exact sync_id: \`$TARGET_SYNC_ID\`"; fi
             if [ "$MODE" = 'x_discovery_stage2' ] || [ "$MODE" = 'stale_ready_portfolio_audit' ]; then
               echo '- Gemini/Google model credentials passed: `false`'
               echo '- Factory/Notion writes authorized: `false`'
