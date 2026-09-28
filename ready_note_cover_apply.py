@@ -113,7 +113,7 @@ def _destination_private_row(sync_id: str) -> dict[str, Any]:
         "destination_page_id": str(page.get("id") or ""),
         "sync_id": sync_id,
         "title": title,
-        "quality_state_before": quality,
+        "quality_state": quality,
         "posting_state": posting,
     }
 
@@ -147,15 +147,17 @@ def preflight(sync_id: str) -> dict[str, Any]:
         raise ReadyNoteCoverError("exact note Ready reconciliation did not preserve one current source")
 
     article = audit_base._expected_article(sync_id)
-    destination_after = audit_base._destination_row(sync_id)
+    destination_after = _destination_private_row(sync_id)
+    if destination_after["quality_state"] != "Ready":
+        raise ReadyNoteCoverError("exact destination reconciliation did not restore quality=Ready")
     return {
         **article,
         "sync_id": sync_id,
         "eyecatch_url": image_url,
         "canonical_body_sha256": hashlib.sha256(canonical_manuscript.encode("utf-8")).hexdigest(),
         "quality_state": "Ready",
-        "quality_state_before": destination_before["quality_state_before"],
-        "posting_state": destination_after["posting_state"] if "posting_state" in destination_after else "投稿準備中",
+        "quality_state_before": destination_before["quality_state"],
+        "posting_state": destination_after["posting_state"],
         "destination_page_id": destination_after["destination_page_id"],
         "destination_exact_resync": True,
     }
