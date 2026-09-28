@@ -166,6 +166,21 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertIsNotNone(validated)
         self.assertEqual(eyecatch_title, validated["eyecatch_title"])
 
+    def test_ascii_wrap_guard_distinguishes_word_boundary_from_token_split(self):
+        source = "Gemini 3.8 Live with Live Avatar、一般提供開始。"
+        self.assertFalse(
+            run180._ascii_token_split(
+                ["Gemini 3.8 Live", "with Live Avatar、", "一般提供開始。"],
+                source,
+            )
+        )
+        self.assertTrue(
+            run180._ascii_token_split(
+                ["Open", "AI、一般提供開始。"],
+                "OpenAI、一般提供開始。",
+            )
+        )
+
     def test_observed_ga_title_has_zero_provider_semantic_fallback(self):
         source_title = "Power your agents: Gemini 3.8 Live with Live Avatar is now generally available"
         self.assertEqual(
