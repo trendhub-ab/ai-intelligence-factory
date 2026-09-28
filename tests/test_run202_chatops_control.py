@@ -132,6 +132,14 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("/aiif run production_e2e_preflight", text)
         self.assertIn('"e2e_prepare_only":"true"', text)
         self.assertIn("/aiif run full", text)
+        self.assertIn(
+            'payload=\'{"ref":"main","inputs":{"mode":"full","editorial_style":"human_narrative","confirm":"RUN_ONCE"}}\'',
+            text,
+        )
+        self.assertNotIn(
+            'payload=\'{"ref":"main","inputs":{"mode":"full","confirm":"RUN_ONCE"}}\'',
+            text,
+        )
         self.assertIn("/aiif run local_skills_canary_validation", text)
         self.assertIn('"mode":"local_skills_canary_validation"', text)
         self.assertIn("/aiif run local_skills_production_validation", text)

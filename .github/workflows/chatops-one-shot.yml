@@ -88,7 +88,7 @@ jobs:
               ;;
             full)
               target='daily-one-shot.yml'
-              payload='{"ref":"main","inputs":{"mode":"full","confirm":"RUN_ONCE"}}'
+              payload='{"ref":"main","inputs":{"mode":"full","editorial_style":"human_narrative","confirm":"RUN_ONCE"}}'
               ;;
             local_skills_canary_validation)
               target='daily-one-shot.yml'

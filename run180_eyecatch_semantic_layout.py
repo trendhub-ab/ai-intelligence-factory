@@ -137,16 +137,40 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 
 
 def _required_source_tokens(source_title: str) -> set[str]:
-    """Protect obvious Latin product/model/version identifiers during title compression."""
-    tokens = set()
-    for match in re.findall(r"[A-Za-z][A-Za-z0-9_.+\-/]*|\d+(?:\.\d+)+", source_title):
-        lowered = match.lower()
+    """Protect product/model/version identifiers without freezing ordinary English prose."""
+    raw_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_.+/\-]*|\d+(?:\.\d+)+", source_title)
+    required: set[str] = set()
+
+    def distinctive(token: str) -> bool:
+        if re.fullmatch(r"\d+(?:\.\d+)+", token):
+            return True
+        if any(mark in token for mark in ("_", ".", "+", "/", "-")):
+            return True
+        if token.isupper() and len(token) >= 2:
+            return True
+        return any(ch.isupper() for ch in token[1:])
+
+    for token in raw_tokens:
+        lowered = token.casefold()
         if lowered in _STOP_LATIN_TOKENS:
             continue
-        if match.isalpha() and len(match) < 2:
+        if distinctive(token):
+            required.add(token)
+
+    # Version numbers often anchor multi-word product/model names. Preserve nearby
+    # title-cased words while allowing ordinary English sentence words to be compressed.
+    for index, token in enumerate(raw_tokens):
+        if not re.fullmatch(r"\d+(?:\.\d+)+", token):
             continue
-        tokens.add(match)
-    return tokens
+        start = max(0, index - 1)
+        end = min(len(raw_tokens), index + 5)
+        for neighbour in raw_tokens[start:end]:
+            lowered = neighbour.casefold()
+            if lowered in _STOP_LATIN_TOKENS:
+                continue
+            if distinctive(neighbour) or re.fullmatch(r"[A-Z][a-z0-9]+", neighbour):
+                required.add(neighbour)
+    return required
 
 
 def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
@@ -181,6 +205,27 @@ def _validate_eyecatch_title(source_title: str, value: Any) -> str | None:
         if token.casefold() not in folded_title:
             return None
     return title
+
+
+_GENERAL_AVAILABILITY_RE = re.compile(
+    r"^(?P<subject>.+?)\s+is\s+(?:now\s+)?generally\s+available[.!。]?$",
+    re.IGNORECASE,
+)
+
+
+def _deterministic_safe_semantic_title(title: str) -> str:
+    """Return a high-confidence short title only for exact general-availability wording."""
+    clean = _source_title_for_direction(title)
+    # Marketing-style lead-ins such as "Power your agents:" are not part of the product name.
+    tail = re.split(r"[:：]", clean, maxsplit=1)[-1].strip()
+    match = _GENERAL_AVAILABILITY_RE.fullmatch(tail)
+    if match is None:
+        return ""
+    subject = match.group("subject").strip(" -–—,:：")
+    if not subject:
+        return ""
+    candidate = f"{subject}、一般提供開始。"
+    return candidate if _validate_eyecatch_title(clean, candidate) is not None else ""
 
 
 def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value: Any) -> str:
@@ -289,13 +334,24 @@ def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dic
 
 
 
-def _ascii_token_split(lines: list[str]) -> bool:
-    """Return True when a line break cuts through one ASCII product/model token."""
+_ASCII_TOKEN_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+/-"
+)
+
+
+def _ascii_token_split(lines: list[str], source_text: str = "") -> bool:
+    """Return True only when a line break cuts through one ASCII product/model token."""
+    source = str(source_text or "")
     for left, right in zip(lines, lines[1:]):
         if not left or not right:
             continue
-        if re.search(r"[A-Za-z0-9_.+\-/]$", left) and re.match(r"^[A-Za-z0-9_.+\-/]", right):
-            return True
+        if left[-1] not in _ASCII_TOKEN_CHARS or right[0] not in _ASCII_TOKEN_CHARS:
+            continue
+        # A real whitespace boundary in the approved source is a safe place to wrap:
+        # "Live | with" is not the same as splitting "OpenAI" into "Open | AI".
+        if source and re.search(re.escape(left) + r"\s+" + re.escape(right), source):
+            continue
+        return True
     return False
 
 
@@ -320,7 +376,7 @@ def _fit_complete_title_lines(draw: ImageDraw.ImageDraw, clean: str) -> tuple[in
                 return
             if r178._canonical_partition_text("".join(lines)) != canonical:
                 return
-            if not r178._kinsoku_ok(lines) or _ascii_token_split(lines):
+            if not r178._kinsoku_ok(lines) or _ascii_token_split(lines, clean):
                 return
             widths = [ee._text_width(draw, line, font) for line in lines]
             if any(width > TITLE_MAX_WIDTH for width in widths):
@@ -347,6 +403,14 @@ def _fit_complete_title_lines(draw: ImageDraw.ImageDraw, clean: str) -> tuple[in
         if best is not None:
             return size, best[1]
     return None
+
+
+def _deterministic_semantic_fallback_plan(title: str, summary: str) -> dict[str, Any] | None:
+    """Build a zero-provider plan for narrowly recognized, semantically lossless patterns."""
+    candidate = _deterministic_safe_semantic_title(title)
+    if not candidate:
+        return None
+    return _deterministic_complete_title_plan(candidate, summary)
 
 
 def _deterministic_complete_title_plan(title: str, summary: str) -> dict[str, Any] | None:
@@ -464,6 +528,22 @@ def install(pipeline_module: Any) -> Any:
         # After the bounded 3.6 -> 3.5 provider route, use a provider-free complete-title
         # plan for bounded titles before the historical renderer so fallback never
         # turns a valid 35-52 character headline into a visibly cut-off ellipsis.
+        semantic_plan = _deterministic_semantic_fallback_plan(title, summary)
+        if semantic_plan is not None:
+            try:
+                return r178._render_with_validated_plan(
+                    title,
+                    summary,
+                    output_path,
+                    semantic_plan,
+                    category=category,
+                    date_label=date_label,
+                )
+            except Exception as exc:
+                logger = getattr(pipeline_module, "logger", None)
+                if logger is not None:
+                    logger.warning("[RUN180 EYECATCH SEMANTIC FALLBACK] render error: %s", exc)
+
         complete_plan = _deterministic_complete_title_plan(title, summary)
         if complete_plan is not None:
             try:
