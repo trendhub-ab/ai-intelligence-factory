@@ -32,10 +32,10 @@
           "budget": 450,
           "by_kind": {
             "global_calibration": 1,
-            "screening_batch": 5
+            "screening_batch": 6
           },
           "exhausted": false,
-          "used": 6
+          "used": 7
         },
         "gemini-3.6-flash": {
           "budget": 18,
@@ -72,5 +72,5 @@
   "quota_date": "2026-09-28",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-09-28T22:34:05.367752+00:00"
+  "updated_at": "2026-09-28T22:36:02.058986+00:00"
 }
