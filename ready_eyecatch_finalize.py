@@ -96,10 +96,13 @@ def finalize_ready_eyecatch(sync_id: str) -> dict[str, Any]:
     assert state_before is not None
     title = str(state_before["title"])
 
-    manuscript_before = ready_sync._source_current_ready_manuscript(sync_id)
+    manuscript_before, source_policy_current = ready_sync._source_ready_manuscript_for_visual_repair(
+        sync_id,
+        title,
+    )
     if not manuscript_before:
         raise ReadyEyecatchError(
-            "current Ready manuscript is required; refusing to restamp or regenerate article bytes"
+            "byte-authenticated Ready manuscript is required; refusing to restamp or regenerate article bytes"
         )
     body_sha_before = hashlib.sha256(manuscript_before.encode("utf-8")).hexdigest()
     summary = _reader_summary(manuscript_before)
@@ -112,6 +115,7 @@ def finalize_ready_eyecatch(sync_id: str) -> dict[str, Any]:
             "public_title": title,
             "image_url": existing_url,
             "current_asset": True,
+            "source_policy_current": source_policy_current,
             "body_unchanged": True,
             "title_unchanged": True,
             "article_regeneration": False,
@@ -166,7 +170,7 @@ def finalize_ready_eyecatch(sync_id: str) -> dict[str, Any]:
         raise ReadyEyecatchError("Notion eyecatch URL did not persist")
     eyecatch_contract.require_current_asset_url(str(state_after["eyecatch_url"]), title)
 
-    manuscript_after = ready_sync._source_current_ready_manuscript(sync_id)
+    manuscript_after, _ = ready_sync._source_ready_manuscript_for_visual_repair(sync_id, title)
     body_sha_after = hashlib.sha256(manuscript_after.encode("utf-8")).hexdigest()
     if manuscript_after != manuscript_before or body_sha_after != body_sha_before:
         raise ReadyEyecatchError("manuscript bytes changed during eyecatch-only finalization")
@@ -178,6 +182,7 @@ def finalize_ready_eyecatch(sync_id: str) -> dict[str, Any]:
         "category": category,
         "image_url": image_url,
         "current_asset": True,
+        "source_policy_current": source_policy_current,
         "size": [1280, 670],
         "body_unchanged": True,
         "body_sha256": body_sha_after,
