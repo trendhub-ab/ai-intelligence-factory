@@ -15,8 +15,10 @@ on:
 permissions:
   contents: read
 
+# Share the same Gemini budget lock as Daily/validation so eyecatch-only repair can never
+# overlap article generation and consume the same persistent model quota concurrently.
 concurrency:
-  group: ready-eyecatch-finalize-${{ inputs.sync_id }}
+  group: ai-intelligence-gemini-budget
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +39,7 @@ jobs:
       GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
       GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
       GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
-      GEMINI_COUNTER_BRANCH: 'runtime-state'
+      GEMINI_COUNTER_BRANCH: 'main'
       EYECATCH_GITHUB_BRANCH: 'runtime-state'
       GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
       GH_PAT: ${{ secrets.GH_PAT }}
