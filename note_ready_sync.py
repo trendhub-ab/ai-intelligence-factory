@@ -516,12 +516,15 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
 
 
 def main() -> None:
-    print(
-        sync_note_ready_db(
-            target_sync_id=os.environ.get("TARGET_SYNC_ID", ""),
-            target_source_url=os.environ.get("TARGET_SOURCE_URL", ""),
-        )
+    result = sync_note_ready_db(
+        target_sync_id=os.environ.get("TARGET_SYNC_ID", ""),
+        target_source_url=os.environ.get("TARGET_SOURCE_URL", ""),
     )
+    print(result)
+    github_output = str(os.environ.get("GITHUB_OUTPUT") or "").strip()
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as fh:
+            fh.write(f"resolved_sync_id={str(result.get('target_sync_id') or '').strip()}\n")
 
 
 if __name__ == "__main__":
