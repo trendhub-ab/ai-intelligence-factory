@@ -404,6 +404,9 @@ def sync_note_ready_db(*, target_sync_id: str = "") -> dict[str, Any]:
         state["publication_contract"] = publication_contract.CONTRACT_ID
         state["publication_policy_sha256"] = publication_contract.policy_sha256()
         states.append(state)
+    if target_source_url:
+        target = select_exact_sync_id_for_source_url(states, target_source_url)
+        states = [state for state in states if state["sync_id"] == target]
     source_by_id = {s["sync_id"]: s for s in states}
     if target and target not in source_by_id:
         raise ValueError("Exact Ready target failed current publication contract or asset checks")
@@ -486,11 +489,17 @@ def sync_note_ready_db(*, target_sync_id: str = "") -> dict[str, Any]:
         "updated": updated,
         "revoked": revoked,
         "destination_data_source_id": DEST_DATA_SOURCE_ID,
+        "target_sync_id": target,
     }
 
 
 def main() -> None:
-    print(sync_note_ready_db(target_sync_id=os.environ.get("TARGET_SYNC_ID", "")))
+    print(
+        sync_note_ready_db(
+            target_sync_id=os.environ.get("TARGET_SYNC_ID", ""),
+            target_source_url=os.environ.get("TARGET_SOURCE_URL", ""),
+        )
+    )
 
 
 if __name__ == "__main__":
