@@ -43,7 +43,7 @@ class ReadyEyecatchFinalizeTests(TestCase):
         with patch.dict(os.environ, {"NOTION_API_KEY": "x", "GH_PAT": "y"}, clear=False), \
              patch.object(target, "_source_page", return_value=page), \
              patch.object(target.ready_sync, "_source_state", return_value=state), \
-             patch.object(target.ready_sync, "_source_current_ready_manuscript", return_value=BODY), \
+             patch.object(target.ready_sync, "_source_ready_manuscript_for_visual_repair", return_value=(BODY, True)), \
              patch.object(target.eyecatch_contract, "current_asset_url", return_value=True), \
              patch.object(target.pipeline, "generate_note_editorial_eyecatch") as generate, \
              patch.object(target, "_patch_source_eyecatch") as mutate:
@@ -77,7 +77,7 @@ class ReadyEyecatchFinalizeTests(TestCase):
         with patch.dict(os.environ, {"NOTION_API_KEY": "x", "GH_PAT": "y"}, clear=False), \
              patch.object(target, "_source_page", side_effect=[page, page]), \
              patch.object(target.ready_sync, "_source_state", side_effect=[before, after]), \
-             patch.object(target.ready_sync, "_source_current_ready_manuscript", side_effect=[BODY, BODY]), \
+             patch.object(target.ready_sync, "_source_ready_manuscript_for_visual_repair", side_effect=[(BODY, False), (BODY, False)]), \
              patch.object(target.eyecatch_contract, "current_asset_url", return_value=False), \
              patch.object(target.run179, "ensure_google_font_assets", return_value={str(target.run179.NOTO_SANS_JP_PATH): True}), \
              patch.object(target.run179, "require_production_japanese_font"), \
@@ -103,8 +103,8 @@ class ReadyEyecatchFinalizeTests(TestCase):
         with patch.dict(os.environ, {"NOTION_API_KEY": "x", "GH_PAT": "y"}, clear=False), \
              patch.object(target, "_source_page", return_value=page), \
              patch.object(target.ready_sync, "_source_state", return_value=state), \
-             patch.object(target.ready_sync, "_source_current_ready_manuscript", return_value=""):
-            with self.assertRaisesRegex(target.ReadyEyecatchError, "refusing to restamp"):
+             patch.object(target.ready_sync, "_source_ready_manuscript_for_visual_repair", return_value=("", False)):
+            with self.assertRaisesRegex(target.ReadyEyecatchError, "byte-authenticated Ready manuscript"):
                 target.finalize_ready_eyecatch(SYNC_ID)
 
 
