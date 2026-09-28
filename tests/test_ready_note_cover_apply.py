@@ -55,7 +55,7 @@ class ReadyNoteCoverApplyTests(TestCase):
         with patch.object(target, "_destination_private_row", side_effect=[before, after]), \
              patch.object(target.ready_sync, "_request", return_value=page_response), \
              patch.object(target.ready_sync, "_source_state", return_value=state), \
-             patch.object(target, "_source_current_asset", return_value=(state["eyecatch_url"], MANUSCRIPT)), \
+             patch.object(target, "_source_current_asset", return_value=(state["eyecatch_url"], MANUSCRIPT, True)), \
              patch.object(target.ready_sync, "sync_note_ready_db", return_value={"source_ready": 1}) as sync, \
              patch.object(target.audit_base, "_expected_article", return_value=article):
             result = target.preflight(SYNC_ID)
@@ -66,6 +66,65 @@ class ReadyNoteCoverApplyTests(TestCase):
         self.assertTrue(result["destination_exact_resync"])
         self.assertEqual(result["eyecatch_url"], state["eyecatch_url"])
         sync.assert_called_once_with(target_sync_id=SYNC_ID)
+
+    def test_stale_policy_visual_repair_never_runs_ready_reconciliation(self):
+        article = {
+            "sync_id": SYNC_ID,
+            "title": TITLE,
+            "manuscript": MANUSCRIPT,
+            "destination_page_id": "dest",
+        }
+        page_response = types.SimpleNamespace(status_code=200, json=lambda: {"id": SYNC_ID})
+        state = {
+            "sync_id": SYNC_ID,
+            "title": TITLE,
+            "source": "HackerNews",
+            "eyecatch_url": "https://example.invalid/current.png",
+        }
+        ready = {
+            "destination_page_id": "dest",
+            "sync_id": SYNC_ID,
+            "title": TITLE,
+            "quality_state": "Ready",
+            "posting_state": "投稿準備中",
+        }
+        with patch.object(target, "_destination_private_row", side_effect=[ready, ready]), \
+             patch.object(target.ready_sync, "_request", return_value=page_response), \
+             patch.object(target.ready_sync, "_source_state", return_value=state), \
+             patch.object(target, "_source_current_asset", return_value=(state["eyecatch_url"], MANUSCRIPT, False)), \
+             patch.object(target.ready_sync, "sync_note_ready_db") as sync, \
+             patch.object(target.audit_base, "_expected_article") as expected, \
+             patch.object(target.run222, "prepare_note_editor_manuscript", return_value=MANUSCRIPT * 8):
+            result = target.preflight(SYNC_ID)
+        self.assertFalse(result["source_policy_current"])
+        self.assertFalse(result["destination_exact_resync"])
+        self.assertEqual(result["quality_state"], "Ready")
+        sync.assert_not_called()
+        expected.assert_not_called()
+
+    def test_stale_policy_visual_repair_cannot_restore_revoked_quality(self):
+        page_response = types.SimpleNamespace(status_code=200, json=lambda: {"id": SYNC_ID})
+        state = {
+            "sync_id": SYNC_ID,
+            "title": TITLE,
+            "source": "HackerNews",
+            "eyecatch_url": "https://example.invalid/current.png",
+        }
+        revoked = {
+            "destination_page_id": "dest",
+            "sync_id": SYNC_ID,
+            "title": TITLE,
+            "quality_state": "Ready取消",
+            "posting_state": "投稿準備中",
+        }
+        with patch.object(target, "_destination_private_row", return_value=revoked), \
+             patch.object(target.ready_sync, "_request", return_value=page_response), \
+             patch.object(target.ready_sync, "_source_state", return_value=state), \
+             patch.object(target, "_source_current_asset", return_value=(state["eyecatch_url"], MANUSCRIPT, False)), \
+             patch.object(target.ready_sync, "sync_note_ready_db") as sync:
+            with self.assertRaisesRegex(target.ReadyNoteCoverError, "already remain quality=Ready"):
+                target.preflight(SYNC_ID)
+        sync.assert_not_called()
 
     def test_preflight_never_reconciles_before_current_source_asset_proof(self):
         before = {
