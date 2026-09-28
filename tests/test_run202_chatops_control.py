@@ -82,11 +82,20 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertEqual(result["target_sync_id"], sync_id)
         self.assertTrue(result["authorized"])
 
+    def test_exact_note_body_resync_is_authorized(self):
+        sync_id = "3e8479ffdca9812e9661f337a84b1df4"
+        result = chatops.authorize_event(event(body=f"/aiif note body_resync {sync_id}"))
+        self.assertEqual(result["mode"], "ready_note_body_resync")
+        self.assertEqual(result["target_sync_id"], sync_id)
+        self.assertTrue(result["authorized"])
+
     def test_target_commands_reject_malformed_or_extra_text(self):
         for body in (
             "/aiif eyecatch finalize 3e8479ff-dca9-812e-9661-f337a84b1df4",
             "/aiif eyecatch finalize 3e8479ffdca9812e9661f337a84b1df4 ",
             "/aiif eyecatch finalize 3e8479ffdca9812e9661f337a84b1df4 please",
+            "/aiif note body_resync 3e8479ffdca9812e9661f337a84b1df4 ",
+            "/aiif note body_resync ../../etc/passwd",
             "/aiif note cover_apply 3e8479ffdca9812e9661f337a84b1df4 ",
             "/aiif note cover_apply ../../etc/passwd",
         ):
@@ -174,12 +183,14 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn('"mode":"local_skills_production_validation"', text)
         self.assertIn("/aiif run x_discovery_stage2", text)
         self.assertIn("/aiif eyecatch finalize ", text)
+        self.assertIn("/aiif note body_resync ", text)
         self.assertIn("/aiif note cover_apply ", text)
         self.assertIn("ready-eyecatch-finalize-once.yml", text)
+        self.assertIn("ready-note-body-resync-once.yml", text)
         self.assertIn("ready-note-cover-apply-once.yml", text)
         self.assertIn("TARGET_SYNC_ID", text)
         exact_payload = 'payload="$(printf \'{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}\' "$TARGET_SYNC_ID")"'
-        self.assertEqual(text.count(exact_payload), 2)
+        self.assertEqual(text.count(exact_payload), 3)
         self.assertNotIn('{\\\"ref\\\":\\\"main\\\"', text)
         self.assertNotIn("/aiif run current_policy_ready_recovery", text)
         self.assertNotIn("/aiif run ready_metadata_rebase", text)
