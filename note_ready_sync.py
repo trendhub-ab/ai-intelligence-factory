@@ -349,10 +349,32 @@ def _validate_destination_schema() -> None:
         raise ValueError(f"note Ready DB schema incompatible: missing={missing} wrong={wrong}")
 
 
-def sync_note_ready_db(*, target_sync_id: str = "") -> dict[str, Any]:
+def select_exact_sync_id_for_source_url(states: list[dict[str, Any]], target_source_url: str) -> str:
+    """Resolve one current-run source URL to exactly one Content Intelligence sync_id."""
+    target_url = str(target_source_url or "").strip()
+    if not target_url:
+        return ""
+    matched = {
+        _normalize_page_id(state.get("sync_id") or "")
+        for state in states
+        if target_url in {
+            str(state.get("original_url") or "").strip(),
+            str(state.get("primary_url") or "").strip(),
+        }
+    }
+    matched.discard("")
+    if len(matched) != 1:
+        raise ValueError("Exact Ready target source URL is missing or ambiguous")
+    return next(iter(matched))
+
+
+def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "") -> dict[str, Any]:
     target = _normalize_page_id(target_sync_id) if target_sync_id else ""
+    target_source_url = str(target_source_url or "").strip()
     if target_sync_id and (len(target) != 32 or not re.fullmatch(r"[0-9a-f]{32}", target)):
         raise ValueError("Invalid target_sync_id")
+    if target and target_source_url:
+        raise ValueError("Specify either target_sync_id or target_source_url, not both")
     if not NOTION_API_KEY:
         raise ValueError("NOTION_API_KEY (or NOTION_NOTE_READY_API_KEY) is required")
     if not (SOURCE_DATA_SOURCE_ID or SOURCE_DATABASE_ID):
