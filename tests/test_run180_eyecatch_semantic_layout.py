@@ -140,6 +140,57 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertIsNone(run180._validate_layout_plan(source_title, "要約", plan))
 
 
+    def test_observed_ga_title_allows_semantic_compression_without_freezing_sentence_words(self):
+        source_title = "Power your agents: Gemini 3.8 Live with Live Avatar is now generally available"
+        required = run180._required_source_tokens(source_title)
+        self.assertIn("Gemini", required)
+        self.assertIn("3.8", required)
+        self.assertIn("Live", required)
+        self.assertIn("Avatar", required)
+        for generic in ("Power", "your", "agents", "generally", "available"):
+            self.assertNotIn(generic, required)
+
+        eyecatch_title = "Gemini 3.8 Live with Live Avatar、一般提供開始。"
+        plan = {
+            "eyecatch_title": eyecatch_title,
+            "title_lines": ["Gemini 3.8 Live", "with Live Avatar、", "一般提供開始。"],
+            "title_font_size": 52,
+            "title_line_gap": 12,
+            "subheadline_lines": ["一般提供の意味を確認する。"],
+            "subheadline_font_size": 24,
+            "highlight_text": "一般提供開始。",
+        }
+        validated = run180._validate_layout_plan(
+            source_title, "一般提供の意味を確認する。", plan
+        )
+        self.assertIsNotNone(validated)
+        self.assertEqual(eyecatch_title, validated["eyecatch_title"])
+
+    def test_observed_ga_title_has_zero_provider_semantic_fallback(self):
+        source_title = "Power your agents: Gemini 3.8 Live with Live Avatar is now generally available"
+        self.assertEqual(
+            "Gemini 3.8 Live with Live Avatar、一般提供開始。",
+            run180._deterministic_safe_semantic_title(source_title),
+        )
+        plan = run180._deterministic_semantic_fallback_plan(
+            source_title,
+            "音声と映像を組み合わせた対話AIの一般提供について整理します。",
+        )
+        self.assertIsNotNone(plan)
+        self.assertEqual(
+            "Gemini 3.8 Live with Live Avatar、一般提供開始。",
+            plan["eyecatch_title"],
+        )
+        self.assertNotIn("…", "".join(plan["title_lines"]))
+        self.assertLessEqual(len(plan["title_lines"]), 3)
+
+    def test_semantic_fallback_refuses_unrecognized_long_title(self):
+        source_title = "A long English title about an AI system with no exact availability wording"
+        self.assertEqual("", run180._deterministic_safe_semantic_title(source_title))
+        self.assertIsNone(
+            run180._deterministic_semantic_fallback_plan(source_title, "要約")
+        )
+
     def test_sgps_bounded_title_fallback_preserves_every_character(self):
         title = "1台のGPUで実機が動く。ロボットAIの学習コストを激変させる「SGPS」の衝撃。"
         plan = run180._deterministic_complete_title_plan(
