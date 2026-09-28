@@ -18,8 +18,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-from PIL import Image, ImageDraw, PngImagePlugin
-
 
 CONTRACT_ID = "aiif-eyecatch-v1"
 ROOT = Path(__file__).resolve().parent
@@ -48,6 +46,7 @@ _ELLIPSIS_RE = re.compile(r"\.\.\.|…")
 
 def headline_pnginfo(public_title: str, expected: str, rendered_lines: list[str]) -> PngImagePlugin.PngInfo:
     """Record the approved copy and the actual lines passed to the text renderer."""
+    from PIL import PngImagePlugin
     rendered = "".join(rendered_lines)
     if not expected or not rendered or _ELLIPSIS_RE.search(expected + rendered):
         raise EyecatchContractError("eyecatch main headline contains an ellipsis or is empty")
@@ -63,6 +62,7 @@ def headline_pnginfo(public_title: str, expected: str, rendered_lines: list[str]
 def bind_headline_pixels(image: Image.Image, info: PngImagePlugin.PngInfo,
                          runs: list[tuple[str, Any, int, int, tuple[int, int, int]]]) -> None:
     """Bind each expected glyph mask to ink actually present in the rendered image."""
+    from PIL import Image, ImageDraw
     if not runs:
         raise EyecatchContractError("eyecatch headline was not drawn")
     records = []
@@ -111,6 +111,7 @@ def _check_headline_pixels(image: Image.Image, records: Any) -> None:
 
 def verify_image_headline(image_path: str | Path, public_title: str) -> str:
     """Fail closed on absent, shortened, or ellipsized title evidence in saved PNG bytes."""
+    from PIL import Image
     try:
         with Image.open(image_path) as image:
             if image.format != "PNG" or image.size != (1280, 670) or image.mode != "RGB":

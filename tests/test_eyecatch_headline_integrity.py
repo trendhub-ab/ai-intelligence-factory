@@ -1,4 +1,6 @@
 import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +17,13 @@ import note_draft_automation as note
 
 
 class EyecatchHeadlineIntegrityTests(unittest.TestCase):
+    def test_publication_contract_import_does_not_require_pillow(self):
+        command = ("import sys; sys.modules['PIL'] = None; "
+                   "import eyecatch_publication_contract; print('ok')")
+        result = subprocess.run([sys.executable, "-c", command], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_long_headline_cannot_be_auto_ellipsized_by_base_renderer(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
