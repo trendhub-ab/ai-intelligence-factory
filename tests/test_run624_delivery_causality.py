@@ -34,7 +34,8 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         source = ONE_SHOT.read_text(encoding="utf-8")
         self.assertIn("run624_delivery_causality.py", source)
         self.assertIn('create_private_draft="$create_private_draft"', source)
-        self.assertIn('target_source_url="$target_source_url"', source)
+        self.assertIn('target_source_urls_b64', source)
+        self.assertIn('for target_source_url in "${target_source_urls[@]}"', source)
 
     def test_note_ready_workflow_resolves_source_url_to_exact_sync_id_before_preflight(self) -> None:
         source = NOTE_READY.read_text(encoding="utf-8")
@@ -60,6 +61,7 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         self.assertFalse(decision["create_private_draft"])
         self.assertTrue(decision["run_note_reconciliation"])
         self.assertEqual(decision["target_source_url"], "")
+        self.assertEqual(decision["target_source_urls"], [])
 
     def test_current_run_ready_pins_lowest_rank_ready_source_url(self) -> None:
         mod = importlib.import_module("run624_delivery_causality")
@@ -94,6 +96,10 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         self.assertEqual(decision["ready_count"], 2)
         self.assertTrue(decision["create_private_draft"])
         self.assertEqual(decision["target_source_url"], "https://example.com/first-ready")
+        self.assertEqual(
+            decision["target_source_urls"],
+            ["https://example.com/first-ready", "https://example.com/later"],
+        )
 
     def test_missing_or_invalid_gate_history_fails_closed_for_draft(self) -> None:
         mod = importlib.import_module("run624_delivery_causality")
@@ -106,7 +112,33 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
             self.assertFalse(decision["create_private_draft"])
             self.assertTrue(decision["run_note_reconciliation"])
             self.assertEqual(decision["target_source_url"], "")
+            self.assertEqual(decision["target_source_urls"], [])
             self.assertFalse(decision["audit_valid"])
+
+    def test_github_output_carries_all_ready_urls_losslessly(self) -> None:
+        import base64
+
+        mod = importlib.import_module("run624_delivery_causality")
+        with tempfile.TemporaryDirectory() as td:
+            output = Path(td) / "out"
+            result = {
+                "audit_valid": True,
+                "ready_count": 2,
+                "create_private_draft": True,
+                "target_source_url": "https://example.com/a?x=1,2",
+                "target_source_urls": [
+                    "https://example.com/a?x=1,2",
+                    "https://example.com/b#frag",
+                ],
+            }
+            mod._write_github_output(str(output), result)
+            values = dict(
+                line.split("=", 1)
+                for line in output.read_text(encoding="utf-8").splitlines()
+                if "=" in line
+            )
+            decoded = json.loads(base64.b64decode(values["target_source_urls_b64"]).decode("utf-8"))
+        self.assertEqual(decoded, result["target_source_urls"])
 
     def test_source_url_resolution_is_exact_and_ambiguous_matches_fail_closed(self) -> None:
         states = [
