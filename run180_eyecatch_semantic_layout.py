@@ -334,13 +334,19 @@ def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dic
 
 
 
-def _ascii_token_split(lines: list[str]) -> bool:
-    """Return True when a line break cuts through one ASCII product/model token."""
+def _ascii_token_split(lines: list[str], source_text: str = "") -> bool:
+    """Return True only when a line break cuts through one ASCII product/model token."""
+    source = str(source_text or "")
     for left, right in zip(lines, lines[1:]):
         if not left or not right:
             continue
-        if re.search(r"[A-Za-z0-9_.+\-/]$", left) and re.match(r"^[A-Za-z0-9_.+\-/]", right):
-            return True
+        if not (re.search(r"[A-Za-z0-9_.+\\-/]$", left) and re.match(r"^[A-Za-z0-9_.+\\-/]", right)):
+            continue
+        # A real whitespace boundary in the approved source is a safe place to wrap:
+        # "Live | with" is not the same as splitting "OpenAI" into "Open | AI".
+        if source and re.search(re.escape(left) + r"\\s+" + re.escape(right), source):
+            continue
+        return True
     return False
 
 
@@ -365,7 +371,7 @@ def _fit_complete_title_lines(draw: ImageDraw.ImageDraw, clean: str) -> tuple[in
                 return
             if r178._canonical_partition_text("".join(lines)) != canonical:
                 return
-            if not r178._kinsoku_ok(lines) or _ascii_token_split(lines):
+            if not r178._kinsoku_ok(lines) or _ascii_token_split(lines, clean):
                 return
             widths = [ee._text_width(draw, line, font) for line in lines]
             if any(width > TITLE_MAX_WIDTH for width in widths):
