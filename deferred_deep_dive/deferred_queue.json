@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-28T22:44:03.990570+00:00",
+  "updated_at": "2026-09-28T22:44:09.374967+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49875725",
-      "deferred_at": "2026-09-28T13:56:39.214915+00:00",
-      "expires_at": "2026-09-30T13:56:39.214915+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Domyn's CEO says OpenAI, Anthropic are lying about safety",
-        "originalTitle": "Domyn's CEO says OpenAI, Anthropic are lying about safety",
-        "displayName": "Domyn's CEO says OpenAI, Anthropic are lying about safety",
-        "sourceLanguage": "en",
-        "url": "https://www.axios.com/2026/09/28/ai-domyn-uljan-sharka-openai-anthropic-safety-lying",
-        "description": "Domyn's CEO says OpenAI, Anthropic are lying about safety",
-        "stargazerCount": 12,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-28T10:05:15Z",
-        "sourceContext": "HN points=12 comments=0 matched_query=OpenAI",
-        "primaryUrl": "https://www.axios.com/2026/09/28/ai-domyn-uljan-sharka-openai-anthropic-safety-lying",
-        "sourceDetails": {
-          "hn_id": "49875725",
-          "hn_url": "https://news.ycombinator.com/item?id=49875725",
-          "external_url": "https://www.axios.com/2026/09/28/ai-domyn-uljan-sharka-openai-anthropic-safety-lying",
-          "comments": 0,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8161-aca8-f27d7ebec39a",
-      "score": 85,
-      "reason": "業界の信頼性に直結する極めて重要な経営リスク。",
-      "commercial_score": 90,
-      "shelf_life_score": 20,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "OTHER",
-      "deep_dive_priority_score": 86.75
-    },
     {
       "key": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
       "deferred_at": "2026-09-28T22:44:03.990193+00:00",
