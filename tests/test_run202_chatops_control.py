@@ -178,6 +178,9 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("ready-eyecatch-finalize-once.yml", text)
         self.assertIn("ready-note-cover-apply-once.yml", text)
         self.assertIn("TARGET_SYNC_ID", text)
+        exact_payload = 'payload="$(printf \'{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}\' "$TARGET_SYNC_ID")"'
+        self.assertEqual(text.count(exact_payload), 2)
+        self.assertNotIn('{\\\"ref\\\":\\\"main\\\"', text)
         self.assertNotIn("/aiif run current_policy_ready_recovery", text)
         self.assertNotIn("/aiif run ready_metadata_rebase", text)
         self.assertIn("daily-one-shot.yml", text)
