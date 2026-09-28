@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import note_draft_automation as base
+import eyecatch_publication_contract as eyecatch_contract
 import publication_contract as contract
 import run185_note_ready_legacy_skip as run185
 import run194_note_current_contract as run194
@@ -92,6 +93,12 @@ class Run194NoteCurrentContractTests(unittest.TestCase):
         def image(source_page):
             return source_page.get("image", "")
 
+        current_title = self._candidate(current_id)["title"]
+        current_name = eyecatch_contract.versioned_image_filename(
+            "eyecatch.png", current_title
+        )
+        current_url = f"https://example.com/{current_name}"
+
         with (
             patch.object(base.ready_sync, "NOTION_API_KEY", "test"),
             patch.object(base.ready_sync, "DEST_DATA_SOURCE_ID", "dest"),
@@ -100,7 +107,7 @@ class Run194NoteCurrentContractTests(unittest.TestCase):
             patch.object(
                 base,
                 "_fetch_source_page",
-                side_effect=lambda sid: {"image": "https://example.com/current.png" if sid == current_id else ""},
+                side_effect=lambda sid: {"image": current_url if sid == current_id else ""},
             ),
             patch.object(base, "_fetch_block_children", side_effect=children),
             patch.object(base, "_eyecatch_url", side_effect=image),

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import note_draft_automation as base
+import eyecatch_publication_contract as eyecatch_contract
 import publication_contract as contract
 import run185_note_ready_legacy_skip as run185
 
@@ -75,6 +76,10 @@ def _prepare_one(candidate: dict[str, Any]) -> dict[str, Any]:
     if not image_url:
         raise IncompletePublicationAsset(
             "Current Ready article has no eyecatch in Content Intelligence"
+        )
+    if not eyecatch_contract.current_asset_url(image_url, str(candidate.get("title") or "")):
+        raise IncompletePublicationAsset(
+            "Current Ready article eyecatch is stale or belongs to another public title"
         )
 
     prepared = dict(candidate)
