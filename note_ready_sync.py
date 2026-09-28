@@ -269,6 +269,58 @@ def _source_has_current_ready_manuscript(page_id: str) -> bool:
     return bool(_source_current_ready_manuscript(page_id))
 
 
+def _source_ready_manuscript_for_visual_repair(
+    page_id: str,
+    expected_title: str,
+) -> tuple[str, bool]:
+    """Return a byte-authenticated Ready body for visual-only repair.
+
+    Normal Ready synchronization must continue to use the strict current-policy
+    reader. This compatibility reader exists only so a visual-policy change can
+    replace an eyecatch without restamping, regenerating, or publishing article
+    bytes that were already persisted.
+
+    The fallback accepts only the current Ready caption contract with an exact
+    manuscript SHA. It deliberately ignores the historical policy SHA itself;
+    the visual repair must separately enforce the current Eyecatch Contract.
+    """
+    expected = str(expected_title or "").strip()
+    if not expected:
+        return "", False
+
+    current = _source_current_ready_manuscript(page_id)
+    if current:
+        first = next(
+            (line[2:].strip() for line in current.splitlines() if line.startswith("# ")),
+            "",
+        )
+        return (current, True) if first == expected else ("", False)
+
+    authenticated: list[str] = []
+    for block in _block_children(page_id):
+        body = _code_body(block)
+        fields = publication_contract._caption_fields(_code_caption(block))
+        if not body or fields.get("contract") != publication_contract.CONTRACT_ID:
+            continue
+        if fields.get("style") not in {"classic", "human_narrative", "duo_narrative"}:
+            continue
+        if not re.fullmatch(r"[0-9a-f]{64}", fields.get("policy_sha256", "")):
+            continue
+        body_sha = fields.get("manuscript_sha256", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", body_sha):
+            continue
+        if body_sha != publication_contract.manuscript_sha256(body):
+            continue
+        first = next(
+            (line[2:].strip() for line in body.splitlines() if line.startswith("# ")),
+            "",
+        )
+        if first != expected:
+            continue
+        authenticated.append(body)
+    return (authenticated[-1], False) if authenticated else ("", False)
+
+
 def _destination_state(page: dict) -> dict[str, Any]:
     p = page.get("properties") or {}
     return {
