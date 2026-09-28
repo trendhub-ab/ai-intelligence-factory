@@ -31,9 +31,16 @@ import note_ready_sync as ready_sync
 import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as official_image
 import run291_note_private_draft_audit as audit_base
+import run295_note_private_draft_audit as current_audit
 
 CONFIRM_TOKEN = "APPLY_READY_NOTE_COVER"
 RUNTIME_DIR = Path(".runtime/ready-note-cover")
+
+
+def _audit_current_private_draft(page: Any, title: str, manuscript: str) -> dict[str, Any]:
+    """Use Run295 shared eyecatch proof while preserving Run291 body/title checks."""
+    wrapped = current_audit._audit_wrapper(audit_base._audit_current_page)
+    return wrapped(page, title, manuscript)
 
 
 class ReadyNoteCoverError(RuntimeError):
@@ -247,7 +254,7 @@ def _find_exact_existing_draft(page: Any, profile: Path, article: dict[str, Any]
             if audit_base._title_value(page) != str(article["title"]).strip():
                 continue
             try:
-                audit_base._audit_current_page(
+                _audit_current_private_draft(
                     page,
                     str(article["title"]),
                     str(article["manuscript"]),
@@ -312,7 +319,7 @@ def _apply_to_existing_draft(article: dict[str, Any], image_path: Path) -> dict[
             if not _same_edit_route(route, str(page.url or "")):
                 raise ReadyNoteCoverError("existing draft route changed before mutation")
 
-            before_metrics = audit_base._audit_current_page(
+            before_metrics = _audit_current_private_draft(
                 page,
                 str(article["title"]),
                 str(article["manuscript"]),
@@ -346,7 +353,7 @@ def _apply_to_existing_draft(article: dict[str, Any], image_path: Path) -> dict[
             if not _same_edit_route(route, str(page.url or "")):
                 raise ReadyNoteCoverError("draft route changed after cover persistence reload")
 
-            after_metrics = audit_base._audit_current_page(
+            after_metrics = _audit_current_private_draft(
                 page,
                 str(article["title"]),
                 str(article["manuscript"]),
