@@ -31,7 +31,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
                 request_origin=request_origin,
             )
 
-        persistent = types.SimpleNamespace(model_budgets={})
+        persistent = types.SimpleNamespace(model_budgets={"gemini-3.5-flash-lite": 450})
         module = types.SimpleNamespace(
             _call_model_pool=original,
             _call_deep_dive_pool=original_deep_dive,
@@ -42,6 +42,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
                 "gemini-3.7-flash": 18,
                 "gemini-3.8-flash": 18,
                 "gemini-3.5-flash": 18,
+                "gemini-3.5-flash-lite": 450,
             },
             PERSISTENT_GEMINI_COUNTER=persistent,
             PROVIDER_HEALTH_HISTORY_OVERRIDE=list(history or []),
@@ -71,12 +72,12 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
                 "gemini-3.7-flash",
                 "gemini-3.8-flash",
                 "gemini-3-flash-preview",
-                "gemini-2.5-flash",
+                "gemini-3.5-flash-lite",
             ],
         )
         self.assertEqual(set(module.DEEP_DIVE_MODEL_POOL[:6]), set(run260.ARTICLE_MODELS))
 
-    def test_new_models_participate_in_health_ranking(self):
+    def test_lite_participates_but_remains_last_resort_in_health_ranking(self):
         history = [
             self._row("gemini-3.6-flash", "error", error_type="ServiceUnavailable"),
             self._row("gemini-3.5-flash", "error", error_type="ReadTimeout"),
@@ -84,27 +85,48 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             self._row("gemini-3.8-flash", "error", error_type="ServiceUnavailable"),
             self._row("gemini-3-flash-preview", "success"),
             self._row("gemini-3-flash-preview", "success"),
-            self._row("gemini-2.5-flash", "success"),
+            self._row("gemini-3.5-flash-lite", "success"),
         ]
         ranked = run260._health_ranked_pool(list(run260.DEFAULT_DEEP_DIVE_POOL), history)
         self.assertEqual(ranked[0], "gemini-3-flash-preview")
-        self.assertEqual(ranked[1], "gemini-2.5-flash")
+        self.assertEqual(ranked[-1], "gemini-3.5-flash-lite")
 
-    def test_new_model_budgets_are_explicit_and_capped_at_18(self):
+    def test_preview_budget_is_capped_but_existing_lite_screening_budget_is_preserved(self):
         module, _, _ = self._fake_pipeline()
         with patch.dict(
             os.environ,
             {
                 "GEMINI_3_FLASH_DAILY_BUDGET": "999",
-                "GEMINI_25_FLASH_DAILY_BUDGET": "999",
             },
             clear=False,
         ):
             run260.install(module)
         self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3-flash-preview"], 18)
-        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-2.5-flash"], 18)
+        self.assertEqual(module.MODEL_DAILY_BUDGETS["gemini-3.5-flash-lite"], 450)
         self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3-flash-preview"], 18)
-        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-2.5-flash"], 18)
+        self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3.5-flash-lite"], 450)
+
+    def test_lite_enters_quality_fallback_only_after_full_models_are_unavailable(self):
+        history = [
+            self._row("gemini-3.5-flash-lite", "success"),
+            self._row("gemini-3.5-flash-lite", "success"),
+            self._row("gemini-3.6-flash", "error", error_type="ServiceUnavailable"),
+        ]
+        module, _, _ = self._fake_pipeline(history=history)
+        run260.install(module)
+        module.SESSION_UNAVAILABLE_MODELS.update({
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-3-flash-preview",
+        })
+        routed = run260._bounded_quality_pool(
+            module.DEEP_DIVE_MODEL_POOL,
+            history,
+            pipeline_module=module,
+        )
+        self.assertEqual(routed, ["gemini-3.5-flash-lite"])
 
     def test_quality_retry_cold_start_prefers_36_then_35_and_stays_bounded(self):
         module, calls, _ = self._fake_pipeline()

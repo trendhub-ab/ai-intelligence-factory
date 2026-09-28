@@ -7,13 +7,15 @@ without increasing the existing Deep Dive request ceiling.
 
 Run369 replaces static "newest model first" routing with Provider Health Routing for
 article generation and model-based quality repair. The normal cold-start order is
-3.6 -> 3.5 -> 3.7 -> 3.8 -> 3 Flash Preview -> 2.5 Flash. After real provider attempts
-exist, the article models are re-ordered by smoothed success rate using attempts from
+3.6 -> 3.5 -> 3.7 -> 3.8 -> 3 Flash Preview -> 3.5 Flash-Lite. After real provider attempts
+exist, full article models are re-ordered by smoothed success rate using attempts from
 the last 24 hours; when
 that window is sparse, the most recent N attempts are used as a backstop. Successful
-models move up and 503/timeout/error outcomes move models down. Existing run-local
-unavailable/exhausted circuits, persistent RPD budgets, retry ceilings, and every
-publication gate remain authoritative.
+models move up and 503/timeout/error outcomes move models down. 3.5 Flash-Lite is a
+last-resort article fallback: health can select among the stronger article models, but
+must not promote Lite ahead of an otherwise usable full article model. Existing
+run-local unavailable/exhausted circuits, persistent RPD budgets, retry ceilings, and
+every publication gate remain authoritative.
 
 Run370 closes two defects reproduced by Production ONE-SHOT Run #57. Later provider
 reliability layers replace ``_call_model_pool`` after Run260 is installed, so the live
@@ -48,11 +50,12 @@ FALLBACK_MODELS = (
     "gemini-3.7-flash",
     "gemini-3.8-flash",
     "gemini-3-flash-preview",
-    "gemini-2.5-flash",
+    "gemini-3.5-flash-lite",
 )
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = DEFAULT_DEEP_DIVE_POOL
 ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)
+LAST_RESORT_ARTICLE_MODELS = frozenset({"gemini-3.5-flash-lite"})
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
 
@@ -255,16 +258,20 @@ def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datet
     existing = allowed_pool(_dedupe(pool))
     baseline = {model: index for index, model in enumerate(DEFAULT_DEEP_DIVE_POOL)}
     stats = _model_health_stats(existing, history, now=now)
-    article = [model for model in existing if model in ARTICLE_MODELS]
+    article = [
+        model for model in existing
+        if model in ARTICLE_MODELS and model not in LAST_RESORT_ARTICLE_MODELS
+    ]
+    last_resort = [model for model in existing if model in LAST_RESORT_ARTICLE_MODELS]
     non_article = [model for model in existing if model not in ARTICLE_MODELS]
-    article.sort(
-        key=lambda model: (
-            -float(stats.get(model, {}).get("score", 0.5)),
-            -int(stats.get(model, {}).get("attempts", 0)),
-            baseline.get(model, len(baseline)),
-        )
+    rank_key = lambda model: (
+        -float(stats.get(model, {}).get("score", 0.5)),
+        -int(stats.get(model, {}).get("attempts", 0)),
+        baseline.get(model, len(baseline)),
     )
-    return article + non_article
+    article.sort(key=rank_key)
+    last_resort.sort(key=rank_key)
+    return article + last_resort + non_article
 
 
 def _session_usable_pool(pipeline_module: Any, pool: Iterable[str]) -> list[str]:
@@ -463,7 +470,6 @@ def install(pipeline_module: Any) -> Any:
         ("gemini-3.7-flash", "GEMINI_37_FLASH_DAILY_BUDGET"),
         ("gemini-3.8-flash", "GEMINI_38_FLASH_DAILY_BUDGET"),
         ("gemini-3-flash-preview", "GEMINI_3_FLASH_DAILY_BUDGET"),
-        ("gemini-2.5-flash", "GEMINI_25_FLASH_DAILY_BUDGET"),
     ):
         try:
             requested = int(os.environ.get(env_name, str(DEFAULT_FLASH_SAFETY_BUDGET)))
