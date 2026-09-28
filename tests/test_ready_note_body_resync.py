@@ -13,6 +13,17 @@ MANUSCRIPT = "## どんな内容？\nOpenAIの設立時点を確認します。\
 
 
 class ReadyNoteBodyResyncTests(TestCase):
+    def test_current_audit_uses_run295_shared_eyecatch_proof(self):
+        sentinel = {"eyecatch_present": True, "eyecatch_proof_mode": "eyecatch_present_header_media"}
+        def wrapped(page, title, manuscript):
+            self.assertEqual(title, TITLE)
+            self.assertEqual(manuscript, MANUSCRIPT)
+            return sentinel
+        with patch.object(target.current_audit, "_audit_wrapper", return_value=wrapped) as wrapper:
+            result = target._audit_current_private_draft(object(), TITLE, MANUSCRIPT)
+        self.assertIs(result, sentinel)
+        wrapper.assert_called_once_with(target.audit_base._audit_current_page)
+
     def test_sync_id_is_exact_hex_only(self):
         self.assertEqual(target._normalize_sync_id(SYNC_ID), SYNC_ID)
         with self.assertRaises(target.ReadyNoteBodyResyncError):
