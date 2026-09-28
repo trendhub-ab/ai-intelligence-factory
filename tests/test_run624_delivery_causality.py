@@ -1,51 +1,129 @@
 from __future__ import annotations
 
 import importlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
+import note_ready_sync
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ONE_SHOT = ROOT / ".github" / "workflows" / "daily-one-shot.yml"
+NOTE_READY = ROOT / ".github" / "workflows" / "note-ready-sync.yml"
 
 
 class Run624DeliveryCausalityTests(unittest.TestCase):
-    def test_full_mode_must_gate_private_draft_on_current_run_ready_count(self) -> None:
+    def _gate_history(self, root: Path, candidates: list[dict]) -> Path:
+        path = root / "deep_dive_gate_history.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-09-28T15:52:22+09:00",
+                    "funnel": {"ready_count": sum(1 for row in candidates if row.get("final_status") == "Ready")},
+                    "candidates": candidates,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_full_mode_must_gate_and_pin_private_draft_to_current_run_candidate(self) -> None:
         source = ONE_SHOT.read_text(encoding="utf-8")
         self.assertIn("run624_delivery_causality.py", source)
         self.assertIn('create_private_draft="$create_private_draft"', source)
+        self.assertIn('target_source_url="$target_source_url"', source)
+
+    def test_note_ready_workflow_resolves_source_url_to_exact_sync_id_before_preflight(self) -> None:
+        source = NOTE_READY.read_text(encoding="utf-8")
+        self.assertIn("target_source_url:", source)
+        self.assertIn("TARGET_SOURCE_URL", source)
+        self.assertIn("steps.sync.outputs.resolved_sync_id", source)
 
     def test_zero_ready_disables_private_draft_but_keeps_reconciliation(self) -> None:
         mod = importlib.import_module("run624_delivery_causality")
         with tempfile.TemporaryDirectory() as td:
-            summary = Path(td) / "RUN_SUMMARY.md"
-            summary.write_text(
-                "# Daily Article Audit Summary\n\n"
-                "| Candidate | Source | Decision Score | Final Status | Disposition | Quality Warnings / Failure Reason | Markdown |\n"
-                "|---|---|---:|---|---|---|---|\n"
-                "| a | GitHub | 80 | PENDING_RETRY | retry | provider unavailable | x.md |\n",
-                encoding="utf-8",
+            path = self._gate_history(
+                Path(td),
+                [{
+                    "candidate_rank": 1,
+                    "name": "a",
+                    "url": "https://example.com/a",
+                    "final_status": "Pending Retry",
+                    "article_saved": False,
+                }],
             )
-            decision = mod.delivery_decision(summary)
+            decision = mod.delivery_decision(path)
         self.assertEqual(decision["ready_count"], 0)
         self.assertFalse(decision["create_private_draft"])
         self.assertTrue(decision["run_note_reconciliation"])
+        self.assertEqual(decision["target_source_url"], "")
 
-    def test_current_run_ready_enables_private_draft(self) -> None:
+    def test_current_run_ready_pins_lowest_rank_ready_source_url(self) -> None:
         mod = importlib.import_module("run624_delivery_causality")
         with tempfile.TemporaryDirectory() as td:
-            summary = Path(td) / "RUN_SUMMARY.md"
-            summary.write_text(
-                "# Daily Article Audit Summary\n\n"
-                "| Candidate | Source | Decision Score | Final Status | Disposition | Quality Warnings / Failure Reason | Markdown |\n"
-                "|---|---|---:|---|---|---|---|\n"
-                "| a | GitHub | 80 | READY | publish |  | articles/ready/a/final.md |\n",
-                encoding="utf-8",
+            path = self._gate_history(
+                Path(td),
+                [
+                    {
+                        "candidate_rank": 4,
+                        "name": "later",
+                        "url": "https://example.com/later",
+                        "final_status": "Ready",
+                        "article_saved": True,
+                    },
+                    {
+                        "candidate_rank": 2,
+                        "name": "first-ready",
+                        "url": "https://example.com/first-ready",
+                        "final_status": "Ready",
+                        "article_saved": True,
+                    },
+                    {
+                        "candidate_rank": 1,
+                        "name": "failed",
+                        "url": "https://example.com/failed",
+                        "final_status": "Pending Retry",
+                        "article_saved": False,
+                    },
+                ],
             )
-            decision = mod.delivery_decision(summary)
-        self.assertEqual(decision["ready_count"], 1)
+            decision = mod.delivery_decision(path)
+        self.assertEqual(decision["ready_count"], 2)
         self.assertTrue(decision["create_private_draft"])
+        self.assertEqual(decision["target_source_url"], "https://example.com/first-ready")
+
+    def test_missing_or_invalid_gate_history_fails_closed_for_draft(self) -> None:
+        mod = importlib.import_module("run624_delivery_causality")
+        with tempfile.TemporaryDirectory() as td:
+            missing = mod.delivery_decision(Path(td) / "missing.json")
+            broken_path = Path(td) / "broken.json"
+            broken_path.write_text("{", encoding="utf-8")
+            broken = mod.delivery_decision(broken_path)
+        for decision in (missing, broken):
+            self.assertFalse(decision["create_private_draft"])
+            self.assertTrue(decision["run_note_reconciliation"])
+            self.assertEqual(decision["target_source_url"], "")
+            self.assertFalse(decision["audit_valid"])
+
+    def test_source_url_resolution_is_exact_and_ambiguous_matches_fail_closed(self) -> None:
+        states = [
+            {"sync_id": "a" * 32, "original_url": "https://example.com/a", "primary_url": "https://vendor.example/a"},
+            {"sync_id": "b" * 32, "original_url": "https://example.com/b", "primary_url": "https://vendor.example/b"},
+        ]
+        self.assertEqual(
+            note_ready_sync.select_exact_sync_id_for_source_url(states, "https://example.com/b"),
+            "b" * 32,
+        )
+        with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+            note_ready_sync.select_exact_sync_id_for_source_url(states, "https://example.com/missing")
+        with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+            note_ready_sync.select_exact_sync_id_for_source_url(
+                states + [{"sync_id": "c" * 32, "original_url": "https://example.com/b", "primary_url": ""}],
+                "https://example.com/b",
+            )
 
 
 if __name__ == "__main__":
