@@ -1,15 +1,8 @@
 {
   "schema_version": 1,
   "purpose": "Gemini article-model availability routing; no prompt/article content",
-  "updated_at": "2026-09-28T22:40:25.579472+00:00",
+  "updated_at": "2026-09-28T22:41:04.477345+00:00",
   "attempts": [
-    {
-      "timestamp": "2026-09-20T13:35:20.582574+00:00",
-      "model": "gemini-3.8-flash",
-      "kind": "deep_dive",
-      "outcome": "error",
-      "error_type": "ServerError"
-    },
     {
       "timestamp": "2026-09-20T13:56:43.947810+00:00",
       "model": "gemini-3.6-flash",
@@ -1400,6 +1393,13 @@
       "timestamp": "2026-09-28T22:39:59.888489+00:00",
       "model": "gemini-3.5-flash",
       "kind": "quality_retry",
+      "outcome": "success",
+      "error_type": ""
+    },
+    {
+      "timestamp": "2026-09-28T22:40:52.786189+00:00",
+      "model": "gemini-3.5-flash",
+      "kind": "deep_dive",
       "outcome": "success",
       "error_type": ""
     }
