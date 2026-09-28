@@ -6,7 +6,7 @@ This is the generic Production form of the 2026-09-27 proven cover-replacement l
 Safety contract:
 - exact Content Intelligence sync_id only;
 - source and destination must already be current Ready / 投稿準備中;
-- source manuscript must already satisfy the current Publication Contract;
+- source manuscript must satisfy the current Publication Contract, or be byte-authenticated under the same Ready contract for visual-only repair;
 - source eyecatch must already satisfy the current Eyecatch Contract;
 - exactly one existing private note edit route must match title *and* approved body;
 - title/body are never rewritten;
@@ -30,6 +30,7 @@ import note_eyecatch_persistence as eyecatch
 import note_ready_sync as ready_sync
 import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as official_image
+import run222_note_presentation_integrity as run222
 import run291_note_private_draft_audit as audit_base
 import run295_note_private_draft_audit as current_audit
 
@@ -76,15 +77,18 @@ def _source_current_asset(sync_id: str, title: str) -> tuple[str, str]:
         raise ReadyNoteCoverError("Content Intelligence source is not an exact active Ready row")
     if str(state.get("title") or "").strip() != str(title or "").strip():
         raise ReadyNoteCoverError("source and destination titles do not match")
-    manuscript = ready_sync._source_current_ready_manuscript(sync_id)
+    manuscript, source_policy_current = ready_sync._source_ready_manuscript_for_visual_repair(
+        sync_id,
+        title,
+    )
     if not manuscript:
-        raise ReadyNoteCoverError("source manuscript is not current under the Publication Contract")
+        raise ReadyNoteCoverError("source manuscript is not byte-authenticated for visual repair")
     image_url = str(state.get("eyecatch_url") or "").strip()
     try:
         eyecatch_contract.require_current_asset_url(image_url, title)
     except eyecatch_contract.EyecatchContractError as exc:
         raise ReadyNoteCoverError("source eyecatch is not current under the Eyecatch Contract") from exc
-    return image_url, manuscript
+    return image_url, manuscript, source_policy_current
 
 
 def _destination_private_row(sync_id: str) -> dict[str, Any]:
@@ -147,26 +151,48 @@ def preflight(sync_id: str) -> dict[str, Any]:
     if source_title != str(destination_before["title"]).strip():
         raise ReadyNoteCoverError("source and destination titles do not match")
 
-    image_url, canonical_manuscript = _source_current_asset(sync_id, source_title)
+    image_url, canonical_manuscript, source_policy_current = _source_current_asset(
+        sync_id,
+        source_title,
+    )
 
-    sync_result = ready_sync.sync_note_ready_db(target_sync_id=sync_id)
-    if int(sync_result.get("source_ready") or 0) != 1:
-        raise ReadyNoteCoverError("exact note Ready reconciliation did not preserve one current source")
+    if source_policy_current:
+        sync_result = ready_sync.sync_note_ready_db(target_sync_id=sync_id)
+        if int(sync_result.get("source_ready") or 0) != 1:
+            raise ReadyNoteCoverError("exact note Ready reconciliation did not preserve one current source")
+        article = audit_base._expected_article(sync_id)
+        destination_after = _destination_private_row(sync_id)
+        if destination_after["quality_state"] != "Ready":
+            raise ReadyNoteCoverError("exact destination reconciliation did not restore quality=Ready")
+        destination_exact_resync = True
+    else:
+        # A visual-only policy change must not silently restore publication quality.
+        # Require the already-existing queue row to remain human-visible Ready and
+        # use the byte-authenticated body only to prove the exact existing draft.
+        if destination_before["quality_state"] != "Ready":
+            raise ReadyNoteCoverError(
+                "stale-policy visual repair requires the destination to already remain quality=Ready"
+            )
+        presented = run222.prepare_note_editor_manuscript(canonical_manuscript, source_title)
+        if len(presented) < 200:
+            raise ReadyNoteCoverError("prepared visual-repair manuscript is unexpectedly short")
+        article = {**destination_before, "manuscript": presented}
+        destination_after = _destination_private_row(sync_id)
+        if destination_after != destination_before:
+            raise ReadyNoteCoverError("destination changed during stale-policy visual-repair preflight")
+        destination_exact_resync = False
 
-    article = audit_base._expected_article(sync_id)
-    destination_after = _destination_private_row(sync_id)
-    if destination_after["quality_state"] != "Ready":
-        raise ReadyNoteCoverError("exact destination reconciliation did not restore quality=Ready")
     return {
         **article,
         "sync_id": sync_id,
         "eyecatch_url": image_url,
         "canonical_body_sha256": hashlib.sha256(canonical_manuscript.encode("utf-8")).hexdigest(),
+        "source_policy_current": source_policy_current,
         "quality_state": "Ready",
         "quality_state_before": destination_before["quality_state"],
         "posting_state": destination_after["posting_state"],
         "destination_page_id": destination_after["destination_page_id"],
-        "destination_exact_resync": True,
+        "destination_exact_resync": destination_exact_resync,
     }
 
 
