@@ -15,7 +15,9 @@ from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Mapping
 
-EVIDENCE_BOUNDARY_VERSION = "stage9-v4"
+from fact_validation_signals import _generic_count_claim_supported
+
+EVIDENCE_BOUNDARY_VERSION = "stage10-v4"
 
 PUBLICATION_FIELDS = (
     "source_summary",
@@ -278,6 +280,66 @@ def _remove_span_with_delimiter(text: str, start: int, end: int) -> str:
     return out.strip()
 
 
+_GENERIC_COUNT_RE = re.compile(rf"(?<![\\d.])(?P<number>{_NUMBER})\\s*件(?![A-Za-z0-9_])")
+
+
+def _sentence_span(text: str, start: int, end: int) -> tuple[int, int]:
+    """Return the containing sentence span, including one trailing terminator when present."""
+    left_candidates = [text.rfind(ch, 0, start) for ch in ("。", "！", "？", "!", "?", "\\n")]
+    left = max(left_candidates) + 1
+    right_candidates = [pos for ch in ("。", "！", "？", "!", "?", "\\n") if (pos := text.find(ch, end)) >= 0]
+    if right_candidates:
+        right = min(right_candidates) + 1
+    else:
+        right = len(text)
+    return left, right
+
+
+def _sanitize_generic_counts(
+    field: str,
+    value: str,
+    evidence_context: str,
+) -> tuple[str, list[str]]:
+    """Fail closed on unsupported Japanese generic counters such as N件.
+
+    Fact Gate grounds N件 only when the same number and nearby entity class are
+    present in primary evidence. Reuse that exact semantic helper here so Local
+    Skills cannot emit a count that the unchanged Gate will block.
+
+    Unsupported counts remove their containing sentence rather than only the token;
+    this avoids grammatical fragments after deleting the numeric expression.
+    """
+    text = _clean(value)
+    if not text:
+        return text, []
+
+    unsupported: list[str] = []
+    spans: list[tuple[int, int]] = []
+    for match in _GENERIC_COUNT_RE.finditer(text):
+        token = match.group(0).strip()
+        claim_window = text[max(0, match.start() - 100): min(len(text), match.end() + 120)]
+        if _generic_count_claim_supported(token, claim_window, evidence_context):
+            continue
+        unsupported.append(token)
+        spans.append(_sentence_span(text, match.start(), match.end()))
+
+    if not unsupported:
+        return text, []
+
+    merged: list[list[int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    for start, end in reversed(merged):
+        text = text[:start] + text[end:]
+
+    text = _clean(text)
+    if not text:
+        text = _FIELD_FALLBACKS[field]
+    return text, unsupported
+
 def _sanitize_field(
     field: str,
     value: str,
@@ -328,6 +390,10 @@ def apply_evidence_boundary(
                 "repair": "training_and_hardware_deployment_separated",
             })
         sanitized, removed = _sanitize_field(field, stage_repaired, evidence_claims)
+        sanitized, removed_counts = _sanitize_generic_counts(
+            field, sanitized, evidence_context
+        )
+        removed.extend(removed_counts)
         # Unit-class compatibility is necessary but not sufficient: Fact Gate
         # intentionally does not equate every semantically similar currency
         # notation (for example "$100" and "100ドル"). Fail closed here so the
