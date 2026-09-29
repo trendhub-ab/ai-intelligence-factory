@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-29T04:50:48.625489+00:00",
+  "updated_at": "2026-09-29T04:50:51.013291+00:00",
   "items": [
-    {
-      "key": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
-      "deferred_at": "2026-09-28T22:44:03.990193+00:00",
-      "expires_at": "2026-10-12T22:44:03.990193+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
-        "originalTitle": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
-        "displayName": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
-        "sourceLanguage": "en",
-        "url": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
-        "description": "Unsurprisingly, Meta's new Muse AI agent blatantly ignores users permissions",
-        "stargazerCount": 3,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-28T20:13:03Z",
-        "sourceContext": "HN points=3 comments=0 matched_query=\"AI agent\"",
-        "primaryUrl": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
-        "sourceDetails": {
-          "hn_id": "49883698",
-          "hn_url": "https://news.ycombinator.com/item?id=49883698",
-          "external_url": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
-          "comments": 0,
-          "matched_query": "\"AI agent\"",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8186-b4f8-ebfe7f3233f3",
-      "score": 82,
-      "reason": "MetaのMuse AIエージェントの権限無視問題。",
-      "commercial_score": 80,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 81.3
-    },
     {
       "key": "https://github.com/totally-tim/effort-router",
       "deferred_at": "2026-09-28T22:44:03.990359+00:00",
