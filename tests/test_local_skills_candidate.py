@@ -318,6 +318,7 @@ def test_evidence_boundary_removes_unsupported_generic_counts_before_fact_gate()
     result = compile_snapshot(
         snapshot,
         evidence_context=(
+            "The benchmark measured 7x on the fixed workload. "
             "The review discusses code quality findings, but the primary source does not "
             "state four major issues or six additional findings."
         ),
