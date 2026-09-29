@@ -49,7 +49,7 @@ class PublicationReconcileTests(unittest.TestCase):
         self.assertEqual("2026-09-14", reconcile._publication_date("Sun, 13 Sep 2026 15:30:00 +0000"))
         self.assertEqual("", reconcile._publication_date("not a date"))
 
-    def test_exact_public_match_updates_source_then_queue_without_models(self):
+    def test_exact_public_match_updates_queue_without_touching_source_publication_date(self):
         sync_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         row = queue_page(sync_id=sync_id, title_value="記事 A")
         feed = [{"title": "記事 A", "url": "https://note.com/trendhub_biz/n/nabc123", "published": "2026-09-14"}]
@@ -58,7 +58,9 @@ class PublicationReconcileTests(unittest.TestCase):
             "properties": {
                 "note記事タイトル": rt("記事 A"),
                 "記事状態": {"select": {"name": "Ready"}},
-                "公開日": {"date": None},
+                # Content Intelligence 公開日 is the primary source's release date,
+                # not the later human note publication date.
+                "公開日": {"date": {"start": "2026-09-13"}},
             },
         }
         calls = []
@@ -79,16 +81,53 @@ class PublicationReconcileTests(unittest.TestCase):
             result = reconcile.reconcile_publications(today="2026-09-14")
 
         self.assertEqual(result["reconciled"], 1)
-        self.assertEqual(result["source_updates"], 1)
+        self.assertEqual(result["source_updates"], 0)
         self.assertEqual(result["queue_updates"], 1)
         self.assertEqual(result["model_calls"], 0)
         self.assertFalse(result["public_release"])
-        patch_calls = [c for c in calls if c[0] == "PATCH"]
-        self.assertEqual(len(patch_calls), 2)
-        self.assertIn(f"/pages/{sync_id}", patch_calls[0][1])
-        self.assertEqual(patch_calls[0][2]["properties"]["公開日"]["date"]["start"], "2026-09-14")
-        self.assertEqual(patch_calls[1][2]["properties"]["投稿状態"]["select"]["name"], "投稿済み")
-        self.assertEqual(patch_calls[1][2]["properties"]["note公開URL"]["url"], feed[0]["url"])
+        patch_calls = [call for call in calls if call[0] == "PATCH"]
+        self.assertEqual(len(patch_calls), 1)
+        self.assertTrue(patch_calls[0][1].endswith("/dest"))
+        self.assertEqual(patch_calls[0][2]["properties"]["投稿状態"]["select"]["name"], "投稿済み")
+        self.assertEqual(patch_calls[0][2]["properties"]["note公開URL"]["url"], feed[0]["url"])
+        self.assertNotIn("公開日", patch_calls[0][2]["properties"])
+
+    def test_source_release_date_may_differ_from_note_publish_date(self):
+        sync_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        row = queue_page(sync_id=sync_id, title_value="記事 A")
+        feed = [{"title": "記事 A", "url": "https://note.com/trendhub_biz/n/nabc123", "published": "2026-09-29"}]
+        source_page = {
+            "id": sync_id,
+            "properties": {
+                "note記事タイトル": rt("記事 A"),
+                "記事状態": {"select": {"name": "Ready"}},
+                "公開日": {"date": {"start": "2026-09-28"}},
+            },
+        }
+        calls = []
+
+        def fake_request(method, url, *, json=None):
+            calls.append((method, url, json))
+            if method == "GET":
+                return FakeResponse(200, source_page)
+            return FakeResponse(200, {})
+
+        with patch.object(reconcile.sync, "NOTION_API_KEY", "token"), \
+             patch.object(reconcile.sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(reconcile.sync, "DEST_DATABASE_ID", ""), \
+             patch.object(reconcile, "NOTE_USER_NAME", "trendhub_biz"), \
+             patch.object(reconcile, "_fetch_feed", return_value=feed), \
+             patch.object(reconcile.sync, "_query_db", return_value=[row]), \
+             patch.object(reconcile.sync, "_request", side_effect=fake_request):
+            result = reconcile.reconcile_publications(today="2026-09-29")
+
+        self.assertEqual(result["reconciled"], 1)
+        self.assertEqual(result["source_updates"], 0)
+        self.assertEqual(result["queue_updates"], 1)
+        patches = [call for call in calls if call[0] == "PATCH"]
+        self.assertEqual(1, len(patches))
+        self.assertTrue(patches[0][1].endswith("/dest"))
+
 
     def test_no_feed_match_is_noop(self):
         with patch.object(reconcile.sync, "NOTION_API_KEY", "token"), \
@@ -145,9 +184,8 @@ class PublicationReconcileTests(unittest.TestCase):
             result = reconcile.reconcile_publications(today="2026-09-14")
 
         self.assertEqual(result["conflict"], 1)
-        # Source may be patched first, but the conflicting queue URL is never overwritten.
-        queue_patches = [c for c in calls if c[0] == "PATCH" and c[1].endswith("/dest")]
-        self.assertEqual(queue_patches, [])
+        # Source provenance is read-only here, and the conflicting queue URL is never overwritten.
+        self.assertEqual([call for call in calls if call[0] == "PATCH"], [])
 
     def test_already_reconciled_is_idempotent(self):
         sync_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -159,7 +197,7 @@ class PublicationReconcileTests(unittest.TestCase):
             "properties": {
                 "note記事タイトル": rt("記事 A"),
                 "記事状態": {"select": {"name": "Ready"}},
-                "公開日": {"date": {"start": "2026-09-14"}},
+                "公開日": {"date": {"start": "2026-09-13"}},
             },
         }
 
