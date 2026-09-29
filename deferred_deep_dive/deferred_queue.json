@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-09-29T11:40:44.175933+00:00",
+  "updated_at": "2026-09-29T11:41:22.104034+00:00",
   "items": [
-    {
-      "key": "https://github.com/totally-tim/effort-router",
-      "deferred_at": "2026-09-28T22:44:03.990359+00:00",
-      "expires_at": "2026-10-12T22:44:03.990359+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
-        "originalTitle": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
-        "displayName": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
-        "sourceLanguage": "en",
-        "url": "https://github.com/totally-tim/effort-router",
-        "description": "JEV based Effort-router picks Claude Code's reasoning effort for each prompt",
-        "stargazerCount": 2,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-28T15:56:46Z",
-        "sourceContext": "HN points=2 comments=1 matched_query=Claude",
-        "primaryUrl": "https://github.com/totally-tim/effort-router",
-        "sourceDetails": {
-          "hn_id": "49880075",
-          "hn_url": "https://news.ycombinator.com/item?id=49880075",
-          "external_url": "https://github.com/totally-tim/effort-router",
-          "comments": 1,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8196-bde6-f33dc150ea5e",
-      "score": 80,
-      "reason": "Claude Code用JEVベースのeffort-routerツール。",
-      "commercial_score": 82,
-      "shelf_life_score": 35,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49878806",
       "deferred_at": "2026-09-28T22:44:03.990453+00:00",
