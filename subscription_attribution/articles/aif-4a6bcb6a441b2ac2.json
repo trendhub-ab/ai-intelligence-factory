@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-4a6bcb6a441b2ac2",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "HackerNews",
+  "source_url": "https://bcantrill.dtrace.org/2026/09/05/the-revolt-of-the-reader/",
+  "note_title": "AI製文章は読者にすぐに看破され、強い反発を生んでいる。",
+  "ready_at": "2026-09-29T20:42:32.627581+09:00",
+  "notion_page_id": "3d3479ff-dca9-81e6-9645-d3e4c5436825",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-4a6bcb6a441b2ac2&aif_article_id=aif-4a6bcb6a441b2ac2",
+  "cta_enabled": true,
+  "decision_score": 62,
+  "screening_score": null,
+  "commercial_value_score": null,
+  "shelf_life_score": null,
+  "shelf_life": null,
+  "portfolio_topic": null,
+  "deep_dive_priority_score": null,
+  "measurement_status": "awaiting_external_metrics"
+}
