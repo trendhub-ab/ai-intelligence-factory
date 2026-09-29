@@ -22,6 +22,8 @@ from pending_retry_validation import classify_nonpersistent_report
 import os
 from typing import Any
 
+import note_ready_sync as ready_sync
+
 
 DEFAULT_LIMIT = 1
 DEFAULT_SCAN_LIMIT = 100
@@ -59,6 +61,34 @@ def _read_current_statuses(pipeline, page_id: str) -> tuple[str, str] | None:
         _select_name(props.get(pipeline.PROP_ARTICLE_STATUS)),
         _select_name(props.get(pipeline.PROP_CONTENT_STATUS)),
     )
+
+
+def _automatic_stale_ready_recovery_allowed(pipeline, page_id: str) -> bool:
+    """Prevent automatic stale-Ready regeneration after note delivery has started.
+
+    Read-only/manual article_validation remains able to inspect stale Ready. This guard is
+    only for the write-enabled full Production recovery lane. If the note queue is
+    configured but its exact state cannot be read, fail closed and skip provider work.
+    """
+    if not (ready_sync.DEST_DATA_SOURCE_ID or ready_sync.DEST_DATABASE_ID):
+        return True
+    try:
+        delivery_state = ready_sync.classify_exact_delivery_state(page_id)
+    except Exception as exc:
+        pipeline.logger.warning(
+            "[EXISTING STALE READY RECOVERY SKIP: DELIVERY STATE UNAVAILABLE] page=%s error=%s",
+            page_id,
+            exc,
+        )
+        return False
+    if delivery_state in {"not_queued", "waiting"}:
+        return True
+    pipeline.logger.info(
+        "[EXISTING STALE READY RECOVERY SKIP: DELIVERY] page=%s state=%s",
+        page_id,
+        delivery_state,
+    )
+    return False
 
 
 def select_revalidation_items(
@@ -368,6 +398,10 @@ def run_existing_editorial_recovery(
     for item in items[:limit]:
         if generated_count >= target or not _full_recovery_budget_available(pipeline):
             break
+        is_stale_ready = bool(item.get("revalidation_stale_ready"))
+        page_id = str(item.get("notion_page_id") or "")
+        if is_stale_ready and not _automatic_stale_ready_recovery_allowed(pipeline, page_id):
+            continue
         repo = rehydrate_recovery_repo(pipeline, item)
         if repo is None:
             continue
@@ -377,7 +411,6 @@ def run_existing_editorial_recovery(
             pipeline.logger.warning("[EXISTING EDITORIAL RECOVERY SKIP: LICENSE] %s -> %s", name, license_status)
             continue
         next_candidate_rank += 1
-        is_stale_ready = bool(item.get("revalidation_stale_ready"))
         origin = "existing_stale_ready_recovery" if is_stale_ready else "existing_editorial_recovery"
         pipeline.logger.info(
             "[EXISTING ARTICLE RECOVERY] %s origin=%s prior_article=%s",
