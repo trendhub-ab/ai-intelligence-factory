@@ -14,7 +14,12 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
 
         def original(*args, **kwargs):
             calls.append((args, kwargs))
+            if not args[4]:
+                raise NoAvailableModelError("no public writer")
             return "response", "model"
+
+        class NoAvailableModelError(Exception):
+            pass
 
         module = None
 
@@ -48,6 +53,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             PROVIDER_HEALTH_HISTORY_OVERRIDE=list(history or []),
             SESSION_UNAVAILABLE_MODELS=set(),
             SESSION_EXHAUSTED_MODELS=set(),
+            NoAvailableModelError=NoAvailableModelError,
         )
         return module, calls, deep_dive_calls
 
@@ -61,23 +67,30 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             "error_type": error_type,
         }
 
-    def test_cold_start_contains_all_six_health_routed_article_models(self):
+    def test_cold_start_contains_only_full_flash_article_models(self):
         module, _, _ = self._fake_pipeline()
         run260.install(module)
         self.assertEqual(
-            module.DEEP_DIVE_MODEL_POOL[:6],
+            module.DEEP_DIVE_MODEL_POOL,
             [
                 "gemini-3.6-flash",
                 "gemini-3.5-flash",
                 "gemini-3.7-flash",
                 "gemini-3.8-flash",
                 "gemini-3-flash-preview",
-                "gemini-3.5-flash-lite",
             ],
         )
-        self.assertEqual(set(module.DEEP_DIVE_MODEL_POOL[:6]), set(run260.ARTICLE_MODELS))
+        self.assertNotIn("gemini-3.5-flash-lite", module.DEEP_DIVE_MODEL_POOL)
 
-    def test_lite_participates_but_remains_last_resort_in_health_ranking(self):
+    def test_explicit_lite_candidates_are_ignored_for_public_writer(self):
+        module, calls, _ = self._fake_pipeline(pool=["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"])
+        run260.install(module)
+        self.assertTrue(module.DEEP_DIVE_MODEL_POOL)
+        self.assertTrue(all("lite" not in model for model in module.DEEP_DIVE_MODEL_POOL))
+        module._call_deep_dive_pool("prompt", None, "deep_dive")
+        self.assertTrue(all("lite" not in model for model in calls[0][0][4]))
+
+    def test_lite_health_success_cannot_enter_article_ranked_pool(self):
         history = [
             self._row("gemini-3.6-flash", "error", error_type="ServiceUnavailable"),
             self._row("gemini-3.5-flash", "error", error_type="ReadTimeout"),
@@ -89,7 +102,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         ]
         ranked = run260._health_ranked_pool(list(run260.DEFAULT_DEEP_DIVE_POOL), history)
         self.assertEqual(ranked[0], "gemini-3-flash-preview")
-        self.assertEqual(ranked[-1], "gemini-3.5-flash-lite")
+        self.assertNotIn("gemini-3.5-flash-lite", ranked)
 
     def test_preview_budget_is_capped_but_existing_lite_screening_budget_is_preserved(self):
         module, _, _ = self._fake_pipeline()
@@ -106,7 +119,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3-flash-preview"], 18)
         self.assertEqual(module.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3.5-flash-lite"], 450)
 
-    def test_lite_enters_quality_fallback_only_after_full_models_are_unavailable(self):
+    def test_all_full_models_unavailable_never_routes_quality_retry_to_lite(self):
         history = [
             self._row("gemini-3.5-flash-lite", "success"),
             self._row("gemini-3.5-flash-lite", "success"),
@@ -126,7 +139,9 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
             history,
             pipeline_module=module,
         )
-        self.assertEqual(routed, ["gemini-3.5-flash-lite"])
+        self.assertEqual(routed, [])
+        with self.assertRaises(module.NoAvailableModelError):
+            module._call_deep_dive_pool("prompt", None, "quality_retry")
 
     def test_quality_retry_cold_start_prefers_36_then_35_and_stays_bounded(self):
         module, calls, _ = self._fake_pipeline()
@@ -179,7 +194,7 @@ class Run260GeminiModelRoutingTests(unittest.TestCase):
         self.assertEqual(len(calls), 0)
         self.assertEqual(len(live_calls), 1)
         self.assertEqual(live_calls[0][0][4][0], "gemini-3.5-flash")
-        self.assertEqual(len(live_calls[0][0][4]), 6)
+        self.assertEqual(len(live_calls[0][0][4]), 5)
 
     def test_live_deep_dive_quality_retry_path_uses_healthiest_two_models(self):
         history = [

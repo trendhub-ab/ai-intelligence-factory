@@ -7,13 +7,12 @@ without increasing the existing Deep Dive request ceiling.
 
 Run369 replaces static "newest model first" routing with Provider Health Routing for
 article generation and model-based quality repair. The normal cold-start order is
-3.6 -> 3.5 -> 3.7 -> 3.8 -> 3 Flash Preview -> 3.5 Flash-Lite. After real provider attempts
+3.6 -> 3.5 -> 3.7 -> 3.8 -> 3 Flash Preview. After real provider attempts
 exist, full article models are re-ordered by smoothed success rate using attempts from
 the last 24 hours; when
 that window is sparse, the most recent N attempts are used as a backstop. Successful
-models move up and 503/timeout/error outcomes move models down. 3.5 Flash-Lite is a
-last-resort article fallback: health can select among the stronger article models, but
-must not promote Lite ahead of an otherwise usable full article model. Existing
+models move up and 503/timeout/error outcomes move models down. Lite models remain
+available for non-public tasks, never article generation or repair. Existing
 run-local unavailable/exhausted circuits, persistent RPD budgets, retry ceilings, and
 every publication gate remain authoritative.
 
@@ -50,12 +49,11 @@ FALLBACK_MODELS = (
     "gemini-3.7-flash",
     "gemini-3.8-flash",
     "gemini-3-flash-preview",
-    "gemini-3.5-flash-lite",
 )
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = DEFAULT_DEEP_DIVE_POOL
 ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)
-LAST_RESORT_ARTICLE_MODELS = frozenset({"gemini-3.5-flash-lite"})
+LAST_RESORT_ARTICLE_MODELS = frozenset()
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
 
@@ -82,7 +80,7 @@ def _configured_deep_dive_pool(pipeline_module: Any) -> list[str]:
     configured = _dedupe(getattr(pipeline_module, "DEEP_DIVE_MODEL_POOL", []) or [])
     if configured == ["gemini-3.6-flash"]:
         return list(DEFAULT_DEEP_DIVE_POOL)
-    return configured or list(DEFAULT_DEEP_DIVE_POOL)
+    return [model for model in (configured or list(DEFAULT_DEEP_DIVE_POOL)) if model in ARTICLE_MODELS]
 
 
 def _is_quality_repair_kind(kind: str) -> bool:
@@ -255,7 +253,7 @@ def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: dat
 
 
 def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datetime | None = None) -> list[str]:
-    existing = allowed_pool(_dedupe(pool))
+    existing = allowed_pool([model for model in _dedupe(pool) if model in ARTICLE_MODELS])
     baseline = {model: index for index, model in enumerate(DEFAULT_DEEP_DIVE_POOL)}
     stats = _model_health_stats(existing, history, now=now)
     article = [

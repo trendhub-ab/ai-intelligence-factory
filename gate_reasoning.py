@@ -56,6 +56,8 @@ REASON_CODE_APPEAL_OVER_HEDGING = "APPEAL_OVER_HEDGING"
 REASON_CODE_APPEAL_ACTION_COLLAPSE = "APPEAL_ACTION_COLLAPSE"
 REASON_CODE_APPEAL_TITLE_FLATTENING = "APPEAL_TITLE_FLATTENING"
 REASON_CODE_APPEAL_DECISION_VOICE_LOSS = "APPEAL_DECISION_VOICE_LOSS"
+REASON_CODE_APPEAL_OPENING_HOOK_WEAK = "APPEAL_OPENING_HOOK_WEAK"
+REASON_CODE_APPEAL_OPENING_STYLE_WARNING = "APPEAL_OPENING_STYLE_WARNING"
 REASON_CODE_APPEAL_FABRICATED_EXPERIENCE = "APPEAL_FABRICATED_EXPERIENCE"
 REASON_CODE_APPEAL_AI_STYLE_COMPOSITE = "APPEAL_AI_STYLE_COMPOSITE"
 REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT = "APPEAL_CROSS_ARTICLE_FINGERPRINT"
@@ -174,6 +176,8 @@ def reason_code(message: str, gate: str) -> str:
         if reader_code:
             return reader_code
         mapping = {
+            "opening_hook_weak": REASON_CODE_APPEAL_OPENING_HOOK_WEAK,
+            "opening_hook_style_warning": REASON_CODE_APPEAL_OPENING_STYLE_WARNING,
             "over_hedging_without_decision": REASON_CODE_APPEAL_OVER_HEDGING,
             "action_collapsed_to_generic_monitoring": REASON_CODE_APPEAL_ACTION_COLLAPSE,
             "headline_flattened": REASON_CODE_APPEAL_TITLE_FLATTENING,
@@ -221,7 +225,9 @@ def classify_gate_reason_severity(gate: str, message: str, reason_code_value: st
             return GATE_SEVERITY_SOFT if _reader_multi_axis_is_style_only(message) else GATE_SEVERITY_REVIEW
         if code.startswith("READER_"):
             return GATE_SEVERITY_REVIEW
-        if message in {"headline_flattened", "opening_hook_weak", "repeated_caveat_phrase"}:
+        if message == "opening_hook_weak" or code == REASON_CODE_APPEAL_OPENING_HOOK_WEAK:
+            return GATE_SEVERITY_REVIEW
+        if message in {"headline_flattened", "repeated_caveat_phrase", "opening_hook_style_warning"}:
             return GATE_SEVERITY_SOFT
         if message in {"ai_style_composite_high", "cross_article_fingerprint_high"} or code in {REASON_CODE_APPEAL_AI_STYLE_COMPOSITE, REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT}:
             return GATE_SEVERITY_REVIEW
@@ -289,6 +295,16 @@ def gate_reason_disposition(reason_rows: list[dict] | None) -> str:
     if GATE_SEVERITY_SOFT in severities:
         return GATE_DISPOSITION_PASS_WITH_WARNINGS
     return GATE_DISPOSITION_PASS
+
+
+def preserve_weak_appeal_review(reason_rows: list[dict], human_state: str) -> list[dict]:
+    """A WEAK appeal state can never be converted to a publishable soft warning."""
+    if human_state == "WEAK" and not any(
+        row.get("gate") == "human_appeal" and row.get("severity") in {GATE_SEVERITY_HARD, GATE_SEVERITY_REVIEW}
+        for row in reason_rows
+    ):
+        return reason_rows + map_gate_reasons("human_appeal", ["human_appeal_weak"])
+    return reason_rows
 
 
 def reason_rows_by_severity(reason_rows: list[dict] | None, *severities: str) -> list[dict]:
