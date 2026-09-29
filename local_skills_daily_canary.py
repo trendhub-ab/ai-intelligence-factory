@@ -60,6 +60,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "To Trust or Not to Trust: Retrieval-Augmented Fact Checking in Speech",
     "Anthropic's AI biolab finds 'CRISPR-like' DNA in viruses. What's next?",
     "DeepSeek Elastic Compute:A Sandbox Infrastructure for Effective Agentic Training",
+    "Automating eval design and hillclimbing with Claude",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -86,6 +87,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30227",
     "d41586-026-03039-6",
     "2609.22978",
+    "claude.dev/blog/automating-eval-design-and-hillclimbing",
 })
 
 
