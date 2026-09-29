@@ -34,13 +34,14 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         source = ONE_SHOT.read_text(encoding="utf-8")
         self.assertIn("run624_delivery_causality.py", source)
         self.assertIn('dispatch_all_current_run_ready "$ready_count" "$create_private_draft"', source)
-        self.assertIn('target_source_urls_b64', source)
-        self.assertIn('for target_source_url in "${target_source_urls[@]}"', source)
+        self.assertIn('target_sync_ids_b64', source)
+        self.assertIn('for target_sync_id in "${target_sync_ids[@]}"', source)
+        self.assertIn('-f target_sync_id="$target_sync_id"', source)
 
-    def test_note_ready_workflow_resolves_source_url_to_exact_sync_id_before_preflight(self) -> None:
+    def test_note_ready_workflow_accepts_exact_sync_id_before_preflight(self) -> None:
         source = NOTE_READY.read_text(encoding="utf-8")
-        self.assertIn("target_source_url:", source)
-        self.assertIn("TARGET_SOURCE_URL", source)
+        self.assertIn("target_sync_id:", source)
+        self.assertIn("TARGET_SYNC_ID", source)
         self.assertIn("steps.sync.outputs.resolved_sync_id", source)
 
     def test_zero_ready_disables_private_draft_but_keeps_reconciliation(self) -> None:
@@ -60,6 +61,8 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         self.assertEqual(decision["ready_count"], 0)
         self.assertFalse(decision["create_private_draft"])
         self.assertTrue(decision["run_note_reconciliation"])
+        self.assertEqual(decision["target_sync_id"], "")
+        self.assertEqual(decision["target_sync_ids"], [])
         self.assertEqual(decision["target_source_url"], "")
         self.assertEqual(decision["target_source_urls"], [])
 
@@ -73,6 +76,7 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
                         "candidate_rank": 4,
                         "name": "later",
                         "url": "https://example.com/later",
+                        "sync_id": "b" * 32,
                         "final_status": "Ready",
                         "article_saved": True,
                     },
@@ -80,6 +84,7 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
                         "candidate_rank": 2,
                         "name": "first-ready",
                         "url": "https://example.com/first-ready",
+                        "sync_id": "a" * 32,
                         "final_status": "Ready",
                         "article_saved": True,
                     },
@@ -95,6 +100,8 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
             decision = mod.delivery_decision(path)
         self.assertEqual(decision["ready_count"], 2)
         self.assertTrue(decision["create_private_draft"])
+        self.assertEqual(decision["target_sync_id"], "a" * 32)
+        self.assertEqual(decision["target_sync_ids"], ["a" * 32, "b" * 32])
         self.assertEqual(decision["target_source_url"], "https://example.com/first-ready")
         self.assertEqual(
             decision["target_source_urls"],
@@ -111,11 +118,13 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         for decision in (missing, broken):
             self.assertFalse(decision["create_private_draft"])
             self.assertTrue(decision["run_note_reconciliation"])
+            self.assertEqual(decision["target_sync_id"], "")
+            self.assertEqual(decision["target_sync_ids"], [])
             self.assertEqual(decision["target_source_url"], "")
             self.assertEqual(decision["target_source_urls"], [])
             self.assertFalse(decision["audit_valid"])
 
-    def test_github_output_carries_all_ready_urls_losslessly(self) -> None:
+    def test_github_output_carries_all_ready_ids_and_urls_losslessly(self) -> None:
         import base64
 
         mod = importlib.import_module("run624_delivery_causality")
@@ -125,6 +134,8 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
                 "audit_valid": True,
                 "ready_count": 2,
                 "create_private_draft": True,
+                "target_sync_id": "a" * 32,
+                "target_sync_ids": ["a" * 32, "b" * 32],
                 "target_source_url": "https://example.com/a?x=1,2",
                 "target_source_urls": [
                     "https://example.com/a?x=1,2",
@@ -137,8 +148,28 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
                 for line in output.read_text(encoding="utf-8").splitlines()
                 if "=" in line
             )
-            decoded = json.loads(base64.b64decode(values["target_source_urls_b64"]).decode("utf-8"))
-        self.assertEqual(decoded, result["target_source_urls"])
+            decoded_ids = json.loads(base64.b64decode(values["target_sync_ids_b64"]).decode("utf-8"))
+            decoded_urls = json.loads(base64.b64decode(values["target_source_urls_b64"]).decode("utf-8"))
+        self.assertEqual(decoded_ids, result["target_sync_ids"])
+        self.assertEqual(decoded_urls, result["target_source_urls"])
+
+    def test_ready_without_persisted_sync_id_fails_closed(self) -> None:
+        mod = importlib.import_module("run624_delivery_causality")
+        with tempfile.TemporaryDirectory() as td:
+            path = self._gate_history(
+                Path(td),
+                [{
+                    "candidate_rank": 1,
+                    "name": "ready-but-unbound",
+                    "url": "https://example.com/a",
+                    "final_status": "Ready",
+                    "article_saved": True,
+                }],
+            )
+            decision = mod.delivery_decision(path)
+        self.assertFalse(decision["audit_valid"])
+        self.assertFalse(decision["create_private_draft"])
+        self.assertIn("persisted sync_id", decision["reason"])
 
     def test_source_url_resolution_is_exact_and_ambiguous_matches_fail_closed(self) -> None:
         states = [

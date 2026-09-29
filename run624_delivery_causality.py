@@ -25,6 +25,8 @@ def _safe_default(reason: str) -> dict[str, Any]:
         "ready_count": 0,
         "create_private_draft": False,
         "run_note_reconciliation": True,
+        "target_sync_id": "",
+        "target_sync_ids": [],
         "target_source_url": "",
         "target_source_urls": [],
         "reason": str(reason or "").strip(),
@@ -56,7 +58,7 @@ def delivery_decision(gate_history_path: str | Path) -> dict[str, Any]:
     if not isinstance(candidates, list) or not isinstance(funnel, dict):
         return _safe_default("current-run gate history lacks candidates/funnel")
 
-    ready_rows: list[tuple[int, str]] = []
+    ready_rows: list[tuple[int, str, str]] = []
     for row in candidates:
         if not isinstance(row, dict):
             continue
@@ -67,11 +69,14 @@ def delivery_decision(gate_history_path: str | Path) -> dict[str, Any]:
         source_url = _http_url(row.get("url"))
         if not source_url:
             return _safe_default("current-run Ready candidate has no valid source URL")
+        sync_id = "".join(ch for ch in str(row.get("sync_id") or "").lower() if ch in "0123456789abcdef")
+        if len(sync_id) != 32:
+            return _safe_default("current-run Ready candidate has no exact persisted sync_id")
         try:
             rank = int(row.get("candidate_rank"))
         except (TypeError, ValueError):
             return _safe_default("current-run Ready candidate has invalid candidate_rank")
-        ready_rows.append((rank, source_url))
+        ready_rows.append((rank, sync_id, source_url))
 
     observed_ready = len(ready_rows)
     declared_ready = funnel.get("ready_count")
@@ -82,14 +87,20 @@ def delivery_decision(gate_history_path: str | Path) -> dict[str, Any]:
             f"current-run Ready accounting mismatch: funnel={declared_ready} candidates={observed_ready}"
         )
 
-    ready_rows.sort(key=lambda row: (row[0], row[1]))
-    target_source_urls = [source_url for _, source_url in ready_rows]
+    ready_rows.sort(key=lambda row: (row[0], row[1], row[2]))
+    target_sync_ids = [sync_id for _, sync_id, _ in ready_rows]
+    if len(target_sync_ids) != len(set(target_sync_ids)):
+        return _safe_default("current-run Ready candidate sync_id set contains duplicates")
+    target_source_urls = [source_url for _, _, source_url in ready_rows]
+    target_sync_id = target_sync_ids[0] if target_sync_ids else ""
     target_source_url = target_source_urls[0] if target_source_urls else ""
     return {
         "audit_valid": True,
         "ready_count": observed_ready,
         "create_private_draft": bool(ready_rows),
         "run_note_reconciliation": True,
+        "target_sync_id": target_sync_id,
+        "target_sync_ids": target_sync_ids,
         "target_source_url": target_source_url,
         "target_source_urls": target_source_urls,
         "reason": "current-run Ready pinned" if ready_rows else "current run produced no Ready article",
@@ -131,6 +142,10 @@ def _write_github_output(path: str, result: dict[str, Any]) -> None:
         fh.write(f"audit_valid={'true' if result.get('audit_valid') else 'false'}\n")
         fh.write(f"ready_count={int(result.get('ready_count') or 0)}\n")
         fh.write(f"create_private_draft={'true' if result.get('create_private_draft') else 'false'}\n")
+        fh.write(f"target_sync_id={str(result.get('target_sync_id') or '').strip()}\n")
+        sync_ids = result.get("target_sync_ids") or []
+        encoded_ids = base64.b64encode(json.dumps(sync_ids, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        fh.write(f"target_sync_ids_b64={encoded_ids}\n")
         fh.write(f"target_source_url={str(result.get('target_source_url') or '').strip()}\n")
         urls = result.get("target_source_urls") or []
         encoded = base64.b64encode(json.dumps(urls, ensure_ascii=False).encode("utf-8")).decode("ascii")

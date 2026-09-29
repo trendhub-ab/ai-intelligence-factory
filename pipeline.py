@@ -8485,6 +8485,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     retry_diagnostics=finalize_retry_diagnostics(retry_diagnostics, reason_rows, "READY", parsed.get("note_draft", "")),
                     article_saved=True,
                 )
+                # Bind downstream delivery to the exact persisted Content Intelligence page.
+                # Source URLs are not unique over time (a recurring vendor page can produce
+                # multiple records), so current-run fan-out must carry this immutable sync_id.
+                persisted_sync_id = re.sub(r"[^0-9a-fA-F]", "", str(notion_page_id or "")).lower()
+                ready_record["sync_id"] = persisted_sync_id if len(persisted_sync_id) == 32 else ""
                 # Conversion attribution is business telemetry only. It runs after Ready is established
                 # and therefore can never weaken/override the quality or Notion-persistence gate.
                 attribution_path = save_subscription_attribution_record(
