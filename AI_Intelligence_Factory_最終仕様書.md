@@ -646,7 +646,20 @@ Current-run Readyが0件なら、古いReadyを勝手に次のdraft候補へ回�
 
 Current-run Readyが複数なら、**全件を個別にexact targetで `note-ready-sync.yml` へdispatch** する。
 
-つまり「Readyになった記事はすべて下書きへ送る」が現行Full Dailyの契約。
+ここで **記事品質としてのReady** と **新規note draft配送対象** は分離する。
+
+- note Ready DBに行が無い / `投稿状態=投稿待ち` → 新規draft配送対象
+- `投稿状態=投稿準備中` / `投稿済み` → **already_delivered**。再生成・再draft作成を禁止し、exact配送は成功no-op
+- `投稿状態=保留` / `取下げ` → 人間判断を優先してFail-Closed
+- 自動同期はHuman workflow fieldの`投稿状態`を`投稿待ち`へ巻き戻さない
+
+また、write-enabledのautomatic stale Ready Recoveryは、note配送状態が
+`not_queued` または `投稿待ち` と確認できる記事だけを対象にする。
+`投稿準備中` / `投稿済み` / `保留` / `取下げ` はProvider呼び出し前に除外する。
+note配送状態を確認できない場合もFail-Closedで自動Recoveryしない。
+
+したがって「Readyになった記事はすべてexact配送判定へ送る」が契約であり、
+**既に配送済みの記事を重複して下書き生成する、という意味ではない。**
 
 ### 10.4 Downstream fan-out
 
