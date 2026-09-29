@@ -20,6 +20,7 @@ from __future__ import annotations
 from pending_retry_validation import classify_nonpersistent_report
 
 import os
+import re
 from typing import Any
 
 
@@ -132,7 +133,18 @@ def select_revalidation_items(
         return None
     exact_target = str(exact_target or "").strip()
     if exact_target:
-        rows = [row for row in rows if str((row.get("repo") or {}).get("nameWithOwner") or "").strip() == exact_target]
+        compact_target = exact_target.replace("-", "").lower()
+        target_is_page_id = bool(re.fullmatch(r"[0-9a-f]{32}", compact_target))
+        if target_is_page_id:
+            rows = [
+                row for row in rows
+                if str(row.get("notion_page_id") or "").replace("-", "").lower() == compact_target
+            ]
+        else:
+            rows = [
+                row for row in rows
+                if str((row.get("repo") or {}).get("nameWithOwner") or "").strip() == exact_target
+            ]
         if not rows:
             pipeline.logger.warning("[ARTICLE REVALIDATION EXACT TARGET MISS] %s", exact_target)
             return []

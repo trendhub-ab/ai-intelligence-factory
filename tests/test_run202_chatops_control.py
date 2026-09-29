@@ -26,6 +26,13 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "article_validation")
 
+    def test_exact_article_validation_is_authorized(self):
+        sync_id = "3d3479ffdca981e69645d3e4c5436825"
+        result = chatops.authorize_event(event(body=f"/aiif run article_validation {sync_id}"))
+        self.assertEqual(result["mode"], "article_validation_exact")
+        self.assertEqual(result["target_sync_id"], sync_id)
+        self.assertTrue(result["authorized"])
+
     def test_pending_retry_validation_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run pending_retry_validation"))
         self.assertTrue(result["authorized"])
@@ -98,6 +105,9 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
             "/aiif note body_resync ../../etc/passwd",
             "/aiif note cover_apply 3e8479ffdca9812e9661f337a84b1df4 ",
             "/aiif note cover_apply ../../etc/passwd",
+            "/aiif run article_validation 3d3479ff-dca9-81e6-9645-d3e4c5436825",
+            "/aiif run article_validation 3d3479ffdca981e69645d3e4c5436825 ",
+            "/aiif run article_validation ../../etc/passwd",
         ):
             with self.subTest(body=body):
                 self.assertFalse(chatops.authorize_event(event(body=body))["authorized"])
@@ -164,6 +174,12 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
         self.assertIn("github.event.comment.user.login == 'trendhub-ab'", text)
         self.assertIn("github.actor == 'trendhub-ab'", text)
         self.assertIn("/aiif run article_validation", text)
+        self.assertIn("startsWith(github.event.comment.body, '/aiif run article_validation ')", text)
+        self.assertIn("article_validation_exact)", text)
+        self.assertIn(
+            'payload="$(printf \'{"ref":"main","inputs":{"mode":"article_validation","editorial_style":"human_narrative","exact_target":"%s","confirm":"RUN_ONCE"}}\' "$TARGET_SYNC_ID")"',
+            text,
+        )
         self.assertIn("/aiif run pending_retry_validation", text)
         self.assertIn("/aiif run production_e2e_validation", text)
         self.assertIn("/aiif run production_e2e_preflight", text)

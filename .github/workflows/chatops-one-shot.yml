@@ -36,6 +36,7 @@ jobs:
        github.event.comment.body == '/aiif run local_skills_production_validation' ||
        github.event.comment.body == '/aiif run x_discovery_stage2' ||
        github.event.comment.body == '/aiif run stale_ready_portfolio_audit' ||
+       startsWith(github.event.comment.body, '/aiif run article_validation ') ||
        startsWith(github.event.comment.body, '/aiif eyecatch finalize ') ||
        startsWith(github.event.comment.body, '/aiif note body_resync ') ||
        startsWith(github.event.comment.body, '/aiif note cover_apply '))
@@ -68,7 +69,7 @@ jobs:
           test "$AUTHORIZED" = "true"
           case "$MODE" in
             article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|local_skills_production_validation|x_discovery_stage2|stale_ready_portfolio_audit) ;;
-            ready_eyecatch_finalize|ready_note_body_resync|ready_note_cover_apply)
+            article_validation_exact|ready_eyecatch_finalize|ready_note_body_resync|ready_note_cover_apply)
               [[ "$TARGET_SYNC_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "::error::Invalid exact sync_id"; exit 1; }
               ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
@@ -88,7 +89,11 @@ jobs:
           case "$MODE" in
             article_validation)
               target='daily-one-shot.yml'
-              payload='{"ref":"main","inputs":{"mode":"article_validation","confirm":"RUN_ONCE"}}'
+              payload='{"ref":"main","inputs":{"mode":"article_validation","editorial_style":"human_narrative","confirm":"RUN_ONCE"}}'
+              ;;
+            article_validation_exact)
+              target='daily-one-shot.yml'
+              payload="$(printf '{"ref":"main","inputs":{"mode":"article_validation","editorial_style":"human_narrative","exact_target":"%s","confirm":"RUN_ONCE"}}' "$TARGET_SYNC_ID")"
               ;;
             pending_retry_validation)
               target='daily-one-shot.yml'
