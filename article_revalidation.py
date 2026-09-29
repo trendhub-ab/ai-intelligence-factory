@@ -22,8 +22,6 @@ from pending_retry_validation import classify_nonpersistent_report
 import os
 from typing import Any
 
-import note_ready_sync as ready_sync
-
 
 DEFAULT_LIMIT = 1
 DEFAULT_SCAN_LIMIT = 100
@@ -67,9 +65,19 @@ def _automatic_stale_ready_recovery_allowed(pipeline, page_id: str) -> bool:
     """Prevent automatic stale-Ready regeneration after note delivery has started.
 
     Read-only/manual article_validation remains able to inspect stale Ready. This guard is
-    only for the write-enabled full Production recovery lane. If the note queue is
-    configured but its exact state cannot be read, fail closed and skip provider work.
+    only for the write-enabled full Production recovery lane. note_ready_sync is imported
+    lazily so lightweight validation/import surfaces do not acquire its requests dependency.
+    If the configured note queue cannot be read, fail closed and skip provider work.
     """
+    try:
+        import note_ready_sync as ready_sync
+    except Exception as exc:
+        pipeline.logger.warning(
+            "[EXISTING STALE READY RECOVERY SKIP: DELIVERY MODULE UNAVAILABLE] page=%s error=%s",
+            page_id,
+            exc,
+        )
+        return False
     if not (ready_sync.DEST_DATA_SOURCE_ID or ready_sync.DEST_DATABASE_ID):
         return True
     try:
