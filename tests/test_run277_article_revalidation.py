@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -326,6 +327,20 @@ def test_revalidation_is_read_only_and_bounded(monkeypatch):
     assert kwargs["persist_results"] is False
     assert kwargs["notion_page_id"] == "review"
     assert kwargs["candidate_origin"] == "article_revalidation"
+
+
+def test_exact_article_validation_preserves_distinct_model_fallback_budget():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "daily-one-shot.yml"
+    ).read_text(encoding="utf-8")
+    assert "GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: \"12\"" in workflow
+    assert (
+        "ARTICLE_REVALIDATION_REQUEST_BUDGET: "
+        "${{ inputs.exact_target != '' && '8' || '4' }}"
+    ) in workflow
 
 
 def test_workflow_dispatch_mode_reads_github_event(tmp_path, monkeypatch):
