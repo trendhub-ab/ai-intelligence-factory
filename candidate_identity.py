@@ -37,8 +37,38 @@ def canonicalize_url(url: str) -> str:
     return urlunparse((scheme, netloc, path, "", urlencode(filtered_query, doseq=True), ""))
 
 
+def _official_vendor_revision_identity(repo: dict, *, canonicalizer=canonicalize_url) -> str:
+    """Return a material OfficialVendor revision identity when one is present.
+
+    Official release-note pages often update in place. aif_revision is an
+    internal event identity created by the acquisition layer; the unversioned
+    primaryUrl remains Evidence, not a Content Event dedupe key. Mixing both
+    in one intersection-based dedupe set would make every later revision look
+    identical to the first revision.
+    """
+    if str(repo.get("source") or "") != "OfficialVendor":
+        return ""
+    value = repo.get("url")
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    parsed = urlparse(value.strip())
+    if not any(k == "aif_revision" and v for k, v in parse_qsl(parsed.query, keep_blank_values=True)):
+        return ""
+    return canonicalizer(value.strip())
+
+
 def candidate_identity_urls(repo: dict, *, canonicalizer=canonicalize_url) -> set[str]:
-    """Cross-source dedupe用の保守的な同一性URL集合。"""
+    """Cross-source dedupe用の保守的な同一性URL集合。
+
+    Content Event identity and Evidence identity must not be conflated. For an
+    OfficialVendor page-level revision, the revisioned candidate URL is the sole
+    event key; the stable unversioned official URL is still retained elsewhere
+    as primary Evidence and for Technology resolution.
+    """
+    revision_identity = _official_vendor_revision_identity(repo, canonicalizer=canonicalizer)
+    if revision_identity:
+        return {revision_identity}
+
     raw_urls: list[str] = []
     for value in (repo.get("url"), repo.get("primaryUrl")):
         if isinstance(value, str) and value.strip():
