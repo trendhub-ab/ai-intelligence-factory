@@ -163,8 +163,8 @@ jobs:
           ENABLE_REVENUE_PRODUCT_PHASE2: ${{ vars.ENABLE_REVENUE_PRODUCT_PHASE2 || 'true' }}
           TRACKING_ELIGIBILITY_MIN_SCORE: "55"
           TRACKING_REVIEW_DAYS: "14"
-          PRODUCT_REVIEW_MAX_PER_RUN: ${{ inputs.mode == 'full' && '2' || '0' }}
-          LEGACY_BOOTSTRAP_MAX_PER_RUN: ${{ inputs.mode == 'full' && '1' || '0' }}
+          PRODUCT_REVIEW_MAX_PER_RUN: "0"
+          LEGACY_BOOTSTRAP_MAX_PER_RUN: "0"
           GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET: "3"
           DEFERRED_DEEP_DIVE_MAX_PER_RUN: "1"
           DEFERRED_DEEP_DIVE_MAX_QUEUE: "20"
