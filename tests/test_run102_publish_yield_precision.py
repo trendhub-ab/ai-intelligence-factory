@@ -42,16 +42,19 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
         self.assertEqual(pipeline.GATE_SEVERITY_HARD, pub[0]["severity"])
         self.assertEqual(pipeline.GATE_DISPOSITION_BLOCK, pipeline.gate_reason_disposition(fact + pub))
 
-    def test_opening_hook_and_flat_title_are_soft_and_publishable(self):
-        rows = (
-            pipeline.map_gate_reasons("human_appeal", ["opening_hook_weak"])
-            + pipeline.map_gate_reasons("human_appeal", ["headline_flattened"])
-        )
-        self.assertTrue(all(row["severity"] == pipeline.GATE_SEVERITY_SOFT for row in rows))
-        self.assertEqual(pipeline.GATE_DISPOSITION_PASS_WITH_WARNINGS, pipeline.gate_reason_disposition(rows))
+    def test_opening_hook_requires_review_while_minor_style_can_warn(self):
+        rows = pipeline.map_gate_reasons("human_appeal", ["opening_hook_weak"])
+        self.assertEqual(pipeline.GATE_SEVERITY_REVIEW, rows[0]["severity"])
+        self.assertEqual(pipeline.REASON_CODE_APPEAL_OPENING_HOOK_WEAK, rows[0]["reason_code"])
+        self.assertEqual(pipeline.GATE_DISPOSITION_REVIEW, pipeline.gate_reason_disposition(rows))
         allowed, reason = pipeline.should_attempt_dynamic_retry(rows, {"state": pipeline.EVIDENCE_SUFFICIENT})
-        self.assertFalse(allowed)
-        self.assertEqual("soft_quality_only", reason)
+        self.assertTrue(allowed)
+        self.assertEqual("repairable", reason)
+        instruction, sections = pipeline.build_dynamic_retry_instruction(rows)
+        self.assertIn("導入を原資料固有", instruction)
+        self.assertIn("introduction", sections)
+        minor = pipeline.map_gate_reasons("human_appeal", ["repeated_caveat_phrase"])
+        self.assertEqual(pipeline.GATE_DISPOSITION_PASS_WITH_WARNINGS, pipeline.gate_reason_disposition(minor))
 
     def test_decision_value_loss_is_review_not_soft(self):
         rows = pipeline.map_gate_reasons(
@@ -71,7 +74,7 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
 
     def test_multiple_soft_warnings_do_not_create_an_implicit_threshold(self):
         rows = (
-            pipeline.map_gate_reasons("human_appeal", ["opening_hook_weak", "headline_flattened"])
+            pipeline.map_gate_reasons("human_appeal", ["repeated_caveat_phrase", "headline_flattened"])
             + pipeline.map_gate_reasons("editorial", ["mechanical ordinal structure"])
         )
         self.assertEqual(3, len(rows))
@@ -129,7 +132,7 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
         self.assertEqual("non_repairable_evidence_or_source_gap", reason)
 
     def test_candidate_record_preserves_severity_and_disposition(self):
-        rows = pipeline.map_gate_reasons("human_appeal", ["opening_hook_weak"])
+        rows = pipeline.map_gate_reasons("human_appeal", ["repeated_caveat_phrase"])
         record = pipeline.build_candidate_gate_record(
             1, "example", "https://example.com", 72, "completed",
             pipeline.GATE_STATUS_PASS, pipeline.GATE_STATUS_PASS,
@@ -143,7 +146,7 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
 
     def test_funnel_reports_both_publish_yields_and_soft_retry_savings(self):
         funnel = pipeline.DeepDiveGateFunnel()
-        rows = pipeline.map_gate_reasons("human_appeal", ["opening_hook_weak"])
+        rows = pipeline.map_gate_reasons("human_appeal", ["repeated_caveat_phrase"])
         record = pipeline.build_candidate_gate_record(
             1, "example", "https://example.com", 72, "completed",
             pipeline.GATE_STATUS_PASS, pipeline.GATE_STATUS_PASS,
@@ -211,10 +214,70 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
             result = pipeline.generate_intelligence_report(repo, persist_results=False)
         return result, gemini.call_count
 
-    def test_soft_only_full_pipeline_uses_one_generation_call_and_no_quality_retry(self):
+    def test_weak_opening_retries_once_then_remains_non_ready(self):
         result, calls = self._run_nonpersistent_with_gates(appeal=("WEAK", ["opening_hook_weak"]))
+        self.assertEqual(2, calls)
+        self.assertEqual(("clean manuscript", "rejected"), result)
+
+    def test_acceptable_appeal_remains_ready(self):
+        result, calls = self._run_nonpersistent_with_gates()
         self.assertEqual(1, calls)
         self.assertEqual(("clean manuscript", "accepted"), result)
+
+    def test_minor_soft_warning_remains_ready(self):
+        result, calls = self._run_nonpersistent_with_gates(appeal=("ACCEPTABLE", ["repeated_caveat_phrase"]))
+        self.assertEqual(1, calls)
+        self.assertEqual(("clean manuscript", "accepted"), result)
+
+    def test_run186_real_manuscript_cannot_pass_ready(self):
+        article = (ROOT / "tests/fixtures/run186_revolt_of_the_reader.md").read_text(encoding="utf-8")
+        state, issues = pipeline.validate_human_appeal_gate({
+            "note_draft": article,
+            "title_text": "読者の信頼は、AI時代の文章においてどのように守られるべきか。",
+            "action_text": "チーム内でAI利用ポリシーと検証ツールを比較する。",
+        })
+        self.assertEqual("WEAK", state)
+        self.assertIn("opening_hook_weak", issues)
+        self.assertEqual(pipeline.GATE_DISPOSITION_REVIEW,
+                         pipeline.gate_reason_disposition(pipeline.map_gate_reasons("human_appeal", issues)))
+
+    def test_source_specific_hook_is_not_rejected_by_single_word_rule(self):
+        article = """読者がAI製だと感じた瞬間、著者への信頼まで失う。元記事は、この拒絶を読者と書き手の関係から論じています。
+
+## 読む側の選択
+原資料が示す反応を踏まえ、私なら公開前に読者が得る判断を確認します。
+"""
+        _, issues = pipeline.validate_human_appeal_gate({
+            "note_draft": article, "title_text": "読者がAI製文章から離れる理由",
+            "action_text": "公開前に読者の判断を確認します。",
+        })
+        self.assertNotIn("opening_hook_weak", issues)
+        if "opening_hook_style_warning" in issues:
+            rows = pipeline.map_gate_reasons("human_appeal", issues)
+            self.assertEqual(pipeline.GATE_SEVERITY_SOFT,
+                             next(row["severity"] for row in rows if row["message"] == "opening_hook_style_warning"))
+            self.assertEqual("APPEAL_OPENING_STYLE_WARNING",
+                             next(row["reason_code"] for row in rows if row["message"] == "opening_hook_style_warning"))
+
+    def test_quality_retry_requests_medium_thinking_with_existing_output_cap(self):
+        response = MagicMock()
+        with patch.object(pipeline, "_call_deep_dive_pool", return_value=(response, "gemini-3.7-flash")) as provider, \
+             patch.object(pipeline, "extract_grounding_metadata", return_value={}):
+            pipeline.call_gemini_grounded_deep_dive(
+                "prompt", {"source": "HackerNews"}, {"sufficient": True, "primary_url": "https://example.com"},
+                request_kind="quality_retry",
+            )
+        config = provider.call_args.args[1]
+        self.assertEqual({"thinking_level": "medium"}, config["thinking_config"])
+        self.assertEqual(pipeline.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS, config["max_output_tokens"])
+
+    def test_public_writer_rejects_lite_response_even_if_provider_wrapper_regresses(self):
+        response = MagicMock()
+        with patch.object(pipeline, "_call_deep_dive_pool", return_value=(response, "gemini-3.5-flash-lite")):
+            with self.assertRaises(pipeline.NoAvailableModelError):
+                pipeline.call_gemini_grounded_deep_dive(
+                    "prompt", {"source": "HackerNews"}, {"sufficient": True}, request_kind="deep_dive",
+                )
 
     def test_decision_value_review_full_pipeline_uses_one_repair_retry_then_stops_unpublished(self):
         result, calls = self._run_nonpersistent_with_gates(
@@ -226,7 +289,7 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
     def test_article_audit_ready_exposes_quality_notes_not_failure_reason(self):
         repo = {"nameWithOwner": "owner/repo", "url": "https://example.com/repo", "source": "GitHub"}
         parsed = {"note_draft": "本文", "score": 72, "title_text": "題名。"}
-        rows = pipeline.map_gate_reasons("human_appeal", ["opening_hook_weak"])
+        rows = pipeline.map_gate_reasons("human_appeal", ["repeated_caveat_phrase"])
         gate = pipeline.build_candidate_gate_record(
             1, repo["nameWithOwner"], repo["url"], 72, "completed",
             pipeline.GATE_STATUS_PASS, pipeline.GATE_STATUS_PASS,
@@ -236,12 +299,12 @@ class TestRun102PublishYieldPrecision(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, patch.object(pipeline, "ARTICLE_AUDIT_DIR", td):
             files = pipeline.save_article_audit_package(
                 repo, "READY", parsed, {"primary_url": repo["url"]}, gate,
-                "opening_hook_weak", clean_manuscript="本文"
+                "repeated_caveat_phrase", clean_manuscript="本文"
             )
             final = next(Path(x) for x in files if x.endswith("final.md"))
             body = final.read_text(encoding="utf-8")
             self.assertIn("## Quality Notes", body)
-            self.assertIn("opening_hook_weak", body)
+            self.assertIn("repeated_caveat_phrase", body)
             self.assertNotIn("## Failure Reason", body)
             summary = (Path(td) / "RUN_SUMMARY.md").read_text(encoding="utf-8")
             self.assertIn("Disposition", summary)

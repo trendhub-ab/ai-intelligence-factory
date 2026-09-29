@@ -124,12 +124,13 @@ from gate_reasoning import (
     REASON_CODE_PUB_INTRO_OVERCLAIM, REASON_CODE_PUB_UNSUPPORTED_CONCLUSION, REASON_CODE_PUB_ACTION_EVIDENCE_MISMATCH,
     REASON_CODE_PUB_SCORE_NARRATIVE_MISMATCH, REASON_CODE_PUB_SOURCE_SUFFICIENCY, REASON_CODE_PUB_NEGATIVE_EVIDENCE_OMISSION,
     REASON_CODE_APPEAL_OVER_HEDGING, REASON_CODE_APPEAL_ACTION_COLLAPSE, REASON_CODE_APPEAL_TITLE_FLATTENING,
-    REASON_CODE_APPEAL_DECISION_VOICE_LOSS, REASON_CODE_APPEAL_FABRICATED_EXPERIENCE, REASON_CODE_APPEAL_AI_STYLE_COMPOSITE,
+    REASON_CODE_APPEAL_DECISION_VOICE_LOSS, REASON_CODE_APPEAL_OPENING_HOOK_WEAK, REASON_CODE_APPEAL_FABRICATED_EXPERIENCE, REASON_CODE_APPEAL_AI_STYLE_COMPOSITE,
     REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT, REASON_CODE_PENDING_RETRY, REASON_CODE_MODEL_UNAVAILABLE,
     REASON_CODE_DEEP_DIVE_RUN_BUDGET_EXHAUSTED, REASON_CODE_NOTION_PERSISTENCE_FAILED, reason_code as _reason_code_impl,
     classify_gate_reason_severity as _classify_gate_reason_severity_impl, map_gate_reasons as _map_gate_reasons_impl,
     infer_gate_from_reason_code as _infer_gate_from_reason_code_impl, normalize_gate_reason_rows as _normalize_gate_reason_rows_impl,
     gate_reason_disposition as _gate_reason_disposition_impl, reason_rows_by_severity as _reason_rows_by_severity_impl,
+    preserve_weak_appeal_review,
     quality_warning_messages as _quality_warning_messages_impl, build_candidate_gate_record as _build_candidate_gate_record_impl,
     build_internal_article_record as _build_internal_article_record_impl,
 )
@@ -6432,11 +6433,7 @@ def _reader_experience_signals(article: str) -> dict:
 
 
 def validate_human_appeal_gate(parsed: dict, peer_articles: list[dict] | None = None) -> tuple[str, list[str]]:
-    """Human Appeal Gate: Humanizationとは別に、読ませる力と判断の具体性を診断する。
-
-    WEAK は即時の事実エラーではない。具体的判断の消失など重要な場合だけ、
-    最終リトライ後に Needs Editorial Review へ送る。
-    """
+    """Human Appeal Gate: 中核品質のWEAKと軽微な表現警告を分ける。"""
     article = parsed.get("note_draft", "") or ""
     title = parsed.get("title_text", "") or ""
     action = parsed.get("action_text", "") or ""
@@ -6473,7 +6470,8 @@ def validate_human_appeal_gate(parsed: dict, peer_articles: list[dict] | None = 
     # 読み手への入口が説明文だけにならないかを軽く確認する。疑問符は必須にしない。
     intro = _article_opening_excerpt(article)
     if intro and not re.search(r"(?:なぜ|どこ|何が|課題|現場|原資料|一見|数字|変わ|面白|気にな|使|困|発表|公開|登場)", intro[:500]):
-        issues.append("opening_hook_weak")
+        signals = _reader_experience_signals(article)
+        issues.append("opening_hook_weak" if signals.get("narrative_pull") == signals.get("reader_enjoyment") == "REVIEW" else "opening_hook_style_warning")
 
     ai_style = _ai_style_composite_signals(article)
     depth_style = _human_editorial_depth_signals(article)
@@ -6487,7 +6485,8 @@ def validate_human_appeal_gate(parsed: dict, peer_articles: list[dict] | None = 
         issues.append("cross_article_fingerprint_high")
 
     issues = list(dict.fromkeys(issues))
-    return ("WEAK" if issues else "ACCEPTABLE", issues)
+    material = any(row["severity"] != GATE_SEVERITY_SOFT for row in map_gate_reasons("human_appeal", issues))
+    return ("WEAK" if material else "ACCEPTABLE", issues)
 
 
 # Backward compatibility aliases. 正式な実装・Pipeline本体は *_gate 名を使用する。
@@ -6499,8 +6498,6 @@ validate_human_appeal = validate_human_appeal_gate
 # Gate Funnel / Reason Code / 内部レビュー保存
 # ==========================================
 _reason_code = _reason_code_impl
-
-
 
 classify_gate_reason_severity = _classify_gate_reason_severity_impl
 
@@ -6595,6 +6592,7 @@ def build_dynamic_retry_instruction(reason_rows: list[dict]) -> tuple[str, list[
         REASON_CODE_APPEAL_ACTION_COLLAPSE: ("『注視』へ潰れたActionを、根拠付きの限定検証・比較・見送り判断へ戻してください。", "action"),
         REASON_CODE_APPEAL_TITLE_FLATTENING: ("Evidenceを超えない範囲でタイトルの引力だけを回復してください。", "title"),
         REASON_CODE_APPEAL_DECISION_VOICE_LOSS: ("架空体験や感情を足さず、原稿内の根拠に基づく筆者判断だけを復元してください。", "voice"),
+        REASON_CODE_APPEAL_OPENING_HOOK_WEAK: ("導入を原資料固有の行動・差分・制約と読者の判断の分かれ目から書き直してください。問いや比喩を足すだけで済ませず、新しい事実は作らないでください。", "introduction"),
         REASON_CODE_APPEAL_FABRICATED_EXPERIENCE: ("実際に経験していない現場体験・使用体験・感情を削除し、一次情報に基づく編集者の観察・判断へ書き換えてください。", "voice"),
         REASON_CODE_APPEAL_AI_STYLE_COMPOSITE: ("事実・数値・判断の意味は変えず、汎用的な接続句の反復、同型見出し、短文連打、説明の言い換え反復を崩してください。記事固有の焦点を1つ選び、人間の編集者が書いた自然なリズムへ再編集してください。新しい事実は追加しないでください。", "prose_style"),
         REASON_CODE_APPEAL_CROSS_ARTICLE_FINGERPRINT: ("同じRunの別記事と似た導入リズム・段落運び・判断の置き方を避け、この記事固有の一次情報に合う順序へ再編集してください。事実・数値・Decisionの意味は変えず、新しい事実は追加しないでください。", "cross_article_style"),
@@ -7625,12 +7623,16 @@ def call_gemini_grounded_deep_dive(prompt: str, repo: dict, source_info: dict,
         "max_output_tokens": GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS,
         "system_instruction": aiif_editor_persona(),
     }
+    if request_kind == "quality_retry":
+        config["thinking_config"] = {"thinking_level": "medium"}
     if tools:
         config["tools"] = tools
     logger.info("[GEMINI DEEP DIVE CALL] kind=%s timeout=%ss", request_kind, GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS)
     response, selected_model = _call_deep_dive_pool(
         prompt, config, request_kind, request_context=request_context, request_origin=request_origin
     )
+    if "flash-lite" in str(selected_model or "").lower():
+        raise NoAvailableModelError("Public article Writer cannot use Flash-Lite")
     global SELECTED_DEEP_DIVE_MODEL
     SELECTED_DEEP_DIVE_MODEL = selected_model
     _extract_usage_metadata(response)
@@ -8004,13 +8006,11 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             elif human_appeal_materially_degraded(appeal_before_reedit, parsed):
                 human_appeal_issues.append("human_appeal_materially_degraded_after_reedit")
                 human_appeal = "WEAK"
-            # Run 102: GateをHARD / REVIEW / SOFTへ分離する。
-            # 「文章が最高ではない」だけで無料枠と公開機会を失わない一方、
-            # Fact/Evidence/Decisionの信頼性と「で、どうするか」という商品価値は守る。
             all_reason_rows = (map_gate_reasons("fact", fact_failures)
                                + map_gate_reasons("editorial", editorial_warnings)
                                + map_gate_reasons("publication", publication_issues)
                                + map_gate_reasons("human_appeal", human_appeal_issues))
+            all_reason_rows = preserve_weak_appeal_review(all_reason_rows, human_appeal)
             disposition = gate_reason_disposition(all_reason_rows)
             if local_skills_canary:
                 globals()["_LOCAL_SKILLS_CANARY_LAST_RESULT"] = {
@@ -8040,7 +8040,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
             if appeal_review_required:
                 gate_statuses["human_appeal"] = GATE_STATUS_REVIEW
 
-            # PASS_WITH_WARNINGSはここで即出荷。SOFT文章改善だけのQuality Retryは禁止する。
+            # 軽微なSOFTのみ即出荷。中核Human AppealのWEAKは必ずRetry/Reviewへ。
             if disposition in {GATE_DISPOSITION_PASS, GATE_DISPOSITION_PASS_WITH_WARNINGS}:
                 quality_gate_passed = True
                 if persist_results:

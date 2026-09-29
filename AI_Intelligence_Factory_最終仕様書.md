@@ -217,8 +217,13 @@ Screeningは大量候補の低コスト選別を担当し、記事本文の最�
 - `gemini-3.8-flash`
 - `gemini-3.6-flash`
 - `gemini-3.5-flash`
+- `gemini-3-flash-preview`（既存health routingの候補）
 
 モデル別persistent daily budgetは各18。
+
+公開用記事の初稿・Human Narrative / Quality Retryは上記のFull Flash系のみを候補にする。Flash-Lite系はScreening、分類、Evidence整理、JSON抽出等の非公開補助処理に限る。上位Writer候補が全て503、timeout、quota等で利用不能なら記事をReadyへ進めず、既存のPending Retry等の非Ready状態で止め、note下書きへ配送しない。Quality repairの最大2モデル制限とhealth routingを維持する。
+
+通常Deep Diveはprovider reliability layerで `thinking_level=low`、Quality Retryは `medium` を明示する。本文の `max_output_tokens` は既存の `GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS`（既定9000）を維持する。各モデルのthinking対応値はGoogleの現行SDK/API仕様で照合済み。
 
 Deep Dive run budgetは **12 provider-visible requests** を上限とする。
 
@@ -419,6 +424,8 @@ Human Narrativeは **Source-specific Hook** を優先する。
 - Publication Readiness
 - Final Publication Surface
 - Publication Contract
+
+Human Appealの中核品質が `WEAK` の原稿は最大1回のQuality Retryを行う。Retry後も `WEAK` ならFact / PublicationがPASSでもNeeds Editorial Review等の非Readyへ送り、note下書き配送を禁止する。記事固有の導入が弱い `opening_hook_weak`、判断の欠落、AI調の複合的な兆候、読者価値の重大な不足はREVIEWとする。軽微な語尾・反復・表面表現だけのSOFT warningは、Human AppealがACCEPTABLEなら警告付きReadyを許可できる。Run #186の「The revolt of the reader」実稿を回帰fixtureとする。
 
 ### 7.1 Fail-Closed
 
@@ -991,7 +998,7 @@ Factory全体を理解するときは、まず本書を読む。
 - **Entry point:** `production_pipeline.py`。
 - **Runtime:** `runtime_layers.py` が正本。
 - **Screening:** Gemini 3.5 Flash-Lite / 3.1 Flash-Lite。
-- **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8をhealth-aware routingで運用。
+- **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Previewをhealth-aware routingで運用。Flash-Liteは公開Writerから除外。
 - **503:** Factory single retry owner + bounded fallback。
 - **A+:** Local Skills skeleton + Gemini prose + deterministic Gates + safe local fallback。
 - **Local Skills:** canary / bounded Production validationを持つ。
