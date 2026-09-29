@@ -251,5 +251,52 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertLess(run179_install, run180_install)
 
 
+    def test_semantic_line_break_guard_rejects_japanese_word_fragments(self):
+        title = "勝手に繋がせないための新しい盾。ChatGPTに加わった管理者向け外部アクセス制御。"
+        broken = [
+            "勝手に繋がせないための新し",
+            "い盾。ChatGPTに加わった管",
+            "理者向け外部アクセス制御。",
+        ]
+        natural = [
+            "勝手に繋がせないための",
+            "新しい盾。ChatGPTに",
+            "加わった管理者向け外部アクセス制御。",
+        ]
+        self.assertFalse(run180._semantic_line_breaks_ok(title, broken))
+        self.assertTrue(run180._semantic_line_breaks_ok(title, natural))
+
+    def test_semantic_line_break_guard_keeps_explicit_space_boundaries_valid(self):
+        title = "OpenAI access controlを管理者向けに追加"
+        lines = ["OpenAI access", "controlを管理者向けに追加"]
+        self.assertTrue(run180._semantic_line_breaks_ok(title, lines))
+
+    def test_layout_validation_rejects_newshii_and_kanrisha_midword_breaks(self):
+        title = "勝手に繋がせないための新しい盾。ChatGPTに加わった管理者向け外部アクセス制御。"
+        plan = {
+            "eyecatch_title": title,
+            "title_lines": [
+                "勝手に繋がせないための新し",
+                "い盾。ChatGPTに加わった管",
+                "理者向け外部アクセス制御。",
+            ],
+            "title_font_size": 52,
+            "title_line_gap": 10,
+            "subheadline_lines": ["要点を理解する。"],
+            "subheadline_font_size": 24,
+            "highlight_text": "",
+        }
+        self.assertIsNone(run180._validate_layout_plan(title, "要点を理解する。", plan))
+
+    def test_complete_fallback_never_splits_japanese_word_chunks(self):
+        title = "勝手に繋がせないための新しい盾。ChatGPTに加わった管理者向け外部アクセス制御。"
+        plan = run180._deterministic_complete_title_plan(title, "要点を理解する。")
+        self.assertIsNotNone(plan)
+        self.assertEqual(title, "".join(plan["title_lines"]))
+        self.assertTrue(run180._semantic_line_breaks_ok(title, plan["title_lines"]))
+        self.assertFalse(any(line.endswith("新し") for line in plan["title_lines"]))
+        self.assertFalse(any(line.endswith("管") for line in plan["title_lines"]))
+
+
 if __name__ == "__main__":
     unittest.main()
