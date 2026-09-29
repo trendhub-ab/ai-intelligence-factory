@@ -62,6 +62,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "DeepSeek Elastic Compute:A Sandbox Infrastructure for Effective Agentic Training",
     "Automating eval design and hillclimbing with Claude",
     "Show HN: Agentcap – eBPF exporter for AI-agent activity to Grafana",
+    "Claude Sonnet 5.5 for code review: More catches than Sonnet 5, in half the time",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -90,6 +91,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.22978",
     "claude.dev/blog/automating-eval-design-and-hillclimbing",
     "github.com/yeet-src/agentcap",
+    "coderabbit.ai/blog/sonnet-5-5-model-review",
 })
 
 
