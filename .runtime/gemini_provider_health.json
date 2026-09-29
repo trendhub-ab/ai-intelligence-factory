@@ -1,22 +1,8 @@
 {
   "schema_version": 1,
   "purpose": "Gemini article-model availability routing; no prompt/article content",
-  "updated_at": "2026-09-29T15:09:58.961483+00:00",
+  "updated_at": "2026-09-29T19:54:50.694438+00:00",
   "attempts": [
-    {
-      "timestamp": "2026-09-22T08:56:56.965729+00:00",
-      "model": "gemini-3.5-flash",
-      "kind": "quality_retry",
-      "outcome": "success",
-      "error_type": ""
-    },
-    {
-      "timestamp": "2026-09-22T08:58:15.679152+00:00",
-      "model": "gemini-3.5-flash",
-      "kind": "deep_dive",
-      "outcome": "success",
-      "error_type": ""
-    },
     {
       "timestamp": "2026-09-22T08:59:14.364276+00:00",
       "model": "gemini-3.5-flash",
@@ -1370,6 +1356,48 @@
     },
     {
       "timestamp": "2026-09-29T15:09:58.110559+00:00",
+      "model": "gemini-3.7-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-29T19:52:20.557934+00:00",
+      "model": "gemini-3.6-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-29T19:52:52.660099+00:00",
+      "model": "gemini-3-flash-preview",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-29T19:53:05.996623+00:00",
+      "model": "gemini-3-flash-preview",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-29T19:53:28.050715+00:00",
+      "model": "gemini-3.8-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-29T19:53:50.080423+00:00",
+      "model": "gemini-3.5-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-09-29T19:54:12.119700+00:00",
       "model": "gemini-3.7-flash",
       "kind": "deep_dive",
       "outcome": "error",
