@@ -73,6 +73,7 @@ jobs:
           python -m unittest tests/test_run307_use_decision_member_surface.py
           python -m unittest tests/test_run271_member_body_delta_sync.py
           python -m unittest tests/test_run271_1_member_body_checkpoint.py
+          python -m unittest tests/test_member_monthly_decision_brief_sync.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -112,3 +113,16 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_BODY_CHANGED_SINCE: ${{ env.MEMBER_BODY_CHANGED_SINCE }}
           MEMBER_BODY_FORCE_FULL: ${{ github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
+
+      - name: Refresh paid monthly Decision Brief from the current member DB
+        run: python member_monthly_decision_brief_sync.py
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: ${{ env.NOTION_MEMBER_PRESENTATION_DATABASE_ID }}
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: ${{ env.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID }}
+          MEMBER_MONTHLY_BRIEF_PAGE_ID: '3d0479ff-dca9-81de-b614-fef528d2f32c'
+          MEMBER_MONTHLY_BRIEF_TOP_LIMIT: '5'
+          MEMBER_MONTHLY_BRIEF_CHANGE_LIMIT: '5'
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
