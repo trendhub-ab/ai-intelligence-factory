@@ -286,3 +286,30 @@ def test_v433_observed_candidates_are_excluded():
         "nameWithOwner": "The same bug fix costs 0.4¢ or $2, depending on which coding agent you ask",
         "url": "https://www.ariwilson.com/writing/bakeoff-results/",
     })
+
+
+def test_fresh_canary_uses_current_production_acquisition_breadth():
+    p = SimpleNamespace(
+        GITHUB_FETCH_LIMIT=50,
+        HN_FETCH_LIMIT=50,
+        ARXIV_FETCH_LIMIT=50,
+        OFFICIAL_VENDOR_FETCH_LIMIT=50,
+        MAX_SCREENING_CANDIDATES=200,
+    )
+    limits = daily_canary._production_acquisition_limits(p)
+    assert limits == {
+        "GitHub": 50,
+        "HackerNews": 50,
+        "ArXiv": 50,
+        "OfficialVendor": 50,
+        "max_screening": 200,
+    }
+
+
+def test_fresh_canary_acquisition_limit_fallbacks_remain_bounded():
+    limits = daily_canary._production_acquisition_limits(SimpleNamespace())
+    assert limits["GitHub"] == daily_canary.FALLBACK_FETCH_PER_SOURCE
+    assert limits["HackerNews"] == daily_canary.FALLBACK_FETCH_PER_SOURCE
+    assert limits["ArXiv"] == daily_canary.FALLBACK_FETCH_PER_SOURCE
+    assert limits["OfficialVendor"] == daily_canary.FALLBACK_FETCH_PER_SOURCE
+    assert limits["max_screening"] == daily_canary.FALLBACK_MAX_SCREENING
