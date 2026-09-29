@@ -15,6 +15,7 @@ generation while reserving 3.5 capacity for actual fallback use.
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
@@ -27,6 +28,9 @@ import run178_eyecatch_editorial_layout_optimizer as r178
 EYECATCH_LAYOUT_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash")
 EYECATCH_LAYOUT_MODEL = EYECATCH_LAYOUT_MODELS[0]
 EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = 1400
+EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS = max(
+    5, int(os.environ.get("EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS", "30"))
+)
 TITLE_MIN_FONT = 52
 TITLE_MAX_FONT = 76
 SUB_MIN_FONT = 22
@@ -459,23 +463,33 @@ def _request_layout_plan(
 
     prompt = _layout_prompt(source_title, subheadline)
     logger = getattr(pipeline_module, "logger", None)
+    timeout_guard = getattr(pipeline_module, "_gemini_call_timeout", None)
+    if not callable(timeout_guard):
+        if logger is not None:
+            logger.warning(
+                "[RUN180 EYECATCH LAYOUT FAIL-CLOSED] timeout watchdog unavailable; "
+                "skip provider layout and use deterministic fallback"
+            )
+        return None
+
     for model_name in EYECATCH_LAYOUT_MODELS:
         try:
-            response = pipeline_module._generate_via_chat(
-                model_name,
-                prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": _LAYOUT_RESPONSE_SCHEMA,
-                    "max_output_tokens": EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS,
-                    "thinking_config": {"thinking_level": "minimal"},
-                },
-                request_kind="eyecatch_layout",
-                reserve=0,
-                request_context="public_eyecatch_semantic_title_layout",
-                count_as_deep_dive=False,
-                request_origin="new",
-            )
+            with timeout_guard(EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS):
+                response = pipeline_module._generate_via_chat(
+                    model_name,
+                    prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_json_schema": _LAYOUT_RESPONSE_SCHEMA,
+                        "max_output_tokens": EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS,
+                        "thinking_config": {"thinking_level": "minimal"},
+                    },
+                    request_kind="eyecatch_layout",
+                    reserve=0,
+                    request_context="public_eyecatch_semantic_title_layout",
+                    count_as_deep_dive=False,
+                    request_origin="new",
+                )
             plan = _parse_plan_response(response)
             if _validate_layout_plan(source_title, subheadline, plan) is not None:
                 return plan
@@ -568,6 +582,7 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN180_EYECATCH_LAYOUT_MODEL = EYECATCH_LAYOUT_MODEL
     pipeline_module.RUN180_EYECATCH_LAYOUT_MODELS = EYECATCH_LAYOUT_MODELS
     pipeline_module.RUN180_EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS = EYECATCH_LAYOUT_MAX_OUTPUT_TOKENS
+    pipeline_module.RUN180_EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS = EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS
     pipeline_module.RUN180_EYECATCH_TITLE_MIN_FONT = TITLE_MIN_FONT
     pipeline_module.RUN180_EYECATCH_TITLE_TARGET_MAX_CHARS = EYECATCH_TITLE_TARGET_MAX_CHARS
     pipeline_module.RUN180_EYECATCH_TITLE_HARD_MAX_CHARS = EYECATCH_TITLE_HARD_MAX_CHARS
