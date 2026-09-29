@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 AUDIT_PATH = Path("article_audit/local_skills_daily_canary.json")
-FETCH_PER_SOURCE = 20
-MAX_SCREENING = 60
+FALLBACK_FETCH_PER_SOURCE = 20
+FALLBACK_MAX_SCREENING = 60
 
 # Every record observed by a Local Skills canary is excluded once its result has
 # informed validation or repair. Runs 36207549802 / 36208127057 informed canary
@@ -119,15 +119,27 @@ def _deep_dive_attempt_count(pipeline: Any) -> int:
     return sum(1 for row in records if str(row.get("kind") or "") == "deep_dive")
 
 
-def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
-    groups = {
-        "GitHub": pipeline.fetch_github_trending(FETCH_PER_SOURCE),
-        "HackerNews": pipeline.fetch_hackernews_top(FETCH_PER_SOURCE),
-        "ArXiv": pipeline.fetch_arxiv_ai_ml(FETCH_PER_SOURCE),
-        # Run268 rewrites the retired Product Hunt call slot to OfficialVendor.
-        "ProductHunt": pipeline.fetch_producthunt_trending(FETCH_PER_SOURCE),
+def _production_acquisition_limits(pipeline: Any) -> dict[str, int]:
+    """Mirror current Production acquisition breadth without changing quality policy."""
+    return {
+        "GitHub": int(getattr(pipeline, "GITHUB_FETCH_LIMIT", FALLBACK_FETCH_PER_SOURCE)),
+        "HackerNews": int(getattr(pipeline, "HN_FETCH_LIMIT", FALLBACK_FETCH_PER_SOURCE)),
+        "ArXiv": int(getattr(pipeline, "ARXIV_FETCH_LIMIT", FALLBACK_FETCH_PER_SOURCE)),
+        "OfficialVendor": int(getattr(pipeline, "OFFICIAL_VENDOR_FETCH_LIMIT", FALLBACK_FETCH_PER_SOURCE)),
+        "max_screening": int(getattr(pipeline, "MAX_SCREENING_CANDIDATES", FALLBACK_MAX_SCREENING)),
     }
-    repos = pipeline.round_robin_candidates(groups, MAX_SCREENING)
+
+
+def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
+    limits = _production_acquisition_limits(pipeline)
+    groups = {
+        "GitHub": pipeline.fetch_github_trending(limits["GitHub"]),
+        "HackerNews": pipeline.fetch_hackernews_top(limits["HackerNews"]),
+        "ArXiv": pipeline.fetch_arxiv_ai_ml(limits["ArXiv"]),
+        # Run268 rewrites the retired Product Hunt call slot to OfficialVendor.
+        "ProductHunt": pipeline.fetch_producthunt_trending(limits["OfficialVendor"]),
+    }
+    repos = pipeline.round_robin_candidates(groups, limits["max_screening"])
 
     safe: list[dict] = []
     for repo in repos:
@@ -162,11 +174,13 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
             local_fallback_keys.add(fallback_key)
         deduped.append(repo)
 
-    return deduped[:MAX_SCREENING], {
+    return deduped[:limits["max_screening"]], {
         "collected": len(repos),
         "safe": len(safe),
         "observed_canary_excluded": observed_excluded,
         "fresh_after_dedupe": len(deduped),
+        "production_fetch_limits": {k: v for k, v in limits.items() if k != "max_screening"},
+        "production_max_screening": limits["max_screening"],
     }
 
 
