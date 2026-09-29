@@ -26,6 +26,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from note_manuscript import find_internal_publication_markers
+
 _INSTALLED_ATTR = "_run249_final_publication_surface_gate_installed"
 READER_VALUE_MARKER = "reader_value_review:"
 RUN249_ZERO_PROVIDER_CALLS = True
@@ -247,6 +249,12 @@ def final_surface_issues(
     )
 
     if projection:
+        for marker in find_internal_publication_markers(projection):
+            issues.append(
+                READER_VALUE_MARKER
+                + "final_surface_internal_marker_leak:"
+                + marker
+            )
         for failure in _extra_japanese_surface_failures(projection):
             issues.append(READER_VALUE_MARKER + "final_surface_" + str(failure))
 

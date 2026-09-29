@@ -391,6 +391,14 @@ Fact不足をLocal Writerで埋めない。
 - 誇張された断定
 - 同じ会社員ネタ等のテンプレ使い回し
 
+Human Narrativeは **Source-specific Hook** を優先する。
+
+- 冒頭1〜2段落で一次情報固有の数字、出来事、矛盾、制約、著者の強い問題提起、比喩等へ早く接続する
+- 「私たち」「多くの人」「そんな経験は少なくない」等の一般化された共感だけで導入を作らない
+- オピニオン/エッセイの温度・違和感・ユーモアを全部消して無難な企業向け一般論へ均さない
+- 「こうした背景から」「この現状を踏まえて」「まずは小さく」等の汎用ビジネス作文を複数連鎖させない
+- Source固有のEvidenceと無関係な「ガイドラインを見直す」「評価項目に加える」だけでActionを閉じない
+
 ---
 
 ## 7. Article / Reader / Gate Contract
@@ -424,6 +432,7 @@ Fact不足をLocal Writerで埋めない。
 - public title / body不整合
 - stale policy
 - final surface破損
+- `【ARTICLE】` / `MANAGEMENT DATA` / `NOTE_DRAFT_START/END` 等の内部制御マーカー漏洩
 
 ### 7.2 Reader-first public format
 
@@ -680,6 +689,13 @@ passive `workflow_run` subscribeによる二重writeを正規経路にしない�
 note automationの自動到達点は **private draft**。
 
 Public releaseは人間のみ。
+
+公開本文へ内部生成制御ラベルを出さない。
+
+- Provider promptは記事タイトル直後から本文を開始し、公開用ではない本文開始ラベルを要求しない
+- parser / note normalizationは旧出力互換として既知の内部制御ラベルをdeterministicに除去する
+- Final Publication Surfaceで内部マーカーが1件でも残ればFail-Closed
+- 内部マーカー除去を理由にFact / Evidence / Decision本文を削除しない
 
 ### 11.2 Existing draft repair
 

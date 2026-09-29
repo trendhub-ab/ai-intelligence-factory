@@ -45,6 +45,17 @@ def test_human_narrative_style_encodes_varied_humor_not_a_new_template():
     assert "同じ比喩・会社員ネタ・擬人化を別記事へ使い回さない" in rules
     assert "事実・数値・制約・反証・Decisionを笑いのために弱めない" in rules
     assert "実体験のように見える一人称" in rules
+    assert "Source-specific Hook｜無難なAI作文を避ける" in rules
+    assert "そんな経験は少なくない" in rules
+    assert "無難な企業向け一般論" in rules
+    assert "汎用ビジネス作文を連鎖させない" in rules
+
+
+def test_prompt_does_not_request_public_article_boundary_label(monkeypatch):
+    monkeypatch.setattr(pipeline, "AIIF_EDITORIAL_STYLE", "human_narrative", raising=False)
+    prompt = _prompt()
+    assert "\n【ARTICLE】\n" not in prompt
+    assert "本文開始用の見出し・ラベル・境界語は一切出力しない" in prompt
 
 
 def test_unknown_editorial_style_fails_closed():

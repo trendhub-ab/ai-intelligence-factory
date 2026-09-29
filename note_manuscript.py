@@ -33,9 +33,36 @@ def _fix_bold_boundary_brackets(text: str) -> str:
     return text
 
 
+_INTERNAL_PUBLICATION_MARKER_LINE_RE = re.compile(
+    r"(?mi)^\s*(?:"
+    r"={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}"
+    r"|={2,}\s*MANAGEMENT\s+DATA\s*={0,}"
+    r"|【\s*ARTICLE\s*】"
+    r"|ARTICLE\s*:?"
+    r")\s*$"
+)
+
+
+def find_internal_publication_markers(text: str) -> list[str]:
+    """Return standalone machine-control labels that must never reach readers."""
+    hits = []
+    for line in str(text or "").splitlines():
+        value = line.strip()
+        if value and _INTERNAL_PUBLICATION_MARKER_LINE_RE.fullmatch(value):
+            hits.append(value)
+    return list(dict.fromkeys(hits))
+
+
 def _strip_internal_note_control_lines(text: str) -> tuple[str, int]:
-    cleaned, count = re.subn(r"(?mi)^\s*={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}\s*$\n?", "", text or "")
-    return cleaned.strip(), count
+    lines = str(text or "").splitlines()
+    kept: list[str] = []
+    count = 0
+    for line in lines:
+        if _INTERNAL_PUBLICATION_MARKER_LINE_RE.fullmatch(line.strip()):
+            count += 1
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip(), count
 
 
 def normalize_markdown_for_note(text: str) -> str:

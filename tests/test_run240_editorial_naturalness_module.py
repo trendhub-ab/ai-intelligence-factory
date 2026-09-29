@@ -43,6 +43,30 @@ class Run240EditorialNaturalnessModuleTests(unittest.TestCase):
         self.assertFalse(weak["high"])
         self.assertEqual(weak["score"], 0)
 
+    def test_real_run183_reader_revolt_ai_smell_fixture_is_blocked(self):
+        variants = [{k: f"h-{k}" for k in ("intro", "conclusion", "why", "what", "key", "decision", "final")}]
+        text = (
+            ROOT
+            / "tests"
+            / "fixtures"
+            / "editorial_naturalness"
+            / "the_revolt_of_reader_ai_smell.md"
+        ).read_text(encoding="utf-8")
+        result = en.ai_style_composite_signals(text, variants)
+        self.assertTrue(result["high"], result)
+        self.assertGreaterEqual(result["generic_business_scaffold_count"], 4)
+        self.assertTrue(result["generic_collective_opening"])
+
+    def test_one_natural_business_transition_does_not_trigger_new_detector(self):
+        variants = [{k: f"h-{k}" for k in ("intro", "conclusion", "why", "what", "key", "decision", "final")}]
+        text = (
+            "Pangram 4の検知精度をめぐり、Bryan Cantrillは公開文書の扱いを問題にした。"
+            "こうした背景から、Oxideでは公開文書のポリシーを見直した。"
+        )
+        result = en.ai_style_composite_signals(text, variants)
+        self.assertFalse(result["high"], result)
+        self.assertLess(result["generic_business_scaffold_count"], 4)
+
     def test_shingles_and_jaccard_contract(self):
         a = en.sentence_shingles("これは自然な日本語の文章です。", 5)
         b = en.sentence_shingles("これは自然な日本語の文章です。", 5)
