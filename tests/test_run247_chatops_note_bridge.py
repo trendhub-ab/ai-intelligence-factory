@@ -33,6 +33,23 @@ class Run247ChatOpsNoteBridgeTests(unittest.TestCase):
         self.assertIn("workflow='sgps-existing-draft-repair.yml'", text)
         self.assertIn('"confirm":"REPAIR_SGPS_EXISTING_DRAFT"', text)
 
+    def test_exact_sync_id_eyecatch_and_cover_commands_are_fail_closed(self):
+        text = self.workflow
+        self.assertIn("startsWith(github.event.comment.body, '/aiif note eyecatch finalize ')", text)
+        self.assertIn("startsWith(github.event.comment.body, '/aiif note cover apply ')", text)
+        self.assertIn("grep -Eq '^[0-9a-fA-F]{32}        text = self.workflow
+        self.assertIn('Gemini calls performed by bridge: `0`', text)
+        self.assertIn('Production started: `false`', text)
+        self.assertIn('public note release performed: `false`', text)
+
+
+if __name__ == '__main__':
+    unittest.main()
+", text)
+        self.assertIn("workflow='ready-eyecatch-finalize-once.yml'", text)
+        self.assertIn("workflow='ready-note-cover-apply-once.yml'", text)
+        self.assertIn('"confirm":"RUN_ONCE"', text)
+
     def test_bridge_is_zero_model_and_no_public_release(self):
         text = self.workflow
         self.assertIn('Gemini calls performed by bridge: `0`', text)
