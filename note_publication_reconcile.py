@@ -3,7 +3,8 @@
 
 Publication stays human-only. This job reads the creator's public note RSS feed and,
 only when one exact Ready queue row has one exact public-title match, records the
-public URL/date in the note posting DB and the publication date in Content Intelligence.
+public URL/date in the note posting DB. Content Intelligence's 公開日 remains the
+primary source's publication date and is never rewritten from note RSS.
 
 Safety contract:
 - ZERO Gemini/model calls and ZERO note editor/browser writes.
@@ -11,7 +12,8 @@ Safety contract:
 - Only 品質状態=Ready and 投稿状態=投稿準備中/投稿済み are considered.
 - Existing conflicting URL/date values are never overwritten.
 - Duplicate queue titles or duplicate RSS titles fail closed.
-- Source page ID must equal 同期ID and its note title must match the queue title.
+- Source page ID must equal 同期ID and its note title/status must match the queue row.
+- Content Intelligence 公開日 is source provenance, not note投稿日; reconciliation never mutates it.
 - Re-running is idempotent.
 """
 from __future__ import annotations
@@ -124,23 +126,7 @@ def _source_identity(sync_id: str) -> dict[str, str]:
     return {
         "title": sync._text(p.get("note記事タイトル")) or sync._text(p.get("記事名")),
         "article_status": sync._select(p.get("記事状態")),
-        "published": _date(p.get("公開日")),
     }
-
-
-def _patch_source_publication(sync_id: str, published: str, existing: str) -> bool:
-    if existing and existing != published:
-        raise RuntimeError("source publication date conflicts with RSS")
-    if existing == published:
-        return False
-    response = sync._request(
-        "PATCH",
-        f"https://api.notion.com/v1/pages/{sync_id}",
-        json={"properties": {"公開日": {"date": {"start": published}}}},
-    )
-    if response.status_code != 200:
-        raise RuntimeError(f"source publication update failed: HTTP {response.status_code}")
-    return True
 
 
 def _patch_queue_publication(row: dict[str, str], item: dict[str, str], today: str) -> bool:
@@ -235,14 +221,14 @@ def reconcile_publications(*, today: str | None = None) -> dict[str, Any]:
                     raise RuntimeError("posted queue row is incomplete")
                 if _canonical_public_url(row["raw_public_url"]) != item["url"] or row["published"] != item["published"]:
                     raise RuntimeError("posted queue row conflicts with RSS")
-            source_changed = _patch_source_publication(row["sync_id"], item["published"], source["published"])
             queue_changed = _patch_queue_publication(row, item, today)
         except RuntimeError:
             result["conflict"] += 1
             continue
-        result["source_updates"] += int(source_changed)
+        # Kept for backward-compatible telemetry; source publication provenance is immutable here.
+        result["source_updates"] += 0
         result["queue_updates"] += int(queue_changed)
-        if source_changed or queue_changed:
+        if queue_changed:
             result["reconciled"] += 1
         else:
             result["already_reconciled"] += 1
