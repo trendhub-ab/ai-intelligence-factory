@@ -123,6 +123,8 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - headline相当のtitle_linesは1〜3行。2行を第一選択とし、2行では固有名詞・意味のまとまり・十分な文字サイズを守れない場合のみ3行を使う。必要な場合のみ3行とし、3行は正常なfallbackであり公開不可理由にしない。
 - Noto Sans JP Blackを使う。headlineは52〜76px。760pxを超えない範囲でできるだけ大きくする。
 - 固有名詞・英単語・複合語（例: OpenAI、Polars 2.0、エージェント、生成AI、モデル）を途中で切らない。
+- 日本語の語そのものを文字単位で分断しない。禁止例: 「新し｜い」「管｜理者」「エー｜ジェント」「Chat｜GPT」。
+- 収まらない場合は、語中改行ではなく、3行化または許容範囲内のフォント縮小を優先する。
 - subheadline_linesは入力subheadlineを1文字も変更せず、1〜2行へ分割するだけ。22〜28px。
 - headline行間は8〜18px。
 - 文節、句読点、助詞のまとまりを優先する。行頭に句読点・閉じ括弧・小書き仮名を置かない。行末に開き括弧を置かない。
@@ -226,6 +228,58 @@ def _validate_highlight_text(eyecatch_title: str, title_lines: list[str], value:
     return highlight
 
 
+_SEMANTIC_CHUNK_RE = re.compile(
+    r"[一-龯々〆ヵヶ]+[ぁ-ゖ]*"
+    r"|[ァ-ヺー]+[ぁ-ゖ]*"
+    r"|[A-Za-z0-9]+(?:[._+/\\-][A-Za-z0-9]+)*[ぁ-ゖ]*"
+    r"|[ぁ-ゖ]+"
+    r"|."
+)
+
+
+def _semantic_break_positions(text: str) -> set[int]:
+    """Return safe line-break offsets between conservative Japanese lexical chunks.
+
+    This deliberately prefers false negatives (smaller type / an extra line) over visually
+    broken words. It protects kanji compounds plus okurigana, katakana words, and ASCII
+    product/model tokens without adding a tokenizer dependency to Production.
+    """
+    canonical = r178._canonical_partition_text(text)
+    if not canonical:
+        return set()
+
+    positions: set[int] = set()
+    cursor = 0
+    for match in _SEMANTIC_CHUNK_RE.finditer(canonical):
+        token = match.group(0)
+        if not token:
+            continue
+        cursor += len(token)
+        if cursor < len(canonical):
+            positions.add(cursor)
+    return positions
+
+
+def _semantic_line_breaks_ok(text: str, lines: list[str]) -> bool:
+    """Reject title partitions that split a conservative Japanese/ASCII word chunk."""
+    canonical = r178._canonical_partition_text(text)
+    canonical_lines = [r178._canonical_partition_text(line) for line in lines]
+    if not canonical or not canonical_lines or any(not line for line in canonical_lines):
+        return False
+    if "".join(canonical_lines) != canonical:
+        return False
+    if len(canonical_lines) == 1:
+        return True
+
+    allowed = _semantic_break_positions(canonical)
+    cursor = 0
+    for line in canonical_lines[:-1]:
+        cursor += len(line)
+        if cursor not in allowed:
+            return False
+    return True
+
+
 def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dict[str, Any] | None:
     """Fail closed: title compression is bounded; line layout and geometry stay deterministic."""
     if not isinstance(plan, dict):
@@ -244,6 +298,8 @@ def _validate_layout_plan(source_title: str, subheadline: str, plan: Any) -> dic
     if r178._canonical_partition_text("".join(sub_lines)) != r178._canonical_partition_text(subheadline):
         return None
     if not r178._kinsoku_ok(title_lines) or not r178._kinsoku_ok(sub_lines):
+        return None
+    if not _semantic_line_breaks_ok(eyecatch_title, title_lines):
         return None
 
     try:
@@ -321,6 +377,8 @@ def _fit_complete_title_lines(draw: ImageDraw.ImageDraw, clean: str) -> tuple[in
             if r178._canonical_partition_text("".join(lines)) != canonical:
                 return
             if not r178._kinsoku_ok(lines) or _ascii_token_split(lines):
+                return
+            if not _semantic_line_breaks_ok(clean, lines):
                 return
             widths = [ee._text_width(draw, line, font) for line in lines]
             if any(width > TITLE_MAX_WIDTH for width in widths):
