@@ -14,9 +14,12 @@ from . import publication_canonicalizer
 from . import writer
 from .evidence_boundary import EVIDENCE_BOUNDARY_VERSION, apply_evidence_boundary
 
-CANONICALIZER_BLOB_SHA = "414089a14c238f104b2866507ddf8521c2baf420"
-WRITER_BLOB_SHA = "acc3cf20d337fd7294af8fe660d0b37390e97b1f"
-CANDIDATE_STATUS = "FRESH_CANARY_PASS_AWAITING_BROADER_VALIDATION"
+BASE_FRESH_4_OF_4_WRITER_BLOB_SHA = "204cce30ab838e0d6dac9cbe762d0a82ff02f1aa"
+BASE_FRESH_4_OF_4_CANONICALIZER_BLOB_SHA = "414089a14c238f104b2866507ddf8521c2baf420"
+CANONICALIZER_BLOB_SHA = "93a62ef2311d43dc1cb84fa5affe9d798a133021"
+WRITER_BLOB_SHA = "3a09a3c6df3c8487bb9e871e5608df1ed4460bf5"
+INTEGRATION_VERSION = "v4.3.7-integrated"
+CANDIDATE_STATUS = "INTEGRATED_AWAITING_FRESH_4_OF_4_REVALIDATION"
 
 
 def compile_snapshot(snapshot: Mapping[str, Any], *, evidence_context: str | None = None) -> dict[str, Any]:
@@ -51,6 +54,10 @@ def compile_snapshot(snapshot: Mapping[str, Any], *, evidence_context: str | Non
         "evidence_boundary": evidence_boundary,
         "evidence_boundary_version": EVIDENCE_BOUNDARY_VERSION,
         "canonicalizer_version": canonicalized.get("publication_canonicalizer_version"),
+        "publication_topic_fit_version": canonicalized.get("publication_topic_fit_version", ""),
         "canonicalizer_blob_sha": CANONICALIZER_BLOB_SHA,
         "writer_blob_sha": WRITER_BLOB_SHA,
+        "integration_version": INTEGRATION_VERSION,
+        "base_fresh_4_of_4_writer_blob_sha": BASE_FRESH_4_OF_4_WRITER_BLOB_SHA,
+        "base_fresh_4_of_4_canonicalizer_blob_sha": BASE_FRESH_4_OF_4_CANONICALIZER_BLOB_SHA,
     }
