@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-28T22:44:09.374967+00:00",
+  "updated_at": "2026-09-29T04:50:48.625489+00:00",
   "items": [
     {
       "key": "https://appleinsider.com/articles/26/09/28/metas-new-ai-agent-blatantly-ignores-users-permissions",
@@ -535,6 +535,87 @@
       "deep_dive_priority_score": 75.0
     },
     {
+      "key": "https://arxiv.org/abs/2609.35621",
+      "deferred_at": "2026-09-29T04:50:48.625095+00:00",
+      "expires_at": "2026-11-28T04:50:48.625095+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Cartridges++: KV Cache Compression without Off-Context Derailment",
+        "originalTitle": "Cartridges++: KV Cache Compression without Off-Context Derailment",
+        "displayName": "Cartridges++: KV Cache Compression without Off-Context Derailment",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.35621v1",
+        "description": "Serving long documents to a Large Language Model (LLM) repeatedly is expensive: computations grow with context length, and the memory footprint of the key-value (KV) cache balloons. Compressed KV (CKV) representations aim to mimic the cache of a document and are typically computed once and for all, ahead of inference time. Methods to obtain CKVs range from drop mechanisms that reduce their number of columns, to learned approaches. Among the latter, Cartridges have emerged as a leading compressio",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-28T16:57:36Z",
+        "sourceContext": "Serving long documents to a Large Language Model (LLM) repeatedly is expensive: computations grow with context length, and the memory footprint of the key-value (KV) cache balloons. Compressed KV (CKV) representations aim to mimic the cache of a document and are typically computed once and for all, ahead of inference time. Methods to obtain CKVs range from drop mechanisms that reduce their number of columns, to learned approaches. Among the latter, Cartridges have emerged as a leading compression method, learning compact KV representations through distillation on relevant Q/A pairs. While existing evaluations focus primarily on whether Cartridges and other CKVs yield approximately similar responses to document-related, on-context queries, we investigate the crucial deployment question of whether they can handle off-context queries, something the native KV representation is particularly good at, thanks to the mechanics of attention. We observe a fundamental trade-off: while Cartridges perform better for on-context queries, heuristic-variants preserve better the original LLM's ability to operate off-context. We measure this through their capability to avoid context contamination in their response, retain general knowledge, and follow instructions. We propose Cartridges++, simple modifications to cartridges that retain off-context abilities at small or negligible cost. The router variant decides at inference time whether the query should use the learned long-context memory, while the data-mixing variant allocates a small fraction of training Q/As to queries outside the reference long document. Our study shows that assessing CKVs on document utility alone can mask substantial degradation in broader model capabilities, yet those issues can be fixed with benign changes to CKV inference or training.",
+        "primaryUrl": "https://arxiv.org/abs/2609.35621v1",
+        "sourceDetails": {
+          "authors": [
+            "Sonia Laguna",
+            "Joao Monteiro",
+            "Marco Cuturi",
+            "Pierre Ablin",
+            "Eleonora Gualdoni"
+          ],
+          "categories": [
+            "cs.LG"
+          ]
+        }
+      },
+      "notion_page_id": "3ea479ff-dca9-817a-98fe-ed0b2461b746",
+      "score": 76,
+      "reason": "長文コンテキスト対応のためのKVキャッシュ圧縮手法",
+      "commercial_score": 72,
+      "shelf_life_score": 82,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 74.6
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.35645",
+      "deferred_at": "2026-09-29T04:50:48.625415+00:00",
+      "expires_at": "2026-11-28T04:50:48.625415+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "CoSE-E: A Benchmark for Code-switched Speech Evaluation in Enterprise Settings",
+        "originalTitle": "CoSE-E: A Benchmark for Code-switched Speech Evaluation in Enterprise Settings",
+        "displayName": "CoSE-E: A Benchmark for Code-switched Speech Evaluation in Enterprise Settings",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.35645v1",
+        "description": "Code-switching (CS), a seamless alternation between languages within a single utterance, remains a critical challenge in automatic speech recognition (ASR). While prior works focus on conversational CS-ASR, enterprise settings demand evaluation of operational impact beyond edit-distance errors: how code-switching transcription errors propagate to downstream voice agent task failures. In this work, we propose (1) a CS-ASR synthetic benchmark and multidimensional evaluation framework tailored to e",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-28T17:14:11Z",
+        "sourceContext": "Code-switching (CS), a seamless alternation between languages within a single utterance, remains a critical challenge in automatic speech recognition (ASR). While prior works focus on conversational CS-ASR, enterprise settings demand evaluation of operational impact beyond edit-distance errors: how code-switching transcription errors propagate to downstream voice agent task failures. In this work, we propose (1) a CS-ASR synthetic benchmark and multidimensional evaluation framework tailored to enterprise domains, (2) systematic evaluation of frontier ASR systems across 5 language pairs, (3) diagnostic analysis of the additional transcription errors that code-switching introduces across language pairs and models. We release COSE-E to support enterprise-focused CSASR evaluation for multilingual voice agents in enterprise deployment.",
+        "primaryUrl": "https://arxiv.org/abs/2609.35645v1",
+        "sourceDetails": {
+          "authors": [
+            "Shama Gupta",
+            "Hoang H Nguyen",
+            "Chelsea Huang",
+            "Lindsay Devon Brin",
+            "Fanny Riols"
+          ],
+          "categories": [
+            "cs.SD",
+            "cs.CL",
+            "cs.LG",
+            "eess.AS"
+          ]
+        }
+      },
+      "notion_page_id": "3ea479ff-dca9-8120-b266-e6590cb167eb",
+      "score": 74,
+      "reason": "音声認識の誤り伝播評価手法を網羅的に提案",
+      "commercial_score": 75,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 74.35
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49870423",
       "deferred_at": "2026-09-28T13:56:39.215258+00:00",
       "expires_at": "2026-09-30T13:56:39.215258+00:00",
@@ -676,43 +757,6 @@
       "reason": "ローカルエージェント管理の実用的なツール",
       "commercial_score": 70,
       "shelf_life_score": 65,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 73.25
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49712305",
-      "deferred_at": "2026-09-15T22:15:41.123756+00:00",
-      "expires_at": "2026-09-29T22:15:41.123756+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "I asked Claude to build an OS from scratch. A few days later it runs on a laptop",
-        "originalTitle": "I asked Claude to build an OS from scratch. A few days later it runs on a laptop",
-        "displayName": "I asked Claude to build an OS from scratch. A few days later it runs on a laptop",
-        "sourceLanguage": "en",
-        "url": "https://www.reddit.com/r/ClaudeAI/comments/1wfpydl/i_asked_claude_to_build_an_operating_system_from/",
-        "description": "I asked Claude to build an OS from scratch. A few days later it runs on a laptop",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-15T13:33:20Z",
-        "sourceContext": "HN points=4 comments=1 matched_query=Claude",
-        "primaryUrl": "https://www.reddit.com/r/ClaudeAI/comments/1wfpydl/i_asked_claude_to_build_an_operating_system_from/",
-        "sourceDetails": {
-          "hn_id": "49712305",
-          "hn_url": "https://news.ycombinator.com/item?id=49712305",
-          "external_url": "https://www.reddit.com/r/ClaudeAI/comments/1wfpydl/i_asked_claude_to_build_an_operating_system_from/",
-          "comments": 1,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-81f5-b77b-ed78dc975f35",
-      "score": 75,
-      "reason": "Claudeを用いてゼロからOSを構築した実験的な事例の共有。",
-      "commercial_score": 70,
-      "shelf_life_score": 45,
       "shelf_life": "TREND",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 73.25
