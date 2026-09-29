@@ -53,6 +53,30 @@ def ai_style_composite_signals(text: str, article_display_variants: list[dict]) 
     glue_total = sum(glue_counts.values())
     repeated_glue = max(glue_counts.values(), default=0) >= 2
 
+    # Run638 incident class: fluent but generic "business essay" scaffolding can evade
+    # the older detector because it avoids obvious glue words and repetitive headings.
+    # Require a cluster of independent habits so one natural transition never fails an article.
+    generic_business_scaffold_patterns = {
+        "collective_inner_state": r"(?:私たち|読者|人(?:は|が)).{0,28}(?:無意識|つい|思わず|自然と)",
+        "generic_shared_experience": r"(?:そんな|こうした|同じような).{0,45}経験.{0,30}(?:少なくない|多い|あるだろう|あるはず)",
+        "background_transition": r"(?:こうした|そのような)背景から",
+        "broad_technology_transition": r"(?:技術|ツール|AI).{0,35}どれほど.{0,24}(?:ても|であっても)",
+        "generic_self_frame": r"(?:私なら|私であれば)[、,]?(?:この|こうした|その).{0,35}(?:踏まえ|考え)",
+        "not_everything_now": r"今すぐ.{0,55}(?:必要はない|する必要はない)(?:が|ものの|。)",
+        "small_start_close": r"まずは.{0,70}(?:小さく|できるところから).{0,30}(?:始めたい|始める|始めるのがよい)",
+        "grand_crossroads": r"(?:大きな岐路に立たされ|大きな転換点に立たされ)",
+    }
+    generic_business_scaffold_hits = {
+        name: bool(re.search(pattern, prose))
+        for name, pattern in generic_business_scaffold_patterns.items()
+    }
+    generic_business_scaffold_count = sum(generic_business_scaffold_hits.values())
+    opening = prose[:700]
+    generic_collective_opening = bool(
+        re.search(generic_business_scaffold_patterns["collective_inner_state"], opening)
+        and re.search(generic_business_scaffold_patterns["generic_shared_experience"], opening)
+    )
+
     point_ending_count = len(re.findall(r"という点(?:です|だ)[。！？]", prose))
     contrast_count = len(re.findall(r"[^。！？\n]{1,70}ではありません[。！？][^。！？\n]{1,70}(?:です|なのです)[。！？]", prose))
     enum_count = len(re.findall(r"(?:ひとつは|一つは|もうひとつは|もう一つは|理由は[二三23]つ|ポイントは[二三23]つ)", prose))
@@ -146,6 +170,8 @@ def ai_style_composite_signals(text: str, article_display_variants: list[dict]) 
     if generic_heading_hits >= 4: score += 2
     if short_burst: score += 1
     if uniform_sections: score += 1
+    if generic_business_scaffold_count >= 4: score += 4
+    if generic_collective_opening: score += 2
     if editorial_register_dense and editorial_register_companion: score += 5
 
     return {
@@ -160,6 +186,9 @@ def ai_style_composite_signals(text: str, article_display_variants: list[dict]) 
         "generic_heading_hits": generic_heading_hits,
         "short_burst": short_burst,
         "uniform_sections": uniform_sections,
+        "generic_business_scaffold_count": generic_business_scaffold_count,
+        "generic_business_scaffold_hits": generic_business_scaffold_hits,
+        "generic_collective_opening": generic_collective_opening,
         "editorial_register_count": editorial_register_count,
         "editorial_register_distinct": len(editorial_register_hits),
         "editorial_register_per_1000": editorial_register_per_1000,
