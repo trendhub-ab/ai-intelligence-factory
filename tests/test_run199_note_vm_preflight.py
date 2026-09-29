@@ -42,6 +42,41 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
             run194,
             "_prepare_article",
             side_effect=base.NoteDraftError("Requested sync_id is not exactly one Ready / 投稿待ち article"),
+        ), patch.object(
+            run199.base.ready_sync,
+            "classify_exact_delivery_state",
+            return_value="not_queued",
+        ):
+            with self.assertRaises(base.NoteDraftError):
+                run199.preflight(sid)
+
+    def test_explicit_already_delivered_sync_id_is_successful_noop(self) -> None:
+        sid = "c" * 32
+        with patch.object(
+            run194,
+            "_prepare_article",
+            side_effect=base.NoteDraftError("Requested sync_id is not exactly one Ready / 投稿待ち article"),
+        ), patch.object(
+            run199.base.ready_sync,
+            "classify_exact_delivery_state",
+            return_value="already_delivered",
+        ):
+            result = run199.preflight(sid)
+        self.assertEqual("already_delivered", result["status"])
+        self.assertFalse(result["should_start_vm"])
+        self.assertEqual(sid, result["selected_sync_id"])
+        self.assertTrue(result["zero_gemini_calls"])
+
+    def test_explicit_human_blocked_sync_id_remains_fail_closed(self) -> None:
+        sid = "d" * 32
+        with patch.object(
+            run194,
+            "_prepare_article",
+            side_effect=base.NoteDraftError("Requested sync_id is not exactly one Ready / 投稿待ち article"),
+        ), patch.object(
+            run199.base.ready_sync,
+            "classify_exact_delivery_state",
+            return_value="human_blocked",
         ):
             with self.assertRaises(base.NoteDraftError):
                 run199.preflight(sid)
