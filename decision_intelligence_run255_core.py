@@ -21,6 +21,7 @@ from difflib import SequenceMatcher
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
+from source_document_parsing import github_repo_name_from_url as _trusted_github_repo_from_url
 
 logger = logging.getLogger(__name__)
 
@@ -332,18 +333,8 @@ def _extract_arxiv_id(url: str) -> str:
 
 
 def _github_repo_from_url(url: str) -> str:
-    p = urlparse(url or "")
-    if p.netloc.lower() not in {"github.com", "www.github.com"}:
-        return ""
-    parts = [x for x in p.path.split("/") if x]
-    if len(parts) < 2:
-        return ""
-    owner, repo = parts[0], parts[1]
-    if owner.lower() in {"features", "topics", "orgs", "marketplace", "settings"}:
-        return ""
-    if repo.endswith(".git"):
-        repo = repo[:-4]
-    return f"{owner}/{repo}" if owner and repo else ""
+    """Use the shared, stricter GitHub repository parser for Entity Resolution."""
+    return _trusted_github_repo_from_url(url)
 
 
 def _stable_legacy_id(seed: str) -> str:
@@ -371,8 +362,18 @@ def resolve_canonical_entity_id(repo: dict, source_info: dict | None = None) -> 
     ):
         if isinstance(value, str) and value.strip():
             raw_urls.append(value.strip())
+    # Evidence URLs are not identity claims by default. Only Evidence that has
+    # already passed deterministic entity binding may contribute an alias here.
+    # This prevents an UNBOUND repository/doc from hijacking the Technology ID.
+    trusted_bindings = {"IDENTITY_ANCHOR", "OFFICIAL_METADATA", "SAME_PRIMARY_SITE", "LEGACY_RESOLVED_PRIMARY", "CLAIM_BOUND"}
     for row in source_info.get("evidence_documents", []) or []:
-        value = (row or {}).get("url")
+        row = row or {}
+        if row.get("decision_eligible") is not True:
+            continue
+        binding = str(row.get("entity_binding") or "").upper()
+        if binding not in trusted_bindings:
+            continue
+        value = row.get("url")
         if isinstance(value, str) and value.strip():
             raw_urls.append(value.strip())
     aliases = tuple(dict.fromkeys(canonicalize_identity_url(x) for x in raw_urls if canonicalize_identity_url(x)))
