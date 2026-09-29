@@ -242,19 +242,26 @@ def _semantic_break_positions(text: str) -> set[int]:
 
     This deliberately prefers false negatives (smaller type / an extra line) over visually
     broken words. It protects kanji compounds plus okurigana, katakana words, and ASCII
-    product/model tokens without adding a tokenizer dependency to Production.
+    product/model tokens without adding a tokenizer dependency to Production. Whitespace
+    remains an explicit safe boundary even though partition comparison later ignores it.
     """
-    canonical = r178._canonical_partition_text(text)
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    canonical = r178._canonical_partition_text(normalized)
     if not canonical:
         return set()
 
     positions: set[int] = set()
     cursor = 0
-    for match in _SEMANTIC_CHUNK_RE.finditer(canonical):
+    for match in _SEMANTIC_CHUNK_RE.finditer(normalized):
         token = match.group(0)
         if not token:
             continue
-        cursor += len(token)
+        piece = r178._canonical_partition_text(token)
+        if not piece:
+            if 0 < cursor < len(canonical):
+                positions.add(cursor)
+            continue
+        cursor += len(piece)
         if cursor < len(canonical):
             positions.add(cursor)
     return positions
@@ -271,7 +278,7 @@ def _semantic_line_breaks_ok(text: str, lines: list[str]) -> bool:
     if len(canonical_lines) == 1:
         return True
 
-    allowed = _semantic_break_positions(canonical)
+    allowed = _semantic_break_positions(text)
     cursor = 0
     for line in canonical_lines[:-1]:
         cursor += len(line)
