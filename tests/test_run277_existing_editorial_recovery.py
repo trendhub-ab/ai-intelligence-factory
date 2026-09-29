@@ -175,6 +175,45 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
         self.assertEqual((generated, rank), (0, 1))
         pipeline.generate_intelligence_report.assert_called_once()
 
+    def test_stale_ready_already_delivered_is_skipped_before_provider(self):
+        sid = "a" * 32
+        rows = [_row(sid, "stale-ready-delivered")]
+        statuses = {sid: ("Ready", "Deep Dive")}
+        pipeline, calls = _pipeline(rows, statuses)
+        pipeline._notion_page_has_manuscript_child = lambda page_id, headers: False
+        with mock.patch.object(article_revalidation.ready_sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             mock.patch.object(
+                 article_revalidation.ready_sync,
+                 "classify_exact_delivery_state",
+                 return_value="already_delivered",
+             ):
+            generated, rank = article_revalidation.run_existing_editorial_recovery(
+                pipeline, generated_count=0, next_candidate_rank=0
+            )
+        self.assertEqual((generated, rank), (0, 0))
+        self.assertEqual(calls, [])
+
+    def test_stale_ready_waiting_can_recover_and_persist(self):
+        sid = "b" * 32
+        rows = [_row(sid, "stale-ready-waiting")]
+        statuses = {sid: ("Ready", "Deep Dive")}
+        pipeline, calls = _pipeline(rows, statuses)
+        pipeline._notion_page_has_manuscript_child = lambda page_id, headers: False
+        with mock.patch.object(article_revalidation.ready_sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             mock.patch.object(
+                 article_revalidation.ready_sync,
+                 "classify_exact_delivery_state",
+                 return_value="waiting",
+             ):
+            generated, rank = article_revalidation.run_existing_editorial_recovery(
+                pipeline, generated_count=0, next_candidate_rank=0
+            )
+        self.assertEqual((generated, rank), (1, 1))
+        self.assertEqual(len(calls), 1)
+        _repo_value, kwargs = calls[0]
+        self.assertEqual(kwargs["candidate_origin"], "existing_stale_ready_recovery")
+        self.assertTrue(kwargs["persist_results"])
+
     def test_install_wrapper_preserves_backlog_first_then_recovery_order(self):
         events = []
 
