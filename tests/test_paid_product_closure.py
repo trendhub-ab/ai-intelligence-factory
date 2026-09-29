@@ -6,11 +6,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PaidProductClosureContractTests(unittest.TestCase):
-    def test_full_daily_restores_bounded_product_review_without_affecting_validation_modes(self):
+    def test_full_daily_keeps_product_review_in_one_dedicated_portfolio_pass(self):
         text = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
-        self.assertIn("PRODUCT_REVIEW_MAX_PER_RUN: ${{ inputs.mode == 'full' && '2' || '0' }}", text)
-        self.assertIn("LEGACY_BOOTSTRAP_MAX_PER_RUN: ${{ inputs.mode == 'full' && '1' || '0' }}", text)
-        self.assertIn('GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET: "3"', text)
+        self.assertIn('PRODUCT_REVIEW_MAX_PER_RUN: "0"', text)
+        self.assertIn('LEGACY_BOOTSTRAP_MAX_PER_RUN: "0"', text)
+        self.assertIn("- name: Portfolio-aware Product Review", text)
+        self.assertIn('DAILY_PORTFOLIO_REVIEW_MAX: "2"', text)
+        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', text)
+        self.assertIn("run: python daily_portfolio_review.py", text)
 
     def test_full_daily_reconciles_prior_human_publication_without_publishing(self):
         text = (ROOT / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
