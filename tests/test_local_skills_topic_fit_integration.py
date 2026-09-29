@@ -47,6 +47,8 @@ def test_historical_topic_stays_out_of_adoption_and_poc_framing():
         "試すならここまで",
         "本番へ急がない理由",
         "小さな検証",
+        "採用",
+        "導入",
     ):
         assert forbidden not in article
 
