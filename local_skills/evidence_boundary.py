@@ -280,14 +280,14 @@ def _remove_span_with_delimiter(text: str, start: int, end: int) -> str:
     return out.strip()
 
 
-_GENERIC_COUNT_RE = re.compile(rf"(?<![\\d.])(?P<number>{_NUMBER})\\s*件(?![A-Za-z0-9_])")
+_GENERIC_COUNT_RE = re.compile(rf"(?<![\d.])(?P<number>{_NUMBER})\s*件(?![A-Za-z0-9_])")
 
 
 def _sentence_span(text: str, start: int, end: int) -> tuple[int, int]:
     """Return the containing sentence span, including one trailing terminator when present."""
-    left_candidates = [text.rfind(ch, 0, start) for ch in ("。", "！", "？", "!", "?", "\\n")]
+    left_candidates = [text.rfind(ch, 0, start) for ch in ("。", "！", "？", "!", "?", "\n")]
     left = max(left_candidates) + 1
-    right_candidates = [pos for ch in ("。", "！", "？", "!", "?", "\\n") if (pos := text.find(ch, end)) >= 0]
+    right_candidates = [pos for ch in ("。", "！", "？", "!", "?", "\n") if (pos := text.find(ch, end)) >= 0]
     if right_candidates:
         right = min(right_candidates) + 1
     else:
