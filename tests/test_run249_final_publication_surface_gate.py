@@ -105,6 +105,22 @@ class Run249FinalPublicationSurfaceGateTests(unittest.TestCase):
         self.assertEqual(state, 'ACCEPTABLE')
         self.assertEqual(issues, [])
 
+    def test_internal_article_marker_is_blocked_on_final_public_surface(self):
+        pipeline = _pipeline()
+        r249.install(pipeline)
+        state, issues = pipeline.validate_human_appeal_gate(
+            {
+                'title_text': 'AI文章の読み手を考える。',
+                'note_draft': '【ARTICLE】\n\n本文です。',
+            },
+            [],
+        )
+        self.assertEqual(state, 'WEAK')
+        self.assertTrue(
+            any('final_surface_internal_marker_leak:【ARTICLE】' in issue for issue in issues),
+            issues,
+        )
+
     def test_disclaimer_is_separated_from_supplemental_evidence_link(self):
         broken = (
             '### 補助Evidence\n\n'
