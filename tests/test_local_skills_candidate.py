@@ -88,7 +88,7 @@ def test_compiler_preserves_evidence_surface_and_numeric_lexemes():
     assert result["status"] == CANDIDATE_STATUS
     assert result["canonicalizer_version"] == "stage6-v4"
     assert result["publication_topic_fit_version"] == "local-v1"
-    assert result["integration_version"] == "v4.3.7-integrated"
+    assert result["integration_version"] == "v4.3.8-integrated"
     assert result["base_fresh_4_of_4_writer_blob_sha"] == "204cce30ab838e0d6dac9cbe762d0a82ff02f1aa"
     assert result["original_snapshot"] == original
     assert result["original_snapshot"] is not original
@@ -148,7 +148,7 @@ def test_evidence_boundary_removes_derived_currency_but_keeps_supported_latency(
     assert "0.30秒" in bounded
     assert "0.02" not in bounded
     assert "約0.02円" not in result["parsed"]["note_draft"]
-    assert result["evidence_boundary_version"] == "stage9-v4"
+    assert result["evidence_boundary_version"] == "stage10-v4"
     assert result["evidence_boundary"]["removed_count"] == 1
     assert result["evidence_boundary"]["removed_unsupported_numeric_claims"] == [
         {"field": "decision_reason", "claim": "約0.02円"}
@@ -308,3 +308,57 @@ def test_writer_cockpit_case_has_product_label_and_reader_accessibility():
     assert signals["reader_enjoyment"] == "GOOD"
     assert signals["jargon_translation"] == "GOOD"
     assert signals["non_engineer_core_clarity"] == "GOOD"
+
+
+def test_evidence_boundary_removes_unsupported_generic_counts_before_fact_gate():
+    snapshot = _snapshot()
+    snapshot["decision_reason"] = (
+        "コードレビューでは4件の重大な問題と6件の追加指摘を検出したと評価されています。"
+    )
+    result = compile_snapshot(
+        snapshot,
+        evidence_context=(
+            "The benchmark measured 7x on the fixed workload. "
+            "The review discusses code quality findings, but the primary source does not "
+            "state four major issues or six additional findings."
+        ),
+    )
+
+    bounded = result["canonicalized_snapshot"]["decision_reason"]
+    article = result["parsed"]["note_draft"]
+    assert "4件" not in bounded
+    assert "6件" not in bounded
+    assert "4件" not in article
+    assert "6件" not in article
+    assert bounded == "判断理由は、一次情報で確認できる事実と未確認部分を分けて扱います。"
+    assert result["evidence_boundary"]["removed_unsupported_numeric_claims"] == [
+        {"field": "decision_reason", "claim": "4件"},
+        {"field": "decision_reason", "claim": "6件"},
+    ]
+
+
+def test_evidence_boundary_keeps_supported_generic_count_with_matching_entity_semantics():
+    snapshot = _snapshot()
+    snapshot["what"] = "不審なパッケージを2,000件確認した調査です。"
+    result = compile_snapshot(
+        snapshot,
+        evidence_context="Researchers observed 2,000 suspicious packages in the study.",
+    )
+
+    assert "2,000件" in result["canonicalized_snapshot"]["what"]
+    assert not any(
+        row["claim"] == "2,000件"
+        for row in result["evidence_boundary"]["removed_unsupported_numeric_claims"]
+    )
+
+
+def test_evidence_boundary_rejects_same_count_when_evidence_entity_differs():
+    snapshot = _snapshot()
+    snapshot["what"] = "不審なパッケージを2,000件確認した調査です。"
+    result = compile_snapshot(
+        snapshot,
+        evidence_context="The report mentions 2,000 users and 14 suspicious packages.",
+    )
+
+    assert "2,000件" not in result["canonicalized_snapshot"]["what"]
+    assert {"field": "what", "claim": "2,000件"} in result["evidence_boundary"]["removed_unsupported_numeric_claims"]
