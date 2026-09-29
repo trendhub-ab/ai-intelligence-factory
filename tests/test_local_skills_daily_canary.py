@@ -79,8 +79,8 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     ]
     assert meta["writer_blob_sha"] == "51eaf021f3492fe87a24c2cfb75e7ccb86ae11e8"
     assert meta["canonicalizer_blob_sha"] == "93a62ef2311d43dc1cb84fa5affe9d798a133021"
-    assert meta["evidence_boundary_version"] == "stage9-v4"
-    assert meta["integration_version"] == "v4.3.7-integrated"
+    assert meta["evidence_boundary_version"] == "stage10-v4"
+    assert meta["integration_version"] == "v4.3.8-integrated"
     assert meta["publication_topic_fit_version"] == "local-v1"
     assert meta["removed_unsupported_numeric_claims"] == 0
 
