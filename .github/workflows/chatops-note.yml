@@ -44,7 +44,9 @@ jobs:
        github.event.comment.body == '/aiif note onboarding update' ||
        github.event.comment.body == '/aiif note profile update' ||
        github.event.comment.body == '/aiif note repair sgps' ||
-       github.event.comment.body == '/aiif note repair vtcode')
+       github.event.comment.body == '/aiif note repair vtcode' ||
+       startsWith(github.event.comment.body, '/aiif note eyecatch finalize ') ||
+       startsWith(github.event.comment.body, '/aiif note cover apply '))
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -75,8 +77,188 @@ jobs:
             '/aiif note profile update') action='profile_update' ;;
             '/aiif note repair sgps') action='sgps_repair' ;;
             '/aiif note repair vtcode') action='vtcode_repair' ;;
+            '/aiif note eyecatch finalize '*)
+              action='eyecatch_finalize'
+              sync_id="${COMMAND#'/aiif note eyecatch finalize '}"
+              ;;
+            '/aiif note cover apply '*)
+              action='cover_apply'
+              sync_id="${COMMAND#'/aiif note cover apply '}"
+              ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
+          if [ "${action}" = 'eyecatch_finalize' ] || [ "${action}" = 'cover_apply' ]; then
+            if ! printf '%s' "${sync_id:-}" | grep -Eq '^[0-9a-fA-F]{32}
+
+      - name: Dispatch existing Note workflow exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ steps.auth.outputs.action }}
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            sync)
+              workflow='note-ready-sync.yml'
+              payload='{"ref":"main"}'
+              ;;
+            draft)
+              workflow='note-create-draft.yml'
+              payload='{"ref":"main","inputs":{"confirm":"CREATE_NOTE_DRAFT","sync_id":"","prepare_only":"false"}}'
+              ;;
+            vtcode_draft)
+              workflow='note-ready-sync.yml'
+              payload='{"ref":"main","inputs":{"create_private_draft":"true","target_sync_id":"3d4479ffdca981a2880bf46d5c02403d"}}'
+              ;;
+            openai2015_audit)
+              workflow='note-private-draft-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3e8479ffdca9812e9661f337a84b1df4"}}'
+              ;;
+            lp_audit)
+              workflow='note-public-lp-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP","stage":"editor"}}'
+              ;;
+            lp_publish_audit)
+              workflow='note-public-lp-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_LP","stage":"publish_settings"}}'
+              ;;
+            lp_update)
+              workflow='note-public-lp-update.yml'
+              payload='{"ref":"main","inputs":{"confirm":"UPDATE_PUBLIC_LP_NED673E381EF8"}}'
+              ;;
+            lp_reconcile)
+              workflow='note-public-lp-reconcile.yml'
+              payload='{"ref":"main","inputs":{"confirm":"RECONCILE_PUBLIC_LP_NED673E381EF8_SHA3E356937"}}'
+              ;;
+            onboarding_audit)
+              workflow='note-member-onboarding-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_MEMBER_ONBOARDING_N284E428C80F4","stage":"publish_settings"}}'
+              ;;
+            onboarding_public_audit)
+              workflow='note-member-onboarding-public-audit.yml'
+              payload='{"ref":"main","inputs":{"confirm":"AUDIT_PUBLIC_MEMBER_ONBOARDING_N284E428C80F4_SHAAAB9E57B_LOGGED_OUT"}}'
+              ;;
+            onboarding_probe)
+              workflow='note-member-onboarding-finalize-probe.yml'
+              payload='{"ref":"main","inputs":{"confirm":"PROBE_MEMBER_ONBOARDING_FINALIZE_N284E428C80F4"}}'
+              ;;
+            onboarding_server_save)
+              workflow='note-member-onboarding-server-save.yml'
+              payload='{"ref":"main","inputs":{"confirm":"SAVE_MEMBER_ONBOARDING_SERVER_N284E428C80F4_SHA4826AABC"}}'
+              ;;
+            onboarding_publish_probe)
+              workflow='note-member-onboarding-publish-cta-probe.yml'
+              payload='{"ref":"main","inputs":{"confirm":"PROBE_MEMBER_ONBOARDING_PUBLISH_CTA_N284E428C80F4_SHAAAB9E57B"}}'
+              ;;
+            onboarding_edit_route_probe)
+              workflow='note-member-onboarding-official-edit-route-probe.yml'
+              payload='{"ref":"main","inputs":{"confirm":"PROBE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B"}}'
+              ;;
+            onboarding_trial_read_probe)
+              workflow='note-member-onboarding-trial-read-surface-probe.yml'
+              payload='{"ref":"main","inputs":{"confirm":"PROBE_MEMBER_ONBOARDING_TRIAL_READ_SURFACE_N284E428C80F4_SHAAAB9E57B"}}'
+              ;;
+            onboarding_update)
+              workflow='note-member-onboarding-update.yml'
+              payload='{"ref":"main","inputs":{"confirm":"FINALIZE_MEMBER_ONBOARDING_N284E428C80F4_SHAAAB9E57B_KEEP_MEMBERS_ONLY"}}'
+              ;;
+            profile_update)
+              workflow='note-profile-update.yml'
+              payload='{"ref":"main","inputs":{"confirm":"UPDATE_NOTE_PROFILE_TRENDHUB_BIZ_RUN330_EXACT_BIOGRAPHY"}}'
+              ;;
+            sgps_repair)
+              workflow='sgps-existing-draft-repair.yml'
+              payload='{"ref":"main","inputs":{"confirm":"REPAIR_SGPS_EXISTING_DRAFT"}}'
+              ;;
+            vtcode_repair)
+              workflow='vtcode-existing-draft-repair.yml'
+              payload='{"ref":"main","inputs":{"confirm":"REPAIR_VTCODE_EXISTING_DRAFT"}}'
+              ;;
+            eyecatch_finalize)
+              workflow='ready-eyecatch-finalize-once.yml'
+              payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$SYNC_ID")"
+              ;;
+            cover_apply)
+              workflow='ready-note-cover-apply-once.yml'
+              payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$SYNC_ID")"
+              ;;
+            *)
+              echo '::error::Refusing unknown action'
+              exit 1
+              ;;
+          esac
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/dispatches" \
+            --input -
+
+      - name: Record safe dispatch
+        env:
+          ACTION: ${{ steps.auth.outputs.action }}
+        run: |
+          {
+            echo '### AIIF ChatOps Note Bridge'
+            echo '- control issue: `#71`'
+            echo "- action: \`$ACTION\`"
+            echo '- target branch: `main`'
+            echo '- Gemini calls performed by bridge: `0`'
+            echo '- Production started: `false`'
+            echo '- public note release performed: `false`'
+            case "$ACTION" in
+              lp_update)
+                echo '- explicit maintenance mutation authorized: `fixed LP ned673e381ef8 only`'
+                ;;
+              lp_reconcile)
+                echo '- explicit maintenance mutation authorized: `fixed LP ned673e381ef8 exact audited SHA, two text corrections only`'
+                ;;
+              onboarding_public_audit)
+                echo '- explicit maintenance mutation authorized: `false; exact n284e428c80f4 logged-out public surface read only, zero clicks`'
+                ;;
+              onboarding_probe)
+                echo '- explicit maintenance mutation authorized: `unsaved membership selection on n284e428c80f4 for final-CTA inventory; no final commit`'
+                ;;
+              onboarding_server_save)
+                echo '- explicit maintenance mutation authorized: `n284e428c80f4 server-save proof only; exact temporary save plus fresh cookie-only verification; no public release`'
+                ;;
+              onboarding_publish_probe)
+                echo '- explicit maintenance mutation authorized: `false; clean cookie-only publish-CTA inventory only; no settings/member/public mutation`'
+                ;;
+              onboarding_edit_route_probe)
+                echo '- explicit maintenance mutation authorized: `false; official article-list edit navigation and publish-CTA inventory only; no final commit`'
+                ;;
+              onboarding_trial_read_probe)
+                echo '- explicit maintenance mutation authorized: `false; open trial-read setup only for n284e428c80f4; no line selection and no final commit`'
+                ;;
+              onboarding_update)
+                echo '- explicit maintenance mutation authorized: `n284e428c80f4 exact latest SHA only; open trial-read bridge, keep no trial line, click one exact update, preserve AI Decision Intelligence membership`'
+                ;;
+              profile_update)
+                echo '- explicit maintenance mutation authorized: `trendhub_biz exact editBiography field only; one exact save; all other settings invariant; Run329 direct route`'
+                ;;
+              sgps_repair)
+                echo '- explicit maintenance mutation authorized: `exact existing SGPS private draft only; same edit route; title/body overwrite; no new draft; no public release`'
+                ;;
+              vtcode_repair)
+                echo '- exact existing VT Code private draft only; same edit route; title/body/eyecatch overwrite; no new draft; no public release'
+                ;;
+              eyecatch_finalize)
+                echo "- exact Ready eyecatch finalize authorized for sync_id: `$SYNC_ID`; source body/title unchanged; no note mutation; no public release"
+                ;;
+              cover_apply)
+                echo "- exact existing private draft cover-only apply authorized for sync_id: `$SYNC_ID`; title/body unchanged; no new draft; no public release"
+                ;;
+              *)
+                echo '- explicit maintenance mutation authorized: `false`'
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+; then
+              echo '::error::Exact 32-hex sync_id is required'
+              exit 1
+            fi
+            printf 'sync_id=%s\n' "${sync_id,,}" >> "$GITHUB_OUTPUT"
+          fi
           echo "action=$action" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch existing Note workflow exactly once
