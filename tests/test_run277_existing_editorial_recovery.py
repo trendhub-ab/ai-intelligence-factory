@@ -181,12 +181,11 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
         statuses = {sid: ("Ready", "Deep Dive")}
         pipeline, calls = _pipeline(rows, statuses)
         pipeline._notion_page_has_manuscript_child = lambda page_id, headers: False
-        with mock.patch.object(article_revalidation.ready_sync, "DEST_DATA_SOURCE_ID", "dest"), \
-             mock.patch.object(
-                 article_revalidation.ready_sync,
-                 "classify_exact_delivery_state",
-                 return_value="already_delivered",
-             ):
+        with mock.patch.object(
+            article_revalidation,
+            "_automatic_stale_ready_recovery_allowed",
+            return_value=False,
+        ):
             generated, rank = article_revalidation.run_existing_editorial_recovery(
                 pipeline, generated_count=0, next_candidate_rank=0
             )
@@ -199,12 +198,11 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
         statuses = {sid: ("Ready", "Deep Dive")}
         pipeline, calls = _pipeline(rows, statuses)
         pipeline._notion_page_has_manuscript_child = lambda page_id, headers: False
-        with mock.patch.object(article_revalidation.ready_sync, "DEST_DATA_SOURCE_ID", "dest"), \
-             mock.patch.object(
-                 article_revalidation.ready_sync,
-                 "classify_exact_delivery_state",
-                 return_value="waiting",
-             ):
+        with mock.patch.object(
+            article_revalidation,
+            "_automatic_stale_ready_recovery_allowed",
+            return_value=True,
+        ):
             generated, rank = article_revalidation.run_existing_editorial_recovery(
                 pipeline, generated_count=0, next_candidate_rank=0
             )
