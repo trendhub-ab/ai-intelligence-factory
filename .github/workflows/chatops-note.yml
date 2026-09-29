@@ -44,7 +44,9 @@ jobs:
        github.event.comment.body == '/aiif note onboarding update' ||
        github.event.comment.body == '/aiif note profile update' ||
        github.event.comment.body == '/aiif note repair sgps' ||
-       github.event.comment.body == '/aiif note repair vtcode')
+       github.event.comment.body == '/aiif note repair vtcode' ||
+       github.event.comment.body == '/aiif note eyecatch finalize 3ea479ffdca98164ae13f449014633d7' ||
+       github.event.comment.body == '/aiif note cover apply 3ea479ffdca98164ae13f449014633d7')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -75,14 +77,30 @@ jobs:
             '/aiif note profile update') action='profile_update' ;;
             '/aiif note repair sgps') action='sgps_repair' ;;
             '/aiif note repair vtcode') action='vtcode_repair' ;;
+            '/aiif note eyecatch finalize 3ea479ffdca98164ae13f449014633d7')
+              action='eyecatch_finalize'
+              sync_id='3ea479ffdca98164ae13f449014633d7'
+              ;;
+            '/aiif note cover apply 3ea479ffdca98164ae13f449014633d7')
+              action='cover_apply'
+              sync_id='3ea479ffdca98164ae13f449014633d7'
+              ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
+          if [ "${action}" = 'eyecatch_finalize' ] || [ "${action}" = 'cover_apply' ]; then
+            if ! printf '%s' "${sync_id:-}" | grep -Eq '^[0-9a-fA-F]{32}$'; then
+              echo '::error::Exact 32-hex sync_id is required'
+              exit 1
+            fi
+            echo "sync_id=${sync_id,,}" >> "$GITHUB_OUTPUT"
+          fi
           echo "action=$action" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch existing Note workflow exactly once
         env:
           GH_TOKEN: ${{ github.token }}
           ACTION: ${{ steps.auth.outputs.action }}
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
         run: |
           set -euo pipefail
           case "$ACTION" in
@@ -162,6 +180,14 @@ jobs:
               workflow='vtcode-existing-draft-repair.yml'
               payload='{"ref":"main","inputs":{"confirm":"REPAIR_VTCODE_EXISTING_DRAFT"}}'
               ;;
+            eyecatch_finalize)
+              workflow='ready-eyecatch-finalize-once.yml'
+              payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$SYNC_ID")"
+              ;;
+            cover_apply)
+              workflow='ready-note-cover-apply-once.yml'
+              payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$SYNC_ID")"
+              ;;
             *)
               echo '::error::Refusing unknown action'
               exit 1
@@ -176,6 +202,7 @@ jobs:
       - name: Record safe dispatch
         env:
           ACTION: ${{ steps.auth.outputs.action }}
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
         run: |
           {
             echo '### AIIF ChatOps Note Bridge'
@@ -221,6 +248,12 @@ jobs:
                 ;;
               vtcode_repair)
                 echo '- exact existing VT Code private draft only; same edit route; title/body/eyecatch overwrite; no new draft; no public release'
+                ;;
+              eyecatch_finalize)
+                echo "- exact Ready eyecatch finalize authorized for sync_id: `$SYNC_ID`; source body/title unchanged; no note mutation; no public release"
+                ;;
+              cover_apply)
+                echo "- exact existing private draft cover-only apply authorized for sync_id: `$SYNC_ID`; title/body unchanged; no new draft; no public release"
                 ;;
               *)
                 echo '- explicit maintenance mutation authorized: `false`'
