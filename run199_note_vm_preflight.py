@@ -39,7 +39,21 @@ def preflight(requested_sync_id: str = "") -> dict[str, Any]:
     try:
         prepared = current._prepare_article(requested)
     except base.NoteDraftError as exc:
-        if requested or not current._is_automatic_noop_error(exc):
+        if requested:
+            delivery_state = base.ready_sync.classify_exact_delivery_state(requested)
+            if delivery_state == "already_delivered":
+                result = {
+                    "status": "already_delivered",
+                    "should_start_vm": False,
+                    "selected_sync_id": requested,
+                    "zero_gemini_calls": True,
+                    "telegram_notified": False,
+                    "reason": "exact Ready article is already in 投稿準備中 / 投稿済み",
+                }
+                _write_result(result)
+                return result
+            raise
+        if not current._is_automatic_noop_error(exc):
             raise
         result = current._write_noop_result(str(exc))
         result["should_start_vm"] = False
