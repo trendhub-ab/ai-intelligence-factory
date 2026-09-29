@@ -8,16 +8,13 @@ DEFAULT_BATCH_SIZE=2
 MAX_BATCH_SIZE=3
 
 
-def _is_posted(sync_id: str) -> bool:
+def _delivery_recovery_state(sync_id: str) -> str:
     if not (nrs.DEST_DATA_SOURCE_ID or nrs.DEST_DATABASE_ID):
-        return False
-    rows=nrs._query_db(nrs.DEST_DATA_SOURCE_ID,nrs.DEST_DATABASE_ID)
-    sid=str(sync_id or "")
-    for page in rows:
-        state=nrs._destination_state(page)
-        if state.get("sync_id")==sid and state.get("posting_status")=="投稿済み":
-            return True
-    return False
+        return "not_queued"
+    try:
+        return nrs.classify_exact_delivery_state(sync_id)
+    except Exception:
+        return "unavailable"
 
 
 def _repo(page: dict, state: dict) -> dict:
@@ -42,7 +39,7 @@ def run(pipeline):
     pipeline.initialize_runtime()
     batch=max(1,min(MAX_BATCH_SIZE,int(os.environ.get("STALE_READY_REVALIDATION_BATCH_SIZE",DEFAULT_BATCH_SIZE))))
     pages=nrs._query_db(nrs.SOURCE_DATA_SOURCE_ID,nrs.SOURCE_DATABASE_ID,payload={"filter":{"property":nrs.SOURCE_ARTICLE_STATUS,"select":{"equals":nrs.SOURCE_READY}}})
-    result={"mode":"stale_ready_batch_revalidation","batch_limit":batch,"ready_rows":len(pages),"attempted":0,"passed":0,"failed_or_review":0,"skipped_current":0,"skipped_published":0,"skipped_invalid":0,"provider_cap":int(getattr(pipeline.DEEP_DIVE_MODEL_BUDGET,"budget",0) or 0),"items":[]}
+    result={"mode":"stale_ready_batch_revalidation","batch_limit":batch,"ready_rows":len(pages),"attempted":0,"passed":0,"failed_or_review":0,"skipped_current":0,"skipped_published":0,"skipped_delivery_terminal":0,"skipped_invalid":0,"provider_cap":int(getattr(pipeline.DEEP_DIVE_MODEL_BUDGET,"budget",0) or 0),"items":[]}
     rank=0
     for candidate in pages:
         if result["attempted"]>=batch: break
@@ -56,8 +53,13 @@ def run(pipeline):
             result["skipped_invalid"]+=1; continue
         if nrs._source_has_current_ready_manuscript(state["sync_id"]):
             result["skipped_current"]+=1; continue
-        if _is_posted(state["sync_id"]):
-            result["skipped_published"]+=1; continue
+        delivery_state=_delivery_recovery_state(state["sync_id"])
+        if delivery_state=="already_delivered":
+            result["skipped_delivery_terminal"]+=1; continue
+        if delivery_state=="human_blocked":
+            result["skipped_delivery_terminal"]+=1; continue
+        if delivery_state not in {"not_queued","waiting"}:
+            result["skipped_invalid"]+=1; continue
         repo=_repo(page,state)
         safe,_=pipeline.legal_safety_gate(repo)
         if not safe:
