@@ -37,15 +37,7 @@ class Run247ChatOpsNoteBridgeTests(unittest.TestCase):
         text = self.workflow
         self.assertIn("startsWith(github.event.comment.body, '/aiif note eyecatch finalize ')", text)
         self.assertIn("startsWith(github.event.comment.body, '/aiif note cover apply ')", text)
-        self.assertIn("grep -Eq '^[0-9a-fA-F]{32}        text = self.workflow
-        self.assertIn('Gemini calls performed by bridge: `0`', text)
-        self.assertIn('Production started: `false`', text)
-        self.assertIn('public note release performed: `false`', text)
-
-
-if __name__ == '__main__':
-    unittest.main()
-", text)
+        self.assertIn("grep -Eq '^[0-9a-fA-F]{32}$'", text)
         self.assertIn("workflow='ready-eyecatch-finalize-once.yml'", text)
         self.assertIn("workflow='ready-note-cover-apply-once.yml'", text)
         self.assertIn('"confirm":"RUN_ONCE"', text)
