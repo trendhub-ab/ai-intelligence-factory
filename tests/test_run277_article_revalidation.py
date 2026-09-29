@@ -368,6 +368,23 @@ def test_exact_target_selects_only_exact_existing_name_and_fails_closed(monkeypa
     ) == []
 
 
+def test_exact_target_page_id_selects_only_exact_existing_row(monkeypatch):
+    pipeline, _ = _selector_pipeline()
+    rows = [
+        {"notion_page_id": "3d3479ff-dca9-81e6-9645-d3e4c5436825", "repo": {"nameWithOwner": "The revolt of the reader"}},
+        {"notion_page_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "repo": {"nameWithOwner": "Other article"}},
+    ]
+    pipeline.get_regen_test_items = lambda limit, source: rows
+    pipeline.requests.get = lambda url, headers=None, timeout=None: _Response("Needs Editorial Review", "Deep Dive")
+    selected = article_revalidation.select_revalidation_items(
+        pipeline, limit=1, exact_target="3d3479ffdca981e69645d3e4c5436825"
+    )
+    assert [x["notion_page_id"] for x in selected] == ["3d3479ff-dca9-81e6-9645-d3e4c5436825"]
+    assert article_revalidation.select_revalidation_items(
+        pipeline, limit=1, exact_target="3d3479ffdca981e69645d3e4c543682"
+    ) == []
+
+
 def test_exact_target_env_is_forwarded_by_revalidation(monkeypatch):
     class DailyQuotaExhaustedError(Exception):
         pass
