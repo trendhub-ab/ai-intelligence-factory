@@ -1,8 +1,9 @@
-"""Local Writer v4 — evidence-safe reader accessibility repair.
+"""Local Writer v4.3.7 integrated candidate — Fresh-4/4 lineage plus topic-fit repair.
 
-Pure Python, zero network/provider calls. This version tests whether a small,
-general set of deterministic editorial/compiler rules can generalize across the
-five heterogeneous snapshots without changing any Production Gate.
+Pure Python, zero network/provider calls. The validated v4.3.6 publication shape
+remains the baseline; later reader-access and evidence-safe repairs are retained,
+and the A+ topic-fit rule is absorbed locally so historical/events/research records
+are not forced into adoption/PoC language. No Production Gate is changed.
 
 Compared with the frozen v3:
 - keep the same deterministic source-role and decision structure;
@@ -90,6 +91,45 @@ ROI_OUTCOME_RE = re.compile(
     re.I,
 )
 
+_ADOPTION_ACTION_RE = re.compile(
+    r"導入|採用|利用|使(?:う|える)|試(?:す|用)|PoC|概念実証|本番|実装|移行|運用|展開",
+    re.I,
+)
+_OBSERVATIONAL_ACTION_RE = re.compile(
+    r"確認|比較|評価|追跡|基準点|点検|調査|参照|照合|記録|レビュー|監視|再評価|見直",
+    re.I,
+)
+_NON_ADOPTION_SUBJECT_RE = re.compile(
+    r"設立|創業|発足|宣言|判決|訴訟|事件|攻撃|漏洩|流出|事故|制度|規制|法案|歴史|当時|"
+    r"報告書|公表|発表内容|研究結果|ベンチマーク結果",
+    re.I,
+)
+
+
+def _is_observational_topic(snapshot: Mapping[str, Any]) -> bool:
+    """Return True when the saved Action/topic is about observing, not adopting."""
+    action = _clean(snapshot.get("action", ""))
+    if _OBSERVATIONAL_ACTION_RE.search(action) and not _ADOPTION_ACTION_RE.search(action):
+        return True
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("name", "source_summary", "what", "why_important", "decision_reason")
+    )
+    return bool(_NON_ADOPTION_SUBJECT_RE.search(surface) and not _ADOPTION_ACTION_RE.search(action))
+
+
+def _decision_phrase(snapshot: Mapping[str, Any]) -> str:
+    decision = str(snapshot["decision"]).upper()
+    if not _is_observational_topic(snapshot):
+        return DECISION_PHRASES[decision]
+    return {
+        "NOW": "今すぐ判断材料へ反映する",
+        "TRY": "限定した範囲で確認する",
+        "WATCH": "基準点として追跡する",
+        "WAIT": "追加情報を待って再評価する",
+        "AVOID": "現時点では結論に使わない",
+    }[decision]
+
 
 class SnapshotError(ValueError):
     pass
@@ -173,6 +213,8 @@ def _safe_why(text: str, seen: set[str]) -> str:
 
 
 def _source_role(snapshot: Mapping[str, Any]) -> str:
+    if _is_observational_topic(snapshot):
+        return "一次情報で確認できる事実と、そこから言える範囲を分けて、次の判断基準にする話"
     source = str(snapshot["source"])
     if source == "GitHub":
         return "公開されているコードを、製品扱いせず検証材料としてどこまで使うかを決める話"
@@ -262,19 +304,33 @@ def _reader_subject_bridge(snapshot: Mapping[str, Any], layout: int) -> str:
     subject = _subject_label(snapshot)
     summary = _gloss(snapshot["source_summary"], set())
     concept_first = _concept_first_bridge(snapshot)
+    observational = _is_observational_topic(snapshot)
     if not subject:
         label = "今回の話"
+    elif observational and re.search(r"[A-Za-z]", subject):
+        label = f"今回の判断材料（{subject}）"
+    elif observational:
+        label = f"今回の判断材料である{subject}"
     elif re.search(r"[A-Za-z]", subject):
         label = f"今回の検証対象（{subject}）"
     else:
         label = f"今回の検証対象である{subject}"
-    leads = [
-        "名前だけでは少し分かりにくいですよね。",
-        "まず「結局、何をするもの？」と感じませんか。",
-        "名前だけで役割まで想像するのは難しいですよね。",
-        "ここで「何の話？」と思いませんか。",
-        "最初に「何のためのもの？」から確認したくなりますよね。",
-    ]
+    if observational:
+        leads = [
+            "まず、この情報で何が確認できるかを押さえます。",
+            "先に、一次情報が示している範囲を確認します。",
+            "名前や見出しより、事実として残せる点から見ます。",
+            "ここでは、確認できたことと未確認のことを分けます。",
+            "最初に、後から比較できる基準を置きます。",
+        ]
+    else:
+        leads = [
+            "名前だけでは少し分かりにくいですよね。",
+            "まず「結局、何をするもの？」と感じませんか。",
+            "名前だけで役割まで想像するのは難しいですよね。",
+            "ここで「何の話？」と思いませんか。",
+            "最初に「何のためのもの？」から確認したくなりますよね。",
+        ]
     if concept_first:
         base = f"{leads[layout]}{label}について、まず読者側の意味から置きます。{concept_first}"
     else:
@@ -288,6 +344,30 @@ def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
     name = subject or "この話題"
     role = _source_role(snapshot)
     subject_bridge = _reader_subject_bridge(snapshot, layout)
+
+    if _is_observational_topic(snapshot):
+        first_lines = {
+            0: f"{name}でまず見るべきなのは、この事実を次の判断にどう使うかです。",
+            1: f"仕事の判断材料として{name}を見るなら、知りたいのは、何が確認され、何がまだ確認されていないかです。",
+            2: f"{name}。これは、次の判断の基準をどう持つかという話です。",
+            3: f"{name}を見るとき、結論を急ぐより先に、一次情報で確かめられる範囲を切り分けます。",
+            4: f"{name}を判断材料にするなら、まずどの事実を基準点として残すべきでしょうか。",
+        }
+        curiosity_lines = {
+            0: "では、この情報で何が判断でき、何はまだ判断できないのでしょうか。",
+            1: "そこで気になるのは、この事実が今後の判断をどこまで変えるかです。",
+            2: "確定した事実と、まだ比較が必要な部分を分けて見ます。",
+            3: "重要なのは、出来事を別の実務テーマへ無理に広げないことです。",
+            4: "見るべきなのは、話題性ではなく、今後の比較に使える基準が何かです。",
+        }
+        openings = {
+            0: [first_lines[0], curiosity_lines[0], f"簡単に言えば、今回は{role}です。", subject_bridge],
+            1: [first_lines[1], curiosity_lines[1], f"要するに、今回は{role}です。", subject_bridge],
+            2: [first_lines[2], curiosity_lines[2], f"平たく言えば、今回は{role}です。", subject_bridge],
+            3: [first_lines[3], curiosity_lines[3], f"一言で言えば、今回は{role}です。", subject_bridge],
+            4: [first_lines[4], curiosity_lines[4], f"簡単に言えば、今回は{role}です。", subject_bridge],
+        }
+        return openings[layout]
 
     first_lines = {
         0: (
@@ -356,7 +436,16 @@ def _opening(snapshot: Mapping[str, Any], layout: int) -> list[str]:
     return openings[layout]
 
 
-def _plain_bridge(layout: int) -> str:
+def _plain_bridge(layout: int, observational: bool = False) -> str:
+    if observational:
+        rows = [
+            "ここで重要なのは、情報をすぐ結論へ変えないことです。確認できた事実と、まだ比較が必要な部分を分けます。",
+            "読み方の軸はシンプルです。何が起きたか、なぜ判断に関係するか、次に何を確かめるかの順で見ます。",
+            "細部を全部追う必要はありません。後の判断を更新できる基準点だけを残します。",
+            "ここでは別の実務テーマへ広げず、一次情報から確実に持ち帰れる判断材料を整理します。",
+            "大事なのは、話題性と判断材料を混同しないことです。確認済みの範囲を残せば、次の情報と比較できます。",
+        ]
+        return rows[layout]
     rows = [
         "ここで重要なのは、用語を全部覚えることではありません。自社で何を確認すれば次の判断へ進めるか、その順番を見失わないことです。",
         "読み方の軸はシンプルです。便利そうかどうかではなく、どの条件なら試せて、どの条件なら待つべきかを分けます。",
@@ -367,7 +456,16 @@ def _plain_bridge(layout: int) -> str:
     return rows[layout]
 
 
-def _close_bridge(layout: int) -> str:
+def _close_bridge(layout: int, observational: bool = False) -> str:
+    if observational:
+        rows = [
+            "この事実を基準点として残せば、次の公式情報が出たときに判断を更新できます。",
+            "今ここで大きな結論を出さず、比較できる基準を一つ増やす方が安全です。",
+            "今決めるのは最終結論ではなく、次に確かめる一点です。それなら根拠の範囲を越えません。",
+            "結論を大きくする必要はありません。保存済みの根拠から、次の確認事項だけを具体化します。",
+            "現時点の事実を固定し、次の情報で再評価できる形にしておくのが現実的です。",
+        ]
+        return rows[layout]
     rows = [
         "この順番なら、期待だけで広げず、必要な確認を先に終えられます。",
         "全面採用の答えを急がず、小さな検証で次の材料を増やす方が安全です。",
@@ -421,12 +519,50 @@ def _sections(snapshot: Mapping[str, Any], layout: int) -> list[tuple[str, list[
     avoid = _gloss(snapshot["avoid_for"], seen)
     reason = reader_fields.get("reason") or _gloss(snapshot["decision_reason"], seen)
     action = reader_fields.get("action") or _gloss(snapshot["action"], seen)
-    phrase = DECISION_PHRASES[str(snapshot["decision"]).upper()]
-    bridge = _plain_bridge(layout)
-    close = _close_bridge(layout)
+    observational = _is_observational_topic(snapshot)
+    phrase = _decision_phrase(snapshot)
+    bridge = _plain_bridge(layout, observational)
+    close = _close_bridge(layout, observational)
 
     # Keep an explicit limitation adjacent to the decision in every layout.
     limitation = f"ただし、制約は明確です。{risk}"
+
+    if observational:
+        if layout == 0:
+            return [
+                ("何が確認されたのか", [what, bridge, why]),
+                ("どこまで判断材料にできるか", [reason, limitation]),
+                ("現時点の扱い", [f"現時点の判断は「{phrase}」。"]),
+                ("次に確認すること", [action, close]),
+            ]
+        if layout == 1:
+            return [
+                ("先に現在地を置く", [f"結論から言えば「{phrase}」。", limitation]),
+                ("その判断の根拠", [what, bridge, why]),
+                ("残しておく基準", [reason]),
+                ("次の確認", [action, close]),
+            ]
+        if layout == 2:
+            return [
+                ("まず何の話か", [what, bridge]),
+                ("なぜ判断に関係するのか", [why]),
+                ("まだ決めつけない理由", [reason, limitation]),
+                ("現時点の扱い", [f"私なら「{phrase}」とします。"]),
+                ("次に見るもの", [action, close]),
+            ]
+        if layout == 3:
+            return [
+                ("判断材料として何が増えたか", [why, bridge]),
+                ("一次情報で確認できる範囲", [what]),
+                ("結論を急がない理由", [reason, limitation]),
+                ("次の確認事項", [f"現時点の判断は「{phrase}」。", action, close]),
+            ]
+        return [
+            ("事実として押さえること", [what, bridge, why]),
+            ("まだ確定していないこと", [reason, limitation]),
+            ("現時点の距離感", [f"判断は「{phrase}」。"]),
+            ("次の一手", [action, close]),
+        ]
 
     if layout == 0:
         return [

@@ -1,4 +1,4 @@
-"""Stage 6 frozen-candidate Publication Canonicalizer v4.
+"""Stage 6 Publication Canonicalizer v4 — integrated topic-fit candidate.
 
 Pure Python and deterministic. This layer sits between stored structured records
 and the frozen Local Writer v3. It does not generate new evidence or factual
@@ -10,7 +10,8 @@ Responsibilities are limited to publication contracts:
   exclusivity/hype/market-standard language;
 - add bounded first-use explanations for common technical abbreviations that
   are already present in the structured record;
-- make low-score/WATCH/WAIT/AVOID actions explicitly limited verification;
+- make low-score/WATCH/WAIT/AVOID actions explicitly limited verification when the subject is actually adoptable;
+- preserve observational actions for history/events/institutions instead of forcing PoC/adoption framing;
 - provide a stable presentation-only case key so the frozen writer can diversify
   layouts without changing canonical entity identity;
 - preserve attribution/condition scope for source-side performance multipliers
@@ -189,8 +190,40 @@ def _add_summary_plain_bridge(value: str) -> str:
     return "簡単に言えば、" + text if _summary_needs_plain_bridge(text) else text
 
 
-def _canonicalize_action(value: str, decision: str, score: int) -> str:
+_OBSERVATIONAL_ACTION_RE = re.compile(
+    r"確認|比較|評価|追跡|基準点|点検|調査|参照|照合|記録|レビュー|監視|再評価|見直",
+    re.I,
+)
+_ADOPTION_ACTION_RE = re.compile(
+    r"導入|採用|利用|使(?:う|える)|試(?:す|用)|PoC|概念実証|本番|実装|移行|運用|展開",
+    re.I,
+)
+_NON_ADOPTABLE_TOPIC_RE = re.compile(
+    r"設立|創業|発足|宣言|判決|訴訟|事件|攻撃|漏洩|流出|事故|制度|規制|法案|歴史|当時|"
+    r"報告書|公表|発表内容|研究結果|ベンチマーク結果",
+    re.I,
+)
+
+
+def _action_is_observational(value: str, snapshot: Mapping[str, Any] | None = None) -> bool:
     text = _clean(value)
+    if _OBSERVATIONAL_ACTION_RE.search(text) and not _ADOPTION_ACTION_RE.search(text):
+        return True
+    if snapshot is None or _ADOPTION_ACTION_RE.search(text):
+        return False
+    surface = " ".join(
+        _clean(snapshot.get(key, ""))
+        for key in ("name", "source_summary", "what", "why_important", "decision_reason")
+    )
+    return bool(_NON_ADOPTABLE_TOPIC_RE.search(surface))
+
+
+def _canonicalize_action(
+    value: str, decision: str, score: int, snapshot: Mapping[str, Any] | None = None
+) -> str:
+    text = _clean(value)
+    if _action_is_observational(text, snapshot):
+        return text
     if decision in {"WATCH", "WAIT", "AVOID"} or score <= 69:
         if not re.search(r"限定|小さく|PoC|比較(?:テスト|検証)|検証環境|回帰テスト|CI", text, re.I):
             text = "限定的な検証として、" + text
@@ -348,7 +381,7 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         text = _caveat_roi_outcome(text)
         out[key] = text
     out["reader_title"] = _normalize_title(out.get("reader_title", ""))
-    out["action"] = _canonicalize_action(out.get("action", ""), decision, score)
+    out["action"] = _canonicalize_action(out.get("action", ""), decision, score, snapshot)
 
     # Stage 6 / v4: proactively preserve source-side multiplier scope before the
     # frozen Local Writer copies a performance multiplier into reader-facing prose.
@@ -381,4 +414,5 @@ def canonicalize_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
     out["publication_canonicalized"] = True
     out["publication_canonicalizer_version"] = "stage6-v4"
+    out["publication_topic_fit_version"] = "local-v1"
     return out
