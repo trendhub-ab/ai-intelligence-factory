@@ -29,7 +29,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-intelligence-external-review-import
+  # This workflow writes Technology/History through the same persistence path as Daily/Bootstrap.
+  # Serialize all of them so read-before-create upserts cannot race on a new Canonical Entity ID.
+  group: ai-intelligence-gemini-budget
   cancel-in-progress: false
 
 jobs:
