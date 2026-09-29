@@ -44,6 +44,29 @@ class Run243ContentGenerationProtocolIntegrationTests(unittest.TestCase):
             pipeline._parse_gemini_response("・Decision Score：合計: 0/100" + marker + "ignored")
         title_fn.assert_called_once()
 
+    def test_parser_strips_legacy_internal_article_marker(self):
+        text = (
+            "=== MANAGEMENT DATA ===\n"
+            "・Decision Score: Business Impact 1/25; Technical Impact 1/25; "
+            "Urgency 1/20; Market Impact 1/15; Reliability 1/15; 合計 5/100\n"
+            + pipeline.SECTION_SPLIT_TOKEN
+            + "\nAI文章の読み手を考える。\n\n【ARTICLE】\n\n本文です。"
+        )
+        parsed = pipeline._parse_gemini_response(text)
+        self.assertEqual(parsed["title_text"], "AI文章の読み手を考える。")
+        self.assertEqual(parsed["note_draft"], "本文です。")
+        self.assertNotIn("【ARTICLE】", parsed["note_draft"])
+
+    def test_note_normalization_strips_known_machine_control_labels(self):
+        body = (
+            "=== MANAGEMENT DATA ===\n"
+            "【ARTICLE】\n"
+            "本文です。\n"
+            "===NOTE_DRAFT_END==="
+        )
+        normalized = pipeline.normalize_markdown_for_note(body)
+        self.assertEqual(normalized, "本文です。")
+
     def test_monthly_digest_wrapper_reads_live_status_constants(self):
         class D:
             year = 2026
