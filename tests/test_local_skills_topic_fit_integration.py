@@ -49,6 +49,8 @@ def test_historical_topic_stays_out_of_adoption_and_poc_framing():
         "小さな検証",
         "採用",
         "導入",
+        "結局、何をするもの",
+        "何のためのもの",
     ):
         assert forbidden not in article
 
