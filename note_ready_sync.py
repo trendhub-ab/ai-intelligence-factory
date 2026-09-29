@@ -63,6 +63,9 @@ DEST_SCHEMA = {
 }
 ALLOWED_SOURCES = set(ACTIVE_PUBLIC_SOURCES)
 ALLOWED_DECISIONS = {"NOW", "TRY", "WATCH", "WAIT", "AVOID"}
+WAITING_POSTING_STATUS = "投稿待ち"
+ALREADY_DELIVERED_POSTING_STATUSES = frozenset({"投稿準備中", "投稿済み"})
+HUMAN_BLOCKED_POSTING_STATUSES = frozenset({"保留", "取下げ"})
 
 
 def _headers() -> dict[str, str]:
@@ -329,6 +332,49 @@ def _destination_state(page: dict) -> dict[str, Any]:
         "posting_status": _select(p.get("投稿状態")),
         "quality_status": _select(p.get("品質状態")),
     }
+
+
+def exact_destination_state(sync_id: str) -> dict[str, Any] | None:
+    """Return exactly one note-queue row for a Content Intelligence sync_id.
+
+    Delivery lifecycle is human-managed, so callers must inspect it instead of resetting
+    投稿状態 during automatic synchronization. Duplicate rows are a hard data-integrity
+    failure and therefore fail closed.
+    """
+    target = _normalize_page_id(sync_id)
+    if len(target) != 32 or not re.fullmatch(r"[0-9a-f]{32}", target):
+        raise ValueError("Invalid exact destination sync_id")
+    if not (DEST_DATA_SOURCE_ID or DEST_DATABASE_ID):
+        raise ValueError("note Ready destination DB is not configured")
+
+    matches: list[dict[str, Any]] = []
+    for page in _query_db(DEST_DATA_SOURCE_ID, DEST_DATABASE_ID):
+        state = _destination_state(page)
+        if _normalize_page_id(state.get("sync_id") or "") == target:
+            matches.append(state)
+    if len(matches) > 1:
+        raise ValueError(f"Duplicate 同期ID in note Ready DB: {target}")
+    return matches[0] if matches else None
+
+
+def classify_exact_delivery_state(sync_id: str) -> str:
+    """Classify automatic draft delivery without mutating human workflow state."""
+    state = exact_destination_state(sync_id)
+    if state is None:
+        return "not_queued"
+    posting_status = str(state.get("posting_status") or "").strip()
+    if posting_status == WAITING_POSTING_STATUS:
+        return "waiting"
+    if posting_status in ALREADY_DELIVERED_POSTING_STATUSES:
+        return "already_delivered"
+    if posting_status in HUMAN_BLOCKED_POSTING_STATUSES:
+        return "human_blocked"
+    return "invalid"
+
+
+def automatic_recovery_delivery_eligible(sync_id: str) -> bool:
+    """Allow stale-Ready regeneration only when it can still lead to a new draft."""
+    return classify_exact_delivery_state(sync_id) in {"not_queued", "waiting"}
 
 
 def _rt(value: str) -> dict:

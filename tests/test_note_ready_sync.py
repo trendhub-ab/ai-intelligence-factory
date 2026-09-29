@@ -220,6 +220,43 @@ class NoteReadySyncTests(unittest.TestCase):
         self.assertEqual(current["posting_status"], "投稿済み")
         self.assertEqual(current["quality_status"], "Ready")
 
+    def test_exact_delivery_state_distinguishes_waiting_delivered_and_human_blocked(self):
+        target = "3ea479ffdca98164ae13f449014633d7"
+
+        def row(status):
+            return {
+                "id": "dest-page",
+                "properties": {
+                    "同期ID": rt("3ea479ff-dca9-8164-ae13-f449014633d7"),
+                    "投稿状態": {"select": {"name": status}},
+                    "品質状態": {"select": {"name": "Ready"}},
+                },
+            }
+
+        with patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_query_db", return_value=[row("投稿待ち")]):
+            self.assertEqual(sync.classify_exact_delivery_state(target), "waiting")
+            self.assertTrue(sync.automatic_recovery_delivery_eligible(target))
+
+        with patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_query_db", return_value=[row("投稿準備中")]):
+            self.assertEqual(sync.classify_exact_delivery_state(target), "already_delivered")
+            self.assertFalse(sync.automatic_recovery_delivery_eligible(target))
+
+        with patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_query_db", return_value=[row("投稿済み")]):
+            self.assertEqual(sync.classify_exact_delivery_state(target), "already_delivered")
+
+        with patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_query_db", return_value=[row("保留")]):
+            self.assertEqual(sync.classify_exact_delivery_state(target), "human_blocked")
+            self.assertFalse(sync.automatic_recovery_delivery_eligible(target))
+
+        with patch.object(sync, "DEST_DATA_SOURCE_ID", "dest"), \
+             patch.object(sync, "_query_db", return_value=[]):
+            self.assertEqual(sync.classify_exact_delivery_state(target), "not_queued")
+            self.assertTrue(sync.automatic_recovery_delivery_eligible(target))
+
     def test_sync_metrics_account_for_every_ready_source_row(self):
         source_pages = [
             ready_page("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", source="GitHub", article_title="stale"),
