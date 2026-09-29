@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -49,7 +50,15 @@ class EyecatchHeadlineIntegrityTests(unittest.TestCase):
                                            "subheadline_lines": [sub], "subheadline_font_size": 24,
                                            "highlight_text": ""})
 
-        pipeline = SimpleNamespace(SYNTHETIC_REGRESSION_MODE=False, _generate_via_chat=provider)
+        @contextmanager
+        def timeout_guard(_seconds):
+            yield
+
+        pipeline = SimpleNamespace(
+            SYNTHETIC_REGRESSION_MODE=False,
+            _generate_via_chat=provider,
+            _gemini_call_timeout=timeout_guard,
+        )
         result = semantic._request_layout_plan(pipeline, source, sub)
         self.assertEqual(result["eyecatch_title"], "LLM解説を自動で生成する")
         self.assertEqual(calls, ["gemini-3.6-flash", "gemini-3.5-flash"])

@@ -1,5 +1,6 @@
 import inspect
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 import run180_eyecatch_semantic_layout as run180
@@ -181,6 +182,7 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
 
     def test_request_uses_36_then_35_fallback_and_not_deep_dive(self):
         calls = []
+        timeouts = []
         plan = {
             "eyecatch_title": "AIは重要。",
             "title_lines": ["AIは重要。"],
@@ -197,6 +199,48 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
                 raise RuntimeError("primary unavailable")
             return _ParsedResponse(plan)
 
+        @contextmanager
+        def timeout_guard(seconds):
+            timeouts.append(seconds)
+            yield
+
+        class Logger:
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        fake = type("FakePipeline", (), {
+            "SYNTHETIC_REGRESSION_MODE": False,
+            "_generate_via_chat": staticmethod(provider),
+            "_gemini_call_timeout": staticmethod(timeout_guard),
+            "logger": Logger(),
+        })()
+
+        parsed = run180._request_layout_plan(fake, "AIは重要。", "必要な変化だけを見る。")
+        self.assertEqual(plan, parsed)
+        self.assertEqual(
+            ["gemini-3.6-flash", "gemini-3.5-flash"],
+            [model for model, _kwargs in calls],
+        )
+        self.assertEqual(
+            [run180.EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS] * 2,
+            timeouts,
+        )
+        for _model, kwargs in calls:
+            self.assertEqual("eyecatch_layout", kwargs["request_kind"])
+            self.assertFalse(kwargs["count_as_deep_dive"])
+
+        source = inspect.getsource(run180._request_layout_plan)
+        self.assertEqual(1, source.count("_generate_via_chat("))
+        self.assertIn("with timeout_guard(EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS):", source)
+        self.assertIn('"thinking_config": {"thinking_level": "minimal"}', source)
+
+    def test_request_fails_closed_without_timeout_watchdog(self):
+        calls = []
+
+        def provider(model_name, prompt, **kwargs):
+            calls.append(model_name)
+            return _ParsedResponse({})
+
         class Logger:
             def warning(self, *_args, **_kwargs):
                 pass
@@ -207,19 +251,52 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
             "logger": Logger(),
         })()
 
-        parsed = run180._request_layout_plan(fake, "AIは重要。", "必要な変化だけを見る。")
-        self.assertEqual(plan, parsed)
-        self.assertEqual(
-            ["gemini-3.6-flash", "gemini-3.5-flash"],
-            [model for model, _kwargs in calls],
+        self.assertIsNone(
+            run180._request_layout_plan(fake, "AIは重要。", "必要な変化だけを見る。")
         )
-        for _model, kwargs in calls:
-            self.assertEqual("eyecatch_layout", kwargs["request_kind"])
-            self.assertFalse(kwargs["count_as_deep_dive"])
+        self.assertEqual([], calls)
 
-        source = inspect.getsource(run180._request_layout_plan)
-        self.assertEqual(1, source.count("_generate_via_chat("))
-        self.assertIn('"thinking_config": {"thinking_level": "minimal"}', source)
+    def test_watchdog_timeout_on_both_models_stops_after_two_sends(self):
+        calls = []
+        timeouts = []
+
+        def provider(model_name, prompt, **kwargs):
+            calls.append(model_name)
+            return _ParsedResponse({
+                "eyecatch_title": "AIは重要。",
+                "title_lines": ["AIは重要。"],
+                "title_font_size": 60,
+                "title_line_gap": 12,
+                "subheadline_lines": ["必要な変化だけを見る。"],
+                "subheadline_font_size": 24,
+                "highlight_text": "",
+            })
+
+        @contextmanager
+        def timeout_guard(seconds):
+            timeouts.append(seconds)
+            yield
+            raise TimeoutError("forced watchdog timeout")
+
+        class Logger:
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        fake = type("FakePipeline", (), {
+            "SYNTHETIC_REGRESSION_MODE": False,
+            "_generate_via_chat": staticmethod(provider),
+            "_gemini_call_timeout": staticmethod(timeout_guard),
+            "logger": Logger(),
+        })()
+
+        self.assertIsNone(
+            run180._request_layout_plan(fake, "AIは重要。", "必要な変化だけを見る。")
+        )
+        self.assertEqual(["gemini-3.6-flash", "gemini-3.5-flash"], calls)
+        self.assertEqual(
+            [run180.EYECATCH_LAYOUT_CALL_TIMEOUT_SECONDS] * 2,
+            timeouts,
+        )
 
     def test_title_contract_uses_fuller_source_and_52px_floor(self):
         source = inspect.getsource(run180.install)

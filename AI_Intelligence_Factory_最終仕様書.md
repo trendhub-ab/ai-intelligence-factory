@@ -552,6 +552,14 @@ Headlineは原則1〜3行。
 
 を優先し、語中改行で無理に収めない。
 
+Eyecatch semantic layoutのProvider利用は補助処理としてboundedに扱う。
+
+- `gemini-3.6-flash` → `gemini-3.5-flash` の順で各1回だけ試行
+- 各Provider sendは **30秒 watchdog** 内で実行
+- watchdogが利用できない場合はProviderを呼ばずFail-Closed
+- 503 / timeout / invalid layoutは次のProviderまたは既存deterministic layoutへfallback
+- Eyecatch layout待機がDaily全体のjob timeoutを占有することを禁止
+
 ### 9.4 Asset version binding
 
 Eyecatch file名tokenは:
