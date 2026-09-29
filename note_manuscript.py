@@ -34,12 +34,12 @@ def _fix_bold_boundary_brackets(text: str) -> str:
 
 
 _INTERNAL_PUBLICATION_MARKER_LINE_RE = re.compile(
-    r"(?mi)^\\s*(?:"
-    r"={3,}\\s*NOTE_DRAFT_(?:START|END)\\s*={0,}"
-    r"|={2,}\\s*MANAGEMENT\\s+DATA\\s*={0,}"
-    r"|【\\s*ARTICLE\\s*】"
-    r"|ARTICLE\\s*:?"
-    r")\\s*$"
+    r"(?mi)^\s*(?:"
+    r"={3,}\s*NOTE_DRAFT_(?:START|END)\s*={0,}"
+    r"|={2,}\s*MANAGEMENT\s+DATA\s*={0,}"
+    r"|【\s*ARTICLE\s*】"
+    r"|ARTICLE\s*:?"
+    r")\s*$"
 )
 
 
