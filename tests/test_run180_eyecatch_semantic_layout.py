@@ -266,6 +266,11 @@ class Run180EyecatchSemanticLayoutTests(unittest.TestCase):
         self.assertFalse(run180._semantic_line_breaks_ok(title, broken))
         self.assertTrue(run180._semantic_line_breaks_ok(title, natural))
 
+    def test_semantic_line_break_guard_keeps_explicit_space_boundaries_valid(self):
+        title = "OpenAI access controlを管理者向けに追加"
+        lines = ["OpenAI access", "controlを管理者向けに追加"]
+        self.assertTrue(run180._semantic_line_breaks_ok(title, lines))
+
     def test_layout_validation_rejects_newshii_and_kanrisha_midword_breaks(self):
         title = "勝手に繋がせないための新しい盾。ChatGPTに加わった管理者向け外部アクセス制御。"
         plan = {
