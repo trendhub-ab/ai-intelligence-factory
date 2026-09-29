@@ -191,6 +191,10 @@ def apply_to_production_parsed(
         "canonicalizer_version": compiled["canonicalizer_version"],
         "canonicalizer_blob_sha": compiled["canonicalizer_blob_sha"],
         "writer_blob_sha": compiled["writer_blob_sha"],
+        "integration_version": compiled.get("integration_version", ""),
+        "base_fresh_4_of_4_writer_blob_sha": compiled.get("base_fresh_4_of_4_writer_blob_sha", ""),
+        "base_fresh_4_of_4_canonicalizer_blob_sha": compiled.get("base_fresh_4_of_4_canonicalizer_blob_sha", ""),
+        "publication_topic_fit_version": compiled.get("publication_topic_fit_version", ""),
         "evidence_boundary_version": compiled["evidence_boundary_version"],
         "removed_unsupported_numeric_claims": int(
             compiled["evidence_boundary"].get("removed_count", 0)
