@@ -495,6 +495,8 @@ jobs:
           DELIVERY_AUDIT_VALID: ${{ steps.delivery.outputs.audit_valid }}
           DELIVERY_READY_COUNT: ${{ steps.delivery.outputs.ready_count }}
           DELIVERY_CREATE_PRIVATE_DRAFT: ${{ steps.delivery.outputs.create_private_draft }}
+          DELIVERY_TARGET_SYNC_ID: ${{ steps.delivery.outputs.target_sync_id }}
+          DELIVERY_TARGET_SYNC_IDS_B64: ${{ steps.delivery.outputs.target_sync_ids_b64 }}
           DELIVERY_TARGET_SOURCE_URL: ${{ steps.delivery.outputs.target_source_url }}
           DELIVERY_TARGET_SOURCE_URLS_B64: ${{ steps.delivery.outputs.target_source_urls_b64 }}
         run: |
@@ -519,7 +521,7 @@ jobs:
           dispatch_all_current_run_ready() {
             local expected_count="$1"
             local create_private_draft="$2"
-            local encoded="${DELIVERY_TARGET_SOURCE_URLS_B64:-}"
+            local encoded_ids="${DELIVERY_TARGET_SYNC_IDS_B64:-}"
             if [ "$expected_count" -eq 0 ]; then
               gh workflow run note-ready-sync.yml --ref main -f create_private_draft=false
               return $?
@@ -528,54 +530,53 @@ jobs:
               echo "::error::Current-run Ready fan-out is disabled despite Ready output"
               return 1
             fi
-            if [ -z "$encoded" ] && [ "$expected_count" -eq 1 ] && [ -n "${DELIVERY_TARGET_SOURCE_URL:-}" ]; then
-              echo "Using legacy single-target causality transport for one Ready article."
-              local -a target_source_urls=("${DELIVERY_TARGET_SOURCE_URL}")
+            if [ -z "$encoded_ids" ] && [ "$expected_count" -eq 1 ] && [ -n "${DELIVERY_TARGET_SYNC_ID:-}" ]; then
+              echo "Using exact single-target sync_id causality transport."
               gh workflow run note-ready-sync.yml --ref main \
                 -f create_private_draft=true \
-                -f target_source_url="${target_source_urls[0]}"
+                -f target_sync_id="${DELIVERY_TARGET_SYNC_ID}"
               return $?
             fi
-            if [ -z "$encoded" ]; then
-              echo "::error::Current-run Ready fan-out is missing its complete exact target set"
+            if [ -z "$encoded_ids" ]; then
+              echo "::error::Current-run Ready fan-out is missing its complete exact sync_id set"
               return 1
             fi
-            local decoded_targets
-            if ! decoded_targets="$(TARGETS_B64="$encoded" python - <<'PY'
+            local decoded_ids
+            if ! decoded_ids="$(TARGETS_B64="$encoded_ids" python - <<'PY'
           import base64
           import json
           import os
-          from urllib.parse import urlparse
+          import re
 
           raw = os.environ.get("TARGETS_B64", "")
-          urls = json.loads(base64.b64decode(raw).decode("utf-8"))
-          if not isinstance(urls, list) or not urls:
-              raise ValueError("target source URL list is empty or invalid")
-          if len(urls) != len(set(urls)):
-              raise ValueError("target source URL list contains duplicates")
-          for url in urls:
-              parsed = urlparse(str(url))
-              if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                  raise ValueError(f"invalid target source URL: {url!r}")
-              print(url)
+          sync_ids = json.loads(base64.b64decode(raw).decode("utf-8"))
+          if not isinstance(sync_ids, list) or not sync_ids:
+              raise ValueError("target sync_id list is empty or invalid")
+          normalized = [re.sub(r"[^0-9a-fA-F]", "", str(x)).lower() for x in sync_ids]
+          if any(not re.fullmatch(r"[0-9a-f]{32}", x) for x in normalized):
+              raise ValueError("target sync_id list contains invalid IDs")
+          if len(normalized) != len(set(normalized)):
+              raise ValueError("target sync_id list contains duplicates")
+          for sync_id in normalized:
+              print(sync_id)
           PY
             )"; then
-              echo "::error::Could not decode exact current-run Ready target set"
+              echo "::error::Could not decode exact current-run Ready sync_id set"
               return 1
             fi
-            local -a target_source_urls=()
-            mapfile -t target_source_urls <<< "$decoded_targets"
-            if [ "${#target_source_urls[@]}" -ne "$expected_count" ]; then
-              echo "::error::Current-run Ready target count mismatch: expected=$expected_count actual=${#target_source_urls[@]}"
+            local -a target_sync_ids=()
+            mapfile -t target_sync_ids <<< "$decoded_ids"
+            if [ "${#target_sync_ids[@]}" -ne "$expected_count" ]; then
+              echo "::error::Current-run Ready sync_id count mismatch: expected=$expected_count actual=${#target_sync_ids[@]}"
               return 1
             fi
             local dispatch_failed=0
-            for target_source_url in "${target_source_urls[@]}"; do
-              echo "Dispatching note-ready-sync.yml for exact current-run Ready source: $target_source_url"
+            for target_sync_id in "${target_sync_ids[@]}"; do
+              echo "Dispatching note-ready-sync.yml for exact current-run Ready sync_id: $target_sync_id"
               if ! gh workflow run note-ready-sync.yml --ref main \
                 -f create_private_draft=true \
-                -f target_source_url="$target_source_url"; then
-                echo "::error::Failed to dispatch note-ready-sync.yml for $target_source_url"
+                -f target_sync_id="$target_sync_id"; then
+                echo "::error::Failed to dispatch note-ready-sync.yml for $target_sync_id"
                 dispatch_failed=1
               fi
             done
