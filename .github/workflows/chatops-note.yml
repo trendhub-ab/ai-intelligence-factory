@@ -45,8 +45,8 @@ jobs:
        github.event.comment.body == '/aiif note profile update' ||
        github.event.comment.body == '/aiif note repair sgps' ||
        github.event.comment.body == '/aiif note repair vtcode' ||
-       startsWith(github.event.comment.body, '/aiif note eyecatch finalize ') ||
-       startsWith(github.event.comment.body, '/aiif note cover apply '))
+       github.event.comment.body == '/aiif note eyecatch finalize 3ea479ffdca98164ae13f449014633d7' ||
+       github.event.comment.body == '/aiif note cover apply 3ea479ffdca98164ae13f449014633d7')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -77,13 +77,13 @@ jobs:
             '/aiif note profile update') action='profile_update' ;;
             '/aiif note repair sgps') action='sgps_repair' ;;
             '/aiif note repair vtcode') action='vtcode_repair' ;;
-            '/aiif note eyecatch finalize '*)
+            '/aiif note eyecatch finalize 3ea479ffdca98164ae13f449014633d7')
               action='eyecatch_finalize'
-              sync_id="${COMMAND#'/aiif note eyecatch finalize '}"
+              sync_id='3ea479ffdca98164ae13f449014633d7'
               ;;
-            '/aiif note cover apply '*)
+            '/aiif note cover apply 3ea479ffdca98164ae13f449014633d7')
               action='cover_apply'
-              sync_id="${COMMAND#'/aiif note cover apply '}"
+              sync_id='3ea479ffdca98164ae13f449014633d7'
               ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
