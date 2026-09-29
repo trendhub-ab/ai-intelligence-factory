@@ -42,6 +42,37 @@ def _deterministic_reader_title(name: str) -> str:
     return f"{topic}：いま何を判断材料にするべきか"
 
 
+_ADOPTION_ACTION_RE = re.compile(
+    r"導入|採用|利用|使(?:う|える)|試(?:す|用)|PoC|概念実証|本番|実装|移行|運用|展開",
+    re.I,
+)
+_OBSERVATIONAL_ACTION_RE = re.compile(
+    r"確認|比較|評価|追跡|基準点|点検|調査|参照|照合|記録|レビュー|監視|再評価|見直",
+    re.I,
+)
+_NON_ADOPTABLE_TOPIC_RE = re.compile(
+    r"設立|創業|発足|宣言|判決|訴訟|事件|攻撃|漏洩|流出|事故|制度|規制|法案|歴史|当時|"
+    r"報告書|公表|発表内容|研究結果|ベンチマーク結果",
+    re.I,
+)
+
+
+def _management_is_observational(parsed: Mapping[str, Any]) -> bool:
+    action = _text(parsed.get("action_text"))
+    if _OBSERVATIONAL_ACTION_RE.search(action) and not _ADOPTION_ACTION_RE.search(action):
+        return True
+    if _ADOPTION_ACTION_RE.search(action):
+        return False
+    surface = " ".join(
+        _text(parsed.get(key))
+        for key in (
+            "source_summary_text", "what_text", "why_important_text",
+            "decision_reason_text",
+        )
+    )
+    return bool(_NON_ADOPTABLE_TOPIC_RE.search(surface))
+
+
 def _completion_boundary(parsed: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
     """Fill Local Writer publication-helper slots without inventing source facts.
 
@@ -62,13 +93,19 @@ def _completion_boundary(parsed: Mapping[str, Any]) -> tuple[dict[str, str], dic
         for key, value in values.items()
     }
 
+    observational = _management_is_observational(parsed)
+
     if not values["primary_risk"]:
         values["primary_risk"] = (
-            "一次情報の対象範囲を越えて一般化せず、限定した検証で条件差を確認する必要があります。"
+            "一次情報の対象範囲を越えて一般化せず、確認済みの事実と未確認の部分を分ける必要があります。"
+            if observational
+            else "一次情報の対象範囲を越えて一般化せず、限定した検証で条件差を確認する必要があります。"
         )
 
     if not values["best_for"]:
-        if decision in {"NOW", "TRY"}:
+        if observational:
+            values["best_for"] = "一次情報を基準点として残し、追加情報で判断を更新できるチーム。"
+        elif decision in {"NOW", "TRY"}:
             values["best_for"] = "一次情報の範囲を守り、小さな検証から判断材料を増やせるチーム。"
         elif decision in {"WATCH", "WAIT"}:
             values["best_for"] = "導入を急がず、条件の変化を確認して再評価できるチーム。"
@@ -78,7 +115,9 @@ def _completion_boundary(parsed: Mapping[str, Any]) -> tuple[dict[str, str], dic
             values["best_for"] = "一次情報の範囲を守り、限定した条件で検証できるチーム。"
 
     if not values["avoid_for"]:
-        if decision in {"WATCH", "WAIT", "AVOID"}:
+        if observational:
+            values["avoid_for"] = "一つの情報だけで結論を固定し、追加確認を行わないチーム。"
+        elif decision in {"WATCH", "WAIT", "AVOID"}:
             values["avoid_for"] = "追加確認を待たず、すぐ本番適用を前提にしたいチーム。"
         else:
             values["avoid_for"] = "検証条件を確認せず、結果を広く一般化して本番適用したいチーム。"
