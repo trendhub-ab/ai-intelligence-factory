@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "article_id": "aif-44726ed54a991138",
+  "channel": "note_free_article",
+  "offer": "subscriber_decision_db_plus_monthly_summary",
+  "source": "OfficialVendor",
+  "source_url": "https://openai.com/products/release-notes/?aif_revision=b4454157143ec436",
+  "note_title": "勝手に繋がせないための新しい盾。ChatGPTに加わった管理者向け外部アクセス制御。",
+  "ready_at": "2026-09-29T13:50:08.571659+09:00",
+  "notion_page_id": "3ea479ff-dca9-8164-ae13-f449014633d7",
+  "tracking_url": "https://note.com/trendhub_biz/n/ned673e381ef8?utm_source=note&utm_medium=free_article&utm_campaign=ai_intelligence_factory_subscription&utm_content=aif-44726ed54a991138&aif_article_id=aif-44726ed54a991138",
+  "cta_enabled": true,
+  "decision_score": 73,
+  "screening_score": 78,
+  "commercial_value_score": 85,
+  "shelf_life_score": 90,
+  "shelf_life": "EVERGREEN",
+  "portfolio_topic": "SECURITY",
+  "deep_dive_priority_score": 80.45,
+  "measurement_status": "awaiting_external_metrics"
+}
