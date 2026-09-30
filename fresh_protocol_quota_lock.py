@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent
-LOCK = ROOT / "docs/audits/fresh-four-source-protocol-lock-v1.json"
+LOCK = ROOT / "docs/audits/fresh-four-source-protocol-lock-v2.json"
 SOURCES = frozenset({"GitHub", "HackerNews", "ArXiv", "OfficialVendor"})
 
 
@@ -44,7 +44,7 @@ def validate(*, repo_root: Path = ROOT, manifest_path: Path = LOCK, source: str 
     if source not in SOURCES and source != "":
         raise RuntimeError("Invalid or unexpected Fresh source target")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("protocol") != "fresh-unmodified-four-source-v439-v1":
+    if manifest.get("protocol") != "fresh-four-source-fallback-bounded-v2":
         raise RuntimeError("Invalid frozen Fresh protocol id")
     if manifest.get("source_membership") != sorted(SOURCES):
         raise RuntimeError("Source-set drift in Fresh protocol lock")
@@ -63,6 +63,9 @@ def validate(*, repo_root: Path = ROOT, manifest_path: Path = LOCK, source: str 
     workflow = (repo_root / ".github/workflows/daily-one-shot.yml").read_text(encoding="utf-8")
     if not all(part in canary for part in (
         "pipeline.MAX_QUALITY_RETRIES = 0",
+        "send_budget = FreshModelSendBudget()",
+        "pipeline._generate_via_chat = send_budget.wrapped(original_send)",
+        "pipeline._generate_via_chat = original_send",
         "pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False",
         'raise RuntimeError("Cross-source Fresh candidate escaped source filter")',
         "Once one article-analysis provider call has happened",
@@ -81,8 +84,29 @@ def validate(*, repo_root: Path = ROOT, manifest_path: Path = LOCK, source: str 
             raise RuntimeError("Fresh configured bounds drift: " + key)
     if manifest.get("workflow_limits") != required:
         raise RuntimeError("Fresh registered workflow limits drift")
-    if manifest.get("max_deep_dive_sends") != 1 or manifest.get("max_quality_retries") != 0:
-        raise RuntimeError("Fresh attempt budget or retry protocol altered")
+    if manifest.get("max_article_candidates_after_send") != 1 or manifest.get("max_quality_retries") != 0:
+        raise RuntimeError("Fresh article or quality retry protocol altered")
+    from fresh_model_fallback_budget import (
+        MAX_ARTICLE_SEND_SLOTS, MAX_PRE_ARTICLE_SEND_SLOTS, MAX_TOTAL_SEND_SLOTS,
+    )
+    hard_limits = {
+        "total": MAX_TOTAL_SEND_SLOTS,
+        "pre_article": MAX_PRE_ARTICLE_SEND_SLOTS,
+        "article": MAX_ARTICLE_SEND_SLOTS,
+    }
+    if hard_limits != {"total": 10, "pre_article": 6, "article": 4}:
+        raise RuntimeError("Fresh guarded model-send source cap drift")
+    if manifest.get("max_provider_send_slots") != hard_limits:
+        raise RuntimeError("Fresh registered model-send cap drift")
+    # Read and fingerprint the exact Production 503 router, rather than falsely
+    # claiming that limiting article candidates disables fallback.
+    provider = (repo_root / "gemini_provider_resilience.py").read_text(encoding="utf-8")
+    if not all(marker in provider for marker in (
+        "for model_name in allowed_pool(pool)",
+        "if code == 503:",
+        "pipeline_module._generate_via_chat(",
+    )):
+        raise RuntimeError("Production distinct-model fallback contract drift")
     # Source filter follows shared acquisition/dedupe. Max 50 screened per
     # explicit source. Per-batch figures are *logical* calls only; transport
     # fallback attempts can consume more provider quota.
@@ -94,7 +118,9 @@ def validate(*, repo_root: Path = ROOT, manifest_path: Path = LOCK, source: str 
         "source": source or "unspecified_legacy_canary",
         "file_fingerprints_verified": len(files),
         "max_logical_calls_per_exact_source": expected_logical,
-        "actual_transport_attempts": "NOT_BOUNDED_BY_THIS_OFFLINE_CHECK",
+        "max_provider_send_slots": hard_limits,
+        "article_model_fallback": "PRESERVED_WITHIN_BOUND",
+        "actual_transport_attempts": "SEND_INVOCATIONS_BOUNDED_SDK_SINGLE_ATTEMPT_RUNTIME_REQUIRED",
         "actual_provider_rpm_rpd_remaining": "NOT_MEASURED",
         "quality_measured": False,
         "safe_to_start_without_quota_review": False,
