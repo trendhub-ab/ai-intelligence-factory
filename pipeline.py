@@ -7888,10 +7888,7 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                     evidence_context=(
                         source_info.get("verification_context")
                         or source_info.get("context", "")
-                    ),
-                    # Exactly the Production Fact Gate's existing source checker;
-                    # this only scopes unsupported provider management prose.
-                    source_boundary_checker=_find_source_boundary_violations,
+                    ), source_boundary_checker=_find_source_boundary_violations,
                 )
                 globals()["_LOCAL_SKILLS_CANARY_LAST_COMPILE"] = dict(local_compile_meta)
                 if local_skills_production:
