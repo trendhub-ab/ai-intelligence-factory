@@ -71,6 +71,8 @@ jobs:
           python -m unittest tests/test_run250_member_client_action_product.py
           python -m unittest tests/test_run270_proposal_first_member_surface.py
           python -m unittest tests/test_run307_use_decision_member_surface.py
+          python -m unittest tests/test_member_offer_copy.py
+          python -m unittest tests/test_member_experience_quality_audit.py
           python -m unittest tests/test_run271_member_body_delta_sync.py
           python -m unittest tests/test_run271_1_member_body_checkpoint.py
           python -m unittest tests/test_member_monthly_decision_brief_sync.py
