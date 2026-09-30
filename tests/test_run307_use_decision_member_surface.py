@@ -89,6 +89,51 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertIn(state["next_action"], visible)
         self.assertEqual(before, state)
 
+    def test_member_source_list_is_honest_about_third_party_sources(self):
+        state = self._state()
+        state["primary_url"] = "https://dify.ai/"
+        state["evidence"] = "https://www.comet.com/docs/opik/integrations/dify"
+        state["last_reviewed"] = "2026-08-29T03:14:00Z"
+        texts = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
+        self.assertIn("参照した情報源", texts)
+        self.assertIn("参照先 1：dify.ai", texts)
+        self.assertIn("参照先 2：comet.com", texts)
+        self.assertNotIn("公式・一次情報 2", texts)
+        self.assertIn("根拠の確認日", texts)
+        self.assertIn("2026年8月29日に確認", texts)
+        self.assertNotIn("2026年9月29日", texts)
+        # Source-review disclosure precedes any current-use recommendation.
+        ordered = [text for _, text in body._body_fingerprint(run307._build_children(state))]
+        self.assertLess(ordered.index("根拠の確認日"), ordered.index("いま、使える？"))
+        state["last_reviewed"] = ""
+        missing = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
+        self.assertIn("最終確認日が記録されていません", missing)
+
+    def test_existing_and_new_rows_share_review_policy_not_edit_time(self):
+        import member_reader_quality_policy as policy
+        old = self._state()
+        old["last_reviewed"] = "2026-08-23"
+        new = self._state()
+        new["last_reviewed"] = ""
+        # A new page and an old page both enter the same renderer.
+        for record in (old, new):
+            display = [text for _, text in body._body_fingerprint(run307._build_children(record))]
+            self.assertIn(policy.DATE_PREFIX, display)
+            self.assertLess(display.index(policy.DATE_PREFIX), display.index("いま、使える？"))
+            self.assertIn(policy.review_disclosure(record["last_reviewed"]), display)
+        self.assertIn("最終確認日が記録されていません",
+                      policy.review_disclosure(new["last_reviewed"]))
+
+    def test_vague_topic_is_omitted_without_inventing_a_recency_claim(self):
+        state = self._state()
+        state["topic"] = "制作・検証環境として非常に有力。"
+        texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
+        self.assertNotIn("なぜ今見る？", texts)
+        state["topic"] = "公式APIと利用条件が更新された。"
+        texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
+        self.assertIn("なぜ今見る？", texts)
+        self.assertEqual("", run307._last_reviewed_label("2026-99-33"))
+
     def test_status_copy_is_generic(self):
         adopt = run307._use_decision_text(self._state(status="ADOPT"))
         test = run307._use_decision_text(self._state(status="TEST"))
@@ -148,6 +193,7 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertEqual(
             [
                 "これは何？",
+                "根拠の確認日",
                 "いま、使える？",
                 "使える場面",
                 "なぜ今見る？",

@@ -16,10 +16,12 @@ behavior. ZERO Gemini/model calls.
 from __future__ import annotations
 
 from typing import Any
+import re
 
 import member_client_action_alignment as alignment
 import member_presentation_body_sync as body
 import run219_member_human_language_ui as run219
+import member_reader_quality_policy as quality
 
 
 USE_DECISION_ICP = (
@@ -32,12 +34,7 @@ PRIMARY_JOB = (
 )
 CORE_PROMISE = "「このAI、使える！」を、根拠付きで判断できる。"
 
-_STATUS_USE = {
-    "ADOPT": "利用条件が合えば、導入候補として検討できる",
-    "TEST": "本番利用の前に、近い条件で小さく検証する",
-    "WATCH": "現時点では採用を急がず、条件や成熟度の変化を追う",
-    "AVOID": "現時点では採用候補から外し、代替案を比較する",
-}
+_STATUS_USE = quality.LONG_STATUS
 
 
 def _clean(value: Any) -> str:
@@ -65,6 +62,25 @@ def _use_update_text(state: dict[str, Any]) -> str:
     return f"{prefix}{reason}"
 
 
+def _show_topic(value: str) -> bool:
+    """Omit vague filler instead of manufacturing a 'why now' from stale data."""
+    text = _clean(value).strip("。！？!?. ")
+    if not text:
+        return False
+    return not bool(re.fullmatch(
+        r".{0,36}(?:非常に有力|有力候補|注目に値する|確認しています|期待されます)",
+        text,
+    ))
+
+
+def _source_label(url: str, index: int) -> str:
+    return quality.source_link_label(url, index)
+
+
+def _last_reviewed_label(value: Any) -> str:
+    return quality.display_date(value)
+
+
 def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Render current generic use-decision copy using existing authoritative fields only."""
     children: list[dict[str, Any]] = []
@@ -73,6 +89,13 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     if summary:
         children.append(body._heading("これは何？"))
         children.append(body._paragraph(summary))
+
+    # One evidence-age disclosure policy for both existing/new DB rows
+    # and the monthly Brief. Never confuse presentation edits with rechecks.
+    children.append(body._heading(quality.DATE_PREFIX))
+    children.append(body._paragraph(
+        quality.review_disclosure(state.get("last_reviewed"))
+    ))
 
     children.append(body._heading("いま、使える？"))
     children.append(body._paragraph(_use_decision_text(state)))
@@ -83,7 +106,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._paragraph(use_case))
 
     topic = _clean(state.get("topic"))
-    if topic:
+    if _show_topic(topic):
         children.append(body._heading("なぜ今見る？"))
         children.append(body._paragraph(topic))
 
@@ -105,11 +128,12 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     evidence = run219._clean(state.get("evidence"))
     primary_url = run219._clean(state.get("primary_url"))
     related_article = run219._clean(state.get("related_article"))
-    urls = body._extract_urls(evidence, primary_url)
+
+    urls = body._extract_urls(primary_url, evidence)
     if urls or related_article:
-        children.append(body._heading("確認に使った公式・一次情報"))
+        children.append(body._heading("参照した情報源"))
         for index, url in enumerate(urls[:5], 1):
-            children.append(body._link_paragraph(f"公式・一次情報 {index}", url))
+            children.append(body._link_paragraph(_source_label(url, index), url))
         if related_article:
             children.append(body._link_paragraph("関連記事", related_article))
 
@@ -153,6 +177,7 @@ def contract() -> dict[str, Any]:
         "notion_schema_changed": False,
         "zero_gemini_calls": True,
         "paid_surface": [
+            quality.DATE_PREFIX,
             "いま、使える？",
             "使える場面",
             "使う前に確認すること",

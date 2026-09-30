@@ -293,6 +293,7 @@ def run_body_sync() -> dict[str, Any]:
         result["run307_use_decision_member_surface"] = run307.contract()
         result["reader_order"] = [
             "これは何？",
+            "根拠の確認日",
             "いま、使える？",
             "使える場面",
             "なぜ今見る？",

@@ -26,6 +26,7 @@ import requests
 
 import decision_intelligence
 import member_presentation_sync as member
+import member_reader_quality_policy as quality
 
 PAGE_ID = os.environ.get("MEMBER_MONTHLY_BRIEF_PAGE_ID", "").strip()
 TOP_LIMIT = max(1, min(10, int(os.environ.get("MEMBER_MONTHLY_BRIEF_TOP_LIMIT", "5"))))
@@ -168,60 +169,103 @@ def select_changes(states: list[dict[str, Any]], *, limit: int = CHANGE_LIMIT) -
 
 
 def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -> tuple[str, list[dict[str, Any]], int, int]:
+    """Member Brief uses the exact DB detail evidence-age and source-label policy."""
     tz = ZoneInfo(PRODUCT_TIMEZONE)
     local_now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    as_of = local_now.date()
     title = f"会員限定Decision Brief｜{local_now.year}年{local_now.month}月"
     top = select_top(states)
     changes = select_changes(states)
 
     blocks: list[dict[str, Any]] = [
         _callout(
-            f"{local_now.month}月の最新判断です。ニュースを並べるのではなく、"
-            "今見るべきAI・技術と、使う・試す・待つ・避ける判断を短時間で確認できます。"
+            f"{local_now.month}月の判断材料をまとめました。"
+            "各AI・技術の根拠を確認した日は項目ごとに異なります。"
+            "このページの表示更新は、情報を再確認したことを意味しません。"
         ),
-        _heading(2, "今月の結論"),
+        _heading(2, "今月の判断材料"),
     ]
     if top:
         for state in top:
             score = int(round(_score(state.get("score"))))
             action = str(state.get("next_action") or "").strip()
-            blocks.append(_bullet(f"{state['name']} — {state['status']}｜{score}点 — {action}"))
+            review = quality.review_badge(state.get("last_reviewed"), as_of=as_of)
+            status = quality.status_short(state.get("status"))
+            blocks.append(_bullet(
+                f"{state['name']}｜{quality.DATE_PREFIX}：{review}｜"
+                f"判断：{status}｜参考スコア：{score}点"
+                + (f"｜次の一手：{action}" if action else "")
+            ))
     else:
         blocks.append(_paragraph(_rt("現在、会員向けに提示できる評価済み候補がありません。")))
 
     for idx, state in enumerate(top, 1):
         score = int(round(_score(state.get("score"))))
         blocks.extend([
-            _heading(2, f"{idx}｜{state['name']} — {state['status']}｜{score}点"),
-            _paragraph(_rt("使える場面：", bold=True), _rt(state.get("best_for") or state.get("plain_summary") or "用途を確認中です。")),
-            _paragraph(_rt("判断のポイント：", bold=True), _rt(state.get("judgment_reason") or "現在の一次情報を基に判断しています。")),
-            _paragraph(_rt("使う前に確認すること：", bold=True), _rt(state.get("main_risk") or "自社条件との適合を確認してください。")),
-            _paragraph(_rt("次の一手：", bold=True), _rt(state.get("next_action") or "小さく検証してから次の判断へ進みます。")),
+            _heading(2, f"{idx}｜{state['name']}"),
+            # Evidence age comes before recommendation on every reader surface.
             _paragraph(
-                _rt("DBで詳しく見る", bold=True, link=_page_url(state.get("page_id") or "")),
-                _rt(" ｜ "),
-                _rt("公式", link=state.get("primary_url") or ""),
+                _rt(f"{quality.DATE_PREFIX}：", bold=True),
+                _rt(quality.review_disclosure(state.get("last_reviewed"), as_of=as_of)),
+            ),
+            _paragraph(
+                _rt("いま、使える？：", bold=True),
+                _rt(f"{quality.status_short(state.get('status'))}（参考スコア：{score}点）"),
+            ),
+            _paragraph(
+                _rt("使える場面：", bold=True),
+                _rt(state.get("best_for") or state.get("plain_summary") or "用途を確認中です。"),
+            ),
+            _paragraph(
+                _rt("判断の理由：", bold=True),
+                _rt(state.get("judgment_reason") or "判断理由が未記録です。参照先で確認してください。"),
+            ),
+            _paragraph(
+                _rt("使う前に確認すること：", bold=True),
+                _rt(state.get("main_risk") or "対象環境や利用条件を確認してください。"),
+            ),
+            _paragraph(
+                _rt("次の一手：", bold=True),
+                _rt(state.get("next_action") or "自分の利用条件を確認して次の判断を進めてください。"),
             ),
         ])
+        page_url = _page_url(state.get("page_id") or "")
+        primary_url = str(state.get("primary_url") or "").strip()
+        if page_url:
+            blocks.append(_paragraph(_rt("DBで詳しく見る", bold=True, link=page_url)))
+        if primary_url.startswith("https://"):
+            blocks.append(_paragraph(
+                _rt(quality.source_link_label(primary_url), link=primary_url)
+            ))
 
-    blocks.extend([_divider(), _heading(2, "今月、判断を変える必要があるもの")])
+    blocks.extend([_divider(), _heading(2, "今月、記録された重要な判断の変化")])
     if not changes:
-        blocks.append(_paragraph(_rt("現時点では、判断を変えるほどの重要変化はありません。変化がないことも判断材料です。")))
+        blocks.append(_paragraph(_rt(
+            "今月の重要な評価変化として記録された項目はありません。"
+            "すべての技術に変化がなかったことを意味するものではありません。"
+        )))
     for state in changes:
         delta = float(state.get("delta") or 0)
         sign = "+" if delta > 0 else ""
         blocks.extend([
             _heading(3, f"{state['name']} — 評価 {sign}{int(delta) if delta.is_integer() else delta:g}"),
-            _paragraph(_rt(state.get("change_reason") or state.get("topic") or "重要な変化を検知しました。")),
-            _paragraph(_rt("次の一手：", bold=True), _rt(state.get("next_action") or "現在の判断条件を再確認します。")),
+            _paragraph(
+                _rt(f"{quality.DATE_PREFIX}：", bold=True),
+                _rt(quality.review_disclosure(state.get("last_reviewed"), as_of=as_of)),
+            ),
+            _paragraph(_rt(state.get("change_reason") or state.get("topic") or
+                           "記録された変化の説明はありません。DBで確認してください。")),
+            _paragraph(_rt("次の一手：", bold=True),
+                       _rt(state.get("next_action") or "現在の判断条件を再確認します。")),
             _paragraph(_rt("DBで確認", link=_page_url(state.get("page_id") or ""))),
         ])
 
     blocks.extend([
         _divider(),
         _callout(
-            f"最終自動更新：{local_now.date().isoformat()} JST。"
-            "根拠・実用度・リスク・次のActionはAI意思決定DBで確認できます。",
+            f"このページの表示更新：{as_of.isoformat()} JST。"
+            "根拠の確認日は各項目に記載しています。"
+            "仕様・料金などは利用前に参照先でご確認ください。",
             emoji="🧭",
         ),
     ])
