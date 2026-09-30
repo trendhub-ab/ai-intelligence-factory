@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+  # One-shot operational trigger on this disposable branch only.
+  # The job checks out main and forces full body migration below.
+  push:
+    branches:
+      - ops/member-full-sync-once-20261001-0710
   workflow_run:
     # The presentation DB is derived from the Subscriber Technology/Decision Brief bridge.
     # Run only after that bridge has finished so we never race a source update.
@@ -39,6 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: main
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -115,7 +122,7 @@ jobs:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_BODY_CHANGED_SINCE: ${{ env.MEMBER_BODY_CHANGED_SINCE }}
-          MEMBER_BODY_FORCE_FULL: ${{ github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
+          MEMBER_BODY_FORCE_FULL: ${{ github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/ops/member-full-sync-once-20261001-0710') }}
 
       - name: Refresh paid monthly Decision Brief from the current member DB
         run: python member_monthly_decision_brief_sync.py
