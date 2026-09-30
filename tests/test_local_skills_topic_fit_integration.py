@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+import pipeline
 from local_skills.compiler import compile_snapshot
 from local_skills.production_canary import _completion_boundary
 from editorial_naturalness import classify_article_claims
@@ -145,7 +146,9 @@ def test_kvm_escape_incident_shape_keeps_observational_topic_and_decision_voice(
     result = compile_snapshot(snapshot)
     article = result["parsed"]["note_draft"]
     claims = classify_article_claims(result["parsed"])
+    _state, appeal_issues = pipeline.validate_human_appeal_gate(result["parsed"])
 
     assert "本格導入" not in article
     assert "基準点として追跡し、次の情報と比較する" in article
     assert claims["decision"] >= 1
+    assert "decision_voice_missing" not in appeal_issues
