@@ -42,7 +42,7 @@ class PaidDBReadOnlyExperienceAuditTests(unittest.TestCase):
                 _callout("human", "手書きの補足"),
             ],
             "generated-old": _headings(
-                "これは何？", "いま、使える？", "使える場面", "次の一手"
+                "これは何？", "いま、どうする？", "そう判断した理由", "次にやること"
             ),
             "generated-current": _headings(
                 "これは何？", "いま、使える？",
@@ -95,13 +95,20 @@ class PaidDBReadOnlyExperienceAuditTests(unittest.TestCase):
         old = _callout("historical", run219.NEW_VISIBLE_CALLOUT_LABEL)
         current = _callout("current", run219.NEW_VISIBLE_CALLOUT_LABEL)
         cache["historical"] = _headings(
-            "いま、使える？", "使える場面", "次の一手"
+            "いま、どうする？", "そう判断した理由", "次にやること"
         )
         cache["current"] = _headings(
             "いま、使える？", "使う前に確認すること", "試す・導入する次の一手"
         )
         self.assertTrue(run219._looks_like_generated_member_callout(old, cache))
         self.assertTrue(run219._looks_like_generated_member_callout(current, cache))
+
+        # Same-label manual text must remain unclassified without an exact template.
+        ambiguous = _callout("ambiguous", run219.NEW_VISIBLE_CALLOUT_LABEL)
+        cache["ambiguous"] = _headings(
+            "いま、使える？", "使える場面", "次の一手"
+        )
+        self.assertFalse(run219._looks_like_generated_member_callout(ambiguous, cache))
 
 
 if __name__ == "__main__":
