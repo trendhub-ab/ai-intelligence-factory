@@ -134,6 +134,12 @@ jobs:
       - name: Zero-API temporary provider exclusion falsification
         run: python -m unittest tests.test_temporary_provider_exclusion -v
 
+      - name: Freeze four-source Fresh protocol before any provider send
+        if: ${{ inputs.mode == 'local_skills_canary_validation' }}
+        run: |
+          set -euo pipefail
+          python fresh_protocol_quota_lock.py --source "${{ inputs.canary_source }}"
+
       - name: 通常Production entrypointを1回だけ実行
         if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'production_e2e_validation' || inputs.mode == 'stale_ready_batch_revalidation' || inputs.mode == 'local_skills_canary_validation' || inputs.mode == 'local_skills_production_validation' }}
         run: python production_pipeline.py
