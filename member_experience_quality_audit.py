@@ -84,6 +84,12 @@ def inspect(
             and body._block_text(b) in {CURRENT_LABEL, LEGACY_LABEL}
         ]
         known = []
+        # Shared injected reader is used for both root and child blocks, so
+        # tests are offline and live audits stay inside one read-only client.
+        for candidate in candidates:
+            block_id = str(candidate.get("id") or "")
+            if block_id:
+                cache[block_id] = read_children(block_id)
         for block in roots:
             label = body._block_text(block)
             if block.get("type") != "callout":
