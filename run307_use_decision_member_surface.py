@@ -16,13 +16,12 @@ behavior. ZERO Gemini/model calls.
 from __future__ import annotations
 
 from typing import Any
-from datetime import date
 import re
-from urllib.parse import urlsplit
 
 import member_client_action_alignment as alignment
 import member_presentation_body_sync as body
 import run219_member_human_language_ui as run219
+import member_reader_quality_policy as quality
 
 
 USE_DECISION_ICP = (
@@ -35,12 +34,7 @@ PRIMARY_JOB = (
 )
 CORE_PROMISE = "「このAI、使える！」を、根拠付きで判断できる。"
 
-_STATUS_USE = {
-    "ADOPT": "利用条件が合えば、導入候補として検討できる",
-    "TEST": "本番利用の前に、近い条件で小さく検証する",
-    "WATCH": "現時点では採用を急がず、条件や成熟度の変化を追う",
-    "AVOID": "現時点では採用候補から外し、代替案を比較する",
-}
+_STATUS_USE = quality.LONG_STATUS
 
 
 def _clean(value: Any) -> str:
@@ -80,28 +74,11 @@ def _show_topic(value: str) -> bool:
 
 
 def _source_label(url: str, index: int) -> str:
-    """Use an identifiable domain, never mislabel a third-party page official."""
-    parsed = urlsplit(str(url or ""))
-    host = (parsed.hostname or "").removeprefix("www.")
-    if not host:
-        return f"参照先 {index}"
-    return f"参照先 {index}：{host}"
+    return quality.source_link_label(url, index)
 
 
 def _last_reviewed_label(value: Any) -> str:
-    """Display an existing source-review date without treating UI edit time as review."""
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?", raw)
-    if match:
-        try:
-            value = date(int(match[1]), int(match[2]), int(match[3]))
-        except ValueError:
-            return ""
-        return f"{value.year}年{value.month}月{value.day}日"
-    # Fail closed on unknown locale/time format rather than guess a 'today' date.
-    return ""
+    return quality.display_date(value)
 
 
 def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -113,19 +90,12 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._heading("これは何？"))
         children.append(body._paragraph(summary))
 
-    # Put evidence age before the recommendation, where mobile readers see it.
-    # Missing source-review dates must not be mistaken for current verification.
-    checked = _last_reviewed_label(state.get("last_reviewed"))
-    children.append(body._heading("根拠の確認日"))
-    if checked:
-        children.append(body._paragraph(
-            f"{checked}に確認。以降の変更は未反映の可能性があります。"
-            "利用前に公式情報で条件・価格を再確認してください。"
-        ))
-    else:
-        children.append(body._paragraph(
-            "最終確認日が記録されていません。利用前に参照先の最新情報をご確認ください。"
-        ))
+    # One evidence-age disclosure policy for both existing/new DB rows
+    # and the monthly Brief. Never confuse presentation edits with rechecks.
+    children.append(body._heading(quality.DATE_PREFIX))
+    children.append(body._paragraph(
+        quality.review_disclosure(state.get("last_reviewed"))
+    ))
 
     children.append(body._heading("いま、使える？"))
     children.append(body._paragraph(_use_decision_text(state)))
