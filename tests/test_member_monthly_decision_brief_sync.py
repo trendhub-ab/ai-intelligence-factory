@@ -80,9 +80,51 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertEqual(1, top_count)
         self.assertEqual(1, change_count)
         rendered = str(blocks)
-        self.assertIn("今月の結論", rendered)
-        self.assertIn("今月、判断を変える必要があるもの", rendered)
-        self.assertIn("最終自動更新：2026-09-29 JST", rendered)
+        self.assertIn("今月の判断材料", rendered)
+        self.assertIn("今月、記録された重要な判断の変化", rendered)
+        self.assertIn("このページの表示更新：2026-09-29 JST", rendered)
+
+    def test_old_record_and_missing_review_are_truthful_in_both_brief_sections(self):
+        now = datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
+        older = state("OldTool", 86, rank=1, current_month_change=True, delta=8)
+        older["last_reviewed"] = "2026-08-23"
+        older["primary_url"] = "https://www.comet.com/docs/tool"
+        missing = state("NewTool", 81, rank=2)
+        missing["last_reviewed"] = ""
+        _, blocks, top_count, change_count = brief.build_blocks(
+            [older, missing], now=now
+        )
+        self.assertEqual(2, top_count)
+        self.assertEqual(1, change_count)
+        rendered = str(blocks)
+        self.assertIn("根拠の確認日", rendered)
+        self.assertIn("2026年8月23日（30日超）", rendered)
+        self.assertIn("2026年8月23日に確認。30日を超えています", rendered)
+        self.assertIn("未記録", rendered)
+        self.assertIn("最終確認日が記録されていません", rendered)
+        self.assertIn("参照先 1：comet.com", rendered)
+        self.assertIn("判断：まず小さく検証", rendered)
+        self.assertNotIn("月の最新判断", rendered)
+        self.assertNotIn("'ADOPT'", rendered)
+        self.assertNotIn("現在の一次情報を基に判断しています", rendered)
+        self.assertNotIn("'公式'", rendered)
+
+        # First compact view must declare review age before offering advice.
+        bullet = next(b for b in blocks if b["type"] == "bulleted_list_item")
+        line = bullet["bulleted_list_item"]["rich_text"][0]["text"]["content"]
+        self.assertLess(line.index("根拠の確認日"), line.index("判断："))
+        # The detailed and changed-item views must disclose the same real date.
+        self.assertGreaterEqual(rendered.count("2026年8月23日に確認"), 2)
+
+    def test_future_date_is_not_exposed_as_verified_in_brief(self):
+        future = state("Future", 85, rank=1)
+        future["last_reviewed"] = "2026-10-04"
+        _, blocks, _, _ = brief.build_blocks(
+            [future], now=datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
+        )
+        rendered = str(blocks)
+        self.assertIn("確認日に不整合", rendered)
+        self.assertNotIn("2026年10月4日に確認", rendered)
 
     def test_sync_is_content_first_then_cleanup_then_title(self):
         calls = []
