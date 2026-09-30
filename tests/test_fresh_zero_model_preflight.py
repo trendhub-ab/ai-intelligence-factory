@@ -71,6 +71,8 @@ def _allow(monkeypatch):
     monkeypatch.setenv("FRESH_SOURCE_PREFLIGHT_CONFIRM", preflight.CONFIRM_VALUE)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", raising=False)
+    monkeypatch.delenv("FRESH_SUPPLY_TRIAL_PROTOCOL", raising=False)
+    monkeypatch.delenv("FRESH_SUPPLY_TRIAL_APPROVAL", raising=False)
 
 
 def test_live_preflight_uses_only_whitelisted_source_dedupe_functions(tmp_path, monkeypatch):
@@ -158,3 +160,52 @@ def test_workflow_is_manual_only_without_provider_credentials_or_note_sync():
     assert "install_run268(pipeline)" in standalone
     assert "install_run269(pipeline)" in standalone
     assert "pipeline.initialize_runtime()" not in standalone
+
+
+def test_trial_is_explicit_and_never_escapes_baseline_source_guard(tmp_path, monkeypatch):
+    import fresh_candidate_supply_experiment as supply
+
+    _allow(monkeypatch)
+    p, calls = _offline_pipeline()
+    p.normalize_item = lambda **kwargs: kwargs
+    p.requests = SimpleNamespace(post=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("unapproved trial made source request")
+    ))
+    monkeypatch.setenv("FRESH_SUPPLY_TRIAL_PROTOCOL", supply.PROTOCOL_ID)
+    with pytest.raises(RuntimeError, match="exact preregistered approval"):
+        preflight.run_live(p, audit_path=tmp_path / "no.json")
+    assert calls == []
+
+    monkeypatch.setenv("FRESH_SUPPLY_TRIAL_PROTOCOL", "unregistered")
+    monkeypatch.setenv("FRESH_SUPPLY_TRIAL_APPROVAL", "ALLOW_3_GITHUB_READS")
+    with pytest.raises(RuntimeError, match="exact preregistered approval"):
+        preflight.run_live(p, audit_path=tmp_path / "no.json")
+    assert calls == []
+
+    monkeypatch.delenv("FRESH_SUPPLY_TRIAL_PROTOCOL")
+    with pytest.raises(RuntimeError, match="cannot leak into baseline"):
+        preflight.run_live(p, audit_path=tmp_path / "no.json")
+    assert calls == []
+
+
+def test_approved_trial_provenance_is_not_production_evidence(tmp_path, monkeypatch):
+    import fresh_candidate_supply_experiment as supply
+
+    _allow(monkeypatch)
+    p, calls = _offline_pipeline()
+    p.normalize_item = lambda **kwargs: kwargs
+    p.requests = SimpleNamespace()
+    monkeypatch.setenv("FRESH_SUPPLY_TRIAL_PROTOCOL", supply.PROTOCOL_ID)
+    monkeypatch.setenv("FRESH_SUPPLY_TRIAL_APPROVAL", "ALLOW_3_GITHUB_READS")
+
+    def fake_fetcher(_pipeline, *, capture):
+        capture.update({"protocol": supply.PROTOCOL_ID, "github_graphql_queries": 3})
+        return lambda limit: _source_rows("GitHub", ["https://example.invalid/trial/1"])[:limit]
+
+    monkeypatch.setattr(supply, "make_fetcher", fake_fetcher)
+    result = preflight.run_live(p, audit_path=tmp_path / "trial.json")
+    assert result["provenance"] == "EXPERIMENTAL_GITHUB_SOURCE_SUPPLY_NOT_PRODUCTION"
+    assert result["experimental_github"]["github_graphql_queries"] == 3
+    assert result["quality_measured"] is False
+    assert result["gate_result"] == "NOT_MEASURED"
+    assert "fetch:GitHub" not in calls

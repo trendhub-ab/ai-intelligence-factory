@@ -110,8 +110,28 @@ def run_live(pipeline: Any, *, audit_path: Path = AUDIT_PATH) -> dict:
     # This restricted facade has no screening, calibration, model or persistence
     # functions. It uses the current Production source and identity callables.
     facade = _minimal_acquisition_surface(pipeline)
+    requested_trial = os.environ.get("FRESH_SUPPLY_TRIAL_PROTOCOL", "")
+    trial_metrics: dict = {}
+    if requested_trial:
+        from fresh_candidate_supply_experiment import PROTOCOL_ID, make_fetcher
+        if requested_trial != PROTOCOL_ID or (
+            os.environ.get("FRESH_SUPPLY_TRIAL_APPROVAL") != "ALLOW_3_GITHUB_READS"
+        ):
+            raise RuntimeError("Source-supply experiment requires exact preregistered approval")
+        if not callable(getattr(pipeline, "normalize_item", None)) or not hasattr(pipeline, "requests"):
+            raise RuntimeError("Experimental source transport unavailable")
+        facade.fetch_github_trending = make_fetcher(pipeline, capture=trial_metrics)
+    elif os.environ.get("FRESH_SUPPLY_TRIAL_APPROVAL"):
+        raise RuntimeError("Experimental approval cannot leak into baseline preflight")
+
     _repos, acquisition = _fresh_candidates(facade)
-    result = _summarize(acquisition, provenance="LIVE_SOURCE_AND_NOTION_READS")
+    provenance = (
+        "EXPERIMENTAL_GITHUB_SOURCE_SUPPLY_NOT_PRODUCTION"
+        if requested_trial else "LIVE_SOURCE_AND_NOTION_READS"
+    )
+    result = _summarize(acquisition, provenance=provenance)
+    if requested_trial:
+        result["experimental_github"] = trial_metrics
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result

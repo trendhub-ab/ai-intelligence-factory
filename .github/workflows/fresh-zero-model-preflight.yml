@@ -10,6 +10,19 @@ on:
         type: string
         required: true
         default: ''
+      variant:
+        description: 'baseline or preregistered GitHub 3-cohort source-supply trial'
+        type: choice
+        options:
+          - baseline
+          - gh_3cohort_trial
+        default: baseline
+        required: true
+      extra_github_confirmation:
+        description: 'Trial only: type ALLOW_3_GITHUB_READS (2 more than baseline)'
+        type: string
+        default: ''
+        required: false
 
 permissions:
   contents: read
@@ -28,6 +41,8 @@ jobs:
       GEMINI_API_KEY: ''
       AIIF_X_DISCOVERY_ENABLED: 'false'
       AIIF_LOCAL_SKILLS_CANARY_SOURCE: ''
+      FRESH_SUPPLY_TRIAL_PROTOCOL: ${{ inputs.variant == 'gh_3cohort_trial' && 'source-supply-gh-3-cohorts-v1' || '' }}
+      FRESH_SUPPLY_TRIAL_APPROVAL: ${{ inputs.extra_github_confirmation }}
       GH_PAT: ${{ secrets.GH_PAT }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
       NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
@@ -45,6 +60,12 @@ jobs:
           set -euo pipefail
           test "${{ inputs.confirm }}" = RUN_READ_ONLY_PREFLIGHT
           test -z "${GEMINI_API_KEY:-}"
+          if [ "${{ inputs.variant }}" = "gh_3cohort_trial" ]; then
+            test "${{ inputs.extra_github_confirmation }}" = "ALLOW_3_GITHUB_READS"
+          else
+            test "${{ inputs.variant }}" = "baseline"
+            test -z "${{ inputs.extra_github_confirmation }}"
+          fi
           test -n "${GH_PAT:-}"
           test -n "${NOTION_API_KEY:-}"
           if [ -z "${NOTION_DATA_SOURCE_ID:-}" ] && [ -z "${NOTION_DATABASE_ID:-}" ]; then
