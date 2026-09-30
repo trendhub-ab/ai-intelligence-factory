@@ -1,0 +1,80 @@
+name: Fresh Source Preflight [ZERO GEMINI]
+
+# Manual only. Reads source endpoints and authoritative Notion identities;
+# never sends Gemini requests, mutates Notion, generates an article or runs Daily.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RUN_READ_ONLY_PREFLIGHT; this makes source/Notion read requests, but zero Gemini calls'
+        type: string
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  source-preflight:
+    if: ${{ inputs.confirm == 'RUN_READ_ONLY_PREFLIGHT' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AIIF_ONE_SHOT_MODE: local_skills_source_preflight
+      FRESH_SOURCE_PREFLIGHT_CONFIRM: RUN_READ_ONLY_PREFLIGHT
+      GEMINI_API_KEY: ''
+      AIIF_X_DISCOVERY_ENABLED: 'false'
+      AIIF_LOCAL_SKILLS_CANARY_SOURCE: ''
+      GH_PAT: ${{ secrets.GH_PAT }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_API_VERSION: '2026-03-11'
+      GITHUB_FETCH_LIMIT: '50'
+      HN_FETCH_LIMIT: '50'
+      ARXIV_FETCH_LIMIT: '50'
+      OFFICIAL_VENDOR_FETCH_LIMIT: '50'
+      MAX_SCREENING_CANDIDATES: '200'
+
+    steps:
+      - name: Require explicit zero-model read-only confirmation
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = RUN_READ_ONLY_PREFLIGHT
+          test -z "${GEMINI_API_KEY:-}"
+          test -n "${GH_PAT:-}"
+          test -n "${NOTION_API_KEY:-}"
+          if [ -z "${NOTION_DATA_SOURCE_ID:-}" ] && [ -z "${NOTION_DATABASE_ID:-}" ]; then
+            echo '::error::Authoritative Notion dedupe is required'
+            exit 1
+          fi
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install locked dependency set
+        run: |
+          python -m pip install 'pip==26.2.1'
+          pip install -r requirements.txt -c requirements-ci-constraints.txt
+          pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt
+      - name: Zero-provider mock regressions
+        env:
+          SYNTHETIC_REGRESSION_MODE: 'true'
+        run: python -m pytest -q tests/test_fresh_zero_model_preflight.py
+      - name: Source and Notion reads, without Gemini credentials
+        run: python production_pipeline.py
+      - name: Keep aggregate audit privately for inspection, including on failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fresh-source-zero-gemini-${{ github.run_number }}
+          path: article_audit/fresh_zero_model_preflight.json
+          if-no-files-found: warn
+          retention-days: 14
