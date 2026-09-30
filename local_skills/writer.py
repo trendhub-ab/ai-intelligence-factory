@@ -1,4 +1,4 @@
-"""Local Writer v4.3.7 integrated candidate — Fresh-4/4 lineage plus topic-fit repair.
+"""Local Writer v4.3.9 integrated candidate — Fresh-4/4 lineage plus decision-voice repair.
 
 Pure Python, zero network/provider calls. The validated v4.3.6 publication shape
 remains the baseline; later reader-access and evidence-safe repairs are retained,
@@ -11,6 +11,7 @@ Compared with the frozen v3:
 - add one layout-varied conversational foothold so a non-engineer can identify
   what the named subject is before technical detail;
 - keep bounded glossary handling, limitation adjacency, and ROI safety;
+- align observational Decision phrasing with the unchanged Human Appeal decision-voice contract;
 - add no provider calls and no new source facts.
 
 No Evidence, Decision, Score, URL, Production code, or Gate rule is changed.
@@ -123,11 +124,11 @@ def _decision_phrase(snapshot: Mapping[str, Any]) -> str:
     if not _is_observational_topic(snapshot):
         return DECISION_PHRASES[decision]
     return {
-        "NOW": "今すぐ判断材料へ反映する",
-        "TRY": "限定した範囲で確認する",
-        "WATCH": "基準点として追跡する",
-        "WAIT": "追加情報を待って再評価する",
-        "AVOID": "現時点では結論に使わない",
+        "NOW": "今すぐ判断材料へ反映し、既存の基準と比較する",
+        "TRY": "限定した範囲で検証する",
+        "WATCH": "基準点として追跡し、次の情報と比較する",
+        "WAIT": "追加情報を待つ判断とし、揃った段階で再評価する",
+        "AVOID": "現時点では結論化を見送る",
     }[decision]
 
 

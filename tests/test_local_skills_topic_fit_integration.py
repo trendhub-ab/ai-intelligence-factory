@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import re
 
+import pipeline
 from local_skills.compiler import compile_snapshot
 from local_skills.production_canary import _completion_boundary
+from editorial_naturalness import classify_article_claims
 
 
 def _historical_snapshot() -> dict:
@@ -38,7 +40,7 @@ def test_historical_topic_stays_out_of_adoption_and_poc_framing():
 
     assert action == "2015年の発表内容を基準点として記録し、後年の公式発表と比較する。"
     assert "限定的な検証として" not in action
-    assert "基準点として追跡する" in article
+    assert "基準点として追跡し、次の情報と比較する" in article
     assert "判断材料" in article
     for forbidden in (
         "どこまで試すか",
@@ -99,3 +101,54 @@ def test_management_completion_does_not_reinject_adoption_language_for_history()
     }
     assert "基準点" in values["best_for"]
     assert not re.search(r"導入|採用|本番適用|限定した検証", joined)
+
+
+def test_all_observational_decisions_expose_gate_recognizable_decision_voice():
+    expected = {
+        "NOW": "比較する",
+        "TRY": "検証する",
+        "WATCH": "比較する",
+        "WAIT": "待つ",
+        "AVOID": "見送る",
+    }
+    for decision, marker in expected.items():
+        snapshot = _historical_snapshot()
+        snapshot["case_id"] = f"observational-decision-voice-{decision.lower()}"
+        snapshot["decision"] = decision
+        result = compile_snapshot(snapshot)
+        article = result["parsed"]["note_draft"]
+        claims = classify_article_claims(result["parsed"])
+
+        assert marker in article
+        assert claims["decision"] >= 1, (decision, article)
+
+
+def test_kvm_escape_incident_shape_keeps_observational_topic_and_decision_voice():
+    snapshot = _historical_snapshot()
+    snapshot.update({
+        "case_id": "fresh-kvm-escape-decision-voice-regression",
+        "canonical_entity_id": "url:https://pwn.ai/blog/kvmescape",
+        "name": "An AI agent escaped Google's kvmCTF sandbox",
+        "reader_title": "AIエージェントのサンドボックス脱出事例をどう見るか",
+        "source": "HackerNews",
+        "source_summary": "AIエージェントによるサンドボックス脱出の事例が報告されました。",
+        "what": "攻撃事例として、確認できた挙動と条件を整理します。",
+        "why_important": "AIエージェントへ与える権限境界を見直す判断材料になるためです。",
+        "decision": "WATCH",
+        "decision_score": 78,
+        "decision_reason": "一つの攻撃事例を一般化せず、再現条件と影響範囲を分けて見る必要があります。",
+        "action": "確認済みの条件を基準点として記録し、次の公式情報と比較する。",
+        "primary_risk": "一事例から全環境へ危険性を一般化しないことです。",
+        "best_for": "AIエージェントの権限設計を見直すチーム。",
+        "avoid_for": "事例だけで全AIエージェントの危険性を断定したいチーム。",
+        "evidence_urls": ["https://pwn.ai/blog/kvmescape"],
+    })
+    result = compile_snapshot(snapshot)
+    article = result["parsed"]["note_draft"]
+    claims = classify_article_claims(result["parsed"])
+    _state, appeal_issues = pipeline.validate_human_appeal_gate(result["parsed"])
+
+    assert "本格導入" not in article
+    assert "基準点として追跡し、次の情報と比較する" in article
+    assert claims["decision"] >= 1
+    assert "decision_voice_missing" not in appeal_issues

@@ -88,7 +88,7 @@ def test_compiler_preserves_evidence_surface_and_numeric_lexemes():
     assert result["status"] == CANDIDATE_STATUS
     assert result["canonicalizer_version"] == "stage6-v4"
     assert result["publication_topic_fit_version"] == "local-v1"
-    assert result["integration_version"] == "v4.3.8-integrated"
+    assert result["integration_version"] == "v4.3.9-integrated"
     assert result["base_fresh_4_of_4_writer_blob_sha"] == "204cce30ab838e0d6dac9cbe762d0a82ff02f1aa"
     assert result["original_snapshot"] == original
     assert result["original_snapshot"] is not original
