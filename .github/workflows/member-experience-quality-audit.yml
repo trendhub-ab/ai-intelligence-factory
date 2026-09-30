@@ -47,8 +47,12 @@ jobs:
           test -n "${NOTION_DECISION_INTELLIGENCE_API_KEY:-}"
           umask 077
           REPORT="$(mktemp "$RUNNER_TEMP/member-experience-XXXXXX.json")"
-          trap 'rm -f "$REPORT"' EXIT
-          python member_experience_quality_audit.py --read-only > "$REPORT"
+          ERROR_LOG="$(mktemp "$RUNNER_TEMP/member-audit-error-XXXXXX.log")"
+          trap 'rm -f "$REPORT" "$ERROR_LOG"' EXIT
+          if ! python member_experience_quality_audit.py --read-only > "$REPORT" 2> "$ERROR_LOG"; then
+            echo "Audit failed; sensitive per-page diagnostics intentionally withheld."
+            exit 1
+          fi
           python - "$REPORT" <<'PY'
           import json
           import sys
@@ -70,12 +74,12 @@ jobs:
           with Path(__import__("os").environ["GITHUB_STEP_SUMMARY"]).open(
               "a", encoding="utf-8"
           ) as handle:
-              handle.write("### Member audit: aggregate-only results\\n\\n")
-              handle.write(f"Scanned: {result['page_count']} records\\n\\n")
+              handle.write("### Member audit: aggregate-only results\n\n")
+              handle.write(f"Scanned: {result['page_count']} records\n\n")
               for key, value in result["counts"].items():
-                  handle.write(f"- {key}: {value}\\n")
+                  handle.write(f"- {key}: {value}\n")
               if result["counts"]["same_label_unclassified"]:
-                  handle.write("\\nManual-like blocks require private review. No sync is authorized.\\n")
+                  handle.write("\nManual-like blocks require private review. No sync is authorized.\n")
           PY
 
       # SECURITY: This is a public GitHub repository. Actions artifacts and
