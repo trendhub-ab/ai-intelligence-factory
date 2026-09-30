@@ -417,6 +417,7 @@ def test_fresh_dedupe_diagnostics_separate_existing_and_intra_run(monkeypatch):
 
 def test_github_run202_attrition_replay_stops_before_any_model_calls(monkeypatch):
     """Offline synthetic replay of observed counts, not a new Fresh measurement."""
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY", "false")
     monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
     rows = [
         {
