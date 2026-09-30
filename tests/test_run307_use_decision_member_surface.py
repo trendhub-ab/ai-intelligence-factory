@@ -99,9 +99,15 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertIn("参照先 1：dify.ai", texts)
         self.assertIn("参照先 2：comet.com", texts)
         self.assertNotIn("公式・一次情報 2", texts)
-        self.assertIn("情報の確認時点", texts)
-        self.assertIn("記録上の最終確認：2026年8月29日", texts)
+        self.assertIn("根拠の確認日", texts)
+        self.assertIn("2026年8月29日に確認", texts)
         self.assertNotIn("2026年9月29日", texts)
+        # Source-review disclosure precedes any current-use recommendation.
+        ordered = [text for _, text in body._body_fingerprint(run307._build_children(state))]
+        self.assertLess(ordered.index("根拠の確認日"), ordered.index("いま、使える？"))
+        state["last_reviewed"] = ""
+        missing = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
+        self.assertIn("最終確認日が記録されていません", missing)
 
     def test_vague_topic_is_omitted_without_inventing_a_recency_claim(self):
         state = self._state()
