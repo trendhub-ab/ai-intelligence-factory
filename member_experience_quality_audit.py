@@ -21,6 +21,7 @@ import member_presentation_body_sync as body
 import member_presentation_sync as mps
 import member_ux_guard as guard
 import run219_member_human_language_ui as run219
+import member_reader_quality_policy as quality
 
 CANONICAL_DB = "b2787ee0-5b58-4ca7-b4eb-774f60237f1f"
 CANONICAL_SOURCE = "7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404"
@@ -53,6 +54,7 @@ def inspect(
         "duplicates_confirmed": [],
         "same_label_unclassified": [],
         "source_review_older_than_30_days": [],
+        "invalid_or_future_review_date": [],
         "missing_source_review_date": [],
         "no_visible_generated_body": [],
         "read_only": True,
@@ -64,11 +66,17 @@ def inspect(
         if not page_id or not str(state.get("sync_id") or "").strip():
             continue
         name = str(state.get("name") or "").strip()
-        review = _as_date(state.get("last_reviewed"))
+        review_raw = state.get("last_reviewed")
+        review = quality.parse_review_date(review_raw)
+        review_state = quality.review_state(review_raw, as_of=now)
         reference = {"name": name, "page_id": page_id}
-        if review is None:
+        if review_state == "missing":
             result["missing_source_review_date"].append(reference)
-        elif (now - review).days > 30:
+        elif review_state in {"invalid", "future"}:
+            result["invalid_or_future_review_date"].append({
+                **reference, "review_state": review_state,
+            })
+        elif review_state == "older" and review:
             result["source_review_older_than_30_days"].append({
                 **reference, "last_reviewed": review.isoformat(),
                 "age_days": (now - review).days,
@@ -108,6 +116,7 @@ def inspect(
         k: len(result[k]) for k in (
             "duplicates_confirmed", "same_label_unclassified",
             "source_review_older_than_30_days", "missing_source_review_date",
+            "invalid_or_future_review_date",
             "no_visible_generated_body",
         )
     }
