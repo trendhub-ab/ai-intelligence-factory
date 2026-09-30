@@ -107,3 +107,37 @@ def test_fetcher_fails_closed_on_unbounded_or_malformed_cohort():
         fetch(50)
     with pytest.raises(RuntimeError, match="cap exceeded"):
         fetch(51)
+
+
+def test_mocked_graphql_transport_matches_production_fields_and_refuses_partial_results():
+    captured = []
+
+    def post(_url, *, json, headers, timeout):
+        captured.append((json["query"], headers, timeout))
+        if len(captured) == 2:
+            return SimpleNamespace(status_code=503, json=lambda: {})
+        return SimpleNamespace(status_code=200, json=lambda: {
+            "data": {"search": {"nodes": [
+                _repo("fixture", "https://example.invalid/transport")
+            ]}}
+        })
+
+    pipeline = SimpleNamespace(
+        requests=SimpleNamespace(post=post),
+        GH_PAT="fixture-gh-token",
+        normalize_item=lambda **kwargs: {
+            "source": kwargs["source"], "url": kwargs["url"],
+        },
+        candidate_identity_urls=lambda row: {row["url"]},
+    )
+    fetch = supply.make_fetcher(
+        pipeline, capture={}, now=datetime(2026, 9, 30, tzinfo=timezone.utc)
+    )
+    with pytest.raises(RuntimeError, match="no partial cohort"):
+        fetch(50)
+    assert len(captured) == 2
+    for gql, headers, timeout in captured:
+        assert "search(query: \"topic:" in gql
+        assert "licenseInfo { spdxId }" in gql
+        assert headers["Authorization"] == "Bearer fixture-gh-token"
+        assert timeout == 10
