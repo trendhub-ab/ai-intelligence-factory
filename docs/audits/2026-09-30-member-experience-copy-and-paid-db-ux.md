@@ -83,6 +83,65 @@ Destination: https://note.com/trendhub_biz/membership
 
 **Publication safeguard:** This manuscript is a proposal. Before publication, capture the actual current published LP and membership join screen in an uncached logged-out browser; reconcile any later human edits and verify the precise access steps, benefits and CTA destination. Obtain explicit human publication approval. Do not deploy the staged free-article CTA while Fresh v3 provenance remains frozen.
 
+## Existing + future catalogue consistency (follow-up to PR #663)
+
+This branch now connects **both member DB detail rendering and the monthly Decision Brief**
+to a single presentation-only `member_reader_quality_policy.py` module.
+The shared rules identify actual source domains, translate decision states into
+plain Japanese and classify **recorded** source-review dates as current (up to
+30 days), older, missing, invalid or future. A page's Notion edit timestamp
+and the Brief refresh time **never imply a fresh source review**.
+
+- Canonical Subscriber Technology → Member Presentation → Run307 body remains
+  the existing route for **both newly created and previously stored** entities.
+  It uses the same shared disclosure before recommendations. No new model
+  generation or historical Evidence/Decision rewrites were added.
+- Run271 normal delta body sync continues to process recent edits/new pages,
+  checking a body-contract sentinel. A changed sentinel causes a full
+  migration; however, a single sentinel **cannot prove that all old pages
+  are free of duplicates**, so a dedicated complete audit and explicit
+  full sync are still necessary.
+- Monthly Brief consumes the canonical member DB **after** presentation/body
+  sync and now prints the source-review date before each shortlist judgment
+  and each recorded important change. Stale/missing/future dates display
+  honest warnings; raw internal ADOPT/TEST abbreviations and blanket
+  `公式` link labels are no longer exposed. The month/page update label is
+  visibly distinct from evidence verification.
+- The independent read-only full-catalogue audit now uses the same date
+  classification, including invalid or future review dates. It never
+  upgrades a date merely to make a page look consistent.
+- Synthetic tests exercise new vs. existing rows, the 30-day boundary,
+  malformed/future dates, third-party source labels and both Brief views.
+  The same shared-policy tests run before any member write workflow.
+
+**Use of Gemini:** The owner has permitted limited Gemini work where genuinely
+useful. This consistency implementation still makes **zero model calls**;
+it only transforms previously stored/verified fields. Gemini may be considered
+for *separate evidence-bound editorial improvements*, not for inventing a
+review date or overriding original source/decision fields.
+
+### Post-merge operating acceptance (NOT YET DONE)
+
+1. Full **read-only** canonical paid-catalogue audit on the merged main,
+   preserving the report and separating confirmed generated duplicates from
+   unclassified same-label manual content.
+2. Investigate ambiguous pages individually. Use existing explicit
+   `force_full_body_sync=true` Member Presentation Sync only when the
+   preflight demonstrates manual content will not be deleted. The workflow
+   creates/updates detail views, then rebuilds the Brief.
+3. Run the full read-only audit again; confirm **zero confirmed duplicates**,
+   no unreviewed ambiguous cleanup, and all absent/old/invalid dates visibly
+   disclosed rather than cosmetically refreshed.
+4. Confirm a newly created synthetic/integration member record and an existing
+   record render the same disclosure and section order, and confirm the Brief
+   matches the canonical DB.
+5. Approve and publish the separately staged note/LP copy only after fresh
+   logged-out visual checks and the frozen Fresh protocol is respected.
+
+**Limit:** Display consistency can be guaranteed by the shared deterministic
+policy and guarded sync; actual evidence freshness cannot be guaranteed
+without performing a separate source recheck.
+
 ## Acceptance criteria
 
 1. Offline **staged** CTA tests: safety/research/tool/general angles differ, price and entitlement disclosure are accurate, tracking attribution is unchanged, missing link fails closed; current note/Ready output is byte-identical and the proposed module is not yet wired.
