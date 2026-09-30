@@ -80,7 +80,7 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertEqual(1, top_count)
         self.assertEqual(1, change_count)
         rendered = str(blocks)
-        self.assertIn("今月の判断材料", rendered)
+        self.assertIn("根拠確認が30日以内の判断候補", rendered)
         self.assertIn("今月、記録された重要な判断の変化", rendered)
         self.assertIn("このページの表示更新：2026-09-29 JST", rendered)
 
@@ -94,9 +94,11 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         _, blocks, top_count, change_count = brief.build_blocks(
             [older, missing], now=now
         )
-        self.assertEqual(2, top_count)
+        self.assertEqual(0, top_count)
         self.assertEqual(1, change_count)
         rendered = str(blocks)
+        self.assertIn("再確認が必要な参考候補", rendered)
+        self.assertIn("以前の判断", rendered)
         self.assertIn("根拠の確認日", rendered)
         self.assertIn("2026年8月23日（30日超）", rendered)
         self.assertIn("2026年8月23日に確認。30日を超えています", rendered)
@@ -125,6 +127,39 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         rendered = str(blocks)
         self.assertIn("確認日に不整合", rendered)
         self.assertNotIn("2026年10月4日に確認", rendered)
+
+    def test_stale_top_rank_cannot_displace_fresh_evidence(self):
+        now = datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
+        old_rank = state("PreviouslyRanked", 99, rank=1)
+        old_rank["last_reviewed"] = "2026-08-29"
+        fresh_lower = state("RecentlyReviewed", 72, rank=None)
+        fresh_lower["last_reviewed"] = "2026-09-28"
+        title, blocks, top_count, _ = brief.build_blocks(
+            [old_rank, fresh_lower], now=now
+        )
+        self.assertIn("2026年10月", title)
+        self.assertEqual(1, top_count)
+        rendered = str(blocks)
+        recent_at = rendered.index("根拠確認が30日以内の判断候補")
+        reference_at = rendered.index("再確認が必要な参考候補")
+        self.assertLess(recent_at, reference_at)
+        # An old homepage rank must never silently appear in current advice.
+        current_view = rendered[:reference_at]
+        self.assertIn("RecentlyReviewed", current_view)
+        self.assertNotIn("PreviouslyRanked", current_view)
+        self.assertIn("PreviouslyRanked", rendered[reference_at:])
+        self.assertIn("以前の判断", rendered[reference_at:])
+
+    def test_only_stale_candidates_produce_honest_no_fresh_message(self):
+        old = state("PreviouslyRecommended", 94, rank=1)
+        old["last_reviewed"] = "2026-08-23"
+        _, blocks, count, _ = brief.build_blocks(
+            [old], now=datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
+        )
+        self.assertEqual(0, count)
+        visible = str(blocks)
+        self.assertIn("根拠確認が30日以内の実務候補はありません", visible)
+        self.assertIn("再確認が必要な参考候補", visible)
 
     def test_sync_is_content_first_then_cleanup_then_title(self):
         calls = []
