@@ -71,6 +71,8 @@ def _allow(monkeypatch):
     monkeypatch.setenv("FRESH_SOURCE_PREFLIGHT_CONFIRM", preflight.CONFIRM_VALUE)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", raising=False)
+    monkeypatch.delenv("FRESH_SUPPLY_TRIAL_PROTOCOL", raising=False)
+    monkeypatch.delenv("FRESH_SUPPLY_TRIAL_APPROVAL", raising=False)
 
 
 def test_live_preflight_uses_only_whitelisted_source_dedupe_functions(tmp_path, monkeypatch):
