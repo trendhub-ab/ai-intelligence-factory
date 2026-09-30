@@ -313,3 +313,37 @@ def test_fresh_canary_acquisition_limit_fallbacks_remain_bounded():
     assert limits["ArXiv"] == daily_canary.FALLBACK_FETCH_PER_SOURCE
     assert limits["OfficialVendor"] == daily_canary.FALLBACK_FETCH_PER_SOURCE
     assert limits["max_screening"] == daily_canary.FALLBACK_MAX_SCREENING
+
+
+
+def test_source_stratified_fresh_rejects_invalid_targets(monkeypatch):
+    for source in ("github", "ProductHunt", "GitHub ", "../OfficialVendor"):
+        monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", source)
+        try:
+            daily_canary._validated_requested_source()
+        except RuntimeError as exc:
+            assert "Invalid source-stratified Fresh target" in str(exc)
+        else:
+            raise AssertionError(f"Unsafe source passed: {source!r}")
+
+
+def test_source_stratified_fresh_keeps_only_requested_source(monkeypatch):
+    repos = [
+        {"source": "HackerNews", "url": "https://example.net/hn"},
+        {"source": "GitHub", "url": "https://example.net/gh"},
+        {"source": "ArXiv", "url": "https://example.net/arxiv"},
+        {"source": "OfficialVendor", "url": "https://example.net/vendor"},
+    ]
+    for source in sorted(daily_canary.STRATIFIED_SOURCES):
+        monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", source)
+        assert daily_canary._validated_requested_source() == source
+        assert daily_canary._restrict_source(repos, source) == [
+            row for row in repos if row["source"] == source
+        ]
+
+
+def test_source_stratification_has_no_effect_when_omitted(monkeypatch):
+    monkeypatch.delenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", raising=False)
+    repos = [{"source": "GitHub"}, {"source": "HackerNews"}]
+    assert daily_canary._validated_requested_source() == ""
+    assert daily_canary._restrict_source(repos, "") == repos

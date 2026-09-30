@@ -43,6 +43,11 @@ on:
         required: false
         default: ''
         type: string
+      canary_source:
+        description: 'Optional exact Fresh measurement discovery source; validation-only'
+        required: false
+        default: ''
+        type: string
       exact_target:
         description: 'Optional exact existing article name; article_validation only; fail closed on miss'
         required: false
@@ -93,6 +98,11 @@ jobs:
             ""|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
           esac
+          case "${{ inputs.canary_source }}" in
+            ""|GitHub|HackerNews|ArXiv|OfficialVendor) ;;
+            *) echo "::error::Invalid source-stratified Fresh target"; exit 1 ;;
+          esac
+          if [ -n "${{ inputs.canary_source }}" ] && [ "${{ inputs.mode }}" != "local_skills_canary_validation" ]; then echo "::error::canary_source is Fresh-only"; exit 1; fi
           if [ -n "${{ inputs.exact_target }}" ] && [ "${{ inputs.mode }}" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
           if [ "${{ inputs.e2e_prepare_only }}" = "true" ] && [ "${{ inputs.mode }}" != "production_e2e_validation" ]; then echo "::error::e2e_prepare_only is production_e2e_validation-only"; exit 1; fi
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }} excluded_models=${{ inputs.excluded_models }}. Automatic triggers are intentionally absent."
@@ -131,6 +141,7 @@ jobs:
           TZ: 'Asia/Tokyo'
           AIIF_RUN_MODE: ${{ inputs.mode }}
           AIIF_LOCAL_SKILLS_CANARY: ${{ inputs.mode == 'local_skills_canary_validation' }}
+          AIIF_LOCAL_SKILLS_CANARY_SOURCE: ${{ inputs.canary_source }}
           AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION: ${{ inputs.mode == 'local_skills_production_validation' }}
           PRODUCTION_E2E_PREPARE_ONLY: ${{ inputs.e2e_prepare_only }}
           AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}

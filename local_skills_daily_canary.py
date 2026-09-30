@@ -21,6 +21,7 @@ from typing import Any
 AUDIT_PATH = Path("article_audit/local_skills_daily_canary.json")
 FALLBACK_FETCH_PER_SOURCE = 20
 FALLBACK_MAX_SCREENING = 60
+STRATIFIED_SOURCES = frozenset({"GitHub", "HackerNews", "ArXiv", "OfficialVendor"})
 
 # Every record observed by a Local Skills canary is excluded once its result has
 # informed validation or repair. Runs 36207549802 / 36208127057 informed canary
@@ -146,7 +147,24 @@ def _production_acquisition_limits(pipeline: Any) -> dict[str, int]:
     }
 
 
-def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
+def _validated_requested_source() -> str:
+    """An optional exact, fail-closed source restriction for cross-source Fresh tests."""
+    source = os.environ.get("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "")
+    if source and source not in STRATIFIED_SOURCES:
+        raise RuntimeError("Invalid source-stratified Fresh target")
+    return source
+
+
+def _restrict_source(repos: list[dict], source: str) -> list[dict]:
+    """Restrict only after normal Production acquisition/legal/Notion deduplication."""
+    if not source:
+        return repos
+    if source not in STRATIFIED_SOURCES:
+        raise RuntimeError("Invalid source-stratified Fresh target")
+    return [repo for repo in repos if repo.get("source") == source]
+
+
+def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
     limits = _production_acquisition_limits(pipeline)
     groups = {
         "GitHub": pipeline.fetch_github_trending(limits["GitHub"]),
@@ -190,7 +208,10 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
             local_fallback_keys.add(fallback_key)
         deduped.append(repo)
 
+    requested_source = _validated_requested_source()
+    deduped = _restrict_source(deduped, requested_source)
     return deduped[:limits["max_screening"]], {
+        "requested_source": requested_source,
         "collected": len(repos),
         "safe": len(safe),
         "observed_canary_excluded": observed_excluded,
@@ -201,6 +222,7 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, int]]:
 
 
 def run(pipeline: Any) -> dict[str, Any]:
+    requested_source = _validated_requested_source()  # Reject before any external request.
     os.environ["AIIF_LOCAL_SKILLS_CANARY"] = "true"
     pipeline.initialize_runtime()
     pipeline.reset_article_style_memory()
@@ -209,6 +231,7 @@ def run(pipeline: Any) -> dict[str, Any]:
 
     result: dict[str, Any] = {
         "mode": "local_skills_canary_validation",
+        "requested_source": requested_source,
         "fresh_holdout": True,
         "persist_results": False,
         "local_skills_additional_provider_calls": 0,
@@ -266,6 +289,8 @@ def run(pipeline: Any) -> dict[str, Any]:
 
             name = str(repo.get("nameWithOwner") or "")
             source = str(repo.get("source") or "")
+            if requested_source and source != requested_source:
+                raise RuntimeError("Cross-source Fresh candidate escaped source filter")
             score = int(candidate.get("score") or 0)
             setattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_COMPILE", {})
             setattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_RESULT", {})
