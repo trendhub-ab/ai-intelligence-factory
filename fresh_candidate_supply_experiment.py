@@ -11,6 +11,7 @@ historical 1/4 source-stratified campaign or counted as a Fresh PASS.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from typing import Any, Callable
 
 PROTOCOL_ID = "source-supply-gh-3-cohorts-v1"
@@ -83,7 +84,7 @@ def make_fetcher(
         def fetch_page(query: str, first: int) -> list[dict]:
             # Match the original Production GraphQL fields exactly.
             gql = """ + "'\n'.join([" + """
-                "{ search(query: " + __import__("json").dumps(query)
+                "{ search(query: " + json.dumps(query)
                 + f", type: REPOSITORY, first: {first}) "
                 + "{ nodes { ... on Repository { nameWithOwner url description "
                 + "stargazerCount pushedAt licenseInfo { spdxId } } } } }"
