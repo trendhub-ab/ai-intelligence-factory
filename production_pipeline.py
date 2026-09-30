@@ -348,7 +348,24 @@ def main() -> None:
 
     if mode == "local_skills_canary_validation":
         from local_skills_daily_canary import run
-        result = run(pipeline)
+        # Source-specific Fresh now requires a separately frozen, preregistered
+        # campaign. Legacy generic canary runs remain unchanged and do NOT count.
+        source = os.environ.get("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "")
+        locked = os.environ.get("AIIF_FRESH_CAMPAIGN_LOCK", "") == "true"
+        if source and not locked:
+            raise RuntimeError("Source-specific Fresh requires the frozen campaign lock")
+        budget_guard = None
+        if locked:
+            from pathlib import Path
+            from fresh_campaign_lock import install_locked_fresh
+            budget_guard = install_locked_fresh(
+                pipeline, repo_root=Path(__file__).resolve().parent
+            )
+        try:
+            result = run(pipeline)
+        finally:
+            if budget_guard is not None:
+                budget_guard.assert_usage_reconciled(pipeline)
         if result.get("outcome") not in {"accepted", "rejected"}:
             raise RuntimeError("Local Skills Daily canary produced no valid fresh measurement")
         return
