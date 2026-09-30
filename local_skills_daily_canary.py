@@ -166,6 +166,24 @@ def _restrict_source(repos: list[dict], source: str) -> list[dict]:
     return [repo for repo in repos if repo.get("source") == source]
 
 
+def _source_counts(rows: list[dict]) -> dict[str, int]:
+    """Only aggregate counts; no candidate names, URLs or article content."""
+    return {source: sum(row.get("source") == source for row in rows)
+            for source in sorted(STRATIFIED_SOURCES)}
+
+
+def _screening_diagnostics(screened: list[dict], pipeline: Any) -> dict[str, Any]:
+    """Observe existing score distribution without modifying selection."""
+    scores = [int(row.get("score") or 0) for row in screened]
+    notion = int(pipeline.NOTION_SAVE_THRESHOLD_SCORE)
+    return {
+        "screened_count": len(scores),
+        "max_score": max(scores) if scores else None,
+        "notion_save_threshold": notion,
+        "at_or_above_notion_save": sum(score >= notion for score in scores),
+    }
+
+
 def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
     limits = _production_acquisition_limits(pipeline)
     groups = {
@@ -174,6 +192,12 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
         "ArXiv": pipeline.fetch_arxiv_ai_ml(limits["ArXiv"]),
         # Run268 rewrites the retired Product Hunt call slot to OfficialVendor.
         "ProductHunt": pipeline.fetch_producthunt_trending(limits["OfficialVendor"]),
+    }
+    collected_by_source = {
+        source: len(groups[key]) for source, key in (
+            ("GitHub", "GitHub"), ("HackerNews", "HackerNews"),
+            ("ArXiv", "ArXiv"), ("OfficialVendor", "ProductHunt"),
+        )
     }
     repos = pipeline.round_robin_candidates(groups, limits["max_screening"])
 
@@ -191,6 +215,8 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
     local_identity_urls: set[str] = set()
     local_fallback_keys: set[str] = set()
     observed_excluded = 0
+    production_duplicate_by_source = dict.fromkeys(sorted(STRATIFIED_SOURCES), 0)
+    observed_excluded_by_source = dict.fromkeys(sorted(STRATIFIED_SOURCES), 0)
     for repo in safe:
         identity_urls = pipeline.candidate_identity_urls(repo)
         title_key = pipeline._normalize_title_for_match(repo.get("nameWithOwner", ""))
@@ -201,18 +227,31 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
             or (not identity_urls and fallback_key in local_fallback_keys)
         )
         if duplicate:
+            if repo.get("source") in production_duplicate_by_source:
+                production_duplicate_by_source[repo["source"]] += 1
             continue
         if _already_observed(repo):
             observed_excluded += 1
+            if repo.get("source") in observed_excluded_by_source:
+                observed_excluded_by_source[repo["source"]] += 1
             continue
         local_identity_urls.update(identity_urls)
         if not identity_urls:
             local_fallback_keys.add(fallback_key)
         deduped.append(repo)
 
+    attrition = {
+        "collected_by_source": collected_by_source,
+        "round_robin_by_source": _source_counts(repos),
+        "legal_safe_by_source": _source_counts(safe),
+        "dedupe_excluded_by_source": production_duplicate_by_source,
+        "observed_excluded_by_source": observed_excluded_by_source,
+        "fresh_by_source": _source_counts(deduped),
+    }
     requested_source = _validated_requested_source()
     deduped = _restrict_source(deduped, requested_source)
     return deduped[:limits["max_screening"]], {
+        "source_attrition": attrition,
         "requested_source": requested_source,
         "collected": len(repos),
         "safe": len(safe),
@@ -265,6 +304,7 @@ def run(pipeline: Any) -> dict[str, Any]:
         result["screening_candidates"] = len(screened)
         result["screening_api_calls"] = int(screening_calls)
         result["calibration_api_calls"] = int(calibration_calls)
+        result["screening_diagnostics"] = _screening_diagnostics(screened, pipeline)
 
         # Reuse the current Production portfolio ordering without writing Stock.
         for item in screened:
@@ -274,6 +314,7 @@ def run(pipeline: Any) -> dict[str, Any]:
                 else None
             )
         candidates = pipeline._select_stocked_deep_dive_candidates(screened)
+        result["screening_diagnostics"]["selected_for_deep_dive"] = len(candidates)
         if not candidates:
             raise RuntimeError("No fresh candidate met the current Production Deep Dive threshold")
 
