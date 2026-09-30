@@ -89,6 +89,30 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertIn(state["next_action"], visible)
         self.assertEqual(before, state)
 
+    def test_member_source_list_is_honest_about_third_party_sources(self):
+        state = self._state()
+        state["primary_url"] = "https://dify.ai/"
+        state["evidence"] = "https://www.comet.com/docs/opik/integrations/dify"
+        state["last_reviewed"] = "2026-08-29T03:14:00Z"
+        texts = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
+        self.assertIn("参照した情報源", texts)
+        self.assertIn("参照先 1：dify.ai", texts)
+        self.assertIn("参照先 2：comet.com", texts)
+        self.assertNotIn("公式・一次情報 2", texts)
+        self.assertIn("情報の確認時点", texts)
+        self.assertIn("記録上の最終確認：2026年8月29日", texts)
+        self.assertNotIn("2026年9月29日", texts)
+
+    def test_vague_topic_is_omitted_without_inventing_a_recency_claim(self):
+        state = self._state()
+        state["topic"] = "制作・検証環境として非常に有力。"
+        texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
+        self.assertNotIn("なぜ今見る？", texts)
+        state["topic"] = "公式APIと利用条件が更新された。"
+        texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
+        self.assertIn("なぜ今見る？", texts)
+        self.assertEqual("", run307._last_reviewed_label("2026-99-33"))
+
     def test_status_copy_is_generic(self):
         adopt = run307._use_decision_text(self._state(status="ADOPT"))
         test = run307._use_decision_text(self._state(status="TEST"))
