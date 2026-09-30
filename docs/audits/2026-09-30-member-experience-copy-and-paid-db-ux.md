@@ -18,15 +18,7 @@ Sources inspected:
 
 The issue is not lack of content quantity. The paid product needs an unequivocal distinction between the *complete free article* and the value of a reusable, cross-topic decision workflow. Generic `Evidence / Action / 月次サマリー` copy requires readers to translate internal jargon into benefits.
 
-**Fresh v3 isolation:** `note_manuscript.build_subscription_cta` preserves the original exact output when `AIIF_ONE_SHOT_MODE=local_skills_canary_validation`. The improved copy is applied only to normal publishing. A byte-for-byte offline regression tests this; no Fresh canary is fired and no v3 source-quality benchmark is retrospectively changed.
-
-The new note footer uses an already-approved 1–2 sentence reader summary only to choose a safe **category** (safety / research / tool / general). The category changes the **reader's next question**; it does **not** insert unverified topic facts, claim this article is already represented in the paid DB or manufacture ROI. The footer presents exactly the verified product surface: member decision DB, monthly Decision Brief, ¥1,980/month offer link, and an upfront disclosure of the Notion registration/invitation step and lack of need for a paid Notion plan. Existing tracking URL and free article body are not changed.
-
-The paid member detail now:
-- omits short, uninformative `なぜ今見る？` boilerplate rather than inventing a new current-event reason;
-- places `記録上の最終確認` from the *actual property*, never from the page's UI-edit timestamp;
-- labels mixed first-/third-party source links **参照した情報源** with the destination host, and puts the configured primary URL first;
-- changes **presentation only**: no source record, judgment, score, Evidence, classification, schema, final quality Gate, or model.
+**Fresh v3 / Ready protection:** Review discovered that `note_manuscript.py` is a fingerprinted public-note publication-policy input. Changing it—even with a canary-only legacy branch—would change the policy SHA and invalidate old Ready provenance or alter Fresh v3's frozen quality comparison. The code was **restored byte-for-byte to latest main**, and existing CTA tests remain unchanged. `member_offer_copy.py` is an **offline, reviewed proposal module only**: it is deliberately **not imported by** `note_manuscript.py`, not deployed to note and not fingerprinted. Its distinct contextual angles, accurate offer and tracking preservation are tested in isolation. Only after Fresh v3 is complete (or the experiment is explicitly re-registered as a new protocol) should a separate, fingerprinted publication/Ready rollout be considered.
 
 ## Read-only catalogue audit and safe repair
 
@@ -68,7 +60,7 @@ Note: The exact current public fixed LP must be re-read in a **fresh uncached lo
 
 ## Acceptance criteria
 
-1. Offline automated CTA tests: safety/research/tool/general angles differ, price and entitlement disclosure are accurate, tracking attribution is unchanged, missing link fails closed.
+1. Offline **staged** CTA tests: safety/research/tool/general angles differ, price and entitlement disclosure are accurate, tracking attribution is unchanged, missing link fails closed; current note/Ready output is byte-identical and the proposed module is not yet wired.
 2. Offline member UI tests: independent primary+third-party domains show neutral links; original `last_reviewed` remains unchanged and displays correctly; generic `非常に有力` topic adds no false `なぜ今` claim.
 3. Paid DB audit tests reproduce two concurrent generated callouts and a separate similarly labeled human block without writing/deleting either; full scan reports exact source review dates, not Notion edit timestamps.
 4. Repository-wide regression and member UX CI pass, **no Gemini usage**, no public note mutation, no automatic Fresh/Daily.
