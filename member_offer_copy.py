@@ -50,7 +50,7 @@ def classify(reader_summary: Mapping[str, Any] | None, *, source: str = "") -> s
 
 
 def render(*, tracking_url: str, reader_summary: Mapping[str, Any] | None = None,
-           source: str = "", divider: str = "---") -> str:
+           source: str = "", divider: str = "\n\n---\n\n") -> str:
     if not tracking_url:
         return ""
     # The caller must retain the existing validated landing URL builder.
