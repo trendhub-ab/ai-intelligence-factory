@@ -147,14 +147,14 @@ def test_preflight_rejects_missing_source_counter():
 def test_workflow_is_manual_only_without_provider_credentials_or_note_sync():
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "fresh-zero-model-preflight.yml").read_text(encoding="utf-8")
-    entry = (root / "production_pipeline.py").read_text(encoding="utf-8")
+    standalone = (root / "fresh_zero_model_preflight.py").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
-    assert "\n  schedule:" not in workflow
-    assert "\n  push:" not in workflow
+    assert "\\n  schedule:" not in workflow
+    assert "\\n  push:" not in workflow
     assert "GEMINI_API_KEY: ''" in workflow
     assert "gh workflow run" not in workflow
-    assert "AIIF_ONE_SHOT_MODE: local_skills_source_preflight" in workflow
-    assert "if mode == \"local_skills_source_preflight\":" in entry
-    assert entry.index('if mode == "local_skills_source_preflight":') < entry.index(
-        "runtime_state_channel.preflight_runtime_state_channel()"
-    )
+    assert "run: python fresh_zero_model_preflight.py" in workflow
+    assert "install_runtime_layers(pipeline)" in standalone
+    assert "install_run268(pipeline)" in standalone
+    assert "install_run269(pipeline)" in standalone
+    assert "pipeline.initialize_runtime()" not in standalone
