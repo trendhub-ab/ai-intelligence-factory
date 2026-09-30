@@ -216,19 +216,26 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
     local_fallback_keys: set[str] = set()
     observed_excluded = 0
     production_duplicate_by_source = dict.fromkeys(sorted(STRATIFIED_SOURCES), 0)
+    existing_notion_duplicate_by_source = dict.fromkeys(sorted(STRATIFIED_SOURCES), 0)
+    intra_run_duplicate_by_source = dict.fromkeys(sorted(STRATIFIED_SOURCES), 0)
     observed_excluded_by_source = dict.fromkeys(sorted(STRATIFIED_SOURCES), 0)
     for repo in safe:
         identity_urls = pipeline.candidate_identity_urls(repo)
         title_key = pipeline._normalize_title_for_match(repo.get("nameWithOwner", ""))
         fallback_key = f"{repo.get('source', '')}:{title_key}"
-        duplicate = (
-            bool(identity_urls & existing_urls)
-            or bool(identity_urls & local_identity_urls)
-            or (not identity_urls and fallback_key in local_fallback_keys)
+        existing_duplicate = bool(identity_urls & existing_urls)
+        intra_run_duplicate = bool(identity_urls & local_identity_urls) or (
+            not identity_urls and fallback_key in local_fallback_keys
         )
+        duplicate = existing_duplicate or intra_run_duplicate
         if duplicate:
-            if repo.get("source") in production_duplicate_by_source:
-                production_duplicate_by_source[repo["source"]] += 1
+            source_name = repo.get("source")
+            if source_name in production_duplicate_by_source:
+                production_duplicate_by_source[source_name] += 1
+                if existing_duplicate:
+                    existing_notion_duplicate_by_source[source_name] += 1
+                if intra_run_duplicate:
+                    intra_run_duplicate_by_source[source_name] += 1
             continue
         if _already_observed(repo):
             observed_excluded += 1
@@ -245,6 +252,8 @@ def _fresh_candidates(pipeline: Any) -> tuple[list[dict], dict[str, Any]]:
         "round_robin_by_source": _source_counts(repos),
         "legal_safe_by_source": _source_counts(safe),
         "dedupe_excluded_by_source": production_duplicate_by_source,
+        "existing_notion_duplicate_by_source": existing_notion_duplicate_by_source,
+        "intra_run_duplicate_by_source": intra_run_duplicate_by_source,
         "observed_excluded_by_source": observed_excluded_by_source,
         "fresh_by_source": _source_counts(deduped),
     }
