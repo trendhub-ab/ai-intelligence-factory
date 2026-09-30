@@ -5,6 +5,7 @@ configuration is passed explicitly by thin compatibility wrappers.
 """
 
 import hashlib
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -132,8 +133,21 @@ def build_subscription_cta(
     article_id: str, tracking_url: str = "", *,
     reader_summary: dict | None = None, source: str = "",
 ) -> str:
-    # The id remains in the already-validated tracking URL. Marketing prose is
-    # separated from the reader summary and never inserts new article facts.
+    # Preserve the already-preregistered Fresh v3 manuscript byte-for-byte:
+    # a marketing experiment must never contaminate source-stratified quality
+    # holdouts or require restarting 0/4 again.
+    if os.environ.get("AIIF_ONE_SHOT_MODE", "").strip() == "local_skills_canary_validation":
+        if not tracking_url:
+            return ""
+        return (
+            f"{DIVIDER_LINE}"
+            "### 調査と判断の時間を減らしたい方へ\n\n"
+            "無料記事では重要テーマを最後まで公開しています。会員向けには、"
+            "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
+            f"[会員向け意思決定DB＋月次サマリーを見る]({tracking_url})\n"
+        )
+    # The id remains in the already-validated tracking URL. Marketing prose
+    # adds no source facts and retains article attribution exactly.
     from member_offer_copy import render
     return render(
         tracking_url=tracking_url,
