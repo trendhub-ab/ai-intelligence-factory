@@ -39,6 +39,8 @@ STRATIFIED_SOURCES = frozenset({"GitHub", "HackerNews", "ArXiv", "OfficialVendor
 # holdout then passed all unchanged Gates and now advances the candidate to broader
 # validation. All observed records are excluded from future fresh claims.
 OBSERVED_CANARY_NAMES = frozenset({
+    # Run 36688118222 Fresh v2: measured Fact BLOCK, now contaminated by v3 repair.
+    "OpenAI DevDay Recap – what's new",
     "LLM Agents Can Easily Tamper With Their Own Traces",
     "U.S. appeals court upholds designation of Anthropic as supply chain risk",
     "My coding agent pushed a commit deleting every file on main",
@@ -75,6 +77,8 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Inspect: An open-source framework for large language model evaluations",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
+    # Locale-independent identification of the same measured primary announcement.
+    "/index/devday-2026-recap/",
     "2609.30266",
     "dev.karakun.com/2026/08/28/coding-agent-pushed-deletion-to-main.html",
     "Avinash-jetwani/jevmem",
