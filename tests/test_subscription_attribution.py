@@ -85,9 +85,9 @@ class TestSubscriptionAttributionFoundation(unittest.TestCase):
                 "本文は最後まで無料です。", "acme/repo", "https://github.com/acme/repo",
                 "MIT", source="GitHub", title_text="無料記事タイトル"
             )
-        self.assertIn("会員向け意思決定DB＋月次サマリーを見る", manuscript)
+        self.assertIn("月額1,980円の内容を確認する", manuscript)
         self.assertIn("本文は最後まで無料です。", manuscript)
-        self.assertNotIn("有料記事", manuscript)
+        self.assertIn("この記事の結論は無料のまま", manuscript)\n        self.assertNotIn("有料記事", manuscript)
         self.assertIsNone(pipeline.PAID_AREA_PATTERN.search(manuscript))
 
     def test_ready_manifest_contains_only_aggregate_article_metadata(self):
