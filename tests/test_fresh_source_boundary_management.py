@@ -84,6 +84,9 @@ def test_precompile_scope_replaces_only_unproven_provider_action_and_syncs_artic
     assert "ChatGPT Plus" not in output["note_draft"]
     assert "小規模" in output["action_text"]
     assert output["action_text"] in output["note_draft"]
+    _human_state, human_issues = pipeline.validate_human_appeal_gate(output)
+    assert "action_collapsed_to_generic_monitoring" not in human_issues
+    assert "decision_voice_missing" not in human_issues
     assert original == unmutated
     assert output["score"] == original["score"]
     assert output["decision_text"] == original["decision_text"]
