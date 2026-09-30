@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import member_offer_copy as offer
@@ -46,6 +47,28 @@ class HumanPaidOfferCopyTests(unittest.TestCase):
         self.assertIn("一から比較", tool)
         self.assertIn("今日の話題", generic)
         self.assertNotEqual(research, tool)
+
+    def test_fresh_v3_keeps_previous_marketing_footer_byte_identical(self):
+        legacy = (
+            f"{note.DIVIDER_LINE}"
+            "### 調査と判断の時間を減らしたい方へ\n\n"
+            "無料記事では重要テーマを最後まで公開しています。会員向けには、"
+            "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
+            f"[会員向け意思決定DB＋月次サマリーを見る]({self.URL})\n"
+        )
+        with patch.dict("os.environ", {"AIIF_ONE_SHOT_MODE": "local_skills_canary_validation"}):
+            actual = note.build_subscription_cta(
+                "aif-123", self.URL,
+                reader_summary={"what": "セキュリティ脆弱性の調査"}, source="HackerNews",
+            )
+        self.assertEqual(legacy, actual)
+        with patch.dict("os.environ", {"AIIF_ONE_SHOT_MODE": "daily_full"}):
+            new = note.build_subscription_cta(
+                "aif-123", self.URL,
+                reader_summary={"what": "セキュリティ脆弱性の調査"}, source="HackerNews",
+            )
+        self.assertNotEqual(actual, new)
+        self.assertIn("月額1,980円", new)
 
     def test_malformed_or_empty_tracking_url_yields_no_cta(self):
         for url in ("", "javascript:alert(1)", "http://example.org/join"):
