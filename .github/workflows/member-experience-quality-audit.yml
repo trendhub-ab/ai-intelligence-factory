@@ -91,3 +91,5 @@ jobs:
       # logs are visible publicly; intentionally do not upload the unredacted
       # per-page audit report. Affected page names/IDs may only be inspected
       # in a private, locally controlled run with authorized credentials.
+
+# one-shot re-audit after interrupted full sync: 2026-10-01T07:32+09:00
