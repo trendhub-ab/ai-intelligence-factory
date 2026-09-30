@@ -272,6 +272,9 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
                 f"以前の判断：{quality.status_short(state.get('status'))}｜"
                 f"参考スコア：{score}点"
             ))
+            blocks.append(_paragraph(
+                _rt(quality.review_disclosure(state.get("last_reviewed"), as_of=as_of))
+            ))
             page_url = _page_url(state.get("page_id") or "")
             primary_url = str(state.get("primary_url") or "").strip()
             links: list[dict[str, Any]] = []
