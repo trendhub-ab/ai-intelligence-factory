@@ -193,6 +193,7 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertEqual(
             [
                 "これは何？",
+                "根拠の確認日",
                 "いま、使える？",
                 "使える場面",
                 "なぜ今見る？",
