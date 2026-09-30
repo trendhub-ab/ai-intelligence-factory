@@ -48,6 +48,11 @@ on:
         required: false
         default: ''
         type: string
+      fresh_campaign_confirm:
+        description: 'Source-specific Fresh only: type LOCKED_FRESH_0_OF_4'
+        required: false
+        default: ''
+        type: string
       exact_target:
         description: 'Optional exact existing article name; article_validation only; fail closed on miss'
         required: false
@@ -84,6 +89,10 @@ jobs:
 
     steps:
       - name: One-shot safety contract
+        env:
+          FRESH_CONFIRM: ${{ inputs.fresh_campaign_confirm }}
+          CANARY_SOURCE: ${{ inputs.canary_source }}
+          MODEL_EXCLUSIONS: ${{ inputs.excluded_models }}
         run: |
           test "${{ inputs.confirm }}" = "RUN_ONCE"
           case "${{ inputs.mode }}" in
@@ -98,11 +107,14 @@ jobs:
             ""|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
           esac
-          case "${{ inputs.canary_source }}" in
+          case "$CANARY_SOURCE" in
             ""|GitHub|HackerNews|ArXiv|OfficialVendor) ;;
             *) echo "::error::Invalid source-stratified Fresh target"; exit 1 ;;
           esac
-          if [ -n "${{ inputs.canary_source }}" ] && [ "${{ inputs.mode }}" != "local_skills_canary_validation" ]; then echo "::error::canary_source is Fresh-only"; exit 1; fi
+          if [ -n "$CANARY_SOURCE" ] && [ "${{ inputs.mode }}" != "local_skills_canary_validation" ]; then echo "::error::canary_source is Fresh-only"; exit 1; fi
+          if [ -n "$CANARY_SOURCE" ] && [ "$FRESH_CONFIRM" != "LOCKED_FRESH_0_OF_4" ]; then echo "::error::Source-specific Fresh requires frozen campaign confirmation"; exit 1; fi
+          if [ "$FRESH_CONFIRM" = "LOCKED_FRESH_0_OF_4" ] && { [ -z "$CANARY_SOURCE" ] || [ -n "$MODEL_EXCLUSIONS" ]; }; then echo "::error::Locked Fresh requires an exact source and no excluded models"; exit 1; fi
+          if [ -n "$FRESH_CONFIRM" ] && [ "$FRESH_CONFIRM" != "LOCKED_FRESH_0_OF_4" ]; then echo "::error::Invalid Fresh campaign confirmation"; exit 1; fi
           if [ -n "${{ inputs.exact_target }}" ] && [ "${{ inputs.mode }}" != "article_validation" ]; then echo "::error::exact_target is article_validation-only"; exit 1; fi
           if [ "${{ inputs.e2e_prepare_only }}" = "true" ] && [ "${{ inputs.mode }}" != "production_e2e_validation" ]; then echo "::error::e2e_prepare_only is production_e2e_validation-only"; exit 1; fi
           echo "Manual one-shot confirmed. mode=${{ inputs.mode }} editorial_style=${{ inputs.editorial_style }} excluded_models=${{ inputs.excluded_models }}. Automatic triggers are intentionally absent."
@@ -117,7 +129,8 @@ jobs:
         if: ${{ inputs.mode == 'local_skills_canary_validation' }}
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ inputs.fresh_campaign_confirm == 'LOCKED_FRESH_0_OF_4' && 'main' || github.ref_name }}
+          fetch-depth: ${{ inputs.fresh_campaign_confirm == 'LOCKED_FRESH_0_OF_4' && '0' || '1' }}
 
       - name: Python環境のセットアップ
         uses: actions/setup-python@v6
@@ -134,6 +147,14 @@ jobs:
       - name: Zero-API temporary provider exclusion falsification
         run: python -m unittest tests.test_temporary_provider_exclusion -v
 
+      - name: Frozen Fresh fingerprint and offline adversarial checks
+        if: ${{ inputs.mode == 'local_skills_canary_validation' && inputs.fresh_campaign_confirm == 'LOCKED_FRESH_0_OF_4' }}
+        run: |
+          set -euo pipefail
+          test "$(git hash-object fresh_campaign_lock.py)" = df0a4e6220ac10fe1a9f9e04f36f933734073de9
+          test "$(git hash-object production_pipeline.py)" = dfe302e4f0dcf35049a3f417a76ef77ff6da5e7e
+          python -m unittest tests.test_fresh_campaign_lock -v
+
       - name: 通常Production entrypointを1回だけ実行
         if: ${{ inputs.mode == 'full' || inputs.mode == 'article_validation' || inputs.mode == 'ready_rescue_validation' || inputs.mode == 'production_e2e_validation' || inputs.mode == 'stale_ready_batch_revalidation' || inputs.mode == 'local_skills_canary_validation' || inputs.mode == 'local_skills_production_validation' }}
         run: python production_pipeline.py
@@ -141,6 +162,7 @@ jobs:
           TZ: 'Asia/Tokyo'
           AIIF_RUN_MODE: ${{ inputs.mode }}
           AIIF_LOCAL_SKILLS_CANARY: ${{ inputs.mode == 'local_skills_canary_validation' }}
+          AIIF_FRESH_CAMPAIGN_LOCK: ${{ inputs.fresh_campaign_confirm == 'LOCKED_FRESH_0_OF_4' }}
           AIIF_LOCAL_SKILLS_CANARY_SOURCE: ${{ inputs.canary_source }}
           AIIF_LOCAL_SKILLS_PRODUCTION_VALIDATION: ${{ inputs.mode == 'local_skills_production_validation' }}
           PRODUCTION_E2E_PREPARE_ONLY: ${{ inputs.e2e_prepare_only }}
@@ -262,11 +284,22 @@ jobs:
           GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
           GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
-          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: ${{ inputs.fresh_campaign_confirm == 'LOCKED_FRESH_0_OF_4' && '1' || '12' }}
           ARTICLE_REVALIDATION_REQUEST_BUDGET: ${{ inputs.exact_target != '' && '8' || '4' }}
           GEMINI_PENDING_RETRY_REQUEST_BUDGET: "2"
           MAX_EVIDENCE_DOCUMENTS: "3"
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
+
+      - name: Preserve locked Fresh attempt ledger even on failure
+        if: ${{ always() && inputs.mode == 'local_skills_canary_validation' && inputs.fresh_campaign_confirm == 'LOCKED_FRESH_0_OF_4' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: frozen-fresh-budget-${{ github.run_number }}
+          path: |
+            article_audit/fresh_campaign_budget.json
+            article_audit/local_skills_daily_canary.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Reconcile prior human-published note articles into Notion
         if: ${{ success() && inputs.mode == 'full' }}
