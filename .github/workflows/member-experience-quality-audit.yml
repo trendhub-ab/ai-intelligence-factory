@@ -9,6 +9,11 @@ on:
         type: string
         required: true
         default: ''
+  # One-shot operational trigger on this disposable branch only.
+  # The job still checks out main, so audit code comes from the reviewed main branch.
+  push:
+    branches:
+      - ops/member-audit-readonly-once-20261001-0708
 
 permissions:
   contents: read
@@ -20,7 +25,7 @@ concurrency:
 
 jobs:
   read-only-audit:
-    if: ${{ inputs.confirm == 'READ_ONLY_MEMBER_EXPERIENCE' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.confirm == 'READ_ONLY_MEMBER_EXPERIENCE') || (github.event_name == 'push' && github.ref == 'refs/heads/ops/member-audit-readonly-once-20261001-0708') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
