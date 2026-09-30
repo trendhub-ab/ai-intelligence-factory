@@ -386,3 +386,30 @@ def test_screening_diagnostics_are_observational_only():
     assert items == original
     assert daily_canary._screening_diagnostics(
         [], SimpleNamespace(NOTION_SAVE_THRESHOLD_SCORE=65))["max_score"] is None
+
+
+def test_fresh_dedupe_diagnostics_separate_existing_and_intra_run(monkeypatch):
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
+    rows = [
+        {"nameWithOwner": "already stored", "source": "GitHub", "url": "https://example.test/old"},
+        {"nameWithOwner": "fresh a", "source": "GitHub", "url": "https://example.test/new"},
+        {"nameWithOwner": "fresh b", "source": "GitHub", "url": "https://example.test/new"},
+    ]
+    mock = SimpleNamespace(
+        fetch_github_trending=lambda n: rows,
+        fetch_hackernews_top=lambda n: [],
+        fetch_arxiv_ai_ml=lambda n: [],
+        fetch_producthunt_trending=lambda n: [],
+        round_robin_candidates=lambda groups, limit: groups["GitHub"][:limit],
+        legal_safety_gate=lambda repo: (True, ""),
+        get_existing_repo_urls=lambda: {"https://example.test/old"},
+        candidate_identity_urls=lambda repo: {repo["url"]},
+        _normalize_title_for_match=lambda title: title.lower(),
+    )
+    fresh, diag = daily_canary._fresh_candidates(mock)
+    assert [r["nameWithOwner"] for r in fresh] == ["fresh a"]
+    breakdown = diag["source_attrition"]
+    assert breakdown["dedupe_excluded_by_source"]["GitHub"] == 2
+    assert breakdown["existing_notion_duplicate_by_source"]["GitHub"] == 1
+    assert breakdown["intra_run_duplicate_by_source"]["GitHub"] == 1
+    assert breakdown["fresh_by_source"]["GitHub"] == 1
