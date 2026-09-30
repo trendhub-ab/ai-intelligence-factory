@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      GEMINI_API_KEY: ''
       NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
       NOTION_API_VERSION: '2026-03-11'
       NOTION_MEMBER_PRESENTATION_DATABASE_ID: b2787ee0-5b58-4ca7-b4eb-774f60237f1f
