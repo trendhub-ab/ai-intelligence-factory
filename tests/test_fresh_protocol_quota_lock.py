@@ -9,7 +9,7 @@ import fresh_protocol_quota_lock as lock
 
 def test_current_four_source_fresh_protocol_matches_frozen_blobs_and_budget():
     report = lock.validate(source="GitHub")
-    assert report["protocol"] == "fresh-four-source-fallback-bounded-v2"
+    assert report["protocol"] == "fresh-four-source-evidence-scope-v3"
     assert report["source"] == "GitHub"
     assert report["file_fingerprints_verified"] >= 18
     assert report["max_logical_calls_per_exact_source"] == {
@@ -75,7 +75,7 @@ def test_locked_protocol_does_not_claim_actual_provider_quota():
 def test_source_supply_experiment_is_not_part_of_unmodified_fresh_lock():
     manifest = json.loads(lock.LOCK.read_text(encoding="utf-8"))
     assert "fresh_candidate_supply_experiment.py" not in manifest["file_blobs"]
-    assert manifest["base_main"] == "6bde024ecf05d8ebdbe189d6299312dc96eb7aca"
+    assert manifest["base_main"] == "be438227303c1e0054f070377a985f19b913d9c0"
 
 
 
@@ -98,3 +98,24 @@ def test_malformed_hard_budget_manifest_is_rejected(tmp_path):
     changed.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(RuntimeError, match="registered model-send cap drift"):
         lock.validate(manifest_path=changed, source="ArXiv")
+
+
+def test_v3_preserves_fact_gate_and_rejects_missing_scoping_registration(tmp_path):
+    report = lock.validate(source="HackerNews")
+    assert report["protocol"] == "fresh-four-source-evidence-scope-v3"
+    manifest = json.loads(lock.LOCK.read_text(encoding="utf-8"))
+    for path in (
+        "source_boundary_validation.py",
+        "local_skills/production_canary.py",
+        "evidence_context.py",
+        "source_document_parsing.py",
+    ):
+        assert manifest["file_blobs"][path]
+    assert manifest["source_boundary_precision_contract"] == (
+        "unchanged_production_checker_scopes_unsupported_management_fields_only"
+    )
+    manifest["source_boundary_precision_contract"] = "skip_fact"
+    broken = tmp_path / "unsafe.json"
+    broken.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="precision registration drift"):
+        lock.validate(source="HackerNews", manifest_path=broken)
