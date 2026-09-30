@@ -77,7 +77,7 @@ def test_production_adapter_discards_all_provider_article_surfaces():
     assert meta["completeness_adapter_fallback_fields"] == [
         "avoid_for", "best_for", "primary_risk"
     ]
-    assert meta["writer_blob_sha"] == "62e14424e6d84b111fc1a6d297debdbff0ecec66"
+    assert meta["writer_blob_sha"] == "884c550125ff563b2d8bcf20132f3373d332f28d"
     assert meta["canonicalizer_blob_sha"] == "93a62ef2311d43dc1cb84fa5affe9d798a133021"
     assert meta["evidence_boundary_version"] == "stage10-v4"
     assert meta["integration_version"] == "v4.3.9-integrated"
