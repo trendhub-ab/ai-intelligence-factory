@@ -90,6 +90,31 @@ class PaidDBReadOnlyExperienceAuditTests(unittest.TestCase):
         self.assertEqual([], result["source_review_older_than_30_days"])
         self.assertEqual(1, result["counts"]["no_visible_generated_body"])
 
+    def test_invalid_or_future_review_date_reported_not_as_fresh(self):
+        states = {
+            "future": {
+                "page_id": "future", "sync_id": "record-future",
+                "name": "Future", "last_reviewed": "2026-10-02",
+            },
+            "invalid": {
+                "page_id": "invalid", "sync_id": "record-invalid",
+                "name": "Invalid", "last_reviewed": "2026-99-33",
+            },
+        }
+        with patch.object(mps, "_destination_state", side_effect=lambda p: states[p["id"]]):
+            result = audit.inspect(
+                [{"id": "future"}, {"id": "invalid"}],
+                lambda _id: [],
+                today=date(2026, 10, 1),
+            )
+        self.assertEqual(2, result["counts"]["invalid_or_future_review_date"])
+        self.assertEqual(0, result["counts"]["source_review_older_than_30_days"])
+        self.assertEqual(0, result["counts"]["missing_source_review_date"])
+        self.assertEqual(
+            {"future", "invalid"},
+            {item["review_state"] for item in result["invalid_or_future_review_date"]},
+        )
+
     def test_current_and_historical_generator_bodies_are_both_classified(self):
         cache = {}
         old = _callout("historical", run219.NEW_VISIBLE_CALLOUT_LABEL)
