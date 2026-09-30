@@ -29,11 +29,13 @@ def _workflow_value(workflow: str, name: str) -> int:
     section = workflow.split(anchor, 1)[1].split("\n      - name:", 1)[0]
     if "run: python production_pipeline.py" not in section:
         raise RuntimeError("Fresh production command drift")
-    matches = re.findall(
-        r"^\s+" + re.escape(name) + r': "([0-9]+)"\s*,
-        section, flags=re.MULTILINE,
-    )
-    if len(matches) != 1:
+    prefix = name + ': "'
+    matches = [
+        line.strip().split('"')[1]
+        for line in section.splitlines()
+        if line.strip().startswith(prefix)
+    ]
+    if len(matches) != 1 or not matches[0].isdigit():
         raise RuntimeError("Expected exactly one frozen Fresh step setting: " + name)
     return int(matches[0])
 
