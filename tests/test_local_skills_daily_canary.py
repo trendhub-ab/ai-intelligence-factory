@@ -360,3 +360,29 @@ def test_v439_source_stratified_hn_holdout_is_not_fresh_again():
         "source": "HackerNews",
         "primaryUrl": "https://inspect.aisi.org.uk/",
     })
+
+
+def test_source_attrition_counts_keep_four_distinct_routes():
+    rows = [{"source": "GitHub"}, {"source": "GitHub"},
+            {"source": "HackerNews"}, {"source": "ArXiv"},
+            {"source": "OfficialVendor"}, {"source": "unknown"}]
+    assert daily_canary._source_counts(rows) == {
+        "ArXiv": 1, "GitHub": 2, "HackerNews": 1, "OfficialVendor": 1,
+    }
+    assert all(value == 0 for value in daily_canary._source_counts([]).values())
+
+
+def test_screening_diagnostics_are_observational_only():
+    items = [{"score": 41}, {"score": 61}, {"score": 82}]
+    original = [dict(item) for item in items]
+    result = daily_canary._screening_diagnostics(
+        items, SimpleNamespace(NOTION_SAVE_THRESHOLD_SCORE=65))
+    assert result == {
+        "screened_count": 3,
+        "max_score": 82,
+        "notion_save_threshold": 65,
+        "at_or_above_notion_save": 1,
+    }
+    assert items == original
+    assert daily_canary._screening_diagnostics(
+        [], SimpleNamespace(NOTION_SAVE_THRESHOLD_SCORE=65))["max_score"] is None
