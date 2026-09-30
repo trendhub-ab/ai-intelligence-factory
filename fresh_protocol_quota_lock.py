@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent
-LOCK = ROOT / "docs/audits/fresh-four-source-protocol-lock-v2.json"
+LOCK = ROOT / "docs/audits/fresh-four-source-protocol-lock-v3.json"
 SOURCES = frozenset({"GitHub", "HackerNews", "ArXiv", "OfficialVendor"})
 
 
@@ -44,7 +44,7 @@ def validate(*, repo_root: Path = ROOT, manifest_path: Path = LOCK, source: str 
     if source not in SOURCES and source != "":
         raise RuntimeError("Invalid or unexpected Fresh source target")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("protocol") != "fresh-four-source-fallback-bounded-v2":
+    if manifest.get("protocol") != "fresh-four-source-evidence-scope-v3":
         raise RuntimeError("Invalid frozen Fresh protocol id")
     if manifest.get("source_membership") != sorted(SOURCES):
         raise RuntimeError("Source-set drift in Fresh protocol lock")
@@ -72,6 +72,23 @@ def validate(*, repo_root: Path = ROOT, manifest_path: Path = LOCK, source: str 
         '"Inspect: An open-source framework for large language model evaluations"',
     )):
         raise RuntimeError("Fresh immutable retry/source/holdout contract drift")
+    # Frozen v3 amendment: scope only proven unsupported provider management
+    # claims using the unchanged real source-boundary Gate before compilation.
+    production = (repo_root / "pipeline.py").read_text(encoding="utf-8")
+    adapter = (repo_root / "local_skills/production_canary.py").read_text(encoding="utf-8")
+    if "source_boundary_checker=_find_source_boundary_violations" not in production:
+        raise RuntimeError("Fresh Production/Local Skills source-checker injection drift")
+    if not all(marker in adapter for marker in (
+        "def _scope_unsupported_management_claims(",
+        "source_boundary_checker(value, evidence_context, repo_name)",
+        "Unexpected precompile source-boundary diagnostic",
+        "Deterministic management fallback failed the unchanged source-boundary checker",
+    )):
+        raise RuntimeError("Fresh management-evidence precision contract drift")
+    if manifest.get("source_boundary_precision_contract") != (
+        "unchanged_production_checker_scopes_unsupported_management_fields_only"
+    ):
+        raise RuntimeError("Fresh management-evidence precision registration drift")
     required = {
         "GITHUB_FETCH_LIMIT": 50, "HN_FETCH_LIMIT": 50,
         "ARXIV_FETCH_LIMIT": 50, "OFFICIAL_VENDOR_FETCH_LIMIT": 50,
