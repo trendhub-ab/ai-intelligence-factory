@@ -1,7 +1,7 @@
 # Stage 1 — Fresh source preflight without Gemini (2026-09-30)
 
 ## Entry and safety
-A separate **manual** workflow, `Fresh Source Preflight [ZERO GEMINI]`, requires `RUN_READ_ONLY_PREFLIGHT`. It checks out current main and enters `production_pipeline.py` in the isolated `local_skills_source_preflight` mode before model runtime initialization and font fetching. The runner receives **no Gemini API key**. It retains normal Production source-acquisition overlays, legal gate, identity dedupe, existing-Notion lookup and shared screening ceiling; it never invokes Screening, Calibration, Deep Dive, Local Skills Writer, quality Gates, note synchronization, or Notion article persistence.
+A separate **manual** workflow, `Fresh Source Preflight [ZERO GEMINI]`, requires `RUN_READ_ONLY_PREFLIGHT`. It checks out current main and runs standalone `fresh_zero_model_preflight.py`, installing the same canonical runtime and live source overlays without altering `production_pipeline.py` or performing model initialization/font fetching. The runner receives **no Gemini API key**. It retains normal Production source-acquisition overlays, legal gate, identity dedupe, existing-Notion lookup and shared screening ceiling; it never invokes Screening, Calibration, Deep Dive, Local Skills Writer, quality Gates, note synchronization, or Notion article persistence.
 
 This is **zero Gemini/LLM usage, not zero internet/API usage**: it reads GitHub, HN, arXiv, official vendor sources and the authoritative Notion dedupe index. Do **not** run it while source/Notion rate limits are also constrained. No automatic schedule or ChatOps command is introduced.
 
