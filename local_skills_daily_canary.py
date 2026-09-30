@@ -64,6 +64,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "Show HN: Agentcap – eBPF exporter for AI-agent activity to Grafana",
     "Claude Sonnet 5.5 for code review: More catches than Sonnet 5, in half the time",
     "An AI agent escaped Google\'s kvmCTF sandbox",
+    "Routing LLM traffic across inference providers with TCP-style congestion control",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -94,6 +95,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "github.com/yeet-src/agentcap",
     "coderabbit.ai/blog/sonnet-5-5-model-review",
     "pwn.ai/blog/kvmescape",
+    "getunblocked.com/blog/adaptive-routing-inference-providers",
 })
 
 
