@@ -149,3 +149,18 @@ def test_both_historical_experiment_and_production_use_same_gate_checker():
     source = (Path(__file__).resolve().parents[1] / "pipeline.py").read_text(encoding="utf-8")
     assert "source_boundary_checker=_find_source_boundary_violations" in source
     assert 'source_info.get("verification_context")' in source
+
+
+def test_measured_devday_failure_is_quarantined_across_source_locales():
+    from local_skills_daily_canary import _already_observed
+    for u in (
+        PRIMARY,
+        "https://openai.com/index/devday-2026-recap/",
+        "https://openai.com/ja-JP/index/devday-2026-recap/",
+    ):
+        assert _already_observed({"nameWithOwner": "different display title", "url": u})
+    assert _already_observed({"nameWithOwner": REPO["nameWithOwner"], "url": "https://example.invalid/other"})
+    assert not _already_observed({
+        "nameWithOwner": "another untouched topic",
+        "url": "https://example.invalid/untouched",
+    })
