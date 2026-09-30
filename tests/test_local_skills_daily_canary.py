@@ -347,3 +347,16 @@ def test_source_stratification_has_no_effect_when_omitted(monkeypatch):
     repos = [{"source": "GitHub"}, {"source": "HackerNews"}]
     assert daily_canary._validated_requested_source() == ""
     assert daily_canary._restrict_source(repos, "") == repos
+
+
+def test_v439_source_stratified_hn_holdout_is_not_fresh_again():
+    assert daily_canary._already_observed({
+        "nameWithOwner": "Inspect: An open-source framework for large language model evaluations",
+        "source": "HackerNews",
+        "url": "https://inspect.aisi.org.uk/",
+    })
+    assert daily_canary._already_observed({
+        "nameWithOwner": "A different name for the same audited source",
+        "source": "HackerNews",
+        "primaryUrl": "https://inspect.aisi.org.uk/",
+    })

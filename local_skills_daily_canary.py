@@ -69,6 +69,7 @@ OBSERVED_CANARY_NAMES = frozenset({
     "OpenAI Releases Sign in with ChatGPT DevKit",
     "Are new OpenAI models getting better for coding?",
     "An LLM Workflow That Reproduces, Improves, Extends Published Economics Research",
+    "Inspect: An open-source framework for large language model evaluations",
 })
 OBSERVED_CANARY_URL_MARKERS = frozenset({
     "2609.30266",
@@ -103,6 +104,7 @@ OBSERVED_CANARY_URL_MARKERS = frozenset({
     "github.com/openai/sign-in-with-chatgpt-devkit",
     "developer.microsoft.com/blog/what-ai-benchmarks-are-not-telling-you",
     "nber.org/papers/w35782",
+    "inspect.aisi.org.uk",
 })
 
 
