@@ -16,6 +16,7 @@ behavior. ZERO Gemini/model calls.
 from __future__ import annotations
 
 from typing import Any
+from datetime import date
 import re
 from urllib.parse import urlsplit
 
@@ -94,7 +95,11 @@ def _last_reviewed_label(value: Any) -> str:
         return ""
     match = re.fullmatch(r"(\\d{4})-(\\d{2})-(\\d{2})(?:[T ].*)?", raw)
     if match:
-        return f"{int(match[1])}年{int(match[2])}月{int(match[3])}日"
+        try:
+            value = date(int(match[1]), int(match[2]), int(match[3]))
+        except ValueError:
+            return ""
+        return f"{value.year}年{value.month}月{value.day}日"
     # Fail closed on unknown locale/time format rather than guess a 'today' date.
     return ""
 
