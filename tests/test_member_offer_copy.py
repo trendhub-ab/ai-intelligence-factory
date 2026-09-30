@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import member_offer_copy as offer
@@ -19,7 +19,6 @@ class HumanPaidOfferCopyTests(unittest.TestCase):
             tracking_url=self.URL,
             reader_summary={"what": "AIエージェントの認証情報漏えいをめぐる調査"},
             source="HackerNews",
-            divider="\n\n---\n\n",
         )
         self.assertIn("自分の環境なら、どこを確認するか", text)
         self.assertIn("月額1,980円", text)
@@ -48,7 +47,7 @@ class HumanPaidOfferCopyTests(unittest.TestCase):
         self.assertIn("今日の話題", generic)
         self.assertNotEqual(research, tool)
 
-    def test_fresh_v3_keeps_previous_marketing_footer_byte_identical(self):
+    def test_fresh_v3_and_existing_ready_code_remain_unmodified(self):
         legacy = (
             f"{note.DIVIDER_LINE}"
             "### 調査と判断の時間を減らしたい方へ\n\n"
@@ -56,35 +55,22 @@ class HumanPaidOfferCopyTests(unittest.TestCase):
             "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
             f"[会員向け意思決定DB＋月次サマリーを見る]({self.URL})\n"
         )
-        with patch.dict("os.environ", {"AIIF_ONE_SHOT_MODE": "local_skills_canary_validation"}):
-            actual = note.build_subscription_cta(
-                "aif-123", self.URL,
-                reader_summary={"what": "セキュリティ脆弱性の調査"}, source="HackerNews",
-            )
-        self.assertEqual(legacy, actual)
-        with patch.dict("os.environ", {"AIIF_ONE_SHOT_MODE": "daily_full"}):
-            new = note.build_subscription_cta(
-                "aif-123", self.URL,
-                reader_summary={"what": "セキュリティ脆弱性の調査"}, source="HackerNews",
-            )
-        self.assertNotEqual(actual, new)
-        self.assertIn("月額1,980円", new)
+        self.assertEqual(legacy, note.build_subscription_cta("aif-123", self.URL))
+        self.assertNotEqual(legacy, offer.render(tracking_url=self.URL))
+        source = (Path(__file__).resolve().parents[1] / "note_manuscript.py").read_text()
+        self.assertNotIn("member_offer_copy", source)
 
-    def test_malformed_or_empty_tracking_url_yields_no_cta(self):
-        for url in ("", "javascript:alert(1)", "http://example.org/join"):
-            self.assertEqual("", offer.render(tracking_url=url))
+    def test_staged_copy_preserves_original_attribution_url(self):
+        for bad in ("", "javascript:alert(1)", "http://example.org/join"):
+            self.assertEqual("", offer.render(tracking_url=bad))
         valid = note.build_subscription_tracking_url(
             "aif-123",
             enabled=True,
             default_landing_url="https://note.com/trendhub_biz/n/ned673e381ef8",
             campaign_id="actual",
         )
-        self.assertEqual(
-            ["aif-123"], parse_qs(urlsplit(valid).query)["utm_content"]
-        )
-        rendered = note.build_subscription_cta(
-            "aif-123", valid, reader_summary={"what": "開発ツールを比較"}
-        )
+        self.assertEqual(["aif-123"], parse_qs(urlsplit(valid).query)["utm_content"])
+        rendered = offer.render(tracking_url=valid, reader_summary={"what": "開発ツールを比較"})
         self.assertIn(valid, rendered)
         self.assertEqual(1, rendered.count("[月額1,980円の内容を確認する]"))
 
