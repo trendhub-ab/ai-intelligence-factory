@@ -1,9 +1,9 @@
 """Measurement-only source preflight. Never scores, writes articles, or calls an LLM.
 
-The live entrypoint is deliberately reachable only through the separate manual
-fresh-zero-model-preflight.yml workflow. It installs the canonical Production
-acquisition overlays via production_pipeline, but stops before model runtime
-initialization, fonts, Screening, Calibration and Deep Dive.
+The live entrypoint uses the separate manual fresh-zero-model-preflight.yml
+workflow. Its stand-alone bootstrap installs the same frozen Production runtime
+and source-acquisition overlays without modifying production_pipeline.py or
+initializing a model runtime, font downloader, Screening or Deep Dive.
 
 Live mode still reads four public source endpoints and authoritative Notion.
 It is NOT a network-free test or an eligible-article/quality certification.
@@ -115,3 +115,32 @@ def run_live(pipeline: Any, *, audit_path: Path = AUDIT_PATH) -> dict:
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result
+
+
+def main() -> None:
+    """Stand-alone manual bootstrap; leave validated Production orchestration intact."""
+    if os.environ.get("FRESH_SOURCE_PREFLIGHT_CONFIRM") != CONFIRM_VALUE:
+        raise RuntimeError("Explicit manual source preflight confirmation is required")
+    if os.environ.get("GEMINI_API_KEY"):
+        raise RuntimeError("Source preflight cannot receive Gemini credentials")
+
+    import pipeline
+    from source_normalization import install as install_source_normalization
+    from production_pipeline import install_runtime_layers
+    from run268_business_source_strategy import install as install_run268
+    from run269_business_source_precision import install as install_run269
+
+    install_source_normalization(pipeline)
+    install_runtime_layers(pipeline)
+    install_run268(pipeline)
+    install_run269(pipeline)
+    if not getattr(pipeline, "_RUN268_BUSINESS_SOURCE_STRATEGY_INSTALLED", False):
+        raise RuntimeError("Production four-source acquisition overlay did not install")
+    if not getattr(pipeline, "_RUN269_BUSINESS_SOURCE_PRECISION_INSTALLED", False):
+        raise RuntimeError("Current Production source precision overlay did not install")
+    report = run_live(pipeline)
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
