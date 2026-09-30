@@ -42,7 +42,9 @@ class PaidDBReadOnlyExperienceAuditTests(unittest.TestCase):
                 _callout("human", "手書きの補足"),
             ],
             "generated-old": _headings(
-                "これは何？", "いま、どうする？", "そう判断した理由", "次にやること"
+                "これは何？", "いま、使える？", "使える場面", "なぜ今見る？",
+                "使う前に確認すること", "次の一手",
+                "確認に使った公式・一次情報"
             ),
             "generated-current": _headings(
                 "これは何？", "いま、使える？",
@@ -134,6 +136,36 @@ class PaidDBReadOnlyExperienceAuditTests(unittest.TestCase):
             "いま、使える？", "使える場面", "次の一手"
         )
         self.assertFalse(run219._looks_like_generated_member_callout(ambiguous, cache))
+
+        # Grounded in both live Dify and ComfyUI: the older generated block
+        # has "次の一手", unlike the new "試す・導入する次の一手" body.
+        live_old = _callout("live-old", run219.NEW_VISIBLE_CALLOUT_LABEL)
+        cache["live-old"] = _headings(
+            "これは何？", "いま、使える？", "使える場面", "なぜ今見る？",
+            "使う前に確認すること", "次の一手",
+            "確認に使った公式・一次情報"
+        )
+        self.assertTrue(run219._looks_like_generated_member_callout(live_old, cache))
+        almost_manual = _callout("almost-manual", run219.NEW_VISIBLE_CALLOUT_LABEL)
+        cache["almost-manual"] = _headings(
+            "これは何？", "いま、使える？", "使える場面", "なぜ今見る？",
+            "使う前に確認すること", "次の一手"
+        )
+        self.assertFalse(
+            run219._looks_like_generated_member_callout(almost_manual, cache)
+        )
+
+        # Check the exact production migration helper: both real-style
+        # variants are generated, manual same-label content is not deletable.
+        with patch.object(
+            run219.guard, "_looks_like_generated_visible_callout",
+            side_effect=run219._looks_like_generated_member_callout
+        ):
+            found = run219.guard._generated_blocks(
+                [live_old, current, almost_manual],
+                {key: val for key, val in cache.items()},
+            )
+        self.assertEqual(["live-old", "current"], [b["id"] for b in found])
 
 
 if __name__ == "__main__":
