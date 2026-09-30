@@ -83,7 +83,7 @@ def make_fetcher(
     if fetch_page is None:
         def fetch_page(query: str, first: int) -> list[dict]:
             # Match the original Production GraphQL fields exactly.
-            gql = """ + "'\n'.join([" + """
+            gql = (
                 "{ search(query: " + json.dumps(query)
                 + f", type: REPOSITORY, first: {first}) "
                 + "{ nodes { ... on Repository { nameWithOwner url description "
