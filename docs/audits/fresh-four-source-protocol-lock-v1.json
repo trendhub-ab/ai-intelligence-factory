@@ -28,7 +28,7 @@
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "1a8f0268aac3e7f3bfdcb4e5dffa7cc45a6d4d44",
     ".github/workflows/daily-one-shot.yml": "7798de8c7f6db01dbcf5690c4979bb7e81f0c484",
-    "fresh_protocol_quota_lock.py": "7580b773f1bc84b02edc4c5c26703dd23d291d94"
+    "fresh_protocol_quota_lock.py": "ef6f308c9fb925a2b564021cd3bf9c8c0880db8c"
   },
   "workflow_limits": {
     "GITHUB_FETCH_LIMIT": 50,
