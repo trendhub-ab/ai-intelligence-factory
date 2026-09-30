@@ -3,8 +3,9 @@
 The lane reuses current Production acquisition, dedupe, legal, Screening,
 Calibration, Evidence and Gate functions, but intentionally does not persist
 Stock/article state or dispatch note publication. Production-style pre-Deep-Dive
-backfill is allowed when a candidate fails Evidence/Source preconditions, but the
-measurement permits at most one actual Deep Dive provider attempt. Its generated
+backfill is allowed when a candidate fails Evidence/Source preconditions. Once
+an article provider send is reserved, no second article/candidate is attempted;
+503/429 model fallback remains enabled within a strict per-run send-slot cap. Its generated
 article surface is then discarded and Local Skills is measured through unchanged
 Gates.
 
@@ -17,6 +18,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+
+from fresh_model_fallback_budget import FreshModelSendBudget
 
 AUDIT_PATH = Path("article_audit/local_skills_daily_canary.json")
 FALLBACK_FETCH_PER_SOURCE = 20
@@ -294,8 +297,11 @@ def run(pipeline: Any) -> dict[str, Any]:
         "gates": {},
         "candidate_attempts": [],
         "error": "",
+        "measurement_status": "UNMEASURED",
     }
 
+    send_budget: FreshModelSendBudget | None = None
+    original_send = None
     old_retries = pipeline.MAX_QUALITY_RETRIES
     old_rescue = pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE
     try:
@@ -303,6 +309,13 @@ def run(pipeline: Any) -> dict[str, Any]:
         result["acquisition"] = acquisition
         if not repos:
             raise RuntimeError("No fresh Daily candidate remained after Production dedupe")
+
+        # Intercept the final Production provider-send function once: this
+        # preserves all provider health routing and distinct-model fallbacks,
+        # including 503/429 behavior, but bounds *every* model invocation.
+        original_send = getattr(pipeline, "_generate_via_chat", None)
+        send_budget = FreshModelSendBudget()
+        pipeline._generate_via_chat = send_budget.wrapped(original_send)
 
         screening_candidates = [
             {"screening_id": f"LSC{idx:04d}", "repo": repo}
@@ -328,9 +341,9 @@ def run(pipeline: Any) -> dict[str, Any]:
             raise RuntimeError("No fresh candidate met the current Production Deep Dive threshold")
 
         # Measure the frozen Local Skills manuscript itself: allow Production's
-        # normal evidence/source backfill before the provider send, but permit at
-        # most one actual Deep Dive. No Gemini quality rewrite or deterministic
-        # publication rescue is allowed after that send.
+        # normal evidence/source backfill before the provider send, but permit
+        # only one ARTICLE candidate, with bounded transient provider fallback.
+        # No Gemini quality rewrite or deterministic publication rescue follows.
         pipeline.MAX_QUALITY_RETRIES = 0
         pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = False
 
@@ -348,6 +361,7 @@ def run(pipeline: Any) -> dict[str, Any]:
             setattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_RESULT", {})
 
             before_deep_dive = _deep_dive_attempt_count(pipeline)
+            before_article_slots = send_budget.article_slots
             report = pipeline.generate_intelligence_report(
                 repo,
                 notion_page_id=None,
@@ -359,7 +373,13 @@ def run(pipeline: Any) -> dict[str, Any]:
                 attribution_context=candidate,
             )
             after_deep_dive = _deep_dive_attempt_count(pipeline)
-            provider_send_attempted = after_deep_dive > before_deep_dive
+            # Fail closed even if the provider wrapper refused a send before
+            # the underlying usage audit recorded it. Never burn a different
+            # article holdout after trying this candidate.
+            provider_send_attempted = (
+                after_deep_dive > before_deep_dive
+                or send_budget.article_slots > before_article_slots
+            )
 
             compile_meta = dict(
                 getattr(pipeline, "_LOCAL_SKILLS_CANARY_LAST_COMPILE", {}) or {}
@@ -387,6 +407,7 @@ def run(pipeline: Any) -> dict[str, Any]:
                 })
                 attempt["disposition"] = "measured"
                 result["candidate_attempts"].append(attempt)
+                result["measurement_status"] = "MEASURED"
 
                 if isinstance(report, tuple) and len(report) == 2:
                     result["outcome"] = str(report[1])
@@ -408,8 +429,8 @@ def run(pipeline: Any) -> dict[str, Any]:
                 continue
 
             # Once one article-analysis provider call has happened, never try a
-            # second candidate. This keeps the fresh measurement single-send and
-            # prevents integration bugs from multiplying API cost.
+            # second candidate. Multiple 503/429 model sends on the SAME article
+            # are permitted, but the hard budget prevents runaway transport cost.
             attempt["disposition"] = "deep_dive_without_measurement"
             result["candidate_attempts"].append(attempt)
             result.update({
@@ -418,7 +439,7 @@ def run(pipeline: Any) -> dict[str, Any]:
                 "screening_score": score,
             })
             raise RuntimeError(
-                "Local Skills canary spent its single Deep Dive but did not reach compiler/Gate measurement"
+                "Local Skills canary attempted its one article without reaching compiler/Gate measurement"
             )
 
         raise RuntimeError(
@@ -428,6 +449,13 @@ def run(pipeline: Any) -> dict[str, Any]:
         result["error"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
+        # Restore the exact Production provider function for in-process safety.
+        if original_send is not None:
+            pipeline._generate_via_chat = original_send
+        result["provider_budget"] = (
+            send_budget.snapshot() if send_budget is not None
+            else {"status": "NOT_STARTED", "actual_provider_rpm_rpd_remaining": "NOT_MEASURED"}
+        )
         pipeline.MAX_QUALITY_RETRIES = old_retries
         pipeline.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE = old_rescue
         _write(result)

@@ -9,7 +9,7 @@ import fresh_protocol_quota_lock as lock
 
 def test_current_four_source_fresh_protocol_matches_frozen_blobs_and_budget():
     report = lock.validate(source="GitHub")
-    assert report["protocol"] == "fresh-unmodified-four-source-v439-v1"
+    assert report["protocol"] == "fresh-four-source-fallback-bounded-v2"
     assert report["source"] == "GitHub"
     assert report["file_fingerprints_verified"] >= 18
     assert report["max_logical_calls_per_exact_source"] == {
@@ -67,7 +67,7 @@ def test_workflow_settings_are_read_only_from_exact_production_entrypoint():
 
 def test_locked_protocol_does_not_claim_actual_provider_quota():
     report = lock.validate(source="OfficialVendor")
-    assert report["actual_transport_attempts"] == "NOT_BOUNDED_BY_THIS_OFFLINE_CHECK"
+    assert report["actual_transport_attempts"] == "SEND_INVOCATIONS_BOUNDED_SDK_SINGLE_ATTEMPT_RUNTIME_REQUIRED"
     assert report["actual_provider_rpm_rpd_remaining"] == "NOT_MEASURED"
     assert report["safe_to_start_without_quota_review"] is False
 
@@ -75,4 +75,26 @@ def test_locked_protocol_does_not_claim_actual_provider_quota():
 def test_source_supply_experiment_is_not_part_of_unmodified_fresh_lock():
     manifest = json.loads(lock.LOCK.read_text(encoding="utf-8"))
     assert "fresh_candidate_supply_experiment.py" not in manifest["file_blobs"]
-    assert manifest["base_main"] == "f149bda8c176dd0a9997d89396b0acee0f0d1611"
+    assert manifest["base_main"] == "6bde024ecf05d8ebdbe189d6299312dc96eb7aca"
+
+
+
+def test_bounded_fallback_is_registered_not_one_transport_call():
+    report = lock.validate(source="GitHub")
+    assert report["max_logical_calls_per_exact_source"]["deep_dive"] == 1
+    assert report["max_provider_send_slots"] == {"total": 10, "pre_article": 6, "article": 4}
+    assert report["article_model_fallback"] == "PRESERVED_WITHIN_BOUND"
+    manifest = json.loads(lock.LOCK.read_text(encoding="utf-8"))
+    assert manifest["max_article_candidates_after_send"] == 1
+    assert manifest["max_quality_retries"] == 0
+    assert manifest["file_blobs"]["gemini_provider_resilience.py"]
+    assert manifest["file_blobs"]["fresh_model_fallback_budget.py"]
+
+
+def test_malformed_hard_budget_manifest_is_rejected(tmp_path):
+    manifest = json.loads(lock.LOCK.read_text(encoding="utf-8"))
+    manifest["max_provider_send_slots"]["article"] = 99
+    changed = tmp_path / "unsafe.json"
+    changed.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="registered model-send cap drift"):
+        lock.validate(manifest_path=changed, source="ArXiv")
