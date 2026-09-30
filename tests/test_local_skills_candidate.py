@@ -86,6 +86,7 @@ def test_compiler_preserves_evidence_surface_and_numeric_lexemes():
     result = compile_snapshot(original)
 
     assert result["status"] == CANDIDATE_STATUS
+    assert CANDIDATE_STATUS == "INTEGRATED_FRESH_4_OF_4_VALIDATED"
     assert result["canonicalizer_version"] == "stage6-v4"
     assert result["publication_topic_fit_version"] == "local-v1"
     assert result["integration_version"] == "v4.3.9-integrated"
