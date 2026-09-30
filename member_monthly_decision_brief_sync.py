@@ -174,7 +174,20 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
     local_now = (now or datetime.now(timezone.utc)).astimezone(tz)
     as_of = local_now.date()
     title = f"会員限定Decision Brief｜{local_now.year}年{local_now.month}月"
-    top = select_top(states)
+    # Do not mix old evidence with current shortlist recommendations.
+    # The full DB keeps older records with honest review-date disclosure, while
+    # the monthly Brief promotes only records whose evidence was reviewed
+    # within the shared 30-day policy.
+    fresh_states = [
+        state for state in states
+        if quality.review_state(state.get("last_reviewed"), as_of=as_of) == "recorded"
+    ]
+    needs_review_states = [
+        state for state in states
+        if quality.review_state(state.get("last_reviewed"), as_of=as_of) != "recorded"
+    ]
+    top = select_top(fresh_states)
+    review_needed = select_top(needs_review_states, limit=min(3, TOP_LIMIT))
     changes = select_changes(states)
 
     blocks: list[dict[str, Any]] = [
@@ -183,7 +196,7 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
             "各AI・技術の根拠を確認した日は項目ごとに異なります。"
             "このページの表示更新は、情報を再確認したことを意味しません。"
         ),
-        _heading(2, "今月の判断材料"),
+        _heading(2, "根拠確認が30日以内の判断候補"),
     ]
     if top:
         for state in top:
@@ -197,7 +210,10 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
                 + (f"｜次の一手：{action}" if action else "")
             ))
     else:
-        blocks.append(_paragraph(_rt("現在、会員向けに提示できる評価済み候補がありません。")))
+        blocks.append(_paragraph(_rt(
+            "根拠確認が30日以内の実務候補はありません。"
+            "古い評価を最新扱いせず、再確認が必要な候補は下の参考欄に分けています。"
+        )))
 
     for idx, state in enumerate(top, 1):
         score = int(round(_score(state.get("score"))))
@@ -237,6 +253,42 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
             blocks.append(_paragraph(
                 _rt(quality.source_link_label(primary_url), link=primary_url)
             ))
+
+    if review_needed:
+        blocks.extend([
+            _divider(),
+            _heading(2, "再確認が必要な参考候補"),
+            _paragraph(_rt(
+                "以下は以前の評価です。根拠確認から30日を超えている、"
+                "確認日が未記録、または確認日に不整合があるため、"
+                "今月の判断候補には含めていません。"
+            )),
+        ])
+        for state in review_needed:
+            score = int(round(_score(state.get("score"))))
+            blocks.append(_bullet(
+                f"{state['name']}｜{quality.DATE_PREFIX}："
+                f"{quality.review_badge(state.get('last_reviewed'), as_of=as_of)}｜"
+                f"以前の判断：{quality.status_short(state.get('status'))}｜"
+                f"参考スコア：{score}点"
+            ))
+            blocks.append(_paragraph(
+                _rt(quality.review_disclosure(state.get("last_reviewed"), as_of=as_of))
+            ))
+            page_url = _page_url(state.get("page_id") or "")
+            primary_url = str(state.get("primary_url") or "").strip()
+            links: list[dict[str, Any]] = []
+            if page_url:
+                links.append(_rt("DBで再確認", bold=True, link=page_url))
+            if primary_url.startswith("https://"):
+                if links:
+                    links.append(_rt(" ｜ "))
+                links.append(_rt(
+                    quality.source_link_label(primary_url),
+                    link=primary_url,
+                ))
+            if links:
+                blocks.append(_paragraph(*links))
 
     blocks.extend([_divider(), _heading(2, "今月、記録された重要な判断の変化")])
     if not changes:
