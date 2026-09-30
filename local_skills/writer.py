@@ -1,4 +1,4 @@
-"""Local Writer v4.3.7 integrated candidate — Fresh-4/4 lineage plus topic-fit repair.
+"""Local Writer v4.3.9 integrated candidate — Fresh-4/4 lineage plus decision-voice repair.
 
 Pure Python, zero network/provider calls. The validated v4.3.6 publication shape
 remains the baseline; later reader-access and evidence-safe repairs are retained,
@@ -11,6 +11,7 @@ Compared with the frozen v3:
 - add one layout-varied conversational foothold so a non-engineer can identify
   what the named subject is before technical detail;
 - keep bounded glossary handling, limitation adjacency, and ROI safety;
+- align observational Decision phrasing with the unchanged Human Appeal decision-voice contract;
 - add no provider calls and no new source facts.
 
 No Evidence, Decision, Score, URL, Production code, or Gate rule is changed.
