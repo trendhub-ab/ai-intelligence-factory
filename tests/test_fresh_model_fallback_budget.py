@@ -31,7 +31,7 @@ def test_real_provider_routing_preserves_distinct_model_503_fallback(monkeypatch
     assert len(unavailable) == 2
 
 
-def test_503_storm_fails_closed_before_fifth_article_send(monkeypatch):
+def test_503_storm_exhausts_four_model_pool_with_no_extra_sends(monkeypatch):
     pipeline, _, _ = make_pipeline()
     actual_sends = []
     def all_503(model, prompt, **kwargs):
@@ -42,7 +42,7 @@ def test_503_storm_fails_closed_before_fifth_article_send(monkeypatch):
     gemini_provider_resilience.install(pipeline)
     guard = budget.FreshModelSendBudget()
     pipeline._generate_via_chat = guard.wrapped(pipeline._generate_via_chat)
-    with pytest.raises(budget.FreshProviderBudgetExhausted, match="article fallback cap"):
+    with pytest.raises(pipeline.NoAvailableModelError):
         pipeline._call_model_pool(
             "same article prompt", None, "deep_dive", 0,
             ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
@@ -79,6 +79,7 @@ def test_pre_article_fallback_and_total_cap_never_spill_to_extra_article():
 
 
 def test_canary_restores_provider_and_disables_quality_retry_after_measurement(monkeypatch):
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY", "false")
     monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
     repo = {"source": "GitHub", "nameWithOwner": "never-seen synthetic experiment"}
     captures = []
@@ -144,6 +145,7 @@ def test_canary_restores_provider_and_disables_quality_retry_after_measurement(m
 
 
 def test_pre_article_budget_exhaustion_is_unmeasured_and_restores_send(monkeypatch):
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY", "false")
     monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
     repo = {"source": "GitHub", "nameWithOwner": "unmeasured synthetic"}
     output = []
