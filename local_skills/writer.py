@@ -123,11 +123,11 @@ def _decision_phrase(snapshot: Mapping[str, Any]) -> str:
     if not _is_observational_topic(snapshot):
         return DECISION_PHRASES[decision]
     return {
-        "NOW": "今すぐ判断材料へ反映する",
-        "TRY": "限定した範囲で確認する",
-        "WATCH": "基準点として追跡する",
-        "WAIT": "追加情報を待って再評価する",
-        "AVOID": "現時点では結論に使わない",
+        "NOW": "今すぐ判断材料へ反映し、既存の基準と比較する",
+        "TRY": "限定した範囲で検証する",
+        "WATCH": "基準点として追跡し、次の情報と比較する",
+        "WAIT": "追加情報を待つ判断とし、揃った段階で再評価する",
+        "AVOID": "現時点では結論化を見送る",
     }[decision]
 
 
