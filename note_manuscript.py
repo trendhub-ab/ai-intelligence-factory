@@ -128,17 +128,19 @@ def build_subscription_tracking_url(
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query, doseq=True), parsed.fragment))
 
 
-def build_subscription_cta(article_id: str, tracking_url: str = "") -> str:
-    if not tracking_url:
-        return ""
-    return (
-        f"{DIVIDER_LINE}"
-        "### 調査と判断の時間を減らしたい方へ\n\n"
-        "無料記事では重要テーマを最後まで公開しています。会員向けには、"
-        "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
-        f"[会員向け意思決定DB＋月次サマリーを見る]({tracking_url})\n"
+def build_subscription_cta(
+    article_id: str, tracking_url: str = "", *,
+    reader_summary: dict | None = None, source: str = "",
+) -> str:
+    # The id remains in the already-validated tracking URL. Marketing prose is
+    # separated from the reader summary and never inserts new article facts.
+    from member_offer_copy import render
+    return render(
+        tracking_url=tracking_url,
+        reader_summary=reader_summary,
+        source=source,
+        divider=DIVIDER_LINE,
     )
-
 
 def _reader_plain_text(text: str) -> str:
     value = normalize_markdown_for_note(str(text or ""))
@@ -452,7 +454,9 @@ def build_clean_note_manuscript(
         default_landing_url=subscription_landing_url,
         campaign_id=subscription_campaign_id,
     )
-    subscription_cta = build_subscription_cta(article_id, tracking_url)
+    subscription_cta = build_subscription_cta(
+        article_id, tracking_url, reader_summary=reader_summary, source=source
+    )
     if subscription_cta:
         manuscript += "\n\n" + subscription_cta
     manuscript += source_block + "\n" + ARTICLE_DISCLAIMER
