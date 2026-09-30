@@ -413,3 +413,140 @@ def test_fresh_dedupe_diagnostics_separate_existing_and_intra_run(monkeypatch):
     assert breakdown["existing_notion_duplicate_by_source"]["GitHub"] == 1
     assert breakdown["intra_run_duplicate_by_source"]["GitHub"] == 1
     assert breakdown["fresh_by_source"]["GitHub"] == 1
+
+
+def test_github_run202_attrition_replay_stops_before_any_model_calls(monkeypatch):
+    """Offline synthetic replay of observed counts, not a new Fresh measurement."""
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
+    rows = [
+        {
+            "source": "GitHub",
+            "nameWithOwner": f"synthetic-fresh-audit-{index}",
+            "url": f"https://example.invalid/github-audit-{index:02d}",
+        }
+        for index in range(50)
+    ]
+    existing = {row["url"] for row in rows[17:]}
+    log = []
+    captured = []
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("zero-fresh diagnosis must not invoke any model")
+
+    mock = SimpleNamespace(
+        fetch_github_trending=lambda n: rows[:n],
+        fetch_hackernews_top=lambda n: [],
+        fetch_arxiv_ai_ml=lambda n: [],
+        fetch_producthunt_trending=lambda n: [],
+        round_robin_candidates=lambda groups, limit: groups["GitHub"][:limit],
+        legal_safety_gate=lambda row: (
+            int(row["url"][-2:]) >= 17,
+            "synthetic unsafe" if int(row["url"][-2:]) < 17 else "",
+        ),
+        get_existing_repo_urls=lambda: existing,
+        candidate_identity_urls=lambda row: {row["url"]},
+        _normalize_title_for_match=lambda title: title.casefold(),
+        initialize_runtime=lambda: log.append("init"),
+        reset_article_style_memory=lambda: log.append("reset"),
+        screen_candidates_in_batches=forbidden,
+        calibrate_candidates=forbidden,
+        generate_intelligence_report=forbidden,
+        MAX_QUALITY_RETRIES=2,
+        ENABLE_DETERMINISTIC_PUBLICATION_RESCUE=True,
+        logger=SimpleNamespace(info=lambda *args, **kwargs: None),
+    )
+    monkeypatch.setattr(daily_canary, "_write", lambda result: captured.append(result.copy()))
+    try:
+        daily_canary.run(mock)
+    except RuntimeError as exc:
+        assert "No fresh Daily candidate" in str(exc)
+    else:
+        raise AssertionError("The synthetic 0-fresh run must stop before Screening")
+    assert log == ["init", "reset"]
+    assert mock.MAX_QUALITY_RETRIES == 2
+    assert mock.ENABLE_DETERMINISTIC_PUBLICATION_RESCUE is True
+    assert len(captured) == 1
+    report = captured[0]
+    assert report["screening_candidates"] == 0
+    assert report["local_skills_additional_provider_calls"] == 0
+    attr = report["acquisition"]["source_attrition"]
+    assert attr["collected_by_source"]["GitHub"] == 50
+    assert attr["legal_safe_by_source"]["GitHub"] == 33
+    assert attr["dedupe_excluded_by_source"]["GitHub"] == 33
+    assert attr["existing_notion_duplicate_by_source"]["GitHub"] == 33
+    assert attr["intra_run_duplicate_by_source"]["GitHub"] == 0
+    assert attr["fresh_by_source"]["GitHub"] == 0
+
+
+def test_invalid_source_is_rejected_before_runtime_initialization(monkeypatch):
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "github ")
+    touched = []
+    mock = SimpleNamespace(initialize_runtime=lambda: touched.append("runtime"))
+    try:
+        daily_canary.run(mock)
+    except RuntimeError as exc:
+        assert "Invalid source-stratified Fresh target" in str(exc)
+    else:
+        raise AssertionError("Invalid source must fail before runtime init")
+    assert touched == []
+
+
+def test_cross_source_duplicate_is_measured_but_source_order_is_unchanged(monkeypatch):
+    """Document a selection-protocol limitation without modifying it."""
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
+    shared = "https://example.invalid/one-primary"
+    hn = {"source": "HackerNews", "nameWithOwner": "HN mirror", "url": shared}
+    gh = {"source": "GitHub", "nameWithOwner": "GH repo", "url": shared}
+    mock = SimpleNamespace(
+        fetch_github_trending=lambda n: [gh],
+        fetch_hackernews_top=lambda n: [hn],
+        fetch_arxiv_ai_ml=lambda n: [],
+        fetch_producthunt_trending=lambda n: [],
+        round_robin_candidates=lambda groups, limit: [
+            groups["HackerNews"][0], groups["GitHub"][0],
+        ][:limit],
+        legal_safety_gate=lambda row: (True, ""),
+        get_existing_repo_urls=lambda: set(),
+        candidate_identity_urls=lambda row: {row["url"]},
+        _normalize_title_for_match=lambda name: name.casefold(),
+    )
+    repos, result = daily_canary._fresh_candidates(mock)
+    assert repos == []
+    attr = result["source_attrition"]
+    assert attr["existing_notion_duplicate_by_source"]["GitHub"] == 0
+    assert attr["intra_run_duplicate_by_source"]["GitHub"] == 1
+    assert attr["fresh_by_source"]["HackerNews"] == 1
+    assert attr["fresh_by_source"]["GitHub"] == 0
+    # This is a known protocol order, not evidence of GitHub candidate quality.
+
+
+def test_duplicate_reason_counters_may_overlap_but_aggregate_is_a_union(monkeypatch):
+    monkeypatch.setenv("AIIF_LOCAL_SKILLS_CANARY_SOURCE", "GitHub")
+    first = {
+        "source": "GitHub", "nameWithOwner": "new",
+        "url": "https://example.invalid/fresh",
+    }
+    second = {
+        "source": "GitHub", "nameWithOwner": "both",
+        "url": "https://example.invalid/old",
+    }
+    mock = SimpleNamespace(
+        fetch_github_trending=lambda n: [first, second],
+        fetch_hackernews_top=lambda n: [],
+        fetch_arxiv_ai_ml=lambda n: [],
+        fetch_producthunt_trending=lambda n: [],
+        round_robin_candidates=lambda groups, limit: groups["GitHub"][:limit],
+        legal_safety_gate=lambda row: (True, ""),
+        get_existing_repo_urls=lambda: {"https://example.invalid/old"},
+        candidate_identity_urls=lambda row: (
+            {row["url"], "https://example.invalid/fresh"}
+            if row is second else {row["url"]}
+        ),
+        _normalize_title_for_match=lambda name: name.casefold(),
+    )
+    fresh, report = daily_canary._fresh_candidates(mock)
+    assert [row["nameWithOwner"] for row in fresh] == ["new"]
+    a = report["source_attrition"]
+    assert a["dedupe_excluded_by_source"]["GitHub"] == 1
+    assert a["existing_notion_duplicate_by_source"]["GitHub"] == 1
+    assert a["intra_run_duplicate_by_source"]["GitHub"] == 1
