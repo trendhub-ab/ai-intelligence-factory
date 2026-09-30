@@ -58,6 +58,21 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertTrue(result["authorized"])
         self.assertEqual(result["mode"], "local_skills_canary_validation")
 
+    def test_source_stratified_fresh_commands_authorize_only_four_exact_sources(self):
+        for suffix in ("github", "hackernews", "arxiv", "officialvendor"):
+            body = f"/aiif run local_skills_canary_{suffix}"
+            result = chatops.authorize_event(event(body=body))
+            self.assertTrue(result["authorized"])
+            self.assertEqual(result["mode"], f"local_skills_canary_{suffix}")
+        for body in (
+            "/aiif run local_skills_canary_producthunt",
+            "/aiif run local_skills_canary_github ",
+            "/aiif run local_skills_canary_GitHub",
+            "/aiif run local_skills_canary_officialvendor\\n",
+            "/aiif run local_skills_canary_../full",
+        ):
+            self.assertFalse(chatops.authorize_event(event(body=body))["authorized"])
+
     def test_local_skills_production_validation_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run local_skills_production_validation"))
         self.assertTrue(result["authorized"])
@@ -194,6 +209,16 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
             text,
         )
         self.assertIn("/aiif run local_skills_canary_validation", text)
+        for suffix, source in (
+            ("github", "GitHub"),
+            ("hackernews", "HackerNews"),
+            ("arxiv", "ArXiv"),
+            ("officialvendor", "OfficialVendor"),
+        ):
+            self.assertIn(f"/aiif run local_skills_canary_{suffix}", text)
+            self.assertIn(f"source='{source}'", text)
+        self.assertIn('"canary_source":"%s"', text)
+
         self.assertIn('"mode":"local_skills_canary_validation"', text)
         self.assertIn("/aiif run local_skills_production_validation", text)
         self.assertIn('"mode":"local_skills_production_validation"', text)
