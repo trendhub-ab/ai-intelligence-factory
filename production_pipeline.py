@@ -189,7 +189,7 @@ def install_run349_score_narrative_negation_precision(pipeline_module):
 _ONE_SHOT_MODES = frozenset({
     "full", "article_validation", "pending_retry_validation", "ready_rescue_validation",
     "production_e2e_validation", "stale_ready_batch_revalidation", "local_skills_canary_validation",
-    "local_skills_production_validation",
+    "local_skills_production_validation", "local_skills_source_preflight",
 })
 
 
@@ -308,6 +308,13 @@ def main() -> None:
     # item time is labeled as the HN post date and can never masquerade as the external
     # primary source's publication/update date. This is deterministic and zero-provider.
     install_run287_publication_date_provenance(note_manuscript, pipeline)
+
+    if mode == "local_skills_source_preflight":
+        # Separate manual zero-Gemini source/Notion-read-only lane. No model
+        # runtime initialization, font fetching, article Screening or persistence.
+        from fresh_zero_model_preflight import run_live
+        run_live(pipeline)
+        return
 
     if not bool(getattr(pipeline, "SYNTHETIC_REGRESSION_MODE", False)):
         runtime_state_channel.preflight_runtime_state_channel()
