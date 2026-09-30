@@ -1,0 +1,117 @@
+"""Measurement-only source preflight. Never scores, writes articles, or calls an LLM.
+
+The live entrypoint is deliberately reachable only through the separate manual
+fresh-zero-model-preflight.yml workflow. It installs the canonical Production
+acquisition overlays via production_pipeline, but stops before model runtime
+initialization, fonts, Screening, Calibration and Deep Dive.
+
+Live mode still reads four public source endpoints and authoritative Notion.
+It is NOT a network-free test or an eligible-article/quality certification.
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+from local_skills_daily_canary import STRATIFIED_SOURCES, _fresh_candidates
+
+AUDIT_PATH = Path("article_audit/fresh_zero_model_preflight.json")
+CONFIRM_VALUE = "RUN_READ_ONLY_PREFLIGHT"
+
+
+def _minimal_acquisition_surface(pipeline: Any) -> SimpleNamespace:
+    """Whitelist just acquisition and deduplication functions; no model methods."""
+    names = (
+        "fetch_github_trending", "fetch_hackernews_top", "fetch_arxiv_ai_ml",
+        "fetch_producthunt_trending", "round_robin_candidates",
+        "legal_safety_gate", "get_existing_repo_urls",
+        "candidate_identity_urls", "_normalize_title_for_match",
+        "GITHUB_FETCH_LIMIT", "HN_FETCH_LIMIT", "ARXIV_FETCH_LIMIT",
+        "OFFICIAL_VENDOR_FETCH_LIMIT", "MAX_SCREENING_CANDIDATES",
+    )
+    required_functions = names[:9]
+    for name in required_functions:
+        if not callable(getattr(pipeline, name, None)):
+            raise RuntimeError("Source preflight is missing required Production acquisition surface")
+    return SimpleNamespace(**{
+        name: getattr(pipeline, name)
+        for name in names
+        if hasattr(pipeline, name)
+    })
+
+
+def _summarize(acquisition: dict, *, provenance: str) -> dict:
+    stages = acquisition.get("source_attrition")
+    if not isinstance(stages, dict):
+        raise RuntimeError("Source preflight is missing complete attrition diagnostics")
+    required = (
+        "collected_by_source", "round_robin_by_source", "legal_safe_by_source",
+        "dedupe_excluded_by_source", "existing_notion_duplicate_by_source",
+        "intra_run_duplicate_by_source", "observed_excluded_by_source",
+        "fresh_by_source",
+    )
+    counts = {}
+    for stage in required:
+        row = stages.get(stage)
+        if not isinstance(row, dict) or set(row) != STRATIFIED_SOURCES:
+            raise RuntimeError("Source preflight is missing one of the four required sources")
+        if any(type(v) is not int or v < 0 for v in row.values()):
+            raise RuntimeError("Source preflight received invalid aggregate counts")
+        counts[stage] = dict(row)
+    for source in sorted(STRATIFIED_SOURCES):
+        collected = counts["collected_by_source"][source]
+        in_rotation = counts["round_robin_by_source"][source]
+        safe = counts["legal_safe_by_source"][source]
+        duplicates = counts["dedupe_excluded_by_source"][source]
+        observed = counts["observed_excluded_by_source"][source]
+        fresh = counts["fresh_by_source"][source]
+        if not (collected >= in_rotation >= safe >= duplicates + observed + fresh):
+            raise RuntimeError("Source preflight aggregate counts do not reconcile")
+    return {
+        "mode": "source_preflight",
+        "provenance": provenance,
+        "quality_measured": False,
+        "model_provider_calls": 0,
+        "note_or_notion_article_writes": 0,
+        "collected_at_utc": datetime.now(timezone.utc).isoformat(),
+        "source_status": {
+            source: (
+                "NO_FRESH_CANDIDATES" if counts["fresh_by_source"][source] == 0
+                else "FRESH_PRE_SCREEN_ONLY"
+            )
+            for source in sorted(STRATIFIED_SOURCES)
+        },
+        "source_attrition": counts,
+        "production_fetch_limits": acquisition.get("production_fetch_limits", {}),
+        "production_max_screening": acquisition.get("production_max_screening"),
+        "gate_result": "NOT_MEASURED",
+    }
+
+
+def run_live(pipeline: Any, *, audit_path: Path = AUDIT_PATH) -> dict:
+    """Explicit credentialed reads only. No Gemini credentials permitted."""
+    if os.environ.get("FRESH_SOURCE_PREFLIGHT_CONFIRM") != CONFIRM_VALUE:
+        raise RuntimeError("Manual source-preflight confirmation required")
+    if os.environ.get("AIIF_LOCAL_SKILLS_CANARY_SOURCE"):
+        raise RuntimeError("All four sources must be measured together in preflight")
+    if os.environ.get("GEMINI_API_KEY") or getattr(pipeline, "GEMINI_API_KEY", None):
+        raise RuntimeError("Source preflight refuses all Gemini credentials")
+    if not getattr(pipeline, "GH_PAT", None):
+        raise RuntimeError("Authoritative GitHub source credentials are required")
+    if not getattr(pipeline, "NOTION_API_KEY", None) or not (
+        getattr(pipeline, "NOTION_DATA_SOURCE_ID", None)
+        or getattr(pipeline, "NOTION_DATABASE_ID", None)
+    ):
+        raise RuntimeError("Authoritative Notion dedupe credentials are required")
+    # This restricted facade has no screening, calibration, model or persistence
+    # functions. It uses the current Production source and identity callables.
+    facade = _minimal_acquisition_surface(pipeline)
+    _repos, acquisition = _fresh_candidates(facade)
+    result = _summarize(acquisition, provenance="LIVE_SOURCE_AND_NOTION_READS")
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return result
