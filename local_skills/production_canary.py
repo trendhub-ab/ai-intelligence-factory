@@ -158,6 +158,64 @@ def build_snapshot(
     }
 
 
+def _scope_unsupported_management_claims(
+    parsed: Mapping[str, Any],
+    *,
+    evidence_context: str,
+    repo_name: str,
+    source_boundary_checker: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Precompile only unsupported provider-generated decision/action specifics.
+
+    This uses the *existing unchanged Production source-boundary checker*, with
+    the same verification context used by the downstream Fact Gate. A fact that
+    is present in that context is retained verbatim. If the text extractor did
+    not capture a real plan entitlement, do not infer it from the provider:
+    choose a neutral verification action and keep the Fact Gate authoritative.
+    No source fact or named product is synthesized by these fallbacks.
+    """
+    out = dict(parsed)
+    if source_boundary_checker is None:
+        return out, {"status": "NOT_CONFIGURED", "replaced_fields": [], "issues": []}
+    if not callable(source_boundary_checker) or not _text(evidence_context):
+        raise RuntimeError("Source-boundary precision requires the Production checker and verified evidence")
+
+    original_observational = _management_is_observational(out)
+    fallbacks = {
+        "decision_reason_text": (
+            "一次情報に記載された対象範囲を基準に、未確認の点と確認済みの点を分けて判断します。"
+        ),
+        "action_text": (
+            "一次情報の記録を基準点として残し、追加の公式情報と照合して判断を更新します。"
+            if original_observational else
+            "対象機能の公式提供条件と利用対象を確認し、自社環境で小規模に比較検証します。"
+        ),
+    }
+    replaced_fields: list[str] = []
+    issues: list[str] = []
+    for key, fallback in fallbacks.items():
+        value = _text(out.get(key))
+        if not value:
+            continue
+        violations = list(source_boundary_checker(value, evidence_context, repo_name) or [])
+        if not violations:
+            continue
+        # Do not silently hide a new or unrelated gate diagnostic.
+        if any(not item.startswith("source-boundary unsupported named fact: ") for item in violations):
+            raise RuntimeError("Unexpected precompile source-boundary diagnostic")
+        if source_boundary_checker(fallback, evidence_context, repo_name):
+            raise RuntimeError("Deterministic management fallback failed the unchanged source-boundary checker")
+        out[key] = fallback
+        replaced_fields.append(key)
+        issues.extend(violations)
+
+    return out, {
+        "status": "SCOPED" if replaced_fields else "UNCHANGED",
+        "replaced_fields": replaced_fields,
+        "issues": list(dict.fromkeys(issues)),
+    }
+
+
 def apply_to_production_parsed(
     repo: Mapping[str, Any],
     parsed: Mapping[str, Any],
@@ -166,13 +224,20 @@ def apply_to_production_parsed(
     primary_url: str,
     grounding: Mapping[str, Any] | None,
     evidence_context: str = "",
+    source_boundary_checker: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    completion, completion_sources = _completion_boundary(parsed)
+    scoped_parsed, boundary_precision = _scope_unsupported_management_claims(
+        parsed,
+        evidence_context=evidence_context,
+        repo_name=_text(repo.get("nameWithOwner") or repo.get("name")),
+        source_boundary_checker=source_boundary_checker,
+    )
+    completion, completion_sources = _completion_boundary(scoped_parsed)
     snapshot = build_snapshot(
-        repo, parsed, source=source, primary_url=primary_url, grounding=grounding
+        repo, scoped_parsed, source=source, primary_url=primary_url, grounding=grounding
     )
     compiled = compile_snapshot(snapshot, evidence_context=evidence_context)
-    out = dict(parsed)
+    out = dict(scoped_parsed)
     # The canary must send one internally-consistent Local Skills surface to every Gate.
     # Previously only title/note_draft were replaced, so Human Appeal could inspect the
     # stale provider action_text while the visible article contained the canonicalized
@@ -204,6 +269,7 @@ def apply_to_production_parsed(
         "provider_article_surface_reused": False,
         "deterministic_title": True,
         "compiled_structured_surface_synced": True,
+        "management_source_boundary_precision": boundary_precision,
         "completeness_adapter_sources": dict(completion_sources),
         "completeness_adapter_fallback_fields": sorted(
             key for key, value in completion_sources.items()
