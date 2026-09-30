@@ -40,25 +40,49 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Verify deterministic copy and member audit offline
         run: |
-          python -m unittest -q tests.test_member_offer_copy tests.test_member_experience_quality_audit tests.test_member_reader_quality_policy tests.test_run307_use_decision_member_surface
-      - name: Canonical Notion reads only (zero Gemini)
+          python -m unittest -q tests.test_member_offer_copy tests.test_member_experience_quality_audit tests.test_member_reader_quality_policy tests.test_member_experience_audit_workflow_security tests.test_run307_use_decision_member_surface
+      - name: Canonical read-only audit (public output contains aggregates only)
         run: |
           test -z "${GEMINI_API_KEY:-}"
           test -n "${NOTION_DECISION_INTELLIGENCE_API_KEY:-}"
-          mkdir -p article_audit
-          python member_experience_quality_audit.py --read-only > article_audit/member_experience_quality.json
-          python - <<'PY'
+          umask 077
+          REPORT="$(mktemp "$RUNNER_TEMP/member-experience-XXXXXX.json")"
+          ERROR_LOG="$(mktemp "$RUNNER_TEMP/member-audit-error-XXXXXX.log")"
+          trap 'rm -f "$REPORT" "$ERROR_LOG"' EXIT
+          if ! python member_experience_quality_audit.py --read-only > "$REPORT" 2> "$ERROR_LOG"; then
+            echo "Audit failed; sensitive per-page diagnostics intentionally withheld."
+            exit 1
+          fi
+          python - "$REPORT" <<'PY'
           import json
+          import sys
           from pathlib import Path
-          result = json.loads(Path("article_audit/member_experience_quality.json").read_text())
+
+          # This repository is PUBLIC. The raw audit includes paid-member
+          # page names and IDs. Never print, attach or upload that file.
+          result = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           assert result["read_only"] and result["gemini_provider_calls"] == 0
-          print("READ_ONLY_MEMBER_EXPERIENCE", result["page_count"], result["counts"])
+          summary = {
+              "status": result["status"],
+              "read_only": True,
+              "gemini_provider_calls": 0,
+              "page_count": result["page_count"],
+              "review_date": result["review_date"],
+              "counts": result["counts"],
+          }
+          print("READ_ONLY_MEMBER_EXPERIENCE_AGGREGATE", json.dumps(summary, sort_keys=True))
+          with Path(__import__("os").environ["GITHUB_STEP_SUMMARY"]).open(
+              "a", encoding="utf-8"
+          ) as handle:
+              handle.write("### Member audit: aggregate-only results\n\n")
+              handle.write(f"Scanned: {result['page_count']} records\n\n")
+              for key, value in result["counts"].items():
+                  handle.write(f"- {key}: {value}\n")
+              if result["counts"]["same_label_unclassified"]:
+                  handle.write("\nManual-like blocks require private review. No sync is authorized.\n")
           PY
-      - name: Save private audit report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: member-experience-readonly-${{ github.run_number }}
-          path: article_audit/member_experience_quality.json
-          if-no-files-found: warn
-          retention-days: 14
+
+      # SECURITY: This is a public GitHub repository. Actions artifacts and
+      # logs are visible publicly; intentionally do not upload the unredacted
+      # per-page audit report. Affected page names/IDs may only be inspected
+      # in a private, locally controlled run with authorized credentials.
