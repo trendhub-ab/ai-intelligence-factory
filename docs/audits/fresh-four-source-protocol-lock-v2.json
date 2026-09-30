@@ -1,0 +1,68 @@
+{
+  "protocol": "fresh-four-source-fallback-bounded-v2",
+  "base_main": "6bde024ecf05d8ebdbe189d6299312dc96eb7aca",
+  "source_membership": [
+    "ArXiv",
+    "GitHub",
+    "HackerNews",
+    "OfficialVendor"
+  ],
+  "file_blobs": {
+    "local_skills/writer.py": "884c550125ff563b2d8bcf20132f3373d332f28d",
+    "local_skills/publication_canonicalizer.py": "93a62ef2311d43dc1cb84fa5affe9d798a133021",
+    "local_skills/evidence_boundary.py": "baea845264f97d23b7f30673d2eac573d932c940",
+    "local_skills/compiler.py": "9f0f2e96bfe6b42666ceb9a8f302259a80404d01",
+    "local_skills/a_plus.py": "595caa5a8bcf207dbf1e4df8f22a8ae2a241d128",
+    "local_skills_daily_canary.py": "1d02e93767243842adfd14b6b43abe9d8fd2da16",
+    "pipeline.py": "109ac619011050706292eea4d94c9883e7bcd18c",
+    "production_pipeline.py": "2f8a70e93f1698c8b7ff16440d2f94fab1527895",
+    "run268_business_source_strategy.py": "d8563ea107231b5ed708466824054aac887b2845",
+    "run269_business_source_precision.py": "aa8df7c9f2bb6dfcd6b97158cc0c06b04881e22a",
+    "runtime_layers.py": "acac2f3b96319c52943ff6623fdc3b7448582ff1",
+    "screening_protocol.py": "068dd235c221cc14ad1e1d35e579c456ab5c6c89",
+    "candidate_identity.py": "f984dca5f5521b96e6dfb96ca9beb98687ad8690",
+    "deep_dive_portfolio.py": "27e4dd67b9eeba405b03adde200fddfb98e2dd42",
+    "reader_value_review_bridge.py": "b1adec4f6bcf6e022530d5d147a9698ed8e030ab",
+    "run208_reader_value_repair.py": "6a1c61b2c9ed2a3e05cb199be0adb9983164c8a7",
+    "run248_first_real_publish_quality_calibration.py": "02bc1899ae8ff686b57d8c4782b266fff87df1c9",
+    "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
+    "run194_publication_contract.py": "1a8f0268aac3e7f3bfdcb4e5dffa7cc45a6d4d44",
+    ".github/workflows/daily-one-shot.yml": "7798de8c7f6db01dbcf5690c4979bb7e81f0c484",
+    "fresh_protocol_quota_lock.py": "205cf9e5459c6700c3991ad8053dfc091eecaf09",
+    "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
+    "gemini_provider_resilience.py": "832214b52e62162599eca6eac6f5e73e16b63a5e",
+    "run260_gemini_model_routing.py": "2584fb342b8c7d6ed8839063ae3a9d82e331eea9",
+    "gemini_transient_recovery.py": "d02f9d14ae199420f710a2be894bb29803aa14b2",
+    "gemini_timeout_rpd_fail_closed.py": "dd50fe206f88b1730bdb13767dc2f1584df5449d"
+  },
+  "workflow_limits": {
+    "GITHUB_FETCH_LIMIT": 50,
+    "HN_FETCH_LIMIT": 50,
+    "ARXIV_FETCH_LIMIT": 50,
+    "OFFICIAL_VENDOR_FETCH_LIMIT": 50,
+    "MAX_SCREENING_CANDIDATES": 200,
+    "SCREENING_BATCH_SIZE": 25,
+    "GLOBAL_CALIBRATION_BATCH_SIZE": 50,
+    "GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET": 12
+  },
+  "max_quality_retries": 0,
+  "max_logical_calls_per_exact_source": {
+    "screening": 2,
+    "calibration": 1,
+    "deep_dive": 1
+  },
+  "important_limitations": [
+    "Exactly one source-filtered article can be measured. After one article send slot, never attempt a second candidate.",
+    "503/429 fallback uses frozen Production model-pool routing and is allowed within 6 pre-article plus 4 article provider send slots (10 maximum). This guard covers all calls via the pinned pipeline._generate_via_chat; actual HTTP count may be smaller than reservations.",
+    "Runtime SDK retry owner must preserve single SDK attempts; the lock does not query current provider RPM/RPD remaining.",
+    "Logical 2 Screening + 1 Calibration + 1 Deep Dive are batch-level tasks; they are not actual provider send limits.",
+    "Source is filtered after shared four-source acquisition/dedupe; no changed acquisition trial is included.",
+    "v2 changes provider-attempt protocol; restart independent 0/4 for all four sources. v1 historical 1/4 (HN PASS) is archival only."
+  ],
+  "max_article_candidates_after_send": 1,
+  "max_provider_send_slots": {
+    "total": 10,
+    "pre_article": 6,
+    "article": 4
+  }
+}
