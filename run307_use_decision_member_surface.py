@@ -16,6 +16,8 @@ behavior. ZERO Gemini/model calls.
 from __future__ import annotations
 
 from typing import Any
+import re
+from urllib.parse import urlsplit
 
 import member_client_action_alignment as alignment
 import member_presentation_body_sync as body
@@ -65,6 +67,38 @@ def _use_update_text(state: dict[str, Any]) -> str:
     return f"{prefix}{reason}"
 
 
+def _show_topic(value: str) -> bool:
+    """Omit vague filler instead of manufacturing a 'why now' from stale data."""
+    text = _clean(value).strip("。！？!?. ")
+    if not text:
+        return False
+    return not bool(re.fullmatch(
+        r".{0,36}(?:非常に有力|有力候補|注目に値する|確認しています|期待されます)",
+        text,
+    ))
+
+
+def _source_label(url: str, index: int) -> str:
+    """Use an identifiable domain, never mislabel a third-party page official."""
+    parsed = urlsplit(str(url or ""))
+    host = (parsed.hostname or "").removeprefix("www.")
+    if not host:
+        return f"参照先 {index}"
+    return f"参照先 {index}：{host}"
+
+
+def _last_reviewed_label(value: Any) -> str:
+    """Display an existing source-review date without treating UI edit time as review."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    match = re.fullmatch(r"(\\d{4})-(\\d{2})-(\\d{2})(?:[T ].*)?", raw)
+    if match:
+        return f"{int(match[1])}年{int(match[2])}月{int(match[3])}日"
+    # Fail closed on unknown locale/time format rather than guess a 'today' date.
+    return ""
+
+
 def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Render current generic use-decision copy using existing authoritative fields only."""
     children: list[dict[str, Any]] = []
@@ -83,7 +117,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._paragraph(use_case))
 
     topic = _clean(state.get("topic"))
-    if topic:
+    if _show_topic(topic):
         children.append(body._heading("なぜ今見る？"))
         children.append(body._paragraph(topic))
 
@@ -105,11 +139,18 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     evidence = run219._clean(state.get("evidence"))
     primary_url = run219._clean(state.get("primary_url"))
     related_article = run219._clean(state.get("related_article"))
-    urls = body._extract_urls(evidence, primary_url)
+    checked = _last_reviewed_label(state.get("last_reviewed"))
+    if checked:
+        children.append(body._heading("情報の確認時点"))
+        children.append(body._paragraph(
+            f"記録上の最終確認：{checked}。最新の提供条件や価格は、利用前に公式情報で再確認してください。"
+        ))
+
+    urls = body._extract_urls(primary_url, evidence)
     if urls or related_article:
-        children.append(body._heading("確認に使った公式・一次情報"))
+        children.append(body._heading("参照した情報源"))
         for index, url in enumerate(urls[:5], 1):
-            children.append(body._link_paragraph(f"公式・一次情報 {index}", url))
+            children.append(body._link_paragraph(_source_label(url, index), url))
         if related_article:
             children.append(body._link_paragraph("関連記事", related_article))
 
