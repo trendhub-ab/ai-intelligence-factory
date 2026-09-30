@@ -435,6 +435,13 @@ def test_github_run202_attrition_replay_stops_before_any_model_calls(monkeypatch
         raise AssertionError("zero-fresh diagnosis must not invoke any model")
 
     mock = SimpleNamespace(
+        # Replay the exact Production breadth used by historical Run #202;
+        # SimpleNamespace otherwise takes the canary's 20-item fallback.
+        GITHUB_FETCH_LIMIT=50,
+        HN_FETCH_LIMIT=50,
+        ARXIV_FETCH_LIMIT=50,
+        OFFICIAL_VENDOR_FETCH_LIMIT=50,
+        MAX_SCREENING_CANDIDATES=200,
         fetch_github_trending=lambda n: rows[:n],
         fetch_hackernews_top=lambda n: [],
         fetch_arxiv_ai_ml=lambda n: [],
