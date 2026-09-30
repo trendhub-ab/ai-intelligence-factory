@@ -1,0 +1,56 @@
+{
+  "protocol": "fresh-unmodified-four-source-v439-v1",
+  "base_main": "f149bda8c176dd0a9997d89396b0acee0f0d1611",
+  "source_membership": [
+    "ArXiv",
+    "GitHub",
+    "HackerNews",
+    "OfficialVendor"
+  ],
+  "file_blobs": {
+    "local_skills/writer.py": "884c550125ff563b2d8bcf20132f3373d332f28d",
+    "local_skills/publication_canonicalizer.py": "93a62ef2311d43dc1cb84fa5affe9d798a133021",
+    "local_skills/evidence_boundary.py": "baea845264f97d23b7f30673d2eac573d932c940",
+    "local_skills/compiler.py": "9f0f2e96bfe6b42666ceb9a8f302259a80404d01",
+    "local_skills/a_plus.py": "595caa5a8bcf207dbf1e4df8f22a8ae2a241d128",
+    "local_skills_daily_canary.py": "bdec6e15c61536f92af13f1a8cd5ee1c5fcd3d95",
+    "pipeline.py": "109ac619011050706292eea4d94c9883e7bcd18c",
+    "production_pipeline.py": "2f8a70e93f1698c8b7ff16440d2f94fab1527895",
+    "run268_business_source_strategy.py": "d8563ea107231b5ed708466824054aac887b2845",
+    "run269_business_source_precision.py": "aa8df7c9f2bb6dfcd6b97158cc0c06b04881e22a",
+    "runtime_layers.py": "acac2f3b96319c52943ff6623fdc3b7448582ff1",
+    "screening_protocol.py": "068dd235c221cc14ad1e1d35e579c456ab5c6c89",
+    "candidate_identity.py": "f984dca5f5521b96e6dfb96ca9beb98687ad8690",
+    "deep_dive_portfolio.py": "27e4dd67b9eeba405b03adde200fddfb98e2dd42",
+    "reader_value_review_bridge.py": "b1adec4f6bcf6e022530d5d147a9698ed8e030ab",
+    "run208_reader_value_repair.py": "6a1c61b2c9ed2a3e05cb199be0adb9983164c8a7",
+    "run248_first_real_publish_quality_calibration.py": "02bc1899ae8ff686b57d8c4782b266fff87df1c9",
+    "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
+    "run194_publication_contract.py": "1a8f0268aac3e7f3bfdcb4e5dffa7cc45a6d4d44",
+    ".github/workflows/daily-one-shot.yml": "7798de8c7f6db01dbcf5690c4979bb7e81f0c484",
+    "fresh_protocol_quota_lock.py": "5d801800031b6a62ed6edf606e02f1aee19d3998"
+  },
+  "workflow_limits": {
+    "GITHUB_FETCH_LIMIT": 50,
+    "HN_FETCH_LIMIT": 50,
+    "ARXIV_FETCH_LIMIT": 50,
+    "OFFICIAL_VENDOR_FETCH_LIMIT": 50,
+    "MAX_SCREENING_CANDIDATES": 200,
+    "SCREENING_BATCH_SIZE": 25,
+    "GLOBAL_CALIBRATION_BATCH_SIZE": 50,
+    "GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET": 12
+  },
+  "max_deep_dive_sends": 1,
+  "max_quality_retries": 0,
+  "max_logical_calls_per_exact_source": {
+    "screening": 2,
+    "calibration": 1,
+    "deep_dive": 1
+  },
+  "important_limitations": [
+    "Offline lock does not verify current provider RPM or RPD remaining.",
+    "Logical budgets exclude fallback/retry transport attempts; effective vendor call spending may be greater.",
+    "Requested source is filtered after shared four-source acquisition and cross-source dedupe.",
+    "Previously measured source-stratified result remains one HackerNews PASS and three UNMEASURED; a changed acquisition protocol requires an independent new 0/4 campaign."
+  ]
+}
