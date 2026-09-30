@@ -113,6 +113,20 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._heading("これは何？"))
         children.append(body._paragraph(summary))
 
+    # Put evidence age before the recommendation, where mobile readers see it.
+    # Missing source-review dates must not be mistaken for current verification.
+    checked = _last_reviewed_label(state.get("last_reviewed"))
+    children.append(body._heading("根拠の確認日"))
+    if checked:
+        children.append(body._paragraph(
+            f"{checked}に確認。以降の変更は未反映の可能性があります。"
+            "利用前に公式情報で条件・価格を再確認してください。"
+        ))
+    else:
+        children.append(body._paragraph(
+            "最終確認日が記録されていません。利用前に参照先の最新情報をご確認ください。"
+        ))
+
     children.append(body._heading("いま、使える？"))
     children.append(body._paragraph(_use_decision_text(state)))
 
@@ -144,12 +158,6 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
     evidence = run219._clean(state.get("evidence"))
     primary_url = run219._clean(state.get("primary_url"))
     related_article = run219._clean(state.get("related_article"))
-    checked = _last_reviewed_label(state.get("last_reviewed"))
-    if checked:
-        children.append(body._heading("情報の確認時点"))
-        children.append(body._paragraph(
-            f"記録上の最終確認：{checked}。最新の提供条件や価格は、利用前に公式情報で再確認してください。"
-        ))
 
     urls = body._extract_urls(primary_url, evidence)
     if urls or related_article:
