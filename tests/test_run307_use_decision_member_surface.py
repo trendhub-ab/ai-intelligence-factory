@@ -109,6 +109,21 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         missing = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
         self.assertIn("最終確認日が記録されていません", missing)
 
+    def test_existing_and_new_rows_share_review_policy_not_edit_time(self):
+        import member_reader_quality_policy as policy
+        old = self._state()
+        old["last_reviewed"] = "2026-08-23"
+        new = self._state()
+        new["last_reviewed"] = ""
+        # A new page and an old page both enter the same renderer.
+        for record in (old, new):
+            display = [text for _, text in body._body_fingerprint(run307._build_children(record))]
+            self.assertIn(policy.DATE_PREFIX, display)
+            self.assertLess(display.index(policy.DATE_PREFIX), display.index("いま、使える？"))
+            self.assertIn(policy.review_disclosure(record["last_reviewed"]), display)
+        self.assertIn("最終確認日が記録されていません",
+                      policy.review_disclosure(new["last_reviewed"]))
+
     def test_vague_topic_is_omitted_without_inventing_a_recency_claim(self):
         state = self._state()
         state["topic"] = "制作・検証環境として非常に有力。"
