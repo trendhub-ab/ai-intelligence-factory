@@ -26,37 +26,62 @@ The issue is not lack of content quantity. The paid product needs an unequivocal
 
 If the full audit confirms generated duplicates and no ambiguous/manual same-label blocks on target pages, run the existing `Member Presentation Sync` manually with `force_full_body_sync=true`. That pre-existing conservative path removes qualified duplicate generated callouts while keeping unrelated manual blocks. Then rerun this read-only audit to verify duplicates = 0 and inspect actual pages from a logged-out/member-reader standpoint. **Do not blindly delete callouts or relabel stale facts as freshly verified.** Exact source rechecks need their own evidence-reviewed maintenance workflow, not cosmetic timestamp changes.
 
-## Human rewrite candidate — fixed LP (review first; never auto-publish)
+## Human rewrite candidate — fixed LP (human review, not published)
+
+**UX goal:** On mobile, show the problem, the difference from the free article, the monthly price and the next step before a long feature explanation. Reduce ambiguity and friction, not manufacture urgency. Reuse the current verified note membership destination, not an unverified checkout URL.
 
 ### Headline
-「新しいAIが出た」。それで、私たちは何をすればいい？
 
-### Opening
-便利そうなAIを見つけるたび、タブが一つ増える。
-料金を調べて、公式情報を読んで、似たツールを探す。気づけば、何を決めたかったのか分からなくなる。
+「このAI、使える？」を、毎回ゼロから調べないために。
 
-欲しいのはニュースの山ではありません。
-**「自分の仕事や開発で、これは使えるのか？」を判断する材料**です。
+### First screen: a concrete problem, the offer and one next step
 
-AI Intelligence Factoryは、公式情報や技術資料を手がかりに、その判断を整理するサービスです。無料noteでは一つの話題を最後まで読めます。会員向けには、その後も使える判断材料をDBとDecision Briefにまとめています。
+新しいAIを見つけた。公式サイトを読んで、料金を調べて、似たツールとも比べてみる。  
+気になる情報は増えたのに、肝心の「自分の仕事で使える？」が決まらない。
 
-### Before / after use
-**情報を知るだけでなく、使う・試す・待つ・避けるを選ぶ。**
+そんな調べ物を、少しでも減らしたい人のために作りました。
 
-- **まずBriefで見当をつける** — 重要な話題を絞って、今の判断を短時間で確認する。
-- **気になる候補はDBで確かめる** — 使える場面、利用前の条件、主なリスク、判断理由、参照情報までたどる。
-- **使う前に一度立ち止まる** — 会員ホームの判断メモで、何を小さく試せばよいか整理する。
+**AI Intelligence Factory｜月額1,980円**  
+月次Decision BriefとAI意思決定DBで、候補を選ぶときの根拠を、あとから確かめられる形にまとめています。
 
-たくさん読めることよりも、もう一度調べる手間を減らせることを大切にしています。
+無料noteは、一本の記事だけで最後まで読めます。有料会員は、その記事の続きではありません。複数のAI・技術を比較し、実際に試すかどうかを考えるための場所です。
 
-### Membership and delivery disclosure
-**月額1,980円** — 会員限定のAI意思決定DBとDecision Brief。
-加入後は、メンバー限定の「最初にお読みください」記事に従ってNotionの利用登録をお願いします。加入と同時にDBが自動開放されるわけではありません。閲覧のためにNotionの有料契約は必要ありません。PCでの閲覧を推奨し、スマートフォン向けの簡易ビューもあります。
-
-**［月額1,980円のサービス内容を見る］**
+**［月額1,980円のサービス内容・参加手順を見る］**  
 Destination: https://note.com/trendhub_biz/membership
 
-Note: The exact current public fixed LP must be re-read in a **fresh uncached logged-out browser** and diffed against the latest human-edited published manuscript before any manual publication. This copy is a **proposal**, not a claim that the live page has changed.
+### Before/after: one short reader journey, not a feature catalogue
+
+たとえば、仕事で使うAIを選ぶとき。
+
+1. **まずBriefを開く。** 重要な話題を絞って読み、調べる候補を決める。
+2. **気になったらDBで確かめる。** 向いている用途、確認すべき条件、主なリスク、判断理由、参照先を一か所で読む。
+3. **使う前に、次の一手を考える。** 自分の業務に近い条件で小さく試すのか、まだ見送るのかを整理する。
+
+「話題を知った」で終わらず、「自分ならどうする？」まで進む。そのための会員サービスです。
+
+### Free versus paid: draw an honest boundary
+
+- **無料note：** その日の一つの話題を、背景と結論まで読めます。続きを読むための支払いは不要です。
+- **月額会員：** 話題を横断したDecision BriefとDBで、あとから複数の候補を調べ、判断材料と参照先に戻れます。
+
+収録されている情報には、それぞれ確認した時点があります。あらゆる価格・仕様が常に最新であることを保証するものではありません。導入前には参照先の最新の提供条件をご確認ください。
+
+### Who it is for (and an honest non-fit)
+
+自分でAIを開発・試用する人、業務でツールを選ぶフリーランスや小規模事業者、必要に応じて顧客に提案する人へ。
+
+反対に、ニュースを毎日たくさん読むことだけが目的なら、無料noteから始めていただければ十分です。
+
+### Membership and delivery: remove the post-payment surprise
+
+**月額1,980円**で、会員向けのDecision BriefとAI意思決定DBを利用できます。
+
+加入後は、noteのメンバー限定「最初にお読みください」に沿ってNotionの利用登録をお願いします。その後、招待を受けて閲覧します。**お支払いと同時にDBが自動で開く仕組みではありません。** 閲覧のためにNotionの有料プランは必要ありません。PCでの閲覧を推奨し、スマートフォン用の簡易ビューも用意しています。
+
+**［月額1,980円のサービス内容・参加手順を見る］**  
+Destination: https://note.com/trendhub_biz/membership
+
+**Publication safeguard:** This manuscript is a proposal. Before publication, capture the actual current published LP and membership join screen in an uncached logged-out browser; reconcile any later human edits and verify the precise access steps, benefits and CTA destination. Obtain explicit human publication approval. Do not deploy the staged free-article CTA while Fresh v3 provenance remains frozen.
 
 ## Acceptance criteria
 
