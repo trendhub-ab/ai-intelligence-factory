@@ -40,7 +40,7 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Verify deterministic copy and member audit offline
         run: |
-          python -m unittest -q tests.test_member_offer_copy tests.test_member_experience_quality_audit tests.test_member_reader_quality_policy tests.test_run307_use_decision_member_surface
+          python -m unittest -q tests.test_member_offer_copy tests.test_member_experience_quality_audit tests.test_member_reader_quality_policy tests.test_member_experience_audit_workflow_security tests.test_run307_use_decision_member_surface
       - name: Canonical read-only audit (public output contains aggregates only)
         run: |
           test -z "${GEMINI_API_KEY:-}"
