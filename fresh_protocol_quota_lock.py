@@ -21,12 +21,20 @@ def git_blob_id(contents: bytes) -> str:
 
 
 def _workflow_value(workflow: str, name: str) -> int:
+    # Other Daily steps may declare similarly named budgets. Freeze only the
+    # exact canary-capable Production entrypoint, not unrelated retry steps.
+    anchor = "      - name: 通常Production entrypointを1回だけ実行"
+    if workflow.count(anchor) != 1:
+        raise RuntimeError("Fresh Production entrypoint definition changed")
+    section = workflow.split(anchor, 1)[1].split("\\n      - name:", 1)[0]
+    if "run: python production_pipeline.py" not in section:
+        raise RuntimeError("Fresh production command drift")
     matches = re.findall(
-        r"^\s+" + re.escape(name) + r': "([0-9]+)"\s*$',
-        workflow, flags=re.MULTILINE,
+        r"^\\s+" + re.escape(name) + r': "([0-9]+)"\\s*$',
+        section, flags=re.MULTILINE,
     )
     if len(matches) != 1:
-        raise RuntimeError("Expected exactly one frozen Fresh workflow setting: " + name)
+        raise RuntimeError("Expected exactly one frozen Fresh step setting: " + name)
     return int(matches[0])
 
 
