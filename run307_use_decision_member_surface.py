@@ -177,6 +177,7 @@ def contract() -> dict[str, Any]:
         "notion_schema_changed": False,
         "zero_gemini_calls": True,
         "paid_surface": [
+            quality.DATE_PREFIX,
             "いま、使える？",
             "使える場面",
             "使う前に確認すること",
