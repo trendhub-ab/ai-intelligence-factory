@@ -93,7 +93,7 @@ def _last_reviewed_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return ""
-    match = re.fullmatch(r"(\\d{4})-(\\d{2})-(\\d{2})(?:[T ].*)?", raw)
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?", raw)
     if match:
         try:
             value = date(int(match[1]), int(match[2]), int(match[3]))
