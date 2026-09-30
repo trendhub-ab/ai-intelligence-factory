@@ -1,6 +1,8 @@
 import unittest
 from unittest import mock
 
+import requests
+
 import member_presentation_body_sync as body
 
 
@@ -149,6 +151,65 @@ class Run166MemberPageBodyTests(unittest.TestCase):
             api_like.append({"type": kind, kind: {"rich_text": [{"plain_text": text}]}})
         self.assertTrue(body._body_matches(api_like, state))
         self.assertFalse(body._body_matches(api_like[:-1], state))
+
+
+    def test_append_children_reconciles_timeout_when_server_committed_once(self):
+        state = self._state()
+        expected = [body._new_callout_block(state)]
+        landed = {
+            "id": "callout-new",
+            "type": "callout",
+            "callout": {
+                "rich_text": [
+                    {"plain_text": body._block_text(expected[0])}
+                ]
+            },
+        }
+        with mock.patch.object(body, "_children", side_effect=[[], [landed]]) as children, \
+             mock.patch.object(
+                 body, "_request", side_effect=requests.exceptions.ReadTimeout("late response")
+             ) as request:
+            result = body._append_children("page-123", expected)
+
+        self.assertEqual(["callout-new"], [item["id"] for item in result])
+        request.assert_called_once()
+        self.assertEqual(2, children.call_count)
+
+    def test_append_children_timeout_without_landed_write_fails_closed_no_retry(self):
+        expected = [body._new_callout_block(self._state())]
+        with mock.patch.object(body, "_children", side_effect=[[], []]) as children, \
+             mock.patch.object(
+                 body, "_request", side_effect=requests.exceptions.ReadTimeout("not committed")
+             ) as request:
+            with self.assertRaises(requests.exceptions.ReadTimeout):
+                body._append_children("page-123", expected)
+
+        request.assert_called_once()
+        self.assertEqual(2, children.call_count)
+
+    def test_get_transport_timeout_retries_but_patch_does_not_blind_retry(self):
+        response = mock.Mock(status_code=200)
+        with mock.patch.object(
+            body.requests,
+            "request",
+            side_effect=[requests.exceptions.ReadTimeout("get timeout"), response],
+        ) as request, mock.patch.object(body.time, "sleep"):
+            self.assertIs(response, body._request("GET", "https://api.notion.com/v1/test"))
+        self.assertEqual(2, request.call_count)
+
+        with mock.patch.object(
+            body.requests,
+            "request",
+            side_effect=requests.exceptions.ReadTimeout("patch ambiguous"),
+        ) as request, mock.patch.object(body.time, "sleep"):
+            with self.assertRaises(requests.exceptions.ReadTimeout):
+                body._request(
+                    "PATCH",
+                    "https://api.notion.com/v1/test",
+                    json_payload={"children": []},
+                )
+        request.assert_called_once()
+
 
     def test_creation_is_two_step_parent_then_children(self):
         state = self._state()
