@@ -73,6 +73,9 @@ class HumanPaidOfferCopyTests(unittest.TestCase):
         rendered = offer.render(tracking_url=valid, reader_summary={"what": "開発ツールを比較"})
         self.assertIn(valid, rendered)
         self.assertEqual(1, rendered.count("[月額1,980円の内容を確認する]"))
+        self.assertIn("無料記事は、ここまでで完結しています", rendered)
+        self.assertIn("DBは加入と同時に自動開放されません", rendered)
+        self.assertIn("月次Decision Brief", rendered)
 
 
 if __name__ == "__main__":
