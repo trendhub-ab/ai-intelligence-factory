@@ -1,4 +1,4 @@
-name: Member Monthly Brief Access Check
+name: Member Monthly Brief One-Shot
 
 on:
   push:
@@ -8,35 +8,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: member-derived-notion-writes
+  cancel-in-progress: false
+
 jobs:
-  probe:
+  monthly:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.11.16'
-      - run: python -m pip install requests
-      - name: Read monthly brief page
+      - run: python -m pip install -r requirements.txt
+      - name: Refresh paid monthly Decision Brief only
         env:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: b2787ee0-5b58-4ca7-b4eb-774f60237f1f
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: 7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404
+          MEMBER_MONTHLY_BRIEF_PAGE_ID: 3d0479ff-dca9-81de-b614-fef528d2f32c
+          MEMBER_MONTHLY_BRIEF_TOP_LIMIT: '5'
+          MEMBER_MONTHLY_BRIEF_CHANGE_LIMIT: '5'
         run: |
           test -z "${GEMINI_API_KEY:-}"
-          python - <<'PY'
-          import json, os, requests
-          page="3d0479ff-dca9-81de-b614-fef528d2f32c"
-          headers={
-              "Authorization":f"Bearer {os.environ['NOTION_DECISION_INTELLIGENCE_API_KEY']}",
-              "Content-Type":"application/json",
-              "Notion-Version":os.environ.get("NOTION_API_VERSION","2026-03-11"),
-          }
-          r=requests.get(f"https://api.notion.com/v1/pages/{page}",headers=headers,timeout=10)
-          body={}
-          try:
-              body=r.json()
-          except Exception:
-              pass
-          print(json.dumps({"status":r.status_code,"object":body.get("object"),"code":body.get("code")},sort_keys=True))
-          raise SystemExit(0 if r.status_code==200 else 1)
-          PY
+          python member_monthly_decision_brief_sync.py
