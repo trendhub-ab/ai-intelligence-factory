@@ -72,6 +72,7 @@ else:
     from google.genai.errors import APIError
 import decision_intelligence as decision_intelligence
 import evidence_ledger
+import product_review_log_privacy as pr_log
 from evidence_authority import classify_evidence, authority_rank, is_x_discovery_url
 from product_delivery_maintenance import (
     current_month_id as _current_month_id_impl,
@@ -1210,7 +1211,7 @@ class GeminiUsageAudit:
             "Models: " + (" | ".join(model_parts) if model_parts else "none"),
         ]
         if include_contexts and agg["by_context"]:
-            contexts = sorted(agg["by_context"].items(), key=lambda x: (-x[1], x[0]))[:max_contexts]
+            contexts = pr_log.public_contexts(agg["by_context"], max_contexts)
             lines.append("Contexts: " + " | ".join(f"{name}={count}" for name, count in contexts))
         return "\n".join(lines)
 
@@ -3277,10 +3278,10 @@ def fetch_pdf_context(url: str) -> str:
         reader = PdfReader(BytesIO(raw))
         pages = [(p.extract_text() or "") for p in reader.pages[:80]]
         text = "\n".join(pages)
-        logger.info(f"[DEEP PDF] extracted {len(text)} chars <- {url}")
+        logger.info("[DEEP PDF] extracted %s chars <- %s", len(text), pr_log.value(url))
         return text
     except Exception as e:
-        logger.info(f"[DEEP PDF] extraction failed {url}: {e}")
+        logger.info("[DEEP PDF] extraction failed %s: %s", pr_log.value(url), pr_log.error(e))
         return ""
 
 
@@ -3297,9 +3298,9 @@ def fetch_webpage_context(url: str) -> str:
     """HN/PH外部URLをGeminiを使わず取得し、本文テキストだけを返す。失敗時は空文字。"""
     text, _, _ = _fetch_html_document(url)
     if len(text.strip()) >= SOURCE_CONTEXT_MIN_CHARS:
-        logger.info(f"[WEB CONTEXT] Python取得成功: {len(text)} chars <- {url}")
+        logger.info("[WEB CONTEXT] Python取得成功: %s chars <- %s", len(text), pr_log.value(url))
         return text
-    logger.info(f"[WEB CONTEXT FALLBACK] 本文不足: {url}")
+    logger.info("[WEB CONTEXT FALLBACK] 本文不足: %s", pr_log.value(url))
     return ""
 
 
@@ -5951,7 +5952,7 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
     if not assessment_ok:
         logger.warning(
             "[DECISION INTELLIGENCE SKIP] %s: assessment invalid: %s",
-            repo.get("nameWithOwner"), " / ".join(failures)[:1500],
+            pr_log.value(repo.get("nameWithOwner")), pr_log.detail(" / ".join(failures)[:1500], "assessment_invalid"),
         )
         return {"enabled": True, "saved": False, "reason": "assessment_invalid", "failures": failures}
 
@@ -5959,7 +5960,7 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
     if resolution.status == "AMBIGUOUS":
         logger.warning(
             "[DECISION INTELLIGENCE AMBIGUOUS] %s -> %s (%s)",
-            repo.get("nameWithOwner"), resolution.entity_id, resolution.reason,
+            pr_log.value(repo.get("nameWithOwner")), pr_log.value(resolution.entity_id), pr_log.detail(resolution.reason, "entity_ambiguous"),
         )
         return {"enabled": True, "saved": False, "reason": "entity_ambiguous", "entity_id": resolution.entity_id}
 
@@ -6005,26 +6006,22 @@ def persist_decision_intelligence_assessment(repo: dict, parsed: dict, source_in
                 )
                 ledger_result = evidence_ledger.persist_snapshots(snapshots, decision_intelligence.NOTION_DECISION_INTELLIGENCE_API_KEY)
                 result["evidence_ledger"] = ledger_result
-                logger.info("[EVIDENCE LEDGER] %s -> %s", repo.get("nameWithOwner"), ledger_result)
+                pr_log.log_evidence_ledger(logger, repo.get("nameWithOwner"), ledger_result)
                 if evidence_ledger.EVIDENCE_LEDGER_REQUIRED and not snapshots:
                     raise RuntimeError("Evidence Ledger required but no evidence snapshot was produced")
             except Exception as ledger_exc:
                 result["evidence_ledger_error"] = str(ledger_exc)
-                logger.error("[EVIDENCE LEDGER FAILED] %s: %s", repo.get("nameWithOwner"), ledger_exc)
+                logger.error("[EVIDENCE LEDGER FAILED] %s: %s", pr_log.value(repo.get("nameWithOwner")), pr_log.error(ledger_exc))
                 if evidence_ledger.EVIDENCE_LEDGER_REQUIRED:
                     result["saved"] = False
                     result["reason"] = "evidence_ledger_failed"
                     return result
         if result.get("saved"):
-            logger.info(
-                "[DECISION INTELLIGENCE SAVED] %s -> entity=%s created=%s changed=%s history=%s",
-                repo.get("nameWithOwner"), result.get("entity_id"), result.get("created"),
-                result.get("changed"), bool(result.get("history_id")),
-            )
+            pr_log.log_decision_saved(logger, repo.get("nameWithOwner"), result)
         return result
     except Exception as exc:
         # Product persistence is deliberately isolated from the free-note article state machine.
-        logger.error("[DECISION INTELLIGENCE PERSISTENCE FAILED] %s: %s", repo.get("nameWithOwner"), exc)
+        logger.error("[DECISION INTELLIGENCE PERSISTENCE FAILED] %s: %s", pr_log.value(repo.get("nameWithOwner")), pr_log.error(exc))
         return {"enabled": True, "saved": False, "reason": "persistence_failed", "error": str(exc)}
 
 
@@ -9814,7 +9811,7 @@ def run_product_reviews() -> dict:
             if authority_failures:
                 logger.info(
                     "[PRODUCT REVIEW SKIP] %s primary authority insufficient: %s",
-                    repo.get("nameWithOwner"), " / ".join(authority_failures)[:600],
+                    pr_log.value(repo.get("nameWithOwner")), pr_log.detail(" / ".join(authority_failures)[:600], "authority_insufficient"),
                 )
                 _defer_product_review_candidate(state, TRACKING_REVIEW_DAYS, "primary authority insufficient")
                 result["skipped"] += 1
@@ -9824,7 +9821,7 @@ def run_product_reviews() -> dict:
             if evidence.get("state") == EVIDENCE_INSUFFICIENT or not evidence.get("decision_scope_safe"):
                 logger.info(
                     "[PRODUCT REVIEW SKIP] %s evidence insufficient blocking=%s",
-                    repo.get("nameWithOwner"), evidence.get("blocking_missing") or [],
+                    pr_log.value(repo.get("nameWithOwner")), pr_log.detail(evidence.get("blocking_missing") or [], []),
                 )
                 days = _product_review_evidence_defer_days(source_info, evidence)
                 _defer_product_review_candidate(state, days, "evidence insufficient")
@@ -9852,7 +9849,7 @@ def run_product_reviews() -> dict:
             except (ValueError, TypeError, json.JSONDecodeError) as parse_exc:
                 logger.warning(
                     "[PRODUCT REVIEW STRUCTURED OUTPUT INVALID] %s: %s",
-                    repo.get("nameWithOwner"), parse_exc,
+                    pr_log.value(repo.get("nameWithOwner")), pr_log.error(parse_exc),
                 )
                 # Exactly one logical schema-repair request is allowed, and it must fit inside the
                 # existing Product Review + global Gemini budgets. A retry never consumes a new
@@ -9891,7 +9888,7 @@ def run_product_reviews() -> dict:
                 )
                 logger.info(
                     "[PRODUCT REVIEW BOUNDARY RECONCILIATION] %s -> %s",
-                    repo.get("nameWithOwner"), reconciliation,
+                    pr_log.value(repo.get("nameWithOwner")), pr_log.detail(reconciliation, {"resolved": bool(reconciliation.get("resolved"))}),
                 )
                 if reconciliation.get("resolved"):
                     refreshed_evidence = assess_evidence_sufficiency(source_info)
@@ -9926,7 +9923,7 @@ def run_product_reviews() -> dict:
             logger.warning("[PRODUCT REVIEW STOP] %s", exc)
             break
         except Exception as exc:
-            logger.error("[PRODUCT REVIEW FAILED] %s: %s", repo.get("nameWithOwner"), exc)
+            logger.error("[PRODUCT REVIEW FAILED] %s: %s", pr_log.value(repo.get("nameWithOwner")), pr_log.error(exc))
             result["skipped"] += 1
     logger.info("[PRODUCT REVIEW] %s / %s", result, PRODUCT_REVIEW_REQUEST_BUDGET.summary())
     return result
