@@ -194,16 +194,40 @@ class ProviderResilienceTests(unittest.TestCase):
                 )
         self.assertEqual(calls, [])
 
-    def test_product_review_single_503_recovers_on_same_model(self):
-        pipeline, calls, unavailable, _, _ = make_pipeline([
+    def test_product_review_single_503_falls_back_to_next_distinct_model(self):
+        pipeline, calls, unavailable, _, logger = make_pipeline([
             FakeAPIError("provider unavailable", code=503),
             "ok",
         ])
         with mock.patch.object(resilience.time, "sleep", return_value=None):
             response, model = pipeline._call_product_review_pool("prompt", "ctx")
-        self.assertEqual((response, model), ("ok", "m1"))
-        self.assertEqual([c[0] for c in calls], ["m1", "m1"])
-        self.assertEqual(unavailable, [])
+        self.assertEqual((response, model), ("ok", "m2"))
+        self.assertEqual([c[0] for c in calls], ["m1", "m2"])
+        self.assertEqual(
+            unavailable,
+            [("m1", "provider_503_product_review_fallback_preserved")],
+        )
+        self.assertTrue(any("PRODUCT REVIEW 503 FALLBACK" in row for row in logger.rows))
+
+    def test_product_review_consecutive_503s_use_each_model_at_most_once(self):
+        pipeline, calls, unavailable, _, _ = make_pipeline([
+            FakeAPIError("first unavailable", code=503),
+            FakeAPIError("second unavailable", code=503),
+            FakeAPIError("third unavailable", code=503),
+        ])
+        pipeline.DEEP_DIVE_MODEL_POOL = ["m1", "m2", "m3"]
+        with mock.patch.object(resilience.time, "sleep", return_value=None):
+            with self.assertRaises(NoAvailableModelError):
+                pipeline._call_product_review_pool("prompt", "ctx")
+        self.assertEqual([c[0] for c in calls], ["m1", "m2", "m3"])
+        self.assertEqual(
+            unavailable,
+            [
+                ("m1", "provider_503_product_review_fallback_preserved"),
+                ("m2", "provider_503_product_review_fallback_preserved"),
+                ("m3", "provider_503_product_review_fallback_preserved"),
+            ],
+        )
 
     def test_ready_rescue_503_falls_back_once_to_distinct_model(self):
         pipeline, calls, unavailable, _, logger = make_pipeline([FakeAPIError("provider unavailable", code=503), "fallback-ok"])
