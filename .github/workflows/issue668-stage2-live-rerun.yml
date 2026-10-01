@@ -33,7 +33,7 @@ jobs:
           pip install -r requirements.txt pytest
 
       - name: Re-run Issue 668 Stage 2 contract tests
-        run: python -m pytest -q tests/test_issue668_verified_rereview_apply.py tests/test_issue668_verified_rereview_dryrun.py tests/test_product_review_503_fallback_policy.py tests/test_gemini_provider_resilience.py
+        run: python -m pytest -q tests/test_issue668_verified_rereview_apply.py tests/test_issue668_verified_rereview_dryrun.py tests/test_product_review_503_fallback_policy.py tests/test_gemini_provider_resilience.py tests/test_product_review_public_log_privacy.py
 
       - name: Execute bounded verified apply exactly once
         run: python member_verified_rereview_apply.py --queue-limit 5 --stale-days 30 --max-reviews 2 --request-budget 3
