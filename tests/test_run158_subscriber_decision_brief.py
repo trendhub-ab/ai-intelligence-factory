@@ -267,6 +267,24 @@ class Run158DecisionBriefTests(unittest.TestCase):
         finally:
             sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
 
+    def test_database_sync_emits_progress_every_ten_pages_and_at_end(self):
+        old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
+        sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
+        sdb.NOTION_API_KEY = "x"
+        pages = [subscriber_page(f"p{i}") for i in range(11)]
+        try:
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=pages), \
+                 patch.object(sdb, "sync_page", return_value="unchanged"), \
+                 patch("builtins.print") as output:
+                result = sdb.sync_subscriber_decision_briefs()
+            rendered = "\n".join(str(call.args[0]) for call in output.call_args_list if call.args)
+            self.assertIn("progress 10/11", rendered)
+            self.assertIn("progress 11/11", rendered)
+            self.assertEqual(result["unchanged"], 11)
+        finally:
+            sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
+
     def test_database_sync_fails_closed_on_partial_error(self):
         old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
