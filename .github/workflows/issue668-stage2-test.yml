@@ -1,0 +1,23 @@
+name: Issue 668 Stage 2 TDD
+
+on:
+  pull_request:
+    paths:
+      - 'member_verified_rereview_apply.py'
+      - 'tests/test_issue668_verified_rereview_apply.py'
+      - '.github/workflows/issue668-stage2-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  stage2-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests/test_issue668_verified_rereview_apply.py
