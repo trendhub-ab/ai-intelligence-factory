@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pipeline
+import product_review_log_privacy as pr_log
 
 
 def test_product_review_runtime_redacts_paid_record_identity_from_persistence_logs(caplog):
@@ -77,7 +78,7 @@ def test_product_review_runtime_redacts_paid_record_identity_from_persistence_lo
 
 def test_product_review_runtime_redacts_source_urls_and_usage_contexts():
     with mock.patch.dict(os.environ, {"AIIF_PRODUCT_REVIEW_RUNTIME": "true"}, clear=False):
-        assert pipeline._public_log_value("https://private.example/source") == "<redacted>"
+        assert pr_log.value("https://private.example/source") == "<redacted>"
 
         audit = pipeline.GeminiUsageAudit()
         audit.record_attempt("gemini-3.6-flash", "product_review", "product_review:github:private-org/private-tool")
@@ -91,4 +92,4 @@ def test_product_review_runtime_redacts_source_urls_and_usage_contexts():
 
 def test_normal_runtime_keeps_non_product_log_values_unchanged():
     with mock.patch.dict(os.environ, {"AIIF_PRODUCT_REVIEW_RUNTIME": "false"}, clear=False):
-        assert pipeline._public_log_value("https://public.example/source") == "https://public.example/source"
+        assert pr_log.value("https://public.example/source") == "https://public.example/source"
