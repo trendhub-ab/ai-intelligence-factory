@@ -85,7 +85,7 @@ class Issue668Stage2Tests(unittest.TestCase):
         self.assertNotIn(apply.di.SUB_PROP_ADOPTION_STATUS, payload)
 
     def test_retry_property_schema_add_is_idempotent(self):
-        with patch.object(
+        with patch.object(apply.di, "NOTION_TECH_DATA_SOURCE_ID", "tech-ds"), patch.object(
             apply.requests,
             "get",
             return_value=Response({"properties": {apply.RETRY_PROP: {"type": "rich_text"}}}),
@@ -95,7 +95,9 @@ class Issue668Stage2Tests(unittest.TestCase):
         p.assert_not_called()
 
     def test_retry_property_schema_adds_only_private_field(self):
-        with patch.object(apply.requests, "get", return_value=Response({"properties": {}})), patch.object(
+        with patch.object(apply.di, "NOTION_TECH_DATA_SOURCE_ID", "tech-ds"), patch.object(
+            apply.requests, "get", return_value=Response({"properties": {}})
+        ), patch.object(
             apply.requests, "patch", return_value=Response()
         ) as p:
             changed = apply._ensure_retry_property()
