@@ -807,6 +807,9 @@ def product_only_environment(max_reviews: int, product_request_budget: int) -> d
         # paid review slots even when some rows are unresolvable, but keep network work bounded.
         "PRODUCT_REVIEW_PREFLIGHT_SCAN_LIMIT": str(min(24, max(max_reviews * 4, max_reviews + 6))),
         "GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET": str(product_request_budget),
+        # Product Review must not inherit pipeline.py's single-model default. Keep the
+        # paid-review fallback pool explicit and independent from article routing.
+        "GEMINI_DEEP_DIVE_MODEL_CANDIDATES": "gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3.5-flash",
     }
 
 
