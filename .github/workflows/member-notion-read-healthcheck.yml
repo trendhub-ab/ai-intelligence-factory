@@ -1,0 +1,33 @@
+name: Member Notion Read Health Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+
+      - name: Install minimal dependency
+        run: python -m pip install requests
+
+      - name: Verify health-check contract
+        run: python -m unittest tests.test_member_notion_read_healthcheck -v
+
+      - name: Probe canonical paid-member Notion data source
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: '7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          MEMBER_NOTION_HEALTH_TIMEOUT_SECONDS: '10'
+        run: |
+          test -z "${GEMINI_API_KEY:-}"
+          python member_notion_read_healthcheck.py
