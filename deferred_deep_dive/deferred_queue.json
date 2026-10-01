@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-01T11:18:06.215568+00:00",
+  "updated_at": "2026-10-01T11:19:21.746518+00:00",
   "items": [
-    {
-      "key": "https://artificialanalysis.ai/models/gemini-4-argon",
-      "deferred_at": "2026-10-01T11:18:06.215223+00:00",
-      "expires_at": "2026-10-15T11:18:06.215223+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Gemini 4 Argon (High): Intelligence, Performance and Price Analysis",
-        "originalTitle": "Gemini 4 Argon (High): Intelligence, Performance and Price Analysis",
-        "displayName": "Gemini 4 Argon (High): Intelligence, Performance and Price Analysis",
-        "sourceLanguage": "en",
-        "url": "https://artificialanalysis.ai/models/gemini-4-argon",
-        "description": "Gemini 4 Argon (High): Intelligence, Performance and Price Analysis",
-        "stargazerCount": 106,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-30T20:50:28Z",
-        "sourceContext": "HN points=106 comments=60 matched_query=Gemini",
-        "primaryUrl": "https://artificialanalysis.ai/models/gemini-4-argon",
-        "sourceDetails": {
-          "hn_id": "49914236",
-          "hn_url": "https://news.ycombinator.com/item?id=49914236",
-          "external_url": "https://artificialanalysis.ai/models/gemini-4-argon",
-          "comments": 60,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ec479ff-dca9-8139-b3c3-e637cef0aef0",
-      "score": 85,
-      "reason": "新モデルのコスパ分析として有用性が高い。",
-      "commercial_score": 85,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 85.0
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49878806",
       "deferred_at": "2026-09-28T22:44:03.990453+00:00",
