@@ -9599,8 +9599,10 @@ def _call_product_review_pool(prompt: str, request_context: str, request_kind_ba
                 last_error = exc; code = getattr(exc, "code", None)
                 quota_type = classify_gemini_quota_error(exc) if code == 429 else ""
                 if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}: _mark_model_exhausted(model_name, quota_type); break
-                if code == 503 and attempt == 0: time.sleep(_extract_retry_delay(exc, 10)); continue
-                if code in {503, 404}: _mark_model_unavailable(model_name, str(code)); break
+                if code == 503:
+                    _mark_model_unavailable(model_name, "provider_503_product_review_fallback_preserved")
+                    break
+                if code == 404: _mark_model_unavailable(model_name, str(code)); break
                 if code == 429 and quota_type in {"RPM", "TPM"} and attempt == 0: time.sleep(_extract_retry_delay(exc, 15)); continue
                 break
             except (GeminiBudgetExceededError, GeminiCallTimeoutError) as exc:
