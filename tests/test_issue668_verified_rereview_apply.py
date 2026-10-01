@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -352,6 +354,85 @@ class Issue668Stage2Tests(unittest.TestCase):
                     verified_at="2026-10-01T12:00:00+00:00",
                 )
         ensure.assert_not_called()
+
+
+    def test_verified_ledger_baseline_allows_review_date_advancement(self):
+        state = subscriber_state()
+        fake_pipeline = types.SimpleNamespace(
+            EVIDENCE_SUPPLEMENT_REQUIRED="SUPPLEMENT_REQUIRED",
+            EVIDENCE_INSUFFICIENT="INSUFFICIENT",
+            prepare_source_context=lambda repo: {
+                "evidence_documents": [{
+                    "retrieved": True,
+                    "url": "https://github.com/acme/example",
+                    "resolved_url": "https://github.com/acme/example",
+                    "document_text": "stable prior extract plus current details",
+                }],
+                "verification_context": "stable prior extract plus current details",
+            },
+            assess_evidence_sufficiency=lambda source_info: {
+                "state": "SUFFICIENT",
+                "decision_scope_safe": True,
+            },
+            supplement_source_evidence=lambda source_info: source_info,
+            _primary_source_authority_failures=lambda source_info: [],
+        )
+        snapshot = {
+            "url": "https://github.com/acme/example",
+            "resolved_url": "https://github.com/acme/example",
+            "document_hash": "old",
+            "extract": "stable prior extract",
+        }
+        with patch.dict(sys.modules, {"pipeline": fake_pipeline}), patch.object(
+            apply, "_query_active_primary_snapshots", return_value=[snapshot]
+        ), patch.object(
+            apply.evidence_ledger,
+            "check_health",
+            return_value={"health": "VERIFIED", "material": False},
+        ):
+            result = apply._verify_with_change_outcome(state, "entity:1")
+        self.assertTrue(result["gate_pass"])
+        self.assertTrue(result["review_safe"])
+        self.assertEqual(result["change_outcome"], "UNCHANGED")
+
+    def test_ledger_material_change_blocks_review_date_advancement(self):
+        state = subscriber_state()
+        fake_pipeline = types.SimpleNamespace(
+            EVIDENCE_SUPPLEMENT_REQUIRED="SUPPLEMENT_REQUIRED",
+            EVIDENCE_INSUFFICIENT="INSUFFICIENT",
+            prepare_source_context=lambda repo: {
+                "evidence_documents": [{
+                    "retrieved": True,
+                    "url": "https://github.com/acme/example",
+                    "resolved_url": "https://github.com/acme/example",
+                    "document_text": "materially different current document",
+                }],
+                "verification_context": "materially different current document",
+            },
+            assess_evidence_sufficiency=lambda source_info: {
+                "state": "SUFFICIENT",
+                "decision_scope_safe": True,
+            },
+            supplement_source_evidence=lambda source_info: source_info,
+            _primary_source_authority_failures=lambda source_info: [],
+        )
+        snapshot = {
+            "url": "https://github.com/acme/example",
+            "resolved_url": "https://github.com/acme/example",
+            "document_hash": "old",
+            "extract": "old decision evidence",
+        }
+        with patch.dict(sys.modules, {"pipeline": fake_pipeline}), patch.object(
+            apply, "_query_active_primary_snapshots", return_value=[snapshot]
+        ), patch.object(
+            apply.evidence_ledger,
+            "check_health",
+            return_value={"health": "MATERIAL_CHANGE", "material": True},
+        ):
+            result = apply._verify_with_change_outcome(state, "entity:1")
+        self.assertTrue(result["gate_pass"])
+        self.assertFalse(result["review_safe"])
+        self.assertEqual(result["change_outcome"], "MATERIAL_CHANGE")
 
     def test_retry_codes_are_private_generic_categories(self):
         state = subscriber_state(primary_url="")
