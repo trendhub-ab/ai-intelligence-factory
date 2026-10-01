@@ -41,6 +41,7 @@ def test_product_review_runtime_redacts_paid_record_identity_from_persistence_lo
 
     caplog.set_level(logging.INFO, logger=pipeline.logger.name)
     with mock.patch.dict(os.environ, {"AIIF_PRODUCT_REVIEW_RUNTIME": "true"}, clear=False), \
+         mock.patch.object(pipeline.decision_intelligence, "ENABLE_DECISION_INTELLIGENCE_DB", True), \
          mock.patch.object(pipeline, "validate_decision_intelligence_assessment", return_value=(True, [])), \
          mock.patch.object(pipeline.decision_intelligence, "resolve_canonical_entity_id", return_value=resolution), \
          mock.patch.object(pipeline, "_collect_final_evidence_urls", return_value=[]), \
