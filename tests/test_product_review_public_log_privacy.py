@@ -73,3 +73,22 @@ def test_product_review_runtime_redacts_paid_record_identity_from_persistence_lo
     assert "paid-page-id" not in text
     assert "[EVIDENCE LEDGER]" in text
     assert "[DECISION INTELLIGENCE SAVED]" in text
+
+
+def test_product_review_runtime_redacts_source_urls_and_usage_contexts():
+    with mock.patch.dict(os.environ, {"AIIF_PRODUCT_REVIEW_RUNTIME": "true"}, clear=False):
+        assert pipeline._public_log_value("https://private.example/source") == "<redacted>"
+
+        audit = pipeline.GeminiUsageAudit()
+        audit.record_attempt("gemini-3.6-flash", "product_review", "product_review:github:private-org/private-tool")
+        audit.record_attempt("gemini-3.5-flash", "product_review", "product_review:arxiv:secret-record")
+        summary = audit.summary(include_contexts=True)
+
+    assert "private-org/private-tool" not in summary
+    assert "secret-record" not in summary
+    assert "product_review=2" in summary
+
+
+def test_normal_runtime_keeps_non_product_log_values_unchanged():
+    with mock.patch.dict(os.environ, {"AIIF_PRODUCT_REVIEW_RUNTIME": "false"}, clear=False):
+        assert pipeline._public_log_value("https://public.example/source") == "https://public.example/source"
