@@ -258,7 +258,9 @@ class Run158DecisionBriefTests(unittest.TestCase):
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
-            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), patch.object(sdb, "sync_page", return_value="created") as sync:
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), \
+                 patch.object(sdb, "sync_page", return_value="created") as sync:
                 result = sdb.sync_subscriber_decision_briefs()
             self.assertTrue(result["enabled"])
             self.assertEqual(result["total"], 1)
@@ -290,7 +292,9 @@ class Run158DecisionBriefTests(unittest.TestCase):
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
-            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1"), subscriber_page("p2")]), patch.object(sdb, "sync_page", side_effect=["created", RuntimeError("boom")]):
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1"), subscriber_page("p2")]), \
+                 patch.object(sdb, "sync_page", side_effect=["created", RuntimeError("boom")]):
                 with self.assertRaises(RuntimeError):
                     sdb.sync_subscriber_decision_briefs()
         finally:
