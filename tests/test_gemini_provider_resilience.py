@@ -194,16 +194,20 @@ class ProviderResilienceTests(unittest.TestCase):
                 )
         self.assertEqual(calls, [])
 
-    def test_product_review_single_503_recovers_on_same_model(self):
-        pipeline, calls, unavailable, _, _ = make_pipeline([
+    def test_product_review_single_503_falls_back_to_next_distinct_model(self):
+        pipeline, calls, unavailable, _, logger = make_pipeline([
             FakeAPIError("provider unavailable", code=503),
             "ok",
         ])
         with mock.patch.object(resilience.time, "sleep", return_value=None):
             response, model = pipeline._call_product_review_pool("prompt", "ctx")
-        self.assertEqual((response, model), ("ok", "m1"))
-        self.assertEqual([c[0] for c in calls], ["m1", "m1"])
-        self.assertEqual(unavailable, [])
+        self.assertEqual((response, model), ("ok", "m2"))
+        self.assertEqual([c[0] for c in calls], ["m1", "m2"])
+        self.assertEqual(
+            unavailable,
+            [("m1", "provider_503_product_review_fallback_preserved")],
+        )
+        self.assertTrue(any("PRODUCT REVIEW 503 FALLBACK" in row for row in logger.rows))
 
     def test_ready_rescue_503_falls_back_once_to_distinct_model(self):
         pipeline, calls, unavailable, _, logger = make_pipeline([FakeAPIError("provider unavailable", code=503), "fallback-ok"])
