@@ -8,7 +8,11 @@ class MemberNotionReadHealthcheckTests(unittest.TestCase):
     def test_healthy_when_canonical_data_source_is_readable(self):
         response = mock.Mock(status_code=200)
         response.elapsed.total_seconds.return_value = 0.42
-        with mock.patch.object(health.requests, "get", return_value=response) as get:
+        with mock.patch.object(
+            health.decision_intelligence,
+            "NOTION_DECISION_INTELLIGENCE_API_KEY",
+            "test-key",
+        ), mock.patch.object(health.requests, "get", return_value=response) as get:
             result = health.check_health()
 
         self.assertEqual("healthy", result["status"])
@@ -21,7 +25,11 @@ class MemberNotionReadHealthcheckTests(unittest.TestCase):
     def test_unhealthy_on_server_error_without_write_or_retry_storm(self):
         response = mock.Mock(status_code=500)
         response.elapsed.total_seconds.return_value = 0.31
-        with mock.patch.object(health.requests, "get", return_value=response) as get:
+        with mock.patch.object(
+            health.decision_intelligence,
+            "NOTION_DECISION_INTELLIGENCE_API_KEY",
+            "test-key",
+        ), mock.patch.object(health.requests, "get", return_value=response) as get:
             result = health.check_health()
 
         self.assertEqual("unhealthy", result["status"])
