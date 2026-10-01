@@ -123,7 +123,14 @@ class Issue668Stage2Tests(unittest.TestCase):
         ), patch.object(
             apply, "_canonical_state", side_effect=canonical
         ), patch.object(
-            apply.dry, "_live_verify_one", return_value={"retrieved": True, "gate_pass": True, "result": "PASS"}
+            apply, "_verify_with_change_outcome",
+            return_value={
+                "retrieved": True,
+                "gate_pass": True,
+                "review_safe": True,
+                "result": "PASS",
+                "change_outcome": "UNCHANGED",
+            },
         ), patch.object(
             apply, "_patch_internal_success"
         ) as internal_write, patch.object(
@@ -171,7 +178,14 @@ class Issue668Stage2Tests(unittest.TestCase):
         ), patch.object(
             apply, "_canonical_state", side_effect=canonical
         ), patch.object(
-            apply.dry, "_live_verify_one", return_value={"retrieved": False, "gate_pass": False, "result": "UNAVAILABLE"}
+            apply, "_verify_with_change_outcome",
+            return_value={
+                "retrieved": False,
+                "gate_pass": False,
+                "review_safe": False,
+                "result": "UNAVAILABLE",
+                "change_outcome": "NOT_CHECKED",
+            },
         ), patch.object(
             apply, "_patch_internal_success"
         ) as internal_write, patch.object(
@@ -226,6 +240,106 @@ class Issue668Stage2Tests(unittest.TestCase):
         sub_write.assert_not_called()
         self.assertEqual(result["canonical_mismatch"], 1)
 
+
+    def test_material_change_never_advances_review_date(self):
+        old = subscriber_state()
+        old_internal = internal_state()
+        canonical = [
+            ({"id": "tech-page"}, old_internal),
+            ({"id": "tech-page"}, old_internal),
+            ({"id": "tech-page"}, old_internal),
+        ]
+        with patch.object(apply.di, "ENABLE_DECISION_INTELLIGENCE_DB", True), patch.object(
+            apply.di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "token"
+        ), patch.object(apply, "_ensure_retry_property", return_value=False), patch.object(
+            apply, "_read_subscriber_states", side_effect=[[old], [old]]
+        ), patch.object(
+            apply.dry, "select_diverse_stale_queue", side_effect=[([old], 1), ([old], 1)]
+        ), patch.object(
+            apply, "_canonical_state", side_effect=canonical
+        ), patch.object(
+            apply, "_verify_with_change_outcome",
+            return_value={
+                "retrieved": True,
+                "gate_pass": True,
+                "review_safe": False,
+                "result": "PASS",
+                "change_outcome": "MATERIAL_CHANGE",
+            },
+        ), patch.object(
+            apply, "_patch_internal_success"
+        ) as internal_write, patch.object(
+            apply, "_patch_internal_retry"
+        ) as retry_write, patch.object(
+            apply, "_patch_subscriber_review_date"
+        ) as sub_write, patch.dict(apply.os.environ, {}, clear=False):
+            for key in apply.MODEL_ENV_KEYS:
+                apply.os.environ.pop(key, None)
+            result = apply.run_apply(
+                as_of=apply.date(2026, 10, 1),
+                limit=5,
+                stale_days=30,
+                verified_at="2026-10-01T12:00:00+00:00",
+            )
+
+        internal_write.assert_not_called()
+        sub_write.assert_not_called()
+        retry_write.assert_called_once()
+        self.assertEqual(
+            retry_write.call_args.args[1],
+            "MATERIAL_CHANGE_REQUIRES_DECISION_REVIEW",
+        )
+        self.assertEqual(result["material_change"], 1)
+        self.assertEqual(result["canonical_dates_advanced"], 0)
+
+    def test_no_evidence_baseline_never_advances_review_date(self):
+        old = subscriber_state()
+        old_internal = internal_state()
+        canonical = [
+            ({"id": "tech-page"}, old_internal),
+            ({"id": "tech-page"}, old_internal),
+            ({"id": "tech-page"}, old_internal),
+        ]
+        with patch.object(apply.di, "ENABLE_DECISION_INTELLIGENCE_DB", True), patch.object(
+            apply.di, "NOTION_DECISION_INTELLIGENCE_API_KEY", "token"
+        ), patch.object(apply, "_ensure_retry_property", return_value=False), patch.object(
+            apply, "_read_subscriber_states", side_effect=[[old], [old]]
+        ), patch.object(
+            apply.dry, "select_diverse_stale_queue", side_effect=[([old], 1), ([old], 1)]
+        ), patch.object(
+            apply, "_canonical_state", side_effect=canonical
+        ), patch.object(
+            apply, "_verify_with_change_outcome",
+            return_value={
+                "retrieved": True,
+                "gate_pass": True,
+                "review_safe": False,
+                "result": "PASS",
+                "change_outcome": "NO_BASELINE",
+            },
+        ), patch.object(
+            apply, "_patch_internal_success"
+        ) as internal_write, patch.object(
+            apply, "_patch_internal_retry"
+        ) as retry_write, patch.object(
+            apply, "_patch_subscriber_review_date"
+        ) as sub_write, patch.dict(apply.os.environ, {}, clear=False):
+            for key in apply.MODEL_ENV_KEYS:
+                apply.os.environ.pop(key, None)
+            result = apply.run_apply(
+                as_of=apply.date(2026, 10, 1),
+                limit=5,
+                stale_days=30,
+                verified_at="2026-10-01T12:00:00+00:00",
+            )
+
+        internal_write.assert_not_called()
+        sub_write.assert_not_called()
+        retry_write.assert_called_once()
+        self.assertEqual(retry_write.call_args.args[1], "NO_EVIDENCE_BASELINE")
+        self.assertEqual(result["no_baseline"], 1)
+        self.assertEqual(result["canonical_dates_advanced"], 0)
+
     def test_model_credentials_fail_closed_before_any_write(self):
         with patch.object(apply, "_ensure_retry_property") as ensure, patch.dict(
             apply.os.environ, {"GEMINI_API_KEY": "secret"}, clear=False
@@ -247,11 +361,19 @@ class Issue668Stage2Tests(unittest.TestCase):
         )
         state = subscriber_state()
         self.assertEqual(
-            apply._retry_code(state, {"result": "EVIDENCE_FAIL"}),
+            apply._retry_code(state, {"result": "EVIDENCE_FAIL", "change_outcome": "NOT_CHECKED"}),
             "EVIDENCE_GATE_FAILED",
         )
         self.assertEqual(
-            apply._retry_code(state, {"result": "UNAVAILABLE"}),
+            apply._retry_code(state, {"result": "PASS", "change_outcome": "MATERIAL_CHANGE"}),
+            "MATERIAL_CHANGE_REQUIRES_DECISION_REVIEW",
+        )
+        self.assertEqual(
+            apply._retry_code(state, {"result": "PASS", "change_outcome": "NO_BASELINE"}),
+            "NO_EVIDENCE_BASELINE",
+        )
+        self.assertEqual(
+            apply._retry_code(state, {"result": "UNAVAILABLE", "change_outcome": "NOT_CHECKED"}),
             "PRIMARY_SOURCE_UNAVAILABLE",
         )
 
