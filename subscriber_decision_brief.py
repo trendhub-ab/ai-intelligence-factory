@@ -29,8 +29,13 @@ REQUEST_PACING_SECONDS = max(0.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIE
 REQUEST_MAX_ATTEMPTS = max(1, int(os.environ.get("SUBSCRIBER_DECISION_BRIEF_REQUEST_MAX_ATTEMPTS", "8")))
 RETRY_AFTER_MAX_SECONDS = max(1.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_RETRY_AFTER_MAX_SECONDS", "120")))
 SERVER_BACKOFF_MAX_SECONDS = max(1.0, float(os.environ.get("SUBSCRIBER_DECISION_BRIEF_SERVER_BACKOFF_MAX_SECONDS", "12")))
+SERVER_MAX_ATTEMPTS = max(1, int(os.environ.get("SUBSCRIBER_DECISION_BRIEF_SERVER_MAX_ATTEMPTS", "2")))
 
 AUTO_MARKER = "🧭 Decision Brief｜AUTO"
+
+
+class NotionServiceUnavailable(RuntimeError):
+    """Raised when bounded Notion 5xx recovery is exhausted."""
 
 
 def _headers() -> dict[str, str]:
@@ -85,9 +90,10 @@ def _request(
     json_payload: dict[str, Any] | None = None,
     timeout: float = 30,
 ) -> requests.Response:
-    """Perform one Notion request with per-request pacing and bounded transient retries."""
+    """Perform one Notion request with paced 429 handling and fail-fast 5xx protection."""
     request_fn = getattr(requests, method.lower())
     last: requests.Response | None = None
+    server_failures = 0
     for attempt in range(REQUEST_MAX_ATTEMPTS):
         kwargs: dict[str, Any] = {"headers": _headers(), "timeout": timeout}
         if json_payload is not None:
@@ -97,7 +103,12 @@ def _request(
         if last.status_code == 429 and attempt < REQUEST_MAX_ATTEMPTS - 1:
             _sleep(_response_retry_after(last, attempt))
             continue
-        if 500 <= last.status_code < 600 and attempt < REQUEST_MAX_ATTEMPTS - 1:
+        if 500 <= last.status_code < 600:
+            server_failures += 1
+            if server_failures >= SERVER_MAX_ATTEMPTS or attempt >= REQUEST_MAX_ATTEMPTS - 1:
+                raise NotionServiceUnavailable(
+                    f"Notion service unavailable after {server_failures} server failures: HTTP {last.status_code}"
+                )
             _sleep(min(1.0 * (2 ** attempt), SERVER_BACKOFF_MAX_SECONDS))
             continue
 
@@ -109,6 +120,22 @@ def _request(
 
     assert last is not None
     return last
+
+
+def preflight_notion_read_health() -> dict[str, Any]:
+    """Read the configured target once before a full subscriber scan; never writes."""
+    if SUBSCRIBER_DATA_SOURCE_ID:
+        url = f"https://api.notion.com/v1/data_sources/{SUBSCRIBER_DATA_SOURCE_ID}"
+    elif SUBSCRIBER_DATABASE_ID:
+        url = f"https://api.notion.com/v1/databases/{SUBSCRIBER_DATABASE_ID}"
+    else:
+        raise ValueError(
+            "Subscriber Decision Brief requires NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID or NOTION_SUBSCRIBER_TECH_DATABASE_ID"
+        )
+    res = _request("GET", url, timeout=10)
+    if res.status_code != 200:
+        raise RuntimeError(f"Subscriber Notion preflight failed: HTTP {res.status_code}")
+    return {"healthy": True, "http_status": 200, "writes": False}
 
 
 def _plain_text(prop: dict | None) -> str:
@@ -364,16 +391,29 @@ def sync_subscriber_decision_briefs() -> dict[str, Any]:
     if not NOTION_API_KEY:
         raise ValueError("Subscriber Decision Brief requires NOTION_DECISION_INTELLIGENCE_API_KEY")
 
+    preflight_notion_read_health()
+    pages = query_subscriber_pages()
+    total_pages = len(pages)
     result = {"enabled": True, "total": 0, "created": 0, "updated": 0, "unchanged": 0, "errors": 0, "error_pages": []}
-    for page in query_subscriber_pages():
+    for index, page in enumerate(pages, 1):
         values = page_to_values(page)
         result["total"] += 1
         try:
             state = sync_page(values)
             result[state] += 1
+        except NotionServiceUnavailable:
+            raise
         except Exception as exc:
             result["errors"] += 1
             result["error_pages"].append({"page_id": values.get("page_id"), "name": values.get("name"), "error": str(exc)[:300]})
+
+        if index % 10 == 0 or index == total_pages:
+            print(
+                f"[subscriber-decision-brief] progress {index}/{total_pages} "
+                f"created={result['created']} updated={result['updated']} "
+                f"unchanged={result['unchanged']} errors={result['errors']}"
+            )
+
     if result["errors"]:
         raise RuntimeError("Subscriber Decision Brief sync incomplete: " + json.dumps(result, ensure_ascii=False))
     return result
