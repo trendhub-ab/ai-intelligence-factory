@@ -165,6 +165,22 @@ class Run166MemberPageBodyTests(unittest.TestCase):
         self.assertEqual(2, request.call_count)
         sleep.assert_called_once()
 
+    def test_append_timeout_reconciles_applied_write_without_duplicate_retry(self):
+        desired = [body._paragraph("first"), body._paragraph("second")]
+        observed = [
+            {"id": "a", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "first"}]}},
+            {"id": "b", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "second"}]}},
+        ]
+        with mock.patch.object(
+            body,
+            "_request",
+            side_effect=requests.exceptions.ReadTimeout("response lost"),
+        ) as request, mock.patch.object(body, "_children", return_value=observed):
+            result = body._append_children("block-123", desired)
+
+        self.assertEqual(observed, result)
+        self.assertEqual(1, request.call_count)
+
     def test_creation_is_two_step_parent_then_children(self):
         state = self._state()
         calls = []
