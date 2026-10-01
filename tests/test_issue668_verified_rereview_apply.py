@@ -13,6 +13,7 @@ def subscriber_state(
     last_reviewed="2026-08-01T00:00:00+00:00",
     score=80,
     status="TEST",
+    primary_url="https://github.com/acme/example",
 ):
     return {
         "sync_id": sync_id,
@@ -21,8 +22,8 @@ def subscriber_state(
         "score": score,
         "status": status,
         "sources": ["GitHub"],
-        "primary_url": "https://github.com/acme/example",
-        "evidence": "https://github.com/acme/example",
+        "primary_url": primary_url,
+        "evidence": primary_url,
         "classification": "実務判断",
         "confidence": "高",
         "readiness": "高",
