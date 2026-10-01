@@ -14,7 +14,7 @@
     "local_skills/compiler.py": "9f0f2e96bfe6b42666ceb9a8f302259a80404d01",
     "local_skills/a_plus.py": "595caa5a8bcf207dbf1e4df8f22a8ae2a241d128",
     "local_skills_daily_canary.py": "09e54e18eaf33dcdf91ed02b04e637468ceee48a",
-    "pipeline.py": "54a946784772a41bbb7f451b77f7ca99bcf6cb17",
+    "pipeline.py": "cc1c0b2553ff53b0d31e68e3d077e204cee97327",
     "production_pipeline.py": "2f8a70e93f1698c8b7ff16440d2f94fab1527895",
     "run268_business_source_strategy.py": "d8563ea107231b5ed708466824054aac887b2845",
     "run269_business_source_precision.py": "aa8df7c9f2bb6dfcd6b97158cc0c06b04881e22a",
@@ -37,7 +37,8 @@
     "local_skills/production_canary.py": "5c1e9239d1b3213371978b45ad697e285592f448",
     "source_boundary_validation.py": "69fa0edcf18b5c9a99e9a32f9dd17809c8d9cbb9",
     "evidence_context.py": "f224e74e86133080bd824d1b848c5ce1627d868b",
-    "source_document_parsing.py": "d4ec4ea6c4fb90d0bd32339d5623ae03dece4d18"
+    "source_document_parsing.py": "d4ec4ea6c4fb90d0bd32339d5623ae03dece4d18",
+    "product_review_log_privacy.py": "ab227cf3615f880b91d2acb46df239860be38d1d"
   },
   "workflow_limits": {
     "GITHUB_FETCH_LIMIT": 50,
