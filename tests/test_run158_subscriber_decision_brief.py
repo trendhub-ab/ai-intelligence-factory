@@ -148,6 +148,61 @@ class Run158DecisionBriefTests(unittest.TestCase):
             sdb.REQUEST_PACING_SECONDS = old_pacing
             sdb.REQUEST_MAX_ATTEMPTS = old_attempts
 
+    def test_notion_request_opens_circuit_after_bounded_5xx(self):
+        old_pacing = sdb.REQUEST_PACING_SECONDS
+        old_attempts = sdb.REQUEST_MAX_ATTEMPTS
+        old_server_attempts = sdb.SERVER_MAX_ATTEMPTS
+        sdb.REQUEST_PACING_SECONDS = 0.0
+        sdb.REQUEST_MAX_ATTEMPTS = 8
+        sdb.SERVER_MAX_ATTEMPTS = 2
+        try:
+            with patch.object(
+                sdb.requests,
+                "get",
+                side_effect=[resp(500), resp(503), resp(200)],
+            ) as get, patch.object(sdb.time, "sleep"):
+                with self.assertRaises(sdb.NotionServiceUnavailable):
+                    sdb._request("GET", "https://api.notion.com/v1/data_sources/test")
+            self.assertEqual(get.call_count, 2)
+        finally:
+            sdb.REQUEST_PACING_SECONDS = old_pacing
+            sdb.REQUEST_MAX_ATTEMPTS = old_attempts
+            sdb.SERVER_MAX_ATTEMPTS = old_server_attempts
+
+    def test_preflight_checks_target_before_full_subscriber_scan(self):
+        old_ds = sdb.SUBSCRIBER_DATA_SOURCE_ID
+        sdb.SUBSCRIBER_DATA_SOURCE_ID = "ds-test"
+        try:
+            with patch.object(sdb, "_request", return_value=resp(200)) as request:
+                result = sdb.preflight_notion_read_health()
+            self.assertTrue(result["healthy"])
+            request.assert_called_once_with(
+                "GET",
+                "https://api.notion.com/v1/data_sources/ds-test",
+                timeout=10,
+            )
+        finally:
+            sdb.SUBSCRIBER_DATA_SOURCE_ID = old_ds
+
+    def test_service_unavailable_aborts_page_loop_immediately(self):
+        old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
+        sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
+        sdb.NOTION_API_KEY = "x"
+        pages = [subscriber_page("p1"), subscriber_page("p2"), subscriber_page("p3")]
+        try:
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=pages), \
+                 patch.object(
+                     sdb,
+                     "sync_page",
+                     side_effect=sdb.NotionServiceUnavailable("notion 500"),
+                 ) as sync:
+                with self.assertRaises(sdb.NotionServiceUnavailable):
+                    sdb.sync_subscriber_decision_briefs()
+            self.assertEqual(sync.call_count, 1)
+        finally:
+            sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
+
     def test_notion_request_paces_each_successful_transport_call(self):
         old_pacing = sdb.REQUEST_PACING_SECONDS
         sdb.REQUEST_PACING_SECONDS = 0.4
@@ -203,7 +258,9 @@ class Run158DecisionBriefTests(unittest.TestCase):
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
-            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), patch.object(sdb, "sync_page", return_value="created") as sync:
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1")]), \
+                 patch.object(sdb, "sync_page", return_value="created") as sync:
                 result = sdb.sync_subscriber_decision_briefs()
             self.assertTrue(result["enabled"])
             self.assertEqual(result["total"], 1)
@@ -212,12 +269,32 @@ class Run158DecisionBriefTests(unittest.TestCase):
         finally:
             sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
 
+    def test_database_sync_emits_progress_every_ten_pages_and_at_end(self):
+        old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
+        sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
+        sdb.NOTION_API_KEY = "x"
+        pages = [subscriber_page(f"p{i}") for i in range(11)]
+        try:
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=pages), \
+                 patch.object(sdb, "sync_page", return_value="unchanged"), \
+                 patch("builtins.print") as output:
+                result = sdb.sync_subscriber_decision_briefs()
+            rendered = "\n".join(str(call.args[0]) for call in output.call_args_list if call.args)
+            self.assertIn("progress 10/11", rendered)
+            self.assertIn("progress 11/11", rendered)
+            self.assertEqual(result["unchanged"], 11)
+        finally:
+            sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY = old_brief, old_key
+
     def test_database_sync_fails_closed_on_partial_error(self):
         old_brief, old_key = sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF, sdb.NOTION_API_KEY
         sdb.ENABLE_SUBSCRIBER_DECISION_BRIEF = True
         sdb.NOTION_API_KEY = "x"
         try:
-            with patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1"), subscriber_page("p2")]), patch.object(sdb, "sync_page", side_effect=["created", RuntimeError("boom")]):
+            with patch.object(sdb, "preflight_notion_read_health", return_value={"healthy": True}), \
+                 patch.object(sdb, "query_subscriber_pages", return_value=[subscriber_page("p1"), subscriber_page("p2")]), \
+                 patch.object(sdb, "sync_page", side_effect=["created", RuntimeError("boom")]):
                 with self.assertRaises(RuntimeError):
                     sdb.sync_subscriber_decision_briefs()
         finally:
