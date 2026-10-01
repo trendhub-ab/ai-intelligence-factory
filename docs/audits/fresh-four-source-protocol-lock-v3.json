@@ -30,7 +30,7 @@
     ".github/workflows/daily-one-shot.yml": "7798de8c7f6db01dbcf5690c4979bb7e81f0c484",
     "fresh_protocol_quota_lock.py": "c8acf920fb417fcad8528f50a16b3866a3f99237",
     "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
-    "gemini_provider_resilience.py": "832214b52e62162599eca6eac6f5e73e16b63a5e",
+    "gemini_provider_resilience.py": "76a20936fe39544f8c34ba0bd9d0ef2a44e7848b",
     "run260_gemini_model_routing.py": "2584fb342b8c7d6ed8839063ae3a9d82e331eea9",
     "gemini_transient_recovery.py": "d02f9d14ae199420f710a2be894bb29803aa14b2",
     "gemini_timeout_rpd_fail_closed.py": "dd50fe206f88b1730bdb13767dc2f1584df5449d",
