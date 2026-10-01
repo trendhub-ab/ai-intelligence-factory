@@ -25,6 +25,7 @@ from typing import Any
 import requests
 
 import decision_intelligence as di
+import evidence_ledger
 import member_presentation_sync as member
 import member_verified_rereview_dryrun as dry
 
@@ -104,10 +105,162 @@ def _get_page(page_id: str) -> dict[str, Any]:
     return r.json()
 
 
+def _query_active_primary_snapshots(entity_id: str) -> list[dict[str, Any]]:
+    """Read prior active decision-eligible primary snapshots for deterministic change detection."""
+    if not evidence_ledger.ENABLE_EVIDENCE_LEDGER:
+        return []
+    token = str(di.NOTION_DECISION_INTELLIGENCE_API_KEY or "").strip()
+    if not token or not (
+        evidence_ledger.NOTION_EVIDENCE_DATA_SOURCE_ID
+        or evidence_ledger.NOTION_EVIDENCE_DATABASE_ID
+    ):
+        return []
+    payload = {
+        "filter": {
+            "and": [
+                {"property": evidence_ledger.P_ENTITY, "rich_text": {"equals": entity_id}},
+                {"property": evidence_ledger.P_ACTIVE, "checkbox": {"equals": True}},
+            ]
+        },
+        "page_size": 100,
+    }
+    r = requests.post(
+        evidence_ledger._query_url(),
+        headers=evidence_ledger._headers(token),
+        json=payload,
+        timeout=15,
+    )
+    r.raise_for_status()
+    out: list[dict[str, Any]] = []
+    for page in r.json().get("results", []) or []:
+        props = page.get("properties") or {}
+        state = evidence_ledger.page_to_state(page)
+        role = evidence_ledger._rich(props.get(evidence_ledger.P_ROLE, {})).upper()
+        if role != "PRIMARY_SOURCE" or not state.get("decision_eligible"):
+            continue
+        if state.get("source_health") in {"MISSING", "FETCH_ERROR"}:
+            continue
+        out.append(state)
+    return out
+
+
+def _verify_with_change_outcome(state: dict[str, Any], entity_id: str) -> dict[str, Any]:
+    """Re-fetch current evidence and compare it to the prior ledger baseline without a model."""
+    import logging
+    logging.disable(logging.CRITICAL)
+    import pipeline
+
+    repo = dry.build_repo_for_existing_evidence(state)
+    if not repo.get("primaryUrl"):
+        return {
+            "retrieved": False,
+            "gate_pass": False,
+            "review_safe": False,
+            "result": "UNAVAILABLE",
+            "change_outcome": "NO_SOURCE",
+        }
+    try:
+        source_info = pipeline.prepare_source_context(repo)
+        evidence = pipeline.assess_evidence_sufficiency(source_info)
+        if evidence.get("state") == pipeline.EVIDENCE_SUPPLEMENT_REQUIRED:
+            source_info = pipeline.supplement_source_evidence(source_info)
+            evidence = pipeline.assess_evidence_sufficiency(source_info)
+
+        docs = [
+            doc for doc in (source_info.get("evidence_documents") or [])
+            if doc.get("retrieved")
+        ]
+        retrieved = bool(docs)
+        authority_failures = pipeline._primary_source_authority_failures(source_info)
+        gate_pass = bool(
+            retrieved
+            and not authority_failures
+            and evidence.get("state") != pipeline.EVIDENCE_INSUFFICIENT
+            and evidence.get("decision_scope_safe")
+        )
+        if not gate_pass:
+            return {
+                "retrieved": retrieved,
+                "gate_pass": False,
+                "review_safe": False,
+                "result": "EVIDENCE_FAIL" if retrieved else "UNAVAILABLE",
+                "change_outcome": "NOT_CHECKED",
+            }
+
+        snapshots = _query_active_primary_snapshots(entity_id)
+        if not snapshots:
+            return {
+                "retrieved": True,
+                "gate_pass": True,
+                "review_safe": False,
+                "result": "PASS",
+                "change_outcome": "NO_BASELINE",
+            }
+
+        health_rows: list[dict[str, Any]] = []
+        for snapshot in snapshots:
+            snap_key = evidence_ledger.canonical_url(
+                snapshot.get("resolved_url") or snapshot.get("url") or ""
+            )
+            if not snap_key:
+                continue
+            for doc in docs:
+                current_url = str(doc.get("resolved_url") or doc.get("url") or "")
+                if evidence_ledger.canonical_url(current_url) != snap_key:
+                    continue
+                current_text = str(
+                    doc.get("document_text")
+                    or doc.get("evidence_extract")
+                    or source_info.get("verification_context")
+                    or ""
+                )
+                if not current_text:
+                    continue
+                health_rows.append(
+                    evidence_ledger.check_health(
+                        snapshot,
+                        lambda _url, text=current_text, final=current_url: (200, text, final),
+                    )
+                )
+                break
+
+        if not health_rows:
+            outcome = "NO_BASELINE"
+        elif any(row.get("material") for row in health_rows):
+            outcome = "MATERIAL_CHANGE"
+        elif any(row.get("health") in {"COSMETIC_CHANGE", "MOVED"} for row in health_rows):
+            outcome = "COSMETIC_CHANGE"
+        elif all(row.get("health") == "VERIFIED" for row in health_rows):
+            outcome = "UNCHANGED"
+        else:
+            outcome = "NO_BASELINE"
+
+        return {
+            "retrieved": True,
+            "gate_pass": True,
+            "review_safe": outcome in {"UNCHANGED", "COSMETIC_CHANGE"},
+            "result": "PASS",
+            "change_outcome": outcome,
+        }
+    except Exception:
+        return {
+            "retrieved": False,
+            "gate_pass": False,
+            "review_safe": False,
+            "result": "UNAVAILABLE",
+            "change_outcome": "NOT_CHECKED",
+        }
+
+
 def _retry_code(state: dict[str, Any], verification: dict[str, Any]) -> str:
     repo = dry.build_repo_for_existing_evidence(state)
     if not repo.get("primaryUrl"):
         return "MISSING_PRIMARY_SOURCE"
+    outcome = str(verification.get("change_outcome") or "")
+    if outcome == "MATERIAL_CHANGE":
+        return "MATERIAL_CHANGE_REQUIRES_DECISION_REVIEW"
+    if outcome == "NO_BASELINE":
+        return "NO_EVIDENCE_BASELINE"
     if verification.get("result") == "EVIDENCE_FAIL":
         return "EVIDENCE_GATE_FAILED"
     return "PRIMARY_SOURCE_UNAVAILABLE"
@@ -193,6 +346,11 @@ def run_apply(*, as_of: date, limit: int, stale_days: int, verified_at: str) -> 
         "evidence_pass": 0,
         "unavailable": 0,
         "evidence_fail": 0,
+        "review_safe": 0,
+        "unchanged": 0,
+        "cosmetic_change": 0,
+        "material_change": 0,
+        "no_baseline": 0,
         "canonical_missing": 0,
         "canonical_mismatch": 0,
         "canonical_dates_advanced": 0,
@@ -227,10 +385,21 @@ def run_apply(*, as_of: date, limit: int, stale_days: int, verified_at: str) -> 
         initial_internal_snapshot = _internal_snapshot(internal_state)
         initial_sub_snapshot = _source_snapshot(selected_state)
 
-        verification = dry._live_verify_one(selected_state)
+        verification = _verify_with_change_outcome(selected_state, entity_id)
         result = str(verification.get("result") or "UNAVAILABLE")
+        outcome = str(verification.get("change_outcome") or "NOT_CHECKED")
         if result == "PASS":
             out["evidence_pass"] += 1
+            if outcome == "UNCHANGED":
+                out["unchanged"] += 1
+            elif outcome == "COSMETIC_CHANGE":
+                out["cosmetic_change"] += 1
+            elif outcome == "MATERIAL_CHANGE":
+                out["material_change"] += 1
+            elif outcome == "NO_BASELINE":
+                out["no_baseline"] += 1
+            if verification.get("review_safe"):
+                out["review_safe"] += 1
         elif result == "EVIDENCE_FAIL":
             out["evidence_fail"] += 1
         else:
@@ -246,7 +415,7 @@ def run_apply(*, as_of: date, limit: int, stale_days: int, verified_at: str) -> 
             out["canonical_mismatch"] += 1
             continue
 
-        if result != "PASS":
+        if result != "PASS" or not verification.get("review_safe"):
             code = _retry_code(selected_state, verification)
             _patch_internal_retry(internal_page_id, code, verified_at)
             out["retry_reasons_written"] += 1
