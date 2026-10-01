@@ -14,7 +14,9 @@ Flash Deep Dive pool, one provider-verified 503 opens a run-local circuit for th
 immediately and preserves the next request for the next distinct production model.
 Pending Retry keeps its existing one-503 fallback behavior for any model name.
 Non-production/custom ordinary Deep Dive pools retain the historical confirmation
-behavior. Screening and Product Review keep their existing bounded confirmation behavior.
+behavior. Screening keeps its historical bounded confirmation behavior. Product Review
+uses one provider-verified 503 per model so its small dedicated budget reaches the next
+distinct model instead of spending two requests confirming the same outage.
 
 Run398 also forces ordinary Deep Dive generation to Gemini thinking_level=low. Quality
 repair/rescue/recompose requests remain caller-controlled because they may need stronger
