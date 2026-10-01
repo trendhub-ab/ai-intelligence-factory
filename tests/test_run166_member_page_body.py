@@ -1,6 +1,8 @@
 import unittest
 from unittest import mock
 
+import requests
+
 import member_presentation_body_sync as body
 
 
@@ -149,6 +151,35 @@ class Run166MemberPageBodyTests(unittest.TestCase):
             api_like.append({"type": kind, kind: {"rich_text": [{"plain_text": text}]}})
         self.assertTrue(body._body_matches(api_like, state))
         self.assertFalse(body._body_matches(api_like[:-1], state))
+
+    def test_request_retries_transient_read_timeout_then_succeeds(self):
+        response = mock.Mock(status_code=200, text="ok")
+        with mock.patch.object(
+            body.requests,
+            "request",
+            side_effect=[requests.exceptions.ReadTimeout("temporary"), response],
+        ) as request, mock.patch.object(body.time, "sleep") as sleep:
+            result = body._request("GET", "https://api.notion.com/v1/test")
+
+        self.assertIs(response, result)
+        self.assertEqual(2, request.call_count)
+        sleep.assert_called_once()
+
+    def test_append_timeout_reconciles_applied_write_without_duplicate_retry(self):
+        desired = [body._paragraph("first"), body._paragraph("second")]
+        observed = [
+            {"id": "a", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "first"}]}},
+            {"id": "b", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "second"}]}},
+        ]
+        with mock.patch.object(
+            body,
+            "_request",
+            side_effect=requests.exceptions.ReadTimeout("response lost"),
+        ) as request, mock.patch.object(body, "_children", return_value=observed):
+            result = body._append_children("block-123", desired)
+
+        self.assertEqual(observed, result)
+        self.assertEqual(1, request.call_count)
 
     def test_creation_is_two_step_parent_then_children(self):
         state = self._state()

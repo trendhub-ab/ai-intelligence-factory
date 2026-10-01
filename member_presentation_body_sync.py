@@ -268,14 +268,23 @@ def _body_matches(actual: list[dict[str, Any]], state: dict[str, Any]) -> bool:
 
 def _request(method: str, url: str, *, json_payload: dict[str, Any] | None = None) -> requests.Response:
     response: requests.Response | None = None
+    method_upper = method.upper()
     for attempt in range(5):
-        response = requests.request(
-            method,
-            url,
-            json=json_payload,
-            headers=decision_intelligence._headers(),
-            timeout=30,
-        )
+        try:
+            response = requests.request(
+                method,
+                url,
+                json=json_payload,
+                headers=decision_intelligence._headers(),
+                timeout=30,
+            )
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+            # GET is idempotent, so transient transport failures are safe to retry.
+            # Mutating requests are reconciled by their caller before any retry.
+            if method_upper == "GET" and attempt < 4:
+                time.sleep(1.0 + attempt)
+                continue
+            raise
         if response.status_code == 429:
             time.sleep(max(0.8, float(response.headers.get("Retry-After") or 1.0)))
             continue
@@ -310,17 +319,67 @@ def _delete_block(block_id: str) -> None:
         raise RuntimeError(f"Member body block delete failed {block_id}: {res.status_code} {res.text[:500]}")
 
 
+def _find_existing_append(
+    existing: list[dict[str, Any]],
+    desired: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return an already-applied desired sequence after an ambiguous write timeout."""
+    if not desired:
+        return []
+    existing_fp = _body_fingerprint(existing)
+    desired_fp = _body_fingerprint(desired)
+    width = len(desired_fp)
+    for start in range(0, len(existing_fp) - width + 1):
+        if existing_fp[start : start + width] == desired_fp:
+            return existing[start : start + width]
+    return []
+
+
+def _has_partial_append(
+    existing: list[dict[str, Any]],
+    desired: list[dict[str, Any]],
+) -> bool:
+    """Detect an ambiguous suffix/prefix overlap so we never duplicate a partial write."""
+    if not existing or not desired:
+        return False
+    existing_fp = _body_fingerprint(existing)
+    desired_fp = _body_fingerprint(desired)
+    limit = min(len(existing_fp), len(desired_fp) - 1)
+    return any(existing_fp[-size:] == desired_fp[:size] for size in range(1, limit + 1))
+
+
 def _append_children(block_id: str, children: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not children:
         return []
-    res = _request(
-        "PATCH",
-        f"https://api.notion.com/v1/blocks/{block_id}/children",
-        json_payload={"children": children},
-    )
-    if res.status_code != 200:
-        raise RuntimeError(f"Member body append failed {block_id}: {res.status_code} {res.text[:500]}")
-    return list((res.json() or {}).get("results") or [])
+    url = f"https://api.notion.com/v1/blocks/{block_id}/children"
+    for attempt in range(2):
+        try:
+            res = _request(
+                "PATCH",
+                url,
+                json_payload={"children": children},
+            )
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+            # A timed-out PATCH may already have committed on Notion. Read back
+            # before retrying so an interrupted migration cannot create duplicates.
+            existing = _children(block_id)
+            applied = _find_existing_append(existing, children)
+            if applied:
+                return applied
+            if _has_partial_append(existing, children):
+                raise RuntimeError(
+                    f"Member body append timed out with ambiguous partial write: {block_id}"
+                )
+            if attempt == 0:
+                time.sleep(1.0)
+                continue
+            raise
+        if res.status_code != 200:
+            raise RuntimeError(
+                f"Member body append failed {block_id}: {res.status_code} {res.text[:500]}"
+            )
+        return list((res.json() or {}).get("results") or [])
+    raise RuntimeError(f"Member body append retry exhausted: {block_id}")
 
 
 def _create_auto_callout(page_id: str, state: dict[str, Any]) -> None:
