@@ -309,22 +309,14 @@ def install(pipeline_module: Any) -> Any:
                     quota_type = pipeline_module.classify_gemini_quota_error(exc) if code == 429 else ""
                     if code == 503:
                         pipeline_module.logger.warning(
-                            "[PROVIDER HTTP 503] model=%s kind=%s attempt=%s/2 verified=structured_status",
-                            model_name, request_kind_base, attempt + 1,
-                        )
-                        if attempt == 0:
-                            delay = _confirmation_delay(pipeline_module, exc)
-                            pipeline_module.logger.warning(
-                                "[PROVIDER HTTP 503 RETRY] model=%s kind=%s delay=%ss; one same-model confirmation retry",
-                                model_name, request_kind_base, delay,
-                            )
-                            time.sleep(delay)
-                            continue
-                        pipeline_module.logger.warning(
-                            "[PROVIDER HTTP 503 CONFIRMED] model=%s kind=%s consecutive=2; run-local circuit open",
+                            "[PRODUCT REVIEW 503 FALLBACK] model=%s kind=%s; preserve request budget and try next distinct model",
                             model_name, request_kind_base,
                         )
-                        _mark_confirmed_503(pipeline_module, model_name)
+                        _mark_confirmed_503(
+                            pipeline_module,
+                            model_name,
+                            "provider_503_product_review_fallback_preserved",
+                        )
                         break
                     _clear_legacy_503_state(pipeline_module, model_name)
                     if code == 429 and quota_type in {"RPD", "DAILY_TOKEN"}:
