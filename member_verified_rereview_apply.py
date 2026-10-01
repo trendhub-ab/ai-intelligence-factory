@@ -204,7 +204,7 @@ def run_apply(*, as_of: date, limit: int, stale_days: int, verified_at: str) -> 
         "model_calls": 0,
         "decision_mutations": 0,
         "score_mutations": 0,
-        "notion_writes": 0,
+        "notion_writes": 1 if schema_added else 0,
         "paid_detail_publications": 0,
     }
 
