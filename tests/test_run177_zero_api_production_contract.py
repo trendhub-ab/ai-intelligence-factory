@@ -83,7 +83,7 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
         review_step = text.index("- name: Portfolio-aware Product Review")
         guard_step = text.index("- name: API-saving mode guard")
         review_block = text[review_step:guard_step]
-        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', review_block)
+        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "4"', review_block)
         self.assertIn('DAILY_PORTFOLIO_REVIEW_MAX: "2"', review_block)
         self.assertIn("if: ${{ inputs.mode == 'full' }}", review_block)
 
