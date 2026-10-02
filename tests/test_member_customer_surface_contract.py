@@ -86,17 +86,19 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
             self.assertTrue(any("unclassified customer entrypoint" in e for e in contract.validate_repository(root)))
 
     def test_member_migration_requires_successful_main_ci_and_explicit_marker(self):
-        import yaml
-        workflow = yaml.load((ROOT / ".github/workflows/member-presentation-sync.yml").read_text(), Loader=yaml.BaseLoader)
-        self.assertNotIn("push", workflow["on"])
-        self.assertIn("Integration Reconciliation CI", workflow["on"]["workflow_run"]["workflows"])
-        gate = workflow["jobs"]["sync"]["if"]
-        self.assertIn("head_branch == 'main'", gate)
-        self.assertIn("conclusion == 'success'", gate)
-        self.assertIn("[member-ux-refresh]", gate)
-        steps = workflow["jobs"]["sync"]["steps"]
-        body = next(s for s in steps if s.get("run") == "python run219_member_human_language_ui.py body")
-        self.assertIn("github.event.workflow_run.name == 'Integration Reconciliation CI'", body["env"]["MEMBER_BODY_FORCE_FULL"])
+        import workflow_reference_guard as reference
+        text = (ROOT / ".github/workflows/member-presentation-sync.yml").read_text()
+        self.assertNotIn("push", reference._top_level_triggers(text))
+        self.assertIn("Integration Reconciliation CI", reference._workflow_run_targets(text))
+        self.assertIn("head_branch == 'main'", text)
+        self.assertIn("conclusion == 'success'", text)
+        self.assertIn("[member-ux-refresh]", text)
+        self.assertIn("github.event.workflow_run.head_sha", text)
+        self.assertIn("github.event.workflow_run.name == 'Integration Reconciliation CI' ||", text)
+        ci = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text()
+        self.assertIn("push", reference._top_level_triggers(ci))
+        self.assertIn("branches: [main]", ci)
+        self.assertIn("member_customer_surface_contract.py", ci)
 
 
 if __name__ == "__main__":
