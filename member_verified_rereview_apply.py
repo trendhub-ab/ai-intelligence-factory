@@ -28,7 +28,7 @@ import member_verified_rereview_dryrun as rr
 
 
 HARD_MAX_REVIEWS = 2
-HARD_REQUEST_BUDGET = 3
+HARD_REQUEST_BUDGET = 5
 
 
 def validate_apply_budget(*, max_reviews: int, request_budget: int) -> None:
