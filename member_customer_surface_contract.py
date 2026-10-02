@@ -49,6 +49,11 @@ SURFACES = {
         "audit": "tests/test_member_monthly_decision_brief_sync.py",
         "purpose": "scan-first monthly shortlist: decision, meaning, action, evidence",
     },
+    "monthly_digest": {
+        "owner": "content_generation_protocol.py",
+        "audit": "tests/test_member_customer_surface_contract.py",
+        "purpose": "monthly reading index with finished articles separate from unreviewed candidates",
+    },
     "member_db_views": {
         "owner": "member_customer_surface_contract.py",
         "audit": "member_surface_coverage_guard.py",
@@ -66,7 +71,69 @@ SURFACES = {
     },
 }
 
-REQUIRED_SURFACES = frozenset(SURFACES)
+REQUIRED_SURFACES = frozenset((
+    "free_note_article", "free_note_cta", "membership_lp_and_join",
+    "member_onboarding", "member_home", "monthly_decision_brief",
+    "monthly_digest", "member_db_views", "member_db_detail", "judgment_memo",
+))
+# Explicit inventory of the current member modules, including historical adapters
+# and read-only probes. New modules in these namespaces need classification.
+CLASSIFIED_MEMBER_MODULES = frozenset((
+    "member_body_delta_checkpoint.py",
+    "member_client_action_alignment.py",
+    "member_customer_surface_contract.py",
+    "member_experience_quality_audit.py",
+    "member_human_language_ux.py",
+    "member_human_language_ux_v2.py",
+    "member_monthly_decision_brief_sync.py",
+    "member_notion_read_healthcheck.py",
+    "member_offer_copy.py",
+    "member_presentation_body_sync.py",
+    "member_presentation_identity.py",
+    "member_presentation_sync.py",
+    "member_reader_quality_policy.py",
+    "member_surface_coverage_guard.py",
+    "member_ux_body_fast.py",
+    "member_ux_guard.py",
+    "member_verified_rereview_apply.py",
+    "member_verified_rereview_dryrun.py",
+    "provision_member_presentation_db.py",
+    "run174_monthly_digest_integrity.py",
+    "run212_member_review_copy.py",
+    "run213_member_topic_specificity.py",
+    "run214_member_action_specificity.py",
+    "run215_member_action_final_dedup.py",
+    "run219_member_human_language_ui.py",
+    "run225_member_lifecycle_ui.py",
+    "run250_member_client_action_product.py",
+    "run270_proposal_first_member_surface.py",
+    "run270_proposal_first_member_surface_guard.py",
+    "run271_member_body_delta_sync_guard.py",
+    "run307_use_decision_member_surface.py",
+    "run314_member_onboarding_audit.py",
+    "run315_member_onboarding_update.py",
+    "run315_member_onboarding_update_dom_range.py",
+    "run316_member_onboarding_finalize_probe.py",
+    "run317_member_onboarding_server_save.py",
+    "run318_member_onboarding_publish_cta_probe.py",
+    "run319_member_onboarding_article_list_probe.py",
+    "run320_member_onboarding_membership_dialog_probe.py",
+    "run321_member_onboarding_official_edit_route_probe.py",
+    "run321b_member_onboarding_edit_route_diagnostic.py",
+    "run322_member_onboarding_version_confirm_publish_probe.py",
+    "run323_member_onboarding_publish_surface_deep_probe.py",
+    "run324_member_onboarding_trial_read_surface_probe.py",
+    "run325_member_onboarding_finalize_latest.py",
+    "run326_member_onboarding_public_audit.py",
+    "run332_membership_description_edit_route_probe.py",
+    "run333_membership_description_exact_update.py",
+    "run334_membership_description_exact_update.py",
+    "run337_membership_public_funnel_audit.py",
+    "run339_membership_public_funnel_audit.py",
+    "subscriber_decision_brief.py",
+))
+MEMBER_MODULE_MARKERS = ("member", "membership", "onboard", "digest", "subscriber_decision_brief")
+
 FORBIDDEN_PRIMARY_JARGON = (
     "Decision Score",
     "Step1",
@@ -242,6 +309,9 @@ def validate_repository(root: Path) -> list[str]:
     failures: list[str] = []
     if set(SURFACES) != set(REQUIRED_SURFACES):
         failures.append("member surface registry changed without updating REQUIRED_SURFACES")
+    for path in root.glob("*.py"):
+        if any(marker in path.name for marker in MEMBER_MODULE_MARKERS) and path.name not in CLASSIFIED_MEMBER_MODULES:
+            failures.append(f"unclassified member module: {path.name}")
     for key, spec in SURFACES.items():
         for field in ("owner", "audit", "purpose"):
             if not str(spec.get(field) or "").strip():
