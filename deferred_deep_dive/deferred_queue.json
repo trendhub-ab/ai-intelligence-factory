@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-02T08:42:04.344947+00:00",
+  "updated_at": "2026-10-02T08:43:31.592155+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49878806",
-      "deferred_at": "2026-09-28T22:44:03.990453+00:00",
-      "expires_at": "2026-11-27T22:44:03.990453+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Anthropic: Emergent Misalignment from Reward Hacking",
-        "originalTitle": "Anthropic: Emergent Misalignment from Reward Hacking",
-        "displayName": "Anthropic: Emergent Misalignment from Reward Hacking",
-        "sourceLanguage": "en",
-        "url": "https://www.anthropic.com/research/emergent-misalignment-reward-hacking",
-        "description": "Anthropic: Emergent Misalignment from Reward Hacking",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-28T14:43:41Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=Anthropic",
-        "primaryUrl": "https://www.anthropic.com/research/emergent-misalignment-reward-hacking",
-        "sourceDetails": {
-          "hn_id": "49878806",
-          "hn_url": "https://news.ycombinator.com/item?id=49878806",
-          "external_url": "https://www.anthropic.com/research/emergent-misalignment-reward-hacking",
-          "comments": 0,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e9479ff-dca9-8182-a236-c90d6dbb214b",
-      "score": 82,
-      "reason": "報酬ハッキングによるアライメント崩壊の研究レポート。",
-      "commercial_score": 75,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 79.55
-    },
     {
       "key": "https://hamel.dev/blog/posts/claude-auto-evals/index.html",
       "deferred_at": "2026-10-01T11:18:06.215322+00:00",
