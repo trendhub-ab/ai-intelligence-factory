@@ -7,16 +7,14 @@ import re
 # No provider SDK, network, persistence, environment or credential access is allowed here.
 
 def build_monthly_digest_markdown(target_date, items: list[dict], *, STATUS_DEEP_DIVE, ARTICLE_STATUS_READY, STATUS_STOCKED) -> str:
-    """
-    当月データセットから、運用者・購読者向けの月次ダイジェストMarkdownを
-    組み立てる。Deep Dive済み案件（Step2詳細スコア）とストックのみ案件
-    （Step1軽量スコア）は採点基準が異なるため、Statusプロパティで区別し、
-    セクション・ランキングを分離して混同を防ぐ。
+    """Build the member digest as a reading surface, not an internal score report.
+
+    Internal stage/status/score differences still control selection, but the subscriber
+    surface exposes only what to read now, what was added to the searchable stock, and
+    a compact collection summary.
     """
     month_label = f"{target_date.year}年{target_date.month}月"
 
-    # Subscriber向けDigestでは、内部Needs Editorial ReviewをDeep Dive完成記事として
-    # 扱わない。ReadyのみDeep Dive、その他はStock資産として集計する。
     digest_items = []
     for it in items:
         row = dict(it)
@@ -24,52 +22,60 @@ def build_monthly_digest_markdown(target_date, items: list[dict], *, STATUS_DEEP
             row["status"] = STATUS_STOCKED
         digest_items.append(row)
 
-    by_status: dict[str, int] = {}
     by_source: dict[str, int] = {}
     for it in digest_items:
-        by_status[it["status"]] = by_status.get(it["status"], 0) + 1
         by_source[it["source"]] = by_source.get(it["source"], 0) + 1
 
-    deep_dive_items = sorted(
-        (it for it in digest_items if it["status"] == STATUS_DEEP_DIVE and it.get("article_status") == ARTICLE_STATUS_READY),
-        key=lambda x: (x["score"] or 0), reverse=True,
+    ready_articles = sorted(
+        (
+            it for it in digest_items
+            if it["status"] == STATUS_DEEP_DIVE and it.get("article_status") == ARTICLE_STATUS_READY
+        ),
+        key=lambda x: (x["score"] or 0),
+        reverse=True,
     )
-    stocked_items_top10 = sorted(
+    searchable_new = sorted(
         (it for it in digest_items if it["status"] == STATUS_STOCKED),
-        key=lambda x: (x["score"] or 0), reverse=True,
+        key=lambda x: (x["score"] or 0),
+        reverse=True,
     )[:10]
 
     lines = [
-        f"# {month_label} 全データセットダイジェスト",
+        f"# {month_label}｜AI Intelligence Digest",
         "",
-        f"- 総収集件数: {len(items)}件",
-        "- 内訳（ステータス別）: " + (", ".join(f"{k} {v}件" for k, v in by_status.items()) or "-"),
-        "- 内訳（ソース別）: " + (", ".join(f"{k} {v}件" for k, v in by_source.items()) or "-"),
+        "今月追加した情報から、まず読むものと、あとでDBから探せる新着だけをまとめました。",
+        "全部を追う必要はありません。気になるものだけ開いてください。",
         "",
-        f"## Deep Dive記事一覧（{len(deep_dive_items)}件・Step2詳細スコア順）",
-        "",
-    ]
-    lines += (
-        [f"- [{it['name']}]({it['url']}) - {it['score']}点 / {it['source']}" for it in deep_dive_items]
-        or ["（今月はDeep Dive記事の生成はありませんでした）"]
-    )
-    lines += [
-        "",
-        "## ストックのみ案件 Top10（Step1軽量スクリーニングスコア順）",
+        "## 今月、まず読む記事",
         "",
     ]
     lines += (
-        [f"- [{it['name']}]({it['url']}) - {it['score']}点 / {it['source']}" for it in stocked_items_top10]
-        or ["（該当なし）"]
+        [f"- [{it['name']}]({it['url']}) — {it['source']}" for it in ready_articles]
+        or ["今月は、公開準備まで整った新しい記事はありませんでした。"]
     )
     lines += [
+        "",
+        "## あとで探せる新着",
+        "",
+        "記事になっていなくても、会員DBには検索できる候補として残しています。",
+    ]
+    lines += (
+        [f"- [{it['name']}]({it['url']}) — {it['source']}" for it in searchable_new]
+        or ["今月は追加のストック候補はありませんでした。"]
+    )
+    lines += [
+        "",
+        "## 今月の収録状況",
+        "",
+        f"- 新しく収録した情報：{len(items)}件",
+        f"- まず読む記事：{len(ready_articles)}件",
+        f"- DBで探せる新着候補：{sum(1 for it in digest_items if it['status'] == STATUS_STOCKED)}件",
+        "- 情報源：" + (", ".join(f"{k} {v}件" for k, v in sorted(by_source.items())) or "なし"),
         "",
         "---",
         "",
-        "※本ダイジェストはNotion DBへの当月新規保存分を自動集計したものです。",
-        "※「Decision Score」はDeep Dive済み案件ではStep2詳細スコア、ストックのみの"
-        "案件ではStep1軽量スクリーニングスコアであり、採点基準が異なります"
-        "（Statusプロパティで判別可能。詳細はPROP_STATUSのコメントを参照）。",
+        "※このDigestは当月にDBへ追加された情報の案内です。内部では収集段階ごとに異なる評価を使うため、"
+        "異なる段階のスコアを会員向け画面で横並び比較しません。",
     ]
     return "\n".join(lines)
 
