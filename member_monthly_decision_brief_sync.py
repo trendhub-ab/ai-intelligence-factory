@@ -311,7 +311,7 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
     if not changes:
         blocks.append(_paragraph(_rt(
             "今月は、判断を大きく変えるほどの更新は記録されていません。"
-            "変化がないことも、『いま無理に判断を変えなくてよい』という材料です。"
+            "記録がないだけで、すべての技術に変化がなかったとは限りません。利用前に最新情報を確認してください。"
         )))
     for state in changes:
         direction = _change_direction_text(state)
