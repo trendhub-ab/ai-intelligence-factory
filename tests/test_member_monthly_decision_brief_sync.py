@@ -218,6 +218,12 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "MEMBER_MONTHLY_BRIEF_PAGE_ID"):
                 brief.sync_monthly_brief()
 
+    def test_empty_change_records_do_not_assert_no_actual_change(self):
+        _, blocks, _, _ = brief.build_blocks([], now=datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc))
+        rendered = str(blocks)
+        self.assertIn("すべての技術に変化がなかったとは限りません", rendered)
+        self.assertNotIn("いま無理に判断を変えなくてよい", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()
