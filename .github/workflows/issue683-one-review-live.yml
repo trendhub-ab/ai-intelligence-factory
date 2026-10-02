@@ -1,7 +1,10 @@
-name: Issue 683 Stage 3 Live Batch
+name: Issue 683 One Review Live Validation
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/issue683-one-review-live.yml'
 
 permissions:
   contents: read
@@ -19,17 +22,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: main
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
-
-      - name: Re-run upper-Flash Product Review contract tests
+      - name: Re-run bounded Product Review contracts
         run: |
           python -m pytest -q \
             tests/test_issue668_verified_rereview_apply.py \
@@ -37,8 +37,7 @@ jobs:
             tests/test_product_review_503_fallback_policy.py \
             tests/test_product_review_provider_lock.py \
             tests/test_gemini_provider_resilience.py
-
-      - name: Execute one bounded Stage 3 live batch
+      - name: Execute one verified Product Review
         run: python member_verified_rereview_apply.py --queue-limit 5 --stale-days 30 --max-reviews 1 --request-budget 3
         env:
           TZ: 'Asia/Tokyo'
