@@ -4,6 +4,10 @@ name: Integration Reconciliation CI
 # structural guards run before it, and Synthetic smoke validates the assembled current Production stack.
 
 on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -12,10 +16,6 @@ on:
       - run307_use_decision_member_surface.py
       - member_customer_surface_contract.py
       - .github/workflows/member-presentation-sync.yml
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
 
 permissions:
   contents: read
