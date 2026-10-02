@@ -88,7 +88,7 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
     def test_member_migration_requires_successful_main_ci_and_explicit_marker(self):
         import workflow_reference_guard as reference
         text = (ROOT / ".github/workflows/member-presentation-sync.yml").read_text()
-        self.assertNotIn("push", reference._top_level_triggers(text))
+        self.assertNotIn("push", reference._top_level_on_triggers(text))
         self.assertIn("Integration Reconciliation CI", reference._workflow_run_targets(text))
         self.assertIn("head_branch == 'main'", text)
         self.assertIn("conclusion == 'success'", text)
@@ -96,7 +96,7 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
         self.assertIn("github.event.workflow_run.head_sha", text)
         self.assertIn("github.event.workflow_run.name == 'Integration Reconciliation CI' ||", text)
         ci = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text()
-        self.assertIn("push", reference._top_level_triggers(ci))
+        self.assertIn("push", reference._top_level_on_triggers(ci))
         self.assertIn("branches: [main]", ci)
         self.assertIn("member_customer_surface_contract.py", ci)
 
