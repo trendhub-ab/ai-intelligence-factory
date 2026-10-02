@@ -40,26 +40,27 @@ def build_monthly_digest_markdown(target_date, items: list[dict], *, STATUS_DEEP
     )[:10]
 
     lines = [
-        f"# {month_label} 全データセットダイジェスト",
+        f"# {month_label} 読むものを選ぶ月次ガイド",
         "",
-        f"- 総収集件数: {len(items)}件",
-        "- 内訳（ステータス別）: " + (", ".join(f"{k} {v}件" for k, v in by_status.items()) or "-"),
-        "- 内訳（ソース別）: " + (", ".join(f"{k} {v}件" for k, v in by_source.items()) or "-"),
+        f"今月は{len(items)}件の情報を保存しました。まず完成した記事から読み、気になる候補だけ詳しく確かめてください。",
+        
+        
         "",
-        f"## Deep Dive記事一覧（{len(deep_dive_items)}件・Step2詳細スコア順）",
+        f"## 読める状態に整った記事（{len(deep_dive_items)}件）",
         "",
     ]
     lines += (
-        [f"- [{it['name']}]({it['url']}) - {it['score']}点 / {it['source']}" for it in deep_dive_items]
-        or ["（今月はDeep Dive記事の生成はありませんでした）"]
+        [f"- [{it['name']}]({it['url']})" for it in deep_dive_items]
+        or ["（今月は、読める状態に整った記事がまだありません）"]
     )
     lines += [
         "",
-        "## ストックのみ案件 Top10（Step1軽量スクリーニングスコア順）",
+        "## これから詳しく確かめる候補",
+        "以下は収集段階の候補です。完成記事や、利用をすすめる判断とは分けて見てください。",
         "",
     ]
     lines += (
-        [f"- [{it['name']}]({it['url']}) - {it['score']}点 / {it['source']}" for it in stocked_items_top10]
+        [f"- [{it['name']}]({it['url']})" for it in stocked_items_top10]
         or ["（該当なし）"]
     )
     lines += [
@@ -67,9 +68,7 @@ def build_monthly_digest_markdown(target_date, items: list[dict], *, STATUS_DEEP
         "---",
         "",
         "※本ダイジェストはNotion DBへの当月新規保存分を自動集計したものです。",
-        "※「Decision Score」はDeep Dive済み案件ではStep2詳細スコア、ストックのみの"
-        "案件ではStep1軽量スクリーニングスコアであり、採点基準が異なります"
-        "（Statusプロパティで判別可能。詳細はPROP_STATUSのコメントを参照）。",
+        "※完成記事と収集段階の候補は別々の基準で並べています。両方を共通の順位として比べるものではありません。",
     ]
     return "\n".join(lines)
 

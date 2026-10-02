@@ -8,6 +8,14 @@ on:
     branches:
       - main
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - member_monthly_decision_brief_sync.py
+      - member_reader_quality_policy.py
+      - run307_use_decision_member_surface.py
+      - member_customer_surface_contract.py
+      - .github/workflows/member-presentation-sync.yml
 
 permissions:
   contents: read

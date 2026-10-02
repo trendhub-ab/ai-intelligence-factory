@@ -326,8 +326,8 @@ class TestMonthlyDigestReviewIsolation(unittest.TestCase):
         ]
         import datetime as dt
         markdown = pipeline.build_monthly_digest_markdown(dt.date(2026, 8, 31), items)
-        deep_section = markdown.split("## Deep Dive記事一覧", 1)[1].split("## ストックのみ案件", 1)[0]
-        stock_section = markdown.split("## ストックのみ案件", 1)[1]
+        deep_section = markdown.split("## 読める状態に整った記事", 1)[1].split("## これから詳しく確かめる候補", 1)[0]
+        stock_section = markdown.split("## これから詳しく確かめる候補", 1)[1]
         self.assertIn("Ready article", deep_section)
         self.assertNotIn("Review article", deep_section)
         self.assertIn("Review article", stock_section)

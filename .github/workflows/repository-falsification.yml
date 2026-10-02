@@ -87,6 +87,12 @@ jobs:
           python -m unittest tests.test_run307_use_decision_product_guard -v
           python -m unittest tests.test_run307_use_decision_member_surface -v
 
+      - name: Enforce paid-member surface coverage and readable copy
+        run: |
+          python member_surface_coverage_guard.py
+          python -m unittest tests.test_member_customer_surface_contract -v
+          python -m unittest tests.test_member_reader_quality_policy -v
+
       - name: Enforce current public-copy alignment
         run: |
           python run308_public_copy_alignment_guard.py

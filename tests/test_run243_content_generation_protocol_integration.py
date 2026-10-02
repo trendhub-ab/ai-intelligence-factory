@@ -90,7 +90,10 @@ class Run243ContentGenerationProtocolIntegrationTests(unittest.TestCase):
                 STATUS_STOCKED="LIVE_STOCK",
             )
         self.assertEqual(wrapped, direct)
-        self.assertIn("LIVE_STOCK 1件", wrapped)
+        finished, candidates = wrapped.split("## これから詳しく確かめる候補", 1)
+        self.assertNotIn("[Example]", finished)
+        self.assertIn("[Example](https://example.com)", candidates)
+        self.assertNotIn("LIVE_STOCK", wrapped)
 
     def test_pipeline_physically_relinquishes_run243_heavy_bodies(self):
         source = (ROOT / "pipeline.py").read_text(encoding="utf-8")

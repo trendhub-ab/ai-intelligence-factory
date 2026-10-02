@@ -102,27 +102,27 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 
     use_case = alignment.work_case_text(state)
     if use_case:
-        children.append(body._heading("使える場面"))
+        children.append(body._heading("こんな時に向いています"))
         children.append(body._paragraph(use_case))
 
     topic = _clean(state.get("topic"))
     if _show_topic(topic):
-        children.append(body._heading("なぜ今見る？"))
+        children.append(body._heading("今、見る理由"))
         children.append(body._paragraph(topic))
 
     checks = alignment.work_check_text(state)
     if checks:
-        children.append(body._heading("使う前に確認すること"))
+        children.append(body._heading("ここは確認してください"))
         children.append(body._paragraph(checks))
 
     action = alignment.work_action_text(state)
     if action:
-        children.append(body._heading("試す・導入する次の一手"))
+        children.append(body._heading("まずやること"))
         children.append(body._paragraph(action))
 
     update = _use_update_text(state)
     if update:
-        children.append(body._heading("Decision Update｜判断を変える必要がある？"))
+        children.append(body._heading("前回から判断が変わったところ"))
         children.append(body._paragraph(update))
 
     evidence = run219._clean(state.get("evidence"))
@@ -131,7 +131,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 
     urls = body._extract_urls(primary_url, evidence)
     if urls or related_article:
-        children.append(body._heading("参照した情報源"))
+        children.append(body._heading("根拠にした情報"))
         for index, url in enumerate(urls[:5], 1):
             children.append(body._link_paragraph(_source_label(url, index), url))
         if related_article:
@@ -179,9 +179,9 @@ def contract() -> dict[str, Any]:
         "paid_surface": [
             quality.DATE_PREFIX,
             "いま、使える？",
-            "使える場面",
-            "使う前に確認すること",
-            "試す・導入する次の一手",
-            "Decision Update｜判断を変える必要がある？",
+            "こんな時に向いています",
+            "ここは確認してください",
+            "まずやること",
+            "前回から判断が変わったところ",
         ],
     }

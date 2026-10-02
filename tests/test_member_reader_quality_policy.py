@@ -40,8 +40,8 @@ class MemberReaderQualityPolicyTests(unittest.TestCase):
             self.assertEqual("", policy.display_date(bad))
 
     def test_status_and_source_links_cannot_claim_unverified_origin(self):
-        self.assertIn("導入候補", policy.LONG_STATUS["ADOPT"])
-        self.assertIn("検証", policy.status_short("TEST"))
+        self.assertIn("使う候補", policy.LONG_STATUS["ADOPT"])
+        self.assertIn("小さく試す", policy.status_short("TEST"))
         self.assertNotEqual("ADOPT", policy.status_short("ADOPT"))
         self.assertEqual("参照先 1：comet.com",
                          policy.source_link_label("https://www.comet.com/docs/x"))

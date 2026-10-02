@@ -10,9 +10,12 @@ on:
         type: boolean
   workflow_run:
     # The presentation DB is derived from the Subscriber Technology/Decision Brief bridge.
-    # Run only after that bridge has finished so we never race a source update.
+    # Normal Daily fan-out follows that bridge. A presentation-only full migration
+    # is separately authorized by the [member-ux-refresh] main commit marker and
+    # waits for successful full Integration CI; it shares the same writer lock.
     workflows:
       - Subscriber Decision Brief Sync
+      - Integration Reconciliation CI
     types: [completed]
 
 # Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
@@ -33,12 +36,18 @@ jobs:
   sync:
     if: >-
       github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' &&
+       (github.event.workflow_run.name == 'Subscriber Decision Brief Sync' ||
+        (github.event.workflow_run.name == 'Integration Reconciliation CI' &&
+         contains(github.event.workflow_run.head_commit.message, '[member-ux-refresh]'))))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Only the explicit migration route is pinned to the CI-verified commit.
+          ref: ${{ github.event.workflow_run.name == 'Integration Reconciliation CI' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -77,6 +86,8 @@ jobs:
           python -m unittest tests/test_run271_member_body_delta_sync.py
           python -m unittest tests/test_run271_1_member_body_checkpoint.py
           python -m unittest tests/test_member_monthly_decision_brief_sync.py
+          python -m unittest tests/test_member_customer_surface_contract.py
+          python member_surface_coverage_guard.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -115,7 +126,7 @@ jobs:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_BODY_CHANGED_SINCE: ${{ env.MEMBER_BODY_CHANGED_SINCE }}
-          MEMBER_BODY_FORCE_FULL: ${{ github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
+          MEMBER_BODY_FORCE_FULL: ${{ github.event.workflow_run.name == 'Integration Reconciliation CI' || github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
 
       - name: Refresh paid monthly Decision Brief from the current member DB
         run: python member_monthly_decision_brief_sync.py
