@@ -72,9 +72,9 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         children = run307._build_children(self._state())
         headings = {text for _, text in body._body_fingerprint(children) if text}
         self.assertIn("いま、使える？", headings)
-        self.assertIn("使える場面", headings)
-        self.assertIn("使う前に確認すること", headings)
-        self.assertIn("試す・導入する次の一手", headings)
+        self.assertIn("こんな時に向いています", headings)
+        self.assertIn("ここは確認してください", headings)
+        self.assertIn("まずやること", headings)
         self.assertNotIn("顧客にどう答える？", headings)
         self.assertNotIn("提案できる場面", headings)
         self.assertNotIn("提案前に確認すること", headings)
@@ -95,7 +95,7 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         state["evidence"] = "https://www.comet.com/docs/opik/integrations/dify"
         state["last_reviewed"] = "2026-08-29T03:14:00Z"
         texts = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
-        self.assertIn("参照した情報源", texts)
+        self.assertIn("根拠にした情報", texts)
         self.assertIn("参照先 1：dify.ai", texts)
         self.assertIn("参照先 2：comet.com", texts)
         self.assertNotIn("公式・一次情報 2", texts)
@@ -128,10 +128,10 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         state = self._state()
         state["topic"] = "制作・検証環境として非常に有力。"
         texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
-        self.assertNotIn("なぜ今見る？", texts)
+        self.assertNotIn("今、見る理由", texts)
         state["topic"] = "公式APIと利用条件が更新された。"
         texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
-        self.assertIn("なぜ今見る？", texts)
+        self.assertIn("今、見る理由", texts)
         self.assertEqual("", run307._last_reviewed_label("2026-99-33"))
 
     def test_status_copy_is_generic(self):
@@ -195,10 +195,10 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
                 "これは何？",
                 "根拠の確認日",
                 "いま、使える？",
-                "使える場面",
-                "なぜ今見る？",
-                "使う前に確認すること",
-                "試す・導入する次の一手",
+                "こんな時に向いています",
+                "今、見る理由",
+                "ここは確認してください",
+                "まずやること",
             ],
             result["reader_order"],
         )
@@ -212,8 +212,8 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         }
         current_children = [
             body._heading("いま、使える？"),
-            body._heading("使える場面"),
-            body._heading("試す・導入する次の一手"),
+            body._heading("こんな時に向いています"),
+            body._heading("まずやること"),
         ]
         self.assertTrue(
             run219._looks_like_generated_member_callout(
