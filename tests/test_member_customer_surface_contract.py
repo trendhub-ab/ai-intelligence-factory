@@ -72,6 +72,28 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
         self.assertNotIn("[Unfinished]", finished)
         self.assertIn("[Unfinished]", candidates)
 
+    def test_nested_member_renderer_must_be_classified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "components").mkdir()
+            (root / "components" / "member_new_page.py").write_text("def render(): return 'page'")
+            self.assertTrue(any("unclassified" in e for e in contract.validate_repository(root)))
+
+    def test_new_renderer_in_existing_owner_must_be_classified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "content_generation_protocol.py").write_text("def build_new_member_page(): return 'new page'")
+            self.assertTrue(any("unclassified customer entrypoint" in e for e in contract.validate_repository(root)))
+
+    def test_member_copy_push_refreshes_full_live_body_from_main(self):
+        import yaml
+        workflow = yaml.load((ROOT / ".github/workflows/member-presentation-sync.yml").read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(["main"], workflow["on"]["push"]["branches"])
+        self.assertIn("run307_use_decision_member_surface.py", workflow["on"]["push"]["paths"])
+        steps = workflow["jobs"]["sync"]["steps"]
+        body = next(s for s in steps if s.get("run") == "python run219_member_human_language_ui.py body")
+        self.assertIn("github.event_name == 'push'", body["env"]["MEMBER_BODY_FORCE_FULL"])
+
 
 if __name__ == "__main__":
     unittest.main()
