@@ -51,6 +51,22 @@ class Run243ContentGenerationProtocolModuleTests(unittest.TestCase):
         self.assertIn("ARTICLE本文側ではこの4見出しを重複出力しない", source)
         self.assertIn("それ以降の見出しは記事固有", source)
 
+    def test_writer_claim_budget_blocks_unsupported_specificity_without_weakening_gates(self):
+        rules = protocol._source_fact_discipline("GitHub")
+        self.assertIn("Pre-writing Claim Budget｜初稿前に内部で固定", rules)
+        self.assertIn("固有名詞", rules)
+        self.assertIn("数値・期間・単位", rules)
+        self.assertIn("現在仕様・提供状況", rules)
+        self.assertIn("競合比較", rules)
+        self.assertIn("モデル内部知識や一般論から新しい製品名、API名、機能名、数値", rules)
+        self.assertIn("Human Appealを強めるためにClaim Budgetの外側へ事実を足さない", rules)
+
+    def test_human_narrative_hook_must_stay_inside_claim_budget(self):
+        rules = protocol._human_narrative_editorial_style_rules()
+        self.assertIn("HookはPre-writing Claim Budgetの内側だけで作る", rules)
+        self.assertIn("事実を増やすのではなく", rules)
+        self.assertIn("原資料にある制約や論点の衝突", rules)
+
     def test_plaintext_heading_repair_is_conservative_for_short_text(self):
         body = "短い本文です。\n\n見出し候補\n\nまだ短い本文です。"
         repaired, promoted = protocol._promote_plaintext_section_titles(body)
