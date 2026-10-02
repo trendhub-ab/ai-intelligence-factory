@@ -246,6 +246,15 @@ def _install_source_stability(pipeline_module: Any) -> None:
     source_stability_layer.install(pipeline_module)
 
 
+def _install_product_review_assessment_rescue(pipeline_module: Any) -> None:
+    """Install narrow DI rescue only in the explicit Product Review child runtime."""
+    if os.environ.get("AIIF_PRODUCT_REVIEW_RUNTIME", "").strip().lower() != "true":
+        return
+    import product_review_assessment_rescue
+
+    product_review_assessment_rescue.install(pipeline_module)
+
+
 def install(pipeline_module: Any) -> Any:
     """Redirect every existing mutable GitHub state writer to the runtime-state branch."""
     branch = apply_runtime_state_env()
@@ -272,6 +281,7 @@ def install(pipeline_module: Any) -> Any:
     _install_arxiv_stability(pipeline_module, branch)
     _install_arxiv_exhaustion_circuit(pipeline_module)
     _install_source_stability(pipeline_module)
+    _install_product_review_assessment_rescue(pipeline_module)
     return pipeline_module
 
 
