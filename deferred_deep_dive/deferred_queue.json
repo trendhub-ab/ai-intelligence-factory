@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-01T11:19:21.746518+00:00",
+  "updated_at": "2026-10-02T08:42:04.344947+00:00",
   "items": [
     {
       "key": "https://news.ycombinator.com/item?id=49878806",
@@ -541,43 +541,6 @@
       "deep_dive_priority_score": 74.1
     },
     {
-      "key": "https://hntrbrk.com/breaking-news/muse-doxxing",
-      "deferred_at": "2026-09-29T11:40:44.175406+00:00",
-      "expires_at": "2026-10-01T11:40:44.175406+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Meta's new AI agent built lists of people in vulnerable groups on request",
-        "originalTitle": "Meta's new AI agent built lists of people in vulnerable groups on request",
-        "displayName": "Meta's new AI agent built lists of people in vulnerable groups on request",
-        "sourceLanguage": "en",
-        "url": "https://hntrbrk.com/breaking-news/muse-doxxing",
-        "description": "Meta's new AI agent built lists of people in vulnerable groups on request",
-        "stargazerCount": 6,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-29T08:06:40Z",
-        "sourceContext": "HN points=6 comments=0 matched_query=\"AI agent\"",
-        "primaryUrl": "https://hntrbrk.com/breaking-news/muse-doxxing",
-        "sourceDetails": {
-          "hn_id": "49889780",
-          "hn_url": "https://news.ycombinator.com/item?id=49889780",
-          "external_url": "https://hntrbrk.com/breaking-news/muse-doxxing",
-          "comments": 0,
-          "matched_query": "\"AI agent\"",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ea479ff-dca9-81a9-afc3-f419e1973c1a",
-      "score": 75,
-      "reason": "AIエージェントの脆弱性・安全性に関わる重大なインシデント。",
-      "commercial_score": 70,
-      "shelf_life_score": 30,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 73.25
-    },
-    {
       "key": "https://arxiv.org/abs/2609.21894",
       "deferred_at": "2026-09-21T08:45:22.717462+00:00",
       "expires_at": "2026-11-20T08:45:22.717462+00:00",
@@ -648,6 +611,117 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
+      "deferred_at": "2026-10-02T08:42:04.344613+00:00",
+      "expires_at": "2026-10-16T08:42:04.344613+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "The failure modes of Claude Code in a guided 60h project",
+        "originalTitle": "The failure modes of Claude Code in a guided 60h project",
+        "displayName": "The failure modes of Claude Code in a guided 60h project",
+        "sourceLanguage": "en",
+        "url": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
+        "description": "The failure modes of Claude Code in a guided 60h project",
+        "stargazerCount": 2,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-01T20:10:53Z",
+        "sourceContext": "HN points=2 comments=1 matched_query=Claude",
+        "primaryUrl": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
+        "sourceDetails": {
+          "hn_id": "49926497",
+          "hn_url": "https://news.ycombinator.com/item?id=49926497",
+          "external_url": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
+          "comments": 1,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ed479ff-dca9-8191-ba18-ecf641a00dab",
+      "score": 65,
+      "reason": "長時間プロジェクトにおけるClaude Codeの失敗事例分析",
+      "commercial_score": 75,
+      "shelf_life_score": 45,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 68.5
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49927734",
+      "deferred_at": "2026-10-02T08:42:04.344758+00:00",
+      "expires_at": "2026-10-16T08:42:04.344758+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
+        "originalTitle": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
+        "displayName": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
+        "sourceLanguage": "en",
+        "url": "https://www.reuters.com/business/broadcom-lend-anthropic-up-42-billion-lease-its-chips-filing-says-2026-10-01/",
+        "description": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-01T22:20:55Z",
+        "sourceContext": "HN points=5 comments=2 matched_query=Anthropic",
+        "primaryUrl": "https://www.reuters.com/business/broadcom-lend-anthropic-up-42-billion-lease-its-chips-filing-says-2026-10-01/",
+        "sourceDetails": {
+          "hn_id": "49927734",
+          "hn_url": "https://news.ycombinator.com/item?id=49927734",
+          "external_url": "https://www.reuters.com/business/broadcom-lend-anthropic-up-42-billion-lease-its-chips-filing-says-2026-10-01/",
+          "comments": 2,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ed479ff-dca9-814f-b0e3-c26bf661decb",
+      "score": 62,
+      "reason": "BroadcomによるAnthropicへのチップ調達向け融資",
+      "commercial_score": 70,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 64.8
+    },
+    {
+      "key": "https://github.com/ryanalberts/best-of-agent-harnesses",
+      "deferred_at": "2026-10-02T08:42:04.344851+00:00",
+      "expires_at": "2026-12-01T08:42:04.344851+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
+        "originalTitle": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
+        "displayName": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
+        "sourceLanguage": "en",
+        "url": "https://github.com/ryanalberts/best-of-agent-harnesses",
+        "description": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
+        "stargazerCount": 6,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-02T01:57:56Z",
+        "sourceContext": "HN points=6 comments=0 matched_query=\"AI agent\"",
+        "primaryUrl": "https://github.com/ryanalberts/best-of-agent-harnesses",
+        "sourceDetails": {
+          "hn_id": "49929121",
+          "hn_url": "https://news.ycombinator.com/item?id=49929121",
+          "external_url": "https://github.com/ryanalberts/best-of-agent-harnesses",
+          "comments": 0,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ed479ff-dca9-811c-8959-d5a550807924",
+      "score": 60,
+      "reason": "AIエージェントハーネスのランク付けリストとリポジトリ",
+      "commercial_score": 65,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 61.75
     }
   ]
 }
