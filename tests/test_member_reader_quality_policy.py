@@ -40,21 +40,17 @@ class MemberReaderQualityPolicyTests(unittest.TestCase):
             self.assertEqual("", policy.display_date(bad))
 
     def test_long_generated_action_quotes_do_not_repeat_the_use_case(self):
-        import run214_member_action_specificity as actions
         use = "順次・並列・DAG等の柔軟なトポロジやMCP統合を必要とする複雑なマルチエージェント連携システムの開発"
         tail = "代表タスクを20件程度用意し、小規模テストで品質・速度・費用を現行候補と比較する。"
         state = {"best_for": use, "next_action": f"「{use}」を想定し、{tail}"}
         self.assertEqual(tail, policy.reader_action(state))
-        self.assertEqual(tail, actions.contextualize_template_action(state, tail))
         self.assertIn(use, state["next_action"])
 
     def test_long_deep_tech_action_retains_the_recheck_instructions(self):
-        import run214_member_action_specificity as actions
         use = "公開実装を再現し、複数の評価データを同じ条件で比較して研究の妥当性を確かめたい研究開発チーム"
         tail = "次回レビュー時に性能・再現性・公開実装の有無が変わったか確認する。"
         state = {"best_for": use, "next_action": f"「{use}」を想定し、{tail}"}
         self.assertEqual(tail, policy.reader_action(state))
-        self.assertEqual(tail, actions.contextualize_template_action(state, actions._WATCH_DEEP_TECH_TEMPLATE))
 
     def test_topic_quote_and_custom_actions_are_not_blindly_cut(self):
         focus = "テキストだけでなく画像・音声・動画なども扱い、巨大データをストリーミング処理できる標準的なデータ基盤として成熟しています"

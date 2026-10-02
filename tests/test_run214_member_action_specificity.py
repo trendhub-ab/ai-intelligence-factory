@@ -24,6 +24,13 @@ class Run214MemberActionSpecificityTests(unittest.TestCase):
             "evidence": "https://example.com/source",
         }
 
+    def test_long_context_is_not_repeated_in_generated_first_action(self):
+        use = "順次・並列・DAG等の柔軟なトポロジやMCP統合を必要とする複雑なマルチエージェント連携システムの開発"
+        tail = "代表タスクを20件程度用意し、小規模テストで品質・速度・費用を現行候補と比較する。"
+        self.assertEqual(tail, run214.contextualize_template_action({"best_for": use}, tail))
+        watch_tail = "次回レビュー時に性能・再現性・公開実装の有無が変わったか確認する。"
+        self.assertEqual(watch_tail, run214.contextualize_template_action({"best_for": use}, run214._WATCH_DEEP_TECH_TEMPLATE))
+
     def test_watch_deep_tech_replaces_vague_opening_with_best_for_context(self) -> None:
         state = self._state()
         out = run214.contextualize_template_action(
