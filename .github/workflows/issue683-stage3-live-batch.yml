@@ -1,10 +1,7 @@
 name: Issue 683 Stage 3 Live Batch
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/issue683-stage3-live-batch.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -65,8 +62,6 @@ jobs:
           GEMINI_PERSISTENT_COUNTER_PATH: '.runtime/gemini_daily_usage.json'
           GEMINI_COUNTER_BRANCH: 'main'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
-          GEMINI_35_FLASH_LITE_DAILY_BUDGET: '450'
-          GEMINI_31_FLASH_LITE_DAILY_BUDGET: '450'
           GEMINI_36_FLASH_DAILY_BUDGET: '18'
           GEMINI_37_FLASH_DAILY_BUDGET: '18'
           GEMINI_38_FLASH_DAILY_BUDGET: '18'
