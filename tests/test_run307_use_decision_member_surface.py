@@ -52,6 +52,19 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
             "related_article": "",
         }
 
+    def test_detail_does_not_repeat_risk_in_decision_or_long_action_context(self):
+        state = self._state()
+        state["best_for"] = "順次・並列・DAG等の柔軟なトポロジやMCP統合を必要とする複雑なマルチエージェント連携システムの開発"
+        tail = "代表タスクを20件程度用意し、小規模テストで品質・速度・費用を現行候補と比較する。"
+        state["next_action"] = f"「{state['best_for']}」を想定し、{tail}"
+        state["judgment_reason"] = state["main_risk"] + "そのため、本番導入の前に小さく試して確認します。"
+        before = dict(state)
+        rendered = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
+        self.assertEqual(1, rendered.count(state["main_risk"]))
+        self.assertNotIn("を想定し、", rendered)
+        self.assertIn(tail, rendered)
+        self.assertEqual(before, state)
+
     def test_contract_is_generic_and_supports_self_development(self):
         contract = run307.contract()
         self.assertEqual("use_decision_intelligence", contract["product_purpose"])

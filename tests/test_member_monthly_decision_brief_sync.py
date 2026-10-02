@@ -49,6 +49,18 @@ def state(
 
 
 class MemberMonthlyDecisionBriefTests(unittest.TestCase):
+    def test_live_style_copy_is_concise_and_risk_appears_once(self):
+        record = state("Swarms", 76, rank=1)
+        record["best_for"] = "順次・並列・DAG等の柔軟なトポロジやMCP統合を必要とする複雑なマルチエージェント連携システムの開発"
+        tail = "代表タスクを20件程度用意し、小規模テストで品質・速度・費用を現行候補と比較する。"
+        record["next_action"] = f"「{record['best_for']}」を想定し、{tail}"
+        record["judgment_reason"] = record["main_risk"] + "そのため、本番導入の前に小さく試して確認します。"
+        _, blocks, _, _ = brief.build_blocks([record], now=datetime(2026, 10, 1, tzinfo=timezone.utc))
+        rendered = str(blocks)
+        self.assertNotIn("を想定し、", rendered)
+        self.assertIn(tail, rendered)
+        self.assertEqual(1, rendered.count(record["main_risk"]))
+
     def test_top_prefers_existing_home_rank_then_score(self):
         rows = [
             state("Rank2", 82, rank=2),

@@ -44,7 +44,7 @@ def _clean(value: Any) -> str:
 def _use_decision_text(state: dict[str, Any]) -> str:
     status = str(state.get("status") or "").strip().upper()
     lead = _STATUS_USE.get(status, "利用条件を確認してから、使えるか判断する")
-    reason = _clean(state.get("judgment_reason"))
+    reason = _clean(quality.reader_reason(state))
     return f"{lead}。{reason}" if reason else f"{lead}。"
 
 
@@ -115,7 +115,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._heading("ここは確認してください"))
         children.append(body._paragraph(checks))
 
-    action = alignment.work_action_text(state)
+    action = alignment.work_action_text({**state, "next_action": quality.reader_action(state)})
     if action:
         children.append(body._heading("まずやること"))
         children.append(body._paragraph(action))
