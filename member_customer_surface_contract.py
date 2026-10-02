@@ -49,11 +49,6 @@ SURFACES = {
         "audit": "tests/test_member_monthly_decision_brief_sync.py",
         "purpose": "scan-first monthly shortlist: decision, meaning, action, evidence",
     },
-    "monthly_digest": {
-        "owner": "content_generation_protocol.py",
-        "audit": "run174_monthly_digest_integrity.py",
-        "purpose": "reader-facing index of what to read now and what entered the searchable stock",
-    },
     "member_db_views": {
         "owner": "member_customer_surface_contract.py",
         "audit": "member_surface_coverage_guard.py",
