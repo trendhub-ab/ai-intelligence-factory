@@ -137,7 +137,7 @@ class Run273ProductionFindingRegressionTests(unittest.TestCase):
         block = source[start:end]
         self.assertIn('GEMINI_38_FLASH_DAILY_BUDGET: "18"', block)
         self.assertIn("gemini-3.8-flash", block)
-        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', block)
+        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "4"', block)
 
 
 if __name__ == "__main__":
