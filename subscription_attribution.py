@@ -219,6 +219,9 @@ def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
             "commercial_value_score": manifest.get("commercial_value_score"),
             "shelf_life": manifest.get("shelf_life"),
             "portfolio_topic": manifest.get("portfolio_topic"),
+            "cta_copy_id": manifest.get("cta_copy_id") or "legacy_unversioned",
+            "cta_heading": manifest.get("cta_heading") or "",
+            "cta_link_label": manifest.get("cta_link_label") or "",
             "metrics": sums,
             "coverage_rows": coverage,
             "attribution_methods": sorted({r.get("attribution_method") for r in article_rows if r.get("attribution_method")}),
@@ -250,6 +253,7 @@ def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
         "revenue_measurement_readiness": readiness,
         "performance_by_source": _group_performance(articles, "source"),
         "performance_by_topic": _group_performance(articles, "portfolio_topic"),
+        "performance_by_cta_copy": _group_performance(articles, "cta_copy_id"),
         "articles": articles,
     }
 
