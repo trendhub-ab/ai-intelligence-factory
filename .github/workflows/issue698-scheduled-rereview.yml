@@ -42,6 +42,7 @@ jobs:
             tests/test_product_review_assessment_rescue.py \
             tests/test_gemini_provider_resilience.py \
             tests/test_run244_decision_product_protocol_module.py
+            tests/test_issue698_scheduled_rereview.py
 
       - name: Batch A
         run: python member_verified_rereview_apply.py --queue-limit 5 --stale-days 30 --max-reviews 1 --request-budget 4
