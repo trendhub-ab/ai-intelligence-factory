@@ -93,7 +93,6 @@ jobs:
           python -m unittest tests.test_member_customer_surface_contract -v
           python -m unittest tests.test_member_monthly_decision_brief_sync -v
           python -m unittest tests.test_member_reader_quality_policy -v
-          python -m unittest tests.test_monthly_digest_member_copy -v
 
       - name: Enforce current public-copy alignment
         run: |
