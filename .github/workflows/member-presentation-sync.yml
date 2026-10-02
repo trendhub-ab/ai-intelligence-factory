@@ -45,6 +45,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Only the explicit migration route is pinned to the CI-verified commit.
+          ref: ${{ github.event.workflow_run.name == 'Integration Reconciliation CI' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
