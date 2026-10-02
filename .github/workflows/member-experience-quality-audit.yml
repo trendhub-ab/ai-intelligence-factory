@@ -41,7 +41,7 @@ jobs:
       - name: Verify deterministic copy and member audit offline
         run: |
           python member_surface_coverage_guard.py
-          python -m unittest -q tests.test_member_offer_copy tests.test_member_experience_quality_audit tests.test_member_reader_quality_policy tests.test_member_experience_audit_workflow_security tests.test_run307_use_decision_member_surface tests.test_member_customer_surface_contract tests.test_member_monthly_decision_brief_sync tests.test_monthly_digest_member_copy
+          python -m unittest -q tests.test_member_offer_copy tests.test_member_experience_quality_audit tests.test_member_reader_quality_policy tests.test_member_experience_audit_workflow_security tests.test_run307_use_decision_member_surface tests.test_member_customer_surface_contract tests.test_member_monthly_decision_brief_sync
       - name: Canonical read-only audit (public output contains aggregates only)
         run: |
           test -z "${GEMINI_API_KEY:-}"
