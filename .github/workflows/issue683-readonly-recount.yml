@@ -1,0 +1,54 @@
+name: Issue 683 Read-Only Backlog Recount
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/issue683-readonly-recount.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: member-derived-notion-writes
+  cancel-in-progress: false
+
+jobs:
+  recount:
+    if: github.actor == 'trendhub-ab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Verify read-only dry-run contracts
+        run: |
+          python -m pytest -q \
+            tests/test_issue668_verified_rereview_dryrun.py \
+            tests/test_issue668_verified_rereview_apply.py
+      - name: Recount stale paid-review backlog with zero model calls
+        run: python member_verified_rereview_dryrun.py --limit 5 --stale-days 30
+        env:
+          TZ: 'Asia/Tokyo'
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
