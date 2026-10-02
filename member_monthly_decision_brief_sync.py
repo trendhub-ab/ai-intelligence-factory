@@ -241,9 +241,9 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
         status = quality.status_short(state.get("status"))
         review = quality.review_badge(state.get("last_reviewed"), as_of=as_of)
         use_case = str(state.get("best_for") or state.get("plain_summary") or "").strip()
-        action = str(state.get("next_action") or "").strip()
+        action = quality.reader_action(state)
         topic = str(state.get("topic") or "").strip()
-        reason = str(state.get("judgment_reason") or "").strip()
+        reason = quality.reader_reason(state)
         risk = str(state.get("main_risk") or "").strip()
         score = int(round(_score(state.get("score"))))
         page_url = _page_url(state.get("page_id") or "")
@@ -316,7 +316,7 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
     for state in changes:
         direction = _change_direction_text(state)
         reason = str(state.get("change_reason") or state.get("topic") or "").strip()
-        action = str(state.get("next_action") or "").strip()
+        action = quality.reader_action(state)
         blocks.append(_heading(3, str(state["name"])))
         blocks.append(_paragraph(_rt(
             quality.review_disclosure(state.get("last_reviewed"), as_of=as_of)
