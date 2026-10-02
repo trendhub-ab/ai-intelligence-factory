@@ -142,10 +142,10 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         for text in (adopt, test, watch, avoid):
             self.assertNotIn("顧客", text)
             self.assertNotIn("提案", text)
-        self.assertIn("導入候補", adopt)
-        self.assertIn("小さく検証", test)
-        self.assertIn("採用を急がず", watch)
-        self.assertIn("代替案", avoid)
+        self.assertIn("使う候補", adopt)
+        self.assertIn("小さく試したい", test)
+        self.assertIn("いまは急がず", watch)
+        self.assertIn("別の候補", avoid)
 
     def test_decision_update_uses_usable_language_without_raw_delta(self):
         positive = run307._use_update_text(self._state(delta=12))
