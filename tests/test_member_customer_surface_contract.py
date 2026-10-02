@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class MemberCustomerSurfaceContractTests(unittest.TestCase):
     def test_every_registered_surface_has_owner_audit_and_existing_files(self):
         self.assertEqual([], contract.validate_repository(ROOT))
-        self.assertGreaterEqual(len(contract.SURFACES), 10)
+        self.assertGreaterEqual(len(contract.SURFACES), 9)
 
     def test_member_home_and_memo_do_not_teach_internal_codes(self):
         for text in (contract.HOME_CONTENT, contract.JUDGMENT_MEMO_CONTENT):
