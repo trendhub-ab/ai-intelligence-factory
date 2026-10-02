@@ -14,6 +14,7 @@ def _product_review_prompt(repo: dict, source_info: dict, current: dict) -> str:
     return (
         "以下の一次情報だけを使い、会員向けTechnology Decision Intelligenceを評価せよ。記事は書かない。"
         "入力外の市場シェア、価格、利用実績、競合優位性を推測しない。"
+        "一次情報に明記されていない『デファクト』『デファクトスタンダード』『業界標準』『事実上の標準』などの市場標準表現を使わない。"
         "categoryはSource種別や既存Categoryをコピーせず、一次情報で確認できる主用途・主機能から判断し、"
         "複数カテゴリが同程度または根拠が弱い場合はOTHERを選ぶ。"
         "adoption_scoreは Evidence Quality 25, Production Maturity 25, Use-case Utility / Fit 20, "
