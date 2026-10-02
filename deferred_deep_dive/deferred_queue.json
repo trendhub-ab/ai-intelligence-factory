@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-02T09:36:27.127622+00:00",
+  "updated_at": "2026-10-02T10:16:14.034553+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2609.15939",
@@ -648,6 +648,80 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 61.75
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49925340",
+      "deferred_at": "2026-10-02T10:16:14.034259+00:00",
+      "expires_at": "2026-10-04T10:16:14.034259+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic Said to Target Mega-IPO Before Thanksgiving Holiday",
+        "originalTitle": "Anthropic Said to Target Mega-IPO Before Thanksgiving Holiday",
+        "displayName": "Anthropic Said to Target Mega-IPO Before Thanksgiving Holiday",
+        "sourceLanguage": "en",
+        "url": "https://www.bloomberg.com/news/articles/2026-10-01/anthropic-said-to-target-mega-ipo-before-thanksgiving-holiday",
+        "description": "Anthropic Said to Target Mega-IPO Before Thanksgiving Holiday",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-01T18:32:14Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=Anthropic",
+        "primaryUrl": "https://www.bloomberg.com/news/articles/2026-10-01/anthropic-said-to-target-mega-ipo-before-thanksgiving-holiday",
+        "sourceDetails": {
+          "hn_id": "49925340",
+          "hn_url": "https://news.ycombinator.com/item?id=49925340",
+          "external_url": "https://www.bloomberg.com/news/articles/2026-10-01/anthropic-said-to-target-mega-ipo-before-thanksgiving-holiday",
+          "comments": 0,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ed479ff-dca9-819e-9de3-ecc706cfafad",
+      "score": 60,
+      "reason": "Anthropicによるホリデーシーズン前のメガIPO観測報道。",
+      "commercial_score": 60,
+      "shelf_life_score": 20,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 60.0
+    },
+    {
+      "key": "https://arxiv.org/abs/2609.40143",
+      "deferred_at": "2026-10-02T10:16:14.034355+00:00",
+      "expires_at": "2026-12-01T10:16:14.034355+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "From DNA Design to DNA Slimming: Auditable Agentic Discovery of a Deletion-Only Designer",
+        "originalTitle": "From DNA Design to DNA Slimming: Auditable Agentic Discovery of a Deletion-Only Designer",
+        "displayName": "From DNA Design to DNA Slimming: Auditable Agentic Discovery of a Deletion-Only Designer",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2609.40143v1",
+        "description": "Compact regulatory DNA can free up space in vector payloads, reduce synthesis and assay burden, and expose which sequence features drive predicted activity. Yet most model-based nucleic-acid designers optimize fixed-length sequences through substitutions; they do not ask which bases of an existing functional element can be removed while retaining predicted activity. We define the task of sequence slimming as selecting an exact-length, order-preserving subsequence while retaining activity. Modele",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-09-30T16:51:23Z",
+        "sourceContext": "Compact regulatory DNA can free up space in vector payloads, reduce synthesis and assay burden, and expose which sequence features drive predicted activity. Yet most model-based nucleic-acid designers optimize fixed-length sequences through substitutions; they do not ask which bases of an existing functional element can be removed while retaining predicted activity. We define the task of sequence slimming as selecting an exact-length, order-preserving subsequence while retaining activity. Modeled on the design benchmark NucleoBench, we propose a quantitative evaluation for slimming that balances sequence reduction with maintaining function. Each slimmer must return both the subsequence and its source indices, which can be used to verify that the slimmer obeyed task requirements. To our knowledge, this is the first dedicated benchmark of this deletion-only problem. The coding agent Empirical Research Assistant (ERA) then searched over executable designer programs. ERA received the task prompt and a successful substitution-only designer GrAdaBeam as a starting program, and it modified the designer to produce GRADASLIM. We report held-out evaluations for five transcription-factor binding targets, comparing random, greedy, and ERA-guided slimming at 400 and 100 bp. ERA has the highest mean in 9/10 settings. Paired bootstrap intervals for ERA minus greedy are above zero in all five 400-bp settings, below zero in one 100-bp setting, and overlap zero in the remaining four.",
+        "primaryUrl": "https://arxiv.org/abs/2609.40143v1",
+        "sourceDetails": {
+          "authors": [
+            "Joel Shor"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.NE",
+            "q-bio.GN"
+          ]
+        }
+      },
+      "notion_page_id": "3ed479ff-dca9-81c4-a570-d30a41d1cb27",
+      "score": 60,
+      "reason": "DNA配列の削除特化型デザインにおけるエージェント駆動探索。",
+      "commercial_score": 40,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 53.0
     }
   ]
 }
