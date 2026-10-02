@@ -183,7 +183,7 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
         pipeline._notion_page_has_manuscript_child = lambda page_id, headers: False
         with mock.patch.object(
             article_revalidation,
-            "_automatic_stale_ready_recovery_allowed",
+            "_automatic_existing_recovery_allowed",
             return_value=False,
         ):
             generated, rank = article_revalidation.run_existing_editorial_recovery(
@@ -191,6 +191,40 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
             )
         self.assertEqual((generated, rank), (0, 0))
         self.assertEqual(calls, [])
+
+    def test_editorial_review_already_delivered_is_skipped_before_provider_and_ready_count(self):
+        sid = "c" * 32
+        rows = [_row(sid, "editorial-delivered")]
+        statuses = {sid: ("Needs Editorial Review", "Deep Dive")}
+        pipeline, calls = _pipeline(rows, statuses)
+        with mock.patch.object(
+            article_revalidation,
+            "_automatic_existing_recovery_allowed",
+            return_value=False,
+        ) as delivery_guard:
+            generated, rank = article_revalidation.run_existing_editorial_recovery(
+                pipeline, generated_count=0, next_candidate_rank=7
+            )
+        self.assertEqual((generated, rank), (0, 7))
+        self.assertEqual(calls, [])
+        delivery_guard.assert_called_once_with(pipeline, sid)
+
+    def test_editorial_review_waiting_can_recover(self):
+        sid = "d" * 32
+        rows = [_row(sid, "editorial-waiting")]
+        statuses = {sid: ("Needs Editorial Review", "Deep Dive")}
+        pipeline, calls = _pipeline(rows, statuses)
+        with mock.patch.object(
+            article_revalidation,
+            "_automatic_existing_recovery_allowed",
+            return_value=True,
+        ):
+            generated, rank = article_revalidation.run_existing_editorial_recovery(
+                pipeline, generated_count=0, next_candidate_rank=0
+            )
+        self.assertEqual((generated, rank), (1, 1))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1]["candidate_origin"], "existing_editorial_recovery")
 
     def test_stale_ready_waiting_can_recover_and_persist(self):
         sid = "b" * 32
@@ -200,7 +234,7 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
         pipeline._notion_page_has_manuscript_child = lambda page_id, headers: False
         with mock.patch.object(
             article_revalidation,
-            "_automatic_stale_ready_recovery_allowed",
+            "_automatic_existing_recovery_allowed",
             return_value=True,
         ):
             generated, rank = article_revalidation.run_existing_editorial_recovery(
