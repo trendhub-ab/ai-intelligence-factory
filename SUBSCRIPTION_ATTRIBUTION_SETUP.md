@@ -63,3 +63,32 @@ python subscription_attribution.py \
 現段階では`metrics_rollup.json`をCommercial Value / Source ROI / Deep Dive Priorityへ自動反映しない。
 
 実績件数が少ない、あるいは帰属精度が低い状態で記事選定を自己強化すると、偶然の1件を「勝ち筋」と誤学習するため。Revenue Feedback Loopは十分な実測データが溜まった後に別Gate付きで実装する。
+
+
+## 7. Zero-model CV / コピー改善診断
+
+`subscription_attribution.py` は集計と同時に
+`subscription_attribution/conversion_copy_diagnostics.json` を生成する。
+
+この診断はGemini/APIを一切使わず、集計実績だけから次を区別する。
+
+- `CTA_COPY_OR_PLACEMENT`: 閲覧母数はあるがCTAクリック率が弱い。CTA見出し・価値提案・配置を人間レビューする。
+- `OFFER_OR_LP`: CTAクリックは取れているが加入転換が弱い。membership LP・価格納得感・加入手順を人間レビューする。
+- `TRACKING_GAP` / `POST_CLICK_UNMEASURED`: 計測不足。コピーを変更せず計測を先に直す。
+- `INSUFFICIENT_DATA`: 母数不足。変更しない。
+- `NO_COPY_CHANGE_INDICATED`: 現時点でコピー変更を示す材料なし。
+
+記事・Source・Portfolio Topic・CTA Copy Versionごとに集計する。
+今後のReady manifestには実際に表示したCTAの `cta_copy_id` / 見出し / リンクラベルを保存するため、
+コピー変更後も旧版と新版を混ぜずに比較できる。
+
+### 安全境界
+
+- model calls: 0
+- subscriber PII: 保存禁止
+- public copy mutation: 0
+- note publish/update: 0
+- production ranking feedback: 無効のまま
+- 改善案は「人間が見るべき箇所」の仮説だけ。置換コピーは自動生成しない
+
+十分な実測が溜まった後だけ、人間承認でコピー実験を設計する。

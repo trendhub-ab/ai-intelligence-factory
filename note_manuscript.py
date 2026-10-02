@@ -13,6 +13,13 @@ from candidate_identity import canonicalize_url
 from publication_source_contract import READER_SOURCE_LABELS as _READER_SOURCE_LABELS, SOURCE_RIGHTS_NOTE
 
 DIVIDER_LINE = "\n\n---\n\n"
+SUBSCRIPTION_CTA_COPY_ID = "decision-db-summary-v1"
+SUBSCRIPTION_CTA_HEADING = "調査と判断の時間を減らしたい方へ"
+SUBSCRIPTION_CTA_LINK_LABEL = "会員向け意思決定DB＋月次サマリーを見る"
+SUBSCRIPTION_CTA_BODY = (
+    "無料記事では重要テーマを最後まで公開しています。会員向けには、"
+    "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。"
+)
 ARTICLE_DISCLAIMER = (
     "※本記事に含まれる見解・提案は筆者個人の意見であり、特定の効果・成果を保証するものではありません。"
     "導入・利用にあたっては、一次情報と自社の条件を確認してください。\n"
@@ -133,10 +140,9 @@ def build_subscription_cta(article_id: str, tracking_url: str = "") -> str:
         return ""
     return (
         f"{DIVIDER_LINE}"
-        "### 調査と判断の時間を減らしたい方へ\n\n"
-        "無料記事では重要テーマを最後まで公開しています。会員向けには、"
-        "意思決定DBと月次サマリーで、追うべき情報・Evidence・Actionを継続的に整理します。\n\n"
-        f"[会員向け意思決定DB＋月次サマリーを見る]({tracking_url})\n"
+        f"### {SUBSCRIPTION_CTA_HEADING}\n\n"
+        f"{SUBSCRIPTION_CTA_BODY}\n\n"
+        f"[{SUBSCRIPTION_CTA_LINK_LABEL}]({tracking_url})\n"
     )
 
 

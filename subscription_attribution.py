@@ -219,6 +219,9 @@ def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
             "commercial_value_score": manifest.get("commercial_value_score"),
             "shelf_life": manifest.get("shelf_life"),
             "portfolio_topic": manifest.get("portfolio_topic"),
+            "cta_copy_id": manifest.get("cta_copy_id") or "legacy_unversioned",
+            "cta_heading": manifest.get("cta_heading") or "",
+            "cta_link_label": manifest.get("cta_link_label") or "",
             "metrics": sums,
             "coverage_rows": coverage,
             "attribution_methods": sorted({r.get("attribution_method") for r in article_rows if r.get("attribution_method")}),
@@ -250,6 +253,7 @@ def build_rollup(manifests: dict[str, dict], rows: list[dict]) -> dict:
         "revenue_measurement_readiness": readiness,
         "performance_by_source": _group_performance(articles, "source"),
         "performance_by_topic": _group_performance(articles, "portfolio_topic"),
+        "performance_by_cta_copy": _group_performance(articles, "cta_copy_id"),
         "articles": articles,
     }
 
@@ -259,6 +263,11 @@ def main() -> int:
     parser.add_argument("--metrics", required=True, type=Path, help="Aggregate metrics CSV")
     parser.add_argument("--manifest-dir", type=Path, default=Path("subscription_attribution/articles"))
     parser.add_argument("--output", type=Path, default=Path("subscription_attribution/metrics_rollup.json"))
+    parser.add_argument(
+        "--diagnostics-output",
+        type=Path,
+        default=Path("subscription_attribution/conversion_copy_diagnostics.json"),
+    )
     args = parser.parse_args()
 
     manifests = load_manifests(args.manifest_dir)
@@ -268,10 +277,25 @@ def main() -> int:
     rollup = build_rollup(manifests, rows)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(rollup, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # Zero-model Phase 1: every attribution aggregation also emits a human-review-only
+    # funnel diagnosis. This is diagnostic output only; it cannot mutate copy, publish,
+    # or feed production ranking.
+    from conversion_copy_diagnostics import build_diagnostics
+    diagnostics = build_diagnostics(rollup)
+    args.diagnostics_output.parent.mkdir(parents=True, exist_ok=True)
+    args.diagnostics_output.write_text(
+        json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
     print(json.dumps({
         "articles": rollup["article_count"],
         "measured_articles": rollup["measured_article_count"],
         "output": str(args.output),
+        "diagnostics_output": str(args.diagnostics_output),
+        "prioritized_opportunities": len(diagnostics["prioritized_opportunities"]),
+        "model_calls": 0,
+        "copy_mutation_permitted": False,
         "ranking_feedback_enabled": False,
     }, ensure_ascii=False))
     return 0

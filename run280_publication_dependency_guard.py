@@ -66,6 +66,7 @@ EXPLICIT_NON_PUBLICATION_DEPENDENCIES = {
     "run367_x_daily_discovery.py": "additive candidate acquisition only; raw X is discovery-only and canonical pipeline owns generated/public bytes",
     "regression_suite.py": "synthetic regression entrypoint only",
     "legacy_eyecatch_renderer.py": "obsolete compatibility bridge; current editorial renderer is separately fingerprinted",
+    "conversion_copy_diagnostics.py": "aggregate subscription funnel diagnostics only; zero-model, no public-byte mutation, no publication action, and ranking feedback remains disabled",
 }
 
 # Backward-compatible names retained for the Run280 adversarial fixture API. Run281 no longer
