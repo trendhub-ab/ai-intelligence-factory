@@ -106,6 +106,9 @@ class Run244DecisionProductProtocolModuleTests(unittest.TestCase):
         self.assertIn("一次情報だけ", text)
         self.assertIn("記事は書かない", text)
         self.assertIn("verified primary evidence", text)
+        self.assertIn("デファクト", text)
+        self.assertIn("業界標準", text)
+        self.assertIn("一次情報に明記されていない", text)
 
     def test_product_payload_validation_preserves_score_sum_contract(self):
         payload = self._valid_payload()
