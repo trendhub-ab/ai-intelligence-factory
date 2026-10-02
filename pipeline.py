@@ -9781,30 +9781,6 @@ def _product_review_evidence_defer_days(source_info: dict, evidence: dict) -> in
     return TRACKING_REVIEW_DAYS
 
 
-def _product_review_market_standard_failures(failures: list[str]) -> list[str]:
-    """Return only narrowly repairable unsupported market-standard failures."""
-    return [
-        str(failure)
-        for failure in (failures or [])
-        if str(failure).startswith("unsupported market-standard claim:")
-    ]
-
-
-def _product_review_market_standard_repair_prompt(base_prompt: str, failures: list[str]) -> str:
-    """Ask for one evidence-bounded regeneration without weakening the validator."""
-    details = " / ".join(_product_review_market_standard_failures(failures))[:800]
-    return (
-        base_prompt
-        + "\n\nSTRICT VALIDATOR REPAIR:\n"
-        + f"The previous Product Review was rejected only for: {details}\n"
-        + "Regenerate the complete JSON assessment from the same verified evidence. "
-        + "Remove or narrow any claim that the technology is a de facto standard, industry standard, "
-        + "default standard, or equivalent unless the verified evidence explicitly proves that current status. "
-        + "Do not invent replacement evidence, market share, adoption, popularity, or standardization facts. "
-        + "Keep every other judgment inside the verified evidence scope."
-    )
-
-
 def run_product_reviews() -> dict:
     result = {
         "attempted": 0,          # backward-compatible: candidates inspected by evidence preflight
@@ -9819,8 +9795,6 @@ def run_product_reviews() -> dict:
         "structured_retry_recovered": 0,
         "boundary_reconciliation_attempted": 0,
         "boundary_reconciled": 0,
-        "assessment_retries": 0,
-        "assessment_retry_recovered": 0,
     }
     for state in select_product_review_candidates():
         # max_reviews is a Gemini review cap, not a zero-API evidence-inspection cap.
@@ -9929,54 +9903,6 @@ def run_product_reviews() -> dict:
                         evidence = refreshed_evidence
                         if persisted.get("saved"):
                             result["boundary_reconciled"] += 1
-
-            # Narrow Product Review repair: if the model response is structurally valid but the
-            # strict DI validator rejects only an unsupported market-standard claim, allow exactly
-            # one evidence-bounded regeneration inside the existing request/global budgets. The
-            # validator is run again unchanged; all other assessment-invalid reasons stay fail-closed.
-            repair_failures = list(persisted.get("failures") or [])
-            market_failures = _product_review_market_standard_failures(repair_failures)
-            if (
-                not persisted.get("saved")
-                and persisted.get("reason") == "assessment_invalid"
-                and repair_failures
-                and len(market_failures) == len(repair_failures)
-                and PRODUCT_REVIEW_REQUEST_BUDGET.can_request()
-                and GEMINI_BUDGET.can_request()
-                and _model_pool_has_session_candidate(DEEP_DIVE_MODEL_POOL)
-            ):
-                result["assessment_retries"] += 1
-                repair_prompt = _product_review_market_standard_repair_prompt(review_prompt, repair_failures)
-                try:
-                    repair_response, model = _call_product_review_pool(
-                        repair_prompt,
-                        request_context + ":assessment_retry",
-                        request_kind_base="product_review_claim_retry",
-                    )
-                    repaired = _parse_product_review_model_response(repair_response)
-                    repaired_kwargs = dict(
-                        screening_score=state.get("screening_score"),
-                        screening_reason=state.get("screening_reason", ""),
-                        attribution_context={"portfolio_topic": repaired.get("category") or "OTHER"},
-                        pipeline_status="Product Review",
-                        content_status="Stocked",
-                        article_status=ARTICLE_STATUS_NOT_PLANNED,
-                    )
-                    repair_reviewed_at = datetime.now(timezone.utc).isoformat()
-                    repaired_persisted = persist_decision_intelligence_assessment(
-                        repo, repaired, source_info, evidence, repair_reviewed_at, **repaired_kwargs
-                    )
-                    if repaired_persisted.get("saved"):
-                        parsed = repaired
-                        persisted = repaired_persisted
-                        persist_kwargs = repaired_kwargs
-                        reviewed_at = repair_reviewed_at
-                        result["assessment_retry_recovered"] += 1
-                except (ValueError, TypeError, json.JSONDecodeError, NoAvailableModelError, ProductReviewBudgetExceededError) as repair_exc:
-                    logger.warning(
-                        "[PRODUCT REVIEW ASSESSMENT REPAIR FAILED] %s: %s",
-                        repo.get("nameWithOwner"), repair_exc,
-                    )
 
             if persisted.get("saved"):
                 # next_review is a product scheduler field and is intentionally patched after the common upsert.
