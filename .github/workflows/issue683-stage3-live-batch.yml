@@ -39,7 +39,7 @@ jobs:
             tests/test_gemini_provider_resilience.py
 
       - name: Execute one bounded Stage 3 live batch
-        run: python member_verified_rereview_apply.py --queue-limit 5 --stale-days 30 --max-reviews 1 --request-budget 3
+        run: python member_verified_rereview_apply.py --queue-limit 5 --stale-days 30 --max-reviews 1 --request-budget 4
         env:
           TZ: 'Asia/Tokyo'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
