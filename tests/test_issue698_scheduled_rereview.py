@@ -9,11 +9,10 @@ def _text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_stage4_schedule_is_exactly_two_windows():
+def test_stage4_has_no_fixed_schedule_trigger():
     text = _text()
-    assert "cron: '30 21 * * *'" in text
-    assert "cron: '30 9 * * *'" in text
-    assert text.count("cron:") == 2
+    assert "schedule:" not in text
+    assert "cron:" not in text
 
 
 def test_stage4_has_exactly_two_single_review_batches():
