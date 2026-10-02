@@ -85,14 +85,18 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
             (root / "content_generation_protocol.py").write_text("def build_new_member_page(): return 'new page'")
             self.assertTrue(any("unclassified customer entrypoint" in e for e in contract.validate_repository(root)))
 
-    def test_member_copy_push_refreshes_full_live_body_from_main(self):
+    def test_member_migration_requires_successful_main_ci_and_explicit_marker(self):
         import yaml
         workflow = yaml.load((ROOT / ".github/workflows/member-presentation-sync.yml").read_text(), Loader=yaml.BaseLoader)
-        self.assertEqual(["main"], workflow["on"]["push"]["branches"])
-        self.assertIn("run307_use_decision_member_surface.py", workflow["on"]["push"]["paths"])
+        self.assertNotIn("push", workflow["on"])
+        self.assertIn("Integration Reconciliation CI", workflow["on"]["workflow_run"]["workflows"])
+        gate = workflow["jobs"]["sync"]["if"]
+        self.assertIn("head_branch == 'main'", gate)
+        self.assertIn("conclusion == 'success'", gate)
+        self.assertIn("[member-ux-refresh]", gate)
         steps = workflow["jobs"]["sync"]["steps"]
         body = next(s for s in steps if s.get("run") == "python run219_member_human_language_ui.py body")
-        self.assertIn("github.event_name == 'push'", body["env"]["MEMBER_BODY_FORCE_FULL"])
+        self.assertIn("github.event.workflow_run.name == 'Integration Reconciliation CI'", body["env"]["MEMBER_BODY_FORCE_FULL"])
 
 
 if __name__ == "__main__":
