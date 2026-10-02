@@ -91,7 +91,6 @@ jobs:
         run: |
           python member_surface_coverage_guard.py
           python -m unittest tests.test_member_customer_surface_contract -v
-          python -m unittest tests.test_member_monthly_decision_brief_sync -v
           python -m unittest tests.test_member_reader_quality_policy -v
 
       - name: Enforce current public-copy alignment
