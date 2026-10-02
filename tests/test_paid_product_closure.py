@@ -12,7 +12,7 @@ class PaidProductClosureContractTests(unittest.TestCase):
         self.assertIn('LEGACY_BOOTSTRAP_MAX_PER_RUN: "0"', text)
         self.assertIn("- name: Portfolio-aware Product Review", text)
         self.assertIn('DAILY_PORTFOLIO_REVIEW_MAX: "2"', text)
-        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', text)
+        self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "4"', text)
         self.assertIn("run: python daily_portfolio_review.py", text)
 
     def test_full_daily_reconciles_prior_human_publication_without_publishing(self):
