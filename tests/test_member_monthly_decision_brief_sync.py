@@ -80,8 +80,8 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertEqual(1, top_count)
         self.assertEqual(1, change_count)
         rendered = str(blocks)
-        self.assertIn("根拠確認が30日以内の判断候補", rendered)
-        self.assertIn("今月、記録された重要な判断の変化", rendered)
+        self.assertIn("今月、まず見るもの", rendered)
+        self.assertIn("今月、判断が動いたもの", rendered)
         self.assertIn("このページの表示更新：2026-09-29 JST", rendered)
 
     def test_old_record_and_missing_review_are_truthful_in_both_brief_sections(self):
@@ -97,7 +97,7 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertEqual(0, top_count)
         self.assertEqual(1, change_count)
         rendered = str(blocks)
-        self.assertIn("再確認が必要な参考候補", rendered)
+        self.assertIn("再確認してから使いたいもの", rendered)
         self.assertIn("以前の判断", rendered)
         self.assertIn("根拠の確認日", rendered)
         self.assertIn("2026年8月23日（30日超）", rendered)
@@ -105,7 +105,7 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertIn("未記録", rendered)
         self.assertIn("最終確認日が記録されていません", rendered)
         self.assertIn("参照先 1：comet.com", rendered)
-        self.assertIn("判断：まず小さく検証", rendered)
+        self.assertIn("前回の判断：まず小さく試す", rendered)
         self.assertNotIn("月の最新判断", rendered)
         self.assertNotIn("'ADOPT'", rendered)
         self.assertNotIn("現在の一次情報を基に判断しています", rendered)
@@ -140,8 +140,8 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertIn("2026年10月", title)
         self.assertEqual(1, top_count)
         rendered = str(blocks)
-        recent_at = rendered.index("根拠確認が30日以内の判断候補")
-        reference_at = rendered.index("再確認が必要な参考候補")
+        recent_at = rendered.index("今月、まず見るもの")
+        reference_at = rendered.index("再確認してから使いたいもの")
         self.assertLess(recent_at, reference_at)
         # An old homepage rank must never silently appear in current advice.
         current_view = rendered[:reference_at]
@@ -158,8 +158,28 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         )
         self.assertEqual(0, count)
         visible = str(blocks)
-        self.assertIn("根拠確認が30日以内の実務候補はありません", visible)
-        self.assertIn("再確認が必要な参考候補", visible)
+        self.assertIn("30日以内に根拠を確認できた新しい判断候補がありません", visible)
+        self.assertIn("再確認してから使いたいもの", visible)
+
+    def test_primary_reading_path_hides_scores_and_metadata_in_toggles(self):
+        _, blocks, _, _ = brief.build_blocks(
+            [state("Tool", 88, rank=1)],
+            now=datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc),
+        )
+        top_level = " ".join(
+            str(block)
+            for block in blocks
+            if block.get("type") != "toggle"
+        )
+        self.assertIn("いまの判断：まず小さく試す", top_level)
+        self.assertIn("向いている場面：", top_level)
+        self.assertIn("まずやること：", top_level)
+        self.assertNotIn("参考スコア", top_level)
+        self.assertNotIn("Decision Score", top_level)
+        toggles = [b for b in blocks if b.get("type") == "toggle"]
+        self.assertTrue(toggles)
+        self.assertIn("根拠と注意点を見る", str(toggles))
+        self.assertIn("参考スコア：88点", str(toggles))
 
     def test_sync_is_content_first_then_cleanup_then_title(self):
         calls = []
