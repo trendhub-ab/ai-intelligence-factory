@@ -5,6 +5,15 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "issue698-scheduled-rereview.yml"
 
 
+BRIDGE = ROOT / ".github" / "workflows" / "reserved-one-shot-trigger.yml"
+
+
+def test_reserved_bridge_can_dispatch_verified_rereview():
+    text = BRIDGE.read_text(encoding="utf-8")
+    assert "verified_rereview" in text
+    assert "gh workflow run issue698-scheduled-rereview.yml" in text
+
+
 def _text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
