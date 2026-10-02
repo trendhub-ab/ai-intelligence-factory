@@ -1,6 +1,14 @@
 name: Member Presentation Sync
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - member_monthly_decision_brief_sync.py
+      - member_reader_quality_policy.py
+      - run307_use_decision_member_surface.py
+      - member_customer_surface_contract.py
+      - .github/workflows/member-presentation-sync.yml
   workflow_dispatch:
     inputs:
       force_full_body_sync:
@@ -77,6 +85,8 @@ jobs:
           python -m unittest tests/test_run271_member_body_delta_sync.py
           python -m unittest tests/test_run271_1_member_body_checkpoint.py
           python -m unittest tests/test_member_monthly_decision_brief_sync.py
+          python -m unittest tests/test_member_customer_surface_contract.py
+          python member_surface_coverage_guard.py
 
       - name: Resolve canonical member DB
         run: python provision_member_presentation_db.py
@@ -115,7 +125,7 @@ jobs:
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
           MEMBER_BODY_CHANGED_SINCE: ${{ env.MEMBER_BODY_CHANGED_SINCE }}
-          MEMBER_BODY_FORCE_FULL: ${{ github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
+          MEMBER_BODY_FORCE_FULL: ${{ github.event_name == 'push' || github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
 
       - name: Refresh paid monthly Decision Brief from the current member DB
         run: python member_monthly_decision_brief_sync.py
