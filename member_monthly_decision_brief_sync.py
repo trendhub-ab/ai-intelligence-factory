@@ -318,6 +318,9 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
         reason = str(state.get("change_reason") or state.get("topic") or "").strip()
         action = str(state.get("next_action") or "").strip()
         blocks.append(_heading(3, str(state["name"])))
+        blocks.append(_paragraph(_rt(
+            quality.review_disclosure(state.get("last_reviewed"), as_of=as_of)
+        )))
         if direction:
             blocks.append(_paragraph(_rt(direction, bold=True)))
         if reason:
