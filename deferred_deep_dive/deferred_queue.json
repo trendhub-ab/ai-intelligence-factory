@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-02T08:43:31.592155+00:00",
+  "updated_at": "2026-10-02T09:36:27.127622+00:00",
   "items": [
-    {
-      "key": "https://hamel.dev/blog/posts/claude-auto-evals/index.html",
-      "deferred_at": "2026-10-01T11:18:06.215322+00:00",
-      "expires_at": "2026-10-15T11:18:06.215322+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Claude's new auto eval tool",
-        "originalTitle": "Claude's new auto eval tool",
-        "displayName": "Claude's new auto eval tool",
-        "sourceLanguage": "en",
-        "url": "https://hamel.dev/blog/posts/claude-auto-evals/index.html",
-        "description": "Claude's new auto eval tool",
-        "stargazerCount": 3,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-01T02:13:08Z",
-        "sourceContext": "HN points=3 comments=0 matched_query=Claude",
-        "primaryUrl": "https://hamel.dev/blog/posts/claude-auto-evals/index.html",
-        "sourceDetails": {
-          "hn_id": "49916869",
-          "hn_url": "https://news.ycombinator.com/item?id=49916869",
-          "external_url": "https://hamel.dev/blog/posts/claude-auto-evals/index.html",
-          "comments": 0,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ec479ff-dca9-810f-92c0-cf4af959fad5",
-      "score": 78,
-      "reason": "新しいLLM自動評価ツールの実践的解説。",
-      "commercial_score": 80,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 78.7
-    },
     {
       "key": "https://arxiv.org/abs/2609.15939",
       "deferred_at": "2026-09-15T22:15:41.123683+00:00",
