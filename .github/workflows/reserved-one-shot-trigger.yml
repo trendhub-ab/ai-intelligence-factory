@@ -33,7 +33,7 @@ jobs:
           exact_target="$(printf '%s\n' "$BODY" | sed -n 's/^exact_target=//p' | head -1)"
           excluded_models="$(printf '%s\n' "$BODY" | sed -n 's/^excluded_models=//p' | head -1)"
           case "$mode" in
-            full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation) ;;
+            full|article_validation|pending_retry_validation|ready_rescue_validation|stale_ready_batch_revalidation|verified_rereview) ;;
             *) echo "::error::Invalid reserved mode"; exit 1 ;;
           esac
           case "$style" in
@@ -60,12 +60,16 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo "::error::GH_PAT is required"; exit 1; }
-          gh workflow run daily-one-shot.yml --repo "${GITHUB_REPOSITORY}" --ref main \
-            -f mode="$MODE" \
-            -f editorial_style="$STYLE" \
-            -f excluded_models="$EXCLUDED_MODELS" \
-            -f exact_target="$EXACT_TARGET" \
-            -f confirm=RUN_ONCE
+          if [ "$MODE" = "verified_rereview" ]; then
+            gh workflow run issue698-scheduled-rereview.yml --repo "${GITHUB_REPOSITORY}" --ref main
+          else
+            gh workflow run daily-one-shot.yml --repo "${GITHUB_REPOSITORY}" --ref main \
+              -f mode="$MODE" \
+              -f editorial_style="$STYLE" \
+              -f excluded_models="$EXCLUDED_MODELS" \
+              -f exact_target="$EXACT_TARGET" \
+              -f confirm=RUN_ONCE
+          fi
 
       - name: Mark reservation consumed
         if: ${{ success() }}
