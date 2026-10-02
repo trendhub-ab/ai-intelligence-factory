@@ -82,7 +82,7 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         rendered = str(blocks)
         self.assertIn("今月、まず見るもの", rendered)
         self.assertIn("今月、判断が動いたもの", rendered)
-        self.assertIn("このページの表示更新：2026-09-29 JST", rendered)
+        self.assertIn("このページは2026-09-29 JSTに表示を更新しました。", rendered)
 
     def test_old_record_and_missing_review_are_truthful_in_both_brief_sections(self):
         now = datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
@@ -98,8 +98,8 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertEqual(1, change_count)
         rendered = str(blocks)
         self.assertIn("再確認してから使いたいもの", rendered)
-        self.assertIn("以前の判断", rendered)
-        self.assertIn("根拠の確認日", rendered)
+        self.assertIn("前回の判断", rendered)
+        self.assertIn("確認：", rendered)
         self.assertIn("2026年8月23日（30日超）", rendered)
         self.assertIn("2026年8月23日に確認。30日を超えています", rendered)
         self.assertIn("未記録", rendered)
@@ -114,7 +114,7 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         # First compact view must declare review age before offering advice.
         bullet = next(b for b in blocks if b["type"] == "bulleted_list_item")
         line = bullet["bulleted_list_item"]["rich_text"][0]["text"]["content"]
-        self.assertLess(line.index("根拠の確認日"), line.index("判断："))
+        self.assertLess(line.index("確認："), line.index("前回の判断："))
         # The detailed and changed-item views must disclose the same real date.
         self.assertGreaterEqual(rendered.count("2026年8月23日に確認"), 2)
 
@@ -148,7 +148,7 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertIn("RecentlyReviewed", current_view)
         self.assertNotIn("PreviouslyRanked", current_view)
         self.assertIn("PreviouslyRanked", rendered[reference_at:])
-        self.assertIn("以前の判断", rendered[reference_at:])
+        self.assertIn("前回の判断", rendered[reference_at:])
 
     def test_only_stale_candidates_produce_honest_no_fresh_message(self):
         old = state("PreviouslyRecommended", 94, rank=1)
