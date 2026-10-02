@@ -110,9 +110,12 @@ class Issue668VerifiedApplyTests(unittest.TestCase):
                 request_budget=1,
             )
 
+    def test_model_budget_at_hard_cap_is_allowed(self):
+        apply.validate_apply_budget(max_reviews=1, request_budget=4)
+
     def test_model_budget_above_hard_cap_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "request budget"):
-            apply.validate_apply_budget(max_reviews=2, request_budget=4)
+            apply.validate_apply_budget(max_reviews=1, request_budget=5)
 
     def test_review_count_above_hard_cap_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "max reviews"):
