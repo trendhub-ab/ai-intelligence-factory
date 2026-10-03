@@ -95,6 +95,48 @@ def test_unknown_or_ambiguous_note_dom_fails_closed(snap):
     assert exc.value.code == 'unsupported_note_dom'
 
 
+def test_unknown_wrapper_diagnostics_are_structural_and_content_free():
+    d = dommod()
+    snap = root(
+        el(
+            'div',
+            [
+                el('p', [text('PRIVATE-BODY-SENTINEL')]),
+                el('section', [text('PRIVATE-TITLE-SENTINEL')]),
+                el('a', [text('PRIVATE-LINK-LABEL')], href='https://private.example/secret-path'),
+            ],
+            title='PRIVATE-ATTR-SENTINEL',
+        )
+    )
+    diagnostics = d.safe_snapshot_diagnostics(snap)
+    assert diagnostics['dom_diagnostic_category'] == 'unknown_dom_tag'
+    assert diagnostics['unknown_dom_tags'] == ['div', 'section']
+    assert diagnostics['unknown_dom_tag_counts'] == {'div': 1, 'section': 1}
+    assert diagnostics['dom_tag_counts'] == {'a': 1, 'div': 1, 'p': 1, 'section': 1}
+    assert diagnostics['snapshot_element_node_count'] == 4
+    assert diagnostics['snapshot_text_node_count'] == 3
+    assert diagnostics['snapshot_total_node_count'] == 7
+    rendered = repr(diagnostics)
+    for forbidden in (
+        'PRIVATE-BODY-SENTINEL', 'PRIVATE-TITLE-SENTINEL', 'PRIVATE-LINK-LABEL',
+        'PRIVATE-ATTR-SENTINEL', 'private.example', 'secret-path',
+    ):
+        assert forbidden not in rendered
+
+
+def test_supported_tag_but_invalid_dom_shape_has_fixed_content_free_category():
+    d = dommod()
+    diagnostics = d.safe_snapshot_diagnostics(
+        root(el('a', [text('PRIVATE-BODY-SENTINEL')], href='https://private.example/secret-path'))
+    )
+    assert diagnostics['dom_diagnostic_category'] == 'unsupported_dom_shape'
+    assert diagnostics['unknown_dom_tags'] == []
+    assert diagnostics['unknown_dom_tag_counts'] == {}
+    assert diagnostics['dom_tag_counts'] == {'a': 1}
+    assert 'PRIVATE-BODY-SENTINEL' not in repr(diagnostics)
+    assert 'private.example' not in repr(diagnostics)
+
+
 def test_semantic_dom_mutations_are_visible_to_canonical_comparator():
     d = dommod()
     c = contract()

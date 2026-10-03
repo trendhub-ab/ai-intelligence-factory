@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 import sys
 import types
 import unittest
@@ -105,6 +106,8 @@ class Run292CanonicalIntegrationTests(unittest.TestCase):
         self.assertTrue(metrics["canonical_match"])
         self.assertEqual(metrics["unsupported_expected_node_count"], 0)
         self.assertEqual(metrics["unsupported_actual_node_count"], 0)
+        self.assertEqual(metrics["expected_canonical_node_count"], 3)
+        self.assertEqual(metrics["actual_canonical_node_count"], 3)
         self.assertIn("Paragraph", metrics["expected_node_counts"])
         self.assertIn("Paragraph", metrics["actual_node_counts"])
 
@@ -121,23 +124,38 @@ class Run292CanonicalIntegrationTests(unittest.TestCase):
         self.assertNotIn("99秒", repr(caught.exception.safe_metrics))
         self.assertNotIn("10秒", repr(caught.exception.safe_metrics))
 
-    def test_unknown_dom_is_categorical_and_content_free(self) -> None:
+    def test_unknown_dom_is_categorical_content_free_and_structurally_diagnostic(self) -> None:
         snapshot = {
             "type": "root",
             "children": [
                 {
                     "type": "element",
                     "tag": "div",
-                    "attrs": {},
-                    "children": [{"type": "text", "text": "secret"}],
+                    "attrs": {"title": "PRIVATE-ATTR-SENTINEL"},
+                    "children": [
+                        {"type": "element", "tag": "section", "attrs": {}, "children": [{"type": "text", "text": "PRIVATE-BODY-SENTINEL"}]}
+                    ],
                 }
             ],
         }
         with self.assertRaises(audit.Run292AuditDiagnosticError) as caught:
             audit._canonical_snapshot_metrics(snapshot, "本文")
         self.assertEqual(caught.exception.code, "unsupported_note_dom")
-        self.assertEqual(caught.exception.safe_metrics["unsupported_actual_node_count"], 1)
-        self.assertNotIn("secret", repr(caught.exception.safe_metrics))
+        metrics = caught.exception.safe_metrics
+        self.assertFalse(metrics["canonical_match"])
+        self.assertEqual(metrics["unsupported_actual_node_count"], 1)
+        self.assertEqual(metrics["dom_diagnostic_category"], "unknown_dom_tag")
+        self.assertEqual(metrics["unknown_dom_tags"], ["div", "section"])
+        self.assertEqual(metrics["unknown_dom_tag_counts"], {"div": 1, "section": 1})
+        self.assertEqual(metrics["dom_tag_counts"], {"div": 1, "section": 1})
+        self.assertEqual(metrics["snapshot_element_node_count"], 2)
+        self.assertEqual(metrics["snapshot_text_node_count"], 1)
+        self.assertEqual(metrics["snapshot_total_node_count"], 3)
+        self.assertEqual(metrics["expected_canonical_node_count"], 3)
+        self.assertEqual(metrics["actual_canonical_node_count"], 0)
+        rendered = repr(metrics)
+        self.assertNotIn("PRIVATE-BODY-SENTINEL", rendered)
+        self.assertNotIn("PRIVATE-ATTR-SENTINEL", rendered)
 
 
 class Run292ExecutionBoundaryTests(unittest.TestCase):
@@ -164,6 +182,17 @@ class Run292ExecutionBoundaryTests(unittest.TestCase):
         self.assertFalse(result["public_release"])
         for forbidden in ("actual_text", "expected_text", "manuscript", "title", "draft_url"):
             self.assertNotIn(forbidden, result)
+
+    def test_private_draft_workflow_summary_includes_only_content_free_canonical_diagnostics(self) -> None:
+        workflow = Path('.github/workflows/note-private-draft-audit.yml').read_text(encoding='utf-8')
+        for key in (
+            'canonical_match', 'dom_diagnostic_category', 'unknown_dom_tags',
+            'unknown_dom_tag_counts', 'dom_tag_counts', 'snapshot_element_node_count',
+            'snapshot_text_node_count', 'snapshot_total_node_count',
+            'expected_canonical_node_count', 'actual_canonical_node_count',
+            'unsupported_expected_node_count', 'unsupported_actual_node_count',
+        ):
+            self.assertIn(f"'{key}'", workflow)
 
     def test_module_has_no_browser_mutation_publication_screenshot_or_network_write_surface(self) -> None:
         source = inspect.getsource(audit)
