@@ -1,10 +1,9 @@
-import inspect
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import note_draft_automation as draft
-import p0b2_note_draft_identity as identity
+import note_publication_reconcile as identity
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +49,7 @@ class P0B2NoteDraftIdentityTests(unittest.TestCase):
             calls.append((method, url, json))
             return FakeResponse(200)
 
-        with patch.object(identity.ready_sync, "_request", side_effect=fake_request):
+        with patch.object(identity.sync, "_request", side_effect=fake_request):
             persisted = identity.mark_draft_created(
                 "dest-page", draft_url, error_type=draft.NoteDraftError
             )
@@ -67,6 +66,7 @@ class P0B2NoteDraftIdentityTests(unittest.TestCase):
             draft_id,
             props[identity.DRAFT_ID_PROPERTY]["rich_text"][0]["text"]["content"],
         )
+        self.assertNotIn("https://note.com", str(calls[0][2]))
 
     def test_invalid_identity_fails_before_any_notion_status_mutation(self):
         calls = []
@@ -75,7 +75,7 @@ class P0B2NoteDraftIdentityTests(unittest.TestCase):
             calls.append((args, kwargs))
             return FakeResponse(200)
 
-        with patch.object(identity.ready_sync, "_request", side_effect=fake_request):
+        with patch.object(identity.sync, "_request", side_effect=fake_request):
             with self.assertRaises(draft.NoteDraftError):
                 identity.mark_draft_created(
                     "dest-page",
@@ -92,7 +92,7 @@ class P0B2NoteDraftIdentityTests(unittest.TestCase):
             calls.append((method, url, json))
             return FakeResponse(500)
 
-        with patch.object(identity.ready_sync, "_request", side_effect=fake_request):
+        with patch.object(identity.sync, "_request", side_effect=fake_request):
             with self.assertRaisesRegex(draft.NoteDraftError, "identity/status update failed"):
                 identity.mark_draft_created(
                     "dest-page",
@@ -154,7 +154,7 @@ class P0B2NoteDraftIdentityTests(unittest.TestCase):
 
     def test_run194_installs_identity_binding_before_execution(self):
         source = (ROOT / "run194_note_persistent_cloud.py").read_text(encoding="utf-8")
-        install_at = source.index("p0b2_identity.install(cloud.base)")
+        install_at = source.index("note_lifecycle.install_draft_identity(cloud.base)")
         execute_at = source.index("current_contract.run_base_main_with_safe_noop()")
         self.assertLess(install_at, execute_at)
         self.assertNotIn("note下書きURL", source)
