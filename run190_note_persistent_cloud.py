@@ -19,6 +19,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sqlite3
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -35,6 +37,7 @@ PROFILE_ENV = "NOTE_CHROME_USER_DATA_DIR"
 CHANNEL_ENV = "NOTE_CHROME_CHANNEL"
 HEADLESS_ENV = "NOTE_CHROME_HEADLESS"
 DEFAULT_PROFILE_DIR = Path.home() / ".aiif-note" / "chrome-profile"
+MAX_HISTORY_CANDIDATES = 24
 _ORIGINAL_DECODE_STORAGE_STATE = base._decode_storage_state
 
 
@@ -151,6 +154,61 @@ def _seed_note_state(context: Any, page: Any) -> bool:
         )
         seeded_local_storage = True
     return bool(cookies or seeded_local_storage)
+
+
+def _copy_history_rows(history_path: Path) -> list[tuple[str, int]]:
+    """Read a copy of Chrome History so a live profile is never locked or mutated."""
+    temp_dir = Path(tempfile.mkdtemp(prefix="run190-history-"))
+    copy_path = temp_dir / "History"
+    try:
+        shutil.copy2(history_path, copy_path)
+        conn = sqlite3.connect(str(copy_path))
+        try:
+            rows = conn.execute(
+                "SELECT url, last_visit_time FROM urls "
+                "WHERE url LIKE 'https://%note.com/notes/%/edit%' "
+                "ORDER BY last_visit_time DESC LIMIT 80"
+            ).fetchall()
+        finally:
+            conn.close()
+        return [(str(url or ""), int(last_visit or 0)) for url, last_visit in rows]
+    except (OSError, sqlite3.Error):
+        return []
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _recent_private_edit_urls(profile_dir: Path) -> list[str]:
+    """Return recent existing note edit routes for legacy in-place repair flows only."""
+    weighted: list[tuple[int, str]] = []
+    try:
+        history_files = [p for p in profile_dir.rglob("History") if p.is_file()]
+    except OSError:
+        history_files = []
+    for history in history_files[:12]:
+        for url, last_visit in _copy_history_rows(history):
+            parsed = urlparse(url)
+            host = (parsed.hostname or "").lower()
+            path = (parsed.path or "").rstrip("/")
+            if (
+                parsed.scheme == "https"
+                and host in {"note.com", "editor.note.com"}
+                and path.startswith("/notes/")
+                and path.endswith("/edit")
+                and path.count("/") == 3
+            ):
+                weighted.append((last_visit, url))
+    weighted.sort(key=lambda item: item[0], reverse=True)
+    seen: set[str] = set()
+    result: list[str] = []
+    for _, url in weighted:
+        if url in seen:
+            continue
+        seen.add(url)
+        result.append(url)
+        if len(result) >= MAX_HISTORY_CANDIDATES:
+            break
+    return result
 
 
 def _launch_persistent_context(playwright: Any) -> Any:

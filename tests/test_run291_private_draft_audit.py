@@ -20,6 +20,7 @@ except ModuleNotFoundError:
     requests_stub.post = lambda *args, **kwargs: None
     sys.modules["requests"] = requests_stub
 
+import run190_note_persistent_cloud as cloud
 import run291_note_private_draft_audit as audit
 
 
@@ -59,7 +60,7 @@ class Run291UrlAndHistoryTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            result = audit._recent_private_edit_urls(profile)
+            result = cloud._recent_private_edit_urls(profile)
 
         self.assertEqual(
             result,

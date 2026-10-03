@@ -19,6 +19,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import note_draft_automation as note_base
 import note_publication_reconcile as note_lifecycle
@@ -30,6 +31,7 @@ import run222_note_presentation_integrity as run222
 CONFIRM_TOKEN = "AUDIT_NOTE_DRAFT"
 PREPARING_STATUS = "投稿準備中"
 READY_STATUS = "Ready"
+_EDIT_PATH = re.compile(r"^/notes/[^/?#]+/edit/?$", re.I)
 _READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？", "元情報")
 
 
@@ -46,6 +48,18 @@ def _normalize_sync_id(value: str) -> str:
 def _prop_date(prop: dict | None) -> str:
     return str((((prop or {}).get("date") or {}).get("start")) or "").strip()
 
+
+
+def _is_note_edit_url(value: str) -> bool:
+    """Validate one existing private note edit route; never performs discovery."""
+    try:
+        parsed = urlparse(str(value or ""))
+    except Exception:
+        return False
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or host not in {"note.com", "editor.note.com"}:
+        return False
+    return bool(_EDIT_PATH.fullmatch(parsed.path or ""))
 
 
 def _destination_row(sync_id: str) -> dict[str, Any]:
