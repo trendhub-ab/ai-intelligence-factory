@@ -104,11 +104,8 @@ jobs:
 
       # Persistent Gemini counterは既存pipelineのContents API transactionを唯一の権威とする。
       # Bootstrap側では二重永続化やrebase競合を作る独自のGit書込みを行わない。
-      - name: Upload bootstrap audit artifacts
+      - name: Safe bootstrap operational receipt
         if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: subscriber-inventory-bootstrap-${{ github.run_id }}
-          path: inventory_bootstrap_artifacts/
-          if-no-files-found: warn
-          retention-days: 30
+        env:
+          SAFE_JOB_STATUS: ${{ job.status }}
+        run: python operational_output_contract.py --component inventory_bootstrap --status "$SAFE_JOB_STATUS"

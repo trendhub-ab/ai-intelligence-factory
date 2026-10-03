@@ -111,10 +111,11 @@ class TestArticleAuditArtifact(unittest.TestCase):
         self.assertNotIn("call_gemini", source)
         self.assertNotIn("client.models", source)
 
-    def test_daily_artifact_upload_includes_article_audit(self):
+    def test_daily_artifact_upload_excludes_raw_article_audit(self):
         workflow = (ROOT / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")
-        self.assertIn("article_audit/", workflow)
-        self.assertIn("private-gate-review-${{ github.run_number }}", workflow)
+        self.assertNotIn("article_audit/", workflow)
+        self.assertNotIn("private-gate-review-${{ github.run_number }}", workflow)
+        self.assertIn("Safe daily operational receipt", workflow)
 
 
 if __name__ == "__main__":

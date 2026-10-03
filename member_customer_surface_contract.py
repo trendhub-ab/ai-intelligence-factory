@@ -182,6 +182,7 @@ NON_MEMBER_MODULES = frozenset((
     "conversion_copy_diagnostics.py",
     "cross_db_contract_guard.py",
     "daily_portfolio_review.py",
+    "operational_output_contract.py",  # P0-C operational receipts, not reader copy
     "decision_intelligence.py",
     "decision_intelligence_run255_core.py",
     "deep_dive_portfolio.py",
