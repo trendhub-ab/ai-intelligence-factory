@@ -12,7 +12,7 @@ Gemini/model calls and no public-release action in this entrypoint.
 from __future__ import annotations
 
 import note_eyecatch_persistence as eyecatch_persistence
-import p0b2_note_draft_identity as p0b2_identity
+import note_publication_reconcile as note_lifecycle
 import run190_note_persistent_cloud as cloud
 import run194_note_current_contract as current_contract
 import run222_note_presentation_integrity as run222
@@ -29,7 +29,7 @@ def main() -> None:
     eyecatch_persistence.install_creation_persistence_guard(cloud.base)
     # P0-B2: refuse browser mutation unless the destination can persist a stable private
     # identity, then bind that identity and 投稿準備中 in one fail-closed Notion PATCH.
-    p0b2_identity.install(cloud.base)
+    note_lifecycle.install_draft_identity(cloud.base)
     current_contract.run_base_main_with_safe_noop()
 
 
