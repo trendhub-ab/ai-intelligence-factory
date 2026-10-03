@@ -1,0 +1,92 @@
+name: P0-A List Item Normalization Implement Once
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-list-item-normalization-impl-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/p0-a-note-lossless-contract
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Implement only the evidence-backed li-p normalization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Canonical contract: enumerate the one proven note-specific normalization.
+          p = Path('note_document_contract.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('NORMALIZATION_POLICY_VERSION = "p0a-normalization-v1"', 'NORMALIZATION_POLICY_VERSION = "p0a-normalization-v2"', 1)
+          marker = 'NORMALIZATION_POLICY_VERSION = "p0a-normalization-v2"\n'
+          const = 'NOTE_LIST_ITEM_PARAGRAPH_WRAPPER = "note_list_item_paragraph_wrapper"\n_PROVEN_NORMALIZATION_CODES = frozenset({NOTE_LIST_ITEM_PARAGRAPH_WRAPPER})\n'
+          if 'NOTE_LIST_ITEM_PARAGRAPH_WRAPPER' not in s:
+              s = s.replace(marker, marker + const, 1)
+          old = '''def normalize_document(document: Document, *, normalization_codes: tuple[str, ...] = ()) -> Document:\n    if normalization_codes:\n        # No note-specific normalization is evidence-backed in Task 1.\n        raise CanonicalContractError("unsupported_normalization")\n    return _normalize_node(document)\n'''
+          new = '''def validate_normalization_codes(normalization_codes: tuple[str, ...] = ()) -> None:\n    if any(code not in _PROVEN_NORMALIZATION_CODES for code in normalization_codes):\n        raise CanonicalContractError("unsupported_normalization")\n\n\ndef normalize_document(document: Document, *, normalization_codes: tuple[str, ...] = ()) -> Document:\n    validate_normalization_codes(normalization_codes)\n    return _normalize_node(document)\n'''
+          if old not in s:
+              raise SystemExit('normalize_document anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # DOM adapter: unwrap only exactly one attribute-free p under li when explicitly allowed.
+          p = Path('note_document_dom.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''def _list_item(node: dict[str, Any]) -> contract.ListItem:\n    if node.get('type') != 'element' or str(node.get('tag') or '').lower() != 'li' or _attrs(node):\n        _fail()\n    return contract.ListItem(_inline_nodes(_children(node)))\n'''
+          new = '''def _list_item(\n    node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()\n) -> contract.ListItem:\n    if node.get('type') != 'element' or str(node.get('tag') or '').lower() != 'li' or _attrs(node):\n        _fail()\n    kids = _children(node)\n    has_paragraph_child = any(\n        child.get('type') == 'element' and str(child.get('tag') or '').lower() == 'p'\n        for child in kids\n    )\n    if has_paragraph_child:\n        if contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER not in allowed_normalizations:\n            _fail()\n        if len(kids) != 1:\n            _fail()\n        paragraph = kids[0]\n        if (\n            paragraph.get('type') != 'element'\n            or str(paragraph.get('tag') or '').lower() != 'p'\n            or _attrs(paragraph)\n        ):\n            _fail()\n        kids = _children(paragraph)\n    return contract.ListItem(_inline_nodes(kids))\n'''
+          if old not in s:
+              raise SystemExit('_list_item anchor missing')
+          s = s.replace(old, new, 1)
+          s = s.replace('def _block(node: dict[str, Any]) -> Any:', 'def _block(node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()) -> Any:', 1)
+          s = s.replace('return contract.UnorderedList(tuple(_list_item(child) for child in kids))', 'return contract.UnorderedList(tuple(_list_item(child, allowed_normalizations=allowed_normalizations) for child in kids))', 1)
+          s = s.replace('return contract.OrderedList(start, tuple(_list_item(child) for child in kids))', 'return contract.OrderedList(start, tuple(_list_item(child, allowed_normalizations=allowed_normalizations) for child in kids))', 1)
+          old_doc = '''def document_from_note_snapshot(\n    snapshot: dict[str, object], *, allowed_normalizations: tuple[str, ...] = ()\n) -> contract.Document:\n    if not isinstance(snapshot, dict) or snapshot.get('type') != 'root':\n        _fail()\n'''
+          new_doc = '''def document_from_note_snapshot(\n    snapshot: dict[str, object], *, allowed_normalizations: tuple[str, ...] = ()\n) -> contract.Document:\n    contract.validate_normalization_codes(allowed_normalizations)\n    if not isinstance(snapshot, dict) or snapshot.get('type') != 'root':\n        _fail()\n'''
+          if old_doc not in s:
+              raise SystemExit('document_from_note_snapshot anchor missing')
+          s = s.replace(old_doc, new_doc, 1)
+          s = s.replace('        blocks.append(_block(child))\n    return contract.normalize_document(contract.Document(tuple(blocks)), normalization_codes=allowed_normalizations)', '        blocks.append(_block(child, allowed_normalizations=allowed_normalizations))\n    return contract.normalize_document(contract.Document(tuple(blocks)), normalization_codes=allowed_normalizations)', 1)
+          p.write_text(s, encoding='utf-8')
+
+          # Run292 is the production canonical verifier: enable exactly the proven normalization there.
+          p = Path('run292_note_rendered_body_audit.py')
+          s = p.read_text(encoding='utf-8')
+          old = '        actual = note_dom.document_from_note_snapshot(snapshot)\n'
+          new = '''        actual = note_dom.document_from_note_snapshot(\n            snapshot,\n            allowed_normalizations=(contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,),\n        )\n'''
+          if old not in s:
+              raise SystemExit('Run292 DOM conversion anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # Pin the production verifier behavior as well as the adapter behavior.
+          p = Path('tests/test_p0a_list_item_paragraph_normalization.py')
+          s = p.read_text(encoding='utf-8')
+          if 'test_run292_canonical_verifier_enables_only_the_proven_normalization' not in s:
+              s += '''\n\ndef test_run292_canonical_verifier_enables_only_the_proven_normalization() -> None:\n    import run292_note_rendered_body_audit as audit292\n\n    snapshot = root(el("ul", [li_paragraph("A"), li_paragraph("B")]))\n    metrics = audit292._canonical_snapshot_metrics(snapshot, "- A\\n- B")\n    assert metrics["canonical_match"] is True\n    assert metrics["normalization_policy_version"] == "p0a-normalization-v2"\n'''
+          p.write_text(s, encoding='utf-8')
+          PY
+          python -m pip install 'pytest==8.4.2' >/dev/null
+          python -m pytest -q \
+            tests/test_p0a_list_item_paragraph_normalization.py \
+            tests/test_p0a_dom_topology_diagnostics.py \
+            tests/test_note_document_dom.py \
+            tests/test_note_document_contract.py \
+            tests/test_run292_note_rendered_body_audit.py
+          python -m py_compile note_document_contract.py note_document_dom.py run292_note_rendered_body_audit.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add note_document_contract.py note_document_dom.py run292_note_rendered_body_audit.py tests/test_p0a_list_item_paragraph_normalization.py
+          git commit -m 'fix: normalize proven note list-item paragraph wrapper'
+          git push origin HEAD:design/p0-a-note-lossless-contract
