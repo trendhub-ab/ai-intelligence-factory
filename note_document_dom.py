@@ -58,11 +58,12 @@ def safe_snapshot_diagnostics(snapshot: object) -> dict[str, object]:
     names collapse to a fixed token rather than echoing arbitrary input.
     """
     tag_counts: dict[str, int] = {}
+    edge_counts: dict[str, int] = {}
     element_count = 0
     text_count = 0
     invalid_shape = False
 
-    def walk(node: object) -> None:
+    def walk(node: object, parent_tag: str = 'root') -> None:
         nonlocal element_count, text_count, invalid_shape
         if not isinstance(node, dict):
             invalid_shape = True
@@ -77,7 +78,7 @@ def safe_snapshot_diagnostics(snapshot: object) -> dict[str, object]:
                 invalid_shape = True
                 return
             for child in children:
-                walk(child)
+                walk(child, 'root')
             return
         if node_type != 'element':
             invalid_shape = True
@@ -94,13 +95,15 @@ def safe_snapshot_diagnostics(snapshot: object) -> dict[str, object]:
             tag = 'invalid_tag'
             invalid_shape = True
         tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        edge = f'{parent_tag}>{tag}'
+        edge_counts[edge] = edge_counts.get(edge, 0) + 1
 
         children = node.get('children')
         if not isinstance(children, list):
             invalid_shape = True
             return
         for child in children:
-            walk(child)
+            walk(child, tag)
 
     walk(snapshot)
     ordered_counts = dict(sorted(tag_counts.items()))
@@ -116,6 +119,7 @@ def safe_snapshot_diagnostics(snapshot: object) -> dict[str, object]:
         'unknown_dom_tags': sorted(unknown_counts),
         'unknown_dom_tag_counts': unknown_counts,
         'dom_tag_counts': ordered_counts,
+        'dom_parent_child_tag_counts': dict(sorted(edge_counts.items())),
         'snapshot_element_node_count': element_count,
         'snapshot_text_node_count': text_count,
         'snapshot_total_node_count': element_count + text_count,
