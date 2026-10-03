@@ -1,53 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-03T00:35:41.952290+00:00",
+  "updated_at": "2026-10-03T00:37:05.211811+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2609.15939",
-      "deferred_at": "2026-09-15T22:15:41.123683+00:00",
-      "expires_at": "2026-11-14T22:15:41.123683+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Vulnerability Localization Benchmark: Measuring Agentic Security Analysis at Repository Scale",
-        "originalTitle": "Vulnerability Localization Benchmark: Measuring Agentic Security Analysis at Repository Scale",
-        "displayName": "Vulnerability Localization Benchmark: Measuring Agentic Security Analysis at Repository Scale",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.15939v1",
-        "description": "Language-model agents increasingly operate over complete software repositories, yet cybersecurity evaluations primarily measure whether they can detect, reproduce, or repair vulnerabilities rather than whether they can locate the relevant code. We study vulnerability localization: given a weakness class and an unfamiliar repository, identify the implementation files associated with that weakness. We introduce the Vulnerability Localization Benchmark (VLoc Bench), comprising 500 real world vulner",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-14T17:44:51Z",
-        "sourceContext": "Language-model agents increasingly operate over complete software repositories, yet cybersecurity evaluations primarily measure whether they can detect, reproduce, or repair vulnerabilities rather than whether they can locate the relevant code. We study vulnerability localization: given a weakness class and an unfamiliar repository, identify the implementation files associated with that weakness. We introduce the Vulnerability Localization Benchmark (VLoc Bench), comprising 500 real world vulnerabilities from 290 repositories across six package ecosystems and 147 CWE categories. Each task pairs repository snapshots immediately before and after a security fix. On the vulnerable snapshot, an agent receives only the CWE description and read-only terminal access and must return the affected files; on the patched snapshot, it must determine that the recorded vulnerability is no longer present. We evaluate 27 language models and four static-analysis tools under a common agent interface. Repository-scale vulnerability localization remains difficult: the strongest system achieves 0.229 File F1, and 38.4% of tasks receive no correct localization from any evaluated model. We further find that stronger localization does not imply reliable behavior after remediation: systems that identify vulnerable files effectively can still report unsupported locations on patched repositories. These results establish vulnerability localization as a distinct repository-scale capability and provide a setting for studying both how security agents search for vulnerable code and when they should refrain from reporting it.",
-        "primaryUrl": "https://arxiv.org/abs/2609.15939v1",
-        "sourceDetails": {
-          "authors": [
-            "Aman Priyanshu",
-            "Supriti Vijay",
-            "Kimia Majd",
-            "Xuhong He",
-            "Fraser Burch",
-            "Takahiro Matsumoto",
-            "Jianliang He",
-            "Baturay Saglam",
-            "Arthur Goldblatt",
-            "Zhuoran Yang",
-            "Amin Karbasi"
-          ],
-          "categories": [
-            "cs.CR",
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3dc479ff-dca9-811f-8c79-d44b54cc697e",
-      "score": 78,
-      "reason": "リポジトリ規模でのエージェント型セキュリティ分析ベンチマーク。",
-      "commercial_score": 75,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 76.95
-    },
     {
       "key": "https://github.com/kubeflow/kubeflow",
       "deferred_at": "2026-10-01T11:18:06.215429+00:00",
