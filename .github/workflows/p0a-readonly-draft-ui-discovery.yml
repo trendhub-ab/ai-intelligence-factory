@@ -1,0 +1,348 @@
+name: P0-A Read-only Draft UI Discovery
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-readonly-draft-ui-discovery.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: p0a-readonly-draft-ui-discovery
+  cancel-in-progress: false
+
+jobs:
+  start-cloud-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            test -n "${!name:-}" || { echo "::error::Missing ${name}"; exit 1; }
+          done
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM started for read-only UI discovery.'
+
+  discover-and-audit:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    env:
+      TARGET_SYNC_ID: '3e9479ffdca9811385c7d1a8ffcb3d4a'
+      NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+      NOTE_CHROME_CHANNEL: 'chrome'
+      NOTE_CHROME_HEADLESS: 'false'
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: design/p0-a-note-lossless-contract
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install read-only browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Discover exact legacy private draft from note UI and audit in-memory only
+        run: |
+          set -euo pipefail
+          xvfb-run -a python - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          import os
+          import re
+          from urllib.parse import urljoin, urlparse
+
+          import note_draft_automation as note_base
+          import note_publication_reconcile as lifecycle
+          import note_ready_sync as ready_sync
+          import run190_note_persistent_cloud as cloud
+          import run291_note_private_draft_audit as audit291
+          import run292_note_rendered_body_audit as audit292
+          import run295_note_private_draft_audit as audit295
+
+          TARGET = re.sub(r'[^0-9a-fA-F]', '', os.environ['TARGET_SYNC_ID']).lower()
+          if len(TARGET) != 32:
+              raise SystemExit('target_sync_id_invalid')
+
+          pages = ready_sync._query_db(
+              ready_sync.DEST_DATA_SOURCE_ID,
+              ready_sync.DEST_DATABASE_ID,
+              payload={'filter': {'property': '同期ID', 'rich_text': {'equals': TARGET}}},
+          )
+          exact = [
+              p for p in pages
+              if ready_sync._normalize_page_id(ready_sync._text((p.get('properties') or {}).get('同期ID'))) == TARGET
+          ]
+          if len(exact) != 1:
+              raise SystemExit('destination_row_not_unique')
+          destination = exact[0]
+          props = destination.get('properties') or {}
+          title = ready_sync._text(props.get('記事タイトル')).strip()
+          quality = ready_sync._select(props.get('品質状態'))
+          posting = ready_sync._select(props.get('投稿状態'))
+          public_url = ready_sync._url(props.get('note公開URL'))
+          posted_date = str((((props.get('投稿日') or {}).get('date') or {}).get('start')) or '').strip()
+          existing_identity = ready_sync._text(props.get(lifecycle.DRAFT_ID_PROPERTY)).strip()
+          if not title:
+              raise SystemExit('destination_title_missing')
+          if quality != 'Ready' or posting != '投稿準備中':
+              raise SystemExit('destination_state_invalid')
+          if public_url or posted_date:
+              raise SystemExit('public_evidence_present')
+          if existing_identity:
+              raise SystemExit('stable_identity_already_present')
+
+          def norm(value: str) -> str:
+              return re.sub(r'\s+', ' ', str(value or '').replace('\u3000', ' ')).strip()
+
+          def safe_note_href(raw: str) -> str:
+              value = str(raw or '').strip()
+              if not value:
+                  return ''
+              value = urljoin('https://note.com/', value)
+              parsed = urlparse(value)
+              if parsed.scheme != 'https' or (parsed.hostname or '').lower() not in {'note.com', 'editor.note.com'}:
+                  return ''
+              path = parsed.path or '/'
+              if '/publish' in path or path.endswith('/delete') or '/new' in path:
+                  return ''
+              return value
+
+          def title_anchor_hrefs(page) -> list[str]:
+              values = page.evaluate(
+                  """(expected) => {
+                    const n = s => String(s || '').replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim();
+                    const out = [];
+                    for (const a of Array.from(document.querySelectorAll('a[href]'))) {
+                      const raw = String(a.innerText || a.textContent || '');
+                      const lines = raw.split(/\r?\n/).map(n).filter(Boolean);
+                      if (n(raw) === expected || lines.includes(expected)) out.push(a.href || '');
+                    }
+                    return out;
+                  }""",
+                  norm(title),
+              )
+              return [safe_note_href(v) for v in (values or []) if safe_note_href(v)]
+
+          def edit_hrefs(page) -> list[str]:
+              values = page.evaluate(
+                  """() => Array.from(document.querySelectorAll('a[href]')).map(a => a.href || '')"""
+              )
+              out = []
+              for raw in values or []:
+                  href = safe_note_href(raw)
+                  if not href:
+                      continue
+                  parsed = urlparse(href)
+                  if re.fullmatch(r'/notes/[^/?#]+/edit/?', parsed.path or '', flags=re.I):
+                      out.append(href)
+              return out
+
+          candidate_page_visits = 0
+          title_link_match_count = 0
+          discovered_ids: set[str] = set()
+          seeded = False
+
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as playwright:
+              context = cloud._launch_persistent_context(playwright)
+              page = context.new_page()
+              page.set_default_timeout(30000)
+              try:
+                  list_urls = []
+                  for page_no in range(1, 11):
+                      list_urls.append(f'https://note.com/notes?page={page_no}&status=draft')
+                  for page_no in range(1, 11):
+                      list_urls.append(f'https://note.com/notes?page={page_no}&kind=draft')
+
+                  seen_list_routes: set[str] = set()
+                  for list_url in list_urls:
+                      page.goto(list_url, wait_until='domcontentloaded', timeout=60000)
+                      page.wait_for_timeout(900)
+                      if note_base._looks_logged_out(page) and not seeded:
+                          seeded = bool(cloud._seed_note_state(context, page))
+                          if seeded:
+                              page.goto(list_url, wait_until='domcontentloaded', timeout=60000)
+                              page.wait_for_timeout(900)
+                      if note_base._looks_logged_out(page):
+                          raise SystemExit('note_auth_inactive')
+                      parsed_current = urlparse(str(page.url or ''))
+                      if (parsed_current.hostname or '').lower() not in {'note.com', 'editor.note.com'}:
+                          raise SystemExit('draft_list_left_note_domain')
+                      route_key = f'{parsed_current.path}?{parsed_current.query}'
+                      if route_key in seen_list_routes:
+                          continue
+                      seen_list_routes.add(route_key)
+                      candidate_page_visits += 1
+
+                      hrefs = title_anchor_hrefs(page)
+                      title_link_match_count += len(hrefs)
+                      for href in hrefs:
+                          parsed = urlparse(href)
+                          if re.fullmatch(r'/notes/[^/?#]+/edit/?', parsed.path or '', flags=re.I):
+                              discovered_ids.add(lifecycle.draft_identity_from_url(href))
+                              continue
+
+                          page.goto(href, wait_until='domcontentloaded', timeout=60000)
+                          page.wait_for_timeout(900)
+                          if note_base._looks_logged_out(page):
+                              continue
+                          # Require the selected page itself to still expose the exact title before accepting any edit link.
+                          body_text = page.locator('body').inner_text(timeout=5000)
+                          if norm(title) not in {norm(line) for line in str(body_text or '').splitlines()} and norm(title) not in norm(body_text):
+                              continue
+                          for edit_url in edit_hrefs(page):
+                              discovered_ids.add(lifecycle.draft_identity_from_url(edit_url))
+
+                      if len(discovered_ids) == 1:
+                          break
+                      if len(discovered_ids) > 1:
+                          raise SystemExit('stable_identity_not_unique')
+              finally:
+                  context.close()
+
+          if len(discovered_ids) != 1:
+              print(json.dumps({
+                  'status': 'identity_not_found',
+                  'read_only': True,
+                  'zero_gemini_calls': True,
+                  'draft_mutation': False,
+                  'public_release': False,
+                  'list_pages_checked': candidate_page_visits,
+                  'title_link_match_count': title_link_match_count,
+                  'stable_identity_match_count': len(discovered_ids),
+              }, ensure_ascii=False))
+              raise SystemExit(2)
+
+          draft_id = next(iter(discovered_ids))
+          identity_hash = hashlib.sha256(draft_id.encode('utf-8')).hexdigest()[:12]
+
+          original_destination = audit291._destination_row
+          def bound_destination(sync_id: str):
+              sid = audit291._normalize_sync_id(sync_id)
+              if sid != TARGET:
+                  raise audit291.PrivateDraftAuditError('Run291 expected exactly one destination row for the requested sync_id')
+              return {
+                  'destination_page_id': str(destination.get('id') or ''),
+                  'sync_id': TARGET,
+                  'title': title,
+                  'draft_id': draft_id,
+              }
+
+          audit291._destination_row = bound_destination
+          try:
+              try:
+                  result = audit295.run(confirm=audit291.CONFIRM_TOKEN, sync_id=TARGET, prepare_only=False)
+              except audit295.Run295EyecatchProofError as exc:
+                  result = audit295._safe_failure_result(TARGET, exc.code, exc.safe_metrics)
+              except audit292.Run292AuditDiagnosticError as exc:
+                  result = audit295._safe_failure_result(TARGET, exc.code, exc.safe_metrics)
+              except audit291.PrivateDraftAuditError as exc:
+                  result = audit295._safe_failure_result(
+                      TARGET,
+                      audit292._safe_non_body_guard_code(exc),
+                      getattr(exc, 'safe_metrics', None),
+                  )
+          finally:
+              audit291._destination_row = original_destination
+
+          safe_keys = {
+              'success','status','diagnostic_code','zero_gemini_calls','read_only','public_release','draft_mutation',
+              'expectation_mode','title_match','eyecatch_present','eyecatch_proof_mode','body_h1_count','heading_count',
+              'paragraph_count','list_item_count','link_count','blockquote_count','body_visible_chars','expected_visible_chars',
+              'legacy_expected_visible_chars','renderer_delta_chars','renderer_delta_ratio','visible_length_ratio','prefix_match',
+              'suffix_match','exact_visible_match','expected_contained_in_actual','actual_contained_in_expected',
+              'common_prefix_ratio','common_suffix_ratio','sources_present','cta_present','sources_before_cta',
+              'duplicate_title_prefix','code_fence_marker_count','canonical_match','mismatch_category','mismatch_path',
+              'dom_diagnostic_category','unknown_dom_tags','unknown_dom_tag_counts','dom_tag_counts','snapshot_element_node_count',
+              'snapshot_text_node_count','snapshot_total_node_count','expected_canonical_node_count','actual_canonical_node_count',
+              'unsupported_expected_node_count','unsupported_actual_node_count','contract_version','normalization_policy_version',
+              'expected_node_counts','actual_node_counts','title_box','body_box','eyecatch_exact_control_count',
+              'eyecatch_exact_control_visible_count','image_labeled_control_count','image_labeled_control_visible_count',
+              'image_add_control_count','image_add_control_visible_count','file_input_count','title_geometry_available',
+              'visible_img_count','large_top_img_count','large_top_background_count','visible_picture_count','max_top_media_width',
+              'max_top_media_height','viewport_width','viewport_height'
+          }
+          safe = {k: v for k, v in result.items() if k in safe_keys}
+          safe.update({
+              'identity_discovery': 'exact_title_ui_match',
+              'stable_identity_hash': identity_hash,
+              'stable_identity_match_count': 1,
+              'list_pages_checked': candidate_page_visits,
+              'title_link_match_count': title_link_match_count,
+          })
+          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
+          if result.get('status') != 'audit_passed':
+              raise SystemExit(2)
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, discover-and-audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+      - name: Stop persistent note Chrome VM
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
