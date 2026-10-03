@@ -1,0 +1,62 @@
+name: P0-A DOM observer implementation once
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-dom-observer-impl-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: design/p0-a-note-lossless-contract
+      - name: Apply minimal read-only DOM observer implementation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('run291_note_private_draft_audit.py')
+          s = p.read_text(encoding='utf-8')
+          old = 'def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:\n'
+          new = 'def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) -> dict[str, Any]:\n'
+          if old not in s:
+              raise SystemExit('run291 browser audit signature anchor not found')
+          s = s.replace(old, new, 1)
+          old = '    profile = run190._profile_dir()\n    candidates = _recent_private_edit_urls(profile)\n'
+          new = '    audit_page = page_auditor or _audit_current_page\n    profile = run190._profile_dir()\n    candidates = _recent_private_edit_urls(profile)\n'
+          if old not in s:
+              raise SystemExit('run291 auditor selection anchor not found')
+          s = s.replace(old, new, 1)
+          old = '                    metrics = _audit_current_page(page, str(article["title"]), str(article["manuscript"]))\n'
+          new = '                    metrics = audit_page(page, str(article["title"]), str(article["manuscript"]))\n'
+          if old not in s:
+              raise SystemExit('run291 page audit call anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('run292_note_rendered_body_audit.py')
+          s = p.read_text(encoding='utf-8')
+          anchor = '''def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, Any]:\n'''
+          if anchor not in s:
+              raise SystemExit('run292 run anchor not found')
+          insertion = '''def _observe_dom_current_page(page: Any, title: str, manuscript: str) -> dict[str, Any]:\n    """Observe the exact matched private draft DOM without changing audit outcome or content."""\n    if base.note_base._looks_logged_out(page):\n        raise base.PrivateDraftAuditError("note authentication is not active")\n    if not base.run187._is_editor_url(str(page.url or "")):\n        raise base.PrivateDraftAuditError("Matched page is not a confirmed note editor route")\n    title_field = base.note_base._find_title(page)\n    if base._title_value(page) != title.strip():\n        raise base.PrivateDraftAuditError("Private draft title does not match the requested article")\n    body = base.note_base._find_body(page, title_field)\n    snapshot = note_dom.snapshot_note_body(body)\n    structural = note_dom.safe_snapshot_diagnostics(snapshot)\n    try:\n        metrics = _canonical_snapshot_metrics(snapshot, manuscript)\n        metrics.update(structural)\n        metrics["observation_diagnostic_code"] = "canonical_match"\n        return metrics\n    except Run292AuditDiagnosticError as exc:\n        metrics = dict(exc.safe_metrics)\n        for key, value in structural.items():\n            metrics.setdefault(key, value)\n        metrics["observation_diagnostic_code"] = exc.code\n        return metrics\n\n\ndef observe_private_draft_dom(*, confirm: str, sync_id: str) -> dict[str, Any]:\n    """Evidence-only Task 4 DOM observation; never represents production audit success."""\n    if confirm != base.CONFIRM_TOKEN:\n        raise base.PrivateDraftAuditError(f"Confirmation must equal {base.CONFIRM_TOKEN}")\n    article = base._expected_article(sync_id)\n    metrics = base._browser_audit(article, page_auditor=_observe_dom_current_page)\n    result: dict[str, Any] = {\n        "status": "dom_observation_only",\n        "observation_complete": True,\n        "production_audit_passed": False,\n        "zero_gemini_calls": True,\n        "read_only": True,\n        "public_release": False,\n        "draft_mutation": False,\n        "sync_id": base._normalize_sync_id(sync_id),\n    }\n    for key, value in metrics.items():\n        if key not in {"title", "manuscript", "draft_url", "actual_text", "expected_text"}:\n            result[key] = value\n    return result\n\n\n'''
+          s = s.replace(anchor, insertion + anchor, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit minimal implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add run291_note_private_draft_audit.py run292_note_rendered_body_audit.py
+          git diff --cached --check
+          git commit -m 'feat: add evidence-only private draft DOM observer'
+          git push origin HEAD:design/p0-a-note-lossless-contract
