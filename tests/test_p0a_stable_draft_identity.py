@@ -94,8 +94,8 @@ class StableDraftIdentityContractTests(unittest.TestCase):
         private_url = f"https://note.com/notes/{DRAFT_ID}/edit"
         safe_metrics = {"title_match": True, "body_visible_chars": 777}
 
+        self.assertFalse(hasattr(audit, "_recent_private_edit_urls"))
         with _fake_playwright_import(), \
-             mock.patch.object(audit, "_recent_private_edit_urls", side_effect=AssertionError("history fallback forbidden")), \
              mock.patch.object(audit.run190, "_profile_dir", side_effect=AssertionError("history profile forbidden")), \
              mock.patch.object(audit.run190, "_launch_persistent_context", return_value=context), \
              mock.patch.object(audit.note_base, "_looks_logged_out", return_value=False), \
@@ -119,7 +119,6 @@ class StableDraftIdentityContractTests(unittest.TestCase):
         for value in bad_values:
             with self.subTest(value=value), \
                  _fake_playwright_import(), \
-                 mock.patch.object(audit, "_recent_private_edit_urls", side_effect=AssertionError("history forbidden")), \
                  mock.patch.object(audit.run190, "_launch_persistent_context", side_effect=AssertionError("browser forbidden")):
                 with self.assertRaises(audit.PrivateDraftAuditError):
                     audit._browser_audit({"title": "Expected title", "manuscript": "body", "draft_id": value})

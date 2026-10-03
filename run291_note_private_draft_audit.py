@@ -14,16 +14,11 @@ ZERO Gemini/model calls. No public-release action. No screenshot or unpublished-
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
-import shutil
-import sqlite3
-import tempfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import note_draft_automation as note_base
 import note_publication_reconcile as note_lifecycle
@@ -35,8 +30,6 @@ import run222_note_presentation_integrity as run222
 CONFIRM_TOKEN = "AUDIT_NOTE_DRAFT"
 PREPARING_STATUS = "投稿準備中"
 READY_STATUS = "Ready"
-MAX_HISTORY_CANDIDATES = 24
-_EDIT_PATH = re.compile(r"^/notes/[^/?#]+/edit/?$", re.I)
 _READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？", "元情報")
 
 
@@ -53,16 +46,6 @@ def _normalize_sync_id(value: str) -> str:
 def _prop_date(prop: dict | None) -> str:
     return str((((prop or {}).get("date") or {}).get("start")) or "").strip()
 
-
-def _is_note_edit_url(value: str) -> bool:
-    try:
-        parsed = urlparse(str(value or ""))
-    except Exception:
-        return False
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or host not in {"note.com", "editor.note.com"}:
-        return False
-    return bool(_EDIT_PATH.fullmatch(parsed.path or ""))
 
 
 def _destination_row(sync_id: str) -> dict[str, Any]:
@@ -129,49 +112,6 @@ def _expected_article(sync_id: str) -> dict[str, Any]:
     row["manuscript"] = presented
     return row
 
-
-def _copy_history_rows(history_path: Path) -> list[tuple[str, int]]:
-    temp_dir = Path(tempfile.mkdtemp(prefix="run291-history-"))
-    copy_path = temp_dir / "History"
-    try:
-        shutil.copy2(history_path, copy_path)
-        conn = sqlite3.connect(str(copy_path))
-        try:
-            rows = conn.execute(
-                "SELECT url, last_visit_time FROM urls "
-                "WHERE url LIKE 'https://%note.com/notes/%/edit%' "
-                "ORDER BY last_visit_time DESC LIMIT 80"
-            ).fetchall()
-        finally:
-            conn.close()
-        return [(str(url or ""), int(last_visit or 0)) for url, last_visit in rows]
-    except (OSError, sqlite3.Error):
-        return []
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-def _recent_private_edit_urls(profile_dir: Path) -> list[str]:
-    weighted: list[tuple[int, str]] = []
-    try:
-        history_files = [p for p in profile_dir.rglob("History") if p.is_file()]
-    except OSError:
-        history_files = []
-    for history in history_files[:12]:
-        for url, last_visit in _copy_history_rows(history):
-            if _is_note_edit_url(url):
-                weighted.append((last_visit, url))
-    weighted.sort(key=lambda item: item[0], reverse=True)
-    seen: set[str] = set()
-    result: list[str] = []
-    for _, url in weighted:
-        if url in seen:
-            continue
-        seen.add(url)
-        result.append(url)
-        if len(result) >= MAX_HISTORY_CANDIDATES:
-            break
-    return result
 
 
 def _title_value(page: Any) -> str:
