@@ -1,0 +1,27 @@
+name: P0-B2 Draft Identity TDD
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - 'tests/test_p0b2_note_draft_identity.py'
+      - 'note_draft_automation.py'
+      - 'note_ready_sync.py'
+      - '.github/workflows/p0b2-draft-identity-tdd.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip requests
+      - name: P0-B2 identity contract tests
+        run: python -m unittest tests.test_p0b2_note_draft_identity -v
