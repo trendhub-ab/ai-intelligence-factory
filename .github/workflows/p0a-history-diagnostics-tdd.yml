@@ -1,4 +1,5 @@
 name: P0-A history diagnostics TDD
+# GREEN verification trigger after minimal implementation.
 
 on:
   push:
