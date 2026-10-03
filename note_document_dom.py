@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -31,12 +32,94 @@ _SNAPSHOT_SCRIPT = r"""el => {
   return {type: 'root', children};
 }"""
 
+# This is deliberately the adapter's proven semantic tag set, not a browser-wide
+# HTML allowlist. Unknown wrappers remain fail-closed until real note DOM evidence
+# proves a normalization rule is safe.
+_KNOWN_SEMANTIC_TAGS = frozenset({
+    'p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'strong', 'em',
+    'code', 'pre', 'blockquote', 'hr', 'br',
+})
+_SAFE_TAG_NAME = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
+
 
 def snapshot_note_body(body_locator: object) -> dict[str, object]:
     value = body_locator.evaluate(_SNAPSHOT_SCRIPT)
     if not isinstance(value, dict):
         raise contract.CanonicalContractError('unsupported_note_dom')
     return value
+
+
+def safe_snapshot_diagnostics(snapshot: object) -> dict[str, object]:
+    """Return structural-only diagnostics for a failed note DOM conversion.
+
+    Never includes text, attributes, hrefs, classes, ids, URLs, or DOM serialization.
+    It is safe to attach to a public CI receipt when conversion has already failed
+    closed. Tag names are constrained to normal HTML/custom-element syntax; malformed
+    names collapse to a fixed token rather than echoing arbitrary input.
+    """
+    tag_counts: dict[str, int] = {}
+    element_count = 0
+    text_count = 0
+    invalid_shape = False
+
+    def walk(node: object) -> None:
+        nonlocal element_count, text_count, invalid_shape
+        if not isinstance(node, dict):
+            invalid_shape = True
+            return
+        node_type = node.get('type')
+        if node_type == 'text':
+            text_count += 1
+            return
+        if node_type == 'root':
+            children = node.get('children')
+            if not isinstance(children, list):
+                invalid_shape = True
+                return
+            for child in children:
+                walk(child)
+            return
+        if node_type != 'element':
+            invalid_shape = True
+            return
+
+        element_count += 1
+        raw_tag = node.get('tag')
+        if isinstance(raw_tag, str):
+            candidate = raw_tag.lower()
+            tag = candidate if _SAFE_TAG_NAME.fullmatch(candidate) else 'invalid_tag'
+            if tag == 'invalid_tag':
+                invalid_shape = True
+        else:
+            tag = 'invalid_tag'
+            invalid_shape = True
+        tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+        children = node.get('children')
+        if not isinstance(children, list):
+            invalid_shape = True
+            return
+        for child in children:
+            walk(child)
+
+    walk(snapshot)
+    ordered_counts = dict(sorted(tag_counts.items()))
+    unknown_counts = {
+        tag: count for tag, count in ordered_counts.items()
+        if tag not in _KNOWN_SEMANTIC_TAGS
+    }
+    category = 'unknown_dom_tag' if unknown_counts else 'unsupported_dom_shape'
+    if invalid_shape and not unknown_counts:
+        category = 'unsupported_dom_shape'
+    return {
+        'dom_diagnostic_category': category,
+        'unknown_dom_tags': sorted(unknown_counts),
+        'unknown_dom_tag_counts': unknown_counts,
+        'dom_tag_counts': ordered_counts,
+        'snapshot_element_node_count': element_count,
+        'snapshot_text_node_count': text_count,
+        'snapshot_total_node_count': element_count + text_count,
+    }
 
 
 def _fail() -> None:

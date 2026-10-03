@@ -158,11 +158,17 @@ def _node_counts(document: contract.Document) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _canonical_node_count(document: contract.Document) -> int:
+    return sum(_node_counts(document).values())
+
+
 def _canonical_snapshot_metrics(snapshot: dict[str, object], expected_markdown: str) -> dict[str, Any]:
     metrics: dict[str, Any] = {
         "canonical_match": False,
         "unsupported_expected_node_count": 0,
         "unsupported_actual_node_count": 0,
+        "expected_canonical_node_count": 0,
+        "actual_canonical_node_count": 0,
         "contract_version": contract.CONTRACT_VERSION,
         "normalization_policy_version": contract.NORMALIZATION_POLICY_VERSION,
     }
@@ -171,12 +177,16 @@ def _canonical_snapshot_metrics(snapshot: dict[str, object], expected_markdown: 
     except contract.CanonicalContractError as exc:
         metrics["unsupported_expected_node_count"] = 1
         raise Run292AuditDiagnosticError(exc.code, metrics) from None
+    metrics["expected_canonical_node_count"] = _canonical_node_count(expected)
+
     try:
         actual = note_dom.document_from_note_snapshot(snapshot)
     except contract.CanonicalContractError as exc:
         metrics["unsupported_actual_node_count"] = 1
+        metrics.update(note_dom.safe_snapshot_diagnostics(snapshot))
         raise Run292AuditDiagnosticError(exc.code, metrics) from None
 
+    metrics["actual_canonical_node_count"] = _canonical_node_count(actual)
     receipt = contract.compare_documents(expected, actual)
     metrics.update(
         {
