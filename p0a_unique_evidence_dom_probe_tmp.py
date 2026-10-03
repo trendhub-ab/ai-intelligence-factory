@@ -91,16 +91,12 @@ def main() -> int:
                 "max_external_link_match_ratio": round(max_external_ratio, 4),
             }
 
-            # A legacy identity may be recovered only when the complete external Evidence
-            # set identifies exactly one readable editor candidate and the candidate still
-            # exposes the Sources section. We do not persist this identity in this probe.
             if len(source_full_external) != 1:
                 safe["diagnostic_code"] = "unique_evidence_identity_not_proven"
                 print(json.dumps(safe, sort_keys=True))
                 return 2
 
             selected_id, selected_proof = next(iter(source_full_external.items()))
-            # Resolve the already-observed history route without ever printing it.
             for candidate in candidates:
                 try:
                     candidate_id = discovery.lifecycle.draft_identity_from_url(candidate)
@@ -125,8 +121,7 @@ def main() -> int:
             title_field = note_base._find_title(page)
             body = note_base._find_body(page, title_field)
             snapshot = dom.snapshot_note_body(body)
-            structural = dom.safe_snapshot_diagnostics(snapshot)
-            safe.update(structural)
+            safe.update(dom.safe_snapshot_diagnostics(snapshot))
             safe.update({
                 "identity_proof_mode": "unique_complete_external_evidence_set",
                 "stable_identity_hash": hashlib.sha256(selected_id.encode("utf-8")).hexdigest()[:12],
@@ -137,19 +132,24 @@ def main() -> int:
                 "matched_suffix": bool(selected_proof["suffix_match"]),
                 "selected_source_present": bool(selected_proof["source_present"]),
             })
+            actual_doc = None
             try:
                 actual_doc = dom.document_from_note_snapshot(snapshot)
                 safe["actual_dom_convertible"] = True
-                safe["actual_canonical_node_count"] = contract.document_node_count(actual_doc)
+                safe["actual_canonical_top_level_count"] = len(actual_doc.children)
             except contract.CanonicalContractError as exc:
                 safe["actual_dom_convertible"] = False
                 safe["actual_dom_conversion_code"] = exc.code
 
             try:
                 expected_doc = contract.normalize_document(contract.parse_presentation_markdown(presented))
-                safe["expected_canonical_node_count"] = contract.document_node_count(expected_doc)
-                if safe.get("actual_dom_convertible"):
-                    safe["canonical_match_to_current"] = bool(actual_doc == expected_doc)
+                safe["expected_canonical_top_level_count"] = len(expected_doc.children)
+                if actual_doc is not None:
+                    safe.update({
+                        "canonical_match_to_current": contract.compare_documents(expected_doc, actual_doc)["canonical_match"],
+                        "mismatch_category": contract.compare_documents(expected_doc, actual_doc)["mismatch_category"],
+                        "mismatch_path": contract.compare_documents(expected_doc, actual_doc)["mismatch_path"],
+                    })
             except contract.CanonicalContractError as exc:
                 safe["expected_contract_parse_ok"] = False
                 safe["expected_contract_parse_code"] = exc.code
