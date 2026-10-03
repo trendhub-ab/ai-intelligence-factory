@@ -1,0 +1,82 @@
+name: P0-A History Dead Code Cleanup Once
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-history-deadcode-cleanup-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/p0-a-note-lossless-contract
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Remove obsolete Chrome History code
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('run291_note_private_draft_audit.py')
+          text = path.read_text(encoding='utf-8')
+          for line in (
+              'import hashlib\n',
+              'import shutil\n',
+              'import sqlite3\n',
+              'import tempfile\n',
+              'from urllib.parse import urlparse\n',
+          ):
+              text = text.replace(line, '', 1)
+          text = text.replace('MAX_HISTORY_CANDIDATES = 24\n', '', 1)
+          text = text.replace('_EDIT_PATH = re.compile(r"^/notes/[^/?#]+/edit/?$", re.I)\n', '', 1)
+          text, n1 = re.subn(
+              r'\ndef _is_note_edit_url\(value: str\) -> bool:\n.*?\n\ndef _destination_row',
+              '\n\ndef _destination_row',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          text, n2 = re.subn(
+              r'\ndef _copy_history_rows\(history_path: Path\) -> list\[tuple\[str, int\]\]:\n.*?\n\ndef _title_value',
+              '\n\ndef _title_value',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if (n1, n2) != (1, 1):
+              raise SystemExit(f'cleanup anchors mismatch: {(n1, n2)}')
+          forbidden = ('_recent_private_edit_urls', '_copy_history_rows', '_is_note_edit_url', 'MAX_HISTORY_CANDIDATES', 'sqlite3', 'tempfile')
+          for token in forbidden:
+              if token in text:
+                  raise SystemExit(f'obsolete token remains: {token}')
+          path.write_text(text, encoding='utf-8')
+
+          test = Path('tests/test_p0a_stable_draft_identity.py')
+          t = test.read_text(encoding='utf-8')
+          t = t.replace(
+              '        with _fake_playwright_import(), \\\n             mock.patch.object(audit, "_recent_private_edit_urls", side_effect=AssertionError("history fallback forbidden")), \\\n             mock.patch.object(audit.run190, "_profile_dir", side_effect=AssertionError("history profile forbidden")), \\\n',
+              '        self.assertFalse(hasattr(audit, "_recent_private_edit_urls"))\n        with _fake_playwright_import(), \\\n             mock.patch.object(audit.run190, "_profile_dir", side_effect=AssertionError("history profile forbidden")), \\\n',
+              1,
+          )
+          t = t.replace(
+              '            with self.subTest(value=value), \\\n                 _fake_playwright_import(), \\\n                 mock.patch.object(audit, "_recent_private_edit_urls", side_effect=AssertionError("history forbidden")), \\\n                 mock.patch.object(audit.run190, "_launch_persistent_context", side_effect=AssertionError("browser forbidden")):\n',
+              '            with self.subTest(value=value), \\\n                 _fake_playwright_import(), \\\n                 mock.patch.object(audit.run190, "_launch_persistent_context", side_effect=AssertionError("browser forbidden")):\n',
+              1,
+          )
+          test.write_text(t, encoding='utf-8')
+          PY
+          python -m py_compile run291_note_private_draft_audit.py tests/test_p0a_stable_draft_identity.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add run291_note_private_draft_audit.py tests/test_p0a_stable_draft_identity.py
+          git commit -m 'refactor: remove Run291 Chrome History fallback code'
+          git push origin HEAD:design/p0-a-note-lossless-contract
