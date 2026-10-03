@@ -5,7 +5,8 @@ Run291 compared note's rendered body against a coarse Markdown-to-plain-text hel
 intentionally suitable only for insertion smoke checks. In particular, that helper removes fenced
 code content even though the note paste path renders code visibly. Run292 keeps every Run291
 read-only/privacy boundary, but derives the expected visible body from the exact safe HTML renderer
-used by draft creation.
+used by draft creation and now requires an independent canonical document match against the saved
+note DOM.
 
 Run293 preserves the same gates and adds categorical diagnostics for fixed, non-body audit failures.
 Only allow-listed codes are emitted; exception text is never copied into the result.
@@ -23,7 +24,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+import note_document_contract as contract
+import note_document_dom as note_dom
 import run291_note_private_draft_audit as base
+
+
+_ORIGINAL_AUDIT_CURRENT_PAGE = base._audit_current_page
 
 
 class _VisibleTextParser(HTMLParser):
@@ -136,13 +142,76 @@ def _body_text_metrics(actual_text: str, expected_markdown: str, title: str) -> 
     return metrics
 
 
+def _node_counts(document: contract.Document) -> dict[str, int]:
+    counts: dict[str, int] = {}
+
+    def walk(node: Any) -> None:
+        name = type(node).__name__
+        counts[name] = counts.get(name, 0) + 1
+        for attr in ("children", "items"):
+            value = getattr(node, attr, None)
+            if value:
+                for child in value:
+                    walk(child)
+
+    walk(document)
+    return dict(sorted(counts.items()))
+
+
+def _canonical_snapshot_metrics(snapshot: dict[str, object], expected_markdown: str) -> dict[str, Any]:
+    metrics: dict[str, Any] = {
+        "canonical_match": False,
+        "unsupported_expected_node_count": 0,
+        "unsupported_actual_node_count": 0,
+        "contract_version": contract.CONTRACT_VERSION,
+        "normalization_policy_version": contract.NORMALIZATION_POLICY_VERSION,
+    }
+    try:
+        expected = contract.parse_presentation_markdown(expected_markdown)
+    except contract.CanonicalContractError as exc:
+        metrics["unsupported_expected_node_count"] = 1
+        raise Run292AuditDiagnosticError(exc.code, metrics) from None
+    try:
+        actual = note_dom.document_from_note_snapshot(snapshot)
+    except contract.CanonicalContractError as exc:
+        metrics["unsupported_actual_node_count"] = 1
+        raise Run292AuditDiagnosticError(exc.code, metrics) from None
+
+    receipt = contract.compare_documents(expected, actual)
+    metrics.update(
+        {
+            "canonical_match": bool(receipt["canonical_match"]),
+            "mismatch_category": receipt["mismatch_category"],
+            "mismatch_path": receipt["mismatch_path"],
+            "expected_node_counts": _node_counts(expected),
+            "actual_node_counts": _node_counts(actual),
+        }
+    )
+    if not metrics["canonical_match"]:
+        raise Run292AuditDiagnosticError(str(metrics["mismatch_category"] or "canonical_mismatch"), metrics)
+    return metrics
+
+
+def _canonical_audit_current_page(page: Any, title: str, manuscript: str) -> dict[str, Any]:
+    """Preserve every Run291 guard, then add an independent read-only canonical DOM proof."""
+    metrics = dict(_ORIGINAL_AUDIT_CURRENT_PAGE(page, title, manuscript))
+    title_field = base.note_base._find_title(page)
+    body = base.note_base._find_body(page, title_field)
+    snapshot = note_dom.snapshot_note_body(body)
+    metrics.update(_canonical_snapshot_metrics(snapshot, manuscript))
+    return metrics
+
+
 def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, Any]:
-    original = base._body_text_metrics
+    original_text = base._body_text_metrics
+    original_page = base._audit_current_page
     base._body_text_metrics = _body_text_metrics
+    base._audit_current_page = _canonical_audit_current_page
     try:
         return base.run(confirm=confirm, sync_id=sync_id, prepare_only=prepare_only)
     finally:
-        base._body_text_metrics = original
+        base._body_text_metrics = original_text
+        base._audit_current_page = original_page
 
 
 _NON_BODY_GUARD_CODES: dict[str, str] = {
