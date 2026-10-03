@@ -180,7 +180,10 @@ def _canonical_snapshot_metrics(snapshot: dict[str, object], expected_markdown: 
     metrics["expected_canonical_node_count"] = _canonical_node_count(expected)
 
     try:
-        actual = note_dom.document_from_note_snapshot(snapshot)
+        actual = note_dom.document_from_note_snapshot(
+            snapshot,
+            allowed_normalizations=(contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,),
+        )
     except contract.CanonicalContractError as exc:
         metrics["unsupported_actual_node_count"] = 1
         metrics.update(note_dom.safe_snapshot_diagnostics(snapshot))

@@ -86,3 +86,12 @@ def test_unknown_normalization_code_remains_fail_closed() -> None:
 
 def test_normalization_policy_version_advances_when_real_note_rule_is_enabled() -> None:
     assert contract.NORMALIZATION_POLICY_VERSION == "p0a-normalization-v2"
+
+
+def test_run292_canonical_verifier_enables_only_the_proven_normalization() -> None:
+    import run292_note_rendered_body_audit as audit292
+
+    snapshot = root(el("ul", [li_paragraph("A"), li_paragraph("B")]))
+    metrics = audit292._canonical_snapshot_metrics(snapshot, "- A\n- B")
+    assert metrics["canonical_match"] is True
+    assert metrics["normalization_policy_version"] == "p0a-normalization-v2"

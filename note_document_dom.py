@@ -193,13 +193,33 @@ def _inline_nodes(nodes: list[dict[str, Any]]) -> tuple[Any, ...]:
     return tuple(result)
 
 
-def _list_item(node: dict[str, Any]) -> contract.ListItem:
+def _list_item(
+    node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()
+) -> contract.ListItem:
     if node.get('type') != 'element' or str(node.get('tag') or '').lower() != 'li' or _attrs(node):
         _fail()
-    return contract.ListItem(_inline_nodes(_children(node)))
+    kids = _children(node)
+    has_paragraph_child = any(
+        child.get('type') == 'element' and str(child.get('tag') or '').lower() == 'p'
+        for child in kids
+    )
+    if has_paragraph_child:
+        if contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER not in allowed_normalizations:
+            _fail()
+        if len(kids) != 1:
+            _fail()
+        paragraph = kids[0]
+        if (
+            paragraph.get('type') != 'element'
+            or str(paragraph.get('tag') or '').lower() != 'p'
+            or _attrs(paragraph)
+        ):
+            _fail()
+        kids = _children(paragraph)
+    return contract.ListItem(_inline_nodes(kids))
 
 
-def _block(node: dict[str, Any]) -> Any:
+def _block(node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()) -> Any:
     if node.get('type') != 'element':
         _fail()
     tag = str(node.get('tag') or '').lower()
@@ -225,7 +245,7 @@ def _block(node: dict[str, Any]) -> Any:
     if tag == 'ul':
         if attrs:
             _fail()
-        return contract.UnorderedList(tuple(_list_item(child) for child in kids))
+        return contract.UnorderedList(tuple(_list_item(child, allowed_normalizations=allowed_normalizations) for child in kids))
     if tag == 'ol':
         if not attrs:
             start = 1
@@ -233,7 +253,7 @@ def _block(node: dict[str, Any]) -> Any:
             start = int(attrs['start'])
         else:
             _fail()
-        return contract.OrderedList(start, tuple(_list_item(child) for child in kids))
+        return contract.OrderedList(start, tuple(_list_item(child, allowed_normalizations=allowed_normalizations) for child in kids))
     if tag == 'pre':
         if attrs or len(kids) != 1:
             _fail()
@@ -250,6 +270,7 @@ def _block(node: dict[str, Any]) -> Any:
 def document_from_note_snapshot(
     snapshot: dict[str, object], *, allowed_normalizations: tuple[str, ...] = ()
 ) -> contract.Document:
+    contract.validate_normalization_codes(allowed_normalizations)
     if not isinstance(snapshot, dict) or snapshot.get('type') != 'root':
         _fail()
     children = snapshot.get('children')
@@ -264,5 +285,5 @@ def document_from_note_snapshot(
             if not isinstance(value, str) or value.strip():
                 _fail()
             continue
-        blocks.append(_block(child))
+        blocks.append(_block(child, allowed_normalizations=allowed_normalizations))
     return contract.normalize_document(contract.Document(tuple(blocks)), normalization_codes=allowed_normalizations)

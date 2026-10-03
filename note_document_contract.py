@@ -7,7 +7,9 @@ from typing import Any, Iterable, Tuple
 from urllib.parse import urlparse
 
 CONTRACT_VERSION = "p0a-canonical-v1"
-NORMALIZATION_POLICY_VERSION = "p0a-normalization-v1"
+NORMALIZATION_POLICY_VERSION = "p0a-normalization-v2"
+NOTE_LIST_ITEM_PARAGRAPH_WRAPPER = "note_list_item_paragraph_wrapper"
+_PROVEN_NORMALIZATION_CODES = frozenset({NOTE_LIST_ITEM_PARAGRAPH_WRAPPER})
 
 
 class CanonicalContractError(ValueError):
@@ -278,10 +280,13 @@ def _normalize_node(node: Any) -> Any:
     return node
 
 
-def normalize_document(document: Document, *, normalization_codes: tuple[str, ...] = ()) -> Document:
-    if normalization_codes:
-        # No note-specific normalization is evidence-backed in Task 1.
+def validate_normalization_codes(normalization_codes: tuple[str, ...] = ()) -> None:
+    if any(code not in _PROVEN_NORMALIZATION_CODES for code in normalization_codes):
         raise CanonicalContractError("unsupported_normalization")
+
+
+def normalize_document(document: Document, *, normalization_codes: tuple[str, ...] = ()) -> Document:
+    validate_normalization_codes(normalization_codes)
     return _normalize_node(document)
 
 
