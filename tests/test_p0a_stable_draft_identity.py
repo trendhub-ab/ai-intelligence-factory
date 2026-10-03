@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# GREEN trigger: stable identity implementation is now under contract.
 import sys
 import types
 import unittest
