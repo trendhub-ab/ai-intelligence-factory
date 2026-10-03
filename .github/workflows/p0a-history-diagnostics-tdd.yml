@@ -1,5 +1,5 @@
 name: P0-A history diagnostics TDD
-# GREEN verification trigger after minimal implementation.
+# Targeted zero-browser verification for content-free history diagnostics.
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11.16'
-      - run: pip install requests playwright
+      - run: pip install requests
       - name: Run P0-A read-only targeted tests
         run: |
           python -m unittest tests.test_p0a_history_diagnostics -v
