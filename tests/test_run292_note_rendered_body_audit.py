@@ -158,6 +158,75 @@ class Run292CanonicalIntegrationTests(unittest.TestCase):
         self.assertNotIn("PRIVATE-ATTR-SENTINEL", rendered)
 
 
+class Run292DomObservationTests(unittest.TestCase):
+    def test_run291_browser_audit_supports_read_only_page_auditor_injection(self) -> None:
+        parameter = inspect.signature(audit.base._browser_audit).parameters["page_auditor"]
+        self.assertIsNone(parameter.default)
+
+    def test_dom_observer_reports_unknown_wrappers_without_content(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {
+                    "type": "element",
+                    "tag": "div",
+                    "attrs": {"title": "PRIVATE-ATTR-SENTINEL"},
+                    "children": [
+                        {"type": "element", "tag": "section", "attrs": {}, "children": [{"type": "text", "text": "PRIVATE-BODY-SENTINEL"}]}
+                    ],
+                }
+            ],
+        }
+        page = types.SimpleNamespace(url="https://editor.note.com/notes/private-secret/edit")
+        body = object()
+        with patch.object(audit.base.note_base, "_looks_logged_out", return_value=False), \
+             patch.object(audit.base.run187, "_is_editor_url", return_value=True), \
+             patch.object(audit.base.note_base, "_find_title", return_value=object()), \
+             patch.object(audit.base, "_title_value", return_value="PRIVATE-TITLE-SENTINEL"), \
+             patch.object(audit.base.note_base, "_find_body", return_value=body), \
+             patch.object(audit.note_dom, "snapshot_note_body", return_value=snapshot):
+            metrics = audit._observe_dom_current_page(
+                page, "PRIVATE-TITLE-SENTINEL", "本文"
+            )
+        self.assertFalse(metrics["canonical_match"])
+        self.assertEqual(metrics["dom_diagnostic_category"], "unknown_dom_tag")
+        self.assertEqual(metrics["unknown_dom_tags"], ["div", "section"])
+        self.assertEqual(metrics["observation_diagnostic_code"], "unsupported_note_dom")
+        serialized = repr(metrics)
+        for secret in (
+            "PRIVATE-BODY-SENTINEL", "PRIVATE-ATTR-SENTINEL",
+            "PRIVATE-TITLE-SENTINEL", "private-secret",
+        ):
+            self.assertNotIn(secret, serialized)
+
+    def test_dom_observation_is_evidence_only_and_cannot_claim_audit_pass(self) -> None:
+        article = {
+            "sync_id": "a" * 32,
+            "title": "PRIVATE-TITLE-SENTINEL",
+            "manuscript": "PRIVATE-BODY-SENTINEL",
+        }
+        with patch.object(audit.base, "_expected_article", return_value=article), \
+             patch.object(
+                 audit.base,
+                 "_browser_audit",
+                 return_value={"canonical_match": True, "actual_canonical_node_count": 7},
+             ) as browser:
+            result = audit.observe_private_draft_dom(
+                confirm=audit.base.CONFIRM_TOKEN, sync_id="a" * 32
+            )
+        self.assertEqual(result["status"], "dom_observation_only")
+        self.assertTrue(result["read_only"])
+        self.assertTrue(result["zero_gemini_calls"])
+        self.assertFalse(result["draft_mutation"])
+        self.assertFalse(result["public_release"])
+        self.assertFalse(result["production_audit_passed"])
+        self.assertTrue(result["canonical_match"])
+        self.assertNotIn("title", result)
+        self.assertNotIn("manuscript", result)
+        self.assertNotIn("draft_url", result)
+        self.assertIs(browser.call_args.kwargs["page_auditor"], audit._observe_dom_current_page)
+
+
 class Run292ExecutionBoundaryTests(unittest.TestCase):
     def test_wrapper_restores_run291_metric_and_page_functions_after_execution(self) -> None:
         original_metric = audit.base._body_text_metrics
