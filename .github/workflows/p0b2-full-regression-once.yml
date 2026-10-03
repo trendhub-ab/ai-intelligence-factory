@@ -1,4 +1,5 @@
 name: P0-B2 Full Regression Once
+# rerun after integrating B2 into classified note lifecycle module
 
 on:
   push:
