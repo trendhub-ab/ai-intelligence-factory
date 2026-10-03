@@ -212,6 +212,53 @@ def _canonical_audit_current_page(page: Any, title: str, manuscript: str) -> dic
     return metrics
 
 
+def _observe_dom_current_page(page: Any, title: str, manuscript: str) -> dict[str, Any]:
+    """Observe the exact matched private draft DOM without changing audit outcome or content."""
+    if base.note_base._looks_logged_out(page):
+        raise base.PrivateDraftAuditError("note authentication is not active")
+    if not base.run187._is_editor_url(str(page.url or "")):
+        raise base.PrivateDraftAuditError("Matched page is not a confirmed note editor route")
+    title_field = base.note_base._find_title(page)
+    if base._title_value(page) != title.strip():
+        raise base.PrivateDraftAuditError("Private draft title does not match the requested article")
+    body = base.note_base._find_body(page, title_field)
+    snapshot = note_dom.snapshot_note_body(body)
+    structural = note_dom.safe_snapshot_diagnostics(snapshot)
+    try:
+        metrics = _canonical_snapshot_metrics(snapshot, manuscript)
+        metrics.update(structural)
+        metrics["observation_diagnostic_code"] = "canonical_match"
+        return metrics
+    except Run292AuditDiagnosticError as exc:
+        metrics = dict(exc.safe_metrics)
+        for key, value in structural.items():
+            metrics.setdefault(key, value)
+        metrics["observation_diagnostic_code"] = exc.code
+        return metrics
+
+
+def observe_private_draft_dom(*, confirm: str, sync_id: str) -> dict[str, Any]:
+    """Evidence-only Task 4 DOM observation; never represents production audit success."""
+    if confirm != base.CONFIRM_TOKEN:
+        raise base.PrivateDraftAuditError(f"Confirmation must equal {base.CONFIRM_TOKEN}")
+    article = base._expected_article(sync_id)
+    metrics = base._browser_audit(article, page_auditor=_observe_dom_current_page)
+    result: dict[str, Any] = {
+        "status": "dom_observation_only",
+        "observation_complete": True,
+        "production_audit_passed": False,
+        "zero_gemini_calls": True,
+        "read_only": True,
+        "public_release": False,
+        "draft_mutation": False,
+        "sync_id": base._normalize_sync_id(sync_id),
+    }
+    for key, value in metrics.items():
+        if key not in {"title", "manuscript", "draft_url", "actual_text", "expected_text"}:
+            result[key] = value
+    return result
+
+
 def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, Any]:
     original_text = base._body_text_metrics
     original_page = base._audit_current_page

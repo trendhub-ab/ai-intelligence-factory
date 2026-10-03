@@ -300,12 +300,13 @@ def _audit_current_page(page: Any, title: str, manuscript: str) -> dict[str, Any
     return metrics
 
 
-def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:
+def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) -> dict[str, Any]:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise PrivateDraftAuditError("Playwright is required for Run291") from exc
 
+    audit_page = page_auditor or _audit_current_page
     profile = run190._profile_dir()
     candidates = _recent_private_edit_urls(profile)
     history_metrics: dict[str, int] = {
@@ -361,7 +362,7 @@ def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:
                     if persisted_title != str(article["title"]).strip():
                         continue
                     history_metrics["history_title_match_count"] += 1
-                    metrics = _audit_current_page(page, str(article["title"]), str(article["manuscript"]))
+                    metrics = audit_page(page, str(article["title"]), str(article["manuscript"]))
                     metrics.update(history_metrics)
                     metrics["matched_history_rank"] = rank
                     metrics["editor_route_hash"] = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
