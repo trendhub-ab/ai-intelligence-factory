@@ -175,3 +175,88 @@ def test_versions_are_present_and_receipt_is_content_free_on_match():
         'contract_version': c.CONTRACT_VERSION,
         'normalization_policy_version': c.NORMALIZATION_POLICY_VERSION,
     }
+
+
+def test_safe_html_round_trip_preserves_every_supported_node():
+    c = contract()
+    md = (
+        '## 見出し **強調**\n\n'
+        '本文 *斜体* `x*y` [link](https://example.com/a?x=1&y=2)\n'
+        '改行\n\n'
+        '- A\n- B\n\n'
+        '3. C\n4. D\n\n'
+        '> quote `q`\n\n'
+        '---\n\n'
+        '```\n  <tag> & * literal  \n\nend\n```'
+    )
+    expected = c.parse_presentation_markdown(md)
+    html_text = c.render_safe_html(expected)
+    actual = c.parse_safe_html(html_text)
+    assert c.compare_documents(expected, actual)['canonical_match'] is True
+    assert '<ol start="3">' in html_text
+    assert '<br>' in html_text
+    assert '&lt;tag&gt;' in html_text
+    assert 'https://example.com/a?x=1&amp;y=2' in html_text
+
+
+def test_safe_html_parser_rejects_unknown_semantic_tags_and_unsafe_links():
+    c = contract()
+    for html_text in (
+        '<section><p>x</p></section>',
+        '<script>alert(1)</script>',
+        '<p><a href="javascript:alert(1)">x</a></p>',
+    ):
+        with pytest.raises(c.CanonicalContractError) as exc:
+            c.parse_safe_html(html_text)
+        assert exc.value.code == 'unsupported_safe_html'
+
+
+def test_safe_html_round_trip_preserves_code_whitespace_and_inline_types():
+    c = contract()
+    doc = c.parse_presentation_markdown('`inline`\n\n```\n  x = 1  \n\n y\n```')
+    round_trip = c.parse_safe_html(c.render_safe_html(doc))
+    assert round_trip == c.normalize_document(doc)
+    code = round_trip.children[1]
+    assert code.text == '  x = 1  \n\n y'
+    assert isinstance(round_trip.children[0].children[0], c.InlineCode)
+
+
+def test_render_safe_html_is_deterministic_and_escapes_text_and_attributes():
+    c = contract()
+    doc = c.Document((
+        c.Paragraph((c.Text('<b>&'), c.HardBreak(), c.Link('https://example.com/?a=1&b=2', (c.Text('x<y'),)))),
+    ))
+    one = c.render_safe_html(doc)
+    two = c.render_safe_html(doc)
+    assert one == two
+    assert one == '<p>&lt;b&gt;&amp;<br><a href="https://example.com/?a=1&amp;b=2">x&lt;y</a></p>'
+
+
+def test_safe_html_ol_without_start_has_standard_start_one():
+    c = contract()
+    doc = c.parse_safe_html('<ol><li>A</li><li>B</li></ol>')
+    assert isinstance(doc.children[0], c.OrderedList)
+    assert doc.children[0].start == 1
+
+
+def test_current_legacy_renderer_is_canonically_compatible_for_supported_start_one_fixture():
+    c = contract()
+    import note_draft_automation as legacy
+    md = (
+        '## H\n\n本文 **強調** `code` [link](https://example.com/a)\n次行\n\n'
+        '- A\n- B\n\n1. C\n2. D\n\n> Q\n\n---\n\n```\n x\n```'
+    )
+    expected = c.parse_presentation_markdown(md)
+    legacy_doc = c.parse_safe_html(legacy._markdown_to_safe_html(md))
+    assert c.compare_documents(expected, legacy_doc)['canonical_match'] is True
+
+
+def test_current_legacy_renderer_exposes_existing_non_one_ordered_list_defect():
+    c = contract()
+    import note_draft_automation as legacy
+    md = '3. C\n4. D'
+    expected = c.parse_presentation_markdown(md)
+    legacy_doc = c.parse_safe_html(legacy._markdown_to_safe_html(md))
+    receipt = c.compare_documents(expected, legacy_doc)
+    assert receipt['canonical_match'] is False
+    assert receipt['mismatch_category'] == 'list_start_mismatch'
