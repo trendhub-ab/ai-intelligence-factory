@@ -22,7 +22,7 @@ jobs:
           GH_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          payload='{"ref":"design/p0-a-note-lossless-contract","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3dc479ffdca9811f8c79d44b54cc697e"}}'
+          payload='{"ref":"design/p0-a-note-lossless-contract","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3e9479ffdca9811385c7d1a8ffcb3d4a"}}'
           code="$(curl -sS -o /tmp/dispatch-body -w '%{http_code}' \
             -X POST \
             -H "Accept: application/vnd.github+json" \
