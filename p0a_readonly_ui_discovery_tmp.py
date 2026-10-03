@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import note_draft_automation as note_base
 import note_publication_reconcile as lifecycle
 import note_ready_sync as ready_sync
 import run190_note_persistent_cloud as cloud
+import run222_note_presentation_integrity as run222
 import run291_note_private_draft_audit as audit291
 import run292_note_rendered_body_audit as audit292
 import run295_note_private_draft_audit as audit295
 
 TARGET = re.sub(r"[^0-9a-fA-F]", "", os.environ.get("TARGET_SYNC_ID", "")).lower()
+_URL_RE = re.compile(r"https?://[^\s\]\)\}\>\"']+")
 
 
 def norm(value: str) -> str:
@@ -34,6 +37,29 @@ def safe_note_href(raw: str) -> str:
     if "/publish" in path or path.endswith("/delete") or "/new" in path:
         return ""
     return value
+
+
+def normalize_external_url(raw: str) -> str:
+    try:
+        parsed = urlparse(str(raw or "").strip().rstrip(".,;:!?"))
+    except Exception:
+        return ""
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        return ""
+    if host in {"note.com", "www.note.com", "editor.note.com"}:
+        return ""
+    path = parsed.path or "/"
+    return urlunparse((parsed.scheme.lower(), host, path, "", parsed.query, ""))
+
+
+def expected_external_urls(markdown_text: str) -> set[str]:
+    out: set[str] = set()
+    for raw in _URL_RE.findall(str(markdown_text or "")):
+        value = normalize_external_url(raw)
+        if value:
+            out.add(value)
+    return out
 
 
 def title_anchor_hrefs(page, title: str) -> list[str]:
@@ -67,6 +93,22 @@ def edit_hrefs(page) -> list[str]:
     return out
 
 
+def draft_card_hrefs(page) -> list[str]:
+    values = page.evaluate(
+        """() => {
+          const n = s => String(s || '').replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim();
+          const out = [];
+          for (const a of Array.from(document.querySelectorAll('a[href]'))) {
+            const card = a.closest('article,li,[role="listitem"]');
+            const text = n((card || a.parentElement || a).innerText || '');
+            if (text.includes('下書き')) out.push(a.href || '');
+          }
+          return out;
+        }"""
+    )
+    return [safe_note_href(value) for value in (values or []) if safe_note_href(value)]
+
+
 def destination_contract() -> tuple[dict, str]:
     if len(TARGET) != 32:
         raise RuntimeError("target_sync_id_invalid")
@@ -98,13 +140,103 @@ def destination_contract() -> tuple[dict, str]:
     return destination, title
 
 
-def discover_identity(title: str) -> tuple[str, dict[str, int]]:
+def expected_contract(title: str) -> tuple[str, str, set[str]]:
+    response = ready_sync._request("GET", f"https://api.notion.com/v1/pages/{TARGET}")
+    if response.status_code != 200:
+        raise RuntimeError("source_page_read_failed")
+    state = ready_sync._source_state(response.json())
+    if state is None or state.get("sync_id") != TARGET:
+        raise RuntimeError("source_not_active_ready")
+    if str(state.get("title") or "").strip() != title.strip():
+        raise RuntimeError("source_destination_title_mismatch")
+    manuscript = ready_sync._source_current_ready_manuscript(TARGET)
+    if not manuscript:
+        raise RuntimeError("current_contract_manuscript_missing")
+    presented = run222.prepare_note_editor_manuscript(manuscript, title)
+    expected_visible = audit292._rendered_visible_text(presented)
+    if len(expected_visible) < 150:
+        raise RuntimeError("prepared_presentation_too_short")
+    return presented, expected_visible, expected_external_urls(presented)
+
+
+def ensure_auth(context, page, url: str, seeded: bool) -> bool:
+    if not note_base._looks_logged_out(page):
+        return seeded
+    if not seeded:
+        seeded = bool(cloud._seed_note_state(context, page))
+    if seeded:
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(900)
+    if note_base._looks_logged_out(page):
+        raise RuntimeError("note_auth_inactive")
+    return seeded
+
+
+def candidate_signature(page, title: str, expected_visible: str, expected_urls: set[str]) -> tuple[str, dict] | None:
+    if not audit291._is_note_edit_url(str(page.url or "")):
+        return None
+    try:
+        persisted_title = audit291._title_value(page)
+        title_field = note_base._find_title(page)
+        body = note_base._find_body(page, title_field)
+        actual_visible = norm(str(body.inner_text(timeout=5000) or ""))
+        hrefs = body.locator("a[href]").evaluate_all("els => els.map(a => a.href || '')")
+    except Exception:
+        return None
+    if not actual_visible:
+        return None
+    actual_urls = {value for value in (normalize_external_url(raw) for raw in (hrefs or [])) if value}
+    matched_external = len(expected_urls & actual_urls)
+    external_ratio = matched_external / max(1, len(expected_urls)) if expected_urls else 0.0
+    similarity = difflib.SequenceMatcher(None, expected_visible, actual_visible, autojunk=False).ratio()
+    length_ratio = len(actual_visible) / max(1, len(expected_visible))
+    boundary = min(64, len(expected_visible))
+    prefix_match = bool(boundary and expected_visible[:boundary] in actual_visible)
+    suffix_match = bool(boundary and expected_visible[-boundary:] in actual_visible)
+    title_match = persisted_title.strip() == title.strip()
+    source_present = run222.SOURCE_HEADING in actual_visible
+    strong = bool(
+        0.68 <= length_ratio <= 1.40
+        and source_present
+        and (
+            (title_match and similarity >= 0.72 and (prefix_match or suffix_match or external_ratio >= 0.5))
+            or (
+                len(expected_urls) >= 1
+                and matched_external == len(expected_urls)
+                and similarity >= 0.74
+                and (prefix_match or suffix_match)
+            )
+        )
+    )
+    draft_id = lifecycle.draft_identity_from_url(str(page.url or ""))
+    return draft_id, {
+        "strong_match": strong,
+        "title_match": title_match,
+        "similarity_ratio": round(similarity, 4),
+        "length_ratio": round(length_ratio, 4),
+        "prefix_match": prefix_match,
+        "suffix_match": suffix_match,
+        "source_present": source_present,
+        "expected_external_link_count": len(expected_urls),
+        "matched_external_link_count": matched_external,
+        "external_link_match_ratio": round(external_ratio, 4),
+    }
+
+
+def discover_identity(title: str, expected_visible: str, expected_urls: set[str]) -> tuple[str, dict[str, object]]:
     from playwright.sync_api import sync_playwright
 
-    discovered_ids: set[str] = set()
+    exact_ids: set[str] = set()
+    candidate_urls: set[str] = set()
     pages_checked = 0
     title_matches = 0
-    candidate_routes_checked = 0
+    list_edit_href_count = 0
+    draft_card_href_count = 0
+    unique_list_fingerprints: set[str] = set()
+    editor_candidates_checked = 0
+    strong_matches: dict[str, dict] = {}
+    max_similarity = 0.0
+    max_external_ratio = 0.0
     seeded = False
 
     with sync_playwright() as playwright:
@@ -112,19 +244,14 @@ def discover_identity(title: str) -> tuple[str, dict[str, int]]:
         page = context.new_page()
         page.set_default_timeout(30000)
         try:
-            list_urls = [f"https://note.com/notes?page={n}&status=draft" for n in range(1, 11)]
+            list_urls = ["https://note.com/notes"]
+            list_urls += [f"https://note.com/notes?page={n}&status=draft" for n in range(1, 11)]
             list_urls += [f"https://note.com/notes?page={n}&kind=draft" for n in range(1, 11)]
             seen_routes: set[str] = set()
             for list_url in list_urls:
                 page.goto(list_url, wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_timeout(1000)
-                if note_base._looks_logged_out(page) and not seeded:
-                    seeded = bool(cloud._seed_note_state(context, page))
-                    if seeded:
-                        page.goto(list_url, wait_until="domcontentloaded", timeout=60000)
-                        page.wait_for_timeout(1000)
-                if note_base._looks_logged_out(page):
-                    raise RuntimeError("note_auth_inactive")
+                page.wait_for_timeout(900)
+                seeded = ensure_auth(context, page, list_url, seeded)
                 current = urlparse(str(page.url or ""))
                 if (current.hostname or "").lower() not in {"note.com", "editor.note.com"}:
                     raise RuntimeError("draft_list_left_note_domain")
@@ -133,42 +260,95 @@ def discover_identity(title: str) -> tuple[str, dict[str, int]]:
                     continue
                 seen_routes.add(route_key)
                 pages_checked += 1
+                try:
+                    visible = norm(str(page.locator("body").inner_text(timeout=5000) or ""))
+                except Exception:
+                    visible = ""
+                if visible:
+                    unique_list_fingerprints.add(hashlib.sha256(visible.encode("utf-8")).hexdigest())
 
                 hrefs = title_anchor_hrefs(page, title)
                 title_matches += len(hrefs)
                 for href in hrefs:
-                    candidate_routes_checked += 1
                     parsed = urlparse(href)
                     if re.fullmatch(r"/notes/[^/?#]+/edit/?", parsed.path or "", flags=re.I):
-                        discovered_ids.add(lifecycle.draft_identity_from_url(href))
-                        continue
-                    page.goto(href, wait_until="domcontentloaded", timeout=60000)
-                    page.wait_for_timeout(1000)
-                    if note_base._looks_logged_out(page):
-                        continue
-                    body_text = str(page.locator("body").inner_text(timeout=5000) or "")
-                    normalized_body = norm(body_text)
-                    if norm(title) not in normalized_body:
-                        continue
-                    for edit_url in edit_hrefs(page):
-                        discovered_ids.add(lifecycle.draft_identity_from_url(edit_url))
+                        exact_ids.add(lifecycle.draft_identity_from_url(href))
+                    else:
+                        candidate_urls.add(href)
 
-                if len(discovered_ids) == 1:
-                    break
-                if len(discovered_ids) > 1:
+                edits = edit_hrefs(page)
+                list_edit_href_count += len(edits)
+                candidate_urls.update(edits)
+                cards = draft_card_hrefs(page)
+                draft_card_href_count += len(cards)
+                candidate_urls.update(cards)
+
+                if len(exact_ids) > 1:
                     raise RuntimeError("stable_identity_not_unique")
+                if len(exact_ids) == 1:
+                    draft_id = next(iter(exact_ids))
+                    return draft_id, {
+                        "identity_proof_mode": "exact_title_edit_link",
+                        "list_pages_checked": pages_checked,
+                        "title_link_match_count": title_matches,
+                        "list_edit_href_count": list_edit_href_count,
+                        "draft_card_href_count": draft_card_href_count,
+                        "unique_list_fingerprint_count": len(unique_list_fingerprints),
+                        "history_candidate_count": 0,
+                        "editor_candidates_checked": 0,
+                        "strong_signature_match_count": 1,
+                    }
+
+            history_candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
+            candidate_urls.update(history_candidates)
+            for candidate in list(candidate_urls):
+                try:
+                    page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                    page.wait_for_timeout(800)
+                    seeded = ensure_auth(context, page, candidate, seeded)
+                    if not audit291._is_note_edit_url(str(page.url or "")):
+                        continue
+                    editor_candidates_checked += 1
+                    measured = candidate_signature(page, title, expected_visible, expected_urls)
+                    if not measured:
+                        continue
+                    draft_id, metrics = measured
+                    max_similarity = max(max_similarity, float(metrics["similarity_ratio"]))
+                    max_external_ratio = max(max_external_ratio, float(metrics["external_link_match_ratio"]))
+                    if metrics["strong_match"]:
+                        strong_matches[draft_id] = metrics
+                except Exception:
+                    continue
         finally:
             context.close()
 
-    metrics = {
+    metrics: dict[str, object] = {
+        "identity_proof_mode": "content_signature",
         "list_pages_checked": pages_checked,
         "title_link_match_count": title_matches,
-        "candidate_routes_checked": candidate_routes_checked,
-        "stable_identity_match_count": len(discovered_ids),
+        "list_edit_href_count": list_edit_href_count,
+        "draft_card_href_count": draft_card_href_count,
+        "unique_list_fingerprint_count": len(unique_list_fingerprints),
+        "history_candidate_count": len(history_candidates),
+        "candidate_route_count": len(candidate_urls),
+        "editor_candidates_checked": editor_candidates_checked,
+        "strong_signature_match_count": len(strong_matches),
+        "max_similarity_ratio": round(max_similarity, 4),
+        "max_external_link_match_ratio": round(max_external_ratio, 4),
     }
-    if len(discovered_ids) != 1:
+    if len(strong_matches) != 1:
         raise RuntimeError("identity_not_found:" + json.dumps(metrics, sort_keys=True))
-    return next(iter(discovered_ids)), metrics
+    draft_id, proof = next(iter(strong_matches.items()))
+    metrics.update({
+        "matched_title_exact": bool(proof["title_match"]),
+        "matched_similarity_ratio": proof["similarity_ratio"],
+        "matched_length_ratio": proof["length_ratio"],
+        "matched_prefix": proof["prefix_match"],
+        "matched_suffix": proof["suffix_match"],
+        "matched_external_link_count": proof["matched_external_link_count"],
+        "expected_external_link_count": proof["expected_external_link_count"],
+    })
+    return draft_id, metrics
 
 
 def audit_with_identity(destination: dict, title: str, draft_id: str) -> dict:
@@ -203,7 +383,7 @@ def audit_with_identity(destination: dict, title: str, draft_id: str) -> dict:
         audit291._destination_row = original_destination
 
 
-def safe_result(result: dict, discovery: dict[str, int], draft_id: str) -> dict:
+def safe_result(result: dict, discovery: dict[str, object], draft_id: str) -> dict:
     keys = {
         "success", "status", "diagnostic_code", "zero_gemini_calls", "read_only", "public_release", "draft_mutation",
         "expectation_mode", "title_match", "eyecatch_present", "eyecatch_proof_mode", "body_h1_count", "heading_count",
@@ -223,7 +403,7 @@ def safe_result(result: dict, discovery: dict[str, int], draft_id: str) -> dict:
     }
     out = {k: v for k, v in result.items() if k in keys}
     out.update(discovery)
-    out["identity_discovery"] = "exact_title_ui_match"
+    out["identity_discovery"] = "read_only_ui_and_existing_routes"
     out["stable_identity_hash"] = hashlib.sha256(draft_id.encode("utf-8")).hexdigest()[:12]
     return out
 
@@ -231,13 +411,14 @@ def safe_result(result: dict, discovery: dict[str, int], draft_id: str) -> dict:
 def main() -> int:
     try:
         destination, title = destination_contract()
-        draft_id, discovery = discover_identity(title)
+        _presented, expected_visible, expected_urls = expected_contract(title)
+        draft_id, discovery = discover_identity(title, expected_visible, expected_urls)
         result = audit_with_identity(destination, title, draft_id)
         print(json.dumps(safe_result(result, discovery, draft_id), ensure_ascii=False, sort_keys=True))
         return 0 if result.get("status") == "audit_passed" else 2
     except Exception as exc:
         message = str(exc)
-        metrics = {}
+        metrics: dict[str, object] = {}
         code = message
         if message.startswith("identity_not_found:"):
             code = "identity_not_found"
