@@ -114,3 +114,4 @@ jobs:
           if [ "$state" = "RUNNING" ]; then
             gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
+      # rerun: topology diagnostics enabled
