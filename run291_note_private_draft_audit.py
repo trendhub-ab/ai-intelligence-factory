@@ -40,7 +40,9 @@ _READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？",
 
 
 class PrivateDraftAuditError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, safe_metrics: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.safe_metrics = dict(safe_metrics or {})
 
 
 def _normalize_sync_id(value: str) -> str:
@@ -306,8 +308,20 @@ def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:
 
     profile = run190._profile_dir()
     candidates = _recent_private_edit_urls(profile)
+    history_metrics: dict[str, int] = {
+        "history_candidate_count": len(candidates),
+        "history_navigation_success_count": 0,
+        "history_navigation_error_count": 0,
+        "history_authenticated_count": 0,
+        "history_editor_route_count": 0,
+        "history_title_read_count": 0,
+        "history_title_match_count": 0,
+    }
     if not candidates:
-        raise PrivateDraftAuditError("No private note edit route is present in persistent Chrome history")
+        raise PrivateDraftAuditError(
+            "No private note edit route is present in persistent Chrome history",
+            safe_metrics={"history_candidate_count": 0},
+        )
 
     with sync_playwright() as playwright:
         context = run190._launch_persistent_context(playwright)
@@ -317,21 +331,38 @@ def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:
         try:
             for rank, candidate in enumerate(candidates, start=1):
                 try:
-                    page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                    page.wait_for_timeout(1200)
+                    try:
+                        page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                        page.wait_for_timeout(1200)
+                        history_metrics["history_navigation_success_count"] += 1
+                    except Exception:
+                        history_metrics["history_navigation_error_count"] += 1
+                        continue
                     if note_base._looks_logged_out(page) and not seeded:
                         seeded = bool(run190._seed_note_state(context, page))
                         if seeded:
-                            page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                            page.wait_for_timeout(1200)
+                            try:
+                                page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                                page.wait_for_timeout(1200)
+                            except Exception:
+                                history_metrics["history_navigation_error_count"] += 1
+                                continue
                     if note_base._looks_logged_out(page):
                         continue
+                    history_metrics["history_authenticated_count"] += 1
                     if not run187._is_editor_url(str(page.url or "")):
                         continue
-                    if _title_value(page) != str(article["title"]).strip():
+                    history_metrics["history_editor_route_count"] += 1
+                    try:
+                        persisted_title = _title_value(page)
+                    except PrivateDraftAuditError:
                         continue
+                    history_metrics["history_title_read_count"] += 1
+                    if persisted_title != str(article["title"]).strip():
+                        continue
+                    history_metrics["history_title_match_count"] += 1
                     metrics = _audit_current_page(page, str(article["title"]), str(article["manuscript"]))
-                    metrics["history_candidate_count"] = len(candidates)
+                    metrics.update(history_metrics)
                     metrics["matched_history_rank"] = rank
                     metrics["editor_route_hash"] = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
                     return metrics
@@ -341,7 +372,10 @@ def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:
                     continue
         finally:
             context.close()
-    raise PrivateDraftAuditError("The requested private draft could not be matched safely from local Chrome history")
+    raise PrivateDraftAuditError(
+        "The requested private draft could not be matched safely from local Chrome history",
+        safe_metrics=history_metrics,
+    )
 
 
 def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, Any]:
