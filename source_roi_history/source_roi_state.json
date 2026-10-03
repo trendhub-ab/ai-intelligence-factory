@@ -508,8 +508,8 @@
       }
     },
     {
-      "run_id": "20261002T101618Z",
-      "recorded_at": "2026-10-02T10:16:18.824891+00:00",
+      "run_id": "20261003T003706Z",
+      "recorded_at": "2026-10-03T00:37:06.971814+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -522,34 +522,34 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 16,
-          "stock_saved": 4,
+          "screened": 22,
+          "stock_saved": 10,
           "deep_dive_attempted": 3,
-          "generation_requests": 1,
+          "generation_requests": 4,
           "ready": 0,
           "review": 0,
-          "quality_failed": 1,
-          "pending_retry": 0
+          "quality_failed": 2,
+          "pending_retry": 1
         },
         "ArXiv": {
-          "screened": 18,
-          "stock_saved": 1,
-          "deep_dive_attempted": 1,
-          "generation_requests": 0,
-          "ready": 0,
-          "review": 0,
+          "screened": 47,
+          "stock_saved": 2,
+          "deep_dive_attempted": 2,
+          "generation_requests": 5,
+          "ready": 1,
+          "review": 1,
           "quality_failed": 0,
-          "pending_retry": 1
+          "pending_retry": 0
         },
         "OfficialVendor": {
-          "screened": 3,
+          "screened": 4,
           "stock_saved": 1,
-          "deep_dive_attempted": 0,
-          "generation_requests": 0,
-          "ready": 0,
+          "deep_dive_attempted": 1,
+          "generation_requests": 2,
+          "ready": 1,
           "review": 0,
           "quality_failed": 0,
-          "pending_retry": 1
+          "pending_retry": 0
         }
       }
     }
@@ -571,47 +571,47 @@
       "learning_active": true
     },
     "HackerNews": {
-      "screened": 289.4692405267573,
-      "stock_saved": 89.05130904468533,
+      "screened": 295.4692405267573,
+      "stock_saved": 95.05130904468533,
       "deep_dive_attempted": 35.10453788691957,
-      "generation_requests": 42.2879993370837,
+      "generation_requests": 45.2879993370837,
       "ready": 6.889716991659642,
       "review": 4.0070355527490005,
-      "stock_yield": 0.3104,
+      "stock_yield": 0.3235,
       "ready_yield": 0.2041,
-      "generation_efficiency": 0.165,
-      "roi_score": 23.35,
-      "allocation_weight": 0.256032,
+      "generation_efficiency": 0.1554,
+      "roi_score": 23.61,
+      "allocation_weight": 0.257791,
       "mature": true,
       "learning_active": true
     },
     "ArXiv": {
-      "screened": 234.07752698395518,
-      "stock_saved": 114.2913841813149,
-      "deep_dive_attempted": 6.958489303964141,
-      "generation_requests": 9.815232368020713,
-      "ready": 0.6017008706075703,
-      "review": 2.3360578706075703,
-      "stock_yield": 0.4774,
-      "ready_yield": 0.1622,
-      "generation_efficiency": 0.1063,
-      "roi_score": 26.13,
-      "allocation_weight": 0.285064,
+      "screened": 263.0775269839552,
+      "stock_saved": 115.2913841813149,
+      "deep_dive_attempted": 7.958489303964141,
+      "generation_requests": 14.815232368020713,
+      "ready": 1.6017008706075702,
+      "review": 3.3360578706075703,
+      "stock_yield": 0.432,
+      "ready_yield": 0.2222,
+      "generation_efficiency": 0.1288,
+      "roi_score": 27.7,
+      "allocation_weight": 0.295363,
       "mature": true,
       "learning_active": true
     },
     "OfficialVendor": {
-      "screened": 3.0,
+      "screened": 4.0,
       "stock_saved": 1.0,
-      "deep_dive_attempted": 0.0,
-      "generation_requests": 0.0,
-      "ready": 0.0,
+      "deep_dive_attempted": 1.0,
+      "generation_requests": 2.0,
+      "ready": 1.0,
       "review": 0.0,
-      "stock_yield": 0.3478,
-      "ready_yield": 0.25,
-      "generation_efficiency": 0.18,
-      "roi_score": 27.02,
-      "allocation_weight": 0.375396,
+      "stock_yield": 0.3333,
+      "ready_yield": 0.3571,
+      "generation_efficiency": 0.26,
+      "roi_score": 32.94,
+      "allocation_weight": 0.424311,
       "mature": false,
       "learning_active": true
     }
