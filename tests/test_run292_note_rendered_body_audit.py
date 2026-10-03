@@ -74,9 +74,6 @@ class Run292RenderedExpectationTests(unittest.TestCase):
             audit._body_text_metrics("非公開タイトル " + rendered, manuscript, "非公開タイトル")
         self.assertEqual(duplicate.exception.code, "duplicate_title_prefix")
 
-        # Make both boundary windows independent of the footer mutation. This proves
-        # that Sources/CTA ordering itself remains fail-closed rather than merely
-        # tripping the stronger prefix/suffix presentation boundary first.
         footer_manuscript = (
             ("十分に長い前置きです。" * 20)
             + "\n\n"
@@ -96,14 +93,63 @@ class Run292RenderedExpectationTests(unittest.TestCase):
         self.assertEqual(footer.exception.code, "footer_order_mismatch")
 
 
+class Run292CanonicalIntegrationTests(unittest.TestCase):
+    def test_canonical_snapshot_match_is_required(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {"type": "element", "tag": "p", "attrs": {}, "children": [{"type": "text", "text": "10秒"}]}
+            ],
+        }
+        metrics = audit._canonical_snapshot_metrics(snapshot, "10秒")
+        self.assertTrue(metrics["canonical_match"])
+        self.assertEqual(metrics["unsupported_expected_node_count"], 0)
+        self.assertEqual(metrics["unsupported_actual_node_count"], 0)
+        self.assertIn("Paragraph", metrics["expected_node_counts"])
+        self.assertIn("Paragraph", metrics["actual_node_counts"])
+
+    def test_canonical_snapshot_semantic_change_fails_closed(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {"type": "element", "tag": "p", "attrs": {}, "children": [{"type": "text", "text": "99秒"}]}
+            ],
+        }
+        with self.assertRaises(audit.Run292AuditDiagnosticError) as caught:
+            audit._canonical_snapshot_metrics(snapshot, "10秒")
+        self.assertEqual(caught.exception.code, "text_value_mismatch")
+        self.assertNotIn("99秒", repr(caught.exception.safe_metrics))
+        self.assertNotIn("10秒", repr(caught.exception.safe_metrics))
+
+    def test_unknown_dom_is_categorical_and_content_free(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {
+                    "type": "element",
+                    "tag": "div",
+                    "attrs": {},
+                    "children": [{"type": "text", "text": "secret"}],
+                }
+            ],
+        }
+        with self.assertRaises(audit.Run292AuditDiagnosticError) as caught:
+            audit._canonical_snapshot_metrics(snapshot, "本文")
+        self.assertEqual(caught.exception.code, "unsupported_note_dom")
+        self.assertEqual(caught.exception.safe_metrics["unsupported_actual_node_count"], 1)
+        self.assertNotIn("secret", repr(caught.exception.safe_metrics))
+
+
 class Run292ExecutionBoundaryTests(unittest.TestCase):
-    def test_wrapper_restores_run291_metric_function_after_execution(self) -> None:
-        original = audit.base._body_text_metrics
+    def test_wrapper_restores_run291_metric_and_page_functions_after_execution(self) -> None:
+        original_metric = audit.base._body_text_metrics
+        original_page = audit.base._audit_current_page
         with patch.object(audit.base, "run", return_value={"status": "audit_passed"}) as base_run:
             result = audit.run(confirm="AUDIT_NOTE_DRAFT", sync_id="a" * 32)
             base_run.assert_called_once()
         self.assertEqual(result["status"], "audit_passed")
-        self.assertIs(audit.base._body_text_metrics, original)
+        self.assertIs(audit.base._body_text_metrics, original_metric)
+        self.assertIs(audit.base._audit_current_page, original_page)
 
     def test_safe_failure_result_exposes_no_unpublished_content_or_route(self) -> None:
         result = audit._safe_failure_result(
