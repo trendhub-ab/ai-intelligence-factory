@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - design/p0-a-note-lossless-contract
     paths-ignore:
       - 'observed_history/**'
       - 'source_roi_history/**'
