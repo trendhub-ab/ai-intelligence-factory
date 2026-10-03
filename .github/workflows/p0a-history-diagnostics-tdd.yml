@@ -1,0 +1,35 @@
+name: P0-A history diagnostics TDD
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-history-diagnostics-tdd.yml'
+      - 'run291_note_private_draft_audit.py'
+      - 'run292_note_rendered_body_audit.py'
+      - 'run295_note_private_draft_audit.py'
+      - 'tests/test_run291_private_draft_audit.py'
+      - 'tests/test_run292_note_rendered_body_audit.py'
+      - 'tests/test_run293_private_draft_guard_diagnostics.py'
+      - 'tests/test_run295_note_eyecatch_persistence.py'
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11.16'
+      - run: pip install requests
+      - name: Run P0-A read-only targeted tests
+        run: |
+          python -m unittest tests.test_run291_private_draft_audit -v
+          python -m unittest tests.test_run292_note_rendered_body_audit -v
+          python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
+          python -m unittest tests.test_run295_note_eyecatch_persistence -v
