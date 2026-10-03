@@ -59,16 +59,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      - name: Dormant gate and article audit private artifact contract
+      - name: Safe daily operational receipt
         if: ${{ false }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: private-gate-review-${{ github.run_number }}
-          path: |
-            review_candidates/
-            quality_failures/
-            gate_history/
-            regression_cases_pending/
-            article_audit/
-          if-no-files-found: warn
-          retention-days: 14
+        env:
+          SAFE_JOB_STATUS: ${{ job.status }}
+        run: |
+          python operational_output_contract.py --component daily --status "$SAFE_JOB_STATUS"

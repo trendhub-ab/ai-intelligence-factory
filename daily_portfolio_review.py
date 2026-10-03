@@ -34,6 +34,10 @@ Run305 provider-runtime contract:
 from __future__ import annotations
 
 import json
+import io
+import logging
+import re
+from contextlib import redirect_stdout, redirect_stderr
 import os
 import subprocess
 import sys
@@ -45,6 +49,7 @@ import context_first_enrichment
 import decision_intelligence
 import inventory_bootstrap as ib
 from technology_portfolio_policy import rank_portfolio_records
+from operational_output_contract import safe_operational_projection
 
 
 DEFAULT_MAX_REVIEWS = max(0, int(os.environ.get("DAILY_PORTFOLIO_REVIEW_MAX", "2")))
@@ -288,6 +293,20 @@ def _timeout_text(value: Any) -> str:
     return str(value)
 
 
+class ProductReviewFailure(RuntimeError):
+    """Fixed public category with a safe receipt; no child payload in exception text."""
+    def __init__(self, category, receipt=None):
+        super().__init__(category)
+        self.category = category
+        self.receipt = receipt or {}
+
+
+def _child_metrics(text, budget):
+    matches = re.findall(r"Product Review Gemini Requests Used: ([0-9]{1,9})/([0-9]{1,9}) ", text)
+    counts = [int(used) for used, limit in matches if int(limit) == budget and int(used) <= budget]
+    return {"request_count": max(counts) if counts else None, "model_class": "upper_flash"}
+
+
 def _run_product_only(
     allowlist: list[str],
     max_reviews: int,
@@ -295,10 +314,13 @@ def _run_product_only(
     timeout: int | None = None,
 ) -> dict[str, Any]:
     if not allowlist or max_reviews <= 0 or request_budget <= 0:
-        return {"skipped": True, "reason": "no_due_candidates_or_budget", "allowlist_count": len(allowlist)}
+        return {"skipped": True, "reason": "no_due_candidates_or_budget", "allowlist_count": len(allowlist), "request_count": 0}
 
     effective_timeout = DEFAULT_CHILD_TIMEOUT_SECONDS if timeout is None else min(1200, max(1, int(timeout)))
     env = os.environ.copy()
+    # Child diagnostics cannot bypass capture into Actions file-command sinks.
+    for public_sink in ("GITHUB_STEP_SUMMARY", "GITHUB_OUTPUT", "GITHUB_ENV"):
+        env.pop(public_sink, None)
     env.update(ib.product_only_environment(max_reviews, request_budget))
     runtime_state_branch = str(os.environ.get("AIIF_RUNTIME_STATE_BRANCH") or "").strip()
     if runtime_state_branch:
@@ -317,16 +339,14 @@ def _run_product_only(
         stdout = _timeout_text(exc.stdout)
         stderr = _timeout_text(exc.stderr)
         combined = stdout + "\n" + stderr
-        if stdout:
-            print(stdout, end="" if stdout.endswith("\n") else "\n")
-        if stderr:
-            print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
         unsafe = ib.detect_unsafe_pipeline_activity(combined)
         if unsafe:
-            raise RuntimeError(f"Daily portfolio Product Review safety violation before timeout: {unsafe}")
+            raise ProductReviewFailure("safety_violation", _child_metrics(combined, request_budget)) from None
         return {
             "skipped": True,
             "timed_out": True,
+            "error_category": "timeout",
+            **_child_metrics(combined, request_budget),
             "reason": "bounded_child_timeout",
             "timeout_seconds": effective_timeout,
             "allowlist_count": len(allowlist),
@@ -334,21 +354,28 @@ def _run_product_only(
             "request_budget": request_budget,
         }
 
+    except Exception:
+        raise ProductReviewFailure("child_failed") from None
+
+    if (not all(hasattr(proc, key) for key in ("returncode", "stdout", "stderr")) or
+            type(proc.returncode) is not int or
+            not isinstance(proc.stdout, (str, type(None))) or
+            not isinstance(proc.stderr, (str, type(None)))):
+        raise ProductReviewFailure("invalid_result")
     combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    if proc.stdout:
-        print(proc.stdout, end="" if proc.stdout.endswith("\n") else "\n")
-    if proc.stderr:
-        print(proc.stderr, file=sys.stderr, end="" if proc.stderr.endswith("\n") else "\n")
+    metrics = _child_metrics(combined, request_budget)
 
     unsafe = ib.detect_unsafe_pipeline_activity(combined)
     if proc.returncode != 0:
-        raise RuntimeError(f"Daily portfolio Product Review exited {proc.returncode}")
+        raise ProductReviewFailure("child_failed", metrics)
     if unsafe:
-        raise RuntimeError(f"Daily portfolio Product Review safety violation: {unsafe}")
+        raise ProductReviewFailure("safety_violation", metrics)
     if not re_product_review_seen(combined):
-        raise RuntimeError("Daily portfolio Product Review path was not observed; refusing silent success")
+        raise ProductReviewFailure("invalid_result", metrics)
     return {
         "skipped": False,
+        "error_category": "none",
+        **metrics,
         "returncode": proc.returncode,
         "allowlist_count": len(allowlist),
         "max_reviews": max_reviews,
@@ -361,9 +388,9 @@ def re_product_review_seen(text: str) -> bool:
     return "[PRODUCT REVIEW" in (text or "").upper()
 
 
-def main() -> int:
+def _main_internal(result: dict[str, Any]) -> int:
     if not decision_intelligence.ENABLE_DECISION_INTELLIGENCE_DB:
-        print(json.dumps({"skipped": True, "reason": "decision_intelligence_disabled"}))
+        result.update(status="skipped", request_count=0)
         return 0
 
     context_first_enrichment.preflight_context_first_schema()
@@ -378,7 +405,9 @@ def main() -> int:
 
     scan_limit = min(24, max(DEFAULT_SCAN_LIMIT, DEFAULT_MAX_REVIEWS * 4, DEFAULT_MAX_REVIEWS + 6))
     allowlist = plan_daily_review_allowlist(states, scan_limit=scan_limit)
-    result = _run_product_only(allowlist, DEFAULT_MAX_REVIEWS, DEFAULT_REQUEST_BUDGET)
+    result["allowlist_count"] = len(allowlist)
+    result.update(_run_product_only(allowlist, DEFAULT_MAX_REVIEWS, DEFAULT_REQUEST_BUDGET))
+    result["status"] = "deferred" if result.get("timed_out") else "skipped" if result.get("skipped") else "success"
     result["ordered_allowlist"] = allowlist
     result["review_policy"] = {
         "high_days": REVIEW_TIER_HIGH_DAYS,
@@ -391,8 +420,36 @@ def main() -> int:
 
     result["context_first"] = context_first_enrichment.enrich_context_first(previous_reviewed)
 
-    print(json.dumps(result, ensure_ascii=False))
     return 0
+
+
+def main() -> int:
+    result = {"component": "product_review", "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "status": "failure", "error_category": "none", "request_count": None,
+              "request_budget": DEFAULT_REQUEST_BUDGET, "max_reviews": DEFAULT_MAX_REVIEWS,
+              "allowlist_count": 0, "model_class": "upper_flash"}
+    # Parent dependency output is diagnostic too. No private store is assumed;
+    # captured text is discarded, never copied to summary/artifact/notification.
+    previous_logging = logging.root.manager.disable
+    try:
+        logging.disable(logging.CRITICAL)
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            code = _main_internal(result)
+    except ProductReviewFailure as exc:
+        result.update(exc.receipt)
+        result.update(status="failure", error_category=exc.category)
+        code = 1
+    except Exception:
+        result.update(status="failure", error_category="diagnostic_unavailable")
+        code = 1
+    finally:
+        logging.disable(previous_logging)
+    context = result.get("context_first")
+    if isinstance(context, dict):
+        for key in ("internal_updated", "subscriber_updated", "subscriber_preserved", "eligible_records"):
+            result[key] = context.get(key)
+    print(json.dumps(safe_operational_projection(result), sort_keys=True))
+    return code
 
 
 if __name__ == "__main__":

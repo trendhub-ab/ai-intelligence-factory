@@ -52,29 +52,26 @@ jobs:
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 10
     steps:
-      - name: Locate previous note failure screenshot
-        id: locate
+      - name: Discard failure screenshot and report safe status
         shell: bash
         run: |
-          set -euo pipefail
-          source="$GITHUB_WORKSPACE/.runtime/note_draft/failure.png"
-          if [ ! -f "$source" ]; then
-            echo "::error::Previous failure screenshot was not found at the persistent runner workspace."
-            exit 1
-          fi
-          target="$RUNNER_TEMP/note-failure.png"
-          cp "$source" "$target"
-          chmod 600 "$target"
-          echo "path=$target" >> "$GITHUB_OUTPUT"
-          echo "Recovered previous failure screenshot without opening note or mutating Notion."
-
-      - name: Upload private diagnostic screenshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: note-failure-snapshot
-          path: ${{ steps.locate.outputs.path }}
-          if-no-files-found: error
-          retention-days: 1
+          python3 - <<'PYSAFE'
+          import json, os, pathlib, re
+          source = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / ".runtime/note_draft/failure.png"
+          result = {"component": "note_failure", "status": "failure", "failure_count": 0,
+                    "error_category": "diagnostic_unavailable"}
+          run_id = os.environ.get("GITHUB_RUN_ID", "")
+          if re.fullmatch(r"[0-9]{1,20}", run_id):
+              result["run_id"] = run_id
+          try:
+              result["failure_count"] = int(source.is_file())
+              source.unlink(missing_ok=True)
+              (pathlib.Path(os.environ["RUNNER_TEMP"]) / "note-failure.png").unlink(missing_ok=True)
+              result["status"] = "success"
+          except OSError:
+              pass
+          print(json.dumps(result, sort_keys=True))
+          PYSAFE
 
   stop-cloud-vm:
     if: ${{ always() }}

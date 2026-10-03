@@ -968,18 +968,17 @@ def run_apply(args: argparse.Namespace) -> dict[str, Any]:
         "progress_made": bool(sellable_delta > 0 or subscriber_sync_progress),
         "pipeline_log": str(log_path),
     }
-    md = (
-        "# Subscriber Inventory Bootstrap Apply\n\n"
-        f"- Sellable: {before['sellable_count']} → {after['sellable_count']}\n"
-        f"- Subscriber visible: {before_visible} → {after_visible}\n"
-        f"- Inventory ready: {after['inventory_ready']}\n"
-        f"- Launch ready: {after['launch_ready']}\n"
-        f"- Remaining blockers: {', '.join(after['launch_blockers']) or 'none'}\n"
-    )
-    j, m = _write_artifacts("inventory_bootstrap_apply", data, md)
+    from operational_output_contract import safe_operational_projection
+    public = safe_operational_projection({
+        "component": "inventory_bootstrap", "status": "success", "error_category": "none",
+        "run_id": os.environ.get("GITHUB_RUN_ID"), "allowlist_count": len(apply_plan),
+        "max_reviews": args.max_reviews, "request_budget": args.product_request_budget,
+        "count": after["sellable_count"],
+    })
+    j, m = _write_artifacts("inventory_bootstrap_apply", public, json.dumps(public, sort_keys=True))
     data["artifact_json"] = str(j)
     data["artifact_md"] = str(m)
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    print(json.dumps(public, sort_keys=True))
     return data
 
 
@@ -1012,7 +1011,7 @@ def main() -> int:
             run_apply(args)
         return 0
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(json.dumps({"component": "inventory_bootstrap", "status": "failure", "error_category": "diagnostic_unavailable"}), file=sys.stderr)
         return 2
 
 

@@ -853,7 +853,8 @@ class TestWorkflowOperationalGuards(unittest.TestCase):
         self.assertIn("GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}", regen)
         self.assertIn("GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}", daily)
         self.assertIn("GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}", regen)
-        self.assertIn("gate_history/", regen)
+        self.assertNotIn("gate_history/", regen)
+        self.assertIn("Safe regression operational receipt", regen)
 
     def test_monthly_digest_is_private_artifact_not_public_raw_url(self):
         daily = (Path(pipeline.__file__).parent / ".github" / "workflows" / "daily.yml").read_text(encoding="utf-8")

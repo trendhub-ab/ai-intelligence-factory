@@ -117,7 +117,7 @@ class ProductReviewTimeoutTests(unittest.TestCase):
         with mock.patch.object(daily_portfolio_review.ib, "product_only_environment", return_value={}), \
              mock.patch.object(daily_portfolio_review.ib, "detect_unsafe_pipeline_activity", return_value=["unsafe"]), \
              mock.patch.object(daily_portfolio_review.subprocess, "run", side_effect=exc):
-            with self.assertRaisesRegex(RuntimeError, "safety violation before timeout"):
+            with self.assertRaisesRegex(RuntimeError, "safety_violation"):
                 daily_portfolio_review._run_product_only(["entity-1"], 1, 1, timeout=3)
 
 

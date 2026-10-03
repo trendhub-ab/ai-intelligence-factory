@@ -183,7 +183,7 @@ class DailyRun132IntegrationTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         preflight.assert_called_once_with()
         enrich.assert_called_once_with({"tech-1": "2026-08-28T00:00:00+00:00"})
-        self.assertIn('"zero_gemini_calls": true', output.getvalue())
+        self.assertIn('"request_count": 0', output.getvalue())
 
 
 if __name__ == "__main__":
