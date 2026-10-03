@@ -181,10 +181,7 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: |
-          sed -i 's/^MAX_HISTORY_CANDIDATES = 24$/MAX_HISTORY_CANDIDATES = 80/' run291_note_private_draft_audit.py
-          grep -q '^MAX_HISTORY_CANDIDATES = 80$' run291_note_private_draft_audit.py
-          xvfb-run -a python run295_note_private_draft_audit.py
+        run: xvfb-run -a python run295_note_private_draft_audit.py
 
       - name: Summarize non-content audit metrics only
         if: ${{ always() }}
