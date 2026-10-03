@@ -9,6 +9,7 @@ on:
       - 'run291_note_private_draft_audit.py'
       - 'run292_note_rendered_body_audit.py'
       - 'run295_note_private_draft_audit.py'
+      - 'tests/test_p0a_history_diagnostics.py'
       - 'tests/test_run291_private_draft_audit.py'
       - 'tests/test_run292_note_rendered_body_audit.py'
       - 'tests/test_run293_private_draft_guard_diagnostics.py'
@@ -29,6 +30,7 @@ jobs:
       - run: pip install requests
       - name: Run P0-A read-only targeted tests
         run: |
+          python -m unittest tests.test_p0a_history_diagnostics -v
           python -m unittest tests.test_run291_private_draft_audit -v
           python -m unittest tests.test_run292_note_rendered_body_audit -v
           python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
