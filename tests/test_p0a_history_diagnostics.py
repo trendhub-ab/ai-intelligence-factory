@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 import unittest
+from contextlib import contextmanager
 from unittest import mock
 
 import run291_note_private_draft_audit as base
@@ -42,6 +45,21 @@ class _FakePlaywrightManager:
         return False
 
 
+@contextmanager
+def _fake_playwright_import():
+    """Provide only the lazy import surface Run291 needs; install no browser dependency."""
+    package = types.ModuleType("playwright")
+    package.__path__ = []
+    sync_api = types.ModuleType("playwright.sync_api")
+    sync_api.sync_playwright = lambda: _FakePlaywrightManager()
+    package.sync_api = sync_api
+    with mock.patch.dict(
+        sys.modules,
+        {"playwright": package, "playwright.sync_api": sync_api},
+    ):
+        yield
+
+
 class P0AHistoryDiagnosticContractTests(unittest.TestCase):
     def test_history_match_failure_carries_only_integer_stage_counts(self) -> None:
         article = {
@@ -54,13 +72,13 @@ class P0AHistoryDiagnosticContractTests(unittest.TestCase):
         ]
         fake_context = _FakeContext()
 
-        with mock.patch.object(base, "_recent_private_edit_urls", return_value=candidates), \
+        with _fake_playwright_import(), \
+             mock.patch.object(base, "_recent_private_edit_urls", return_value=candidates), \
              mock.patch.object(base.run190, "_profile_dir", return_value=object()), \
              mock.patch.object(base.run190, "_launch_persistent_context", return_value=fake_context), \
              mock.patch.object(base.note_base, "_looks_logged_out", return_value=False), \
              mock.patch.object(base.run187, "_is_editor_url", return_value=True), \
-             mock.patch.object(base, "_title_value", return_value="OTHER PRIVATE TITLE"), \
-             mock.patch("playwright.sync_api.sync_playwright", return_value=_FakePlaywrightManager()):
+             mock.patch.object(base, "_title_value", return_value="OTHER PRIVATE TITLE"):
             with self.assertRaises(base.PrivateDraftAuditError) as caught:
                 base._browser_audit(article)
 
@@ -84,7 +102,8 @@ class P0AHistoryDiagnosticContractTests(unittest.TestCase):
             self.assertNotIn(secret, serialized)
 
     def test_no_history_failure_carries_zero_candidate_count(self) -> None:
-        with mock.patch.object(base, "_recent_private_edit_urls", return_value=[]), \
+        with _fake_playwright_import(), \
+             mock.patch.object(base, "_recent_private_edit_urls", return_value=[]), \
              mock.patch.object(base.run190, "_profile_dir", return_value=object()):
             with self.assertRaises(base.PrivateDraftAuditError) as caught:
                 base._browser_audit({"title": "PRIVATE", "manuscript": "PRIVATE"})
