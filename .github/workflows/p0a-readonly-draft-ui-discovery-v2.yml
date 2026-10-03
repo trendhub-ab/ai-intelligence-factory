@@ -1,4 +1,5 @@
 name: P0-A Read-only Draft UI Discovery v3
+# Rerun after all competing VM stop jobs completed; keep this run isolated.
 
 on:
   push:
