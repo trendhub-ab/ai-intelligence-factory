@@ -17,7 +17,9 @@ This design separates two contracts that were previously conflated:
 1. **A-2a — AIIF manuscript -> deterministic safe HTML / expected document**
 2. **A-1 — note accepted DOM/readback -> actual document**
 
-A-2a is closed offline. A-1 is closed only with read-only evidence from an existing private note draft. Production acceptance changes only after both contracts are demonstrated.
+A-2a is designed to be closed entirely offline. A-1 can be closed only with read-only evidence from an existing private note draft. Production acceptance changes only after both contracts are demonstrated.
+
+For this design, **lossless** does not mean byte-for-byte equality with the stored Content Intelligence manuscript before note-specific presentation transforms. The comparison authority is the **approved note presentation manuscript**: the byte-valid current Publication Contract manuscript after the already-approved deterministic note-presentation transforms such as duplicate-title removal and footer/CTA ordering. No unapproved content change may be hidden inside that transformation boundary.
 
 ## 2. Evidence and current implementation
 
@@ -67,15 +69,16 @@ Without that contract, adding more anchors or wider length windows still permits
 ## 4. Non-negotiable invariants
 
 1. **Approved source is authoritative.** Expected content is derived only from the already-approved current Publication Contract manuscript plus explicitly allowed deterministic presentation transforms.
-2. **Actual never defines expected.** The note DOM/readback must never be used to construct or mutate the expected representation.
-3. **No LLM equivalence judge.** Gemini/OpenAI/other model calls are not part of the integrity decision.
-4. **Fail closed on unsupported syntax.** Unknown manuscript constructs or unknown note DOM constructs cannot silently degrade into plain text and PASS.
-5. **Semantic values are exact.** Numbers, negation, units, product names, comparison targets, URLs, code, and ordered content must not change.
-6. **Structure matters.** Heading levels, list type/order, link destination, code block boundaries, quote boundaries, and divider placement are part of the contract where used by AIIF.
-7. **Private draft only.** This design does not introduce public-release automation.
-8. **Zero disclosure regression.** P0-A diagnostics must not reintroduce raw unpublished manuscripts, draft URLs, screenshots, browser storage state, or raw private DOM into public Actions output/artifacts.
-9. **No gate weakening.** Evidence, Fact, Human Appeal, Publication, and current-publication-contract requirements remain unchanged.
-10. **No API-cost increase.** Integrity proof is deterministic and model-free.
+2. **Presentation boundary is explicit.** The stored manuscript may be transformed only by named, deterministic, already-approved note-presentation transforms before canonical comparison begins.
+3. **Actual never defines expected.** The note DOM/readback must never be used to construct or mutate the expected representation.
+4. **No LLM equivalence judge.** Gemini/OpenAI/other model calls are not part of the integrity decision.
+5. **Fail closed on unsupported syntax.** Unknown manuscript constructs or unknown note DOM constructs cannot silently degrade into plain text and PASS.
+6. **Semantic values are exact.** Numbers, negation, units, product names, comparison targets, URLs, code, and ordered content must not change.
+7. **Structure matters.** Heading levels, list type/order, link destination, code block boundaries, quote boundaries, and divider placement are part of the contract where used by AIIF.
+8. **Private draft only.** This design does not introduce public-release automation.
+9. **Zero disclosure regression.** P0-A diagnostics must not reintroduce raw unpublished manuscripts, draft URLs, screenshots, browser storage state, or raw private DOM into public Actions output/artifacts.
+10. **No gate weakening.** Evidence, Fact, Human Appeal, Publication, and current-publication-contract requirements remain unchanged.
+11. **No API-cost increase.** Integrity proof is deterministic and model-free.
 
 ## 5. Canonical Document Model
 
@@ -89,7 +92,7 @@ The canonical model is an ordered tree. Initial node set:
 - `OrderedList(start, items)`
 - `UnorderedList(items)`
 - `ListItem(children)`
-- `CodeBlock(language, text)`
+- `CodeBlock(text, language_metadata=None)`
 - `InlineCode(text)`
 - `Link(href, children)`
 - `Strong(children)`
@@ -101,15 +104,17 @@ The canonical model is an ordered tree. Initial node set:
 
 The node set is intentionally narrow. It covers AIIF's currently supported editorial Markdown surface. Unsupported constructs must return an explicit unsupported-syntax result rather than being guessed.
 
+`language_metadata` on fenced code is not silently discarded. If the approved note presentation contract requires that metadata, the renderer/DOM path must preserve and prove it. If note cannot preserve it, the implementation must either make an explicit deterministic presentation transform that removes it before canonicalization or reject that source construct for note delivery. The verifier must not pretend it survived.
+
 ### 5.1 Expected representation
 
 Expected canonical document is built in this order:
 
 1. Read byte-valid current Publication Contract manuscript.
-2. Apply current approved presentation-only transforms (`Run222`) to produce the note-editor manuscript.
+2. Apply current approved presentation-only transforms (`Run222`) to produce the approved note presentation manuscript.
 3. Parse that manuscript into the canonical document model.
 4. Render safe HTML from the same canonical model, not from an independent regex-only interpretation.
-5. Optionally reparse the generated safe HTML in offline tests and require canonical equality.
+5. Reparse generated safe HTML in offline tests and require canonical equality for supported constructs.
 
 This makes the parser/model the single semantic authority and the HTML renderer a projection of that authority.
 
@@ -118,6 +123,8 @@ This makes the parser/model the single semantic authority and the HTML renderer 
 Actual canonical document is independently built from the reopened note editor body DOM.
 
 The extractor maps allowed note DOM structures to canonical nodes. Wrapper elements that carry no editorial meaning may be ignored only when explicitly allow-listed.
+
+Structure must be read from DOM elements/attributes rather than reconstructed from `inner_text()` alone. `inner_text()` may remain a secondary diagnostic, but cannot be the source of truth for headings, links, lists, code, quotes, dividers, or authored hard breaks.
 
 The extractor must reject or classify as unsupported any DOM structure that cannot be mapped without ambiguity.
 
@@ -185,7 +192,7 @@ The current regex renderer recognizes a limited Markdown subset. P0-A must turn 
 
 For each supported construct, tests must prove:
 
-`source markdown -> canonical expected -> safe HTML -> reparsed canonical == canonical expected`.
+`approved note presentation markdown -> canonical expected -> safe HTML -> reparsed canonical == canonical expected`.
 
 At minimum cover:
 
@@ -196,7 +203,8 @@ At minimum cover:
 - ordered lists including non-1 starts if the source grammar admits them
 - blockquotes
 - horizontal dividers
-- fenced code blocks, language metadata, blank lines, indentation, and trailing spaces where semantically relevant
+- fenced code blocks, blank lines, indentation, and trailing spaces where semantically relevant
+- fenced-code language metadata according to the explicit policy in section 5
 - inline code
 - strong emphasis
 - emphasis
@@ -212,7 +220,7 @@ Extend the existing Run291/292/295 private-draft audit family rather than create
 The proof protocol:
 
 1. Exact `sync_id` identifies one existing private draft in current Ready / 投稿準備中 state.
-2. Reconstruct the approved presentation manuscript from Content Intelligence using the current contract.
+2. Reconstruct the approved note presentation manuscript from Content Intelligence using the current contract.
 3. Build expected canonical document before opening the note draft.
 4. Open only an existing note edit route discovered through the existing private-draft audit mechanism.
 5. Read the persisted body DOM without click/fill/paste/save/publish actions.
@@ -413,7 +421,7 @@ Those remain separate workstreams and must not be bundled into P0-A merely becau
 
 Adopt the two-stage Canonical Document Contract:
 
-`approved presentation manuscript -> expected canonical document`
+`approved note presentation manuscript -> expected canonical document`
 
 and independently:
 
