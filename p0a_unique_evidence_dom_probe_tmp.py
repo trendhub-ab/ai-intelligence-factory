@@ -131,10 +131,14 @@ def main() -> int:
                 "matched_prefix": bool(selected_proof["prefix_match"]),
                 "matched_suffix": bool(selected_proof["suffix_match"]),
                 "selected_source_present": bool(selected_proof["source_present"]),
+                "normalization_policy_version": contract.NORMALIZATION_POLICY_VERSION,
             })
             actual_doc = None
             try:
-                actual_doc = dom.document_from_note_snapshot(snapshot)
+                actual_doc = dom.document_from_note_snapshot(
+                    snapshot,
+                    allowed_normalizations=(contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,),
+                )
                 safe["actual_dom_convertible"] = True
                 safe["actual_canonical_top_level_count"] = len(actual_doc.children)
             except contract.CanonicalContractError as exc:
@@ -145,10 +149,11 @@ def main() -> int:
                 expected_doc = contract.normalize_document(contract.parse_presentation_markdown(presented))
                 safe["expected_canonical_top_level_count"] = len(expected_doc.children)
                 if actual_doc is not None:
+                    receipt = contract.compare_documents(expected_doc, actual_doc)
                     safe.update({
-                        "canonical_match_to_current": contract.compare_documents(expected_doc, actual_doc)["canonical_match"],
-                        "mismatch_category": contract.compare_documents(expected_doc, actual_doc)["mismatch_category"],
-                        "mismatch_path": contract.compare_documents(expected_doc, actual_doc)["mismatch_path"],
+                        "canonical_match_to_current": receipt["canonical_match"],
+                        "mismatch_category": receipt["mismatch_category"],
+                        "mismatch_path": receipt["mismatch_path"],
                     })
             except contract.CanonicalContractError as exc:
                 safe["expected_contract_parse_ok"] = False
