@@ -70,22 +70,13 @@ jobs:
               raise SystemExit('run295 generic catch anchor not found')
           s = s.replace(old, new, 1)
           p.write_text(s, encoding='utf-8')
-
-          p = Path('.github/workflows/note-private-draft-audit.yml')
-          s = p.read_text(encoding='utf-8')
-          old = "              'title_box', 'body_box', 'history_candidate_count',\n              'matched_history_rank', 'editor_route_hash',\n"
-          new = "              'title_box', 'body_box', 'history_candidate_count',\n              'history_navigation_success_count', 'history_navigation_error_count',\n              'history_authenticated_count', 'history_editor_route_count',\n              'history_title_read_count', 'history_title_match_count',\n              'matched_history_rank', 'editor_route_hash',\n"
-          if old not in s:
-              raise SystemExit('workflow safe keys anchor not found')
-          s = s.replace(old, new, 1)
-          p.write_text(s, encoding='utf-8')
           PY
       - name: Commit minimal implementation
         run: |
           set -euo pipefail
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
-          git add run291_note_private_draft_audit.py run292_note_rendered_body_audit.py run295_note_private_draft_audit.py .github/workflows/note-private-draft-audit.yml
+          git add run291_note_private_draft_audit.py run292_note_rendered_body_audit.py run295_note_private_draft_audit.py
           git diff --cached --check
           git commit -m 'feat: add content-free private draft history diagnostics'
           git push origin HEAD:design/p0-a-note-lossless-contract
