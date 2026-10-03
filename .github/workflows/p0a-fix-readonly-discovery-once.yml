@@ -1,0 +1,60 @@
+name: P0-A Fix Read-only Discovery Once
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-fix-readonly-discovery-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/p0-a-note-lossless-contract
+      - name: Patch diagnostic anchor matching only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('.github/workflows/p0a-readonly-draft-ui-discovery.yml')
+          text = path.read_text(encoding='utf-8')
+          replacement = '''          def title_anchor_hrefs(page) -> list[str]:
+              values = page.evaluate(
+                  """() => Array.from(document.querySelectorAll('a[href]')).map(a => [String(a.innerText || a.textContent || ''), a.href || ''])"""
+              )
+              expected = norm(title)
+              out = []
+              for item in values or []:
+                  if not isinstance(item, list) or len(item) != 2:
+                      continue
+                  raw, href = item
+                  lines = [norm(line) for line in str(raw or '').splitlines() if norm(line)]
+                  if norm(raw) == expected or expected in lines:
+                      safe = safe_note_href(href)
+                      if safe:
+                          out.append(safe)
+              return out
+
+'''
+          text, count = re.subn(
+              r'          def title_anchor_hrefs\(page\) -> list\[str\]:\n.*?\n          def edit_hrefs\(page\) -> list\[str\]:\n',
+              replacement + '          def edit_hrefs(page) -> list[str]:\n',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'patch anchor mismatch: {count}')
+          path.write_text(text, encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/p0a-readonly-draft-ui-discovery.yml
+          git commit -m 'fix: make read-only draft title matching escape-safe'
+          git push origin HEAD:design/p0-a-note-lossless-contract
