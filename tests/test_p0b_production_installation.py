@@ -81,17 +81,22 @@ def test_note_workflow_gates_on_private_ledger_before_heavy_delivery_job():
 
     ledger_block = source[ledger_job:create_job]
     assert "runs-on: [self-hosted, linux, x64, aiif-note-cloud]" in ledger_block
-    assert "python note_delivery_ledger_preflight.py" in ledger_block
+    assert "bash note_delivery_ledger_preflight.sh" in ledger_block
     assert "NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}" in ledger_block
     assert "NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'" in ledger_block
     assert "should_run_delivery" in ledger_block
-    assert "requests" not in ledger_block
+    assert "pip install" not in ledger_block
     assert "playwright" not in ledger_block
     assert "xvfb" not in ledger_block.lower()
 
     create_block = source[create_job:source.index("  stop-cloud-vm:")]
     assert "needs: [preflight, start-cloud-vm, ledger-preflight]" in create_block
     assert "needs.ledger-preflight.outputs.should_run_delivery == 'true'" in create_block
+
+
+def test_ledger_preflight_is_non_python_ops_surface():
+    assert (ROOT / "note_delivery_ledger_preflight.sh").is_file()
+    assert not (ROOT / "note_delivery_ledger_preflight.py").exists()
 
 
 def test_runtime_public_result_has_no_private_delivery_identity():
