@@ -230,47 +230,45 @@ class PublicationReconcileTests(unittest.TestCase):
     def test_patch_timeout_but_applied_is_resolved_by_readback_without_second_patch(self):
         waiting = queue_page(status="投稿待ち", draft_id="")
         applied = queue_page(status="投稿準備中", draft_id="opaque_1")
-        calls = []
+        reads = iter([FakeResponse(200, waiting), FakeResponse(200, applied)])
+        patch_calls = []
 
-        def fake_request(method, url, *, json=None):
-            calls.append((method, url, json))
-            if method == "GET" and len([c for c in calls if c[0] == "GET"]) == 1:
-                return FakeResponse(200, waiting)
-            if method == "PATCH":
-                raise reconcile.requests.Timeout("ambiguous timeout")
-            return FakeResponse(200, applied)
+        def fake_patch(url, payload):
+            patch_calls.append((url, payload))
+            raise reconcile.requests.Timeout("ambiguous timeout")
 
-        with patch.object(reconcile.sync, "_request", side_effect=fake_request):
+        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(reads)), \
+             patch.object(reconcile, "_queue_patch_once", side_effect=fake_patch):
             binding = reconcile.patch_and_readback_draft_binding(
                 "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
             )
         self.assertTrue(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
-        self.assertEqual(1, len([call for call in calls if call[0] == "PATCH"]))
+        self.assertEqual(1, len(patch_calls))
 
     def test_patch_5xx_and_unapplied_remains_pending(self):
         waiting = queue_page(status="投稿待ち", draft_id="")
-        calls = []
+        patch_calls = []
 
-        def fake_request(method, url, *, json=None):
-            calls.append((method, url, json))
-            if method == "PATCH":
-                return FakeResponse(503, {})
-            return FakeResponse(200, waiting)
+        def fake_patch(url, payload):
+            patch_calls.append((url, payload))
+            return FakeResponse(503, {})
 
-        with patch.object(reconcile.sync, "_request", side_effect=fake_request):
+        with patch.object(reconcile.sync, "_request", return_value=FakeResponse(200, waiting)), \
+             patch.object(reconcile, "_queue_patch_once", side_effect=fake_patch):
             binding = reconcile.patch_and_readback_draft_binding(
                 "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
             )
         self.assertFalse(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
         self.assertEqual("投稿待ち", binding.posting)
         self.assertEqual("", binding.draft_id)
-        self.assertEqual(1, len([call for call in calls if call[0] == "PATCH"]))
+        self.assertEqual(1, len(patch_calls))
 
     def test_readback_sync_id_mismatch_is_conflict_not_confirmed(self):
         waiting = queue_page(status="投稿待ち", draft_id="")
         mismatch = queue_page(sync_id="b" * 32, status="投稿準備中", draft_id="opaque_1")
-        responses = iter([FakeResponse(200, waiting), FakeResponse(500, {}), FakeResponse(200, mismatch)])
-        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(responses)):
+        reads = iter([FakeResponse(200, waiting), FakeResponse(200, mismatch)])
+        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(reads)), \
+             patch.object(reconcile, "_queue_patch_once", return_value=FakeResponse(500, {})):
             binding = reconcile.patch_and_readback_draft_binding(
                 "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
             )
@@ -280,8 +278,9 @@ class PublicationReconcileTests(unittest.TestCase):
     def test_readback_draft_id_mismatch_is_conflict_not_confirmed(self):
         waiting = queue_page(status="投稿待ち", draft_id="")
         mismatch = queue_page(status="投稿準備中", draft_id="other_draft")
-        responses = iter([FakeResponse(200, waiting), FakeResponse(500, {}), FakeResponse(200, mismatch)])
-        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(responses)):
+        reads = iter([FakeResponse(200, waiting), FakeResponse(200, mismatch)])
+        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(reads)), \
+             patch.object(reconcile, "_queue_patch_once", return_value=FakeResponse(500, {})):
             binding = reconcile.patch_and_readback_draft_binding(
                 "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
             )
