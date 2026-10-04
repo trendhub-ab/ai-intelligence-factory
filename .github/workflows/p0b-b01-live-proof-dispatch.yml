@@ -1,4 +1,4 @@
-name: P0-B Trusted Paste RED [OPS ONE-SHOT]
+name: P0-B Trusted Paste GREEN [OPS ONE-SHOT]
 
 on:
   push:
@@ -10,21 +10,21 @@ permissions:
 
 env:
   TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: 895bb7095aa6db44eea063f4ae94c381ec4d5c6f
+  EXPECTED_SHA: e5070b0a7d491425b8613d0422f81861c7bf74a4
 
 jobs:
-  red:
+  green:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ env.TARGET_BRANCH }}
-      - name: Verify test-only head
+      - name: Verify fixed head
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - run: pip install pytest requests
-      - name: Expected RED trusted-paste test
+      - name: Trusted-paste test
         run: python -m pytest tests/test_p0a_trusted_clipboard_paste.py -q
