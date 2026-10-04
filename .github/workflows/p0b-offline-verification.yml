@@ -6,6 +6,7 @@ on:
       - 'note_delivery_ledger.py'
       - 'note_delivery_ledger_preflight.sh'
       - 'note_delivery_runtime.py'
+      - 'note_delivery_creation_recovery.py'
       - 'note_draft_automation.py'
       - 'note_publication_reconcile.py'
       - 'run190_note_persistent_cloud.py'
