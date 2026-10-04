@@ -171,6 +171,7 @@ def _canonical_snapshot_metrics(snapshot: dict[str, object], expected_markdown: 
         "actual_canonical_node_count": 0,
         "contract_version": contract.CONTRACT_VERSION,
         "normalization_policy_version": contract.NORMALIZATION_POLICY_VERSION,
+        "dom_normalization_policy_version": note_dom.DOM_NORMALIZATION_POLICY_VERSION,
     }
     try:
         expected = contract.parse_presentation_markdown(expected_markdown)
@@ -182,7 +183,10 @@ def _canonical_snapshot_metrics(snapshot: dict[str, object], expected_markdown: 
     try:
         actual = note_dom.document_from_note_snapshot(
             snapshot,
-            allowed_normalizations=(contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,),
+            allowed_normalizations=(
+                contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+                note_dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+            ),
         )
     except contract.CanonicalContractError as exc:
         metrics["unsupported_actual_node_count"] = 1
