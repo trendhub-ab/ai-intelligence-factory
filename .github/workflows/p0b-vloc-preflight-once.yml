@@ -1,4 +1,4 @@
-name: P0-B Ledger Gate GREEN [OPS ONE-SHOT]
+name: P0-B Workflow Ledger Gate RED [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  green-test:
+  red-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact P0-B implementation head
+      - name: Checkout exact P0-B workflow test head
         uses: actions/checkout@v6
         with:
-          ref: 87966db3b5388510f5f181c4a30efaced0b5510e
+          ref: fccbea49006c8db926b8f860f88711c0e81a12fc
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -26,7 +26,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install test dependency
-        run: python -m pip install pytest
+        run: python -m pip install pytest requests
 
-      - name: Run ledger tests expecting GREEN
-        run: python -m pytest tests/test_note_delivery_ledger.py -q
+      - name: Run workflow installation test expecting RED
+        run: python -m pytest tests/test_p0b_production_installation.py -q
