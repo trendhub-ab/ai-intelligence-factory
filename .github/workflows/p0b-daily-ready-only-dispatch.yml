@@ -1,0 +1,53 @@
+name: P0-B Daily Ready-Only Dispatch [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0b-daily-ready-only-dispatch.yml]
+
+permissions:
+  contents: read
+
+env:
+  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
+  EXPECTED_SHA: f001d81ae7e9cb3ff043301ce091747a84f1a12f
+
+jobs:
+  dispatch:
+    if: ${{ github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact reviewed P0-B head
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          actual="$(gh api "/repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha')"
+          test "$actual" = "$EXPECTED_SHA" || {
+            echo '::error::P0-B head moved; refusing Daily ready-only dispatch'
+            exit 1
+          }
+      - name: Dispatch exactly one Daily full ready-only run
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          gh workflow run daily-one-shot.yml \
+            --ref "$TARGET_BRANCH" \
+            -f mode=full \
+            -f editorial_style=classic \
+            -f excluded_models='' \
+            -f e2e_prepare_only=false \
+            -f p0b_ready_only=true \
+            -f confirm=RUN_ONCE
+      - name: Record safe dispatch
+        run: |
+          {
+            echo '### P0-B Daily Ready-Only dispatch'
+            echo '- mode: `full`'
+            echo '- p0b_ready_only: `true`'
+            echo '- private draft creation from Daily: `suppressed`'
+            echo '- automatic public release: `false`'
+            echo '- dispatch count: `1`'
+          } >> "$GITHUB_STEP_SUMMARY"
