@@ -236,7 +236,7 @@ jobs:
               fh.write('### note private-draft durable delivery\n')
               fh.write(f'- status: `{status}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
-              fh.write(f'- public release: `{result.get("public_release") is True}`\n')
+              fh.write(f'- automatic publication: `{result.get("public_release") is True}`\n')
               fh.write(f'- Telegram notice: `{notified}`\n')
               if status == 'queue_confirmed':
                   fh.write('- The private draft binding and queue projection were durably confirmed. Review note manually before release.\n')
