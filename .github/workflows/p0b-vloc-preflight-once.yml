@@ -1,4 +1,4 @@
-name: P0-B Current Eligible Preflight [OPS ONE-SHOT]
+name: P0-B Bounded Live Proof [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,33 +11,35 @@ permissions:
   contents: read
 
 jobs:
-  dispatch-preflight:
+  dispatch-live-proof:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       EXPECTED_MAIN_SHA: '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
       EXPECTED_PR_HEAD: '8483e525d3902f3045c50761b6c6f57e765add9e'
       TARGET_REF: 'design/p0-b-durable-delivery-ledger'
+      APPROVAL: 'BOUNDED_LIVE_PROOF_GO'
       GH_TOKEN: ${{ secrets.GH_PAT }}
 
     steps:
-      - name: Verify immutable repository gates
+      - name: Verify immutable repository and approval gates
         run: |
           set -euo pipefail
+          test "$APPROVAL" = 'BOUNDED_LIVE_PROOF_GO' || { echo '::error::explicit bounded-live-proof approval missing'; exit 1; }
           main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
           pr_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${TARGET_REF}" --jq '.commit.sha')"
           pr_draft="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.draft')"
           pr_merged="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.merged')"
-          test "$main_sha" = "$EXPECTED_MAIN_SHA" || { echo '::error::main moved; refusing preflight'; exit 1; }
-          test "$pr_sha" = "$EXPECTED_PR_HEAD" || { echo '::error::PR head moved; refusing preflight'; exit 1; }
+          test "$main_sha" = "$EXPECTED_MAIN_SHA" || { echo '::error::main moved; refusing live proof'; exit 1; }
+          test "$pr_sha" = "$EXPECTED_PR_HEAD" || { echo '::error::PR head moved; refusing live proof'; exit 1; }
           test "$pr_draft" = 'true' || { echo '::error::PR is no longer draft'; exit 1; }
           test "$pr_merged" = 'false' || { echo '::error::PR already merged'; exit 1; }
 
-      - name: Dispatch current automatic prepare-only selection
+      - name: Dispatch exactly one private-draft bounded live proof
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo '::error::GH_PAT missing'; exit 1; }
           gh workflow run note-create-draft.yml --repo "$GITHUB_REPOSITORY" --ref "$TARGET_REF" \
             -f confirm=CREATE_NOTE_DRAFT \
-            -f prepare_only=true
-          echo 'Current-head automatic prepare-only selection submitted; no VM/live mutation requested.'
+            -f prepare_only=false
+          echo 'Bounded live proof submitted: one automatically pinned eligible candidate, private draft only, no automatic public release.'
