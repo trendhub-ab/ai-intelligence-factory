@@ -1,5 +1,5 @@
-name: P0-B Eyecatch Diagnostic [OPS ZERO-MUTATION]
-# attempt: exact-runtime-subheadline-diagnostic-v7
+name: P0-B Eyecatch Runtime Title RED [OPS ZERO-MUTATION]
+# attempt: red-actual-runtime-title-v8
 
 on:
   push:
@@ -12,93 +12,19 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  red:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      TARGET_TITLE: 'Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows'
-      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-      NOTION_API_VERSION: '2026-03-11'
-      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install diagnostic dependencies and fonts
+      - name: Install test dependencies and fonts
         run: |
           sudo apt-get update >/dev/null
           sudo apt-get install -y fonts-noto-cjk fonts-lato >/dev/null
           python -m pip install --upgrade pip >/dev/null
           pip install -r requirements.txt >/dev/null
-      - name: Resolve exact Ready and inspect runtime layout inputs only
-        run: |
-          python - <<'PY'
-          import json, os, re, urllib.request
-          from PIL import Image, ImageDraw
-          import note_ready_sync as ready_sync
-          import ready_eyecatch_finalize as ready_finalize
-          import run180_eyecatch_semantic_layout as semantic
-          import ops_ready_eyecatch_finalize as ops
-
-          token = os.environ['NOTION_API_KEY'].strip()
-          ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
-          title = os.environ['TARGET_TITLE']
-          payload = {'page_size': 10, 'filter': {'and': [
-              {'property': '記事名', 'title': {'equals': title}},
-              {'property': '記事状態', 'select': {'equals': 'Ready'}},
-          ]}}
-          req = urllib.request.Request(
-              f'https://api.notion.com/v1/data_sources/{ds}/query',
-              data=json.dumps(payload).encode(), method='POST',
-              headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json',
-                       'Notion-Version': os.environ['NOTION_API_VERSION']})
-          with urllib.request.urlopen(req, timeout=30) as r:
-              rows = (json.load(r).get('results') or [])
-          if len(rows) != 1:
-              raise SystemExit(f'expected exactly one Ready row, got {len(rows)}')
-          row = rows[0]
-          if (((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []):
-              raise SystemExit('eyecatch unexpectedly present')
-          sync_id = re.sub(r'[^0-9a-fA-F]', '', str(row.get('id') or '')).lower()
-          print(f'::add-mask::{sync_id}')
-
-          page = ready_finalize._source_page(sync_id)
-          state = ready_sync._source_state(page)
-          manuscript, _ = ready_sync._source_ready_manuscript_for_visual_repair(sync_id, title)
-          summary = ready_finalize._reader_summary(manuscript)
-          source_title = semantic._source_title_for_direction(title)
-          existing_headline = semantic.ee.editorial_hook_from_title(title, max_chars=48)
-          subheadline = semantic.ee.editorial_subheadline(summary, existing_headline)
-
-          ops.semantic_layout._required_source_tokens = ops._bounded_required_source_tokens
-          plan = ops._bounded_request_layout_plan(None, source_title, subheadline)
-          probe = Image.new('RGB', (semantic.ee.WIDTH, semantic.ee.HEIGHT), (255,255,255))
-          draw = ImageDraw.Draw(probe)
-          fit = {}
-          for size in (28,26,24,22):
-              font = semantic.ee._jp_font(size, bold=True)
-              lines = semantic.ee._wrap_chars(draw, subheadline, font, semantic.SUB_MAX_WIDTH, 2)
-              fit[str(size)] = {
-                  'line_count': len(lines),
-                  'canonical_equal': semantic.r178._canonical_partition_text(''.join(lines)) == semantic.r178._canonical_partition_text(subheadline),
-                  'max_width_ok': all(semantic.ee._text_width(draw, line, font) <= semantic.SUB_MAX_WIDTH for line in lines),
-              }
-          print(json.dumps({
-              'source_title_exact': source_title == ops.EXACT_SOURCE_TITLE,
-              'summary_chars': len(summary),
-              'subheadline_chars': len(subheadline),
-              'subheadline_canonical_chars': len(semantic.r178._canonical_partition_text(subheadline)),
-              'fit': fit,
-              'bounded_plan_available': isinstance(plan, dict),
-              'eyecatch_mutation': False,
-              'note_mutation': False,
-              'public_release': False,
-              'model_calls': 0,
-          }, ensure_ascii=False, sort_keys=True))
-          PY
+      - name: RED — actual runtime note title must be supported
+        run: python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
