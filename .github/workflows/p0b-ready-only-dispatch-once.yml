@@ -1,0 +1,64 @@
+name: P0-B Ready-only Daily Dispatch [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-ready-only-dispatch-20261005
+    paths:
+      - .github/workflows/p0b-ready-only-dispatch-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-once:
+    if: >-
+      github.run_attempt == 1 &&
+      github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+      github.ref == 'refs/heads/ops/p0b-ready-only-dispatch-20261005' &&
+      github.actor == 'trendhub-ab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify immutable P0-B target before dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: 9635d2b1643f1e065605389180a75721bfd84f50
+        run: |
+          set -euo pipefail
+          actual_head="$(gh api /repos/${GITHUB_REPOSITORY}/git/ref/heads/design/p0-b-durable-delivery-ledger --jq '.object.sha')"
+          test "$actual_head" = "$EXPECTED_HEAD"
+          pr_state="$(gh api /repos/${GITHUB_REPOSITORY}/pulls/716 --jq '.state')"
+          pr_draft="$(gh api /repos/${GITHUB_REPOSITORY}/pulls/716 --jq '.draft')"
+          merged_at="$(gh api /repos/${GITHUB_REPOSITORY}/pulls/716 --jq '.merged_at // ""')"
+          test "$pr_state" = "open"
+          test "$pr_draft" = "true"
+          test -z "$merged_at"
+
+      - name: Dispatch exactly one P0-B ready-only Daily run
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          payload='{"ref":"design/p0-b-durable-delivery-ledger","inputs":{"mode":"full","editorial_style":"classic","excluded_models":"","p0b_ready_only":"true","confirm":"RUN_ONCE"}}'
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/daily-one-shot.yml/dispatches" \
+            --input -
+
+      - name: Record safe dispatch summary
+        run: |
+          {
+            echo '### P0-B ready-only Daily dispatch'
+            echo '- target ref: `design/p0-b-durable-delivery-ledger`'
+            echo '- mode: `full`'
+            echo '- editorial style: `classic`'
+            echo '- p0b_ready_only: `true`'
+            echo '- excluded models override: empty'
+            echo '- confirmation: `RUN_ONCE`'
+            echo '- private draft fan-out authorized: `false`'
+            echo '- automatic public release authorized: `false`'
+            echo '- PR #716 merge performed: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"
