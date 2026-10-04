@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+import note_delivery_ledger as ledger_module
 from note_document_contract import (
     CONTRACT_VERSION,
     NORMALIZATION_POLICY_VERSION,
@@ -267,3 +268,48 @@ def test_ledger_unavailable_b18_is_fail_closed():
     impossible = Path("/dev/null") / "delivery.sqlite3"
     with pytest.raises(LedgerUnavailableError):
         SQLiteDeliveryLedger(impossible).initialize()
+
+
+def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
+    gate = getattr(ledger_module, "read_only_delivery_gate", None)
+    assert callable(gate), "read_only_delivery_gate must exist before workflow can gate on ledger authority"
+
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        decision = ledger.begin_or_load(_snapshot(), run_correlation_id="run-a")
+        blocked = ledger.record_blocked(
+            decision.record.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="creation_result_ambiguous",
+            expected_version=decision.record.state_version,
+        )
+        before = ledger.get_by_operation_key(blocked.operation_key)
+
+        result = gate(
+            ledger.path,
+            sync_id=blocked.snapshot.sync_id,
+            note_target=blocked.snapshot.note_target,
+        )
+        assert result == {
+            "status": "ledger_blocked_ambiguous",
+            "should_run_delivery": False,
+            "zero_gemini_calls": True,
+        }
+
+        after = ledger.get_by_operation_key(blocked.operation_key)
+        assert after is not None and before is not None
+        assert after.state == before.state == DeliveryState.CREATION_UNKNOWN
+        assert after.state_version == before.state_version
+        assert after.attempt_count == before.attempt_count
+
+        clean = gate(
+            ledger.path,
+            sync_id="sync-002",
+            note_target=blocked.snapshot.note_target,
+        )
+        assert clean == {
+            "status": "ledger_clean_new",
+            "should_run_delivery": True,
+            "zero_gemini_calls": True,
+        }
