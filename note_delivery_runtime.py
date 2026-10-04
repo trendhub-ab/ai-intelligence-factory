@@ -8,8 +8,17 @@ from types import MappingProxyType
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
+import note_publication_reconcile as reconcile
+
 from note_document_contract import parse_presentation_markdown
-from note_delivery_ledger import DeliverySnapshot, build_delivery_snapshot
+from note_delivery_ledger import (
+    DeliveryLedgerError,
+    DeliveryRecord,
+    DeliverySnapshot,
+    DeliveryState,
+    SQLiteDeliveryLedger,
+    build_delivery_snapshot,
+)
 
 RUN222_TRANSFORM_VERSION = "note-presentation-integrity-v1"
 READY_PROVENANCE_VERSION = "ready-waiting-current-publication-v1"
@@ -96,3 +105,71 @@ def revalidate_before_mutation(base: Any, prepared: PreparedDelivery) -> None:
     current = prepare_delivery(base, prepared.snapshot.sync_id)
     if current.snapshot != prepared.snapshot:
         raise base.NoteDraftError("Delivery snapshot changed before note mutation")
+
+
+def create_or_resume_delivery(
+    base: Any,
+    ledger: SQLiteDeliveryLedger,
+    prepared: PreparedDelivery,
+    *,
+    run_correlation_id: str,
+) -> DeliveryRecord:
+    decision = ledger.begin_or_load(prepared.snapshot, run_correlation_id=run_correlation_id)
+    if not decision.creation_authorized:
+        return decision.record
+
+    revalidate_before_mutation(base, prepared)
+    record = decision.record
+    durable_created: DeliveryRecord | None = None
+    storage_path = base._decode_storage_state()
+
+    def on_stable_draft_url(draft_url: str) -> None:
+        nonlocal durable_created
+        draft_id = reconcile.draft_identity_from_url(draft_url, error_type=base.NoteDraftError)
+        host = str(urlparse(draft_url).hostname or "").lower()
+        durable_created = ledger.record_draft_created(
+            record.operation_key,
+            draft_id=draft_id,
+            note_host=host,
+            expected_version=record.state_version,
+        )
+
+    try:
+        returned_url = base._create_browser_draft(
+            prepared.article["title"],
+            prepared.article["manuscript"],
+            prepared.eyecatch_path,
+            storage_path,
+            on_stable_draft_url=on_stable_draft_url,
+        )
+    except Exception:
+        if durable_created is None:
+            try:
+                ledger.record_blocked(
+                    record.operation_key,
+                    state=DeliveryState.CREATION_UNKNOWN,
+                    category="creation_result_ambiguous",
+                    expected_version=record.state_version,
+                )
+            except DeliveryLedgerError:
+                pass
+        raise
+    finally:
+        storage_path.unlink(missing_ok=True)
+
+    if durable_created is None:
+        try:
+            ledger.record_blocked(
+                record.operation_key,
+                state=DeliveryState.CREATION_UNKNOWN,
+                category="stable_draft_identity_not_recorded",
+                expected_version=record.state_version,
+            )
+        except DeliveryLedgerError:
+            pass
+        raise base.NoteDraftError("Stable note draft identity was not durably recorded")
+
+    returned_id = reconcile.draft_identity_from_url(returned_url, error_type=base.NoteDraftError)
+    if returned_id != durable_created.draft_id:
+        raise base.NoteDraftError("Browser returned a different stable draft identity")
+    return durable_created
