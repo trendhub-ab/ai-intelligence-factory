@@ -99,6 +99,11 @@ def test_ledger_preflight_is_non_python_ops_surface():
     assert not (ROOT / "note_delivery_ledger_preflight.py").exists()
 
 
+def test_offline_verification_tracks_ledger_preflight_script():
+    source = (ROOT / ".github/workflows/p0b-offline-verification.yml").read_text(encoding="utf-8")
+    assert "'note_delivery_ledger_preflight.sh'" in source
+
+
 def test_runtime_public_result_has_no_private_delivery_identity():
     result = runtime.safe_delivery_result(status="queue_confirmed", telegram_notified=False)
     assert result == {
