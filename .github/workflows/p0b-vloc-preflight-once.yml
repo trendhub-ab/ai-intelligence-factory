@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 10
     env:
       EXPECTED_MAIN_SHA: '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
-      EXPECTED_PR_HEAD: '518ef22a59a5360e795e8993aba6c18d1b0ef89c'
+      EXPECTED_PR_HEAD: '8483e525d3902f3045c50761b6c6f57e765add9e'
       TARGET_REF: 'design/p0-b-durable-delivery-ledger'
       TARGET_ARTICLE_TITLE: 'Vulnerability Localization Benchmark: Measuring Agentic Security Analysis at Repository Scale'
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
