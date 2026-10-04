@@ -30,7 +30,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       should_start_vm: ${{ steps.decision.outputs.should_start_vm }}
-      selected_sync_id: ${{ steps.decision.outputs.selected_sync_id }}
       status: ${{ steps.decision.outputs.status }}
     steps:
       - name: Checkout
@@ -51,10 +50,8 @@ jobs:
           python -m unittest tests.test_run194_note_current_contract -v
           python -m unittest tests.test_run199_note_vm_preflight -v
 
-      - name: Validate exact publish-safe candidate before any VM start
+      - name: Validate publish-safe candidate before any VM start
         env:
-          NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
-          NOTE_TARGET_SYNC_ID: ${{ inputs.sync_id }}
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -63,7 +60,16 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: python run199_note_vm_preflight.py
+        run: |
+          set -euo pipefail
+          requested="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
+          print(str(((event.get('inputs') or {}).get('sync_id') or '')).strip())
+          PY
+          )"
+          NOTE_DRAFT_CONFIRM='${{ inputs.confirm }}' NOTE_TARGET_SYNC_ID="$requested" python run199_note_vm_preflight.py
 
       - name: Export VM decision
         id: decision
@@ -75,11 +81,9 @@ jobs:
           from pathlib import Path
           result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
           should_start = 'true' if result.get('should_start_vm') is True else 'false'
-          selected = str(result.get('selected_sync_id') or '').strip()
           status = str(result.get('status') or 'unknown').strip()
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'should_start_vm={should_start}\n')
-              fh.write(f'selected_sync_id={selected}\n')
               fh.write(f'status={status}\n')
           PY
 
@@ -152,14 +156,11 @@ jobs:
           fi
           echo "Persistent note VM is running; waiting for its registered GitHub runner."
 
-  ledger-preflight:
+  create-draft:
     if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 5
-    outputs:
-      should_run_delivery: ${{ steps.decision.outputs.should_run_delivery }}
-      status: ${{ steps.decision.outputs.status }}
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -169,16 +170,66 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Read durable ledger authority before heavy browser setup
+      - name: Install lightweight private-preflight dependency
+        run: python -m pip install requests
+
+      - name: Revalidate and pin exact candidate on private worker
         env:
-          NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
-          NOTE_TARGET_IDENTITY: 'trendhub_biz'
-          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
-          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
-        run: bash note_delivery_ledger_preflight.sh
+          RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          set -euo pipefail
+          requested="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
+          print(str(((event.get('inputs') or {}).get('sync_id') or '')).strip())
+          PY
+          )"
+          NOTE_DRAFT_CONFIRM='${{ inputs.confirm }}' NOTE_TARGET_SYNC_ID="$requested" NOTE_DRAFT_RESULT_FILE="$RESULT_FILE" python run199_note_vm_preflight.py
+
+      - name: Export private-worker candidate decision
+        id: worker
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          selected = str(result.get('selected_sync_id') or '').strip()
+          should_continue = result.get('should_start_vm') is True and bool(selected)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'should_continue={"true" if should_continue else "false"}\n')
+              fh.write(f'status={str(result.get("status") or "unknown").strip()}\n')
+          PY
+
+      - name: Read durable ledger authority before heavy browser setup
+        if: ${{ steps.worker.outputs.should_continue == 'true' }}
+        env:
+          WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
+          LEDGER_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
+        run: |
+          set -euo pipefail
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['WORKER_RESULT_FILE']).read_text(encoding='utf-8'))
+          print(str(result.get('selected_sync_id') or '').strip())
+          PY
+          )"
+          test -n "$selected" || { echo '::error::private worker did not pin an exact candidate'; exit 1; }
+          NOTE_TARGET_SYNC_ID="$selected" NOTE_TARGET_IDENTITY='trendhub_biz' NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3' NOTE_DRAFT_RESULT_FILE="$LEDGER_RESULT_FILE" bash note_delivery_ledger_preflight.sh
 
       - name: Export durable ledger decision
-        id: decision
+        id: ledger
+        if: ${{ steps.worker.outputs.should_continue == 'true' }}
         env:
           RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
         run: |
@@ -194,6 +245,7 @@ jobs:
           PY
 
       - name: Summarize durable ledger gate
+        if: ${{ steps.worker.outputs.should_continue == 'true' }}
         env:
           RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
         run: |
@@ -210,21 +262,8 @@ jobs:
                   fh.write('- Existing ambiguous delivery remains fail-closed; heavy browser setup and note mutation are skipped.\n')
           PY
 
-  create-draft:
-    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' && needs.ledger-preflight.outputs.should_run_delivery == 'true' }}
-    needs: [preflight, start-cloud-vm, ledger-preflight]
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
       - name: Install persistent Chrome automation dependencies
+        if: ${{ steps.ledger.outputs.should_run_delivery == 'true' }}
         run: |
           python -m pip install --upgrade pip
           pip install requests playwright pytest
@@ -238,6 +277,7 @@ jobs:
           }
 
       - name: Zero-Gemini note draft tests
+        if: ${{ steps.ledger.outputs.should_run_delivery == 'true' }}
         run: |
           python -m unittest tests.test_note_draft_automation -v
           python -m unittest tests.test_run185_note_ready_legacy_skip -v
@@ -259,10 +299,11 @@ jobs:
             tests/test_p0b_eyecatch_callback_forwarding.py \
             tests/test_p0b_production_installation.py -q
 
-      - name: Create one private note draft or reconcile the preflight-pinned article
+      - name: Create one private note draft or reconcile the worker-pinned article
+        if: ${{ steps.ledger.outputs.should_run_delivery == 'true' }}
         env:
+          WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
-          NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
           NOTE_TARGET_IDENTITY: 'trendhub_biz'
           NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
           NOTE_PREPARE_ONLY: 'false'
@@ -279,10 +320,20 @@ jobs:
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: xvfb-run -a python run194_note_persistent_cloud.py
+        run: |
+          set -euo pipefail
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['WORKER_RESULT_FILE']).read_text(encoding='utf-8'))
+          print(str(result.get('selected_sync_id') or '').strip())
+          PY
+          )"
+          test -n "$selected" || { echo '::error::private worker target missing'; exit 1; }
+          NOTE_TARGET_SYNC_ID="$selected" xvfb-run -a python run194_note_persistent_cloud.py
 
       - name: Summarize result without exposing private delivery identity
-        if: success()
+        if: ${{ steps.ledger.outputs.should_run_delivery == 'true' && success() }}
         env:
           RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
         run: |
@@ -306,7 +357,7 @@ jobs:
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [preflight, start-cloud-vm, ledger-preflight, create-draft]
+    needs: [preflight, start-cloud-vm, create-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
