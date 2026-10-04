@@ -22,14 +22,6 @@ jobs:
   offline-verification:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      GEMINI_API_KEY: ''
-      GOOGLE_API_KEY: ''
-      NOTION_API_KEY: ''
-      NOTION_DECISION_INTELLIGENCE_API_KEY: ''
-      NOTE_STORAGE_STATE_B64: ''
-      TELEGRAM_BOT_TOKEN: ''
-      TELEGRAM_CHAT_ID: ''
     steps:
       - name: Checkout PR
         uses: actions/checkout@v6
@@ -38,6 +30,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
+      - name: Prove workflow references no repository secrets
+        run: |
+          if grep -Eq '\$\{\{[[:space:]]*secrets\.' .github/workflows/p0b-offline-verification.yml; then
+            echo '::error::Offline verification workflow must not reference repository secrets.'
+            exit 1
+          fi
 
       - name: Install offline test dependencies
         run: |
@@ -53,16 +52,3 @@ jobs:
           python repository_falsification_guard.py
           python integration_stability_guard.py
           git diff --check origin/${{ github.base_ref }}...HEAD
-
-      - name: Prove no production credentials are available
-        run: |
-          python - <<'PY'
-          import os
-          names = [
-              'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'NOTION_API_KEY',
-              'NOTION_DECISION_INTELLIGENCE_API_KEY', 'NOTE_STORAGE_STATE_B64',
-              'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID',
-          ]
-          assert all(not os.environ.get(name) for name in names)
-          print('P0-B offline verification: no production/model credentials present')
-          PY
