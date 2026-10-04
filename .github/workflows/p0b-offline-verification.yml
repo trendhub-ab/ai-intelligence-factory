@@ -10,7 +10,6 @@ on:
       - 'run190_note_persistent_cloud.py'
       - 'run194_note_persistent_cloud.py'
       - 'run199_note_vm_preflight.py'
-      - 'run298_genrec_inplace_refresh.py'
       - '.github/workflows/note-create-draft.yml'
       - '.github/workflows/p0b-offline-verification.yml'
       - 'tests/**'
