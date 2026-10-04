@@ -175,7 +175,7 @@ jobs:
           NOTE_TARGET_IDENTITY: 'trendhub_biz'
           NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
-        run: python note_delivery_ledger_preflight.py
+        run: bash note_delivery_ledger_preflight.sh
 
       - name: Export durable ledger decision
         id: decision
