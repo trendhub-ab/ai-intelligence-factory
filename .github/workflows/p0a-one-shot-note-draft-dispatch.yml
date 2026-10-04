@@ -1,0 +1,30 @@
+name: P0-A One-shot note Draft Dispatch
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/p0a-one-shot-note-draft.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-private-draft:
+    if: ${{ github.event.head_commit.message == 'ops: trigger one p0a private draft proof' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch existing private-draft workflow on the feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run note-create-draft.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "design/p0-a-note-lossless-contract" \
+            -f confirm=CREATE_NOTE_DRAFT \
+            -f prepare_only=false
+          echo 'One private-draft workflow dispatch requested.'
