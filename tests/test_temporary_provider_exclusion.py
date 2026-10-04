@@ -169,7 +169,10 @@ class TemporaryExclusionTests(unittest.TestCase):
         end = text.index("      - name: Portfolio-aware Product Review", start)
         block = text[start:end]
         self.assertIn('GEMINI_36_FLASH_DAILY_BUDGET: "18"', block)
-        self.assertIn('GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash"', block)
+        self.assertIn(
+            'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"',
+            text,
+        )
         self.assertNotIn('GEMINI_36_FLASH_DAILY_BUDGET: "0"', block)
 
     def test_workflow_has_no_expired_gemini36_block_and_rescue_is_explicit(self):
