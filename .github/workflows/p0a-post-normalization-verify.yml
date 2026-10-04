@@ -48,3 +48,5 @@ jobs:
         run: python regression_suite.py --self-test
       - name: Run synthetic regression suite
         run: python regression_suite.py --bootstrap --smoke
+
+# final-cleanup verification trigger
