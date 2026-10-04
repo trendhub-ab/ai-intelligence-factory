@@ -10,7 +10,8 @@ Safety:
 - zero browser/Playwright calls;
 - zero note mutation;
 - explicit sync_id remains fail-closed;
-- Notion/configuration failures remain fail-closed.
+- Notion/configuration failures remain fail-closed;
+- stdout contains only the safe preflight projection, never sync IDs or policy/manuscript hashes.
 """
 from __future__ import annotations
 
@@ -82,12 +83,21 @@ def preflight(requested_sync_id: str = "") -> dict[str, Any]:
     return result
 
 
+def _safe_stdout_projection(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": str(result.get("status") or "unknown"),
+        "should_start_vm": result.get("should_start_vm") is True,
+        "zero_gemini_calls": result.get("zero_gemini_calls") is True,
+        "telegram_notified": result.get("telegram_notified") is True,
+    }
+
+
 def main() -> None:
     confirm = os.environ.get("NOTE_DRAFT_CONFIRM", "").strip()
     if confirm != base.CONFIRM_TOKEN:
         raise base.NoteDraftError("Explicit note draft confirmation token is required")
     result = preflight(os.environ.get("NOTE_TARGET_SYNC_ID", ""))
-    print("[RUN199 NOTE PREFLIGHT] " + json.dumps(result, ensure_ascii=False))
+    print("[RUN199 NOTE PREFLIGHT] " + json.dumps(_safe_stdout_projection(result), ensure_ascii=False))
 
 
 if __name__ == "__main__":
