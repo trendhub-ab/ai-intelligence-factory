@@ -5,6 +5,11 @@ value fell outside its sampled windows. Run417 now owns the deterministic canoni
 renderer + reopened-DOM readback gate used by the effective draft path. Any unsupported
 source/DOM or canonical mismatch fails closed with fixed, content-free errors.
 
+Real-browser evidence on 2026-10-04 showed that note's HTML paste path flattens inline
+``<code>`` into ordinary text. InlineCode therefore remains part of the offline canonical
+model, but is fail-closed at the note-delivery boundary until a preserving note editor path
+is proven. Fenced code blocks remain supported and exact, including whitespace.
+
 ZERO Gemini/model calls. No public-release action.
 """
 from __future__ import annotations
@@ -24,10 +29,27 @@ _ALLOWED_NOTE_NORMALIZATIONS = (
 )
 
 
+def _contains_inline_code(node: Any) -> bool:
+    if isinstance(node, contract.InlineCode):
+        return True
+    for attr in ("children", "items"):
+        value = getattr(node, attr, None)
+        if value and any(_contains_inline_code(child) for child in value):
+            return True
+    return False
+
+
+def _expected_note_document(markdown_text: str) -> contract.Document:
+    expected = contract.parse_presentation_markdown(markdown_text)
+    expected = contract.normalize_document(expected)
+    if _contains_inline_code(expected):
+        raise contract.CanonicalContractError("unsupported_note_inline_code")
+    return expected
+
+
 def markdown_to_safe_html(markdown_text: str) -> str:
     try:
-        expected = contract.parse_presentation_markdown(markdown_text)
-        expected = contract.normalize_document(expected)
+        expected = _expected_note_document(markdown_text)
         return contract.render_safe_html(expected)
     except contract.CanonicalContractError:
         raise base.NoteDraftError(_SOURCE_ERROR) from None
@@ -35,8 +57,7 @@ def markdown_to_safe_html(markdown_text: str) -> str:
 
 def verify_body_content(body: Any, manuscript: str) -> None:
     try:
-        expected = contract.parse_presentation_markdown(manuscript)
-        expected = contract.normalize_document(expected)
+        expected = _expected_note_document(manuscript)
         snapshot = dom.snapshot_note_body(body)
         actual = dom.document_from_note_snapshot(
             snapshot,
