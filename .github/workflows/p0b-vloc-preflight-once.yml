@@ -1,4 +1,4 @@
-name: P0-B Recovery CI Path RED [OPS ONE-SHOT]
+name: P0-B Recovery CI Path GREEN [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  red-test:
+  green-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact P0-B CI-path test head
+      - name: Checkout exact P0-B CI-path head
         uses: actions/checkout@v6
         with:
-          ref: e6a3c941df540606f6f0548622da49ad1a2625bf
+          ref: 6761160577042b5ad9e7b3afda44e2781f50ceab
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -28,5 +28,5 @@ jobs:
       - name: Install test dependency
         run: python -m pip install pytest
 
-      - name: Run P0-B installation test expecting RED
+      - name: Run P0-B installation test expecting GREEN
         run: python -m pytest tests/test_p0b_production_installation.py -q
