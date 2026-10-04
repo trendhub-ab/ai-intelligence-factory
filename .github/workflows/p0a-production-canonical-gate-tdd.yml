@@ -5,6 +5,9 @@ on:
     branches:
       - design/p0-a-note-lossless-contract
     paths:
+      - 'tests/test_note_document_dom.py'
+      - 'note_document_dom.py'
+      - 'note_document_contract.py'
       - 'tests/test_p0a_production_canonical_gate.py'
       - 'tests/test_run222_note_presentation_integrity.py'
       - 'tests/test_run417_note_body_verification.py'
