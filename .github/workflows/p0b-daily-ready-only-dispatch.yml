@@ -34,6 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run daily-one-shot.yml \
+            --repo "$GITHUB_REPOSITORY" \
             --ref "$TARGET_BRANCH" \
             -f mode=full \
             -f editorial_style=classic \
