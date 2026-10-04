@@ -1,0 +1,164 @@
+name: P0-B Delivery Ledger Read-Only Audit
+
+on:
+  push:
+    branches:
+      - ops/p0b-ledger-readonly-audit-20261004
+    paths:
+      - .github/workflows/p0b-ledger-readonly-audit.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  start-cloud-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            test -n "${!name:-}"
+          done
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM started for read-only ledger audit.'
+
+  audit-ledger:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    steps:
+      - name: Read durable ledger without mutation
+        env:
+          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sqlite3
+
+          path = Path(os.path.expanduser(os.environ['NOTE_DELIVERY_LEDGER_PATH']))
+          result = {
+              'ledger_exists': path.exists(),
+              'schema_version': None,
+              'delivery_count': 0,
+              'latest_state': None,
+              'latest_state_version': None,
+              'latest_attempt_count': None,
+              'stable_draft_identity_recorded': False,
+              'logical_binding_has_draft_identity': False,
+              'canonical_reopen_verified': False,
+              'queue_receipt_recorded': False,
+              'conflict_category': None,
+              'event_sequence': [],
+          }
+          if not path.exists():
+              print(json.dumps(result, sort_keys=True))
+              raise SystemExit(0)
+
+          uri = f"file:{path}?mode=ro"
+          conn = sqlite3.connect(uri, uri=True, timeout=5.0, isolation_level=None)
+          conn.row_factory = sqlite3.Row
+          try:
+              conn.execute('PRAGMA query_only=ON')
+              result['schema_version'] = int(conn.execute('PRAGMA user_version').fetchone()[0])
+              result['delivery_count'] = int(conn.execute('SELECT COUNT(*) FROM deliveries').fetchone()[0])
+              row = conn.execute(
+                  'SELECT record_id, logical_key, state, state_version, attempt_count, '
+                  'stable_draft_id, last_verified_canonical_hash, queue_receipt_digest, conflict_category '
+                  'FROM deliveries ORDER BY updated_at DESC, created_at DESC LIMIT 1'
+              ).fetchone()
+              if row is not None:
+                  result['latest_state'] = row['state']
+                  result['latest_state_version'] = int(row['state_version'])
+                  result['latest_attempt_count'] = int(row['attempt_count'])
+                  result['stable_draft_identity_recorded'] = bool(row['stable_draft_id'])
+                  result['canonical_reopen_verified'] = bool(row['last_verified_canonical_hash'])
+                  result['queue_receipt_recorded'] = bool(row['queue_receipt_digest'])
+                  result['conflict_category'] = row['conflict_category'] or None
+                  binding = conn.execute(
+                      'SELECT draft_id FROM logical_bindings WHERE logical_key=?',
+                      (row['logical_key'],),
+                  ).fetchone()
+                  result['logical_binding_has_draft_identity'] = bool(binding and binding['draft_id'])
+                  events = conn.execute(
+                      'SELECT new_state, category FROM delivery_events WHERE record_id=? ORDER BY event_id ASC',
+                      (row['record_id'],),
+                  ).fetchall()
+                  result['event_sequence'] = [
+                      {'state': event['new_state'], 'category': event['category']} for event in events
+                  ]
+              # Fail if the connection itself somehow became writable.
+              if int(conn.execute('PRAGMA query_only').fetchone()[0]) != 1:
+                  raise SystemExit('query_only_not_enforced')
+          finally:
+              conn.close()
+
+          print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B durable ledger read-only audit\n')
+              for key in (
+                  'ledger_exists', 'schema_version', 'delivery_count', 'latest_state',
+                  'latest_state_version', 'latest_attempt_count', 'stable_draft_identity_recorded',
+                  'logical_binding_has_draft_identity', 'canonical_reopen_verified',
+                  'queue_receipt_recorded', 'conflict_category'
+              ):
+                  fh.write(f'- {key}: `{result[key]}`\n')
+              fh.write(f'- event_sequence: `{json.dumps(result["event_sequence"], ensure_ascii=False)}`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, audit-ledger]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
