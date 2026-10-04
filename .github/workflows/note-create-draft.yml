@@ -152,9 +152,67 @@ jobs:
           fi
           echo "Persistent note VM is running; waiting for its registered GitHub runner."
 
-  create-draft:
+  ledger-preflight:
     if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
     needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 5
+    outputs:
+      should_run_delivery: ${{ steps.decision.outputs.should_run_delivery }}
+      status: ${{ steps.decision.outputs.status }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Read durable ledger authority before heavy browser setup
+        env:
+          NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
+          NOTE_TARGET_IDENTITY: 'trendhub_biz'
+          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
+        run: python note_delivery_ledger_preflight.py
+
+      - name: Export durable ledger decision
+        id: decision
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          should_run = 'true' if result.get('should_run_delivery') is True else 'false'
+          status = str(result.get('status') or 'unknown').strip()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'should_run_delivery={should_run}\n')
+              fh.write(f'status={status}\n')
+          PY
+
+      - name: Summarize durable ledger gate
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### private durable-ledger preflight\n')
+              fh.write(f'- status: `{result.get("status", "unknown")}`\n')
+              fh.write(f'- delivery worker required: `{result.get("should_run_delivery") is True}`\n')
+              fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
+              if result.get('status') == 'ledger_blocked_ambiguous':
+                  fh.write('- Existing ambiguous delivery remains fail-closed; heavy browser setup and note mutation are skipped.\n')
+          PY
+
+  create-draft:
+    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' && needs.ledger-preflight.outputs.should_run_delivery == 'true' }}
+    needs: [preflight, start-cloud-vm, ledger-preflight]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 20
     steps:
@@ -248,7 +306,7 @@ jobs:
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [preflight, start-cloud-vm, create-draft]
+    needs: [preflight, start-cloud-vm, ledger-preflight, create-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
