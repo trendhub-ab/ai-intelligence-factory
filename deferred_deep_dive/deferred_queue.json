@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-04T15:26:41.042830+00:00",
+  "updated_at": "2026-10-04T15:27:40.487520+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49953892",
-      "deferred_at": "2026-10-04T15:26:41.042472+00:00",
-      "expires_at": "2026-10-18T15:26:41.042472+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Anthropic asks Claude users to share voice data for AI model training",
-        "originalTitle": "Anthropic asks Claude users to share voice data for AI model training",
-        "displayName": "Anthropic asks Claude users to share voice data for AI model training",
-        "sourceLanguage": "en",
-        "url": "https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-asks-claude-users-to-share-voice-data-for-ai-model-training/",
-        "description": "Anthropic asks Claude users to share voice data for AI model training",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-04T13:44:26Z",
-        "sourceContext": "HN points=4 comments=2 matched_query=Anthropic",
-        "primaryUrl": "https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-asks-claude-users-to-share-voice-data-for-ai-model-training/",
-        "sourceDetails": {
-          "hn_id": "49953892",
-          "hn_url": "https://news.ycombinator.com/item?id=49953892",
-          "external_url": "https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-asks-claude-users-to-share-voice-data-for-ai-model-training/",
-          "comments": 2,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ef479ff-dca9-81ae-8bb2-e8da06e555ac",
-      "score": 80,
-      "reason": "音声対話モデルの強化に向けたデータ提供要請と利用規約の変更",
-      "commercial_score": 82,
-      "shelf_life_score": 65,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DATA",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://arxiv.org/abs/2610.02199",
       "deferred_at": "2026-10-04T15:26:41.042619+00:00",
