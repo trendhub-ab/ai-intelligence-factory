@@ -1,0 +1,58 @@
+name: P0-A B2 Zero-VM Preflight Once
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - '.github/workflows/p0a-b2-preflight-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: design/p0-a-note-lossless-contract
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11.16'
+      - name: Install zero-browser dependencies
+        run: |
+          python -m pip install 'pip==26.2.1'
+          pip install 'requests==2.34.2'
+      - name: Run zero-VM B2 candidate preflight
+        env:
+          NOTE_DRAFT_CONFIRM: 'CREATE_NOTE_DRAFT'
+          NOTE_TARGET_SYNC_ID: ''
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python run199_note_vm_preflight.py
+      - name: Emit content-free decision
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          safe = {
+              'status': str(result.get('status') or 'unknown'),
+              'eligible_candidate_present': bool(result.get('should_start_vm') is True),
+              'zero_gemini_calls': bool(result.get('zero_gemini_calls') is True),
+              'vm_started': False,
+              'draft_mutation': False,
+              'public_release': False,
+          }
+          print(json.dumps(safe, sort_keys=True))
+          PY
