@@ -1,4 +1,4 @@
-name: P0-B Recovery CI Path GREEN [OPS ONE-SHOT]
+name: P0-B CREATION_UNKNOWN Read-Only Recovery Proof [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,11 +11,59 @@ permissions:
   contents: read
 
 jobs:
-  green-test:
+  start-cloud-vm:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
     steps:
-      - name: Checkout exact P0-B CI-path head
+      - name: Verify immutable repository gates
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/design/p0-b-durable-delivery-ledger" --jq '.commit.sha')" = '6761160577042b5ad9e7b3afda44e2781f50ceab'
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.draft')" = 'true'
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.merged')" = 'false'
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM started for read-only CREATION_UNKNOWN recovery proof.'
+
+  recovery-audit:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact P0-B head
         uses: actions/checkout@v6
         with:
           ref: 6761160577042b5ad9e7b3afda44e2781f50ceab
@@ -25,8 +73,129 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install test dependencies
-        run: python -m pip install pytest requests
+      - name: Install read-only audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright pytest
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
+            echo '::error::Google Chrome is not installed on the private note VM.'
+            exit 1
+          }
+          command -v xvfb-run >/dev/null 2>&1 || {
+            echo '::error::xvfb-run is not installed on the private note VM.'
+            exit 1
+          }
 
-      - name: Run P0-B installation test expecting GREEN
-        run: python -m pytest tests/test_p0b_production_installation.py -q
+      - name: Re-run focused recovery safety tests
+        run: python -m pytest tests/test_p0b_creation_unknown_recovery_audit.py -q
+
+      - name: Discover exactly one matching private draft read-only
+        env:
+          PREFLIGHT_RESULT_FILE: ${{ runner.temp }}/p0b_recovery_preflight.json
+          RECOVERY_RESULT_FILE: ${{ runner.temp }}/p0b_recovery_private_result.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          set -euo pipefail
+          NOTE_DRAFT_CONFIRM='CREATE_NOTE_DRAFT' \
+          NOTE_TARGET_SYNC_ID='' \
+          NOTE_DRAFT_RESULT_FILE="$PREFLIGHT_RESULT_FILE" \
+          python run199_note_vm_preflight.py
+
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path(os.environ['PREFLIGHT_RESULT_FILE']).read_text(encoding='utf-8'))
+          selected = str(data.get('selected_sync_id') or '').strip()
+          status = str(data.get('status') or '')
+          if status != 'eligible_ready' or len(selected) != 32:
+              raise SystemExit('exact recovery target is not currently eligible for private reconciliation')
+          print(selected)
+          PY
+          )"
+
+          NOTE_RECOVERY_CONFIRM='AUDIT_CREATION_UNKNOWN' \
+          NOTE_TARGET_SYNC_ID="$selected" \
+          NOTE_TARGET_IDENTITY='trendhub_biz' \
+          NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3' \
+          NOTE_RECOVERY_RESULT_FILE="$RECOVERY_RESULT_FILE" \
+          xvfb-run -a python note_delivery_creation_recovery.py
+
+          rm -f "$PREFLIGHT_RESULT_FILE"
+
+      - name: Summarize safe recovery evidence and remove private result
+        if: success()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b_recovery_private_result.json
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RESULT_FILE'])
+          result = json.loads(path.read_text(encoding='utf-8'))
+          safe = {
+              'status': str(result.get('status') or 'unknown'),
+              'read_only': result.get('read_only') is True,
+              'zero_gemini_calls': result.get('zero_gemini_calls') is True,
+              'draft_mutation': result.get('draft_mutation') is True,
+              'public_release': result.get('public_release') is True,
+              'match_count': int(result.get('match_count') or 0),
+              'history_candidate_count': int(result.get('history_candidate_count') or 0),
+              'editor_route_hash': str(result.get('editor_route_hash') or ''),
+          }
+          if safe['status'] != 'recovery_candidate_found' or safe['match_count'] != 1:
+              raise SystemExit('read-only recovery did not produce exactly one verified candidate')
+          if not safe['read_only'] or not safe['zero_gemini_calls'] or safe['draft_mutation'] or safe['public_release']:
+              raise SystemExit('read-only recovery safety projection is invalid')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B CREATION_UNKNOWN read-only recovery proof\n')
+              fh.write(f'- status: `{safe["status"]}`\n')
+              fh.write(f'- verified match count: `{safe["match_count"]}`\n')
+              fh.write(f'- history candidates inspected: `{safe["history_candidate_count"]}`\n')
+              fh.write(f'- editor-route digest: `{safe["editor_route_hash"]}`\n')
+              fh.write(f'- zero Gemini calls: `{safe["zero_gemini_calls"]}`\n')
+              fh.write(f'- note draft mutation: `{safe["draft_mutation"]}`\n')
+              fh.write(f'- automatic public release: `{safe["public_release"]}`\n')
+          print(json.dumps(safe, ensure_ascii=False))
+          PY
+          rm -f "$RESULT_FILE"
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, recovery-audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Stop persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
