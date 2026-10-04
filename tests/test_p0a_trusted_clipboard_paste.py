@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import note_draft_automation as draft
+import run194_note_current_contract as current
 
 
 class _Keyboard:
@@ -51,7 +52,8 @@ class _Body:
         return True
 
 
-def test_paste_manuscript_uses_browser_clipboard_and_trusted_keyboard_paste() -> None:
+def test_current_contract_paste_uses_browser_clipboard_and_trusted_keyboard_paste() -> None:
+    current.install()
     page = _Page()
     body = _Body()
 
