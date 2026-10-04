@@ -1,4 +1,4 @@
-name: P0-B Ledger Gate Live Validation [OPS ONE-SHOT]
+name: P0-B Private Identity RED [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,35 +11,22 @@ permissions:
   contents: read
 
 jobs:
-  dispatch-ledger-gate-validation:
+  red-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      EXPECTED_MAIN_SHA: '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
-      EXPECTED_PR_HEAD: 'e25e15f8b83d7ee9ff0889fa6c56fcfb994855be'
-      TARGET_REF: 'design/p0-b-durable-delivery-ledger'
-      APPROVAL: 'BOUNDED_LIVE_PROOF_GO'
-      GH_TOKEN: ${{ secrets.GH_PAT }}
-
     steps:
-      - name: Verify immutable repository and approval gates
-        run: |
-          set -euo pipefail
-          test "$APPROVAL" = 'BOUNDED_LIVE_PROOF_GO' || { echo '::error::bounded proof approval missing'; exit 1; }
-          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
-          pr_sha="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${TARGET_REF}" --jq '.commit.sha')"
-          pr_draft="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.draft')"
-          pr_merged="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.merged')"
-          test "$main_sha" = "$EXPECTED_MAIN_SHA" || { echo '::error::main moved; refusing validation'; exit 1; }
-          test "$pr_sha" = "$EXPECTED_PR_HEAD" || { echo '::error::PR head moved; refusing validation'; exit 1; }
-          test "$pr_draft" = 'true' || { echo '::error::PR no longer draft'; exit 1; }
-          test "$pr_merged" = 'false' || { echo '::error::PR already merged'; exit 1; }
+      - name: Checkout exact privacy-test head
+        uses: actions/checkout@v6
+        with:
+          ref: 2f1b2ffaeac0f25c2fef427d4af637d1ada1f616
 
-      - name: Dispatch one ledger-gated private-draft workflow
-        run: |
-          set -euo pipefail
-          test -n "${GH_TOKEN:-}" || { echo '::error::GH_PAT missing'; exit 1; }
-          gh workflow run note-create-draft.yml --repo "$GITHUB_REPOSITORY" --ref "$TARGET_REF" \
-            -f confirm=CREATE_NOTE_DRAFT \
-            -f prepare_only=false
-          echo 'Ledger-gate live validation submitted. Expected known ambiguous delivery to stop before create-draft.'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: python -m pip install pytest requests
+
+      - name: Run production installation tests expecting privacy RED
+        run: python -m pytest tests/test_p0b_production_installation.py -q
