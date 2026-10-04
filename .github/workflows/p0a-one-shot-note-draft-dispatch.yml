@@ -30,7 +30,11 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           source = Path('p0a_b2_private_insertion_diagnose.py').read_text(encoding='utf-8').lower()
-          for forbidden in ('_save_draft_and_verify(', 'requests.post(', 'requests.patch(', 'notion', 'publish_article', 'release_article', 'screenshot('):
+          for forbidden in (
+              '_save_draft_and_verify(', 'requests.post(', 'requests.patch(',
+              'import note_ready_sync', 'notion_api_key', 'api.notion.com',
+              'publish_article', 'release_article', 'screenshot('
+          ):
               assert forbidden not in source, forbidden
           print('ephemeral_insertion_static_guard=PASS')
           PY
