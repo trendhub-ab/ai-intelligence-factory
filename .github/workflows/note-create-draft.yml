@@ -195,6 +195,8 @@ jobs:
             tests/test_note_delivery_ledger.py \
             tests/test_note_delivery_runtime.py \
             tests/test_note_delivery_human_edit_guard.py \
+            tests/test_run295_note_eyecatch_persistence.py \
+            tests/test_p0b_eyecatch_callback_forwarding.py \
             tests/test_p0b_production_installation.py -q
 
       - name: Create one private note draft or reconcile the preflight-pinned article
