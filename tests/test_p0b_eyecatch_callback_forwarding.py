@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import note_eyecatch_persistence as proof
+import run186_note_header_image_resilience as run186
 
 
 class _Page:
@@ -44,3 +45,32 @@ def test_creation_persistence_guard_forwards_stable_draft_callback():
         assert observed == ["private-stable-route"]
     finally:
         base._save_draft_and_verify = original
+
+
+def test_run186_save_wrapper_forwards_stable_draft_callback(monkeypatch):
+    observed: list[str] = []
+
+    def original(
+        page,
+        title,
+        manuscript,
+        image_required=True,
+        *,
+        on_stable_draft_url=None,
+    ):
+        if on_stable_draft_url is not None:
+            on_stable_draft_url("private-stable-route")
+        return "private-stable-route"
+
+    monkeypatch.setattr(run186, "_ORIGINAL_SAVE_DRAFT_AND_VERIFY", original)
+
+    result = run186._save_draft_and_verify(
+        _Page(),
+        "title",
+        "body",
+        image_required=False,
+        on_stable_draft_url=observed.append,
+    )
+
+    assert result == "private-stable-route"
+    assert observed == ["private-stable-route"]
