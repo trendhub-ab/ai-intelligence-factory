@@ -1,7 +1,121 @@
 {
   "version": 1,
-  "updated_at": "2026-10-03T00:37:05.211811+00:00",
+  "updated_at": "2026-10-04T15:26:41.042830+00:00",
   "items": [
+    {
+      "key": "https://news.ycombinator.com/item?id=49953892",
+      "deferred_at": "2026-10-04T15:26:41.042472+00:00",
+      "expires_at": "2026-10-18T15:26:41.042472+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic asks Claude users to share voice data for AI model training",
+        "originalTitle": "Anthropic asks Claude users to share voice data for AI model training",
+        "displayName": "Anthropic asks Claude users to share voice data for AI model training",
+        "sourceLanguage": "en",
+        "url": "https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-asks-claude-users-to-share-voice-data-for-ai-model-training/",
+        "description": "Anthropic asks Claude users to share voice data for AI model training",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-04T13:44:26Z",
+        "sourceContext": "HN points=4 comments=2 matched_query=Anthropic",
+        "primaryUrl": "https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-asks-claude-users-to-share-voice-data-for-ai-model-training/",
+        "sourceDetails": {
+          "hn_id": "49953892",
+          "hn_url": "https://news.ycombinator.com/item?id=49953892",
+          "external_url": "https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-asks-claude-users-to-share-voice-data-for-ai-model-training/",
+          "comments": 2,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ef479ff-dca9-81ae-8bb2-e8da06e555ac",
+      "score": 80,
+      "reason": "音声対話モデルの強化に向けたデータ提供要請と利用規約の変更",
+      "commercial_score": 82,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DATA",
+      "deep_dive_priority_score": 80.7
+    },
+    {
+      "key": "https://arxiv.org/abs/2610.02199",
+      "deferred_at": "2026-10-04T15:26:41.042619+00:00",
+      "expires_at": "2026-12-03T15:26:41.042619+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "TACO: Ternary Absolute-max Column-wise One-sparse Optimizer for LLM Fine-Tuning",
+        "originalTitle": "TACO: Ternary Absolute-max Column-wise One-sparse Optimizer for LLM Fine-Tuning",
+        "displayName": "TACO: Ternary Absolute-max Column-wise One-sparse Optimizer for LLM Fine-Tuning",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2610.02199v1",
+        "description": "Full-parameter fine-tuning of large language models (LLMs) incurs substantial optimizer state memory overhead, limiting the model sizes that fit on modern GPUs. Existing approaches either compress optimizer state, abandon first-order gradients, or change the update geometry while retaining dense state. The recently introduced Muon optimizer reduces optimizer memory through matrix-valued updates. Still, its geometry differs from AdamW and can lead to performance degradation when fine-tuning AdamW",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-01T17:59:42Z",
+        "sourceContext": "Full-parameter fine-tuning of large language models (LLMs) incurs substantial optimizer state memory overhead, limiting the model sizes that fit on modern GPUs. Existing approaches either compress optimizer state, abandon first-order gradients, or change the update geometry while retaining dense state. The recently introduced Muon optimizer reduces optimizer memory through matrix-valued updates. Still, its geometry differs from AdamW and can lead to performance degradation when fine-tuning AdamW-pretrained models. To reduce optimizer memory without sacrificing accuracy or computational efficiency in LLM fine-tuning, we propose Ternary Absolute-max Column-wise One-sparse optimizer, or TACO, which follows Muon's operator-norm steepest-descent view but takes the geometric route further. TACO computes the exact steepest-descent direction under a dimension-normalized $1\\to1$ operator norm by selecting the sign of the largest magnitude entry in each column of two-dimensional weight matrices. This retains first-order gradients while making optimizer state memory nearly negligible. Our practical TACO optimizer maintains only a small set of low precision gradient components per column, reducing persistent optimizer state by $174\\times$ relative to AdamW8bit (from 27.7 GB to 0.16 GB) and peak training memory by $2.9\\times$ (from 80.6 GB to 27.5 GB) on OPT-13B, while achieving comparable accuracy and runtime. TACO further enables full-parameter fine-tuning of 30-32B-parameter models on a single 80 GB H100 GPU across multiple model families and tasks.",
+        "primaryUrl": "https://arxiv.org/abs/2610.02199v1",
+        "sourceDetails": {
+          "authors": [
+            "Jichao Jiang",
+            "Cristian McGee",
+            "El Houcine Bergou",
+            "Hanqin Cai",
+            "Aritra Dutta"
+          ],
+          "categories": [
+            "cs.LG",
+            "math.OC"
+          ]
+        }
+      },
+      "notion_page_id": "3ef479ff-dca9-8187-b49e-fb5b6b31ad88",
+      "score": 80,
+      "reason": "LLMファインチューニング時のGPUメモリを劇的に削減する新オプティマイザ。",
+      "commercial_score": 72,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 77.2
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=49942569",
+      "deferred_at": "2026-10-04T15:26:41.042712+00:00",
+      "expires_at": "2026-10-18T15:26:41.042712+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI says hacking at scale is expensive to investigate",
+        "originalTitle": "OpenAI says hacking at scale is expensive to investigate",
+        "displayName": "OpenAI says hacking at scale is expensive to investigate",
+        "sourceLanguage": "en",
+        "url": "https://www.theguardian.com/technology/2026/oct/03/openai-review-hacks-australian-government-sites-costing-500000-a-day",
+        "description": "OpenAI says hacking at scale is expensive to investigate",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-03T09:07:13Z",
+        "sourceContext": "HN points=7 comments=0 matched_query=OpenAI",
+        "primaryUrl": "https://www.theguardian.com/technology/2026/oct/03/openai-review-hacks-australian-government-sites-costing-500000-a-day",
+        "sourceDetails": {
+          "hn_id": "49942569",
+          "hn_url": "https://news.ycombinator.com/item?id=49942569",
+          "external_url": "https://www.theguardian.com/technology/2026/oct/03/openai-review-hacks-australian-government-sites-costing-500000-a-day",
+          "comments": 0,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ef479ff-dca9-81ba-8245-ccab0762fb52",
+      "score": 78,
+      "reason": "AI悪用調査にかかる多額のコスト実態と企業の防衛策",
+      "commercial_score": 75,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 76.95
+    },
     {
       "key": "https://github.com/kubeflow/kubeflow",
       "deferred_at": "2026-10-01T11:18:06.215429+00:00",
@@ -639,80 +753,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 66.95
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49927734",
-      "deferred_at": "2026-10-02T08:42:04.344758+00:00",
-      "expires_at": "2026-10-16T08:42:04.344758+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
-        "originalTitle": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
-        "displayName": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
-        "sourceLanguage": "en",
-        "url": "https://www.reuters.com/business/broadcom-lend-anthropic-up-42-billion-lease-its-chips-filing-says-2026-10-01/",
-        "description": "Broadcom to lend Anthropic up to $42B to lease its chips, filing says",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-01T22:20:55Z",
-        "sourceContext": "HN points=5 comments=2 matched_query=Anthropic",
-        "primaryUrl": "https://www.reuters.com/business/broadcom-lend-anthropic-up-42-billion-lease-its-chips-filing-says-2026-10-01/",
-        "sourceDetails": {
-          "hn_id": "49927734",
-          "hn_url": "https://news.ycombinator.com/item?id=49927734",
-          "external_url": "https://www.reuters.com/business/broadcom-lend-anthropic-up-42-billion-lease-its-chips-filing-says-2026-10-01/",
-          "comments": 2,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ed479ff-dca9-814f-b0e3-c26bf661decb",
-      "score": 62,
-      "reason": "BroadcomによるAnthropicへのチップ調達向け融資",
-      "commercial_score": 70,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 64.8
-    },
-    {
-      "key": "https://github.com/ryanalberts/best-of-agent-harnesses",
-      "deferred_at": "2026-10-02T08:42:04.344851+00:00",
-      "expires_at": "2026-12-01T08:42:04.344851+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
-        "originalTitle": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
-        "displayName": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
-        "sourceLanguage": "en",
-        "url": "https://github.com/ryanalberts/best-of-agent-harnesses",
-        "description": "Best-of-Agent-Harnesses – Ranked list of 167 AI agent harnesses, rescored weekly",
-        "stargazerCount": 6,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-02T01:57:56Z",
-        "sourceContext": "HN points=6 comments=0 matched_query=\"AI agent\"",
-        "primaryUrl": "https://github.com/ryanalberts/best-of-agent-harnesses",
-        "sourceDetails": {
-          "hn_id": "49929121",
-          "hn_url": "https://news.ycombinator.com/item?id=49929121",
-          "external_url": "https://github.com/ryanalberts/best-of-agent-harnesses",
-          "comments": 0,
-          "matched_query": "\"AI agent\"",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ed479ff-dca9-811c-8959-d5a550807924",
-      "score": 60,
-      "reason": "AIエージェントハーネスのランク付けリストとリポジトリ",
-      "commercial_score": 65,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 61.75
     }
   ]
 }
