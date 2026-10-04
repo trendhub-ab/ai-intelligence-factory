@@ -24,6 +24,12 @@ from note_delivery_ledger import (
 
 RUN222_TRANSFORM_VERSION = "note-presentation-integrity-v1"
 READY_PROVENANCE_VERSION = "ready-waiting-current-publication-v1"
+NOTE_DELIVERY_LEDGER_ENV = "NOTE_DELIVERY_LEDGER_PATH"
+DEFAULT_LEDGER_PATH = Path.home() / ".aiif-note" / "delivery-ledger-v1.sqlite3"
+
+
+class InplaceUpdateBlocked(DeliveryLedgerError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -206,6 +212,50 @@ def _resume_existing_delivery(
         DeliveryState.QUEUE_CONFIRMED,
     }:
         return _reconcile_queue_projection(base, ledger, record)
+    return record
+
+
+def delivery_ledger_from_environment() -> SQLiteDeliveryLedger:
+    raw = str(os.environ.get(NOTE_DELIVERY_LEDGER_ENV, "")).strip()
+    path = Path(raw).expanduser() if raw else DEFAULT_LEDGER_PATH
+    return SQLiteDeliveryLedger(path)
+
+
+def require_inplace_update_allowed(
+    ledger: SQLiteDeliveryLedger,
+    *,
+    sync_id: str,
+    note_target: str,
+    draft_id: str,
+    current_canonical_sha256: str,
+    private_state: bool,
+    account_matches: bool,
+) -> DeliveryRecord:
+    """Authorize only an explicit update of the exact unchanged ledger-bound private draft."""
+    logical_key = _logical_key_for_identity(sync_id, note_target)
+    record = ledger.get_active_by_logical_key(logical_key)
+    if record is None:
+        raise InplaceUpdateBlocked("preledger_binding_requires_manual_reconciliation")
+    expected_draft = str(record.draft_id or "").strip()
+    supplied_draft = str(draft_id or "").strip()
+    if not expected_draft or supplied_draft != expected_draft:
+        raise InplaceUpdateBlocked("bound_draft_identity_mismatch")
+    if record.state not in {
+        DeliveryState.DRAFT_VERIFIED,
+        DeliveryState.QUEUE_CONFIRMATION_PENDING,
+        DeliveryState.QUEUE_CONFIRMED,
+    }:
+        raise InplaceUpdateBlocked("delivery_state_ambiguous")
+    if not private_state:
+        raise InplaceUpdateBlocked("bound_draft_not_private")
+    if not account_matches:
+        raise InplaceUpdateBlocked("bound_draft_foreign")
+    verified_hash = str(record.last_verified_canonical_hash or "").strip().lower()
+    current_hash = str(current_canonical_sha256 or "").strip().lower()
+    if not verified_hash:
+        raise InplaceUpdateBlocked("verified_canonical_hash_missing")
+    if not current_hash or current_hash != verified_hash:
+        raise InplaceUpdateBlocked("human_edit_detected")
     return record
 
 
