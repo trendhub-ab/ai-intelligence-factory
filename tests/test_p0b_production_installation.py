@@ -40,6 +40,8 @@ def test_note_workflow_configures_private_ledger_without_uploading_it():
     assert "tests/test_note_delivery_ledger.py" in source
     assert "tests/test_note_delivery_runtime.py" in source
     assert "tests/test_note_delivery_human_edit_guard.py" in source
+    assert "tests/test_run295_note_eyecatch_persistence.py" in source
+    assert "tests/test_p0b_eyecatch_callback_forwarding.py" in source
     assert "upload-artifact" not in source
     summary_writes = [
         line.strip()
