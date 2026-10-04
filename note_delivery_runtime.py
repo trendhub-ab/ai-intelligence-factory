@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
+import unicodedata
 from urllib.parse import urlparse
 
 import note_publication_reconcile as reconcile
@@ -18,6 +19,7 @@ from note_delivery_ledger import (
     DeliveryState,
     SQLiteDeliveryLedger,
     build_delivery_snapshot,
+    logical_delivery_key,
 )
 
 RUN222_TRANSFORM_VERSION = "note-presentation-integrity-v1"
@@ -120,6 +122,93 @@ def revalidate_before_mutation(base: Any, prepared: PreparedDelivery) -> None:
         raise base.NoteDraftError("Delivery snapshot changed before note mutation")
 
 
+def _logical_key_for_identity(sync_id: str, note_target: str) -> str:
+    """Derive the logical key without trusting mutable queue/source state."""
+    normalized_sync = unicodedata.normalize("NFC", str(sync_id or "")).strip().lower()
+    normalized_target = unicodedata.normalize("NFC", str(note_target or "")).strip()
+    identity_only = DeliverySnapshot(
+        schema_version="identity-only",
+        sync_id=normalized_sync,
+        queue_page_id="",
+        title_digest="",
+        manuscript_sha256="",
+        publication_policy_sha256="",
+        canonical_document_sha256="",
+        canonical_contract_version="",
+        normalization_policy_version="",
+        transform_versions=(),
+        eyecatch_sha256="",
+        eyecatch_asset_id="",
+        note_target=normalized_target,
+        ready_provenance="",
+    )
+    return logical_delivery_key(identity_only)
+
+
+def _reconcile_queue_projection(
+    base: Any,
+    ledger: SQLiteDeliveryLedger,
+    record: DeliveryRecord,
+) -> DeliveryRecord:
+    """Reconcile Notion as a projection; never grant new draft creation authority."""
+    if record.state == DeliveryState.QUEUE_CONFIRMED:
+        return record
+    if record.state not in {DeliveryState.DRAFT_VERIFIED, DeliveryState.QUEUE_CONFIRMATION_PENDING}:
+        return record
+    if not record.draft_id:
+        return record
+
+    try:
+        binding = reconcile.patch_and_readback_draft_binding(
+            record.snapshot.queue_page_id,
+            expected_sync_id=record.snapshot.sync_id,
+            draft_id=record.draft_id,
+            error_type=base.NoteDraftError,
+        )
+    except Exception:
+        if record.state == DeliveryState.DRAFT_VERIFIED:
+            return ledger.record_queue_pending(
+                record.operation_key,
+                category="queue_readback_unavailable",
+                expected_version=record.state_version,
+            )
+        return record
+
+    if reconcile.queue_draft_binding_confirmed(
+        binding,
+        expected_sync_id=record.snapshot.sync_id,
+        draft_id=record.draft_id,
+    ):
+        return ledger.record_queue_confirmed(
+            record.operation_key,
+            receipt_digest=_queue_receipt_digest(binding),
+            expected_version=record.state_version,
+        )
+
+    if record.state == DeliveryState.DRAFT_VERIFIED:
+        return ledger.record_queue_pending(
+            record.operation_key,
+            category="queue_binding_unconfirmed",
+            expected_version=record.state_version,
+        )
+    return record
+
+
+def _resume_existing_delivery(
+    base: Any,
+    ledger: SQLiteDeliveryLedger,
+    record: DeliveryRecord,
+) -> DeliveryRecord:
+    """Ledger-first retry table. Existing/ambiguous state never falls through to create."""
+    if record.state in {
+        DeliveryState.DRAFT_VERIFIED,
+        DeliveryState.QUEUE_CONFIRMATION_PENDING,
+        DeliveryState.QUEUE_CONFIRMED,
+    }:
+        return _reconcile_queue_projection(base, ledger, record)
+    return record
+
+
 def create_or_resume_delivery(
     base: Any,
     ledger: SQLiteDeliveryLedger,
@@ -129,7 +218,7 @@ def create_or_resume_delivery(
 ) -> DeliveryRecord:
     decision = ledger.begin_or_load(prepared.snapshot, run_correlation_id=run_correlation_id)
     if not decision.creation_authorized:
-        return decision.record
+        return _resume_existing_delivery(base, ledger, decision.record)
 
     revalidate_before_mutation(base, prepared)
     record = decision.record
@@ -222,3 +311,39 @@ def create_or_resume_delivery(
         category="queue_binding_unconfirmed",
         expected_version=verified.state_version,
     )
+
+
+def reconcile_exact_delivery(
+    base: Any,
+    ledger: SQLiteDeliveryLedger,
+    *,
+    sync_id: str,
+    note_target: str,
+) -> dict[str, Any]:
+    """Reconstruct one exact delivery from durable authority without creating a draft."""
+    logical_key = _logical_key_for_identity(sync_id, note_target)
+    record = ledger.get_active_by_logical_key(logical_key)
+    if record is None:
+        return {
+            "status": "manual_reconciliation_required",
+            "record": None,
+            "draft_id": None,
+        }
+
+    record = _resume_existing_delivery(base, ledger, record)
+    status_by_state = {
+        DeliveryState.QUEUE_CONFIRMED: "queue_confirmed",
+        DeliveryState.QUEUE_CONFIRMATION_PENDING: "queue_confirmation_pending",
+        DeliveryState.DRAFT_VERIFIED: "queue_confirmation_pending",
+        DeliveryState.DRAFT_CREATED: "reconciled_existing",
+        DeliveryState.CREATE_INTENT_RECORDED: "creation_unknown",
+        DeliveryState.CREATION_UNKNOWN: "creation_unknown",
+        DeliveryState.VERIFICATION_BLOCKED: "verification_blocked",
+        DeliveryState.CONFLICT: "manual_reconciliation_required",
+        DeliveryState.MANUAL_RECONCILIATION_REQUIRED: "manual_reconciliation_required",
+    }
+    return {
+        "status": status_by_state.get(record.state, "manual_reconciliation_required"),
+        "record": record,
+        "draft_id": record.draft_id,
+    }
