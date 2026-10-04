@@ -1,5 +1,5 @@
 name: P0-B Eyecatch Fallback [OPS ONE-SHOT]
-# attempt: green-provider-free-plan-v5
+# attempt: green-provider-free-plan-v5b
 
 on:
   push:
@@ -66,12 +66,15 @@ jobs:
       - name: Resolve exactly one current Ready article with no eyecatch
         if: ${{ false }}
         id: resolve
-        run: echo 'GREEN-only run: mutation lane disabled'
+        run: |
+          echo 'GREEN-only run: mutation lane disabled'
 
       - name: Finalize exact Ready eyecatch provider-free
         if: ${{ false }}
-        run: echo 'GREEN-only run: mutation lane disabled'
+        run: |
+          echo 'GREEN-only run: mutation lane disabled'
 
       - name: Verify zero-article and zero-note mutation result
         if: ${{ false }}
-        run: echo 'GREEN-only run: mutation lane disabled'
+        run: |
+          echo 'GREEN-only run: mutation lane disabled'
