@@ -63,6 +63,16 @@ def test_note_workflow_does_not_mask_cross_job_selected_sync_id():
     assert "NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}" in source
 
 
+def test_note_workflow_records_prepare_only_mode_in_safe_preflight_summary():
+    source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
+    summary_start = source.index("      - name: Summarize preflight result")
+    summary_end = source.index("  start-cloud-vm:")
+    summary_block = source[summary_start:summary_end]
+    assert "PREPARE_ONLY: ${{ inputs.prepare_only }}" in summary_block
+    assert "prepare-only mode" in summary_block
+    assert "selected_sync_id" not in summary_block
+
+
 def test_runtime_public_result_has_no_private_delivery_identity():
     result = runtime.safe_delivery_result(status="queue_confirmed", telegram_notified=False)
     assert result == {
