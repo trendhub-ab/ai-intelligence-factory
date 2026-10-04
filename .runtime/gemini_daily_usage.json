@@ -50,10 +50,10 @@
             "eyecatch_layout": 4,
             "global_calibration": 2,
             "product_review": 1,
-            "screening_batch": 1
+            "screening_batch": 2
           },
           "exhausted": false,
-          "used": 8
+          "used": 9
         }
       }
     }
@@ -62,5 +62,5 @@
   "quota_date": "2026-10-04",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-04T16:29:47.979529+00:00"
+  "updated_at": "2026-10-04T16:30:03.504089+00:00"
 }
