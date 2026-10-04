@@ -1,4 +1,4 @@
-name: P0-B Private Identity GREEN [OPS ONE-SHOT]
+name: P0-B Privacy Contract Regression [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  green-test:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact privacy-fix head
+      - name: Checkout exact P0-B head
         uses: actions/checkout@v6
         with:
-          ref: 332b2a34a132e47114ee9f52fc93998e307ff2e9
+          ref: 7acc021cf810f8f1047e53c41b09e43405ec3641
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -28,5 +28,9 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest requests
 
-      - name: Run production installation tests expecting privacy GREEN
-        run: python -m pytest tests/test_p0b_production_installation.py -q
+      - name: Verify updated workflow contracts
+        run: |
+          python -m pytest \
+            tests/test_p0b_production_installation.py \
+            tests/test_run190_note_cloud_workflow.py \
+            tests/test_run273_reader_draft_autoflow.py -q
