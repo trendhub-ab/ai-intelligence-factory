@@ -41,7 +41,14 @@ def test_note_workflow_configures_private_ledger_without_uploading_it():
     assert "tests/test_note_delivery_runtime.py" in source
     assert "tests/test_note_delivery_human_edit_guard.py" in source
     assert "upload-artifact" not in source
-    assert "delivery-ledger-v1.sqlite3" not in source[source.find("GITHUB_STEP_SUMMARY"):]
+    summary_writes = [
+        line.strip()
+        for line in source.splitlines()
+        if "fh.write(" in line
+    ]
+    assert summary_writes
+    assert all("NOTE_DELIVERY_LEDGER_PATH" not in line for line in summary_writes)
+    assert all("delivery-ledger" not in line.lower() for line in summary_writes)
 
 
 def test_runtime_public_result_has_no_private_delivery_identity():
