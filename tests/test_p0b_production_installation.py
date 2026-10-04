@@ -73,6 +73,27 @@ def test_note_workflow_records_prepare_only_mode_in_safe_preflight_summary():
     assert "selected_sync_id" not in summary_block
 
 
+def test_note_workflow_gates_on_private_ledger_before_heavy_delivery_job():
+    source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
+    ledger_job = source.index("  ledger-preflight:")
+    create_job = source.index("  create-draft:")
+    assert ledger_job < create_job
+
+    ledger_block = source[ledger_job:create_job]
+    assert "runs-on: [self-hosted, linux, x64, aiif-note-cloud]" in ledger_block
+    assert "python note_delivery_ledger_preflight.py" in ledger_block
+    assert "NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}" in ledger_block
+    assert "NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'" in ledger_block
+    assert "should_run_delivery" in ledger_block
+    assert "requests" not in ledger_block
+    assert "playwright" not in ledger_block
+    assert "xvfb" not in ledger_block.lower()
+
+    create_block = source[create_job:source.index("  stop-cloud-vm:")]
+    assert "needs: [preflight, start-cloud-vm, ledger-preflight]" in create_block
+    assert "needs.ledger-preflight.outputs.should_run_delivery == 'true'" in create_block
+
+
 def test_runtime_public_result_has_no_private_delivery_identity():
     result = runtime.safe_delivery_result(status="queue_confirmed", telegram_notified=False)
     assert result == {
