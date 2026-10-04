@@ -135,7 +135,6 @@ def run_with_identity(base: Any, *, confirm: str, requested_sync_id: str = "", p
         draft_url,
         error_type=base.NoteDraftError,
     )
-    result["draft_url"] = draft_url
     result["telegram_notified"] = base._send_telegram_draft_notice(draft_url)
     return result
 
