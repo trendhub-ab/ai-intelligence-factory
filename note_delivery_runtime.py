@@ -53,6 +53,19 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _queue_receipt_digest(binding: reconcile.QueueDraftBinding) -> str:
+    material = "\x1f".join(
+        (
+            binding.page_id,
+            binding.sync_id,
+            binding.quality,
+            binding.posting,
+            binding.draft_id,
+        )
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 def _prepared_from_article(base: Any, article: Mapping[str, Any]) -> PreparedDelivery:
     value = dict(article)
     sync_id = str(value.get("sync_id") or "").strip().lower()
@@ -172,4 +185,40 @@ def create_or_resume_delivery(
     returned_id = reconcile.draft_identity_from_url(returned_url, error_type=base.NoteDraftError)
     if returned_id != durable_created.draft_id:
         raise base.NoteDraftError("Browser returned a different stable draft identity")
-    return durable_created
+
+    verified = ledger.record_verified(
+        record.operation_key,
+        canonical_sha256=prepared.snapshot.canonical_document_sha256,
+        expected_version=durable_created.state_version,
+    )
+    try:
+        binding = reconcile.patch_and_readback_draft_binding(
+            prepared.snapshot.queue_page_id,
+            expected_sync_id=prepared.snapshot.sync_id,
+            draft_id=returned_id,
+            error_type=base.NoteDraftError,
+        )
+    except Exception:
+        ledger.record_queue_pending(
+            record.operation_key,
+            category="queue_readback_unavailable",
+            expected_version=verified.state_version,
+        )
+        raise
+
+    if reconcile.queue_draft_binding_confirmed(
+        binding,
+        expected_sync_id=prepared.snapshot.sync_id,
+        draft_id=returned_id,
+    ):
+        return ledger.record_queue_confirmed(
+            record.operation_key,
+            receipt_digest=_queue_receipt_digest(binding),
+            expected_version=verified.state_version,
+        )
+
+    return ledger.record_queue_pending(
+        record.operation_key,
+        category="queue_binding_unconfirmed",
+        expected_version=verified.state_version,
+    )
