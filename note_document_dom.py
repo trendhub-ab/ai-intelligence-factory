@@ -7,6 +7,10 @@ from urllib.parse import urlparse
 import note_document_contract as contract
 
 
+DOM_NORMALIZATION_POLICY_VERSION = 'p0a-note-dom-normalization-v1'
+NOTE_BLOCKQUOTE_FIGURE_WRAPPER = 'note_blockquote_figure_wrapper'
+_LOCAL_NORMALIZATION_CODES = frozenset({NOTE_BLOCKQUOTE_FIGURE_WRAPPER})
+
 _SNAPSHOT_SCRIPT = r"""el => {
   const walk = (node) => {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -34,10 +38,11 @@ _SNAPSHOT_SCRIPT = r"""el => {
 
 # This is deliberately the adapter's proven semantic tag set, not a browser-wide
 # HTML allowlist. Unknown wrappers remain fail-closed until real note DOM evidence
-# proves a normalization rule is safe.
+# proves a normalization rule is safe. figure/figcaption are included only because
+# the exact quote wrapper below was observed in the real note editor on 2026-10-04.
 _KNOWN_SEMANTIC_TAGS = frozenset({
     'p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'strong', 'em',
-    'code', 'pre', 'blockquote', 'hr', 'br',
+    'code', 'pre', 'blockquote', 'hr', 'br', 'figure', 'figcaption',
 })
 _SAFE_TAG_NAME = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
 
@@ -219,6 +224,66 @@ def _list_item(
     return contract.ListItem(_inline_nodes(kids))
 
 
+def _blockquote_figure(
+    node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()
+) -> contract.BlockQuote:
+    """Map only the exact real-note quote wrapper proven by browser evidence.
+
+    Proven shape:
+      figure > blockquote > p > inline nodes
+             + figcaption > br
+
+    The caption must be structurally empty (one bare br); any text, extra sibling,
+    missing paragraph wrapper, attributes surfaced by the snapshot, or other shape
+    fails closed. This prevents a broad figure-flattening rule from hiding content.
+    """
+    if NOTE_BLOCKQUOTE_FIGURE_WRAPPER not in allowed_normalizations:
+        _fail()
+    if _attrs(node):
+        _fail()
+    kids = _children(node)
+    if len(kids) != 2:
+        _fail()
+
+    quote, caption = kids
+    if (
+        quote.get('type') != 'element'
+        or str(quote.get('tag') or '').lower() != 'blockquote'
+        or _attrs(quote)
+    ):
+        _fail()
+    quote_children = _children(quote)
+    if len(quote_children) != 1:
+        _fail()
+    paragraph = quote_children[0]
+    if (
+        paragraph.get('type') != 'element'
+        or str(paragraph.get('tag') or '').lower() != 'p'
+        or _attrs(paragraph)
+    ):
+        _fail()
+
+    if (
+        caption.get('type') != 'element'
+        or str(caption.get('tag') or '').lower() != 'figcaption'
+        or _attrs(caption)
+    ):
+        _fail()
+    caption_children = _children(caption)
+    if len(caption_children) != 1:
+        _fail()
+    only = caption_children[0]
+    if (
+        only.get('type') != 'element'
+        or str(only.get('tag') or '').lower() != 'br'
+        or _attrs(only)
+        or _children(only)
+    ):
+        _fail()
+
+    return contract.BlockQuote(_inline_nodes(_children(paragraph)))
+
+
 def _block(node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()) -> Any:
     if node.get('type') != 'element':
         _fail()
@@ -238,6 +303,8 @@ def _block(node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()
         if attrs:
             _fail()
         return contract.BlockQuote(_inline_nodes(kids))
+    if tag == 'figure':
+        return _blockquote_figure(node, allowed_normalizations=allowed_normalizations)
     if tag == 'hr':
         if attrs or kids:
             _fail()
@@ -267,10 +334,20 @@ def _block(node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()
     _fail()
 
 
+def _validated_contract_normalizations(
+    allowed_normalizations: tuple[str, ...],
+) -> tuple[str, ...]:
+    contract_codes = tuple(
+        code for code in allowed_normalizations if code not in _LOCAL_NORMALIZATION_CODES
+    )
+    contract.validate_normalization_codes(contract_codes)
+    return contract_codes
+
+
 def document_from_note_snapshot(
     snapshot: dict[str, object], *, allowed_normalizations: tuple[str, ...] = ()
 ) -> contract.Document:
-    contract.validate_normalization_codes(allowed_normalizations)
+    contract_codes = _validated_contract_normalizations(allowed_normalizations)
     if not isinstance(snapshot, dict) or snapshot.get('type') != 'root':
         _fail()
     children = snapshot.get('children')
@@ -286,4 +363,6 @@ def document_from_note_snapshot(
                 _fail()
             continue
         blocks.append(_block(child, allowed_normalizations=allowed_normalizations))
-    return contract.normalize_document(contract.Document(tuple(blocks)), normalization_codes=allowed_normalizations)
+    return contract.normalize_document(
+        contract.Document(tuple(blocks)), normalization_codes=contract_codes
+    )
