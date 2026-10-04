@@ -1,0 +1,55 @@
+from pathlib import Path
+import inspect
+
+import note_delivery_runtime as runtime
+import run194_note_persistent_cloud as run194
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_run194_installs_p0b_runtime_after_all_existing_gates():
+    source = inspect.getsource(run194.main)
+    ordered = [
+        "cloud.install()",
+        "current_contract.install()",
+        "run222.install_note(cloud.base)",
+        "eyecatch_persistence.install_creation_persistence_guard(cloud.base)",
+        "note_lifecycle.install_draft_identity(cloud.base)",
+        "delivery_runtime.install(cloud.base)",
+        "current_contract.run_base_main_with_safe_noop()",
+    ]
+    positions = [source.index(token) for token in ordered]
+    assert positions == sorted(positions)
+
+
+def test_runtime_installer_owns_write_enabled_run_and_safe_projection():
+    source = inspect.getsource(runtime.install)
+    assert "base.run = _run" in source
+    assert "create_or_resume_delivery" in source
+    assert "reconcile_exact_delivery" in source
+    projection = inspect.getsource(runtime.safe_delivery_result)
+    for forbidden in ("sync_id", "draft_id", "queue_page_id", "operation_key", "revision_key", "ledger.path"):
+        assert forbidden not in projection
+
+
+def test_note_workflow_configures_private_ledger_without_uploading_it():
+    source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
+    assert "NOTE_DELIVERY_LEDGER_PATH" in source
+    assert "NOTE_TARGET_IDENTITY" in source
+    assert "tests/test_note_delivery_ledger.py" in source
+    assert "tests/test_note_delivery_runtime.py" in source
+    assert "tests/test_note_delivery_human_edit_guard.py" in source
+    assert "upload-artifact" not in source
+    assert "delivery-ledger-v1.sqlite3" not in source[source.find("GITHUB_STEP_SUMMARY"):]
+
+
+def test_runtime_public_result_has_no_private_delivery_identity():
+    result = runtime.safe_delivery_result(status="queue_confirmed", telegram_notified=False)
+    assert result == {
+        "success": True,
+        "status": "queue_confirmed",
+        "zero_gemini_calls": True,
+        "telegram_notified": False,
+        "public_release": False,
+    }
