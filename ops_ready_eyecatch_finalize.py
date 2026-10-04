@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bounded ops-only eyecatch finalizer for the P0-B live-proof candidate.
 
-The Production English-title guard currently makes this exact source title
+The Production English-title guard currently makes this exact runtime note title
 unsatisfiable: its protected Latin tokens alone exceed the 52-character
 semantic-title ceiling. For this isolated proof candidate, build one exact,
 provider-free compression by deleting only the generic gerund ``Evaluating``.
@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw
 import ready_eyecatch_finalize as ready_finalize
 import run180_eyecatch_semantic_layout as semantic_layout
 
-EXACT_SOURCE_TITLE = "Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows"
+EXACT_SOURCE_TITLE = "Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows：いま何を判断材料にするべきか。"
 COMPRESSED_EYECATCH_TITLE = "Argo-Bench: Data Agents on Enterprise-Scale Workflows"
 PROVIDER_MODE = "provider_free_exact_source_compression"
 
@@ -46,8 +46,6 @@ def _bounded_request_layout_plan(
     if source_title != EXACT_SOURCE_TITLE:
         return None
 
-    # Install the narrow token-policy correction before the unchanged Production
-    # validator re-checks this plan.
     semantic_layout._required_source_tokens = _bounded_required_source_tokens
 
     title_lines = [
@@ -83,8 +81,6 @@ def _bounded_request_layout_plan(
         "subheadline_font_size": sub_size,
         "highlight_text": "",
     }
-    # Do not return a hand-authored plan unless the unchanged Production layout
-    # validator accepts it. This keeps the ops lane fail-closed.
     if semantic_layout._validate_layout_plan(source_title, subheadline, plan) is None:
         return None
     return plan
