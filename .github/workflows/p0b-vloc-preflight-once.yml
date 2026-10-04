@@ -1,4 +1,4 @@
-name: P0-B CREATION_UNKNOWN Recovery RED [OPS ONE-SHOT]
+name: P0-B CREATION_UNKNOWN Recovery GREEN [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  red-test:
+  green-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact P0-B recovery test head
+      - name: Checkout exact P0-B recovery implementation head
         uses: actions/checkout@v6
         with:
-          ref: ccc7d9d97c3a0be2f242723271be396ac86b468d
+          ref: 528487d42144909683ffc2ec56241ae4bd546e87
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -28,5 +28,5 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest requests
 
-      - name: Run recovery tests expecting RED
+      - name: Run recovery tests expecting GREEN
         run: python -m pytest tests/test_p0b_creation_unknown_recovery_audit.py -q
