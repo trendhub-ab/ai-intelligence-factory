@@ -43,12 +43,12 @@ def preflight(requested_sync_id: str = "") -> dict[str, Any]:
             delivery_state = base.ready_sync.classify_exact_delivery_state(requested)
             if delivery_state == "already_delivered":
                 result = {
-                    "status": "already_delivered",
-                    "should_start_vm": False,
+                    "status": "reconcile_existing",
+                    "should_start_vm": True,
                     "selected_sync_id": requested,
                     "zero_gemini_calls": True,
                     "telegram_notified": False,
-                    "reason": "exact Ready article is already in 投稿準備中 / 投稿済み",
+                    "reason": "exact target requires durable-ledger reconciliation on the note VM",
                 }
                 _write_result(result)
                 return result
