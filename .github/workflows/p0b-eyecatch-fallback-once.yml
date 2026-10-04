@@ -1,5 +1,5 @@
 name: P0-B Queue Sync [OPS ONE-SHOT]
-# attempt: exact-ready-to-posting-wait-v1
+# attempt: exact-ready-to-posting-wait-v2
 
 on:
   push:
@@ -71,7 +71,9 @@ jobs:
           set -euo pipefail
           test -n "${GH_TOKEN:-}"
           test -n "${TARGET_SYNC_ID:-}"
-          gh workflow run note-ready-sync.yml --ref main \
+          gh workflow run note-ready-sync.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
             -f create_private_draft=false \
             -f target_sync_id="$TARGET_SYNC_ID" \
             -f target_source_url=''
