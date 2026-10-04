@@ -27,7 +27,7 @@
     "run248_first_real_publish_quality_calibration.py": "02bc1899ae8ff686b57d8c4782b266fff87df1c9",
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "1a8f0268aac3e7f3bfdcb4e5dffa7cc45a6d4d44",
-    ".github/workflows/daily-one-shot.yml": "42b38b09a054c47f012d894573a2ddf7468d3668",
+    ".github/workflows/daily-one-shot.yml": "e11c06dd906954e2b10579b5f4b81f1d8986f4a3",
     "fresh_protocol_quota_lock.py": "c8acf920fb417fcad8528f50a16b3866a3f99237",
     "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
     "gemini_provider_resilience.py": "76a20936fe39544f8c34ba0bd9d0ef2a44e7848b",
@@ -60,7 +60,8 @@
     "Official primary announcement mentions GPT-6.1 Sol availability to API and Plus users, but the historical runtime verification_context was not preserved in the artifact, so do not assert that the observed Fact BLOCK was a hallucination or that raw HTML was complete.",
     "v3 uses the UNCHANGED Production source-boundary checker before Local Skills compilation. A provider management action/reason unsupported by the *actual runtime verified evidence* is replaced with an evidence-neutral verification statement and logged. Source facts actually verified are preserved. All final Gates are unchanged.",
     "v3 retains the bounded v2 503/429 fallback guard (6 pre-article and 4 article send slots), same source selection, unchanged Writer, Canonicalizer, Evidence Boundary, Gate thresholds, and one article after first attempted send.",
-    "v3 does NOT claim the historical article now PASSes. Only independent untouched candidate evidence under v3 can count toward 4/4."
+    "v3 does NOT claim the historical article now PASSes. Only independent untouched candidate evidence under v3 can count toward 4/4.",
+    "2026-10-04 P0-B branch amendment re-fingerprints daily-one-shot.yml after the explicit Ready-only full-mode control and approved non-Lite model routing. Source membership, workflow limits, provider-send caps, quality retries, and Gates are unchanged; this amendment does not itself count as a new Fresh observation."
   ],
   "max_article_candidates_after_send": 1,
   "max_provider_send_slots": {
