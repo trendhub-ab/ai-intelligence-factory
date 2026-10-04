@@ -4,7 +4,7 @@ import unittest
 
 import note_document_contract as contract
 import note_draft_automation as draft
-import run190_note_persistent_cloud as cloud
+import run417_note_body_verification as run417
 
 
 def text(value: str) -> dict:
@@ -36,7 +36,27 @@ class FakeBody:
 
 class ProductionCanonicalGateTests(unittest.TestCase):
     def setUp(self) -> None:
-        cloud.install()
+        self._missing = object()
+        self._old_renderer = draft._markdown_to_safe_html
+        self._old_verifier = draft._verify_body_content
+        self._old_p0a_flag = getattr(draft, "_p0a_canonical_persistence_installed", self._missing)
+        self._old_run417_flag = getattr(draft, "_run417_body_verification_installed", self._missing)
+        run417.install(draft)
+
+    def tearDown(self) -> None:
+        draft._markdown_to_safe_html = self._old_renderer
+        draft._verify_body_content = self._old_verifier
+        for name, old in (
+            ("_p0a_canonical_persistence_installed", self._old_p0a_flag),
+            ("_run417_body_verification_installed", self._old_run417_flag),
+        ):
+            if old is self._missing:
+                try:
+                    delattr(draft, name)
+                except AttributeError:
+                    pass
+            else:
+                setattr(draft, name, old)
 
     def assertCanonicalRejects(self, expected_markdown: str, actual_snapshot: dict) -> None:
         with self.assertRaises(draft.NoteDraftError) as caught:
