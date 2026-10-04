@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-import note_delivery_ledger as ledger_module
+from note_delivery_ledger_preflight import read_only_delivery_gate
 from note_document_contract import (
     CONTRACT_VERSION,
     NORMALIZATION_POLICY_VERSION,
@@ -271,9 +271,6 @@ def test_ledger_unavailable_b18_is_fail_closed():
 
 
 def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
-    gate = getattr(ledger_module, "read_only_delivery_gate", None)
-    assert callable(gate), "read_only_delivery_gate must exist before workflow can gate on ledger authority"
-
     with TemporaryDirectory() as tmp:
         ledger = _file_ledger(tmp)
         ledger.initialize()
@@ -286,7 +283,7 @@ def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
         )
         before = ledger.get_by_operation_key(blocked.operation_key)
 
-        result = gate(
+        result = read_only_delivery_gate(
             ledger.path,
             sync_id=blocked.snapshot.sync_id,
             note_target=blocked.snapshot.note_target,
@@ -303,7 +300,7 @@ def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
         assert after.state_version == before.state_version
         assert after.attempt_count == before.attempt_count
 
-        clean = gate(
+        clean = read_only_delivery_gate(
             ledger.path,
             sync_id="sync-002",
             note_target=blocked.snapshot.note_target,
