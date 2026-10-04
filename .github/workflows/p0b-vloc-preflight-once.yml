@@ -1,4 +1,4 @@
-name: P0-B Recovery Full Regression [OPS ONE-SHOT]
+name: P0-B Member Classification RED [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,33 +11,22 @@ permissions:
   contents: read
 
 jobs:
-  full-regression:
+  red-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - name: Checkout exact P0-B recovery head
+      - name: Checkout exact P0-B classification test head
         uses: actions/checkout@v6
         with:
-          ref: 528487d42144909683ffc2ec56241ae4bd546e87
-          fetch-depth: 0
+          ref: e0098523b80b86f9654b263a17fab5753a57c11b
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Install offline dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest playwright
+      - name: Install test dependency
+        run: python -m pip install pytest
 
-      - name: Full repository pytest
-        run: python -m pytest tests -q
-
-      - name: Repository guards
-        run: |
-          python workflow_reference_guard.py
-          python repository_falsification_guard.py
-          python integration_stability_guard.py
-          git fetch origin main --depth=1
-          git diff --check origin/main...HEAD
+      - name: Run classification test expecting RED
+        run: python -m pytest tests/test_p0b_member_surface_classification.py -q
