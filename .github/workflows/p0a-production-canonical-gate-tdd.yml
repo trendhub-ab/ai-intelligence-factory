@@ -1,0 +1,28 @@
+name: P0-A Production Canonical Gate TDD
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - 'tests/test_p0a_production_canonical_gate.py'
+      - 'note_canonical_persistence_guard.py'
+      - 'run190_note_persistent_cloud.py'
+      - '.github/workflows/p0a-production-canonical-gate-tdd.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  production-canonical-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install focused test dependencies
+        run: python -m pip install requests Pillow
+      - name: Run RED/GREEN production canonical gate tests
+        run: python -m unittest tests.test_p0a_production_canonical_gate -v
