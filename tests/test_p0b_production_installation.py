@@ -51,6 +51,16 @@ def test_note_workflow_configures_private_ledger_without_uploading_it():
     assert all("delivery-ledger" not in line.lower() for line in summary_writes)
 
 
+def test_note_workflow_does_not_mask_cross_job_selected_sync_id():
+    source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
+    export_start = source.index("      - name: Export VM decision")
+    export_end = source.index("      - name: Summarize preflight result")
+    export_block = source[export_start:export_end]
+    assert "selected_sync_id={selected}" in export_block
+    assert "::add-mask::" not in export_block
+    assert "NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}" in source
+
+
 def test_runtime_public_result_has_no_private_delivery_identity():
     result = runtime.safe_delivery_result(status="queue_confirmed", telegram_notified=False)
     assert result == {
