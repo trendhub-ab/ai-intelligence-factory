@@ -50,7 +50,7 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
             with self.assertRaises(base.NoteDraftError):
                 run199.preflight(sid)
 
-    def test_explicit_already_delivered_sync_id_is_successful_noop(self) -> None:
+    def test_explicit_already_delivered_target_starts_vm_for_reconciliation_only(self) -> None:
         sid = "c" * 32
         with patch.object(
             run194,
@@ -62,8 +62,8 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
             return_value="already_delivered",
         ):
             result = run199.preflight(sid)
-        self.assertEqual("already_delivered", result["status"])
-        self.assertFalse(result["should_start_vm"])
+        self.assertEqual("reconcile_existing", result["status"])
+        self.assertTrue(result["should_start_vm"])
         self.assertEqual(sid, result["selected_sync_id"])
         self.assertTrue(result["zero_gemini_calls"])
 
