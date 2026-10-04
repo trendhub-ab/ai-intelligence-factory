@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'note_delivery_ledger.py'
+      - 'note_delivery_ledger_preflight.sh'
       - 'note_delivery_runtime.py'
       - 'note_draft_automation.py'
       - 'note_publication_reconcile.py'
