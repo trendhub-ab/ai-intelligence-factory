@@ -1,4 +1,4 @@
-name: P0-B Privacy Contract Regression [OPS ONE-SHOT]
+name: P0-B Private Ledger Gate Read-Only [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,9 +11,58 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  start-cloud-vm:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Verify immutable P0-B head
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/${GITHUB_REPOSITORY}/branches/main --jq '.commit.sha')" = '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
+          test "$(gh api repos/${GITHUB_REPOSITORY}/branches/design/p0-b-durable-delivery-ledger --jq '.commit.sha')" = '7acc021cf810f8f1047e53c41b09e43405ec3641'
+          test "$(gh api repos/${GITHUB_REPOSITORY}/pulls/716 --jq '.draft')" = 'true'
+          test "$(gh api repos/${GITHUB_REPOSITORY}/pulls/716 --jq '.merged')" = 'false'
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM started for read-only ledger-gate proof.'
+
+  private-ledger-gate:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
     steps:
       - name: Checkout exact P0-B head
         uses: actions/checkout@v6
@@ -25,12 +74,100 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install test dependencies
-        run: python -m pip install pytest requests
+      - name: Install read-only preflight dependency
+        run: python -m pip install requests
 
-      - name: Verify updated workflow contracts
+      - name: Revalidate candidate and read private ledger only
+        env:
+          WORKER_RESULT_FILE: ${{ runner.temp }}/p0b_worker_preflight.json
+          LEDGER_RESULT_FILE: ${{ runner.temp }}/p0b_ledger_gate.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
         run: |
-          python -m pytest \
-            tests/test_p0b_production_installation.py \
-            tests/test_run190_note_cloud_workflow.py \
-            tests/test_run273_reader_draft_autoflow.py -q
+          set -euo pipefail
+          NOTE_DRAFT_CONFIRM='CREATE_NOTE_DRAFT' NOTE_TARGET_SYNC_ID='' NOTE_DRAFT_RESULT_FILE="$WORKER_RESULT_FILE" python run199_note_vm_preflight.py
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path(os.environ['WORKER_RESULT_FILE']).read_text(encoding='utf-8'))
+          print(str(data.get('selected_sync_id') or '').strip())
+          PY
+          )"
+          if [ -z "$selected" ]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path(os.environ['LEDGER_RESULT_FILE']).write_text(json.dumps({
+              'status': 'no_eligible_ready',
+              'should_run_delivery': False,
+              'zero_gemini_calls': True,
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          else
+            NOTE_TARGET_SYNC_ID="$selected" \
+            NOTE_TARGET_IDENTITY='trendhub_biz' \
+            NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3' \
+            NOTE_DRAFT_RESULT_FILE="$LEDGER_RESULT_FILE" \
+            bash note_delivery_ledger_preflight.sh
+          fi
+          rm -f "$WORKER_RESULT_FILE"
+
+      - name: Summarize safe ledger-gate result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b_ledger_gate.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          status = str(result.get('status') or 'unknown')
+          should_run = result.get('should_run_delivery') is True
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B private ledger gate read-only proof\n')
+              fh.write(f'- status: `{status}`\n')
+              fh.write(f'- delivery permitted by ledger: `{should_run}`\n')
+              fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
+              fh.write('- note/browser mutation invoked: `False`\n')
+          print(json.dumps({
+              'status': status,
+              'should_run_delivery': should_run,
+              'zero_gemini_calls': result.get('zero_gemini_calls') is True,
+              'note_mutation': False,
+          }))
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, private-ledger-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Stop persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
