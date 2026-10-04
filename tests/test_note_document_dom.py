@@ -156,6 +156,54 @@ def test_semantic_dom_mutations_are_visible_to_canonical_comparator():
         assert 'https://example.com/b' not in repr(receipt)
 
 
+def test_real_note_blockquote_figure_wrapper_requires_named_normalization():
+    d = dommod()
+    c = contract()
+    snap = root(
+        el('figure', [
+            el('blockquote', [el('p', [text('引用')])]),
+            el('figcaption', [el('br')]),
+        ])
+    )
+    with pytest.raises(c.CanonicalContractError) as exc:
+        d.document_from_note_snapshot(snap)
+    assert exc.value.code == 'unsupported_note_dom'
+
+    actual = d.document_from_note_snapshot(
+        snap,
+        allowed_normalizations=(c.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,),
+    )
+    expected = c.parse_presentation_markdown('> 引用')
+    assert c.compare_documents(expected, actual)['canonical_match'] is True
+
+
+def test_blockquote_figure_normalization_rejects_nonempty_or_ambiguous_caption_shape():
+    d = dommod()
+    c = contract()
+    malformed = [
+        root(el('figure', [
+            el('blockquote', [el('p', [text('引用')])]),
+            el('figcaption', [text('caption')]),
+        ])),
+        root(el('figure', [
+            el('blockquote', [el('p', [text('引用')])]),
+            el('figcaption', [el('br')]),
+            el('p', [text('extra')]),
+        ])),
+        root(el('figure', [
+            el('blockquote', [text('引用')]),
+            el('figcaption', [el('br')]),
+        ])),
+    ]
+    for snap in malformed:
+        with pytest.raises(c.CanonicalContractError) as exc:
+            d.document_from_note_snapshot(
+                snap,
+                allowed_normalizations=(c.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,),
+            )
+        assert exc.value.code == 'unsupported_note_dom'
+
+
 def test_dom_adapter_source_has_no_mutation_or_output_surface():
     d = dommod()
     source = inspect.getsource(d)
