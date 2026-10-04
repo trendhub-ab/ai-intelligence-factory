@@ -29,6 +29,28 @@ jobs:
           python -m pip install pytest
       - name: Run effective production C23 falsification set
         run: python -m pytest tests/test_p0a_production_canonical_gate.py -q
+      - name: Verify Run194 install sequence keeps canonical guard
+        run: |
+          python - <<'PY'
+          import note_canonical_persistence_guard as canonical
+          import note_draft_automation as base
+          import note_eyecatch_persistence as eyecatch_persistence
+          import note_publication_reconcile as lifecycle
+          import run190_note_persistent_cloud as cloud
+          import run194_note_current_contract as current_contract
+          import run222_note_presentation_integrity as run222
+
+          cloud.install()
+          current_contract.install()
+          run222.install_note(base)
+          eyecatch_persistence.install_creation_persistence_guard(base)
+          lifecycle.install_draft_identity(base)
+
+          assert base._verify_body_content is canonical.verify_body_content
+          assert base._markdown_to_safe_html is canonical.markdown_to_safe_html
+          assert getattr(base, '_p0b2_identity_installed', False) is True
+          print('run194_install_sequence_canonical_guard=PASS')
+          PY
       - name: Run focused P0-A and B2 regression
         run: |
           python -m pytest \
