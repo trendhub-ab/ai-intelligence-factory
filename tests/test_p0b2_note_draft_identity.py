@@ -151,6 +151,8 @@ class P0B2NoteDraftIdentityTests(unittest.TestCase):
         telegram_index = events.index(("telegram", draft_url))
         self.assertLess(bind_index, telegram_index)
         self.assertEqual("draft_created", result["status"])
+        self.assertNotIn("draft_url", result)
+        self.assertNotIn(draft_url, str(result))
 
     def test_run194_installs_identity_binding_before_execution(self):
         source = (ROOT / "run194_note_persistent_cloud.py").read_text(encoding="utf-8")
