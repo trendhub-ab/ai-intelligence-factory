@@ -1,1 +1,1 @@
-P0-A/B2 ephemeral insertion DOM diagnosis trigger v5. Temporary.
+P0-A/B2 isolated private browser proof trigger v6. Temporary.
