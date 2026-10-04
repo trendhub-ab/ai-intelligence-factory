@@ -199,7 +199,7 @@ jobs:
             tests/test_note_delivery_human_edit_guard.py \
             tests/test_p0b_production_installation.py -q
 
-      - name: Create or reconcile one private note draft for the preflight-pinned article
+      - name: Create one private note draft or reconcile the preflight-pinned article
         env:
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
