@@ -397,3 +397,76 @@ def reconcile_exact_delivery(
         "record": record,
         "draft_id": record.draft_id,
     }
+
+
+def safe_delivery_result(
+    *,
+    status: str,
+    telegram_notified: bool = False,
+    success: bool = True,
+) -> dict[str, Any]:
+    return {
+        "success": bool(success),
+        "status": str(status or "manual_reconciliation_required"),
+        "zero_gemini_calls": True,
+        "telegram_notified": bool(telegram_notified),
+        "public_release": False,
+    }
+
+
+def _status_for_record(record: DeliveryRecord) -> str:
+    return {
+        DeliveryState.QUEUE_CONFIRMED: "queue_confirmed",
+        DeliveryState.QUEUE_CONFIRMATION_PENDING: "queue_confirmation_pending",
+        DeliveryState.DRAFT_VERIFIED: "queue_confirmation_pending",
+        DeliveryState.DRAFT_CREATED: "reconciled_existing",
+        DeliveryState.CREATE_INTENT_RECORDED: "creation_unknown",
+        DeliveryState.CREATION_UNKNOWN: "creation_unknown",
+        DeliveryState.VERIFICATION_BLOCKED: "verification_blocked",
+        DeliveryState.CONFLICT: "manual_reconciliation_required",
+        DeliveryState.MANUAL_RECONCILIATION_REQUIRED: "manual_reconciliation_required",
+    }.get(record.state, "manual_reconciliation_required")
+
+
+def install(base: Any) -> Any:
+    """Install P0-B last so no write-enabled draft path can bypass durable authority."""
+    if getattr(base, "_p0b_durable_delivery_installed", False):
+        return base
+
+    def _run(*, confirm: str, requested_sync_id: str = "", prepare_only: bool = False) -> dict[str, Any]:
+        if confirm != base.CONFIRM_TOKEN:
+            raise base.NoteDraftError(f"Confirmation must equal {base.CONFIRM_TOKEN}")
+
+        reconcile.validate_destination_contract(error_type=base.NoteDraftError)
+        ledger = delivery_ledger_from_environment()
+        ledger.initialize()
+        requested = base._normalize_sync_id(requested_sync_id)
+        note_target = _note_target(base)
+
+        try:
+            prepared = prepare_delivery(base, requested)
+        except base.NoteDraftError:
+            if requested and base.ready_sync.classify_exact_delivery_state(requested) == "already_delivered":
+                existing = reconcile_exact_delivery(
+                    base,
+                    ledger,
+                    sync_id=requested,
+                    note_target=note_target,
+                )
+                return safe_delivery_result(status=str(existing["status"]))
+            raise
+
+        if prepare_only:
+            return safe_delivery_result(status="prepared")
+
+        record = create_or_resume_delivery(
+            base,
+            ledger,
+            prepared,
+            run_correlation_id=str(os.environ.get("GITHUB_RUN_ID", "local-run")).strip() or "local-run",
+        )
+        return safe_delivery_result(status=_status_for_record(record))
+
+    base.run = _run
+    base._p0b_durable_delivery_installed = True
+    return base
