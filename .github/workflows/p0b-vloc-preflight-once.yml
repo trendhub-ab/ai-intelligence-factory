@@ -1,4 +1,4 @@
-name: P0-B CREATION_UNKNOWN Recovery Count Diagnostic [OPS ONE-SHOT]
+name: P0-B CREATION_UNKNOWN Lossless Recovery Discovery [OPS ONE-SHOT]
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/design/p0-b-durable-delivery-ledger" --jq '.commit.sha')" = '6761160577042b5ad9e7b3afda44e2781f50ceab'
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/design/p0-b-durable-delivery-ledger" --jq '.commit.sha')" = 'c2aa1e625c08cc19eaa5fa8ad0da8ee8ce0a2649'
           test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.draft')" = 'true'
           test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.merged')" = 'false'
 
@@ -49,9 +49,9 @@ jobs:
           if [ "$state" != "RUNNING" ]; then
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
-          echo 'Persistent note VM started for count-only recovery diagnostic.'
+          echo 'Persistent note VM started for read-only recovery discovery.'
 
-  count-diagnostic:
+  recovery-discovery:
     needs: start-cloud-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 20
@@ -59,22 +59,22 @@ jobs:
       - name: Checkout exact P0-B head
         uses: actions/checkout@v6
         with:
-          ref: 6761160577042b5ad9e7b3afda44e2781f50ceab
+          ref: c2aa1e625c08cc19eaa5fa8ad0da8ee8ce0a2649
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Install read-only diagnostic dependencies
+      - name: Install read-only discovery dependencies
         run: |
           python -m pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
 
-      - name: Count history candidates and verified matches only
+      - name: Discover losslessly verified private draft matches only
         env:
-          PREFLIGHT_RESULT_FILE: ${{ runner.temp }}/p0b_recovery_count_preflight.json
+          PREFLIGHT_RESULT_FILE: ${{ runner.temp }}/p0b_recovery_preflight.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
@@ -105,14 +105,22 @@ jobs:
           from note_delivery_ledger import SQLiteDeliveryLedger
 
           sync_id = os.environ['NOTE_TARGET_SYNC_ID'].strip()
+          note_target = os.environ['NOTE_TARGET_IDENTITY'].strip()
           ledger = SQLiteDeliveryLedger(Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser())
-          recovery.require_creation_unknown_record(ledger, sync_id=sync_id, note_target=os.environ['NOTE_TARGET_IDENTITY'])
-          article = recovery._expected_article(sync_id)
-          matches, candidate_count = recovery._discover_verified_matches(article)
+          record = recovery.require_creation_unknown_record(
+              ledger,
+              sync_id=sync_id,
+              note_target=note_target,
+          )
+          prepared = recovery._expected_prepared_delivery(record)
+          matches, candidate_count = recovery._discover_verified_matches(dict(prepared.article), record)
+          match_count = int(len(matches))
           safe = {
-              'status': 'recovery_count_diagnostic',
+              'status': 'recovery_candidate_found' if match_count == 1 else 'recovery_no_unique_match',
               'history_candidate_count': int(candidate_count),
-              'verified_match_count': int(len(matches)),
+              'verified_match_count': match_count,
+              'immutable_snapshot_match': True,
+              'lossless_canonical_required': True,
               'zero_gemini_calls': True,
               'ledger_mutation': False,
               'notion_mutation': False,
@@ -121,7 +129,7 @@ jobs:
           }
           print(json.dumps(safe, ensure_ascii=False))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B recovery count diagnostic\n')
+              fh.write('### P0-B lossless recovery discovery\n')
               for key, value in safe.items():
                   fh.write(f'- {key}: `{value}`\n')
           PY
@@ -129,7 +137,7 @@ jobs:
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [start-cloud-vm, count-diagnostic]
+    needs: [start-cloud-vm, recovery-discovery]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
