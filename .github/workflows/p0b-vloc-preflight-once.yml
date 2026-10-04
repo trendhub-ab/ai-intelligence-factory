@@ -1,4 +1,4 @@
-name: P0-B Offline Trigger Coverage RED [OPS ONE-SHOT]
+name: P0-B Post-fix Verification [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,22 +11,40 @@ permissions:
   contents: read
 
 jobs:
-  red-test:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Checkout exact P0-B trigger test head
+      - name: Checkout exact P0-B head
         uses: actions/checkout@v6
         with:
-          ref: 01cf59d5d9af383521a6187c673dff9b5d3830ba
+          ref: e25e15f8b83d7ee9ff0889fa6c56fcfb994855be
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Install test dependencies
-        run: python -m pip install pytest requests
+      - name: Install verification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright
 
-      - name: Run offline trigger coverage test expecting RED
-        run: python -m pytest tests/test_p0b_production_installation.py -q
+      - name: Focused P0-B regressions
+        run: |
+          python -m pytest \
+            tests/test_note_delivery_ledger.py \
+            tests/test_note_delivery_runtime.py \
+            tests/test_note_delivery_human_edit_guard.py \
+            tests/test_run295_note_eyecatch_persistence.py \
+            tests/test_p0b_eyecatch_callback_forwarding.py \
+            tests/test_p0b_production_installation.py -q
+
+      - name: Repository guards
+        run: |
+          python member_surface_coverage_guard.py
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check origin/main...HEAD
