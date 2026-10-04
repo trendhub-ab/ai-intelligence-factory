@@ -70,6 +70,17 @@ def test_run417_renderer_rejects_unsupported_body_h1_without_echoing_content():
         raise AssertionError("unsupported source syntax must fail closed")
 
 
+def test_run417_renderer_rejects_inline_code_until_note_preservation_is_proven():
+    source = "値は `PRIVATE-INLINE-SENTINEL` です。"
+    try:
+        run417.markdown_to_safe_html(source)
+    except base.NoteDraftError as exc:
+        assert str(exc) == "note manuscript violates the canonical document contract"
+        assert "PRIVATE-INLINE-SENTINEL" not in str(exc)
+    else:
+        raise AssertionError("inline code must fail before browser mutation until note preserves it")
+
+
 def test_run417_install_replaces_effective_renderer_and_verifier():
     class Module:
         _markdown_to_safe_html = object()
