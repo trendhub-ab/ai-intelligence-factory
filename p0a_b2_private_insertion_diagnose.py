@@ -50,6 +50,11 @@ def run() -> dict[str, object]:
         "public_release": False,
         "save_invoked": False,
         "expected_node_counts": _node_counts(expected),
+        "dom_normalization_policy_version": dom.DOM_NORMALIZATION_POLICY_VERSION,
+        "normalization_codes": [
+            contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+            dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+        ],
     }
 
     try:
@@ -84,7 +89,10 @@ def run() -> dict[str, object]:
             try:
                 actual = dom.document_from_note_snapshot(
                     snapshot,
-                    allowed_normalizations=(contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,),
+                    allowed_normalizations=(
+                        contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+                        dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+                    ),
                 )
             except contract.CanonicalContractError as exc:
                 result["canonical_actual_supported"] = False
