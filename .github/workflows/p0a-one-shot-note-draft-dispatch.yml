@@ -1,4 +1,4 @@
-name: P0-A One-shot note Draft Dispatch
+name: P0-A One-shot private Draft Proof
 
 on:
   push:
@@ -8,23 +8,260 @@ on:
       - '.github/p0a-one-shot-note-draft.trigger'
 
 permissions:
-  actions: write
   contents: read
 
+concurrency:
+  group: p0a-one-shot-private-draft-proof
+  cancel-in-progress: false
+
 jobs:
-  dispatch-private-draft:
-    if: ${{ github.event.head_commit.message == 'ops: trigger one p0a private draft proof' }}
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    outputs:
+      should_start_vm: ${{ steps.decision.outputs.should_start_vm }}
+      selected_sync_id: ${{ steps.decision.outputs.selected_sync_id }}
+      status: ${{ steps.decision.outputs.status }}
     steps:
-      - name: Dispatch existing private-draft workflow on the feature branch
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install zero-browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Zero-VM preflight regression tests
+        run: |
+          python -m unittest tests.test_run194_note_current_contract -v
+          python -m unittest tests.test_run199_note_vm_preflight -v
+
+      - name: Validate one exact publish-safe candidate before any VM start
         env:
-          GH_TOKEN: ${{ github.token }}
+          NOTE_DRAFT_CONFIRM: 'CREATE_NOTE_DRAFT'
+          NOTE_TARGET_SYNC_ID: ''
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python run199_note_vm_preflight.py
+
+      - name: Export VM decision
+        id: decision
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          should_start = 'true' if result.get('should_start_vm') is True else 'false'
+          selected = str(result.get('selected_sync_id') or '').strip()
+          status = str(result.get('status') or 'unknown').strip()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'should_start_vm={should_start}\n')
+              fh.write(f'selected_sync_id={selected}\n')
+              fh.write(f'status={status}\n')
+          PY
+
+      - name: Summarize safe preflight result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-A/B2 one-shot private draft preflight\n')
+              fh.write(f'- status: `{result.get("status", "unknown")}`\n')
+              fh.write(f'- VM required: `{result.get("should_start_vm") is True}`\n')
+              fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
+          PY
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate cloud controller configuration
         run: |
           set -euo pipefail
-          gh workflow run note-create-draft.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "design/p0-a-note-lossless-contract" \
-            -f confirm=CREATE_NOTE_DRAFT \
-            -f prepare_only=false
-          echo 'One private-draft workflow dispatch requested.'
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM is running.'
+
+  create-draft-proof:
+    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install persistent Chrome automation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
+            echo '::error::Google Chrome is not installed on the persistent note VM.'
+            exit 1
+          }
+          command -v xvfb-run >/dev/null 2>&1 || {
+            echo '::error::xvfb-run is not installed on the persistent note VM.'
+            exit 1
+          }
+
+      - name: Zero-Gemini note draft regression tests
+        run: |
+          python -m unittest tests.test_note_draft_automation -v
+          python -m unittest tests.test_run185_note_ready_legacy_skip -v
+          python -m unittest tests.test_run190_note_persistent_cloud -v
+          python -m unittest tests.test_run194_note_current_contract -v
+          python -m unittest tests.test_run199_note_vm_preflight -v
+
+      - name: Verify effective Run194 install chain keeps canonical C23 and B2 identity gates
+        run: |
+          python - <<'PY'
+          import note_draft_automation as base
+          import note_eyecatch_persistence as eyecatch_persistence
+          import note_publication_reconcile as lifecycle
+          import run190_note_persistent_cloud as cloud
+          import run194_note_current_contract as current_contract
+          import run222_note_presentation_integrity as run222
+          import run417_note_body_verification as run417
+
+          cloud.install()
+          current_contract.install()
+          run222.install_note(base)
+          eyecatch_persistence.install_creation_persistence_guard(base)
+          lifecycle.install_draft_identity(base)
+
+          assert base._verify_body_content is run417.verify_body_content
+          assert base._markdown_to_safe_html is run417.markdown_to_safe_html
+          assert getattr(base, '_p0b2_identity_installed', False) is True
+          print('effective_private_draft_contract=PASS')
+          PY
+
+      - name: Create exactly one private draft and verify save/reopen canonically
+        env:
+          NOTE_DRAFT_CONFIRM: 'CREATE_NOTE_DRAFT'
+          NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
+          NOTE_PREPARE_ONLY: 'false'
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: xvfb-run -a python run194_note_persistent_cloud.py
+
+      - name: Summarize proof without exposing private content or URL
+        if: success()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-A/B2 one-shot private draft proof\n')
+              fh.write(f'- status: `{result.get("status", "unknown")}`\n')
+              fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
+              fh.write(f'- stable draft identity persisted: `{bool(result.get("draft_id_persisted", result.get("stable_draft_identity", False)))}`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, create-draft-proof]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Stop persistent note Chrome VM
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo 'Persistent note VM stop check completed.'
