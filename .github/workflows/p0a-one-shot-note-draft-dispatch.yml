@@ -1,4 +1,4 @@
-name: P0-A One-shot private Draft Proof
+name: P0-A/B2 Isolated Private Browser Proof
 
 on:
   push:
@@ -11,17 +11,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: p0a-one-shot-private-draft-proof
+  group: p0a-b2-isolated-private-browser-proof
   cancel-in-progress: false
 
 jobs:
-  preflight:
+  contract-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      should_start_vm: ${{ steps.decision.outputs.should_start_vm }}
-      selected_sync_id: ${{ steps.decision.outputs.selected_sync_id }}
-      status: ${{ steps.decision.outputs.status }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -31,66 +27,33 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install zero-browser dependencies
+      - name: Install deterministic proof dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Zero-VM preflight regression tests
-        run: |
-          python -m unittest tests.test_run194_note_current_contract -v
-          python -m unittest tests.test_run199_note_vm_preflight -v
+      - name: Compile isolated proof
+        run: python -m py_compile p0a_b2_private_browser_proof.py
 
-      - name: Validate one exact publish-safe candidate before any VM start
-        env:
-          NOTE_DRAFT_CONFIRM: 'CREATE_NOTE_DRAFT'
-          NOTE_TARGET_SYNC_ID: ''
-          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: python run199_note_vm_preflight.py
-
-      - name: Export VM decision
-        id: decision
-        env:
-          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+      - name: Prove synthetic presentation round-trips canonically offline
         run: |
           python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          should_start = 'true' if result.get('should_start_vm') is True else 'false'
-          selected = str(result.get('selected_sync_id') or '').strip()
-          status = str(result.get('status') or 'unknown').strip()
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'should_start_vm={should_start}\n')
-              fh.write(f'selected_sync_id={selected}\n')
-              fh.write(f'status={status}\n')
-          PY
+          import note_document_contract as contract
+          import p0a_b2_private_browser_proof as proof
+          import run222_note_presentation_integrity as run222
+          import run417_note_body_verification as run417
 
-      - name: Summarize safe preflight result
-        env:
-          RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-A/B2 one-shot private draft preflight\n')
-              fh.write(f'- status: `{result.get("status", "unknown")}`\n')
-              fh.write(f'- VM required: `{result.get("should_start_vm") is True}`\n')
-              fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
+          manuscript = run222.prepare_note_editor_manuscript(proof.FIXTURE_SOURCE, proof.FIXTURE_TITLE)
+          assert '```python' not in manuscript
+          expected = contract.parse_presentation_markdown(manuscript)
+          actual = contract.parse_safe_html(run417.markdown_to_safe_html(manuscript))
+          receipt = contract.compare_documents(expected, actual)
+          assert receipt['canonical_match'] is True, receipt
+          print('isolated_fixture_canonical_roundtrip=PASS')
           PY
 
   start-cloud-vm:
-    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
-    needs: preflight
+    needs: contract-check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -138,9 +101,8 @@ jobs:
           fi
           echo 'Persistent note VM is running.'
 
-  create-draft-proof:
-    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
-    needs: [preflight, start-cloud-vm]
+  browser-proof:
+    needs: [contract-check, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 20
     steps:
@@ -165,76 +127,43 @@ jobs:
             exit 1
           }
 
-      - name: Zero-Gemini note draft regression tests
+      - name: Verify browser lifecycle and B2 identity regressions
         run: |
-          python -m unittest tests.test_note_draft_automation -v
-          python -m unittest tests.test_run185_note_ready_legacy_skip -v
           python -m unittest tests.test_run190_note_persistent_cloud -v
-          python -m unittest tests.test_run194_note_current_contract -v
-          python -m unittest tests.test_run199_note_vm_preflight -v
+          python -m unittest tests.test_p0b2_note_draft_identity -v
 
-      - name: Verify effective Run194 install chain keeps canonical C23 and B2 identity gates
-        run: |
-          python - <<'PY'
-          import note_draft_automation as base
-          import note_eyecatch_persistence as eyecatch_persistence
-          import note_publication_reconcile as lifecycle
-          import run190_note_persistent_cloud as cloud
-          import run194_note_current_contract as current_contract
-          import run222_note_presentation_integrity as run222
-          import run417_note_body_verification as run417
-
-          cloud.install()
-          current_contract.install()
-          run222.install_note(base)
-          eyecatch_persistence.install_creation_persistence_guard(base)
-          lifecycle.install_draft_identity(base)
-
-          assert base._verify_body_content is run417.verify_body_content
-          assert base._markdown_to_safe_html is run417.markdown_to_safe_html
-          assert getattr(base, '_p0b2_identity_installed', False) is True
-          print('effective_private_draft_contract=PASS')
-          PY
-
-      - name: Create exactly one private draft and verify save/reopen canonically
+      - name: Create one isolated private proof draft and verify canonical save/reopen plus stable identity reopen
         env:
-          NOTE_DRAFT_CONFIRM: 'CREATE_NOTE_DRAFT'
-          NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
-          NOTE_PREPARE_ONLY: 'false'
-          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
+          P0A_B2_PROOF_RESULT_FILE: ${{ runner.temp }}/p0a_b2_private_browser_proof.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: xvfb-run -a python run194_note_persistent_cloud.py
+        run: xvfb-run -a python p0a_b2_private_browser_proof.py
 
-      - name: Summarize proof without exposing private content or URL
+      - name: Summarize content-free proof receipt
         if: success()
         env:
-          RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
+          RESULT_FILE: ${{ runner.temp }}/p0a_b2_private_browser_proof.json
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
           result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          allowed = (
+              'status', 'zero_gemini_calls', 'notion_access', 'public_release',
+              'private_draft_created', 'canonical_insert_match',
+              'canonical_save_reopen_match', 'stable_identity_observed',
+              'stable_identity_reopen_match',
+          )
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-A/B2 one-shot private draft proof\n')
-              fh.write(f'- status: `{result.get("status", "unknown")}`\n')
-              fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
-              fh.write(f'- stable draft identity persisted: `{bool(result.get("draft_id_persisted", result.get("stable_draft_identity", False)))}`\n')
+              fh.write('### P0-A/B2 isolated private browser proof\n')
+              for key in allowed:
+                  fh.write(f'- {key}: `{result.get(key)}`\n')
           PY
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [preflight, start-cloud-vm, create-draft-proof]
+    needs: [contract-check, start-cloud-vm, browser-proof]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
