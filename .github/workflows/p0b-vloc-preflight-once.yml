@@ -1,4 +1,4 @@
-name: P0-B Register Recovery Classification [OPS ONE-SHOT]
+name: P0-B Member Classification GREEN [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,61 +11,25 @@ permissions:
   contents: read
 
 jobs:
-  patch-classification:
+  green-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ secrets.GH_PAT }}
-      TARGET_REF: design/p0-b-durable-delivery-ledger
-      EXPECTED_HEAD: e0098523b80b86f9654b263a17fab5753a57c11b
-      EXPECTED_BLOB_SHA: 5a54f757def593e8e5a6e56aef231d2d7914d443
     steps:
-      - name: Verify immutable branch and PR gates
-        run: |
-          set -euo pipefail
-          test -n "${GH_TOKEN:-}" || { echo '::error::GH_PAT missing'; exit 1; }
-          actual_head="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${TARGET_REF}" --jq '.commit.sha')"
-          test "$actual_head" = "$EXPECTED_HEAD" || { echo '::error::P0-B head moved; refusing classification patch'; exit 1; }
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.draft')" = 'true'
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/716" --jq '.merged')" = 'false'
+      - name: Checkout exact P0-B classification head
+        uses: actions/checkout@v6
+        with:
+          ref: 5738a21100eb146c8a955347386c1f434837e246
 
-      - name: Fetch and patch exactly one canonical classification entry
-        id: patch
-        run: |
-          set -euo pipefail
-          meta="$(gh api "repos/${GITHUB_REPOSITORY}/contents/member_customer_surface_contract.py?ref=${TARGET_REF}")"
-          actual_blob="$(printf '%s' "$meta" | jq -r '.sha')"
-          test "$actual_blob" = "$EXPECTED_BLOB_SHA" || { echo '::error::classification contract blob moved'; exit 1; }
-          printf '%s' "$meta" | jq -r '.content' | tr -d '\n' | base64 -d > /tmp/contract.py
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('/tmp/contract.py')
-          text = path.read_text(encoding='utf-8')
-          entry = '    "note_delivery_creation_recovery.py",  # P0-B read-only ambiguous-delivery recovery audit, not reader/customer copy\n'
-          if entry in text:
-              raise SystemExit('classification entry unexpectedly already exists')
-          needle = '    "note_delivery_ledger.py",  # P0-B durable delivery authority, not reader/customer copy\n'
-          if text.count(needle) != 1:
-              raise SystemExit('canonical insertion point is not unique')
-          path.write_text(text.replace(needle, needle + entry, 1), encoding='utf-8')
-          PY
-          python -m py_compile /tmp/contract.py
-          encoded="$(base64 -w0 /tmp/contract.py)"
-          response="$(gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/member_customer_surface_contract.py" \
-            -f message='fix: classify P0-B recovery as non-member operational' \
-            -f content="$encoded" \
-            -f sha="$actual_blob" \
-            -f branch="$TARGET_REF")"
-          new_head="$(printf '%s' "$response" | jq -r '.commit.sha')"
-          test -n "$new_head" -a "$new_head" != 'null'
-          echo "new_head=$new_head" >> "$GITHUB_OUTPUT"
-          echo 'Canonical classification patched exactly once.'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
 
-      - name: Verify branch advanced exactly to patch commit
-        env:
-          NEW_HEAD: ${{ steps.patch.outputs.new_head }}
+      - name: Install test dependency
+        run: python -m pip install pytest
+
+      - name: Run classification and member coverage tests expecting GREEN
         run: |
-          set -euo pipefail
-          actual="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${TARGET_REF}" --jq '.commit.sha')"
-          test "$actual" = "$NEW_HEAD" || { echo '::error::branch did not land on patch commit'; exit 1; }
-          echo 'P0-B classification patch landed; PR remains Draft and unmerged.'
+          python -m pytest tests/test_p0b_member_surface_classification.py -q
+          python -m pytest tests/test_member_customer_surface_contract.py -q
+          python member_surface_coverage_guard.py
