@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+import note_publication_reconcile as reconcile
 from note_delivery_ledger import (
     DeliveryState,
     LedgerUnavailableError,
@@ -244,4 +245,103 @@ def test_b04_after_accept_before_id_record_becomes_creation_unknown_not_second_c
         base.mode = "success"
         retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
         assert retry.state == DeliveryState.CREATION_UNKNOWN
+        assert base.create_count == 1
+
+
+def _queue_binding(*, posting="投稿準備中", quality="Ready", draft_id="opaque_draft_1"):
+    return reconcile.QueueDraftBinding(
+        page_id="queue-page-1",
+        sync_id="a" * 32,
+        quality=quality,
+        posting=posting,
+        draft_id=draft_id,
+    )
+
+
+def test_b01_verified_draft_exact_readback_reaches_queue_confirmed(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_args, **_kwargs: _queue_binding(),
+        )
+        record = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        assert record.state == DeliveryState.QUEUE_CONFIRMED
+        assert record.last_verified_canonical_hash == prepared.snapshot.canonical_document_sha256
+        assert record.queue_receipt_digest
+        assert base.create_count == 1
+
+
+def test_b02_queue_timeout_retry_creates_no_second_draft(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_args, **_kwargs: _queue_binding(),
+        )
+        first = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert first.state == DeliveryState.QUEUE_CONFIRMED
+        assert retry.state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b03_queue_5xx_keeps_verified_draft_and_pending_state(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_args, **_kwargs: _queue_binding(posting="投稿待ち", draft_id=""),
+        )
+        record = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert record.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+        assert retry.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+        assert record.last_verified_canonical_hash == prepared.snapshot.canonical_document_sha256
+        assert base.create_count == 1
+
+
+def test_b05_queue_applied_then_result_failure_is_reconstructible_from_ledger_and_readback(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+
+        class FailOnceConfirmationLedger(SQLiteDeliveryLedger):
+            failed = False
+
+            def record_queue_confirmed(self, *args, **kwargs):
+                if not self.failed:
+                    self.failed = True
+                    raise LedgerUnavailableError("simulated result persistence failure")
+                return super().record_queue_confirmed(*args, **kwargs)
+
+        ledger = FailOnceConfirmationLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_args, **_kwargs: _queue_binding(),
+        )
+        with pytest.raises(LedgerUnavailableError):
+            create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        durable = ledger.get_active_by_logical_key(logical_delivery_key(prepared.snapshot))
+        assert durable is not None
+        assert durable.state == DeliveryState.DRAFT_VERIFIED
+        assert reconcile.queue_draft_binding_confirmed(
+            _queue_binding(), expected_sync_id="a" * 32, draft_id="opaque_draft_1"
+        )
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert retry.state == DeliveryState.DRAFT_VERIFIED
         assert base.create_count == 1
