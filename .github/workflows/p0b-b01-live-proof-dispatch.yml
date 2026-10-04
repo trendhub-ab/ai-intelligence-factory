@@ -1,4 +1,4 @@
-name: P0-B B01 Read-Only Editor Topology Diagnostic [OPS ONE-SHOT]
+name: P0-B Trusted Paste RED [OPS ONE-SHOT]
 
 on:
   push:
@@ -10,185 +10,21 @@ permissions:
 
 env:
   TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: f001d81ae7e9cb3ff043301ce091747a84f1a12f
+  EXPECTED_SHA: ef451650fb3cc8e6f72eb4d01adeb2dbb0460108
 
 jobs:
-  start-vm:
+  red:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
-          [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
-
-  diagnose:
-    needs: start-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ env.TARGET_BRANCH }}
-      - name: Verify reviewed head
+      - name: Verify test-only head
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: pip install requests playwright
-      - name: Enumerate editor candidates without content
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-          NOTE_CHROME_CHANNEL: chrome
-          NOTE_CHROME_HEADLESS: 'false'
-        run: |
-          set -euo pipefail
-          xvfb-run -a python - <<'PY'
-          import json, os, shutil, sqlite3, tempfile
-          from pathlib import Path
-          import note_document_dom as note_dom
-          import note_draft_automation as base
-          import run187_note_editor_readiness as run187
-          import run190_note_persistent_cloud as cloud
-          import run194_note_current_contract as current
-          import run291_note_private_draft_audit as run291
-          from playwright.sync_api import sync_playwright
-
-          ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
-          conn = sqlite3.connect(f'file:{ledger}?mode=ro', uri=True)
-          try:
-              row = conn.execute(
-                  "SELECT d.snapshot_json FROM delivery_events e JOIN deliveries d ON d.record_id=e.record_id "
-                  "WHERE e.new_state='CREATION_UNKNOWN' AND e.category='creation_result_ambiguous' "
-                  "ORDER BY e.event_id DESC LIMIT 1"
-              ).fetchone()
-          finally:
-              conn.close()
-          if row is None:
-              raise SystemExit('no ambiguous delivery')
-          sid = str(json.loads(row[0]).get('sync_id') or '').strip().lower()
-          current.install()
-          article = base._prepare_article(sid)
-          title = str(article.get('title') or '').strip()
-
-          original_profile = cloud._profile_dir()
-          urls = cloud._recent_private_edit_urls(original_profile)
-          temp_root = Path(tempfile.mkdtemp(prefix='p0b-topology-profile-'))
-          copied = temp_root / 'profile'
-          try:
-              shutil.copytree(original_profile, copied, dirs_exist_ok=True,
-                              ignore=shutil.ignore_patterns('Cache','Code Cache','GPUCache','Singleton*'))
-              os.environ[cloud.PROFILE_ENV] = str(copied)
-              result = {'zero_gemini_calls': True, 'zero_openai_calls': True, 'draft_mutation': False,
-                        'public_release': False, 'exact_title_match_count': 0, 'editor_candidate_count': 0,
-                        'candidates': []}
-              with sync_playwright() as playwright:
-                  context = cloud._launch_persistent_context(playwright)
-                  page = context.new_page()
-                  page.set_default_timeout(30000)
-                  try:
-                      matched = False
-                      for url in urls:
-                          try:
-                              page.goto(url, wait_until='domcontentloaded', timeout=60000)
-                              page.wait_for_timeout(700)
-                          except Exception:
-                              continue
-                          if base._looks_logged_out(page) or not run187._is_editor_url(str(page.url or '')):
-                              continue
-                          try:
-                              if run291._title_value(page) != title:
-                                  continue
-                          except Exception:
-                              continue
-                          result['exact_title_match_count'] += 1
-                          if matched:
-                              continue
-                          matched = True
-                          title_field = base._find_title(page)
-                          title_box = title_field.bounding_box() or {}
-                          title_y = float(title_box.get('y', -1))
-                          locator = page.locator('[contenteditable="true"]')
-                          candidates = []
-                          for index in range(min(locator.count(), 20)):
-                              item = locator.nth(index)
-                              try:
-                                  if not item.is_visible(timeout=500):
-                                      continue
-                                  tag = str(item.evaluate('el => el.tagName.toLowerCase()'))
-                                  if tag == 'h1':
-                                      continue
-                                  box = item.bounding_box() or {}
-                                  y = float(box.get('y', 0))
-                                  if title_y >= 0 and y <= title_y + 10:
-                                      continue
-                                  snapshot = note_dom.snapshot_note_body(item)
-                                  diag = note_dom.safe_snapshot_diagnostics(snapshot)
-                                  text_chars = len(str(item.inner_text(timeout=1500) or ''))
-                                  candidates.append({
-                                      'y_rank_value': round(y, 1),
-                                      'tag': tag,
-                                      'text_chars': text_chars,
-                                      'snapshot_total_node_count': diag.get('snapshot_total_node_count', 0),
-                                      'dom_tag_counts': diag.get('dom_tag_counts', {}),
-                                      'dom_parent_child_tag_counts': diag.get('dom_parent_child_tag_counts', {}),
-                                      'unknown_dom_tags': diag.get('unknown_dom_tags', []),
-                                  })
-                              except Exception:
-                                  continue
-                          candidates.sort(key=lambda x: x['y_rank_value'])
-                          for idx, item in enumerate(candidates):
-                              item['rank'] = idx
-                              item.pop('y_rank_value', None)
-                          result['editor_candidate_count'] = len(candidates)
-                          result['candidates'] = candidates
-                      print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-                      with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-                          fh.write('### Read-only editor topology\n')
-                          fh.write(f"- result: `{json.dumps(result, ensure_ascii=False, sort_keys=True)}`\n")
-                  finally:
-                      context.close()
-          finally:
-              shutil.rmtree(temp_root, ignore_errors=True)
-          PY
-
-  stop-vm:
-    if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, diagnose]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null || true)"
-          [ "$state" != RUNNING ] || gcloud compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
+      - run: pip install pytest requests
+      - name: Expected RED trusted-paste test
+        run: python -m pytest tests/test_p0a_trusted_clipboard_paste.py -q
