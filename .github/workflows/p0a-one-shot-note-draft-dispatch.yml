@@ -1,4 +1,4 @@
-name: P0-A/B2 Isolated Private Browser Proof
+name: P0-A/B2 Read-only Private DOM Diagnosis
 
 on:
   push:
@@ -11,49 +11,32 @@ permissions:
   contents: read
 
 concurrency:
-  group: p0a-b2-isolated-private-browser-proof
+  group: p0a-b2-readonly-private-dom-diagnosis
   cancel-in-progress: false
 
 jobs:
-  contract-check:
+  static-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
-      - name: Install deterministic proof dependencies
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install requests
-
-      - name: Compile isolated proof
-        run: python -m py_compile p0a_b2_private_browser_proof.py
-
-      - name: Prove synthetic presentation round-trips canonically offline
-        run: |
+          python -m py_compile p0a_b2_private_dom_diagnose.py
           python - <<'PY'
-          import note_document_contract as contract
-          import p0a_b2_private_browser_proof as proof
-          import run222_note_presentation_integrity as run222
-          import run417_note_body_verification as run417
-
-          manuscript = run222.prepare_note_editor_manuscript(proof.FIXTURE_SOURCE, proof.FIXTURE_TITLE)
-          assert '```python' not in manuscript
-          expected = contract.parse_presentation_markdown(manuscript)
-          actual = contract.parse_safe_html(run417.markdown_to_safe_html(manuscript))
-          receipt = contract.compare_documents(expected, actual)
-          assert receipt['canonical_match'] is True, receipt
-          print('isolated_fixture_canonical_roundtrip=PASS')
+          from pathlib import Path
+          source = Path('p0a_b2_private_dom_diagnose.py').read_text(encoding='utf-8').lower()
+          for forbidden in ('.click(', '.fill(', 'keyboard.', '_paste_manuscript(', '_save_draft_and_verify(', 'requests.post(', 'requests.patch(', 'publish'):
+              assert forbidden not in source, forbidden
+          print('readonly_dom_diagnostic_static_guard=PASS')
           PY
 
   start-cloud-vm:
-    needs: contract-check
+    needs: static-check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -66,25 +49,12 @@ jobs:
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
     steps:
-      - name: Validate cloud controller configuration
-        run: |
-          set -euo pipefail
-          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing repository variable: ${name}"
-              exit 1
-            fi
-          done
-
       - name: Authenticate to Google Cloud with OIDC
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v3
-
+      - uses: google-github-actions/setup-gcloud@v3
       - name: Start persistent note Chrome VM
         run: |
           set -euo pipefail
@@ -99,71 +69,32 @@ jobs:
           if [ "$state" != "RUNNING" ]; then
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
-          echo 'Persistent note VM is running.'
 
-  browser-proof:
-    needs: [contract-check, start-cloud-vm]
+  readonly-diagnosis:
+    needs: [static-check, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
-      - name: Install persistent Chrome automation dependencies
+      - name: Install read-only browser dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests playwright
-          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
-            echo '::error::Google Chrome is not installed on the persistent note VM.'
-            exit 1
-          }
-          command -v xvfb-run >/dev/null 2>&1 || {
-            echo '::error::xvfb-run is not installed on the persistent note VM.'
-            exit 1
-          }
-
-      - name: Verify browser lifecycle and B2 identity regressions
-        run: |
-          python -m unittest tests.test_run190_note_persistent_cloud -v
-          python -m unittest tests.test_p0b2_note_draft_identity -v
-
-      - name: Create one isolated private proof draft and verify canonical save/reopen plus stable identity reopen
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Inspect only recent private routes and emit structural diagnostics
         env:
-          P0A_B2_PROOF_RESULT_FILE: ${{ runner.temp }}/p0a_b2_private_browser_proof.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python p0a_b2_private_browser_proof.py
-
-      - name: Summarize content-free proof receipt
-        if: success()
-        env:
-          RESULT_FILE: ${{ runner.temp }}/p0a_b2_private_browser_proof.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          allowed = (
-              'status', 'zero_gemini_calls', 'notion_access', 'public_release',
-              'private_draft_created', 'canonical_insert_match',
-              'canonical_save_reopen_match', 'stable_identity_observed',
-              'stable_identity_reopen_match',
-          )
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-A/B2 isolated private browser proof\n')
-              for key in allowed:
-                  fh.write(f'- {key}: `{result.get(key)}`\n')
-          PY
+        run: xvfb-run -a python p0a_b2_private_dom_diagnose.py
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [contract-check, start-cloud-vm, browser-proof]
+    needs: [static-check, start-cloud-vm, readonly-diagnosis]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -180,11 +111,8 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud
+      - uses: google-github-actions/setup-gcloud@v3
         if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
-        uses: google-github-actions/setup-gcloud@v3
-
       - name: Stop persistent note Chrome VM
         if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
         run: |
@@ -193,4 +121,3 @@ jobs:
           if [ "$state" = "RUNNING" ]; then
             gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
-          echo 'Persistent note VM stop check completed.'
