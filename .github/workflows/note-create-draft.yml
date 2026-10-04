@@ -77,8 +77,6 @@ jobs:
           should_start = 'true' if result.get('should_start_vm') is True else 'false'
           selected = str(result.get('selected_sync_id') or '').strip()
           status = str(result.get('status') or 'unknown').strip()
-          if selected:
-              print(f'::add-mask::{selected}')
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'should_start_vm={should_start}\n')
               fh.write(f'selected_sync_id={selected}\n')
