@@ -1,4 +1,4 @@
-name: P0-B B01 Read-Only Canonical Diagnostic [OPS ONE-SHOT]
+name: P0-B B01 Read-Only Editor Topology Diagnostic [OPS ONE-SHOT]
 
 on:
   push:
@@ -31,7 +31,6 @@ jobs:
           ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
           VM: ${{ vars.GCP_NOTE_VM_NAME }}
         run: |
-          set -euo pipefail
           state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
           [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
 
@@ -48,9 +47,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install dependencies
-        run: pip install requests playwright
-      - name: Read-only diagnose latest ambiguous B01 draft
+      - run: pip install requests playwright
+      - name: Enumerate editor candidates without content
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -64,133 +62,112 @@ jobs:
         run: |
           set -euo pipefail
           xvfb-run -a python - <<'PY'
-          import json
-          import os
-          import shutil
-          import sqlite3
-          import tempfile
-          from datetime import datetime, timezone
+          import json, os, shutil, sqlite3, tempfile
           from pathlib import Path
-
+          import note_document_dom as note_dom
           import note_draft_automation as base
           import run187_note_editor_readiness as run187
           import run190_note_persistent_cloud as cloud
           import run194_note_current_contract as current
           import run291_note_private_draft_audit as run291
-          import run292_note_rendered_body_audit as run292
           from playwright.sync_api import sync_playwright
 
           ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
-          if not ledger.is_file():
-              raise SystemExit('durable ledger unavailable')
-
           conn = sqlite3.connect(f'file:{ledger}?mode=ro', uri=True)
           try:
               row = conn.execute(
-                  "SELECT d.snapshot_json, e.created_at "
-                  "FROM delivery_events e JOIN deliveries d ON d.record_id=e.record_id "
+                  "SELECT d.snapshot_json FROM delivery_events e JOIN deliveries d ON d.record_id=e.record_id "
                   "WHERE e.new_state='CREATION_UNKNOWN' AND e.category='creation_result_ambiguous' "
                   "ORDER BY e.event_id DESC LIMIT 1"
               ).fetchone()
           finally:
               conn.close()
           if row is None:
-              raise SystemExit('no ambiguous delivery event available')
-          snapshot = json.loads(row[0])
-          sid = str(snapshot.get('sync_id') or '').strip().lower()
-          if len(sid) != 32:
-              raise SystemExit('ambiguous delivery has invalid private identity')
-          event_at = datetime.fromisoformat(str(row[1]).replace('Z', '+00:00'))
-          event_age = (datetime.now(timezone.utc) - event_at).total_seconds()
-          if event_age < 0 or event_age > 7200:
-              raise SystemExit('latest ambiguous delivery is outside diagnostic window')
-
+              raise SystemExit('no ambiguous delivery')
+          sid = str(json.loads(row[0]).get('sync_id') or '').strip().lower()
           current.install()
           article = base._prepare_article(sid)
           title = str(article.get('title') or '').strip()
-          manuscript = base._body_manuscript_for_note(title, str(article.get('manuscript') or ''))
-          if not title or not manuscript:
-              raise SystemExit('prepared diagnostic article is incomplete')
 
           original_profile = cloud._profile_dir()
-          history_urls = cloud._recent_private_edit_urls(original_profile)
-          temp_root = Path(tempfile.mkdtemp(prefix='p0b-readonly-profile-'))
-          copied_profile = temp_root / 'profile'
+          urls = cloud._recent_private_edit_urls(original_profile)
+          temp_root = Path(tempfile.mkdtemp(prefix='p0b-topology-profile-'))
+          copied = temp_root / 'profile'
           try:
-              shutil.copytree(
-                  original_profile,
-                  copied_profile,
-                  dirs_exist_ok=True,
-                  ignore=shutil.ignore_patterns('Cache', 'Code Cache', 'GPUCache', 'Singleton*'),
-              )
-              os.environ[cloud.PROFILE_ENV] = str(copied_profile)
-              matches = 0
-              metrics = None
+              shutil.copytree(original_profile, copied, dirs_exist_ok=True,
+                              ignore=shutil.ignore_patterns('Cache','Code Cache','GPUCache','Singleton*'))
+              os.environ[cloud.PROFILE_ENV] = str(copied)
+              result = {'zero_gemini_calls': True, 'zero_openai_calls': True, 'draft_mutation': False,
+                        'public_release': False, 'exact_title_match_count': 0, 'editor_candidate_count': 0,
+                        'candidates': []}
               with sync_playwright() as playwright:
                   context = cloud._launch_persistent_context(playwright)
                   page = context.new_page()
                   page.set_default_timeout(30000)
                   try:
-                      for url in history_urls:
+                      matched = False
+                      for url in urls:
                           try:
                               page.goto(url, wait_until='domcontentloaded', timeout=60000)
-                              page.wait_for_timeout(800)
+                              page.wait_for_timeout(700)
                           except Exception:
                               continue
                           if base._looks_logged_out(page) or not run187._is_editor_url(str(page.url or '')):
                               continue
                           try:
-                              persisted_title = run291._title_value(page)
+                              if run291._title_value(page) != title:
+                                  continue
                           except Exception:
                               continue
-                          if persisted_title != title:
+                          result['exact_title_match_count'] += 1
+                          if matched:
                               continue
-                          matches += 1
-                          if matches == 1:
-                              metrics = run292._observe_dom_current_page(page, title, manuscript)
-                          if matches > 1:
-                              metrics = None
-                              break
+                          matched = True
+                          title_field = base._find_title(page)
+                          title_box = title_field.bounding_box() or {}
+                          title_y = float(title_box.get('y', -1))
+                          locator = page.locator('[contenteditable="true"]')
+                          candidates = []
+                          for index in range(min(locator.count(), 20)):
+                              item = locator.nth(index)
+                              try:
+                                  if not item.is_visible(timeout=500):
+                                      continue
+                                  tag = str(item.evaluate('el => el.tagName.toLowerCase()'))
+                                  if tag == 'h1':
+                                      continue
+                                  box = item.bounding_box() or {}
+                                  y = float(box.get('y', 0))
+                                  if title_y >= 0 and y <= title_y + 10:
+                                      continue
+                                  snapshot = note_dom.snapshot_note_body(item)
+                                  diag = note_dom.safe_snapshot_diagnostics(snapshot)
+                                  text_chars = len(str(item.inner_text(timeout=1500) or ''))
+                                  candidates.append({
+                                      'y_rank_value': round(y, 1),
+                                      'tag': tag,
+                                      'text_chars': text_chars,
+                                      'snapshot_total_node_count': diag.get('snapshot_total_node_count', 0),
+                                      'dom_tag_counts': diag.get('dom_tag_counts', {}),
+                                      'dom_parent_child_tag_counts': diag.get('dom_parent_child_tag_counts', {}),
+                                      'unknown_dom_tags': diag.get('unknown_dom_tags', []),
+                                  })
+                              except Exception:
+                                  continue
+                          candidates.sort(key=lambda x: x['y_rank_value'])
+                          for idx, item in enumerate(candidates):
+                              item['rank'] = idx
+                              item.pop('y_rank_value', None)
+                          result['editor_candidate_count'] = len(candidates)
+                          result['candidates'] = candidates
+                      print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+                      with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+                          fh.write('### Read-only editor topology\n')
+                          fh.write(f"- result: `{json.dumps(result, ensure_ascii=False, sort_keys=True)}`\n")
                   finally:
                       context.close()
           finally:
               shutil.rmtree(temp_root, ignore_errors=True)
-
-          safe = {
-              'diagnostic_mode': 'read_only_copied_profile',
-              'zero_gemini_calls': True,
-              'zero_openai_calls': True,
-              'draft_mutation': False,
-              'public_release': False,
-              'latest_ambiguous_event_recent': True,
-              'history_candidate_count': len(history_urls),
-              'exact_title_match_count': matches,
-          }
-          allowed = (
-              'observation_diagnostic_code', 'canonical_match', 'mismatch_category', 'mismatch_path',
-              'expected_canonical_node_count', 'actual_canonical_node_count',
-              'expected_node_counts', 'actual_node_counts', 'unsupported_expected_node_count',
-              'unsupported_actual_node_count', 'dom_diagnostic_category', 'unknown_dom_tags',
-              'unknown_dom_tag_counts', 'dom_tag_counts', 'dom_parent_child_tag_counts',
-              'snapshot_element_node_count', 'snapshot_text_node_count', 'snapshot_total_node_count',
-          )
-          if matches == 1 and metrics is not None:
-              safe['private_draft_found'] = True
-              for key in allowed:
-                  if key in metrics:
-                      safe[key] = metrics[key]
-          elif matches == 0:
-              safe['private_draft_found'] = False
-              safe['diagnostic_category'] = 'no_exact_private_draft_match_in_recent_history'
-          else:
-              safe['private_draft_found'] = False
-              safe['diagnostic_category'] = 'ambiguous_multiple_private_draft_title_matches'
-
-          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B B01 read-only canonical diagnostic\n')
-              for key, value in safe.items():
-                  fh.write(f'- {key}: `{json.dumps(value, ensure_ascii=False, sort_keys=True)}`\n')
           PY
 
   stop-vm:
