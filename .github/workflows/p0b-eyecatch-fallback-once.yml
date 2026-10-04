@@ -1,5 +1,5 @@
-name: P0-B Eyecatch Runtime Title GREEN [OPS ZERO-MUTATION]
-# attempt: green-actual-runtime-title-v9
+name: P0-B Eyecatch Finalize [OPS ONE-SHOT]
+# attempt: exact-runtime-title-finalize-v10
 
 on:
   push:
@@ -12,27 +12,86 @@ permissions:
   contents: read
 
 jobs:
-  green:
+  finalize:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      TARGET_ARTICLE_TITLE: 'Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows'
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+      EYECATCH_GITHUB_BRANCH: 'runtime-state'
+      GH_PAT: ${{ secrets.GH_PAT }}
+
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install test dependencies and fonts
+      - name: Install dependencies and fonts
         run: |
           sudo apt-get update >/dev/null
           sudo apt-get install -y fonts-noto-cjk fonts-lato >/dev/null
           python -m pip install --upgrade pip >/dev/null
           pip install -r requirements.txt >/dev/null
-      - name: GREEN — actual runtime note title is supported
+      - name: Re-verify GREEN contract before mutation
         run: python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
-      - name: Verify zero-mutation provider-free contract
+      - name: Resolve exactly one Ready source with no eyecatch
+        id: resolve
         run: |
           python - <<'PY'
-          import ops_ready_eyecatch_finalize as ops
-          assert ops.EXACT_SOURCE_TITLE.endswith('：いま何を判断材料にするべきか。')
-          assert ops.COMPRESSED_EYECATCH_TITLE == 'Argo-Bench: Data Agents on Enterprise-Scale Workflows'
-          assert ops.PROVIDER_MODE == 'provider_free_exact_source_compression'
+          import json, os, re, urllib.request
+          token = os.environ['NOTION_API_KEY'].strip()
+          ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
+          title = os.environ['TARGET_ARTICLE_TITLE']
+          payload = {'page_size': 10, 'filter': {'and': [
+              {'property': '記事名', 'title': {'equals': title}},
+              {'property': '記事状態', 'select': {'equals': 'Ready'}},
+          ]}}
+          req = urllib.request.Request(
+              f'https://api.notion.com/v1/data_sources/{ds}/query',
+              data=json.dumps(payload).encode(), method='POST',
+              headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json',
+                       'Notion-Version': os.environ['NOTION_API_VERSION']})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              rows = json.load(r).get('results') or []
+          if len(rows) != 1:
+              raise SystemExit(f'Expected exactly one current Ready article, got {len(rows)}')
+          row = rows[0]
+          files = ((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []
+          if files:
+              raise SystemExit('Eyecatch already exists; refusing duplicate finalization')
+          sync_id = re.sub(r'[^0-9a-fA-F]', '', str(row.get('id') or '')).lower()
+          if not re.fullmatch(r'[0-9a-f]{32}', sync_id):
+              raise SystemExit('Invalid resolved source identity')
+          print(f'::add-mask::{sync_id}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'sync_id={sync_id}\n')
+          PY
+      - name: Finalize exact Ready eyecatch provider-free
+        env:
+          TARGET_SYNC_ID: ${{ steps.resolve.outputs.sync_id }}
+        run: |
+          set -o pipefail
+          python ops_ready_eyecatch_finalize.py --sync-id "$TARGET_SYNC_ID" | tee "${RUNNER_TEMP}/ready-eyecatch.json"
+      - name: Verify finalization invariants
+        env:
+          RESULT_FILE: ${{ runner.temp }}/ready-eyecatch.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8').splitlines()[-1])
+          assert result.get('status') == 'ready_eyecatch_finalized', result.get('status')
+          for key in ('current_asset', 'body_unchanged', 'title_unchanged'):
+              assert result.get(key) is True, key
+          assert result.get('article_regeneration') is False
+          assert result.get('note_mutation') is False
+          assert result.get('public_release') is False
+          assert result.get('ops_provider_mode') == 'provider_free_exact_source_compression'
+          assert result.get('ops_model_calls') == 0
           PY
