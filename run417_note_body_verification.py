@@ -18,7 +18,10 @@ import note_draft_automation as base
 
 _ERROR = "note body canonical persistence verification failed"
 _SOURCE_ERROR = "note manuscript violates the canonical document contract"
-_ALLOWED_NOTE_NORMALIZATIONS = (contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,)
+_ALLOWED_NOTE_NORMALIZATIONS = (
+    contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+    dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+)
 
 
 def markdown_to_safe_html(markdown_text: str) -> str:
