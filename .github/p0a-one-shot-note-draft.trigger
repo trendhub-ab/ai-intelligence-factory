@@ -1,1 +1,1 @@
-P0-A/B2 read-only private DOM diagnosis trigger v4. Temporary.
+P0-A/B2 ephemeral insertion DOM diagnosis trigger v5. Temporary.
