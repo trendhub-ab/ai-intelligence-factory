@@ -25,8 +25,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install test dependency
-        run: python -m pip install pytest
+      - name: Install test dependencies
+        run: python -m pip install pytest requests
 
       - name: Run P0-B installation test expecting GREEN
         run: python -m pytest tests/test_p0b_production_installation.py -q
