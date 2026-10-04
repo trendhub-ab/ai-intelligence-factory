@@ -1,0 +1,134 @@
+name: P0-B Ledger Readback [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-ledger-readback-20261004
+    paths:
+      - .github/workflows/p0b-ledger-readback-once.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  start-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start VM for read-only ledger inspection
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  inspect-ledger:
+    needs: start-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    steps:
+      - name: Copy durable ledger files and inspect the copy only
+        env:
+          FAILED_RUN_ID: '37192715527'
+        run: |
+          set -euo pipefail
+          source_dir="$HOME/.aiif-note"
+          source_db="$source_dir/delivery-ledger-v1.sqlite3"
+          test -f "$source_db" || { echo '::error::ledger file missing'; exit 1; }
+          tmp="${RUNNER_TEMP}/p0b-ledger-copy"
+          rm -rf "$tmp"
+          mkdir -p "$tmp"
+          cp -a "$source_db" "$tmp/ledger.sqlite3"
+          [ -f "${source_db}-wal" ] && cp -a "${source_db}-wal" "$tmp/ledger.sqlite3-wal" || true
+          [ -f "${source_db}-shm" ] && cp -a "${source_db}-shm" "$tmp/ledger.sqlite3-shm" || true
+          python - <<'PY'
+          import json, os, sqlite3
+          from pathlib import Path
+
+          db = Path(os.environ['RUNNER_TEMP']) / 'p0b-ledger-copy' / 'ledger.sqlite3'
+          conn = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
+          conn.row_factory = sqlite3.Row
+          run_id = os.environ['FAILED_RUN_ID']
+          rows = conn.execute(
+              "SELECT state, state_version, attempt_count, stable_draft_id, "
+              "last_verified_canonical_hash, queue_receipt_digest, conflict_category "
+              "FROM deliveries WHERE owner_correlation_id=? ORDER BY updated_at DESC",
+              (run_id,),
+          ).fetchall()
+          events = conn.execute(
+              "SELECT prior_state, new_state, category, state_version "
+              "FROM delivery_events WHERE run_correlation_id=? ORDER BY event_id",
+              (run_id,),
+          ).fetchall()
+          conn.close()
+          if len(rows) != 1:
+              raise SystemExit(f'expected exactly one delivery for failed run, got {len(rows)}')
+          row = rows[0]
+          safe = {
+              'matching_delivery_count': len(rows),
+              'state': row['state'],
+              'state_version': int(row['state_version']),
+              'attempt_count': int(row['attempt_count']),
+              'stable_draft_id_present': bool(str(row['stable_draft_id'] or '').strip()),
+              'verified_hash_present': bool(str(row['last_verified_canonical_hash'] or '').strip()),
+              'queue_receipt_present': bool(str(row['queue_receipt_digest'] or '').strip()),
+              'conflict_category': str(row['conflict_category'] or ''),
+              'events': [
+                  {
+                      'prior_state': str(e['prior_state'] or ''),
+                      'new_state': str(e['new_state'] or ''),
+                      'category': str(e['category'] or ''),
+                      'state_version': int(e['state_version']),
+                  }
+                  for e in events
+              ],
+              'source_ledger_mutated_by_inspection': False,
+          }
+          print(json.dumps(safe, sort_keys=True))
+          if safe['stable_draft_id_present']:
+              raise SystemExit('stable draft identity exists; manual reconciliation required')
+          PY
+
+  stop-vm:
+    if: ${{ always() && needs.start-vm.result == 'success' }}
+    needs: [start-vm, inspect-ledger]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop VM after ledger inspection
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
