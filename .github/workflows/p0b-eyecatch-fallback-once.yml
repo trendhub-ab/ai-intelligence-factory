@@ -1,5 +1,5 @@
-name: P0-B Queue Sync [OPS ONE-SHOT]
-# attempt: exact-ready-to-posting-wait-v2
+name: P0-B Private Draft Live Proof [OPS ONE-SHOT]
+# token: p0b-live-proof-v2-consumed
 
 on:
   push:
@@ -16,65 +16,81 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      EXPECTED_MAIN_SHA: '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
+      EXPECTED_PR_HEAD: '471e2053af0fde55fc8e7d07a0cb63c942562c0a'
+      TARGET_BRANCH: 'design/p0-b-durable-delivery-ledger'
       TARGET_ARTICLE_TITLE: 'Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows'
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
       NOTION_API_VERSION: '2026-03-11'
       NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
       GH_TOKEN: ${{ secrets.GH_PAT }}
 
     steps:
-      - name: Verify main source of truth
+      - name: Verify exact PR head is still current
         run: |
           set -euo pipefail
-          actual="$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq '.object.sha')"
-          test "$actual" = "$EXPECTED_MAIN_SHA"
+          actual="$(gh api repos/${GITHUB_REPOSITORY}/pulls/716 --jq '.head.sha')"
+          test "$actual" = "$EXPECTED_PR_HEAD"
 
-      - name: Resolve exactly one Ready source with persisted eyecatch
+      - name: Resolve one exact eligible queue candidate
         id: resolve
         run: |
           set -euo pipefail
           python - <<'PY'
           import json, os, re, urllib.request
           token = os.environ['NOTION_API_KEY'].strip()
-          ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
+          api_version = os.environ['NOTION_API_VERSION']
+          source_ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
+          queue_ds = os.environ['NOTION_NOTE_READY_DATA_SOURCE_ID'].strip()
           title = os.environ['TARGET_ARTICLE_TITLE']
-          payload = {'page_size': 10, 'filter': {'and': [
+          headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json', 'Notion-Version': api_version}
+
+          def query(ds, payload):
+              req = urllib.request.Request(
+                  f'https://api.notion.com/v1/data_sources/{ds}/query',
+                  data=json.dumps(payload).encode(), method='POST', headers=headers)
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r).get('results') or []
+
+          source_rows = query(source_ds, {'page_size': 10, 'filter': {'and': [
               {'property': '記事名', 'title': {'equals': title}},
               {'property': '記事状態', 'select': {'equals': 'Ready'}},
-          ]}}
-          req = urllib.request.Request(
-              f'https://api.notion.com/v1/data_sources/{ds}/query',
-              data=json.dumps(payload).encode(), method='POST',
-              headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json',
-                       'Notion-Version': os.environ['NOTION_API_VERSION']})
-          with urllib.request.urlopen(req, timeout=30) as r:
-              rows = json.load(r).get('results') or []
-          if len(rows) != 1:
-              raise SystemExit(f'Expected exactly one current Ready source, got {len(rows)}')
-          row = rows[0]
-          files = ((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []
-          if not files:
-              raise SystemExit('Persisted eyecatch is required before queue sync')
-          sync_id = re.sub(r'[^0-9a-fA-F]', '', str(row.get('id') or '')).lower()
+          ]}})
+          if len(source_rows) != 1:
+              raise SystemExit(f'Expected one current Ready source, got {len(source_rows)}')
+          sync_id = re.sub(r'[^0-9a-fA-F]', '', str(source_rows[0].get('id') or '')).lower()
           if not re.fullmatch(r'[0-9a-f]{32}', sync_id):
-              raise SystemExit('Invalid resolved source identity')
+              raise SystemExit('Invalid source identity')
+
+          queue_rows = query(queue_ds, {'page_size': 10, 'filter': {'and': [
+              {'property': '同期ID', 'rich_text': {'equals': sync_id}},
+              {'property': '品質状態', 'select': {'equals': 'Ready'}},
+              {'property': '投稿状態', 'select': {'equals': '投稿待ち'}},
+          ]}})
+          if len(queue_rows) != 1:
+              raise SystemExit(f'Expected one Ready/投稿待ち queue row, got {len(queue_rows)}')
+          props = queue_rows[0].get('properties') or {}
+          draft_text = ''.join(x.get('plain_text','') for x in (props.get('note下書きID') or {}).get('rich_text') or []).strip()
+          public_url = str((props.get('note公開URL') or {}).get('url') or '').strip()
+          if draft_text or public_url:
+              raise SystemExit('Candidate already has delivery identity; refusing proof dispatch')
+
           print(f'::add-mask::{sync_id}')
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'sync_id={sync_id}\n')
           PY
 
-      - name: Dispatch exact queue sync with private-draft fan-out disabled
+      - name: Dispatch exactly one PR-head private draft proof
         env:
           TARGET_SYNC_ID: ${{ steps.resolve.outputs.sync_id }}
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}"
           test -n "${TARGET_SYNC_ID:-}"
-          gh workflow run note-ready-sync.yml \
+          gh workflow run note-create-draft.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f create_private_draft=false \
-            -f target_sync_id="$TARGET_SYNC_ID" \
-            -f target_source_url=''
-          echo 'Exact note-ready-sync dispatched with create_private_draft=false.'
+            --ref "$TARGET_BRANCH" \
+            -f confirm=CREATE_NOTE_DRAFT \
+            -f sync_id="$TARGET_SYNC_ID" \
+            -f prepare_only=false
+          echo 'Exactly one P0-B private-draft proof dispatch accepted.'
