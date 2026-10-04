@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo '::error::GH_PAT missing'; exit 1; }
           test -n "${TARGET_SYNC_ID:-}" || { echo '::error::target identity missing'; exit 1; }
-          gh workflow run note-ready-sync.yml --ref main \
+          gh workflow run note-ready-sync.yml --repo "$GITHUB_REPOSITORY" --ref main \
             -f create_private_draft=false \
             -f target_sync_id="$TARGET_SYNC_ID"
           echo 'Exact queue sync dispatched once; private-draft fan-out disabled.'
