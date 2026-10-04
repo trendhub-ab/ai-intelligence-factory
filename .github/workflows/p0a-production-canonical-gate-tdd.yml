@@ -11,6 +11,8 @@ on:
       - 'tests/test_p0a_production_canonical_gate.py'
       - 'tests/test_run222_note_presentation_integrity.py'
       - 'tests/test_run417_note_body_verification.py'
+      - 'tests/test_run292_note_dom_normalization.py'
+      - 'run292_note_rendered_body_audit.py'
       - 'run417_note_body_verification.py'
       - 'run222_note_presentation_integrity.py'
       - 'run190_note_persistent_cloud.py'
@@ -67,6 +69,7 @@ jobs:
             tests/test_run222_note_presentation_integrity.py \
             tests/test_run291_private_draft_audit.py \
             tests/test_run292_note_rendered_body_audit.py \
+            tests/test_run292_note_dom_normalization.py \
             tests/test_run293_private_draft_guard_diagnostics.py \
             tests/test_run294_note_eyecatch_persistence_diagnostics.py \
             tests/test_run295_note_eyecatch_persistence.py \
