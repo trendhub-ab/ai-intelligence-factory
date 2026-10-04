@@ -1,5 +1,5 @@
-name: P0-B Eyecatch Runtime Title RED [OPS ZERO-MUTATION]
-# attempt: red-actual-runtime-title-v8
+name: P0-B Eyecatch Runtime Title GREEN [OPS ZERO-MUTATION]
+# attempt: green-actual-runtime-title-v9
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  red:
+  green:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -26,5 +26,13 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk fonts-lato >/dev/null
           python -m pip install --upgrade pip >/dev/null
           pip install -r requirements.txt >/dev/null
-      - name: RED — actual runtime note title must be supported
+      - name: GREEN — actual runtime note title is supported
         run: python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
+      - name: Verify zero-mutation provider-free contract
+        run: |
+          python - <<'PY'
+          import ops_ready_eyecatch_finalize as ops
+          assert ops.EXACT_SOURCE_TITLE.endswith('：いま何を判断材料にするべきか。')
+          assert ops.COMPRESSED_EYECATCH_TITLE == 'Argo-Bench: Data Agents on Enterprise-Scale Workflows'
+          assert ops.PROVIDER_MODE == 'provider_free_exact_source_compression'
+          PY
