@@ -56,6 +56,10 @@ jobs:
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 10
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
       - name: Read durable ledger without mutation
         env:
           NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
@@ -118,7 +122,6 @@ jobs:
                   result['event_sequence'] = [
                       {'state': event['new_state'], 'category': event['category']} for event in events
                   ]
-              # Fail if the connection itself somehow became writable.
               if int(conn.execute('PRAGMA query_only').fetchone()[0]) != 1:
                   raise SystemExit('query_only_not_enforced')
           finally:
