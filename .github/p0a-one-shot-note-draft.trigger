@@ -1,1 +1,1 @@
-P0-A/B2 private-draft browser proof trigger v2. Direct one-shot workflow; temporary.
+P0-A/B2 isolated private browser proof trigger v3. Temporary.
