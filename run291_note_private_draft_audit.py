@@ -4,8 +4,8 @@
 Run291 never creates, edits, saves, publishes, or withdraws a note. It:
 - requires an exact current-quality / 投稿準備中 queue row;
 - reconstructs the already-approved note-editor presentation manuscript;
-- discovers recent note edit routes only from the persistent Chrome History DB on the private VM;
-- opens candidate edit routes read-only until the exact expected title matches;
+- requires the persisted opaque note下書きID bound to the exact queue row;
+- reconstructs one canonical private edit route and opens only that route read-only;
 - verifies persisted title/body/eyecatch and presentation structure;
 - returns only non-content audit metrics. The draft URL and unpublished body are never printed.
 
@@ -14,18 +14,15 @@ ZERO Gemini/model calls. No public-release action. No screenshot or unpublished-
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
-import shutil
-import sqlite3
-import tempfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import note_draft_automation as note_base
+import note_publication_reconcile as note_lifecycle
 import note_ready_sync as ready_sync
 import run187_note_editor_readiness as run187
 import run190_note_persistent_cloud as run190
@@ -34,13 +31,14 @@ import run222_note_presentation_integrity as run222
 CONFIRM_TOKEN = "AUDIT_NOTE_DRAFT"
 PREPARING_STATUS = "投稿準備中"
 READY_STATUS = "Ready"
-MAX_HISTORY_CANDIDATES = 24
 _EDIT_PATH = re.compile(r"^/notes/[^/?#]+/edit/?$", re.I)
 _READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？", "元情報")
 
 
 class PrivateDraftAuditError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, safe_metrics: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.safe_metrics = dict(safe_metrics or {})
 
 
 def _normalize_sync_id(value: str) -> str:
@@ -51,7 +49,9 @@ def _prop_date(prop: dict | None) -> str:
     return str((((prop or {}).get("date") or {}).get("start")) or "").strip()
 
 
+
 def _is_note_edit_url(value: str) -> bool:
+    """Validate one existing private note edit route; never performs discovery."""
     try:
         parsed = urlparse(str(value or ""))
     except Exception:
@@ -89,10 +89,18 @@ def _destination_row(sync_id: str) -> dict[str, Any]:
     title = ready_sync._text(props.get("記事タイトル"))
     if not title:
         raise PrivateDraftAuditError("Destination row has no title")
+    draft_id = ready_sync._text(props.get(note_lifecycle.DRAFT_ID_PROPERTY))
+    if not draft_id:
+        raise PrivateDraftAuditError("Destination row has no stable private draft identity")
+    draft_url = _draft_edit_url(draft_id)
+    validated_draft_id = note_lifecycle.draft_identity_from_url(
+        draft_url, error_type=PrivateDraftAuditError
+    )
     return {
         "destination_page_id": str(page.get("id") or ""),
         "sync_id": sid,
         "title": title,
+        "draft_id": validated_draft_id,
     }
 
 
@@ -118,49 +126,6 @@ def _expected_article(sync_id: str) -> dict[str, Any]:
     row["manuscript"] = presented
     return row
 
-
-def _copy_history_rows(history_path: Path) -> list[tuple[str, int]]:
-    temp_dir = Path(tempfile.mkdtemp(prefix="run291-history-"))
-    copy_path = temp_dir / "History"
-    try:
-        shutil.copy2(history_path, copy_path)
-        conn = sqlite3.connect(str(copy_path))
-        try:
-            rows = conn.execute(
-                "SELECT url, last_visit_time FROM urls "
-                "WHERE url LIKE 'https://%note.com/notes/%/edit%' "
-                "ORDER BY last_visit_time DESC LIMIT 80"
-            ).fetchall()
-        finally:
-            conn.close()
-        return [(str(url or ""), int(last_visit or 0)) for url, last_visit in rows]
-    except (OSError, sqlite3.Error):
-        return []
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-def _recent_private_edit_urls(profile_dir: Path) -> list[str]:
-    weighted: list[tuple[int, str]] = []
-    try:
-        history_files = [p for p in profile_dir.rglob("History") if p.is_file()]
-    except OSError:
-        history_files = []
-    for history in history_files[:12]:
-        for url, last_visit in _copy_history_rows(history):
-            if _is_note_edit_url(url):
-                weighted.append((last_visit, url))
-    weighted.sort(key=lambda item: item[0], reverse=True)
-    seen: set[str] = set()
-    result: list[str] = []
-    for _, url in weighted:
-        if url in seen:
-            continue
-        seen.add(url)
-        result.append(url)
-        if len(result) >= MAX_HISTORY_CANDIDATES:
-            break
-    return result
 
 
 def _title_value(page: Any) -> str:
@@ -298,50 +263,56 @@ def _audit_current_page(page: Any, title: str, manuscript: str) -> dict[str, Any
     return metrics
 
 
-def _browser_audit(article: dict[str, Any]) -> dict[str, Any]:
+def _draft_edit_url(draft_id: str) -> str:
+    raw = str(draft_id or "")
+    if not raw or raw != raw.strip():
+        raise PrivateDraftAuditError("Stable private draft identity is malformed")
+    candidate = f"https://note.com/notes/{raw}/edit"
+    identity = note_lifecycle.draft_identity_from_url(
+        candidate, error_type=PrivateDraftAuditError
+    )
+    if identity != raw:
+        raise PrivateDraftAuditError("Stable private draft identity is malformed")
+    return candidate
+
+
+def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) -> dict[str, Any]:
+    private_url = _draft_edit_url(str(article.get("draft_id") or ""))
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise PrivateDraftAuditError("Playwright is required for Run291") from exc
 
-    profile = run190._profile_dir()
-    candidates = _recent_private_edit_urls(profile)
-    if not candidates:
-        raise PrivateDraftAuditError("No private note edit route is present in persistent Chrome history")
-
+    audit_page = page_auditor or _audit_current_page
     with sync_playwright() as playwright:
         context = run190._launch_persistent_context(playwright)
         page = context.new_page()
         page.set_default_timeout(30000)
-        seeded = False
         try:
-            for rank, candidate in enumerate(candidates, start=1):
-                try:
-                    page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                    page.wait_for_timeout(1200)
-                    if note_base._looks_logged_out(page) and not seeded:
-                        seeded = bool(run190._seed_note_state(context, page))
-                        if seeded:
-                            page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                            page.wait_for_timeout(1200)
-                    if note_base._looks_logged_out(page):
-                        continue
-                    if not run187._is_editor_url(str(page.url or "")):
-                        continue
-                    if _title_value(page) != str(article["title"]).strip():
-                        continue
-                    metrics = _audit_current_page(page, str(article["title"]), str(article["manuscript"]))
-                    metrics["history_candidate_count"] = len(candidates)
-                    metrics["matched_history_rank"] = rank
-                    metrics["editor_route_hash"] = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
-                    return metrics
-                except PrivateDraftAuditError:
-                    raise
-                except Exception:
-                    continue
+            try:
+                page.goto(private_url, wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(1200)
+            except Exception as exc:
+                raise PrivateDraftAuditError("Stable private draft route could not be opened") from exc
+
+            if note_base._looks_logged_out(page):
+                seeded = bool(run190._seed_note_state(context, page))
+                if seeded:
+                    try:
+                        page.goto(private_url, wait_until="domcontentloaded", timeout=60000)
+                        page.wait_for_timeout(1200)
+                    except Exception as exc:
+                        raise PrivateDraftAuditError("Stable private draft route could not be reopened") from exc
+            if note_base._looks_logged_out(page):
+                raise PrivateDraftAuditError("note authentication is not active")
+            if not run187._is_editor_url(str(page.url or "")):
+                raise PrivateDraftAuditError("Stable private draft did not resolve to a confirmed editor route")
+            persisted_title = _title_value(page)
+            if persisted_title != str(article["title"]).strip():
+                raise PrivateDraftAuditError("Stable private draft title does not match the requested article")
+            return audit_page(page, str(article["title"]), str(article["manuscript"]))
         finally:
             context.close()
-    raise PrivateDraftAuditError("The requested private draft could not be matched safely from local Chrome history")
 
 
 def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, Any]:

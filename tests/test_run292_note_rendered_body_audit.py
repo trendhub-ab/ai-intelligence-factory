@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 import sys
 import types
 import unittest
@@ -74,9 +75,6 @@ class Run292RenderedExpectationTests(unittest.TestCase):
             audit._body_text_metrics("非公開タイトル " + rendered, manuscript, "非公開タイトル")
         self.assertEqual(duplicate.exception.code, "duplicate_title_prefix")
 
-        # Make both boundary windows independent of the footer mutation. This proves
-        # that Sources/CTA ordering itself remains fail-closed rather than merely
-        # tripping the stronger prefix/suffix presentation boundary first.
         footer_manuscript = (
             ("十分に長い前置きです。" * 20)
             + "\n\n"
@@ -96,14 +94,149 @@ class Run292RenderedExpectationTests(unittest.TestCase):
         self.assertEqual(footer.exception.code, "footer_order_mismatch")
 
 
+class Run292CanonicalIntegrationTests(unittest.TestCase):
+    def test_canonical_snapshot_match_is_required(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {"type": "element", "tag": "p", "attrs": {}, "children": [{"type": "text", "text": "10秒"}]}
+            ],
+        }
+        metrics = audit._canonical_snapshot_metrics(snapshot, "10秒")
+        self.assertTrue(metrics["canonical_match"])
+        self.assertEqual(metrics["unsupported_expected_node_count"], 0)
+        self.assertEqual(metrics["unsupported_actual_node_count"], 0)
+        self.assertEqual(metrics["expected_canonical_node_count"], 3)
+        self.assertEqual(metrics["actual_canonical_node_count"], 3)
+        self.assertIn("Paragraph", metrics["expected_node_counts"])
+        self.assertIn("Paragraph", metrics["actual_node_counts"])
+
+    def test_canonical_snapshot_semantic_change_fails_closed(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {"type": "element", "tag": "p", "attrs": {}, "children": [{"type": "text", "text": "99秒"}]}
+            ],
+        }
+        with self.assertRaises(audit.Run292AuditDiagnosticError) as caught:
+            audit._canonical_snapshot_metrics(snapshot, "10秒")
+        self.assertEqual(caught.exception.code, "text_value_mismatch")
+        self.assertNotIn("99秒", repr(caught.exception.safe_metrics))
+        self.assertNotIn("10秒", repr(caught.exception.safe_metrics))
+
+    def test_unknown_dom_is_categorical_content_free_and_structurally_diagnostic(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {
+                    "type": "element",
+                    "tag": "div",
+                    "attrs": {"title": "PRIVATE-ATTR-SENTINEL"},
+                    "children": [
+                        {"type": "element", "tag": "section", "attrs": {}, "children": [{"type": "text", "text": "PRIVATE-BODY-SENTINEL"}]}
+                    ],
+                }
+            ],
+        }
+        with self.assertRaises(audit.Run292AuditDiagnosticError) as caught:
+            audit._canonical_snapshot_metrics(snapshot, "本文")
+        self.assertEqual(caught.exception.code, "unsupported_note_dom")
+        metrics = caught.exception.safe_metrics
+        self.assertFalse(metrics["canonical_match"])
+        self.assertEqual(metrics["unsupported_actual_node_count"], 1)
+        self.assertEqual(metrics["dom_diagnostic_category"], "unknown_dom_tag")
+        self.assertEqual(metrics["unknown_dom_tags"], ["div", "section"])
+        self.assertEqual(metrics["unknown_dom_tag_counts"], {"div": 1, "section": 1})
+        self.assertEqual(metrics["dom_tag_counts"], {"div": 1, "section": 1})
+        self.assertEqual(metrics["snapshot_element_node_count"], 2)
+        self.assertEqual(metrics["snapshot_text_node_count"], 1)
+        self.assertEqual(metrics["snapshot_total_node_count"], 3)
+        self.assertEqual(metrics["expected_canonical_node_count"], 3)
+        self.assertEqual(metrics["actual_canonical_node_count"], 0)
+        rendered = repr(metrics)
+        self.assertNotIn("PRIVATE-BODY-SENTINEL", rendered)
+        self.assertNotIn("PRIVATE-ATTR-SENTINEL", rendered)
+
+
+class Run292DomObservationTests(unittest.TestCase):
+    def test_run291_browser_audit_supports_read_only_page_auditor_injection(self) -> None:
+        parameter = inspect.signature(audit.base._browser_audit).parameters["page_auditor"]
+        self.assertIsNone(parameter.default)
+
+    def test_dom_observer_reports_unknown_wrappers_without_content(self) -> None:
+        snapshot = {
+            "type": "root",
+            "children": [
+                {
+                    "type": "element",
+                    "tag": "div",
+                    "attrs": {"title": "PRIVATE-ATTR-SENTINEL"},
+                    "children": [
+                        {"type": "element", "tag": "section", "attrs": {}, "children": [{"type": "text", "text": "PRIVATE-BODY-SENTINEL"}]}
+                    ],
+                }
+            ],
+        }
+        page = types.SimpleNamespace(url="https://editor.note.com/notes/private-secret/edit")
+        body = object()
+        with patch.object(audit.base.note_base, "_looks_logged_out", return_value=False), \
+             patch.object(audit.base.run187, "_is_editor_url", return_value=True), \
+             patch.object(audit.base.note_base, "_find_title", return_value=object()), \
+             patch.object(audit.base, "_title_value", return_value="PRIVATE-TITLE-SENTINEL"), \
+             patch.object(audit.base.note_base, "_find_body", return_value=body), \
+             patch.object(audit.note_dom, "snapshot_note_body", return_value=snapshot):
+            metrics = audit._observe_dom_current_page(
+                page, "PRIVATE-TITLE-SENTINEL", "本文"
+            )
+        self.assertFalse(metrics["canonical_match"])
+        self.assertEqual(metrics["dom_diagnostic_category"], "unknown_dom_tag")
+        self.assertEqual(metrics["unknown_dom_tags"], ["div", "section"])
+        self.assertEqual(metrics["observation_diagnostic_code"], "unsupported_note_dom")
+        serialized = repr(metrics)
+        for secret in (
+            "PRIVATE-BODY-SENTINEL", "PRIVATE-ATTR-SENTINEL",
+            "PRIVATE-TITLE-SENTINEL", "private-secret",
+        ):
+            self.assertNotIn(secret, serialized)
+
+    def test_dom_observation_is_evidence_only_and_cannot_claim_audit_pass(self) -> None:
+        article = {
+            "sync_id": "a" * 32,
+            "title": "PRIVATE-TITLE-SENTINEL",
+            "manuscript": "PRIVATE-BODY-SENTINEL",
+        }
+        with patch.object(audit.base, "_expected_article", return_value=article), \
+             patch.object(
+                 audit.base,
+                 "_browser_audit",
+                 return_value={"canonical_match": True, "actual_canonical_node_count": 7},
+             ) as browser:
+            result = audit.observe_private_draft_dom(
+                confirm=audit.base.CONFIRM_TOKEN, sync_id="a" * 32
+            )
+        self.assertEqual(result["status"], "dom_observation_only")
+        self.assertTrue(result["read_only"])
+        self.assertTrue(result["zero_gemini_calls"])
+        self.assertFalse(result["draft_mutation"])
+        self.assertFalse(result["public_release"])
+        self.assertFalse(result["production_audit_passed"])
+        self.assertTrue(result["canonical_match"])
+        self.assertNotIn("title", result)
+        self.assertNotIn("manuscript", result)
+        self.assertNotIn("draft_url", result)
+        self.assertIs(browser.call_args.kwargs["page_auditor"], audit._observe_dom_current_page)
+
+
 class Run292ExecutionBoundaryTests(unittest.TestCase):
-    def test_wrapper_restores_run291_metric_function_after_execution(self) -> None:
-        original = audit.base._body_text_metrics
+    def test_wrapper_restores_run291_metric_and_page_functions_after_execution(self) -> None:
+        original_metric = audit.base._body_text_metrics
+        original_page = audit.base._audit_current_page
         with patch.object(audit.base, "run", return_value={"status": "audit_passed"}) as base_run:
             result = audit.run(confirm="AUDIT_NOTE_DRAFT", sync_id="a" * 32)
             base_run.assert_called_once()
         self.assertEqual(result["status"], "audit_passed")
-        self.assertIs(audit.base._body_text_metrics, original)
+        self.assertIs(audit.base._body_text_metrics, original_metric)
+        self.assertIs(audit.base._audit_current_page, original_page)
 
     def test_safe_failure_result_exposes_no_unpublished_content_or_route(self) -> None:
         result = audit._safe_failure_result(
@@ -118,6 +251,17 @@ class Run292ExecutionBoundaryTests(unittest.TestCase):
         self.assertFalse(result["public_release"])
         for forbidden in ("actual_text", "expected_text", "manuscript", "title", "draft_url"):
             self.assertNotIn(forbidden, result)
+
+    def test_private_draft_workflow_summary_includes_only_content_free_canonical_diagnostics(self) -> None:
+        workflow = Path('.github/workflows/note-private-draft-audit.yml').read_text(encoding='utf-8')
+        for key in (
+            'canonical_match', 'dom_diagnostic_category', 'unknown_dom_tags',
+            'unknown_dom_tag_counts', 'dom_tag_counts', 'snapshot_element_node_count',
+            'snapshot_text_node_count', 'snapshot_total_node_count',
+            'expected_canonical_node_count', 'actual_canonical_node_count',
+            'unsupported_expected_node_count', 'unsupported_actual_node_count',
+        ):
+            self.assertIn(f"'{key}'", workflow)
 
     def test_module_has_no_browser_mutation_publication_screenshot_or_network_write_surface(self) -> None:
         source = inspect.getsource(audit)

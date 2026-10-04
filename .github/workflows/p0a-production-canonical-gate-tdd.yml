@@ -1,0 +1,80 @@
+name: P0-A Canonical Contract Final Verification
+
+on:
+  push:
+    branches:
+      - design/p0-a-note-lossless-contract
+    paths:
+      - 'tests/test_note_document_dom.py'
+      - 'note_document_dom.py'
+      - 'note_document_contract.py'
+      - 'tests/test_p0a_production_canonical_gate.py'
+      - 'tests/test_run222_note_presentation_integrity.py'
+      - 'tests/test_run417_note_body_verification.py'
+      - 'tests/test_run292_note_dom_normalization.py'
+      - 'run292_note_rendered_body_audit.py'
+      - 'run417_note_body_verification.py'
+      - 'run222_note_presentation_integrity.py'
+      - 'run190_note_persistent_cloud.py'
+      - '.github/workflows/p0a-production-canonical-gate-tdd.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-contract-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install repository test dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+      - name: Run Run222 presentation-boundary tests
+        run: python -m pytest tests/test_run222_note_presentation_integrity.py -q
+      - name: Run effective production C23 falsification set
+        run: python -m pytest tests/test_p0a_production_canonical_gate.py tests/test_run417_note_body_verification.py -q
+      - name: Verify Run194 install sequence keeps canonical guard
+        run: |
+          python - <<'PY'
+          import note_draft_automation as base
+          import note_eyecatch_persistence as eyecatch_persistence
+          import note_publication_reconcile as lifecycle
+          import run190_note_persistent_cloud as cloud
+          import run194_note_current_contract as current_contract
+          import run222_note_presentation_integrity as run222
+          import run417_note_body_verification as run417
+
+          cloud.install()
+          current_contract.install()
+          run222.install_note(base)
+          eyecatch_persistence.install_creation_persistence_guard(base)
+          lifecycle.install_draft_identity(base)
+
+          assert base._verify_body_content is run417.verify_body_content
+          assert base._markdown_to_safe_html is run417.markdown_to_safe_html
+          assert getattr(base, '_p0b2_identity_installed', False) is True
+          print('run194_install_sequence_canonical_guard=PASS')
+          PY
+      - name: Run focused P0-A and B2 regression
+        run: |
+          python -m pytest \
+            tests/test_note_document_contract.py \
+            tests/test_note_document_dom.py \
+            tests/test_note_draft_automation.py \
+            tests/test_run222_note_presentation_integrity.py \
+            tests/test_run291_private_draft_audit.py \
+            tests/test_run292_note_rendered_body_audit.py \
+            tests/test_run292_note_dom_normalization.py \
+            tests/test_run293_private_draft_guard_diagnostics.py \
+            tests/test_run294_note_eyecatch_persistence_diagnostics.py \
+            tests/test_run295_note_eyecatch_persistence.py \
+            tests/test_run417_note_body_verification.py \
+            tests/test_p0a_stable_draft_identity.py \
+            tests/test_p0b2_note_draft_identity.py -q
+      - name: Run full current tests regression
+        run: python -m pytest tests -q

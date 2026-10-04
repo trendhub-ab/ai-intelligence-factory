@@ -214,6 +214,8 @@ NON_MEMBER_MODULES = frozenset((
     "local_skills_daily_canary.py",
     "migrate_decision_intelligence.py",
     "migrate_japanese_display_label.py",
+    "note_document_contract.py",
+    "note_document_dom.py",
     "note_draft_automation.py",
     "note_eyecatch_persistence.py",
     "note_publication_reconcile.py",

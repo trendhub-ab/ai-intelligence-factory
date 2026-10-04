@@ -123,7 +123,7 @@ def _seed_if_needed(context: Any, page: Any, candidate: str, seeded: bool) -> bo
 
 
 def _find_one_existing_route(context: Any, page: Any, title: str) -> tuple[str, int, int]:
-    candidates = audit_base._recent_private_edit_urls(cloud._profile_dir())
+    candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
     if not candidates:
         raise Run298Error("no_existing_private_edit_routes")
     matches: list[tuple[str, int]] = []

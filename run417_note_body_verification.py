@@ -1,82 +1,81 @@
-"""Run417: verify note body insertion using distributed manuscript anchors.
+"""Run417: install the P0-A canonical note body persistence contract.
 
-The note editor keeps the document title in a separate title field and may omit a pasted
-leading Markdown H1 from the body surface. Verification therefore must not depend on the
-first 32 manuscript characters. It still fails closed unless substantial body text and
-multiple distributed anchors survive insertion.
+The former distributed-anchor verifier could accept semantic corruption when a changed
+value fell outside its sampled windows. Run417 now owns the deterministic canonical
+renderer + reopened-DOM readback gate used by the effective draft path. Any unsupported
+source/DOM or canonical mismatch fails closed with fixed, content-free errors.
+
+Real-browser evidence on 2026-10-04 showed that note's HTML paste path flattens inline
+``<code>`` into ordinary text. InlineCode therefore remains part of the offline canonical
+model, but is fail-closed at the note-delivery boundary until a preserving note editor path
+is proven. Fenced code blocks remain supported and exact, including whitespace.
+
+ZERO Gemini/model calls. No public-release action.
 """
 from __future__ import annotations
 
-import re
-import unicodedata
 from typing import Any
 
+import note_document_contract as contract
+import note_document_dom as dom
 import note_draft_automation as base
 
 
-_READER_FIRST_LABELS = ("どんな内容？", "なぜ重要？", "結論は？", "元情報")
+_ERROR = "note body canonical persistence verification failed"
+_SOURCE_ERROR = "note manuscript violates the canonical document contract"
+_ALLOWED_NOTE_NORMALIZATIONS = (
+    contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+    dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+)
 
 
-def _visible_body_source(manuscript: str) -> str:
-    text = str(manuscript or "").replace("\r\n", "\n").replace("\r", "\n")
-    # note already has a separate title field. Ignore exactly one leading Markdown H1 only.
-    text = re.sub(r"^\s*#\s+[^\n]+(?:\n+|$)", "", text, count=1)
-    return base._plain_manuscript_text(text)
+def _contains_inline_code(node: Any) -> bool:
+    if isinstance(node, contract.InlineCode):
+        return True
+    for attr in ("children", "items"):
+        value = getattr(node, attr, None)
+        if value and any(_contains_inline_code(child) for child in value):
+            return True
+    return False
 
 
-def _normalize_visible_text(value: str) -> str:
-    text = unicodedata.normalize("NFKC", str(value or ""))
-    text = text.replace("\u200b", "").replace("\ufeff", "").replace("\u00a0", " ")
-    return re.sub(r"\s+", " ", text).strip()
+def _expected_note_document(markdown_text: str) -> contract.Document:
+    expected = contract.parse_presentation_markdown(markdown_text)
+    expected = contract.normalize_document(expected)
+    if _contains_inline_code(expected):
+        raise contract.CanonicalContractError("unsupported_note_inline_code")
+    return expected
 
 
-def _anchors(expected: str, *, width: int = 24) -> list[str]:
-    text = _normalize_visible_text(expected)
-    if len(text) < width:
-        return [text] if text else []
-    # Three distributed windows make partial insertion much harder to pass than the old
-    # prefix-only check while tolerating note's title/body separation.
-    starts = [0, max(0, (len(text) - width) // 2), max(0, len(text) - width)]
-    out: list[str] = []
-    for start in starts:
-        chunk = text[start : start + width].strip()
-        if len(chunk) >= 12 and chunk not in out:
-            out.append(chunk)
-    return out
+def markdown_to_safe_html(markdown_text: str) -> str:
+    try:
+        expected = _expected_note_document(markdown_text)
+        return contract.render_safe_html(expected)
+    except contract.CanonicalContractError:
+        raise base.NoteDraftError(_SOURCE_ERROR) from None
 
 
 def verify_body_content(body: Any, manuscript: str) -> None:
-    expected = _normalize_visible_text(_visible_body_source(manuscript))
     try:
-        actual = _normalize_visible_text(str(body.inner_text(timeout=5000) or ""))
-    except Exception as exc:
-        raise base.NoteDraftError("Could not read note body after insertion") from exc
-    if not expected:
-        raise base.NoteDraftError("Prepared manuscript has no visible body text")
-
-    # Keep a meaningful absolute + proportional floor, but account for editor-only removal
-    # of the leading H1. This is not a generic non-empty-body acceptance rule.
-    minimum = min(240, max(80, len(expected) // 8))
-    anchors = _anchors(expected)
-    matched = sum(1 for anchor in anchors if anchor in actual)
-    required = min(2, len(anchors))
-    ratio = len(actual) / max(1, len(expected))
-    heading_cardinality_ok = all(
-        actual.count(label) == expected.count(label)
-        for label in _READER_FIRST_LABELS
-    )
-    if (
-        len(actual) < minimum
-        or matched < required
-        or not 0.90 <= ratio <= 1.12
-        or not heading_cardinality_ok
-    ):
-        raise base.NoteDraftError(
-            "note body insertion verification failed; refusing to save a malformed draft"
+        expected = _expected_note_document(manuscript)
+        snapshot = dom.snapshot_note_body(body)
+        actual = dom.document_from_note_snapshot(
+            snapshot,
+            allowed_normalizations=_ALLOWED_NOTE_NORMALIZATIONS,
         )
+        receipt = contract.compare_documents(expected, actual)
+    except contract.CanonicalContractError:
+        raise base.NoteDraftError(_ERROR) from None
+    except Exception:
+        raise base.NoteDraftError(_ERROR) from None
+
+    if receipt.get("canonical_match") is not True:
+        raise base.NoteDraftError(_ERROR)
 
 
 def install(note_module: Any = base) -> Any:
+    note_module._markdown_to_safe_html = markdown_to_safe_html
     note_module._verify_body_content = verify_body_content
+    note_module._p0a_canonical_persistence_installed = True
     note_module._run417_body_verification_installed = True
     return note_module

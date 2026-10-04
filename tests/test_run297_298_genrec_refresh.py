@@ -109,7 +109,7 @@ class Run298InPlaceTests(unittest.TestCase):
         target = "https://editor.note.com/notes/target456/edit"
         page = _FakePage()
         with (
-            patch.object(r298.audit_base, "_recent_private_edit_urls", return_value=[stale, target]),
+            patch.object(r298.cloud, "_recent_private_edit_urls", return_value=[stale, target]),
             patch.object(r298.audit_base, "_is_note_edit_url", return_value=True),
             patch.object(r298.audit_base.run187, "_is_editor_url", return_value=True),
             patch.object(r298.note_base, "_looks_logged_out", return_value=False),
@@ -133,7 +133,7 @@ class Run298InPlaceTests(unittest.TestCase):
         second = "https://editor.note.com/notes/b456/edit"
         page = _FakePage()
         with (
-            patch.object(r298.audit_base, "_recent_private_edit_urls", return_value=[first, second]),
+            patch.object(r298.cloud, "_recent_private_edit_urls", return_value=[first, second]),
             patch.object(r298.audit_base, "_is_note_edit_url", return_value=True),
             patch.object(r298.audit_base.run187, "_is_editor_url", return_value=True),
             patch.object(r298.note_base, "_looks_logged_out", return_value=False),

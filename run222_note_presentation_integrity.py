@@ -5,6 +5,8 @@ Production intent:
 - place the subscriber CTA after those trust/provenance blocks so the CTA is the final action;
 - remove a duplicated leading H1 when note already has the same title in its title field;
 - never expose a raw Markdown ``# `` heading in note body presentation;
+- remove supported fenced-code language labels at the explicit note-presentation boundary because
+  note readback does not preserve that metadata, while preserving code text byte-for-byte;
 - preserve the stored current-publication-contract manuscript for validation before applying
   note-editor-only presentation transforms;
 - zero Gemini/model calls and no public-release action.
@@ -20,6 +22,7 @@ CTA_HEADINGS = {
     "有料サブスクのご案内",
 }
 SOURCE_HEADING = "Sources / Evidence"
+_FENCE_LANGUAGE = re.compile(r"^(\s*)```([A-Za-z0-9][A-Za-z0-9_+.#-]{0,39})\s*$")
 
 
 def _plain_heading(value: str) -> str:
@@ -89,6 +92,33 @@ def _strip_duplicate_leading_h1(markdown_text: str, title: str) -> str:
     return text.lstrip("\n")
 
 
+def strip_fenced_code_language_metadata(markdown_text: str) -> str:
+    """Remove only simple fenced-code language labels before canonical note delivery.
+
+    This is an explicit presentation transform required by the P0-A design: note's supported
+    DOM/readback path proves code text and block boundaries, but not source fence metadata.  A
+    simple language token such as ``python`` is therefore removed *before* canonicalization.
+    Unsupported/compound info strings are deliberately left unchanged so the canonical parser
+    rejects them fail-closed instead of silently discarding unknown metadata.
+    """
+    out: list[str] = []
+    in_code = False
+    for line in str(markdown_text or "").split("\n"):
+        stripped = line.strip()
+        if not in_code:
+            match = _FENCE_LANGUAGE.fullmatch(line)
+            if match:
+                out.append(f"{match.group(1)}```")
+                in_code = True
+                continue
+            if stripped == "```":
+                in_code = True
+        elif stripped == "```":
+            in_code = False
+        out.append(line)
+    return "\n".join(out)
+
+
 def _demote_body_h1_outside_code(markdown_text: str) -> str:
     """note title field is the document H1; body-level H1 becomes H2, code fences untouched."""
     out: list[str] = []
@@ -108,6 +138,7 @@ def prepare_note_editor_manuscript(markdown_text: str, title: str) -> str:
     """Presentation-only transform applied after stored manuscript validation."""
     text = move_subscription_cta_after_evidence(markdown_text)
     text = _strip_duplicate_leading_h1(text, title)
+    text = strip_fenced_code_language_metadata(text)
     text = _demote_body_h1_outside_code(text)
     return re.sub(r"\n{4,}", "\n\n\n", text).strip()
 

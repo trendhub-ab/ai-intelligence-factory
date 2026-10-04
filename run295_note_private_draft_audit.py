@@ -97,7 +97,9 @@ def main() -> None:
         result = _safe_failure_result(args.sync_id, exc.code, exc.safe_metrics)
         exit_code = 2
     except base.PrivateDraftAuditError as exc:
-        result = _safe_failure_result(args.sync_id, base292._safe_non_body_guard_code(exc))
+        result = _safe_failure_result(
+            args.sync_id, base292._safe_non_body_guard_code(exc), getattr(exc, "safe_metrics", None)
+        )
         exit_code = 2
 
     _write_result(args.result_file, result)

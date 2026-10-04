@@ -1,0 +1,368 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+from urllib.parse import urlparse
+
+import note_document_contract as contract
+
+
+DOM_NORMALIZATION_POLICY_VERSION = 'p0a-note-dom-normalization-v1'
+NOTE_BLOCKQUOTE_FIGURE_WRAPPER = 'note_blockquote_figure_wrapper'
+_LOCAL_NORMALIZATION_CODES = frozenset({NOTE_BLOCKQUOTE_FIGURE_WRAPPER})
+
+_SNAPSHOT_SCRIPT = r"""el => {
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return {type: 'text', text: node.textContent || ''};
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const tag = node.tagName.toLowerCase();
+    const attrs = {};
+    if (tag === 'a') attrs.href = node.getAttribute('href') || '';
+    if (tag === 'ol' && node.hasAttribute('start')) attrs.start = node.getAttribute('start') || '';
+    const children = [];
+    for (const child of node.childNodes) {
+      const mapped = walk(child);
+      if (mapped) children.push(mapped);
+    }
+    return {type: 'element', tag, attrs, children};
+  };
+  const children = [];
+  for (const child of el.childNodes) {
+    const mapped = walk(child);
+    if (mapped) children.push(mapped);
+  }
+  return {type: 'root', children};
+}"""
+
+# This is deliberately the adapter's proven semantic tag set, not a browser-wide
+# HTML allowlist. Unknown wrappers remain fail-closed until real note DOM evidence
+# proves a normalization rule is safe. figure/figcaption are included only because
+# the exact quote wrapper below was observed in the real note editor on 2026-10-04.
+_KNOWN_SEMANTIC_TAGS = frozenset({
+    'p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'strong', 'em',
+    'code', 'pre', 'blockquote', 'hr', 'br', 'figure', 'figcaption',
+})
+_SAFE_TAG_NAME = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
+
+
+def snapshot_note_body(body_locator: object) -> dict[str, object]:
+    value = body_locator.evaluate(_SNAPSHOT_SCRIPT)
+    if not isinstance(value, dict):
+        raise contract.CanonicalContractError('unsupported_note_dom')
+    return value
+
+
+def safe_snapshot_diagnostics(snapshot: object) -> dict[str, object]:
+    """Return structural-only diagnostics for a failed note DOM conversion.
+
+    Never includes text, attributes, hrefs, classes, ids, URLs, or DOM serialization.
+    It is safe to attach to a public CI receipt when conversion has already failed
+    closed. Tag names are constrained to normal HTML/custom-element syntax; malformed
+    names collapse to a fixed token rather than echoing arbitrary input.
+    """
+    tag_counts: dict[str, int] = {}
+    edge_counts: dict[str, int] = {}
+    element_count = 0
+    text_count = 0
+    invalid_shape = False
+
+    def walk(node: object, parent_tag: str = 'root') -> None:
+        nonlocal element_count, text_count, invalid_shape
+        if not isinstance(node, dict):
+            invalid_shape = True
+            return
+        node_type = node.get('type')
+        if node_type == 'text':
+            text_count += 1
+            return
+        if node_type == 'root':
+            children = node.get('children')
+            if not isinstance(children, list):
+                invalid_shape = True
+                return
+            for child in children:
+                walk(child, 'root')
+            return
+        if node_type != 'element':
+            invalid_shape = True
+            return
+
+        element_count += 1
+        raw_tag = node.get('tag')
+        if isinstance(raw_tag, str):
+            candidate = raw_tag.lower()
+            tag = candidate if _SAFE_TAG_NAME.fullmatch(candidate) else 'invalid_tag'
+            if tag == 'invalid_tag':
+                invalid_shape = True
+        else:
+            tag = 'invalid_tag'
+            invalid_shape = True
+        tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        edge = f'{parent_tag}>{tag}'
+        edge_counts[edge] = edge_counts.get(edge, 0) + 1
+
+        children = node.get('children')
+        if not isinstance(children, list):
+            invalid_shape = True
+            return
+        for child in children:
+            walk(child, tag)
+
+    walk(snapshot)
+    ordered_counts = dict(sorted(tag_counts.items()))
+    unknown_counts = {
+        tag: count for tag, count in ordered_counts.items()
+        if tag not in _KNOWN_SEMANTIC_TAGS
+    }
+    category = 'unknown_dom_tag' if unknown_counts else 'unsupported_dom_shape'
+    if invalid_shape and not unknown_counts:
+        category = 'unsupported_dom_shape'
+    return {
+        'dom_diagnostic_category': category,
+        'unknown_dom_tags': sorted(unknown_counts),
+        'unknown_dom_tag_counts': unknown_counts,
+        'dom_tag_counts': ordered_counts,
+        'dom_parent_child_tag_counts': dict(sorted(edge_counts.items())),
+        'snapshot_element_node_count': element_count,
+        'snapshot_text_node_count': text_count,
+        'snapshot_total_node_count': element_count + text_count,
+    }
+
+
+def _fail() -> None:
+    raise contract.CanonicalContractError('unsupported_note_dom')
+
+
+def _children(node: dict[str, Any]) -> list[dict[str, Any]]:
+    value = node.get('children')
+    if not isinstance(value, list):
+        _fail()
+    if not all(isinstance(item, dict) for item in value):
+        _fail()
+    return value
+
+
+def _attrs(node: dict[str, Any]) -> dict[str, Any]:
+    value = node.get('attrs', {})
+    if not isinstance(value, dict):
+        _fail()
+    return value
+
+
+def _text_node(node: dict[str, Any]) -> contract.Text:
+    if node.get('type') != 'text' or not isinstance(node.get('text'), str):
+        _fail()
+    return contract.Text(node['text'])
+
+
+def _inline_nodes(nodes: list[dict[str, Any]]) -> tuple[Any, ...]:
+    result: list[Any] = []
+    for node in nodes:
+        node_type = node.get('type')
+        if node_type == 'text':
+            result.append(_text_node(node))
+            continue
+        if node_type != 'element':
+            _fail()
+        tag = str(node.get('tag') or '').lower()
+        attrs = _attrs(node)
+        kids = _children(node)
+        if tag == 'br':
+            if attrs or kids:
+                _fail()
+            result.append(contract.HardBreak())
+        elif tag == 'strong':
+            if attrs:
+                _fail()
+            result.append(contract.Strong(_inline_nodes(kids)))
+        elif tag == 'em':
+            if attrs:
+                _fail()
+            result.append(contract.Emphasis(_inline_nodes(kids)))
+        elif tag == 'code':
+            if attrs or any(child.get('type') != 'text' for child in kids):
+                _fail()
+            result.append(contract.InlineCode(''.join(_text_node(child).value for child in kids)))
+        elif tag == 'a':
+            if set(attrs) != {'href'} or not isinstance(attrs.get('href'), str):
+                _fail()
+            href = attrs['href']
+            parsed = urlparse(href)
+            if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
+                _fail()
+            result.append(contract.Link(href, _inline_nodes(kids)))
+        else:
+            _fail()
+    return tuple(result)
+
+
+def _list_item(
+    node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()
+) -> contract.ListItem:
+    if node.get('type') != 'element' or str(node.get('tag') or '').lower() != 'li' or _attrs(node):
+        _fail()
+    kids = _children(node)
+    has_paragraph_child = any(
+        child.get('type') == 'element' and str(child.get('tag') or '').lower() == 'p'
+        for child in kids
+    )
+    if has_paragraph_child:
+        if contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER not in allowed_normalizations:
+            _fail()
+        if len(kids) != 1:
+            _fail()
+        paragraph = kids[0]
+        if (
+            paragraph.get('type') != 'element'
+            or str(paragraph.get('tag') or '').lower() != 'p'
+            or _attrs(paragraph)
+        ):
+            _fail()
+        kids = _children(paragraph)
+    return contract.ListItem(_inline_nodes(kids))
+
+
+def _blockquote_figure(
+    node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()
+) -> contract.BlockQuote:
+    """Map only the exact real-note quote wrapper proven by browser evidence.
+
+    Proven shape:
+      figure > blockquote > p > inline nodes
+             + figcaption > br
+
+    The caption must be structurally empty (one bare br); any text, extra sibling,
+    missing paragraph wrapper, attributes surfaced by the snapshot, or other shape
+    fails closed. This prevents a broad figure-flattening rule from hiding content.
+    """
+    if NOTE_BLOCKQUOTE_FIGURE_WRAPPER not in allowed_normalizations:
+        _fail()
+    if _attrs(node):
+        _fail()
+    kids = _children(node)
+    if len(kids) != 2:
+        _fail()
+
+    quote, caption = kids
+    if (
+        quote.get('type') != 'element'
+        or str(quote.get('tag') or '').lower() != 'blockquote'
+        or _attrs(quote)
+    ):
+        _fail()
+    quote_children = _children(quote)
+    if len(quote_children) != 1:
+        _fail()
+    paragraph = quote_children[0]
+    if (
+        paragraph.get('type') != 'element'
+        or str(paragraph.get('tag') or '').lower() != 'p'
+        or _attrs(paragraph)
+    ):
+        _fail()
+
+    if (
+        caption.get('type') != 'element'
+        or str(caption.get('tag') or '').lower() != 'figcaption'
+        or _attrs(caption)
+    ):
+        _fail()
+    caption_children = _children(caption)
+    if len(caption_children) != 1:
+        _fail()
+    only = caption_children[0]
+    if (
+        only.get('type') != 'element'
+        or str(only.get('tag') or '').lower() != 'br'
+        or _attrs(only)
+        or _children(only)
+    ):
+        _fail()
+
+    return contract.BlockQuote(_inline_nodes(_children(paragraph)))
+
+
+def _block(node: dict[str, Any], *, allowed_normalizations: tuple[str, ...] = ()) -> Any:
+    if node.get('type') != 'element':
+        _fail()
+    tag = str(node.get('tag') or '').lower()
+    attrs = _attrs(node)
+    kids = _children(node)
+
+    if tag == 'p':
+        if attrs:
+            _fail()
+        return contract.Paragraph(_inline_nodes(kids))
+    if tag in {'h2', 'h3', 'h4'}:
+        if attrs:
+            _fail()
+        return contract.Heading(int(tag[1]), _inline_nodes(kids))
+    if tag == 'blockquote':
+        if attrs:
+            _fail()
+        return contract.BlockQuote(_inline_nodes(kids))
+    if tag == 'figure':
+        return _blockquote_figure(node, allowed_normalizations=allowed_normalizations)
+    if tag == 'hr':
+        if attrs or kids:
+            _fail()
+        return contract.Divider()
+    if tag == 'ul':
+        if attrs:
+            _fail()
+        return contract.UnorderedList(tuple(_list_item(child, allowed_normalizations=allowed_normalizations) for child in kids))
+    if tag == 'ol':
+        if not attrs:
+            start = 1
+        elif set(attrs) == {'start'} and isinstance(attrs.get('start'), str) and attrs['start'].isdigit():
+            start = int(attrs['start'])
+        else:
+            _fail()
+        return contract.OrderedList(start, tuple(_list_item(child, allowed_normalizations=allowed_normalizations) for child in kids))
+    if tag == 'pre':
+        if attrs or len(kids) != 1:
+            _fail()
+        code = kids[0]
+        if code.get('type') != 'element' or str(code.get('tag') or '').lower() != 'code' or _attrs(code):
+            _fail()
+        code_children = _children(code)
+        if any(child.get('type') != 'text' for child in code_children):
+            _fail()
+        return contract.CodeBlock(''.join(_text_node(child).value for child in code_children), None)
+    _fail()
+
+
+def _validated_contract_normalizations(
+    allowed_normalizations: tuple[str, ...],
+) -> tuple[str, ...]:
+    contract_codes = tuple(
+        code for code in allowed_normalizations if code not in _LOCAL_NORMALIZATION_CODES
+    )
+    contract.validate_normalization_codes(contract_codes)
+    return contract_codes
+
+
+def document_from_note_snapshot(
+    snapshot: dict[str, object], *, allowed_normalizations: tuple[str, ...] = ()
+) -> contract.Document:
+    contract_codes = _validated_contract_normalizations(allowed_normalizations)
+    if not isinstance(snapshot, dict) or snapshot.get('type') != 'root':
+        _fail()
+    children = snapshot.get('children')
+    if not isinstance(children, list):
+        _fail()
+    blocks: list[Any] = []
+    for child in children:
+        if not isinstance(child, dict):
+            _fail()
+        if child.get('type') == 'text':
+            value = child.get('text')
+            if not isinstance(value, str) or value.strip():
+                _fail()
+            continue
+        blocks.append(_block(child, allowed_normalizations=allowed_normalizations))
+    return contract.normalize_document(
+        contract.Document(tuple(blocks)), normalization_codes=contract_codes
+    )

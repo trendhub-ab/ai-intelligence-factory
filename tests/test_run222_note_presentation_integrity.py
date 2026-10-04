@@ -84,7 +84,32 @@ print('ok')
         self.assertFalse(actual.startswith("# "))
         self.assertIn("## 30秒でわかるこの記事", actual)
         self.assertIn("## 追加の大見出し", actual)
+        self.assertNotIn("```python", actual)
+        self.assertIn("```\n# code comment must stay untouched", actual)
         self.assertIn("# code comment must stay untouched", actual)
+        self.assertIn("print('ok')", actual)
+
+    def test_note_editor_strips_only_supported_fence_language_metadata(self):
+        manuscript = """## 実装例
+```python
+  x = 1  
+```javascript
+this is code text, not a fence close
+```
+"""
+        actual = run222.prepare_note_editor_manuscript(manuscript, "別タイトル")
+        self.assertIn("```\n  x = 1  ", actual)
+        self.assertIn("```javascript\nthis is code text, not a fence close", actual)
+        self.assertNotIn("```python", actual)
+
+    def test_note_editor_leaves_unsupported_fence_info_to_fail_closed_later(self):
+        source = """## 実装例
+```python linenums=1
+print('ok')
+```
+"""
+        actual = run222.prepare_note_editor_manuscript(source, "別タイトル")
+        self.assertIn("```python linenums=1", actual)
 
     def test_note_transform_runs_after_existing_prepare_guard(self):
         calls = []
