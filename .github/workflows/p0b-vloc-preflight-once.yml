@@ -1,4 +1,4 @@
-name: P0-B Member Classification GREEN [OPS ONE-SHOT]
+name: P0-B Recovery CI Path RED [OPS ONE-SHOT]
 
 on:
   push:
@@ -11,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  green-test:
+  red-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact P0-B classification head
+      - name: Checkout exact P0-B CI-path test head
         uses: actions/checkout@v6
         with:
-          ref: 5738a21100eb146c8a955347386c1f434837e246
+          ref: e6a3c941df540606f6f0548622da49ad1a2625bf
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -28,8 +28,5 @@ jobs:
       - name: Install test dependency
         run: python -m pip install pytest
 
-      - name: Run classification and member coverage tests expecting GREEN
-        run: |
-          python -m pytest tests/test_p0b_member_surface_classification.py -q
-          python -m pytest tests/test_member_customer_surface_contract.py -q
-          python member_surface_coverage_guard.py
+      - name: Run P0-B installation test expecting RED
+        run: python -m pytest tests/test_p0b_production_installation.py -q
