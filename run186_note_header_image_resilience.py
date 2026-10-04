@@ -283,8 +283,21 @@ def _persisted_header_image(page: Any) -> bool:
     return False
 
 
-def _save_draft_and_verify(page: Any, title: str, manuscript: str, image_required: bool = True) -> str:
-    draft_url = _ORIGINAL_SAVE_DRAFT_AND_VERIFY(page, title, manuscript, image_required=False)
+def _save_draft_and_verify(
+    page: Any,
+    title: str,
+    manuscript: str,
+    image_required: bool = True,
+    *,
+    on_stable_draft_url: Any | None = None,
+) -> str:
+    draft_url = _ORIGINAL_SAVE_DRAFT_AND_VERIFY(
+        page,
+        title,
+        manuscript,
+        image_required=False,
+        on_stable_draft_url=on_stable_draft_url,
+    )
     if image_required and not _persisted_header_image(page):
         raise base.NoteDraftError("note eyecatch persistence verification failed")
     return draft_url
