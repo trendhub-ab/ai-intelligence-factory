@@ -1,1 +1,1 @@
-P0-A/B2 isolated private browser proof trigger v3. Temporary.
+P0-A/B2 read-only private DOM diagnosis trigger v4. Temporary.
