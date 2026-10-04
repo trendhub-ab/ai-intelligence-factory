@@ -1,5 +1,4 @@
-name: P0-B B01 Ledger-Clean Live Proof [OPS ONE-SHOT]
-# recheck after zero-model exact Ready sync
+name: P0-B B01 Read-Only Canonical Diagnostic [OPS ONE-SHOT]
 
 on:
   push:
@@ -36,10 +35,10 @@ jobs:
           state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
           [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
 
-  live-proof:
+  diagnose:
     needs: start-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -50,11 +49,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install requests playwright pytest
-      - name: Privately select first ledger-clean current Ready
-        id: pick
+        run: pip install requests playwright
+      - name: Read-only diagnose latest ambiguous B01 draft
         env:
-          TARGET_FILE: ${{ runner.temp }}/b01_target
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
@@ -62,129 +59,143 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: |
-          set -euo pipefail
-          umask 077
-          python - <<'PY'
-          import json, os, subprocess, tempfile
-          from pathlib import Path
-          import note_draft_automation as base
-          import run185_note_ready_legacy_skip as run185
-          import run194_note_current_contract as current
-
-          current.install()
-          target = Path(os.environ['TARGET_FILE'])
-          target.unlink(missing_ok=True)
-          try:
-              candidates = run185._ordered_candidates(base._query_ready_queue())
-          except base.NoteDraftError:
-              candidates = []
-
-          found = ''
-          checked = blocked = 0
-          for candidate in candidates:
-              try:
-                  prepared = current._prepare_one(candidate)
-              except Exception:
-                  continue
-              sid = base._normalize_sync_id(prepared.get('sync_id', ''))
-              if len(sid) != 32:
-                  continue
-              checked += 1
-              with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as fh:
-                  result_path = Path(fh.name)
-              try:
-                  env = dict(os.environ)
-                  env.update(
-                      NOTE_TARGET_SYNC_ID=sid,
-                      NOTE_TARGET_IDENTITY='trendhub_biz',
-                      NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3',
-                      NOTE_DRAFT_RESULT_FILE=str(result_path),
-                  )
-                  p = subprocess.run(
-                      ['bash', 'note_delivery_ledger_preflight.sh'],
-                      env=env,
-                      stdout=subprocess.DEVNULL,
-                      stderr=subprocess.DEVNULL,
-                  )
-                  if p.returncode:
-                      raise SystemExit('ledger preflight failed closed')
-                  result = json.loads(result_path.read_text())
-              finally:
-                  result_path.unlink(missing_ok=True)
-              if result.get('status') == 'ledger_clean_new' and result.get('should_run_delivery') is True:
-                  found = sid
-                  break
-              blocked += 1
-
-          if found:
-              target.write_text(found)
-              target.chmod(0o600)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-              fh.write(f"found={'true' if found else 'false'}\n")
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
-              fh.write('### B01 private selection\n')
-              fh.write(f'- ledger-clean found: `{bool(found)}`\n')
-              fh.write(f'- current-policy inspected: `{checked}`\n')
-              fh.write(f'- non-clean skipped: `{blocked}`\n')
-              fh.write('- private identifiers exposed: `0`\n')
-          PY
-      - name: Focused P0-B verification
-        if: ${{ steps.pick.outputs.found == 'true' }}
-        run: |
-          python -m pytest \
-            tests/test_note_delivery_ledger.py \
-            tests/test_note_delivery_runtime.py \
-            tests/test_p0b_production_installation.py \
-            tests/test_p0b_eyecatch_callback_forwarding.py -q
-      - name: Execute one production private-draft delivery
-        if: ${{ steps.pick.outputs.found == 'true' }}
-        env:
-          TARGET_FILE: ${{ runner.temp }}/b01_target
-          NOTE_DRAFT_CONFIRM: CREATE_NOTE_DRAFT
-          NOTE_TARGET_IDENTITY: trendhub_biz
-          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
-          NOTE_PREPARE_ONLY: 'false'
-          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/b01_result.json
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: chrome
           NOTE_CHROME_HEADLESS: 'false'
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
         run: |
           set -euo pipefail
-          selected="$(cat "$TARGET_FILE")"
-          NOTE_TARGET_SYNC_ID="$selected" xvfb-run -a python run194_note_persistent_cloud.py
-      - name: Safe result
-        if: ${{ steps.pick.outputs.found == 'true' && success() }}
-        env:
-          RESULT_FILE: ${{ runner.temp }}/b01_result.json
-        run: |
-          python - <<'PY'
-          import json, os
+          xvfb-run -a python - <<'PY'
+          import json
+          import os
+          import shutil
+          import sqlite3
+          import tempfile
+          from datetime import datetime, timezone
           from pathlib import Path
-          r = json.loads(Path(os.environ['RESULT_FILE']).read_text())
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
-              fh.write('### B01 live result\n')
-              fh.write(f"- status: `{r.get('status', 'unknown')}`\n")
-              fh.write(f"- zero Gemini calls: `{r.get('zero_gemini_calls') is True}`\n")
-              fh.write(f"- automatic public release: `{r.get('public_release') is True}`\n")
-              fh.write('- private identifiers exposed: `0`\n')
+
+          import note_draft_automation as base
+          import run187_note_editor_readiness as run187
+          import run190_note_persistent_cloud as cloud
+          import run194_note_current_contract as current
+          import run291_note_private_draft_audit as run291
+          import run292_note_rendered_body_audit as run292
+          from playwright.sync_api import sync_playwright
+
+          ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
+          if not ledger.is_file():
+              raise SystemExit('durable ledger unavailable')
+
+          conn = sqlite3.connect(f'file:{ledger}?mode=ro', uri=True)
+          try:
+              row = conn.execute(
+                  "SELECT d.snapshot_json, e.created_at "
+                  "FROM delivery_events e JOIN deliveries d ON d.record_id=e.record_id "
+                  "WHERE e.new_state='CREATION_UNKNOWN' AND e.category='creation_result_ambiguous' "
+                  "ORDER BY e.event_id DESC LIMIT 1"
+              ).fetchone()
+          finally:
+              conn.close()
+          if row is None:
+              raise SystemExit('no ambiguous delivery event available')
+          snapshot = json.loads(row[0])
+          sid = str(snapshot.get('sync_id') or '').strip().lower()
+          if len(sid) != 32:
+              raise SystemExit('ambiguous delivery has invalid private identity')
+          event_at = datetime.fromisoformat(str(row[1]).replace('Z', '+00:00'))
+          event_age = (datetime.now(timezone.utc) - event_at).total_seconds()
+          if event_age < 0 or event_age > 7200:
+              raise SystemExit('latest ambiguous delivery is outside diagnostic window')
+
+          current.install()
+          article = base._prepare_article(sid)
+          title = str(article.get('title') or '').strip()
+          manuscript = base._body_manuscript_for_note(title, str(article.get('manuscript') or ''))
+          if not title or not manuscript:
+              raise SystemExit('prepared diagnostic article is incomplete')
+
+          original_profile = cloud._profile_dir()
+          history_urls = cloud._recent_private_edit_urls(original_profile)
+          temp_root = Path(tempfile.mkdtemp(prefix='p0b-readonly-profile-'))
+          copied_profile = temp_root / 'profile'
+          try:
+              shutil.copytree(
+                  original_profile,
+                  copied_profile,
+                  dirs_exist_ok=True,
+                  ignore=shutil.ignore_patterns('Cache', 'Code Cache', 'GPUCache', 'Singleton*'),
+              )
+              os.environ[cloud.PROFILE_ENV] = str(copied_profile)
+              matches = 0
+              metrics = None
+              with sync_playwright() as playwright:
+                  context = cloud._launch_persistent_context(playwright)
+                  page = context.new_page()
+                  page.set_default_timeout(30000)
+                  try:
+                      for url in history_urls:
+                          try:
+                              page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                              page.wait_for_timeout(800)
+                          except Exception:
+                              continue
+                          if base._looks_logged_out(page) or not run187._is_editor_url(str(page.url or '')):
+                              continue
+                          try:
+                              persisted_title = run291._title_value(page)
+                          except Exception:
+                              continue
+                          if persisted_title != title:
+                              continue
+                          matches += 1
+                          if matches == 1:
+                              metrics = run292._observe_dom_current_page(page, title, manuscript)
+                          if matches > 1:
+                              metrics = None
+                              break
+                  finally:
+                      context.close()
+          finally:
+              shutil.rmtree(temp_root, ignore_errors=True)
+
+          safe = {
+              'diagnostic_mode': 'read_only_copied_profile',
+              'zero_gemini_calls': True,
+              'zero_openai_calls': True,
+              'draft_mutation': False,
+              'public_release': False,
+              'latest_ambiguous_event_recent': True,
+              'history_candidate_count': len(history_urls),
+              'exact_title_match_count': matches,
+          }
+          allowed = (
+              'observation_diagnostic_code', 'canonical_match', 'mismatch_category', 'mismatch_path',
+              'expected_canonical_node_count', 'actual_canonical_node_count',
+              'expected_node_counts', 'actual_node_counts', 'unsupported_expected_node_count',
+              'unsupported_actual_node_count', 'dom_diagnostic_category', 'unknown_dom_tags',
+              'unknown_dom_tag_counts', 'dom_tag_counts', 'dom_parent_child_tag_counts',
+              'snapshot_element_node_count', 'snapshot_text_node_count', 'snapshot_total_node_count',
+          )
+          if matches == 1 and metrics is not None:
+              safe['private_draft_found'] = True
+              for key in allowed:
+                  if key in metrics:
+                      safe[key] = metrics[key]
+          elif matches == 0:
+              safe['private_draft_found'] = False
+              safe['diagnostic_category'] = 'no_exact_private_draft_match_in_recent_history'
+          else:
+              safe['private_draft_found'] = False
+              safe['diagnostic_category'] = 'ambiguous_multiple_private_draft_title_matches'
+
+          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B B01 read-only canonical diagnostic\n')
+              for key, value in safe.items():
+                  fh.write(f'- {key}: `{json.dumps(value, ensure_ascii=False, sort_keys=True)}`\n')
           PY
-      - name: No clean candidate
-        if: ${{ steps.pick.outputs.found != 'true' }}
-        run: echo 'No ledger-clean Ready candidate; zero note mutations.' >> "$GITHUB_STEP_SUMMARY"
-      - if: ${{ always() }}
-        run: rm -f "${{ runner.temp }}/b01_target"
 
   stop-vm:
     if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, live-proof]
+    needs: [start-vm, diagnose]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
