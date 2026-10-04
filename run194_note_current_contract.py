@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import note_draft_automation as base
 import eyecatch_publication_contract as eyecatch_contract
@@ -148,6 +149,52 @@ def _prepare_article(requested_sync_id: str = "") -> dict[str, Any]:
     )
 
 
+def _trusted_clipboard_paste(page: Any, body: Any, manuscript: str) -> None:
+    """Paste rich manuscript through Chromium's clipboard and a real keyboard paste.
+
+    note's current editor ignores an untrusted synthetic ClipboardEvent while still letting
+    dispatchEvent return successfully.  Write the already-approved HTML/plain payload to the
+    browser clipboard, then let Chromium generate the trusted paste event from Control+V.
+    Permissions are scoped to note.com's HTTPS origin only; no private note API is used.
+    """
+    safe_html = base._markdown_to_safe_html(manuscript)
+    base._clear_body_for_replacement(page, body)
+
+    parsed = urlparse(str(getattr(page, "url", "") or ""))
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or hostname != "note.com":
+        raise base.NoteDraftError("trusted note paste requires the exact HTTPS note.com origin")
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    try:
+        page.context.grant_permissions(
+            ["clipboard-read", "clipboard-write"],
+            origin=origin,
+        )
+        page.evaluate(
+            """async payload => {
+                if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+                    throw new Error('browser clipboard API unavailable');
+                }
+                const item = new ClipboardItem({
+                    'text/html': new Blob([payload.html], {type: 'text/html'}),
+                    'text/plain': new Blob([payload.text], {type: 'text/plain'}),
+                });
+                await navigator.clipboard.write([item]);
+            }""",
+            {"html": safe_html, "text": manuscript},
+        )
+    except Exception as exc:
+        raise base.NoteDraftError("Could not stage the note manuscript in the browser clipboard") from exc
+
+    body.click()
+    try:
+        page.keyboard.press("Control+V")
+    except Exception as exc:
+        raise base.NoteDraftError("Could not issue the trusted note paste keyboard action") from exc
+    page.wait_for_timeout(1200)
+
+
 def _is_automatic_noop_error(exc: BaseException) -> bool:
     """Return True only for an automatic run whose safe candidate set is empty."""
     if base._normalize_sync_id(os.environ.get("NOTE_TARGET_SYNC_ID", "")):
@@ -193,6 +240,7 @@ def install() -> None:
     run185.install()
     base._manuscript_from_blocks = _manuscript_from_blocks
     base._prepare_article = _prepare_article
+    base._paste_manuscript = _trusted_clipboard_paste
 
 
 def main() -> None:
