@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+import note_delivery_runtime as delivery_runtime
 import note_publication_reconcile as reconcile
 from note_delivery_ledger import (
     DeliveryState,
@@ -343,5 +344,200 @@ def test_b05_queue_applied_then_result_failure_is_reconstructible_from_ledger_an
             _queue_binding(), expected_sync_id="a" * 32, draft_id="opaque_draft_1"
         )
         retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
-        assert retry.state == DeliveryState.DRAFT_VERIFIED
+        assert retry.state == DeliveryState.QUEUE_CONFIRMED
         assert base.create_count == 1
+
+
+def test_b02_retry_after_queue_timeout_total_drafts_is_one(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        bindings = iter([
+            _queue_binding(posting="投稿待ち", draft_id=""),
+            _queue_binding(),
+        ])
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_args, **_kwargs: next(bindings),
+        )
+        first = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        second = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert first.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+        assert second.state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b03_retry_after_queue_5xx_total_drafts_is_one(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        bindings = iter([
+            _queue_binding(posting="投稿待ち", draft_id=""),
+            _queue_binding(),
+        ])
+        monkeypatch.setattr(reconcile, "patch_and_readback_draft_binding", lambda *_a, **_k: next(bindings))
+        create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert retry.state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b04_retry_at_each_crash_boundary_never_creates_second_draft(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    for mode, expected_state in (
+        ("after_id_before_verify", DeliveryState.DRAFT_CREATED),
+        ("accept_before_id", DeliveryState.CREATION_UNKNOWN),
+    ):
+        with TemporaryDirectory() as tmp:
+            base = _creation_base(tmp, mode=mode)
+            prepared = prepare_delivery(base, "a" * 32)
+            ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+            with pytest.raises(base.NoteDraftError):
+                create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+            base.mode = "success"
+            retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+            assert retry.state == expected_state
+            assert base.create_count == 1
+
+
+def test_b05_reporting_failure_reconstructs_result_without_create(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+
+        class FailOnceConfirmationLedger(SQLiteDeliveryLedger):
+            failed = False
+
+            def record_queue_confirmed(self, *args, **kwargs):
+                if not self.failed:
+                    self.failed = True
+                    raise LedgerUnavailableError("simulated result persistence failure")
+                return super().record_queue_confirmed(*args, **kwargs)
+
+        ledger = FailOnceConfirmationLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(reconcile, "patch_and_readback_draft_binding", lambda *_a, **_k: _queue_binding())
+        with pytest.raises(LedgerUnavailableError):
+            create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        result = delivery_runtime.reconcile_exact_delivery(
+            base,
+            ledger,
+            sync_id="a" * 32,
+            note_target="trendhub-biz",
+        )
+        assert result["status"] == "queue_confirmed"
+        assert result["draft_id"] == "opaque_draft_1"
+        assert base.create_count == 1
+
+
+def test_b06_same_operation_key_retry_total_drafts_is_one(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(reconcile, "patch_and_readback_draft_binding", lambda *_a, **_k: _queue_binding())
+        first = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        second = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a-retry")
+        assert first.operation_key == second.operation_key
+        assert second.state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b07_process_restart_with_reopened_sqlite_total_drafts_is_one(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        path = Path(tmp) / "ledger.sqlite3"
+        first_ledger = SQLiteDeliveryLedger(path)
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_a, **_k: _queue_binding(posting="投稿待ち", draft_id=""),
+        )
+        first = create_or_resume_delivery(base, first_ledger, prepared, run_correlation_id="run-a")
+        assert first.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+
+        reopened = SQLiteDeliveryLedger(path)
+        monkeypatch.setattr(reconcile, "patch_and_readback_draft_binding", lambda *_a, **_k: _queue_binding())
+        retry = create_or_resume_delivery(base, reopened, prepared, run_correlation_id="run-b")
+        assert retry.state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b08_second_worker_same_logical_delivery_cannot_create(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        path = Path(tmp) / "ledger.sqlite3"
+        first_ledger = SQLiteDeliveryLedger(path)
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_a, **_k: _queue_binding(posting="投稿待ち", draft_id=""),
+        )
+        create_or_resume_delivery(base, first_ledger, prepared, run_correlation_id="worker-a")
+        second_worker = SQLiteDeliveryLedger(path)
+        monkeypatch.setattr(reconcile, "patch_and_readback_draft_binding", lambda *_a, **_k: _queue_binding())
+        result = create_or_resume_delivery(base, second_worker, prepared, run_correlation_id="worker-b")
+        assert result.state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b09_same_revision_different_run_reconciles_existing_record(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        monkeypatch.setattr(
+            reconcile,
+            "patch_and_readback_draft_binding",
+            lambda *_a, **_k: _queue_binding(posting="投稿待ち", draft_id=""),
+        )
+        create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        monkeypatch.setattr(reconcile, "patch_and_readback_draft_binding", lambda *_a, **_k: _queue_binding())
+        result = delivery_runtime.reconcile_exact_delivery(
+            base,
+            ledger,
+            sync_id="a" * 32,
+            note_target="trendhub-biz",
+        )
+        assert result["status"] == "queue_confirmed"
+        assert result["record"].state == DeliveryState.QUEUE_CONFIRMED
+        assert base.create_count == 1
+
+
+def test_b17_new_revision_with_unresolved_old_intent_cannot_create(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        old_prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        old_intent = ledger.begin_or_load(old_prepared.snapshot, run_correlation_id="run-a")
+        assert old_intent.creation_authorized
+
+        base.article["manuscript_sha256"] = "9" * 64
+        changed = prepare_delivery(base, "a" * 32)
+        result = create_or_resume_delivery(base, ledger, changed, run_correlation_id="run-b")
+        assert result.operation_key == old_intent.record.operation_key
+        assert result.state == DeliveryState.CREATE_INTENT_RECORDED
+        assert base.create_count == 0
+
+
+def test_b18_unavailable_ledger_overrides_eligible_queue_and_creates_zero(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        impossible = SQLiteDeliveryLedger(Path("/dev/null") / "delivery.sqlite3")
+        with pytest.raises(LedgerUnavailableError):
+            create_or_resume_delivery(base, impossible, prepared, run_correlation_id="run-a")
+        assert base.create_count == 0
