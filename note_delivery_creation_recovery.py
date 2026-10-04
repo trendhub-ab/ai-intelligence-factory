@@ -19,13 +19,20 @@ import sqlite3
 from typing import Any, Iterable
 
 import note_delivery_runtime as delivery_runtime
+import note_document_contract as note_contract
+import note_document_dom as note_dom
 import note_publication_reconcile as reconcile
 import run187_note_editor_readiness as editor_readiness
 import run190_note_persistent_cloud as cloud
 import run194_note_current_contract as current_contract
 import run222_note_presentation_integrity as presentation
 import run291_note_private_draft_audit as draft_audit
-from note_delivery_ledger import DeliveryRecord, DeliveryState, SQLiteDeliveryLedger
+from note_delivery_ledger import (
+    DeliveryRecord,
+    DeliveryState,
+    SQLiteDeliveryLedger,
+    canonical_document_sha256,
+)
 
 
 CONFIRM_TOKEN = "AUDIT_CREATION_UNKNOWN"
@@ -99,21 +106,62 @@ def require_unique_recovery_match(matches: Iterable[dict[str, Any]]) -> dict[str
     return dict(items[0])
 
 
-def _expected_article(sync_id: str) -> dict[str, Any]:
-    """Reconstruct the exact current note-editor presentation without generating new content."""
+def _expected_prepared_delivery(record: DeliveryRecord) -> delivery_runtime.PreparedDelivery:
+    """Rebuild the current delivery and require exact equality with the ambiguous attempt."""
     current_contract.install()
     presentation.install_note(current_contract.base)
+
+    previous_target = os.environ.get("NOTE_TARGET_IDENTITY")
+    os.environ["NOTE_TARGET_IDENTITY"] = record.snapshot.note_target
     try:
-        article = dict(current_contract.base._prepare_article(sync_id))
-    except Exception as exc:
-        raise CreationRecoveryAuditError("current publication-contract target is not recoverable") from exc
+        try:
+            prepared = delivery_runtime.prepare_delivery(
+                current_contract.base,
+                record.snapshot.sync_id,
+            )
+        except Exception as exc:
+            raise CreationRecoveryAuditError(
+                "current publication-contract target is not recoverable"
+            ) from exc
+    finally:
+        if previous_target is None:
+            os.environ.pop("NOTE_TARGET_IDENTITY", None)
+        else:
+            os.environ["NOTE_TARGET_IDENTITY"] = previous_target
+
+    if prepared.snapshot != record.snapshot:
+        raise CreationRecoveryAuditError(
+            "current delivery snapshot differs from the ambiguous creation attempt"
+        )
+    article = dict(prepared.article)
     if not str(article.get("title") or "").strip() or not str(article.get("manuscript") or "").strip():
         raise CreationRecoveryAuditError("current publication-contract target is incomplete")
-    return article
+    return prepared
 
 
-def _discover_verified_matches(article: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
-    """Inspect recent existing edit routes read-only and return only fully verified matches."""
+def _current_canonical_sha256(page: Any) -> str:
+    """Read the editor DOM through the same lossless semantic path used by P0-A."""
+    try:
+        title_field = draft_audit.note_base._find_title(page)
+        body = draft_audit.note_base._find_body(page, title_field)
+        snapshot = note_dom.snapshot_note_body(body)
+        document = note_dom.document_from_note_snapshot(
+            snapshot,
+            allowed_normalizations=(
+                note_contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+                note_dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+            ),
+        )
+        return canonical_document_sha256(document)
+    except Exception as exc:
+        raise CreationRecoveryAuditError("private draft canonical body is unavailable") from exc
+
+
+def _discover_verified_matches(
+    article: dict[str, Any],
+    record: DeliveryRecord,
+) -> tuple[list[dict[str, Any]], int]:
+    """Inspect recent existing edit routes read-only and return only losslessly verified matches."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -153,14 +201,20 @@ def _discover_verified_matches(article: dict[str, Any]) -> tuple[list[dict[str, 
                         )
                     except draft_audit.PrivateDraftAuditError:
                         continue
+                    if _current_canonical_sha256(page) != record.snapshot.canonical_document_sha256:
+                        continue
+
+                    verified_editor_url = str(page.url or "").strip()
                     draft_id = reconcile.draft_identity_from_url(
-                        candidate,
+                        verified_editor_url,
                         error_type=CreationRecoveryAuditError,
                     )
                     matches.append(
                         {
                             "draft_id": draft_id,
-                            "editor_route_hash": hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12],
+                            "editor_route_hash": hashlib.sha256(
+                                verified_editor_url.encode("utf-8")
+                            ).hexdigest()[:12],
                         }
                     )
                 except CreationRecoveryAuditError:
@@ -188,12 +242,13 @@ def run(
         raise CreationRecoveryAuditError("exact private recovery identity is required")
 
     ledger = SQLiteDeliveryLedger(Path(ledger_path).expanduser())
-    require_creation_unknown_record(
+    record = require_creation_unknown_record(
         ledger,
         sync_id=normalized_sync,
         note_target=normalized_target,
     )
-    article = _expected_article(normalized_sync)
+    prepared = _expected_prepared_delivery(record)
+    article = dict(prepared.article)
 
     base_result: dict[str, Any] = {
         "status": "recovery_ready" if prepare_only else "recovery_not_run",
@@ -208,7 +263,7 @@ def run(
     if prepare_only:
         return base_result
 
-    matches, candidate_count = _discover_verified_matches(article)
+    matches, candidate_count = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
     match = require_unique_recovery_match(matches)
