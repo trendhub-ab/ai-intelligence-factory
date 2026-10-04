@@ -159,6 +159,14 @@ class Run298InPlaceTests(unittest.TestCase):
         self.assertTrue(markers["sources_before_cta"])
         self.assertFalse(markers["duplicate_title_prefix"])
 
+    def test_refresh_authorizes_exact_ledger_binding_before_any_paste(self):
+        source = inspect.getsource(r298.refresh_existing_private_draft)
+        self.assertIn("require_inplace_update_allowed", source)
+        self.assertIn("_draft_edit_url", source)
+        self.assertNotIn("_find_one_existing_route(", source)
+        self.assertLess(source.index("require_inplace_update_allowed"), source.index("_paste_manuscript"))
+        self.assertLess(source.index("current_canonical_sha256"), source.index("_paste_manuscript"))
+
 
 if __name__ == "__main__":
     unittest.main()
