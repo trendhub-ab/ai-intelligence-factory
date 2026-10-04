@@ -1,5 +1,5 @@
 name: P0-B Eyecatch Fallback [OPS ONE-SHOT]
-# attempt: red-english-token-guard-v3
+# attempt: red-provider-free-plan-v4
 
 on:
   push:
@@ -51,7 +51,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: RED — reproduce unsatisfiable English token guard
+      - name: RED — reproduce bounded English eyecatch contract
         run: python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
 
       - name: Verify bounded provider route
