@@ -47,10 +47,11 @@
           "budget": 18,
           "by_kind": {
             "eyecatch_layout": 4,
-            "global_calibration": 2
+            "global_calibration": 2,
+            "product_review": 1
           },
           "exhausted": false,
-          "used": 6
+          "used": 7
         }
       }
     }
@@ -59,5 +60,5 @@
   "quota_date": "2026-10-04",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-04T15:30:33.683096+00:00"
+  "updated_at": "2026-10-04T15:31:17.035413+00:00"
 }
