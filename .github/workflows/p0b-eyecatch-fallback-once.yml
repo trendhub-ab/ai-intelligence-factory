@@ -1,5 +1,5 @@
-name: P0-B Eyecatch Finalize [OPS ONE-SHOT]
-# attempt: exact-provider-free-finalize-v6
+name: P0-B Eyecatch Diagnostic [OPS ZERO-MUTATION]
+# attempt: exact-runtime-subheadline-diagnostic-v7
 
 on:
   push:
@@ -11,14 +11,10 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ai-intelligence-gemini-budget
-  cancel-in-progress: false
-
 jobs:
-  finalize:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       TARGET_TITLE: 'Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows'
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -28,104 +24,81 @@ jobs:
       NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
       NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
       NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-      EYECATCH_GITHUB_BRANCH: 'runtime-state'
-      GH_PAT: ${{ secrets.GH_PAT }}
 
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
-      - name: Install production dependencies and fonts
+      - name: Install diagnostic dependencies and fonts
         run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk fonts-lato
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Re-verify bounded provider-free contract before mutation
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y fonts-noto-cjk fonts-lato >/dev/null
+          python -m pip install --upgrade pip >/dev/null
+          pip install -r requirements.txt >/dev/null
+      - name: Resolve exact Ready and inspect runtime layout inputs only
         run: |
-          python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
-          python - <<'PY'
-          import ops_ready_eyecatch_finalize as ops
-          assert ops.PROVIDER_MODE == 'provider_free_exact_source_compression'
-          assert ops.COMPRESSED_EYECATCH_TITLE == 'Argo-Bench: Data Agents on Enterprise-Scale Workflows'
-          assert 'Evaluating' not in ops.COMPRESSED_EYECATCH_TITLE
-          PY
-
-      - name: Resolve exactly one current Ready article with no eyecatch
-        id: resolve
-        run: |
-          set -euo pipefail
           python - <<'PY'
           import json, os, re, urllib.request
+          from PIL import Image, ImageDraw
+          import note_ready_sync as ready_sync
+          import ready_eyecatch_finalize as ready_finalize
+          import run180_eyecatch_semantic_layout as semantic
+          import ops_ready_eyecatch_finalize as ops
+
           token = os.environ['NOTION_API_KEY'].strip()
           ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
           title = os.environ['TARGET_TITLE']
-          if not token or not ds:
-              raise SystemExit('Missing Notion configuration')
-          payload = {
-              'page_size': 10,
-              'filter': {'and': [
-                  {'property': '記事名', 'title': {'equals': title}},
-                  {'property': '記事状態', 'select': {'equals': 'Ready'}},
-              ]},
-          }
+          payload = {'page_size': 10, 'filter': {'and': [
+              {'property': '記事名', 'title': {'equals': title}},
+              {'property': '記事状態', 'select': {'equals': 'Ready'}},
+          ]}}
           req = urllib.request.Request(
               f'https://api.notion.com/v1/data_sources/{ds}/query',
-              data=json.dumps(payload).encode(),
-              method='POST',
-              headers={
-                  'Authorization': f'Bearer {token}',
-                  'Content-Type': 'application/json',
-                  'Notion-Version': os.environ['NOTION_API_VERSION'],
-              },
-          )
+              data=json.dumps(payload).encode(), method='POST',
+              headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json',
+                       'Notion-Version': os.environ['NOTION_API_VERSION']})
           with urllib.request.urlopen(req, timeout=30) as r:
-              data = json.load(r)
-          rows = data.get('results') or []
+              rows = (json.load(r).get('results') or [])
           if len(rows) != 1:
-              raise SystemExit(f'Expected exactly one current Ready article, got {len(rows)}')
+              raise SystemExit(f'expected exactly one Ready row, got {len(rows)}')
           row = rows[0]
-          files = ((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []
-          if files:
-              raise SystemExit('Eyecatch is already present; refusing duplicate finalization')
+          if (((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []):
+              raise SystemExit('eyecatch unexpectedly present')
           sync_id = re.sub(r'[^0-9a-fA-F]', '', str(row.get('id') or '')).lower()
-          if not re.fullmatch(r'[0-9a-f]{32}', sync_id):
-              raise SystemExit('Invalid resolved sync identity')
           print(f'::add-mask::{sync_id}')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'sync_id={sync_id}\n')
-          PY
 
-      - name: Finalize exact Ready eyecatch provider-free
-        env:
-          TARGET_SYNC_ID: ${{ steps.resolve.outputs.sync_id }}
-        run: |
-          set -o pipefail
-          python ops_ready_eyecatch_finalize.py --sync-id "$TARGET_SYNC_ID" | tee "${RUNNER_TEMP}/ready-eyecatch.json"
+          page = ready_finalize._source_page(sync_id)
+          state = ready_sync._source_state(page)
+          manuscript, _ = ready_sync._source_ready_manuscript_for_visual_repair(sync_id, title)
+          summary = ready_finalize._reader_summary(manuscript)
+          source_title = semantic._source_title_for_direction(title)
+          existing_headline = semantic.ee.editorial_hook_from_title(title, max_chars=48)
+          subheadline = semantic.ee.editorial_subheadline(summary, existing_headline)
 
-      - name: Verify zero-article and zero-note mutation result
-        env:
-          RESULT_FILE: ${{ runner.temp }}/ready-eyecatch.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8').splitlines()[-1])
-          if result.get('status') != 'ready_eyecatch_finalized':
-              raise SystemExit(f"unexpected status: {result.get('status')}")
-          for key in ('current_asset', 'body_unchanged', 'title_unchanged'):
-              if result.get(key) is not True:
-                  raise SystemExit(f'invariant failed: {key}')
-          if result.get('article_regeneration') is not False:
-              raise SystemExit('article regeneration boundary crossed')
-          if result.get('note_mutation') is not False or result.get('public_release') is not False:
-              raise SystemExit('note/publication boundary crossed')
-          if result.get('ops_provider_mode') != 'provider_free_exact_source_compression':
-              raise SystemExit('provider mode drifted')
-          if result.get('ops_model_calls') != 0:
-              raise SystemExit('unexpected model call in provider-free lane')
+          ops.semantic_layout._required_source_tokens = ops._bounded_required_source_tokens
+          plan = ops._bounded_request_layout_plan(None, source_title, subheadline)
+          probe = Image.new('RGB', (semantic.ee.WIDTH, semantic.ee.HEIGHT), (255,255,255))
+          draw = ImageDraw.Draw(probe)
+          fit = {}
+          for size in (28,26,24,22):
+              font = semantic.ee._jp_font(size, bold=True)
+              lines = semantic.ee._wrap_chars(draw, subheadline, font, semantic.SUB_MAX_WIDTH, 2)
+              fit[str(size)] = {
+                  'line_count': len(lines),
+                  'canonical_equal': semantic.r178._canonical_partition_text(''.join(lines)) == semantic.r178._canonical_partition_text(subheadline),
+                  'max_width_ok': all(semantic.ee._text_width(draw, line, font) <= semantic.SUB_MAX_WIDTH for line in lines),
+              }
+          print(json.dumps({
+              'source_title_exact': source_title == ops.EXACT_SOURCE_TITLE,
+              'summary_chars': len(summary),
+              'subheadline_chars': len(subheadline),
+              'subheadline_canonical_chars': len(semantic.r178._canonical_partition_text(subheadline)),
+              'fit': fit,
+              'bounded_plan_available': isinstance(plan, dict),
+              'eyecatch_mutation': False,
+              'note_mutation': False,
+              'public_release': False,
+              'model_calls': 0,
+          }, ensure_ascii=False, sort_keys=True))
           PY
