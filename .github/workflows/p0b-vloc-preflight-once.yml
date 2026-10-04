@@ -1,4 +1,4 @@
-name: P0-B VLoc Preflight [OPS ONE-SHOT]
+name: P0-B Current Eligible Preflight [OPS ONE-SHOT]
 
 on:
   push:
@@ -18,11 +18,6 @@ jobs:
       EXPECTED_MAIN_SHA: '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
       EXPECTED_PR_HEAD: '8483e525d3902f3045c50761b6c6f57e765add9e'
       TARGET_REF: 'design/p0-b-durable-delivery-ledger'
-      TARGET_ARTICLE_TITLE: 'Vulnerability Localization Benchmark: Measuring Agentic Security Analysis at Repository Scale'
-      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-      NOTION_API_VERSION: '2026-03-11'
-      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-      NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
       GH_TOKEN: ${{ secrets.GH_PAT }}
 
     steps:
@@ -38,77 +33,11 @@ jobs:
           test "$pr_draft" = 'true' || { echo '::error::PR is no longer draft'; exit 1; }
           test "$pr_merged" = 'false' || { echo '::error::PR already merged'; exit 1; }
 
-      - name: Resolve exact VLoc source without exposing identity
-        id: resolve
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json, os, re, urllib.request
-
-          token = os.environ['NOTION_API_KEY'].strip()
-          version = os.environ['NOTION_API_VERSION']
-          source_ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
-          queue_ds = os.environ['NOTE_READY_DATA_SOURCE_ID'].strip()
-          title = os.environ['TARGET_ARTICLE_TITLE']
-
-          def query(ds, payload):
-              req = urllib.request.Request(
-                  f'https://api.notion.com/v1/data_sources/{ds}/query',
-                  data=json.dumps(payload).encode(), method='POST',
-                  headers={
-                      'Authorization': f'Bearer {token}',
-                      'Content-Type': 'application/json',
-                      'Notion-Version': version,
-                  },
-              )
-              with urllib.request.urlopen(req, timeout=30) as response:
-                  return json.load(response).get('results') or []
-
-          source_rows = query(source_ds, {
-              'page_size': 10,
-              'filter': {'and': [
-                  {'property': '記事名', 'title': {'equals': title}},
-                  {'property': '記事状態', 'select': {'equals': 'Ready'}},
-              ]},
-          })
-          if len(source_rows) != 1:
-              raise SystemExit(f'Expected one exact Ready source, got {len(source_rows)}')
-          source = source_rows[0]
-          files = ((source.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []
-          if len(files) != 1:
-              raise SystemExit('Exact Ready source must have exactly one eyecatch')
-          sync_id = re.sub(r'[^0-9a-fA-F]', '', str(source.get('id') or '')).lower()
-          if not re.fullmatch(r'[0-9a-f]{32}', sync_id):
-              raise SystemExit('Resolved source identity is invalid')
-          print(f'::add-mask::{sync_id}')
-
-          queue_rows = query(queue_ds, {
-              'page_size': 10,
-              'filter': {'and': [
-                  {'property': '同期ID', 'rich_text': {'equals': sync_id}},
-                  {'property': '品質状態', 'select': {'equals': 'Ready'}},
-                  {'property': '投稿状態', 'select': {'equals': '投稿待ち'}},
-                  {'property': 'note下書きID', 'rich_text': {'is_empty': True}},
-                  {'property': 'note公開URL', 'url': {'is_empty': True}},
-              ]},
-          })
-          if len(queue_rows) != 1:
-              raise SystemExit(f'Expected one exact Ready/投稿待ち undelivered queue row, got {len(queue_rows)}')
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'sync_id={sync_id}\n')
-          print('Exact VLoc Ready/投稿待ち source and undelivered queue binding confirmed.')
-          PY
-
-      - name: Dispatch prepare-only validation
-        env:
-          TARGET_SYNC_ID: ${{ steps.resolve.outputs.sync_id }}
+      - name: Dispatch current automatic prepare-only selection
         run: |
           set -euo pipefail
           test -n "${GH_TOKEN:-}" || { echo '::error::GH_PAT missing'; exit 1; }
-          test -n "${TARGET_SYNC_ID:-}" || { echo '::error::target identity missing'; exit 1; }
           gh workflow run note-create-draft.yml --repo "$GITHUB_REPOSITORY" --ref "$TARGET_REF" \
             -f confirm=CREATE_NOTE_DRAFT \
-            -f sync_id="$TARGET_SYNC_ID" \
             -f prepare_only=true
-          echo 'Prepare-only P0-B validation dispatch submitted; no VM/live mutation requested.'
+          echo 'Current-head automatic prepare-only selection submitted; no VM/live mutation requested.'
