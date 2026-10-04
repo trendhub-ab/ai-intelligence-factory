@@ -1,0 +1,72 @@
+name: P0-B B01 Live Proof Dispatch [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-b01-live-proof-20261005
+    paths:
+      - .github/workflows/p0b-b01-live-proof-dispatch.yml
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: p0b-b01-live-proof-dispatch-20261005
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      github.run_attempt == 1 &&
+      github.ref_name == 'ops/p0b-b01-live-proof-20261005'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact reviewed P0-B head
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          EXPECTED_SHA: 9635d2b1643f1e065605389180a75721bfd84f50
+          TARGET_BRANCH: design/p0-b-durable-delivery-ledger
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" || { echo '::error::GH_PAT is required'; exit 1; }
+          actual="$(gh api "/repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha')"
+          test "$actual" = "$EXPECTED_SHA" || {
+            echo "::error::P0-B head moved; refusing B01 dispatch"
+            exit 1
+          }
+
+      - name: Dispatch one private-draft B01 attempt on P0-B branch
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/payload.json <<'JSON'
+          {
+            "ref": "design/p0-b-durable-delivery-ledger",
+            "inputs": {
+              "confirm": "CREATE_NOTE_DRAFT",
+              "sync_id": "",
+              "prepare_only": "false"
+            }
+          }
+          JSON
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/note-create-draft.yml/dispatches" \
+            --input /tmp/payload.json
+
+      - name: Record safe dispatch
+        run: |
+          {
+            echo '### P0-B B01 live proof dispatch'
+            echo '- target workflow: `note-create-draft.yml`'
+            echo '- target ref: `design/p0-b-durable-delivery-ledger`'
+            echo '- reviewed head pinned: `9635d2b1643f1e065605389180a75721bfd84f50`'
+            echo '- candidate selection: `fail-closed next eligible Ready`'
+            echo '- prepare-only: `false`'
+            echo '- public release authorized: `false`'
+            echo '- model calls added by bridge: `0`'
+          } >> "$GITHUB_STEP_SUMMARY"
