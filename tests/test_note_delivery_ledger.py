@@ -1,4 +1,7 @@
+import json
+import os
 import sqlite3
+import subprocess
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -6,7 +9,6 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from note_delivery_ledger_preflight import read_only_delivery_gate
 from note_document_contract import (
     CONTRACT_VERSION,
     NORMALIZATION_POLICY_VERSION,
@@ -26,6 +28,9 @@ from note_delivery_ledger import (
     operation_key,
     revision_key,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _document(text: str = "Café") -> Document:
@@ -270,6 +275,28 @@ def test_ledger_unavailable_b18_is_fail_closed():
         SQLiteDeliveryLedger(impossible).initialize()
 
 
+def _run_read_only_gate(path: Path, *, sync_id: str, note_target: str, result_file: Path):
+    env = dict(os.environ)
+    env.update(
+        {
+            "NOTE_DELIVERY_LEDGER_PATH": str(path),
+            "NOTE_TARGET_SYNC_ID": sync_id,
+            "NOTE_TARGET_IDENTITY": note_target,
+            "NOTE_DRAFT_RESULT_FILE": str(result_file),
+        }
+    )
+    completed = subprocess.run(
+        ["bash", str(ROOT / "note_delivery_ledger_preflight.sh")],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert sync_id not in completed.stdout
+    return json.loads(result_file.read_text(encoding="utf-8"))
+
+
 def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
     with TemporaryDirectory() as tmp:
         ledger = _file_ledger(tmp)
@@ -283,10 +310,11 @@ def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
         )
         before = ledger.get_by_operation_key(blocked.operation_key)
 
-        result = read_only_delivery_gate(
+        result = _run_read_only_gate(
             ledger.path,
             sync_id=blocked.snapshot.sync_id,
             note_target=blocked.snapshot.note_target,
+            result_file=Path(tmp) / "blocked.json",
         )
         assert result == {
             "status": "ledger_blocked_ambiguous",
@@ -300,10 +328,11 @@ def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
         assert after.state_version == before.state_version
         assert after.attempt_count == before.attempt_count
 
-        clean = read_only_delivery_gate(
+        clean = _run_read_only_gate(
             ledger.path,
             sync_id="sync-002",
             note_target=blocked.snapshot.note_target,
+            result_file=Path(tmp) / "clean.json",
         )
         assert clean == {
             "status": "ledger_clean_new",
