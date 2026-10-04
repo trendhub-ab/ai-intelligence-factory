@@ -7,6 +7,10 @@ body before save, saves and reopens it, derives the stable private draft identit
 edit URL, reconstructs the canonical private edit route, reopens that route, and verifies the
 same title/body canonically again.
 
+The fixture deliberately excludes inline code because real-browser evidence on 2026-10-04
+proved that note's HTML paste path flattens it. Production now rejects inline code before
+browser mutation until a preserving note path is proven. Fenced code remains in this proof.
+
 No model calls. No Notion reads/writes. No public release action. No private URL/identity/body
 is printed or written to the result receipt.
 """
@@ -38,8 +42,6 @@ FIXTURE_SOURCE = """## Canonical browser proof
 3. compare
 
 リンク: [OpenAI](https://openai.com/)
-
-inline code: `x=1`
 
 > private draft only
 
@@ -137,7 +139,8 @@ def run() -> dict[str, object]:
             persisted_title = _title_value(base._find_title(page))
             if persisted_title != FIXTURE_TITLE:
                 raise ProofError("stable-identity reopen title mismatch")
-            reopened_body = base._find_body(page, base._find_title(page))
+            reopened_title_field = base._find_title(page)
+            reopened_body = base._find_body(page, reopened_title_field)
             base._verify_body_content(reopened_body, manuscript)
         finally:
             context.close()
