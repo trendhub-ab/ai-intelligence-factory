@@ -1,4 +1,4 @@
-name: P0-B Callback Contract RED [OPS]
+name: P0-B Callback Contract GREEN [OPS]
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  targeted-red:
+  targeted-green:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
