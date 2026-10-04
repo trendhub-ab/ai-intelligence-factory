@@ -1,4 +1,4 @@
-name: P0-A/B2 Isolated Private Browser Proof
+name: P0-A/B2 Ephemeral Insertion DOM Diagnosis
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: p0a-b2-isolated-private-browser-proof
+  group: p0a-b2-ephemeral-insertion-diagnosis
   cancel-in-progress: false
 
 jobs:
-  contract-check:
+  static-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,33 +23,24 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install deterministic dependencies
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install requests
-      - name: Check isolated proof contract and privacy boundary
-        run: |
-          python -m py_compile p0a_b2_private_browser_proof.py
+          python -m py_compile p0a_b2_private_insertion_diagnose.py
           python - <<'PY'
           from pathlib import Path
-          import note_document_contract as contract
-          import p0a_b2_private_browser_proof as proof
-          import run222_note_presentation_integrity as run222
-          import run417_note_body_verification as run417
-
-          source = Path('p0a_b2_private_browser_proof.py').read_text(encoding='utf-8').lower()
-          for forbidden in ('notion_api_key', 'api.notion.com', 'publish_article', 'release_article'):
+          source = Path('p0a_b2_private_insertion_diagnose.py').read_text(encoding='utf-8').lower()
+          for forbidden in (
+              '_save_draft_and_verify(', 'requests.post(', 'requests.patch(',
+              'import note_ready_sync', 'notion_api_key', 'api.notion.com',
+              'publish_article', 'release_article', 'screenshot('
+          ):
               assert forbidden not in source, forbidden
-          manuscript = run222.prepare_note_editor_manuscript(proof.FIXTURE_SOURCE, proof.FIXTURE_TITLE)
-          assert '```python' not in manuscript
-          expected = contract.parse_presentation_markdown(manuscript)
-          actual = contract.parse_safe_html(run417.markdown_to_safe_html(manuscript))
-          assert contract.compare_documents(expected, actual)['canonical_match'] is True
-          print('isolated_proof_contract=PASS')
+          print('ephemeral_insertion_static_guard=PASS')
           PY
 
   start-cloud-vm:
-    needs: contract-check
+    needs: static-check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -80,10 +71,10 @@ jobs:
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
 
-  browser-proof:
-    needs: [contract-check, start-cloud-vm]
+  insertion-diagnosis:
+    needs: [static-check, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -95,39 +86,16 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
-      - name: Run browser lifecycle and B2 identity regressions
-        run: |
-          python -m unittest tests.test_run190_note_persistent_cloud -v
-          python -m unittest tests.test_p0b2_note_draft_identity -v
-      - name: Create exactly one isolated private draft and prove canonical save/reopen plus stable identity reopen
+      - name: Paste synthetic fixture once without save and emit only structural diagnostics
         env:
-          P0A_B2_PROOF_RESULT_FILE: ${{ runner.temp }}/p0a_b2_private_browser_proof.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python p0a_b2_private_browser_proof.py
-      - name: Emit content-free proof receipt
-        if: success()
-        env:
-          RESULT_FILE: ${{ runner.temp }}/p0a_b2_private_browser_proof.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          allowed = (
-              'status', 'zero_gemini_calls', 'notion_access', 'public_release',
-              'private_draft_created', 'canonical_insert_match',
-              'canonical_save_reopen_match', 'stable_identity_observed',
-              'stable_identity_reopen_match',
-          )
-          safe = {key: result.get(key) for key in allowed}
-          print(json.dumps(safe, sort_keys=True))
-          PY
+        run: xvfb-run -a python p0a_b2_private_insertion_diagnose.py
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [contract-check, start-cloud-vm, browser-proof]
+    needs: [static-check, start-cloud-vm, insertion-diagnosis]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
