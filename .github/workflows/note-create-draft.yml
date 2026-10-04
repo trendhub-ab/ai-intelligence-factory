@@ -86,6 +86,7 @@ jobs:
       - name: Summarize preflight result
         env:
           RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
+          PREPARE_ONLY: ${{ inputs.prepare_only }}
         run: |
           python - <<'PY'
           import json, os
@@ -95,6 +96,7 @@ jobs:
               fh.write('### note draft zero-VM preflight\n')
               fh.write(f'- status: `{result.get("status", "unknown")}`\n')
               fh.write(f'- VM required: `{result.get("should_start_vm") is True}`\n')
+              fh.write(f'- prepare-only mode: `{os.environ.get("PREPARE_ONLY", "false").strip().lower()}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
               if result.get('status') == 'no_eligible_ready':
                   fh.write('- No publish-safe Ready article exists, so the Chrome VM was not started.\n')
