@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-04T15:27:40.487520+00:00",
+  "updated_at": "2026-10-04T16:34:42.863862+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2610.02199",
@@ -716,6 +716,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 66.95
+    },
+    {
+      "key": "https://casp.ac/reports/intelligence-explosion",
+      "deferred_at": "2026-10-04T16:34:42.863611+00:00",
+      "expires_at": "2026-10-18T16:34:42.863611+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Understanding Frontier Artificial Intelligence",
+        "originalTitle": "Understanding Frontier Artificial Intelligence",
+        "displayName": "Understanding Frontier Artificial Intelligence",
+        "sourceLanguage": "en",
+        "url": "https://casp.ac/reports/intelligence-explosion",
+        "description": "Understanding Frontier Artificial Intelligence",
+        "stargazerCount": 49,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-03T07:06:02Z",
+        "sourceContext": "HN points=49 comments=88 matched_query=\"artificial intelligence\"",
+        "primaryUrl": "https://casp.ac/reports/intelligence-explosion",
+        "sourceDetails": {
+          "hn_id": "49942002",
+          "hn_url": "https://news.ycombinator.com/item?id=49942002",
+          "external_url": "https://casp.ac/reports/intelligence-explosion",
+          "comments": 88,
+          "matched_query": "\"artificial intelligence\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3ef479ff-dca9-81b8-8323-d31ee4ed6648",
+      "score": 62,
+      "reason": "知能爆発やAI将来予測の総合レポート",
+      "commercial_score": 55,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "OTHER",
+      "deep_dive_priority_score": 59.55
     }
   ]
 }
