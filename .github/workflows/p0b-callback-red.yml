@@ -1,0 +1,24 @@
+name: P0-B Callback Contract RED [OPS]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0b-callback-red.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: design/p0-b-durable-delivery-ledger
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests pytest
+      - name: Run callback regression only
+        run: python -m pytest tests/test_p0b_eyecatch_callback_forwarding.py -q
