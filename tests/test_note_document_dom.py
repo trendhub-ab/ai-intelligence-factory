@@ -169,9 +169,10 @@ def test_real_note_blockquote_figure_wrapper_requires_named_normalization():
         d.document_from_note_snapshot(snap)
     assert exc.value.code == 'unsupported_note_dom'
 
+    assert d.DOM_NORMALIZATION_POLICY_VERSION == 'p0a-note-dom-normalization-v1'
     actual = d.document_from_note_snapshot(
         snap,
-        allowed_normalizations=(c.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,),
+        allowed_normalizations=(d.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,),
     )
     expected = c.parse_presentation_markdown('> 引用')
     assert c.compare_documents(expected, actual)['canonical_match'] is True
@@ -199,7 +200,7 @@ def test_blockquote_figure_normalization_rejects_nonempty_or_ambiguous_caption_s
         with pytest.raises(c.CanonicalContractError) as exc:
             d.document_from_note_snapshot(
                 snap,
-                allowed_normalizations=(c.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,),
+                allowed_normalizations=(d.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,),
             )
         assert exc.value.code == 'unsupported_note_dom'
 
