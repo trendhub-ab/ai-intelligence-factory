@@ -1,0 +1,94 @@
+name: P0-B Unsynced Ready Exact Sync [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0b-ready-unsynced-exact-sync.yml]
+
+permissions:
+  contents: read
+
+env:
+  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
+  EXPECTED_SHA: f001d81ae7e9cb3ff043301ce091747a84f1a12f
+
+jobs:
+  exact-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+      - name: Verify reviewed head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Find and exact-sync one current Ready absent from note queue
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import note_ready_sync as n
+
+          source_pages = n._query_db(
+              n.SOURCE_DATA_SOURCE_ID,
+              n.SOURCE_DATABASE_ID,
+              payload={
+                  'filter': {'property': n.SOURCE_ARTICLE_STATUS, 'select': {'equals': n.SOURCE_READY}},
+                  'sorts': [{'timestamp': 'last_edited_time', 'direction': 'descending'}],
+              },
+          )
+          dest_pages = n._query_db(n.DEST_DATA_SOURCE_ID, n.DEST_DATABASE_ID)
+          dest_ids = {
+              n._normalize_page_id(n._destination_state(page).get('sync_id') or '')
+              for page in dest_pages
+          }
+          dest_ids.discard('')
+
+          inspected = current_safe = 0
+          selected = ''
+          for page in source_pages:
+              inspected += 1
+              raw_source = n._select((page.get('properties') or {}).get('情報源'))
+              state = n._source_state(page)
+              classification = n.classify_note_ready_source_row(raw_source, state, n.ALLOWED_SOURCES)
+              if classification != 'eligible' or state is None:
+                  continue
+              if not n._source_current_ready_manuscript(state['sync_id']):
+                  continue
+              if not state.get('eyecatch_url'):
+                  continue
+              if not n.eyecatch_contract.current_asset_url(state['eyecatch_url'], state['title']):
+                  continue
+              current_safe += 1
+              if state['sync_id'] not in dest_ids:
+                  selected = state['sync_id']
+                  break
+
+          created = updated = 0
+          if selected:
+              result = n.sync_note_ready_db(target_sync_id=selected)
+              created = int(result.get('created') or 0)
+              updated = int(result.get('updated') or 0)
+              if created != 1 or updated != 0:
+                  raise SystemExit('exact unsynced Ready sync did not create exactly one queue row')
+
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
+              fh.write('### P0-B zero-model Ready inventory\n')
+              fh.write(f'- source Ready inspected: `{inspected}`\n')
+              fh.write(f'- current-policy complete Ready encountered: `{current_safe}`\n')
+              fh.write(f'- unsynced current Ready found: `{bool(selected)}`\n')
+              fh.write(f'- exact queue rows created: `{created}`\n')
+              fh.write('- Gemini/model calls: `0`\n')
+              fh.write('- private identifiers exposed: `0`\n')
+          PY
