@@ -167,7 +167,7 @@ jobs:
       - name: Install persistent Chrome automation dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests playwright
+          pip install requests playwright pytest
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
             echo '::error::Google Chrome is not installed on the persistent note VM.'
             exit 1
@@ -191,11 +191,18 @@ jobs:
           python -m unittest tests.test_run194_publication_contract -v
           python -m unittest tests.test_run194_note_current_contract -v
           python -m unittest tests.test_run199_note_vm_preflight -v
+          python -m pytest \
+            tests/test_note_delivery_ledger.py \
+            tests/test_note_delivery_runtime.py \
+            tests/test_note_delivery_human_edit_guard.py \
+            tests/test_p0b_production_installation.py -q
 
-      - name: Create one private note draft for the preflight-pinned article
+      - name: Create or reconcile one private note draft for the preflight-pinned article
         env:
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}
+          NOTE_TARGET_IDENTITY: 'trendhub_biz'
+          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
           NOTE_PREPARE_ONLY: 'false'
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
@@ -212,7 +219,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: xvfb-run -a python run194_note_persistent_cloud.py
 
-      - name: Summarize result without exposing the draft URL
+      - name: Summarize result without exposing private delivery identity
         if: success()
         env:
           RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
@@ -224,12 +231,15 @@ jobs:
           status = result.get('status', 'unknown')
           notified = 'yes' if result.get('telegram_notified') else 'no'
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### note draft automation — persistent cloud Chrome\n')
+              fh.write('### note private-draft durable delivery\n')
               fh.write(f'- status: `{status}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
-              fh.write(f'- Telegram draft-link notice: `{notified}`\n')
-              if status == 'draft_created':
-                  fh.write('- Open note on your phone and review the newest draft before releasing it.\n')
+              fh.write(f'- public release: `{result.get("public_release") is True}`\n')
+              fh.write(f'- Telegram notice: `{notified}`\n')
+              if status == 'queue_confirmed':
+                  fh.write('- The private draft binding and queue projection were durably confirmed. Review note manually before release.\n')
+              elif status in {'creation_unknown', 'verification_blocked', 'manual_reconciliation_required'}:
+                  fh.write('- Delivery is fail-closed and requires reconciliation; no automatic second draft is allowed.\n')
           PY
 
   stop-cloud-vm:
