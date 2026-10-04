@@ -1,5 +1,5 @@
 name: P0-B Eyecatch Fallback [OPS ONE-SHOT]
-# attempt: red-provider-free-plan-v4
+# attempt: green-provider-free-plan-v5
 
 on:
   push:
@@ -51,93 +51,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: RED — reproduce bounded English eyecatch contract
+      - name: GREEN — bounded provider-free eyecatch contract
         run: python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
 
-      - name: Verify bounded provider route
+      - name: Verify provider-free proof mode
         run: |
           python - <<'PY'
           import ops_ready_eyecatch_finalize as ops
-          expected = (
-              'gemini-3.6-flash',
-              'gemini-3.5-flash',
-              'gemini-3.7-flash',
-              'gemini-3.8-flash',
-          )
-          assert ops.BOUNDED_LAYOUT_MODELS == expected
-          assert all('lite' not in model.lower() for model in expected)
+          assert ops.PROVIDER_MODE == 'provider_free_exact_source_compression'
+          assert ops.COMPRESSED_EYECATCH_TITLE == 'Argo-Bench: Data Agents on Enterprise-Scale Workflows'
+          assert 'Evaluating' not in ops.COMPRESSED_EYECATCH_TITLE
           PY
 
       - name: Resolve exactly one current Ready article with no eyecatch
+        if: ${{ false }}
         id: resolve
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json, os, re, urllib.request
-          token = os.environ['NOTION_API_KEY'].strip()
-          ds = os.environ['NOTION_DATA_SOURCE_ID'].strip()
-          title = os.environ['TARGET_TITLE']
-          if not token or not ds:
-              raise SystemExit('Missing Notion configuration')
-          payload = {
-              'page_size': 10,
-              'filter': {'and': [
-                  {'property': '記事名', 'title': {'equals': title}},
-                  {'property': '記事状態', 'select': {'equals': 'Ready'}},
-              ]},
-          }
-          req = urllib.request.Request(
-              f'https://api.notion.com/v1/data_sources/{ds}/query',
-              data=json.dumps(payload).encode(),
-              method='POST',
-              headers={
-                  'Authorization': f'Bearer {token}',
-                  'Content-Type': 'application/json',
-                  'Notion-Version': os.environ['NOTION_API_VERSION'],
-              },
-          )
-          with urllib.request.urlopen(req, timeout=30) as r:
-              data = json.load(r)
-          rows = data.get('results') or []
-          if len(rows) != 1:
-              raise SystemExit(f'Expected exactly one current Ready article, got {len(rows)}')
-          row = rows[0]
-          files = ((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []
-          if files:
-              raise SystemExit('Eyecatch is already present; refusing duplicate finalization')
-          sync_id = re.sub(r'[^0-9a-fA-F]', '', str(row.get('id') or '')).lower()
-          if not re.fullmatch(r'[0-9a-f]{32}', sync_id):
-              raise SystemExit('Invalid resolved sync identity')
-          print(f'::add-mask::{sync_id}')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'sync_id={sync_id}\n')
-          PY
+        run: echo 'GREEN-only run: mutation lane disabled'
 
-      - name: Finalize exact Ready eyecatch with bounded four-model route
-        env:
-          TARGET_SYNC_ID: ${{ steps.resolve.outputs.sync_id }}
-        run: |
-          set -o pipefail
-          python ops_ready_eyecatch_finalize.py --sync-id "$TARGET_SYNC_ID" | tee "${RUNNER_TEMP}/ready-eyecatch.json"
+      - name: Finalize exact Ready eyecatch provider-free
+        if: ${{ false }}
+        run: echo 'GREEN-only run: mutation lane disabled'
 
       - name: Verify zero-article and zero-note mutation result
-        env:
-          RESULT_FILE: ${{ runner.temp }}/ready-eyecatch.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8').splitlines()[-1])
-          if result.get('status') not in {'ready_eyecatch_finalized', 'ready_eyecatch_already_current'}:
-              raise SystemExit('Ready eyecatch finalization did not complete safely')
-          for key in ('current_asset', 'body_unchanged', 'title_unchanged'):
-              if result.get(key) is not True:
-                  raise SystemExit(f'invariant failed: {key}')
-          if result.get('article_regeneration') is not False:
-              raise SystemExit('article regeneration boundary crossed')
-          if result.get('note_mutation') is not False or result.get('public_release') is not False:
-              raise SystemExit('note/publication boundary crossed')
-          expected = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']
-          if result.get('ops_provider_route') != expected:
-              raise SystemExit('provider route drifted')
-          PY
+        if: ${{ false }}
+        run: echo 'GREEN-only run: mutation lane disabled'
