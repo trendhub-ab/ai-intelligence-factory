@@ -145,3 +145,23 @@ def test_recovery_module_is_read_only_and_reuses_current_contract_verification()
     )
     for token in forbidden:
         assert token not in source
+
+
+def test_recovery_requires_immutable_snapshot_and_lossless_canonical_dom_evidence():
+    recovery = _module()
+    source = inspect.getsource(recovery)
+
+    # The ambiguous attempt itself, not merely the current mutable queue projection,
+    # remains the authority for which revision may be recovered.
+    assert "delivery_runtime.prepare_delivery(" in source
+    assert ".snapshot != record.snapshot" in source
+
+    # A title/prefix/length heuristic is insufficient to recover external identity.
+    # Candidate body must survive the same semantic DOM -> canonical document path as P0-A
+    # and hash exactly to the immutable snapshot recorded before the ambiguous create.
+    assert "snapshot_note_body(" in source
+    assert "document_from_note_snapshot(" in source
+    assert "NOTE_LIST_ITEM_PARAGRAPH_WRAPPER" in source
+    assert "NOTE_BLOCKQUOTE_FIGURE_WRAPPER" in source
+    assert "canonical_document_sha256(" in source
+    assert "record.snapshot.canonical_document_sha256" in source
