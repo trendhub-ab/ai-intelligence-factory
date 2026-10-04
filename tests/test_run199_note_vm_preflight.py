@@ -107,6 +107,31 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, source)
 
+    def test_stdout_projection_excludes_private_selection_and_hashes(self) -> None:
+        raw = {
+            "status": "eligible_ready",
+            "should_start_vm": True,
+            "selected_sync_id": "a" * 32,
+            "publication_policy_sha256": "b" * 64,
+            "manuscript_sha256": "c" * 64,
+            "zero_gemini_calls": True,
+            "telegram_notified": False,
+        }
+        safe = run199._safe_stdout_projection(raw)
+        self.assertEqual(
+            {
+                "status": "eligible_ready",
+                "should_start_vm": True,
+                "zero_gemini_calls": True,
+                "telegram_notified": False,
+            },
+            safe,
+        )
+        rendered = repr(safe)
+        self.assertNotIn(raw["selected_sync_id"], rendered)
+        self.assertNotIn(raw["publication_policy_sha256"], rendered)
+        self.assertNotIn(raw["manuscript_sha256"], rendered)
+
 
 if __name__ == "__main__":
     unittest.main()
