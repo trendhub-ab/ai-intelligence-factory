@@ -10,7 +10,7 @@ permissions:
 
 env:
   TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: ef451650fb3cc8e6f72eb4d01adeb2dbb0460108
+  EXPECTED_SHA: 895bb7095aa6db44eea063f4ae94c381ec4d5c6f
 
 jobs:
   red:
