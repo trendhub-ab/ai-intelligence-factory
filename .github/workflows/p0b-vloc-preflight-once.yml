@@ -1,4 +1,4 @@
-name: P0-B CREATION_UNKNOWN Lossless Recovery Discovery [OPS ONE-SHOT]
+name: P0-B CREATION_UNKNOWN Recovery Gate Diagnostic [OPS ONE-SHOT]
 
 on:
   push:
@@ -49,9 +49,9 @@ jobs:
           if [ "$state" != "RUNNING" ]; then
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
-          echo 'Persistent note VM started for read-only recovery discovery.'
+          echo 'Persistent note VM started for read-only recovery gate diagnostic.'
 
-  recovery-discovery:
+  recovery-diagnostic:
     needs: start-cloud-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 20
@@ -66,15 +66,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install read-only discovery dependencies
+      - name: Install read-only diagnostic dependencies
         run: |
           python -m pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
 
-      - name: Discover losslessly verified private draft matches only
+      - name: Count each read-only recovery gate without exposing private identity
         env:
-          PREFLIGHT_RESULT_FILE: ${{ runner.temp }}/p0b_recovery_preflight.json
+          PREFLIGHT_RESULT_FILE: ${{ runner.temp }}/p0b_recovery_diag_preflight.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
@@ -101,26 +101,79 @@ jobs:
           NOTE_TARGET_SYNC_ID="$selected" NOTE_TARGET_IDENTITY='trendhub_biz' NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3' xvfb-run -a python - <<'PY'
           import json, os
           from pathlib import Path
+
           import note_delivery_creation_recovery as recovery
+          import run187_note_editor_readiness as editor_readiness
+          import run190_note_persistent_cloud as cloud
+          import run291_note_private_draft_audit as draft_audit
           from note_delivery_ledger import SQLiteDeliveryLedger
+          from playwright.sync_api import sync_playwright
 
           sync_id = os.environ['NOTE_TARGET_SYNC_ID'].strip()
           note_target = os.environ['NOTE_TARGET_IDENTITY'].strip()
           ledger = SQLiteDeliveryLedger(Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser())
-          record = recovery.require_creation_unknown_record(
-              ledger,
-              sync_id=sync_id,
-              note_target=note_target,
-          )
+          record = recovery.require_creation_unknown_record(ledger, sync_id=sync_id, note_target=note_target)
           prepared = recovery._expected_prepared_delivery(record)
-          matches, candidate_count = recovery._discover_verified_matches(dict(prepared.article), record)
-          match_count = int(len(matches))
+          article = dict(prepared.article)
+          candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
+
+          counts = {
+              'history_candidate_count': int(len(candidates)),
+              'navigation_success_count': 0,
+              'authenticated_count': 0,
+              'private_editor_count': 0,
+              'title_match_count': 0,
+              'run291_match_count': 0,
+              'canonical_read_count': 0,
+              'canonical_exact_match_count': 0,
+          }
+
+          with sync_playwright() as playwright:
+              context = cloud._launch_persistent_context(playwright)
+              page = context.new_page()
+              page.set_default_timeout(30000)
+              seeded = False
+              try:
+                  for candidate in candidates:
+                      try:
+                          page.goto(candidate, wait_until='domcontentloaded', timeout=60000)
+                          page.wait_for_timeout(1200)
+                          counts['navigation_success_count'] += 1
+                          if draft_audit.note_base._looks_logged_out(page) and not seeded:
+                              seeded = bool(cloud._seed_note_state(context, page))
+                              if seeded:
+                                  page.goto(candidate, wait_until='domcontentloaded', timeout=60000)
+                                  page.wait_for_timeout(1200)
+                          if draft_audit.note_base._looks_logged_out(page):
+                              continue
+                          counts['authenticated_count'] += 1
+                          if not editor_readiness._is_editor_url(str(page.url or '')):
+                              continue
+                          counts['private_editor_count'] += 1
+                          if draft_audit._title_value(page) != str(article['title']).strip():
+                              continue
+                          counts['title_match_count'] += 1
+                          try:
+                              draft_audit._audit_current_page(page, str(article['title']), str(article['manuscript']))
+                          except draft_audit.PrivateDraftAuditError:
+                              continue
+                          counts['run291_match_count'] += 1
+                          try:
+                              canonical_sha = recovery._current_canonical_sha256(page)
+                          except recovery.CreationRecoveryAuditError:
+                              continue
+                          counts['canonical_read_count'] += 1
+                          if canonical_sha == record.snapshot.canonical_document_sha256:
+                              counts['canonical_exact_match_count'] += 1
+                      except Exception:
+                          continue
+              finally:
+                  context.close()
+
           safe = {
-              'status': 'recovery_candidate_found' if match_count == 1 else 'recovery_no_unique_match',
-              'history_candidate_count': int(candidate_count),
-              'verified_match_count': match_count,
+              'status': 'recovery_gate_diagnostic',
+              **counts,
               'immutable_snapshot_match': True,
-              'lossless_canonical_required': True,
               'zero_gemini_calls': True,
               'ledger_mutation': False,
               'notion_mutation': False,
@@ -129,7 +182,7 @@ jobs:
           }
           print(json.dumps(safe, ensure_ascii=False))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B lossless recovery discovery\n')
+              fh.write('### P0-B recovery gate diagnostic\n')
               for key, value in safe.items():
                   fh.write(f'- {key}: `{value}`\n')
           PY
@@ -137,7 +190,7 @@ jobs:
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [start-cloud-vm, recovery-discovery]
+    needs: [start-cloud-vm, recovery-diagnostic]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
