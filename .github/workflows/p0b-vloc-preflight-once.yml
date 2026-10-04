@@ -87,16 +87,17 @@ jobs:
               'filter': {'and': [
                   {'property': '同期ID', 'rich_text': {'equals': sync_id}},
                   {'property': '品質状態', 'select': {'equals': 'Ready'}},
+                  {'property': '投稿状態', 'select': {'equals': '投稿待ち'}},
                   {'property': 'note下書きID', 'rich_text': {'is_empty': True}},
                   {'property': 'note公開URL', 'url': {'is_empty': True}},
               ]},
           })
           if len(queue_rows) != 1:
-              raise SystemExit(f'Expected one exact undelivered Ready queue row, got {len(queue_rows)}')
+              raise SystemExit(f'Expected one exact Ready/投稿待ち undelivered queue row, got {len(queue_rows)}')
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'sync_id={sync_id}\n')
-          print('Exact VLoc source and undelivered Ready queue binding confirmed.')
+          print('Exact VLoc Ready/投稿待ち source and undelivered queue binding confirmed.')
           PY
 
       - name: Dispatch prepare-only validation
