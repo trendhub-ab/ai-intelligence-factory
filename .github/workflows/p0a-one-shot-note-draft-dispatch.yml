@@ -1,4 +1,4 @@
-name: P0-A/B2 Read-only Private DOM Diagnosis
+name: P0-A/B2 Ephemeral Insertion DOM Diagnosis
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: p0a-b2-readonly-private-dom-diagnosis
+  group: p0a-b2-ephemeral-insertion-diagnosis
   cancel-in-progress: false
 
 jobs:
@@ -26,13 +26,13 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install requests
-          python -m py_compile p0a_b2_private_dom_diagnose.py
+          python -m py_compile p0a_b2_private_insertion_diagnose.py
           python - <<'PY'
           from pathlib import Path
-          source = Path('p0a_b2_private_dom_diagnose.py').read_text(encoding='utf-8').lower()
-          for forbidden in ('.click(', '.fill(', 'keyboard.', '_paste_manuscript(', '_save_draft_and_verify(', 'requests.post(', 'requests.patch(', 'publish'):
+          source = Path('p0a_b2_private_insertion_diagnose.py').read_text(encoding='utf-8').lower()
+          for forbidden in ('_save_draft_and_verify(', 'requests.post(', 'requests.patch(', 'notion', 'publish_article', 'release_article', 'screenshot('):
               assert forbidden not in source, forbidden
-          print('readonly_dom_diagnostic_static_guard=PASS')
+          print('ephemeral_insertion_static_guard=PASS')
           PY
 
   start-cloud-vm:
@@ -46,11 +46,8 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
     steps:
-      - name: Authenticate to Google Cloud with OIDC
-        uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
@@ -70,7 +67,7 @@ jobs:
             gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
 
-  readonly-diagnosis:
+  insertion-diagnosis:
     needs: [static-check, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 15
@@ -79,22 +76,22 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install read-only browser dependencies
+      - name: Install browser dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
-      - name: Inspect only recent private routes and emit structural diagnostics
+      - name: Paste synthetic fixture once without save and emit only structural diagnostics
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
-        run: xvfb-run -a python p0a_b2_private_dom_diagnose.py
+        run: xvfb-run -a python p0a_b2_private_insertion_diagnose.py
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [static-check, start-cloud-vm, readonly-diagnosis]
+    needs: [static-check, start-cloud-vm, insertion-diagnosis]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -105,9 +102,8 @@ jobs:
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
     steps:
-      - name: Authenticate to Google Cloud with OIDC
+      - uses: google-github-actions/auth@v3
         if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
-        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
