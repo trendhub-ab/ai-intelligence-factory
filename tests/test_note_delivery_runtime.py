@@ -1,9 +1,20 @@
+import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
 
-from note_delivery_runtime import prepare_delivery, revalidate_before_mutation
+from note_delivery_ledger import (
+    DeliveryState,
+    LedgerUnavailableError,
+    SQLiteDeliveryLedger,
+    logical_delivery_key,
+)
+from note_delivery_runtime import (
+    create_or_resume_delivery,
+    prepare_delivery,
+    revalidate_before_mutation,
+)
 
 
 class FakeBase:
@@ -138,3 +149,99 @@ def test_note_target_identity_is_required_fail_closed(monkeypatch):
         base = _base(tmp)
         with pytest.raises(base.NoteDraftError):
             prepare_delivery(base, "a" * 32)
+
+
+def _creation_base(tmp, *, mode="success"):
+    base = _base(tmp)
+    base.create_count = 0
+    base.mode = mode
+
+    def decode_storage_state():
+        path = Path(tmp) / "storage.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def create_browser_draft(title, manuscript, eyecatch_path, storage_path, *, on_stable_draft_url=None):
+        del title, manuscript, eyecatch_path, storage_path
+        base.create_count += 1
+        url = "https://note.com/notes/opaque_draft_1/edit"
+        if base.mode == "accept_before_id":
+            raise base.NoteDraftError("simulated crash after accept before stable id")
+        if on_stable_draft_url is not None:
+            on_stable_draft_url(url)
+        if base.mode == "after_id_before_verify":
+            raise base.NoteDraftError("simulated failure after id record before verify")
+        return url
+
+    base._decode_storage_state = decode_storage_state
+    base._create_browser_draft = create_browser_draft
+    return base
+
+
+def test_b11_note_creation_is_zero_when_intent_commit_fails(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        ledger.initialize()
+        conn = sqlite3.connect(ledger.path)
+        conn.execute(
+            "CREATE TRIGGER force_intent_failure BEFORE INSERT ON deliveries "
+            "BEGIN SELECT RAISE(ABORT, 'forced'); END"
+        )
+        conn.commit()
+        conn.close()
+        with pytest.raises(LedgerUnavailableError):
+            create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        assert base.create_count == 0
+
+
+def test_b12_draft_id_durable_write_failure_prevents_queue_update_and_second_create(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp)
+        prepared = prepare_delivery(base, "a" * 32)
+
+        class FailingDraftWriteLedger(SQLiteDeliveryLedger):
+            def record_draft_created(self, *args, **kwargs):
+                raise LedgerUnavailableError("forced draft-id durability failure")
+
+        ledger = FailingDraftWriteLedger(Path(tmp) / "ledger.sqlite3")
+        with pytest.raises(LedgerUnavailableError):
+            create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        assert base.create_count == 1
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert retry.state == DeliveryState.CREATION_UNKNOWN
+        assert base.create_count == 1
+
+
+def test_b04_after_id_record_before_verify_retry_reuses_same_draft(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp, mode="after_id_before_verify")
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        with pytest.raises(base.NoteDraftError):
+            create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        record = ledger.get_active_by_logical_key(logical_delivery_key(prepared.snapshot))
+        assert record is not None and record.state == DeliveryState.DRAFT_CREATED
+        base.mode = "success"
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert retry.draft_id == "opaque_draft_1"
+        assert base.create_count == 1
+
+
+def test_b04_after_accept_before_id_record_becomes_creation_unknown_not_second_create(monkeypatch):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp, mode="accept_before_id")
+        prepared = prepare_delivery(base, "a" * 32)
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        with pytest.raises(base.NoteDraftError):
+            create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-a")
+        assert base.create_count == 1
+        base.mode = "success"
+        retry = create_or_resume_delivery(base, ledger, prepared, run_correlation_id="run-b")
+        assert retry.state == DeliveryState.CREATION_UNKNOWN
+        assert base.create_count == 1
