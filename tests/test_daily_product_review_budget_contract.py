@@ -14,9 +14,10 @@ class DailyProductReviewBudgetContractTests(unittest.TestCase):
         self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "4"', section)
         self.assertNotIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "3"', section)
         self.assertIn(
-            'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3.5-flash"',
-            section,
+            'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"',
+            text,
         )
+        self.assertNotIn("flash-lite", text)
 
 
 if __name__ == "__main__":
