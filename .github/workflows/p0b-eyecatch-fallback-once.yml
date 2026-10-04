@@ -1,5 +1,5 @@
-name: P0-B Eyecatch Finalize [OPS ONE-SHOT]
-# attempt: exact-runtime-title-finalize-v10
+name: P0-B Queue Sync [OPS ONE-SHOT]
+# attempt: exact-ready-to-posting-wait-v1
 
 on:
   push:
@@ -12,37 +12,28 @@ permissions:
   contents: read
 
 jobs:
-  finalize:
+  dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
+      EXPECTED_MAIN_SHA: '6f2c7b308ae2d49c4f34092dfbd682221d2bf040'
       TARGET_ARTICLE_TITLE: 'Argo-Bench: Evaluating Data Agents on Enterprise-Scale Workflows'
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
       NOTION_API_VERSION: '2026-03-11'
-      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
       NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-      EYECATCH_GITHUB_BRANCH: 'runtime-state'
-      GH_PAT: ${{ secrets.GH_PAT }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
 
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install dependencies and fonts
+      - name: Verify main source of truth
         run: |
-          sudo apt-get update >/dev/null
-          sudo apt-get install -y fonts-noto-cjk fonts-lato >/dev/null
-          python -m pip install --upgrade pip >/dev/null
-          pip install -r requirements.txt >/dev/null
-      - name: Re-verify GREEN contract before mutation
-        run: python -m unittest tests.test_ops_p0b_eyecatch_bounded_compression -v
-      - name: Resolve exactly one Ready source with no eyecatch
+          set -euo pipefail
+          actual="$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/main --jq '.object.sha')"
+          test "$actual" = "$EXPECTED_MAIN_SHA"
+
+      - name: Resolve exactly one Ready source with persisted eyecatch
         id: resolve
         run: |
+          set -euo pipefail
           python - <<'PY'
           import json, os, re, urllib.request
           token = os.environ['NOTION_API_KEY'].strip()
@@ -60,11 +51,11 @@ jobs:
           with urllib.request.urlopen(req, timeout=30) as r:
               rows = json.load(r).get('results') or []
           if len(rows) != 1:
-              raise SystemExit(f'Expected exactly one current Ready article, got {len(rows)}')
+              raise SystemExit(f'Expected exactly one current Ready source, got {len(rows)}')
           row = rows[0]
           files = ((row.get('properties') or {}).get('アイキャッチ') or {}).get('files') or []
-          if files:
-              raise SystemExit('Eyecatch already exists; refusing duplicate finalization')
+          if not files:
+              raise SystemExit('Persisted eyecatch is required before queue sync')
           sync_id = re.sub(r'[^0-9a-fA-F]', '', str(row.get('id') or '')).lower()
           if not re.fullmatch(r'[0-9a-f]{32}', sync_id):
               raise SystemExit('Invalid resolved source identity')
@@ -72,26 +63,16 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f'sync_id={sync_id}\n')
           PY
-      - name: Finalize exact Ready eyecatch provider-free
+
+      - name: Dispatch exact queue sync with private-draft fan-out disabled
         env:
           TARGET_SYNC_ID: ${{ steps.resolve.outputs.sync_id }}
         run: |
-          set -o pipefail
-          python ops_ready_eyecatch_finalize.py --sync-id "$TARGET_SYNC_ID" | tee "${RUNNER_TEMP}/ready-eyecatch.json"
-      - name: Verify finalization invariants
-        env:
-          RESULT_FILE: ${{ runner.temp }}/ready-eyecatch.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8').splitlines()[-1])
-          assert result.get('status') == 'ready_eyecatch_finalized', result.get('status')
-          for key in ('current_asset', 'body_unchanged', 'title_unchanged'):
-              assert result.get(key) is True, key
-          assert result.get('article_regeneration') is False
-          assert result.get('note_mutation') is False
-          assert result.get('public_release') is False
-          assert result.get('ops_provider_mode') == 'provider_free_exact_source_compression'
-          assert result.get('ops_model_calls') == 0
-          PY
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          test -n "${TARGET_SYNC_ID:-}"
+          gh workflow run note-ready-sync.yml --ref main \
+            -f create_private_draft=false \
+            -f target_sync_id="$TARGET_SYNC_ID" \
+            -f target_source_url=''
+          echo 'Exact note-ready-sync dispatched with create_private_draft=false.'
