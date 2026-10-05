@@ -1,4 +1,4 @@
-name: P0-B B01 Read-Only Ledger Inventory [OPS ONE-SHOT]
+name: P0-B Daily Ready-Only Dispatch [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,140 +8,25 @@ on:
 permissions:
   contents: read
 
-env:
-  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: e5070b0a7d491425b8613d0422f81861c7bf74a4
-
 jobs:
-  start-vm:
+  dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
+    timeout-minutes: 5
     steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start note VM
+      - name: Dispatch exactly one Daily ready-only
         env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -euo pipefail
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
-          [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
-
-  inventory:
-    needs: start-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.TARGET_BRANCH }}
-      - name: Verify reviewed head
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install requests
-      - name: Read-only current Ready ledger inventory
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import collections, json, os, subprocess, tempfile
-          from pathlib import Path
-          import note_draft_automation as base
-          import run185_note_ready_legacy_skip as run185
-          import run194_note_current_contract as current
-
-          current.install()
-          try:
-              candidates = run185._ordered_candidates(base._query_ready_queue())
-          except base.NoteDraftError:
-              candidates = []
-          counts = collections.Counter()
-          prepared_count = 0
-          prepare_skipped = 0
-          for candidate in candidates:
-              try:
-                  prepared = current._prepare_one(candidate)
-              except Exception:
-                  prepare_skipped += 1
-                  continue
-              sid = base._normalize_sync_id(prepared.get('sync_id', ''))
-              if len(sid) != 32:
-                  prepare_skipped += 1
-                  continue
-              prepared_count += 1
-              with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as fh:
-                  result_path = Path(fh.name)
-              try:
-                  env = dict(os.environ)
-                  env.update(
-                      NOTE_TARGET_SYNC_ID=sid,
-                      NOTE_TARGET_IDENTITY='trendhub_biz',
-                      NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3',
-                      NOTE_DRAFT_RESULT_FILE=str(result_path),
-                  )
-                  p = subprocess.run(['bash', 'note_delivery_ledger_preflight.sh'], env=env,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                  if p.returncode:
-                      counts['preflight_error'] += 1
-                      continue
-                  result = json.loads(result_path.read_text())
-                  counts[str(result.get('status') or 'unknown')] += 1
-              finally:
-                  result_path.unlink(missing_ok=True)
-
-          safe = {
-              'queue_candidate_count': len(candidates),
-              'current_policy_prepared_count': prepared_count,
-              'prepare_skipped_count': prepare_skipped,
-              'ledger_status_counts': dict(sorted(counts.items())),
-              'zero_gemini_calls': True,
-              'zero_openai_calls': True,
-              'note_mutation': False,
-              'public_release': False,
-              'private_identifiers_exposed': 0,
-          }
-          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### B01 read-only ledger inventory\n')
-              fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
-          PY
-
-  stop-vm:
-    if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, inventory]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null || true)"
-          [ "$state" != RUNNING ] || gcloud compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
+          gh workflow run daily-one-shot.yml \
+            --repo trendhub-ab/ai-intelligence-factory \
+            --ref design/p0-b-durable-delivery-ledger \
+            -f mode=full \
+            -f editorial_style=classic \
+            -f excluded_models='' \
+            -f canary_source='' \
+            -f exact_target='' \
+            -f e2e_prepare_only=false \
+            -f p0b_ready_only=true \
+            -f confirm=RUN_ONCE
+          echo 'Dispatched exactly one Daily full run in P0-B ready-only mode.'
