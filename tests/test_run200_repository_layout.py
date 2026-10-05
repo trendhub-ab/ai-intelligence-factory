@@ -62,19 +62,22 @@ class Run200RepositoryLayoutTests(unittest.TestCase):
             "run193_note_official_header_upload.py",
             "run194_note_current_contract.py",
             "run194_note_persistent_cloud.py",
+            "run194_note_hosted.py",
             "run194_publication_contract.py",
             "run199_note_vm_preflight.py",
         ]
         missing = [name for name in active if not (ROOT / name).is_file()]
         self.assertEqual([], missing)
 
-    def test_note_workflow_keeps_preflight_vm_gate_and_pinned_sync_id(self) -> None:
+    def test_note_workflow_keeps_preflight_gate_and_pinned_sync_id_on_hosted_worker(self) -> None:
         workflow = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
         self.assertIn("run199_note_vm_preflight.py", workflow)
-        self.assertIn("should_start_vm", workflow)
+        self.assertIn("should_continue", workflow)
         self.assertIn("selected_sync_id", workflow)
-        self.assertIn("run194_note_persistent_cloud.py", workflow)
+        self.assertIn("run194_note_hosted.py", workflow)
         self.assertIn("needs: preflight", workflow)
+        self.assertNotIn("run194_note_persistent_cloud.py", workflow)
+        self.assertNotIn("self-hosted", workflow)
 
     def test_operational_state_and_published_assets_are_preserved(self) -> None:
         protected = [
