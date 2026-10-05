@@ -5,62 +5,17 @@
         "gemini-3-flash-preview": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 10,
-            "quality_retry": 8
+            "deep_dive": 1
           },
           "exhausted": false,
-          "used": 18
-        },
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 1,
-            "eyecatch_layout": 8,
-            "quality_retry": 1,
-            "screening_batch": 4,
-            "screening_recovery": 4
-          },
-          "exhausted": false,
-          "used": 18
-        },
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 10,
-            "product_review": 2,
-            "screening_batch": 4
-          },
-          "exhausted": false,
-          "used": 16
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 4,
-            "global_calibration": 2,
-            "product_review": 3,
-            "screening_batch": 4
-          },
-          "exhausted": false,
-          "used": 13
-        },
-        "gemini-3.8-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 4,
-            "global_calibration": 2,
-            "product_review": 2,
-            "screening_batch": 2
-          },
-          "exhausted": false,
-          "used": 10
+          "used": 1
         }
       }
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-10-04",
+  "quota_date": "2026-10-05",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-04T16:37:23.430734+00:00"
+  "updated_at": "2026-10-05T08:13:53.029639+00:00"
 }
