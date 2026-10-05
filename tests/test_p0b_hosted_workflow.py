@@ -34,7 +34,15 @@ def test_production_note_workflow_runs_delivery_on_github_hosted_runner():
     assert "google-github-actions/auth@v3" in text
     assert "NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'" in text
     assert "NOTE_DELIVERY_LEDGER_BUCKET:" in text
-    assert "GCP_NOTE_LEDGER_BUCKET" in text
+    assert "GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}" in text
+
+
+def test_private_ledger_bucket_is_derived_without_manual_bucket_variable():
+    text = _workflow_text()
+    assert 'bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"' in text
+    assert 'echo "::add-mask::$bucket"' in text
+    assert 'echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"' in text
+    assert "vars.GCP_NOTE_LEDGER_BUCKET" not in text
 
 
 def test_gcp_auth_precedes_durable_ledger_preflight():
