@@ -1,4 +1,4 @@
-name: P0 C-1 Startup Script Fingerprint Audit [OPS ONE-SHOT]
+name: P0 C-1 External IP Type Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,40 +25,48 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Fingerprint startup script without exposing content
+      - name: Classify external IPv4 without exposing address
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1script"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1ip"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/target.json"
-          ROOT="$tmp" python3 - <<'PY'
-          import hashlib,json,os
+          addresses_ok=true
+          if ! gcloud compute addresses list --project "$GCP_PROJECT_ID" --format=json > "$tmp/addresses.json" 2>"$tmp/addresses.err"; then
+            addresses_ok=false
+            printf '[]' > "$tmp/addresses.json"
+          fi
+          ROOT="$tmp" ADDRESSES_OK="$addresses_ok" python3 - <<'PY'
+          import json,os
           from pathlib import Path
           root=Path(os.environ['ROOT'])
           target=json.loads((root/'target.json').read_text())
-          meta={str(x.get('key')):str(x.get('value')) for x in (target.get('metadata',{}).get('items') or [])}
-          script=meta.get('startup-script','')
-          low=script.lower()
+          addresses=json.loads((root/'addresses.json').read_text())
+          if not isinstance(addresses,list): addresses=[]
+          nics=target.get('networkInterfaces') or []
+          if len(nics)!=1:
+              raise SystemExit('fail-closed: expected exactly one NIC')
+          access=nics[0].get('accessConfigs') or []
+          if len(access)!=1:
+              raise SystemExit('fail-closed: expected exactly one IPv4 access config')
+          ac=access[0]
+          nat=str(ac.get('natIP') or '').strip()
+          if not nat:
+              raise SystemExit('fail-closed: access config has no current IPv4')
+          matches=[a for a in addresses if str(a.get('address') or '').strip()==nat]
           safe={
-            'status':'c1_startup_script_fingerprint_complete',
+            'status':'c1_external_ip_type_audit_complete',
             'target_vm_running':str(target.get('status') or '').upper()=='RUNNING',
-            'startup_script_present':bool(script),
-            'startup_script_bytes':len(script.encode('utf-8')),
-            'startup_script_sha256_prefix':hashlib.sha256(script.encode('utf-8')).hexdigest()[:12] if script else '',
-            'mentions_ssh_socket':'ssh.socket' in low,
-            'mentions_ssh_service':'ssh.service' in low,
-            'mentions_sshd_service':'sshd.service' in low,
-            'mentions_systemctl':'systemctl' in low,
-            'mentions_mask':'mask' in low,
-            'mentions_disable':'disable' in low,
-            'mentions_port_22':':22' in low or ' 22' in low or '22/tcp' in low,
-            'mentions_github_runner':'runner' in low or 'actions.runner' in low,
+            'access_config_count':1,
+            'address_inventory_query_ok':os.environ['ADDRESSES_OK'].lower()=='true',
+            'reserved_address_match_count':len(matches),
+            'external_ip_classification':'reserved_static' if len(matches)==1 else ('ephemeral' if len(matches)==0 and os.environ['ADDRESSES_OK'].lower()=='true' else 'unknown'),
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 startup-script fingerprint\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if safe['target_vm_running']:
-              raise SystemExit('fail-closed: target VM unexpectedly running')
+              fh.write('### P0 C-1 external IPv4 classification\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if safe['target_vm_running'] or safe['external_ip_classification']=='unknown' or len(matches)>1:
+              raise SystemExit('fail-closed: external IPv4 classification unresolved')
           PY
