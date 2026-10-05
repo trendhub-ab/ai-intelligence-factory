@@ -1,0 +1,66 @@
+name: P0 C-1 Runner Boot Diagnostic [READ-ONLY]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-runner-boot-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Classify previous boot serial output without exposing raw lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$status" = "TERMINATED" ] || { echo "::error::VM must remain TERMINATED for read-only diagnosis"; exit 1; }
+          out="${RUNNER_TEMP}/serial.txt"
+          if ! gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 >"$out" 2>/dev/null; then
+            echo 'SERIAL_OUTPUT_AVAILABLE=false'
+            exit 0
+          fi
+          SERIAL="$out" python3 - <<'PY'
+          import os,re
+          text=open(os.environ['SERIAL'],encoding='utf-8',errors='ignore').read().lower()
+          def has(*patterns): return any(re.search(p,text) for p in patterns)
+          safe={
+            'serial_output_available': bool(text.strip()),
+            'github_runner_mentioned': has(r'github.*runner',r'actions\.runner',r'self-hosted'),
+            'runner_failure_signal': has(r'runner.{0,80}(failed|error|fatal|stopped)',r'(failed|error|fatal).{0,80}runner'),
+            'systemd_failure_signal': has(r'systemd.*failed',r'failed to start'),
+            'startup_script_signal': has(r'startup[- ]script',r'google-startup-scripts'),
+            'dns_failure_signal': has(r'temporary failure in name resolution',r'name or service not known',r'dns.*failed'),
+            'https_connection_failure_signal': has(r'connection timed out',r'connection refused',r'network is unreachable',r'tls.*failed',r'certificate.*failed'),
+            'github_auth_failure_signal': has(r'github.{0,120}(unauthorized|forbidden|401|403|authentication failed|token.*invalid)'),
+          }
+          print('C1_RUNNER_BOOT_CLASSIFICATION='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 runner boot diagnostic\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Raw serial output intentionally not published.\n')
+          PY
