@@ -27,7 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest requests
 
-      - name: Run hosted-only ledger tests
+      - name: Run hosted-only runtime tests
         run: |
           python -m pytest \
             tests/test_p0b_hosted_only_protocol.py \
