@@ -1,0 +1,26 @@
+name: P0 C-1 Cancel Stale Proof [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-cancel-stale-proof.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel stale bounded proof run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "/repos/${REPO}/actions/runs/37331912730/cancel" >/dev/null || true
+          echo 'C1_STALE_PROOF_CANCEL_REQUESTED=true'
