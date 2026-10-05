@@ -1,0 +1,47 @@
+name: P0 C-1 Notification Boundary Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0c-c1-notification-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read-only notification channel census
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.parse,urllib.request
+          token=str(os.environ.get('TELEGRAM_BOT_TOKEN') or '').strip(); chat=str(os.environ.get('TELEGRAM_CHAT_ID') or '').strip()
+          if not token or not chat: raise SystemExit('notification credentials unavailable')
+          base=f'https://api.telegram.org/bot{token}/'
+          def call(method):
+              data=urllib.parse.urlencode({'chat_id':chat}).encode()
+              req=urllib.request.Request(base+method,data=data,method='POST')
+              with urllib.request.urlopen(req,timeout=20) as r:return json.loads(r.read().decode())
+          info=call('getChat'); count=call('getChatMemberCount'); admins=call('getChatAdministrators')
+          if not info.get('ok') or not count.get('ok') or not admins.get('ok'): raise SystemExit('notification audit API failed')
+          c=info.get('result') or {}; members=int(count.get('result') or 0); alist=admins.get('result') or []
+          username=str(c.get('username') or '').strip()
+          safe={
+            'status':'notification_boundary_audit_complete',
+            'chat_type':str(c.get('type') or 'unknown'),
+            'public_username_present':bool(username),
+            'member_count':members,
+            'administrator_count':len(alist),
+            'read_only':True,
+            'notification_sent':False,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 notification boundary audit\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+          PY
