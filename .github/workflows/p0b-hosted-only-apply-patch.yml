@@ -4,13 +4,15 @@ on:
   push:
     branches:
       - p0b-hosted-only-implementation
+    paths:
+      - '.github/workflows/p0b-hosted-only-apply-patch.yml'
+      - '.github/patches/task1_storage_neutral.py'
 
 permissions:
   contents: write
 
 jobs:
   apply-task1:
-    if: ${{ github.event.head_commit.message == 'ci: apply Task 1 storage-neutral patch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
