@@ -1,4 +1,4 @@
-name: P0 C-1 SSH Target Hardening [OPS ONE-SHOT v3]
+name: P0 C-1 SSH Target Hardening [OPS ONE-SHOT v4]
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Guard, scope SSH rules, and verify AIIF exclusion
+      - name: Guard, scope effective SSH rules, and verify AIIF exclusion
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +36,7 @@ jobs:
           gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall-before.json"
 
           ROOT="$tmp" TAG="$SSH_MAINTENANCE_TAG" python3 - <<'PY'
-          import ipaddress, json, os
+          import ipaddress,json,os
           from pathlib import Path
           root=Path(os.environ['ROOT']); tag=os.environ['TAG']
           aiif=json.loads((root/'aiif.json').read_text())
@@ -47,86 +47,10 @@ jobs:
           tags=set((aiif.get('tags') or {}).get('items') or [])
           sas={str(x.get('email') or '') for x in (aiif.get('serviceAccounts') or []) if x.get('email')}
           selflink=str(aiif.get('selfLink') or '')
-
-          if str(aiif.get('status') or '')!='TERMINATED':
-              raise SystemExit('guard: VM must be TERMINATED')
-          if tag in tags:
-              raise SystemExit('guard: AIIF VM must not have maintenance tag')
+          if str(aiif.get('status') or '')!='TERMINATED': raise SystemExit('guard: VM must be TERMINATED')
+          if tag in tags: raise SystemExit('guard: AIIF VM must not have maintenance tag')
           peers=[x for x in instances if str(x.get('selfLink') or '')!=selflink and any(str(n.get('network') or '')==network for n in (x.get('networkInterfaces') or []))]
-          if peers:
-              raise SystemExit('guard: peer VM appeared on target VPC')
-
-          def allows22(r):
-              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')):
-                  return False
-              for a in (r.get('allowed') or []):
-                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(p) for p in (a.get('ports') or [])]
-                  if proto not in {'tcp','all'}: continue
-                  if not ports: return True
-                  for p in ports:
-                      if p=='22': return True
-                      if '-' in p:
-                          try:
-                              lo,hi=map(int,p.split('-',1))
-                              if lo<=22<=hi: return True
-                          except Exception: pass
-              return False
-
-          iap=ipaddress.ip_network('35.235.240.0/20')
-          candidates=[]; has_world=False; has_iap=False
-          for r in rules:
-              if str(r.get('network') or '')!=network or not allows22(r):
-                  continue
-              target_sas=set(r.get('targetServiceAccounts') or [])
-              target_tags=set(r.get('targetTags') or [])
-              if target_sas:
-                  continue
-              if target_tags not in (set(), {tag}):
-                  continue
-              sources=[]
-              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
-                  try: sources.append(ipaddress.ip_network(str(s),strict=False))
-                  except Exception: pass
-              is_world=any(str(n)=='0.0.0.0/0' for n in sources)
-              is_iap=any(n.overlaps(iap) for n in sources)
-              if not (is_world or is_iap):
-                  continue
-              name=str(r.get('name') or '')
-              if not name:
-                  raise SystemExit('guard: SSH candidate missing name')
-              candidates.append(name)
-              has_world |= is_world
-              has_iap |= is_iap
-
-          if len(candidates)!=2 or len(set(candidates))!=2 or not has_world or not has_iap:
-              raise SystemExit('guard: expected exact two-rule world+IAP SSH premise not met')
-          (root/'candidate-names.txt').write_text('\n'.join(candidates)+'\n')
-          print(json.dumps({'guard':'pass','candidate_count':2,'peer_vm_count':0,'vm_status':'TERMINATED','identifiers_exposed':0},sort_keys=True))
-          PY
-
-          while IFS= read -r rule; do
-            [ -n "$rule" ] || continue
-            gcloud compute firewall-rules update "$rule" \
-              --project "$GCP_PROJECT_ID" \
-              --target-tags="$SSH_MAINTENANCE_TAG" \
-              --quiet >/dev/null
-          done < "$tmp/candidate-names.txt"
-
-          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall-after.json"
-          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/aiif-after.json"
-
-          ROOT="$tmp" TAG="$SSH_MAINTENANCE_TAG" python3 - <<'PY'
-          import json,os
-          from pathlib import Path
-          root=Path(os.environ['ROOT']); tag=os.environ['TAG']
-          aiif=json.loads((root/'aiif-after.json').read_text())
-          rules=json.loads((root/'firewall-after.json').read_text())
-          names={x.strip() for x in (root/'candidate-names.txt').read_text().splitlines() if x.strip()}
-          nics=aiif.get('networkInterfaces') or []
-          network=str((nics[0].get('network') if nics else '') or '')
-          tags=set((aiif.get('tags') or {}).get('items') or [])
-          sas={str(x.get('email') or '') for x in (aiif.get('serviceAccounts') or []) if x.get('email')}
-
+          if peers: raise SystemExit('guard: peer VM appeared on target VPC')
           def allows22(r):
               if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): return False
               for a in (r.get('allowed') or []):
@@ -141,38 +65,77 @@ jobs:
                               if lo<=22<=hi: return True
                           except Exception: pass
               return False
-
           def applies(r):
               tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
               return (not tt or bool(tt & tags)) and (not ts or bool(ts & sas))
-
-          changed=[]; still_applicable=[]
+          candidates=[]; effective_now=0; world_now=False
           for r in rules:
-              if str(r.get('name') or '') in names:
-                  changed.append(r)
-              if str(r.get('network') or '')==network and allows22(r) and applies(r):
-                  still_applicable.append(r)
+              if str(r.get('network') or '')!=network or not allows22(r): continue
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              is_ours=(tt=={tag} and not ts)
+              is_effective_untargeted=(applies(r) and not tt and not ts)
+              if is_effective_untargeted:
+                  effective_now += 1
+                  for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
+                      try: world_now |= str(ipaddress.ip_network(str(s),strict=False))=='0.0.0.0/0'
+                      except Exception: pass
+              if not (is_effective_untargeted or is_ours): continue
+              name=str(r.get('name') or '')
+              if not name: raise SystemExit('guard: candidate missing name')
+              candidates.append(name)
+          if len(candidates)!=2 or len(set(candidates))!=2:
+              raise SystemExit('guard: expected exact two effective-or-owned SSH rules')
+          if effective_now not in (0,1,2): raise SystemExit('guard: invalid effective SSH count')
+          # Fresh state must include the known world exposure. Partial retry may not.
+          if effective_now==2 and not world_now: raise SystemExit('guard: fresh world-SSH premise changed')
+          (root/'candidate-names.txt').write_text('\n'.join(candidates)+'\n')
+          print(json.dumps({'guard':'pass','candidate_count':2,'effective_before':effective_now,'peer_vm_count':0,'vm_status':'TERMINATED'},sort_keys=True))
+          PY
 
-          if str(aiif.get('status') or '')!='TERMINATED':
-              raise SystemExit('verify: VM state changed')
-          if tag in tags:
-              raise SystemExit('verify: AIIF VM unexpectedly has maintenance tag')
-          if len(changed)!=2:
-              raise SystemExit('verify: changed rule count mismatch')
-          if any(set(r.get('targetTags') or [])!={tag} for r in changed):
-              raise SystemExit('verify: target tag mismatch')
-          if still_applicable:
-              raise SystemExit('verify: SSH ingress still applies to AIIF VM')
+          while IFS= read -r rule; do
+            [ -n "$rule" ] || continue
+            gcloud compute firewall-rules update "$rule" --project "$GCP_PROJECT_ID" --target-tags="$SSH_MAINTENANCE_TAG" --quiet >/dev/null
+          done < "$tmp/candidate-names.txt"
 
-          safe={
-            'status':'c1_ssh_firewall_boundary_hardened',
-            'changed_rule_count':2,
-            'applicable_ssh_after':0,
-            'aiif_has_maintenance_tag':False,
-            'vm_status':'TERMINATED',
-            'identifiers_exposed':0,
-          }
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall-after.json"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/aiif-after.json"
+          ROOT="$tmp" TAG="$SSH_MAINTENANCE_TAG" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT']); tag=os.environ['TAG']
+          aiif=json.loads((root/'aiif-after.json').read_text()); rules=json.loads((root/'firewall-after.json').read_text())
+          names={x.strip() for x in (root/'candidate-names.txt').read_text().splitlines() if x.strip()}
+          nics=aiif.get('networkInterfaces') or []; network=str((nics[0].get('network') if nics else '') or '')
+          tags=set((aiif.get('tags') or {}).get('items') or [])
+          sas={str(x.get('email') or '') for x in (aiif.get('serviceAccounts') or []) if x.get('email')}
+          def allows22(r):
+              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): return False
+              for a in (r.get('allowed') or []):
+                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(p) for p in (a.get('ports') or [])]
+                  if proto not in {'tcp','all'}: continue
+                  if not ports: return True
+                  for p in ports:
+                      if p=='22': return True
+                      if '-' in p:
+                          try:
+                              lo,hi=map(int,p.split('-',1))
+                              if lo<=22<=hi: return True
+                          except Exception: pass
+              return False
+          def applies(r):
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              return (not tt or bool(tt & tags)) and (not ts or bool(ts & sas))
+          selected=[]; still=[]
+          for r in rules:
+              if str(r.get('name') or '') in names: selected.append(r)
+              if str(r.get('network') or '')==network and allows22(r) and applies(r): still.append(r)
+          if str(aiif.get('status') or '')!='TERMINATED': raise SystemExit('verify: VM state changed')
+          if tag in tags: raise SystemExit('verify: AIIF VM unexpectedly has maintenance tag')
+          if len(selected)!=2: raise SystemExit('verify: selected rule count mismatch')
+          if any(set(r.get('targetTags') or [])!={tag} or (r.get('targetServiceAccounts') or []) for r in selected): raise SystemExit('verify: target mismatch')
+          if still: raise SystemExit('verify: SSH ingress still applies to AIIF VM')
+          safe={'status':'c1_ssh_firewall_boundary_hardened','scoped_rule_count':2,'applicable_ssh_after':0,'vm_status':'TERMINATED','aiif_has_maintenance_tag':False}
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 SSH target hardening v3\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 SSH target hardening v4\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           PY
