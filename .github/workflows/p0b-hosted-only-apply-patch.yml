@@ -1,0 +1,33 @@
+name: P0-B Hosted-Only Apply Patch
+
+on:
+  push:
+    branches:
+      - p0b-hosted-only-implementation
+
+permissions:
+  contents: write
+
+jobs:
+  apply-task1:
+    if: ${{ github.event.head_commit.message == 'ci: apply Task 1 storage-neutral patch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: p0b-hosted-only-implementation
+
+      - name: Apply exact Task 1 patch
+        run: python .github/patches/task1_storage_neutral.py
+
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add note_delivery_ledger.py note_delivery_runtime.py
+          git diff --cached --check
+          git commit -m 'refactor: make P0-B delivery ledger storage-neutral'
+          git push origin HEAD:p0b-hosted-only-implementation
