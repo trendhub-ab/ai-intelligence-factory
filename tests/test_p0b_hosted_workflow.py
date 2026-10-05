@@ -21,6 +21,7 @@ def test_production_note_workflow_has_no_self_hosted_or_gce_runtime():
         "NOTE_DELIVERY_LEDGER_PATH",
         "~/.aiif-note",
         "xvfb-run",
+        "run194_note_persistent_cloud.py",
     )
     for token in banned:
         assert token not in text
@@ -49,6 +50,7 @@ def test_hosted_browser_is_installed_without_persistent_profile_assumptions():
     assert "python -m playwright install --with-deps chromium" in text
     assert "NOTE_CHROME_HEADLESS: 'true'" in text
     assert "NOTE_STORAGE_STATE_B64:" in text
+    assert "python run194_note_hosted.py" in text
 
 
 def test_workflow_preserves_private_only_zero_model_result_contract():
