@@ -1,4 +1,4 @@
-name: P0 C-1 Network Boundary Audit [OPS ONE-SHOT]
+name: P0 C-1 SSH Scope Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -19,63 +19,51 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
     steps:
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Read-only network and SSH boundary census
+      - name: Classify applicable SSH ingress rules read-only
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1net"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1scope"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
-          if gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json" 2>/dev/null; then fw_ok=true; else fw_ok=false; echo '[]' > "$tmp/firewall.json"; fi
-          ROOT="$tmp" FW_OK="$fw_ok" python3 - <<'PY'
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json"
+          ROOT="$tmp" python3 - <<'PY'
           import json,os,ipaddress
           from pathlib import Path
           root=Path(os.environ['ROOT'])
           inst=json.loads((root/'instance.json').read_text()); rules=json.loads((root/'firewall.json').read_text())
-          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
-          ext_ip=any((a.get('natIP') for n in (inst.get('networkInterfaces') or []) for a in (n.get('accessConfigs') or [])))
           tags=set((inst.get('tags') or {}).get('items') or [])
-          service_accounts={str(x.get('email') or '') for x in (inst.get('serviceAccounts') or []) if x.get('email')}
+          sas={str(x.get('email') or '') for x in (inst.get('serviceAccounts') or []) if x.get('email')}
           iap=ipaddress.ip_network('35.235.240.0/20')
-          applicable=0; world_ssh=False; iap_ssh=False
-          for r in rules if isinstance(rules,list) else []:
+          out={'applicable':0,'untargeted':0,'tag_targeted':0,'sa_targeted':0,'world_untargeted':0,'iap_untargeted':0,'world_targeted':0,'iap_targeted':0}
+          for r in rules:
               if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): continue
-              target_tags=set(r.get('targetTags') or []); target_sas=set(r.get('targetServiceAccounts') or [])
-              if target_tags and not (target_tags & tags): continue
-              if target_sas and not (target_sas & service_accounts): continue
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              if tt and not (tt & tags): continue
+              if ts and not (ts & sas): continue
               allows22=False
               for a in (r.get('allowed') or []):
                   proto=str(a.get('IPProtocol') or '').lower(); ports=[str(x) for x in (a.get('ports') or [])]
                   if proto in {'tcp','all'} and (not ports or any(p=='22' or ('-' in p and int(p.split('-')[0])<=22<=int(p.split('-')[1])) for p in ports)):
                       allows22=True
               if not allows22: continue
-              applicable += 1
+              out['applicable'] += 1
+              targeted=bool(tt or ts)
+              if not targeted: out['untargeted'] += 1
+              if tt: out['tag_targeted'] += 1
+              if ts: out['sa_targeted'] += 1
               for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
                   try: net=ipaddress.ip_network(str(s),strict=False)
                   except Exception: continue
-                  if str(net)=='0.0.0.0/0': world_ssh=True
-                  if net.overlaps(iap): iap_ssh=True
-          safe={
-            'status':'c1_network_boundary_audit_complete',
-            'firewall_query_ok':os.environ['FW_OK']=='true',
-            'external_ip_present':bool(ext_ip),
-            'instance_ssh_key_metadata_present':('ssh-keys' in meta or 'sshKeys' in meta),
-            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
-            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
-            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
-            'applicable_ssh_ingress_rule_count':applicable,
-            'world_ssh_ingress_present':world_ssh,
-            'iap_ssh_ingress_present':iap_ssh,
-            'private_identifiers_exposed':0,
-            'read_only':True,
-          }
-          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 network boundary audit\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+                  if str(net)=='0.0.0.0/0': out['world_targeted' if targeted else 'world_untargeted'] += 1
+                  if net.overlaps(iap): out['iap_targeted' if targeted else 'iap_untargeted'] += 1
+          safe={'status':'c1_ssh_scope_audit_complete',**out,'read_only':True,'private_identifiers_exposed':0}
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 SSH scope audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           PY
