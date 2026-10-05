@@ -1,47 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-05T08:47:35.644857+00:00",
+  "updated_at": "2026-10-05T08:47:41.871527+00:00",
   "items": [
-    {
-      "key": "https://www.volcengine.com/docs/ark/migrate-from-bot-api?lang=zh",
-      "deferred_at": "2026-10-05T08:21:12.658160+00:00",
-      "expires_at": "2026-12-04T08:21:12.658160+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "ByteDance Doubao/Seed — 将零代码应用迁移至 Managed Agents",
-        "originalTitle": "ByteDance Doubao/Seed — 将零代码应用迁移至 Managed Agents",
-        "displayName": "AIエージェントツール「ByteDance Doubao/Seed — 将零代码应用迁移至 Managed Agents」",
-        "sourceLanguage": "zh-CN",
-        "url": "https://www.volcengine.com/docs/ark/migrate-from-bot-api?lang=zh",
-        "description": "将零代码应用迁移至 Managed Agents",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "将零代码应用迁移至 Managed Agents",
-        "primaryUrl": "https://www.volcengine.com/docs/ark/migrate-from-bot-api?lang=zh",
-        "sourceDetails": {
-          "vendor": "ByteDance Doubao/Seed",
-          "vendor_region": "CN",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://www.volcengine.com/docs/82379/1799865?lang=zh",
-          "candidate_revision": "d9bd2d6be03383a7",
-          "vendor_record_kind": "structured_current_state",
-          "run269_precision": true,
-          "current_state_page": true,
-          "current_state_timestamp_observed": false,
-          "current_state_model_markers_observed": true,
-          "current_state_transport": "official_page_html"
-        }
-      },
-      "notion_page_id": "3f0479ff-dca9-81e0-befe-d0aa5e1b0e1a",
-      "score": 82,
-      "reason": "ノーコードからManaged Agentsへの実務的な移行手法を提示",
-      "commercial_score": 85,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 83.05
-    },
     {
       "key": "https://arxiv.org/abs/2610.02199",
       "deferred_at": "2026-10-04T15:26:41.042619+00:00",
