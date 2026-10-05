@@ -1,0 +1,183 @@
+name: P0 C-1 Runner Systemd Diagnostic [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-runner-systemd-diagnostic.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-c1-runner-systemd-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Run bounded boot diagnostic and restore metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP}/c1-runner-diagnostic"
+          mkdir -p "$work"
+          vm_json="$work/vm.json"
+          original_startup="$work/original-startup.sh"
+          diagnostic_startup="$work/diagnostic-startup.sh"
+
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$vm_json"
+          VM_JSON="$vm_json" ORIGINAL="$original_startup" python3 - <<'PY'
+          import json, os
+          vm=json.load(open(os.environ['VM_JSON'],encoding='utf-8'))
+          if vm.get('status') != 'TERMINATED':
+              raise SystemExit('VM must be TERMINATED before runner diagnostic')
+          items=(vm.get('metadata') or {}).get('items') or []
+          startup=None
+          guest_attr_present=False
+          guest_attr_value=''
+          for item in items:
+              if item.get('key')=='startup-script': startup=str(item.get('value') or '')
+              if item.get('key')=='enable-guest-attributes':
+                  guest_attr_present=True
+                  guest_attr_value=str(item.get('value') or '')
+          if startup is None:
+              raise SystemExit('startup-script missing; refuse diagnostic mutation')
+          open(os.environ['ORIGINAL'],'w',encoding='utf-8').write(startup)
+          open(os.environ['ORIGINAL']+'.guest-state','w',encoding='utf-8').write(('present\n'+guest_attr_value) if guest_attr_present else 'absent\n')
+          PY
+
+          cat > "$diagnostic_startup" <<'EOS'
+          #!/usr/bin/env bash
+          set +e
+          put() {
+            curl -fsS -X PUT --data "$2" \
+              -H 'Metadata-Flavor: Google' \
+              "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/aiif-c1-diagnostic/$1" >/dev/null 2>&1 || true
+          }
+          truth() { [ "$1" -eq 0 ] && echo true || echo false; }
+
+          runner_bin_count="$(find /home /opt -maxdepth 5 -type f \( -name 'Runner.Listener' -o -name 'runsvc.sh' \) 2>/dev/null | wc -l | tr -d ' ')"
+          runner_cfg_count="$(find /home /opt -maxdepth 5 -type f -name '.runner' 2>/dev/null | wc -l | tr -d ' ')"
+          runner_units="$(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei 'actions\.runner|github.*runner|runner.*github' || true)"
+          runner_unit_count="$(printf '%s\n' "$runner_units" | sed '/^$/d' | wc -l | tr -d ' ')"
+          enabled=false
+          active=false
+          if [ -n "$runner_units" ]; then
+            while IFS= read -r unit; do
+              [ -n "$unit" ] || continue
+              systemctl is-enabled "$unit" >/dev/null 2>&1 && enabled=true
+              systemctl is-active "$unit" >/dev/null 2>&1 && active=true
+            done <<< "$runner_units"
+          fi
+          pgrep -f 'Runner.Listener|Runner.Worker|runsvc.sh' >/dev/null 2>&1; process_running="$(truth $?)"
+          curl -fsS -L --connect-timeout 10 --max-time 25 -o /dev/null https://github.com/; github_https="$(truth $?)"
+          curl -fsS -L --connect-timeout 10 --max-time 25 -o /dev/null https://note.com/; note_https="$(truth $?)"
+          if ss -H -lnt 2>/dev/null | awk '$4 ~ /:22$/ {found=1} END{exit found ? 0 : 1}'; then tcp22_absent=false; else tcp22_absent=true; fi
+
+          ledger_dir="$HOME/.aiif-note"
+          ledger_file="$ledger_dir/delivery-ledger-v1.sqlite3"
+          ledger_dir_present=false; ledger_file_present=false; ledger_dir_mode_ok=false; ledger_file_mode_ok=false
+          [ -d "$ledger_dir" ] && ledger_dir_present=true
+          [ -f "$ledger_file" ] && ledger_file_present=true
+          [ "$ledger_dir_present" = true ] && [ "$(stat -c '%a' "$ledger_dir" 2>/dev/null)" = 700 ] && ledger_dir_mode_ok=true
+          [ "$ledger_file_present" = true ] && [ "$(stat -c '%a' "$ledger_file" 2>/dev/null)" = 600 ] && ledger_file_mode_ok=true
+
+          put runner_bin_present "$([ "$runner_bin_count" -gt 0 ] && echo true || echo false)"
+          put runner_config_present "$([ "$runner_cfg_count" -gt 0 ] && echo true || echo false)"
+          put runner_service_unit_present "$([ "$runner_unit_count" -gt 0 ] && echo true || echo false)"
+          put runner_service_enabled "$enabled"
+          put runner_service_active "$active"
+          put runner_process_running "$process_running"
+          put github_https "$github_https"
+          put note_https "$note_https"
+          put tcp22_listener_absent "$tcp22_absent"
+          put ledger_dir_present "$ledger_dir_present"
+          put ledger_file_present "$ledger_file_present"
+          put ledger_dir_mode_ok "$ledger_dir_mode_ok"
+          put ledger_file_mode_ok "$ledger_file_mode_ok"
+          put done true
+          sync
+          sleep 3
+          systemctl poweroff --no-wall >/dev/null 2>&1 || shutdown -h now >/dev/null 2>&1 || true
+          EOS
+          chmod 700 "$diagnostic_startup"
+
+          restore() {
+            set +e
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+            if [ -n "$state" ] && [ "$state" != "TERMINATED" ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+              for _ in $(seq 1 60); do
+                state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+                [ "$state" = "TERMINATED" ] && break
+                sleep 5
+              done
+            fi
+            gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file="startup-script=$original_startup" >/dev/null 2>&1 || true
+            if head -n1 "$original_startup.guest-state" | grep -qx present; then
+              old="$(tail -n +2 "$original_startup.guest-state")"
+              gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata="enable-guest-attributes=$old" >/dev/null 2>&1 || true
+            else
+              gcloud compute instances remove-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --keys=enable-guest-attributes >/dev/null 2>&1 || true
+            fi
+          }
+          trap restore EXIT
+
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --metadata=enable-guest-attributes=true \
+            --metadata-from-file="startup-script=$diagnostic_startup" >/dev/null
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+
+          result="$work/guest.txt"
+          : > "$result"
+          for _ in $(seq 1 20); do
+            sleep 15
+            if gcloud compute instances get-guest-attributes "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --query-path=aiif-c1-diagnostic --format='value(key,value)' > "$result" 2>/dev/null; then
+              grep -q '^done[[:space:]]\+true$' "$result" && break
+            fi
+          done
+          grep -q '^done[[:space:]]\+true$' "$result" || { echo '::error::bounded guest diagnostic did not complete'; exit 1; }
+
+          python3 - "$result" <<'PY'
+          import sys
+          path=sys.argv[1]
+          allowed={
+            'runner_bin_present','runner_config_present','runner_service_unit_present','runner_service_enabled','runner_service_active','runner_process_running',
+            'github_https','note_https','tcp22_listener_absent','ledger_dir_present','ledger_file_present','ledger_dir_mode_ok','ledger_file_mode_ok','done'
+          }
+          vals={}
+          for line in open(path,encoding='utf-8',errors='ignore'):
+              parts=line.rstrip('\n').split(None,1)
+              if len(parts)==2 and parts[0] in allowed:
+                  vals[parts[0]]=parts[1]
+          missing=sorted(allowed-vals.keys())
+          if missing:
+              raise SystemExit('missing diagnostic keys: '+','.join(missing))
+          print('C1_RUNNER_SYSTEMD_DIAGNOSTIC='+str(vals))
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 bounded runner/systemd diagnostic\n')
+              for k in sorted(vals): fh.write(f'- {k}: `{vals[k]}`\n')
+              fh.write('- No private paths, runner names, tokens, manuscript data, or ledger rows were published.\n')
+          PY
