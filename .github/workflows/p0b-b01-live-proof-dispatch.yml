@@ -1,4 +1,4 @@
-name: P0 C-1 C-2 Private Boundary Audit [OPS ONE-SHOT]
+name: P0 C-1 Network Boundary Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,17 +8,10 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: p0-c1-c2-private-boundary-audit
-  cancel-in-progress: false
-
-env:
-  P0B_HEAD: 9bcfc9ed2de8293989bc895da0ff6baf5ded72b8
-
 jobs:
-  cloud-control-plane-audit:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
@@ -34,215 +27,55 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Read-only GCP IAM disk backup census
+      - name: Read-only network and SSH boundary census
+        shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/p0c"
-          mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1net"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
-          disk="$(python - "$tmp/instance.json" <<'PY'
-          import json,sys
-          v=json.load(open(sys.argv[1]))
-          disks=v.get('disks') or []
-          src=str((disks[0] if disks else {}).get('source') or '')
-          print(src.rsplit('/',1)[-1] if src else '')
-          PY
-          )"
-          test -n "$disk"
-          gcloud compute disks describe "$disk" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/disk.json"
-          if gcloud projects get-iam-policy "$GCP_PROJECT_ID" --format=json > "$tmp/project_iam.json" 2>/dev/null; then echo true > "$tmp/project_iam_ok"; else echo false > "$tmp/project_iam_ok"; echo '{}' > "$tmp/project_iam.json"; fi
-          vm_sa="$(python - "$tmp/instance.json" <<'PY'
-          import json,sys
-          v=json.load(open(sys.argv[1])); sa=v.get('serviceAccounts') or []
-          print(str((sa[0] if sa else {}).get('email') or ''))
-          PY
-          )"
-          if [ -n "$vm_sa" ] && gcloud iam service-accounts get-iam-policy "$vm_sa" --project "$GCP_PROJECT_ID" --format=json > "$tmp/sa_iam.json" 2>/dev/null; then echo true > "$tmp/sa_iam_ok"; else echo false > "$tmp/sa_iam_ok"; echo '{}' > "$tmp/sa_iam.json"; fi
-          if gcloud compute snapshots list --project "$GCP_PROJECT_ID" --format=json > "$tmp/snapshots.json" 2>/dev/null; then echo true > "$tmp/snapshots_ok"; else echo false > "$tmp/snapshots_ok"; echo '[]' > "$tmp/snapshots.json"; fi
-          python - "$tmp" "$disk" <<'PY'
-          import json,sys,datetime
+          if gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json" 2>/dev/null; then fw_ok=true; else fw_ok=false; echo '[]' > "$tmp/firewall.json"; fi
+          ROOT="$tmp" FW_OK="$fw_ok" python3 - <<'PY'
+          import json,os,ipaddress
           from pathlib import Path
-          root=Path(sys.argv[1]); disk_name=sys.argv[2]
-          inst=json.load(open(root/'instance.json')); disk=json.load(open(root/'disk.json'))
-          piam=json.load(open(root/'project_iam.json')); siam=json.load(open(root/'sa_iam.json')); snaps=json.load(open(root/'snapshots.json'))
-          public={'allUsers','allAuthenticatedUsers'}
-          def public_binding(doc):
-              return any(any(m in public for m in (b.get('members') or [])) for b in (doc.get('bindings') or []))
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'instance.json').read_text()); rules=json.loads((root/'firewall.json').read_text())
           meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
           ext_ip=any((a.get('natIP') for n in (inst.get('networkInterfaces') or []) for a in (n.get('accessConfigs') or [])))
-          attached=inst.get('disks') or []
-          policies=disk.get('resourcePolicies') or []
-          enc='customer_managed_kms' if ((disk.get('diskEncryptionKey') or {}).get('kmsKeyName')) else 'google_managed_at_rest'
-          disk_snaps=[]
-          for s in snaps if isinstance(snaps,list) else []:
-              src=str(s.get('sourceDisk') or '')
-              if src.rsplit('/',1)[-1] == disk_name:
-                  disk_snaps.append(s)
-          newest=None
-          for s in disk_snaps:
-              ts=str(s.get('creationTimestamp') or '')
-              if ts:
-                  try:
-                      dt=datetime.datetime.fromisoformat(ts.replace('Z','+00:00'))
-                      newest=dt if newest is None or dt>newest else newest
-                  except Exception: pass
-          age=None
-          if newest:
-              age=round((datetime.datetime.now(datetime.timezone.utc)-newest.astimezone(datetime.timezone.utc)).total_seconds()/3600,1)
+          tags=set((inst.get('tags') or {}).get('items') or [])
+          service_accounts={str(x.get('email') or '') for x in (inst.get('serviceAccounts') or []) if x.get('email')}
+          iap=ipaddress.ip_network('35.235.240.0/20')
+          applicable=0; world_ssh=False; iap_ssh=False
+          for r in rules if isinstance(rules,list) else []:
+              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): continue
+              target_tags=set(r.get('targetTags') or []); target_sas=set(r.get('targetServiceAccounts') or [])
+              if target_tags and not (target_tags & tags): continue
+              if target_sas and not (target_sas & service_accounts): continue
+              allows22=False
+              for a in (r.get('allowed') or []):
+                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(x) for x in (a.get('ports') or [])]
+                  if proto in {'tcp','all'} and (not ports or any(p=='22' or ('-' in p and int(p.split('-')[0])<=22<=int(p.split('-')[1])) for p in ports)):
+                      allows22=True
+              if not allows22: continue
+              applicable += 1
+              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
+                  try: net=ipaddress.ip_network(str(s),strict=False)
+                  except Exception: continue
+                  if str(net)=='0.0.0.0/0': world_ssh=True
+                  if net.overlaps(iap): iap_ssh=True
           safe={
-              'status':'cloud_control_plane_audit_complete',
-              'external_ip_present':bool(ext_ip),
-              'vm_service_account_count':len(inst.get('serviceAccounts') or []),
-              'attached_disk_count':len(attached),
-              'boot_disk_auto_delete':bool((attached[0] if attached else {}).get('autoDelete')),
-              'disk_encryption':enc,
-              'snapshot_schedule_count':len(policies),
-              'snapshot_count_for_disk':len(disk_snaps),
-              'newest_snapshot_age_hours':age,
-              'project_iam_query_ok':(root/'project_iam_ok').read_text().strip()=='true',
-              'project_public_principal_present':public_binding(piam),
-              'vm_sa_iam_query_ok':(root/'sa_iam_ok').read_text().strip()=='true',
-              'vm_sa_public_principal_present':public_binding(siam),
-              'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
-              'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
-              'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
-              'shielded_secure_boot':bool((inst.get('shieldedInstanceConfig') or {}).get('enableSecureBoot')),
-              'shielded_vtpm':bool((inst.get('shieldedInstanceConfig') or {}).get('enableVtpm')),
-              'read_only':True,
-              'private_identifiers_exposed':0,
+            'status':'c1_network_boundary_audit_complete',
+            'firewall_query_ok':os.environ['FW_OK']=='true',
+            'external_ip_present':bool(ext_ip),
+            'instance_ssh_key_metadata_present':('ssh-keys' in meta or 'sshKeys' in meta),
+            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
+            'applicable_ssh_ingress_rule_count':applicable,
+            'world_ssh_ingress_present':world_ssh,
+            'iap_ssh_ingress_present':iap_ssh,
+            'private_identifiers_exposed':0,
+            'read_only':True,
           }
           print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
-          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1/C-2 cloud control-plane audit\n')
-              fh.write(f"- result: `{json.dumps(safe,ensure_ascii=False,sort_keys=True)}`\n")
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 network boundary audit\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
           PY
-
-  start-cloud-vm:
-    needs: cloud-control-plane-audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start persistent note VM
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          if [ "$state" = "STOPPING" ]; then
-            for _ in $(seq 1 30); do sleep 5; state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"; [ "$state" = "TERMINATED" ] && break; done
-          fi
-          [ "$state" = "RUNNING" ] || gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-
-  private-runner-audit:
-    needs: start-cloud-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.P0B_HEAD }}
-      - name: Read-only private filesystem and ledger census
-        env:
-          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os,stat,sqlite3,json,datetime
-          from pathlib import Path
-          ledger=Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser().resolve()
-          parent=ledger.parent
-          def perm(path):
-              st=path.stat(); mode=stat.S_IMODE(st.st_mode)
-              xattrs=[]
-              try: xattrs=os.listxattr(path)
-              except Exception: pass
-              return {
-                  'exists':True,
-                  'mode_octal':format(mode,'04o'),
-                  'owner_is_runner':st.st_uid==os.getuid(),
-                  'group_or_world_readable':bool(mode & (stat.S_IRGRP|stat.S_IROTH)),
-                  'group_or_world_writable':bool(mode & (stat.S_IWGRP|stat.S_IWOTH)),
-                  'extended_posix_acl_present':any('posix_acl_access' in x for x in xattrs),
-              }
-          p=perm(parent); l=perm(ledger)
-          conn=sqlite3.connect(f'file:{ledger.as_posix()}?mode=ro',uri=True,timeout=5.0); conn.row_factory=sqlite3.Row
-          try:
-              conn.execute('PRAGMA query_only=ON')
-              version=int(conn.execute('PRAGMA user_version').fetchone()[0])
-              count=int(conn.execute('SELECT COUNT(*) FROM deliveries').fetchone()[0])
-              states={str(r[0]):int(r[1]) for r in conn.execute('SELECT state,COUNT(*) FROM deliveries GROUP BY state')}
-              oldest=conn.execute('SELECT MIN(created_at) FROM deliveries').fetchone()[0]
-              newest=conn.execute('SELECT MAX(updated_at) FROM deliveries').fetchone()[0]
-          finally: conn.close()
-          def age_days(ts):
-              if not ts: return None
-              try:
-                  dt=datetime.datetime.fromisoformat(str(ts).replace('Z','+00:00'))
-                  return round((datetime.datetime.now(datetime.timezone.utc)-dt.astimezone(datetime.timezone.utc)).total_seconds()/86400,2)
-              except Exception: return None
-          safe={
-              'status':'private_runner_acl_retention_audit_complete',
-              'ledger_parent_mode':p['mode_octal'],
-              'ledger_file_mode':l['mode_octal'],
-              'parent_owner_is_runner':p['owner_is_runner'],
-              'ledger_owner_is_runner':l['owner_is_runner'],
-              'parent_group_or_world_readable':p['group_or_world_readable'],
-              'ledger_group_or_world_readable':l['group_or_world_readable'],
-              'parent_group_or_world_writable':p['group_or_world_writable'],
-              'ledger_group_or_world_writable':l['group_or_world_writable'],
-              'parent_extended_acl_present':p['extended_posix_acl_present'],
-              'ledger_extended_acl_present':l['extended_posix_acl_present'],
-              'ledger_schema_version':version,
-              'ledger_record_count':count,
-              'ledger_state_counts':states,
-              'oldest_record_age_days':age_days(oldest),
-              'newest_update_age_days':age_days(newest),
-              'read_only':True,
-              'ledger_mutation':False,
-              'note_mutation':False,
-              'public_release':False,
-              'private_identifiers_exposed':0,
-          }
-          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1/C-2 private runner audit\n')
-              fh.write(f"- result: `{json.dumps(safe,ensure_ascii=False,sort_keys=True)}`\n")
-          PY
-
-  stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [cloud-control-plane-audit, start-cloud-vm, private-runner-audit]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop persistent note VM
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
