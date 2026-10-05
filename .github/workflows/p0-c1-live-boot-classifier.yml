@@ -1,0 +1,89 @@
+name: P0 C-1 Live Boot Classifier [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-live-boot-classifier.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Short boot and classify serial output, then stop
+        shell: bash
+        run: |
+          set -euo pipefail
+          stop_vm() {
+            set +e
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+            if [ -n "$state" ] && [ "$state" != TERMINATED ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+              for _ in $(seq 1 60); do
+                state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+                [ "$state" = TERMINATED ] && break
+                sleep 5
+              done
+            fi
+          }
+          trap stop_vm EXIT
+
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$state" = TERMINATED ] || { echo '::error::VM must start from TERMINATED'; exit 1; }
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          sleep 45
+
+          out="${RUNNER_TEMP}/serial.out"
+          err="${RUNNER_TEMP}/serial.err"
+          set +e
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 >"$out" 2>"$err"
+          rc=$?
+          set -e
+          RC="$rc" OUT="$out" ERR="$err" python3 - <<'PY'
+          import os,re
+          rc=int(os.environ['RC'])
+          text=open(os.environ['OUT'],encoding='utf-8',errors='ignore').read().lower()
+          err=open(os.environ['ERR'],encoding='utf-8',errors='ignore').read().lower()
+          def has(*p): return any(re.search(x,text,re.S) for x in p)
+          ehas=lambda *p:any(re.search(x,err,re.S) for x in p)
+          safe={
+            'serial_command_succeeded': rc==0,
+            'serial_output_nonempty': bool(text.strip()),
+            'serial_permission_error': ehas(r'permission',r'forbidden'),
+            'serial_disabled_error': ehas(r'serial.{0,80}(disabled|enable)',r'(disabled|enable).{0,80}serial'),
+            'metadata_script_runner_mentioned': has(r'metadata[_ -]?script',r'startup[- ]script',r'google-startup-scripts'),
+            'startup_script_failure_signal': has(r'(startup|metadata).{0,120}(fail|error)',r'(fail|error).{0,120}(startup|metadata)'),
+            'guest_agent_mentioned': has(r'google[-_ ]guest[-_ ]agent',r'google_guest_agent'),
+            'systemd_failure_signal': has(r'systemd.{0,120}failed',r'failed to start'),
+            'runner_signal': has(r'actions\.runner',r'runner\.listener',r'github.{0,80}runner'),
+            'runner_failure_signal': has(r'runner.{0,120}(fail|error|fatal|stopped)',r'(fail|error|fatal).{0,120}runner'),
+            'dns_failure_signal': has(r'temporary failure in name resolution',r'name or service not known',r'dns.{0,80}fail'),
+            'network_failure_signal': has(r'network is unreachable',r'connection timed out',r'connection refused'),
+          }
+          print('C1_LIVE_BOOT_CLASSIFICATION='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 live boot classifier\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Raw serial output, IPs, service names, paths, and private content intentionally not published.\n')
+          PY
