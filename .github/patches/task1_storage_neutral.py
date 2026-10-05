@@ -1,32 +1,97 @@
 from pathlib import Path
 
-ledger_path = Path('note_delivery_ledger.py')
-text = ledger_path.read_text(encoding='utf-8')
-text = text.replace(
-    'from typing import Callable, Iterable, TypeVar\n',
-    'from typing import Callable, Iterable, Mapping, Protocol, TypeVar, runtime_checkable\n',
-    1,
-)
-
-intent_marker = '''@dataclass(frozen=True)\nclass IntentDecision:\n    record: DeliveryRecord\n    creation_authorized: bool\n    reason: str\n\n'''
-protocol_block = '''@dataclass(frozen=True)\nclass IntentDecision:\n    record: DeliveryRecord\n    creation_authorized: bool\n    reason: str\n\n\n@runtime_checkable\nclass DeliveryLedger(Protocol):\n    def get_by_operation_key(self, op_key: str) -> DeliveryRecord | None: ...\n\n    def get_active_by_logical_key(self, logical_key: str) -> DeliveryRecord | None: ...\n\n    def begin_or_load(self, snapshot: DeliverySnapshot, *, run_correlation_id: str) -> IntentDecision: ...\n\n    def record_draft_created(\n        self, operation_key: str, *, draft_id: str, note_host: str, expected_version: int\n    ) -> DeliveryRecord: ...\n\n    def record_verified(\n        self, operation_key: str, *, canonical_sha256: str, expected_version: int\n    ) -> DeliveryRecord: ...\n\n    def record_queue_pending(\n        self, operation_key: str, *, category: str, expected_version: int\n    ) -> DeliveryRecord: ...\n\n    def record_queue_confirmed(\n        self, operation_key: str, *, receipt_digest: str, expected_version: int\n    ) -> DeliveryRecord: ...\n\n    def record_blocked(\n        self, operation_key: str, *, state: DeliveryState, category: str, expected_version: int\n    ) -> DeliveryRecord: ...\n\n'''
-if intent_marker not in text:
-    raise SystemExit('IntentDecision marker not found')
-text = text.replace(intent_marker, protocol_block, 1)
-
-snapshot_marker = '''def _snapshot_from_json(value: str) -> DeliverySnapshot:\n    data = json.loads(value)\n    data["transform_versions"] = tuple(tuple(item) for item in data["transform_versions"])\n    return DeliverySnapshot(**data)\n\n'''
-serialization_block = '''def _snapshot_from_json(value: str) -> DeliverySnapshot:\n    data = json.loads(value)\n    data["transform_versions"] = tuple(tuple(item) for item in data["transform_versions"])\n    return DeliverySnapshot(**data)\n\n\ndef delivery_record_to_dict(record: DeliveryRecord) -> dict[str, object]:\n    data = asdict(record)\n    data["state"] = record.state.value\n    return data\n\n\ndef delivery_record_from_dict(data: Mapping[str, object]) -> DeliveryRecord:\n    if not isinstance(data, Mapping):\n        raise LedgerSchemaError("invalid_ledger_record")\n    if str(data.get("schema_version") or "") != DELIVERY_RECORD_SCHEMA_VERSION:\n        raise LedgerSchemaError("unsupported_ledger_schema")\n\n    snapshot_raw = data.get("snapshot")\n    if not isinstance(snapshot_raw, Mapping):\n        raise LedgerSchemaError("invalid_ledger_snapshot")\n    if str(snapshot_raw.get("schema_version") or "") != SNAPSHOT_SCHEMA_VERSION:\n        raise LedgerSchemaError("unsupported_snapshot_schema")\n\n    try:\n        snapshot_data = dict(snapshot_raw)\n        transforms = snapshot_data.get("transform_versions", ())\n        snapshot_data["transform_versions"] = tuple(tuple(item) for item in transforms)\n        snapshot = DeliverySnapshot(**snapshot_data)\n    except (KeyError, TypeError, ValueError) as exc:\n        raise LedgerSchemaError("invalid_ledger_snapshot") from exc\n\n    try:\n        state = DeliveryState(str(data["state"]))\n    except (KeyError, ValueError) as exc:\n        raise LedgerSchemaError("invalid_ledger_state") from exc\n\n    try:\n        return DeliveryRecord(\n            record_id=str(data["record_id"]),\n            schema_version=str(data["schema_version"]),\n            logical_key=str(data["logical_key"]),\n            revision_key=str(data["revision_key"]),\n            operation_key=str(data["operation_key"]),\n            snapshot=snapshot,\n            state=state,\n            state_version=int(data["state_version"]),\n            attempt_count=int(data["attempt_count"]),\n            owner_correlation_id=None if data.get("owner_correlation_id") is None else str(data.get("owner_correlation_id")),\n            owner_expires_at=None if data.get("owner_expires_at") is None else str(data.get("owner_expires_at")),\n            created_at=str(data["created_at"]),\n            updated_at=str(data["updated_at"]),\n            draft_id=None if data.get("draft_id") is None else str(data.get("draft_id")),\n            note_host=None if data.get("note_host") is None else str(data.get("note_host")),\n            last_verified_canonical_hash=(\n                None if data.get("last_verified_canonical_hash") is None else str(data.get("last_verified_canonical_hash"))\n            ),\n            queue_receipt_digest=(\n                None if data.get("queue_receipt_digest") is None else str(data.get("queue_receipt_digest"))\n            ),\n            conflict_category=None if data.get("conflict_category") is None else str(data.get("conflict_category")),\n        )\n    except (KeyError, TypeError, ValueError) as exc:\n        raise LedgerSchemaError("invalid_ledger_record") from exc\n\n'''
-if snapshot_marker not in text:
-    raise SystemExit('snapshot marker not found')
-text = text.replace(snapshot_marker, serialization_block, 1)
-ledger_path.write_text(text, encoding='utf-8')
-
 runtime_path = Path('note_delivery_runtime.py')
 runtime = runtime_path.read_text(encoding='utf-8')
+
 runtime = runtime.replace(
-    '    DeliveryLedgerError,\n    DeliveryRecord,\n',
-    '    DeliveryLedger,\n    DeliveryLedgerError,\n    DeliveryRecord,\n',
+    'import note_publication_reconcile as reconcile\n\nfrom note_document_contract',
+    'import note_publication_reconcile as reconcile\nfrom note_delivery_gcs import GCSDeliveryLedger\n\nfrom note_document_contract',
     1,
 )
-runtime = runtime.replace('ledger: SQLiteDeliveryLedger,', 'ledger: DeliveryLedger,')
+
+runtime = runtime.replace(
+    'NOTE_DELIVERY_LEDGER_ENV = "NOTE_DELIVERY_LEDGER_PATH"\nDEFAULT_LEDGER_PATH = Path.home() / ".aiif-note" / "delivery-ledger-v1.sqlite3"\n',
+    'NOTE_DELIVERY_LEDGER_BACKEND_ENV = "NOTE_DELIVERY_LEDGER_BACKEND"\nNOTE_DELIVERY_LEDGER_BUCKET_ENV = "NOTE_DELIVERY_LEDGER_BUCKET"\nNOTE_DELIVERY_LEDGER_PREFIX_ENV = "NOTE_DELIVERY_LEDGER_PREFIX"\nNOTE_DELIVERY_LEDGER_PATH_ENV = "NOTE_DELIVERY_LEDGER_PATH"\nDEFAULT_GCS_PREFIX = "delivery/v1"\n',
+    1,
+)
+
+runtime = runtime.replace(
+    'raise base.NoteDraftError("VM preparation returned a different sync_id")',
+    'raise base.NoteDraftError("Delivery preparation returned a different sync_id")',
+    1,
+)
+
+old_factory = '''def delivery_ledger_from_environment() -> SQLiteDeliveryLedger:\n    raw = str(os.environ.get(NOTE_DELIVERY_LEDGER_ENV, "")).strip()\n    path = Path(raw).expanduser() if raw else DEFAULT_LEDGER_PATH\n    return SQLiteDeliveryLedger(path)\n'''
+new_factory = '''def delivery_ledger_from_environment() -> DeliveryLedger:\n    backend = str(os.environ.get(NOTE_DELIVERY_LEDGER_BACKEND_ENV, "")).strip().lower()\n    if not backend:\n        raise LedgerUnavailableError("ledger_backend_required")\n\n    if backend == "gcs":\n        bucket = str(os.environ.get(NOTE_DELIVERY_LEDGER_BUCKET_ENV, "")).strip()\n        if not bucket:\n            raise LedgerUnavailableError("gcs_bucket_required")\n        prefix = str(os.environ.get(NOTE_DELIVERY_LEDGER_PREFIX_ENV, DEFAULT_GCS_PREFIX)).strip()\n        return GCSDeliveryLedger(bucket, prefix=prefix or DEFAULT_GCS_PREFIX)\n\n    if backend == "sqlite":\n        raw = str(os.environ.get(NOTE_DELIVERY_LEDGER_PATH_ENV, "")).strip()\n        if not raw:\n            raise LedgerUnavailableError("sqlite_ledger_path_required")\n        return SQLiteDeliveryLedger(Path(raw).expanduser())\n\n    raise LedgerUnavailableError("unsupported_ledger_backend")\n'''
+if old_factory not in runtime:
+    raise SystemExit('old delivery_ledger_from_environment factory not found')
+runtime = runtime.replace(old_factory, new_factory, 1)
 runtime_path.write_text(runtime, encoding='utf-8')
+
+preflight = '''#!/usr/bin/env bash
+set -euo pipefail
+
+python - <<'PY'
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from note_delivery_ledger import DeliveryState, LedgerUnavailableError
+from note_delivery_runtime import _logical_key_for_identity, delivery_ledger_from_environment
+
+
+def normalized(value: object) -> str:
+    return str(value or "").strip()
+
+
+def safe_result(status: str, should_run_delivery: bool) -> dict[str, object]:
+    return {
+        "status": status,
+        "should_run_delivery": bool(should_run_delivery),
+        "zero_gemini_calls": True,
+    }
+
+
+sync_id = normalized(os.environ.get("NOTE_TARGET_SYNC_ID", "")).lower()
+note_target = normalized(os.environ.get("NOTE_TARGET_IDENTITY", ""))
+result_file = normalized(os.environ.get("NOTE_DRAFT_RESULT_FILE", ""))
+
+if not sync_id or not note_target:
+    raise LedgerUnavailableError("ledger_gate_identity_missing")
+
+ledger = delivery_ledger_from_environment()
+logical_key = _logical_key_for_identity(sync_id, note_target)
+record = ledger.get_active_by_logical_key(logical_key)
+
+if record is None:
+    result = safe_result("ledger_clean_new", True)
+elif record.state in {
+    DeliveryState.DRAFT_VERIFIED,
+    DeliveryState.QUEUE_CONFIRMATION_PENDING,
+    DeliveryState.QUEUE_CONFIRMED,
+}:
+    result = safe_result("ledger_reconcile_existing", True)
+else:
+    result = safe_result("ledger_blocked_ambiguous", False)
+
+if result_file:
+    path = Path(result_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+print(
+    "[P0B LEDGER PREFLIGHT] "
+    + json.dumps(
+        {
+            "status": result["status"],
+            "should_run_delivery": result["should_run_delivery"],
+            "zero_gemini_calls": True,
+        },
+        ensure_ascii=False,
+    )
+)
+PY
+'''
+Path('note_delivery_ledger_preflight.sh').write_text(preflight, encoding='utf-8')
