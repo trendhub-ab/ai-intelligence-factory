@@ -1,4 +1,4 @@
-name: P0 C-1 Outbound Path Audit [OPS ONE-SHOT]
+name: P0 C-1 Remediation Permission Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -17,87 +17,58 @@ jobs:
       id-token: write
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
     steps:
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Audit external access config and Cloud NAT read-only
+      - name: Test required remediation permissions without changing GCP state
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1out"; mkdir -p "$tmp"
-          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
-          gcloud compute routers list --project "$GCP_PROJECT_ID" --format=json > "$tmp/routers.json"
-          python3 - "$tmp/instance.json" "$tmp/context.tsv" <<'PY'
-          import json,sys
-          inst=json.load(open(sys.argv[1]))
-          nics=inst.get('networkInterfaces') or []
-          if not nics: raise SystemExit('no_nic')
-          nic=nics[0]
-          network=str(nic.get('network') or '').rsplit('/',1)[-1]
-          subnet=str(nic.get('subnetwork') or '').rsplit('/',1)[-1]
-          zone=str(inst.get('zone') or '').rsplit('/',1)[-1]
-          region='-'.join(zone.split('-')[:-1])
-          access=nic.get('accessConfigs') or []
-          with open(sys.argv[2],'w') as f:
-              f.write(f'{network}\t{subnet}\t{region}\t{len(access)}\n')
-          PY
-          IFS=$'\t' read -r network subnet region access_count < "$tmp/context.tsv"
-          : > "$tmp/nats.jsonl"
-          python3 - "$tmp/routers.json" "$network" "$region" <<'PY' > "$tmp/router.tsv"
-          import json,sys
-          routers=json.load(open(sys.argv[1])); network=sys.argv[2]; region=sys.argv[3]
-          for r in routers if isinstance(routers,list) else []:
-              rn=str(r.get('network') or '').rsplit('/',1)[-1]
-              rr=str(r.get('region') or '').rsplit('/',1)[-1]
-              if rn==network and rr==region:
-                  print(rr+'\t'+str(r.get('name') or ''))
-          PY
-          while IFS=$'\t' read -r rr router; do
-            [ -n "$router" ] || continue
-            gcloud compute routers nats list --router "$router" --region "$rr" --project "$GCP_PROJECT_ID" --format=json >> "$tmp/nats.jsonl"
-            printf '\n' >> "$tmp/nats.jsonl"
-          done < "$tmp/router.tsv"
-          ROOT="$tmp" NETWORK="$network" SUBNET="$subnet" REGION="$region" ACCESS_COUNT="$access_count" python3 - <<'PY'
+          token="$(gcloud auth print-access-token)"
+          body='{"permissions":["compute.instances.deleteAccessConfig","compute.instances.get","compute.routers.create","compute.routers.get","compute.routers.update","compute.networks.use","compute.subnetworks.use","compute.addresses.create"]}'
+          code="$(curl -sS -o "${RUNNER_TEMP}/perm.json" -w '%{http_code}' \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Content-Type: application/json' \
+            -X POST \
+            -d "$body" \
+            "https://cloudresourcemanager.googleapis.com/v1/projects/${GCP_PROJECT_ID}:testIamPermissions")"
+          HTTP_CODE="$code" ROOT="$RUNNER_TEMP" python3 - <<'PY'
           import json,os
           from pathlib import Path
-          root=Path(os.environ['ROOT']); subnet=os.environ['SUBNET']
-          nats=[]
-          for line in (root/'nats.jsonl').read_text().splitlines():
-              line=line.strip()
-              if not line: continue
-              try:
-                  item=json.loads(line)
-                  if isinstance(item,list): nats.extend(item)
-              except Exception: pass
-          covers=False
-          for n in nats:
-              mode=str(n.get('sourceSubnetworkIpRangesToNat') or '')
-              if mode in {'ALL_SUBNETWORKS_ALL_IP_RANGES','ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES'}:
-                  covers=True; break
-              if mode=='LIST_OF_SUBNETWORKS':
-                  for s in (n.get('subnetworks') or []):
-                      name=str(s.get('name') or '').rsplit('/',1)[-1]
-                      if name==subnet:
-                          covers=True; break
-              if covers: break
-          access_count=int(os.environ['ACCESS_COUNT'])
+          p=Path(os.environ['ROOT'])/'perm.json'
+          raw={}
+          try: raw=json.loads(p.read_text())
+          except Exception: raw={}
+          granted=set(raw.get('permissions') or [])
+          wanted=[
+            'compute.instances.deleteAccessConfig',
+            'compute.instances.get',
+            'compute.routers.create',
+            'compute.routers.get',
+            'compute.routers.update',
+            'compute.networks.use',
+            'compute.subnetworks.use',
+            'compute.addresses.create',
+          ]
           safe={
-            'status':'c1_outbound_path_audit_complete',
-            'vm_stopped_assumed_from_prior_emergency_stop':True,
-            'network_access_config_present': access_count>0,
-            'network_access_config_count': access_count,
-            'cloud_nat_config_count': len(nats),
-            'cloud_nat_covers_vm_subnet': covers,
-            'safe_to_remove_external_access_config_without_other_egress_change': covers,
+            'status':'c1_remediation_permission_audit_complete' if os.environ['HTTP_CODE']=='200' else 'c1_remediation_permission_audit_unavailable',
+            'http_ok': os.environ['HTTP_CODE']=='200',
+            'can_delete_external_access_config': 'compute.instances.deleteAccessConfig' in granted,
+            'can_create_cloud_router': 'compute.routers.create' in granted,
+            'can_get_cloud_router': 'compute.routers.get' in granted,
+            'can_update_cloud_router_nat': 'compute.routers.update' in granted,
+            'can_use_network': 'compute.networks.use' in granted,
+            'can_use_subnetwork': 'compute.subnetworks.use' in granted,
+            'can_create_address': 'compute.addresses.create' in granted,
+            'granted_required_permission_count': len([x for x in wanted if x in granted]),
+            'required_permission_count': len(wanted),
             'read_only': True,
             'private_identifiers_exposed': 0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 outbound path audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 remediation permission audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           PY
