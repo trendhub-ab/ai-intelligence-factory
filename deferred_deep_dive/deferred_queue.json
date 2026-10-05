@@ -1,47 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-05T08:47:41.871527+00:00",
+  "updated_at": "2026-10-05T09:29:56.585656+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2610.02199",
-      "deferred_at": "2026-10-04T15:26:41.042619+00:00",
-      "expires_at": "2026-12-03T15:26:41.042619+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "TACO: Ternary Absolute-max Column-wise One-sparse Optimizer for LLM Fine-Tuning",
-        "originalTitle": "TACO: Ternary Absolute-max Column-wise One-sparse Optimizer for LLM Fine-Tuning",
-        "displayName": "TACO: Ternary Absolute-max Column-wise One-sparse Optimizer for LLM Fine-Tuning",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2610.02199v1",
-        "description": "Full-parameter fine-tuning of large language models (LLMs) incurs substantial optimizer state memory overhead, limiting the model sizes that fit on modern GPUs. Existing approaches either compress optimizer state, abandon first-order gradients, or change the update geometry while retaining dense state. The recently introduced Muon optimizer reduces optimizer memory through matrix-valued updates. Still, its geometry differs from AdamW and can lead to performance degradation when fine-tuning AdamW",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-01T17:59:42Z",
-        "sourceContext": "Full-parameter fine-tuning of large language models (LLMs) incurs substantial optimizer state memory overhead, limiting the model sizes that fit on modern GPUs. Existing approaches either compress optimizer state, abandon first-order gradients, or change the update geometry while retaining dense state. The recently introduced Muon optimizer reduces optimizer memory through matrix-valued updates. Still, its geometry differs from AdamW and can lead to performance degradation when fine-tuning AdamW-pretrained models. To reduce optimizer memory without sacrificing accuracy or computational efficiency in LLM fine-tuning, we propose Ternary Absolute-max Column-wise One-sparse optimizer, or TACO, which follows Muon's operator-norm steepest-descent view but takes the geometric route further. TACO computes the exact steepest-descent direction under a dimension-normalized $1\\to1$ operator norm by selecting the sign of the largest magnitude entry in each column of two-dimensional weight matrices. This retains first-order gradients while making optimizer state memory nearly negligible. Our practical TACO optimizer maintains only a small set of low precision gradient components per column, reducing persistent optimizer state by $174\\times$ relative to AdamW8bit (from 27.7 GB to 0.16 GB) and peak training memory by $2.9\\times$ (from 80.6 GB to 27.5 GB) on OPT-13B, while achieving comparable accuracy and runtime. TACO further enables full-parameter fine-tuning of 30-32B-parameter models on a single 80 GB H100 GPU across multiple model families and tasks.",
-        "primaryUrl": "https://arxiv.org/abs/2610.02199v1",
-        "sourceDetails": {
-          "authors": [
-            "Jichao Jiang",
-            "Cristian McGee",
-            "El Houcine Bergou",
-            "Hanqin Cai",
-            "Aritra Dutta"
-          ],
-          "categories": [
-            "cs.LG",
-            "math.OC"
-          ]
-        }
-      },
-      "notion_page_id": "3ef479ff-dca9-8187-b49e-fb5b6b31ad88",
-      "score": 80,
-      "reason": "LLMファインチューニング時のGPUメモリを劇的に削減する新オプティマイザ。",
-      "commercial_score": 72,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 77.2
-    },
     {
       "key": "https://news.ycombinator.com/item?id=49942569",
       "deferred_at": "2026-10-04T15:26:41.042712+00:00",
