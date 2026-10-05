@@ -1,0 +1,67 @@
+name: P0 C-1 Serial Access Classifier [READ-ONLY]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-serial-access-classifier.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Classify serial output access failure without exposing raw output
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$state" = TERMINATED ] || { echo '::error::VM must remain TERMINATED'; exit 1; }
+          out="${RUNNER_TEMP}/serial.out"
+          err="${RUNNER_TEMP}/serial.err"
+          set +e
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 >"$out" 2>"$err"
+          rc=$?
+          set -e
+          RC="$rc" ERR="$err" OUT="$out" python3 - <<'PY'
+          import os,re
+          rc=int(os.environ['RC'])
+          err=open(os.environ['ERR'],encoding='utf-8',errors='ignore').read().lower()
+          out=open(os.environ['OUT'],encoding='utf-8',errors='ignore').read()
+          cls='success' if rc==0 else 'other_error'
+          if rc!=0:
+              if ('permission' in err and ('serial' in err or 'compute.instances' in err)) or 'required' in err and 'permission' in err:
+                  cls='permission_denied'
+              elif 'serial port' in err and ('disabled' in err or 'enable' in err):
+                  cls='serial_feature_disabled'
+              elif 'not found' in err:
+                  cls='not_found'
+              elif 'failed precondition' in err or 'precondition' in err:
+                  cls='precondition_failed'
+          safe={'result_class':cls,'command_succeeded':rc==0,'output_nonempty':bool(out.strip()),'vm_remained_terminated':True}
+          print('C1_SERIAL_ACCESS_CLASS='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 serial access classifier\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Raw serial output and raw error text intentionally not published.\n')
+          PY
