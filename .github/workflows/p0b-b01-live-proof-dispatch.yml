@@ -1,4 +1,4 @@
-name: P0 C-1 Effective Non-Operator Boundary Audit [OPS ONE-SHOT]
+name: P0 C-1 Effective Non-Operator Boundary Audit [OPS ONE-SHOT v2]
 
 on:
   push:
