@@ -1,4 +1,4 @@
-name: P0 C-1 Startup Metadata Audit [OPS ONE-SHOT]
+name: P0 C-1 Startup Script Fingerprint Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,34 +25,40 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Audit startup metadata keys read-only
+      - name: Fingerprint startup script without exposing content
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1meta"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1script"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/target.json"
           ROOT="$tmp" python3 - <<'PY'
-          import json,os
+          import hashlib,json,os
           from pathlib import Path
           root=Path(os.environ['ROOT'])
           target=json.loads((root/'target.json').read_text())
           meta={str(x.get('key')):str(x.get('value')) for x in (target.get('metadata',{}).get('items') or [])}
+          script=meta.get('startup-script','')
+          low=script.lower()
           safe={
-            'status':'c1_startup_metadata_audit_complete',
+            'status':'c1_startup_script_fingerprint_complete',
             'target_vm_running':str(target.get('status') or '').upper()=='RUNNING',
-            'startup_script_present':'startup-script' in meta,
-            'startup_script_url_present':'startup-script-url' in meta,
-            'shutdown_script_present':'shutdown-script' in meta,
-            'shutdown_script_url_present':'shutdown-script-url' in meta,
-            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
-            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
-            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
+            'startup_script_present':bool(script),
+            'startup_script_bytes':len(script.encode('utf-8')),
+            'startup_script_sha256_prefix':hashlib.sha256(script.encode('utf-8')).hexdigest()[:12] if script else '',
+            'mentions_ssh_socket':'ssh.socket' in low,
+            'mentions_ssh_service':'ssh.service' in low,
+            'mentions_sshd_service':'sshd.service' in low,
+            'mentions_systemctl':'systemctl' in low,
+            'mentions_mask':'mask' in low,
+            'mentions_disable':'disable' in low,
+            'mentions_port_22':':22' in low or ' 22' in low or '22/tcp' in low,
+            'mentions_github_runner':'runner' in low or 'actions.runner' in low,
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 startup metadata audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 startup-script fingerprint\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           if safe['target_vm_running']:
               raise SystemExit('fail-closed: target VM unexpectedly running')
           PY
