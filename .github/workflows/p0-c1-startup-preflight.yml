@@ -1,4 +1,4 @@
-name: P0 C-1 Startup Script Classification [OPS ONE-SHOT]
+name: P0 C-1 Startup Command Classification [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,37 +25,43 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Classify existing startup script without exposing content
+      - name: Enumerate command names only
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1class"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1cmd"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
           ROOT="$tmp" python3 - <<'PY'
-          import hashlib,json,os,re
+          import json,os,re,shlex
           from pathlib import Path
           inst=json.loads((Path(os.environ['ROOT'])/'instance.json').read_text())
           items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
-          key='startup-script' if 'startup-script' in items else ('startup-script-url' if 'startup-script-url' in items else '')
-          val=items.get(key,'')
-          low=val.lower()
+          val=items.get('startup-script','')
+          commands=[]
+          for raw in val.splitlines():
+              line=raw.strip()
+              if not line or line.startswith('#'): continue
+              if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', line):
+                  # Skip pure assignments; if assignment prefixes a command, keep the first command token after assignments.
+                  try: toks=shlex.split(line, comments=True, posix=True)
+                  except Exception: continue
+                  while toks and re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', toks[0]): toks=toks[1:]
+              else:
+                  try: toks=shlex.split(line, comments=True, posix=True)
+                  except Exception: continue
+              if not toks: continue
+              cmd=toks[0]
+              if cmd in {'if','then','fi','for','do','done','case','esac','while','until','{','}'}: continue
+              cmd=cmd.rsplit('/',1)[-1]
+              if re.fullmatch(r'[A-Za-z0-9_.+-]+',cmd): commands.append(cmd)
           safe={
-            'status':'c1_startup_script_classified',
-            'vm_status':str(inst.get('status') or ''),
-            'startup_key_kind':key or 'none',
-            'script_length':len(val),
-            'script_sha256':hashlib.sha256(val.encode()).hexdigest() if val else '',
-            'has_shebang':val.startswith('#!'),
-            'contains_explicit_exit':bool(re.search(r'(?m)^\s*exit(?:\s|$)', val)),
-            'mentions_github':('github' in low),
-            'mentions_actions_runner':('actions-runner' in low or 'actions.runner' in low or 'run.sh' in low or 'svc.sh' in low),
-            'mentions_systemctl':('systemctl' in low),
-            'mentions_ssh':('ssh' in low),
-            'mentions_shutdown':('shutdown' in low or 'poweroff' in low),
+            'status':'c1_startup_command_names_classified',
+            'command_names':sorted(set(commands)),
+            'command_name_count':len(set(commands)),
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 startup script classification\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 startup command names\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           PY
