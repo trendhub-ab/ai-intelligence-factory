@@ -1,4 +1,4 @@
-name: P0 C-1 Access Config Change Audit [OPS ONE-SHOT]
+name: P0 C-1 Access Config Stability Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,42 +25,44 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Audit access-config change evidence read-only
+      - name: Sample stopped-state access config repeatedly read-only
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1access"; mkdir -p "$tmp"
-          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
-          log_ok=true
-          if ! gcloud logging read 'resource.type="gce_instance" AND protoPayload.methodName:"deleteAccessConfig"' \
-              --project "$GCP_PROJECT_ID" --freshness=1d --limit=20 --format=json > "$tmp/logs.json" 2>"$tmp/logerr.txt"; then
-            log_ok=false
-            printf '[]' > "$tmp/logs.json"
-          fi
-          ROOT="$tmp" LOG_OK="$log_ok" python3 - <<'PY'
-          import json,os
-          from pathlib import Path
-          root=Path(os.environ['ROOT'])
-          inst=json.loads((root/'instance.json').read_text())
-          try: logs=json.loads((root/'logs.json').read_text())
-          except Exception: logs=[]
-          if not isinstance(logs,list): logs=[]
+          tmp="${RUNNER_TEMP}/c1stable"; mkdir -p "$tmp"
+          : > "$tmp/samples.tsv"
+          for i in 1 2 3 4 5; do
+            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance-${i}.json"
+            python3 - "$tmp/instance-${i}.json" <<'PY' >> "$tmp/samples.tsv"
+          import json,sys
+          inst=json.load(open(sys.argv[1]))
           nics=inst.get('networkInterfaces') or []
           nic=nics[0] if nics else {}
-          timestamps=sorted(str(x.get('timestamp') or '') for x in logs if x.get('timestamp'))
+          running=str(inst.get('status') or '').upper()=='RUNNING'
+          print(f"{int(running)}\t{len(nic.get('accessConfigs') or [])}")
+          PY
+            sleep 2
+          done
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          rows=[]
+          for line in (Path(os.environ['ROOT'])/'samples.tsv').read_text().splitlines():
+              a,b=line.split('\t'); rows.append((int(a),int(b)))
+          running=[x[0] for x in rows]; counts=[x[1] for x in rows]
           safe={
-            'status':'c1_access_config_change_audit_complete',
-            'vm_running':str(inst.get('status') or '').upper()=='RUNNING',
-            'external_access_config_count':len(nic.get('accessConfigs') or []),
-            'audit_log_query_ok':os.environ['LOG_OK'].lower()=='true',
-            'delete_access_config_event_count':len(logs),
-            'delete_access_config_event_timestamp_present':bool(timestamps),
+            'status':'c1_access_config_stability_audit_complete',
+            'sample_count':len(rows),
+            'vm_running_in_any_sample':any(running),
+            'access_config_counts':counts,
+            'access_config_count_stable':len(set(counts))==1,
+            'stable_access_config_count':counts[0] if counts and len(set(counts))==1 else None,
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 access-config change audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if safe['vm_running']:
+              fh.write('### P0 C-1 access-config stability audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if safe['vm_running_in_any_sample']:
               raise SystemExit('fail-closed: VM unexpectedly running')
           PY
