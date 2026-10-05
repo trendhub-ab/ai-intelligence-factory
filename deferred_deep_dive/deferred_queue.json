@@ -1,7 +1,47 @@
 {
   "version": 1,
-  "updated_at": "2026-10-04T16:34:45.316393+00:00",
+  "updated_at": "2026-10-05T08:21:12.658712+00:00",
   "items": [
+    {
+      "key": "https://www.volcengine.com/docs/ark/migrate-from-bot-api?lang=zh",
+      "deferred_at": "2026-10-05T08:21:12.658160+00:00",
+      "expires_at": "2026-12-04T08:21:12.658160+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "ByteDance Doubao/Seed — 将零代码应用迁移至 Managed Agents",
+        "originalTitle": "ByteDance Doubao/Seed — 将零代码应用迁移至 Managed Agents",
+        "displayName": "AIエージェントツール「ByteDance Doubao/Seed — 将零代码应用迁移至 Managed Agents」",
+        "sourceLanguage": "zh-CN",
+        "url": "https://www.volcengine.com/docs/ark/migrate-from-bot-api?lang=zh",
+        "description": "将零代码应用迁移至 Managed Agents",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "将零代码应用迁移至 Managed Agents",
+        "primaryUrl": "https://www.volcengine.com/docs/ark/migrate-from-bot-api?lang=zh",
+        "sourceDetails": {
+          "vendor": "ByteDance Doubao/Seed",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://www.volcengine.com/docs/82379/1799865?lang=zh",
+          "candidate_revision": "d9bd2d6be03383a7",
+          "vendor_record_kind": "structured_current_state",
+          "run269_precision": true,
+          "current_state_page": true,
+          "current_state_timestamp_observed": false,
+          "current_state_model_markers_observed": true,
+          "current_state_transport": "official_page_html"
+        }
+      },
+      "notion_page_id": "3f0479ff-dca9-81e0-befe-d0aa5e1b0e1a",
+      "score": 82,
+      "reason": "ノーコードからManaged Agentsへの実務的な移行手法を提示",
+      "commercial_score": 85,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 83.05
+    },
     {
       "key": "https://arxiv.org/abs/2610.02199",
       "deferred_at": "2026-10-04T15:26:41.042619+00:00",
@@ -570,6 +610,43 @@
       "deep_dive_priority_score": 73.25
     },
     {
+      "key": "https://mullet.town/homestead",
+      "deferred_at": "2026-10-05T08:21:12.658276+00:00",
+      "expires_at": "2026-10-19T08:21:12.658276+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Homestead: A framework around Claude Code",
+        "originalTitle": "Homestead: A framework around Claude Code",
+        "displayName": "Homestead: A framework around Claude Code",
+        "sourceLanguage": "en",
+        "url": "https://mullet.town/homestead",
+        "description": "Homestead: A framework around Claude Code",
+        "stargazerCount": 3,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-05T02:15:50Z",
+        "sourceContext": "HN points=3 comments=1 matched_query=Claude",
+        "primaryUrl": "https://mullet.town/homestead",
+        "sourceDetails": {
+          "hn_id": "49959981",
+          "hn_url": "https://news.ycombinator.com/item?id=49959981",
+          "external_url": "https://mullet.town/homestead",
+          "comments": 1,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f0479ff-dca9-8164-adf7-cdd7c28556b7",
+      "score": 72,
+      "reason": "Claude Codeを活用した実用的な開発フレームワークの初期動向。",
+      "commercial_score": 75,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 73.05
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=49936952",
       "deferred_at": "2026-10-03T00:35:41.951934+00:00",
       "expires_at": "2026-10-17T00:35:41.951934+00:00",
@@ -679,80 +756,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 68.5
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49932606",
-      "deferred_at": "2026-10-03T00:35:41.952171+00:00",
-      "expires_at": "2026-10-17T00:35:41.952171+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Harvard particle physicist Matthew Schwartz drops 36 papers authored with Claude",
-        "originalTitle": "Harvard particle physicist Matthew Schwartz drops 36 papers authored with Claude",
-        "displayName": "Harvard particle physicist Matthew Schwartz drops 36 papers authored with Claude",
-        "sourceLanguage": "en",
-        "url": "https://www.reddit.com/r/Physics/comments/1wvin77/harvard_particle_physicist_matthew_schwartz_drops/",
-        "description": "Harvard particle physicist Matthew Schwartz drops 36 papers authored with Claude",
-        "stargazerCount": 47,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-02T12:12:38Z",
-        "sourceContext": "HN points=47 comments=73 matched_query=Claude",
-        "primaryUrl": "https://www.reddit.com/r/Physics/comments/1wvin77/harvard_particle_physicist_matthew_schwartz_drops/",
-        "sourceDetails": {
-          "hn_id": "49932606",
-          "hn_url": "https://news.ycombinator.com/item?id=49932606",
-          "external_url": "https://www.reddit.com/r/Physics/comments/1wvin77/harvard_particle_physicist_matthew_schwartz_drops/",
-          "comments": 73,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ee479ff-dca9-81a2-a23f-d335f770afdf",
-      "score": 68,
-      "reason": "物理学者によるClaudeを活用した大量の論文執筆事例。",
-      "commercial_score": 65,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 66.95
-    },
-    {
-      "key": "https://casp.ac/reports/intelligence-explosion",
-      "deferred_at": "2026-10-04T16:34:42.863611+00:00",
-      "expires_at": "2026-10-18T16:34:42.863611+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Understanding Frontier Artificial Intelligence",
-        "originalTitle": "Understanding Frontier Artificial Intelligence",
-        "displayName": "Understanding Frontier Artificial Intelligence",
-        "sourceLanguage": "en",
-        "url": "https://casp.ac/reports/intelligence-explosion",
-        "description": "Understanding Frontier Artificial Intelligence",
-        "stargazerCount": 49,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-03T07:06:02Z",
-        "sourceContext": "HN points=49 comments=88 matched_query=\"artificial intelligence\"",
-        "primaryUrl": "https://casp.ac/reports/intelligence-explosion",
-        "sourceDetails": {
-          "hn_id": "49942002",
-          "hn_url": "https://news.ycombinator.com/item?id=49942002",
-          "external_url": "https://casp.ac/reports/intelligence-explosion",
-          "comments": 88,
-          "matched_query": "\"artificial intelligence\"",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ef479ff-dca9-81b8-8323-d31ee4ed6648",
-      "score": 62,
-      "reason": "知能爆発やAI将来予測の総合レポート",
-      "commercial_score": 55,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "OTHER",
-      "deep_dive_priority_score": 59.55
     }
   ]
 }
