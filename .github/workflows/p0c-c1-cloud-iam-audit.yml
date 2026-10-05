@@ -1,0 +1,80 @@
+name: P0 C-1 Cloud IAM Boundary Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0c-c1-cloud-iam-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Read-only aggregate IAM evidence
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1iam"; mkdir -p "$tmp"
+          try_json() {
+            local outfile="$1"; shift
+            if "$@" > "$outfile" 2>/dev/null; then echo true; else echo '{}' > "$outfile"; echo false; fi
+          }
+          instance_ok="$(try_json "$tmp/instance.json" gcloud compute instances get-iam-policy "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json)"
+          project_ok="$(try_json "$tmp/project.json" gcloud projects get-iam-policy "$GCP_PROJECT_ID" --format=json)"
+          project_info_ok="$(try_json "$tmp/project_info.json" gcloud compute project-info describe --project "$GCP_PROJECT_ID" --format=json)"
+          if gcloud asset search-all-iam-policies --scope="projects/$GCP_PROJECT_ID" --format=json > "$tmp/assets.json" 2>/dev/null; then asset_ok=true; else asset_ok=false; echo '[]' > "$tmp/assets.json"; fi
+          INSTANCE_OK="$instance_ok" PROJECT_OK="$project_ok" PROJECT_INFO_OK="$project_info_ok" ASSET_OK="$asset_ok" ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT']); public={'allUsers','allAuthenticatedUsers'}
+          def load(name, default):
+              try:return json.loads((root/name).read_text())
+              except Exception:return default
+          def summarize_policy(doc):
+              bs=(doc or {}).get('bindings') or []
+              members=[str(m) for b in bs for m in (b.get('members') or [])]
+              return len(bs),len(set(members)),any(m in public for m in members)
+          inst=load('instance.json',{}); proj=load('project.json',{}); assets=load('assets.json',[]); pinfo=load('project_info.json',{})
+          ib,im,ip=summarize_policy(inst); pb,pm,pp=summarize_policy(proj)
+          asset_bindings=asset_members=0; asset_public=False
+          for item in assets if isinstance(assets,list) else []:
+              b,m,p=summarize_policy(item.get('policy') or {})
+              asset_bindings+=b; asset_members+=m; asset_public=asset_public or p
+          meta={str(x.get('key')):str(x.get('value')) for x in ((pinfo.get('commonInstanceMetadata') or {}).get('items') or [])}
+          safe={
+            'status':'c1_cloud_iam_audit_complete',
+            'instance_iam_query_ok':os.environ['INSTANCE_OK']=='true',
+            'instance_binding_count':ib,
+            'instance_member_count':im,
+            'instance_public_principal_present':ip,
+            'project_iam_query_ok':os.environ['PROJECT_OK']=='true',
+            'project_binding_count':pb,
+            'project_member_count':pm,
+            'project_public_principal_present':pp,
+            'asset_iam_search_ok':os.environ['ASSET_OK']=='true',
+            'asset_policy_count':len(assets) if isinstance(assets,list) else 0,
+            'asset_binding_count':asset_bindings,
+            'asset_member_observations':asset_members,
+            'asset_public_principal_present':asset_public,
+            'project_info_query_ok':os.environ['PROJECT_INFO_OK']=='true',
+            'project_os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
+            'private_identifiers_exposed':0,
+            'read_only':True,
+          }
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 cloud IAM audit\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+          PY
