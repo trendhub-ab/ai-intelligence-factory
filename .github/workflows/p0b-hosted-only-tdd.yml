@@ -32,5 +32,6 @@ jobs:
           python -m pytest \
             tests/test_p0b_hosted_only_protocol.py \
             tests/test_note_delivery_gcs.py \
+            tests/test_p0b_hosted_runtime_factory.py \
             tests/test_note_delivery_ledger.py \
             tests/test_note_delivery_runtime.py -q
