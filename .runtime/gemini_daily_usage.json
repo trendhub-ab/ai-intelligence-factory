@@ -49,11 +49,11 @@
           "budget": 18,
           "by_kind": {
             "global_calibration": 4,
-            "product_review": 1,
+            "product_review": 2,
             "screening_batch": 2
           },
           "exhausted": false,
-          "used": 7
+          "used": 8
         }
       }
     }
@@ -62,5 +62,5 @@
   "quota_date": "2026-10-05",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-05T09:32:57.660358+00:00"
+  "updated_at": "2026-10-05T09:33:27.174915+00:00"
 }
