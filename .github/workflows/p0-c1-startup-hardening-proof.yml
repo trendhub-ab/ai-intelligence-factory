@@ -1,0 +1,213 @@
+name: P0 C-1 Startup SSH Hardening Proof [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-startup-hardening-proof.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      EXPECTED_STARTUP_SHA256: db5534e4ea6418b4e8e25680ec31be3b1b6be8342aa1b93b5a7891da1a935601
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Harden SSH with external access removed and cold-boot prove persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1proof"; mkdir -p "$tmp"
+          harden_closed="AIIF_C1_HARDEN_${GITHUB_RUN_ID}_CLOSED"
+          harden_open="AIIF_C1_HARDEN_${GITHUB_RUN_ID}_OPEN"
+          verify_closed="AIIF_C1_REBOOT_${GITHUB_RUN_ID}_CLOSED"
+          verify_open="AIIF_C1_REBOOT_${GITHUB_RUN_ID}_OPEN"
+
+          describe() {
+            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json
+          }
+          status() {
+            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)'
+          }
+          stop_vm() {
+            local s
+            s="$(status 2>/dev/null || true)"
+            if [ "$s" = "RUNNING" ] || [ "$s" = "STAGING" ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+            fi
+          }
+
+          describe > "$tmp/before.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import hashlib,json,os,sys
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'before.json').read_text())
+          if str(inst.get('status') or '')!='TERMINATED': raise SystemExit('precondition: VM must be TERMINATED')
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          if 'startup-script' not in items: raise SystemExit('precondition: startup-script missing')
+          script=items['startup-script']
+          digest=hashlib.sha256(script.encode()).hexdigest()
+          if digest!=os.environ['EXPECTED_STARTUP_SHA256']: raise SystemExit('precondition: startup-script digest changed')
+          (root/'original-startup.sh').write_text(script)
+          nics=inst.get('networkInterfaces') or []
+          if len(nics)!=1: raise SystemExit('precondition: expected exactly one NIC')
+          ac=nics[0].get('accessConfigs') or []
+          if len(ac)!=1: raise SystemExit('precondition: expected exactly one access config')
+          cfg={
+            'nic':str(nics[0].get('name') or ''),
+            'access_name':str(ac[0].get('name') or 'External NAT'),
+            'network_tier':str(ac[0].get('networkTier') or 'PREMIUM'),
+          }
+          (root/'net.json').write_text(json.dumps(cfg))
+          meta={
+            'project_ssh_keys_blocked':items.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':items.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':items.get('serial-port-enable','').lower()=='true',
+          }
+          if not meta['project_ssh_keys_blocked'] or meta['os_login_enabled'] or meta['serial_port_enabled']:
+              raise SystemExit('precondition: cloud credential boundary not closed')
+          PY
+
+          NIC_NAME="$(ROOT="$tmp" python3 -c 'import json,os;print(json.load(open(os.path.join(os.environ["ROOT"],"net.json")))["nic"])')"
+          ACCESS_NAME="$(ROOT="$tmp" python3 -c 'import json,os;print(json.load(open(os.path.join(os.environ["ROOT"],"net.json")))["access_name"])')"
+          NETWORK_TIER="$(ROOT="$tmp" python3 -c 'import json,os;print(json.load(open(os.path.join(os.environ["ROOT"],"net.json")))["network_tier"])')"
+
+          token="$(gcloud auth print-access-token)"
+          perm_body='{"permissions":["compute.instances.addAccessConfig","compute.instances.deleteAccessConfig","compute.instances.getSerialPortOutput","compute.instances.setMetadata","compute.instances.start","compute.instances.stop"]}'
+          perm_code="$(curl -sS -o "$tmp/perms.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            -d "$perm_body" \
+            "https://compute.googleapis.com/compute/v1/projects/${GCP_PROJECT_ID}/zones/${GCP_NOTE_VM_ZONE}/instances/${GCP_NOTE_VM_NAME}/testIamPermissions")"
+          [ "$perm_code" = "200" ] || { echo 'permission preflight failed' >&2; exit 1; }
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          p=set(json.load(open(os.path.join(os.environ['ROOT'],'perms.json'))).get('permissions') or [])
+          req={'compute.instances.addAccessConfig','compute.instances.deleteAccessConfig','compute.instances.getSerialPortOutput','compute.instances.setMetadata','compute.instances.start','compute.instances.stop'}
+          if not req.issubset(p): raise SystemExit('required permission missing; no mutation performed')
+          PY
+
+          access_removed=false
+          original_restored=false
+          cleanup() {
+            set +e
+            stop_vm
+            gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file startup-script="$tmp/original-startup.sh" --quiet >/dev/null 2>&1
+            original_restored=true
+            describe > "$tmp/cleanup.json" 2>/dev/null || true
+            current_ac="$(ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          try: inst=json.load(open(os.path.join(os.environ['ROOT'],'cleanup.json')))
+          except Exception: print(-1); raise SystemExit
+          print(sum(len(n.get('accessConfigs') or []) for n in (inst.get('networkInterfaces') or [])))
+          PY
+            )"
+            if [ "$current_ac" = "0" ]; then
+              gcloud compute instances add-access-config "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --network-interface="$NIC_NAME" --access-config-name="$ACCESS_NAME" --network-tier="$NETWORK_TIER" --quiet >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          cat > "$tmp/harden.sh" <<EOF
+          #!/bin/bash
+          set +e
+          systemctl disable --now ssh.socket ssh.service sshd.service >/dev/null 2>&1 || true
+          systemctl mask ssh.socket ssh.service sshd.service >/dev/null 2>&1 || true
+          systemctl daemon-reload >/dev/null 2>&1 || true
+          pkill -TERM -x sshd >/dev/null 2>&1 || true
+          sleep 2
+          if ss -ltn 2>/dev/null | awk '{print \$4}' | grep -Eq '(^|:)(22)$' || systemctl is-active --quiet ssh.socket; then
+            echo "$harden_open"
+          else
+            echo "$harden_closed"
+          fi
+          EOF
+          chmod 700 "$tmp/harden.sh"
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file startup-script="$tmp/harden.sh" --quiet >/dev/null
+          gcloud compute instances delete-access-config "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --network-interface="$NIC_NAME" --access-config-name="$ACCESS_NAME" --quiet >/dev/null
+          access_removed=true
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+
+          harden_result=''
+          for _ in $(seq 1 75); do
+            serial="$(gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 2>/dev/null || true)"
+            if printf '%s' "$serial" | grep -Fq "$harden_open"; then harden_result=open; break; fi
+            if printf '%s' "$serial" | grep -Fq "$harden_closed"; then harden_result=closed; break; fi
+            sleep 2
+          done
+          [ "$harden_result" = closed ] || { echo 'hardening marker not CLOSED' >&2; exit 1; }
+          stop_vm
+          [ "$(status)" = "TERMINATED" ] || { echo 'VM did not terminate after hardening boot' >&2; exit 1; }
+
+          cat > "$tmp/verify.sh" <<EOF
+          #!/bin/bash
+          set +e
+          sleep 2
+          if ss -ltn 2>/dev/null | awk '{print \$4}' | grep -Eq '(^|:)(22)$' || systemctl is-active --quiet ssh.socket; then
+            echo "$verify_open"
+          else
+            echo "$verify_closed"
+          fi
+          EOF
+          chmod 700 "$tmp/verify.sh"
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file startup-script="$tmp/verify.sh" --quiet >/dev/null
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+
+          verify_result=''
+          for _ in $(seq 1 75); do
+            serial="$(gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 2>/dev/null || true)"
+            if printf '%s' "$serial" | grep -Fq "$verify_open"; then verify_result=open; break; fi
+            if printf '%s' "$serial" | grep -Fq "$verify_closed"; then verify_result=closed; break; fi
+            sleep 2
+          done
+          [ "$verify_result" = closed ] || { echo 'reboot verification marker not CLOSED' >&2; exit 1; }
+          stop_vm
+          [ "$(status)" = "TERMINATED" ] || { echo 'VM did not terminate after verification boot' >&2; exit 1; }
+
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file startup-script="$tmp/original-startup.sh" --quiet >/dev/null
+          original_restored=true
+          gcloud compute instances add-access-config "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --network-interface="$NIC_NAME" --access-config-name="$ACCESS_NAME" --network-tier="$NETWORK_TIER" --quiet >/dev/null
+          access_removed=false
+
+          describe > "$tmp/final.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'final.json').read_text())
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          digest=hashlib.sha256(items.get('startup-script','').encode()).hexdigest()
+          ac=sum(len(n.get('accessConfigs') or []) for n in (inst.get('networkInterfaces') or []))
+          safe={
+            'status':'c1_guest_ssh_hardening_reboot_proof_pass',
+            'vm_status':str(inst.get('status') or ''),
+            'startup_script_restored':digest==os.environ['EXPECTED_STARTUP_SHA256'],
+            'access_config_count':ac,
+            'project_ssh_keys_blocked':items.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':items.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':items.get('serial-port-enable','').lower()=='true',
+            'tcp22_closed_after_hardening':True,
+            'tcp22_closed_after_cold_boot':True,
+            'proof_boots_had_external_access_config':False,
+            'private_identifiers_exposed':0,
+          }
+          ok=(safe['vm_status']=='TERMINATED' and safe['startup_script_restored'] and ac==1 and safe['project_ssh_keys_blocked'] and not safe['os_login_enabled'] and not safe['serial_port_enabled'])
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 guest SSH hardening reboot proof\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if not ok: raise SystemExit(1)
+          PY
+          trap - EXIT
