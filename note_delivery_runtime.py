@@ -10,6 +10,7 @@ import unicodedata
 from urllib.parse import urlparse
 
 import note_publication_reconcile as reconcile
+from note_delivery_gcs import GCSDeliveryLedger
 
 from note_document_contract import parse_presentation_markdown
 from note_delivery_ledger import (
@@ -25,8 +26,11 @@ from note_delivery_ledger import (
 
 RUN222_TRANSFORM_VERSION = "note-presentation-integrity-v1"
 READY_PROVENANCE_VERSION = "ready-waiting-current-publication-v1"
-NOTE_DELIVERY_LEDGER_ENV = "NOTE_DELIVERY_LEDGER_PATH"
-DEFAULT_LEDGER_PATH = Path.home() / ".aiif-note" / "delivery-ledger-v1.sqlite3"
+NOTE_DELIVERY_LEDGER_BACKEND_ENV = "NOTE_DELIVERY_LEDGER_BACKEND"
+NOTE_DELIVERY_LEDGER_BUCKET_ENV = "NOTE_DELIVERY_LEDGER_BUCKET"
+NOTE_DELIVERY_LEDGER_PREFIX_ENV = "NOTE_DELIVERY_LEDGER_PREFIX"
+NOTE_DELIVERY_LEDGER_PATH_ENV = "NOTE_DELIVERY_LEDGER_PATH"
+DEFAULT_GCS_PREFIX = "delivery/v1"
 
 
 class InplaceUpdateBlocked(DeliveryLedgerError):
@@ -119,7 +123,7 @@ def prepare_delivery(base: Any, requested_sync_id: str) -> PreparedDelivery:
     article = base._prepare_article(requested)
     prepared = _prepared_from_article(base, article)
     if requested and prepared.snapshot.sync_id != requested:
-        raise base.NoteDraftError("VM preparation returned a different sync_id")
+        raise base.NoteDraftError("Delivery preparation returned a different sync_id")
     return prepared
 
 
@@ -216,10 +220,25 @@ def _resume_existing_delivery(
     return record
 
 
-def delivery_ledger_from_environment() -> SQLiteDeliveryLedger:
-    raw = str(os.environ.get(NOTE_DELIVERY_LEDGER_ENV, "")).strip()
-    path = Path(raw).expanduser() if raw else DEFAULT_LEDGER_PATH
-    return SQLiteDeliveryLedger(path)
+def delivery_ledger_from_environment() -> DeliveryLedger:
+    backend = str(os.environ.get(NOTE_DELIVERY_LEDGER_BACKEND_ENV, "")).strip().lower()
+    if not backend:
+        raise LedgerUnavailableError("ledger_backend_required")
+
+    if backend == "gcs":
+        bucket = str(os.environ.get(NOTE_DELIVERY_LEDGER_BUCKET_ENV, "")).strip()
+        if not bucket:
+            raise LedgerUnavailableError("gcs_bucket_required")
+        prefix = str(os.environ.get(NOTE_DELIVERY_LEDGER_PREFIX_ENV, DEFAULT_GCS_PREFIX)).strip()
+        return GCSDeliveryLedger(bucket, prefix=prefix or DEFAULT_GCS_PREFIX)
+
+    if backend == "sqlite":
+        raw = str(os.environ.get(NOTE_DELIVERY_LEDGER_PATH_ENV, "")).strip()
+        if not raw:
+            raise LedgerUnavailableError("sqlite_ledger_path_required")
+        return SQLiteDeliveryLedger(Path(raw).expanduser())
+
+    raise LedgerUnavailableError("unsupported_ledger_backend")
 
 
 def require_inplace_update_allowed(
