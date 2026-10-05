@@ -1,0 +1,85 @@
+name: P0 C-1 Runner Failure Classifier [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-runner-failure-classifier.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Classify runner boot failure and always stop VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          stop_vm() {
+            set +e
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+            if [ -n "$state" ] && [ "$state" != TERMINATED ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+              for _ in $(seq 1 60); do
+                state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+                [ "$state" = TERMINATED ] && break
+                sleep 5
+              done
+            fi
+          }
+          trap stop_vm EXIT
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$state" = TERMINATED ] || { echo '::error::VM must start from TERMINATED'; exit 1; }
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          sleep 50
+          out="${RUNNER_TEMP}/serial.out"
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 >"$out" 2>/dev/null
+          OUT="$out" python3 - <<'PY'
+          import os,re
+          text=open(os.environ['OUT'],encoding='utf-8',errors='ignore').read().lower()
+          runner_lines='\n'.join(line for line in text.splitlines() if re.search(r'actions\.runner|runner\.listener|runsvc|github.{0,80}runner|runner.{0,80}(service|failed|error)',line))
+          # Include nearby generic systemd failure text without publishing any raw line.
+          probe=text if runner_lines else ''
+          def h(*p): return any(re.search(x,probe,re.S) for x in p)
+          safe={
+            'runner_context_found': bool(runner_lines),
+            'exec_missing_signal': h(r'no such file or directory',r'not found',r'status=203/exec',r'failed at step exec',r'cannot execute'),
+            'user_identity_signal': h(r'status=217/user',r'failed at step user',r'user.{0,80}(not found|unknown|invalid|does not exist)'),
+            'permission_signal': h(r'permission denied',r'operation not permitted',r'access denied'),
+            'working_directory_signal': h(r'working directory',r'chdir',r'status=200/chdir'),
+            'runner_not_configured_signal': h(r'not configured',r'configuration missing',r'\.runner.{0,80}(missing|not found)'),
+            'registration_auth_signal': h(r'(unauthorized|forbidden|401|403)',r'token.{0,80}(invalid|expired)'),
+            'restart_loop_signal': h(r'start request repeated too quickly',r'restart counter',r'scheduled restart job'),
+            'dependency_signal': h(r'dependency failed',r'failed with result .dependency'),
+            'exit_code_signal': h(r'main process exited',r'code=exited',r'status=[0-9]+/[a-z0-9_-]+'),
+            'core_dump_signal': h(r'core dumped',r'segmentation fault'),
+            'network_signal': h(r'network is unreachable',r'connection timed out',r'temporary failure in name resolution'),
+          }
+          matches=[k for k,v in safe.items() if k.endswith('_signal') and v]
+          safe['matched_failure_classes']=len(matches)
+          print('C1_RUNNER_FAILURE_CLASS='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 runner failure classifier\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Raw boot logs, service names, usernames, paths, tokens and arguments intentionally not published.\n')
+          PY
