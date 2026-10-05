@@ -1,4 +1,4 @@
-name: P0-B CREATION_UNKNOWN Exact Draft Census [OPS ONE-SHOT]
+name: P0-B Existing Private Draft Exact Census [OPS ONE-SHOT]
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: p0b-creation-unknown-exact-draft-census
+  group: p0b-existing-private-draft-exact-census
   cancel-in-progress: false
 
 env:
@@ -57,7 +57,7 @@ jobs:
           pip install requests playwright
           command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
           command -v xvfb-run >/dev/null 2>&1
-      - name: Read-only exact canonical match census
+      - name: Read-only existing private draft exact census
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: chrome
@@ -67,34 +67,19 @@ jobs:
           NOTION_API_VERSION: '2026-03-11'
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+          NOTION_NOTE_READY_DATABASE_ID: ${{ secrets.NOTION_NOTE_READY_DATABASE_ID }}
+          NOTION_NOTE_READY_DATA_SOURCE_ID: ${{ secrets.NOTION_NOTE_READY_DATA_SOURCE_ID }}
         run: |
           set -euo pipefail
           xvfb-run -a python - <<'PY'
-          import collections, hashlib, json, unicodedata
+          import collections, json
           import note_draft_automation as base
           import note_document_contract as contract
           import note_document_dom as dom
-          import run185_note_ready_legacy_skip as run185
+          import note_ready_sync as nrs
           import run187_note_editor_readiness as run187
           import run190_note_persistent_cloud as cloud
-          import run194_note_current_contract as current
           import run417_note_body_verification as run417
-          from note_delivery_ledger import DESTINATION_SURFACE, LOGICAL_KEY_SCHEMA_VERSION
-
-          def norm(value):
-              return unicodedata.normalize('NFC', str(value or '')).strip()
-
-          def logical_key(sync_id, target='trendhub_biz'):
-              material = {
-                  'schema_version': LOGICAL_KEY_SCHEMA_VERSION,
-                  'sync_id': norm(sync_id).lower(),
-                  'note_target': norm(target),
-                  'destination_surface': DESTINATION_SURFACE,
-              }
-              encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
-              return hashlib.sha256(encoded).hexdigest()
 
           def title_value(field):
               tag = str(field.evaluate('el => el.tagName.toLowerCase()'))
@@ -102,47 +87,44 @@ jobs:
                   return str(field.input_value() or '').strip()
               return str(field.inner_text() or '').strip()
 
-          current.install()
-          try:
-              candidates = run185._ordered_candidates(base._query_ready_queue())
-          except base.NoteDraftError:
-              candidates = []
-
-          import sqlite3
-          from pathlib import Path
-          ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
-          conn = sqlite3.connect(ledger.resolve().as_uri() + '?mode=ro', uri=True, timeout=5.0, isolation_level=None)
-          conn.row_factory = sqlite3.Row
-          conn.execute('PRAGMA query_only=ON')
-
-          prepared = []
-          for candidate in candidates:
-              try:
-                  item = current._prepare_one(candidate)
-              except Exception:
+          pages = nrs._query_db(
+              nrs.SOURCE_DATA_SOURCE_ID,
+              nrs.SOURCE_DATABASE_ID,
+              payload={'filter': {'property': nrs.SOURCE_ARTICLE_STATUS, 'select': {'equals': nrs.SOURCE_READY}}},
+          )
+          candidates = []
+          posting_counts = collections.Counter()
+          skipped = 0
+          for page in pages:
+              state = nrs._source_state(page)
+              if not state:
+                  skipped += 1
                   continue
-              sid = base._normalize_sync_id(item.get('sync_id', ''))
-              if len(sid) != 32:
+              sid = str(state.get('sync_id') or '')
+              if not nrs._source_has_current_ready_manuscript(sid):
+                  skipped += 1
                   continue
-              row = conn.execute(
-                  'SELECT d.state FROM logical_bindings b JOIN deliveries d ON d.operation_key=b.operation_key WHERE b.logical_key=?',
-                  (logical_key(sid),),
-              ).fetchone()
-              if row is None or str(row['state'] or '') != 'CREATION_UNKNOWN':
+              dest = nrs.exact_destination_state(sid)
+              if not dest:
                   continue
-              try:
-                  title = str(item.get('title') or '')
-                  body_manuscript = base._body_manuscript_for_note(title, str(item.get('manuscript') or ''))
-                  expected = run417._expected_note_document(body_manuscript)
-              except Exception:
+              posting = str(dest.get('posting_status') or '').strip()
+              if posting == '投稿準備中':
+                  posting_counts['private_pending'] += 1
+              elif posting == '投稿済み':
+                  posting_counts['published'] += 1
+              else:
                   continue
-              prepared.append({'title': title, 'expected': expected})
-          conn.close()
+              if posting != '投稿準備中':
+                  continue
+              manuscript = nrs._source_current_ready_manuscript(sid)
+              title = str(state.get('title') or '')
+              body_manuscript = base._body_manuscript_for_note(title, manuscript)
+              expected = run417._expected_note_document(body_manuscript)
+              candidates.append({'title': title, 'expected': expected})
 
           recent_urls = cloud._recent_private_edit_urls(cloud._profile_dir())[:24]
-          exact_counts = [0 for _ in prepared]
+          exact_counts = [0 for _ in candidates]
           inspected_editor_routes = 0
-
           from playwright.sync_api import sync_playwright
           with sync_playwright() as playwright:
               context = cloud._launch_persistent_context(playwright)
@@ -158,8 +140,8 @@ jobs:
                           inspected_editor_routes += 1
                           title_field = base._find_title(page)
                           observed_title = title_value(title_field)
-                          matching_indexes = [i for i, item in enumerate(prepared) if item['title'] == observed_title]
-                          if not matching_indexes:
+                          indexes = [i for i, item in enumerate(candidates) if item['title'] == observed_title]
+                          if not indexes:
                               continue
                           body = base._find_body(page, title_field)
                           snapshot = dom.snapshot_note_body(body)
@@ -170,8 +152,8 @@ jobs:
                                   dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
                               ),
                           )
-                          for i in matching_indexes:
-                              receipt = contract.compare_documents(prepared[i]['expected'], actual)
+                          for i in indexes:
+                              receipt = contract.compare_documents(candidates[i]['expected'], actual)
                               if receipt.get('canonical_match') is True:
                                   exact_counts[i] += 1
                       except Exception:
@@ -179,20 +161,21 @@ jobs:
               finally:
                   context.close()
 
-          counts = collections.Counter()
+          cardinality = collections.Counter()
           for count in exact_counts:
               if count == 0:
-                  counts['zero_exact_match'] += 1
+                  cardinality['zero_exact_match'] += 1
               elif count == 1:
-                  counts['unique_exact_match'] += 1
+                  cardinality['unique_exact_match'] += 1
               else:
-                  counts['multiple_exact_matches'] += 1
+                  cardinality['multiple_exact_matches'] += 1
 
           safe = {
-              'creation_unknown_candidates': len(prepared),
+              'already_delivered_posting_states': dict(sorted(posting_counts.items())),
+              'private_pending_candidates': len(candidates),
               'recent_private_edit_routes': len(recent_urls),
               'inspected_editor_routes': inspected_editor_routes,
-              'match_cardinality': dict(sorted(counts.items())),
+              'match_cardinality': dict(sorted(cardinality.items())),
               'zero_gemini_calls': True,
               'zero_openai_calls': True,
               'notion_write': False,
@@ -202,7 +185,7 @@ jobs:
           }
           print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
           with open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B read-only CREATION_UNKNOWN exact-draft census\n')
+              fh.write('### P0-B existing private draft exact census\n')
               fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
           PY
 
