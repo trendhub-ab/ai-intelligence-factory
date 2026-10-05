@@ -1,0 +1,42 @@
+name: P0 C-1 Isolated Emergency Stop [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-emergency-stop.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  stop-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop target VM and verify terminated
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          for _ in $(seq 1 60); do
+            final="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+            [ "$final" = "TERMINATED" ] && break
+            sleep 2
+          done
+          [ "$final" = "TERMINATED" ] || { echo 'VM did not reach TERMINATED' >&2; exit 1; }
+          printf '%s\n' '{"status":"TERMINATED","private_identifiers_exposed":0}'
