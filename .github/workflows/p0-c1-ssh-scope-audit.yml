@@ -1,0 +1,139 @@
+name: P0 C-1 SSH Scope Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-ssh-scope-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Classify SSH firewall scope without exposing infrastructure identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1-ssh-scope"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/aiif.json"
+          gcloud compute instances list --project "$GCP_PROJECT_ID" --format=json > "$tmp/instances.json"
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import ipaddress, json, os
+          from pathlib import Path
+
+          root=Path(os.environ['ROOT'])
+          aiif=json.loads((root/'aiif.json').read_text())
+          instances=json.loads((root/'instances.json').read_text())
+          rules=json.loads((root/'firewall.json').read_text())
+
+          aiif_nics=aiif.get('networkInterfaces') or []
+          aiif_network=str((aiif_nics[0].get('network') if aiif_nics else '') or '')
+          aiif_tags=set((aiif.get('tags') or {}).get('items') or [])
+          aiif_sas={str(x.get('email') or '') for x in (aiif.get('serviceAccounts') or []) if x.get('email')}
+          aiif_self=str(aiif.get('selfLink') or '')
+
+          def same_network(inst):
+              return any(str(n.get('network') or '')==aiif_network for n in (inst.get('networkInterfaces') or []))
+          peers=[x for x in instances if same_network(x) and str(x.get('selfLink') or '')!=aiif_self]
+
+          def allows22(rule):
+              if str(rule.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(rule.get('disabled')):
+                  return False
+              for a in (rule.get('allowed') or []):
+                  proto=str(a.get('IPProtocol') or '').lower()
+                  ports=[str(p) for p in (a.get('ports') or [])]
+                  if proto not in {'tcp','all'}:
+                      continue
+                  if not ports:
+                      return True
+                  for p in ports:
+                      if p=='22': return True
+                      if '-' in p:
+                          try:
+                              lo,hi=map(int,p.split('-',1))
+                              if lo<=22<=hi: return True
+                          except Exception: pass
+              return False
+
+          def applies(rule,tags,sas):
+              tt=set(rule.get('targetTags') or [])
+              ts=set(rule.get('targetServiceAccounts') or [])
+              return (not tt or bool(tt & tags)) and (not ts or bool(ts & sas))
+
+          iap=ipaddress.ip_network('35.235.240.0/20')
+          applicable=[]
+          world=[]
+          iap_rules=[]
+          untargeted=[]
+          for r in rules:
+              if not allows22(r) or not applies(r,aiif_tags,aiif_sas):
+                  continue
+              applicable.append(r)
+              if not (r.get('targetTags') or r.get('targetServiceAccounts')):
+                  untargeted.append(r)
+              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
+                  try: net=ipaddress.ip_network(str(s),strict=False)
+                  except Exception: continue
+                  if str(net)=='0.0.0.0/0': world.append(r)
+                  if net.overlaps(iap): iap_rules.append(r)
+
+          # Evaluate whether firewall-only service-account targeting can preserve
+          # SSH for every peer currently reached by an untargeted rule while excluding AIIF.
+          peer_sa_sets=[]
+          peers_without_sa=0
+          peers_sharing_aiif_sa=0
+          for p in peers:
+              ps={str(x.get('email') or '') for x in (p.get('serviceAccounts') or []) if x.get('email')}
+              if not ps: peers_without_sa += 1
+              if ps & aiif_sas: peers_sharing_aiif_sa += 1
+              peer_sa_sets.append(ps)
+          peer_union=set().union(*peer_sa_sets) if peer_sa_sets else set()
+          sa_only_possible=bool(peers) and peers_without_sa==0 and peers_sharing_aiif_sa==0 and bool(peer_union)
+
+          peer_tag_sets=[set((p.get('tags') or {}).get('items') or []) for p in peers]
+          common_peer_tags=set.intersection(*peer_tag_sets) if peer_tag_sets else set()
+          common_peer_tags_excluding_aiif=common_peer_tags-aiif_tags
+          existing_tag_only_possible=bool(peers) and bool(common_peer_tags_excluding_aiif)
+
+          safe={
+            'status':'c1_ssh_scope_audit_complete',
+            'vm_status':str(aiif.get('status') or ''),
+            'same_network_peer_vm_count':len(peers),
+            'applicable_ssh_ingress_count':len({id(r) for r in applicable}),
+            'applicable_untargeted_ssh_count':len({id(r) for r in untargeted}),
+            'world_ssh_applicable':bool(world),
+            'iap_ssh_applicable':bool(iap_rules),
+            'peer_vm_without_service_account_count':peers_without_sa,
+            'peer_vm_sharing_aiif_service_account_count':peers_sharing_aiif_sa,
+            'distinct_peer_service_account_count':len(peer_union),
+            'firewall_only_service_account_scope_possible':sa_only_possible,
+            'existing_common_peer_tag_scope_possible':existing_tag_only_possible,
+            'would_require_peer_tag_mutation':not sa_only_possible and not existing_tag_only_possible,
+            'read_only':True,
+            'identifiers_exposed':0,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 SSH scope audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+
+          # Fail closed if the known premise changed unexpectedly.
+          if not safe['world_ssh_applicable'] or safe['applicable_ssh_ingress_count'] < 1:
+              raise SystemExit('C-1 SSH premise changed; manual review required')
+          PY
