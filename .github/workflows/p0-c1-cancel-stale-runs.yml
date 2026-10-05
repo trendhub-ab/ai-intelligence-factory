@@ -1,0 +1,41 @@
+name: P0 C-1 Cancel Stale Runs [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-cancel-stale-runs.yml]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel-stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel explicitly identified stale C-1 runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run_id in 37314467688 37315430062 37315685535; do
+            status="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPO/actions/runs/$run_id" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","unknown"))')"
+            case "$status" in
+              completed) printf 'run=%s status=completed action=none\n' "$run_id" ;;
+              queued|in_progress|waiting|pending|requested)
+                code="$(curl -sS -o /tmp/cancel.json -w '%{http_code}' -X POST \
+                  -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+                  "https://api.github.com/repos/$REPO/actions/runs/$run_id/cancel")"
+                if [ "$code" != "202" ] && [ "$code" != "409" ]; then
+                  echo "cancel failed for run $run_id http=$code" >&2
+                  exit 1
+                fi
+                printf 'run=%s prior_status=%s cancel_http=%s\n' "$run_id" "$status" "$code"
+                ;;
+              *) echo "unexpected status for run $run_id: $status" >&2; exit 1 ;;
+            esac
+          done
