@@ -13,6 +13,7 @@ import note_publication_reconcile as reconcile
 
 from note_document_contract import parse_presentation_markdown
 from note_delivery_ledger import (
+    DeliveryLedger,
     DeliveryLedgerError,
     DeliveryRecord,
     DeliverySnapshot,
@@ -153,7 +154,7 @@ def _logical_key_for_identity(sync_id: str, note_target: str) -> str:
 
 def _reconcile_queue_projection(
     base: Any,
-    ledger: SQLiteDeliveryLedger,
+    ledger: DeliveryLedger,
     record: DeliveryRecord,
 ) -> DeliveryRecord:
     """Reconcile Notion as a projection; never grant new draft creation authority."""
@@ -202,7 +203,7 @@ def _reconcile_queue_projection(
 
 def _resume_existing_delivery(
     base: Any,
-    ledger: SQLiteDeliveryLedger,
+    ledger: DeliveryLedger,
     record: DeliveryRecord,
 ) -> DeliveryRecord:
     """Ledger-first retry table. Existing/ambiguous state never falls through to create."""
@@ -222,7 +223,7 @@ def delivery_ledger_from_environment() -> SQLiteDeliveryLedger:
 
 
 def require_inplace_update_allowed(
-    ledger: SQLiteDeliveryLedger,
+    ledger: DeliveryLedger,
     *,
     sync_id: str,
     note_target: str,
@@ -261,7 +262,7 @@ def require_inplace_update_allowed(
 
 def create_or_resume_delivery(
     base: Any,
-    ledger: SQLiteDeliveryLedger,
+    ledger: DeliveryLedger,
     prepared: PreparedDelivery,
     *,
     run_correlation_id: str,
@@ -365,7 +366,7 @@ def create_or_resume_delivery(
 
 def reconcile_exact_delivery(
     base: Any,
-    ledger: SQLiteDeliveryLedger,
+    ledger: DeliveryLedger,
     *,
     sync_id: str,
     note_target: str,

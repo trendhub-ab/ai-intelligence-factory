@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import unicodedata
-from typing import Callable, Iterable, TypeVar
+from typing import Callable, Iterable, Mapping, Protocol, TypeVar, runtime_checkable
 from uuid import uuid4
 
 from note_document_contract import (
@@ -109,6 +109,35 @@ class IntentDecision:
     reason: str
 
 
+@runtime_checkable
+class DeliveryLedger(Protocol):
+    def get_by_operation_key(self, op_key: str) -> DeliveryRecord | None: ...
+
+    def get_active_by_logical_key(self, logical_key: str) -> DeliveryRecord | None: ...
+
+    def begin_or_load(self, snapshot: DeliverySnapshot, *, run_correlation_id: str) -> IntentDecision: ...
+
+    def record_draft_created(
+        self, operation_key: str, *, draft_id: str, note_host: str, expected_version: int
+    ) -> DeliveryRecord: ...
+
+    def record_verified(
+        self, operation_key: str, *, canonical_sha256: str, expected_version: int
+    ) -> DeliveryRecord: ...
+
+    def record_queue_pending(
+        self, operation_key: str, *, category: str, expected_version: int
+    ) -> DeliveryRecord: ...
+
+    def record_queue_confirmed(
+        self, operation_key: str, *, receipt_digest: str, expected_version: int
+    ) -> DeliveryRecord: ...
+
+    def record_blocked(
+        self, operation_key: str, *, state: DeliveryState, category: str, expected_version: int
+    ) -> DeliveryRecord: ...
+
+
 def _normalized_text(value: object) -> str:
     return unicodedata.normalize("NFC", str(value or "")).strip()
 
@@ -199,6 +228,66 @@ def _snapshot_from_json(value: str) -> DeliverySnapshot:
     data = json.loads(value)
     data["transform_versions"] = tuple(tuple(item) for item in data["transform_versions"])
     return DeliverySnapshot(**data)
+
+
+def delivery_record_to_dict(record: DeliveryRecord) -> dict[str, object]:
+    data = asdict(record)
+    data["state"] = record.state.value
+    return data
+
+
+def delivery_record_from_dict(data: Mapping[str, object]) -> DeliveryRecord:
+    if not isinstance(data, Mapping):
+        raise LedgerSchemaError("invalid_ledger_record")
+    if str(data.get("schema_version") or "") != DELIVERY_RECORD_SCHEMA_VERSION:
+        raise LedgerSchemaError("unsupported_ledger_schema")
+
+    snapshot_raw = data.get("snapshot")
+    if not isinstance(snapshot_raw, Mapping):
+        raise LedgerSchemaError("invalid_ledger_snapshot")
+    if str(snapshot_raw.get("schema_version") or "") != SNAPSHOT_SCHEMA_VERSION:
+        raise LedgerSchemaError("unsupported_snapshot_schema")
+
+    try:
+        snapshot_data = dict(snapshot_raw)
+        transforms = snapshot_data.get("transform_versions", ())
+        snapshot_data["transform_versions"] = tuple(tuple(item) for item in transforms)
+        snapshot = DeliverySnapshot(**snapshot_data)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise LedgerSchemaError("invalid_ledger_snapshot") from exc
+
+    try:
+        state = DeliveryState(str(data["state"]))
+    except (KeyError, ValueError) as exc:
+        raise LedgerSchemaError("invalid_ledger_state") from exc
+
+    try:
+        return DeliveryRecord(
+            record_id=str(data["record_id"]),
+            schema_version=str(data["schema_version"]),
+            logical_key=str(data["logical_key"]),
+            revision_key=str(data["revision_key"]),
+            operation_key=str(data["operation_key"]),
+            snapshot=snapshot,
+            state=state,
+            state_version=int(data["state_version"]),
+            attempt_count=int(data["attempt_count"]),
+            owner_correlation_id=None if data.get("owner_correlation_id") is None else str(data.get("owner_correlation_id")),
+            owner_expires_at=None if data.get("owner_expires_at") is None else str(data.get("owner_expires_at")),
+            created_at=str(data["created_at"]),
+            updated_at=str(data["updated_at"]),
+            draft_id=None if data.get("draft_id") is None else str(data.get("draft_id")),
+            note_host=None if data.get("note_host") is None else str(data.get("note_host")),
+            last_verified_canonical_hash=(
+                None if data.get("last_verified_canonical_hash") is None else str(data.get("last_verified_canonical_hash"))
+            ),
+            queue_receipt_digest=(
+                None if data.get("queue_receipt_digest") is None else str(data.get("queue_receipt_digest"))
+            ),
+            conflict_category=None if data.get("conflict_category") is None else str(data.get("conflict_category")),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise LedgerSchemaError("invalid_ledger_record") from exc
 
 
 _ALLOWED_TRANSITIONS: dict[DeliveryState, frozenset[DeliveryState]] = {
