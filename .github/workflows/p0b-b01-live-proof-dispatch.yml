@@ -1,4 +1,4 @@
-name: P0 C-1 TCP22 Listener Diagnosis [OPS ONE-SHOT]
+name: P0 C-1 Emergency Stop [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,86 +8,8 @@ on:
 permissions:
   contents: read
 
-env:
-  P0B_HEAD: 9bcfc9ed2de8293989bc895da0ff6baf5ded72b8
-
 jobs:
-  start-vm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start persistent note VM for bounded read-only diagnosis
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          [ "$state" = "RUNNING" ] || gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-
-  diagnose-listener:
-    needs: start-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 10
-    steps:
-      - name: Identify TCP22 listener without changing guest state
-        shell: bash
-        run: |
-          set -euo pipefail
-          socket_active=false
-          socket_enabled=false
-          ssh_service_active=false
-          sshd_service_active=false
-          systemctl is-active --quiet ssh.socket && socket_active=true || true
-          systemctl is-enabled --quiet ssh.socket && socket_enabled=true || true
-          systemctl is-active --quiet ssh.service && ssh_service_active=true || true
-          systemctl is-active --quiet sshd.service && sshd_service_active=true || true
-          listener=false
-          if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)(22)$'; then listener=true; fi
-          proc="unknown"
-          raw="$(sudo ss -ltnp 'sport = :22' 2>/dev/null || true)"
-          if printf '%s' "$raw" | grep -Eq 'users:\(\("[^"]+'; then
-            proc="$(printf '%s' "$raw" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1)"
-          fi
-          [ -n "$proc" ] || proc="unknown"
-          python3 - <<PY
-          import json
-          print(json.dumps({
-            'status':'tcp22_listener_diagnosis_complete',
-            'tcp22_listening': ${listener},
-            'ssh_socket_active': ${socket_active},
-            'ssh_socket_enabled': ${socket_enabled},
-            'ssh_service_active': ${ssh_service_active},
-            'sshd_service_active': ${sshd_service_active},
-            'listener_process':'${proc}',
-            'read_only': True,
-            'private_identifiers_exposed': 0,
-          }, sort_keys=True))
-          PY
-          {
-            echo '### P0 C-1 TCP22 listener diagnosis'
-            echo "- tcp22_listening: \`$listener\`"
-            echo "- ssh_socket_active: \`$socket_active\`"
-            echo "- ssh_socket_enabled: \`$socket_enabled\`"
-            echo "- ssh_service_active: \`$ssh_service_active\`"
-            echo "- sshd_service_active: \`$sshd_service_active\`"
-            echo "- listener_process: \`$proc\`"
-            echo '- read_only: `true`'
-            echo '- private_identifiers_exposed: `0`'
-          } >> "$GITHUB_STEP_SUMMARY"
-
   stop-vm:
-    if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, diagnose-listener]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -103,8 +25,10 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop persistent note VM after diagnosis
+      - name: Stop persistent note VM immediately
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
           [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          final="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          printf '{"status":"%s","private_identifiers_exposed":0}\n' "$final"
