@@ -1,4 +1,4 @@
-name: P0 C-1 Emergency Stop [OPS ONE-SHOT]
+name: P0 C-1 Effective Non-Operator Boundary Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  stop-vm:
+  audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -25,10 +25,74 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop persistent note VM immediately
+      - name: Verify effective access boundary read-only
+        shell: bash
         run: |
           set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          final="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          printf '{"status":"%s","private_identifiers_exposed":0}\n' "$final"
+          tmp="${RUNNER_TEMP}/c1effective"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          gcloud compute instances get-iam-policy "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance_iam.json"
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os,ipaddress
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'instance.json').read_text())
+          iiam=json.loads((root/'instance_iam.json').read_text())
+          rules=json.loads((root/'firewall.json').read_text())
+          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
+          ext=any(a.get('natIP') for n in (inst.get('networkInterfaces') or []) for a in (n.get('accessConfigs') or []))
+          instance_key=('ssh-keys' in meta or 'sshKeys' in meta)
+          project_keys_blocked=meta.get('block-project-ssh-keys','').lower()=='true'
+          oslogin=meta.get('enable-oslogin','').lower()=='true'
+          serial=meta.get('serial-port-enable','').lower()=='true'
+          bindings=iiam.get('bindings') or []
+          public={'allUsers','allAuthenticatedUsers'}
+          public_binding=any(any(m in public for m in (b.get('members') or [])) for b in bindings)
+          tags=set((inst.get('tags') or {}).get('items') or [])
+          sas={str(x.get('email') or '') for x in (inst.get('serviceAccounts') or []) if x.get('email')}
+          iap=ipaddress.ip_network('35.235.240.0/20')
+          world_ssh=False; iap_ssh=False; ssh_allow_count=0
+          for r in rules:
+              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): continue
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              if tt and not (tt & tags): continue
+              if ts and not (ts & sas): continue
+              allows22=False
+              for a in (r.get('allowed') or []):
+                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(x) for x in (a.get('ports') or [])]
+                  if proto in {'tcp','all'} and (not ports or any(p=='22' or ('-' in p and int(p.split('-')[0])<=22<=int(p.split('-')[1])) for p in ports)):
+                      allows22=True
+              if not allows22: continue
+              ssh_allow_count += 1
+              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
+                  try: net=ipaddress.ip_network(str(s),strict=False)
+                  except Exception: continue
+                  if str(net)=='0.0.0.0/0': world_ssh=True
+                  if net.overlaps(iap): iap_ssh=True
+          credential_path_open=(instance_key or (not project_keys_blocked) or oslogin)
+          effective_nonoperator_ssh_path=(((bool(ext) and world_ssh) or iap_ssh) and credential_path_open)
+          closed=(not effective_nonoperator_ssh_path and not public_binding and not serial)
+          safe={
+            'status':'c1_effective_boundary_closed' if closed else 'c1_effective_boundary_open',
+            'external_ip_present':bool(ext),
+            'instance_ssh_key_metadata_present':instance_key,
+            'project_ssh_keys_blocked':project_keys_blocked,
+            'os_login_enabled':oslogin,
+            'serial_port_enabled':serial,
+            'instance_iam_binding_count':len(bindings),
+            'instance_public_principal_present':public_binding,
+            'applicable_ssh_allow_rule_count':ssh_allow_count,
+            'world_ssh_firewall_present':world_ssh,
+            'iap_ssh_firewall_present':iap_ssh,
+            'credential_path_open_for_nonoperator':credential_path_open,
+            'effective_nonoperator_ssh_path':effective_nonoperator_ssh_path,
+            'new_ssh_credential_requires_control_plane_write':not credential_path_open,
+            'read_only':True,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 effective non-operator boundary audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if not closed: raise SystemExit(1)
+          PY
