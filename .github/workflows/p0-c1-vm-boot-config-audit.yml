@@ -1,0 +1,71 @@
+name: P0 C-1 VM Boot Config Audit [READ-ONLY]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-vm-boot-config-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Classify VM boot configuration without exposing metadata values
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/vm.json"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp"
+          VM_JSON="$tmp" python3 - <<'PY'
+          import json, os
+          vm=json.load(open(os.environ['VM_JSON'],encoding='utf-8'))
+          items=(vm.get('metadata') or {}).get('items') or []
+          keys={str(x.get('key') or '') for x in items}
+          policy=vm.get('scheduling') or {}
+          disks=vm.get('disks') or []
+          safe={
+            'vm_terminated': vm.get('status') == 'TERMINATED',
+            'startup_script_present': 'startup-script' in keys,
+            'startup_script_url_present': 'startup-script-url' in keys,
+            'shutdown_script_present': 'shutdown-script' in keys,
+            'shutdown_script_url_present': 'shutdown-script-url' in keys,
+            'guest_attributes_enabled': any((x.get('key')=='enable-guest-attributes' and str(x.get('value','')).lower()=='true') for x in items),
+            'block_project_ssh_keys_enabled': any((x.get('key')=='block-project-ssh-keys' and str(x.get('value','')).lower()=='true') for x in items),
+            'oslogin_enabled': any((x.get('key')=='enable-oslogin' and str(x.get('value','')).lower()=='true') for x in items),
+            'serial_port_enabled': any((x.get('key')=='serial-port-enable' and str(x.get('value','')).lower()=='true') for x in items),
+            'automatic_restart': bool(policy.get('automaticRestart')),
+            'boot_disk_count': sum(1 for d in disks if d.get('boot') is True),
+            'persistent_disk_count': len(disks),
+            'metadata_key_count': len(keys),
+          }
+          print('C1_VM_BOOT_CONFIG='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 VM boot config audit\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Metadata values and private identifiers intentionally not published.\n')
+          if not safe['vm_terminated']:
+              raise SystemExit('VM must remain TERMINATED during read-only boot config audit')
+          PY
