@@ -1,0 +1,120 @@
+name: P0 C-1 Runner Orphan Identity Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-runner-orphan-identity-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Audit orphan identity relationships and restore metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP}/c1-orphan"; mkdir -p "$work"
+          vm_json="$work/vm.json"; original="$work/original.sh"; diag="$work/diag.sh"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$vm_json"
+          VM_JSON="$vm_json" ORIGINAL="$original" python3 - <<'PY'
+          import json,os
+          vm=json.load(open(os.environ['VM_JSON'],encoding='utf-8'))
+          if vm.get('status')!='TERMINATED': raise SystemExit('VM must be TERMINATED')
+          vals={x.get('key'):x.get('value') for x in ((vm.get('metadata') or {}).get('items') or [])}
+          if 'startup-script' not in vals: raise SystemExit('startup-script missing')
+          open(os.environ['ORIGINAL'],'w',encoding='utf-8').write(str(vals['startup-script'] or ''))
+          PY
+          cat > "$diag" <<'EOS'
+          #!/usr/bin/env bash
+          set +e
+          emit(){ printf 'AIIF_C1_ORPHAN %s=%s\n' "$1" "$2" > /dev/ttyS0 2>/dev/null || true; }
+          mapfile -t units < <(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei 'actions\.runner|github.*runner|runner.*github' || true)
+          mapfile -t cfgs < <(find /home /opt -maxdepth 6 -type f -name '.runner' 2>/dev/null || true)
+          emit unique_pair "$([ "${#units[@]}" -eq 1 ] && [ "${#cfgs[@]}" -eq 1 ] && echo true || echo false)"
+          if [ "${#units[@]}" -eq 1 ] && [ "${#cfgs[@]}" -eq 1 ]; then
+            unit="${units[0]}"; cfg="${cfgs[0]}"; rdir="$(dirname "$cfg")"
+            uuser="$(systemctl show "$unit" -p User --value 2>/dev/null)"
+            uid="$(stat -c '%u' "$cfg" 2>/dev/null)"; gid="$(stat -c '%g' "$cfg" 2>/dev/null)"
+            home=""
+            case "$rdir" in /home/*/*) home="/home/$(printf '%s' "$rdir" | cut -d/ -f3)";; /home/*) home="$rdir";; esac
+            [ -n "$uuser" ]; uuser_nonempty=$?
+            getent passwd "$uuser" >/dev/null 2>&1; uname_exists=$?
+            getent passwd "$uid" >/dev/null 2>&1; uid_exists=$?
+            getent group "$gid" >/dev/null 2>&1; gid_exists=$?
+            getent group "$uuser" >/dev/null 2>&1; same_group_name_exists=$?
+            [ -n "$home" ] && [ -d "$home" ]; home_exists=$?
+            [ -n "$home" ] && [ "$(basename "$home")" = "$uuser" ]; home_name_matches=$?
+            [ -n "$home" ] && [ "$(stat -c '%u' "$home" 2>/dev/null)" = "$uid" ]; home_uid_matches=$?
+            [ -n "$home" ] && [ "$(stat -c '%g' "$home" 2>/dev/null)" = "$gid" ]; home_gid_matches=$?
+            [ "$uid" != 0 ]; uid_nonroot=$?
+            emit unit_user_nonempty "$([ "$uuser_nonempty" -eq 0 ] && echo true || echo false)"
+            emit unit_username_exists "$([ "$uname_exists" -eq 0 ] && echo true || echo false)"
+            emit config_uid_has_passwd "$([ "$uid_exists" -eq 0 ] && echo true || echo false)"
+            emit config_gid_has_group "$([ "$gid_exists" -eq 0 ] && echo true || echo false)"
+            emit same_group_name_exists "$([ "$same_group_name_exists" -eq 0 ] && echo true || echo false)"
+            emit runner_home_exists "$([ "$home_exists" -eq 0 ] && echo true || echo false)"
+            emit home_basename_matches_unit_user "$([ "$home_name_matches" -eq 0 ] && echo true || echo false)"
+            emit home_uid_matches_config "$([ "$home_uid_matches" -eq 0 ] && echo true || echo false)"
+            emit home_gid_matches_config "$([ "$home_gid_matches" -eq 0 ] && echo true || echo false)"
+            emit config_uid_nonroot "$([ "$uid_nonroot" -eq 0 ] && echo true || echo false)"
+          fi
+          emit done true
+          sleep 5
+          systemctl poweroff --no-wall >/dev/null 2>&1 || shutdown -h now >/dev/null 2>&1 || true
+          EOS
+          chmod 700 "$diag"
+          restore(){
+            set +e
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+            if [ -n "$state" ] && [ "$state" != TERMINATED ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+              for _ in $(seq 1 60); do
+                state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"; [ "$state" = TERMINATED ] && break; sleep 5
+              done
+            fi
+            gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file="startup-script=$original" >/dev/null 2>&1 || true
+          }
+          trap restore EXIT
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file="startup-script=$diag" >/dev/null
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          sleep 50
+          serial="$work/serial.txt"; gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 > "$serial" 2>/dev/null
+          SERIAL="$serial" python3 - <<'PY'
+          import os,re
+          keys={'unique_pair','unit_user_nonempty','unit_username_exists','config_uid_has_passwd','config_gid_has_group','same_group_name_exists','runner_home_exists','home_basename_matches_unit_user','home_uid_matches_config','home_gid_matches_config','config_uid_nonroot','done'}
+          vals={}
+          for line in open(os.environ['SERIAL'],encoding='utf-8',errors='ignore'):
+              m=re.search(r'AIIF_C1_ORPHAN ([a-z_]+)=(true|false)',line)
+              if m and m.group(1) in keys: vals[m.group(1)]=m.group(2)
+          safe={k:vals.get(k,'missing') for k in sorted(keys)}
+          print('C1_RUNNER_ORPHAN_AUDIT='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 runner orphan identity audit\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Names, numeric UID/GID values, paths and runner configuration are withheld.\n')
+          required={'unique_pair':'true','unit_user_nonempty':'true','unit_username_exists':'false','config_uid_has_passwd':'false','runner_home_exists':'true','home_basename_matches_unit_user':'true','home_uid_matches_config':'true','home_gid_matches_config':'true','config_uid_nonroot':'true','done':'true'}
+          bad=[k for k,v in required.items() if vals.get(k)!=v]
+          if bad: raise SystemExit('orphan-account repair not proven safe: '+','.join(bad))
+          PY
