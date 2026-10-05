@@ -1,4 +1,4 @@
-name: P0 C-1 SSH Scope Audit [OPS ONE-SHOT]
+name: P0 C-1 SSH Boundary Hardening [OPS ONE-SHOT]
 
 on:
   push:
@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  audit:
+  harden-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
@@ -19,28 +19,35 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      HARDEN_TAG: aiif-note-no-ssh
+      HARDEN_RULE: aiif-note-deny-ssh
     steps:
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Classify applicable SSH ingress rules read-only
+
+      - name: Preflight current SSH boundary
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1scope"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1hard"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
           gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json"
-          ROOT="$tmp" python3 - <<'PY'
+          ROOT="$tmp" python3 - <<'PY' > "$tmp/preflight.env"
           import json,os,ipaddress
           from pathlib import Path
           root=Path(os.environ['ROOT'])
           inst=json.loads((root/'instance.json').read_text()); rules=json.loads((root/'firewall.json').read_text())
+          nics=inst.get('networkInterfaces') or []
+          if not nics: raise SystemExit('no network interface')
+          if any(a.get('natIP') for n in nics for a in (n.get('accessConfigs') or [])): raise SystemExit('external IP unexpectedly present')
+          network=str(nics[0].get('network') or '').rsplit('/',1)[-1]
+          if not network: raise SystemExit('network unresolved')
           tags=set((inst.get('tags') or {}).get('items') or [])
           sas={str(x.get('email') or '') for x in (inst.get('serviceAccounts') or []) if x.get('email')}
-          iap=ipaddress.ip_network('35.235.240.0/20')
-          out={'applicable':0,'untargeted':0,'tag_targeted':0,'sa_targeted':0,'world_untargeted':0,'iap_untargeted':0,'world_targeted':0,'iap_targeted':0}
+          priorities=[]
           for r in rules:
               if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): continue
               tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
@@ -51,19 +58,76 @@ jobs:
                   proto=str(a.get('IPProtocol') or '').lower(); ports=[str(x) for x in (a.get('ports') or [])]
                   if proto in {'tcp','all'} and (not ports or any(p=='22' or ('-' in p and int(p.split('-')[0])<=22<=int(p.split('-')[1])) for p in ports)):
                       allows22=True
-              if not allows22: continue
-              out['applicable'] += 1
-              targeted=bool(tt or ts)
-              if not targeted: out['untargeted'] += 1
-              if tt: out['tag_targeted'] += 1
-              if ts: out['sa_targeted'] += 1
-              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
-                  try: net=ipaddress.ip_network(str(s),strict=False)
-                  except Exception: continue
-                  if str(net)=='0.0.0.0/0': out['world_targeted' if targeted else 'world_untargeted'] += 1
-                  if net.overlaps(iap): out['iap_targeted' if targeted else 'iap_untargeted'] += 1
-          safe={'status':'c1_ssh_scope_audit_complete',**out,'read_only':True,'private_identifiers_exposed':0}
+              if allows22: priorities.append(int(r.get('priority',1000)))
+          if not priorities: raise SystemExit('no applicable SSH allow rule found')
+          min_allow=min(priorities)
+          if min_allow <= 0: raise SystemExit('cannot create higher-priority deny safely')
+          deny_priority=min_allow-1
+          print(f'NETWORK={network}')
+          print(f'DENY_PRIORITY={deny_priority}')
+          print(f'ALLOW_COUNT={len(priorities)}')
+          print(f'MIN_ALLOW_PRIORITY={min_allow}')
+          PY
+          cat "$tmp/preflight.env" >> "$GITHUB_ENV"
+
+      - name: Apply VM-scoped SSH deny and block project SSH keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud compute instances add-tags "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --tags "$HARDEN_TAG" --quiet
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --metadata block-project-ssh-keys=true --quiet
+          if gcloud compute firewall-rules describe "$HARDEN_RULE" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            gcloud compute firewall-rules update "$HARDEN_RULE" \
+              --project "$GCP_PROJECT_ID" \
+              --network "$NETWORK" --direction INGRESS --priority "$DENY_PRIORITY" \
+              --action DENY --rules tcp:22 --source-ranges 0.0.0.0/0 \
+              --target-tags "$HARDEN_TAG" --quiet
+          else
+            gcloud compute firewall-rules create "$HARDEN_RULE" \
+              --project "$GCP_PROJECT_ID" \
+              --network "$NETWORK" --direction INGRESS --priority "$DENY_PRIORITY" \
+              --action DENY --rules tcp:22 --source-ranges 0.0.0.0/0 \
+              --target-tags "$HARDEN_TAG" --quiet
+          fi
+
+      - name: Verify effective SSH boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1verify"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          gcloud compute firewall-rules describe "$HARDEN_RULE" --project "$GCP_PROJECT_ID" --format=json > "$tmp/deny.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'instance.json').read_text()); deny=json.loads((root/'deny.json').read_text())
+          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
+          tags=set((inst.get('tags') or {}).get('items') or [])
+          tag=os.environ['HARDEN_TAG']; rule=os.environ['HARDEN_RULE']
+          priority=int(deny.get('priority',65535)); min_allow=int(os.environ['MIN_ALLOW_PRIORITY'])
+          denied=any(str(x.get('IPProtocol') or '').lower() in {'tcp','all'} and ('22' in [str(p) for p in (x.get('ports') or [])] or not x.get('ports')) for x in (deny.get('denied') or []))
+          sources=set(str(x) for x in (deny.get('sourceRanges') or [])); targets=set(str(x) for x in (deny.get('targetTags') or []))
+          ok=(tag in tags and meta.get('block-project-ssh-keys','').lower()=='true' and denied and '0.0.0.0/0' in sources and tag in targets and priority < min_allow and not bool(deny.get('disabled')))
+          safe={
+            'status':'c1_ssh_hardening_verified' if ok else 'c1_ssh_hardening_failed',
+            'target_tag_present':tag in tags,
+            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
+            'deny_rule_present':bool(deny.get('name')),
+            'deny_rule_enabled':not bool(deny.get('disabled')),
+            'deny_covers_tcp22':denied,
+            'deny_covers_all_ipv4_sources':'0.0.0.0/0' in sources,
+            'deny_targets_only_harden_tag':targets=={tag},
+            'deny_precedes_all_current_ssh_allows':priority < min_allow,
+            'original_applicable_ssh_allow_count':int(os.environ['ALLOW_COUNT']),
+            'private_identifiers_exposed':0,
+          }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 SSH scope audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 SSH hardening proof\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if not ok: raise SystemExit(1)
           PY
