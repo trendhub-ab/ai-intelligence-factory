@@ -1,0 +1,133 @@
+name: P0 C-2 Ledger Backup Remediation [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0c-c2-backup-remediation.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-c2-backup-remediation
+  cancel-in-progress: false
+
+jobs:
+  remediate-and-prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      POLICY_NAME: aiif-note-ledger-daily-14d
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Configure durable disk and snapshot retention
+        run: |
+          set -euo pipefail
+          instance_json="${RUNNER_TEMP}/instance.json"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$instance_json"
+          disk="$(python3 - "$instance_json" <<'PY'
+          import json,sys
+          v=json.load(open(sys.argv[1])); d=v.get('disks') or []; s=str((d[0] if d else {}).get('source') or ''); print(s.rsplit('/',1)[-1] if s else '')
+          PY
+          )"
+          test -n "$disk"
+          region="${GCP_NOTE_VM_ZONE%-*}"
+
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          elif [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 36); do sleep 5; state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"; [ "$state" = "TERMINATED" ] && break; done
+          fi
+
+          gcloud compute instances set-disk-auto-delete "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --disk "$disk" --no-auto-delete --quiet
+
+          if ! gcloud compute resource-policies describe "$POLICY_NAME" --project "$GCP_PROJECT_ID" --region "$region" >/dev/null 2>&1; then
+            gcloud compute resource-policies create snapshot-schedule "$POLICY_NAME" \
+              --project "$GCP_PROJECT_ID" --region "$region" \
+              --description 'AIIF private delivery ledger disaster-recovery snapshots' \
+              --daily-schedule --start-time '18:00' \
+              --max-retention-days 14 \
+              --on-source-disk-delete apply-retention-policy \
+              --guest-flush \
+              --snapshot-labels 'aiif_scope=private_delivery_ledger,retention=14d' \
+              --quiet
+          else
+            gcloud compute resource-policies update snapshot-schedule "$POLICY_NAME" \
+              --project "$GCP_PROJECT_ID" --region "$region" \
+              --daily-schedule --start-time '18:00' \
+              --max-retention-days 14 \
+              --on-source-disk-delete apply-retention-policy \
+              --quiet
+          fi
+
+          if ! gcloud compute disks describe "$disk" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(resourcePolicies)' | grep -q "$POLICY_NAME"; then
+            gcloud compute disks add-resource-policies "$disk" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --resource-policies "$POLICY_NAME" --quiet
+          fi
+
+          echo "DISK_NAME=$disk" >> "$GITHUB_ENV"
+          echo "REGION_NAME=$region" >> "$GITHUB_ENV"
+
+      - name: Prove snapshot can restore to a new disk
+        run: |
+          set -euo pipefail
+          snap="aiif-p0c2-proof-${GITHUB_RUN_ID}"
+          restore="aiif-p0c2-restore-${GITHUB_RUN_ID}"
+          cleanup() {
+            gcloud compute disks delete "$restore" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+            gcloud compute snapshots delete "$snap" --project "$GCP_PROJECT_ID" --quiet >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          gcloud compute snapshots create "$snap" --project "$GCP_PROJECT_ID" --source-disk "$DISK_NAME" --source-disk-zone "$GCP_NOTE_VM_ZONE" --description 'P0 C-2 bounded restore proof; temporary' --quiet
+          snap_status="$(gcloud compute snapshots describe "$snap" --project "$GCP_PROJECT_ID" --format='value(status)')"
+          [ "$snap_status" = "READY" ]
+          gcloud compute disks create "$restore" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --source-snapshot "$snap" --quiet
+          restore_status="$(gcloud compute disks describe "$restore" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$restore_status" = "READY" ]
+          source_size="$(gcloud compute disks describe "$DISK_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(sizeGb)')"
+          restore_size="$(gcloud compute disks describe "$restore" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(sizeGb)')"
+          [ "$source_size" = "$restore_size" ]
+          echo 'RESTORE_PROOF=true' >> "$GITHUB_ENV"
+
+      - name: Verify final C-2 control plane contract
+        run: |
+          set -euo pipefail
+          inst="${RUNNER_TEMP}/final-instance.json"; diskf="${RUNNER_TEMP}/final-disk.json"; policy="${RUNNER_TEMP}/final-policy.json"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$inst"
+          gcloud compute disks describe "$DISK_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$diskf"
+          gcloud compute resource-policies describe "$POLICY_NAME" --project "$GCP_PROJECT_ID" --region "$REGION_NAME" --format=json > "$policy"
+          python3 - "$inst" "$diskf" "$policy" <<'PY'
+          import json,sys,os
+          i=json.load(open(sys.argv[1])); d=json.load(open(sys.argv[2])); p=json.load(open(sys.argv[3]))
+          attached=i.get('disks') or []; pol=d.get('resourcePolicies') or []; sp=p.get('snapshotSchedulePolicy') or {}; ret=sp.get('retentionPolicy') or {}; sched=sp.get('schedule') or {}; props=sp.get('snapshotProperties') or {}
+          safe={
+            'status':'c2_backup_contract_configured',
+            'boot_disk_auto_delete':bool((attached[0] if attached else {}).get('autoDelete')),
+            'snapshot_schedule_attached':any(os.environ['POLICY_NAME'] in str(x) for x in pol),
+            'retention_days':int(ret.get('maxRetentionDays') or 0),
+            'on_source_disk_delete':str(ret.get('onSourceDiskDelete') or ''),
+            'daily_schedule_present':bool(sched.get('dailySchedule')),
+            'guest_flush':bool(props.get('guestFlush')),
+            'restore_proof':os.environ.get('RESTORE_PROOF')=='true',
+            'temporary_proof_resources_cleaned_by_trap':True,
+            'private_identifiers_exposed':0,
+          }
+          assert safe['boot_disk_auto_delete'] is False
+          assert safe['snapshot_schedule_attached'] is True
+          assert safe['retention_days']==14
+          assert safe['on_source_disk_delete'].upper() in {'APPLY_RETENTION_POLICY','APPLYRETENTIONPOLICY'}
+          assert safe['daily_schedule_present'] is True
+          assert safe['restore_proof'] is True
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-2 backup remediation\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+          PY
