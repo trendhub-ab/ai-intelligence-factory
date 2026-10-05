@@ -1,4 +1,4 @@
-name: P0-B Daily Ready-Only Dispatch [OPS ONE-SHOT]
+name: P0-B Private Exact Ready Recovery [OPS ONE-SHOT]
 
 on:
   push:
@@ -9,24 +9,69 @@ permissions:
   contents: read
 
 jobs:
-  dispatch:
+  recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Dispatch exactly one Daily ready-only
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Privately resolve current Ready and sync by stable ID
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: ${{ secrets.NOTION_NOTE_READY_DATABASE_ID }}
+          NOTION_NOTE_READY_DATA_SOURCE_ID: ${{ secrets.NOTION_NOTE_READY_DATA_SOURCE_ID }}
+          EXPECTED_TITLE: "JEV based Effort-router picks Claude Code's reasoning effort for each prompt"
         run: |
           set -euo pipefail
-          gh workflow run daily-one-shot.yml \
-            --repo trendhub-ab/ai-intelligence-factory \
-            --ref design/p0-b-durable-delivery-ledger \
-            -f mode=full \
-            -f editorial_style=classic \
-            -f excluded_models='' \
-            -f canary_source='' \
-            -f exact_target='' \
-            -f e2e_prepare_only=false \
-            -f p0b_ready_only=true \
-            -f confirm=RUN_ONCE
-          echo 'Dispatched exactly one Daily full run in P0-B ready-only mode.'
+          python - <<'PY'
+          import json, os
+          import note_ready_sync as nrs
+
+          expected = os.environ['EXPECTED_TITLE'].strip()
+          pages = nrs._query_db(
+              nrs.SOURCE_DATA_SOURCE_ID,
+              nrs.SOURCE_DATABASE_ID,
+              payload={
+                  'filter': {
+                      'property': nrs.SOURCE_ARTICLE_STATUS,
+                      'select': {'equals': nrs.SOURCE_READY},
+                  }
+              },
+          )
+          matches = []
+          for page in pages:
+              state = nrs._source_state(page)
+              if state and str(state.get('title') or '').strip() == expected:
+                  matches.append(state)
+          if len(matches) != 1:
+              raise SystemExit(f'exact private Ready resolution failed closed: matches={len(matches)}')
+
+          sid = str(matches[0].get('sync_id') or '').strip()
+          if len(sid) != 32:
+              raise SystemExit('exact private Ready has invalid stable ID')
+          result = nrs.sync_note_ready_db(target_sync_id=sid)
+          safe = {
+              'enabled': bool(result.get('enabled')),
+              'zero_gemini_calls': bool(result.get('zero_gemini_calls')),
+              'created': int(result.get('created') or 0),
+              'updated': int(result.get('updated') or 0),
+              'revoked': int(result.get('revoked') or 0),
+              'target_resolved_privately': True,
+              'private_identifiers_exposed': 0,
+              'private_draft': False,
+              'public_release': False,
+          }
+          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Private exact Ready recovery\n')
+              fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
+          PY
