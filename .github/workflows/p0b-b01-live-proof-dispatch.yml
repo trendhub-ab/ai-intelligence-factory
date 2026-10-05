@@ -1,4 +1,4 @@
-name: P0-B B01 Ledger-Clean Live Proof [OPS ONE-SHOT]
+name: P0-B Trusted Paste RED [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,199 +8,19 @@ on:
 permissions:
   contents: read
 
-env:
-  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: e5070b0a7d491425b8613d0422f81861c7bf74a4
-
 jobs:
-  start-vm:
+  targeted-red:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
-          [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
-
-  live-proof:
-    needs: start-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ env.TARGET_BRANCH }}
-      - name: Verify reviewed head
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          ref: design/p0-b-durable-delivery-ledger
+      - name: Verify test-only head
+        run: test "$(git rev-parse HEAD)" = "045fceee70e345c201820d21fa920b61cef05b06"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install dependencies
-        run: pip install requests playwright pytest
-      - name: Privately select first ledger-clean current Ready
-        id: pick
-        env:
-          TARGET_FILE: ${{ runner.temp }}/b01_target
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: |
-          set -euo pipefail
-          umask 077
-          python - <<'PY'
-          import json, os, subprocess, tempfile
-          from pathlib import Path
-          import note_draft_automation as base
-          import run185_note_ready_legacy_skip as run185
-          import run194_note_current_contract as current
-
-          current.install()
-          target = Path(os.environ['TARGET_FILE'])
-          target.unlink(missing_ok=True)
-          try:
-              candidates = run185._ordered_candidates(base._query_ready_queue())
-          except base.NoteDraftError:
-              candidates = []
-
-          found = ''
-          checked = blocked = 0
-          for candidate in candidates:
-              try:
-                  prepared = current._prepare_one(candidate)
-              except Exception:
-                  continue
-              sid = base._normalize_sync_id(prepared.get('sync_id', ''))
-              if len(sid) != 32:
-                  continue
-              checked += 1
-              with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as fh:
-                  result_path = Path(fh.name)
-              try:
-                  env = dict(os.environ)
-                  env.update(
-                      NOTE_TARGET_SYNC_ID=sid,
-                      NOTE_TARGET_IDENTITY='trendhub_biz',
-                      NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3',
-                      NOTE_DRAFT_RESULT_FILE=str(result_path),
-                  )
-                  p = subprocess.run(
-                      ['bash', 'note_delivery_ledger_preflight.sh'],
-                      env=env,
-                      stdout=subprocess.DEVNULL,
-                      stderr=subprocess.DEVNULL,
-                  )
-                  if p.returncode:
-                      raise SystemExit('ledger preflight failed closed')
-                  result = json.loads(result_path.read_text())
-              finally:
-                  result_path.unlink(missing_ok=True)
-              if result.get('status') == 'ledger_clean_new' and result.get('should_run_delivery') is True:
-                  found = sid
-                  break
-              blocked += 1
-
-          if found:
-              target.write_text(found)
-              target.chmod(0o600)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-              fh.write(f"found={'true' if found else 'false'}\n")
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
-              fh.write('### B01 private selection\n')
-              fh.write(f'- ledger-clean found: `{bool(found)}`\n')
-              fh.write(f'- current-policy inspected: `{checked}`\n')
-              fh.write(f'- non-clean skipped: `{blocked}`\n')
-              fh.write('- private identifiers exposed: `0`\n')
-          PY
-      - name: Focused P0-B verification
-        if: ${{ steps.pick.outputs.found == 'true' }}
-        run: |
-          python -m pytest \
-            tests/test_note_delivery_ledger.py \
-            tests/test_note_delivery_runtime.py \
-            tests/test_p0b_production_installation.py \
-            tests/test_p0b_eyecatch_callback_forwarding.py \
-            tests/test_p0a_trusted_clipboard_paste.py -q
-      - name: Execute one production private-draft delivery
-        if: ${{ steps.pick.outputs.found == 'true' }}
-        env:
-          TARGET_FILE: ${{ runner.temp }}/b01_target
-          NOTE_DRAFT_CONFIRM: CREATE_NOTE_DRAFT
-          NOTE_TARGET_IDENTITY: trendhub_biz
-          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
-          NOTE_PREPARE_ONLY: 'false'
-          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/b01_result.json
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          NOTE_CHROME_CHANNEL: chrome
-          NOTE_CHROME_HEADLESS: 'false'
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: |
-          set -euo pipefail
-          selected="$(cat "$TARGET_FILE")"
-          NOTE_TARGET_SYNC_ID="$selected" xvfb-run -a python run194_note_persistent_cloud.py
-      - name: Safe result
-        if: ${{ steps.pick.outputs.found == 'true' && success() }}
-        env:
-          RESULT_FILE: ${{ runner.temp }}/b01_result.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          r = json.loads(Path(os.environ['RESULT_FILE']).read_text())
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
-              fh.write('### B01 live result\n')
-              fh.write(f"- status: `{r.get('status', 'unknown')}`\n")
-              fh.write(f"- zero Gemini calls: `{r.get('zero_gemini_calls') is True}`\n")
-              fh.write(f"- automatic public release: `{r.get('public_release') is True}`\n")
-              fh.write('- private identifiers exposed: `0`\n')
-          PY
-      - name: No clean candidate
-        if: ${{ steps.pick.outputs.found != 'true' }}
-        run: echo 'No ledger-clean Ready candidate; zero note mutations.' >> "$GITHUB_STEP_SUMMARY"
-      - if: ${{ always() }}
-        run: rm -f "${{ runner.temp }}/b01_target"
-
-  stop-vm:
-    if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, live-proof]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null || true)"
-          [ "$state" != RUNNING ] || gcloud compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
+      - run: pip install pytest
+      - name: Verify RED
+        run: python -m pytest tests/test_p0a_trusted_clipboard_paste.py -q
