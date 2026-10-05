@@ -13,35 +13,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Read-only notification channel census
+      - name: Diagnose notification boundary read-only
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json,os,urllib.parse,urllib.request
+          import json,os,urllib.error,urllib.parse,urllib.request
           token=str(os.environ.get('TELEGRAM_BOT_TOKEN') or '').strip(); chat=str(os.environ.get('TELEGRAM_CHAT_ID') or '').strip()
           if not token or not chat: raise SystemExit('notification credentials unavailable')
           base=f'https://api.telegram.org/bot{token}/'
-          def call(method):
-              data=urllib.parse.urlencode({'chat_id':chat}).encode()
+          def call(method, with_chat=False):
+              data=urllib.parse.urlencode({'chat_id':chat}).encode() if with_chat else b''
               req=urllib.request.Request(base+method,data=data,method='POST')
-              with urllib.request.urlopen(req,timeout=20) as r:return json.loads(r.read().decode())
-          info=call('getChat'); count=call('getChatMemberCount'); admins=call('getChatAdministrators')
-          if not info.get('ok') or not count.get('ok') or not admins.get('ok'): raise SystemExit('notification audit API failed')
-          c=info.get('result') or {}; members=int(count.get('result') or 0); alist=admins.get('result') or []
-          username=str(c.get('username') or '').strip()
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      body=json.loads(r.read().decode()); return {'http':int(r.status),'ok':bool(body.get('ok')),'result':body.get('result')}
+              except urllib.error.HTTPError as e:
+                  return {'http':int(e.code),'ok':False,'result':None}
+              except Exception:
+                  return {'http':0,'ok':False,'result':None}
+          me=call('getMe',False); info=call('getChat',True); count=call('getChatMemberCount',True); admins=call('getChatAdministrators',True)
+          result=info.get('result') if info.get('ok') else {}; result=result if isinstance(result,dict) else {}
           safe={
-            'status':'notification_boundary_audit_complete',
-            'chat_type':str(c.get('type') or 'unknown'),
-            'public_username_present':bool(username),
-            'member_count':members,
-            'administrator_count':len(alist),
-            'read_only':True,
-            'notification_sent':False,
-            'private_identifiers_exposed':0,
+            'status':'notification_boundary_diagnostic_complete',
+            'bot_auth_ok':me['ok'], 'bot_auth_http':me['http'],
+            'chat_lookup_ok':info['ok'], 'chat_lookup_http':info['http'],
+            'member_count_lookup_ok':count['ok'], 'member_count_http':count['http'],
+            'admin_lookup_ok':admins['ok'], 'admin_lookup_http':admins['http'],
+            'chat_type':str(result.get('type') or 'unknown') if info['ok'] else 'unknown',
+            'public_username_present':bool(str(result.get('username') or '').strip()) if info['ok'] else False,
+            'member_count':int(count.get('result') or 0) if count['ok'] else None,
+            'administrator_count':len(admins.get('result') or []) if admins['ok'] and isinstance(admins.get('result'),list) else None,
+            'read_only':True,'notification_sent':False,'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 notification boundary audit\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 notification boundary diagnostic\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
           PY
