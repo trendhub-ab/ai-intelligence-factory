@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       prepare_only:
-        description: 'Validate/select source article only; do not start the cloud Chrome VM'
+        description: 'Validate/select source article only; do not run browser delivery'
         required: true
         default: false
         type: boolean
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      should_start_vm: ${{ steps.decision.outputs.should_start_vm }}
+      should_continue: ${{ steps.decision.outputs.should_continue }}
       status: ${{ steps.decision.outputs.status }}
     steps:
       - name: Checkout
@@ -45,12 +45,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Zero-VM preflight regression tests
+      - name: Hosted preflight regression tests
         run: |
           python -m unittest tests.test_run194_note_current_contract -v
           python -m unittest tests.test_run199_note_vm_preflight -v
 
-      - name: Validate publish-safe candidate before any VM start
+      - name: Validate publish-safe candidate before browser delivery
         env:
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -71,7 +71,7 @@ jobs:
           )"
           NOTE_DRAFT_CONFIRM='${{ inputs.confirm }}' NOTE_TARGET_SYNC_ID="$requested" python run199_note_vm_preflight.py
 
-      - name: Export VM decision
+      - name: Export delivery decision
         id: decision
         env:
           RESULT_FILE: ${{ runner.temp }}/note_draft_preflight.json
@@ -80,10 +80,10 @@ jobs:
           import json, os
           from pathlib import Path
           result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
-          should_start = 'true' if result.get('should_start_vm') is True else 'false'
+          should_continue = 'true' if result.get('should_start_vm') is True else 'false'
           status = str(result.get('status') or 'unknown').strip()
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'should_start_vm={should_start}\n')
+              fh.write(f'should_continue={should_continue}\n')
               fh.write(f'status={status}\n')
           PY
 
@@ -97,34 +97,45 @@ jobs:
           from pathlib import Path
           result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### note draft zero-VM preflight\n')
+              fh.write('### note draft hosted preflight\n')
               fh.write(f'- status: `{result.get("status", "unknown")}`\n')
-              fh.write(f'- VM required: `{result.get("should_start_vm") is True}`\n')
+              fh.write(f'- delivery required: `{result.get("should_start_vm") is True}`\n')
               fh.write(f'- prepare-only mode: `{os.environ.get("PREPARE_ONLY", "false").strip().lower()}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
               if result.get('status') == 'no_eligible_ready':
-                  fh.write('- No publish-safe Ready article exists, so the Chrome VM was not started.\n')
+                  fh.write('- No publish-safe Ready article exists; no browser delivery was started.\n')
           PY
 
-  start-cloud-vm:
-    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
+  create-draft:
+    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_continue == 'true' }}
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
     env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      GCP_NOTE_LEDGER_BUCKET: ${{ vars.GCP_NOTE_LEDGER_BUCKET }}
     steps:
-      - name: Validate cloud controller configuration
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install hosted delivery dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright pytest google-cloud-storage
+
+      - name: Validate cloud ledger configuration
         run: |
           set -euo pipefail
-          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+          for name in GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT GCP_NOTE_LEDGER_BUCKET; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing repository variable: ${name}"
               exit 1
@@ -137,43 +148,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Start persistent note Chrome VM
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          if [ "$state" = "STOPPING" ]; then
-            for _ in $(seq 1 30); do
-              sleep 5
-              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-              [ "$state" = "TERMINATED" ] && break
-            done
-          fi
-          if [ "$state" != "RUNNING" ]; then
-            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          fi
-          echo "Persistent note VM is running; waiting for its registered GitHub runner."
-
-  create-draft:
-    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
-    needs: [preflight, start-cloud-vm]
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 25
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Install lightweight private-preflight dependency
-        run: python -m pip install requests
-
-      - name: Revalidate and pin exact candidate on private worker
+      - name: Revalidate and pin exact candidate on hosted worker
         env:
           RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -194,7 +169,7 @@ jobs:
           )"
           NOTE_DRAFT_CONFIRM='${{ inputs.confirm }}' NOTE_TARGET_SYNC_ID="$requested" NOTE_DRAFT_RESULT_FILE="$RESULT_FILE" python run199_note_vm_preflight.py
 
-      - name: Export private-worker candidate decision
+      - name: Export hosted candidate decision
         id: worker
         env:
           RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
@@ -210,11 +185,14 @@ jobs:
               fh.write(f'status={str(result.get("status") or "unknown").strip()}\n')
           PY
 
-      - name: Read durable ledger authority before heavy browser setup
+      - name: Read durable ledger authority before browser setup
         if: ${{ steps.worker.outputs.should_continue == 'true' }}
         env:
           WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           LEDGER_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
+          NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'
+          NOTE_DELIVERY_LEDGER_BUCKET: ${{ vars.GCP_NOTE_LEDGER_BUCKET }}
+          NOTE_DELIVERY_LEDGER_PREFIX: 'delivery/v1'
         run: |
           set -euo pipefail
           selected="$(python - <<'PY'
@@ -224,8 +202,8 @@ jobs:
           print(str(result.get('selected_sync_id') or '').strip())
           PY
           )"
-          test -n "$selected" || { echo '::error::private worker did not pin an exact candidate'; exit 1; }
-          NOTE_TARGET_SYNC_ID="$selected" NOTE_TARGET_IDENTITY='trendhub_biz' NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3' NOTE_DRAFT_RESULT_FILE="$LEDGER_RESULT_FILE" bash note_delivery_ledger_preflight.sh
+          test -n "$selected" || { echo '::error::hosted worker did not pin an exact candidate'; exit 1; }
+          NOTE_TARGET_SYNC_ID="$selected" NOTE_TARGET_IDENTITY='trendhub_biz' NOTE_DRAFT_RESULT_FILE="$LEDGER_RESULT_FILE" bash note_delivery_ledger_preflight.sh
 
       - name: Export durable ledger decision
         id: ledger
@@ -259,22 +237,12 @@ jobs:
               fh.write(f'- delivery worker required: `{result.get("should_run_delivery") is True}`\n')
               fh.write(f'- zero Gemini calls: `{result.get("zero_gemini_calls") is True}`\n')
               if result.get('status') == 'ledger_blocked_ambiguous':
-                  fh.write('- Existing ambiguous delivery remains fail-closed; heavy browser setup and note mutation are skipped.\n')
+                  fh.write('- Existing ambiguous delivery remains fail-closed; browser setup and note mutation are skipped.\n')
           PY
 
-      - name: Install persistent Chrome automation dependencies
+      - name: Install ephemeral Chromium
         if: ${{ steps.ledger.outputs.should_run_delivery == 'true' }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests playwright pytest
-          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || {
-            echo '::error::Google Chrome is not installed on the persistent note VM.'
-            exit 1
-          }
-          command -v xvfb-run >/dev/null 2>&1 || {
-            echo '::error::xvfb-run is not installed on the persistent note VM.'
-            exit 1
-          }
+        run: python -m playwright install --with-deps chromium
 
       - name: Zero-Gemini note draft tests
         if: ${{ steps.ledger.outputs.should_run_delivery == 'true' }}
@@ -285,13 +253,16 @@ jobs:
           python -m unittest tests.test_run187_note_editor_readiness -v
           python -m unittest tests.test_run188_note_header_upload_fallback -v
           python -m unittest tests.test_run189_note_editor_route_gate -v
-          python -m unittest tests.test_run190_note_persistent_cloud -v
           python -m unittest tests.test_run191_note_crop_dialog_resilience -v
           python -m unittest tests.test_run193_note_official_header_upload -v
           python -m unittest tests.test_run194_publication_contract -v
           python -m unittest tests.test_run194_note_current_contract -v
           python -m unittest tests.test_run199_note_vm_preflight -v
           python -m pytest \
+            tests/test_p0b_hosted_only_protocol.py \
+            tests/test_note_delivery_gcs.py \
+            tests/test_p0b_hosted_runtime_factory.py \
+            tests/test_p0b_hosted_workflow.py \
             tests/test_note_delivery_ledger.py \
             tests/test_note_delivery_runtime.py \
             tests/test_note_delivery_human_edit_guard.py \
@@ -299,18 +270,19 @@ jobs:
             tests/test_p0b_eyecatch_callback_forwarding.py \
             tests/test_p0b_production_installation.py -q
 
-      - name: Create one private note draft or reconcile the worker-pinned article
+      - name: Create one private note draft or reconcile the hosted-pinned article
         if: ${{ steps.ledger.outputs.should_run_delivery == 'true' }}
         env:
           WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_IDENTITY: 'trendhub_biz'
-          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
+          NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'
+          NOTE_DELIVERY_LEDGER_BUCKET: ${{ vars.GCP_NOTE_LEDGER_BUCKET }}
+          NOTE_DELIVERY_LEDGER_PREFIX: 'delivery/v1'
           NOTE_PREPARE_ONLY: 'false'
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          NOTE_CHROME_CHANNEL: 'chrome'
-          NOTE_CHROME_HEADLESS: 'false'
+          NOTE_CHROME_HEADLESS: 'true'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
@@ -329,8 +301,8 @@ jobs:
           print(str(result.get('selected_sync_id') or '').strip())
           PY
           )"
-          test -n "$selected" || { echo '::error::private worker target missing'; exit 1; }
-          NOTE_TARGET_SYNC_ID="$selected" xvfb-run -a python run194_note_persistent_cloud.py
+          test -n "$selected" || { echo '::error::hosted worker target missing'; exit 1; }
+          NOTE_TARGET_SYNC_ID="$selected" python run194_note_hosted.py
 
       - name: Summarize result without exposing private delivery identity
         if: ${{ steps.ledger.outputs.should_run_delivery == 'true' && success() }}
@@ -354,37 +326,3 @@ jobs:
               elif status in {'creation_unknown', 'verification_blocked', 'manual_reconciliation_required'}:
                   fh.write('- Delivery is fail-closed and requires reconciliation; no automatic second draft is allowed.\n')
           PY
-
-  stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [preflight, start-cloud-vm, create-draft]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-    steps:
-      - name: Authenticate to Google Cloud with OIDC
-        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud
-        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Stop persistent note Chrome VM
-        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
-          if [ "$state" = "RUNNING" ]; then
-            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          fi
-          echo "Persistent note VM stop check completed."
