@@ -1,4 +1,4 @@
-name: P0 C-1 Effective Non-Operator Boundary Audit [OPS ONE-SHOT v2]
+name: P0 C-2 Retention Backup Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,74 +25,87 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Verify effective access boundary read-only
+      - name: Verify retention and backup boundary read-only
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1effective"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c2audit"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
-          gcloud compute instances get-iam-policy "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance_iam.json"
-          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/firewall.json"
-          ROOT="$tmp" python3 - <<'PY'
-          import json,os,ipaddress
+          disk="$(python3 - "$tmp/instance.json" <<'PY'
+          import json,sys
+          inst=json.load(open(sys.argv[1])); disks=inst.get('disks') or []
+          src=str((disks[0] if disks else {}).get('source') or '')
+          print(src.rsplit('/',1)[-1] if src else '')
+          PY
+          )"
+          test -n "$disk"
+          gcloud compute disks describe "$disk" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/disk.json"
+          gcloud compute snapshots list --project "$GCP_PROJECT_ID" --format=json > "$tmp/snapshots.json"
+          python3 - "$tmp/disk.json" <<'PY' > "$tmp/policies.tsv"
+          import json,sys
+          disk=json.load(open(sys.argv[1]))
+          for url in disk.get('resourcePolicies') or []:
+              parts=str(url).split('/')
+              try:
+                  i=parts.index('regions'); region=parts[i+1]; name=parts[-1]
+                  print(region+'\t'+name)
+              except Exception: pass
+          PY
+          : > "$tmp/policies.jsonl"
+          while IFS=$'\t' read -r region policy; do
+            [ -n "$region" ] && [ -n "$policy" ] || continue
+            gcloud compute resource-policies describe "$policy" --project "$GCP_PROJECT_ID" --region "$region" --format=json >> "$tmp/policies.jsonl"
+            printf '\n' >> "$tmp/policies.jsonl"
+          done < "$tmp/policies.tsv"
+          ROOT="$tmp" DISK_NAME="$disk" python3 - <<'PY'
+          import json,os,datetime
           from pathlib import Path
-          root=Path(os.environ['ROOT'])
-          inst=json.loads((root/'instance.json').read_text())
-          iiam=json.loads((root/'instance_iam.json').read_text())
-          rules=json.loads((root/'firewall.json').read_text())
-          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
-          ext=any(a.get('natIP') for n in (inst.get('networkInterfaces') or []) for a in (n.get('accessConfigs') or []))
-          instance_key=('ssh-keys' in meta or 'sshKeys' in meta)
-          project_keys_blocked=meta.get('block-project-ssh-keys','').lower()=='true'
-          oslogin=meta.get('enable-oslogin','').lower()=='true'
-          serial=meta.get('serial-port-enable','').lower()=='true'
-          bindings=iiam.get('bindings') or []
-          public={'allUsers','allAuthenticatedUsers'}
-          public_binding=any(any(m in public for m in (b.get('members') or [])) for b in bindings)
-          tags=set((inst.get('tags') or {}).get('items') or [])
-          sas={str(x.get('email') or '') for x in (inst.get('serviceAccounts') or []) if x.get('email')}
-          iap=ipaddress.ip_network('35.235.240.0/20')
-          world_ssh=False; iap_ssh=False; ssh_allow_count=0
-          for r in rules:
-              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): continue
-              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
-              if tt and not (tt & tags): continue
-              if ts and not (ts & sas): continue
-              allows22=False
-              for a in (r.get('allowed') or []):
-                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(x) for x in (a.get('ports') or [])]
-                  if proto in {'tcp','all'} and (not ports or any(p=='22' or ('-' in p and int(p.split('-')[0])<=22<=int(p.split('-')[1])) for p in ports)):
-                      allows22=True
-              if not allows22: continue
-              ssh_allow_count += 1
-              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
-                  try: net=ipaddress.ip_network(str(s),strict=False)
-                  except Exception: continue
-                  if str(net)=='0.0.0.0/0': world_ssh=True
-                  if net.overlaps(iap): iap_ssh=True
-          credential_path_open=(instance_key or (not project_keys_blocked) or oslogin)
-          effective_nonoperator_ssh_path=(((bool(ext) and world_ssh) or iap_ssh) and credential_path_open)
-          closed=(not effective_nonoperator_ssh_path and not public_binding and not serial)
+          root=Path(os.environ['ROOT']); disk_name=os.environ['DISK_NAME']
+          inst=json.loads((root/'instance.json').read_text()); disk=json.loads((root/'disk.json').read_text()); snaps=json.loads((root/'snapshots.json').read_text())
+          policies=[]
+          for line in (root/'policies.jsonl').read_text().splitlines():
+              line=line.strip()
+              if not line: continue
+              try: policies.append(json.loads(line))
+              except Exception: pass
+          attached=inst.get('disks') or []
+          auto_delete=bool((attached[0] if attached else {}).get('autoDelete'))
+          disk_snaps=[s for s in (snaps if isinstance(snaps,list) else []) if str(s.get('sourceDisk') or '').rsplit('/',1)[-1]==disk_name]
+          newest=None
+          for s in disk_snaps:
+              ts=str(s.get('creationTimestamp') or '')
+              if not ts: continue
+              try:
+                  dt=datetime.datetime.fromisoformat(ts.replace('Z','+00:00')).astimezone(datetime.timezone.utc)
+                  newest=dt if newest is None or dt>newest else newest
+              except Exception: pass
+          age_h=None
+          if newest: age_h=round((datetime.datetime.now(datetime.timezone.utc)-newest).total_seconds()/3600,2)
+          daily=False; retention14=False; keep_on_delete=False
+          for p in policies:
+              sp=p.get('snapshotSchedulePolicy') or {}
+              sch=sp.get('schedule') or {}
+              daily_cfg=sch.get('dailySchedule') or {}
+              if int(daily_cfg.get('daysInCycle') or 0)==1: daily=True
+              ret=sp.get('retentionPolicy') or {}
+              if int(ret.get('maxRetentionDays') or 0)==14: retention14=True
+              if str(ret.get('onSourceDiskDelete') or '').upper()=='KEEP_AUTO_SNAPSHOTS': keep_on_delete=True
           safe={
-            'status':'c1_effective_boundary_closed' if closed else 'c1_effective_boundary_open',
-            'external_ip_present':bool(ext),
-            'instance_ssh_key_metadata_present':instance_key,
-            'project_ssh_keys_blocked':project_keys_blocked,
-            'os_login_enabled':oslogin,
-            'serial_port_enabled':serial,
-            'instance_iam_binding_count':len(bindings),
-            'instance_public_principal_present':public_binding,
-            'applicable_ssh_allow_rule_count':ssh_allow_count,
-            'world_ssh_firewall_present':world_ssh,
-            'iap_ssh_firewall_present':iap_ssh,
-            'credential_path_open_for_nonoperator':credential_path_open,
-            'effective_nonoperator_ssh_path':effective_nonoperator_ssh_path,
-            'new_ssh_credential_requires_control_plane_write':not credential_path_open,
+            'status':'c2_retention_backup_closed',
+            'boot_disk_auto_delete':auto_delete,
+            'snapshot_schedule_count':len(policies),
+            'daily_snapshot_schedule_present':daily,
+            'retention_14_days_present':retention14,
+            'keep_snapshots_on_source_delete':keep_on_delete,
+            'snapshot_count_for_disk':len(disk_snaps),
+            'newest_snapshot_age_hours':age_h,
             'read_only':True,
             'private_identifiers_exposed':0,
           }
+          ok=(not auto_delete and len(policies)>=1 and daily and retention14 and keep_on_delete and len(disk_snaps)>=1 and age_h is not None and age_h<=48)
+          if not ok: safe['status']='c2_retention_backup_open'
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 effective non-operator boundary audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if not closed: raise SystemExit(1)
+              fh.write('### P0 C-2 retention backup audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if not ok: raise SystemExit(1)
           PY
