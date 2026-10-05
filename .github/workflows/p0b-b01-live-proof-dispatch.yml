@@ -1,4 +1,4 @@
-name: P0-B Immutable Snapshot Recovery Census [OPS ONE-SHOT]
+name: P0 C-1 C-2 Private Boundary Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -9,30 +9,116 @@ permissions:
   contents: read
 
 concurrency:
-  group: p0b-creation-unknown-manual-recovery
+  group: p0-c1-c2-private-boundary-audit
   cancel-in-progress: false
 
 env:
   P0B_HEAD: 9bcfc9ed2de8293989bc895da0ff6baf5ded72b8
 
 jobs:
-  contract-check:
+  cloud-control-plane-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: google-github-actions/auth@v3
         with:
-          ref: ${{ env.P0B_HEAD }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: |
-          python -m pip install --upgrade pip
-          pip install requests pytest
-          python -m pytest tests/test_p0b_creation_unknown_recovery_audit.py tests/test_note_delivery_ledger.py -q
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Read-only GCP IAM disk backup census
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/p0c"
+          mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          disk="$(python - "$tmp/instance.json" <<'PY'
+          import json,sys
+          v=json.load(open(sys.argv[1]))
+          disks=v.get('disks') or []
+          src=str((disks[0] if disks else {}).get('source') or '')
+          print(src.rsplit('/',1)[-1] if src else '')
+          PY
+          )"
+          test -n "$disk"
+          gcloud compute disks describe "$disk" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/disk.json"
+          if gcloud projects get-iam-policy "$GCP_PROJECT_ID" --format=json > "$tmp/project_iam.json" 2>/dev/null; then echo true > "$tmp/project_iam_ok"; else echo false > "$tmp/project_iam_ok"; echo '{}' > "$tmp/project_iam.json"; fi
+          vm_sa="$(python - "$tmp/instance.json" <<'PY'
+          import json,sys
+          v=json.load(open(sys.argv[1])); sa=v.get('serviceAccounts') or []
+          print(str((sa[0] if sa else {}).get('email') or ''))
+          PY
+          )"
+          if [ -n "$vm_sa" ] && gcloud iam service-accounts get-iam-policy "$vm_sa" --project "$GCP_PROJECT_ID" --format=json > "$tmp/sa_iam.json" 2>/dev/null; then echo true > "$tmp/sa_iam_ok"; else echo false > "$tmp/sa_iam_ok"; echo '{}' > "$tmp/sa_iam.json"; fi
+          if gcloud compute snapshots list --project "$GCP_PROJECT_ID" --format=json > "$tmp/snapshots.json" 2>/dev/null; then echo true > "$tmp/snapshots_ok"; else echo false > "$tmp/snapshots_ok"; echo '[]' > "$tmp/snapshots.json"; fi
+          python - "$tmp" "$disk" <<'PY'
+          import json,sys,datetime
+          from pathlib import Path
+          root=Path(sys.argv[1]); disk_name=sys.argv[2]
+          inst=json.load(open(root/'instance.json')); disk=json.load(open(root/'disk.json'))
+          piam=json.load(open(root/'project_iam.json')); siam=json.load(open(root/'sa_iam.json')); snaps=json.load(open(root/'snapshots.json'))
+          public={'allUsers','allAuthenticatedUsers'}
+          def public_binding(doc):
+              return any(any(m in public for m in (b.get('members') or [])) for b in (doc.get('bindings') or []))
+          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
+          ext_ip=any((a.get('natIP') for n in (inst.get('networkInterfaces') or []) for a in (n.get('accessConfigs') or [])))
+          attached=inst.get('disks') or []
+          policies=disk.get('resourcePolicies') or []
+          enc='customer_managed_kms' if ((disk.get('diskEncryptionKey') or {}).get('kmsKeyName')) else 'google_managed_at_rest'
+          disk_snaps=[]
+          for s in snaps if isinstance(snaps,list) else []:
+              src=str(s.get('sourceDisk') or '')
+              if src.rsplit('/',1)[-1] == disk_name:
+                  disk_snaps.append(s)
+          newest=None
+          for s in disk_snaps:
+              ts=str(s.get('creationTimestamp') or '')
+              if ts:
+                  try:
+                      dt=datetime.datetime.fromisoformat(ts.replace('Z','+00:00'))
+                      newest=dt if newest is None or dt>newest else newest
+                  except Exception: pass
+          age=None
+          if newest:
+              age=round((datetime.datetime.now(datetime.timezone.utc)-newest.astimezone(datetime.timezone.utc)).total_seconds()/3600,1)
+          safe={
+              'status':'cloud_control_plane_audit_complete',
+              'external_ip_present':bool(ext_ip),
+              'vm_service_account_count':len(inst.get('serviceAccounts') or []),
+              'attached_disk_count':len(attached),
+              'boot_disk_auto_delete':bool((attached[0] if attached else {}).get('autoDelete')),
+              'disk_encryption':enc,
+              'snapshot_schedule_count':len(policies),
+              'snapshot_count_for_disk':len(disk_snaps),
+              'newest_snapshot_age_hours':age,
+              'project_iam_query_ok':(root/'project_iam_ok').read_text().strip()=='true',
+              'project_public_principal_present':public_binding(piam),
+              'vm_sa_iam_query_ok':(root/'sa_iam_ok').read_text().strip()=='true',
+              'vm_sa_public_principal_present':public_binding(siam),
+              'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
+              'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
+              'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
+              'shielded_secure_boot':bool((inst.get('shieldedInstanceConfig') or {}).get('enableSecureBoot')),
+              'shielded_vtpm':bool((inst.get('shieldedInstanceConfig') or {}).get('enableVtpm')),
+              'read_only':True,
+              'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1/C-2 cloud control-plane audit\n')
+              fh.write(f"- result: `{json.dumps(safe,ensure_ascii=False,sort_keys=True)}`\n")
+          PY
 
   start-cloud-vm:
-    needs: contract-check
+    needs: cloud-control-plane-audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -50,141 +136,94 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Start persistent note Chrome VM
+      - name: Start persistent note VM
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
           if [ "$state" = "STOPPING" ]; then
-            for _ in $(seq 1 30); do
-              sleep 5
-              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-              [ "$state" = "TERMINATED" ] && break
-            done
+            for _ in $(seq 1 30); do sleep 5; state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"; [ "$state" = "TERMINATED" ] && break; done
           fi
-          if [ "$state" != "RUNNING" ]; then
-            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          fi
+          [ "$state" = "RUNNING" ] || gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
 
-  readonly-census:
-    needs: [contract-check, start-cloud-vm]
+  private-runner-audit:
+    needs: start-cloud-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ env.P0B_HEAD }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: |
-          python -m pip install --upgrade pip
-          pip install requests playwright pillow
-          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
-          command -v xvfb-run >/dev/null 2>&1
-      - name: Compare recent private drafts to immutable ambiguous snapshots read-only
+      - name: Read-only private filesystem and ledger census
         env:
           NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          NOTE_CHROME_CHANNEL: 'chrome'
-          NOTE_CHROME_HEADLESS: 'false'
         run: |
           set -euo pipefail
-          xvfb-run -a python - <<'PY'
-          from __future__ import annotations
-          import hashlib, json, os, sqlite3, unicodedata
+          python - <<'PY'
+          import os,stat,sqlite3,json,datetime
           from pathlib import Path
-
-          import note_delivery_creation_recovery as recovery
-          import run187_note_editor_readiness as readiness
-          import run190_note_persistent_cloud as cloud
-          import run291_note_private_draft_audit as draft_audit
-          from note_delivery_ledger import DeliveryState, SQLiteDeliveryLedger
-
-          ledger_path = Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser().resolve()
-          conn = sqlite3.connect(f'file:{ledger_path.as_posix()}?mode=ro', uri=True, timeout=5.0)
-          conn.row_factory = sqlite3.Row
+          ledger=Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser().resolve()
+          parent=ledger.parent
+          def perm(path):
+              st=path.stat(); mode=stat.S_IMODE(st.st_mode)
+              xattrs=[]
+              try: xattrs=os.listxattr(path)
+              except Exception: pass
+              return {
+                  'exists':True,
+                  'mode_octal':format(mode,'04o'),
+                  'owner_is_runner':st.st_uid==os.getuid(),
+                  'group_or_world_readable':bool(mode & (stat.S_IRGRP|stat.S_IROTH)),
+                  'group_or_world_writable':bool(mode & (stat.S_IWGRP|stat.S_IWOTH)),
+                  'extended_posix_acl_present':any('posix_acl_access' in x for x in xattrs),
+              }
+          p=perm(parent); l=perm(ledger)
+          conn=sqlite3.connect(f'file:{ledger.as_posix()}?mode=ro',uri=True,timeout=5.0); conn.row_factory=sqlite3.Row
           try:
               conn.execute('PRAGMA query_only=ON')
-              rows = conn.execute(
-                  'SELECT * FROM deliveries WHERE state=? AND stable_draft_id IS NULL ORDER BY updated_at ASC LIMIT 16',
-                  (DeliveryState.CREATION_UNKNOWN.value,),
-              ).fetchall()
-          finally:
-              conn.close()
-          records = [SQLiteDeliveryLedger._row_to_record(row) for row in rows]
-          matches = {record.operation_key: set() for record in records}
-          routes = cloud._recent_private_edit_urls(cloud._profile_dir())
-          inspected = 0
-          canonical_supported = 0
-
-          from playwright.sync_api import sync_playwright
-          with sync_playwright() as playwright:
-              context = cloud._launch_persistent_context(playwright)
-              page = context.new_page()
-              page.set_default_timeout(30000)
-              seeded = False
+              version=int(conn.execute('PRAGMA user_version').fetchone()[0])
+              count=int(conn.execute('SELECT COUNT(*) FROM deliveries').fetchone()[0])
+              states={str(r[0]):int(r[1]) for r in conn.execute('SELECT state,COUNT(*) FROM deliveries GROUP BY state')}
+              oldest=conn.execute('SELECT MIN(created_at) FROM deliveries').fetchone()[0]
+              newest=conn.execute('SELECT MAX(updated_at) FROM deliveries').fetchone()[0]
+          finally: conn.close()
+          def age_days(ts):
+              if not ts: return None
               try:
-                  for index, private_url in enumerate(routes[:32]):
-                      try:
-                          page.goto(private_url, wait_until='domcontentloaded', timeout=60000)
-                          page.wait_for_timeout(900)
-                          if draft_audit.note_base._looks_logged_out(page) and not seeded:
-                              seeded = bool(cloud._seed_note_state(context, page))
-                              if seeded:
-                                  page.goto(private_url, wait_until='domcontentloaded', timeout=60000)
-                                  page.wait_for_timeout(900)
-                          if draft_audit.note_base._looks_logged_out(page):
-                              continue
-                          if not readiness._is_editor_url(str(page.url or '')):
-                              continue
-                          inspected += 1
-                          title = unicodedata.normalize('NFC', draft_audit._title_value(page)).strip()
-                          title_digest = hashlib.sha256(title.encode('utf-8')).hexdigest()
-                          try:
-                              canonical = recovery._current_canonical_sha256(page)
-                          except recovery.CreationRecoveryAuditError:
-                              continue
-                          canonical_supported += 1
-                          for record in records:
-                              if (
-                                  title_digest == record.snapshot.title_digest
-                                  and canonical == record.snapshot.canonical_document_sha256
-                              ):
-                                  matches[record.operation_key].add(index)
-                      except Exception:
-                          continue
-              finally:
-                  context.close()
-
-          counts = [len(value) for value in matches.values()]
-          safe = {
-              'status': 'immutable_snapshot_census_complete',
-              'creation_unknown_count': len(records),
-              'recent_private_route_count': min(len(routes), 32),
-              'editor_routes_inspected': inspected,
-              'canonical_supported_routes': canonical_supported,
-              'records_with_any_exact_match': sum(1 for n in counts if n > 0),
-              'records_with_unique_exact_match': sum(1 for n in counts if n == 1),
-              'records_with_multiple_exact_matches': sum(1 for n in counts if n > 1),
-              'total_exact_route_matches': sum(counts),
-              'read_only': True,
-              'zero_gemini_calls': True,
-              'zero_openai_calls': True,
-              'ledger_mutation': False,
-              'notion_write': False,
-              'note_mutation': False,
-              'public_release': False,
-              'private_identifiers_exposed': 0,
+                  dt=datetime.datetime.fromisoformat(str(ts).replace('Z','+00:00'))
+                  return round((datetime.datetime.now(datetime.timezone.utc)-dt.astimezone(datetime.timezone.utc)).total_seconds()/86400,2)
+              except Exception: return None
+          safe={
+              'status':'private_runner_acl_retention_audit_complete',
+              'ledger_parent_mode':p['mode_octal'],
+              'ledger_file_mode':l['mode_octal'],
+              'parent_owner_is_runner':p['owner_is_runner'],
+              'ledger_owner_is_runner':l['owner_is_runner'],
+              'parent_group_or_world_readable':p['group_or_world_readable'],
+              'ledger_group_or_world_readable':l['group_or_world_readable'],
+              'parent_group_or_world_writable':p['group_or_world_writable'],
+              'ledger_group_or_world_writable':l['group_or_world_writable'],
+              'parent_extended_acl_present':p['extended_posix_acl_present'],
+              'ledger_extended_acl_present':l['extended_posix_acl_present'],
+              'ledger_schema_version':version,
+              'ledger_record_count':count,
+              'ledger_state_counts':states,
+              'oldest_record_age_days':age_days(oldest),
+              'newest_update_age_days':age_days(newest),
+              'read_only':True,
+              'ledger_mutation':False,
+              'note_mutation':False,
+              'public_release':False,
+              'private_identifiers_exposed':0,
           }
-          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B immutable snapshot recovery census\n')
-              fh.write(f'- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n')
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1/C-2 private runner audit\n')
+              fh.write(f"- result: `{json.dumps(safe,ensure_ascii=False,sort_keys=True)}`\n")
           PY
 
   stop-cloud-vm:
     if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [contract-check, start-cloud-vm, readonly-census]
+    needs: [cloud-control-plane-audit, start-cloud-vm, private-runner-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -202,10 +241,8 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop persistent note Chrome VM
+      - name: Stop persistent note VM
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          if [ "$state" = "RUNNING" ]; then
-            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          fi
+          [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
