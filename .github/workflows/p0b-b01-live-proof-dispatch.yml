@@ -73,7 +73,6 @@ jobs:
           set -euo pipefail
           xvfb-run -a python - <<'PY'
           import collections, hashlib, json, unicodedata
-          from urllib.parse import urlparse
           import note_draft_automation as base
           import note_document_contract as contract
           import note_document_dom as dom
@@ -109,7 +108,6 @@ jobs:
           except base.NoteDraftError:
               candidates = []
 
-          # Query the ledger strictly read-only.
           import sqlite3
           from pathlib import Path
           ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
@@ -133,10 +131,12 @@ jobs:
               if row is None or str(row['state'] or '') != 'CREATION_UNKNOWN':
                   continue
               try:
-                  expected = run417._expected_note_document(str(item.get('manuscript') or ''))
+                  title = str(item.get('title') or '')
+                  body_manuscript = base._body_manuscript_for_note(title, str(item.get('manuscript') or ''))
+                  expected = run417._expected_note_document(body_manuscript)
               except Exception:
                   continue
-              prepared.append({'title': str(item.get('title') or ''), 'expected': expected})
+              prepared.append({'title': title, 'expected': expected})
           conn.close()
 
           recent_urls = cloud._recent_private_edit_urls(cloud._profile_dir())[:24]
