@@ -1,4 +1,4 @@
-name: P0-B Source Ready Delivery-State Census [OPS ONE-SHOT]
+name: P0-B CREATION_UNKNOWN Exact Draft Census [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,20 +8,60 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p0b-creation-unknown-exact-draft-census
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
+  EXPECTED_SHA: 7361affdb59d96d0f33dc8bf0630dea0c8bc76c8
+
 jobs:
-  census:
+  start-vm:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start note VM
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+          VM: ${{ vars.GCP_NOTE_VM_NAME }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
+          [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
+
+  census:
+    needs: start-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.TARGET_BRANCH }}
+      - name: Verify reviewed head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: pip install requests
-      - name: Read-only classify current Ready delivery states
+      - name: Install read-only browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Read-only exact canonical match census
         env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: chrome
+          NOTE_CHROME_HEADLESS: 'false'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
@@ -31,48 +71,160 @@ jobs:
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import collections, json
-          import note_ready_sync as nrs
-          import eyecatch_publication_contract as eye
+          xvfb-run -a python - <<'PY'
+          import collections, hashlib, json, unicodedata
+          from urllib.parse import urlparse
+          import note_draft_automation as base
+          import note_document_contract as contract
+          import note_document_dom as dom
+          import run185_note_ready_legacy_skip as run185
+          import run187_note_editor_readiness as run187
+          import run190_note_persistent_cloud as cloud
+          import run194_note_current_contract as current
+          import run417_note_body_verification as run417
+          from note_delivery_ledger import DESTINATION_SURFACE, LOGICAL_KEY_SCHEMA_VERSION
 
-          pages = nrs._query_db(
-              nrs.SOURCE_DATA_SOURCE_ID,
-              nrs.SOURCE_DATABASE_ID,
-              payload={'filter': {'property': nrs.SOURCE_ARTICLE_STATUS, 'select': {'equals': nrs.SOURCE_READY}}},
-          )
+          def norm(value):
+              return unicodedata.normalize('NFC', str(value or '')).strip()
+
+          def logical_key(sync_id, target='trendhub_biz'):
+              material = {
+                  'schema_version': LOGICAL_KEY_SCHEMA_VERSION,
+                  'sync_id': norm(sync_id).lower(),
+                  'note_target': norm(target),
+                  'destination_surface': DESTINATION_SURFACE,
+              }
+              encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+              return hashlib.sha256(encoded).hexdigest()
+
+          def title_value(field):
+              tag = str(field.evaluate('el => el.tagName.toLowerCase()'))
+              if tag in {'input', 'textarea'}:
+                  return str(field.input_value() or '').strip()
+              return str(field.inner_text() or '').strip()
+
+          current.install()
+          try:
+              candidates = run185._ordered_candidates(base._query_ready_queue())
+          except base.NoteDraftError:
+              candidates = []
+
+          # Query the ledger strictly read-only.
+          import sqlite3
+          from pathlib import Path
+          ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
+          conn = sqlite3.connect(ledger.resolve().as_uri() + '?mode=ro', uri=True, timeout=5.0, isolation_level=None)
+          conn.row_factory = sqlite3.Row
+          conn.execute('PRAGMA query_only=ON')
+
+          prepared = []
+          for candidate in candidates:
+              try:
+                  item = current._prepare_one(candidate)
+              except Exception:
+                  continue
+              sid = base._normalize_sync_id(item.get('sync_id', ''))
+              if len(sid) != 32:
+                  continue
+              row = conn.execute(
+                  'SELECT d.state FROM logical_bindings b JOIN deliveries d ON d.operation_key=b.operation_key WHERE b.logical_key=?',
+                  (logical_key(sid),),
+              ).fetchone()
+              if row is None or str(row['state'] or '') != 'CREATION_UNKNOWN':
+                  continue
+              try:
+                  expected = run417._expected_note_document(str(item.get('manuscript') or ''))
+              except Exception:
+                  continue
+              prepared.append({'title': str(item.get('title') or ''), 'expected': expected})
+          conn.close()
+
+          recent_urls = cloud._recent_private_edit_urls(cloud._profile_dir())[:24]
+          exact_counts = [0 for _ in prepared]
+          inspected_editor_routes = 0
+
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as playwright:
+              context = cloud._launch_persistent_context(playwright)
+              page = context.new_page()
+              page.set_default_timeout(30000)
+              try:
+                  for private_url in recent_urls:
+                      try:
+                          page.goto(private_url, wait_until='domcontentloaded', timeout=60000)
+                          page.wait_for_timeout(900)
+                          if base._looks_logged_out(page) or not run187._is_editor_url(str(page.url or '')):
+                              continue
+                          inspected_editor_routes += 1
+                          title_field = base._find_title(page)
+                          observed_title = title_value(title_field)
+                          matching_indexes = [i for i, item in enumerate(prepared) if item['title'] == observed_title]
+                          if not matching_indexes:
+                              continue
+                          body = base._find_body(page, title_field)
+                          snapshot = dom.snapshot_note_body(body)
+                          actual = dom.document_from_note_snapshot(
+                              snapshot,
+                              allowed_normalizations=(
+                                  contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+                                  dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+                              ),
+                          )
+                          for i in matching_indexes:
+                              receipt = contract.compare_documents(prepared[i]['expected'], actual)
+                              if receipt.get('canonical_match') is True:
+                                  exact_counts[i] += 1
+                      except Exception:
+                          continue
+              finally:
+                  context.close()
+
           counts = collections.Counter()
-          current = 0
-          skipped = 0
-          for page in pages:
-              state = nrs._source_state(page)
-              if not state:
-                  skipped += 1
-                  continue
-              sid = str(state.get('sync_id') or '')
-              if not nrs._source_has_current_ready_manuscript(sid):
-                  skipped += 1
-                  continue
-              image = str(state.get('eyecatch_url') or '')
-              title = str(state.get('title') or '')
-              if not image or not eye.current_asset_url(image, title):
-                  skipped += 1
-                  continue
-              current += 1
-              counts[nrs.classify_exact_delivery_state(sid)] += 1
+          for count in exact_counts:
+              if count == 0:
+                  counts['zero_exact_match'] += 1
+              elif count == 1:
+                  counts['unique_exact_match'] += 1
+              else:
+                  counts['multiple_exact_matches'] += 1
 
           safe = {
-              'current_ready_count': current,
-              'delivery_state_counts': dict(sorted(counts.items())),
-              'skipped_noncurrent_or_incomplete': skipped,
+              'creation_unknown_candidates': len(prepared),
+              'recent_private_edit_routes': len(recent_urls),
+              'inspected_editor_routes': inspected_editor_routes,
+              'match_cardinality': dict(sorted(counts.items())),
               'zero_gemini_calls': True,
               'zero_openai_calls': True,
+              'notion_write': False,
               'note_mutation': False,
               'public_release': False,
               'private_identifiers_exposed': 0,
           }
           print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
           with open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Current Ready delivery-state census\n')
+              fh.write('### P0-B read-only CREATION_UNKNOWN exact-draft census\n')
               fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
           PY
+
+  stop-vm:
+    if: ${{ always() && needs.start-vm.result == 'success' }}
+    needs: [start-vm, census]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop note VM
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+          VM: ${{ vars.GCP_NOTE_VM_NAME }}
+        run: |
+          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null || true)"
+          [ "$state" != RUNNING ] || gcloud compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
