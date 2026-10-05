@@ -1,4 +1,4 @@
-name: P0 C-1 Access Config Stability Audit [OPS ONE-SHOT]
+name: P0 C-1 No-NAT Boundary Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,44 +25,67 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Sample stopped-state access config repeatedly read-only
+      - name: Reconfirm no-NAT stopped-state boundary read-only
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1stable"; mkdir -p "$tmp"
-          : > "$tmp/samples.tsv"
-          for i in 1 2 3 4 5; do
-            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance-${i}.json"
-            python3 - "$tmp/instance-${i}.json" <<'PY' >> "$tmp/samples.tsv"
-          import json,sys
-          inst=json.load(open(sys.argv[1]))
-          nics=inst.get('networkInterfaces') or []
-          nic=nics[0] if nics else {}
-          running=str(inst.get('status') or '').upper()=='RUNNING'
-          print(f"{int(running)}\t{len(nic.get('accessConfigs') or [])}")
-          PY
-            sleep 2
-          done
+          tmp="${RUNNER_TEMP}/c1nonat"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/fw.json"
           ROOT="$tmp" python3 - <<'PY'
           import json,os
           from pathlib import Path
-          rows=[]
-          for line in (Path(os.environ['ROOT'])/'samples.tsv').read_text().splitlines():
-              a,b=line.split('\t'); rows.append((int(a),int(b)))
-          running=[x[0] for x in rows]; counts=[x[1] for x in rows]
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'instance.json').read_text())
+          rules=json.loads((root/'fw.json').read_text())
+          nics=inst.get('networkInterfaces') or []
+          nic=nics[0] if nics else {}
+          tags=set((inst.get('tags') or {}).get('items') or [])
+          sa=set(x.get('email') for x in (inst.get('serviceAccounts') or []) if x.get('email'))
+          def ssh_allow(rule):
+              if str(rule.get('direction','INGRESS')).upper()!='INGRESS' or rule.get('disabled'):
+                  return False
+              for a in rule.get('allowed') or []:
+                  if str(a.get('IPProtocol','')).lower()!='tcp':
+                      continue
+                  ports=a.get('ports') or []
+                  if not ports: return True
+                  for p in ports:
+                      if p=='22': return True
+                      if '-' in str(p):
+                          lo,hi=str(p).split('-',1)
+                          if lo.isdigit() and hi.isdigit() and int(lo)<=22<=int(hi): return True
+              return False
+          def applies(rule):
+              tt=set(rule.get('targetTags') or [])
+              tsa=set(rule.get('targetServiceAccounts') or [])
+              if tt and not (tt & tags): return False
+              if tsa and not (tsa & sa): return False
+              return True
+          world=False; iap=False; applicable=0
+          for r in rules if isinstance(rules,list) else []:
+              if not ssh_allow(r) or not applies(r): continue
+              applicable += 1
+              src=set(r.get('sourceRanges') or [])
+              if '0.0.0.0/0' in src or '::/0' in src: world=True
+              if '35.235.240.0/20' in src: iap=True
+          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
           safe={
-            'status':'c1_access_config_stability_audit_complete',
-            'sample_count':len(rows),
-            'vm_running_in_any_sample':any(running),
-            'access_config_counts':counts,
-            'access_config_count_stable':len(set(counts))==1,
-            'stable_access_config_count':counts[0] if counts and len(set(counts))==1 else None,
+            'status':'c1_no_nat_boundary_audit_complete',
+            'vm_running':str(inst.get('status') or '').upper()=='RUNNING',
+            'external_access_config_count':len(nic.get('accessConfigs') or []),
+            'applicable_ssh_ingress_rule_count':applicable,
+            'world_ssh_applicable':world,
+            'iap_ssh_applicable':iap,
+            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 access-config stability audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if safe['vm_running_in_any_sample']:
+              fh.write('### P0 C-1 no-NAT boundary audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if safe['vm_running']:
               raise SystemExit('fail-closed: VM unexpectedly running')
           PY
