@@ -103,19 +103,22 @@ class Run273PrivateDraftAutoflowTests(unittest.TestCase):
         self.assertIn("steps.fanout.outputs.eligible == 'true'", source[dispatch_condition:command])
         self.assertNotIn("workflow_run:", source)
 
-    def test_target_workflow_keeps_zero_vm_preflight_and_human_only_publication_boundary(self) -> None:
+    def test_target_workflow_keeps_hosted_preflight_and_human_only_publication_boundary(self) -> None:
         source = DRAFT_WORKFLOW.read_text(encoding="utf-8")
-        hosted = source[source.index("  preflight:"):source.index("  start-cloud-vm:")]
-        worker = source[source.index("  create-draft:"):source.index("  stop-cloud-vm:")]
+        hosted = source[source.index("  preflight:"):source.index("  create-draft:")]
+        worker = source[source.index("  create-draft:"):]
 
-        self.assertIn("Validate publish-safe candidate before any VM start", hosted)
+        self.assertIn("Validate publish-safe candidate before browser delivery", hosted)
         self.assertIn("run199_note_vm_preflight.py", hosted)
-        self.assertIn("needs.preflight.outputs.should_start_vm == 'true'", source)
-        self.assertIn("Revalidate and pin exact candidate on private worker", worker)
-        self.assertIn("Read durable ledger authority before heavy browser setup", worker)
+        self.assertIn("needs.preflight.outputs.should_continue == 'true'", source)
+        self.assertIn("Revalidate and pin exact candidate on hosted worker", worker)
+        self.assertIn("Read durable ledger authority before browser setup", worker)
         self.assertIn("Create one private note draft", worker)
         self.assertIn("NOTE_DRAFT_CONFIRM", worker)
+        self.assertIn("python run194_note_hosted.py", worker)
         self.assertNotIn("needs.preflight.outputs.selected_sync_id", source)
+        self.assertNotIn("self-hosted", source)
+        self.assertNotIn("start-cloud-vm", source)
         self.assertNotIn("public release", source.lower().replace("no public release", ""))
 
 

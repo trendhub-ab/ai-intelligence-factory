@@ -216,12 +216,14 @@ NON_MEMBER_MODULES = frozenset((
     "migrate_japanese_display_label.py",
     "note_document_contract.py",
     "note_document_dom.py",
+    "note_delivery_gcs.py",  # P0-B hosted cloud ledger adapter, not reader/customer copy
     "note_delivery_ledger.py",  # P0-B durable delivery authority, not reader/customer copy
     "note_delivery_creation_recovery.py",  # P0-B read-only ambiguous-delivery recovery audit, not reader/customer copy
     "note_delivery_runtime.py",  # P0-B delivery orchestration, not reader/customer copy
     "note_draft_automation.py",
     "note_eyecatch_persistence.py",
     "note_publication_reconcile.py",
+    "run194_note_hosted.py",  # Hosted private-draft entrypoint; operational infrastructure only
     "note_ready_sync.py",
     "notion_access_policy_guard.py",
     "notion_payloads.py",
