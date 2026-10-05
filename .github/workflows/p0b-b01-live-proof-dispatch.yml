@@ -1,4 +1,4 @@
-name: P0-B Trusted Paste GREEN [OPS ONE-SHOT]
+name: P0-B Zero-Model Ready Reconciliation [OPS ONE-SHOT]
 
 on:
   push:
@@ -9,18 +9,17 @@ permissions:
   contents: read
 
 jobs:
-  targeted-green:
+  dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: design/p0-b-durable-delivery-ledger
-      - name: Verify fixed head
-        run: test "$(git rev-parse HEAD)" = "7361affdb59d96d0f33dc8bf0630dea0c8bc76c8"
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install requests pytest
-      - name: Verify GREEN
-        run: python -m pytest tests/test_p0a_trusted_clipboard_paste.py -q
+      - name: Dispatch zero-model Ready reconciliation without private draft
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          gh workflow run note-ready-sync.yml \
+            --repo trendhub-ab/ai-intelligence-factory \
+            --ref main \
+            -f create_private_draft=false
+          echo 'Dispatched zero-model Ready reconciliation with private draft disabled.'
