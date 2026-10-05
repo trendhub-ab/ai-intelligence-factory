@@ -1,0 +1,203 @@
+name: P0 C-1 Bounded Live Proof [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - .github/workflows/p0-c1-bounded-live-proof.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-c1-bounded-live-proof
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Validate controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            test -n "${!name:-}" || { echo "::error::Missing repository variable: ${name}"; exit 1; }
+          done
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Fail closed unless VM is stopped and world SSH is non-applicable
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1-proof-preflight"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/vm.json"
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/fw.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import ipaddress, json, os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          vm=json.loads((root/'vm.json').read_text())
+          rules=json.loads((root/'fw.json').read_text())
+          if vm.get('status') != 'TERMINATED':
+              raise SystemExit('VM must be TERMINATED before bounded proof')
+          nic=(vm.get('networkInterfaces') or [{}])[0]
+          network=str(nic.get('network') or '')
+          tags=set((vm.get('tags') or {}).get('items') or [])
+          sas={str(x.get('email') or '') for x in (vm.get('serviceAccounts') or []) if x.get('email')}
+          def allows22(r):
+              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or r.get('disabled'):
+                  return False
+              for a in r.get('allowed') or []:
+                  proto=str(a.get('IPProtocol') or '').lower()
+                  ports=[str(p) for p in (a.get('ports') or [])]
+                  if proto not in {'tcp','all'}: continue
+                  if not ports: return True
+                  for p in ports:
+                      if p=='22': return True
+                      if '-' in p:
+                          try:
+                              lo,hi=map(int,p.split('-',1))
+                              if lo<=22<=hi: return True
+                          except ValueError: pass
+              return False
+          def applies(r):
+              tt=set(r.get('targetTags') or [])
+              ts=set(r.get('targetServiceAccounts') or [])
+              return (not tt or bool(tt & tags)) and (not ts or bool(ts & sas))
+          world=False
+          for r in rules:
+              if str(r.get('network') or '') != network or not allows22(r) or not applies(r):
+                  continue
+              for src in r.get('sourceRanges') or ['0.0.0.0/0']:
+                  try: net=ipaddress.ip_network(str(src), strict=False)
+                  except ValueError: continue
+                  if str(net)=='0.0.0.0/0': world=True
+          if world:
+              raise SystemExit('world SSH still applies; refusing VM start')
+          print('C1_PREFLIGHT_WORLD_SSH_NON_APPLICABLE=true')
+          print('C1_PREFLIGHT_VM_TERMINATED=true')
+          PY
+
+  start-vm:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Start exactly the note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          test "$state" = "TERMINATED" || { echo "::error::Unexpected VM state before start"; exit 1; }
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          echo 'C1_VM_START_REQUESTED=true'
+
+  live-proof:
+    needs: start-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    steps:
+      - name: Prove no local TCP/22 listener
+        run: |
+          set -euo pipefail
+          if ss -H -lnt | awk '$4 ~ /:22$/ {found=1} END{exit found ? 0 : 1}'; then
+            echo 'C1_TCP22_LISTENER_ABSENT=false'
+            exit 1
+          fi
+          echo 'C1_TCP22_LISTENER_ABSENT=true'
+
+      - name: Prove outbound GitHub HTTPS
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -L --connect-timeout 10 --max-time 25 -o /dev/null -w '%{http_code}' https://github.com/)"
+          test "$code" != "000" || { echo 'C1_GITHUB_HTTPS=false'; exit 1; }
+          echo 'C1_GITHUB_HTTPS=true'
+
+      - name: Prove outbound note HTTPS
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -L --connect-timeout 10 --max-time 25 -o /dev/null -w '%{http_code}' https://note.com/)"
+          test "$code" != "000" || { echo 'C1_NOTE_HTTPS=false'; exit 1; }
+          echo 'C1_NOTE_HTTPS=true'
+
+      - name: Prove private ledger permissions without exposing private identity
+        run: |
+          set -euo pipefail
+          ledger_dir="$HOME/.aiif-note"
+          ledger_file="$ledger_dir/delivery-ledger-v1.sqlite3"
+          test -d "$ledger_dir" || { echo 'C1_LEDGER_DIRECTORY_PRESENT=false'; exit 1; }
+          test -f "$ledger_file" || { echo 'C1_LEDGER_FILE_PRESENT=false'; exit 1; }
+          dir_mode="$(stat -c '%a' "$ledger_dir")"
+          file_mode="$(stat -c '%a' "$ledger_file")"
+          test "$dir_mode" = "700" || { echo "C1_LEDGER_DIRECTORY_MODE_OK=false"; exit 1; }
+          test "$file_mode" = "600" || { echo "C1_LEDGER_FILE_MODE_OK=false"; exit 1; }
+          echo 'C1_LEDGER_DIRECTORY_PRESENT=true'
+          echo 'C1_LEDGER_FILE_PRESENT=true'
+          echo 'C1_LEDGER_DIRECTORY_MODE_OK=true'
+          echo 'C1_LEDGER_FILE_MODE_OK=true'
+
+  stop-vm:
+    if: ${{ always() }}
+    needs: [preflight, start-vm, live-proof]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Stop VM and verify termination
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "TERMINATED" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          for _ in $(seq 1 60); do
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+            [ "$state" = "TERMINATED" ] && break
+            sleep 5
+          done
+          test "$state" = "TERMINATED" || { echo 'C1_VM_RETERMINATED=false'; exit 1; }
+          echo 'C1_VM_RETERMINATED=true'
