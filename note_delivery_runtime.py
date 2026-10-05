@@ -16,6 +16,7 @@ from note_document_contract import parse_presentation_markdown
 from note_delivery_ledger import (
     DeliveryLedger,
     DeliveryLedgerError,
+    LedgerUnavailableError,
     DeliveryRecord,
     DeliverySnapshot,
     DeliveryState,

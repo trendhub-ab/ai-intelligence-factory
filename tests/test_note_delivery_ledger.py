@@ -279,6 +279,7 @@ def _run_read_only_gate(path: Path, *, sync_id: str, note_target: str, result_fi
     env = dict(os.environ)
     env.update(
         {
+            "NOTE_DELIVERY_LEDGER_BACKEND": "sqlite",
             "NOTE_DELIVERY_LEDGER_PATH": str(path),
             "NOTE_TARGET_SYNC_ID": sync_id,
             "NOTE_TARGET_IDENTITY": note_target,
