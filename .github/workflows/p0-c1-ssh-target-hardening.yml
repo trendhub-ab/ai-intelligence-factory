@@ -1,4 +1,4 @@
-name: P0 C-1 SSH Target Hardening [OPS ONE-SHOT v2]
+name: P0 C-1 SSH Target Hardening [OPS ONE-SHOT v3]
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      SSH_MAINTENANCE_TAG: ssh-maintenance
+      SSH_MAINTENANCE_TAG: aiif-c1-ssh-maintenance-20261005
     steps:
       - uses: google-github-actions/auth@v3
         with:
@@ -104,8 +104,6 @@ jobs:
           print(json.dumps({'guard':'pass','candidate_count':2,'peer_vm_count':0,'vm_status':'TERMINATED','identifiers_exposed':0},sort_keys=True))
           PY
 
-          # Update is deliberately idempotent. If a previous attempt changed only
-          # one rule, rerunning converges both rules to the same explicit target.
           while IFS= read -r rule; do
             [ -n "$rule" ] || continue
             gcloud compute firewall-rules update "$rule" \
@@ -176,5 +174,5 @@ jobs:
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 SSH target hardening v2\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 SSH target hardening v3\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           PY
