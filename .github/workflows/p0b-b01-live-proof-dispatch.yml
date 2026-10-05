@@ -1,4 +1,4 @@
-name: P0 C-1 External IP Type Audit [OPS ONE-SHOT]
+name: P0 C-1 Two-Boot SSH Lockdown Proof [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,8 +8,380 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p0-c1-two-boot-ssh-lockdown
+  cancel-in-progress: false
+
 jobs:
-  audit:
+  offline-lockdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      LOCK_TOKEN: ${{ github.run_id }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Prepare exact offline lockdown
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1twoboot"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/target.json"
+          gcloud compute instances list --project "$GCP_PROJECT_ID" --format=json > "$tmp/instances.json"
+          ROOT="$tmp" LOCK_TOKEN="$LOCK_TOKEN" python3 - <<'PY'
+          import hashlib,json,os,re
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          target=json.loads((root/'target.json').read_text())
+          instances=json.loads((root/'instances.json').read_text())
+          if not isinstance(instances,list) or len(instances)!=1:
+              raise SystemExit('fail-closed: project VM count changed')
+          if str(target.get('status') or '').upper()!='TERMINATED':
+              raise SystemExit('fail-closed: target VM must be stopped')
+          nics=target.get('networkInterfaces') or []
+          if len(nics)!=1:
+              raise SystemExit('fail-closed: expected exactly one NIC')
+          nic=nics[0]
+          access=nic.get('accessConfigs') or []
+          if len(access)!=1:
+              raise SystemExit('fail-closed: expected exactly one access config')
+          ac=access[0]
+          if str(ac.get('natIP') or '').strip():
+              raise SystemExit('fail-closed: stopped access config unexpectedly has concrete IPv4')
+          ac_type=str(ac.get('type') or 'ONE_TO_ONE_NAT')
+          if ac_type!='ONE_TO_ONE_NAT':
+              raise SystemExit('fail-closed: unsupported access config type')
+          tier=str(ac.get('networkTier') or 'PREMIUM').upper()
+          if tier not in {'PREMIUM','STANDARD'}:
+              raise SystemExit('fail-closed: unsupported network tier')
+          nic_name=str(nic.get('name') or '').strip()
+          ac_name=str(ac.get('name') or '').strip()
+          if not nic_name or not ac_name:
+              raise SystemExit('fail-closed: network identity missing')
+          meta={str(x.get('key')):str(x.get('value')) for x in (target.get('metadata',{}).get('items') or [])}
+          if meta.get('block-project-ssh-keys','').lower()!='true':
+              raise SystemExit('fail-closed: project SSH keys not blocked')
+          if meta.get('enable-oslogin','').lower()=='true':
+              raise SystemExit('fail-closed: OS Login enabled')
+          if meta.get('serial-port-enable','').lower()=='true':
+              raise SystemExit('fail-closed: interactive serial enabled')
+          original=meta.get('startup-script','')
+          if not original:
+              raise SystemExit('fail-closed: existing startup script missing')
+          begin='# AIIF_C1_SSH_LOCKDOWN_V1_BEGIN'
+          end='# AIIF_C1_SSH_LOCKDOWN_V1_END'
+          if begin in original or end in original:
+              pattern=re.compile(r'(?ms)^# AIIF_C1_SSH_LOCKDOWN_V1_BEGIN\n.*?^# AIIF_C1_SSH_LOCKDOWN_V1_END\n?')
+              stripped=pattern.sub('',original)
+              if begin in stripped or end in stripped:
+                  raise SystemExit('fail-closed: malformed prior lockdown block')
+              original=stripped
+          lines=original.splitlines(True)
+          if lines and lines[0].startswith('#!'):
+              shebang=lines[0]
+              rest=''.join(lines[1:])
+          else:
+              shebang='#!/bin/bash\n'
+              rest=original
+          token=os.environ['LOCK_TOKEN']
+          block=f'''# AIIF_C1_SSH_LOCKDOWN_V1_BEGIN
+if (
+  set +e
+  mkdir -p /var/lib/aiif-c1
+  found=0
+  masked=0
+  for unit in ssh.socket ssh.service sshd.socket sshd.service; do
+    if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q "^${{unit}}[[:space:]]"; then
+      found=$((found + 1))
+      systemctl disable --now "$unit" >/dev/null 2>&1 || true
+      systemctl mask --now "$unit" >/dev/null 2>&1 || true
+      state="$(systemctl is-enabled "$unit" 2>/dev/null || true)"
+      [ "$state" = "masked" ] && masked=$((masked + 1))
+    fi
+  done
+  pkill -x sshd >/dev/null 2>&1 || true
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  sleep 2
+  listener=0
+  if ss -ltnH 2>/dev/null | awk '$4 ~ /:22$/ {{found=1}} END {{exit found ? 0 : 1}}'; then
+    listener=1
+  fi
+  if [ "$listener" -ne 0 ] || { '{' } [ "$found" -gt 0 ] && [ "$masked" -eq 0 ]; { '}' }; then
+    printf 'FAIL\n' > /var/lib/aiif-c1/ssh-lockdown-status
+    printf 'AIIF_C1_SSH_LOCKDOWN_V1 token={token} status=FAIL\n' | tee /dev/ttyS0 >/dev/null 2>&1 || true
+    exit 91
+  fi
+  printf 'OK\n' > /var/lib/aiif-c1/ssh-lockdown-status
+  printf 'AIIF_C1_SSH_LOCKDOWN_V1 token={token} status=OK\n' | tee /dev/ttyS0 >/dev/null 2>&1 || true
+); then
+  :
+else
+  exit $?
+fi
+# AIIF_C1_SSH_LOCKDOWN_V1_END
+'''
+          combined=shebang+block+rest
+          (root/'combined.sh').write_text(combined,encoding='utf-8')
+          (root/'net.json').write_text(json.dumps({'nic':nic_name,'access_name':ac_name,'network_tier':tier},sort_keys=True),encoding='utf-8')
+          safe={
+            'status':'c1_two_boot_preflight_pass',
+            'project_vm_count':1,
+            'target_vm_running':False,
+            'access_config_count':1,
+            'external_ip_classification':'ephemeral_unassigned_while_stopped',
+            'startup_script_preserved':True,
+            'combined_script_sha256_prefix':hashlib.sha256(combined.encode()).hexdigest()[:12],
+            'project_ssh_keys_blocked':True,
+            'os_login_enabled':False,
+            'serial_port_enabled':False,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          PY
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata-from-file startup-script="$tmp/combined.sh" --quiet >/dev/null
+
+      - name: Remove external IPv4 before first boot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1twoboot"
+          readarray -t net < <(python3 - "$tmp/net.json" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))
+          print(x['nic']); print(x['access_name'])
+          PY
+          )
+          gcloud compute instances delete-access-config "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --network-interface="${net[0]}" --access-config-name="${net[1]}" --quiet >/dev/null
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/no-access.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          x=json.loads((Path(os.environ['ROOT'])/'no-access.json').read_text())
+          n=x.get('networkInterfaces') or []
+          count=sum(len(i.get('accessConfigs') or []) for i in n)
+          if count!=0 or str(x.get('status') or '').upper()!='TERMINATED':
+              raise SystemExit('fail-closed: external access removal not proven while stopped')
+          print('{"status":"c1_offline_boot_network_ready","external_access_config_count":0,"target_vm_running":false,"private_identifiers_exposed":0}')
+          PY
+
+      - name: Boot without external IPv4 and prove lockdown by serial output
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1twoboot"
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          ok=0
+          fail=0
+          for _ in $(seq 1 36); do
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+            gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" > "$tmp/serial.txt" 2>"$tmp/serial.err" || true
+            if grep -Fq "AIIF_C1_SSH_LOCKDOWN_V1 token=${LOCK_TOKEN} status=FAIL" "$tmp/serial.txt"; then fail=1; break; fi
+            if grep -Fq "AIIF_C1_SSH_LOCKDOWN_V1 token=${LOCK_TOKEN} status=OK" "$tmp/serial.txt"; then ok=1; break; fi
+            [ "$state" = "RUNNING" ] || true
+            sleep 5
+          done
+          if [ "$fail" -ne 0 ] || [ "$ok" -ne 1 ]; then
+            echo '::error::offline SSH lockdown marker was not proven'
+            exit 1
+          fi
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/offline-running.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          x=json.loads((Path(os.environ['ROOT'])/'offline-running.json').read_text())
+          count=sum(len(i.get('accessConfigs') or []) for i in (x.get('networkInterfaces') or []))
+          if count!=0:
+              raise SystemExit('fail-closed: offline lockdown boot gained external access')
+          print('{"status":"c1_offline_lockdown_proven","external_access_config_count":0,"serial_marker_ok":true,"private_identifiers_exposed":0}')
+          PY
+
+      - name: Stop offline boot
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+          if [ "$state" != "TERMINATED" ] && [ -n "$state" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1
+          fi
+          for _ in $(seq 1 36); do
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+            [ "$state" = "TERMINATED" ] && exit 0
+            sleep 5
+          done
+          exit 1
+
+      - name: Restore ephemeral external access configuration
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1twoboot"
+          test -f "$tmp/net.json" || { echo '::error::network restore metadata missing'; exit 1; }
+          readarray -t net < <(python3 - "$tmp/net.json" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))
+          print(x['nic']); print(x['access_name']); print(x['network_tier'])
+          PY
+          )
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/before-restore.json"
+          count="$(python3 - "$tmp/before-restore.json" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))
+          print(sum(len(i.get('accessConfigs') or []) for i in (x.get('networkInterfaces') or [])))
+          PY
+          )"
+          if [ "$count" = "0" ]; then
+            gcloud compute instances add-access-config "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --network-interface="${net[0]}" --access-config-name="${net[1]}" --network-tier="${net[2]}" --quiet >/dev/null
+          elif [ "$count" != "1" ]; then
+            echo '::error::unexpected access config count during restore'
+            exit 1
+          fi
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/restored.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          x=json.loads((Path(os.environ['ROOT'])/'restored.json').read_text())
+          n=x.get('networkInterfaces') or []
+          access=[a for i in n for a in (i.get('accessConfigs') or [])]
+          if len(access)!=1 or str(x.get('status') or '').upper()!='TERMINATED':
+              raise SystemExit('fail-closed: access config restore not proven while stopped')
+          if str(access[0].get('natIP') or '').strip():
+              raise SystemExit('fail-closed: restored stopped config is not ephemeral/unassigned')
+          print('{"status":"c1_ephemeral_access_restored","access_config_count":1,"target_vm_running":false,"private_identifiers_exposed":0}')
+          PY
+
+  public-probe:
+    needs: offline-lockdown
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      LOCK_TOKEN: ${{ github.run_id }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start VM with ephemeral external IPv4
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          tmp="${RUNNER_TEMP}/c1public"; mkdir -p "$tmp"
+          for _ in $(seq 1 30); do
+            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/running.json"
+            if python3 - "$tmp/running.json" "$tmp/ip.txt" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))
+          if str(x.get('status') or '').upper()!='RUNNING': raise SystemExit(1)
+          access=[a for i in (x.get('networkInterfaces') or []) for a in (i.get('accessConfigs') or [])]
+          if len(access)!=1: raise SystemExit(1)
+          ip=str(access[0].get('natIP') or '').strip()
+          if not ip: raise SystemExit(1)
+          open(sys.argv[2],'w').write(ip)
+          PY
+            then break; fi
+            sleep 3
+          done
+          test -s "$tmp/ip.txt" || { echo '::error::ephemeral IPv4 not assigned'; exit 1; }
+
+      - name: Prove TCP 22 never opens during bounded public boot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1public"
+          python3 - "$tmp/ip.txt" <<'PY'
+          import socket,sys,time
+          ip=open(sys.argv[1]).read().strip()
+          successes=0
+          for _ in range(30):
+              try:
+                  s=socket.create_connection((ip,22),timeout=1.0)
+              except OSError:
+                  pass
+              else:
+                  successes += 1
+                  s.close()
+              time.sleep(1.0)
+          if successes:
+              raise SystemExit('fail-closed: TCP/22 accepted during public boot')
+          print('{"status":"c1_public_tcp22_probe_pass","samples":30,"tcp22_successes":0,"private_identifiers_exposed":0}')
+          PY
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" > "$tmp/serial.txt" 2>"$tmp/serial.err" || true
+          grep -Fq "AIIF_C1_SSH_LOCKDOWN_V1 token=${LOCK_TOKEN} status=OK" "$tmp/serial.txt" || { echo '::error::second-boot lockdown marker missing'; exit 1; }
+
+  guest-verify:
+    needs: public-probe
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    steps:
+      - name: Verify guest SSH lockdown, outbound reachability, and ledger ACL
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ss -ltnH 2>/dev/null | awk '$4 ~ /:22$/ {found=1} END {exit found ? 0 : 1}'; then
+            echo '::error::TCP/22 listener is present'
+            exit 1
+          fi
+          masked=0
+          active=0
+          found=0
+          for unit in ssh.socket ssh.service sshd.socket sshd.service; do
+            if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q "^${unit}[[:space:]]"; then
+              found=$((found + 1))
+              state="$(systemctl is-enabled "$unit" 2>/dev/null || true)"
+              [ "$state" = "masked" ] && masked=$((masked + 1))
+              systemctl is-active --quiet "$unit" && active=$((active + 1)) || true
+            fi
+          done
+          [ "$active" -eq 0 ] || { echo '::error::SSH systemd unit active'; exit 1; }
+          if [ "$found" -gt 0 ] && [ "$masked" -eq 0 ]; then
+            echo '::error::no installed SSH unit is persistently masked'
+            exit 1
+          fi
+          [ "$(cat /var/lib/aiif-c1/ssh-lockdown-status 2>/dev/null || true)" = "OK" ] || { echo '::error::lockdown status marker missing'; exit 1; }
+          gh_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://github.com/ || true)"
+          note_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://note.com/ || true)"
+          [ "$gh_code" != "000" ] && [ -n "$gh_code" ] || { echo '::error::GitHub outbound unreachable'; exit 1; }
+          [ "$note_code" != "000" ] && [ -n "$note_code" ] || { echo '::error::note HTTPS unreachable'; exit 1; }
+          ledger="${HOME}/.aiif-note/delivery-ledger-v1.sqlite3"
+          [ -f "$ledger" ] || { echo '::error::durable ledger missing'; exit 1; }
+          dir_mode="$(stat -c '%a' "$(dirname "$ledger")")"
+          file_mode="$(stat -c '%a' "$ledger")"
+          [ "$dir_mode" = "700" ] || { echo '::error::ledger parent mode drift'; exit 1; }
+          [ "$file_mode" = "600" ] || { echo '::error::ledger file mode drift'; exit 1; }
+          echo '{"status":"c1_guest_running_proof_pass","tcp22_listener":false,"ssh_units_active":0,"outbound_github":true,"note_https_reachable":true,"ledger_parent_mode":"0700","ledger_file_mode":"0600","note_mutations":0,"model_calls":0,"private_identifiers_exposed":0}'
+          {
+            echo '### P0 C-1 guest running proof'
+            echo '- TCP/22 listener: `absent`'
+            echo '- SSH units active: `0`'
+            echo '- GitHub outbound: `reachable`'
+            echo '- note HTTPS: `reachable` (read-only reachability only)'
+            echo '- ledger ACL: `0700 / 0600`'
+            echo '- note mutations: `0`'
+            echo '- model calls: `0`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  finalize:
+    if: ${{ always() }}
+    needs: [offline-lockdown, public-probe, guest-verify]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -19,62 +391,60 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      OFFLINE_RESULT: ${{ needs.offline-lockdown.result }}
+      PUBLIC_RESULT: ${{ needs.public-probe.result }}
+      GUEST_RESULT: ${{ needs.guest-verify.result }}
     steps:
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Classify external IPv4 without exposing address
+      - name: Stop VM and read back persistent boundary
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1ip"; mkdir -p "$tmp"
-          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/target.json"
-          addresses_ok=true
-          if ! gcloud compute addresses list --project "$GCP_PROJECT_ID" --format=json > "$tmp/addresses.json" 2>"$tmp/addresses.err"; then
-            addresses_ok=false
-            printf '[]' > "$tmp/addresses.json"
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "TERMINATED" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
           fi
-          ROOT="$tmp" ADDRESSES_OK="$addresses_ok" python3 - <<'PY'
+          for _ in $(seq 1 36); do
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+            [ "$state" = "TERMINATED" ] && break
+            sleep 5
+          done
+          [ "$state" = "TERMINATED" ] || { echo '::error::VM did not stop'; exit 1; }
+          tmp="${RUNNER_TEMP}/c1final"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/target.json"
+          ROOT="$tmp" OFFLINE_RESULT="$OFFLINE_RESULT" PUBLIC_RESULT="$PUBLIC_RESULT" GUEST_RESULT="$GUEST_RESULT" python3 - <<'PY'
           import json,os
           from pathlib import Path
-          root=Path(os.environ['ROOT'])
-          target=json.loads((root/'target.json').read_text())
-          addresses=json.loads((root/'addresses.json').read_text())
-          if not isinstance(addresses,list): addresses=[]
-          nics=target.get('networkInterfaces') or []
-          if len(nics)!=1:
-              raise SystemExit('fail-closed: expected exactly one NIC')
-          access=nics[0].get('accessConfigs') or []
-          if len(access)!=1:
-              raise SystemExit('fail-closed: expected exactly one IPv4 access config')
-          ac=access[0]
-          nat=str(ac.get('natIP') or '').strip()
-          running=str(target.get('status') or '').upper()=='RUNNING'
-          matches=[a for a in addresses if nat and str(a.get('address') or '').strip()==nat]
-          if not nat and not running:
-              classification='ephemeral_unassigned_while_stopped'
-          elif len(matches)==1:
-              classification='reserved_static'
-          elif nat and len(matches)==0 and os.environ['ADDRESSES_OK'].lower()=='true':
-              classification='ephemeral_assigned'
-          else:
-              classification='unknown'
+          x=json.loads((Path(os.environ['ROOT'])/'target.json').read_text())
+          n=x.get('networkInterfaces') or []
+          access=[a for i in n for a in (i.get('accessConfigs') or [])]
+          meta={str(v.get('key')):str(v.get('value')) for v in (x.get('metadata',{}).get('items') or [])}
+          script=meta.get('startup-script','')
           safe={
-            'status':'c1_external_ip_type_audit_complete',
-            'target_vm_running':running,
-            'access_config_count':1,
-            'current_nat_ip_present':bool(nat),
-            'address_inventory_query_ok':os.environ['ADDRESSES_OK'].lower()=='true',
-            'reserved_address_match_count':len(matches),
-            'external_ip_classification':classification,
-            'read_only':True,
+            'status':'c1_two_boot_final_readback_complete',
+            'target_vm_running':str(x.get('status') or '').upper()=='RUNNING',
+            'access_config_count':len(access),
+            'stopped_ephemeral_nat_ip_present':bool(str(access[0].get('natIP') or '').strip()) if len(access)==1 else None,
+            'lockdown_startup_persisted':'AIIF_C1_SSH_LOCKDOWN_V1_BEGIN' in script and 'AIIF_C1_SSH_LOCKDOWN_V1_END' in script,
+            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
+            'offline_job':os.environ['OFFLINE_RESULT'],
+            'public_probe_job':os.environ['PUBLIC_RESULT'],
+            'guest_verify_job':os.environ['GUEST_RESULT'],
+            'c1_close_candidate':all(os.environ[k]=='success' for k in ['OFFLINE_RESULT','PUBLIC_RESULT','GUEST_RESULT']),
+            'vm_stopped_after_proof':True,
+            'note_mutations':0,
+            'model_calls':0,
             'private_identifiers_exposed':0,
           }
+          if len(access)!=1 or safe['stopped_ephemeral_nat_ip_present'] or not safe['lockdown_startup_persisted'] or not safe['project_ssh_keys_blocked'] or safe['os_login_enabled'] or safe['serial_port_enabled']:
+              raise SystemExit('fail-closed: final persistent boundary readback failed')
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 external IPv4 classification\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if running or classification=='unknown' or len(matches)>1:
-              raise SystemExit('fail-closed: external IPv4 classification unresolved')
+              fh.write('### P0 C-1 final readback\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           PY
