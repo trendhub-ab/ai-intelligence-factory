@@ -1,0 +1,68 @@
+name: P0 C-1 IAP Maintenance Preflight [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-iap-preflight.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Test IAP and bounded instance permissions without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1iap"; mkdir -p "$tmp"
+          token="$(gcloud auth print-access-token)"
+          project_body='{"permissions":["iap.tunnelInstances.accessViaIAP"]}'
+          pc="$(curl -sS -o "$tmp/project-perms.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            -d "$project_body" \
+            "https://cloudresourcemanager.googleapis.com/v1/projects/${GCP_PROJECT_ID}:testIamPermissions")"
+          [ "$pc" = "200" ] || echo '{"permissions":[]}' > "$tmp/project-perms.json"
+          instance_body='{"permissions":["compute.instances.addAccessConfig","compute.instances.deleteAccessConfig","compute.instances.get","compute.instances.setMetadata","compute.instances.start","compute.instances.stop"]}'
+          ic="$(curl -sS -o "$tmp/instance-perms.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            -d "$instance_body" \
+            "https://compute.googleapis.com/compute/v1/projects/${GCP_PROJECT_ID}/zones/${GCP_NOTE_VM_ZONE}/instances/${GCP_NOTE_VM_NAME}/testIamPermissions")"
+          [ "$ic" = "200" ] || echo '{"permissions":[]}' > "$tmp/instance-perms.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          pp=set(json.loads((root/'project-perms.json').read_text()).get('permissions') or [])
+          ip=set(json.loads((root/'instance-perms.json').read_text()).get('permissions') or [])
+          req={'compute.instances.addAccessConfig','compute.instances.deleteAccessConfig','compute.instances.get','compute.instances.setMetadata','compute.instances.start','compute.instances.stop'}
+          safe={
+            'status':'c1_iap_maintenance_preflight_complete',
+            'can_iap_tunnel':'iap.tunnelInstances.accessViaIAP' in pp,
+            'all_bounded_instance_permissions':req.issubset(ip),
+            'can_set_metadata':'compute.instances.setMetadata' in ip,
+            'can_add_access_config':'compute.instances.addAccessConfig' in ip,
+            'can_delete_access_config':'compute.instances.deleteAccessConfig' in ip,
+            'can_start':'compute.instances.start' in ip,
+            'can_stop':'compute.instances.stop' in ip,
+            'read_only':True,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 IAP maintenance preflight\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          PY
