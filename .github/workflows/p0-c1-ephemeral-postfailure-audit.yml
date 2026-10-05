@@ -1,0 +1,56 @@
+name: P0 C-1 Ephemeral Proof Cleanup Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-ephemeral-postfailure-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      EXPECTED_STARTUP_SHA256: db5534e4ea6418b4e8e25680ec31be3b1b6be8342aa1b93b5a7891da1a935601
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Verify fail-safe cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/audit"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          inst=json.loads((Path(os.environ['ROOT'])/'instance.json').read_text())
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          ac=sum(len(n.get('accessConfigs') or []) for n in (inst.get('networkInterfaces') or []))
+          safe={
+            'status':'c1_ephemeral_cleanup_audit_complete',
+            'vm_status':str(inst.get('status') or ''),
+            'instance_ssh_key_metadata_present':('ssh-keys' in items or 'sshKeys' in items),
+            'startup_script_restored':hashlib.sha256(items.get('startup-script','').encode()).hexdigest()==os.environ['EXPECTED_STARTUP_SHA256'],
+            'access_config_count':ac,
+            'project_ssh_keys_blocked':items.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':items.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':items.get('serial-port-enable','').lower()=='true',
+            'read_only':True,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          ok=(safe['vm_status']=='TERMINATED' and not safe['instance_ssh_key_metadata_present'] and safe['startup_script_restored'] and ac==1 and safe['project_ssh_keys_blocked'] and not safe['os_login_enabled'] and not safe['serial_port_enabled'])
+          if not ok: raise SystemExit(1)
+          PY
