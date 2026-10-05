@@ -1,4 +1,4 @@
-name: P0 C-1 SSH Service Hardening [OPS ONE-SHOT]
+name: P0 C-1 TCP22 Listener Diagnosis [OPS ONE-SHOT]
 
 on:
   push:
@@ -12,7 +12,7 @@ env:
   P0B_HEAD: 9bcfc9ed2de8293989bc895da0ff6baf5ded72b8
 
 jobs:
-  harden-metadata-and-start:
+  start-vm:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -28,50 +28,66 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Disable project SSH-key inheritance and OS Login on target VM
+      - name: Start persistent note VM for bounded read-only diagnosis
         run: |
           set -euo pipefail
-          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" \
-            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
-            --metadata block-project-ssh-keys=true,enable-oslogin=false --quiet
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          if [ "$state" = "STOPPING" ]; then
-            for _ in $(seq 1 30); do sleep 5; state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"; [ "$state" = "TERMINATED" ] && break; done
-          fi
           [ "$state" = "RUNNING" ] || gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
 
-  harden-guest-ssh:
-    needs: harden-metadata-and-start
+  diagnose-listener:
+    needs: start-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 10
     steps:
-      - name: Disable inbound SSH service and verify port 22 is closed
+      - name: Identify TCP22 listener without changing guest state
         shell: bash
         run: |
           set -euo pipefail
-          svc=""
-          for candidate in ssh sshd; do
-            if systemctl list-unit-files "${candidate}.service" --no-legend 2>/dev/null | grep -q .; then svc="$candidate"; break; fi
-          done
-          [ -n "$svc" ] || { echo 'No SSH service unit found; treating as closed'; svc='none'; }
-          if [ "$svc" != "none" ]; then
-            sudo systemctl disable --now "$svc"
-            if systemctl is-active --quiet "$svc"; then echo 'SSH service still active' >&2; exit 1; fi
+          socket_active=false
+          socket_enabled=false
+          ssh_service_active=false
+          sshd_service_active=false
+          systemctl is-active --quiet ssh.socket && socket_active=true || true
+          systemctl is-enabled --quiet ssh.socket && socket_enabled=true || true
+          systemctl is-active --quiet ssh.service && ssh_service_active=true || true
+          systemctl is-active --quiet sshd.service && sshd_service_active=true || true
+          listener=false
+          if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)(22)$'; then listener=true; fi
+          proc="unknown"
+          raw="$(sudo ss -ltnp 'sport = :22' 2>/dev/null || true)"
+          if printf '%s' "$raw" | grep -Eq 'users:\(\("[^"]+'; then
+            proc="$(printf '%s' "$raw" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1)"
           fi
-          if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)(22)$'; then
-            echo 'TCP/22 still listening' >&2
-            exit 1
-          fi
-          printf '%s\n' '{"status":"guest_ssh_closed","ssh_service_active":false,"tcp22_listening":false,"private_identifiers_exposed":0}'
+          [ -n "$proc" ] || proc="unknown"
+          python3 - <<PY
+          import json
+          print(json.dumps({
+            'status':'tcp22_listener_diagnosis_complete',
+            'tcp22_listening': ${listener},
+            'ssh_socket_active': ${socket_active},
+            'ssh_socket_enabled': ${socket_enabled},
+            'ssh_service_active': ${ssh_service_active},
+            'sshd_service_active': ${sshd_service_active},
+            'listener_process':'${proc}',
+            'read_only': True,
+            'private_identifiers_exposed': 0,
+          }, sort_keys=True))
+          PY
           {
-            echo '### P0 C-1 guest SSH proof'
-            echo '- ssh_service_active: `false`'
-            echo '- tcp22_listening: `false`'
+            echo '### P0 C-1 TCP22 listener diagnosis'
+            echo "- tcp22_listening: \`$listener\`"
+            echo "- ssh_socket_active: \`$socket_active\`"
+            echo "- ssh_socket_enabled: \`$socket_enabled\`"
+            echo "- ssh_service_active: \`$ssh_service_active\`"
+            echo "- sshd_service_active: \`$sshd_service_active\`"
+            echo "- listener_process: \`$proc\`"
+            echo '- read_only: `true`'
             echo '- private_identifiers_exposed: `0`'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  verify-cloud-metadata:
-    needs: harden-guest-ssh
+  stop-vm:
+    if: ${{ always() && needs.start-vm.result == 'success' }}
+    needs: [start-vm, diagnose-listener]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -87,51 +103,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Verify metadata and external-IP boundary read-only
-        run: |
-          set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1final"; mkdir -p "$tmp"
-          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
-          ROOT="$tmp" python3 - <<'PY'
-          import json,os
-          from pathlib import Path
-          inst=json.loads((Path(os.environ['ROOT'])/'instance.json').read_text())
-          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
-          ext=any(a.get('natIP') for n in (inst.get('networkInterfaces') or []) for a in (n.get('accessConfigs') or []))
-          safe={
-            'status':'c1_cloud_metadata_verified',
-            'external_ip_present':bool(ext),
-            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
-            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
-            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
-            'private_identifiers_exposed':0,
-          }
-          ok=(not safe['external_ip_present'] and safe['project_ssh_keys_blocked'] and not safe['os_login_enabled'] and not safe['serial_port_enabled'])
-          print(json.dumps(safe,sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 cloud metadata proof\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if not ok: raise SystemExit(1)
-          PY
-
-  stop-cloud-vm:
-    if: ${{ always() && needs.harden-metadata-and-start.result == 'success' }}
-    needs: [harden-metadata-and-start, harden-guest-ssh, verify-cloud-metadata]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop persistent note VM
+      - name: Stop persistent note VM after diagnosis
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
