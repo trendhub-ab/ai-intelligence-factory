@@ -1,4 +1,4 @@
-name: P0-B B01 Read-Only Ledger Inventory [OPS ONE-SHOT]
+name: P0-B Read-Only Ledger State Inventory [OPS ONE-SHOT]
 
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - name: Read-only current Ready ledger inventory
+      - name: Read-only current Ready ledger state inventory
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
@@ -61,56 +61,68 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import collections, json, os, subprocess, tempfile
+          import collections, hashlib, json, os, sqlite3, unicodedata
           from pathlib import Path
           import note_draft_automation as base
           import run185_note_ready_legacy_skip as run185
           import run194_note_current_contract as current
+          from note_delivery_ledger import DESTINATION_SURFACE, LOGICAL_KEY_SCHEMA_VERSION, SQLITE_SCHEMA_VERSION
+
+          def norm(value):
+              return unicodedata.normalize('NFC', str(value or '')).strip()
+
+          def logical_key(sync_id, target):
+              material = {
+                  'schema_version': LOGICAL_KEY_SCHEMA_VERSION,
+                  'sync_id': norm(sync_id).lower(),
+                  'note_target': norm(target),
+                  'destination_surface': DESTINATION_SURFACE,
+              }
+              encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+              return hashlib.sha256(encoded).hexdigest()
 
           current.install()
           try:
               candidates = run185._ordered_candidates(base._query_ready_queue())
           except base.NoteDraftError:
               candidates = []
+
+          ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
+          if not ledger.is_file():
+              raise SystemExit('ledger missing')
+          conn = sqlite3.connect(ledger.resolve().as_uri() + '?mode=ro', uri=True, timeout=5.0, isolation_level=None)
+          conn.row_factory = sqlite3.Row
+          conn.execute('PRAGMA query_only=ON')
+          if int(conn.execute('PRAGMA user_version').fetchone()[0]) != SQLITE_SCHEMA_VERSION:
+              raise SystemExit('ledger schema mismatch')
+
           counts = collections.Counter()
-          prepared_count = 0
-          prepare_skipped = 0
+          prepared = skipped = 0
           for candidate in candidates:
               try:
-                  prepared = current._prepare_one(candidate)
+                  item = current._prepare_one(candidate)
               except Exception:
-                  prepare_skipped += 1
+                  skipped += 1
                   continue
-              sid = base._normalize_sync_id(prepared.get('sync_id', ''))
+              sid = base._normalize_sync_id(item.get('sync_id', ''))
               if len(sid) != 32:
-                  prepare_skipped += 1
+                  skipped += 1
                   continue
-              prepared_count += 1
-              with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as fh:
-                  result_path = Path(fh.name)
-              try:
-                  env = dict(os.environ)
-                  env.update(
-                      NOTE_TARGET_SYNC_ID=sid,
-                      NOTE_TARGET_IDENTITY='trendhub_biz',
-                      NOTE_DELIVERY_LEDGER_PATH='~/.aiif-note/delivery-ledger-v1.sqlite3',
-                      NOTE_DRAFT_RESULT_FILE=str(result_path),
-                  )
-                  p = subprocess.run(['bash', 'note_delivery_ledger_preflight.sh'], env=env,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                  if p.returncode:
-                      counts['preflight_error'] += 1
-                      continue
-                  result = json.loads(result_path.read_text())
-                  counts[str(result.get('status') or 'unknown')] += 1
-              finally:
-                  result_path.unlink(missing_ok=True)
+              prepared += 1
+              key = logical_key(sid, 'trendhub_biz')
+              row = conn.execute(
+                  'SELECT d.state FROM logical_bindings b '
+                  'JOIN deliveries d ON d.operation_key=b.operation_key '
+                  'WHERE b.logical_key=?', (key,)
+              ).fetchone()
+              counts['NO_LEDGER_RECORD' if row is None else str(row['state'] or 'UNKNOWN')] += 1
+          conn.close()
 
           safe = {
               'queue_candidate_count': len(candidates),
-              'current_policy_prepared_count': prepared_count,
-              'prepare_skipped_count': prepare_skipped,
-              'ledger_status_counts': dict(sorted(counts.items())),
+              'current_policy_prepared_count': prepared,
+              'prepare_skipped_count': skipped,
+              'ledger_state_counts': dict(sorted(counts.items())),
               'zero_gemini_calls': True,
               'zero_openai_calls': True,
               'note_mutation': False,
@@ -119,7 +131,7 @@ jobs:
           }
           print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### B01 read-only ledger inventory\n')
+              fh.write('### P0-B read-only ledger state inventory\n')
               fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
           PY
 
