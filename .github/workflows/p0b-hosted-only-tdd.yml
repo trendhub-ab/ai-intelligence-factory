@@ -10,49 +10,32 @@ permissions:
   contents: read
 
 jobs:
-  focused-tests:
+  full-verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Install test dependencies
+      - name: Install repository test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest requests google-cloud-storage
+          pip install -r requirements.txt pytest playwright google-cloud-storage
 
-      - name: Run hosted-only P0-B tests
-        run: |
-          python -m pytest \
-            tests/test_p0b_hosted_only_protocol.py \
-            tests/test_note_delivery_gcs.py \
-            tests/test_p0b_hosted_runtime_factory.py \
-            tests/test_p0b_hosted_workflow.py \
-            tests/test_note_delivery_ledger.py \
-            tests/test_note_delivery_runtime.py \
-            tests/test_note_delivery_human_edit_guard.py \
-            tests/test_run295_note_eyecatch_persistence.py \
-            tests/test_p0b_eyecatch_callback_forwarding.py \
-            tests/test_p0b_production_installation.py -q
+      - name: Full repository pytest
+        run: python -m pytest tests -q
 
-      - name: Run existing note regression contracts
+      - name: Repository guards
         run: |
-          python -m unittest \
-            tests.test_note_draft_automation \
-            tests.test_run185_note_ready_legacy_skip \
-            tests.test_run186_note_header_image_resilience \
-            tests.test_run187_note_editor_readiness \
-            tests.test_run188_note_header_upload_fallback \
-            tests.test_run189_note_editor_route_gate \
-            tests.test_run190_note_persistent_cloud \
-            tests.test_run191_note_crop_dialog_resilience \
-            tests.test_run193_note_official_header_upload \
-            tests.test_run194_publication_contract \
-            tests.test_run194_note_current_contract \
-            tests.test_run199_note_vm_preflight -v
+          set -euo pipefail
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check origin/main...HEAD
