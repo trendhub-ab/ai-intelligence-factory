@@ -1,0 +1,91 @@
+name: P0 C-1 Runner Failure Context v2 [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-runner-failure-context-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Tight-context classify runner failure and stop VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          stop_vm() {
+            set +e
+            state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+            if [ -n "$state" ] && [ "$state" != TERMINATED ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+              for _ in $(seq 1 60); do
+                state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null)"
+                [ "$state" = TERMINATED ] && break
+                sleep 5
+              done
+            fi
+          }
+          trap stop_vm EXIT
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$state" = TERMINATED ] || { echo '::error::VM must start from TERMINATED'; exit 1; }
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          sleep 55
+          out="${RUNNER_TEMP}/serial.out"
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 >"$out" 2>/dev/null
+          OUT="$out" python3 - <<'PY'
+          import os,re
+          lines=open(os.environ['OUT'],encoding='utf-8',errors='ignore').read().lower().splitlines()
+          anchors=[]
+          anchor_re=re.compile(r'actions\.runner|runner\.listener|runsvc|github.{0,80}runner|runner.{0,80}(service|failed|error)')
+          for i,line in enumerate(lines):
+              if anchor_re.search(line): anchors.append(i)
+          idx=set()
+          for i in anchors:
+              idx.update(range(max(0,i-4),min(len(lines),i+5)))
+          probe='\n'.join(lines[i] for i in sorted(idx))
+          def h(*p): return any(re.search(x,probe,re.S) for x in p)
+          safe={
+            'runner_anchor_count_positive': len(anchors)>0,
+            'tight_context_nonempty': bool(probe),
+            'status_203_exec': h(r'status=203/exec',r'failed at step exec'),
+            'status_217_user': h(r'status=217/user',r'failed at step user'),
+            'status_200_chdir': h(r'status=200/chdir',r'failed at step chdir'),
+            'no_such_file': h(r'no such file or directory'),
+            'permission_denied': h(r'permission denied',r'operation not permitted'),
+            'user_missing': h(r'user.{0,100}(not found|unknown|invalid|does not exist)',r'failed to determine user credentials'),
+            'runner_not_configured': h(r'not configured',r'\.runner.{0,100}(missing|not found)'),
+            'runner_auth_failure': h(r'(unauthorized|forbidden|401|403)',r'token.{0,100}(invalid|expired)'),
+            'restart_loop': h(r'start request repeated too quickly',r'restart counter'),
+            'main_process_exited': h(r'main process exited',r'code=exited'),
+            'unit_failed_result': h(r'failed with result'),
+            'connection_failure': h(r'connection (timed out|refused)',r'network is unreachable',r'name resolution'),
+          }
+          safe['specific_failure_count']=sum(1 for k,v in safe.items() if k not in {'runner_anchor_count_positive','tight_context_nonempty'} and v)
+          print('C1_RUNNER_TIGHT_CONTEXT='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 runner tight-context classifier\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Only booleans derived from runner-adjacent lines are published; raw lines, names, users, paths and tokens are withheld.\n')
+          PY
