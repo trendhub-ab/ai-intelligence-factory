@@ -51,22 +51,30 @@ jobs:
               raise SystemExit('fail-closed: expected exactly one IPv4 access config')
           ac=access[0]
           nat=str(ac.get('natIP') or '').strip()
-          if not nat:
-              raise SystemExit('fail-closed: access config has no current IPv4')
-          matches=[a for a in addresses if str(a.get('address') or '').strip()==nat]
+          running=str(target.get('status') or '').upper()=='RUNNING'
+          matches=[a for a in addresses if nat and str(a.get('address') or '').strip()==nat]
+          if not nat and not running:
+              classification='ephemeral_unassigned_while_stopped'
+          elif len(matches)==1:
+              classification='reserved_static'
+          elif nat and len(matches)==0 and os.environ['ADDRESSES_OK'].lower()=='true':
+              classification='ephemeral_assigned'
+          else:
+              classification='unknown'
           safe={
             'status':'c1_external_ip_type_audit_complete',
-            'target_vm_running':str(target.get('status') or '').upper()=='RUNNING',
+            'target_vm_running':running,
             'access_config_count':1,
+            'current_nat_ip_present':bool(nat),
             'address_inventory_query_ok':os.environ['ADDRESSES_OK'].lower()=='true',
             'reserved_address_match_count':len(matches),
-            'external_ip_classification':'reserved_static' if len(matches)==1 else ('ephemeral' if len(matches)==0 and os.environ['ADDRESSES_OK'].lower()=='true' else 'unknown'),
+            'external_ip_classification':classification,
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
               fh.write('### P0 C-1 external IPv4 classification\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
-          if safe['target_vm_running'] or safe['external_ip_classification']=='unknown' or len(matches)>1:
+          if running or classification=='unknown' or len(matches)>1:
               raise SystemExit('fail-closed: external IPv4 classification unresolved')
           PY
