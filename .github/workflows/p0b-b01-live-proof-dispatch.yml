@@ -1,4 +1,4 @@
-name: P0 C-1 Remediation Permission Audit [OPS ONE-SHOT]
+name: P0 C-1 Network Admin Readiness Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -17,58 +17,44 @@ jobs:
       id-token: write
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
     steps:
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Test required remediation permissions without changing GCP state
+      - name: Reconfirm stopped-state prerequisites read-only
         shell: bash
         run: |
           set -euo pipefail
-          token="$(gcloud auth print-access-token)"
-          body='{"permissions":["compute.instances.deleteAccessConfig","compute.instances.get","compute.routers.create","compute.routers.get","compute.routers.update","compute.networks.use","compute.subnetworks.use","compute.addresses.create"]}'
-          code="$(curl -sS -o "${RUNNER_TEMP}/perm.json" -w '%{http_code}' \
-            -H "Authorization: Bearer ${token}" \
-            -H 'Content-Type: application/json' \
-            -X POST \
-            -d "$body" \
-            "https://cloudresourcemanager.googleapis.com/v1/projects/${GCP_PROJECT_ID}:testIamPermissions")"
-          HTTP_CODE="$code" ROOT="$RUNNER_TEMP" python3 - <<'PY'
+          tmp="${RUNNER_TEMP}/c1ready"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          gcloud compute routers list --project "$GCP_PROJECT_ID" --format=json > "$tmp/routers.json"
+          ROOT="$tmp" python3 - <<'PY'
           import json,os
           from pathlib import Path
-          p=Path(os.environ['ROOT'])/'perm.json'
-          raw={}
-          try: raw=json.loads(p.read_text())
-          except Exception: raw={}
-          granted=set(raw.get('permissions') or [])
-          wanted=[
-            'compute.instances.deleteAccessConfig',
-            'compute.instances.get',
-            'compute.routers.create',
-            'compute.routers.get',
-            'compute.routers.update',
-            'compute.networks.use',
-            'compute.subnetworks.use',
-            'compute.addresses.create',
-          ]
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'instance.json').read_text())
+          routers=json.loads((root/'routers.json').read_text())
+          nics=inst.get('networkInterfaces') or []
+          nic=nics[0] if nics else {}
+          meta={str(x.get('key')):str(x.get('value')) for x in (inst.get('metadata',{}).get('items') or [])}
           safe={
-            'status':'c1_remediation_permission_audit_complete' if os.environ['HTTP_CODE']=='200' else 'c1_remediation_permission_audit_unavailable',
-            'http_ok': os.environ['HTTP_CODE']=='200',
-            'can_delete_external_access_config': 'compute.instances.deleteAccessConfig' in granted,
-            'can_create_cloud_router': 'compute.routers.create' in granted,
-            'can_get_cloud_router': 'compute.routers.get' in granted,
-            'can_update_cloud_router_nat': 'compute.routers.update' in granted,
-            'can_use_network': 'compute.networks.use' in granted,
-            'can_use_subnetwork': 'compute.subnetworks.use' in granted,
-            'can_create_address': 'compute.addresses.create' in granted,
-            'granted_required_permission_count': len([x for x in wanted if x in granted]),
-            'required_permission_count': len(wanted),
-            'read_only': True,
-            'private_identifiers_exposed': 0,
+            'status':'c1_network_admin_handoff_ready',
+            'vm_running':str(inst.get('status') or '').upper()=='RUNNING',
+            'external_access_config_count':len(nic.get('accessConfigs') or []),
+            'cloud_router_count_visible':len(routers if isinstance(routers,list) else []),
+            'project_ssh_keys_blocked':meta.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':meta.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':meta.get('serial-port-enable','').lower()=='true',
+            'read_only':True,
+            'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 remediation permission audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 network-admin handoff readiness\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if safe['vm_running']:
+              raise SystemExit('fail-closed: VM unexpectedly running')
           PY
