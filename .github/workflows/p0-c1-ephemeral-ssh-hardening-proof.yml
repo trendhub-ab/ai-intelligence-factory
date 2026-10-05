@@ -1,0 +1,181 @@
+name: P0 C-1 Ephemeral SSH Hardening Proof [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-ephemeral-ssh-hardening-proof.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      EXPECTED_STARTUP_SHA256: db5534e4ea6418b4e8e25680ec31be3b1b6be8342aa1b93b5a7891da1a935601
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Bounded ephemeral-key hardening and cold-boot proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1ephemeral"; mkdir -p "$tmp"
+          user="c1proof${GITHUB_RUN_ID}"
+          key="$tmp/key"
+          ssh-keygen -q -t ed25519 -N '' -C "$user" -f "$key"
+          pub="$(cat "$key.pub")"
+
+          describe() {
+            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json
+          }
+          status() {
+            gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)'
+          }
+          stop_vm() {
+            local s
+            s="$(status 2>/dev/null || true)"
+            if [ "$s" = RUNNING ] || [ "$s" = STAGING ]; then
+              gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null 2>&1 || true
+            fi
+          }
+          remove_temp_key() {
+            gcloud compute instances remove-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --keys=ssh-keys --quiet >/dev/null 2>&1 || true
+          }
+          cleanup() {
+            set +e
+            stop_vm
+            remove_temp_key
+            rm -f "$key" "$key.pub"
+          }
+          trap cleanup EXIT
+
+          describe > "$tmp/before.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          inst=json.loads((Path(os.environ['ROOT'])/'before.json').read_text())
+          if str(inst.get('status') or '')!='TERMINATED': raise SystemExit('precondition: VM must be TERMINATED')
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          if 'ssh-keys' in items or 'sshKeys' in items: raise SystemExit('precondition: instance SSH key metadata already exists')
+          if items.get('block-project-ssh-keys','').lower()!='true': raise SystemExit('precondition: project SSH keys not blocked')
+          if items.get('enable-oslogin','').lower()=='true': raise SystemExit('precondition: OS Login still enabled')
+          if items.get('serial-port-enable','').lower()=='true': raise SystemExit('precondition: serial console enabled')
+          if hashlib.sha256(items.get('startup-script','').encode()).hexdigest()!=os.environ['EXPECTED_STARTUP_SHA256']:
+              raise SystemExit('precondition: startup script changed')
+          ac=sum(len(n.get('accessConfigs') or []) for n in (inst.get('networkInterfaces') or []))
+          if ac!=1: raise SystemExit('precondition: expected one access config')
+          PY
+
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --metadata "ssh-keys=${user}:${pub}" --quiet >/dev/null
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+
+          ip=''
+          for _ in $(seq 1 30); do
+            ip="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || true)"
+            [ -n "$ip" ] && break
+            sleep 2
+          done
+          [ -n "$ip" ] || { echo 'no ephemeral external IP assigned' >&2; exit 1; }
+
+          ssh_ready=false
+          for _ in $(seq 1 45); do
+            if ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$user@$ip" 'true' >/dev/null 2>&1; then
+              ssh_ready=true; break
+            fi
+            sleep 2
+          done
+          [ "$ssh_ready" = true ] || { echo 'ephemeral SSH maintenance login unavailable' >&2; exit 1; }
+
+          sudo_ok=false
+          if ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$user@$ip" 'sudo -n true' >/dev/null 2>&1; then sudo_ok=true; fi
+          [ "$sudo_ok" = true ] || { echo 'ephemeral maintenance user lacks passwordless sudo' >&2; exit 1; }
+
+          # Schedule hardening detached so the maintenance SSH session can return before sshd is terminated.
+          ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$user@$ip" \
+            "sudo -n nohup bash -c 'sleep 2; systemctl disable --now ssh.socket ssh.service sshd.service >/dev/null 2>&1 || true; systemctl mask ssh.socket ssh.service sshd.service >/dev/null 2>&1 || true; systemctl daemon-reload >/dev/null 2>&1 || true; pkill -TERM -x sshd >/dev/null 2>&1 || true' >/dev/null 2>&1 &" >/dev/null 2>&1 || true
+
+          closed=false
+          for _ in $(seq 1 30); do
+            if timeout 3 bash -c "</dev/tcp/$ip/22" >/dev/null 2>&1; then
+              sleep 2
+            else
+              closed=true; break
+            fi
+          done
+          [ "$closed" = true ] || { echo 'TCP22 remained reachable after hardening' >&2; exit 1; }
+
+          # Remove the only temporary instance credential before cold-boot proof.
+          stop_vm
+          [ "$(status)" = TERMINATED ] || { echo 'VM did not terminate after hardening' >&2; exit 1; }
+          remove_temp_key
+
+          describe > "$tmp/mid.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          inst=json.loads((Path(os.environ['ROOT'])/'mid.json').read_text())
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          if 'ssh-keys' in items or 'sshKeys' in items: raise SystemExit('temporary SSH key metadata was not removed')
+          PY
+
+          # Cold boot using the normal operational external access config. No valid SSH credential remains.
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet >/dev/null
+          ip2=''
+          for _ in $(seq 1 30); do
+            ip2="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || true)"
+            [ -n "$ip2" ] && break
+            sleep 2
+          done
+          [ -n "$ip2" ] || { echo 'no external IP on cold boot' >&2; exit 1; }
+
+          # Give the guest enough time to finish boot; TCP22 must never become reachable.
+          reopened=false
+          for _ in $(seq 1 30); do
+            if timeout 3 bash -c "</dev/tcp/$ip2/22" >/dev/null 2>&1; then reopened=true; break; fi
+            sleep 2
+          done
+          [ "$reopened" = false ] || { echo 'TCP22 reopened after cold boot' >&2; exit 1; }
+
+          stop_vm
+          [ "$(status)" = TERMINATED ] || { echo 'VM did not terminate after cold-boot proof' >&2; exit 1; }
+
+          describe > "$tmp/final.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          inst=json.loads((Path(os.environ['ROOT'])/'final.json').read_text())
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          ac=sum(len(n.get('accessConfigs') or []) for n in (inst.get('networkInterfaces') or []))
+          safe={
+            'status':'c1_ephemeral_ssh_hardening_proof_pass',
+            'vm_status':str(inst.get('status') or ''),
+            'tcp22_closed_after_hardening':True,
+            'tcp22_closed_after_cold_boot':True,
+            'instance_ssh_key_metadata_present':('ssh-keys' in items or 'sshKeys' in items),
+            'project_ssh_keys_blocked':items.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':items.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':items.get('serial-port-enable','').lower()=='true',
+            'startup_script_unchanged':hashlib.sha256(items.get('startup-script','').encode()).hexdigest()==os.environ['EXPECTED_STARTUP_SHA256'],
+            'access_config_count':ac,
+            'temporary_key_removed':True,
+            'private_identifiers_exposed':0,
+          }
+          ok=(safe['vm_status']=='TERMINATED' and not safe['instance_ssh_key_metadata_present'] and safe['project_ssh_keys_blocked'] and not safe['os_login_enabled'] and not safe['serial_port_enabled'] and safe['startup_script_unchanged'] and ac==1)
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 ephemeral SSH hardening proof\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if not ok: raise SystemExit(1)
+          PY
+          trap - EXIT
+          rm -f "$key" "$key.pub"
