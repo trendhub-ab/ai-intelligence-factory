@@ -21,6 +21,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: pip install pytest
+      - run: pip install requests pytest
       - name: Verify RED
         run: python -m pytest tests/test_p0a_trusted_clipboard_paste.py -q
