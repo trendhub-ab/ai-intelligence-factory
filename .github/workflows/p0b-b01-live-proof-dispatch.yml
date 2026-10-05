@@ -1,4 +1,4 @@
-name: P0-B Existing Private Draft Exact Census [OPS ONE-SHOT]
+name: P0-B Visual-Repairable Fresh Ready Census [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,174 +8,67 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: p0b-existing-private-draft-exact-census
-  cancel-in-progress: false
-
-env:
-  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: 7361affdb59d96d0f33dc8bf0630dea0c8bc76c8
-
 jobs:
-  start-vm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
-          [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
-
   census:
-    needs: start-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ env.TARGET_BRANCH }}
-      - name: Verify reviewed head
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          ref: main
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install read-only browser dependencies
-        run: |
-          pip install requests playwright
-          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
-          command -v xvfb-run >/dev/null 2>&1
-      - name: Read-only existing private draft exact census
+      - run: pip install requests pillow
+      - name: Read-only visual-repairable current Ready census
         env:
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          NOTE_CHROME_CHANNEL: chrome
-          NOTE_CHROME_HEADLESS: 'false'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: ${{ secrets.NOTION_NOTE_READY_DATABASE_ID }}
-          NOTION_NOTE_READY_DATA_SOURCE_ID: ${{ secrets.NOTION_NOTE_READY_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
         run: |
           set -euo pipefail
-          xvfb-run -a python - <<'PY'
+          python - <<'PY'
           import collections, json
-          import note_draft_automation as base
-          import note_document_contract as contract
-          import note_document_dom as dom
+          import eyecatch_publication_contract as eye
           import note_ready_sync as nrs
-          import run187_note_editor_readiness as run187
-          import run190_note_persistent_cloud as cloud
-          import run417_note_body_verification as run417
-
-          def title_value(field):
-              tag = str(field.evaluate('el => el.tagName.toLowerCase()'))
-              if tag in {'input', 'textarea'}:
-                  return str(field.input_value() or '').strip()
-              return str(field.inner_text() or '').strip()
 
           pages = nrs._query_db(
               nrs.SOURCE_DATA_SOURCE_ID,
               nrs.SOURCE_DATABASE_ID,
               payload={'filter': {'property': nrs.SOURCE_ARTICLE_STATUS, 'select': {'equals': nrs.SOURCE_READY}}},
           )
-          candidates = []
-          posting_counts = collections.Counter()
-          skipped = 0
+          counts = collections.Counter()
+          total_ready = len(pages)
+          valid_source = 0
+          strict_current = 0
           for page in pages:
               state = nrs._source_state(page)
               if not state:
-                  skipped += 1
+                  counts['invalid_source_state'] += 1
                   continue
+              valid_source += 1
               sid = str(state.get('sync_id') or '')
               if not nrs._source_has_current_ready_manuscript(sid):
-                  skipped += 1
+                  counts['noncurrent_manuscript'] += 1
                   continue
-              dest = nrs.exact_destination_state(sid)
-              if not dest:
-                  continue
-              posting = str(dest.get('posting_status') or '').strip()
-              if posting == '投稿準備中':
-                  posting_counts['private_pending'] += 1
-              elif posting == '投稿済み':
-                  posting_counts['published'] += 1
-              else:
-                  continue
-              if posting != '投稿準備中':
-                  continue
-              manuscript = nrs._source_current_ready_manuscript(sid)
+              strict_current += 1
               title = str(state.get('title') or '')
-              body_manuscript = base._body_manuscript_for_note(title, manuscript)
-              expected = run417._expected_note_document(body_manuscript)
-              candidates.append({'title': title, 'expected': expected})
-
-          recent_urls = cloud._recent_private_edit_urls(cloud._profile_dir())[:24]
-          exact_counts = [0 for _ in candidates]
-          inspected_editor_routes = 0
-          from playwright.sync_api import sync_playwright
-          with sync_playwright() as playwright:
-              context = cloud._launch_persistent_context(playwright)
-              page = context.new_page()
-              page.set_default_timeout(30000)
-              try:
-                  for private_url in recent_urls:
-                      try:
-                          page.goto(private_url, wait_until='domcontentloaded', timeout=60000)
-                          page.wait_for_timeout(900)
-                          if base._looks_logged_out(page) or not run187._is_editor_url(str(page.url or '')):
-                              continue
-                          inspected_editor_routes += 1
-                          title_field = base._find_title(page)
-                          observed_title = title_value(title_field)
-                          indexes = [i for i, item in enumerate(candidates) if item['title'] == observed_title]
-                          if not indexes:
-                              continue
-                          body = base._find_body(page, title_field)
-                          snapshot = dom.snapshot_note_body(body)
-                          actual = dom.document_from_note_snapshot(
-                              snapshot,
-                              allowed_normalizations=(
-                                  contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
-                                  dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
-                              ),
-                          )
-                          for i in indexes:
-                              receipt = contract.compare_documents(candidates[i]['expected'], actual)
-                              if receipt.get('canonical_match') is True:
-                                  exact_counts[i] += 1
-                      except Exception:
-                          continue
-              finally:
-                  context.close()
-
-          cardinality = collections.Counter()
-          for count in exact_counts:
-              if count == 0:
-                  cardinality['zero_exact_match'] += 1
-              elif count == 1:
-                  cardinality['unique_exact_match'] += 1
+              image = str(state.get('eyecatch_url') or '')
+              delivery = nrs.classify_exact_delivery_state(sid)
+              if image and eye.current_asset_url(image, title):
+                  counts[f'current_asset__{delivery}'] += 1
               else:
-                  cardinality['multiple_exact_matches'] += 1
+                  counts[f'needs_visual_repair__{delivery}'] += 1
 
           safe = {
-              'already_delivered_posting_states': dict(sorted(posting_counts.items())),
-              'private_pending_candidates': len(candidates),
-              'recent_private_edit_routes': len(recent_urls),
-              'inspected_editor_routes': inspected_editor_routes,
-              'match_cardinality': dict(sorted(cardinality.items())),
+              'source_ready_rows': total_ready,
+              'valid_source_rows': valid_source,
+              'strict_current_manuscript_rows': strict_current,
+              'classification_counts': dict(sorted(counts.items())),
               'zero_gemini_calls': True,
               'zero_openai_calls': True,
               'notion_write': False,
@@ -185,29 +78,6 @@ jobs:
           }
           print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
           with open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B existing private draft exact census\n')
+              fh.write('### P0-B visual-repairable fresh Ready census\n')
               fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
           PY
-
-  stop-vm:
-    if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, census]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null || true)"
-          [ "$state" != RUNNING ] || gcloud compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
