@@ -1,0 +1,96 @@
+name: P0 C-1 SSH Candidate Diagnostic [READ-ONLY]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-ssh-candidate-diagnostic.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      SSH_MAINTENANCE_TAG: aiif-c1-ssh-maintenance-20261005
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Emit identifier-free SSH rule classification counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/diag"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/vm.json"
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/fw.json"
+          ROOT="$tmp" TAG="$SSH_MAINTENANCE_TAG" python3 - <<'PY'
+          import ipaddress,json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT']); tag=os.environ['TAG']
+          vm=json.loads((root/'vm.json').read_text()); rules=json.loads((root/'fw.json').read_text())
+          nics=vm.get('networkInterfaces') or []; network=str((nics[0].get('network') if nics else '') or '')
+          vm_tags=set((vm.get('tags') or {}).get('items') or [])
+          vm_sas={str(x.get('email') or '') for x in (vm.get('serviceAccounts') or []) if x.get('email')}
+          iap=ipaddress.ip_network('35.235.240.0/20')
+          def allows22(r):
+              if str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')): return False
+              for a in (r.get('allowed') or []):
+                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(p) for p in (a.get('ports') or [])]
+                  if proto not in {'tcp','all'}: continue
+                  if not ports: return True
+                  for p in ports:
+                      if p=='22': return True
+                      if '-' in p:
+                          try:
+                              lo,hi=map(int,p.split('-',1))
+                              if lo<=22<=hi: return True
+                          except Exception: pass
+              return False
+          def applies(r):
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              return (not tt or bool(tt & vm_tags)) and (not ts or bool(ts & vm_sas))
+          rows=[]
+          for r in rules:
+              if str(r.get('network') or '')!=network or not allows22(r): continue
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              nets=[]
+              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
+                  try: nets.append(ipaddress.ip_network(str(s),strict=False))
+                  except Exception: pass
+              rows.append({
+                'applies':applies(r),
+                'untargeted':not tt and not ts,
+                'our_tag_only':tt=={tag} and not ts,
+                'has_other_tag':bool(tt) and tt!={tag},
+                'has_target_sa':bool(ts),
+                'world':any(str(n)=='0.0.0.0/0' for n in nets),
+                'iap':any(n.version==4 and n.overlaps(iap) for n in nets),
+              })
+          candidate=[r for r in rows if not r['has_target_sa'] and not r['has_other_tag'] and (r['world'] or r['iap'])]
+          safe={
+            'vm_status':str(vm.get('status') or ''),
+            'ssh_rule_count_target_vpc':len(rows),
+            'applicable_count':sum(r['applies'] for r in rows),
+            'untargeted_count':sum(r['untargeted'] for r in rows),
+            'world_count':sum(r['world'] for r in rows),
+            'iap_overlap_count':sum(r['iap'] for r in rows),
+            'other_tag_count':sum(r['has_other_tag'] for r in rows),
+            'target_sa_count':sum(r['has_target_sa'] for r in rows),
+            'our_tag_only_count':sum(r['our_tag_only'] for r in rows),
+            'hardening_candidate_count':len(candidate),
+            'candidate_world_count':sum(r['world'] for r in candidate),
+            'candidate_iap_overlap_count':sum(r['iap'] for r in candidate),
+            'read_only':True,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          PY
