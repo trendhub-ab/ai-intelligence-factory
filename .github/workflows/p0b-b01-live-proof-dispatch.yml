@@ -1,4 +1,4 @@
-name: P0-B Exact ArXiv Ready Reconciliation [OPS ONE-SHOT]
+name: P0-B Daily Ready-Only Dispatch [OPS ONE-SHOT]
 
 on:
   push:
@@ -13,15 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Dispatch exact zero-model Ready reconciliation
+      - name: Dispatch exactly one Daily ready-only
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -euo pipefail
-          gh workflow run note-ready-sync.yml \
+          gh workflow run daily-one-shot.yml \
             --repo trendhub-ab/ai-intelligence-factory \
-            --ref main \
-            -f create_private_draft=false \
-            -f target_sync_id='' \
-            -f target_source_url='https://arxiv.org/abs/2610.03574'
-          echo 'Dispatched exact zero-model Ready reconciliation for canonical ArXiv source URL.'
+            --ref design/p0-b-durable-delivery-ledger \
+            -f mode=full \
+            -f editorial_style=classic \
+            -f excluded_models='' \
+            -f canary_source='' \
+            -f exact_target='' \
+            -f e2e_prepare_only=false \
+            -f p0b_ready_only=true \
+            -f confirm=RUN_ONCE
+          echo 'Dispatched exactly one Daily full run in P0-B ready-only mode.'
