@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  apply-task1:
+  apply-task3:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,7 +21,7 @@ jobs:
         with:
           ref: p0b-hosted-only-implementation
 
-      - name: Apply exact Task 1 patch
+      - name: Apply exact Task 3 patch
         run: python .github/patches/task1_storage_neutral.py
 
       - name: Commit implementation
@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
-          git add note_delivery_ledger.py note_delivery_runtime.py
+          git add note_delivery_runtime.py tests/test_note_delivery_ledger.py
           git diff --cached --check
-          git commit -m 'refactor: make P0-B delivery ledger storage-neutral'
+          git commit -m 'fix: complete hosted ledger runtime migration'
           git push origin HEAD:p0b-hosted-only-implementation
