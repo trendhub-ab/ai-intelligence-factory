@@ -21,8 +21,8 @@ class _Context:
 
 
 class _Page:
-    def __init__(self) -> None:
-        self.url = "https://note.com/notes/private/edit"
+    def __init__(self, url: str = "https://note.com/notes/private/edit") -> None:
+        self.url = url
         self.context = _Context()
         self.keyboard = _Keyboard()
         self.evaluate_calls: list[tuple[str, object | None]] = []
@@ -68,3 +68,16 @@ def test_current_contract_paste_uses_browser_clipboard_and_trusted_keyboard_past
     )
     assert "Control+V" in page.keyboard.presses
     assert not any("ClipboardEvent" in script for script, _ in body.evaluate_calls)
+
+
+def test_current_contract_paste_accepts_https_note_subdomain_and_scopes_permission_to_exact_origin() -> None:
+    current.install()
+    page = _Page("https://editor.note.com/notes/private/edit")
+    body = _Body()
+
+    draft._paste_manuscript(page, body, "## Heading\n\nBody")
+
+    assert page.context.grants == [
+        (("clipboard-read", "clipboard-write"), "https://editor.note.com")
+    ]
+    assert "Control+V" in page.keyboard.presses
