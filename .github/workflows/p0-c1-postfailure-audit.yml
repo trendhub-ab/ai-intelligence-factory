@@ -1,0 +1,67 @@
+name: P0 C-1 Post-Failure Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-postfailure-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      EXPECTED_STARTUP_SHA256: db5534e4ea6418b4e8e25680ec31be3b1b6be8342aa1b93b5a7891da1a935601
+      PROOF_RUN_ID: '37316963493'
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Verify cleanup and classify serial evidence without exposing logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1post"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/instance.json"
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --port=1 > "$tmp/serial.txt" 2>/dev/null || true
+          ROOT="$tmp" python3 - <<'PY'
+          import hashlib,json,os,re
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          inst=json.loads((root/'instance.json').read_text())
+          serial=(root/'serial.txt').read_text(errors='replace') if (root/'serial.txt').exists() else ''
+          items={str(x.get('key')):str(x.get('value') or '') for x in (inst.get('metadata',{}).get('items') or [])}
+          digest=hashlib.sha256(items.get('startup-script','').encode()).hexdigest()
+          ac=sum(len(n.get('accessConfigs') or []) for n in (inst.get('networkInterfaces') or []))
+          rid=os.environ['PROOF_RUN_ID']
+          safe={
+            'status':'c1_postfailure_audit_complete',
+            'vm_status':str(inst.get('status') or ''),
+            'startup_script_restored':digest==os.environ['EXPECTED_STARTUP_SHA256'],
+            'access_config_count':ac,
+            'project_ssh_keys_blocked':items.get('block-project-ssh-keys','').lower()=='true',
+            'os_login_enabled':items.get('enable-oslogin','').lower()=='true',
+            'serial_port_enabled':items.get('serial-port-enable','').lower()=='true',
+            'harden_closed_marker_seen':f'AIIF_C1_HARDEN_{rid}_CLOSED' in serial,
+            'harden_open_marker_seen':f'AIIF_C1_HARDEN_{rid}_OPEN' in serial,
+            'startup_runner_trace_seen':bool(re.search(r'metadata[_ -]?script|startup[- ]script|google_metadata_script_runner',serial,re.I)),
+            'startup_error_trace_seen':bool(re.search(r'(startup|metadata).{0,80}(error|failed|failure)',serial,re.I)),
+            'read_only':True,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 post-failure audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+          if safe['vm_status']!='TERMINATED' or not safe['startup_script_restored'] or ac!=1:
+              raise SystemExit(1)
+          PY
