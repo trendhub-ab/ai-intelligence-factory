@@ -1,0 +1,89 @@
+name: P0 C-1 Non-World Rule Shape Audit [READ-ONLY]
+
+on:
+  push:
+    branches: [ops/p0-c1-access-config-audit-20261005]
+    paths: [.github/workflows/p0-c1-nonworld-rule-shape-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Classify effective non-world ingress without identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/c1-shape"; mkdir -p "$tmp"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/vm.json"
+          gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/fw.json"
+          ROOT="$tmp" python3 - <<'PY'
+          import ipaddress,json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          vm=json.loads((root/'vm.json').read_text()); rules=json.loads((root/'fw.json').read_text())
+          nics=vm.get('networkInterfaces') or []; network=str((nics[0].get('network') if nics else '') or '')
+          tags=set((vm.get('tags') or {}).get('items') or [])
+          sas={str(x.get('email') or '') for x in (vm.get('serviceAccounts') or []) if x.get('email')}
+          def applies(r):
+              tt=set(r.get('targetTags') or []); ts=set(r.get('targetServiceAccounts') or [])
+              return (not tt or bool(tt & tags)) and (not ts or bool(ts & sas))
+          def port22(a):
+              proto=str(a.get('IPProtocol') or '').lower(); ports=[str(p) for p in (a.get('ports') or [])]
+              if proto not in {'tcp','all'}: return False
+              if not ports: return True
+              for p in ports:
+                  if p=='22': return True
+                  if '-' in p:
+                      try:
+                          lo,hi=map(int,p.split('-',1))
+                          if lo<=22<=hi: return True
+                      except Exception: pass
+              return False
+          rows=[]
+          for r in rules:
+              if str(r.get('network') or '')!=network or str(r.get('direction') or 'INGRESS').upper()!='INGRESS' or bool(r.get('disabled')) or not applies(r): continue
+              allowed=r.get('allowed') or []
+              if not any(port22(a) for a in allowed): continue
+              nets=[]
+              for s in (r.get('sourceRanges') or ['0.0.0.0/0']):
+                  try: nets.append(ipaddress.ip_network(str(s),strict=False))
+                  except Exception: pass
+              is_world=any(str(n)=='0.0.0.0/0' for n in nets)
+              non_ssh=False
+              for a in allowed:
+                  proto=str(a.get('IPProtocol') or '').lower(); ports=[str(p) for p in (a.get('ports') or [])]
+                  if proto in {'icmp','udp','all'}: non_ssh=True
+                  if proto=='tcp':
+                      if not ports: non_ssh=True
+                      for p in ports:
+                          if p!='22': non_ssh=True
+              rows.append({'world':is_world,'allows_non_ssh':non_ssh,'allowed_entry_count':len(allowed)})
+          nonworld=[x for x in rows if not x['world']]
+          world=[x for x in rows if x['world']]
+          safe={
+            'vm_status':str(vm.get('status') or ''),
+            'effective_ssh_rule_count':len(rows),
+            'world_rule_count':len(world),
+            'nonworld_rule_count':len(nonworld),
+            'nonworld_allows_non_ssh':any(x['allows_non_ssh'] for x in nonworld),
+            'nonworld_is_ssh_only':bool(nonworld) and not any(x['allows_non_ssh'] for x in nonworld),
+            'read_only':True,
+          }
+          print(json.dumps(safe,sort_keys=True))
+          PY
