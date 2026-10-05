@@ -44,67 +44,69 @@ def _manuscript_from_blocks(blocks: list[dict]) -> str:
         parsed = base._code_block_text(block)
         if parsed is None:
             continue
-        try:
-            payload = json.loads(parsed)
-        except (TypeError, ValueError, json.JSONDecodeError):
+        body, caption = parsed
+        if not body:
             continue
-        if not isinstance(payload, dict):
+        if contract.is_current_ready_block(body, caption):
+            current_bodies.append(body)
             continue
-        if payload.get("publication_readiness") != "PASS":
-            continue
-        if payload.get("human_appeal") == "WEAK":
-            continue
-        manuscript = str(payload.get("article_markdown") or "")
-        if not manuscript:
-            continue
-        expected_sha = str(payload.get("article_sha256") or "").strip().lower()
-        if not expected_sha or expected_sha != base._sha256_text(manuscript):
-            continue
-        if payload.get("publication_policy_fingerprint") != contract.current_publication_policy_fingerprint():
+        # Captionless Ready blocks, old contract versions, and current-policy captions whose
+        # manuscript hash no longer matches the stored body are all stale for publication.
+        if not str(caption or "").strip() or contract.is_ready_family_caption(caption):
             stale_ready_seen = True
-            continue
-        current_bodies.append(manuscript)
 
-    if current_bodies:
-        return current_bodies[-1]
-    if stale_ready_seen:
-        raise StalePublicationContract("Ready article was generated under a stale publication policy")
-    raise base.NoteDraftError("No byte-valid current-policy Ready manuscript was found")
+    manuscript = (current_bodies[-1] if current_bodies else "").strip()
+    if len(manuscript) < 200:
+        if stale_ready_seen:
+            raise StalePublicationContract(
+                "Ready manuscript predates or violates the current publication contract and must be regenerated"
+            )
+        raise base.NoteDraftError("Current Ready manuscript is missing or unexpectedly short")
 
-
-def _extract_title(candidate: dict) -> str:
-    title = str(candidate.get("title") or "").strip()
-    if not title:
-        raise base.NoteDraftError("Ready article has no title")
-    return title
-
-
-def _prepare_one(candidate: dict) -> dict:
-    sync_id = base._normalize_sync_id(candidate.get("sync_id", ""))
-    if len(sync_id) != 32:
-        raise base.NoteDraftError("Ready article has no exact sync_id")
-    blocks = base._query_all_blocks(sync_id)
-    manuscript = _manuscript_from_blocks(blocks)
-    eyecatch = eyecatch_contract.resolve_eyecatch(candidate)
-    if eyecatch is None:
-        raise IncompletePublicationAsset("Ready article has no current publication-contract eyecatch")
-    return {
-        **candidate,
-        "sync_id": sync_id,
-        "title": _extract_title(candidate),
-        "manuscript": manuscript,
-        "eyecatch_path": eyecatch,
-    }
+    if run185._contains_paid_control_marker(manuscript):
+        raise run185.UnsafeLegacyPaidMarker(
+            "Current Ready manuscript still contains a historical paid-area control marker"
+        )
+    return manuscript
 
 
-def _ordered_current_candidates(candidates: list[dict]) -> list[dict]:
-    ordered: list[dict] = []
+def _prepare_one(candidate: dict[str, Any]) -> dict[str, Any]:
+    source_page = base._fetch_source_page(candidate["sync_id"])
+    manuscript = _manuscript_from_blocks(base._fetch_block_children(candidate["sync_id"]))
+    image_url = base._eyecatch_url(source_page)
+    if not image_url:
+        raise IncompletePublicationAsset(
+            "Current Ready article has no eyecatch in Content Intelligence"
+        )
+    if not eyecatch_contract.current_asset_url(image_url, str(candidate.get("title") or "")):
+        raise IncompletePublicationAsset(
+            "Current Ready article eyecatch is stale or belongs to another public title"
+        )
+
+    prepared = dict(candidate)
+    prepared["manuscript"] = manuscript
+    prepared["eyecatch_url"] = image_url
+    prepared["publication_contract"] = contract.CONTRACT_ID
+    prepared["publication_policy_sha256"] = contract.policy_sha256()
+    prepared["manuscript_sha256"] = contract.manuscript_sha256(manuscript)
+    return prepared
+
+
+def _prepare_article(requested_sync_id: str = "") -> dict[str, Any]:
+    if not base.ready_sync.NOTION_API_KEY:
+        raise base.NoteDraftError("Notion API key is not configured")
+    if not (base.ready_sync.DEST_DATA_SOURCE_ID or base.ready_sync.DEST_DATABASE_ID):
+        raise base.NoteDraftError("note Ready DB is not configured")
+
+    candidates = run185._ordered_candidates(
+        base._query_ready_queue(), requested_sync_id=requested_sync_id
+    )
+    explicit = bool(base._normalize_sync_id(requested_sync_id))
     stale_skipped = 0
     asset_skipped = 0
     paid_marker_skipped = 0
-    explicit = bool(str(os.environ.get("NOTE_TARGET_SYNC_ID", "") or "").strip())
 
-    for candidate in run185._ordered_candidates(candidates):
+    for candidate in candidates:
         try:
             prepared = _prepare_one(candidate)
         except StalePublicationContract:
@@ -112,7 +114,7 @@ def _ordered_current_candidates(candidates: list[dict]) -> list[dict]:
                 raise
             stale_skipped += 1
             print(
-                "[RUN195 NOTE DRAFT] skipped stale-contract Ready article "
+                "[RUN195 NOTE DRAFT] skipped stale publication-contract Ready article "
                 f"sync_id={candidate['sync_id'][:8]}"
             )
             continue
@@ -121,7 +123,7 @@ def _ordered_current_candidates(candidates: list[dict]) -> list[dict]:
                 raise
             asset_skipped += 1
             print(
-                "[RUN195 NOTE DRAFT] skipped incomplete-asset Ready article "
+                "[RUN195 NOTE DRAFT] skipped current Ready article with incomplete public assets "
                 f"sync_id={candidate['sync_id'][:8]}"
             )
             continue
@@ -187,28 +189,65 @@ def _trusted_clipboard_paste(page: Any, body: Any, manuscript: str) -> None:
         raise base.NoteDraftError("Could not stage the note manuscript in the browser clipboard") from exc
 
     body.click()
-    page.keyboard.press("Control+V")
-    page.wait_for_timeout(500)
+    try:
+        page.keyboard.press("Control+V")
+    except Exception as exc:
+        raise base.NoteDraftError("Could not issue the trusted note paste keyboard action") from exc
+    page.wait_for_timeout(1200)
+
+
+def _is_automatic_noop_error(exc: BaseException) -> bool:
+    """Return True only for an automatic run whose safe candidate set is empty."""
+    if base._normalize_sync_id(os.environ.get("NOTE_TARGET_SYNC_ID", "")):
+        return False
+    message = str(exc).strip()
+    return message == _AUTOMATIC_NOOP_EXACT or message.startswith(_AUTOMATIC_NOOP_PREFIX)
+
+
+def _write_noop_result(reason: str) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": "no_eligible_ready",
+        "zero_gemini_calls": True,
+        "telegram_notified": False,
+        "publication_contract": contract.CONTRACT_ID,
+        "reason": str(reason or "").strip(),
+    }
+    result_file = os.environ.get("NOTE_DRAFT_RESULT_FILE", "").strip()
+    if result_file:
+        path = Path(result_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    return result
+
+
+def run_base_main_with_safe_noop() -> dict[str, Any] | None:
+    """Convert only an empty automatic safe queue into a successful no-op."""
+    try:
+        base.main()
+    except base.NoteDraftError as exc:
+        if not _is_automatic_noop_error(exc):
+            raise
+        result = _write_noop_result(str(exc))
+        print("[RUN198 NOTE DRAFT] no eligible publish-safe Ready article; nothing to do")
+        print(json.dumps(result, ensure_ascii=False))
+        return result
+    return None
 
 
 def install() -> None:
     run185.install()
-    base._prepare_one = _ordered_current_candidates
+    base._manuscript_from_blocks = _manuscript_from_blocks
+    base._prepare_article = _prepare_article
     base._paste_manuscript = _trusted_clipboard_paste
 
 
-def run_base_main_with_safe_noop() -> None:
+def main() -> None:
     install()
-    try:
-        base.main()
-    except base.NoteDraftError as exc:
-        text = str(exc)
-        requested = bool(str(os.environ.get("NOTE_TARGET_SYNC_ID", "") or "").strip())
-        if not requested and (text == _AUTOMATIC_NOOP_EXACT or text.startswith(_AUTOMATIC_NOOP_PREFIX)):
-            print(f"[RUN194 NOTE DRAFT] {text}; no-op")
-            return
-        raise
+    run_base_main_with_safe_noop()
 
 
 if __name__ == "__main__":
-    run_base_main_with_safe_noop()
+    main()
