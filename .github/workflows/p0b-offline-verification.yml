@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'note_delivery_ledger.py'
+      - 'note_delivery_gcs.py'
       - 'note_delivery_ledger_preflight.sh'
       - 'note_delivery_runtime.py'
       - 'note_delivery_creation_recovery.py'
@@ -11,10 +12,12 @@ on:
       - 'note_publication_reconcile.py'
       - 'run190_note_persistent_cloud.py'
       - 'run194_note_persistent_cloud.py'
+      - 'run194_note_hosted.py'
       - 'run199_note_vm_preflight.py'
       - '.github/workflows/note-create-draft.yml'
       - '.github/workflows/p0b-offline-verification.yml'
       - 'tests/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout PR
+      - name: Checkout verification ref
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -44,14 +47,20 @@ jobs:
       - name: Install offline test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest playwright
+          pip install -r requirements.txt pytest playwright google-cloud-storage
 
       - name: Full repository pytest
         run: python -m pytest tests -q
 
       - name: Repository guards
+        shell: bash
         run: |
+          set -euo pipefail
           python workflow_reference_guard.py
           python repository_falsification_guard.py
           python integration_stability_guard.py
-          git diff --check origin/${{ github.base_ref }}...HEAD
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check origin/${{ github.base_ref }}...HEAD
+          else
+            git diff --check origin/main...HEAD
+          fi
