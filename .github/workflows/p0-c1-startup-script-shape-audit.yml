@@ -1,0 +1,78 @@
+name: P0 C-1 Startup Script Shape Audit [READ-ONLY]
+
+on:
+  push:
+    branches:
+      - ops/p0-c1-access-config-audit-20261005
+    paths:
+      - '.github/workflows/p0-c1-startup-script-shape-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Classify startup script structure without exposing content
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/vm.json"
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp"
+          VM_JSON="$tmp" python3 - <<'PY'
+          import json, os, re
+          vm=json.load(open(os.environ['VM_JSON'],encoding='utf-8'))
+          if vm.get('status') != 'TERMINATED':
+              raise SystemExit('VM must remain TERMINATED during startup-script audit')
+          items=(vm.get('metadata') or {}).get('items') or []
+          script=''
+          for item in items:
+              if item.get('key')=='startup-script':
+                  script=str(item.get('value') or '')
+                  break
+          low=script.lower()
+          def has(*patterns): return any(re.search(p,low,re.M|re.S) for p in patterns)
+          safe={
+            'startup_script_present': bool(script.strip()),
+            'mentions_actions_runner': has(r'actions[-_/ ]runner',r'github.{0,60}runner',r'runner\.listener'),
+            'mentions_aiif_note_cloud': 'aiif-note-cloud' in low,
+            'mentions_svc_sh': 'svc.sh' in low,
+            'mentions_run_sh': bool(re.search(r'(^|[ /])run\.sh([ \n\r\t]|$)',low)),
+            'mentions_systemctl': 'systemctl' in low,
+            'mentions_service_command': bool(re.search(r'\bservice\b',low)),
+            'mentions_nohup': 'nohup' in low,
+            'mentions_config_sh': 'config.sh' in low,
+            'mentions_github_com': 'github.com' in low,
+            'mentions_curl_or_wget': ('curl' in low or 'wget' in low),
+            'mentions_su_or_runuser': bool(re.search(r'\b(su|runuser)\b',low)),
+            'mentions_home_runner_path': bool(re.search(r'/home/[^/\s]+/[^\s]*(runner|actions)',low)),
+            'script_line_count': 0 if not script else len(script.splitlines()),
+          }
+          print('C1_STARTUP_SCRIPT_SHAPE='+str(safe))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 startup-script shape audit\n')
+              for k,v in safe.items(): fh.write(f'- {k}: `{v}`\n')
+              fh.write('- Script content, paths, tokens, URLs, and command arguments intentionally not published.\n')
+          if not safe['startup_script_present']:
+              raise SystemExit('Expected startup-script missing; manual review required')
+          PY
