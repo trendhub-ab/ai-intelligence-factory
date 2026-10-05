@@ -1,4 +1,4 @@
-name: P0 C-1 SSH Blast Radius Audit [OPS ONE-SHOT]
+name: P0 C-1 SSH Source Classification Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -25,16 +25,16 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Classify SSH blast radius read-only
+      - name: Classify SSH rule sources read-only
         shell: bash
         run: |
           set -euo pipefail
-          tmp="${RUNNER_TEMP}/c1blast"; mkdir -p "$tmp"
+          tmp="${RUNNER_TEMP}/c1src"; mkdir -p "$tmp"
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format=json > "$tmp/target.json"
           gcloud compute instances list --project "$GCP_PROJECT_ID" --format=json > "$tmp/instances.json"
           gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format=json > "$tmp/fw.json"
           ROOT="$tmp" python3 - <<'PY'
-          import json,os
+          import ipaddress,json,os
           from pathlib import Path
           root=Path(os.environ['ROOT'])
           target=json.loads((root/'target.json').read_text())
@@ -42,8 +42,6 @@ jobs:
           rules=json.loads((root/'fw.json').read_text())
           if not isinstance(instances,list): instances=[]
           if not isinstance(rules,list): rules=[]
-          target_nics=target.get('networkInterfaces') or []
-          target_network=(target_nics[0].get('network') if target_nics else None)
 
           def ssh_allow(rule):
               if str(rule.get('direction','INGRESS')).upper()!='INGRESS' or rule.get('disabled'):
@@ -52,8 +50,7 @@ jobs:
                   if str(a.get('IPProtocol','')).lower()!='tcp':
                       continue
                   ports=a.get('ports') or []
-                  if not ports:
-                      return True
+                  if not ports: return True
                   for p in ports:
                       p=str(p)
                       if p=='22': return True
@@ -65,78 +62,76 @@ jobs:
           def vm_network(vm):
               nics=vm.get('networkInterfaces') or []
               return nics[0].get('network') if nics else None
-
-          def vm_tags(vm):
-              return set((vm.get('tags') or {}).get('items') or [])
-
-          def vm_sas(vm):
-              return set(x.get('email') for x in (vm.get('serviceAccounts') or []) if x.get('email'))
-
-          def applies(rule, vm):
-              rn=rule.get('network')
-              vn=vm_network(vm)
-              if rn and vn and rn != vn:
-                  return False
-              tt=set(rule.get('targetTags') or [])
-              tsa=set(rule.get('targetServiceAccounts') or [])
+          def vm_tags(vm): return set((vm.get('tags') or {}).get('items') or [])
+          def vm_sas(vm): return set(x.get('email') for x in (vm.get('serviceAccounts') or []) if x.get('email'))
+          def applies(rule,vm):
+              rn=rule.get('network'); vn=vm_network(vm)
+              if rn and vn and rn != vn: return False
+              tt=set(rule.get('targetTags') or []); tsa=set(rule.get('targetServiceAccounts') or [])
               if tt and not (tt & vm_tags(vm)): return False
               if tsa and not (tsa & vm_sas(vm)): return False
               return True
 
+          rfc1918=[ipaddress.ip_network('10.0.0.0/8'),ipaddress.ip_network('172.16.0.0/12'),ipaddress.ip_network('192.168.0.0/16')]
+          iap4=ipaddress.ip_network('35.235.240.0/20')
+          def classify_source(rule):
+              ranges=list(rule.get('sourceRanges') or [])
+              st=list(rule.get('sourceTags') or [])
+              ssa=list(rule.get('sourceServiceAccounts') or [])
+              # Google Cloud ingress default: when no source filter exists, effective source is 0.0.0.0/0.
+              if not ranges and not st and not ssa:
+                  return 'world_default'
+              nets=[]
+              for raw in ranges:
+                  try: nets.append(ipaddress.ip_network(str(raw),strict=False))
+                  except ValueError: return 'unknown'
+              if any(str(n) in ('0.0.0.0/0','::/0') for n in nets):
+                  return 'world_explicit'
+              if any(n == iap4 for n in nets):
+                  return 'iap'
+              if st or ssa:
+                  # Source tags/service accounts are VPC-instance-scoped source selectors.
+                  if not nets:
+                      return 'vpc_identity'
+              if nets:
+                  all_private=True
+                  for n in nets:
+                      if n.version != 4 or not any(n.subnet_of(p) for p in rfc1918):
+                          all_private=False; break
+                  if all_private:
+                      return 'private_rfc1918'
+                  return 'restricted_public'
+              return 'unknown'
+
           ssh_rules=[r for r in rules if ssh_allow(r)]
-          untargeted=[r for r in ssh_rules if not (r.get('targetTags') or []) and not (r.get('targetServiceAccounts') or [])]
-          def sources(rule): return set(rule.get('sourceRanges') or [])
-          def is_world(rule):
-              s=sources(rule); return '0.0.0.0/0' in s or '::/0' in s
-          def is_iap(rule): return '35.235.240.0/20' in sources(rule)
-
-          same_network=[vm for vm in instances if vm_network(vm)==target_network]
-          world_impacted=set()
-          iap_impacted=set()
-          other_ssh_impacted=set()
-          for idx,vm in enumerate(instances):
-              for r in ssh_rules:
-                  if not applies(r,vm):
-                      continue
-                  if is_world(r): world_impacted.add(idx)
-                  elif is_iap(r): iap_impacted.add(idx)
-                  else: other_ssh_impacted.add(idx)
-
-          target_applicable=[r for r in ssh_rules if applies(r,target)]
-          target_world=sum(1 for r in target_applicable if is_world(r))
-          target_iap=sum(1 for r in target_applicable if is_iap(r))
-          target_other=sum(1 for r in target_applicable if not is_world(r) and not is_iap(r))
-          target_meta={str(x.get('key')):str(x.get('value')) for x in (target.get('metadata',{}).get('items') or [])}
-          target_nic=target_nics[0] if target_nics else {}
+          target_rules=[r for r in ssh_rules if applies(r,target)]
+          cats=[classify_source(r) for r in target_rules]
+          untargeted=[r for r in target_rules if not (r.get('targetTags') or []) and not (r.get('targetServiceAccounts') or [])]
+          ucats=[classify_source(r) for r in untargeted]
           safe={
-            'status':'c1_ssh_blast_radius_audit_complete',
+            'status':'c1_ssh_source_classification_complete',
             'project_vm_count':len(instances),
-            'same_network_vm_count':len(same_network),
-            'running_vm_count':sum(1 for vm in instances if str(vm.get('status') or '').upper()=='RUNNING'),
-            'vm_with_external_access_config_count':sum(1 for vm in instances if any((n.get('accessConfigs') or []) for n in (vm.get('networkInterfaces') or []))),
-            'ssh_allow_rule_count':len(ssh_rules),
-            'ssh_untargeted_rule_count':len(untargeted),
-            'world_ssh_untargeted_rule_count':sum(1 for r in untargeted if is_world(r)),
-            'iap_ssh_untargeted_rule_count':sum(1 for r in untargeted if is_iap(r)),
-            'other_ssh_untargeted_rule_count':sum(1 for r in untargeted if not is_world(r) and not is_iap(r)),
-            'world_ssh_impacted_vm_count':len(world_impacted),
-            'iap_ssh_impacted_vm_count':len(iap_impacted),
-            'other_ssh_impacted_vm_count':len(other_ssh_impacted),
             'target_vm_running':str(target.get('status') or '').upper()=='RUNNING',
-            'target_external_access_config_count':len(target_nic.get('accessConfigs') or []),
-            'target_applicable_ssh_rule_count':len(target_applicable),
-            'target_world_ssh_rule_count':target_world,
-            'target_iap_ssh_rule_count':target_iap,
-            'target_other_ssh_rule_count':target_other,
-            'project_ssh_keys_blocked':target_meta.get('block-project-ssh-keys','').lower()=='true',
-            'os_login_enabled':target_meta.get('enable-oslogin','').lower()=='true',
-            'serial_port_enabled':target_meta.get('serial-port-enable','').lower()=='true',
+            'target_applicable_ssh_rule_count':len(target_rules),
+            'target_world_default_rule_count':cats.count('world_default'),
+            'target_world_explicit_rule_count':cats.count('world_explicit'),
+            'target_iap_rule_count':cats.count('iap'),
+            'target_private_rfc1918_rule_count':cats.count('private_rfc1918'),
+            'target_vpc_identity_rule_count':cats.count('vpc_identity'),
+            'target_restricted_public_rule_count':cats.count('restricted_public'),
+            'target_unknown_source_rule_count':cats.count('unknown'),
+            'untargeted_ssh_rule_count':len(untargeted),
+            'untargeted_world_rule_count':ucats.count('world_default')+ucats.count('world_explicit'),
+            'untargeted_private_or_vpc_rule_count':ucats.count('private_rfc1918')+ucats.count('vpc_identity'),
+            'untargeted_iap_rule_count':ucats.count('iap'),
+            'untargeted_restricted_public_rule_count':ucats.count('restricted_public'),
+            'untargeted_unknown_rule_count':ucats.count('unknown'),
             'read_only':True,
             'private_identifiers_exposed':0,
           }
           print(json.dumps(safe,sort_keys=True))
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
-              fh.write('### P0 C-1 SSH blast-radius audit\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
+              fh.write('### P0 C-1 SSH source classification\n- result: `'+json.dumps(safe,sort_keys=True)+'`\n')
           if safe['target_vm_running']:
               raise SystemExit('fail-closed: target VM unexpectedly running')
           PY
