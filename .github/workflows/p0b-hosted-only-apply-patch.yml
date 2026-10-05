@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  apply-task3:
+  apply-hosted-contract-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,15 +21,15 @@ jobs:
         with:
           ref: p0b-hosted-only-implementation
 
-      - name: Apply exact Task 3 patch
+      - name: Apply hosted-only contract cleanup
         run: python .github/patches/task1_storage_neutral.py
 
-      - name: Commit implementation
+      - name: Commit migrated contracts
         run: |
           set -euo pipefail
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
-          git add note_delivery_runtime.py tests/test_note_delivery_ledger.py
+          git add member_customer_surface_contract.py tests/test_run273_reader_draft_autoflow.py
           git diff --cached --check
-          git commit -m 'fix: complete hosted ledger runtime migration'
+          git commit -m 'test: finish hosted-only contract migration'
           git push origin HEAD:p0b-hosted-only-implementation
