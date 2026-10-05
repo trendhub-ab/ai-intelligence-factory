@@ -1,4 +1,4 @@
-name: P0-B Visual-Repairable Fresh Ready Census [OPS ONE-SHOT]
+name: P0-B CREATION_UNKNOWN Manual Recovery [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,20 +8,108 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p0b-creation-unknown-manual-recovery
+  cancel-in-progress: false
+
+env:
+  P0B_HEAD: 9bcfc9ed2de8293989bc895da0ff6baf5ded72b8
+
 jobs:
-  census:
+  contract-check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.P0B_HEAD }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: pip install requests pillow
-      - name: Read-only visual-repairable current Ready census
+      - run: |
+          python -m pip install --upgrade pip
+          pip install requests pytest
+          python -m pytest \
+            tests/test_p0b_creation_unknown_recovery_audit.py \
+            tests/test_note_delivery_ledger.py \
+            tests/test_note_delivery_runtime.py -q
+      - name: Prove recovery discovery stays read-only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('note_delivery_creation_recovery.py').read_text(encoding='utf-8').lower()
+          for forbidden in (
+              '_create_browser_draft(',
+              'record_draft_created(',
+              'record_verified(',
+              'record_queue_confirmed(',
+              'patch_and_readback_draft_binding(',
+              'publish(',
+          ):
+              assert forbidden not in source, forbidden
+          print('creation_unknown_discovery_read_only=PASS')
+          PY
+
+  start-cloud-vm:
+    needs: contract-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  recover-one:
+    needs: [contract-check, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.P0B_HEAD }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install private recovery dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright pillow
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+      - name: Reconcile exactly one verified existing private draft
         env:
+          RESULT_FILE: ${{ runner.temp }}/p0b_creation_unknown_recovery.json
+          NOTE_TARGET_IDENTITY: 'trendhub_biz'
+          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
           NOTION_API_VERSION: '2026-03-11'
@@ -31,53 +119,182 @@ jobs:
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import collections, json
-          import eyecatch_publication_contract as eye
-          import note_ready_sync as nrs
+          xvfb-run -a python - <<'PY'
+          from __future__ import annotations
 
-          pages = nrs._query_db(
-              nrs.SOURCE_DATA_SOURCE_ID,
-              nrs.SOURCE_DATABASE_ID,
-              payload={'filter': {'property': nrs.SOURCE_ARTICLE_STATUS, 'select': {'equals': nrs.SOURCE_READY}}},
+          import json
+          import os
+          from pathlib import Path
+          import sqlite3
+          from urllib.parse import urlparse
+
+          import note_delivery_creation_recovery as recovery
+          import note_delivery_runtime as runtime
+          import note_publication_reconcile as reconcile
+          import run190_note_persistent_cloud as cloud
+          import run194_note_current_contract as current_contract
+          from note_delivery_ledger import DeliveryState, SQLiteDeliveryLedger
+
+          ledger = SQLiteDeliveryLedger(Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser())
+          ledger.initialize()
+          ledger_path = Path(ledger.path).resolve()
+
+          conn = sqlite3.connect(f'file:{ledger_path.as_posix()}?mode=ro', uri=True, timeout=5.0)
+          conn.row_factory = sqlite3.Row
+          try:
+              conn.execute('PRAGMA query_only=ON')
+              rows = conn.execute(
+                  'SELECT * FROM deliveries WHERE state=? AND stable_draft_id IS NULL ORDER BY updated_at ASC LIMIT 16',
+                  (DeliveryState.CREATION_UNKNOWN.value,),
+              ).fetchall()
+          finally:
+              conn.close()
+
+          records = [SQLiteDeliveryLedger._row_to_record(row) for row in rows]
+          selected = None
+          total_history_candidates = 0
+          current_policy_ambiguous = 0
+
+          for record in records:
+              try:
+                  prepared = recovery._expected_prepared_delivery(record)
+              except recovery.CreationRecoveryAuditError:
+                  continue
+              current_policy_ambiguous += 1
+              matches, history_count = recovery._discover_verified_matches(dict(prepared.article), record)
+              total_history_candidates += history_count
+              if len(matches) > 1:
+                  raise RuntimeError('manual recovery found multiple verified private drafts for one delivery')
+              if len(matches) == 1:
+                  selected = (record, matches[0])
+                  break
+
+          if selected is None:
+              safe = {
+                  'status': 'no_unique_recoverable_creation_unknown',
+                  'creation_unknown_count': len(records),
+                  'current_policy_ambiguous_count': current_policy_ambiguous,
+                  'history_candidate_count': total_history_candidates,
+                  'queue_confirmed': False,
+                  'zero_gemini_calls': True,
+                  'zero_openai_calls': True,
+                  'note_mutation': False,
+                  'public_release': False,
+                  'private_identifiers_exposed': 0,
+              }
+              Path(os.environ['RESULT_FILE']).write_text(json.dumps(safe, ensure_ascii=False, indent=2), encoding='utf-8')
+              print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
+              raise SystemExit(0)
+
+          record, match = selected
+          current = recovery.require_creation_unknown_record(
+              ledger,
+              sync_id=record.snapshot.sync_id,
+              note_target=record.snapshot.note_target,
           )
-          counts = collections.Counter()
-          total_ready = len(pages)
-          valid_source = 0
-          strict_current = 0
-          for page in pages:
-              state = nrs._source_state(page)
-              if not state:
-                  counts['invalid_source_state'] += 1
+          if current.record_id != record.record_id or current.state_version != record.state_version:
+              raise RuntimeError('manual recovery durable state changed after read-only verification')
+
+          draft_id = str(match.get('draft_id') or '').strip()
+          if not draft_id:
+              raise RuntimeError('manual recovery verified match has no stable draft identity')
+
+          note_hosts = set()
+          for private_url in cloud._recent_private_edit_urls(cloud._profile_dir()):
+              try:
+                  candidate_id = reconcile.draft_identity_from_url(private_url, error_type=RuntimeError)
+              except Exception:
                   continue
-              valid_source += 1
-              sid = str(state.get('sync_id') or '')
-              if not nrs._source_has_current_ready_manuscript(sid):
-                  counts['noncurrent_manuscript'] += 1
+              if candidate_id != draft_id:
                   continue
-              strict_current += 1
-              title = str(state.get('title') or '')
-              image = str(state.get('eyecatch_url') or '')
-              delivery = nrs.classify_exact_delivery_state(sid)
-              if image and eye.current_asset_url(image, title):
-                  counts[f'current_asset__{delivery}'] += 1
-              else:
-                  counts[f'needs_visual_repair__{delivery}'] += 1
+              host = str(urlparse(private_url).hostname or '').lower()
+              if host == 'note.com' or host.endswith('.note.com'):
+                  note_hosts.add(host)
+          if not note_hosts:
+              raise RuntimeError('manual recovery could not re-bind verified note host')
+          note_host = 'editor.note.com' if 'editor.note.com' in note_hosts else sorted(note_hosts)[0]
+
+          created = ledger.record_draft_created(
+              current.operation_key,
+              draft_id=draft_id,
+              note_host=note_host,
+              expected_version=current.state_version,
+          )
+          verified = ledger.record_verified(
+              current.operation_key,
+              canonical_sha256=current.snapshot.canonical_document_sha256,
+              expected_version=created.state_version,
+          )
+          final = runtime._reconcile_queue_projection(current_contract.base, ledger, verified)
 
           safe = {
-              'source_ready_rows': total_ready,
-              'valid_source_rows': valid_source,
-              'strict_current_manuscript_rows': strict_current,
-              'classification_counts': dict(sorted(counts.items())),
+              'status': 'queue_confirmed' if final.state == DeliveryState.QUEUE_CONFIRMED else 'queue_not_confirmed',
+              'creation_unknown_count': len(records),
+              'current_policy_ambiguous_count': current_policy_ambiguous,
+              'history_candidate_count': total_history_candidates,
+              'verified_match_count': 1,
+              'queue_confirmed': final.state == DeliveryState.QUEUE_CONFIRMED,
+              'final_state': final.state.value,
               'zero_gemini_calls': True,
               'zero_openai_calls': True,
-              'notion_write': False,
               'note_mutation': False,
               'public_release': False,
               'private_identifiers_exposed': 0,
           }
+          Path(os.environ['RESULT_FILE']).write_text(json.dumps(safe, ensure_ascii=False, indent=2), encoding='utf-8')
           print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
-          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B visual-repairable fresh Ready census\n')
-              fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
+          if final.state != DeliveryState.QUEUE_CONFIRMED:
+              raise RuntimeError('manual recovery did not reach QUEUE_CONFIRMED')
           PY
+      - name: Summarize content-free recovery result
+        if: always()
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b_creation_unknown_recovery.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RESULT_FILE'])
+          if not path.is_file():
+              raise SystemExit(0)
+          result = json.loads(path.read_text(encoding='utf-8'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B manual CREATION_UNKNOWN recovery\n')
+              for key in (
+                  'status', 'creation_unknown_count', 'current_policy_ambiguous_count',
+                  'history_candidate_count', 'verified_match_count', 'queue_confirmed',
+                  'final_state', 'zero_gemini_calls', 'zero_openai_calls',
+                  'note_mutation', 'public_release', 'private_identifiers_exposed',
+              ):
+                  if key in result:
+                      fh.write(f'- {key}: `{result.get(key)}`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [contract-check, start-cloud-vm, recover-one]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
