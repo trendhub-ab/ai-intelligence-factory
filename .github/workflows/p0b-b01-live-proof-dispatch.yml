@@ -1,4 +1,4 @@
-name: P0-B Read-Only Ledger State Inventory [OPS ONE-SHOT]
+name: P0-B Exact ArXiv Ready Reconciliation [OPS ONE-SHOT]
 
 on:
   push:
@@ -8,152 +8,20 @@ on:
 permissions:
   contents: read
 
-env:
-  TARGET_BRANCH: design/p0-b-durable-delivery-ledger
-  EXPECTED_SHA: 7361affdb59d96d0f33dc8bf0630dea0c8bc76c8
-
 jobs:
-  start-vm:
+  dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
+    timeout-minutes: 5
     steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start note VM
+      - name: Dispatch exact zero-model Ready reconciliation
         env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -euo pipefail
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)')"
-          [ "$state" = RUNNING ] || gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
-
-  inventory:
-    needs: start-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.TARGET_BRANCH }}
-      - name: Verify reviewed head
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install requests
-      - name: Read-only current Ready ledger state inventory
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
-          NOTION_API_VERSION: '2026-03-11'
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import collections, hashlib, json, os, sqlite3, unicodedata
-          from pathlib import Path
-          import note_draft_automation as base
-          import run185_note_ready_legacy_skip as run185
-          import run194_note_current_contract as current
-          from note_delivery_ledger import DESTINATION_SURFACE, LOGICAL_KEY_SCHEMA_VERSION, SQLITE_SCHEMA_VERSION
-
-          def norm(value):
-              return unicodedata.normalize('NFC', str(value or '')).strip()
-
-          def logical_key(sync_id, target):
-              material = {
-                  'schema_version': LOGICAL_KEY_SCHEMA_VERSION,
-                  'sync_id': norm(sync_id).lower(),
-                  'note_target': norm(target),
-                  'destination_surface': DESTINATION_SURFACE,
-              }
-              encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
-              return hashlib.sha256(encoded).hexdigest()
-
-          current.install()
-          try:
-              candidates = run185._ordered_candidates(base._query_ready_queue())
-          except base.NoteDraftError:
-              candidates = []
-
-          ledger = Path('~/.aiif-note/delivery-ledger-v1.sqlite3').expanduser()
-          if not ledger.is_file():
-              raise SystemExit('ledger missing')
-          conn = sqlite3.connect(ledger.resolve().as_uri() + '?mode=ro', uri=True, timeout=5.0, isolation_level=None)
-          conn.row_factory = sqlite3.Row
-          conn.execute('PRAGMA query_only=ON')
-          if int(conn.execute('PRAGMA user_version').fetchone()[0]) != SQLITE_SCHEMA_VERSION:
-              raise SystemExit('ledger schema mismatch')
-
-          counts = collections.Counter()
-          prepared = skipped = 0
-          for candidate in candidates:
-              try:
-                  item = current._prepare_one(candidate)
-              except Exception:
-                  skipped += 1
-                  continue
-              sid = base._normalize_sync_id(item.get('sync_id', ''))
-              if len(sid) != 32:
-                  skipped += 1
-                  continue
-              prepared += 1
-              key = logical_key(sid, 'trendhub_biz')
-              row = conn.execute(
-                  'SELECT d.state FROM logical_bindings b '
-                  'JOIN deliveries d ON d.operation_key=b.operation_key '
-                  'WHERE b.logical_key=?', (key,)
-              ).fetchone()
-              counts['NO_LEDGER_RECORD' if row is None else str(row['state'] or 'UNKNOWN')] += 1
-          conn.close()
-
-          safe = {
-              'queue_candidate_count': len(candidates),
-              'current_policy_prepared_count': prepared,
-              'prepare_skipped_count': skipped,
-              'ledger_state_counts': dict(sorted(counts.items())),
-              'zero_gemini_calls': True,
-              'zero_openai_calls': True,
-              'note_mutation': False,
-              'public_release': False,
-              'private_identifiers_exposed': 0,
-          }
-          print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### P0-B read-only ledger state inventory\n')
-              fh.write(f"- result: `{json.dumps(safe, ensure_ascii=False, sort_keys=True)}`\n")
-          PY
-
-  stop-vm:
-    if: ${{ always() && needs.start-vm.result == 'success' }}
-    needs: [start-vm, inventory]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop note VM
-        env:
-          PROJECT: ${{ vars.GCP_PROJECT_ID }}
-          ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-          VM: ${{ vars.GCP_NOTE_VM_NAME }}
-        run: |
-          state="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null || true)"
-          [ "$state" != RUNNING ] || gcloud compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" --quiet
+          gh workflow run note-ready-sync.yml \
+            --repo trendhub-ab/ai-intelligence-factory \
+            --ref main \
+            -f create_private_draft=false \
+            -f target_sync_id='' \
+            -f target_source_url='https://arxiv.org/abs/2610.03574'
+          echo 'Dispatched exact zero-model Ready reconciliation for canonical ArXiv source URL.'
