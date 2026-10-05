@@ -1,0 +1,70 @@
+name: P0 C-1 Non-Reader Policy Proof [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0c-c1-policy-troubleshooter.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Evaluate control-plane identity OS Login permissions read-only
+        run: |
+          set -euo pipefail
+          resource="//compute.googleapis.com/projects/${GCP_PROJECT_ID}/zones/${GCP_NOTE_VM_ZONE}/instances/${GCP_NOTE_VM_NAME}"
+          tmp="${RUNNER_TEMP}/c1pt"; mkdir -p "$tmp"
+          ok_login=false; ok_admin=false
+          if gcloud policy-intelligence troubleshoot-policy iam "$resource" --principal-email="$GCP_SERVICE_ACCOUNT" --permission=compute.instances.osLogin --format=json > "$tmp/login.json" 2>/dev/null; then ok_login=true; else echo '{}' > "$tmp/login.json"; fi
+          if gcloud policy-intelligence troubleshoot-policy iam "$resource" --principal-email="$GCP_SERVICE_ACCOUNT" --permission=compute.instances.osAdminLogin --format=json > "$tmp/admin.json" 2>/dev/null; then ok_admin=true; else echo '{}' > "$tmp/admin.json"; fi
+          OK_LOGIN="$ok_login" OK_ADMIN="$ok_admin" ROOT="$tmp" python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          def load(name):
+              try:return json.loads((root/name).read_text())
+              except Exception:return {}
+          def access_value(doc):
+              vals=[]
+              def walk(v):
+                  if isinstance(v,dict):
+                      for k,x in v.items():
+                          if k in {'access','accessState','overallAccessState'} and isinstance(x,str): vals.append(x.upper())
+                          walk(x)
+                  elif isinstance(v,list):
+                      for x in v: walk(x)
+              walk(doc)
+              if any('GRANTED' in x for x in vals): return 'GRANTED'
+              if any('DENIED' in x for x in vals): return 'DENIED'
+              if vals: return vals[0]
+              return 'UNKNOWN'
+          login=access_value(load('login.json')); admin=access_value(load('admin.json'))
+          safe={
+            'status':'c1_policy_troubleshooter_complete',
+            'oslogin_query_ok':os.environ['OK_LOGIN']=='true',
+            'osadmin_query_ok':os.environ['OK_ADMIN']=='true',
+            'control_plane_oslogin_access':login,
+            'control_plane_osadmin_access':admin,
+            'read_only':True,
+            'iam_mutation':False,
+            'private_identifiers_exposed':0,
+          }
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh:
+              fh.write('### P0 C-1 non-reader policy proof\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+          PY
