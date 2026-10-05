@@ -1,0 +1,93 @@
+name: P0 C-1 Private Runner ACL Audit [OPS ONE-SHOT]
+
+on:
+  push:
+    branches: [ops/p0b-b01-live-proof-20261005]
+    paths: [.github/workflows/p0c-private-runner-audit.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-c1-c2-private-boundary-audit
+  cancel-in-progress: false
+
+jobs:
+  start-cloud-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do sleep 5; state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"; [ "$state" = "TERMINATED" ] && break; done
+          fi
+          [ "$state" = "RUNNING" ] || gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+
+  audit:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    steps:
+      - name: Read-only ledger filesystem ACL and retention census
+        env:
+          NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,stat,sqlite3,json,datetime
+          from pathlib import Path
+          ledger=Path(os.environ['NOTE_DELIVERY_LEDGER_PATH']).expanduser().resolve(); parent=ledger.parent
+          def perm(path):
+              st=path.stat(); mode=stat.S_IMODE(st.st_mode)
+              try: xattrs=os.listxattr(path)
+              except Exception: xattrs=[]
+              return {'mode':format(mode,'04o'),'owner':st.st_uid==os.getuid(),'gor':bool(mode&(stat.S_IRGRP|stat.S_IROTH)),'gow':bool(mode&(stat.S_IWGRP|stat.S_IWOTH)),'acl':any('posix_acl_access' in x for x in xattrs)}
+          p=perm(parent); l=perm(ledger)
+          conn=sqlite3.connect(f'file:{ledger.as_posix()}?mode=ro',uri=True,timeout=5.0); conn.row_factory=sqlite3.Row
+          try:
+              conn.execute('PRAGMA query_only=ON'); version=int(conn.execute('PRAGMA user_version').fetchone()[0]); count=int(conn.execute('SELECT COUNT(*) FROM deliveries').fetchone()[0]); states={str(r[0]):int(r[1]) for r in conn.execute('SELECT state,COUNT(*) FROM deliveries GROUP BY state')}; oldest=conn.execute('SELECT MIN(created_at) FROM deliveries').fetchone()[0]
+          finally: conn.close()
+          def age(ts):
+              if not ts:return None
+              dt=datetime.datetime.fromisoformat(str(ts).replace('Z','+00:00')); return round((datetime.datetime.now(datetime.timezone.utc)-dt.astimezone(datetime.timezone.utc)).total_seconds()/86400,2)
+          safe={'status':'private_runner_acl_audit_complete','ledger_parent_mode':p['mode'],'ledger_file_mode':l['mode'],'parent_owner_is_runner':p['owner'],'ledger_owner_is_runner':l['owner'],'parent_group_or_world_readable':p['gor'],'ledger_group_or_world_readable':l['gor'],'parent_group_or_world_writable':p['gow'],'ledger_group_or_world_writable':l['gow'],'parent_extended_acl_present':p['acl'],'ledger_extended_acl_present':l['acl'],'ledger_schema_version':version,'ledger_record_count':count,'ledger_state_counts':states,'oldest_record_age_days':age(oldest),'read_only':True,'ledger_mutation':False,'private_identifiers_exposed':0}
+          print(json.dumps(safe,ensure_ascii=False,sort_keys=True))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as fh: fh.write('### P0 C-1 private runner ACL audit\n- result: `'+json.dumps(safe,ensure_ascii=False,sort_keys=True)+'`\n')
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          [ "$state" != "RUNNING" ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
