@@ -1,0 +1,51 @@
+name: P0-B Core Duplicate Proof Fix [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-core
+    paths:
+      - '.github/workflows/p0b-core-fix-duplicate-proof-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: impl/p0b-strong-zero-core
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Apply exact duplicate-proof syntax fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/p0b-strong-zero-retry-live.yml')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              ('browser_create_count = 0', 'browser_create_count = [0]'),
+              ('              nonlocal browser_create_count\n              browser_create_count += 1', '              browser_create_count[0] += 1'),
+              ('if browser_create_count != 0:', 'if browser_create_count[0] != 0:'),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exact duplicate-proof token once: {old!r}; count={text.count(old)}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- .github/workflows/p0b-strong-zero-retry-live.yml
+      - name: Commit minimal fix
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add .github/workflows/p0b-strong-zero-retry-live.yml
+          git commit -m 'fix: make duplicate proof counter valid at module scope'
+          git push origin HEAD:impl/p0b-strong-zero-core
