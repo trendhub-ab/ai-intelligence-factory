@@ -38,7 +38,11 @@ def test_note_workflow_configures_private_cloud_ledger_without_uploading_it():
     source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
     assert "NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'" in source
     assert "NOTE_DELIVERY_LEDGER_BUCKET:" in source
-    assert "GCP_NOTE_LEDGER_BUCKET" in source
+    assert "GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}" in source
+    assert 'bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"' in source
+    assert 'echo "::add-mask::$bucket"' in source
+    assert 'echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"' in source
+    assert "vars.GCP_NOTE_LEDGER_BUCKET" not in source
     assert "NOTE_TARGET_IDENTITY" in source
     assert "tests/test_note_delivery_gcs.py" in source
     assert "tests/test_note_delivery_ledger.py" in source
@@ -49,7 +53,7 @@ def test_note_workflow_configures_private_cloud_ledger_without_uploading_it():
     assert "upload-artifact" not in source
     summary_writes = [line.strip() for line in source.splitlines() if "fh.write(" in line]
     assert summary_writes
-    for forbidden in ("GCP_NOTE_LEDGER_BUCKET", "NOTE_DELIVERY_LEDGER_BUCKET", "delivery/v1"):
+    for forbidden in ("NOTE_DELIVERY_LEDGER_BUCKET", "delivery/v1"):
         assert all(forbidden not in line for line in summary_writes)
 
 
