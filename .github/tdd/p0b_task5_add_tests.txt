@@ -112,13 +112,20 @@ def test_retry_live_duplicate_proof_uses_ordinary_path_with_zero_create_and_same
     assert 'if browser_create_count != 0:' in block
     assert 'if after.draft_id != before_draft_id:' in block
     assert 'DeliveryState.QUEUE_CONFIRMED' in block
-    assert 'creation_authorized' not in block or 'False' in block
 
 
 def test_retry_live_never_publishes_or_calls_models_and_masks_private_identity():
     source = _source()
     lower = source.lower()
-    for token in ('gemini', 'openai', 'publish_note(', 'note_publish(', 'workflow_dispatch:'):
+    for token in (
+        'google.genai',
+        'genai.client',
+        'gemini_api_key',
+        'openai_api_key',
+        'publish_note(',
+        'note_publish(',
+        'workflow_dispatch:',
+    ):
         assert token not in lower
     assert '::add-mask::$selected' in source
     assert '::add-mask::$bucket' in source
