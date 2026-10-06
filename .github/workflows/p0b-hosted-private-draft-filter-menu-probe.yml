@@ -46,11 +46,14 @@ jobs:
           result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
           allowed = {
               'status', 'authenticated', 'status_filter_control_count',
-              'draft_filter_option_count', 'final_route_shape',
-              'zero_model_calls', 'mutation_count',
+              'draft_filter_option_count', 'draft_actionable_role_counts',
+              'final_route_shape', 'zero_model_calls', 'mutation_count',
           }
           if set(result) != allowed:
               raise SystemExit('filter-menu probe returned unsafe or unexpected fields')
+          role_counts = result.get('draft_actionable_role_counts') or {}
+          if set(role_counts) != {'button', 'link', 'menuitem', 'menuitemradio', 'option', 'radio'}:
+              raise SystemExit('filter-menu probe actionable-role schema drifted')
           if result.get('mutation_count') != 0 or result.get('zero_model_calls') is not True:
               raise SystemExit('filter-menu probe no-content-mutation contract failed')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
@@ -58,7 +61,8 @@ jobs:
               fh.write(f"- status: `{result.get('status')}`\n")
               fh.write(f"- authenticated: `{result.get('authenticated')}`\n")
               fh.write(f"- status filter controls: `{result.get('status_filter_control_count')}`\n")
-              fh.write(f"- draft filter options: `{result.get('draft_filter_option_count')}`\n")
+              fh.write(f"- draft exact-text nodes: `{result.get('draft_filter_option_count')}`\n")
+              fh.write(f"- draft actionable role counts: `{json.dumps(role_counts, sort_keys=True)}`\n")
               fh.write(f"- final route shape: `{result.get('final_route_shape')}`\n")
               fh.write('- content mutation count: `0`\n')
               fh.write('- model calls: `0`\n')
