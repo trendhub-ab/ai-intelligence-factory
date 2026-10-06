@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib
 import importlib.util
 import inspect
@@ -69,6 +70,7 @@ def test_strong_zero_reconciliation_is_two_phase_and_does_not_reauthorize_creati
             ledger,
             sync_id="a" * 32,
             note_target="trendhub_biz",
+            current_snapshot=_snapshot(),
             census=_strong_zero(),
         )
 
@@ -126,6 +128,7 @@ def test_reconciliation_rejects_any_census_that_is_not_strict_strong_zero():
                     ledger,
                     sync_id="a" * 32,
                     note_target="trendhub_biz",
+                    current_snapshot=_snapshot(),
                     census=census,
                 )
             current = ledger.get_active_by_logical_key(ambiguous.logical_key)
@@ -142,6 +145,7 @@ def test_reconciliation_requires_exact_ambiguous_identity_and_is_not_repeatable(
                 ledger,
                 sync_id="b" * 32,
                 note_target="trendhub_biz",
+                current_snapshot=_snapshot(),
                 census=_strong_zero(),
             )
         current = ledger.get_active_by_logical_key(ambiguous.logical_key)
@@ -152,6 +156,7 @@ def test_reconciliation_requires_exact_ambiguous_identity_and_is_not_repeatable(
             ledger,
             sync_id="a" * 32,
             note_target="trendhub_biz",
+            current_snapshot=_snapshot(),
             census=_strong_zero(),
         )
         with pytest.raises(recovery.StrongZeroReconciliationError):
@@ -159,8 +164,34 @@ def test_reconciliation_requires_exact_ambiguous_identity_and_is_not_repeatable(
                 ledger,
                 sync_id="a" * 32,
                 note_target="trendhub_biz",
+                current_snapshot=_snapshot(),
                 census=_strong_zero(),
             )
+
+
+def test_reconciliation_rejects_current_snapshot_drift_before_ledger_write():
+    recovery = _module()
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger, ambiguous = _ambiguous_ledger(tmp)
+        changed = replace(_snapshot(), manuscript_sha256="9" * 64)
+
+        with pytest.raises(
+            recovery.StrongZeroReconciliationError,
+            match="current delivery snapshot differs from ambiguous attempt",
+        ):
+            recovery.reconcile_strong_zero(
+                ledger,
+                sync_id="a" * 32,
+                note_target="trendhub_biz",
+                current_snapshot=changed,
+                census=_strong_zero(),
+            )
+
+        current = ledger.get_active_by_logical_key(ambiguous.logical_key)
+        assert current is not None
+        assert current.state == DeliveryState.CREATION_UNKNOWN
+        assert current.state_version == ambiguous.state_version
+        assert current.conflict_category == ambiguous.conflict_category
 
 
 def test_reconciliation_module_has_no_note_or_queue_mutation_or_creation_path():
