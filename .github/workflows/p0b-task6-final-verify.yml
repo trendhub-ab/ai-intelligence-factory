@@ -42,4 +42,4 @@ jobs:
           python integration_stability_guard.py
           git diff --check
 
-# rerun after ephemeral Task 6 probe cleanup
+# rerun after dangling probe workflow cleanup
