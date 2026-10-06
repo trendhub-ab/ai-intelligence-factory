@@ -1,4 +1,4 @@
-name: P0-B Task 6 Recover CREATION_UNKNOWN [ONE-SHOT]
+name: P0-B Task 6 Retry Candidate Diagnostic [ONE-SHOT]
 
 on:
   push:
@@ -12,9 +12,9 @@ permissions:
   id-token: write
 
 jobs:
-  recover:
+  diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       NOTE_DELIVERY_LEDGER_BACKEND: gcs
@@ -27,86 +27,46 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install bounded recovery dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest google-cloud-storage playwright pillow
-      - name: Authenticate to private ledger with OIDC
-        uses: google-github-actions/auth@v3
+      - run: pip install -r requirements.txt google-cloud-storage
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - name: Bind sole ambiguous delivery
+      - name: Classify durable state and exact Ready preflight without mutation
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
         run: |
           set -euo pipefail
           bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
           echo "::add-mask::$bucket"
           export NOTE_DELIVERY_LEDGER_BUCKET="$bucket"
-          echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
-          selected="$(python - <<'PY'
+          python - <<'PY'
+          import json
           import note_delivery_runtime as runtime
+          import run199_note_vm_preflight as pre
           from note_delivery_ledger import DeliveryState
+          from note_delivery_strong_zero import StrongZeroEvidenceError, parse_strong_zero_evidence_category
+
           ledger=runtime.delivery_ledger_from_environment()
           rows=[]
+          states={}
           for blob in ledger.bucket.list_blobs(prefix=f"{ledger.prefix}/records/"):
               record,_=ledger._decode_envelope(blob.download_as_text())
-              if record.state == DeliveryState.CREATION_UNKNOWN and not str(record.draft_id or '').strip():
-                  rows.append(str(record.snapshot.sync_id or '').strip().lower())
-          if len(rows)!=1 or len(rows[0])!=32:
-              raise SystemExit(f'expected one CREATION_UNKNOWN without draft; count={len(rows)}')
-          print(rows[0])
+              states[record.state.value]=states.get(record.state.value,0)+1
+              if record.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED or str(record.draft_id or '').strip():
+                  continue
+              try:
+                  parse_strong_zero_evidence_category(str(record.conflict_category or ''))
+              except StrongZeroEvidenceError:
+                  continue
+              rows.append(str(record.snapshot.sync_id or '').strip().lower())
+          result={"manual_strong_zero_no_draft_count":len(rows),"states":states,"note_mutation_count":0,"model_calls":0}
+          if len(rows)==1 and len(rows[0])==32:
+              try:
+                  p=pre.preflight(rows[0])
+                  result.update({"preflight_status":str(p.get('status') or ''),"should_start_vm":p.get('should_start_vm') is True,"zero_gemini_calls":p.get('zero_gemini_calls') is True})
+              except Exception as exc:
+                  result.update({"preflight_exception_type":type(exc).__name__,"preflight_exception":str(exc)[:240]})
+          print('P0B_CANDIDATE_DIAGNOSTIC='+json.dumps(result,ensure_ascii=False,sort_keys=True))
           PY
-          )"
-          echo "::add-mask::$selected"
-          echo "NOTE_TARGET_SYNC_ID=$selected" >> "$GITHUB_ENV"
-      - name: Install Chromium
-        run: python -m playwright install chromium
-      - name: Fresh private-draft census
-        env:
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          P0B_HOSTED_DRAFT_CENSUS_RESULT_FILE: ${{ runner.temp }}/census.json
-        run: python run_p0b_hosted_private_draft_census.py
-      - name: Reconcile only fresh strong-zero
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
-          CENSUS_FILE: ${{ runner.temp }}/census.json
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          import note_delivery_runtime as runtime
-          import run194_note_current_contract as current
-          import run222_note_presentation_integrity as presentation
-          import run_p0b_strong_zero_reconciliation as recovery
-          from note_delivery_ledger import DeliveryState
-          from note_delivery_strong_zero import validate_strong_zero_census
-          sync_id=os.environ['NOTE_TARGET_SYNC_ID'].strip().lower()
-          census=json.loads(Path(os.environ['CENSUS_FILE']).read_text(encoding='utf-8'))
-          validate_strong_zero_census(census)
-          current.install(); presentation.install_note(current.base)
-          prepared=runtime.prepare_delivery(current.base,sync_id)
-          ledger=runtime.delivery_ledger_from_environment()
-          logical=runtime._logical_key_for_identity(sync_id,os.environ['NOTE_TARGET_IDENTITY'])
-          before=ledger.get_active_by_logical_key(logical)
-          if before is None or before.state != DeliveryState.CREATION_UNKNOWN or str(before.draft_id or '').strip():
-              raise SystemExit('durable state changed before recovery')
-          if prepared.snapshot != before.snapshot:
-              raise SystemExit('immutable snapshot drift')
-          result=recovery.reconcile_strong_zero(ledger,sync_id=sync_id,note_target=os.environ['NOTE_TARGET_IDENTITY'],current_snapshot=prepared.snapshot,census=census)
-          after=ledger.get_active_by_logical_key(logical)
-          if after is None or after.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED or str(after.draft_id or '').strip():
-              raise SystemExit('recovery did not reach MANUAL_RECONCILIATION_REQUIRED')
-          if result.get('creation_authorized') is not False:
-              raise SystemExit('recovery unexpectedly granted creation authority')
-          print('P0B_TASK6_RECOVERY=MANUAL_RECONCILIATION_REQUIRED')
-          print('P0B_TASK6_RECOVERY_NOTE_MUTATION=0')
-          print('P0B_TASK6_RECOVERY_MODEL_CALLS=0')
-          PY
-      - name: Cleanup
-        if: always()
-        run: rm -f "${{ runner.temp }}/census.json"
-
-# invocation: run-7-standard-chrome-header-control-recovery
