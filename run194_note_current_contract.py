@@ -149,6 +149,34 @@ def _prepare_article(requested_sync_id: str = "") -> dict[str, Any]:
     )
 
 
+def _find_unique_crop_dialog_with_save_control(page: Any) -> tuple[Any, Any] | None:
+    """Return the only visible dialog that owns one exact Save control.
+
+    note may keep unrelated role=dialog surfaces mounted while the crop modal is open.  Selecting
+    `[role=dialog].first` is therefore order-dependent.  Search all bounded visible dialogs and
+    accept a crop target only when exactly one dialog contains the existing exact Save control.
+    Ambiguity stays fail-closed.
+    """
+    try:
+        dialogs = page.locator('[role="dialog"]')
+        count = min(dialogs.count(), 12)
+    except Exception:
+        return None
+
+    matches: list[tuple[Any, Any]] = []
+    for index in range(count):
+        dialog = dialogs.nth(index)
+        try:
+            if not dialog.is_visible(timeout=300):
+                continue
+        except Exception:
+            continue
+        save_control = base._find_crop_save_control(dialog)
+        if save_control is not None:
+            matches.append((dialog, save_control))
+    return matches[0] if len(matches) == 1 else None
+
+
 def _wait_for_bound_dialog_hidden(
     page: Any,
     dialog: Any,
@@ -159,9 +187,9 @@ def _wait_for_bound_dialog_hidden(
     """Wait for the exact crop dialog that was visible before Save was clicked.
 
     Playwright Locators are live queries.  note may open another role=dialog immediately after
-    the crop modal closes, so waiting on `[role=dialog].first` after Save can silently retarget
-    to the new dialog.  Bind the current DOM element first, perform the mutation, then wait only
-    for that original element to detach or become hidden.
+    the crop modal closes, so waiting on a positional dialog locator after Save can silently
+    retarget to a new dialog.  Bind the current DOM element first, perform the mutation, then wait
+    only for that original element to detach or become hidden.
     """
     try:
         element = dialog.element_handle(timeout=2500)
@@ -213,22 +241,16 @@ def _upload_header_image(page: Any, image_path: Path) -> None:
             raise base.NoteDraftError("note eyecatch file chooser was not available") from exc
 
     page.wait_for_timeout(1200)
-    dialog = page.locator('[role="dialog"]').first
     try:
-        dialog_visible = dialog.is_visible(timeout=2500)
-    except Exception:
-        dialog_visible = False
-    if dialog_visible:
-        try:
-            save_button = None
-            discovery_deadline = base.time.time() + 10
-            while base.time.time() < discovery_deadline:
-                save_button = base._find_crop_save_control(dialog)
-                if save_button is not None:
-                    break
-                page.wait_for_timeout(250)
-            if save_button is None:
-                raise base.NoteDraftError("note eyecatch crop save control was not found")
+        crop_target = None
+        discovery_deadline = base.time.time() + 10
+        while base.time.time() < discovery_deadline:
+            crop_target = _find_unique_crop_dialog_with_save_control(page)
+            if crop_target is not None:
+                break
+            page.wait_for_timeout(250)
+        if crop_target is not None:
+            dialog, save_button = crop_target
             deadline = base.time.time() + 20
             while base.time.time() < deadline and not save_button.is_enabled():
                 page.wait_for_timeout(300)
@@ -240,10 +262,25 @@ def _upload_header_image(page: Any, image_path: Path) -> None:
                 timeout_ms=15000,
                 after_bind=save_button.click,
             )
-        except base.NoteDraftError:
-            raise
-        except Exception as exc:
-            raise base.NoteDraftError("note eyecatch crop/save step failed") from exc
+        else:
+            visible_dialog_seen = False
+            try:
+                dialogs = page.locator('[role="dialog"]')
+                for index in range(min(dialogs.count(), 12)):
+                    try:
+                        if dialogs.nth(index).is_visible(timeout=300):
+                            visible_dialog_seen = True
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                visible_dialog_seen = False
+            if visible_dialog_seen:
+                raise base.NoteDraftError("note eyecatch crop save control was not found")
+    except base.NoteDraftError:
+        raise
+    except Exception as exc:
+        raise base.NoteDraftError("note eyecatch crop/save step failed") from exc
 
     page.wait_for_timeout(1000)
     error_locator = page.locator('text=/アップロード.*(失敗|できません|エラー)/').first
