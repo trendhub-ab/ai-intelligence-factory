@@ -220,6 +220,11 @@ NON_MEMBER_MODULES = frozenset((
     "note_delivery_ledger.py",  # P0-B durable delivery authority, not reader/customer copy
     "note_delivery_creation_recovery.py",  # P0-B read-only ambiguous-delivery recovery audit, not reader/customer copy
     "note_delivery_runtime.py",  # P0-B delivery orchestration, not reader/customer copy
+    "run_p0b_hosted_private_draft_census.py",  # P0-B read-only hosted draft census, not reader/customer copy
+    "run_p0b_hosted_private_draft_filter_navigation_probe.py",  # P0-B read-only UI probe, not reader/customer copy
+    "run_p0b_hosted_private_draft_shape_probe.py",  # P0-B read-only UI probe, not reader/customer copy
+    "run_p0b_strong_zero_reconciliation.py",  # P0-B operational reconciliation, not reader/customer copy
+    "run_p0b_hosted_private_draft_filter_menu_probe.py",  # P0-B read-only UI probe, not reader/customer copy
     "note_draft_automation.py",
     "note_eyecatch_persistence.py",
     "note_publication_reconcile.py",
