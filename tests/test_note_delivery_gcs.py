@@ -127,6 +127,14 @@ def test_record_object_name_is_deterministic_and_opaque():
     assert snapshot.note_target not in name
 
 
+def test_initialize_is_read_only_and_accepts_empty_bucket():
+    client = FakeClient()
+    ledger = _ledger(client)
+    ledger.initialize()
+    assert client.bucket_obj.store == {}
+    assert client.bucket_obj.upload_conditions == []
+
+
 def test_first_begin_or_load_uses_generation_zero_and_authorizes_one_create():
     client = FakeClient()
     ledger = _ledger(client)
