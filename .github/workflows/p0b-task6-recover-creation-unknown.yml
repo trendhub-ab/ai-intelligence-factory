@@ -41,6 +41,7 @@ jobs:
           set -euo pipefail
           bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
           echo "::add-mask::$bucket"
+          export NOTE_DELIVERY_LEDGER_BUCKET="$bucket"
           echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
           selected="$(python - <<'PY'
           import note_delivery_runtime as runtime
