@@ -1,0 +1,203 @@
+name: P0-B Strong-Zero Reconciliation Live [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-hosted-b01-recovery-20261006
+    paths:
+      - 'ops/p0b-strong-zero-reconcile.trigger'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: p0b-strong-zero-reconciliation-live
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      NOTE_DELIVERY_LEDGER_BACKEND: gcs
+      NOTE_DELIVERY_LEDGER_PREFIX: delivery/v1
+      NOTE_TARGET_IDENTITY: trendhub_biz
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install bounded recovery dependencies
+        run: pip install -q pytest requests google-cloud-storage playwright
+      - name: Run strong-zero recovery contract tests
+        run: >-
+          python -m pytest -q
+          tests/test_p0b_strong_zero_reconciliation.py
+          tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+      - name: Authenticate to private ledger with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Resolve private ledger bucket
+        run: |
+          set -euo pipefail
+          bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
+          echo "::add-mask::$bucket"
+          echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
+      - name: Pin current eligible candidate without browser
+        env:
+          NOTE_DRAFT_CONFIRM: CREATE_NOTE_DRAFT
+          NOTE_TARGET_SYNC_ID: ''
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/p0b-reconcile-preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+        run: python run199_note_vm_preflight.py
+      - name: Bind selected candidate privately
+        env:
+          PREFLIGHT_RESULT: ${{ runner.temp }}/p0b-reconcile-preflight.json
+        run: |
+          set -euo pipefail
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result=json.loads(Path(os.environ['PREFLIGHT_RESULT']).read_text(encoding='utf-8'))
+          print(str(result.get('selected_sync_id') or '').strip())
+          PY
+          )"
+          test -n "$selected" || { echo 'P0B_RECONCILE=no_eligible_candidate'; exit 1; }
+          echo "::add-mask::$selected"
+          echo "NOTE_TARGET_SYNC_ID=$selected" >> "$GITHUB_ENV"
+      - name: Require current ledger ambiguity without mutation
+        env:
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/p0b-reconcile-ledger-preflight.json
+        run: |
+          set -euo pipefail
+          bash note_delivery_ledger_preflight.sh
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result=json.loads(Path(os.environ['NOTE_DRAFT_RESULT_FILE']).read_text(encoding='utf-8'))
+          if result.get('status') != 'ledger_blocked_ambiguous' or result.get('should_run_delivery') is not False:
+              raise SystemExit('reconciliation requires the existing ambiguous ledger gate')
+          print('P0B_RECONCILE_LEDGER_GATE=blocked_ambiguous')
+          PY
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run fresh strong-zero census
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          P0B_HOSTED_DRAFT_CENSUS_RESULT_FILE: ${{ runner.temp }}/p0b-reconcile-census.json
+        run: python run_p0b_hosted_private_draft_census.py
+      - name: Reconcile strong zero with immutable snapshot
+        env:
+          CENSUS_RESULT_FILE: ${{ runner.temp }}/p0b-reconcile-census.json
+          RECONCILIATION_RESULT_FILE: ${{ runner.temp }}/p0b-reconciliation-result.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import note_delivery_runtime as delivery_runtime
+          import run194_note_current_contract as current_contract
+          import run222_note_presentation_integrity as presentation
+          import run_p0b_strong_zero_reconciliation as recovery
+
+          sync_id = str(os.environ.get('NOTE_TARGET_SYNC_ID') or '').strip().lower()
+          note_target = str(os.environ.get('NOTE_TARGET_IDENTITY') or '').strip()
+          census = json.loads(Path(os.environ['CENSUS_RESULT_FILE']).read_text(encoding='utf-8'))
+
+          current_contract.install()
+          presentation.install_note(current_contract.base)
+          prepared = delivery_runtime.prepare_delivery(current_contract.base, sync_id)
+          ledger = delivery_runtime.delivery_ledger_from_environment()
+          result = recovery.reconcile_strong_zero(
+              ledger,
+              sync_id=sync_id,
+              note_target=note_target,
+              current_snapshot=prepared.snapshot,
+              census=census,
+          )
+          Path(os.environ['RECONCILIATION_RESULT_FILE']).write_text(
+              json.dumps(result, ensure_ascii=False, indent=2),
+              encoding='utf-8',
+          )
+          safe = {
+              'status': result.get('status'),
+              'prior_state': result.get('prior_state'),
+              'state': result.get('state'),
+              'state_version': result.get('state_version'),
+              'creation_authorized': result.get('creation_authorized'),
+              'note_mutation_count': result.get('note_mutation_count'),
+              'zero_model_calls': result.get('zero_model_calls'),
+              'public_release': result.get('public_release'),
+          }
+          print('P0B_STRONG_ZERO_RECONCILIATION=' + json.dumps(safe, sort_keys=True))
+          PY
+      - name: Verify durable manual-reconciliation state
+        env:
+          RECONCILIATION_RESULT_FILE: ${{ runner.temp }}/p0b-reconciliation-result.json
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import note_delivery_runtime as delivery_runtime
+          from note_delivery_ledger import DeliveryState
+
+          sync_id = str(os.environ.get('NOTE_TARGET_SYNC_ID') or '').strip().lower()
+          note_target = str(os.environ.get('NOTE_TARGET_IDENTITY') or '').strip()
+          expected = json.loads(Path(os.environ['RECONCILIATION_RESULT_FILE']).read_text(encoding='utf-8'))
+          ledger = delivery_runtime.delivery_ledger_from_environment()
+          logical_key = delivery_runtime._logical_key_for_identity(sync_id, note_target)
+          record = ledger.get_active_by_logical_key(logical_key)
+          if record is None:
+              raise SystemExit('durable reconciliation record is unavailable')
+          if record.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED:
+              raise SystemExit('durable state is not manual reconciliation required')
+          if str(record.draft_id or '').strip():
+              raise SystemExit('unexpected stable draft identity after strong-zero reconciliation')
+          category = str(record.conflict_category or '')
+          prefix = 'creation_absence_confirmed_strong_zero:'
+          if not category.startswith(prefix):
+              raise SystemExit('durable reconciliation evidence category is missing')
+          digest = category.split(':', 1)[1]
+          if digest != str(expected.get('evidence_digest') or ''):
+              raise SystemExit('durable reconciliation evidence digest mismatch')
+          if expected.get('creation_authorized') is not False:
+              raise SystemExit('creation authority unexpectedly restored')
+          if expected.get('note_mutation_count') != 0:
+              raise SystemExit('unexpected note mutation')
+          if expected.get('zero_model_calls') is not True:
+              raise SystemExit('unexpected model call')
+          if expected.get('public_release') is not False:
+              raise SystemExit('unexpected public release')
+          print('P0B_STRONG_ZERO_DURABLE_VERIFY=manual_reconciliation_required_no_create_authority')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B strong-zero phase-one reconciliation\n')
+              fh.write('- durable state: `MANUAL_RECONCILIATION_REQUIRED`\n')
+              fh.write('- creation authorized: `false`\n')
+              fh.write('- note mutation count: `0`\n')
+              fh.write('- model calls: `0`\n')
+              fh.write('- public release: `false`\n')
+          PY
+      - name: Remove ephemeral recovery files
+        if: always()
+        run: |
+          rm -f \
+            "${{ runner.temp }}/p0b-reconcile-preflight.json" \
+            "${{ runner.temp }}/p0b-reconcile-ledger-preflight.json" \
+            "${{ runner.temp }}/p0b-reconcile-census.json" \
+            "${{ runner.temp }}/p0b-reconciliation-result.json"
