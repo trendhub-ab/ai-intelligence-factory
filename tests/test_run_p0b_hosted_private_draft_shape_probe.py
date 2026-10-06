@@ -34,6 +34,11 @@ class P0BHostedPrivateDraftShapeProbeTests(unittest.TestCase):
         for forbidden in (".click(", ".fill(", ".type(", ".press(", "editor.note.com/new"):
             self.assertNotIn(forbidden, source)
 
+    def test_probe_counts_exact_status_filter_control_without_clicking(self) -> None:
+        source = inspect.getsource(probe.probe)
+        self.assertIn("_visible_exact_text_count", source)
+        self.assertIn("公開ステータス", source)
+
     def test_probe_returns_only_aggregate_safe_fields(self) -> None:
         self.assertEqual(
             probe.SAFE_RESULT_KEYS,
@@ -44,6 +49,7 @@ class P0BHostedPrivateDraftShapeProbeTests(unittest.TestCase):
                 "anchor_route_shape_counts",
                 "draft_marker_count",
                 "published_marker_count",
+                "status_filter_control_count",
                 "visible_anchor_count",
                 "zero_model_calls",
                 "mutation_count",
