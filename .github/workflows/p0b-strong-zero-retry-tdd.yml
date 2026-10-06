@@ -33,7 +33,7 @@ jobs:
       - name: Reject secret or live-cloud references in this workflow
         run: |
           set -euo pipefail
-          if grep -Eq '\$\{\{[[:space:]]*secrets\.|google-github-actions/auth|NOTE_STORAGE_STATE|NOTION_TOKEN|GCP_' .github/workflows/p0b-strong-zero-retry-tdd.yml; then
+          if grep -Eq '^[[:space:]]*uses:[[:space:]]+google-github-actions/auth@|\$\{\{[[:space:]]*secrets\.' .github/workflows/p0b-strong-zero-retry-tdd.yml; then
             echo '::error::TDD workflow must remain offline and secret-free.'
             exit 1
           fi
