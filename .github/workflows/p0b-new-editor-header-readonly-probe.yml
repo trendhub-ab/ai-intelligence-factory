@@ -1,0 +1,83 @@
+name: P0-B New Editor Header Read-Only Probe [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-new-editor-header-readonly-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Prove probe source is read-only
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('.github/tdd/p0b_new_editor_header_probe.py')
+          tree = ast.parse(path.read_text(encoding='utf-8'))
+          forbidden = {
+              'click', 'dblclick', 'fill', 'press', 'type', 'check', 'uncheck',
+              'set_input_files', 'select_option', 'dispatch_event', 'drag_to',
+              'evaluate', 'evaluate_handle', 'tap', 'focus', 'blur',
+          }
+          found = []
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in forbidden:
+                  found.append(node.func.attr)
+          if found:
+              raise SystemExit('read-only probe contains mutation-capable calls: ' + ','.join(sorted(set(found))))
+          print('P0B_HEADER_PROBE_STATIC_BOUNDARY=PASS')
+          PY
+
+      - name: Install probe dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Inspect current note new-editor controls without mutation
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          P0B_HEADER_PROBE_RESULT: ${{ runner.temp }}/p0b-header-probe.json
+        run: python .github/tdd/p0b_new_editor_header_probe.py
+
+      - name: Summarize safe UI evidence
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b-header-probe.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if result.get('status') != 'diagnostic_complete':
+              raise SystemExit('diagnostic did not complete')
+          if result.get('read_only') is not True or result.get('note_mutation_count') != 0:
+              raise SystemExit('read-only diagnostic contract failed')
+          if result.get('zero_model_calls') is not True or result.get('public_release') is not False:
+              raise SystemExit('model/public boundary failed')
+          print('P0B_HEADER_PROBE_ROUTE=' + json.dumps(result.get('route'), ensure_ascii=False))
+          print('P0B_HEADER_PROBE_TITLE_GEOMETRY=' + json.dumps(result.get('title_geometry'), ensure_ascii=False))
+          print('P0B_HEADER_PROBE_FILE_INPUT_COUNT=' + str(result.get('file_input_count')))
+          print('P0B_HEADER_PROBE_FILE_INPUTS=' + json.dumps(result.get('file_inputs'), ensure_ascii=False))
+          print('P0B_HEADER_PROBE_CONTROL_COUNT=' + str(result.get('candidate_control_count')))
+          print('P0B_HEADER_PROBE_CONTROLS=' + json.dumps(result.get('candidate_controls'), ensure_ascii=False))
+          print('P0B_HEADER_PROBE_MUTATION_COUNT=0')
+          print('P0B_HEADER_PROBE_MODEL_CALLS=0')
+          PY
+
+      - name: Cleanup result
+        if: always()
+        run: rm -f "${{ runner.temp }}/p0b-header-probe.json"
