@@ -26,9 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest playwright google-cloud-storage
       - name: Add Task 3 runtime tests first
-        run: |
-          printf '%s' '" + tb64 + "' | base64 -d > /tmp/apply_task3_tests.py
-          python /tmp/apply_task3_tests.py
+        run: python .github/tdd/p0b_task3_add_tests.txt
       - name: Verify Task 3 runtime tests are RED for missing retry runtime
         run: |
           set +e
@@ -42,9 +40,7 @@ jobs:
           fi
           grep -q 'create_reconciled_retry' /tmp/task3-red.log
       - name: Implement minimal shared authorized creation executor
-        run: |
-          printf '%s' '" + pb64 + "' | base64 -d > /tmp/apply_task3_prod.py
-          python /tmp/apply_task3_prod.py
+        run: python .github/tdd/p0b_task3_add_prod.txt
       - name: Verify focused Task 3 runtime GREEN
         run: python -m pytest -q tests/test_note_delivery_runtime.py -k 'reconciled_retry or create_or_resume or creation_unknown or queue'
       - name: Verify runtime ledger and GCS parity GREEN
@@ -58,8 +54,11 @@ jobs:
           tests/test_note_delivery_runtime.py
           tests/test_p0b_strong_zero_reconciliation.py
           tests/test_p0b_strong_zero_reconciliation_live_workflow.py
-      - name: Remove transient Task 3 one-shot before repository-wide validation
-        run: rm .github/workflows/p0b-task3-runtime-retry-once.yml
+      - name: Remove transient Task 3 scaffolding before repository-wide validation
+        run: |
+          rm .github/tdd/p0b_task3_add_tests.txt
+          rm .github/tdd/p0b_task3_add_prod.txt
+          rm .github/workflows/p0b-task3-runtime-retry-once.yml
       - name: Verify full repository and guards before commit
         run: |
           set -euo pipefail
@@ -74,6 +73,6 @@ jobs:
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
           git add note_delivery_runtime.py tests/test_note_delivery_runtime.py
-          git add -u .github/workflows/p0b-task3-runtime-retry-once.yml
+          git add -u .github/tdd/p0b_task3_add_tests.txt .github/tdd/p0b_task3_add_prod.txt .github/workflows/p0b-task3-runtime-retry-once.yml
           git commit -m 'refactor: reuse one fail-closed creation executor for reconciled retry'
           git push origin HEAD:impl/p0b-strong-zero-retry-authority
