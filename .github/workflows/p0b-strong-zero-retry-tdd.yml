@@ -1,5 +1,5 @@
 name: P0-B Strong-Zero Retry TDD [IMPL]
-# checkpoint: task1-evidence-green
+# checkpoint: task6-browser-identity-green
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - '.github/workflows/p0b-strong-zero-retry-tdd.yml'
       - 'member_customer_surface_contract.py'
       - 'note_delivery_*.py'
+      - 'note_draft_automation.py'
       - 'run_p0b_*.py'
       - 'tests/test_note_delivery_*.py'
       - 'tests/test_p0b_*.py'
@@ -52,6 +53,7 @@ jobs:
           tests/test_note_delivery_runtime.py
           tests/test_p0b_strong_zero_reconciliation.py
           tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+          tests/test_p0b_note_browser_user_agent.py
       - name: Full repository pytest
         run: python -m pytest tests -q
       - name: Repository guards
@@ -60,3 +62,4 @@ jobs:
           python workflow_reference_guard.py
           python repository_falsification_guard.py
           python integration_stability_guard.py
+          git diff --check
