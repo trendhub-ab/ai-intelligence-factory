@@ -280,19 +280,13 @@ def require_inplace_update_allowed(
     return record
 
 
-def create_or_resume_delivery(
+def _execute_authorized_creation(
     base: Any,
     ledger: DeliveryLedger,
     prepared: PreparedDelivery,
-    *,
-    run_correlation_id: str,
+    record: DeliveryRecord,
 ) -> DeliveryRecord:
-    decision = ledger.begin_or_load(prepared.snapshot, run_correlation_id=run_correlation_id)
-    if not decision.creation_authorized:
-        return _resume_existing_delivery(base, ledger, decision.record)
-
     revalidate_before_mutation(base, prepared)
-    record = decision.record
     durable_created: DeliveryRecord | None = None
     storage_path = base._decode_storage_state()
 
@@ -382,6 +376,37 @@ def create_or_resume_delivery(
         category="queue_binding_unconfirmed",
         expected_version=verified.state_version,
     )
+
+
+def create_reconciled_retry(
+    base: Any,
+    ledger: DeliveryLedger,
+    prepared: PreparedDelivery,
+    *,
+    run_correlation_id: str,
+    expected_version: int,
+) -> DeliveryRecord:
+    decision = ledger.authorize_reconciled_retry(
+        prepared.snapshot,
+        run_correlation_id=run_correlation_id,
+        expected_version=expected_version,
+    )
+    if not decision.creation_authorized:
+        return decision.record
+    return _execute_authorized_creation(base, ledger, prepared, decision.record)
+
+
+def create_or_resume_delivery(
+    base: Any,
+    ledger: DeliveryLedger,
+    prepared: PreparedDelivery,
+    *,
+    run_correlation_id: str,
+) -> DeliveryRecord:
+    decision = ledger.begin_or_load(prepared.snapshot, run_correlation_id=run_correlation_id)
+    if not decision.creation_authorized:
+        return _resume_existing_delivery(base, ledger, decision.record)
+    return _execute_authorized_creation(base, ledger, prepared, decision.record)
 
 
 def reconcile_exact_delivery(

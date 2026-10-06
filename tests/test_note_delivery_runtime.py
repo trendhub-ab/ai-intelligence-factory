@@ -7,6 +7,7 @@ import pytest
 import note_delivery_runtime as delivery_runtime
 import note_publication_reconcile as reconcile
 from note_delivery_ledger import (
+    ConcurrentStateChange,
     DeliveryState,
     LedgerUnavailableError,
     SQLiteDeliveryLedger,
@@ -541,3 +542,192 @@ def test_b18_unavailable_ledger_overrides_eligible_queue_and_creates_zero(monkey
         with pytest.raises(LedgerUnavailableError):
             create_or_resume_delivery(base, impossible, prepared, run_correlation_id="run-a")
         assert base.create_count == 0
+
+
+# TASK3_RECONCILED_RETRY_RUNTIME_TESTS
+_RUNTIME_STRONG_ZERO_EVIDENCE = (
+    "creation_absence_confirmed_strong_zero:" + "c" * 64
+)
+
+
+def _prepared_for_runtime_retry(monkeypatch, tmp_path, *, mode="success"):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    base = _creation_base(tmp_path, mode=mode)
+    return base, prepare_delivery(base, "a" * 32)
+
+
+def _prepare_runtime_manual_reconciliation(ledger, prepared):
+    first = ledger.begin_or_load(prepared.snapshot, run_correlation_id="run-original")
+    unknown = ledger.record_blocked(
+        first.record.operation_key,
+        state=DeliveryState.CREATION_UNKNOWN,
+        category="creation_result_ambiguous",
+        expected_version=first.record.state_version,
+    )
+    return ledger.record_blocked(
+        unknown.operation_key,
+        state=DeliveryState.MANUAL_RECONCILIATION_REQUIRED,
+        category=_RUNTIME_STRONG_ZERO_EVIDENCE,
+        expected_version=unknown.state_version,
+    )
+
+
+def test_reconciled_retry_uses_dedicated_authority_and_creates_exactly_once(tmp_path, monkeypatch):
+    ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
+    manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
+    monkeypatch.setattr(
+        delivery_runtime.reconcile,
+        "patch_and_readback_draft_binding",
+        lambda *args, **kwargs: _queue_binding(),
+    )
+
+    final = delivery_runtime.create_reconciled_retry(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-retry",
+        expected_version=manual.state_version,
+    )
+    assert final.state == DeliveryState.QUEUE_CONFIRMED
+    assert final.draft_id == "opaque_draft_1"
+    assert base.create_count == 1
+
+    ordinary = delivery_runtime.create_or_resume_delivery(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-ordinary",
+    )
+    assert ordinary.state == DeliveryState.QUEUE_CONFIRMED
+    assert base.create_count == 1
+
+
+def test_reconciled_retry_rejected_authority_performs_zero_browser_mutation(tmp_path, monkeypatch):
+    ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
+    first = ledger.begin_or_load(prepared.snapshot, run_correlation_id="run-original")
+
+    returned = delivery_runtime.create_reconciled_retry(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-retry",
+        expected_version=first.record.state_version,
+    )
+    assert returned.state == DeliveryState.CREATE_INTENT_RECORDED
+    assert base.create_count == 0
+
+
+def test_reconciled_retry_stale_version_performs_zero_browser_mutation(tmp_path, monkeypatch):
+    ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
+    manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
+
+    with pytest.raises(ConcurrentStateChange, match="state_version_mismatch"):
+        delivery_runtime.create_reconciled_retry(
+            base,
+            ledger,
+            prepared,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version - 1,
+        )
+    assert base.create_count == 0
+
+
+def test_reconciled_retry_browser_ambiguity_returns_to_creation_unknown(tmp_path, monkeypatch):
+    ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path, mode="accept_before_id")
+    manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
+
+    with pytest.raises(base.NoteDraftError):
+        delivery_runtime.create_reconciled_retry(
+            base,
+            ledger,
+            prepared,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+    blocked = ledger.get_by_operation_key(manual.operation_key)
+    assert blocked is not None
+    assert blocked.state == DeliveryState.CREATION_UNKNOWN
+    assert base.create_count == 1
+
+    base.mode = "success"
+    resumed = delivery_runtime.create_or_resume_delivery(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-ordinary",
+    )
+    assert resumed.state == DeliveryState.CREATION_UNKNOWN
+    assert base.create_count == 1
+
+
+def test_reconciled_retry_after_stable_id_failure_never_recreates(tmp_path, monkeypatch):
+    ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path, mode="after_id_before_verify")
+    manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
+
+    with pytest.raises(base.NoteDraftError):
+        delivery_runtime.create_reconciled_retry(
+            base,
+            ledger,
+            prepared,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+    created = ledger.get_by_operation_key(manual.operation_key)
+    assert created is not None
+    assert created.state == DeliveryState.DRAFT_CREATED
+    assert created.draft_id == "opaque_draft_1"
+    assert base.create_count == 1
+
+    base.mode = "success"
+    returned = delivery_runtime.create_reconciled_retry(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-retry-2",
+        expected_version=created.state_version,
+    )
+    assert returned.state == DeliveryState.DRAFT_CREATED
+    assert returned.draft_id == "opaque_draft_1"
+    assert base.create_count == 1
+
+
+def test_reconciled_retry_queue_readback_mismatch_never_recreates(tmp_path, monkeypatch):
+    ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
+    ledger.initialize()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
+    manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
+    monkeypatch.setattr(
+        delivery_runtime.reconcile,
+        "patch_and_readback_draft_binding",
+        lambda *args, **kwargs: _queue_binding(posting="投稿待ち", draft_id=""),
+    )
+
+    pending = delivery_runtime.create_reconciled_retry(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-retry",
+        expected_version=manual.state_version,
+    )
+    assert pending.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+    assert pending.draft_id == "opaque_draft_1"
+    assert base.create_count == 1
+
+    ordinary = delivery_runtime.create_or_resume_delivery(
+        base,
+        ledger,
+        prepared,
+        run_correlation_id="run-ordinary",
+    )
+    assert ordinary.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+    assert base.create_count == 1
