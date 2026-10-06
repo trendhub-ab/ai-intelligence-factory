@@ -20,6 +20,8 @@ jobs:
       NOTE_DELIVERY_LEDGER_BACKEND: gcs
       NOTE_DELIVERY_LEDGER_PREFIX: delivery/v1
       NOTE_TARGET_IDENTITY: trendhub_biz
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -69,3 +71,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -f "${{ runner.temp }}/census.json"
+
+# rerun: fixed Ready DB binding
