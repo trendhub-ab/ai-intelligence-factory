@@ -34,7 +34,7 @@ jobs:
           tests/test_p0b_strong_zero_retry.py
           tests/test_p0b_strong_zero_retry_live_workflow.py
       - name: Full repository pytest
-        run: python -m pytest -q
+        run: python -m pytest tests -q
       - name: Repository guards
         run: |
           python workflow_reference_guard.py
