@@ -52,6 +52,10 @@ jobs:
           tests/test_note_delivery_runtime.py
           tests/test_p0b_strong_zero_reconciliation.py
           tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+      - name: Remove transient Task 2 TDD helpers before repository-wide validation
+        run: |
+          rm .github/tdd/p0b_task2_add_tests.py
+          rm .github/tdd/p0b_task2_add_prod.py
       - name: Verify full repository and guards before commit
         run: |
           set -euo pipefail
@@ -66,5 +70,6 @@ jobs:
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
           git add note_delivery_gcs.py tests/test_note_delivery_gcs.py
+          git add -u .github/tdd/p0b_task2_add_tests.py .github/tdd/p0b_task2_add_prod.py
           git commit -m 'feat: authorize strong-zero retry with GCS generation CAS'
           git push origin HEAD:impl/p0b-strong-zero-retry-authority
