@@ -1,0 +1,65 @@
+name: P0-B Hosted Private Draft Filter Menu Probe [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-hosted-b01-recovery-20261006
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0b-hosted-private-draft-filter-menu-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install probe dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+      - name: Run filter-menu probe contract tests
+        run: python -m unittest tests.test_run_p0b_hosted_private_draft_filter_menu_probe -v
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Open status filter and observe draft option without content mutation
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_BROWSER_AUTH_MODE: storage_state
+          NOTE_BROWSER_HEADLESS: '1'
+          P0B_HOSTED_DRAFT_FILTER_MENU_RESULT_FILE: ${{ runner.temp }}/p0b-hosted-draft-filter-menu.json
+        run: python run_p0b_hosted_private_draft_filter_menu_probe.py
+      - name: Summarize safe aggregate result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b-hosted-draft-filter-menu.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          allowed = {
+              'status', 'authenticated', 'status_filter_control_count',
+              'draft_filter_option_count', 'final_route_shape',
+              'zero_model_calls', 'mutation_count',
+          }
+          if set(result) != allowed:
+              raise SystemExit('filter-menu probe returned unsafe or unexpected fields')
+          if result.get('mutation_count') != 0 or result.get('zero_model_calls') is not True:
+              raise SystemExit('filter-menu probe no-content-mutation contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B hosted draft-filter menu probe\n')
+              fh.write(f"- status: `{result.get('status')}`\n")
+              fh.write(f"- authenticated: `{result.get('authenticated')}`\n")
+              fh.write(f"- status filter controls: `{result.get('status_filter_control_count')}`\n")
+              fh.write(f"- draft filter options: `{result.get('draft_filter_option_count')}`\n")
+              fh.write(f"- final route shape: `{result.get('final_route_shape')}`\n")
+              fh.write('- content mutation count: `0`\n')
+              fh.write('- model calls: `0`\n')
+          PY
