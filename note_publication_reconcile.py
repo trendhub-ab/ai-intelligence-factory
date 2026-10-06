@@ -17,6 +17,7 @@ Safety contract:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import os
 import re
@@ -35,10 +36,20 @@ import note_ready_sync as sync
 
 NOTE_USER_NAME = os.environ.get("NOTE_USER_NAME", "trendhub_biz").strip()
 RSS_TIMEOUT_SECONDS = 20
+QUEUE_PATCH_TIMEOUT_SECONDS = 25
 TOKYO = ZoneInfo("Asia/Tokyo")
 DRAFT_ID_PROPERTY = "note下書きID"
 PREPARING_STATUS = "投稿準備中"
 _DRAFT_PATH = re.compile(r"^/notes/([^/?#]+)/edit/?$")
+
+
+@dataclass(frozen=True)
+class QueueDraftBinding:
+    page_id: str
+    sync_id: str
+    quality: str
+    posting: str
+    draft_id: str
 
 
 def draft_identity_from_url(draft_url: str, *, error_type: type[Exception] = RuntimeError) -> str:
@@ -100,6 +111,111 @@ def mark_draft_created(
             f"Draft was created but private identity/status update failed: HTTP {response.status_code}"
         )
     return identity
+
+
+def read_queue_draft_binding(
+    destination_page_id: str,
+    *,
+    error_type: type[Exception] = RuntimeError,
+) -> QueueDraftBinding:
+    """Read the exact queue row used to prove B-4 draft binding."""
+    page_id = str(destination_page_id or "").strip()
+    if not page_id:
+        raise error_type("queue draft binding page id is required")
+    response = sync._request("GET", f"https://api.notion.com/v1/pages/{page_id}")
+    if response.status_code != 200:
+        raise error_type("queue draft binding readback failed")
+    try:
+        page = response.json()
+    except Exception as exc:
+        raise error_type("queue draft binding readback failed") from exc
+    properties = page.get("properties") or {}
+    actual_page_id = str(page.get("id") or "").strip()
+    if not actual_page_id:
+        raise error_type("queue draft binding readback failed")
+    return QueueDraftBinding(
+        page_id=actual_page_id,
+        sync_id=sync._normalize_page_id(sync._text(properties.get("同期ID"))),
+        quality=sync._select(properties.get("品質状態")),
+        posting=sync._select(properties.get("投稿状態")),
+        draft_id=sync._text(properties.get(DRAFT_ID_PROPERTY)).strip(),
+    )
+
+
+def queue_draft_binding_confirmed(
+    binding: QueueDraftBinding,
+    *,
+    expected_sync_id: str,
+    draft_id: str,
+) -> bool:
+    """Return true only for the exact Ready / 投稿準備中 queue binding."""
+    expected_sync = sync._normalize_page_id(expected_sync_id)
+    expected_draft = str(draft_id or "").strip()
+    return bool(
+        binding.page_id
+        and expected_sync
+        and expected_draft
+        and binding.sync_id == expected_sync
+        and binding.draft_id == expected_draft
+        and binding.quality == "Ready"
+        and binding.posting == PREPARING_STATUS
+    )
+
+
+def _queue_patch_once(url: str, payload: dict[str, Any]) -> requests.Response:
+    """Issue one queue PATCH only; ambiguous writes are resolved by readback, never blind retry."""
+    return requests.request(
+        "PATCH",
+        url,
+        headers=sync._headers(),
+        json=payload,
+        timeout=QUEUE_PATCH_TIMEOUT_SECONDS,
+    )
+
+
+def patch_and_readback_draft_binding(
+    destination_page_id: str,
+    *,
+    expected_sync_id: str,
+    draft_id: str,
+    error_type: type[Exception] = RuntimeError,
+) -> QueueDraftBinding:
+    """Patch at most once, then let exact readback decide whether B-4 is confirmed."""
+    page_id = str(destination_page_id or "").strip()
+    expected_sync = sync._normalize_page_id(expected_sync_id)
+    expected_draft = str(draft_id or "").strip()
+    if not page_id or not expected_sync or not expected_draft:
+        raise error_type("queue draft binding identity is incomplete")
+
+    before = read_queue_draft_binding(page_id, error_type=error_type)
+    if queue_draft_binding_confirmed(
+        before, expected_sync_id=expected_sync, draft_id=expected_draft
+    ):
+        return before
+
+    eligible_posting = {sync.WAITING_POSTING_STATUS, PREPARING_STATUS}
+    if (
+        before.sync_id != expected_sync
+        or before.quality != "Ready"
+        or before.posting not in eligible_posting
+        or (before.draft_id and before.draft_id != expected_draft)
+    ):
+        return before
+
+    payload = {
+        "properties": {
+            DRAFT_ID_PROPERTY: {
+                "rich_text": [{"type": "text", "text": {"content": expected_draft}}]
+            },
+            "投稿状態": {"select": {"name": PREPARING_STATUS}},
+        }
+    }
+    try:
+        _queue_patch_once(f"https://api.notion.com/v1/pages/{page_id}", payload)
+    except requests.RequestException:
+        pass
+
+    return read_queue_draft_binding(page_id, error_type=error_type)
 
 
 def run_with_identity(base: Any, *, confirm: str, requested_sync_id: str = "", prepare_only: bool = False) -> dict[str, Any]:

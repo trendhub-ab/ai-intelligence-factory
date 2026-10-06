@@ -32,15 +32,21 @@ class Run190CloudWorkflowTests(unittest.TestCase):
 
     def test_prepare_only_and_empty_queue_do_not_start_cloud_vm(self) -> None:
         source = (ROOT / ".github/workflows/note-create-draft.yml").read_text(encoding="utf-8")
-        self.assertIn("preflight:", source)
-        self.assertIn("run: python run199_note_vm_preflight.py", source)
-        self.assertIn("should_start_vm: ${{ steps.decision.outputs.should_start_vm }}", source)
-        self.assertIn("selected_sync_id: ${{ steps.decision.outputs.selected_sync_id }}", source)
+        preflight_start = source.index("  preflight:")
+        vm_start = source.index("  start-cloud-vm:")
+        preflight = source[preflight_start:vm_start]
+
+        self.assertIn("run199_note_vm_preflight.py", preflight)
+        self.assertIn("should_start_vm: ${{ steps.decision.outputs.should_start_vm }}", preflight)
+        self.assertIn("PREPARE_ONLY: ${{ inputs.prepare_only }}", preflight)
+        self.assertIn("GITHUB_EVENT_PATH", preflight)
+        self.assertNotIn("selected_sync_id: ${{ steps.decision.outputs.selected_sync_id }}", preflight)
+        self.assertNotIn("needs.preflight.outputs.selected_sync_id", source)
         self.assertIn(
             "if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}",
             source,
         )
-        self.assertIn("NOTE_TARGET_SYNC_ID: ${{ needs.preflight.outputs.selected_sync_id }}", source)
+        self.assertIn("Revalidate and pin exact candidate on private worker", source)
         self.assertIn("NOTE_PREPARE_ONLY: 'false'", source)
 
     def test_bootstrap_has_cost_failsafe_and_persistent_profile(self) -> None:

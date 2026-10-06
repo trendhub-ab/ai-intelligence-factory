@@ -23,7 +23,7 @@ import sqlite3
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import note_draft_automation as base
@@ -258,7 +258,14 @@ def _establish_editor(page: Any, context: Any) -> None:
         ) from exc
 
 
-def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, storage_path: Path) -> str:
+def _create_browser_draft(
+    title: str,
+    manuscript: str,
+    eyecatch_path: Path,
+    storage_path: Path,
+    *,
+    on_stable_draft_url: Callable[[str], None] | None = None,
+) -> str:
     """Run the existing draft mutation/verification logic inside persistent real Chrome."""
     body_manuscript = base._body_manuscript_for_note(title, manuscript)
     del storage_path
@@ -286,7 +293,13 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
             base._paste_manuscript(page, body, body_manuscript)
             body = base._find_body(page, title_field)
             base._verify_body_content(body, body_manuscript)
-            return base._save_draft_and_verify(page, title, body_manuscript, image_required=True)
+            return base._save_draft_and_verify(
+                page,
+                title,
+                body_manuscript,
+                image_required=True,
+                on_stable_draft_url=on_stable_draft_url,
+            )
         except Exception:
             try:
                 page.screenshot(path=str(base.ARTIFACT_DIR / "failure.png"), full_page=False)

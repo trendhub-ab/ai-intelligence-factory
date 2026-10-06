@@ -50,7 +50,7 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
             with self.assertRaises(base.NoteDraftError):
                 run199.preflight(sid)
 
-    def test_explicit_already_delivered_sync_id_is_successful_noop(self) -> None:
+    def test_explicit_already_delivered_target_starts_vm_for_reconciliation_only(self) -> None:
         sid = "c" * 32
         with patch.object(
             run194,
@@ -62,8 +62,8 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
             return_value="already_delivered",
         ):
             result = run199.preflight(sid)
-        self.assertEqual("already_delivered", result["status"])
-        self.assertFalse(result["should_start_vm"])
+        self.assertEqual("reconcile_existing", result["status"])
+        self.assertTrue(result["should_start_vm"])
         self.assertEqual(sid, result["selected_sync_id"])
         self.assertTrue(result["zero_gemini_calls"])
 
@@ -106,6 +106,31 @@ class Run199NoteVmPreflightTests(unittest.TestCase):
         ]
         for token in forbidden:
             self.assertNotIn(token, source)
+
+    def test_stdout_projection_excludes_private_selection_and_hashes(self) -> None:
+        raw = {
+            "status": "eligible_ready",
+            "should_start_vm": True,
+            "selected_sync_id": "a" * 32,
+            "publication_policy_sha256": "b" * 64,
+            "manuscript_sha256": "c" * 64,
+            "zero_gemini_calls": True,
+            "telegram_notified": False,
+        }
+        safe = run199._safe_stdout_projection(raw)
+        self.assertEqual(
+            {
+                "status": "eligible_ready",
+                "should_start_vm": True,
+                "zero_gemini_calls": True,
+                "telegram_notified": False,
+            },
+            safe,
+        )
+        rendered = repr(safe)
+        self.assertNotIn(raw["selected_sync_id"], rendered)
+        self.assertNotIn(raw["publication_policy_sha256"], rendered)
+        self.assertNotIn(raw["manuscript_sha256"], rendered)
 
 
 if __name__ == "__main__":

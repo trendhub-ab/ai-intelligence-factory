@@ -240,9 +240,19 @@ def install_creation_persistence_guard(note_base: Any) -> None:
     if getattr(original, "_run295_shared_eyecatch_guard", False):
         return
 
-    def guarded(page: Any, title: str, manuscript: str, image_required: bool = True) -> str:
+    def guarded(
+        page: Any,
+        title: str,
+        manuscript: str,
+        image_required: bool = True,
+        *,
+        on_stable_draft_url: Any | None = None,
+    ) -> str:
         proxy = EyecatchProofPageProxy(page, note_base._find_title)
-        draft_url = original(proxy, title, manuscript, image_required=image_required)
+        save_kwargs: dict[str, Any] = {"image_required": image_required}
+        if on_stable_draft_url is not None:
+            save_kwargs["on_stable_draft_url"] = on_stable_draft_url
+        draft_url = original(proxy, title, manuscript, **save_kwargs)
         if image_required:
             try:
                 title_locator = note_base._find_title(page)

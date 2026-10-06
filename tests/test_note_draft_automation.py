@@ -2,6 +2,7 @@ import inspect
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import note_draft_automation as draft
 
@@ -51,6 +52,25 @@ def code_block(body, caption="AIIF_MANUSCRIPT:READY"):
             "caption": ([{"plain_text": caption, "text": {"content": caption}}] if caption else []),
         },
     }
+
+
+class _CallbackPage:
+    def __init__(self, events):
+        self.events = events
+
+    def wait_for_timeout(self, _milliseconds):
+        return None
+
+    def goto(self, _url, **_kwargs):
+        self.events.append("reopen")
+
+
+class _CallbackTitle:
+    def evaluate(self, _script):
+        return "input"
+
+    def input_value(self):
+        return "Title"
 
 
 class NoteDraftAutomationTests(unittest.TestCase):
@@ -198,6 +218,49 @@ class NoteDraftAutomationTests(unittest.TestCase):
         source = inspect.getsource(draft._save_draft_and_verify)
         self.assertNotIn("_set_title(page, title)", source)
         self.assertIn("_find_title", source)
+
+    def test_stable_route_callback_runs_after_url_observation_before_reopen_verification(self):
+        events = []
+        page = _CallbackPage(events)
+        with patch.object(draft, "_first_visible", return_value=None), patch.object(
+            draft,
+            "_wait_for_draft_url",
+            side_effect=lambda _page: events.append("stable_url_observed") or "https://note.com/notes/opaque_1/edit",
+        ), patch.object(draft, "_looks_logged_out", return_value=False), patch.object(
+            draft, "_find_title", return_value=_CallbackTitle()
+        ), patch.object(draft, "_find_body", return_value=object()), patch.object(
+            draft,
+            "_verify_body_content",
+            side_effect=lambda *_args: events.append("canonical_verification"),
+        ):
+            result = draft._save_draft_and_verify(
+                page,
+                "Title",
+                "Body",
+                image_required=False,
+                on_stable_draft_url=lambda _url: events.append("callback"),
+            )
+        self.assertEqual("https://note.com/notes/opaque_1/edit", result)
+        self.assertEqual(
+            ["stable_url_observed", "callback", "reopen", "canonical_verification"],
+            events,
+        )
+
+    def test_existing_callers_without_callback_keep_current_behavior(self):
+        events = []
+        page = _CallbackPage(events)
+        parameter = inspect.signature(draft._save_draft_and_verify).parameters["on_stable_draft_url"]
+        self.assertIsNone(parameter.default)
+        with patch.object(draft, "_first_visible", return_value=None), patch.object(
+            draft, "_wait_for_draft_url", return_value="https://note.com/notes/opaque_1/edit"
+        ), patch.object(draft, "_looks_logged_out", return_value=False), patch.object(
+            draft, "_find_title", return_value=_CallbackTitle()
+        ), patch.object(draft, "_find_body", return_value=object()), patch.object(
+            draft, "_verify_body_content", return_value=None
+        ):
+            result = draft._save_draft_and_verify(page, "Title", "Body", image_required=False)
+        self.assertEqual("https://note.com/notes/opaque_1/edit", result)
+        self.assertEqual(["reopen"], events)
 
     def test_run184_has_zero_gemini_and_no_release_control(self):
         source = (ROOT / "note_draft_automation.py").read_text(encoding="utf-8")

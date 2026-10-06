@@ -105,10 +105,17 @@ class Run273PrivateDraftAutoflowTests(unittest.TestCase):
 
     def test_target_workflow_keeps_zero_vm_preflight_and_human_only_publication_boundary(self) -> None:
         source = DRAFT_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("Validate exact publish-safe candidate before any VM start", source)
+        hosted = source[source.index("  preflight:"):source.index("  start-cloud-vm:")]
+        worker = source[source.index("  create-draft:"):source.index("  stop-cloud-vm:")]
+
+        self.assertIn("Validate publish-safe candidate before any VM start", hosted)
+        self.assertIn("run199_note_vm_preflight.py", hosted)
         self.assertIn("needs.preflight.outputs.should_start_vm == 'true'", source)
-        self.assertIn("Create one private note draft", source)
-        self.assertIn("NOTE_DRAFT_CONFIRM", source)
+        self.assertIn("Revalidate and pin exact candidate on private worker", worker)
+        self.assertIn("Read durable ledger authority before heavy browser setup", worker)
+        self.assertIn("Create one private note draft", worker)
+        self.assertIn("NOTE_DRAFT_CONFIRM", worker)
+        self.assertNotIn("needs.preflight.outputs.selected_sync_id", source)
         self.assertNotIn("public release", source.lower().replace("no public release", ""))
 
 
@@ -136,7 +143,10 @@ class Run273ProductionFindingRegressionTests(unittest.TestCase):
         end = source.index("- name: API-saving mode guard", start)
         block = source[start:end]
         self.assertIn('GEMINI_38_FLASH_DAILY_BUDGET: "18"', block)
-        self.assertIn("gemini-3.8-flash", block)
+        self.assertIn(
+            'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"',
+            source,
+        )
         self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "4"', block)
 
 

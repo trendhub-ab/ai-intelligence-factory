@@ -13,14 +13,15 @@ def title(value):
 
 
 def queue_page(*, page_id="dest", sync_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", title_value="記事 A",
-               status="投稿準備中", public_url="", published=""):
+               status="投稿準備中", quality="Ready", draft_id="", public_url="", published=""):
     return {
         "id": page_id,
         "properties": {
             "同期ID": rt(sync_id),
             "記事タイトル": title(title_value),
-            "品質状態": {"select": {"name": "Ready"}},
+            "品質状態": {"select": {"name": quality}},
             "投稿状態": {"select": {"name": status}},
+            "note下書きID": rt(draft_id),
             "note公開URL": {"url": public_url or None},
             "投稿日": {"date": {"start": published}} if published else {"date": None},
         },
@@ -128,7 +129,6 @@ class PublicationReconcileTests(unittest.TestCase):
         self.assertEqual(1, len(patches))
         self.assertTrue(patches[0][1].endswith("/dest"))
 
-
     def test_no_feed_match_is_noop(self):
         with patch.object(reconcile.sync, "NOTION_API_KEY", "token"), \
              patch.object(reconcile.sync, "DEST_DATA_SOURCE_ID", "dest"), \
@@ -184,7 +184,6 @@ class PublicationReconcileTests(unittest.TestCase):
             result = reconcile.reconcile_publications(today="2026-09-14")
 
         self.assertEqual(result["conflict"], 1)
-        # Source provenance is read-only here, and the conflicting queue URL is never overwritten.
         self.assertEqual([call for call in calls if call[0] == "PATCH"], [])
 
     def test_already_reconciled_is_idempotent(self):
@@ -216,6 +215,86 @@ class PublicationReconcileTests(unittest.TestCase):
 
         self.assertEqual(result["already_reconciled"], 1)
         self.assertEqual(result["reconciled"], 0)
+
+    def test_queue_binding_readback_requires_exact_sync_id_draft_id_ready_and_preparing(self):
+        row = queue_page(draft_id="opaque_1")
+        with patch.object(reconcile.sync, "_request", return_value=FakeResponse(200, row)):
+            binding = reconcile.read_queue_draft_binding("dest")
+        self.assertEqual("dest", binding.page_id)
+        self.assertEqual("a" * 32, binding.sync_id)
+        self.assertEqual("Ready", binding.quality)
+        self.assertEqual("投稿準備中", binding.posting)
+        self.assertEqual("opaque_1", binding.draft_id)
+        self.assertTrue(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
+
+    def test_patch_timeout_but_applied_is_resolved_by_readback_without_second_patch(self):
+        waiting = queue_page(status="投稿待ち", draft_id="")
+        applied = queue_page(status="投稿準備中", draft_id="opaque_1")
+        reads = iter([FakeResponse(200, waiting), FakeResponse(200, applied)])
+        patch_calls = []
+
+        def fake_patch(url, payload):
+            patch_calls.append((url, payload))
+            raise reconcile.requests.Timeout("ambiguous timeout")
+
+        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(reads)), \
+             patch.object(reconcile, "_queue_patch_once", side_effect=fake_patch):
+            binding = reconcile.patch_and_readback_draft_binding(
+                "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
+            )
+        self.assertTrue(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
+        self.assertEqual(1, len(patch_calls))
+
+    def test_patch_5xx_and_unapplied_remains_pending(self):
+        waiting = queue_page(status="投稿待ち", draft_id="")
+        patch_calls = []
+
+        def fake_patch(url, payload):
+            patch_calls.append((url, payload))
+            return FakeResponse(503, {})
+
+        with patch.object(reconcile.sync, "_request", return_value=FakeResponse(200, waiting)), \
+             patch.object(reconcile, "_queue_patch_once", side_effect=fake_patch):
+            binding = reconcile.patch_and_readback_draft_binding(
+                "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
+            )
+        self.assertFalse(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
+        self.assertEqual("投稿待ち", binding.posting)
+        self.assertEqual("", binding.draft_id)
+        self.assertEqual(1, len(patch_calls))
+
+    def test_readback_sync_id_mismatch_is_conflict_not_confirmed(self):
+        waiting = queue_page(status="投稿待ち", draft_id="")
+        mismatch = queue_page(sync_id="b" * 32, status="投稿準備中", draft_id="opaque_1")
+        reads = iter([FakeResponse(200, waiting), FakeResponse(200, mismatch)])
+        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(reads)), \
+             patch.object(reconcile, "_queue_patch_once", return_value=FakeResponse(500, {})):
+            binding = reconcile.patch_and_readback_draft_binding(
+                "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
+            )
+        self.assertFalse(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
+        self.assertEqual("b" * 32, binding.sync_id)
+
+    def test_readback_draft_id_mismatch_is_conflict_not_confirmed(self):
+        waiting = queue_page(status="投稿待ち", draft_id="")
+        mismatch = queue_page(status="投稿準備中", draft_id="other_draft")
+        reads = iter([FakeResponse(200, waiting), FakeResponse(200, mismatch)])
+        with patch.object(reconcile.sync, "_request", side_effect=lambda *_args, **_kwargs: next(reads)), \
+             patch.object(reconcile, "_queue_patch_once", return_value=FakeResponse(500, {})):
+            binding = reconcile.patch_and_readback_draft_binding(
+                "dest", expected_sync_id="a" * 32, draft_id="opaque_1"
+            )
+        self.assertFalse(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
+        self.assertEqual("other_draft", binding.draft_id)
+
+    def test_readback_quality_or_posting_state_mismatch_is_not_confirmed(self):
+        for row in (
+            queue_page(status="投稿準備中", quality="Ready取消", draft_id="opaque_1"),
+            queue_page(status="投稿待ち", quality="Ready", draft_id="opaque_1"),
+        ):
+            with patch.object(reconcile.sync, "_request", return_value=FakeResponse(200, row)):
+                binding = reconcile.read_queue_draft_binding("dest")
+            self.assertFalse(reconcile.queue_draft_binding_confirmed(binding, expected_sync_id="a" * 32, draft_id="opaque_1"))
 
 
 if __name__ == "__main__":

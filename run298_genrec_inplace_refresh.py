@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Run298: update the one existing Netflix GenRec private note draft in place.
+"""Run298: update one exact existing private note draft in place.
 
 Safety boundary:
 - exact fixed sync_id and exact current Run296 source/eyecatch only;
 - requires Note Ready = Ready / 投稿準備中 and no public-post evidence;
-- discovers only existing /notes/<id>/edit routes from the persistent Chrome History DB;
-- requires exactly one matching existing draft and never navigates to /new;
-- unreadable/stale editor-history candidates are ignored before any mutation;
-- replaces body + header eyecatch in the same editor route, then reloads and audits it;
+- uses the exact queue note下書きID plus private durable delivery-ledger binding as authority;
+- Chrome history/title matching is discovery-only legacy diagnostics and never update authorization;
+- current canonical note DOM must equal the ledger's last verified canonical hash before mutation;
+- replaces body + header eyecatch only in the same exact editor route, then reloads and audits it;
 - exposes only non-content booleans/counts/hashes;
 - ZERO Gemini/model calls and no public-release action.
 
@@ -24,6 +24,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import note_document_contract as note_contract
+import note_document_dom as note_dom
+import note_delivery_runtime as delivery_runtime
 import note_draft_automation as note_base
 import note_eyecatch_persistence as eyecatch
 import note_ready_sync as ready_sync
@@ -35,6 +38,7 @@ import run291_note_private_draft_audit as audit_base
 import run292_note_rendered_body_audit as audit292
 import run295_note_private_draft_audit as audit295
 import run296_editorial_format_v2 as r296
+from note_delivery_ledger import canonical_document_sha256
 
 TARGET_SYNC_ID = "3bd479ffdca9817f926aeaffbb779c4b"
 PREPARING_STATUS = "投稿準備中"
@@ -62,11 +66,7 @@ def _safe_title(page: Any) -> str:
 
 
 def _candidate_title(page: Any) -> str | None:
-    """Read a history candidate title without turning a stale route into a fatal match failure.
-
-    This helper is discovery-only. A selected exact-match route is read again with ``_safe_title``
-    immediately before mutation, so an unreadable or changed selected route still fails closed.
-    """
+    """Legacy history diagnostic only; never update authorization."""
     try:
         return _safe_title(page)
     except Run298Error as exc:
@@ -104,10 +104,13 @@ def _expected_current_article() -> tuple[dict[str, Any], str]:
     return article, eyecatch_url
 
 
-def _ensure_private_queue_state() -> None:
+def _ensure_private_queue_state() -> dict[str, Any]:
     row = audit_base._destination_row(TARGET_SYNC_ID)
     if row.get("sync_id") != TARGET_SYNC_ID:
         raise Run298Error("destination_sync_id_drift")
+    if not str(row.get("draft_id") or "").strip():
+        raise Run298Error("destination_draft_identity_missing")
+    return row
 
 
 def _seed_if_needed(context: Any, page: Any, candidate: str, seeded: bool) -> bool:
@@ -123,6 +126,7 @@ def _seed_if_needed(context: Any, page: Any, candidate: str, seeded: bool) -> bo
 
 
 def _find_one_existing_route(context: Any, page: Any, title: str) -> tuple[str, int, int]:
+    """Legacy discovery-only diagnostic; refresh_existing_private_draft does not authorize from it."""
     candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
     if not candidates:
         raise Run298Error("no_existing_private_edit_routes")
@@ -166,6 +170,21 @@ def _visible_body(page: Any, title_field: Any) -> tuple[Any, str]:
     except Exception as exc:
         raise Run298Error("draft_body_read_failed") from exc
     return body, audit_base._normalized_visible(text)
+
+
+def _current_canonical_sha256(body: Any) -> str:
+    try:
+        snapshot = note_dom.snapshot_note_body(body)
+        document = note_dom.document_from_note_snapshot(
+            snapshot,
+            allowed_normalizations=(
+                note_contract.NOTE_LIST_ITEM_PARAGRAPH_WRAPPER,
+                note_dom.NOTE_BLOCKQUOTE_FIGURE_WRAPPER,
+            ),
+        )
+        return canonical_document_sha256(document)
+    except Exception as exc:
+        raise Run298Error("current_canonical_hash_unavailable") from exc
 
 
 def _header_media_fingerprint(page: Any, title_field: Any) -> tuple[str, int]:
@@ -262,12 +281,18 @@ def _renderer_faithful_audit(page: Any, title: str, manuscript: str) -> dict[str
 
 
 def refresh_existing_private_draft() -> dict[str, Any]:
-    _ensure_private_queue_state()
+    queue_row = _ensure_private_queue_state()
+    draft_id = str(queue_row["draft_id"])
     article, eyecatch_url = _expected_current_article()
     title = str(article["title"])
     manuscript = str(article["manuscript"])
     if len(manuscript) < 200:
         raise Run298Error("prepared_manuscript_too_short")
+
+    note_target = str(os.environ.get("NOTE_TARGET_IDENTITY", "")).strip()
+    if not note_target:
+        raise Run298Error("note_target_identity_missing")
+    ledger = delivery_runtime.delivery_ledger_from_environment()
 
     official_header.install()
     eyecatch.install_creation_persistence_guard(note_base)
@@ -286,7 +311,7 @@ def refresh_existing_private_draft() -> dict[str, Any]:
         page = context.new_page()
         page.set_default_timeout(30000)
         try:
-            route, matched_rank, candidate_count = _find_one_existing_route(context, page, title)
+            route = audit_base._draft_edit_url(draft_id)
             route_key = _route_key(route)
             route_hash = hashlib.sha256(route_key.encode("utf-8")).hexdigest()[:12]
             page.goto(route, wait_until="domcontentloaded", timeout=60000)
@@ -303,6 +328,20 @@ def refresh_existing_private_draft() -> dict[str, Any]:
 
             title_field = note_base._find_title(page)
             body, before_text = _visible_body(page, title_field)
+            current_canonical_sha256 = _current_canonical_sha256(body)
+            try:
+                delivery_runtime.require_inplace_update_allowed(
+                    ledger,
+                    sync_id=TARGET_SYNC_ID,
+                    note_target=note_target,
+                    draft_id=draft_id,
+                    current_canonical_sha256=current_canonical_sha256,
+                    private_state=True,
+                    account_matches=True,
+                )
+            except delivery_runtime.InplaceUpdateBlocked as exc:
+                raise Run298Error(str(exc)) from exc
+
             prior_surface = _require_old_or_current_surface(before_text)
             before_media_hash, before_media_count = _header_media_fingerprint(page, title_field)
 
@@ -340,15 +379,18 @@ def refresh_existing_private_draft() -> dict[str, Any]:
             if prior_surface == "legacy" and before_media_hash and after_media_hash == before_media_hash:
                 raise Run298Error("header_media_did_not_change")
 
-            _ensure_private_queue_state()
+            final_row = _ensure_private_queue_state()
+            if str(final_row.get("draft_id") or "") != draft_id:
+                raise Run298Error("destination_draft_identity_changed")
 
             result: dict[str, Any] = {
                 "status": "updated_in_place",
                 "sync_id": TARGET_SYNC_ID,
                 "same_private_draft_route": True,
                 "editor_route_hash": route_hash,
-                "history_candidate_count": candidate_count,
-                "matched_history_rank": matched_rank,
+                "history_candidate_count": 0,
+                "matched_history_rank": 0,
+                "identity_authority": "queue_ledger_binding",
                 "prior_surface": prior_surface,
                 "title_match": bool(audit_metrics.get("title_match")),
                 "new_intro_present": markers["new_intro_present"],

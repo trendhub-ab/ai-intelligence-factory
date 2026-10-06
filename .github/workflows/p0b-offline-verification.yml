@@ -1,0 +1,57 @@
+name: P0-B Offline Verification
+
+on:
+  pull_request:
+    paths:
+      - 'note_delivery_ledger.py'
+      - 'note_delivery_ledger_preflight.sh'
+      - 'note_delivery_runtime.py'
+      - 'note_delivery_creation_recovery.py'
+      - 'note_draft_automation.py'
+      - 'note_publication_reconcile.py'
+      - 'run190_note_persistent_cloud.py'
+      - 'run194_note_persistent_cloud.py'
+      - 'run199_note_vm_preflight.py'
+      - '.github/workflows/note-create-draft.yml'
+      - '.github/workflows/p0b-offline-verification.yml'
+      - 'tests/**'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Prove workflow references no repository secrets
+        run: |
+          if grep -Eq '\$\{\{[[:space:]]*secrets\.' .github/workflows/p0b-offline-verification.yml; then
+            echo '::error::Offline verification workflow must not reference repository secrets.'
+            exit 1
+          fi
+
+      - name: Install offline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright
+
+      - name: Full repository pytest
+        run: python -m pytest tests -q
+
+      - name: Repository guards
+        run: |
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check origin/${{ github.base_ref }}...HEAD

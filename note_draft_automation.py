@@ -26,7 +26,7 @@ import tempfile
 import time
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo
 
@@ -727,7 +727,14 @@ def _wait_for_draft_url(page: Any, timeout_seconds: int = 35) -> str:
     raise NoteDraftError("note did not expose a stable draft edit URL after autosave")
 
 
-def _save_draft_and_verify(page: Any, title: str, manuscript: str, image_required: bool = True) -> str:
+def _save_draft_and_verify(
+    page: Any,
+    title: str,
+    manuscript: str,
+    image_required: bool = True,
+    *,
+    on_stable_draft_url: Callable[[str], None] | None = None,
+) -> str:
     save_button = _first_visible(
         page,
         ['button:has-text("下書き保存")', '[aria-label*="下書き保存"]'],
@@ -741,6 +748,8 @@ def _save_draft_and_verify(page: Any, title: str, manuscript: str, image_require
             pass
     page.wait_for_timeout(1800)
     draft_url = _wait_for_draft_url(page)
+    if on_stable_draft_url is not None:
+        on_stable_draft_url(draft_url)
 
     # Persistence proof: reopen the draft. DOM-only injection that was not accepted by
     # note's document model disappears here and therefore never advances the queue row.
@@ -796,7 +805,14 @@ def _decode_storage_state() -> Path:
     return path
 
 
-def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, storage_path: Path) -> str:
+def _create_browser_draft(
+    title: str,
+    manuscript: str,
+    eyecatch_path: Path,
+    storage_path: Path,
+    *,
+    on_stable_draft_url: Callable[[str], None] | None = None,
+) -> str:
     body_manuscript = _body_manuscript_for_note(title, manuscript)
     try:
         from playwright.sync_api import sync_playwright
@@ -825,7 +841,13 @@ def _create_browser_draft(title: str, manuscript: str, eyecatch_path: Path, stor
             _paste_manuscript(page, body, body_manuscript)
             body = _find_body(page, title_field)
             _verify_body_content(body, body_manuscript)
-            return _save_draft_and_verify(page, title, body_manuscript, image_required=True)
+            return _save_draft_and_verify(
+                page,
+                title,
+                body_manuscript,
+                image_required=True,
+                on_stable_draft_url=on_stable_draft_url,
+            )
         except Exception:
             try:
                 page.screenshot(path=str(ARTIFACT_DIR / "failure.png"), full_page=False)

@@ -53,6 +53,12 @@ class Run190PersistentCloudTests(unittest.TestCase):
         self.assertIn("base._body_manuscript_for_note", source)
         self.assertNotIn("Gemini", source)
 
+    def test_persistent_cloud_override_forwards_stable_route_callback(self) -> None:
+        signature = inspect.signature(run190._create_browser_draft)
+        self.assertIn("on_stable_draft_url", signature.parameters)
+        source = inspect.getsource(run190._create_browser_draft)
+        self.assertIn("on_stable_draft_url=on_stable_draft_url", source)
+
     def test_run190_installs_latest_official_header_upload_overlay(self) -> None:
         source = inspect.getsource(run190.install)
         self.assertIn("run193.install()", source)
