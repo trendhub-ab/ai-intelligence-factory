@@ -14,9 +14,9 @@ Production intent:
 from __future__ import annotations
 
 import re
+import time
+from pathlib import Path
 from typing import Any
-
-import note_current_header_control as header_control
 
 CTA_HEADINGS = {
     "「自分はどうする？」まで判断したい方へ",
@@ -25,6 +25,119 @@ CTA_HEADINGS = {
 }
 SOURCE_HEADING = "Sources / Evidence"
 _FENCE_LANGUAGE = re.compile(r"^(\s*)```([A-Za-z0-9][A-Za-z0-9_+.#-]{0,39})\s*$")
+
+
+def find_header_image_add_button(note_module: Any, page: Any) -> Any | None:
+    """Find the current note header-image control; ambiguous geometry always fails closed."""
+    semantic = note_module._topmost_visible(page.locator(note_module._header_image_add_selector()))
+    if semantic is not None:
+        return semantic
+    try:
+        page.evaluate(
+            """() => {
+                window.scrollTo(0, 0);
+                for (const el of document.querySelectorAll('*')) {
+                    if (el.scrollTop > 0) el.scrollTop = 0;
+                }
+            }"""
+        )
+        page.wait_for_timeout(1500)
+        index = page.evaluate(
+            """() => {
+                const bs = [...document.querySelectorAll('button')];
+                const matches = bs.map((b, i) => {
+                    const r = b.getBoundingClientRect();
+                    const label = (b.getAttribute('aria-label') || b.innerText || '').trim();
+                    const ok = !label && r.width >= 30 && r.width <= 56 &&
+                        r.y > 60 && r.y < 220 && r.x > 400;
+                    return ok ? i : -1;
+                }).filter((i) => i >= 0);
+                return matches.length === 1 ? matches[0] : -1;
+            }"""
+        )
+    except Exception:
+        return None
+    if not isinstance(index, int) or index < 0:
+        return None
+    try:
+        candidate = page.locator("button").nth(index)
+        if candidate.is_visible(timeout=700):
+            return candidate
+    except Exception:
+        pass
+    return None
+
+
+def _upload_header_image_current(note_module: Any, page: Any, image_path: Path) -> None:
+    add_button = find_header_image_add_button(note_module, page)
+    if add_button is None:
+        raise note_module.NoteDraftError("note header-image control was not found")
+    add_button.click()
+
+    upload_button = note_module._first_visible(
+        page,
+        ['button:has-text("画像をアップロード")', '[role="button"]:has-text("画像をアップロード")'],
+        timeout_ms=5000,
+    )
+    chooser_used = False
+    if upload_button is not None:
+        try:
+            with page.expect_file_chooser(timeout=5000) as chooser_info:
+                upload_button.click()
+            chooser_info.value.set_files(str(image_path))
+            chooser_used = True
+        except Exception:
+            chooser_used = False
+    if not chooser_used:
+        file_input = page.locator('input[type="file"]').first
+        try:
+            file_input.wait_for(state="attached", timeout=7000)
+            file_input.set_input_files(str(image_path))
+        except Exception as exc:
+            raise note_module.NoteDraftError("note eyecatch file chooser was not available") from exc
+
+    page.wait_for_timeout(1200)
+    dialog = page.locator('[role="dialog"]').first
+    try:
+        dialog_visible = dialog.is_visible(timeout=2500)
+    except Exception:
+        dialog_visible = False
+    if dialog_visible:
+        save_button = dialog.get_by_role("button", name=re.compile(r"^保存$")).first
+        try:
+            save_button.wait_for(state="visible", timeout=10000)
+            deadline = time.time() + 20
+            while time.time() < deadline and not save_button.is_enabled():
+                page.wait_for_timeout(300)
+            if not save_button.is_enabled():
+                raise note_module.NoteDraftError("note eyecatch crop dialog never became saveable")
+            save_button.click()
+            dialog.wait_for(state="hidden", timeout=15000)
+        except note_module.NoteDraftError:
+            raise
+        except Exception as exc:
+            raise note_module.NoteDraftError("note eyecatch crop/save step failed") from exc
+
+    page.wait_for_timeout(1000)
+    error_locator = page.locator('text=/アップロード.*(失敗|できません|エラー)/').first
+    try:
+        if error_locator.is_visible(timeout=800):
+            raise note_module.NoteDraftError("note reported an eyecatch upload error")
+    except note_module.NoteDraftError:
+        raise
+    except Exception:
+        pass
+
+
+def _install_header_control(note_module: Any) -> None:
+    def installed_find(page: Any) -> Any | None:
+        return find_header_image_add_button(note_module, page)
+
+    def installed_upload(page: Any, image_path: Path) -> None:
+        _upload_header_image_current(note_module, page, image_path)
+
+    note_module._find_header_image_add_button = installed_find
+    note_module._upload_header_image = installed_upload
 
 
 def _plain_heading(value: str) -> str:
@@ -58,19 +171,16 @@ def move_subscription_cta_after_evidence(markdown_text: str) -> str:
     text = str(markdown_text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not text:
         return ""
-
     cta = _find_h3(text, CTA_HEADINGS)
     source = _find_h3(text, {SOURCE_HEADING})
     if cta is None or source is None or cta.start() > source.start():
         return text
-
     cta_start = _preceding_divider(text, cta.start())
     if cta_start is None:
         cta_start = cta.start()
     source_start = _preceding_divider(text, source.start(), lower_bound=cta.end())
     if source_start is None or source_start <= cta_start:
         source_start = source.start()
-
     cta_block = text[cta_start:source_start].strip()
     prefix = text[:cta_start].rstrip()
     evidence_and_disclaimer = text[source_start:].strip()
@@ -95,14 +205,7 @@ def _strip_duplicate_leading_h1(markdown_text: str, title: str) -> str:
 
 
 def strip_fenced_code_language_metadata(markdown_text: str) -> str:
-    """Remove only simple fenced-code language labels before canonical note delivery.
-
-    This is an explicit presentation transform required by the P0-A design: note's supported
-    DOM/readback path proves code text and block boundaries, but not source fence metadata.  A
-    simple language token such as ``python`` is therefore removed *before* canonicalization.
-    Unsupported/compound info strings are deliberately left unchanged so the canonical parser
-    rejects them fail-closed instead of silently discarding unknown metadata.
-    """
+    """Remove only simple fenced-code language labels before canonical note delivery."""
     out: list[str] = []
     in_code = False
     for line in str(markdown_text or "").split("\n"):
@@ -161,7 +264,7 @@ def install_pipeline(pipeline_module: Any) -> Any:
 
 def install_note(note_module: Any) -> Any:
     """Transform only after whichever current-contract guard already wraps _prepare_article."""
-    header_control.install(note_module)
+    _install_header_control(note_module)
     if getattr(note_module, "_run222_note_installed", False):
         return note_module
     original = note_module._prepare_article
