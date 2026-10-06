@@ -10,12 +10,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class P0BHostedPrivateDraftFilterMenuProbeTests(unittest.TestCase):
-    def test_status_menu_open_is_exact_unique_and_single_click(self) -> None:
-        source = inspect.getsource(probe._open_status_filter_menu)
-        self.assertIn('"公開ステータス"', source)
+    def test_status_control_wait_is_bounded_visible_exact_and_read_only(self) -> None:
+        source = inspect.getsource(probe._wait_for_unique_visible_exact_text)
+        self.assertIn("get_by_text", source)
         self.assertIn("exact=True", source)
-        self.assertIn("count()", source)
-        self.assertIn("!= 1", source)
+        self.assertIn("attempts=32", source)
+        self.assertIn("interval_ms=250", source)
+        self.assertIn("is_visible", source)
+        self.assertIn("len(visible_indices) > 1", source)
+        self.assertNotIn(".click(", source)
+
+    def test_status_menu_open_uses_unique_visible_wait_and_single_click(self) -> None:
+        source = inspect.getsource(probe._open_status_filter_menu)
+        self.assertIn('_wait_for_unique_visible_exact_text(page, "公開ステータス")', source)
         self.assertEqual(source.count(".click("), 1)
 
     def test_actionable_draft_candidates_are_role_bounded_and_read_only(self) -> None:
