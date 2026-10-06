@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-06-p0-b-strong-zero-retry-authority-design.md`
 
+**Implementation branch:** `impl/p0b-strong-zero-retry-authority`
+
 ## Global Constraints
 
 - Production durable authority remains the private GCS object ledger; SQLite is test/interface parity only.
@@ -22,6 +24,7 @@
 - No PC, self-hosted runner, GCE runner, OS username, UID/GID, systemd, or home-directory contract.
 - Retry/recovery path uses zero Gemini/OpenAI/model calls and never publishes a note.
 - Keep sensitive sync IDs, draft IDs, titles, URLs, and evidence payloads out of public logs; emit only safe status/count/digest summaries.
+- Execute implementation Tasks 1-7 only on `impl/p0b-strong-zero-retry-authority`, created from the approved `plan/p0b-strong-zero-retry-authority` HEAD.
 - Do not merge to `main` without explicit `MERGE GO`.
 - Do not create the live trigger marker until all offline verification is GREEN.
 
@@ -34,6 +37,27 @@
 5. **Notion PATCH succeeds but readback is ambiguous/wrong:** state must not become `QUEUE_CONFIRMED`, and draft recreation must remain forbidden; Task 3 and Task 6 pin this.
 
 ---
+
+### Task 0: Create the Isolated Implementation Branch
+
+**Files:**
+- No file changes.
+
+**Interfaces:**
+- Consumes: approved `plan/p0b-strong-zero-retry-authority` HEAD.
+- Produces: implementation branch `impl/p0b-strong-zero-retry-authority` at exactly that approved plan commit.
+
+- [ ] **Step 1: Re-read branch heads before any code change**
+
+Verify `main`, `plan/p0b-strong-zero-retry-authority`, and `ops/p0b-hosted-b01-recovery-20261006` heads. Confirm `main` has not moved in a way that changes the P0-B files touched by this plan; if it has, stop and assess the diff before branching.
+
+- [ ] **Step 2: Create `impl/p0b-strong-zero-retry-authority` from the approved plan branch HEAD**
+
+The implementation branch must not start from `main` alone and must not overwrite the recovery ops branch.
+
+- [ ] **Step 3: Verify branch isolation**
+
+Confirm `impl/p0b-strong-zero-retry-authority` contains the approved spec and this plan, while `main` remains unchanged.
 
 ### Task 1: Shared Strong-Zero Evidence Contract and Ledger API
 
@@ -94,8 +118,7 @@ Implement `authorize_reconciled_retry()` as a dedicated SQLite transaction, not 
 
 - [ ] **Step 7: Run focused and phase-one regression tests**
 
-Run:
-`python -m pytest -q tests/test_note_delivery_strong_zero.py tests/test_note_delivery_ledger.py tests/test_p0b_strong_zero_reconciliation.py`
+Run: `python -m pytest -q tests/test_note_delivery_strong_zero.py tests/test_note_delivery_ledger.py tests/test_p0b_strong_zero_reconciliation.py`
 
 Expected: PASS, with the phase-one reconciliation behavior unchanged.
 
@@ -264,7 +287,7 @@ git commit -m "feat: orchestrate fresh-evidence strong-zero retry"
 
 Assert the workflow:
 - runs only on `ubuntu-latest`/hosted Linux and contains no `self-hosted`, GCE, OS-user, UID/GID, systemd, or home-directory runner dependency;
-- triggers only when `ops/p0b-strong-zero-retry.trigger` changes on the explicit ops/implementation branch;
+- triggers only on branch `impl/p0b-strong-zero-retry-authority` and only when `ops/p0b-strong-zero-retry.trigger` changes;
 - installs `pytest requests google-cloud-storage playwright pillow` and Chromium before runtime use;
 - authenticates to GCS with existing GitHub OIDC/WIF variables;
 - selects one exact Ready candidate without model calls;
@@ -288,11 +311,9 @@ Use the same secret masking and ephemeral-file cleanup conventions as `p0b-stron
 
 - [ ] **Step 4: Run workflow/static regressions**
 
-Run:
-`python -m pytest -q tests/test_p0b_strong_zero_retry_live_workflow.py tests/test_p0b_strong_zero_retry.py`
+Run: `python -m pytest -q tests/test_p0b_strong_zero_retry_live_workflow.py tests/test_p0b_strong_zero_retry.py`
 
-Then run:
-`python workflow_reference_guard.py`
+Then run: `python workflow_reference_guard.py`
 
 Expected: all PASS.
 
@@ -310,13 +331,12 @@ git commit -m "ci: add hosted one-shot strong-zero retry proof"
 - No `main` changes.
 
 **Interfaces:**
-- Consumes: Tasks 1-5 complete implementation.
+- Consumes: Tasks 1-5 complete implementation on `impl/p0b-strong-zero-retry-authority`.
 - Produces: fresh evidence that B01 reaches `QUEUE_CONFIRMED` exactly once and a subsequent ordinary retry creates zero additional drafts.
 
 - [ ] **Step 1: Run focused retry-authority suite**
 
-Run:
-`python -m pytest -q tests/test_note_delivery_strong_zero.py tests/test_note_delivery_ledger.py tests/test_note_delivery_gcs.py tests/test_note_delivery_runtime.py tests/test_p0b_strong_zero_reconciliation.py tests/test_p0b_strong_zero_retry.py tests/test_p0b_strong_zero_retry_live_workflow.py`
+Run: `python -m pytest -q tests/test_note_delivery_strong_zero.py tests/test_note_delivery_ledger.py tests/test_note_delivery_gcs.py tests/test_note_delivery_runtime.py tests/test_p0b_strong_zero_reconciliation.py tests/test_p0b_strong_zero_retry.py tests/test_p0b_strong_zero_retry_live_workflow.py`
 
 Expected: PASS with zero failures.
 
@@ -341,6 +361,7 @@ Expected: all commands exit 0.
 - [ ] **Step 4: Confirm no live retry workflow is already running and re-read durable state**
 
 Read-only requirements immediately before the trigger:
+- branch is exactly `impl/p0b-strong-zero-retry-authority`;
 - exactly one target Ready candidate;
 - durable state `MANUAL_RECONCILIATION_REQUIRED`;
 - no stable draft ID;
@@ -351,9 +372,9 @@ If any condition differs, stop; do not trigger.
 
 - [ ] **Step 5: Create/update the one-shot marker exactly once**
 
-Create or update `ops/p0b-strong-zero-retry.trigger` on the approved implementation branch with a unique nonce/timestamp commit. This is the only live trigger for the proof.
+Create or update `ops/p0b-strong-zero-retry.trigger` on `impl/p0b-strong-zero-retry-authority` with a unique nonce/timestamp commit. This is the only live trigger for the proof.
 
-Expected: one `P0-B Strong-Zero Retry Live [OPS ONE-SHOT]` run starts.
+Expected: one `P0-B Strong-Zero Retry Live [OPS ONE-SHOT]` run starts from that exact branch/head.
 
 - [ ] **Step 6: Observe the live run without automatic rerun**
 
