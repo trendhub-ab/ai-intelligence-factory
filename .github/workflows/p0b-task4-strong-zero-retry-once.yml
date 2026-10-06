@@ -1,0 +1,79 @@
+name: P0-B Task 4 Strong-Zero Retry Orchestrator TDD [IMPL ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task4-strong-zero-retry-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  task4-retry-tdd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Add Task 4 tests first
+        run: python .github/tdd/p0b_task4_add_tests.txt
+      - name: Verify Task 4 tests are RED for missing orchestrator
+        run: |
+          set +e
+          python -m pytest -q tests/test_p0b_strong_zero_retry.py > /tmp/task4-red.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/task4-red.log
+          if [ "$rc" -eq 0 ]; then
+            echo '::error::Expected RED before Task 4 production implementation, but tests passed.'
+            exit 1
+          fi
+          grep -q 'run_p0b_strong_zero_retry' /tmp/task4-red.log
+      - name: Implement minimal bounded orchestrator
+        run: python .github/tdd/p0b_task4_add_prod.txt
+      - name: Verify focused Task 4 GREEN
+        run: python -m pytest -q tests/test_p0b_strong_zero_retry.py tests/test_p0b_strong_zero_reconciliation.py
+      - name: Verify infrastructure classification remains strict
+        run: python -m unittest tests.test_member_customer_surface_contract -v
+      - name: Verify focused P0-B suite GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_note_delivery_gcs.py
+          tests/test_note_delivery_runtime.py
+          tests/test_p0b_strong_zero_reconciliation.py
+          tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+          tests/test_p0b_strong_zero_retry.py
+      - name: Remove transient Task 4 scaffolding before repository-wide validation
+        run: |
+          rm .github/tdd/p0b_task4_add_tests.txt
+          rm .github/tdd/p0b_task4_add_prod.txt
+          rm .github/workflows/p0b-task4-strong-zero-retry-once.yml
+      - name: Verify full repository and guards before commit
+        run: |
+          set -euo pipefail
+          python -m pytest tests -q
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
+      - name: Commit Task 4 only after all GREEN checks
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add run_p0b_strong_zero_retry.py tests/test_p0b_strong_zero_retry.py member_customer_surface_contract.py
+          git add -u .github/tdd/p0b_task4_add_tests.txt .github/tdd/p0b_task4_add_prod.txt .github/workflows/p0b-task4-strong-zero-retry-once.yml
+          git commit -m 'feat: orchestrate fresh-evidence strong-zero retry'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
