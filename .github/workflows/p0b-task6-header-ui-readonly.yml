@@ -24,29 +24,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt playwright
           python -m playwright install --with-deps chromium
-      - name: Inspect new-editor controls without mutation
+      - name: Inspect new-editor frame structure without mutation
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           PYTHONPATH: .
         run: |
           python - <<'PY'
-          import json, re
+          import json
+          from urllib.parse import urlparse
           import note_draft_automation as note
           from playwright.sync_api import sync_playwright
 
-          def clean(value, limit=120):
-              return re.sub(r'\s+', ' ', str(value or '')).strip()[:limit]
-          def attr(locator, name):
-              try: return clean(locator.get_attribute(name))
-              except Exception: return ''
-          def visible(locator):
-              try: return bool(locator.is_visible(timeout=120))
-              except Exception: return False
-          def box(locator):
-              try: raw=locator.bounding_box()
-              except Exception: raw=None
-              if not raw: return None
-              return {k: round(float(raw.get(k,0.0)),1) for k in ('x','y','width','height')}
+          def route(url):
+              p=urlparse(str(url or ''))
+              path=p.path or '/'
+              if path.rstrip('/') in ('/new','/notes/new'): kind='new'
+              elif '/edit' in path: kind='edit'
+              elif any(x in path.lower() for x in ('login','signin','signup')): kind='auth'
+              else: kind='other'
+              return {'host':p.hostname or '', 'kind':kind, 'path_depth':len([x for x in path.split('/') if x])}
 
           storage=note._decode_storage_state()
           try:
@@ -55,35 +51,28 @@ jobs:
                   context=browser.new_context(storage_state=str(storage),locale='ja-JP',timezone_id='Asia/Tokyo',viewport={'width':1440,'height':1100})
                   page=context.new_page(); page.set_default_timeout(15000)
                   try:
-                      page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
-                      page.wait_for_timeout(4000)
-                      if note._looks_logged_out(page): raise SystemExit('note_auth_inactive')
-                      rows=[]
-                      loc=page.locator('input, textarea, [contenteditable="true"], button, [role="button"], label')
-                      for i in range(min(loc.count(),320)):
-                          item=loc.nth(i)
-                          if not visible(item): continue
-                          b=box(item)
-                          if not b: continue
-                          try: text=clean(item.inner_text(timeout=120),80)
-                          except Exception: text=''
-                          try: tag=clean(item.evaluate('el => el.tagName.toLowerCase()'))
-                          except Exception: tag=''
-                          rows.append({
-                              'tag':tag,'box':b,'text':text,
-                              'type':attr(item,'type'),'placeholder':attr(item,'placeholder'),
-                              'aria':attr(item,'aria-label'),'title':attr(item,'title'),
-                              'testid':attr(item,'data-testid'),'name':attr(item,'name'),
-                              'for':attr(item,'for'),'class':attr(item,'class'),
-                              'contenteditable':attr(item,'contenteditable'),
-                          })
-                      files=[]
-                      inp=page.locator('input[type="file"]')
-                      for i in range(min(inp.count(),20)):
-                          item=inp.nth(i)
-                          files.append({'visible':visible(item),'accept':attr(item,'accept'),'aria':attr(item,'aria-label'),'name':attr(item,'name'),'testid':attr(item,'data-testid'),'class':attr(item,'class')})
-                      rows.sort(key=lambda r:(float(r['box']['y']),float(r['box']['x'])))
-                      print('P0B_EDITOR_UI='+json.dumps({'elements':rows[:120],'file_inputs':files,'note_mutation_count':0,'model_calls':0,'public_release':False},ensure_ascii=False,sort_keys=True))
+                      response=page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
+                      page.wait_for_timeout(8000)
+                      frames=[]
+                      for f in page.frames:
+                          counts={}
+                          for key,sel in {
+                              'inputs':'input','textareas':'textarea','editable':'[contenteditable="true"]',
+                              'buttons':'button','role_buttons':'[role="button"]','file_inputs':'input[type="file"]'
+                          }.items():
+                              try: counts[key]=int(f.locator(sel).count())
+                              except Exception: counts[key]=-1
+                          try: body_len=len(str(f.locator('body').inner_text(timeout=1000) or ''))
+                          except Exception: body_len=-1
+                          frames.append({'route':route(f.url),'counts':counts,'body_text_len':body_len})
+                      try: html_len=len(page.content())
+                      except Exception: html_len=-1
+                      print('P0B_EDITOR_FRAME_UI='+json.dumps({
+                          'response_status': None if response is None else response.status,
+                          'page_route':route(page.url),'frame_count':len(page.frames),'frames':frames,
+                          'html_len':html_len,'logged_out':note._looks_logged_out(page),
+                          'note_mutation_count':0,'model_calls':0,'public_release':False,
+                      },sort_keys=True))
                   finally:
                       context.close(); browser.close()
           finally:
