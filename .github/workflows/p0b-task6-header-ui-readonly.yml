@@ -19,46 +19,49 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Compare CORS preflight with headless vs normal Chrome UA
+      - name: Inspect public editor bundles without authentication or mutation
         run: |
           python - <<'PY'
-          import json
-          import urllib.error
-          import urllib.request
+          import json, re, urllib.request
+          from urllib.parse import urljoin, urlparse
 
-          endpoint='https://note.com/api/v1/text_notes'
-          common={
-              'Origin':'https://editor.note.com',
-              'Access-Control-Request-Method':'POST',
-              'Access-Control-Request-Headers':'content-type,x-requested-with',
-              'Sec-Fetch-Mode':'cors',
-              'Sec-Fetch-Site':'same-site',
-              'Accept':'*/*',
-          }
-          agents={
-              'headless':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36',
-              'normal':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36',
-          }
-          allow={'access-control-allow-origin','access-control-allow-methods','access-control-allow-headers','vary','content-type'}
-          results={}
-          for label,ua in agents.items():
-              req=urllib.request.Request(endpoint,method='OPTIONS',headers={**common,'User-Agent':ua})
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
+          def get(url):
+              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'text/html,application/javascript,*/*'})
+              with urllib.request.urlopen(req,timeout=25) as resp:
+                  return resp.read().decode('utf-8','replace')
+
+          html=get('https://editor.note.com/new')
+          scripts=[]
+          for src in re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I):
+              url=urljoin('https://editor.note.com/new',src)
+              if url not in scripts:
+                  scripts.append(url)
+
+          tokens=['画像を追加','画像をアップロード','見出し画像','アイキャッチ','coverImage','cover_image','headerImage','header_image','eyecatch','imageUpload','uploadImage']
+          hits=[]
+          for url in scripts[:40]:
               try:
-                  resp=urllib.request.urlopen(req,timeout=20)
-                  status=resp.status
-                  headers=resp.headers
-                  resp.close()
-              except urllib.error.HTTPError as exc:
-                  status=exc.code
-                  headers=exc.headers
-                  exc.close()
-              results[label]={
-                  'status':status,
-                  'headers':{k.lower():v for k,v in headers.items() if k.lower() in allow},
-              }
-          print('P0B_CORS_UA_AB=' + json.dumps({
-              'results':results,
-              'request_method':'OPTIONS',
+                  text=get(url)
+              except Exception as exc:
+                  hits.append({'script':urlparse(url).path[-120:],'error':type(exc).__name__})
+                  continue
+              for token in tokens:
+                  start=0
+                  found=0
+                  while found < 3:
+                      idx=text.find(token,start)
+                      if idx < 0:
+                          break
+                      excerpt=re.sub(r'\s+',' ',text[max(0,idx-180):idx+len(token)+220])
+                      hits.append({'script':urlparse(url).path[-120:],'token':token,'excerpt':excerpt[:500]})
+                      start=idx+len(token)
+                      found+=1
+          print('P0B_EDITOR_BUNDLE_HINTS='+json.dumps({
+              'script_count':len(scripts),
+              'hits':hits[:80],
+              'request_type':'GET-only',
+              'authenticated':False,
               'note_mutation_count':0,
               'model_calls':0,
               'public_release':False,
