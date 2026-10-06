@@ -8,10 +8,13 @@ import run187_note_editor_readiness as run187
 class Run187NoteEditorReadinessTests(unittest.TestCase):
     def test_editor_url_accepts_new_and_edit_routes_only(self):
         self.assertTrue(run187._is_editor_url("https://note.com/notes/new"))
+        self.assertTrue(run187._is_editor_url("https://editor.note.com/new"))
         self.assertTrue(run187._is_editor_url("https://note.com/notes/abc123/edit"))
         self.assertTrue(run187._is_editor_url("https://editor.note.com/notes/abc123/edit"))
         self.assertFalse(run187._is_editor_url("https://note.com/"))
+        self.assertFalse(run187._is_editor_url("https://editor.note.com/anything"))
         self.assertFalse(run187._is_editor_url("https://example.com/notes/new"))
+        self.assertFalse(run187._is_editor_url("https://example.com/new"))
 
     def test_title_candidate_prefers_semantic_title(self):
         explicit = run187._title_candidate_score(
