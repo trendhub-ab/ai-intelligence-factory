@@ -270,11 +270,10 @@ jobs:
           if before is None or before.state != DeliveryState.QUEUE_CONFIRMED:
               raise SystemExit('duplicate proof requires queue-confirmed delivery')
           before_draft_id = before.draft_id
-          browser_create_count = 0
+          browser_create_count = [0]
 
           def blocked_create(*args, **kwargs):
-              nonlocal browser_create_count
-              browser_create_count += 1
+              browser_create_count[0] += 1
               raise RuntimeError('ordinary retry attempted forbidden second create')
 
           current_contract.base._create_browser_draft = blocked_create
@@ -284,7 +283,7 @@ jobs:
               prepared,
               run_correlation_id=str(os.environ.get('GITHUB_RUN_ID') or 'duplicate-proof') + '-ordinary',
           )
-          if browser_create_count != 0:
+          if browser_create_count[0] != 0:
               raise SystemExit('ordinary retry attempted a second browser create')
           if after.draft_id != before_draft_id:
               raise SystemExit('ordinary retry changed the stable draft identity')
