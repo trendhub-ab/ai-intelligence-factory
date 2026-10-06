@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Open note's publication-status menu and observe the draft option without content mutation.
+
+This recovery probe is intentionally narrower than the private-draft census. It performs
+exactly one semantic UI click (the unique visible ``公開ステータス`` control), then only
+counts the visible exact ``下書き`` option. It never chooses a filter option, opens an
+article card, visits the editor, or writes note/Notion/ledger state.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+import note_draft_automation as base
+import run_p0b_hosted_private_draft_shape_probe as shape
+
+ARTICLE_LIST_URL = shape.ARTICLE_LIST_URL
+RESULT_ENV = "P0B_HOSTED_DRAFT_FILTER_MENU_RESULT_FILE"
+SAFE_RESULT_KEYS = {
+    "status",
+    "authenticated",
+    "status_filter_control_count",
+    "draft_filter_option_count",
+    "final_route_shape",
+    "zero_model_calls",
+    "mutation_count",
+}
+
+
+def _open_status_filter_menu(page: Any) -> int:
+    """Open exactly one visible publication-status control and nothing else."""
+    controls = page.get_by_text("公開ステータス", exact=True)
+    try:
+        count = int(controls.count())
+    except Exception as exc:
+        raise base.NoteDraftError("Could not enumerate publication-status controls") from exc
+    if count != 1:
+        raise base.NoteDraftError("Publication-status control is not uniquely identified")
+    control = controls.nth(0)
+    try:
+        visible = bool(control.is_visible(timeout=1000))
+    except Exception as exc:
+        raise base.NoteDraftError("Could not verify publication-status control visibility") from exc
+    if not visible:
+        raise base.NoteDraftError("Publication-status control is not visible")
+    control.click()
+    page.wait_for_timeout(500)
+    return count
+
+
+def _visible_exact_text_count(page: Any, label: str) -> int:
+    return shape._visible_exact_text_count(page, label)
+
+
+def probe() -> dict[str, Any]:
+    """Open the status menu once and return only aggregate, no-content-mutation facts."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise base.NoteDraftError("Playwright is required for the hosted filter-menu probe") from exc
+
+    storage_state = shape._storage_state()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True, args=["--lang=ja-JP"])
+        try:
+            context = browser.new_context(
+                storage_state=storage_state,
+                locale="ja-JP",
+                timezone_id="Asia/Tokyo",
+                viewport={"width": 1440, "height": 1100},
+            )
+            try:
+                page = context.new_page()
+                page.set_default_timeout(30000)
+                page.goto(ARTICLE_LIST_URL, wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(1800)
+                if base._looks_logged_out(page):
+                    raise base.NoteAuthenticationExpired("Hosted article-list session is not authenticated")
+
+                status_filter_control_count = _open_status_filter_menu(page)
+                draft_filter_option_count = _visible_exact_text_count(page, "下書き")
+                result = {
+                    "status": "filter_menu_observed_no_content_mutation",
+                    "authenticated": True,
+                    "status_filter_control_count": status_filter_control_count,
+                    "draft_filter_option_count": draft_filter_option_count,
+                    "final_route_shape": shape._safe_route_shape(str(page.url or "")),
+                    "zero_model_calls": True,
+                    "mutation_count": 0,
+                }
+                if set(result) != SAFE_RESULT_KEYS:
+                    raise base.NoteDraftError("Hosted filter-menu probe result schema drifted")
+                return result
+            finally:
+                context.close()
+        finally:
+            browser.close()
+
+
+def main() -> None:
+    result = probe()
+    output = os.environ.get(RESULT_ENV, "").strip()
+    if output:
+        target = Path(output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    print("P0B_HOSTED_PRIVATE_DRAFT_FILTER_MENU_PROBE=" + json.dumps(result, ensure_ascii=False, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
