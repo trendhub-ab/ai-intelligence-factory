@@ -1,0 +1,147 @@
+name: P0-B Hosted B01 Bootstrap [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-hosted-b01-20261006
+    paths:
+      - .github/workflows/p0b-hosted-b01-once.yml
+
+permissions:
+  contents: read
+  id-token: write
+  actions: write
+
+jobs:
+  bootstrap-and-dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: p0b-hosted-only-implementation
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Validate cloud configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Bootstrap private durable ledger bucket
+        run: |
+          set -euo pipefail
+          bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
+          echo "::add-mask::$bucket"
+          if ! gcloud storage buckets describe "gs://$bucket" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            gcloud storage buckets create "gs://$bucket" \
+              --project "$GCP_PROJECT_ID" \
+              --location asia-northeast1 \
+              --uniform-bucket-level-access \
+              --public-access-prevention >/dev/null
+          fi
+          gcloud storage buckets update "gs://$bucket" \
+            --uniform-bucket-level-access \
+            --public-access-prevention >/dev/null
+          echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
+          echo "LEDGER_BUCKET_READY=true" >> "$GITHUB_ENV"
+
+      - name: Prove generation-guarded ledger object access
+        run: |
+          set -euo pipefail
+          pip install -q google-cloud-storage
+          python - <<'PY'
+          import os, uuid
+          from google.cloud import storage
+          name = os.environ['NOTE_DELIVERY_LEDGER_BUCKET']
+          client = storage.Client(project=os.environ['GCP_PROJECT_ID'])
+          bucket = client.bucket(name)
+          bucket.reload()
+          if not bucket.iam_configuration.uniform_bucket_level_access_enabled:
+              raise SystemExit('uniform bucket-level access is not enabled')
+          if bucket.iam_configuration.public_access_prevention != 'enforced':
+              raise SystemExit('public access prevention is not enforced')
+          blob = bucket.blob(f'_bootstrap/{uuid.uuid4().hex}.json')
+          blob.upload_from_string('{}', content_type='application/json', if_generation_match=0)
+          blob.reload()
+          generation = int(blob.generation)
+          blob.upload_from_string('{"ok":true}', content_type='application/json', if_generation_match=generation)
+          blob.reload()
+          blob.delete(if_generation_match=int(blob.generation))
+          print('LEDGER_CAS_PROBE=PASS')
+          PY
+
+      - name: Prepare-only production preflight
+        id: preflight
+        env:
+          NOTE_DRAFT_CONFIRM: CREATE_NOTE_DRAFT
+          NOTE_TARGET_SYNC_ID: ''
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: |
+          set -euo pipefail
+          pip install -q requests
+          python run199_note_vm_preflight.py
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['NOTE_DRAFT_RESULT_FILE']).read_text(encoding='utf-8'))
+          status = str(result.get('status') or 'unknown')
+          eligible = result.get('should_start_vm') is True
+          zero_model = result.get('zero_gemini_calls') is True
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'eligible={"true" if eligible else "false"}\n')
+              fh.write(f'status={status}\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Hosted-only B01 bootstrap\n')
+              fh.write('- cloud ledger: `ready`\n')
+              fh.write('- CAS probe: `PASS`\n')
+              fh.write(f'- prepare-only status: `{status}`\n')
+              fh.write(f'- delivery eligible: `{eligible}`\n')
+              fh.write(f'- zero model calls: `{zero_model}`\n')
+          PY
+
+      - name: Dispatch bounded B01 private-draft proof
+        if: ${{ steps.preflight.outputs.eligible == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run note-create-draft.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref p0b-hosted-only-implementation \
+            --field confirm=CREATE_NOTE_DRAFT \
+            --field prepare_only=false
+          echo 'B01_DISPATCHED=true'
+
+      - name: Record no-op when no eligible Ready article exists
+        if: ${{ steps.preflight.outputs.eligible != 'true' }}
+        run: echo 'B01_DISPATCHED=false'
