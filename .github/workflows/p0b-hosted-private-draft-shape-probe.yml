@@ -47,8 +47,8 @@ jobs:
           allowed = {
               'status', 'authenticated', 'final_route_shape',
               'anchor_route_shape_counts', 'draft_marker_count',
-              'published_marker_count', 'visible_anchor_count',
-              'zero_model_calls', 'mutation_count',
+              'published_marker_count', 'status_filter_control_count',
+              'visible_anchor_count', 'zero_model_calls', 'mutation_count',
           }
           if set(result) != allowed:
               raise SystemExit('shape probe returned unsafe or unexpected fields')
@@ -62,6 +62,7 @@ jobs:
               fh.write(f"- visible anchors: `{result.get('visible_anchor_count')}`\n")
               fh.write(f"- draft markers: `{result.get('draft_marker_count')}`\n")
               fh.write(f"- published markers: `{result.get('published_marker_count')}`\n")
+              fh.write(f"- status filter controls: `{result.get('status_filter_control_count')}`\n")
               fh.write(f"- anchor route shapes: `{json.dumps(result.get('anchor_route_shape_counts') or {}, ensure_ascii=False, sort_keys=True)}`\n")
               fh.write('- mutation count: `0`\n')
               fh.write('- model calls: `0`\n')
