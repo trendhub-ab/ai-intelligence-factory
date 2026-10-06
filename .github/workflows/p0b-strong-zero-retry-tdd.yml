@@ -6,6 +6,7 @@ on:
       - impl/p0b-strong-zero-retry-authority
     paths:
       - '.github/workflows/p0b-strong-zero-retry-tdd.yml'
+      - 'member_customer_surface_contract.py'
       - 'note_delivery_*.py'
       - 'run_p0b_*.py'
       - 'tests/test_note_delivery_*.py'
