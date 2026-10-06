@@ -97,6 +97,39 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           P0B_HOSTED_DRAFT_CENSUS_RESULT_FILE: ${{ runner.temp }}/p0b-reconcile-census.json
         run: python run_p0b_hosted_private_draft_census.py
+      - name: Rebuild immutable snapshot and recheck ambiguous ledger read-only
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+        run: |
+          python - <<'PY'
+          import os
+
+          import note_delivery_runtime as delivery_runtime
+          import run194_note_current_contract as current_contract
+          import run222_note_presentation_integrity as presentation
+          from note_delivery_ledger import DeliveryState
+
+          sync_id = str(os.environ.get('NOTE_TARGET_SYNC_ID') or '').strip().lower()
+          note_target = str(os.environ.get('NOTE_TARGET_IDENTITY') or '').strip()
+
+          current_contract.install()
+          presentation.install_note(current_contract.base)
+          prepared = delivery_runtime.prepare_delivery(current_contract.base, sync_id)
+
+          ledger = delivery_runtime.delivery_ledger_from_environment()
+          logical_key = delivery_runtime._logical_key_for_identity(sync_id, note_target)
+          record = ledger.get_active_by_logical_key(logical_key)
+          if record is None:
+              raise SystemExit('pre-CAS durable delivery is unavailable')
+          if record.state != DeliveryState.CREATION_UNKNOWN:
+              raise SystemExit('pre-CAS durable delivery is no longer CREATION_UNKNOWN')
+          if str(record.draft_id or '').strip():
+              raise SystemExit('pre-CAS ambiguous delivery already has a stable draft identity')
+          if prepared.snapshot != record.snapshot:
+              raise SystemExit('pre-CAS immutable snapshot drift detected')
+          print('P0B_PRE_CAS_GATE=immutable_snapshot_match_creation_unknown')
+          PY
       - name: Reconcile strong zero with immutable snapshot
         env:
           CENSUS_RESULT_FILE: ${{ runner.temp }}/p0b-reconcile-census.json
