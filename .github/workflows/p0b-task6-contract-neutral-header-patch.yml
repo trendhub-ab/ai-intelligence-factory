@@ -1,0 +1,53 @@
+name: P0-B Task 6 Contract-Neutral Header Patch [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task6-contract-neutral-header-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: impl/p0b-strong-zero-retry-authority
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Apply exact browser-only header-control patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('note_draft_automation.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def _upload_header_image(page: Any, image_path: Path) -> None:\n    add_candidates = page.locator(_header_image_add_selector())\n    add_button = _topmost_visible(add_candidates)\n    if add_button is None:\n        raise NoteDraftError("note header-image control was not found")\n    add_button.click()\n'''
+          new = '''def _find_header_image_add_button(page: Any) -> Any | None:\n    semantic = _topmost_visible(page.locator(_header_image_add_selector()))\n    if semantic is not None:\n        return semantic\n    try:\n        page.evaluate(\n            """() => {\n                window.scrollTo(0, 0);\n                for (const el of document.querySelectorAll('*')) {\n                    if (el.scrollTop > 0) el.scrollTop = 0;\n                }\n            }"""\n        )\n        page.wait_for_timeout(1500)\n        index = page.evaluate(\n            """() => {\n                const bs = [...document.querySelectorAll('button')];\n                const matches = bs.map((b, i) => {\n                    const r = b.getBoundingClientRect();\n                    const label = (b.getAttribute('aria-label') || b.innerText || '').trim();\n                    const ok = !label && r.width >= 30 && r.width <= 56 &&\n                        r.y > 60 && r.y < 220 && r.x > 400;\n                    return ok ? i : -1;\n                }).filter((i) => i >= 0);\n                return matches.length === 1 ? matches[0] : -1;\n            }"""\n        )\n    except Exception:\n        return None\n    if not isinstance(index, int) or index < 0:\n        return None\n    try:\n        candidate = page.locator("button").nth(index)\n        if candidate.is_visible(timeout=700):\n            return candidate\n    except Exception:\n        pass\n    return None\n\n\ndef _upload_header_image(page: Any, image_path: Path) -> None:\n    add_button = _find_header_image_add_button(page)\n    if add_button is None:\n        raise NoteDraftError("note header-image control was not found")\n    add_button.click()\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exact header upload prefix once; count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          tpath = Path('tests/test_p0b_note_header_image_button.py')
+          t = tpath.read_text(encoding='utf-8')
+          t = t.replace('import run222_note_presentation_integrity as header\n', '')
+          t = t.replace('header.find_header_image_add_button(note, page)', 'note._find_header_image_add_button(page)')
+          tpath.write_text(t, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- note_draft_automation.py tests/test_p0b_note_header_image_button.py
+      - name: Commit exact patch to implementation branch
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add note_draft_automation.py tests/test_p0b_note_header_image_button.py
+          git commit -m 'fix: add contract-neutral current note header control fallback'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
