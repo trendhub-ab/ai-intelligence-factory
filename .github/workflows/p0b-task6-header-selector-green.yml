@@ -1,0 +1,67 @@
+name: P0-B Task 6 Header Selector GREEN [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task6-header-selector-green.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: impl/p0b-strong-zero-retry-authority
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Apply minimal header-control selector fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('note_draft_automation.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def _upload_header_image(page: Any, image_path: Path) -> None:\n    add_candidates = page.locator(\n        'button[aria-label="画像を追加"], button[aria-label*="見出し画像"], button:has-text("画像を追加")'\n    )\n'''
+          new = '''def _header_image_add_selector() -> str:\n    return (\n        'button[aria-label="画像を追加"], '\n        'button[aria-label*="見出し画像"], '\n        'button:has-text("画像を追加"), '\n        'button:has([aria-label="画像を追加"]), '\n        '[role="button"]:has([aria-label="画像を追加"]), '\n        'button:has([aria-label*="見出し画像"]), '\n        '[role="button"]:has([aria-label*="見出し画像"])'\n    )\n\n\ndef _upload_header_image(page: Any, image_path: Path) -> None:\n    add_candidates = page.locator(_header_image_add_selector())\n'''
+          if old not in text:
+              raise SystemExit('expected header-image selector block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Focused GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_note_delivery_gcs.py
+          tests/test_note_delivery_runtime.py
+          tests/test_p0b_strong_zero_reconciliation.py
+          tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+          tests/test_p0b_note_browser_user_agent.py
+      - name: Full repository regression
+        run: python -m pytest tests -q
+      - name: Repository guards
+        run: |
+          set -euo pipefail
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
+      - name: Commit production fix only
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add note_draft_automation.py
+          git diff --cached --quiet && { echo 'no production change'; exit 1; }
+          git commit -m 'fix: support note header icon accessible label'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
