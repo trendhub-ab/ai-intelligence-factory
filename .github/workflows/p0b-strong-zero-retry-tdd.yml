@@ -52,6 +52,8 @@ jobs:
           tests/test_note_delivery_runtime.py
           tests/test_p0b_strong_zero_reconciliation.py
           tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+          tests/test_p0b_strong_zero_retry.py
+          tests/test_p0b_strong_zero_retry_live_workflow.py
           tests/test_p0b_note_browser_user_agent.py
       - name: Full repository pytest
         run: python -m pytest tests -q
