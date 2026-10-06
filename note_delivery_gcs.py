@@ -92,6 +92,15 @@ class GCSDeliveryLedger:
         except Exception as exc:
             raise LedgerUnavailableError("gcs_bucket_unavailable") from exc
 
+    def initialize(self) -> None:
+        """Validate read/list access without mutating durable ledger state."""
+        try:
+            blobs = self.bucket.list_blobs(prefix=f"{self.prefix}/records/")
+            for _blob in blobs:
+                break
+        except Exception as exc:
+            raise LedgerUnavailableError("gcs_ledger_initialize_failed") from exc
+
     def _name(self, logical_key: str) -> str:
         return record_object_name(logical_key, self.prefix)
 
