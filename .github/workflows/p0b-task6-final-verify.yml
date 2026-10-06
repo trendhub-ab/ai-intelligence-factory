@@ -41,3 +41,5 @@ jobs:
           python repository_falsification_guard.py
           python integration_stability_guard.py
           git diff --check
+
+# rerun after ephemeral Task 6 probe cleanup
