@@ -60,7 +60,7 @@ jobs:
           echo "::add-mask::$selected"
           echo "NOTE_TARGET_SYNC_ID=$selected" >> "$GITHUB_ENV"
       - name: Install Chromium
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install chromium
       - name: Fresh private-draft census
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
