@@ -10,7 +10,6 @@ on:
       - 'member_customer_surface_contract.py'
       - 'note_delivery_*.py'
       - 'note_draft_automation.py'
-      - 'note_current_header_control.py'
       - 'run222_note_presentation_integrity.py'
       - 'run_p0b_*.py'
       - 'tests/test_note_delivery_*.py'
