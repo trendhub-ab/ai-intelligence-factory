@@ -691,6 +691,27 @@ def _find_header_image_add_button(page: Any) -> Any | None:
     return None
 
 
+def _find_crop_save_control(dialog: Any) -> Any | None:
+    try:
+        controls = dialog.locator('button, [role="button"]')
+        count = min(controls.count(), 24)
+    except Exception:
+        return None
+    matches: list[Any] = []
+    for index in range(count):
+        control = controls.nth(index)
+        try:
+            if not control.is_visible(timeout=500):
+                continue
+            text = re.sub(r"\s+", " ", str(control.inner_text(timeout=500) or "")).strip()
+            aria = re.sub(r"\s+", " ", str(control.get_attribute("aria-label") or "")).strip()
+            if text == "保存" or aria == "保存":
+                matches.append(control)
+        except Exception:
+            continue
+    return matches[0] if len(matches) == 1 else None
+
+
 def _upload_header_image(page: Any, image_path: Path) -> None:
     add_button = _find_header_image_add_button(page)
     if add_button is None:
@@ -726,9 +747,16 @@ def _upload_header_image(page: Any, image_path: Path) -> None:
     except Exception:
         dialog_visible = False
     if dialog_visible:
-        save_button = dialog.get_by_role("button", name=re.compile(r"^保存$")).first
         try:
-            save_button.wait_for(state="visible", timeout=10000)
+            save_button = None
+            discovery_deadline = time.time() + 10
+            while time.time() < discovery_deadline:
+                save_button = _find_crop_save_control(dialog)
+                if save_button is not None:
+                    break
+                page.wait_for_timeout(250)
+            if save_button is None:
+                raise NoteDraftError("note eyecatch crop save control was not found")
             deadline = time.time() + 20
             while time.time() < deadline and not save_button.is_enabled():
                 page.wait_for_timeout(300)
