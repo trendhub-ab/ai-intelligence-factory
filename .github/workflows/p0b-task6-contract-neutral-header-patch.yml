@@ -1,4 +1,4 @@
-name: P0-B Task 6 Contract-Neutral Header Patch [ONE-SHOT]
+name: P0-B Task 6 Contract-Neutral Crop Save Patch [ONE-SHOT]
 
 on:
   push:
@@ -22,32 +22,35 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Apply exact browser-only header-control patch
+      - name: Apply exact browser-only crop-save patch
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path('note_draft_automation.py')
           text = path.read_text(encoding='utf-8')
-          old = '''def _upload_header_image(page: Any, image_path: Path) -> None:\n    add_candidates = page.locator(_header_image_add_selector())\n    add_button = _topmost_visible(add_candidates)\n    if add_button is None:\n        raise NoteDraftError("note header-image control was not found")\n    add_button.click()\n'''
-          new = '''def _find_header_image_add_button(page: Any) -> Any | None:\n    semantic = _topmost_visible(page.locator(_header_image_add_selector()))\n    if semantic is not None:\n        return semantic\n    try:\n        page.evaluate(\n            """() => {\n                window.scrollTo(0, 0);\n                for (const el of document.querySelectorAll('*')) {\n                    if (el.scrollTop > 0) el.scrollTop = 0;\n                }\n            }"""\n        )\n        page.wait_for_timeout(1500)\n        index = page.evaluate(\n            """() => {\n                const bs = [...document.querySelectorAll('button')];\n                const matches = bs.map((b, i) => {\n                    const r = b.getBoundingClientRect();\n                    const label = (b.getAttribute('aria-label') || b.innerText || '').trim();\n                    const ok = !label && r.width >= 30 && r.width <= 56 &&\n                        r.y > 60 && r.y < 220 && r.x > 400;\n                    return ok ? i : -1;\n                }).filter((i) => i >= 0);\n                return matches.length === 1 ? matches[0] : -1;\n            }"""\n        )\n    except Exception:\n        return None\n    if not isinstance(index, int) or index < 0:\n        return None\n    try:\n        candidate = page.locator("button").nth(index)\n        if candidate.is_visible(timeout=700):\n            return candidate\n    except Exception:\n        pass\n    return None\n\n\ndef _upload_header_image(page: Any, image_path: Path) -> None:\n    add_button = _find_header_image_add_button(page)\n    if add_button is None:\n        raise NoteDraftError("note header-image control was not found")\n    add_button.click()\n'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exact header upload prefix once; count={text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          tpath = Path('tests/test_p0b_note_header_image_button.py')
-          t = tpath.read_text(encoding='utf-8')
-          t = t.replace('import run222_note_presentation_integrity as header\n', '')
-          t = t.replace('header.find_header_image_add_button(note, page)', 'note._find_header_image_add_button(page)')
-          tpath.write_text(t, encoding='utf-8')
+          marker = '''def _upload_header_image(page: Any, image_path: Path) -> None:\n'''
+          helper = '''def _find_crop_save_control(dialog: Any) -> Any | None:\n    try:\n        controls = dialog.locator('button, [role="button"]')\n        count = min(controls.count(), 24)\n    except Exception:\n        return None\n    matches: list[Any] = []\n    for index in range(count):\n        control = controls.nth(index)\n        try:\n            if not control.is_visible(timeout=500):\n                continue\n            text = re.sub(r"\\s+", " ", str(control.inner_text(timeout=500) or "")).strip()\n            aria = re.sub(r"\\s+", " ", str(control.get_attribute("aria-label") or "")).strip()\n            if text == "保存" or aria == "保存":\n                matches.append(control)\n        except Exception:\n            continue\n    return matches[0] if len(matches) == 1 else None\n\n\n'''
+          if '_find_crop_save_control' in text:
+              raise SystemExit('crop save helper already exists')
+          if text.count(marker) != 1:
+              raise SystemExit(f'expected upload marker once; count={text.count(marker)}')
+          text = text.replace(marker, helper + marker, 1)
+
+          old = '''    if dialog_visible:\n        save_button = dialog.get_by_role("button", name=re.compile(r"^保存$")).first\n        try:\n            save_button.wait_for(state="visible", timeout=10000)\n            deadline = time.time() + 20\n            while time.time() < deadline and not save_button.is_enabled():\n                page.wait_for_timeout(300)\n            if not save_button.is_enabled():\n                raise NoteDraftError("note eyecatch crop dialog never became saveable")\n            save_button.click()\n            dialog.wait_for(state="hidden", timeout=15000)\n        except NoteDraftError:\n            raise\n        except Exception as exc:\n            raise NoteDraftError("note eyecatch crop/save step failed") from exc\n'''
+          new = '''    if dialog_visible:\n        try:\n            save_button = None\n            discovery_deadline = time.time() + 10\n            while time.time() < discovery_deadline:\n                save_button = _find_crop_save_control(dialog)\n                if save_button is not None:\n                    break\n                page.wait_for_timeout(250)\n            if save_button is None:\n                raise NoteDraftError("note eyecatch crop save control was not found")\n            deadline = time.time() + 20\n            while time.time() < deadline and not save_button.is_enabled():\n                page.wait_for_timeout(300)\n            if not save_button.is_enabled():\n                raise NoteDraftError("note eyecatch crop dialog never became saveable")\n            save_button.click()\n            dialog.wait_for(state="hidden", timeout=15000)\n        except NoteDraftError:\n            raise\n        except Exception as exc:\n            raise NoteDraftError("note eyecatch crop/save step failed") from exc\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected old crop save block once; count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
           git diff --check
-          git diff -- note_draft_automation.py tests/test_p0b_note_header_image_button.py
+          git diff -- note_draft_automation.py
       - name: Commit exact patch to implementation branch
         run: |
           set -euo pipefail
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
-          git add note_draft_automation.py tests/test_p0b_note_header_image_button.py
-          git commit -m 'fix: add contract-neutral current note header control fallback'
+          git add note_draft_automation.py
+          git commit -m 'fix: discover current note crop save control without role dependency'
           git push origin HEAD:impl/p0b-strong-zero-retry-authority
