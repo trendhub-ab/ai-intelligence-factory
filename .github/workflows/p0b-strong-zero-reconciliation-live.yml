@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install bounded recovery dependencies
-        run: pip install -q pytest requests google-cloud-storage playwright
+        run: pip install -q pytest requests google-cloud-storage playwright pillow
       - name: Run strong-zero recovery contract tests
         run: >-
           python -m pytest -q
