@@ -1,0 +1,317 @@
+name: P0-B Task 1 Ledger Retry Authority TDD [IMPL ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task1-ledger-retry-once.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0b-task1-ledger-retry-once-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  task1-ledger-tdd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Add Task 1 retry-authority tests first
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_note_delivery_ledger.py')
+          text = path.read_text(encoding='utf-8')
+          import_marker = 'import pytest\n\n'
+          if 'import note_delivery_ledger as delivery_ledger\n' not in text:
+              if import_marker not in text:
+                  raise SystemExit('pytest import marker not found')
+              text = text.replace(import_marker, import_marker + 'import note_delivery_ledger as delivery_ledger\n\n', 1)
+
+          marker = '# TASK1_STRONG_ZERO_RETRY_AUTHORITY_TESTS\n'
+          if marker not in text:
+              text += r'''
+
+# TASK1_STRONG_ZERO_RETRY_AUTHORITY_TESTS
+_STRONG_ZERO_EVIDENCE_DIGEST = "a" * 64
+_STRONG_ZERO_EVIDENCE = (
+    "creation_absence_confirmed_strong_zero:" + _STRONG_ZERO_EVIDENCE_DIGEST
+)
+
+
+def _prepare_manual_reconciliation(
+    ledger: SQLiteDeliveryLedger,
+    snapshot=None,
+    *,
+    evidence: str = _STRONG_ZERO_EVIDENCE,
+    with_draft: bool = False,
+):
+    snapshot = snapshot or _snapshot()
+    first = ledger.begin_or_load(snapshot, run_correlation_id="run-original")
+    if with_draft:
+        current = ledger.record_draft_created(
+            first.record.operation_key,
+            draft_id="opaque-existing-draft",
+            note_host="note.com",
+            expected_version=first.record.state_version,
+        )
+    else:
+        current = ledger.record_blocked(
+            first.record.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="creation_result_ambiguous",
+            expected_version=first.record.state_version,
+        )
+    manual = ledger.record_blocked(
+        current.operation_key,
+        state=DeliveryState.MANUAL_RECONCILIATION_REQUIRED,
+        category=evidence,
+        expected_version=current.state_version,
+    )
+    return snapshot, manual
+
+
+def test_reconciled_retry_authorizes_once_and_preserves_manual_evidence():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger)
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+
+        assert decision.creation_authorized is True
+        assert decision.reason == "reconciled_retry_authorized"
+        assert decision.record.state == DeliveryState.CREATE_INTENT_RECORDED
+        assert decision.record.state_version == manual.state_version + 1
+        assert decision.record.attempt_count == manual.attempt_count + 1
+        assert decision.record.owner_correlation_id == "run-retry"
+        assert decision.record.owner_expires_at
+        assert decision.record.snapshot == manual.snapshot == snapshot
+        assert decision.record.draft_id is None
+        assert decision.record.conflict_category == _STRONG_ZERO_EVIDENCE
+
+        conn = sqlite3.connect(ledger.path)
+        try:
+            events = conn.execute(
+                "SELECT category, run_correlation_id FROM delivery_events "
+                "WHERE record_id=? ORDER BY event_id",
+                (manual.record_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert [row[0] for row in events] == [
+            "create_intent_recorded",
+            "creation_result_ambiguous",
+            _STRONG_ZERO_EVIDENCE,
+            "strong_zero_retry_authorized:" + _STRONG_ZERO_EVIDENCE_DIGEST,
+        ]
+        assert events[-1][1] == "run-retry"
+
+        ordinary = ledger.begin_or_load(snapshot, run_correlation_id="run-ordinary")
+        assert ordinary.creation_authorized is False
+        assert ordinary.reason == "existing_operation"
+        assert ordinary.record.state == DeliveryState.CREATE_INTENT_RECORDED
+
+
+def test_reconciled_retry_rejects_malformed_strong_zero_evidence_without_mutation():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(
+            ledger,
+            evidence="creation_absence_confirmed_strong_zero:BAD",
+        )
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "strong_zero_evidence_invalid"
+        assert decision.record.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert decision.record.state_version == manual.state_version
+        assert decision.record.attempt_count == manual.attempt_count
+
+
+def test_reconciled_retry_rejects_snapshot_drift_without_mutation():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger)
+        drifted = _snapshot(manuscript_sha256="9" * 64)
+
+        decision = ledger.authorize_reconciled_retry(
+            drifted,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "snapshot_mismatch"
+        assert decision.record.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert decision.record.state_version == manual.state_version
+
+
+def test_reconciled_retry_rejects_existing_draft_identity():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger, with_draft=True)
+        assert manual.draft_id == "opaque-existing-draft"
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "stable_draft_present"
+        assert decision.record.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert decision.record.state_version == manual.state_version
+
+
+def test_reconciled_retry_rejects_wrong_state():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot = _snapshot()
+        first = ledger.begin_or_load(snapshot, run_correlation_id="run-original")
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=first.record.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "manual_reconciliation_required"
+        assert decision.record.state == DeliveryState.CREATE_INTENT_RECORDED
+        assert decision.record.state_version == first.record.state_version
+
+
+def test_reconciled_retry_rejects_stale_expected_version():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger)
+
+        with pytest.raises(delivery_ledger.ConcurrentStateChange):
+            ledger.authorize_reconciled_retry(
+                snapshot,
+                run_correlation_id="run-retry",
+                expected_version=manual.state_version - 1,
+            )
+        after = ledger.get_by_operation_key(manual.operation_key)
+        assert after is not None
+        assert after.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert after.state_version == manual.state_version
+        assert after.attempt_count == manual.attempt_count
+
+
+def test_manual_reconciliation_generic_transition_stays_closed():
+    assert DeliveryState.CREATE_INTENT_RECORDED not in delivery_ledger._ALLOWED_TRANSITIONS.get(
+        DeliveryState.MANUAL_RECONCILIATION_REQUIRED,
+        frozenset(),
+    )
+'''
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify Task 1 ledger tests are RED for the missing dedicated API
+        run: |
+          set +e
+          python -m pytest -q tests/test_note_delivery_ledger.py -k 'reconciled_retry or manual_reconciliation' > /tmp/task1-red.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/task1-red.log
+          if [ "$rc" -eq 0 ]; then
+            echo '::error::Expected RED before production implementation, but tests passed.'
+            exit 1
+          fi
+          if ! grep -q 'authorize_reconciled_retry' /tmp/task1-red.log; then
+            echo '::error::RED did not fail for the intended missing retry-authority API.'
+            exit 1
+          fi
+      - name: Implement minimal dedicated SQLite retry authority
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('note_delivery_ledger.py')
+          text = path.read_text(encoding='utf-8')
+
+          import_marker = '''    render_safe_html,\n)\n\nSNAPSHOT_SCHEMA_VERSION = "note-delivery-snapshot-v1"\n'''
+          import_replacement = '''    render_safe_html,\n)\nfrom note_delivery_strong_zero import (\n    StrongZeroEvidenceError,\n    parse_strong_zero_evidence_category,\n)\n\nSNAPSHOT_SCHEMA_VERSION = "note-delivery-snapshot-v1"\n'''
+          if 'from note_delivery_strong_zero import (' not in text:
+              if import_marker not in text:
+                  raise SystemExit('strong-zero import marker not found')
+              text = text.replace(import_marker, import_replacement, 1)
+
+          protocol_marker = '''    def begin_or_load(self, snapshot: DeliverySnapshot, *, run_correlation_id: str) -> IntentDecision: ...\n\n    def record_draft_created(\n'''
+          protocol_replacement = '''    def begin_or_load(self, snapshot: DeliverySnapshot, *, run_correlation_id: str) -> IntentDecision: ...\n\n    def authorize_reconciled_retry(\n        self,\n        snapshot: DeliverySnapshot,\n        *,\n        run_correlation_id: str,\n        expected_version: int,\n    ) -> IntentDecision: ...\n\n    def record_draft_created(\n'''
+          if 'def authorize_reconciled_retry(' not in text:
+              if protocol_marker not in text:
+                  raise SystemExit('protocol insertion marker not found')
+              text = text.replace(protocol_marker, protocol_replacement, 1)
+
+          method_marker = '''        return self._transaction(work)\n\n    def _transition(\n'''
+          method_replacement = '''        return self._transaction(work)\n\n    def authorize_reconciled_retry(\n        self,\n        snapshot: DeliverySnapshot,\n        *,\n        run_correlation_id: str,\n        expected_version: int,\n    ) -> IntentDecision:\n        logical_key = logical_delivery_key(snapshot)\n        retry_run = _normalized_text(run_correlation_id)\n\n        def work(conn: sqlite3.Connection) -> IntentDecision:\n            row = conn.execute(\n                "SELECT d.* FROM logical_bindings b JOIN deliveries d ON d.operation_key=b.operation_key "\n                "WHERE b.logical_key=?",\n                (logical_key,),\n            ).fetchone()\n            if row is None:\n                raise InvalidStateTransition("delivery_not_found")\n            current = self._row_to_record(row)\n            if current.state_version != expected_version:\n                raise ConcurrentStateChange("state_version_mismatch")\n            if current.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED:\n                return IntentDecision(current, False, "manual_reconciliation_required")\n            if current.snapshot != snapshot:\n                return IntentDecision(current, False, "snapshot_mismatch")\n            if current.draft_id:\n                return IntentDecision(current, False, "stable_draft_present")\n            try:\n                evidence_digest = parse_strong_zero_evidence_category(\n                    current.conflict_category or ""\n                )\n            except StrongZeroEvidenceError:\n                return IntentDecision(current, False, "strong_zero_evidence_invalid")\n\n            next_version = current.state_version + 1\n            now = _utc_now()\n            owner_expires = (\n                datetime.now(timezone.utc) + timedelta(minutes=5)\n            ).isoformat().replace("+00:00", "Z")\n            cursor = conn.execute(\n                "UPDATE deliveries SET state=?, state_version=?, attempt_count=attempt_count+1, "\n                "owner_correlation_id=?, owner_expires_at=?, updated_at=? "\n                "WHERE operation_key=? AND state_version=? AND state=?",\n                (\n                    DeliveryState.CREATE_INTENT_RECORDED.value,\n                    next_version,\n                    retry_run,\n                    owner_expires,\n                    now,\n                    current.operation_key,\n                    expected_version,\n                    DeliveryState.MANUAL_RECONCILIATION_REQUIRED.value,\n                ),\n            )\n            if cursor.rowcount != 1:\n                raise ConcurrentStateChange("state_version_mismatch")\n            conn.execute(\n                "INSERT INTO delivery_events (record_id, prior_state, new_state, category, run_correlation_id, "\n                "state_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",\n                (\n                    current.record_id,\n                    DeliveryState.MANUAL_RECONCILIATION_REQUIRED.value,\n                    DeliveryState.CREATE_INTENT_RECORDED.value,\n                    f"strong_zero_retry_authorized:{evidence_digest}",\n                    retry_run,\n                    next_version,\n                    now,\n                ),\n            )\n            updated = self._load_operation(conn, current.operation_key)\n            if updated is None:\n                raise LedgerUnavailableError("ledger_invariant_missing")\n            return IntentDecision(updated, True, "reconciled_retry_authorized")\n\n        return self._transaction(work)\n\n    def _transition(\n'''
+          sqlite_occurrences = text.count('    def authorize_reconciled_retry(')
+          if sqlite_occurrences == 1:
+              if method_marker not in text:
+                  raise SystemExit('SQLite method insertion marker not found')
+              text = text.replace(method_marker, method_replacement, 1)
+          elif sqlite_occurrences != 2:
+              raise SystemExit(f'unexpected authorize_reconciled_retry occurrences: {sqlite_occurrences}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify focused Task 1 ledger GREEN
+        run: python -m pytest -q tests/test_note_delivery_ledger.py -k 'reconciled_retry or manual_reconciliation'
+      - name: Verify Task 1 evidence ledger and phase-one regression GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_p0b_strong_zero_reconciliation.py
+      - name: Verify focused P0-B suite GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_note_delivery_gcs.py
+          tests/test_note_delivery_runtime.py
+          tests/test_p0b_strong_zero_reconciliation.py
+          tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+      - name: Verify full repository and guards before commit
+        run: |
+          set -euo pipefail
+          python -m pytest tests -q
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
+      - name: Commit Task 1 ledger API only after all GREEN checks
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add note_delivery_ledger.py tests/test_note_delivery_ledger.py
+          git commit -m 'feat: add dedicated strong-zero retry authority contract'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
