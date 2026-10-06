@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import note_current_header_control as header_control
+
 CTA_HEADINGS = {
     "「自分はどうする？」まで判断したい方へ",
     "調査と判断の時間を減らしたい方へ",
@@ -159,6 +161,7 @@ def install_pipeline(pipeline_module: Any) -> Any:
 
 def install_note(note_module: Any) -> Any:
     """Transform only after whichever current-contract guard already wraps _prepare_article."""
+    header_control.install(note_module)
     if getattr(note_module, "_run222_note_installed", False):
         return note_module
     original = note_module._prepare_article
