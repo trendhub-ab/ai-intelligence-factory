@@ -42,7 +42,7 @@ jobs:
           bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
           echo "::add-mask::$bucket"
           echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
-      - name: Classify manual strong-zero candidate without mutation
+      - name: Classify durable state and candidate without mutation
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
@@ -61,12 +61,36 @@ jobs:
           ledger = delivery_runtime.delivery_ledger_from_environment()
           counts = Counter()
           state_counts = Counter()
+          records = []
+          event_tail = []
           prefix = f"{ledger.prefix}/records/"
           current.install()
 
           for blob in ledger.bucket.list_blobs(prefix=prefix):
-              record, _events = ledger._decode_envelope(blob.download_as_text())
+              record, events = ledger._decode_envelope(blob.download_as_text())
               state_counts[record.state.value] += 1
+              evidence_kind = 'other'
+              try:
+                  parse_strong_zero_evidence_category(str(record.conflict_category or ''))
+                  evidence_kind = 'strong_zero'
+              except StrongZeroEvidenceError:
+                  pass
+              records.append({
+                  'state': record.state.value,
+                  'state_version': record.state_version,
+                  'attempt_count': record.attempt_count,
+                  'has_draft': bool(str(record.draft_id or '').strip()),
+                  'has_owner': bool(str(record.owner_correlation_id or '').strip()),
+                  'evidence_kind': evidence_kind,
+              })
+              for event in events[-6:]:
+                  event_tail.append({
+                      'prior_state': str(event.get('prior_state') or ''),
+                      'new_state': str(event.get('new_state') or ''),
+                      'category': str(event.get('category') or ''),
+                      'state_version': int(event.get('state_version') or 0),
+                  })
+
               if record.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED:
                   continue
               counts['manual'] += 1
@@ -106,6 +130,8 @@ jobs:
 
           safe = {
               'record_states': dict(sorted(state_counts.items())),
+              'record_meta': records,
+              'event_tail': event_tail,
               'candidate_counts': dict(sorted(counts.items())),
               'note_mutation_count': 0,
               'notion_write_count': 0,
