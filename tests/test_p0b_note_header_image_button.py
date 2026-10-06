@@ -64,12 +64,25 @@ class _Page:
 
 
 class _Dialog:
-    def __init__(self, controls):
+    def __init__(self, controls, *, visible=True):
         self.controls = list(controls)
+        self.visible = visible
+
+    def is_visible(self, timeout=0):
+        return self.visible
 
     def locator(self, selector):
         assert selector == 'button, [role="button"]'
         return _Locator(self.controls)
+
+
+class _DialogPage:
+    def __init__(self, dialogs):
+        self.dialogs = list(dialogs)
+
+    def locator(self, selector):
+        assert selector == '[role="dialog"]'
+        return _Locator(self.dialogs)
 
 
 class _BoundElement:
@@ -148,6 +161,41 @@ def test_crop_save_control_accepts_exact_aria_label_when_text_is_empty():
 def test_crop_save_control_fails_closed_when_save_control_is_ambiguous():
     dialog = _Dialog([_Button("a", text="保存"), _Button("b", aria_label="保存")])
     assert note._find_crop_save_control(dialog) is None
+
+
+def test_crop_dialog_discovery_skips_unrelated_first_dialog_and_finds_unique_save_dialog():
+    unrelated = _Dialog([_Button("close", text="閉じる")])
+    save = _Button("save", text="保存")
+    crop = _Dialog([_Button("cancel", text="キャンセル"), save])
+    page = _DialogPage([unrelated, crop])
+
+    found = current_contract._find_unique_crop_dialog_with_save_control(page)
+
+    assert found == (crop, save)
+
+
+def test_crop_dialog_discovery_fails_closed_when_multiple_visible_dialogs_have_save_controls():
+    first_save = _Button("first", text="保存")
+    second_save = _Button("second", aria_label="保存")
+    page = _DialogPage([_Dialog([first_save]), _Dialog([second_save])])
+
+    assert current_contract._find_unique_crop_dialog_with_save_control(page) is None
+
+
+def test_crop_dialog_discovery_ignores_hidden_save_dialogs():
+    hidden_save = _Button("hidden", text="保存")
+    visible_save = _Button("visible", text="保存")
+    page = _DialogPage(
+        [
+            _Dialog([hidden_save], visible=False),
+            _Dialog([_Button("cancel", text="キャンセル"), visible_save]),
+        ]
+    )
+
+    assert current_contract._find_unique_crop_dialog_with_save_control(page) == (
+        page.dialogs[1],
+        visible_save,
+    )
 
 
 def test_crop_close_wait_binds_original_dialog_element_before_save_retargets_first_locator():
