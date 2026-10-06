@@ -24,22 +24,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt playwright
           python -m playwright install --with-deps chromium
-      - name: Classify current note new route without mutation
+      - name: Capture editor initialization failures without mutation
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           PYTHONPATH: .
         run: |
           python - <<'PY'
           import json, re
+          from urllib.parse import urlparse
           import note_draft_automation as note
           from playwright.sync_api import sync_playwright
 
-          def clean(value, limit=500):
+          def clean(value, limit=320):
               return re.sub(r'\s+', ' ', str(value or '')).strip()[:limit]
 
-          def attr(locator, name):
+          def safe_url(value):
               try:
-                  return clean(locator.get_attribute(name), 120)
+                  p=urlparse(str(value or ''))
+                  return f'{p.scheme}://{p.netloc}{p.path}'[:240]
               except Exception:
                   return ''
 
@@ -52,41 +54,44 @@ jobs:
                       viewport={'width': 1440, 'height': 1100},
                   )
                   page = context.new_page()
+                  console_errors=[]
+                  page_errors=[]
+                  request_failures=[]
+                  bad_responses=[]
+                  page.on('console', lambda msg: console_errors.append(clean(msg.text)) if msg.type in {'error','warning'} else None)
+                  page.on('pageerror', lambda exc: page_errors.append(clean(exc)))
+                  page.on('requestfailed', lambda req: request_failures.append({'url': safe_url(req.url), 'error': clean(req.failure,160)}))
+                  page.on('response', lambda resp: bad_responses.append({'status': resp.status, 'url': safe_url(resp.url)}) if resp.status >= 400 else None)
                   try:
                       response = page.goto(note.NOTE_NEW_URL, wait_until='domcontentloaded', timeout=60000)
-                      page.wait_for_timeout(5000)
-                      frame_rows=[]
-                      for frame in page.frames:
-                          frame_rows.append({
-                              'name': clean(frame.name, 80),
-                              'url': clean(frame.url, 180),
-                          })
-                      iframe_rows=[]
-                      frames=page.locator('iframe')
-                      for i in range(min(frames.count(),20)):
-                          item=frames.nth(i)
-                          iframe_rows.append({
-                              'src': attr(item,'src'),
-                              'title': attr(item,'title'),
-                              'name': attr(item,'name'),
-                          })
-                      body_text=''
+                      page.wait_for_timeout(8000)
+                      html=''
                       try:
-                          body_text=clean(page.locator('body').inner_text(timeout=3000), 600)
+                          html=page.content()
                       except Exception:
                           pass
-                      print('P0B_NEW_ROUTE=' + json.dumps({
+                      scripts=page.locator('script[src]')
+                      script_hosts=[]
+                      for i in range(min(scripts.count(),80)):
+                          src=scripts.nth(i).get_attribute('src') or ''
+                          parsed=urlparse(src if '://' in src else page.url)
+                          host=parsed.netloc
+                          if host and host not in script_hosts:
+                              script_hosts.append(host)
+                      cookies=context.cookies('https://editor.note.com')
+                      print('P0B_EDITOR_INIT=' + json.dumps({
                           'status': response.status if response else None,
-                          'url': clean(page.url, 180),
-                          'document_title': clean(page.title(), 160),
-                          'body_text': body_text,
-                          'frames': frame_rows,
-                          'iframes': iframe_rows,
-                          'contenteditable_count': page.locator('[contenteditable="true"]').count(),
-                          'textbox_count': page.locator('[role="textbox"]').count(),
-                          'input_count': page.locator('input').count(),
-                          'textarea_count': page.locator('textarea').count(),
-                          'button_count': page.locator('button').count(),
+                          'url': safe_url(page.url),
+                          'document_title': clean(page.title(),160),
+                          'html_length': len(html),
+                          'body_child_count': page.locator('body > *').count(),
+                          'script_src_count': scripts.count(),
+                          'script_hosts': script_hosts[:20],
+                          'editor_cookie_count': len(cookies),
+                          'console_errors': console_errors[:20],
+                          'page_errors': page_errors[:20],
+                          'request_failures': request_failures[:20],
+                          'bad_responses': bad_responses[:20],
                           'note_mutation_count': 0,
                           'model_calls': 0,
                           'public_release': False,
