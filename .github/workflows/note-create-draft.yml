@@ -115,9 +115,12 @@ jobs:
       contents: read
       id-token: write
     env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      GCP_NOTE_LEDGER_BUCKET: ${{ vars.GCP_NOTE_LEDGER_BUCKET }}
+      NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'
+      NOTE_DELIVERY_LEDGER_BUCKET: ''
+      NOTE_DELIVERY_LEDGER_PREFIX: 'delivery/v1'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -135,7 +138,7 @@ jobs:
       - name: Validate cloud ledger configuration
         run: |
           set -euo pipefail
-          for name in GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT GCP_NOTE_LEDGER_BUCKET; do
+          for name in GCP_PROJECT_ID GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing repository variable: ${name}"
               exit 1
@@ -147,6 +150,13 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Resolve private durable-ledger bucket
+        run: |
+          set -euo pipefail
+          bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
+          echo "::add-mask::$bucket"
+          echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
 
       - name: Revalidate and pin exact candidate on hosted worker
         env:
@@ -190,9 +200,6 @@ jobs:
         env:
           WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           LEDGER_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
-          NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'
-          NOTE_DELIVERY_LEDGER_BUCKET: ${{ vars.GCP_NOTE_LEDGER_BUCKET }}
-          NOTE_DELIVERY_LEDGER_PREFIX: 'delivery/v1'
         run: |
           set -euo pipefail
           selected="$(python - <<'PY'
@@ -276,9 +283,6 @@ jobs:
           WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_IDENTITY: 'trendhub_biz'
-          NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'
-          NOTE_DELIVERY_LEDGER_BUCKET: ${{ vars.GCP_NOTE_LEDGER_BUCKET }}
-          NOTE_DELIVERY_LEDGER_PREFIX: 'delivery/v1'
           NOTE_PREPARE_ONLY: 'false'
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
