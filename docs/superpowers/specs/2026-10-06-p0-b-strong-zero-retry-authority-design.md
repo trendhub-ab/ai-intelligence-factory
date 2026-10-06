@@ -80,8 +80,8 @@ Normal `begin_or_load()` remains unchanged and continues to return `creation_aut
 2. state is exactly `MANUAL_RECONCILIATION_REQUIRED`;
 3. the current immutable `DeliverySnapshot` exactly equals the durable snapshot;
 4. `draft_id` is empty;
-5. the durable reconciliation evidence category starts with `creation_absence_confirmed_strong_zero:`;
-6. the evidence digest is non-empty and structurally valid;
+5. the durable reconciliation evidence category is exactly `creation_absence_confirmed_strong_zero:<digest>`;
+6. `<digest>` is exactly 64 lowercase hexadecimal characters;
 7. the caller supplies the exact expected `state_version` observed immediately before authorization;
 8. the underlying GCS write uses the exact observed generation as `ifGenerationMatch`;
 9. no concurrent writer has modified the record;
@@ -97,16 +97,21 @@ On success, the dedicated operation performs exactly one durable transition:
 
 This transition is not exposed through generic `record_blocked()` or the ordinary `_ALLOWED_TRANSITIONS` table.
 
-The successful CAS appends an audit event with category:
+The successful CAS must atomically:
 
-`strong_zero_retry_authorized:<evidence_digest>`
+- increment `state_version`;
+- increment `attempt_count`;
+- set `owner_correlation_id` to the retry run correlation ID;
+- set `owner_expires_at` to a short bounded lease, initially five minutes;
+- preserve the immutable snapshot and stable identity fields;
+- append an audit event with category `strong_zero_retry_authorized:<evidence_digest>`.
 
 The prior event history is preserved unchanged, including:
 
 - `CREATE_INTENT_RECORDED -> CREATION_UNKNOWN` from the failed attempt;
 - `CREATION_UNKNOWN -> MANUAL_RECONCILIATION_REQUIRED` from strong-zero phase one.
 
-The state version increments normally. It is never reset.
+The state version is never reset.
 
 ## 8. One-shot semantics
 
@@ -122,6 +127,8 @@ If two workers attempt authorization concurrently:
 
 After authorization, a normal workflow retry still calls `begin_or_load()` and must not receive new authority merely because the record is `CREATE_INTENT_RECORDED`.
 
+The owner lease is not creation authority. Lease expiry never enables automatic creation; it only allows a later explicit reconciliation workflow to determine whether the consumed retry intent can be safely classified after fresh evidence.
+
 ## 9. Crash and failure semantics
 
 ### 9.1 Failure before authorization CAS
@@ -130,7 +137,19 @@ No durable change and no creation authority.
 
 ### 9.2 Failure after authorization CAS but before note mutation
 
-Do not automatically issue a second authorization. The record remains a consumed create intent. Recovery requires another explicit evidence-driven reconciliation cycle.
+Do not automatically issue a second authorization. The record remains a consumed `CREATE_INTENT_RECORDED` retry intent.
+
+After `owner_expires_at` has passed, recovery requires a separate explicit workflow that:
+
+1. verifies the retry lease is expired;
+2. verifies no stable draft ID exists;
+3. reconstructs and exactly matches the immutable snapshot;
+4. runs a new authenticated private-draft census;
+5. requires a new `strong_zero` result with zero suspicious/unreadable entries and zero mutation;
+6. CAS-transitions the expired retry intent to `MANUAL_RECONCILIATION_REQUIRED` with new absence-evidence digest;
+7. does not grant creation authority in that transition.
+
+Only a later explicit `authorize_reconciled_retry(...)` invocation may issue another one-shot authority. There is no timer-based or ordinary-workflow auto-retry.
 
 ### 9.3 Failure during browser creation before durable stable ID
 
@@ -164,8 +183,8 @@ The retry path is a separate bounded operation with this sequence:
 4. verify durable state is `MANUAL_RECONCILIATION_REQUIRED`;
 5. re-run a fresh authenticated strong-zero private-draft census;
 6. require snapshot equality and durable strong-zero evidence;
-7. call `authorize_reconciled_retry(...)` once;
-8. only if that call returns `creation_authorized=true`, execute the existing private-draft browser creation path;
+7. call `authorize_reconciled_retry(...)` once with a fresh run correlation ID and expected state version;
+8. only if that call returns `creation_authorized=true`, execute the existing private-draft browser creation path in the same bounded run;
 9. durably record stable draft identity;
 10. reopen and perform canonical verification;
 11. PATCH Notion queue binding;
@@ -184,7 +203,7 @@ Expected production changes:
 
 - `note_delivery_gcs.py`
   - implement dedicated generation-CAS authorization on the existing record object;
-  - append the retry-authorization audit event atomically with the state update.
+  - update retry owner/lease metadata and append the retry-authorization audit event atomically with the state update.
 
 - `note_delivery_runtime.py`
   - preserve ordinary `begin_or_load()` semantics;
@@ -192,6 +211,10 @@ Expected production changes:
 
 - strong-zero retry module/workflow
   - orchestrate fresh census, immutable snapshot check, dedicated authorization, and exactly one bounded B01 create path.
+
+- expired-intent reconciliation helper/workflow
+  - only if required by a real crash after retry authorization, classify an expired `CREATE_INTENT_RECORDED` retry intent using fresh strong-zero evidence;
+  - never grant creation authority itself.
 
 SQLite may receive an equivalent implementation only to preserve interface parity and offline tests. SQLite is not the production authority for hosted delivery.
 
@@ -202,23 +225,28 @@ The implementation is not eligible for live proof until all of the following are
 1. non-strong-zero reconciliation cannot authorize retry;
 2. snapshot drift cannot authorize retry;
 3. generic `MANUAL_RECONCILIATION_REQUIRED` without strong-zero evidence cannot authorize retry;
-4. existing stable draft ID blocks retry authorization;
-5. stale `state_version` blocks retry authorization;
-6. stale GCS generation blocks retry authorization;
-7. two concurrent GCS callers yield at most one CAS winner;
-8. only the CAS winner receives `creation_authorized=true`;
-9. generic `_ALLOWED_TRANSITIONS` still rejects manual-reconciliation rollback;
-10. ordinary `begin_or_load()` still does not re-authorize the existing operation;
-11. authorization increments `state_version` and preserves prior event history;
-12. authorization appends `strong_zero_retry_authorized:<digest>`;
-13. failure after authorization but before browser mutation does not auto-authorize again;
-14. browser ambiguity returns to `CREATION_UNKNOWN` and blocks automatic second create;
-15. stable draft identity prevents recreation;
-16. exact canonical verification remains required;
-17. queue PATCH alone is insufficient; exact readback remains required;
-18. model calls remain zero;
-19. public release remains false;
-20. hosted workflow contains no self-hosted/GCE/OS-user dependency.
+4. malformed/non-64-hex evidence digest blocks retry authorization;
+5. existing stable draft ID blocks retry authorization;
+6. stale `state_version` blocks retry authorization;
+7. stale GCS generation blocks retry authorization;
+8. two concurrent GCS callers yield at most one CAS winner;
+9. only the CAS winner receives `creation_authorized=true`;
+10. generic `_ALLOWED_TRANSITIONS` still rejects manual-reconciliation rollback;
+11. ordinary `begin_or_load()` still does not re-authorize the existing operation;
+12. authorization increments `state_version` and `attempt_count`;
+13. authorization updates owner/lease metadata atomically;
+14. authorization preserves prior event history;
+15. authorization appends `strong_zero_retry_authorized:<digest>`;
+16. lease expiry alone never restores creation authority;
+17. expired retry-intent reconciliation requires fresh strong-zero evidence and returns only to `MANUAL_RECONCILIATION_REQUIRED`;
+18. failure after authorization but before browser mutation does not auto-authorize again;
+19. browser ambiguity returns to `CREATION_UNKNOWN` and blocks automatic second create;
+20. stable draft identity prevents recreation;
+21. exact canonical verification remains required;
+22. queue PATCH alone is insufficient; exact readback remains required;
+23. model calls remain zero;
+24. public release remains false;
+25. hosted workflow contains no self-hosted/GCE/OS-user dependency.
 
 Validation order:
 
@@ -265,7 +293,7 @@ Any ambiguity stops the proof. There is no automatic repeated B01 dispatch.
 Rollback never means deleting or rewinding the ledger.
 
 - before authorization CAS: stop with no durable mutation;
-- after authorization CAS but before note mutation: stop and preserve consumed authority;
+- after authorization CAS but before note mutation: preserve consumed authority; after lease expiry use only the explicit fresh-evidence reconciliation path from Section 9.2;
 - ambiguous create: preserve `CREATION_UNKNOWN`;
 - stable draft recorded: preserve and reconcile that exact draft;
 - verification failure: preserve `VERIFICATION_BLOCKED`;
