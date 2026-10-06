@@ -12,6 +12,9 @@ class _Button:
     def is_visible(self, timeout=0):
         return True
 
+    def bounding_box(self):
+        return {"x": 500, "y": 100, "width": 40, "height": 40}
+
     def click(self):
         self.clicked = True
 
