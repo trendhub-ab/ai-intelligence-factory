@@ -1,5 +1,5 @@
 name: P0-B Strong-Zero Retry TDD [IMPL]
-# checkpoint: task6-browser-identity-green
+# checkpoint: task6-browser-identity-reverify
 
 on:
   push:
