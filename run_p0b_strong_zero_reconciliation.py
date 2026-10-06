@@ -13,7 +13,7 @@ import json
 from typing import Any, Mapping
 
 import note_delivery_runtime as delivery_runtime
-from note_delivery_ledger import DeliveryLedger, DeliveryState
+from note_delivery_ledger import DeliveryLedger, DeliverySnapshot, DeliveryState
 
 
 class StrongZeroReconciliationError(RuntimeError):
@@ -82,6 +82,7 @@ def reconcile_strong_zero(
     *,
     sync_id: str,
     note_target: str,
+    current_snapshot: DeliverySnapshot,
     census: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Persist strong-zero reconciliation without granting any new creation authority."""
@@ -97,6 +98,10 @@ def reconcile_strong_zero(
         raise StrongZeroReconciliationError("ambiguous delivery already has a stable draft identity")
     if record.snapshot.sync_id != normalized_sync or record.snapshot.note_target != normalized_target:
         raise StrongZeroReconciliationError("durable delivery identity mismatch")
+    if current_snapshot != record.snapshot:
+        raise StrongZeroReconciliationError(
+            "current delivery snapshot differs from ambiguous attempt"
+        )
 
     digest = _evidence_digest(safe_census)
     category = f"{_CATEGORY_PREFIX}:{digest}"
