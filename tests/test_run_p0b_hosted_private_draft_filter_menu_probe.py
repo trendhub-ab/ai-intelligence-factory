@@ -18,11 +18,22 @@ class P0BHostedPrivateDraftFilterMenuProbeTests(unittest.TestCase):
         self.assertIn("!= 1", source)
         self.assertEqual(source.count(".click("), 1)
 
+    def test_actionable_draft_candidates_are_role_bounded_and_read_only(self) -> None:
+        self.assertEqual(
+            probe.ACTIONABLE_ROLES,
+            ("button", "link", "menuitem", "menuitemradio", "option", "radio"),
+        )
+        source = inspect.getsource(probe._visible_exact_actionable_role_counts)
+        self.assertIn("get_by_role", source)
+        self.assertIn("exact=True", source)
+        self.assertNotIn(".click(", source)
+
     def test_probe_only_observes_draft_option_after_opening_status_menu(self) -> None:
         source = inspect.getsource(probe.probe)
         self.assertIn("ARTICLE_LIST_URL", source)
         self.assertIn("_open_status_filter_menu", source)
         self.assertIn("_visible_exact_text_count", source)
+        self.assertIn("_visible_exact_actionable_role_counts", source)
         self.assertIn('"下書き"', source)
         self.assertIn("_looks_logged_out", source)
         for forbidden in (".fill(", ".type(", ".press(", "editor.note.com/new"):
@@ -36,6 +47,7 @@ class P0BHostedPrivateDraftFilterMenuProbeTests(unittest.TestCase):
                 "authenticated",
                 "status_filter_control_count",
                 "draft_filter_option_count",
+                "draft_actionable_role_counts",
                 "final_route_shape",
                 "zero_model_calls",
                 "mutation_count",
