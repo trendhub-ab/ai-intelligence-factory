@@ -107,9 +107,10 @@ def test_retry_live_duplicate_proof_uses_ordinary_path_with_zero_create_and_same
     cleanup = source.index('name: Remove ephemeral retry files')
     block = source[duplicate:cleanup]
     assert 'delivery_runtime.create_or_resume_delivery(' in block
-    assert 'browser_create_count = 0' in block
-    assert 'browser_create_count += 1' in block
-    assert 'if browser_create_count != 0:' in block
+    assert 'browser_create_count = [0]' in block
+    assert 'browser_create_count[0] += 1' in block
+    assert 'if browser_create_count[0] != 0:' in block
+    assert 'nonlocal browser_create_count' not in block
     assert 'if after.draft_id != before_draft_id:' in block
     assert 'DeliveryState.QUEUE_CONFIRMED' in block
 
