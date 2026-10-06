@@ -1,4 +1,5 @@
 name: P0-B Strong-Zero Retry TDD [IMPL]
+# checkpoint: task1-evidence-green
 
 on:
   push:
