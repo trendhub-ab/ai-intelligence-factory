@@ -225,6 +225,7 @@ NON_MEMBER_MODULES = frozenset((
     "run_p0b_hosted_private_draft_filter_navigation_probe.py",  # P0-B read-only UI probe, not reader/customer copy
     "run_p0b_hosted_private_draft_shape_probe.py",  # P0-B read-only UI probe, not reader/customer copy
     "run_p0b_strong_zero_reconciliation.py",  # P0-B operational reconciliation, not reader/customer copy
+    "run_p0b_strong_zero_retry.py",  # P0-B bounded retry orchestration, not reader/customer copy
     "run_p0b_hosted_private_draft_filter_menu_probe.py",  # P0-B read-only UI probe, not reader/customer copy
     "note_draft_automation.py",
     "note_eyecatch_persistence.py",

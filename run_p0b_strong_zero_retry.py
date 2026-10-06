@@ -1,7 +1,4 @@
-from pathlib import Path
-
-module = Path("run_p0b_strong_zero_retry.py")
-module.write_text(r'''#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Bounded strong-zero retry orchestration for P0-B durable delivery."""
 from __future__ import annotations
 
@@ -158,14 +155,3 @@ def reconcile_expired_retry_intent(
         category=f"{EVIDENCE_CATEGORY_PREFIX}{digest}",
         expected_version=record.state_version,
     )
-''', encoding="utf-8")
-
-contract = Path("member_customer_surface_contract.py")
-text = contract.read_text(encoding="utf-8")
-name = '    "run_p0b_strong_zero_retry.py",  # P0-B bounded retry orchestration, not reader/customer copy\n'
-marker = '    "run_p0b_strong_zero_reconciliation.py",  # P0-B operational reconciliation, not reader/customer copy\n'
-if name not in text:
-    if marker not in text:
-        raise SystemExit("P0-B classification marker not found")
-    text = text.replace(marker, marker + name, 1)
-    contract.write_text(text, encoding="utf-8")

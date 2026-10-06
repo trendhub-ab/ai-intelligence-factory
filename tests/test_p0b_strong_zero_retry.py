@@ -1,7 +1,4 @@
-from pathlib import Path
-
-path = Path("tests/test_p0b_strong_zero_retry.py")
-path.write_text(r'''from __future__ import annotations
+from __future__ import annotations
 
 import sqlite3
 from dataclasses import replace
@@ -331,4 +328,3 @@ def test_expired_retry_intent_blocks_unsafe_reconciliation(tmp_path, case):
     current = ledger.get_active_by_logical_key(retry.logical_key)
     assert current is not None
     assert current.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED
-''', encoding="utf-8")
