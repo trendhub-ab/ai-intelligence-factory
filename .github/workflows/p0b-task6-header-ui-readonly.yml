@@ -23,54 +23,50 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt playwright
-          python -m playwright install --with-deps chromium
-      - name: Inspect new-editor frame structure without mutation
+          python -m playwright install chromium
+      - name: Diagnose editor hydration without mutation
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           PYTHONPATH: .
         run: |
           python - <<'PY'
           import json
+          from collections import Counter
           from urllib.parse import urlparse
           import note_draft_automation as note
           from playwright.sync_api import sync_playwright
 
-          def route(url):
-              p=urlparse(str(url or ''))
-              path=p.path or '/'
-              if path.rstrip('/') in ('/new','/notes/new'): kind='new'
-              elif '/edit' in path: kind='edit'
-              elif any(x in path.lower() for x in ('login','signin','signup')): kind='auth'
-              else: kind='other'
-              return {'host':p.hostname or '', 'kind':kind, 'path_depth':len([x for x in path.split('/') if x])}
-
+          def host(url):
+              return urlparse(str(url or '')).hostname or ''
           storage=note._decode_storage_state()
+          failed=[]; page_errors=[]; console_types=Counter(); response_status=Counter(); resource_types=Counter()
           try:
               with sync_playwright() as p:
                   browser=p.chromium.launch(headless=True,args=['--lang=ja-JP'])
                   context=browser.new_context(storage_state=str(storage),locale='ja-JP',timezone_id='Asia/Tokyo',viewport={'width':1440,'height':1100})
                   page=context.new_page(); page.set_default_timeout(15000)
+                  page.on('requestfailed', lambda r: failed.append({'host':host(r.url),'type':r.resource_type,'failure':str(r.failure or '')[:120]}))
+                  page.on('pageerror', lambda e: page_errors.append(str(e)[:180]))
+                  page.on('console', lambda m: console_types.update([m.type]))
+                  page.on('response', lambda r: (response_status.update([f'{r.status}:{host(r.url)}']), resource_types.update([r.request.resource_type])))
                   try:
-                      response=page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
-                      page.wait_for_timeout(8000)
-                      frames=[]
-                      for f in page.frames:
-                          counts={}
-                          for key,sel in {
-                              'inputs':'input','textareas':'textarea','editable':'[contenteditable="true"]',
-                              'buttons':'button','role_buttons':'[role="button"]','file_inputs':'input[type="file"]'
-                          }.items():
-                              try: counts[key]=int(f.locator(sel).count())
-                              except Exception: counts[key]=-1
-                          try: body_len=len(str(f.locator('body').inner_text(timeout=1000) or ''))
-                          except Exception: body_len=-1
-                          frames.append({'route':route(f.url),'counts':counts,'body_text_len':body_len})
-                      try: html_len=len(page.content())
-                      except Exception: html_len=-1
-                      print('P0B_EDITOR_FRAME_UI='+json.dumps({
-                          'response_status': None if response is None else response.status,
-                          'page_route':route(page.url),'frame_count':len(page.frames),'frames':frames,
-                          'html_len':html_len,'logged_out':note._looks_logged_out(page),
+                      nav=page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
+                      page.wait_for_timeout(10000)
+                      scripts=page.locator('script')
+                      script_hosts=Counter()
+                      for i in range(min(scripts.count(),100)):
+                          src=scripts.nth(i).get_attribute('src') or ''
+                          script_hosts.update([host(src) if src else 'inline'])
+                      print('P0B_EDITOR_HYDRATION='+json.dumps({
+                          'nav_status':None if nav is None else nav.status,
+                          'page_host':host(page.url),'html_len':len(page.content()),
+                          'body_text_len':len(page.locator('body').inner_text(timeout=1000) or ''),
+                          'script_count':scripts.count(),'script_hosts':dict(script_hosts),
+                          'request_failures':failed[:30],'page_errors':page_errors[:20],
+                          'console_types':dict(console_types),
+                          'response_status_by_host':dict(response_status),
+                          'resource_types':dict(resource_types),
+                          'logged_out':note._looks_logged_out(page),
                           'note_mutation_count':0,'model_calls':0,'public_release':False,
                       },sort_keys=True))
                   finally:
