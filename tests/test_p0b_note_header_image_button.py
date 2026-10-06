@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import note_draft_automation as note
+import run194_note_current_contract as current_contract
 
 
 class _Button:
@@ -148,7 +149,7 @@ def test_crop_close_wait_binds_original_dialog_element_before_save_retargets_fir
     dialog = _DynamicDialogLocator(bound)
     page = _BoundWaitPage()
 
-    note._wait_for_bound_dialog_hidden(page, dialog, timeout_ms=15000)
+    current_contract._wait_for_bound_dialog_hidden(page, dialog, timeout_ms=15000)
 
     assert dialog.element_handle_calls == [2500]
     assert len(page.wait_calls) == 1
