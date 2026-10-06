@@ -51,8 +51,8 @@ def test_retry_live_installs_bounded_dependencies_chromium_and_wif_before_runtim
         assert dependency in block
     assert 'python -m playwright install --with-deps chromium' in source
     assert 'google-github-actions/auth@v3' in source
-    assert 'workload_identity_provider: $${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}'.replace('$$', '$') in source
-    assert 'service_account: $${{ vars.GCP_SERVICE_ACCOUNT }}'.replace('$$', '$') in source
+    assert 'workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}' in source
+    assert 'service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}' in source
 
 
 def test_retry_live_pins_manual_ledger_candidate_before_ready_validation_and_fresh_census():
