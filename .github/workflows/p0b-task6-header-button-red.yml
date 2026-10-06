@@ -1,0 +1,23 @@
+name: P0-B Task 6 Header Button RED [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task6-header-button-red.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install pytest requests
+      - run: python -m pytest -q tests/test_p0b_note_header_image_button.py
