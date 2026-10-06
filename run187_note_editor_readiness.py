@@ -76,7 +76,10 @@ def _is_editor_url(url: str) -> bool:
     host = (parsed.hostname or "").lower()
     if host not in {"note.com", "www.note.com", "editor.note.com"}:
         return False
-    return bool(_EDITOR_PATH_RE.match(parsed.path or "/"))
+    path = parsed.path or "/"
+    if path == "/new":
+        return host == "editor.note.com"
+    return bool(_EDITOR_PATH_RE.match(path))
 
 
 def _ranked_title(page: Any) -> Any | None:
