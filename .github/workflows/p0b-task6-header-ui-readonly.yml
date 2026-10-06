@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt playwright
           python -m playwright install --with-deps chromium
-      - name: Inspect current editor DOM without mutation or legacy selectors
+      - name: Classify current note new route without mutation
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           PYTHONPATH: .
@@ -34,29 +34,14 @@ jobs:
           import note_draft_automation as note
           from playwright.sync_api import sync_playwright
 
-          def clean(value, limit=100):
+          def clean(value, limit=500):
               return re.sub(r'\s+', ' ', str(value or '')).strip()[:limit]
 
           def attr(locator, name):
               try:
-                  return clean(locator.get_attribute(name))
+                  return clean(locator.get_attribute(name), 120)
               except Exception:
                   return ''
-
-          def visible(locator):
-              try:
-                  return bool(locator.is_visible(timeout=120))
-              except Exception:
-                  return False
-
-          def box(locator):
-              try:
-                  raw = locator.bounding_box()
-              except Exception:
-                  raw = None
-              if not raw:
-                  return None
-              return {k: round(float(raw.get(k, 0.0)), 1) for k in ('x','y','width','height')}
 
           storage = note._decode_storage_state()
           try:
@@ -67,68 +52,41 @@ jobs:
                       viewport={'width': 1440, 'height': 1100},
                   )
                   page = context.new_page()
-                  page.set_default_timeout(15000)
                   try:
-                      page.goto(note.NOTE_NEW_URL, wait_until='domcontentloaded', timeout=60000)
-                      page.wait_for_timeout(3000)
-                      if note._looks_logged_out(page):
-                          raise SystemExit('note_auth_inactive')
-
-                      results=[]
-                      loc=page.locator('input, textarea, [contenteditable="true"], [role="textbox"], button, [role="button"], label')
-                      for i in range(min(loc.count(), 260)):
-                          item=loc.nth(i)
-                          if not visible(item):
-                              continue
-                          b=box(item)
-                          if not b:
-                              continue
-                          try:
-                              tag=clean(item.evaluate('el => el.tagName.toLowerCase()'), 30)
-                          except Exception:
-                              tag=''
-                          try:
-                              text=clean(item.inner_text(timeout=120), 80)
-                          except Exception:
-                              text=''
-                          meta={
-                              'tag': tag,
-                              'box': b,
-                              'text': text,
-                              'aria': attr(item,'aria-label'),
-                              'placeholder': attr(item,'placeholder'),
-                              'title': attr(item,'title'),
-                              'testid': attr(item,'data-testid'),
-                              'name': attr(item,'name'),
-                              'type': attr(item,'type'),
-                              'role': attr(item,'role'),
-                              'contenteditable': attr(item,'contenteditable'),
-                          }
-                          semantic=' '.join(str(meta[k]) for k in ('text','aria','placeholder','title','testid','name','role')).lower()
-                          interesting = (
-                              float(b['y']) < 650
-                              or any(t in semantic for t in ('画像','見出し','タイトル','ヘッダー','アイキャッチ','cover','header','image','photo','upload','title'))
-                              or meta['contenteditable'] == 'true'
-                          )
-                          if interesting:
-                              results.append(meta)
-
-                      files=[]
-                      inp=page.locator('input[type="file"]')
-                      for i in range(min(inp.count(),20)):
-                          item=inp.nth(i)
-                          files.append({
-                              'visible': visible(item),
-                              'accept': attr(item,'accept'),
-                              'aria': attr(item,'aria-label'),
-                              'name': attr(item,'name'),
-                              'testid': attr(item,'data-testid'),
+                      response = page.goto(note.NOTE_NEW_URL, wait_until='domcontentloaded', timeout=60000)
+                      page.wait_for_timeout(5000)
+                      frame_rows=[]
+                      for frame in page.frames:
+                          frame_rows.append({
+                              'name': clean(frame.name, 80),
+                              'url': clean(frame.url, 180),
                           })
-
-                      print('P0B_EDITOR_UI=' + json.dumps({
-                          'url_path': clean(page.url.split('note.com')[-1], 80),
-                          'elements': results[:120],
-                          'file_inputs': files,
+                      iframe_rows=[]
+                      frames=page.locator('iframe')
+                      for i in range(min(frames.count(),20)):
+                          item=frames.nth(i)
+                          iframe_rows.append({
+                              'src': attr(item,'src'),
+                              'title': attr(item,'title'),
+                              'name': attr(item,'name'),
+                          })
+                      body_text=''
+                      try:
+                          body_text=clean(page.locator('body').inner_text(timeout=3000), 600)
+                      except Exception:
+                          pass
+                      print('P0B_NEW_ROUTE=' + json.dumps({
+                          'status': response.status if response else None,
+                          'url': clean(page.url, 180),
+                          'document_title': clean(page.title(), 160),
+                          'body_text': body_text,
+                          'frames': frame_rows,
+                          'iframes': iframe_rows,
+                          'contenteditable_count': page.locator('[contenteditable="true"]').count(),
+                          'textbox_count': page.locator('[role="textbox"]').count(),
+                          'input_count': page.locator('input').count(),
+                          'textarea_count': page.locator('textarea').count(),
+                          'button_count': page.locator('button').count(),
                           'note_mutation_count': 0,
                           'model_calls': 0,
                           'public_release': False,
