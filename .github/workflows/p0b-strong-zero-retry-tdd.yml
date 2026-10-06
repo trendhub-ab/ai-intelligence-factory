@@ -45,6 +45,7 @@ jobs:
       - name: Focused P0-B baseline
         run: >-
           python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
           tests/test_note_delivery_ledger.py
           tests/test_note_delivery_gcs.py
           tests/test_note_delivery_runtime.py
