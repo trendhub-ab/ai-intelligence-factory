@@ -1,0 +1,88 @@
+name: P0-B Task 5 Hosted Retry Workflow TDD [IMPL ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task5-strong-zero-retry-live-tdd.yml'
+      - '.github/tdd/p0b_task5_add_tests.txt'
+      - '.github/tdd/p0b_task5_add_prod.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  task5-live-workflow-tdd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+
+      - name: Add Task 5 tests first
+        run: python .github/tdd/p0b_task5_add_tests.txt
+
+      - name: Verify Task 5 workflow contract is RED before implementation
+        run: |
+          set +e
+          python -m pytest -q tests/test_p0b_strong_zero_retry_live_workflow.py > /tmp/task5-red.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/task5-red.log
+          if [ "$rc" -eq 0 ]; then
+            echo '::error::Expected RED before Task 5 workflow implementation, but tests passed.'
+            exit 1
+          fi
+          grep -q 'hosted strong-zero retry workflow must exist' /tmp/task5-red.log
+
+      - name: Implement minimal hosted one-shot retry workflow
+        run: python .github/tdd/p0b_task5_add_prod.txt
+
+      - name: Verify focused Task 5 GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_p0b_strong_zero_retry_live_workflow.py
+          tests/test_p0b_strong_zero_retry.py
+
+      - name: Verify workflow reference guard GREEN
+        run: python workflow_reference_guard.py
+
+      - name: Remove transient Task 5 scaffolding before repository-wide validation
+        run: |
+          rm .github/tdd/p0b_task5_add_tests.txt
+          rm .github/tdd/p0b_task5_add_prod.txt
+          rm .github/workflows/p0b-task5-strong-zero-retry-live-tdd.yml
+
+      - name: Verify full repository and guards before commit
+        run: |
+          set -euo pipefail
+          python -m pytest tests -q
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check origin/main...HEAD
+
+      - name: Commit Task 5 only after all GREEN checks
+        env:
+          AIIF_RUNTIME_STATE_BRANCH: runtime-state
+          GEMINI_COUNTER_BRANCH: runtime-state
+          EYECATCH_GITHUB_BRANCH: runtime-state
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add .github/workflows/p0b-strong-zero-retry-live.yml .github/workflows/p0b-offline-verification.yml tests/test_p0b_strong_zero_retry_live_workflow.py
+          git add -u .github/tdd/p0b_task5_add_tests.txt .github/tdd/p0b_task5_add_prod.txt .github/workflows/p0b-task5-strong-zero-retry-live-tdd.yml
+          git commit -m 'ci: add hosted one-shot strong-zero retry proof'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
