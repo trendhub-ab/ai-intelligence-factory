@@ -1,0 +1,124 @@
+name: P0-B Task 6 Post-Failure Classification [READ-ONLY]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task6-postfailure-classify.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      NOTE_DELIVERY_LEDGER_BACKEND: gcs
+      NOTE_DELIVERY_LEDGER_PREFIX: delivery/v1
+      NOTE_TARGET_IDENTITY: trendhub_biz
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install read-only dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Authenticate to private ledger with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Resolve private durable-ledger bucket
+        run: |
+          set -euo pipefail
+          bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
+          test -n "$bucket"
+          echo "::add-mask::$bucket"
+          echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
+      - name: Resolve same exact Ready identity without model use
+        env:
+          NOTE_DRAFT_CONFIRM: CREATE_NOTE_DRAFT
+          NOTE_TARGET_SYNC_ID: ''
+          NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/p0b-postfailure-preflight.json
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+        run: |
+          set -euo pipefail
+          python run199_note_vm_preflight.py
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['NOTE_DRAFT_RESULT_FILE']).read_text(encoding='utf-8'))
+          if result.get('zero_gemini_calls') is not True:
+              raise SystemExit('classification preflight used model calls')
+          if result.get('should_start_vm') is not True:
+              raise SystemExit('expected the same eligible Ready candidate')
+          selected = str(result.get('selected_sync_id') or '').strip().lower()
+          if len(selected) != 32:
+              raise SystemExit('invalid selected identity')
+          print(selected)
+          PY
+          )"
+          echo "::add-mask::$selected"
+          echo "NOTE_TARGET_SYNC_ID=$selected" >> "$GITHUB_ENV"
+      - name: Read durable state after failed create attempt
+        run: |
+          python - <<'PY'
+          import os
+          import note_delivery_runtime as runtime
+
+          sync_id = str(os.environ.get('NOTE_TARGET_SYNC_ID') or '').strip().lower()
+          target = str(os.environ.get('NOTE_TARGET_IDENTITY') or '').strip()
+          ledger = runtime.delivery_ledger_from_environment()
+          record = ledger.get_active_by_logical_key(runtime._logical_key_for_identity(sync_id, target))
+          if record is None:
+              raise SystemExit('durable record unavailable')
+          print('P0B_POSTFAIL_DURABLE_STATE=' + record.state.value)
+          print('P0B_POSTFAIL_DRAFT_ID_PRESENT=' + ('true' if str(record.draft_id or '').strip() else 'false'))
+          print('P0B_POSTFAIL_CATEGORY=' + str(record.conflict_category or ''))
+          print('P0B_POSTFAIL_STATE_VERSION=' + str(record.state_version))
+          PY
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run fresh authenticated private-draft census
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          P0B_HOSTED_DRAFT_CENSUS_RESULT_FILE: ${{ runner.temp }}/p0b-postfailure-census.json
+        run: python run_p0b_hosted_private_draft_census.py
+      - name: Classify census without mutation
+        env:
+          CENSUS_RESULT_FILE: ${{ runner.temp }}/p0b-postfailure-census.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from note_delivery_strong_zero import validate_strong_zero_census
+
+          raw = json.loads(Path(os.environ['CENSUS_RESULT_FILE']).read_text(encoding='utf-8'))
+          print('P0B_POSTFAIL_CENSUS_DECISION=' + str(raw.get('decision') or ''))
+          print('P0B_POSTFAIL_EXACT_TARGET_COUNT=' + str(raw.get('exact_target_count')))
+          print('P0B_POSTFAIL_SUSPICIOUS_BLANK_COUNT=' + str(raw.get('suspicious_blank_count')))
+          print('P0B_POSTFAIL_UNREADABLE_COUNT=' + str(raw.get('unreadable_count')))
+          print('P0B_POSTFAIL_MUTATION_COUNT=' + str(raw.get('mutation_count')))
+          print('P0B_POSTFAIL_ZERO_MODEL_CALLS=' + str(raw.get('zero_model_calls')).lower())
+          if raw.get('decision') == 'strong_zero':
+              validate_strong_zero_census(raw)
+          PY
+      - name: Cleanup ephemeral files
+        if: always()
+        run: |
+          rm -f \
+            "${{ runner.temp }}/p0b-postfailure-preflight.json" \
+            "${{ runner.temp }}/p0b-postfailure-census.json"
