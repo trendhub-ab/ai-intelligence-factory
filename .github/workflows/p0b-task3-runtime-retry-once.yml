@@ -1,4 +1,5 @@
 name: P0-B Task 3 Reconciled Retry Runtime TDD [IMPL ONE-SHOT]
+# checkpoint: task3-fixture-corrected
 
 on:
   push:
