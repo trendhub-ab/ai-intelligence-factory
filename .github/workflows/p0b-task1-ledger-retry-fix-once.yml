@@ -29,13 +29,22 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import base64, re
+          import base64
+
           source = Path('.github/workflows/p0b-task1-ledger-retry-once.yml').read_text(encoding='utf-8')
-          pairs = re.findall(r"printf '%s' '([^']+)' \\| base64 -d > (/tmp/apply_task1_(?:tests|prod)\\.py)", source)
-          if len(pairs) != 2:
-              raise SystemExit(f'expected 2 embedded scripts, found {len(pairs)}')
-          for payload, destination in pairs:
-              Path(destination).write_bytes(base64.b64decode(payload))
+          found = {}
+          prefix = "printf '%s' '"
+          for line in source.splitlines():
+              line = line.strip()
+              for label in ('tests', 'prod'):
+                  suffix = f"' | base64 -d > /tmp/apply_task1_{label}.py"
+                  if line.startswith(prefix) and line.endswith(suffix):
+                      payload = line[len(prefix):-len(suffix)]
+                      found[label] = payload
+          if set(found) != {'tests', 'prod'}:
+              raise SystemExit(f'expected tests/prod embedded scripts, found {sorted(found)}')
+          for label, payload in found.items():
+              Path(f'/tmp/apply_task1_{label}.py').write_bytes(base64.b64decode(payload))
           PY
           python /tmp/apply_task1_tests.py
           python - <<'PY'
