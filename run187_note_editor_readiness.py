@@ -78,7 +78,7 @@ def _is_editor_url(url: str) -> bool:
         return False
     path = parsed.path or "/"
     if path == "/new":
-        return True
+        return host == "editor.note.com"
     return bool(_EDITOR_PATH_RE.match(path))
 
 
