@@ -1,0 +1,76 @@
+name: P0-B Hosted Private Draft Filter Navigation Probe [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-hosted-b01-recovery-20261006
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0b-hosted-private-draft-filter-navigation-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install probe dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+      - name: Run navigation-probe contract tests
+        run: python -m unittest tests.test_run_p0b_hosted_private_draft_filter_navigation_probe -v
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Select proven draft filter and observe list without content mutation
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_BROWSER_AUTH_MODE: storage_state
+          NOTE_BROWSER_HEADLESS: '1'
+          P0B_HOSTED_DRAFT_FILTER_NAV_RESULT_FILE: ${{ runner.temp }}/p0b-hosted-draft-filter-nav.json
+        run: python run_p0b_hosted_private_draft_filter_navigation_probe.py
+      - name: Summarize safe aggregate result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b-hosted-draft-filter-nav.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          allowed = {
+              'status', 'authenticated', 'status_filter_control_count',
+              'draft_filter_selected', 'draft_filter_role', 'final_route_shape',
+              'visible_anchor_count', 'anchor_route_shape_counts',
+              'draft_marker_count', 'published_marker_count',
+              'ui_navigation_click_count', 'zero_model_calls', 'mutation_count',
+          }
+          if set(result) != allowed:
+              raise SystemExit('navigation probe returned unsafe or unexpected fields')
+          if result.get('draft_filter_selected') is not True or result.get('draft_filter_role') != 'menuitemradio':
+              raise SystemExit('navigation probe did not prove the expected draft filter selection')
+          if result.get('ui_navigation_click_count') != 2:
+              raise SystemExit('navigation probe click budget drifted')
+          if result.get('mutation_count') != 0 or result.get('zero_model_calls') is not True:
+              raise SystemExit('navigation probe no-content-mutation contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B hosted draft-filter navigation probe\n')
+              fh.write(f"- status: `{result.get('status')}`\n")
+              fh.write(f"- authenticated: `{result.get('authenticated')}`\n")
+              fh.write(f"- draft filter selected: `{result.get('draft_filter_selected')}`\n")
+              fh.write(f"- draft filter role: `{result.get('draft_filter_role')}`\n")
+              fh.write(f"- final route shape: `{result.get('final_route_shape')}`\n")
+              fh.write(f"- visible anchors: `{result.get('visible_anchor_count')}`\n")
+              fh.write(f"- draft markers: `{result.get('draft_marker_count')}`\n")
+              fh.write(f"- published markers: `{result.get('published_marker_count')}`\n")
+              fh.write(f"- anchor route shapes: `{json.dumps(result.get('anchor_route_shape_counts') or {}, ensure_ascii=False, sort_keys=True)}`\n")
+              fh.write('- UI navigation clicks: `2`\n')
+              fh.write('- content mutation count: `0`\n')
+              fh.write('- model calls: `0`\n')
+          PY
