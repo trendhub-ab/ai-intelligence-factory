@@ -1,4 +1,4 @@
-name: P0-B Task 6 Retry Candidate Diagnostic [ONE-SHOT]
+name: P0-B Task 6 Ambiguous Run Diagnostic [ONE-SHOT]
 
 on:
   push:
@@ -14,61 +14,58 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       NOTE_DELIVERY_LEDGER_BACKEND: gcs
       NOTE_DELIVERY_LEDGER_PREFIX: delivery/v1
       NOTE_TARGET_IDENTITY: trendhub_biz
-      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
-      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: pip install -r requirements.txt google-cloud-storage
+      - name: Install read-only diagnostic dependencies
+        run: |
+          pip install -r requirements.txt google-cloud-storage playwright
+          python -m playwright install chromium
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - name: Classify durable state and exact Ready preflight without mutation
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      - name: Bind sole durable record without mutation
         run: |
           set -euo pipefail
           bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
           echo "::add-mask::$bucket"
           export NOTE_DELIVERY_LEDGER_BUCKET="$bucket"
-          python - <<'PY'
+          echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
+          selected="$(python - <<'PY'
           import json
           import note_delivery_runtime as runtime
-          import run199_note_vm_preflight as pre
-          from note_delivery_ledger import DeliveryState
-          from note_delivery_strong_zero import StrongZeroEvidenceError, parse_strong_zero_evidence_category
-
           ledger=runtime.delivery_ledger_from_environment()
           rows=[]
-          states={}
+          summary={}
           for blob in ledger.bucket.list_blobs(prefix=f"{ledger.prefix}/records/"):
               record,_=ledger._decode_envelope(blob.download_as_text())
-              states[record.state.value]=states.get(record.state.value,0)+1
-              if record.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED or str(record.draft_id or '').strip():
-                  continue
-              try:
-                  parse_strong_zero_evidence_category(str(record.conflict_category or ''))
-              except StrongZeroEvidenceError:
-                  continue
-              rows.append(str(record.snapshot.sync_id or '').strip().lower())
-          result={"manual_strong_zero_no_draft_count":len(rows),"states":states,"note_mutation_count":0,"model_calls":0}
-          if len(rows)==1 and len(rows[0])==32:
-              try:
-                  p=pre.preflight(rows[0])
-                  result.update({"preflight_status":str(p.get('status') or ''),"should_start_vm":p.get('should_start_vm') is True,"zero_gemini_calls":p.get('zero_gemini_calls') is True})
-              except Exception as exc:
-                  result.update({"preflight_exception_type":type(exc).__name__,"preflight_exception":str(exc)[:240]})
-          print('P0B_CANDIDATE_DIAGNOSTIC='+json.dumps(result,ensure_ascii=False,sort_keys=True))
+              rows.append(record)
+              summary[record.state.value]=summary.get(record.state.value,0)+1
+          if len(rows)!=1:
+              raise SystemExit(f'expected one durable record; count={len(rows)}')
+          r=rows[0]
+          print(str(r.snapshot.sync_id or '').strip().lower())
+          print('P0B_RUN9_DURABLE_STATE='+json.dumps({"state":r.state.value,"draft_id_present":bool(str(r.draft_id or '').strip()),"states":summary,"note_mutation_count":0,"model_calls":0},sort_keys=True),file=__import__('sys').stderr)
           PY
-
-# reverify: contract-neutral-header-fallback
+          )"
+          echo "::add-mask::$selected"
+          echo "NOTE_TARGET_SYNC_ID=$selected" >> "$GITHUB_ENV"
+      - name: Fresh private-draft census without mutation
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          P0B_HOSTED_DRAFT_CENSUS_RESULT_FILE: ${{ runner.temp }}/census.json
+        run: python run_p0b_hosted_private_draft_census.py
+      - name: Cleanup
+        if: always()
+        run: rm -f "${{ runner.temp }}/census.json"
