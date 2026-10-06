@@ -1,0 +1,59 @@
+name: P0-B Editor Bundle Inspect [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-editor-bundle-inspect.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Inspect GET-only public editor bundles
+        run: |
+          python - <<'PY'
+          import json, re, urllib.request
+          from urllib.parse import urljoin, urlparse
+
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
+          def get(url):
+              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'text/html,application/javascript,*/*'})
+              with urllib.request.urlopen(req,timeout=25) as resp:
+                  return resp.read().decode('utf-8','replace')
+
+          html=get('https://editor.note.com/new')
+          scripts=[]
+          for src in re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I):
+              url=urljoin('https://editor.note.com/new',src)
+              if url not in scripts:
+                  scripts.append(url)
+
+          patterns=['imageAdd','note_eyecatch','eyecatch','画像を追加']
+          hits=[]
+          for url in scripts:
+              try:
+                  text=get(url)
+              except Exception:
+                  continue
+              for token in patterns:
+                  start=0
+                  count=0
+                  while count<8:
+                      idx=text.find(token,start)
+                      if idx<0: break
+                      excerpt=re.sub(r'\s+',' ',text[max(0,idx-700):idx+len(token)+1000])
+                      hits.append({'script':urlparse(url).path[-160:],'token':token,'excerpt':excerpt[:1800]})
+                      start=idx+len(token)
+                      count+=1
+          print('P0B_IMAGEADD_IMPL='+json.dumps({'hits':hits[:60],'script_count':len(scripts),'request_type':'GET-only','note_mutation_count':0},ensure_ascii=False,sort_keys=True))
+          PY
