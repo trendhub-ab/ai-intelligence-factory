@@ -1,0 +1,36 @@
+name: P0-B Task 6 Test Fix Verification [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task6-testfix-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests google-cloud-storage playwright pillow
+      - name: Verify fixed live workflow contract
+        run: >-
+          python -m pytest -q
+          tests/test_p0b_strong_zero_retry_live_workflow.py
+          tests/test_p0b_strong_zero_retry.py
+      - name: Verify repository guards
+        run: |
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
