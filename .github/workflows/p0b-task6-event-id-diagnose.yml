@@ -1,0 +1,52 @@
+name: P0-B Task 6 Event ID Diagnose [READ ONLY]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task6-event-id-diagnose.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      NOTE_DELIVERY_LEDGER_BACKEND: gcs
+      NOTE_DELIVERY_LEDGER_PREFIX: delivery/v1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -q google-cloud-storage
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Read safe event run IDs
+        run: |
+          bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
+          export NOTE_DELIVERY_LEDGER_BUCKET="$bucket"
+          python - <<'PY'
+          import json
+          import note_delivery_runtime as runtime
+          ledger=runtime.delivery_ledger_from_environment()
+          out=[]
+          for blob in ledger.bucket.list_blobs(prefix=f"{ledger.prefix}/records/"):
+              _record,events=ledger._decode_envelope(blob.download_as_text())
+              for event in events:
+                  if str(event.get('category') or '').startswith('strong_zero_retry_authorized:') or str(event.get('category') or '') == 'creation_result_ambiguous':
+                      out.append({
+                          'state_version': int(event.get('state_version') or 0),
+                          'new_state': str(event.get('new_state') or ''),
+                          'category_kind': 'retry_authorized' if str(event.get('category') or '').startswith('strong_zero_retry_authorized:') else 'creation_ambiguous',
+                          'run_correlation_id': str(event.get('run_correlation_id') or ''),
+                      })
+          print('P0B_SAFE_EVENT_RUN_IDS=' + json.dumps(out, sort_keys=True))
+          PY
