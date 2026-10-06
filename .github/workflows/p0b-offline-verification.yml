@@ -14,6 +14,8 @@ on:
       - 'run194_note_persistent_cloud.py'
       - 'run194_note_hosted.py'
       - 'run199_note_vm_preflight.py'
+      - 'run_p0b_strong_zero_retry.py'
+      - '.github/workflows/p0b-strong-zero-retry-live.yml'
       - '.github/workflows/note-create-draft.yml'
       - '.github/workflows/p0b-offline-verification.yml'
       - 'tests/**'
