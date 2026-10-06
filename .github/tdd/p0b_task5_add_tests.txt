@@ -1,0 +1,133 @@
+from pathlib import Path
+
+path = Path("tests/test_p0b_strong_zero_retry_live_workflow.py")
+path.write_text(r'''from __future__ import annotations
+
+from pathlib import Path
+
+
+WORKFLOW = Path('.github/workflows/p0b-strong-zero-retry-live.yml')
+OFFLINE = Path('.github/workflows/p0b-offline-verification.yml')
+TRIGGER = Path('ops/p0b-strong-zero-retry.trigger')
+
+
+def _source() -> str:
+    assert WORKFLOW.is_file(), 'hosted strong-zero retry workflow must exist'
+    return WORKFLOW.read_text(encoding='utf-8')
+
+
+def test_retry_live_is_exact_marker_only_hosted_linux_contract():
+    source = _source()
+    lower = source.lower()
+    assert 'name: P0-B Strong-Zero Retry Live [OPS ONE-SHOT]' in source
+    assert 'push:' in source
+    assert '- impl/p0b-strong-zero-retry-authority' in source
+    assert "- 'ops/p0b-strong-zero-retry.trigger'" in source
+    assert 'workflow_dispatch:' not in source
+    assert 'runs-on: ubuntu-latest' in source
+    assert 'id-token: write' in source
+    assert 'NOTE_DELIVERY_LEDGER_BACKEND: gcs' in source
+    assert 'NOTE_DELIVERY_LEDGER_PREFIX: delivery/v1' in source
+    forbidden = (
+        'self-hosted',
+        'runs-on: gce',
+        '/home/',
+        'systemd',
+        'useradd',
+        'sudo -u',
+        'uid=',
+        'gid=',
+    )
+    for token in forbidden:
+        assert token not in lower
+    assert TRIGGER.exists() is False
+
+
+def test_retry_live_installs_bounded_dependencies_chromium_and_wif_before_runtime():
+    source = _source()
+    install = source.index('name: Install bounded retry dependencies')
+    auth = source.index('name: Authenticate to private ledger with OIDC')
+    chromium = source.index('name: Install Chromium')
+    census = source.index('name: Run fresh strong-zero census')
+    execute = source.index('name: Execute one bounded reconciled retry')
+    assert install < auth < chromium < census < execute
+    block = source[install:auth].lower()
+    for dependency in ('pytest', 'requests', 'google-cloud-storage', 'playwright', 'pillow'):
+        assert dependency in block
+    assert 'python -m playwright install --with-deps chromium' in source
+    assert 'google-github-actions/auth@v3' in source
+    assert 'workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}' in source
+    assert 'service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}' in source
+
+
+def test_retry_live_pins_one_ready_candidate_and_runs_fresh_census_before_authority():
+    source = _source()
+    candidate = source.index('name: Pin one exact eligible Ready candidate without model use')
+    manual = source.index('name: Require durable manual-reconciliation state before browser setup')
+    census = source.index('name: Run fresh strong-zero census')
+    gate = source.index('name: Rebuild immutable snapshot and strong-zero evidence before authorization')
+    execute = source.index('name: Execute one bounded reconciled retry')
+    assert candidate < manual < census < gate < execute
+    assert 'python run199_note_vm_preflight.py' in source
+    assert "result.get('zero_gemini_calls') is not True" in source
+    assert "result.get('should_start_vm') is not True" in source
+    assert 'python run_p0b_hosted_private_draft_census.py' in source
+    assert 'validate_strong_zero_census(census)' in source
+    assert 'DeliveryState.MANUAL_RECONCILIATION_REQUIRED' in source[manual:execute]
+    assert 'parse_strong_zero_evidence_category(' in source[gate:execute]
+    assert 'prepared.snapshot != record.snapshot' in source[gate:execute]
+    assert "str(record.draft_id or '').strip()" in source[manual:execute]
+
+
+def test_retry_live_invokes_orchestrator_once_and_verifies_queue_confirmed_contract():
+    source = _source()
+    execute = source.index('name: Execute one bounded reconciled retry')
+    verify = source.index('name: Verify durable queue-confirmed result')
+    duplicate = source.index('name: Prove ordinary retry cannot create a duplicate')
+    assert execute < verify < duplicate
+    assert source.count('run_reconciled_retry(') == 1
+    execution = source[execute:verify]
+    assert 'current_snapshot=prepared.snapshot' in execution
+    assert 'expected_version=record.state_version' in execution
+    assert 'run_correlation_id=' in execution
+    verification = source[verify:duplicate]
+    required = (
+        'DeliveryState.QUEUE_CONFIRMED',
+        "str(record.draft_id or '').strip()",
+        'record.last_verified_canonical_hash != record.snapshot.canonical_document_sha256',
+        "str(record.queue_receipt_digest or '').strip()",
+    )
+    for token in required:
+        assert token in verification
+
+
+def test_retry_live_duplicate_proof_uses_ordinary_path_with_zero_create_and_same_identity():
+    source = _source()
+    duplicate = source.index('name: Prove ordinary retry cannot create a duplicate')
+    cleanup = source.index('name: Remove ephemeral retry files')
+    block = source[duplicate:cleanup]
+    assert 'delivery_runtime.create_or_resume_delivery(' in block
+    assert 'browser_create_count = 0' in block
+    assert 'browser_create_count += 1' in block
+    assert 'if browser_create_count != 0:' in block
+    assert 'if after.draft_id != before_draft_id:' in block
+    assert 'DeliveryState.QUEUE_CONFIRMED' in block
+    assert 'creation_authorized' not in block or 'False' in block
+
+
+def test_retry_live_never_publishes_or_calls_models_and_masks_private_identity():
+    source = _source()
+    lower = source.lower()
+    for token in ('gemini', 'openai', 'publish_note(', 'note_publish(', 'workflow_dispatch:'):
+        assert token not in lower
+    assert '::add-mask::$selected' in source
+    assert '::add-mask::$bucket' in source
+    assert 'public release: `false`' in source
+    assert 'model calls: `0`' in source
+
+
+def test_offline_verification_tracks_retry_module_and_live_workflow():
+    source = OFFLINE.read_text(encoding='utf-8')
+    assert "- 'run_p0b_strong_zero_retry.py'" in source
+    assert "- '.github/workflows/p0b-strong-zero-retry-live.yml'" in source
+''', encoding="utf-8")
