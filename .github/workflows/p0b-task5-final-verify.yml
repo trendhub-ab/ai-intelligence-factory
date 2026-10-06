@@ -1,0 +1,45 @@
+name: P0-B Task 5 Final Verification [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task5-final-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Focused Task 5 verification
+        run: >-
+          python -m pytest -q
+          tests/test_p0b_strong_zero_retry_live_workflow.py
+          tests/test_p0b_strong_zero_retry.py
+          tests/test_note_delivery_gcs.py
+          tests/test_note_delivery_ledger.py
+          tests/test_note_delivery_runtime.py
+      - name: Full repository and guards
+        run: |
+          set -euo pipefail
+          python -m pytest tests -q
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check origin/main...HEAD
+      - name: Confirm live marker is absent
+        run: test ! -e ops/p0b-strong-zero-retry.trigger
