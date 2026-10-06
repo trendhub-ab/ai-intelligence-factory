@@ -71,6 +71,32 @@ class _Dialog:
         return _Locator(self.controls)
 
 
+class _BoundElement:
+    pass
+
+
+class _DynamicDialogLocator:
+    def __init__(self, bound_element):
+        self.bound_element = bound_element
+        self.element_handle_calls = []
+
+    def element_handle(self, timeout=0):
+        self.element_handle_calls.append(timeout)
+        return self.bound_element
+
+    def wait_for(self, **kwargs):
+        raise AssertionError("dynamic dialog locator must not be used after crop save")
+
+
+class _BoundWaitPage:
+    def __init__(self):
+        self.wait_calls = []
+
+    def wait_for_function(self, expression, arg=None, timeout=0):
+        self.wait_calls.append((expression, arg, timeout))
+        return True
+
+
 def test_header_button_prefers_existing_semantic_selector():
     semantic = _Button("semantic")
     page = _Page(labeled=[semantic], geometry_index=0, all_buttons=[_Button("geometry")])
@@ -115,3 +141,19 @@ def test_crop_save_control_accepts_exact_aria_label_when_text_is_empty():
 def test_crop_save_control_fails_closed_when_save_control_is_ambiguous():
     dialog = _Dialog([_Button("a", text="保存"), _Button("b", aria_label="保存")])
     assert note._find_crop_save_control(dialog) is None
+
+
+def test_crop_close_wait_binds_original_dialog_element_before_save_retargets_first_locator():
+    bound = _BoundElement()
+    dialog = _DynamicDialogLocator(bound)
+    page = _BoundWaitPage()
+
+    note._wait_for_bound_dialog_hidden(page, dialog, timeout_ms=15000)
+
+    assert dialog.element_handle_calls == [2500]
+    assert len(page.wait_calls) == 1
+    expression, arg, timeout = page.wait_calls[0]
+    assert arg is bound
+    assert timeout == 15000
+    assert "!el.isConnected" in expression
+    assert "getComputedStyle" in expression
