@@ -26,6 +26,7 @@ SAFE_RESULT_KEYS = {
     "anchor_route_shape_counts",
     "draft_marker_count",
     "published_marker_count",
+    "status_filter_control_count",
     "visible_anchor_count",
     "zero_model_calls",
     "mutation_count",
@@ -89,6 +90,23 @@ def _visible_route_shapes(page: Any) -> tuple[int, dict[str, int]]:
     return visible, dict(sorted(route_counts.items()))
 
 
+def _visible_exact_text_count(page: Any, label: str) -> int:
+    """Count visible exact-text nodes without clicking or exposing their surrounding content."""
+    locator = page.get_by_text(label, exact=True)
+    try:
+        count = min(int(locator.count()), 100)
+    except Exception as exc:
+        raise base.NoteDraftError("Could not enumerate exact article-list controls") from exc
+    visible = 0
+    for index in range(count):
+        try:
+            if locator.nth(index).is_visible(timeout=100):
+                visible += 1
+        except Exception:
+            continue
+    return visible
+
+
 def probe() -> dict[str, Any]:
     """Open the article list and return only aggregate, redacted, no-mutation facts."""
     try:
@@ -116,6 +134,7 @@ def probe() -> dict[str, Any]:
 
                 visible_anchor_count, route_counts = _visible_route_shapes(page)
                 body_text = str(page.locator("body").inner_text(timeout=10000) or "")
+                status_filter_control_count = _visible_exact_text_count(page, "公開ステータス")
                 result = {
                     "status": "probe_complete_no_mutation",
                     "authenticated": True,
@@ -123,6 +142,7 @@ def probe() -> dict[str, Any]:
                     "anchor_route_shape_counts": route_counts,
                     "draft_marker_count": body_text.count("下書き"),
                     "published_marker_count": body_text.count("公開"),
+                    "status_filter_control_count": status_filter_control_count,
                     "visible_anchor_count": visible_anchor_count,
                     "zero_model_calls": True,
                     "mutation_count": 0,
