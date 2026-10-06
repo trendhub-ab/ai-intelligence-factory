@@ -55,7 +55,7 @@ def test_retry_live_installs_bounded_dependencies_chromium_and_wif_before_runtim
     assert 'service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}' in source
 
 
-def test_retry_live_pins_one_ready_candidate_and_runs_fresh_census_before_authority():
+def test_retry_live_pins_manual_ledger_candidate_before_ready_validation_and_fresh_census():
     source = _source()
     candidate = source.index('name: Pin one exact eligible Ready candidate without model use')
     manual = source.index('name: Require durable manual-reconciliation state before browser setup')
@@ -63,9 +63,14 @@ def test_retry_live_pins_one_ready_candidate_and_runs_fresh_census_before_author
     gate = source.index('name: Rebuild immutable snapshot and strong-zero evidence before authorization')
     execute = source.index('name: Execute one bounded reconciled retry')
     assert candidate < manual < census < gate < execute
-    assert 'python run199_note_vm_preflight.py' in source
-    assert "result.get('zero_gemini_calls') is not True" in source
-    assert "result.get('should_start_vm') is not True" in source
+    candidate_block = source[candidate:manual]
+    assert 'DeliveryState.MANUAL_RECONCILIATION_REQUIRED' in candidate_block
+    assert 'list_blobs(' in candidate_block
+    assert "str(record.draft_id or '').strip()" in candidate_block
+    assert 'run199_note_vm_preflight.preflight(sync_id)' in candidate_block
+    assert "result.get('zero_gemini_calls') is not True" in candidate_block
+    assert "result.get('should_start_vm') is not True" in candidate_block
+    assert 'len(eligible) != 1' in candidate_block
     assert 'python run_p0b_hosted_private_draft_census.py' in source
     assert 'validate_strong_zero_census(census)' in source
     assert 'DeliveryState.MANUAL_RECONCILIATION_REQUIRED' in source[manual:execute]
