@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import note_draft_automation as base
@@ -149,6 +149,113 @@ def _prepare_article(requested_sync_id: str = "") -> dict[str, Any]:
     )
 
 
+def _wait_for_bound_dialog_hidden(
+    page: Any,
+    dialog: Any,
+    *,
+    timeout_ms: int,
+    after_bind: Callable[[], None] | None = None,
+) -> None:
+    """Wait for the exact crop dialog that was visible before Save was clicked.
+
+    Playwright Locators are live queries.  note may open another role=dialog immediately after
+    the crop modal closes, so waiting on `[role=dialog].first` after Save can silently retarget
+    to the new dialog.  Bind the current DOM element first, perform the mutation, then wait only
+    for that original element to detach or become hidden.
+    """
+    try:
+        element = dialog.element_handle(timeout=2500)
+    except Exception as exc:
+        raise base.NoteDraftError("note eyecatch crop dialog element was not available") from exc
+    if element is None:
+        raise base.NoteDraftError("note eyecatch crop dialog element was not available")
+    if after_bind is not None:
+        after_bind()
+    page.wait_for_function(
+        """el => {
+            if (!el.isConnected) return true;
+            const style = window.getComputedStyle(el);
+            return style.display === 'none'
+                || style.visibility === 'hidden'
+                || el.getAttribute('aria-hidden') === 'true';
+        }""",
+        arg=element,
+        timeout=timeout_ms,
+    )
+
+
+def _upload_header_image(page: Any, image_path: Path) -> None:
+    add_button = base._find_header_image_add_button(page)
+    if add_button is None:
+        raise base.NoteDraftError("note header-image control was not found")
+    add_button.click()
+
+    upload_button = base._first_visible(
+        page,
+        ['button:has-text("画像をアップロード")', '[role="button"]:has-text("画像をアップロード")'],
+        timeout_ms=5000,
+    )
+    chooser_used = False
+    if upload_button is not None:
+        try:
+            with page.expect_file_chooser(timeout=5000) as chooser_info:
+                upload_button.click()
+            chooser_info.value.set_files(str(image_path))
+            chooser_used = True
+        except Exception:
+            chooser_used = False
+    if not chooser_used:
+        file_input = page.locator('input[type="file"]').first
+        try:
+            file_input.wait_for(state="attached", timeout=7000)
+            file_input.set_input_files(str(image_path))
+        except Exception as exc:
+            raise base.NoteDraftError("note eyecatch file chooser was not available") from exc
+
+    page.wait_for_timeout(1200)
+    dialog = page.locator('[role="dialog"]').first
+    try:
+        dialog_visible = dialog.is_visible(timeout=2500)
+    except Exception:
+        dialog_visible = False
+    if dialog_visible:
+        try:
+            save_button = None
+            discovery_deadline = base.time.time() + 10
+            while base.time.time() < discovery_deadline:
+                save_button = base._find_crop_save_control(dialog)
+                if save_button is not None:
+                    break
+                page.wait_for_timeout(250)
+            if save_button is None:
+                raise base.NoteDraftError("note eyecatch crop save control was not found")
+            deadline = base.time.time() + 20
+            while base.time.time() < deadline and not save_button.is_enabled():
+                page.wait_for_timeout(300)
+            if not save_button.is_enabled():
+                raise base.NoteDraftError("note eyecatch crop dialog never became saveable")
+            _wait_for_bound_dialog_hidden(
+                page,
+                dialog,
+                timeout_ms=15000,
+                after_bind=save_button.click,
+            )
+        except base.NoteDraftError:
+            raise
+        except Exception as exc:
+            raise base.NoteDraftError("note eyecatch crop/save step failed") from exc
+
+    page.wait_for_timeout(1000)
+    error_locator = page.locator('text=/アップロード.*(失敗|できません|エラー)/').first
+    try:
+        if error_locator.is_visible(timeout=800):
+            raise base.NoteDraftError("note reported an eyecatch upload error")
+    except base.NoteDraftError:
+        raise
+    except Exception:
+        pass
+
+
 def _trusted_clipboard_paste(page: Any, body: Any, manuscript: str) -> None:
     """Paste rich manuscript through Chromium's clipboard and a real keyboard paste.
 
@@ -241,6 +348,7 @@ def install() -> None:
     run185.install()
     base._manuscript_from_blocks = _manuscript_from_blocks
     base._prepare_article = _prepare_article
+    base._upload_header_image = _upload_header_image
     base._paste_manuscript = _trusted_clipboard_paste
 
 
